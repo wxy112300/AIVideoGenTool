@@ -2,14 +2,14 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.58.1**。本 patch 将 H3 Motion Context 推荐/最新版本提升到 `v0.5.1`（需要 ComfyUI `0.34.0+`），并保留 `v0.3.1` 作为旧核心回退线；上一个 minor 在既有 H3 JointAV 与 History latent upscale 基础上开放了 Create 原生 1080p。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.59.0**。本 minor 新增 H3 Continuum Native AV 续写，整合 AetherScale/DLSS5 后处理与队列/H3 运行时改进，并修复视频续写提示词增强的末帧自动取帧问题。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
 ## 当前能力
 
 - 图片处理：多参考图编辑、批量候选、Prompt 版本、Canvas 定位标记、LaMa Mask 局部移除和图片版本历史。
-- 视频创作：首帧/首尾帧图生视频、H3 多参考 R2V、视频续写、原生音频和目标帧率处理。
+- 视频创作：首帧/首尾帧图生视频、H3 多参考 R2V、Motion Context 视频续写、H3 Continuum Native AV 续写、原生音频和目标帧率处理。
 - LoRA 堆栈：顺序、强度、兼容模型、触发词和冲突提示随队列快照保存。
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
@@ -22,7 +22,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 
 | 类别 | 当前主要支持 |
 | --- | --- |
-| 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
+| 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、MiniMax H3 Continuum（Extend，依赖 Native AV）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | HiDream-O1-Image、Z-Image / Z-Image-Turbo、Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | H3 committed JointAV 原生二次采样（720p/768p bilinear；runtime-ready 时 1080p/1440p learned 3D）、SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Camera Motion、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |

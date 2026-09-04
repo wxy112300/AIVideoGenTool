@@ -38,6 +38,7 @@ import {
 } from "../src/core/h3-memory-policy.js";
 import {
   generationSafetyForTask,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -667,6 +668,7 @@ export class JsonStore implements StateRepository {
       const configuredExtensionModel = this.state.settings.defaultExtensionModel;
       const extensionModelSupported = typeof configuredExtensionModel === "string" && (
         isMiniMaxH3Fl2vaModel(configuredExtensionModel) ||
+        isMiniMaxH3ContinuumModel(configuredExtensionModel) ||
         isMiniMaxH3R2vModel(configuredExtensionModel) ||
         configuredExtensionModel === "sulphur2"
       );

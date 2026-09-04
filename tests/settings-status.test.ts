@@ -7,7 +7,11 @@ import {
   modelProfileStatusTone,
   promptModelStatus
 } from "../src/renderer/shared/status";
-import { deriveEnvironmentOverviewItems } from "../src/renderer/pages/settings/selectors";
+import {
+  deriveCustomNodeCardState,
+  deriveEnvironmentOverviewItems,
+  isDlss5RuntimeUnavailable
+} from "../src/renderer/pages/settings/selectors";
 import type { CustomNodeStatus, EnvironmentItem, EnvironmentScanResult, ModelScanProfile } from "../src/types";
 
 function profile(overrides: Partial<ModelScanProfile> = {}): ModelScanProfile {
@@ -182,6 +186,32 @@ describe("settings status tones", () => {
     expect(customNodeStatusTone(node({ installed: false, loaded: false }))).toBe("missing");
     expect(customNodeStatusTone(node({ loadError: "import failed", loaded: false }))).toBe("missing");
     expect(customNodeStatusTone(node())).toBe("available");
+  });
+
+  it("surfaces an invalid DLSS5 runtime separately from the node source check", () => {
+    const runtime = {
+      state: "invalid",
+      srReady: false
+    } as NonNullable<EnvironmentScanResult["dlss5Runtime"]>;
+    expect(isDlss5RuntimeUnavailable(runtime)).toBe(true);
+    expect(deriveCustomNodeCardState({
+      node: node({ id: "comfyui-dlss5" }),
+      queuedIndex: -1,
+      active: false,
+      finalizing: false,
+      inFinalizingBatch: false,
+      globallyBlocked: false,
+      runtimeUnavailable: true
+    })).toMatchObject({
+      status: "runtime-missing",
+      tone: "missing",
+      primaryOperation: "repair"
+    });
+    expect(isDlss5RuntimeUnavailable({
+      state: "ready",
+      srReady: false,
+      nrReady: true
+    } as NonNullable<EnvironmentScanResult["dlss5Runtime"]>)).toBe(false);
   });
 
   it("renders optional environment checks as warnings rather than failures", () => {

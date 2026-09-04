@@ -194,8 +194,11 @@ export function renderHistoryDetailPage(viewModel, options) {
     const mediaUrl = options.historyMediaUrl(asset, version);
     const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
     const jointAvArtifact = version.h3ContinuationData?.status === "available"
-      ? version.h3ContinuationData.artifact
-      : undefined;
+        ? version.h3ContinuationData.artifact
+        : undefined;
+    const jointAvSummary = jointAvArtifact
+        ? `<span class="history-joint-av-indicator">JointAV</span>`
+        : "";
     const fileIdentity = (file) => file.absolutePath || `${file.subfolder}/${file.filename}`;
     const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
     const outputFiles = [...version.files];
@@ -260,7 +263,7 @@ export function renderHistoryDetailPage(viewModel, options) {
           <div class="history-summary-copy">
           <div class="history-title-line"><h1 class="history-detail-title" title="${options.escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${options.escapeHtml(detailTitle)}</span><span aria-hidden="true">${options.escapeHtml(detailTitle)}</span></span></h1><span class="status running">${options.t(uiKeys.history.page.completed)}</span></div>
           <code>${options.escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code>
-          <div class="history-summary-badges"><span class="model-badge">${options.escapeHtml(options.modelName(version.modelId))}</span><span>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</span></div>
+          <div class="history-summary-badges"><span class="model-badge">${options.escapeHtml(options.modelName(version.modelId))}</span><span>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</span>${jointAvSummary}</div>
           <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("heart")}</button>${renderHistoryRatingControl(asset.id, asset.rating, options)}</div>
           </div>
           <div class="history-overview-facts">

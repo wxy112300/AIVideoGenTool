@@ -23,6 +23,8 @@ export interface CatalogCustomNodeDefinition {
   latestVersion?: string;
   /** Python-side runtime requirement when the node package's own version is not the constraint. */
   runtimeRequirement?: string;
+  /** App-managed, feature-scoped native/runtime bundle captured with the node. */
+  runtimeBundleId?: string;
   /** Optional nodes with external toolchains can opt out of the bulk installer. */
   bulkInstall?: boolean;
   /** False when the package may be recognized by the app but must be installed manually. */

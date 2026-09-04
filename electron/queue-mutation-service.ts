@@ -15,6 +15,15 @@ import {
 } from "../src/core/queue.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
+import {
+  AETHERSCALE_MODEL_ID,
+  normalizeAetherScaleTarget
+} from "../src/core/aetherscale.js";
+import {
+  DLSS5_MODEL_ID,
+  normalizeUpscaleTarget,
+  requireLegacyUpscaleTargetHeight
+} from "../src/core/dlss5.js";
 import { fileURLToPath } from "node:url";
 
 export interface QueueMutationServiceDependencies {
@@ -46,7 +55,7 @@ export class QueueMutationService {
     patch: Pick<
       UpscaleQueueTask,
       "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
-      "modelId" | "workflowPath" |
+      "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" |
       "tileMode" | "faceRestore" | "outputFilename"
     >
   ): Promise<AppState> {
@@ -56,12 +65,103 @@ export class QueueMutationService {
       throw new Error("待编辑的 Upscale 任务不存在。");
     }
     const currentMode = current.upscaleMode ?? "pixel";
-    if (patch.upscaleMode !== currentMode) {
+    const currentIsAetherScale = current.modelId === AETHERSCALE_MODEL_ID ||
+      current.aetherScale !== undefined;
+    const currentIsDlss5 = !currentIsAetherScale && (current.modelId === DLSS5_MODEL_ID ||
+      current.targetScale !== undefined || current.dlss5 !== undefined);
+    const requestedIsAetherScale = patch.modelId === AETHERSCALE_MODEL_ID ||
+      patch.aetherScale !== undefined;
+    const requestedIsDlss5 = !requestedIsAetherScale && (patch.modelId === DLSS5_MODEL_ID ||
+      patch.targetScale !== undefined || patch.dlss5 !== undefined);
+    if (currentIsAetherScale !== requestedIsAetherScale || currentIsDlss5 !== requestedIsDlss5) {
       throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
     }
+    if (currentIsAetherScale) {
+      const target = normalizeAetherScaleTarget({
+        modelId: patch.modelId,
+        sourceWidth: current.sourceWidth,
+        sourceHeight: current.sourceHeight,
+        targetWidth: patch.targetWidth,
+        targetOutputHeight: patch.targetOutputHeight,
+        targetHeight: patch.targetHeight,
+        targetScale: patch.targetScale,
+        dlss5: patch.dlss5,
+        aetherScale: patch.aetherScale
+      });
+      if (patch.upscaleMode !== currentMode) {
+        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+      }
+      const safePatch = {
+        ...patch,
+        upscaleMode: "pixel" as const,
+        modelId: AETHERSCALE_MODEL_ID,
+        workflowPath: "builtin:upscale/aetherscale-dlss5",
+        targetWidth: target.targetWidth,
+        targetHeight: undefined,
+        targetScale: undefined,
+        targetOutputHeight: target.targetOutputHeight,
+        tileMode: "auto" as const,
+        faceRestore: false,
+        dlss5: undefined,
+        aetherScale: structuredClone(target.aetherScale),
+        h3NativeInput: undefined
+      };
+      const next = await store.update((state) => {
+        const previousQueue = state.queue.map((item) => ({ ...item }));
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, safePatch);
+        state.queuePauseBoundary = adjustQueuePauseBoundary(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        );
+      });
+      sendState(next);
+      return next;
+    }
+    if (currentIsDlss5) {
+      const target = normalizeUpscaleTarget({
+        modelId: patch.modelId,
+        sourceWidth: current.sourceWidth,
+        sourceHeight: current.sourceHeight,
+        targetHeight: patch.targetHeight,
+        targetScale: patch.targetScale,
+        dlss5: patch.dlss5
+      });
+      if (target.provider !== "dlss5") throw new Error("DLSS5 队列目标规范化失败。");
+      if (patch.upscaleMode !== currentMode) {
+        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+      }
+      const safePatch = {
+        ...patch,
+        upscaleMode: "pixel" as const,
+        modelId: DLSS5_MODEL_ID,
+        workflowPath: `builtin:upscale/${DLSS5_MODEL_ID}`,
+        targetWidth: target.targetWidth,
+        targetHeight: undefined,
+        targetScale: target.targetScale,
+        targetOutputHeight: target.targetOutputHeight,
+        tileMode: "auto" as const,
+        faceRestore: false,
+        dlss5: structuredClone(target.dlss5),
+        aetherScale: undefined,
+        h3NativeInput: undefined
+      };
+      const next = await store.update((state) => {
+        const previousQueue = state.queue.map((item) => ({ ...item }));
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, safePatch);
+        state.queuePauseBoundary = adjustQueuePauseBoundary(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        );
+      });
+      sendState(next);
+      return next;
+    }
+    const targetHeight = requireLegacyUpscaleTargetHeight(patch.targetHeight);
     if (currentMode === "h3-native") {
       const currentProvider = current.h3NativeInput?.provider ?? "bilinear";
-      const requestedProvider = patch.targetHeight >= 1080 ? "learned-3d" : "bilinear";
+      const requestedProvider = targetHeight >= 1080 ? "learned-3d" : "bilinear";
       if (requestedProvider !== currentProvider) {
         throw new Error("已排队的 H3 Upscale 任务不能跨 bilinear/learned provider 修改分辨率，请新建任务。");
       }
@@ -69,7 +169,7 @@ export class QueueMutationService {
     const safePatch = currentMode === "h3-native"
       ? (() => {
           const input = current.h3NativeInput!;
-          const workflowFilename = patch.targetHeight === 1440
+          const workflowFilename = targetHeight === 1440
             ? "minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json"
             : "minimax_h3_fl2va_learned_3d_second_sample_av_api.json";
           const workflowPath = fileURLToPath(new URL(`../workflows/${workflowFilename}`, import.meta.url));
@@ -80,7 +180,7 @@ export class QueueMutationService {
             h3NativeInput: {
               ...input,
               workflowPath,
-              scaleBy: patch.targetHeight / Math.min(input.artifact.width, input.artifact.height)
+              scaleBy: targetHeight / Math.min(input.artifact.width, input.artifact.height)
             }
           };
         })()

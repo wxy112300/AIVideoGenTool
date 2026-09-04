@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { checkH3Prompt } from "../src/core/h3-prompt-check.js";
+import {
+  BUILTIN_VIDEO_LORAS,
+  H3_FACIAL_REALISM_CLOSEUP_LORA,
+  H3_TURBO_LORA
+} from "../src/core/video-loras.js";
 
 const i2vaPrompt = [
   "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
@@ -28,6 +33,73 @@ describe("MiniMax H3 prompt checks", () => {
     ].join("\n"), { hasImageReference: false });
 
     expect(result).toMatchObject({ mode: "T2VA", valid: true, items: [] });
+  });
+
+  it("warns when a selected LoRA trigger is missing from the prompt", () => {
+    const result = checkH3Prompt([
+      "integrated_multimodal_description: [Shot 1] Live-action, a woman looks toward the camera.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), {
+      mode: "T2VA",
+      videoLoras: [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.items.map((item) => item.message).join("\n")).toContain(
+      "LoRA「MiniMax H3 Facial Realism CloseUp」缺少触发词：Facial Realism"
+    );
+  });
+
+  it("does not warn when the trigger is present or the LoRA has no trigger", () => {
+    const prompt = [
+      "integrated_multimodal_description: [Shot 1] Facial Realism, a woman looks toward the camera.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n");
+
+    expect(checkH3Prompt(prompt, {
+      mode: "T2VA",
+      videoLoras: [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    }).items.some((item) => item.message.includes("缺少触发词"))).toBe(false);
+    expect(checkH3Prompt(prompt, {
+      mode: "T2VA",
+      videoLoras: [H3_TURBO_LORA]
+    })).toMatchObject({ valid: true, items: [] });
+  });
+
+  it("checks every trigger configured by the LoRA catalog", () => {
+    const triggerLoras = BUILTIN_VIDEO_LORAS.filter((lora) =>
+      (lora.promptPrefixes ?? []).length > 0
+    );
+    expect(triggerLoras.length).toBeGreaterThan(1);
+
+    const missing = checkH3Prompt([
+      "integrated_multimodal_description: [Shot 1] A woman looks toward the camera.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), {
+      mode: "T2VA",
+      videoLoras: triggerLoras
+    });
+    const missingTriggerMessages = missing.items.filter((item) =>
+      item.message.includes("缺少触发词")
+    );
+    expect(missingTriggerMessages).toHaveLength(triggerLoras.length);
+    for (const lora of triggerLoras) {
+      expect(missingTriggerMessages.map((item) => item.message).join("\n"))
+        .toContain(lora.promptPrefixes![0]!);
+    }
+
+    const complete = checkH3Prompt([
+      `integrated_multimodal_description: [Shot 1] ${(triggerLoras.flatMap((lora) => lora.promptPrefixes ?? [])).join(", ")}, a woman looks toward the camera.`,
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), {
+      mode: "T2VA",
+      videoLoras: triggerLoras
+    });
+    expect(complete.items.some((item) => item.message.includes("缺少触发词"))).toBe(false);
   });
 
   it("accepts L2VA when the final-frame instruction is first", () => {

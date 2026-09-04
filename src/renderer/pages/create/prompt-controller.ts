@@ -3,7 +3,8 @@ import type {
   H3PromptPreset,
   H3PromptMode,
   H3ReferenceRole,
-  PromptEnhanceMode
+  PromptEnhanceMode,
+  VideoLoraSelection
 } from "../../../types";
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
 import {
@@ -35,7 +36,13 @@ export interface CreatePromptControllerOptions {
   ): void;
   setWorkflowCapability(path: string, capability: { supportsEndImage: boolean; supportsVideoExtension: boolean }): void;
   syncPromptEnqueueUi(promptText: string): void;
-  updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: H3PromptMode, hasVideoReference?: boolean): void;
+  updateH3PromptCheck(
+    promptText: string,
+    hasEndImage: boolean,
+    mode?: H3PromptMode,
+    hasVideoReference?: boolean,
+    videoLoras?: readonly VideoLoraSelection[]
+  ): void;
   h3ReferenceRoleLabels: Record<H3ReferenceRole, string>;
   h3ReferenceRolePromptLabels: Record<H3ReferenceRole, string>;
   getPromptEnhanceMode(): PromptEnhanceMode;
@@ -113,7 +120,8 @@ export function mountCreatePromptController(
       promptInput.value,
       Boolean(draft.endImagePath),
       h3PromptModeForDraft(draft),
-      draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")
+      draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"),
+      draft.videoLoras
     );
     updatePromptWordCounter(
       promptInput.value,
@@ -233,7 +241,17 @@ export function mountCreatePromptController(
     const isExtension = draft.inputMode === "video";
     const requestOrigin = isExtension ? "video-extension" : "image-to-video";
     const hasExtensionBoundary = isExtension && Boolean(draft.sourceVideoPath) &&
-      draft.trimEndSeconds > draft.trimStartSeconds;
+      Number.isFinite(draft.sourceVideoDuration) && draft.sourceVideoDuration > 0 &&
+      draft.trimEndSeconds > draft.trimStartSeconds &&
+      draft.trimEndSeconds <= draft.sourceVideoDuration + 0.05;
+    if (isExtension && !hasExtensionBoundary) {
+      options.context.notify(options.context.t(
+        draft.sourceVideoPath && draft.sourceVideoDuration > 0
+          ? uiKeys.create.validation.invalidTrim
+          : uiKeys.create.validation.videoMissing
+      ), { kind: "error" });
+      return;
+    }
     if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0 && !hasExtensionBoundary) {
       options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
       return;
@@ -293,6 +311,12 @@ export function mountCreatePromptController(
         h3PromptPreset: isCurrentH3
           ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
           : undefined,
+        videoLoras: draft.videoLoras.map((lora) => ({
+          ...lora,
+          compatibleModelIds: [...lora.compatibleModelIds],
+          compatibleInputModes: [...lora.compatibleInputModes],
+          ...(lora.promptPrefixes ? { promptPrefixes: [...lora.promptPrefixes] } : {})
+        })),
         h3DurationSeconds: draft.duration,
         h3AspectRatio: draft.ratio === "source"
           ? draft.sourceHeight > draft.sourceWidth ? "9:16" : "16:9"

@@ -9,7 +9,7 @@ import { imageModelCapabilityFor, imageLightningComponentFound, imageQualityProf
 import { normalizeImageEditDraft } from "../../../core/image-project";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts, motionContextReferenceSlotsReady } from "../../../core/h3-reference";
-import { generationSafetyForTask, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputDimensions } from "../../../core/workflow";
+import { generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputDimensions } from "../../../core/workflow";
 import { BUILTIN_VIDEO_LORAS, H3_SLA_TURBO_LORA_ID, H3_TURBO_LORA_ID, isH3SlaTurboLoraId, isH3TurboLoraId, profileProvidesVideoLora, videoLoraCompatibleWithModel, videoLoraCompatibleWithDraft } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
 import { loraRuleText } from "../../../core/catalog/loras/locales";
@@ -88,7 +88,9 @@ export function videoEnqueueBlockReason(input) {
                                 ? input.safetyMessage
                                 : !input.h3MotionContextReady
                                     ? t(uiKeys.create.validation.motionContextMissing)
-                                    : !input.r2vSlotsReady
+                                    : input.isContinuum && !input.continuumArtifactReady
+                                        ? t(uiKeys.create.validation.continuumArtifactMissing)
+                                        : !input.r2vSlotsReady
                                         ? t(uiKeys.create.validation.r2vSlotMissing)
                                         : !input.spectrumReady
                                             ? t(uiKeys.create.validation.spectrumMissing)
@@ -229,7 +231,17 @@ export function buildVideoCreatePageViewModel(options) {
     const h3PromptPack = h3PromptPackFor(state.settings.uiLocale);
     const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+    const isContinuum = isMiniMaxH3ContinuumModel(draft.modelId);
+    const continuumArtifactReady = Boolean(draft.h3ContinuumArtifact?.payload.filename || draft.h3ContinuumArtifactPath?.trim());
+    const continuumArtifactFilename = draft.h3ContinuumArtifact?.payload.filename ?? draft.h3ContinuumArtifactPath?.split(/[\\/]/u).pop() ?? "";
     const extending = draft.inputMode === "video";
+    const continuumEffectiveDraft = isContinuum && extending && draft.sourceVideoDuration > 0
+        ? {
+            ...draft,
+            trimStartSeconds: 0,
+            trimEndSeconds: draft.sourceVideoDuration
+        }
+        : draft;
     const referenceSlots = extending && isR2V
         ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
         : draft.h3ReferenceSlots;
@@ -289,17 +301,17 @@ export function buildVideoCreatePageViewModel(options) {
     const promptVersionCount = promptVersionsForDraft(draft).length;
     const interpolation = interpolationEstimate(draft);
     const safety = extending
-        ? extensionSafetyForDraft(draft, state.settings)
+        ? extensionSafetyForDraft(continuumEffectiveDraft, state.settings)
         : generationSafetyForCreateDraft(draft, state.settings.uiLocale);
     const supportsEndImage = workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
     const supportsVideoExtension = workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true;
     const selectedModelProfile = environmentScan?.modelProfiles.find((profile) => profile.id === draft.modelId);
-    const trimDuration = Math.max(0, draft.trimEndSeconds - draft.trimStartSeconds);
-    const trimStartPercent = draft.sourceVideoDuration > 0
-        ? draft.trimStartSeconds / draft.sourceVideoDuration * 100
+    const trimDuration = Math.max(0, continuumEffectiveDraft.trimEndSeconds - continuumEffectiveDraft.trimStartSeconds);
+    const trimStartPercent = continuumEffectiveDraft.sourceVideoDuration > 0
+        ? continuumEffectiveDraft.trimStartSeconds / continuumEffectiveDraft.sourceVideoDuration * 100
         : 0;
-    const trimEndPercent = draft.sourceVideoDuration > 0
-        ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
+    const trimEndPercent = continuumEffectiveDraft.sourceVideoDuration > 0
+        ? continuumEffectiveDraft.trimEndSeconds / continuumEffectiveDraft.sourceVideoDuration * 100
         : 100;
     const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
     const r2vCounts = h3ReferenceSlotCounts(referenceSlots);
@@ -328,6 +340,8 @@ export function buildVideoCreatePageViewModel(options) {
         promptText: prompt.text,
         extending,
         isR2V,
+        isContinuum,
+        continuumArtifactReady,
         videoReady,
         trimDuration,
         workflowPath: draft.workflowPath,
@@ -354,6 +368,10 @@ export function buildVideoCreatePageViewModel(options) {
         extending,
         isR2V,
         isMiniMaxH3,
+        isContinuum,
+        continuumArtifactReady,
+        continuumArtifactFilename,
+        continuumArtifactHistoryBound: Boolean(draft.h3ContinuumArtifact),
         h3Mode,
         enhanceMode,
         h3PromptEnhanceTitle: isMiniMaxH3
@@ -379,7 +397,7 @@ export function buildVideoCreatePageViewModel(options) {
             : "",
         promptSnippetOptionsMarkup: promptSnippetOptions(escapeHtml, state.settings.uiLocale),
         h3PromptCheckMarkup: isMiniMaxH3
-            ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), h3Mode, draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.duration, escapeHtml, h3PromptPack.ui)
+            ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), h3Mode, draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.duration, escapeHtml, h3PromptPack.ui, draft.videoLoras)
             : "",
         modelOptions: createModelOptionViewModels(draft, environmentScan, workflowCapabilities, bundledWorkflows, t),
         resolutionOptionsMarkup: extending && !isMiniMaxH3

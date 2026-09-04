@@ -55,7 +55,7 @@ export interface ComfyRuntimeServiceDependencies {
     onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
   ): Promise<number>;
   isPortInUse(port: number): Promise<boolean>;
-  downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
+  downloadEnvironment(settings: Settings, comfyRoot?: string): NodeJS.ProcessEnv;
   exists(filename: string): Promise<boolean>;
   findComfyPython(
     settings: Settings,
@@ -148,7 +148,7 @@ async function startComfyUiServiceImpl(
       installation.executable,
       [],
       installation.directory,
-      dependencies.downloadEnvironment(settings),
+      dependencies.downloadEnvironment(settings, comfyRoot),
       handleOwnedProcessExit
     );
     ownedComfyProcessIds.add(processId);
@@ -230,7 +230,7 @@ async function startComfyUiServiceImpl(
     memoryArgs,
     databaseFilename
   });
-  const environment = dependencies.downloadEnvironment(settings);
+  const environment = dependencies.downloadEnvironment(settings, comfyRoot);
   const launchComfyUi = options.visibleConsole === false
     ? dependencies.launchDetached
     : dependencies.launchComfyUiVisible ?? dependencies.launchDetached;

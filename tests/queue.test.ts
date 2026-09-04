@@ -23,8 +23,10 @@ import {
   extensionTaskFromDraft,
   imageTaskFromDraft,
   queueTaskFromDraft,
+  upscaleTaskFromRequest,
   type QueueTaskFactoryClock
 } from "../src/core/queue-task-factory";
+import { DEFAULT_DLSS5_UPSCALE_OPTIONS } from "../src/core/dlss5";
 import {
   createDefaultDraft,
   createDefaultImageEditDraft,
@@ -639,6 +641,39 @@ describe("queue mutations", () => {
     expect(duplicated).toHaveLength(2);
     expect(duplicated[1]).toMatchObject({ id: "copy-id", status: "waiting" });
     expect(duplicated[1]?.seed).not.toBe(1);
+  });
+
+  it("duplicates a DLSS snapshot with its own scale metadata and filename", () => {
+    const state = createDefaultState();
+    const source = upscaleTaskFromRequest({
+      sourceAssetId: "asset-dlss",
+      sourceVersionId: "version-dlss",
+      sourceFilePath: "source.mp4",
+      sourceFilename: "source.mp4",
+      sourceWidth: 832,
+      sourceHeight: 480,
+      duration: 2,
+      fps: 24,
+      targetScale: 3,
+      dlss5: { ...DEFAULT_DLSS5_UPSCALE_OPTIONS, scale: 3 },
+      modelId: "dlss5-sr",
+      tileMode: "safe",
+      faceRestore: true
+    }, state, clock(["dlss-source"]));
+    state.queue = [source];
+
+    const duplicated = duplicateQueueTask(state, source.id, clock(["dlss-copy"]));
+    expect(duplicated[1]).toMatchObject({
+      id: "dlss-copy",
+      modelId: "dlss5-sr",
+      targetScale: 3,
+      targetWidth: 2496,
+      targetOutputHeight: 1440,
+      outputFilename: "source-dlss-3x-v02.mp4"
+    });
+    expect(duplicated[1]).not.toHaveProperty("targetHeight");
+    expect(duplicated[1]?.taskType === "upscale" && duplicated[1].dlss5)
+      .not.toBe(source.dlss5);
   });
 
   it("only resets failed or cancelled tasks", () => {

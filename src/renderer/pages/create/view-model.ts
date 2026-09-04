@@ -42,6 +42,7 @@ import { h3TokenCountForDraft } from "../../../core/h3-token-count";
 import {
   type GenerationSafety,
   generationSafetyForTask,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   isMiniMaxH3BoundaryExtensionModel,
@@ -173,6 +174,8 @@ export interface VideoEnqueueBlockReasonInput {
   promptText: string;
   extending: boolean;
   isR2V: boolean;
+  isContinuum?: boolean;
+  continuumArtifactReady?: boolean;
   videoReady: boolean;
   trimDuration: number;
   workflowPath: string;
@@ -206,6 +209,8 @@ export function videoEnqueueBlockReason(
               ? t(uiKeys.create.validation.extensionUnsafe)
               : !input.safetySafe
                 ? input.safetyMessage
+                : input.isContinuum && !input.continuumArtifactReady
+                  ? t(uiKeys.create.validation.continuumArtifactMissing)
                 : !input.h3MotionContextReady
                   ? t(uiKeys.create.validation.motionContextMissing)
                   : !input.r2vSlotsReady
@@ -403,7 +408,20 @@ export function buildVideoCreatePageViewModel(
   const h3PromptPack = h3PromptPackFor(state.settings.uiLocale);
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+  const isContinuum = isMiniMaxH3ContinuumModel(draft.modelId);
+  const continuumArtifactReady = Boolean(
+    draft.h3ContinuumArtifact?.payload.filename || draft.h3ContinuumArtifactPath?.trim()
+  );
+  const continuumArtifactFilename = draft.h3ContinuumArtifact?.payload.filename ??
+    draft.h3ContinuumArtifactPath?.split(/[\\/]/u).pop() ?? "";
   const extending = draft.inputMode === "video";
+  const continuumEffectiveDraft = isContinuum && extending && draft.sourceVideoDuration > 0
+    ? {
+        ...draft,
+        trimStartSeconds: 0,
+        trimEndSeconds: draft.sourceVideoDuration
+      }
+    : draft;
   const referenceSlots = extending && isR2V
     ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
     : draft.h3ReferenceSlots;
@@ -411,8 +429,17 @@ export function buildVideoCreatePageViewModel(
     draft.h3ReferenceSlots = referenceSlots;
   }
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
-  const extensionBoundaryAvailable = extending && Boolean(draft.sourceVideoPath) &&
-    draft.trimEndSeconds > draft.trimStartSeconds;
+  const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
+  const extensionBoundaryAvailable = extending && videoReady &&
+    draft.trimEndSeconds > draft.trimStartSeconds &&
+    draft.trimEndSeconds <= draft.sourceVideoDuration + 0.05;
+  const promptBoundaryBlockReason = extending
+    ? !videoReady
+      ? t(uiKeys.create.validation.videoMissing)
+      : !extensionBoundaryAvailable
+        ? t(uiKeys.create.validation.invalidTrim)
+        : ""
+    : "";
   const referenceAutoPromptAvailable = isMiniMaxH3 && (
     extensionBoundaryAvailable || (isR2V
       ? referenceSlots.some((slot) => Boolean(slot.mediaPath))
@@ -427,7 +454,8 @@ export function buildVideoCreatePageViewModel(
     : promptEnhanceMode === "faithful" ? "faithful" : "sulphur-native";
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
-  const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning;
+  const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning ||
+    Boolean(promptBoundaryBlockReason);
   const videoPolicy = resolveVideoGenerationPolicy({
     modelId: draft.modelId,
     inputMode: draft.inputMode,
@@ -508,21 +536,20 @@ export function buildVideoCreatePageViewModel(
   const promptVersionCount = promptVersionsForDraft(draft).length;
   const interpolation = interpolationEstimate(draft);
   const safety = extending
-    ? extensionSafetyForDraft(draft, state.settings)
+    ? extensionSafetyForDraft(continuumEffectiveDraft, state.settings)
     : generationSafetyForCreateDraft(draft, state.settings.uiLocale);
   const supportsEndImage = workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
   const supportsVideoExtension = workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true;
   const selectedModelProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
-  const trimDuration = Math.max(0, draft.trimEndSeconds - draft.trimStartSeconds);
-  const trimStartPercent = draft.sourceVideoDuration > 0
-    ? draft.trimStartSeconds / draft.sourceVideoDuration * 100
+  const trimDuration = Math.max(0, continuumEffectiveDraft.trimEndSeconds - continuumEffectiveDraft.trimStartSeconds);
+  const trimStartPercent = continuumEffectiveDraft.sourceVideoDuration > 0
+    ? continuumEffectiveDraft.trimStartSeconds / continuumEffectiveDraft.sourceVideoDuration * 100
     : 0;
-  const trimEndPercent = draft.sourceVideoDuration > 0
-    ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
+  const trimEndPercent = continuumEffectiveDraft.sourceVideoDuration > 0
+    ? continuumEffectiveDraft.trimEndSeconds / continuumEffectiveDraft.sourceVideoDuration * 100
     : 100;
-  const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
   const r2vCounts = h3ReferenceSlotCounts(referenceSlots);
   const r2vSlotsReady = !isR2V
     ? true
@@ -553,6 +580,8 @@ export function buildVideoCreatePageViewModel(
     promptText: prompt.text,
     extending,
     isR2V,
+    isContinuum,
+    continuumArtifactReady,
     videoReady,
     trimDuration,
     workflowPath: draft.workflowPath,
@@ -579,6 +608,10 @@ export function buildVideoCreatePageViewModel(
     extending,
     isR2V,
     isMiniMaxH3,
+    isContinuum,
+    continuumArtifactReady,
+    continuumArtifactFilename,
+    continuumArtifactHistoryBound: Boolean(draft.h3ContinuumArtifact),
     h3TokenEstimate,
     h3Mode,
     enhanceMode,
@@ -593,6 +626,8 @@ export function buildVideoCreatePageViewModel(
     promptAiDisabled,
     promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)
+      : promptBoundaryBlockReason
+        ? promptBoundaryBlockReason
       : promptAiDisabled
         ? h3PromptPack.ui.t("optimizing")
         : referenceAutoPromptAvailable && !prompt.text.trim()
@@ -613,7 +648,8 @@ export function buildVideoCreatePageViewModel(
           draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"),
           draft.duration,
           escapeHtml,
-          h3PromptPack.ui
+          h3PromptPack.ui,
+          draft.videoLoras
         )
       : "",
     modelOptions: createModelOptionViewModels(

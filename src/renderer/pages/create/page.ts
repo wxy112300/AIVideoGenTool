@@ -84,6 +84,10 @@ export interface VideoCreatePageViewModel {
   extending: boolean;
   isR2V: boolean;
   isMiniMaxH3: boolean;
+  isContinuum: boolean;
+  continuumArtifactReady: boolean;
+  continuumArtifactFilename: string;
+  continuumArtifactHistoryBound: boolean;
   h3Mode?: H3PromptMode;
   enhanceMode: "faithful" | "sulphur-native" | "h3-vision";
   h3PromptEnhanceTitle: string;
@@ -283,10 +287,10 @@ export function renderCreatePage(
         <span class="save-state">${t(uiKeys.create.autoSave)}</span>
       </div>
     </section>
-    <div class="create-workspace ${viewModel.isR2V ? "r2v-workspace" : ""}">
+    <div class="create-workspace ${viewModel.isR2V ? "r2v-workspace" : ""} ${viewModel.isContinuum ? "continuum-workspace" : ""}">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
+        <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? viewModel.isContinuum ? t(uiKeys.create.continuumArtifact.fullSourceBoundary) : t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
         ${viewModel.extending
           ? `<div class="section-heading-actions">
               ${viewModel.isR2V && viewModel.draft.sourceVideoPath && viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""}
@@ -301,7 +305,9 @@ export function renderCreatePage(
           ? `<div class="video-editor">
               <video id="source-video" src="studio-media://draft/video?source=${encodeURIComponent(viewModel.draft.sourceVideoPath)}" controls muted playsinline preload="metadata"></video>
               ${viewModel.videoReady
-                ? `<div class="trim-panel">
+                ? viewModel.isContinuum
+                  ? `<p class="continuum-boundary-note">${t(uiKeys.create.continuumArtifact.fullSourceBoundary)}</p>`
+                  : `<div class="trim-panel">
                     <div class="trim-heading"><strong>${t(uiKeys.create.videoMedia.trimTitle)}</strong><span><output id="trim-start-output">${formatTrimTime(viewModel.draft.trimStartSeconds)}</output> — <output id="trim-end-output">${formatTrimTime(viewModel.draft.trimEndSeconds)}</output></span></div>
                     <div class="trim-editor" id="trim-editor" style="--trim-start:${viewModel.trimStartPercent}%;--trim-end:${viewModel.trimEndPercent}%">
                       <div class="trim-filmstrip" aria-hidden="true">${Array.from({ length: 8 }, () => "<i></i>").join("")}</div>
@@ -347,6 +353,20 @@ export function renderCreatePage(
             </div>`
           : ""}
           </div>`}
+      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel" aria-labelledby="continuum-artifact-title">
+        <div class="section-heading">
+          <div><h2 id="continuum-artifact-title">${t(uiKeys.create.continuumArtifact.title)}</h2><span class="muted">${t(uiKeys.create.continuumArtifact.description)}</span></div>
+        </div>
+        <div class="continuum-artifact-drop ${viewModel.continuumArtifactReady ? "has-artifact" : ""}" id="pick-h3-continuum-av" data-drop-h3-continuum-av data-drop-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}">
+          <span class="drop-icon">${icon("database")}</span>
+          <strong>${t(viewModel.continuumArtifactReady ? uiKeys.create.continuumArtifact.change : uiKeys.create.continuumArtifact.choose)}</strong>
+          <span>${viewModel.continuumArtifactFilename ? escapeHtml(viewModel.continuumArtifactFilename) : t(uiKeys.create.continuumArtifact.pendingValidation)}</span>
+        </div>
+        <div class="continuum-artifact-meta">
+          <span class="muted">${viewModel.continuumArtifactHistoryBound ? t(uiKeys.create.continuumArtifact.historyBound) : t(uiKeys.create.continuumArtifact.pendingValidation)}</span>
+          ${viewModel.continuumArtifactReady ? `<button class="ghost button-with-icon" id="clear-h3-continuum-av" type="button">${icon("x")}${t(uiKeys.create.continuumArtifact.clear)}</button>` : ""}
+        </div>
+      </section>` : ""}
       ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
         <div class="section-heading">
           <div><h2>${t(uiKeys.create.r2vReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span></div>
@@ -393,8 +413,10 @@ export function renderCreatePage(
       </div>
       ${viewModel.isMiniMaxH3 ? viewModel.h3PromptCheckMarkup : ""}
       ${viewModel.extending && viewModel.isMiniMaxH3 ? `<div class="h3-extension-note">
-        <strong>${viewModel.isR2V ? promptUi.t("extensionR2vTitle") : promptUi.t("extensionBoundaryTitle")}</strong>
-        <span>${viewModel.isR2V
+        <strong>${viewModel.isContinuum ? t(uiKeys.create.continuumArtifact.title) : viewModel.isR2V ? promptUi.t("extensionR2vTitle") : promptUi.t("extensionBoundaryTitle")}</strong>
+        <span>${viewModel.isContinuum
+          ? t(uiKeys.create.continuumArtifact.description)
+          : viewModel.isR2V
           ? promptUi.t(viewModel.draft.h3ContextLatentPath ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
           : promptUi.t("extensionBoundaryDescription")}</span>
       </div>` : ""}
@@ -429,10 +451,10 @@ export function renderCreatePage(
             ${viewModel.spectrumOptionsMarkup}
           </select>
         </label>
-        <label class="settings-field settings-joint-av">${viewModel.jointAvLabelMarkup}
+        <label class="settings-field settings-joint-av ${viewModel.isContinuum ? "continuum-joint-av" : ""}">${viewModel.jointAvLabelMarkup}
           <select id="h3-save-joint-av">
-            <option value="save" ${viewModel.draft.h3SaveJointAv ? "selected" : ""}>${t(uiKeys.create.videoSettings.saveJointAvEnabled)}</option>
-            <option value="skip" ${viewModel.draft.h3SaveJointAv ? "" : "selected"}>${t(uiKeys.create.videoSettings.saveJointAvDisabled)}</option>
+            <option value="save" ${viewModel.isContinuum || viewModel.draft.h3SaveJointAv ? "selected" : ""}>${t(uiKeys.create.videoSettings.saveJointAvEnabled)}</option>
+            ${viewModel.isContinuum ? "" : `<option value="skip" ${viewModel.draft.h3SaveJointAv ? "" : "selected"}>${t(uiKeys.create.videoSettings.saveJointAvDisabled)}</option>`}
           </select>
         </label>` : ""}
           </div>
@@ -500,9 +522,9 @@ export function renderCreatePage(
         </label>
           </div>
         </section>
-        <div class="interpolation-summary settings-summary ${!viewModel.safetySafe || !viewModel.r2vSlotsReady ? "unsafe" : viewModel.isMiniMaxH3 && (viewModel.draft.duration > 10 || viewModel.draft.resolution >= 768) ? "caution" : viewModel.interpolationMultiplier === 1 ? "disabled" : ""}">
-          <div><strong>${!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.r2vMissing) : !viewModel.safetySafe ? t(uiKeys.create.videoSettings.safetyBudget) : viewModel.isMiniMaxH3 ? t(uiKeys.create.videoSettings.h3NativeAudio) : viewModel.interpolationMultiplier === 1 ? t(uiKeys.create.videoSettings.interpolationOffSummary) : t(uiKeys.create.videoSettings.interpolationSummary, { source: viewModel.draft.fps / viewModel.interpolationMultiplier, target: viewModel.draft.fps })}</strong><span>${t(uiKeys.create.videoSettings.generatedFrames, { generated: viewModel.interpolationGeneratedFrames, max: viewModel.safetyMaxGeneratedFrames, output: viewModel.interpolationOutputFrames })}</span></div>
-          <p>${escapeHtml(!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.safetyDetail) : viewModel.safetyMessage)} ${viewModel.safetySafe && viewModel.r2vSlotsReady && viewModel.interpolationMultiplier !== 1 ? t(uiKeys.create.videoSettings.unloadBeforeRife) : ""}</p>
+        <div class="interpolation-summary settings-summary ${!viewModel.safetySafe || !viewModel.r2vSlotsReady || (viewModel.isContinuum && !viewModel.continuumArtifactReady) ? "unsafe" : viewModel.isMiniMaxH3 && (viewModel.draft.duration > 10 || viewModel.draft.resolution >= 768) ? "caution" : viewModel.interpolationMultiplier === 1 ? "disabled" : ""}">
+          <div><strong>${!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.r2vMissing) : viewModel.isContinuum && !viewModel.continuumArtifactReady ? t(uiKeys.create.validation.continuumArtifactMissing) : !viewModel.safetySafe ? t(viewModel.isContinuum ? uiKeys.create.videoSettings.continuumSafety : uiKeys.create.videoSettings.safetyBudget) : viewModel.isMiniMaxH3 ? t(uiKeys.create.videoSettings.h3NativeAudio) : viewModel.interpolationMultiplier === 1 ? t(uiKeys.create.videoSettings.interpolationOffSummary) : t(uiKeys.create.videoSettings.interpolationSummary, { source: viewModel.draft.fps / viewModel.interpolationMultiplier, target: viewModel.draft.fps })}</strong><span>${t(uiKeys.create.videoSettings.generatedFrames, { generated: viewModel.interpolationGeneratedFrames, max: viewModel.safetyMaxGeneratedFrames, output: viewModel.interpolationOutputFrames })}</span></div>
+          <p>${escapeHtml(!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.safetyDetail) : viewModel.isContinuum && !viewModel.continuumArtifactReady ? t(uiKeys.create.validation.continuumArtifactMissing) : viewModel.safetyMessage)} ${viewModel.safetySafe && viewModel.r2vSlotsReady && (!viewModel.isContinuum || viewModel.continuumArtifactReady) && viewModel.interpolationMultiplier !== 1 ? t(uiKeys.create.videoSettings.unloadBeforeRife) : ""}</p>
         </div>
       </div>
       <div class="workflow-field composer-workflow-field">

@@ -179,6 +179,78 @@ main { padding-top: 0; }
   gap: 14px;
 }
 
+.continuum-artifact-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(56, 65, 78, .56);
+}
+
+.continuum-artifact-drop {
+  position: relative;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 18px;
+  border: 1px dashed rgba(104, 154, 235, .48);
+  border-radius: 12px;
+  color: #dbe8ff;
+  background: rgba(8, 12, 18, .42);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+
+.continuum-artifact-drop:hover,
+.continuum-artifact-drop:focus-visible {
+  border-color: rgba(138, 180, 255, .82);
+  background: rgba(31, 48, 76, .3);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(101, 151, 255, .12);
+}
+
+.continuum-artifact-drop.drag-over {
+  border-color: #8ab4ff;
+  background: rgba(49, 82, 134, .26);
+  box-shadow:
+    inset 0 0 0 2px rgba(138, 180, 255, .22),
+    0 0 0 4px rgba(101, 151, 255, .1);
+}
+
+.continuum-artifact-drop.has-artifact {
+  border-style: solid;
+  border-color: rgba(104, 190, 151, .48);
+}
+
+.continuum-artifact-drop .drop-icon {
+  display: grid;
+  place-items: center;
+  color: #9db9e7;
+}
+
+.continuum-artifact-drop > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.continuum-artifact-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.continuum-artifact-meta .muted {
+  min-width: 0;
+  font-size: 11px;
+}
+
 .video-editor > video {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -337,6 +409,13 @@ main { padding-top: 0; }
 
 @media (max-width: 900px) {
   .page-heading { min-height: 64px; }
+}
+
+.continuum-boundary-note {
+  margin: -2px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 @media (max-width: 760px) {

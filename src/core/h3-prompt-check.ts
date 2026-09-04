@@ -1,5 +1,6 @@
-import type { H3PromptMode } from "../types.js";
+import type { H3PromptMode, VideoLoraSelection } from "../types.js";
 import { inferH3PromptMode } from "./h3-prompt.js";
+import { videoLoraDefinition } from "./video-loras.js";
 import {
   extractH3DialogueLocks,
   type H3DialogueLock,
@@ -26,6 +27,7 @@ export interface H3PromptCheckOptions {
   hasImageReference?: boolean;
   hasVideoReference?: boolean;
   durationSeconds?: number;
+  videoLoras?: readonly VideoLoraSelection[];
   dialogueLocks?: readonly H3DialogueLock[];
   sourcePrompt?: string;
 }
@@ -119,6 +121,30 @@ function sentenceCount(section: string): number {
   return Math.max(1, content.match(/[.!?](?=\s|$)/gu)?.length ?? 1);
 }
 
+function promptContainsLoraTrigger(prompt: string, trigger: string): boolean {
+  const normalizedPrompt = prompt.replace(/\s+/gu, " ").trim().toLowerCase();
+  const normalizedTrigger = trigger.replace(/\s+/gu, " ").trim().toLowerCase();
+  if (!normalizedTrigger) return true;
+  let searchFrom = 0;
+  while (searchFrom < normalizedPrompt.length) {
+    const index = normalizedPrompt.indexOf(normalizedTrigger, searchFrom);
+    if (index < 0) return false;
+    const before = normalizedPrompt[index - 1];
+    const after = normalizedPrompt[index + normalizedTrigger.length];
+    const isTokenCharacter = (value: string | undefined): boolean =>
+      Boolean(value && /[\p{L}\p{N}]/u.test(value));
+    if (!isTokenCharacter(before) && !isTokenCharacter(after)) return true;
+    searchFrom = index + normalizedTrigger.length;
+  }
+  return false;
+}
+
+function promptPrefixesForLora(lora: VideoLoraSelection): string[] {
+  return [...new Set((lora.promptPrefixes ?? videoLoraDefinition(lora.id)?.promptPrefixes ?? [])
+    .map((prefix) => prefix.trim())
+    .filter(Boolean))];
+}
+
 export function checkH3Prompt(
   promptText: string,
   options: H3PromptCheckOptions = {}
@@ -129,6 +155,15 @@ export function checkH3Prompt(
     Boolean(options.hasEndImage)
   );
   const items: H3PromptCheckItem[] = [];
+  for (const lora of options.videoLoras ?? []) {
+    const missingTriggers = promptPrefixesForLora(lora)
+      .filter((trigger) => !promptContainsLoraTrigger(prompt, trigger));
+    if (!missingTriggers.length) continue;
+    items.push({
+      level: "warning",
+      message: `LoRA「${lora.name}」缺少触发词：${missingTriggers.join("、")}（执行时自动补入）`
+    });
+  }
   const requiredSections = mode === "R2V" ? r2vSections : baseSections;
   const missingSections = requiredSections.filter((section) => !prompt.includes(section));
   if (missingSections.length) {

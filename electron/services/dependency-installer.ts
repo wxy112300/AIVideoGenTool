@@ -1,16 +1,26 @@
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { customNodeDefinition } from "../../src/core/catalog/index.js";
+import {
+  AETHERSCALE_NODE_ID,
+  customNodeDefinition,
+  DLSS5_NODE_ID
+} from "../../src/core/catalog/index.js";
 import type { CustomNodeInstallMode, Settings } from "../../src/types.js";
 import {
+  dlss5DepthAnythingPatchFiles,
   patchH3PromptWriterSource,
+  patchAetherScaleCarrierSource,
+  aetherScaleCarrierPatchFiles,
+  patchDlss5DepthAnythingSource,
   patchMmh3UltimateUpscaleSource,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
+  prepareDlss5DepthAnything,
+  prepareAetherScaleCarrier,
   prepareH3PromptWriter,
   prepareMmh3UltimateUpscale,
   prepareH3Gguf,
@@ -19,7 +29,11 @@ import {
   prepareQwenVlComfyDesktopLogging,
   prepareVideoHelperSuite
 } from "../../src/infrastructure/dependency-node-adapters.js";
+import { depthAnythingBuiltinMetadataFile } from "../../src/infrastructure/depth-anything-metadata.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
+import { isLocalComfyUrl } from "./comfy-endpoint.js";
+import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
+import { installAetherScaleRuntime, uninstallAetherScaleRuntime } from "./aetherscale-runtime.js";
 
 function normalizedRepositoryUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "").replace(/\.git$/iu, "").toLowerCase();
@@ -127,10 +141,14 @@ async function nodeHasOnlyAppPatch(
     : nodeId === "comfyui-multimodal-prompt-nodes"
       ? multimodalPromptPatchFiles
       : nodeId === "comfyui-qwenvl-lora"
-        ? qwenVlPatchFiles
-        : nodeId === "mmh3-ultimate-upscale"
-          ? mmh3PatchFiles
-      : [];
+      ? qwenVlPatchFiles
+      : nodeId === "mmh3-ultimate-upscale"
+        ? mmh3PatchFiles
+      : nodeId === DLSS5_NODE_ID
+          ? dlss5DepthAnythingPatchFiles
+          : nodeId === AETHERSCALE_NODE_ID
+            ? aetherScaleCarrierPatchFiles
+          : [];
   const paths = statusOutput
     .split(/\r?\n/u)
     .map((line) => line.trimEnd())
@@ -142,29 +160,38 @@ async function nodeHasOnlyAppPatch(
   for (const filename of paths) {
     const current = await fs.readFile(path.join(targetDirectory, filename), "utf8").catch(() => null);
     if (current === null) return false;
-    let baseline = "";
-    try {
-      baseline = await runtime.runLoggedProcess(
-        git,
-        ["-C", targetDirectory, "show", `HEAD:${filename}`],
-        { timeoutMs: 30_000, env: commandEnvironment }
-      );
-    } catch {
-      return false;
-    }
-    const expected = nodeId === "minimax-h3-prompt-writer"
-      ? patchH3PromptWriterSource(baseline)
-      : nodeId === "comfyui-multimodal-prompt-nodes"
-        ? filename === "local_gguf_utils.py"
-          ? patchMultimodalPromptProjectorDiscovery(baseline)
-          : patchMultimodalPromptResidency(
-              patchMultimodalPromptQwen38Recognition(
-                patchMultimodalPromptContextSize(baseline)
+    let expected = "";
+    if (nodeId === DLSS5_NODE_ID && filename !== "nodes.py") {
+      expected = depthAnythingBuiltinMetadataFile(path.basename(filename));
+    } else {
+      let baseline = "";
+      try {
+        baseline = await runtime.runLoggedProcess(
+          git,
+          ["-C", targetDirectory, "show", `HEAD:${filename}`],
+          { timeoutMs: 30_000, env: commandEnvironment }
+        );
+      } catch {
+        return false;
+      }
+      expected = nodeId === "minimax-h3-prompt-writer"
+        ? patchH3PromptWriterSource(baseline)
+        : nodeId === "comfyui-multimodal-prompt-nodes"
+          ? filename === "local_gguf_utils.py"
+            ? patchMultimodalPromptProjectorDiscovery(baseline)
+            : patchMultimodalPromptResidency(
+                patchMultimodalPromptQwen38Recognition(
+                  patchMultimodalPromptContextSize(baseline)
+                )
               )
-            )
-        : nodeId === "comfyui-qwenvl-lora"
-          ? patchQwenVlComfyDesktopLogging(baseline)
-          : patchMmh3UltimateUpscaleSource(baseline);
+          : nodeId === "comfyui-qwenvl-lora"
+            ? patchQwenVlComfyDesktopLogging(baseline)
+          : nodeId === "mmh3-ultimate-upscale"
+              ? patchMmh3UltimateUpscaleSource(baseline)
+              : nodeId === AETHERSCALE_NODE_ID
+                ? patchAetherScaleCarrierSource(baseline)
+                : patchDlss5DepthAnythingSource(baseline);
+    }
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }
   return true;
@@ -221,7 +248,7 @@ async function validateH3PromptWriterPythonSyntax(
 }
 
 export interface DependencyInstallerRuntime {
-  downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
+  downloadEnvironment(settings: Settings, comfyRoot?: string): NodeJS.ProcessEnv;
   proxyLogLabel(settings: Settings): string;
   findComfyRoot(settings: Settings): Promise<string>;
   findExecutable(command: string): Promise<string>;
@@ -241,9 +268,30 @@ export interface DependencyInstallerRuntime {
       cwd?: string;
       env?: NodeJS.ProcessEnv;
       timeoutMs?: number;
+      signal?: AbortSignal;
       onLog?: (message: string) => void;
     }
   ): Promise<string>;
+  /** Optional app-managed runtime transaction for the DLSS5 node. */
+  installDlss5Runtime?(
+    settings: Settings,
+    comfyRoot: string,
+    nodeDirectory: string,
+    onLog?: (message: string) => void
+  ): Promise<{ ok: boolean; message: string; log?: string }>;
+  /** Optional app-managed carrier transaction for the AetherScale node. */
+  installAetherScaleRuntime?(
+    settings: Settings,
+    comfyRoot: string,
+    nodeDirectory: string,
+    onLog?: (message: string) => void
+  ): Promise<{ ok: boolean; message: string; log?: string }>;
+  uninstallAetherScaleRuntime?(
+    settings: Settings,
+    comfyRoot: string,
+    nodeDirectory?: string,
+    onLog?: (message: string) => void
+  ): Promise<{ ok: boolean; message: string; log?: string }>;
 }
 
 async function ensurePinnedGitRevision(
@@ -367,6 +415,12 @@ export async function installCustomNodePackage(
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    return {
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会安装或修改本地节点。"
+    };
+  }
   if (definition.appInstallable === false) {
     return {
       ok: false,
@@ -382,9 +436,6 @@ export async function installCustomNodePackage(
     onLog?.(normalized);
   };
   try {
-    const commandEnvironment = withWindowsGitLongPaths(
-      runtime.downloadEnvironment(settings)
-    );
     report(runtime.proxyLogLabel(settings));
     if (process.platform === "win32") {
       report("Windows Git 长路径兼容已启用（仅限本次安装进程）");
@@ -392,6 +443,9 @@ export async function installCustomNodePackage(
     report("正在定位所选 ComfyUI 的数据目录和 Python 环境……");
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    const commandEnvironment = withWindowsGitLongPaths(
+      runtime.downloadEnvironment(settings, comfyRoot)
+    );
     const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
     const isQwenVlPeftNode = definition.id === "comfyui-qwenvl-lora";
     const usesSharedLlamaRuntime = isMultimodalPromptNodes ||
@@ -402,6 +456,8 @@ export async function installCustomNodePackage(
     let videoHelperPrepared = false;
     let h3GgufPrepared = false;
     let h3PromptWriterPrepared = false;
+    let dlss5Prepared = false;
+    let aetherScalePrepared = false;
 
     if (definition.source === "bundled") {
       await installBundledNodePackage(
@@ -459,7 +515,9 @@ export async function installCustomNodePackage(
               "minimax-h3-prompt-writer",
               "comfyui-multimodal-prompt-nodes",
               "comfyui-qwenvl-lora",
-              "mmh3-ultimate-upscale"
+              "mmh3-ultimate-upscale",
+              DLSS5_NODE_ID,
+              AETHERSCALE_NODE_ID
             ].includes(definition.id) &&
               await nodeHasOnlyAppPatch(
                 definition.id,
@@ -470,12 +528,14 @@ export async function installCustomNodePackage(
                 commandEnvironment
               );
             if (appPatchOnly) {
-              const upstreamUnchanged = await h3PromptWriterUpstreamUnchanged(
-                targetDirectory,
-                git,
-                runtime,
-                commandEnvironment
-              );
+              const upstreamUnchanged = definition.id === DLSS5_NODE_ID || definition.id === AETHERSCALE_NODE_ID
+                ? pinnedRevisionMatches
+                : await h3PromptWriterUpstreamUnchanged(
+                    targetDirectory,
+                    git,
+                    runtime,
+                    commandEnvironment
+                  );
               if (upstreamUnchanged === true) {
                 reuseAppPatchedRepository = true;
                 report(
@@ -560,6 +620,14 @@ export async function installCustomNodePackage(
           } else if (definition.id === "mmh3-ultimate-upscale") {
             report("正在应用 MMH3 1440p 兼容补丁……");
             await prepareMmh3UltimateUpscale(replacementDirectory, report);
+          } else if (definition.id === DLSS5_NODE_ID) {
+            report("正在应用 DLSS5 Depth Anything 本地模型适配层……");
+            await prepareDlss5DepthAnything(replacementDirectory, report);
+            dlss5Prepared = true;
+          } else if (definition.id === AETHERSCALE_NODE_ID) {
+            report("正在应用 AetherScale carrier 注册表回收适配层……");
+            await prepareAetherScaleCarrier(replacementDirectory, report);
+            aetherScalePrepared = true;
           }
           await fs.mkdir(backupRoot, { recursive: true });
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
@@ -709,6 +777,14 @@ export async function installCustomNodePackage(
       report("正在检查 MMH3 1440p 兼容补丁……");
       await prepareMmh3UltimateUpscale(targetDirectory, report);
     }
+    if (definition.id === DLSS5_NODE_ID && !dlss5Prepared) {
+      report("正在检查 DLSS5 Depth Anything 本地模型适配层……");
+      await prepareDlss5DepthAnything(targetDirectory, report);
+    }
+    if (definition.id === AETHERSCALE_NODE_ID && !aetherScalePrepared) {
+      report("正在检查 AetherScale carrier 注册表回收适配层……");
+      await prepareAetherScaleCarrier(targetDirectory, report);
+    }
     if (definition.id === "minimax-h3-prompt-writer" && !h3PromptWriterPrepared) {
       report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
       await prepareH3PromptWriter(targetDirectory, report);
@@ -838,6 +914,34 @@ export async function installCustomNodePackage(
       if (!pipOutput) report("Qwen-VL LoRA 依赖已满足");
       report("Qwen-VL LoRA 依赖处理完成；请重启 ComfyUI 后重新扫描节点。 ");
     }
+    if (definition.id === DLSS5_NODE_ID) {
+      if (!runtime.installDlss5Runtime) {
+        throw new Error("DLSS5 runtime 安装器未接入当前应用运行时。");
+      }
+      report("正在安装 DLSS5 SR runtime（固定 VapourKit manifest）……");
+      const runtimeResult = await runtime.installDlss5Runtime(
+        settings,
+        comfyRoot,
+        targetDirectory,
+        report
+      );
+      if (runtimeResult.log) report(runtimeResult.log);
+      if (!runtimeResult.ok) throw new Error(runtimeResult.message);
+    }
+    if (definition.id === AETHERSCALE_NODE_ID) {
+      if (!runtime.installAetherScaleRuntime) {
+        throw new Error("AetherScale carrier runtime 安装器未接入当前应用运行时。");
+      }
+      report("正在安装 AetherScale carrier runtime（固定六文件白名单）……");
+      const runtimeResult = await runtime.installAetherScaleRuntime(
+        settings,
+        comfyRoot,
+        targetDirectory,
+        report
+      );
+      if (runtimeResult.log) report(runtimeResult.log);
+      if (!runtimeResult.ok) throw new Error(runtimeResult.message);
+    }
     return {
       ok: true,
       message: `${definition.name} 已安装或更新。请重启 ComfyUI 后复检。`,
@@ -862,11 +966,17 @@ export async function installCustomNodePackage(
 export async function uninstallCustomNodePackage(
   nodeId: string,
   settings: Settings,
-  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot">,
+  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "uninstallAetherScaleRuntime">,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝卸载。" };
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    return {
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会卸载或修改本地节点。"
+    };
+  }
   if (definition.appInstallable === false) {
     return {
       ok: false,
@@ -891,13 +1001,27 @@ export async function uninstallCustomNodePackage(
       return { ok: false, message: `${definition.name} 未安装，无需卸载。` };
     }
     for (const directory of installedDirectories) {
+      if (definition.id === AETHERSCALE_NODE_ID && runtime.uninstallAetherScaleRuntime) {
+        const carrierResult = await runtime.uninstallAetherScaleRuntime(
+          settings,
+          comfyRoot,
+          directory,
+          onLog
+        );
+        if (carrierResult.log) onLog?.(carrierResult.log);
+        if (!carrierResult.ok) throw new Error(carrierResult.message);
+      }
       onLog?.(`正在删除节点目录：${directory}`);
-      await fs.rm(directory, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200
-      });
+      if (definition.id === DLSS5_NODE_ID) {
+        await removeDirectoryTreeWithoutAsar(directory);
+      } else {
+        await fs.rm(directory, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 200
+        });
+      }
       onLog?.(`节点目录已删除：${directory}`);
     }
     return {

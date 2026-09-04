@@ -266,6 +266,31 @@ export type CustomNodeDisplayStatus =
   | "repair"
   | "missing";
 
+export function isDlss5RuntimeUnavailable(
+  runtime: EnvironmentScanResult["dlss5Runtime"]
+): boolean {
+  return Boolean(
+    runtime && (
+      runtime.state === "missing" ||
+      runtime.state === "invalid" ||
+      (runtime.state === "ready" && !runtime.srReady && !runtime.nrReady)
+    )
+  );
+}
+
+export function isAetherScaleRuntimeUnavailable(
+  runtime: EnvironmentScanResult["aetherScaleRuntime"]
+): boolean {
+  return Boolean(
+    runtime && (
+      runtime.state === "missing" ||
+      runtime.state === "invalid" ||
+      runtime.state === "remote" ||
+      (runtime.state === "ready" && !runtime.carrierReady)
+    )
+  );
+}
+
 export function deriveCustomNodeCardState(options: {
   node: CustomNodeStatus;
   queuedIndex: number;
@@ -273,6 +298,7 @@ export function deriveCustomNodeCardState(options: {
   finalizing: boolean;
   inFinalizingBatch: boolean;
   globallyBlocked: boolean;
+  runtimeUnavailable?: boolean;
 }) {
   const queued = options.queuedIndex >= 0;
   const revisionUpdateAvailable = Boolean(
@@ -290,6 +316,7 @@ export function deriveCustomNodeCardState(options: {
       : options.finalizing && options.inFinalizingBatch
         ? "finalizing"
         : null;
+  const runtimeUnavailable = options.node.installed && options.runtimeUnavailable === true;
   const status: CustomNodeDisplayStatus = phase ?? (
     revisionUpdateAvailable
       ? "update"
@@ -297,6 +324,8 @@ export function deriveCustomNodeCardState(options: {
       ? "compatibility-error"
       : options.node.updateAvailable && options.node.loaded
         ? "update"
+        : runtimeUnavailable
+          ? "runtime-missing"
         : options.node.installed && options.node.runtimeVerified && Boolean(options.node.runtimeMissingNodeTypes?.length)
           ? "runtime-missing"
           : options.node.loaded && !options.node.runtimeVerified && !options.node.compatibilityNotice
@@ -311,11 +340,15 @@ export function deriveCustomNodeCardState(options: {
     queued,
     phase,
     status,
-    tone: customNodeStatusTone(options.node, phase !== null),
+    tone: runtimeUnavailable && phase === null
+      ? "missing"
+      : customNodeStatusTone(options.node, phase !== null),
     primaryOperation: !options.node.installed
       ? "install" as const
       : revisionUpdateAvailable
         ? "update" as const
+        : runtimeUnavailable
+          ? "repair" as const
         : options.node.runtimeRepairable || Boolean(options.node.loadError) ||
         options.node.compatibilityState === "error"
         ? "repair" as const

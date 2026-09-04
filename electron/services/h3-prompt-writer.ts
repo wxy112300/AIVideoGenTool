@@ -28,6 +28,7 @@ import {
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
+import { h3LoraPromptInstruction } from "../../src/core/prompts/h3/loras.js";
 import {
   parsePromptAnnotations,
   promptAnnotationInstruction,
@@ -303,6 +304,7 @@ export async function enhancePromptWithH3PromptWriter(
         : [sourcePrompt, request.referenceContext?.trim()]
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
+      h3LoraPromptInstruction(request.videoLoras),
       cameraIntent,
       hardConstraints,
       contentLocks,

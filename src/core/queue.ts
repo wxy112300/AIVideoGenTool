@@ -6,7 +6,7 @@ import type {
   UpscaleQueueTask
 } from "../types.js";
 import { createOutputFilename } from "./filename.js";
-import { uniqueUpscaleFilename } from "./upscale.js";
+import { uniqueAetherScaleUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename } from "./upscale.js";
 
 export function isImageGenerationQueueTask(
   task: QueueTask
@@ -370,6 +370,7 @@ export function reorderWaitingTask(
 export type UpscaleTaskPatch = Pick<
   UpscaleQueueTask,
   "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
+  "targetScale" | "dlss5" | "aetherScale" |
   "modelId" | "workflowPath" |
   "tileMode" | "faceRestore" | "outputFilename"
 > & Partial<Pick<UpscaleQueueTask, "h3NativeInput">>;
@@ -463,7 +464,11 @@ export function duplicateQueueTask(
   ];
   const outputFilename = source.taskType === "generation" || source.taskType === "extension"
     ? createOutputFilename(source.modelId, source.resolution, source.duration, names)
-    : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
+    : source.modelId === "aetherscale-dlss5" && source.aetherScale
+      ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names)
+    : source.modelId === "dlss5-sr"
+      ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale!, names)
+      : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
   return [...state.queue, {
     ...source,
     id: clock.id(),
@@ -479,6 +484,12 @@ export function duplicateQueueTask(
     error: undefined,
     stage: undefined,
     automaticRetryAttempt: undefined,
+    ...(source.taskType === "upscale" && source.modelId === "dlss5-sr" && source.dlss5
+      ? { dlss5: structuredClone(source.dlss5) }
+      : {}),
+    ...(source.taskType === "upscale" && source.modelId === "aetherscale-dlss5" && source.aetherScale
+      ? { aetherScale: structuredClone(source.aetherScale) }
+      : {}),
     ...(source.taskType === "upscale"
       ? { seedVr2Checkpoint: undefined, seedVr2Progress: undefined }
       : {})

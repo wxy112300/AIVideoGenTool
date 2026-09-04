@@ -9,6 +9,8 @@ import {
 } from "../../src/core/comfy-output.js";
 import {
   generationFrameCountForTask,
+  continuumSampledFrameCountForSeconds,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3R2vModel,
   miniMaxH3ModelAssetNames,
   outputDimensions
@@ -57,11 +59,13 @@ export function nativeAvArtifactMetadataForTask(
   const [width, height] = task.taskType === "upscale"
     ? upscaleOutputDimensions(task)
     : outputDimensions(task);
-  const contextFrames = task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
-    ? 22
-    : 0;
+  const contextFrames = task.taskType === "extension" && (
+    isMiniMaxH3R2vModel(task.modelId) || isMiniMaxH3ContinuumModel(task.modelId)
+  ) ? 22 : 0;
   const frameCount = task.taskType === "upscale"
     ? h3Upscale!.artifact.frameCount
+    : task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)
+      ? continuumSampledFrameCountForSeconds(task.duration)
     : generationFrameCountForTask(task) + contextFrames;
   const workflowId = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
   return {

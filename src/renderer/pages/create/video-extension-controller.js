@@ -1,6 +1,6 @@
 import { uiKeys } from "../../../core/i18n-keys";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
-import { isMiniMaxH3R2vModel } from "../../../core/workflow";
+import { isMiniMaxH3ContinuumModel, isMiniMaxH3R2vModel } from "../../../core/workflow";
 export function mountVideoExtensionController(context, options) {
     const events = new AbortController();
     const signal = events.signal;
@@ -24,11 +24,78 @@ export function mountVideoExtensionController(context, options) {
             sourceAssetId: undefined,
             sourceVersionId: undefined,
             h3ContextLatentPath: undefined,
+            h3ContinuumArtifactPath: undefined,
+            h3ContinuumArtifact: undefined,
             sourceWidth: 0,
             sourceHeight: 0,
             ...(draft && isMiniMaxH3R2vModel(draft.modelId)
                 ? { h3ReferenceSlots: ensureMotionContextSourceSlot(draft.h3ReferenceSlots, "") }
                 : {})
+        });
+        context.requestRender();
+    }, { signal });
+    const continuumArtifactZone = root.querySelector("[data-drop-h3-continuum-av]");
+    const setContinuumArtifact = (filename) => {
+        if (!/\.safetensors$/iu.test(filename)) {
+            context.notify(t(uiKeys.create.validation.continuumArtifactMissing), { kind: "error" });
+            return;
+        }
+        options.patchDraft({
+            h3ContinuumArtifactPath: filename,
+            h3ContinuumArtifact: undefined
+        });
+        context.requestRender();
+    };
+    const pickContinuumArtifact = async () => {
+        const filename = await context.hostCapabilities.pickH3NativeAv();
+        if (filename)
+            setContinuumArtifact(filename);
+    };
+    if (continuumArtifactZone) {
+        continuumArtifactZone.addEventListener("click", (event) => {
+            event.stopImmediatePropagation();
+            void pickContinuumArtifact();
+        }, { signal });
+        continuumArtifactZone.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ")
+                return;
+            event.preventDefault();
+            void pickContinuumArtifact();
+        }, { signal });
+        const clearDragState = () => continuumArtifactZone.classList.remove("drag-over");
+        continuumArtifactZone.addEventListener("dragenter", (event) => {
+            event.preventDefault();
+            continuumArtifactZone.classList.add("drag-over");
+        }, { signal });
+        continuumArtifactZone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            if (event.dataTransfer)
+                event.dataTransfer.dropEffect = "copy";
+            continuumArtifactZone.classList.add("drag-over");
+        }, { signal });
+        continuumArtifactZone.addEventListener("dragleave", clearDragState, { signal });
+        continuumArtifactZone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            clearDragState();
+            const file = event.dataTransfer?.files.item(0);
+            if (!file || !/\.safetensors$/iu.test(file.name)) {
+                context.notify(t(uiKeys.create.validation.continuumArtifactMissing), { kind: "error" });
+                return;
+            }
+            const filename = context.hostCapabilities.getDroppedFilePath(file);
+            if (!filename) {
+                context.notify(t(uiKeys.create.validation.continuumArtifactMissing), { kind: "error" });
+                return;
+            }
+            setContinuumArtifact(filename);
+        }, { signal });
+    }
+    root.querySelector("#clear-h3-continuum-av")?.addEventListener("click", (event) => {
+        event.stopImmediatePropagation();
+        options.patchDraft({
+            h3ContinuumArtifactPath: undefined,
+            h3ContinuumArtifact: undefined
         });
         context.requestRender();
     }, { signal });
@@ -78,12 +145,19 @@ export function mountVideoExtensionController(context, options) {
         const durationChanged = Math.abs(draft.sourceVideoDuration - video.duration) > 0.05;
         const dimensionsChanged = draft.sourceWidth !== video.videoWidth ||
             draft.sourceHeight !== video.videoHeight;
-        if (!durationChanged && !dimensionsChanged)
+        const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
+        const continuumBoundaryChanged = continuum && (Math.abs(draft.trimStartSeconds) > 0.05 ||
+            Math.abs(draft.trimEndSeconds - video.duration) > 0.05);
+        if (!durationChanged && !dimensionsChanged && !continuumBoundaryChanged)
             return;
-        const trimStartSeconds = durationChanged
+        const trimStartSeconds = continuum
+            ? 0
+            : durationChanged
             ? Math.min(draft.trimStartSeconds, Math.max(0, video.duration - 0.1))
             : draft.trimStartSeconds;
-        const trimEndSeconds = durationChanged
+        const trimEndSeconds = continuum
+            ? video.duration
+            : durationChanged
             ? draft.trimEndSeconds <= 0 || draft.trimEndSeconds > video.duration
                 ? video.duration
                 : Math.max(trimStartSeconds + 0.1, draft.trimEndSeconds)

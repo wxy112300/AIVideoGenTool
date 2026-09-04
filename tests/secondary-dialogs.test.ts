@@ -5,6 +5,7 @@ import {
   renderUpscaleDialog
 } from "../src/renderer/shell/secondary-dialogs";
 import { createUpscaleFilename, upscaleDimensions } from "../src/core/upscale";
+import { AETHERSCALE_MODEL_ID } from "../src/core/aetherscale";
 import { uiKeys } from "../src/core/i18n-keys";
 import { versionShortEdge } from "../src/renderer/pages/history/helpers";
 
@@ -249,5 +250,171 @@ describe("secondary dialog markup", () => {
 
     expect(markup).toMatch(/data-upscale-height="1080"[^>]*disabled/);
     expect(markup).toMatch(/data-upscale-height="1440"[^>]*disabled/);
+  });
+
+  it("uses DLSS5 scale controls and displays the actual enlarged resolution", () => {
+    const version = {
+      id: "version-dlss5",
+      kind: "original",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "source.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 832,
+      height: 480,
+      duration: 2,
+      fps: 24,
+      workflowPath: "workflow.json",
+      comfyPromptId: "prompt-dlss5",
+      comfyOutputs: {},
+      files: [{
+        filename: "source.mp4",
+        subfolder: "",
+        type: "output",
+        absolutePath: "C:\\video\\source.mp4",
+        sizeBytes: 10 * 1024 * 1024
+      }]
+    } as AssetVersion;
+    const asset = { id: "asset-dlss5", title: "DLSS source", versions: [version] } as unknown as HistoryAsset;
+    const markup = renderUpscaleDialog({
+      dialog: {
+        assetId: asset.id,
+        versionId: version.id,
+        targetScale: 3,
+        dlss5Quality: "balanced",
+        modelId: "dlss5-sr",
+        tileMode: "auto"
+      },
+      history: [asset],
+      environment: null,
+      performance: null,
+      icon: () => "",
+      escapeHtml: String,
+      formatBytes: (bytes) => `${bytes} B`,
+      formatVideoDuration: String,
+      formatUpscaleEstimateRange: () => "",
+      createUpscaleFilename,
+      estimateUpscaleResources: () => ({ frameCount: 48, vramMinGb: 0, vramMaxGb: 0, secondsMin: 0, secondsMax: 0, internalScale: 3 }),
+      upscaleDimensions,
+      versionShortEdge,
+      t: (key) => key
+    });
+
+    expect(markup).toContain('data-upscale-scale="2"');
+    expect(markup).toContain('data-upscale-scale="3"');
+    expect(markup).toContain('data-upscale-scale="4"');
+    expect(markup).not.toContain("data-upscale-height");
+    expect(markup).toContain('id="upscale-dlss-quality"');
+    expect(markup).toContain('value="balanced" selected');
+    expect(markup).not.toContain('id="upscale-tile"');
+    expect(markup).toContain('aria-label="3× · 2496 × 1440"');
+    expect(markup).toContain("2496 × 1440");
+    expect(markup).toContain("source-dlss-3x-v01.mp4");
+    expect(markup).toContain(uiKeys.upscale.dlss5Pending);
+    expect(markup).toContain(uiKeys.upscale.dlss5BenchmarkPending);
+    expect(markup).toContain(uiKeys.upscale.estimatedDisk);
+  });
+
+  it("shows only the supported AetherScale modes and avoids repeated pending copy", () => {
+    const version = {
+      id: "version-aetherscale",
+      kind: "original",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "source.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 864,
+      height: 480,
+      duration: 5,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: [{
+        filename: "source.mp4",
+        subfolder: "",
+        type: "output",
+        absolutePath: "C:\\video\\source.mp4",
+        sizeBytes: 10 * 1024 * 1024
+      }]
+    } as AssetVersion;
+    const asset = { id: "asset-aetherscale", title: "Aether source", versions: [version] } as unknown as HistoryAsset;
+    const markup = renderUpscaleDialog({
+      dialog: {
+        assetId: asset.id,
+        versionId: version.id,
+        aetherScaleMode: "native_1x",
+        modelId: AETHERSCALE_MODEL_ID,
+        tileMode: "auto"
+      },
+      history: [asset],
+      environment: null,
+      performance: null,
+      icon: () => "",
+      escapeHtml: String,
+      formatBytes: (bytes) => `${bytes} B`,
+      formatVideoDuration: String,
+      formatUpscaleEstimateRange: () => "",
+      createUpscaleFilename,
+      estimateUpscaleResources: () => ({ frameCount: 120, vramMinGb: 0, vramMaxGb: 0, secondsMin: 0, secondsMax: 0, internalScale: 2 }),
+      upscaleDimensions,
+      versionShortEdge,
+      t: (key) => key
+    });
+
+    expect(markup).toContain('class="upscale-resolution upscale-scale-resolution aetherscale-mode-options"');
+    expect(markup).toContain('data-aetherscale-mode="performance_2x"');
+    expect(markup).toContain('data-aetherscale-mode="ultra_performance_3x"');
+    expect(markup).not.toContain('data-aetherscale-mode="native_1x"');
+    expect(markup).not.toContain('data-aetherscale-mode="quality_1_5x"');
+    expect(markup).not.toContain('data-aetherscale-mode="balanced_1_724x"');
+    expect(markup).not.toContain(uiKeys.upscale.aetherscaleExperimental);
+    expect(markup).not.toContain(uiKeys.upscale.aetherscaleAdvancedPending);
+    expect(markup.split(uiKeys.upscale.aetherscaleBenchmarkPending)).toHaveLength(2);
+    expect(markup).toContain("864");
+    expect(markup).toContain("1728");
+  });
+
+  it("fails closed with a recovery reason when the DLSS5 node is missing", () => {
+    const version = {
+      id: "version-dlss5-missing",
+      kind: "original",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "source.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 640,
+      height: 360,
+      duration: 1,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: []
+    } as unknown as AssetVersion;
+    const asset = { id: "asset-dlss5-missing", title: "DLSS source", versions: [version] } as HistoryAsset;
+    const markup = renderUpscaleDialog({
+      dialog: {
+        assetId: asset.id,
+        versionId: version.id,
+        targetScale: 2,
+        modelId: "dlss5-sr",
+        tileMode: "auto"
+      },
+      history: [asset],
+      environment: {
+        customNodes: [],
+        modelProfiles: []
+      } as unknown as NonNullable<Parameters<typeof renderUpscaleDialog>[0]["environment"]>,
+      performance: null,
+      icon: () => "",
+      escapeHtml: String,
+      formatBytes: String,
+      formatVideoDuration: String,
+      formatUpscaleEstimateRange: () => "",
+      createUpscaleFilename,
+      estimateUpscaleResources: () => ({ frameCount: 24, vramMinGb: 0, vramMaxGb: 0, secondsMin: 0, secondsMax: 0, internalScale: 2 }),
+      upscaleDimensions,
+      versionShortEdge,
+      t: (key) => key
+    });
+
+    expect(markup).toMatch(/data-upscale-scale="2"[^>]*disabled/);
+    expect(markup).toContain('id="enqueue-upscale" disabled');
+    expect(markup).toContain(uiKeys.upscale.dlss5NodeMissing);
+    expect(markup).toContain(uiKeys.upscale.dlss5SettingsHint);
   });
 });

@@ -10,11 +10,15 @@ import {
   type DependencyInstallerRuntime
 } from "../electron/services/dependency-installer";
 import {
+  aetherScaleCarrierPatchFiles,
+  dlss5DepthAnythingPatchFiles,
+  patchAetherScaleCarrierSource,
   patchH3PromptWriterGemmaChatHandler,
   patchH3PromptWriterAutomaticContextLadder,
   patchH3PromptWriterBriefLimit,
   patchH3PromptWriterLlamaCppCompatibility,
   patchH3PromptWriterOutputBudget,
+  patchDlss5DepthAnythingSource,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
@@ -22,10 +26,104 @@ import {
   patchMmh3UltimateUpscaleSource,
   patchQwenVlComfyDesktopLogging,
   patchQwenVlCooperativeInterrupt,
+  prepareDlss5DepthAnything,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
 } from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
+import { DLSS5_NODE_REVISION } from "../src/core/catalog";
+
+const dlss5DepthAnythingSource = [
+  "from transformers import AutoImageProcessor, AutoModelForDepthEstimation",
+  "from pathlib import Path",
+  "PACKAGE = Path(__file__).resolve().parent",
+  "PROJECT = PACKAGE.parent",
+  "_DEPTH_CACHE = {}",
+  "",
+  "class DLSS5DepthAnythingV2:",
+  "    MODELS = {\"Small (recommended)\": \"depth-anything/Depth-Anything-V2-Small-hf\"}",
+  "",
+  "    def estimate(self, images, model, temporal_normalization, chunk_size):",
+  "        model_id = self.MODELS[model]",
+  "        device = \"cuda\"",
+  "        key = (model_id, str(device))",
+  "        if key not in _DEPTH_CACHE:",
+  "            processor = AutoImageProcessor.from_pretrained(model_id)",
+  "            network = (",
+  "                AutoModelForDepthEstimation.from_pretrained(model_id).eval().to(device)",
+  "            )",
+  ""
+].join("\n");
+
+const aetherScaleCarrierSource = [
+  "import subprocess",
+  "from pathlib import Path",
+  "from typing import Any",
+  "",
+  "CARRIER_ROOT = Path(__file__).resolve().parent",
+  "CARRIER_RUNTIME = CARRIER_ROOT / \"runtime\"",
+  "WORKER = CARRIER_RUNTIME / \"nvngx.dll\"",
+  "CARRIER_MANIFEST = CARRIER_ROOT / \"carrier_manifest.json\"",
+  "",
+  "class CarrierError(RuntimeError):",
+  "    pass",
+  "",
+  "def _set_windows_gpu_preference(executable: Path, preference: str) -> dict[str, Any]:",
+  "    info = {",
+  "        \"requested\": preference,",
+  "        \"worker\": str(executable.resolve()),",
+  "        \"applied\": False,",
+  "        \"registry_value\": None,",
+  "    }",
+  "    with winreg.CreateKeyEx(",
+  "        winreg.HKEY_CURRENT_USER,",
+  "        key_path,",
+  "        0,",
+  "        winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,",
+  "    ) as key:",
+  "            winreg.SetValueEx(",
+  "                key,",
+  "                str(executable.resolve()),",
+  "                0,",
+  "                winreg.REG_SZ,",
+  "                value,",
+  "            )",
+  "",
+  "def process_carrier(",
+  "    images,",
+  "):",
+  "    gpu_routing = _set_windows_gpu_preference(WORKER, carrier_gpu)",
+  "    creation_flags = getattr(subprocess, \"CREATE_NO_WINDOW\", 0)",
+  "    proc = subprocess.Popen(",
+  "        [str(WORKER), \"--video\"],",
+  "        cwd=str(CARRIER_RUNTIME),",
+  "        stdin=subprocess.PIPE,",
+  "        stdout=subprocess.PIPE,",
+  "        stderr=subprocess.PIPE,",
+  "        creationflags=creation_flags,",
+  "    )",
+  "    assert proc.stdin and proc.stdout and proc.stderr",
+  "    if motion_source in (\"auto\", \"internal_dis\"):",
+  "        try:",
+  "            internal_guide = _TemporalGuide(w, h, flow_width=640)",
+  "        except CarrierError:",
+  "            if motion_source == \"internal_dis\":",
+  "                proc.terminate()",
+  "                raise",
+  "    try:",
+  "        for i in range(batch):",
+  "            pass",
+  "        pass",
+  "        t.join(timeout=2)",
+  "        if code:",
+  "            raise CarrierError(\"failed\")",
+  "    except Exception:",
+  "        try:",
+  "            proc.terminate()",
+  "        except Exception:",
+  "            pass",
+  "        raise",
+].join("\n");
 
 describe("MMH3 Ultimate Upscale adapter", () => {
   const pinnedSource = `def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
@@ -91,6 +189,69 @@ describe("Qwen-VL cooperative interrupt adapter", () => {
   });
 });
 
+describe("DLSS5 Depth Anything local-weight adapter", () => {
+  it("patches the Small profile to use the user-managed safetensors weight", () => {
+    const patched = patchDlss5DepthAnythingSource(
+      dlss5DepthAnythingSource.replace(/\n/gu, "\r\n")
+    );
+
+    expect(dlss5DepthAnythingPatchFiles).toEqual([
+      "nodes.py",
+      "assets/depth-anything-v2-small/config.json",
+      "assets/depth-anything-v2-small/preprocessor_config.json"
+    ]);
+    expect(patched).toContain("Local Video Studio Depth Anything local-weight compatibility layer");
+    expect(patched).toContain("model.safetensors");
+    expect(patched).toContain("AutoConfig");
+    expect(patched).toContain("local_files_only=True");
+    expect(patched).toContain("use_safetensors=True");
+    expect(patchDlss5DepthAnythingSource(patched)).toBe(patched);
+  });
+
+  it("writes the built-in JSON metadata into the installed node package", async () => {
+    const targetDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-dlss5-depth-adapter-"));
+    temporaryDirectories.push(targetDirectory);
+    await fs.writeFile(path.join(targetDirectory, "nodes.py"), dlss5DepthAnythingSource, "utf8");
+    const reports: string[] = [];
+
+    await prepareDlss5DepthAnything(targetDirectory, (message) => reports.push(message));
+
+    const metadataDirectory = path.join(targetDirectory, "assets", "depth-anything-v2-small");
+    const config = JSON.parse(await fs.readFile(path.join(metadataDirectory, "config.json"), "utf8")) as {
+      model_type?: string;
+    };
+    const preprocessor = JSON.parse(
+      await fs.readFile(path.join(metadataDirectory, "preprocessor_config.json"), "utf8")
+    ) as { image_processor_type?: string };
+    expect(config.model_type).toBe("depth_anything");
+    expect(preprocessor.image_processor_type).toBe("DPTImageProcessor");
+    expect((await fs.readFile(path.join(targetDirectory, "nodes.py"), "utf8")))
+      .toContain("local_files_only=True");
+    expect(reports.join("\n")).toContain("内置 JSON 元数据");
+  });
+});
+
+describe("AetherScale carrier registry adapter", () => {
+  it("records the previous per-worker preference and restores it on every worker exit path", () => {
+    const patched = patchAetherScaleCarrierSource(aetherScaleCarrierSource.replace(/\n/gu, "\r\n"));
+
+    expect(aetherScaleCarrierPatchFiles).toEqual(["backend/carrier.py"]);
+    expect(patched).toContain("Local Video Studio AetherScale carrier registry ownership guard");
+    expect(patched).toContain("previous_value, previous_type = winreg.QueryValueEx");
+    expect(patched).toContain("_lvs_restore_windows_gpu_preference(gpu_routing)");
+    expect(patched).toContain("_lvs_check_comfy_interrupt()");
+    expect(patched).toContain("_lvs_write_worker_state(proc)");
+    expect(patched).toContain("_lvs_clear_worker_state(proc.pid)");
+    expect(patched).toContain("except Exception:\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        raise");
+    expect(patchAetherScaleCarrierSource(patched)).toBe(patched);
+  });
+
+  it("fails closed when the pinned carrier source layout changes", () => {
+    expect(() => patchAetherScaleCarrierSource("def process_carrier(): pass\n"))
+      .toThrow("ComfyUI-AetherScale 源码缺少");
+  });
+});
+
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -106,6 +267,41 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("rejects all app-managed node mutations for remote ComfyUI", async () => {
+    const remoteSettings = {
+      ...createDefaultState().settings,
+      comfyUrl: "https://comfy.example.test"
+    };
+    const runtime = {
+      downloadEnvironment: () => ({}),
+      proxyLogLabel: () => "代理：关闭",
+      findComfyRoot: async () => "",
+      findExecutable: async () => "",
+      findComfyPython: async () => "",
+      exists: async () => false,
+      retryableRenameError: () => false,
+      renameWithRetry: async () => undefined,
+      runLoggedProcess: async () => ""
+    } satisfies DependencyInstallerRuntime;
+
+    await expect(installCustomNodePackage(
+      "flashvsr",
+      remoteSettings,
+      runtime
+    )).resolves.toMatchObject({
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会安装或修改本地节点。"
+    });
+    await expect(uninstallCustomNodePackage(
+      "flashvsr",
+      remoteSettings,
+      { findComfyRoot: async () => "" }
+    )).resolves.toMatchObject({
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会卸载或修改本地节点。"
+    });
+  });
+
   it("permanently uninstalls a catalog node so it can be downloaded again", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-uninstall-"));
     temporaryDirectories.push(comfyRoot);
@@ -136,6 +332,27 @@ describe("dependency installer", () => {
       expect.stringContaining("正在删除节点目录"),
       expect.stringContaining("节点目录已删除")
     ]));
+  });
+
+  it("uninstalls the DLSS5 node directory even when its runtime manifest is missing", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-dlss5-node-uninstall-"));
+    temporaryDirectories.push(comfyRoot);
+    const nodeDirectory = path.join(comfyRoot, "custom_nodes", "ComfyUI-DLSS5");
+    await fs.mkdir(path.join(nodeDirectory, "runtime"), { recursive: true });
+    await fs.writeFile(path.join(nodeDirectory, "runtime", "README.md"), "failed install", "utf8");
+    await fs.mkdir(path.join(nodeDirectory, "runtime", "resources"), { recursive: true });
+    await fs.writeFile(path.join(nodeDirectory, "runtime", "resources", "app.asar"), "invalid asar", "utf8");
+    await fs.writeFile(path.join(nodeDirectory, "failed-marker.txt"), "remove", "utf8");
+
+    const result = await uninstallCustomNodePackage(
+      "comfyui-dlss5",
+      createDefaultState().settings,
+      { findComfyRoot: async () => comfyRoot }
+    );
+
+    expect(result.ok, result.message).toBe(true);
+    expect(await exists(nodeDirectory)).toBe(false);
+    expect(result.message).toContain("一键安装重新下载");
   });
 
   it("recognizes every app-owned H3 Prompt Writer patch file", () => {
@@ -627,6 +844,63 @@ describe("dependency installer", () => {
     expect(result.log).toContain(`节点 revision 已校验：${pinnedRevision}`);
   });
 
+  it("runs the DLSS5 runtime transaction after the shared node checkout", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-dlss5-node-install-"));
+    temporaryDirectories.push(comfyRoot);
+    const processCalls: string[][] = [];
+    const installRuntime = vi.fn(async (
+      _settings: Parameters<NonNullable<DependencyInstallerRuntime["installDlss5Runtime"]>>[0],
+      root: string,
+      nodeDirectory: string,
+      report?: (message: string) => void
+    ) => {
+      expect(root).toBe(comfyRoot);
+      expect(nodeDirectory).toBe(path.join(comfyRoot, "custom_nodes", "ComfyUI-DLSS5"));
+      report?.("fixture DLSS5 runtime");
+      return { ok: true, message: "fixture runtime ready" };
+    });
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({}),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "selected-comfy-python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "clone") {
+          const cloneDirectory = args.at(-1)!;
+          await fs.mkdir(cloneDirectory, { recursive: true });
+          await fs.writeFile(
+            path.join(cloneDirectory, "nodes.py"),
+            dlss5DepthAnythingSource,
+            "utf8"
+          );
+        }
+        if (args.includes("rev-parse") && args.includes("HEAD")) return DLSS5_NODE_REVISION;
+        return "";
+      },
+      installDlss5Runtime: installRuntime
+    };
+
+    const result = await installCustomNodePackage(
+      "comfyui-dlss5",
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
+      runtime
+    );
+
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
+    expect(installRuntime).toHaveBeenCalledOnce();
+    expect(processCalls).toEqual(expect.arrayContaining([
+      expect.arrayContaining(["clone", "--depth", "1", "--no-checkout"]),
+      expect.arrayContaining(["fetch", "--depth", "1", "origin", DLSS5_NODE_REVISION]),
+      expect.arrayContaining(["checkout", "--detach", DLSS5_NODE_REVISION])
+    ]));
+    expect(result.log).toContain("fixture DLSS5 runtime");
+  });
+
   it("installs the app-owned serializer from a bundled package with a recoverable backup", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-install-"));
     const bundledRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-source-"));
@@ -635,7 +909,7 @@ describe("dependency installer", () => {
     const targetDirectory = path.join(comfyRoot, "custom_nodes", "LocalVideoStudio-H3");
     await fs.mkdir(sourceDirectory, { recursive: true });
     await fs.writeFile(path.join(sourceDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
-    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.2.3\n", "utf8");
+    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.3.0\n", "utf8");
     await fs.writeFile(path.join(sourceDirectory, "requirements.txt"), "\n", "utf8");
     await fs.mkdir(targetDirectory, { recursive: true });
     await fs.writeFile(path.join(targetDirectory, "old.txt"), "old", "utf8");

@@ -6,7 +6,7 @@
  * real ComfyUI smoke run before it is considered product-ready.
  */
 
-export type H3ComfyAvWorkflowKind = "first-pass-av" | "second-sampling-av";
+export type H3ComfyAvWorkflowKind = "first-pass-av" | "second-sampling-av" | "continuum-extension";
 
 export interface H3ComfyWorkflowValidation {
   valid: boolean;
@@ -26,7 +26,7 @@ interface NodeRef {
 
 interface RuntimeInputRequirement {
   name: string;
-  type: "ANY" | "LATENT" | "CONDITIONING" | "MODEL" | "VAE" | "NOISE" | "SAMPLER" | "SIGMAS" | "FLOAT" | "INT" | "STRING" | "BOOLEAN" | "COMBO";
+  type: "ANY" | "LATENT" | "CONDITIONING" | "MODEL" | "VAE" | "NOISE" | "SAMPLER" | "SIGMAS" | "FLOAT" | "INT" | "STRING" | "BOOLEAN" | "COMBO" | "H3_CONTINUUM_STATE" | "H3_CONTINUUM_PLAN";
 }
 
 interface RuntimeNodeRequirement {
@@ -81,6 +81,28 @@ const ULTIMATE_SECOND_PASS_CLASSES = [
 const SECOND_PASS_UPSCALER_CLASSES = [
   "MiniMaxH3LatentUpscale",
   "MinimaxH3LatentUpscaler3D"
+] as const;
+
+const CONTINUUM_CLASSES = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "MiniMaxH3ImageToVideo",
+  "PathchSageAttentionKJ",
+  "KSamplerSelect",
+  "BasicScheduler",
+  "RandomNoise",
+  "BasicGuider",
+  "SamplerCustomAdvanced",
+  "VAEDecode",
+  "VAEDecodeAudio",
+  "CreateVideo",
+  "SaveVideo",
+  "LocalVideoStudioH3LoadJointAV",
+  "LocalVideoStudioH3ArtifactToContinuumState",
+  "H3ContinuumJoin",
+  "H3ContinuumFinish",
+  "LocalVideoStudioH3SaveJointAV"
 ] as const;
 
 const RUNTIME_NODE_REQUIREMENTS: Readonly<Record<string, RuntimeNodeRequirement>> = {
@@ -150,6 +172,40 @@ const RUNTIME_NODE_REQUIREMENTS: Readonly<Record<string, RuntimeNodeRequirement>
   LocalVideoStudioH3LoadJointAV: {
     inputs: [{ name: "artifact", type: "STRING" }],
     outputs: ["LATENT"]
+  },
+  LocalVideoStudioH3ArtifactToContinuumState: {
+    inputs: [
+      { name: "joint_av", type: "LATENT" },
+      { name: "source_frame_count", type: "INT" },
+      { name: "clip_index", type: "INT" },
+      { name: "capacity_frames", type: "COMBO" }
+    ],
+    outputs: ["H3_CONTINUUM_STATE", "STRING"]
+  },
+  H3ContinuumJoin: {
+    inputs: [
+      { name: "model", type: "MODEL" },
+      { name: "conditioning", type: "CONDITIONING" },
+      { name: "latent", type: "LATENT" },
+      { name: "continuity", type: "COMBO" },
+      { name: "extend_seconds", type: "FLOAT" },
+      { name: "audio_continuity", type: "BOOLEAN" },
+      { name: "first_frame_policy", type: "COMBO" },
+      { name: "preserve_last_frame", type: "BOOLEAN" },
+      { name: "strict_compatibility", type: "BOOLEAN" },
+      { name: "debug", type: "BOOLEAN" },
+      { name: "previous_state", type: "H3_CONTINUUM_STATE" }
+    ],
+    outputs: ["MODEL", "CONDITIONING", "LATENT", "H3_CONTINUUM_PLAN", "STRING"]
+  },
+  H3ContinuumFinish: {
+    inputs: [
+      { name: "samples", type: "LATENT" },
+      { name: "images", type: "ANY" },
+      { name: "audio", type: "ANY" },
+      { name: "plan", type: "H3_CONTINUUM_PLAN" }
+    ],
+    outputs: ["IMAGE", "AUDIO", "H3_CONTINUUM_STATE", "STRING"]
   },
   LocalVideoStudioH3RequireGpuVAE: {
     inputs: [{ name: "vae", type: "VAE" }],
@@ -307,6 +363,67 @@ function validateFirstPass(nodes: Map<string, ApiNode>, errors: string[]): void 
   }
 }
 
+function requireOutputReference(
+  errors: string[],
+  nodes: Map<string, ApiNode>,
+  classType: string,
+  inputName: string,
+  expectedClass: string,
+  outputIndex: number
+): void {
+  const nodeId = nodeIdsForClass(nodes, classType)[0];
+  const value = nodeId ? inputsFor(nodes.get(nodeId))[inputName] : undefined;
+  const reference = nodeRef(value);
+  if (!reference || !nodes.has(reference.nodeId)) {
+    errors.push(`${classType}.${inputName} 必须引用已存在的 workflow 节点`);
+    return;
+  }
+  if (nodes.get(reference.nodeId)?.class_type !== expectedClass) {
+    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass}`);
+  } else if (reference.outputIndex !== outputIndex) {
+    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass} 的 output ${outputIndex}`);
+  }
+}
+
+function validateContinuum(nodes: Map<string, ApiNode>, errors: string[]): void {
+  const available = classTypes(nodes);
+  addMissingClasses(errors, CONTINUUM_CLASSES, available);
+  const loadId = nodeIdsForClass(nodes, "LocalVideoStudioH3LoadJointAV")[0];
+  if (loadId && inputsFor(nodes.get(loadId)).artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
+    errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+  }
+  requireOutputReference(
+    errors,
+    nodes,
+    "LocalVideoStudioH3ArtifactToContinuumState",
+    "joint_av",
+    "LocalVideoStudioH3LoadJointAV",
+    0
+  );
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "latent", "LocalVideoStudioH3LoadJointAV", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "conditioning", "MiniMaxH3ImageToVideo", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "previous_state", "LocalVideoStudioH3ArtifactToContinuumState", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "samples", "SamplerCustomAdvanced", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "images", "VAEDecode", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "audio", "VAEDecodeAudio", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "plan", "H3ContinuumJoin", 3);
+  requireOutputReference(errors, nodes, "CreateVideo", "images", "H3ContinuumFinish", 0);
+  requireOutputReference(errors, nodes, "CreateVideo", "audio", "H3ContinuumFinish", 1);
+  requireOutputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", "SamplerCustomAdvanced", 0);
+  const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
+  const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
+  if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
+    errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+  }
+  const conditioningId = nodeIdsForClass(nodes, "MiniMaxH3ImageToVideo")[0];
+  if (conditioningId) {
+    const inputs = inputsFor(nodes.get(conditioningId));
+    if ("first_frame" in inputs || "last_frame" in inputs) {
+      errors.push("Continuum 的 MiniMaxH3ImageToVideo 必须只提供文本 conditioning，不能携带首尾帧 keyframe");
+    }
+  }
+}
+
 function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void {
   const available = classTypes(nodes);
   if (available.has("MMH3UltimateUpscale")) {
@@ -415,6 +532,9 @@ function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void
 export function h3ComfyAvWorkflowKind(source: unknown): H3ComfyAvWorkflowKind | null {
   const nodes = graphNodes(source);
   const classes = classTypes(nodes);
+  if (classes.has("H3ContinuumJoin") || classes.has("H3ContinuumFinish")) {
+    return "continuum-extension";
+  }
   if (
     classes.has("LocalVideoStudioH3LoadJointAV") ||
     SECOND_PASS_UPSCALER_CLASSES.some((classType) => classes.has(classType))
@@ -430,6 +550,7 @@ export function validateH3ComfyWorkflow(source: unknown): H3ComfyWorkflowValidat
   if (!kind) return { valid: true, kind: null, errors: [] };
   const errors: string[] = [];
   if (kind === "first-pass-av") validateFirstPass(nodes, errors);
+  else if (kind === "continuum-extension") validateContinuum(nodes, errors);
   else validateSecondPass(nodes, errors);
   return { valid: errors.length === 0, kind, errors: [...new Set(errors)] };
 }
@@ -509,8 +630,11 @@ export function h3ComfyWorkflowRuntimeIssues(
   if (!kind) return [];
   if (!isRecord(objectInfo)) return ["/object_info 响应无效，无法验证 H3 AV 节点 schema"];
   const workflowClassTypes = classTypes(graphNodes(workflow));
+  const continuum = kind === "continuum-extension";
   const ultimate = kind === "second-sampling-av" && workflowClassTypes.has("MMH3UltimateUpscale");
-  const workflowClasses = kind === "first-pass-av"
+  const workflowClasses = kind === "continuum-extension"
+    ? CONTINUUM_CLASSES
+    : kind === "first-pass-av"
     ? FIRST_PASS_CLASSES
     : ultimate
       ? ULTIMATE_SECOND_PASS_CLASSES
@@ -519,6 +643,14 @@ export function h3ComfyWorkflowRuntimeIssues(
     workflowClassTypes.has(classType)
   );
   const runtimeClasses = new Set<string>([
+    ...(continuum
+      ? [
+          "LocalVideoStudioH3LoadJointAV",
+          "LocalVideoStudioH3ArtifactToContinuumState",
+          "H3ContinuumJoin",
+          "H3ContinuumFinish"
+        ]
+      : []),
     ...(kind === "second-sampling-av"
       ? ultimate
         ? [

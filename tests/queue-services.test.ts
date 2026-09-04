@@ -13,6 +13,7 @@ import { QueueEnqueueService } from "../electron/queue-enqueue";
 import { QueueService, type QueueServiceDependencies } from "../electron/services/queue-service";
 import { QueueExecutionSideEffects } from "../electron/services/queue-execution-side-effects";
 import type { QueueRuntimeCapability } from "../electron/ports/queue-runtime";
+import { DEFAULT_DLSS5_UPSCALE_OPTIONS } from "../src/core/dlss5";
 
 function repository(initial: AppState): StateRepository {
   let state = structuredClone(initial);
@@ -140,6 +141,97 @@ describe("queue command services", () => {
       workflowPath: "workflow.json"
     }))
       .rejects.toThrow("需要开启 JointAV 输出");
+  });
+
+  it("enqueues a DLSS task from a successful History version with a frozen snapshot", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-dlss-upscale-enqueue-"));
+    const videoPath = path.join(root, "source.mp4");
+    await fs.writeFile(videoPath, "video");
+    const state = createDefaultState();
+    state.history = [{
+      mediaKind: "video",
+      id: "asset-dlss",
+      taskId: "source-task",
+      title: "source",
+      outputFilename: "source.mp4",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+      modelId: "realesrgan",
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: 2,
+      resolution: 480,
+      prompt: "source",
+      seed: 1,
+      comfyPromptId: "source-prompt",
+      comfyOutputs: {},
+      files: [],
+      versions: [{
+        id: "source-version",
+        kind: "original",
+        createdAt: "2026-09-03T00:00:00.000Z",
+        outputFilename: "source.mp4",
+        modelId: "realesrgan",
+        width: 832,
+        height: 480,
+        duration: 2,
+        fps: 24,
+        workflowPath: "source-workflow.json",
+        comfyPromptId: "source-prompt",
+        comfyOutputs: {},
+        files: []
+      }]
+    }];
+    const cachedEnvironment = {
+      customNodes: [{ id: "comfyui-dlss5", installed: true, loaded: false, loadError: "" }],
+      dlss5Runtime: {
+        srReady: true,
+        error: "",
+        missingFiles: [],
+        source: "app-managed",
+        nodeRevision: DEFAULT_DLSS5_UPSCALE_OPTIONS.nodeRevision,
+        bundleId: DEFAULT_DLSS5_UPSCALE_OPTIONS.runtimeBundleId
+      },
+      depthAnything: { available: true, error: "", missingFiles: [] }
+    } as never;
+    const service = new QueueEnqueueService({
+      store: repository(state),
+      logger: logger(),
+      sendState: vi.fn(),
+      getCachedEnvironmentScanForQueue: () => cachedEnvironment,
+      effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+      resolveTaskOutputDirectory: async () => root,
+      imageInspection: { readDimensions: () => ({ width: 640, height: 360 }) }
+    });
+
+    const next = await service.enqueueUpscale({
+      sourceAssetId: "asset-dlss",
+      sourceVersionId: "source-version",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 832,
+      sourceHeight: 480,
+      duration: 2,
+      fps: 24,
+      targetScale: 3,
+      dlss5: { ...DEFAULT_DLSS5_UPSCALE_OPTIONS, scale: 3, quality: "balanced" },
+      modelId: "dlss5-sr",
+      tileMode: "safe",
+      faceRestore: true
+    });
+
+    expect(next.queue[0]).toMatchObject({
+      modelId: "dlss5-sr",
+      targetScale: 3,
+      targetWidth: 2496,
+      targetOutputHeight: 1440,
+      outputFilename: "source-dlss-3x-v01.mp4",
+      tileMode: "auto",
+      faceRestore: false,
+      dlss5: { scale: 3, quality: "balanced" }
+    });
+    expect(next.queue[0]).not.toHaveProperty("targetHeight");
   });
 
   it("enqueues H3 native upscale from authoritative History JointAV files", async () => {

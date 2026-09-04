@@ -3,6 +3,8 @@ import { imageEditPicturesForVersion, normalizeImageEditDraft } from "../../../c
 import { firstSupportedImageModelId, imageModelCapabilityFor } from "../../../core/image-workflow";
 import { normalizeH3Steps, isMiniMaxH3R2vModel, isRetiredVideoModel } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
+import { DLSS5_MODEL_ID } from "../../../core/dlss5";
+import { AETHERSCALE_DEFAULT_MODE, AETHERSCALE_DEFAULT_STYLE_PROFILE, AETHERSCALE_MODEL_ID } from "../../../core/aetherscale";
 import { modelCatalog } from "../../../core/catalog";
 import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { modelName } from "../../shared/labels";
@@ -66,6 +68,9 @@ export function createHistoryActions(options) {
             : versionShortEdge(version);
         const isExtension = asset.inputMode === "video" || Boolean(asset.sourceVideoPath);
         const sourceVideoDuration = asset.sourceVideoDuration ?? asset.trimEndSeconds ?? 0;
+        const continuationArtifact = version.h3ContinuationData?.status === "available"
+            ? version.h3ContinuationData.artifact
+            : undefined;
         const historyPromptVersion = {
             id: crypto.randomUUID(),
             label: t(uiKeys.history.actions.fromHistory),
@@ -90,6 +95,8 @@ export function createHistoryActions(options) {
             trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
             sourceAssetId: asset.sourceAssetId,
             sourceVersionId: asset.sourceVersionId,
+            h3ContinuumArtifactPath: isExtension && continuationArtifact ? continuationArtifact.payload.absolutePath : undefined,
+            h3ContinuumArtifact: continuationArtifact ? structuredClone(continuationArtifact) : undefined,
             h3ReferenceSlots: isExtension && isMiniMaxH3R2vModel(asset.modelId)
                 ? ensureMotionContextSourceSlot((asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })), asset.sourceVideoPath ?? "")
                 : isExtension
@@ -179,6 +186,8 @@ export function createHistoryActions(options) {
             trimStartSeconds: 0,
             trimEndSeconds: 0,
             h3ContextLatentPath: undefined,
+            h3ContinuumArtifactPath: undefined,
+            h3ContinuumArtifact: undefined,
             ratio: "source"
         });
         options.reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
@@ -190,6 +199,9 @@ export function createHistoryActions(options) {
         const version = asset?.versions.find((item) => item.id === versionId);
         const videoIndex = version ? versionVideoIndex(version) : -1;
         const filename = videoIndex >= 0 ? version?.files[videoIndex]?.absolutePath : undefined;
+        const continuationArtifact = version?.h3ContinuationData?.status === "available"
+            ? version.h3ContinuationData.artifact
+            : undefined;
         if (!asset || !version || !filename) {
             context.notify(t(uiKeys.history.actions.videoUnavailable), { renderPage: false });
             return;
@@ -201,7 +213,10 @@ export function createHistoryActions(options) {
                 duration: version.duration,
                 width: version.width,
                 height: version.height,
+                modelId: continuationArtifact ? "minimax_h3_continuum" : undefined,
                 h3ContextLatentPath: version.h3ContextLatentPath,
+                h3ContinuumArtifactPath: continuationArtifact?.payload.absolutePath,
+                h3ContinuumArtifact: continuationArtifact ? structuredClone(continuationArtifact) : undefined,
                 resolution: Number.isFinite(asset.resolution) && asset.resolution > 0
                     ? asset.resolution
                     : versionShortEdge(version),
@@ -221,17 +236,27 @@ export function createHistoryActions(options) {
             return;
         const version = currentHistoryVersion(asset, options.getSelectedHistoryVersionId());
         const targetShortEdge = [720, 1080, 1440, 2160].find((shortEdge) => shortEdge > versionShortEdge(version));
-        if (!targetShortEdge)
+        const configuredModel = state.settings.defaultUpscaleModel;
+        const configuredModelId = ["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", DLSS5_MODEL_ID, AETHERSCALE_MODEL_ID].includes(configuredModel)
+            ? configuredModel
+            : "seedvr2";
+        // A source already at/above the legacy 2160 short-edge ceiling still has
+        // a valid DLSS multiplier path, so keep History -> Upscale reachable.
+        const selectedModelId = !targetShortEdge
+            ? configuredModelId === AETHERSCALE_MODEL_ID ? AETHERSCALE_MODEL_ID : DLSS5_MODEL_ID
+            : configuredModelId;
+        const dlss5Selected = selectedModelId === DLSS5_MODEL_ID;
+        const aetherScaleSelected = selectedModelId === AETHERSCALE_MODEL_ID;
+        if (!targetShortEdge && !dlss5Selected && !aetherScaleSelected)
             return;
         options.rememberModalFocus();
-        const configuredModel = state.settings.defaultUpscaleModel;
         options.setDialog({
             assetId: asset.id,
             versionId: version.id,
-            targetHeight: targetShortEdge,
-            modelId: ["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan"].includes(configuredModel)
-                ? configuredModel
-                : "seedvr2",
+            ...(targetShortEdge ? { targetHeight: targetShortEdge } : {}),
+            ...(dlss5Selected ? { targetScale: 2, dlss5Quality: "quality" } : {}),
+            ...(aetherScaleSelected ? { aetherScaleMode: AETHERSCALE_DEFAULT_MODE, aetherStyleProfile: AETHERSCALE_DEFAULT_STYLE_PROFILE } : {}),
+            modelId: selectedModelId,
             tileMode: state.settings.upscaleTileMode
         });
         context.requestRender();

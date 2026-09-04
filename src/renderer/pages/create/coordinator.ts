@@ -12,6 +12,8 @@ import type {
   PerformanceMetrics,
   PromptEnhanceMode,
   Settings,
+  NativeAvContinuationArtifact,
+  VideoLoraSelection,
   WorkflowCapabilities
 } from "../../../types";
 import type {
@@ -103,7 +105,10 @@ export interface CreateWorkspaceCoordinator {
       duration: number;
       width: number;
       height: number;
+      modelId?: string;
       h3ContextLatentPath?: string;
+      h3ContinuumArtifactPath?: string;
+      h3ContinuumArtifact?: NativeAvContinuationArtifact;
       resolution?: number;
       resetSeed?: boolean;
     },
@@ -237,7 +242,8 @@ export function createCreateWorkspaceCoordinator(
     promptText: string,
     hasEndImage: boolean,
     mode?: H3PromptMode,
-    hasVideoReference = false
+    hasVideoReference = false,
+    videoLoras: readonly VideoLoraSelection[] = []
   ): void {
     const element = document.querySelector<HTMLElement>("#h3-prompt-check");
     if (!element) return;
@@ -247,7 +253,8 @@ export function createCreateWorkspaceCoordinator(
       mode,
       hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
       hasVideoReference,
-      durationSeconds: state.draft.duration
+      durationSeconds: state.draft.duration,
+      videoLoras
     });
     element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
     element.innerHTML = `<div class="h3-prompt-check-heading"><strong>${uiText("runtime.h3PromptCheck")}</strong><span>${escapeHtml(result.summary)}</span></div>
@@ -671,17 +678,40 @@ export function createCreateWorkspaceCoordinator(
       duration: number;
       width: number;
       height: number;
+      modelId?: string;
       h3ContextLatentPath?: string;
+      h3ContinuumArtifactPath?: string;
+      h3ContinuumArtifact?: NativeAvContinuationArtifact;
       resolution?: number;
       resetSeed?: boolean;
     },
     renderAfterSave = true
   ): Promise<void> {
     const state = getState();
+    const selectedModelId = source?.modelId ?? state.draft.modelId;
     const preserveMotionContextDraft = state.draft.inputMode === "video" && isMiniMaxH3R2vModel(state.draft.modelId);
+    let selectedWorkflowPath = state.draft.workflowPath;
+    if (source?.modelId) {
+      const workflowModelId = bundledWorkflowModelId({
+        modelId: selectedModelId,
+        videoLoras: []
+      });
+      const key = deps.bundledWorkflowKey(workflowModelId, "video");
+      const bundled = deps.bundledWorkflows[key] ??
+        await deps.context.application.getBundledWorkflow(workflowModelId, "video");
+      if (bundled) {
+        deps.bundledWorkflows[key] = bundled;
+        deps.workflowCapabilities[bundled.path] = {
+          supportsEndImage: bundled.supportsEndImage,
+          supportsVideoExtension: bundled.supportsVideoExtension
+        };
+        selectedWorkflowPath = bundled.path;
+      }
+    }
     const draft: Draft = {
       ...state.draft,
       inputMode: "video",
+      modelId: selectedModelId,
       startImagePath: "",
       endImagePath: "",
       endImageWidth: 0,
@@ -693,17 +723,23 @@ export function createCreateWorkspaceCoordinator(
       sourceAssetId: source?.assetId,
       sourceVersionId: source?.versionId,
       h3ContextLatentPath: source?.h3ContextLatentPath,
+      h3ContinuumArtifactPath: source?.h3ContinuumArtifactPath,
+      h3ContinuumArtifact: source?.h3ContinuumArtifact
+        ? structuredClone(source.h3ContinuumArtifact)
+        : undefined,
       sourceWidth: source?.width ?? 0,
       sourceHeight: source?.height ?? 0,
+      videoLoras: source?.modelId ? [] : state.draft.videoLoras,
+      workflowPath: selectedWorkflowPath,
       ratio: "source",
-      h3ReferenceSlots: isMiniMaxH3R2vModel(state.draft.modelId)
+      h3ReferenceSlots: isMiniMaxH3R2vModel(selectedModelId)
         ? ensureMotionContextSourceSlot(preserveMotionContextDraft ? state.draft.h3ReferenceSlots : [], filename)
         : [],
       ...(source?.resolution != null
         ? {
             resolution: nearestSupportedVideoResolution(
               source.resolution,
-              modelCatalog.get(state.draft.modelId)?.definition.capabilities?.resolutions ??
+              modelCatalog.get(selectedModelId)?.definition.capabilities?.resolutions ??
                 modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
                 [360, 480, 540, 720, 768],
               state.draft.resolution

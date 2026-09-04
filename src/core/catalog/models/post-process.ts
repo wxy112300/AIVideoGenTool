@@ -88,6 +88,64 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
     component("SeedVR2 主模型", "SEEDVR2/seedvr2_ema_3b 或 7b", /(?:^|\/)seedvr2\/.*seedvr2_ema_(?:3b|7b).*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors", "SEEDVR2", "seedvr2_ema_3b_fp8_e4m3fn.safetensors")),
     component("SeedVR2 VAE", "SEEDVR2/ema_vae*", /seedvr2\/.*ema_vae.*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors", "SEEDVR2", "ema_vae_fp16.safetensors"))
   ] } }, { name: "SeedVR2", badge: "推荐", description: "视频时间一致性优先，适合人物和真实画面。" }, { name: "SeedVR2", badge: "Recommended", description: "Prioritizes temporal consistency for people and realistic footage." }, { name: "SeedVR2", badge: "推薦", description: "優先維持影片時間一致性，適合人物和真實畫面。" }),
+  entry({
+    id: "dlss5-sr",
+    family: "dlss5",
+    category: "upscale",
+    adapterId: "dlss5-sr",
+    order: 95,
+    inputModes: ["video"],
+    scan: {
+      managedBy: "comfyui",
+      vram: "Windows + NVIDIA · DLSS SR runtime · 待实机验证",
+      integrated: true,
+      requiredCustomNodeIds: ["comfyui-dlss5"],
+      runtimeNodeTypes: ["DLSSSuperResolution"],
+      // DLSS uses source frames plus a separately managed runtime; it has no
+      // ComfyUI checkpoint that should be presented as a fake model weight.
+      components: []
+    }
+  }, {
+    name: "DLSS Super Resolution · 实验性",
+    badge: "Windows + NVIDIA · 实验性",
+    description: "HECer 原版 DLSS Super Resolution 候选路径，固定使用 Depth 和 Farneback motion guides；2×/3×/4× 与速度/质量仍需本机验证。"
+  }, {
+    name: "DLSS Super Resolution · Experimental",
+    badge: "Windows + NVIDIA · Experimental",
+    description: "Candidate path using the original HECer DLSS Super Resolution node with fixed depth and Farneback motion guides; 2x/3x/4x behavior and performance still require local validation."
+  }, {
+    name: "DLSS Super Resolution · 實驗性",
+    badge: "Windows + NVIDIA · 實驗性",
+    description: "使用 HECer 原版 DLSS Super Resolution 節點與固定深度、Farneback motion 導引；2×/3×/4× 行為與效能仍待本機驗證。"
+  }),
+  entry({
+    id: "aetherscale-dlss5",
+    family: "aetherscale-dlss5",
+    category: "upscale",
+    adapterId: "aetherscale-dlss5",
+    order: 96,
+    inputModes: ["video"],
+    scan: {
+      managedBy: "comfyui",
+      vram: "Windows + NVIDIA · carrier DLSS5 · 待实机验证",
+      integrated: true,
+      requiredCustomNodeIds: ["comfyui-aetherscale"],
+      runtimeNodeTypes: ["AetherScaleMotionAnalysis", "AetherScaleNeuralRendering"],
+      components: []
+    }
+  }, {
+    name: "AetherScale DLSS5 Neural Rendering",
+    badge: "Carrier · 实验性",
+    description: "AetherScale v0.5.5 的 temporal motion + carrier-backed Neural Rendering；主路径提供 2×/3×，1× Enhance 与 1.5×/1.724× 在独立状态满足后使用。"
+  }, {
+    name: "AetherScale DLSS5 Neural Rendering",
+    badge: "Carrier · Experimental",
+    description: "AetherScale v0.5.5 temporal motion plus carrier-backed Neural Rendering. The main path exposes 2x/3x; 1x Enhance and 1.5x/1.724x require their own readiness evidence."
+  }, {
+    name: "AetherScale DLSS5 Neural Rendering",
+    badge: "Carrier · 實驗性",
+    description: "AetherScale v0.5.5 temporal motion 與 carrier-backed Neural Rendering；主路徑提供 2×/3×，1× Enhance 與 1.5×/1.724× 需各自通過就緒證據。"
+  }),
   entry({ id: "flashvsr", family: "flashvsr", category: "upscale", adapterId: "flashvsr", order: 90, inputModes: ["video"], scan: { vram: "预计峰值 14–19 GB", components: [
     component("FlashVSR 模型", "FlashVSR/FlashVSR1_1.safetensors（或上游长文件名）", /flashvsr\/(?:flashvsr1_1|wan2_1-t2v-1\.1_3b_flashvsr_fp32)\.safetensors$/i, guide("1038lab / FlashVSR", "https://huggingface.co/1038lab/FlashVSR/resolve/main/FlashVSR1_1.safetensors", "FlashVSR", "FlashVSR1_1.safetensors", "节点当前运行时会优先读取 FlashVSR1_1.safetensors；上游 README 中的 Wan2_1-T2V-1.1_3B_FlashVSR_fp32.safetensors 也会被识别。")),
     component("Wan 2.1 VAE", "FlashVSR/Wan2.1_VAE.safetensors", /flashvsr\/wan2\.1_vae\.safetensors$/i, guide("1038lab / FlashVSR", "https://huggingface.co/1038lab/FlashVSR/resolve/main/Wan2.1_VAE.safetensors", "FlashVSR", "Wan2.1_VAE.safetensors")),

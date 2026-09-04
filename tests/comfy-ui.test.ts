@@ -21,6 +21,7 @@ import {
 } from "../electron/services/comfy-ui.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
 import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
+import { H3_FACIAL_REALISM_CLOSEUP_LORA } from "../src/core/video-loras.js";
 
 describe("ComfyUI task liveness", () => {
   it("extends HTTP silence tolerance while the task WebSocket remains connected", () => {
@@ -212,6 +213,25 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Reference grounding");
     expect(instruction).toContain("User-intent preservation rule");
     expect(instruction).toContain("Final user-intent lock");
+  });
+
+  it("passes the selected H3 LoRA into prompt enhancement context", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "一位女性看向镜头。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "I2VA",
+      videoLoras: [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    });
+
+    expect(instruction).toContain("Selected H3 LoRA context");
+    expect(instruction).toContain("minimax-h3-facial-realism-closeup");
+    expect(instruction).toContain("canonical trigger: Facial Realism");
+    expect(instruction).toContain("close-up facial performance");
+    expect(h3PromptInstruction({
+      prompt: "一位女性看向镜头。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "I2VA"
+    })).not.toContain("Selected H3 LoRA context");
   });
 
   it("separates labeled inline annotations from the H3 draft", () => {
@@ -543,6 +563,40 @@ describe("ComfyUI task progress", () => {
     expect(progressForNode("VHS_VideoCombine", 1, 1)).toEqual({
       progress: 99,
       label: "封装输出视频"
+    });
+    expect(nodeStage("DLSS5DepthAnythingV2")).toMatchObject({
+      start: 5,
+      end: 20,
+      label: "估计视频深度",
+      tracksSteps: false
+    });
+    expect(nodeStage("DLSS5OpticalFlow")).toMatchObject({
+      start: 20,
+      end: 35,
+      label: "计算视频光流",
+      tracksSteps: false
+    });
+    expect(nodeStage("DLSSSuperResolution")).toMatchObject({
+      start: 35,
+      end: 82,
+      label: "DLSS Super Resolution",
+      tracksSteps: false
+    });
+    expect(nodeStage("AetherScaleMotionAnalysis")).toMatchObject({
+      start: 5,
+      end: 25,
+      label: "分析视频运动",
+      tracksSteps: false
+    });
+    expect(nodeStage("AetherScaleNeuralRendering")).toMatchObject({
+      start: 25,
+      end: 82,
+      label: "AetherScale DLSS5 Neural Rendering",
+      tracksSteps: false
+    });
+    expect(progressForNode("AetherScaleNeuralRendering", 1, 1)).toEqual({
+      progress: 82,
+      label: "AetherScale DLSS5 Neural Rendering"
     });
   });
 

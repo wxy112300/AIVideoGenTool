@@ -364,6 +364,8 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain('data-delete-history="video-asset-detail"');
     expect(videoPage).not.toContain('class="history-detail-compact-actions"');
     expect(videoPage).toContain('class="history-record-section"');
+    expect(videoPage).not.toContain('class="history-joint-av-indicator"');
+    expect(artifactPage).toContain('class="history-joint-av-indicator">JointAV</span>');
     expect(artifactPage).not.toContain('data-h3-av-artifact');
     expect(artifactPage).not.toContain('history.page.nativeAvTitle');
     expect(artifactPage).toContain("h3av_artifact-001.safetensors");

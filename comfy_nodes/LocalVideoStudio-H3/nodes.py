@@ -3,6 +3,8 @@
 This package deliberately does not contain a sampler or an upscaler.  It only
 bridges the ComfyUI joint NestedTensor boundary to a safe, restartable file
 artifact that the Electron application can validate and commit to History.
+The Continuum bridge below delegates temporal-grid and state construction to
+the installed ComfyUI-H3-Continuum package; it does not reimplement sampling.
 """
 
 from __future__ import annotations
@@ -19,11 +21,17 @@ from typing import Any
 import folder_paths
 
 
-PACKAGE_VERSION = "0.2.3"
+PACKAGE_VERSION = "0.3.0"
 SCHEMA_VERSION = 1
 ARTIFACT_SUBDIRECTORY = "h3-native-av"
 PAYLOAD_FORMAT = "safetensors"
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+CONTINUUM_STATE_CAPACITY_OPTIONS = (
+    "Auto — largest available",
+    "5",
+    "22",
+    "39",
+)
 
 
 def _managed_directory() -> tuple[Path, Path]:
@@ -291,6 +299,195 @@ class LocalVideoStudioH3LoadJointAV:
         return ({"samples": joint},)
 
 
+def _continuum_state_module():
+    """Return Continuum's state module without importing its node registry twice.
+
+    ComfyUI loads directory-based custom nodes under a path-derived module name,
+    so importing ``ComfyUI-H3-Continuum`` by a normal Python identifier is not
+    reliable. Prefer the already loaded module; otherwise create a package
+    namespace that points at the installed directory and import only state.py.
+    """
+    import importlib
+    import importlib.machinery
+    import sys
+    import types
+
+    for module in tuple(sys.modules.values()):
+        module_file = getattr(module, "__file__", "")
+        if not isinstance(module_file, str):
+            continue
+        module_path = Path(module_file)
+        if (
+            module_path.name.casefold() == "state.py"
+            and module_path.parent.name.casefold() == "comfyui-h3-continuum"
+            and callable(getattr(module, "capture_state", None))
+        ):
+            return module
+
+    continuum_directory = None
+    for custom_nodes_directory in folder_paths.get_folder_paths("custom_nodes"):
+        root = Path(custom_nodes_directory)
+        if not root.is_dir():
+            continue
+        for candidate in root.iterdir():
+            if candidate.is_dir() and candidate.name.casefold() == "comfyui-h3-continuum":
+                continuum_directory = candidate.resolve()
+                break
+        if continuum_directory is not None:
+            break
+
+    if continuum_directory is None:
+        raise RuntimeError(
+            "未找到 ComfyUI-H3-Continuum；请在设置中安装节点并重启 ComfyUI。"
+        )
+
+    package_name = "_local_video_studio_h3_continuum_bridge"
+    if package_name not in sys.modules:
+        package = types.ModuleType(package_name)
+        package.__file__ = str(continuum_directory / "__init__.py")
+        package.__path__ = [str(continuum_directory)]
+        package.__package__ = package_name
+        package.__spec__ = importlib.machinery.ModuleSpec(
+            package_name,
+            loader=None,
+            is_package=True,
+        )
+        sys.modules[package_name] = package
+    return importlib.import_module(f"{package_name}.state")
+
+
+def _resolve_continuum_capacity(value: Any, source_frame_count: int) -> int:
+    normalized = str(value).strip()
+    if normalized.startswith("Auto"):
+        for capacity in (39, 22, 5):
+            if source_frame_count >= capacity:
+                return capacity
+        raise ValueError(
+            f"H3 AV 只有 {source_frame_count} 帧，少于 Continuum 要求的最小 5 帧"
+        )
+    try:
+        capacity = int(normalized)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Continuum state capacity 无效：{value!r}；只能使用 Auto、5、22 或 39"
+        ) from exc
+    if capacity not in (5, 22, 39):
+        raise ValueError(
+            f"Continuum state capacity 无效：{capacity}；只能使用 5、22 或 39"
+        )
+    if capacity > source_frame_count:
+        raise ValueError(
+            f"Continuum state capacity {capacity} 超过源 AV 的 {source_frame_count} 帧"
+        )
+    return capacity
+
+
+class LocalVideoStudioH3ArtifactToContinuumState:
+    """Convert a loaded full H3 JointAV latent into Continuum tail state.
+
+    The input is intentionally LATENT rather than a filesystem path. Use
+    LocalVideoStudioH3LoadJointAV for the app artifact, then connect its output
+    here and connect ``state`` to H3 Continuum's ``previous_state`` or
+    ``initial_state`` input. Continuum remains the owner of the state contract.
+    """
+
+    DESCRIPTION = (
+        "将 Local Video Studio 的完整 H3 JointAV latent 转换为 H3 Continuum "
+        "可续写的尾部 state；不复制或修改原始 artifact。"
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "joint_av": ("LATENT",),
+                "source_frame_count": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 1_000_000,
+                        "step": 1,
+                        "tooltip": "0 = 根据 H3 video latent 的原生时间网格自动推导帧数。",
+                    },
+                ),
+                "clip_index": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 1_000_000,
+                        "step": 1,
+                        "tooltip": "Continuum state 的逻辑片段序号；首次从 History artifact 开始通常为 1。",
+                    },
+                ),
+                "capacity_frames": (
+                    CONTINUUM_STATE_CAPACITY_OPTIONS,
+                    {
+                        "default": CONTINUUM_STATE_CAPACITY_OPTIONS[0],
+                        "tooltip": "尾部上下文容量；Auto 会选择不超过源视频长度的最大 Continuum 容量。",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("H3_CONTINUUM_STATE", "STRING")
+    RETURN_NAMES = ("state", "bridge_report")
+    FUNCTION = "bridge"
+    CATEGORY = "Local Video Studio/H3"
+
+    def bridge(
+        self,
+        joint_av: Any,
+        source_frame_count: int = 0,
+        clip_index: int = 1,
+        capacity_frames: Any = CONTINUUM_STATE_CAPACITY_OPTIONS[0],
+    ):
+        try:
+            continuum_state = _continuum_state_module()
+            video, _audio = continuum_state.extract_av_streams(joint_av)
+            latent_frame_count = int(
+                continuum_state.pixel_frames_for_latent_t(int(video.shape[2]))
+            )
+            requested_frame_count = int(source_frame_count)
+            resolved_frame_count = (
+                latent_frame_count
+                if requested_frame_count == 0
+                else requested_frame_count
+            )
+            if resolved_frame_count <= 0:
+                raise ValueError("source_frame_count 必须为 0（自动）或正整数")
+            resolved_capacity = _resolve_continuum_capacity(
+                capacity_frames,
+                resolved_frame_count,
+            )
+            state = continuum_state.capture_state(
+                joint_av,
+                source_frame_count=resolved_frame_count,
+                clip_index=int(clip_index),
+                capacity_frames=resolved_capacity,
+            )
+            continuum_state.validate_state(state)
+        except Exception as exc:
+            raise ValueError(f"H3 JointAV → Continuum state 转换失败：{exc}") from exc
+
+        report = json.dumps(
+            {
+                "bridge": "LocalVideoStudioH3ArtifactToContinuumState",
+                "source_frame_count": int(state["source_frame_count"]),
+                "clip_index": int(state["clip_index"]),
+                "capacity_frames": int(state["capacity_frames"]),
+                "video_tail_shape": list(state["video_tail"].shape),
+                "audio_tail_shape": list(state["audio_tail"].shape),
+                "source_mode": state.get("source_mode"),
+                "state_schema_version": int(state["schema_version"]),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return (state, report)
+
+
 class LocalVideoStudioRequireGpuVAE:
     @classmethod
     def INPUT_TYPES(cls):
@@ -376,6 +573,7 @@ class LocalVideoStudioH3AnchorConditioning:
 NODE_CLASS_MAPPINGS = {
     "LocalVideoStudioH3SaveJointAV": LocalVideoStudioH3SaveJointAV,
     "LocalVideoStudioH3LoadJointAV": LocalVideoStudioH3LoadJointAV,
+    "LocalVideoStudioH3ArtifactToContinuumState": LocalVideoStudioH3ArtifactToContinuumState,
     "LocalVideoStudioRequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3RequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3AnchorConditioning": LocalVideoStudioH3AnchorConditioning,
@@ -384,6 +582,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LocalVideoStudioH3SaveJointAV": "H3 Save Joint AV (Local Video Studio)",
     "LocalVideoStudioH3LoadJointAV": "H3 Load Joint AV (Local Video Studio)",
+    "LocalVideoStudioH3ArtifactToContinuumState": "H3 Joint AV → Continuum State (Local Video Studio)",
     "LocalVideoStudioRequireGpuVAE": "Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3RequireGpuVAE": "H3 Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3AnchorConditioning": "H3 Anchor Conditioning (Local Video Studio)",

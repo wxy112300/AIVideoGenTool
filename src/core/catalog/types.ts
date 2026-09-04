@@ -2,8 +2,10 @@ import type { H3StepCount, UiLocale } from "../../types.js";
 
 export type CatalogModelCategory = "video" | "image" | "upscale" | "interpolation" | "prompt" | "lora";
 export type CatalogModelInputMode = "image" | "video";
-export type CatalogModelVariant = "fl2va" | "r2v" | "turbo";
+export type CatalogModelVariant = "fl2va" | "r2v" | "turbo" | "continuum";
 export type CatalogPromptPackId = "h3" | "qwen-image-edit";
+/** Catalog entries can describe a generator or an auxiliary workflow guide. */
+export type CatalogModelRole = "generation" | "guide";
 
 export interface CatalogInstallGuide {
   sourceLabel: string;
@@ -63,6 +65,8 @@ export interface CatalogModelDefinition {
   promptPackId?: CatalogPromptPackId;
   order: number;
   inputModes: readonly CatalogModelInputMode[];
+  /** Absent is intentionally treated as `generation` for old catalog entries. */
+  role?: CatalogModelRole;
   retired?: boolean;
   runtimeProfile?: "h3-q3-3080";
   capabilities?: CatalogModelCapabilities;

@@ -79,4 +79,6 @@ export {
   h3AutoPromptSeeds
 } from "./auto-seeds.js";
 export { createDefaultH3PromptPresets, defaultH3PromptPresets } from "./content.js";
+export { h3LoraPromptInstruction, h3LoraPromptLibrary, h3LoraPromptProfileFor } from "./loras.js";
+export type { H3LoraPromptProfile } from "./loras.js";
 export type { H3PromptPack } from "../types.js";

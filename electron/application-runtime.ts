@@ -301,6 +301,8 @@ export class ApplicationRuntime {
       effectiveImageInputLibraryDirectory: (settings) =>
         settingsService.effectiveImageInputLibraryDirectory(settings),
       imageInspection: this.deps.imageInspection,
+      inspectNativeAvArtifact: (referencePath, outputDirectory) =>
+        nativeAvArtifactService.inspectPath(referencePath, outputDirectory),
       errorMeta: this.deps.errorMeta,
       taskStageStartedAt: new Map()
     });

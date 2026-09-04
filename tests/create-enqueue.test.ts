@@ -171,4 +171,17 @@ describe("create enqueue preflight checks", () => {
     })).toBe("请先填写提示词");
     expect(videoCheck({ extending: true, trimDuration: 2 })).toBe("");
   });
+
+  it("requires a Native AV artifact for Continuum extension", () => {
+    expect(videoCheck({
+      extending: true,
+      isContinuum: true,
+      continuumArtifactReady: false
+    })).toBe("请先选择或拖入 output/h3-native-av 下的 Native AV safetensors 文件");
+    expect(videoCheck({
+      extending: true,
+      isContinuum: true,
+      continuumArtifactReady: true
+    })).toBe("");
+  });
 });

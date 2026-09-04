@@ -15,6 +15,8 @@ import {
   compareDependencyIds,
   H3_ACCELERATION_DEPENDENCY_ID,
   LLAMA_CPP_PYTHON_DEPENDENCY_ID,
+  DLSS5_NODE_ID,
+  AETHERSCALE_NODE_ID,
   modelCatalog,
   sortProfilesByCatalogOrder
 } from "../../../core/catalog";
@@ -41,7 +43,9 @@ import {
   deriveSettingsDependencyActionState,
   deriveSettingsDirectories,
   deriveSettingsGpuState,
-  deriveH3VideoVaeState
+  deriveH3VideoVaeState,
+  isAetherScaleRuntimeUnavailable,
+  isDlss5RuntimeUnavailable
 } from "./selectors";
 
 interface ImageQualityProfileOption {
@@ -710,13 +714,33 @@ export function renderSettingsPage(
   const customNodeCards = customNodes.map((node) => {
     const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
     const active = viewModel.customNodeInstalling === node.id;
+    const dlss5Runtime = node.id === DLSS5_NODE_ID
+      ? environmentScan?.dlss5Runtime
+      : undefined;
+    const aetherScaleRuntime = node.id === AETHERSCALE_NODE_ID
+      ? environmentScan?.aetherScaleRuntime
+      : undefined;
+    const providerRuntimeUnavailable = node.id === AETHERSCALE_NODE_ID
+      ? isAetherScaleRuntimeUnavailable(aetherScaleRuntime)
+      : isDlss5RuntimeUnavailable(dlss5Runtime);
+    const providerRuntimeReason = providerRuntimeUnavailable
+      ? aetherScaleRuntime?.error || aetherScaleRuntime?.missingFiles.join(s("shared.listSeparator")) ||
+        dlss5Runtime?.error || dlss5Runtime?.missingFiles.join(s("shared.listSeparator")) || ""
+      : "";
+    const providerRuntimeDetail = (aetherScaleRuntime || dlss5Runtime) &&
+      (aetherScaleRuntime?.state ?? dlss5Runtime?.state) !== "remote" &&
+      (aetherScaleRuntime?.state ?? dlss5Runtime?.state) !== "unknown" &&
+      (aetherScaleRuntime?.state ?? dlss5Runtime?.state) !== "offline"
+      ? `<p class="muted"><strong>${s(node.id === AETHERSCALE_NODE_ID ? "nodes.aetherscaleRuntimeLabel" : "nodes.dlss5RuntimeLabel")}</strong>${providerRuntimeUnavailable ? s(node.id === AETHERSCALE_NODE_ID ? "nodes.aetherscaleRuntimeMissing" : "nodes.dlss5RuntimeMissing") : s(node.id === AETHERSCALE_NODE_ID ? "nodes.aetherscaleRuntimeReady" : "nodes.dlss5RuntimeReady")}${providerRuntimeReason ? ` · ${escape(providerRuntimeReason)}` : ""}</p>`
+      : "";
     const cardState = deriveCustomNodeCardState({
       node,
       queuedIndex,
       active,
       finalizing: customNodeInstallFinalizing,
       inFinalizingBatch: viewModel.customNodeInstallBatch.includes(node.id),
-      globallyBlocked: customNodeInstallGloballyBlocked
+      globallyBlocked: customNodeInstallGloballyBlocked,
+      runtimeUnavailable: providerRuntimeUnavailable
     });
     const queued = cardState.queued;
     const installBlocked = cardState.installBlocked;
@@ -747,10 +771,10 @@ export function renderSettingsPage(
       ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
       : cardState.status === "compatibility-error"
         ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}`
-        : cardState.status === "update"
-          ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}`
+          : cardState.status === "update"
+            ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}`
           : cardState.status === "runtime-missing"
-            ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}`
+            ? `${icon("circle-alert")} ${providerRuntimeUnavailable ? s(node.id === AETHERSCALE_NODE_ID ? "nodes.aetherscaleRuntimeMissing" : "nodes.dlss5RuntimeMissing") : s("nodes.runtimeMissing")}`
             : cardState.status === "file-ready"
               ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}`
               : cardState.status === "compatibility-warning"
@@ -770,6 +794,7 @@ export function renderSettingsPage(
             <code>${escape(node.directory || node.repositoryUrl)}</code>
             ${manualOnly ? `<p class="muted">${s("nodes.manualInstallHint")}</p>` : ""}
             ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
+            ${providerRuntimeDetail}
             ${validationEvidenceMarkup}
             <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
             ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}

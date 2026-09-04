@@ -26,7 +26,8 @@ export async function cleanupCancelledQueueTask(
     "logger" | "updateTask" | "getComfyRuntimeState" |
     "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "getSubmittedPromptId" |
     "waitForSubmittedPromptToStop" | "interruptComfyUi" | "freeComfyMemory" |
-    "restartComfyUi" | "stopComfyRuntime" | "isCancellationCurrent"
+    "restartComfyUi" | "stopComfyRuntime" | "isCancellationCurrent" |
+    "isAetherScaleTask" | "terminateAetherScaleWorker"
   >,
   taskId: string,
   settings: Settings,
@@ -39,8 +40,13 @@ export async function cleanupCancelledQueueTask(
     await deps.updateTask(taskId, patch);
     return true;
   };
+  const isAetherScaleTask = deps.isAetherScaleTask?.(taskId) ?? false;
   try {
-    const runtimeStopped = await deps.stopComfyRuntime?.(settings) ?? false;
+    // Let AetherScale's task-owned carrier worker receive the cooperative
+    // interrupt first. Other providers retain the established stop order.
+    const runtimeStopped = isAetherScaleTask
+      ? false
+      : await deps.stopComfyRuntime?.(settings) ?? false;
     if (runtimeStopped) {
       await waitWithTimeout(worker, 15_000);
       await updateCancelledTask({
@@ -87,14 +93,47 @@ export async function cleanupCancelledQueueTask(
     const promptStopped = promptId
       ? await (deps.waitForSubmittedPromptToStop ?? waitForPromptToLeaveQueue)(settings, promptId, 15_000)
       : workerSettled;
-    if (!promptStopped) {
+    let promptStoppedAfterWorkerCleanup = promptStopped;
+    if (
+      isAetherScaleTask &&
+      settings.safeCancel &&
+      !promptStopped &&
+      deps.terminateAetherScaleWorker
+    ) {
+      const workerCleanup = await deps.terminateAetherScaleWorker(taskId, settings).catch((error) => ({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+        processId: undefined,
+        verified: false
+      }));
+      if (workerCleanup.ok) {
+        deps.logger.info("comfy", "aetherscale-worker-terminated", "Verified AetherScale carrier worker cleanup completed after cancellation", {
+          taskId,
+          promptId: promptId ?? "",
+          processId: workerCleanup.processId ?? null,
+          verified: workerCleanup.verified ?? false
+        });
+        promptStoppedAfterWorkerCleanup = promptId
+          ? await (deps.waitForSubmittedPromptToStop ?? waitForPromptToLeaveQueue)(settings, promptId, 5_000)
+          : workerSettled;
+      } else {
+        deps.logger.warn("comfy", "aetherscale-worker-cleanup-failed", "AetherScale carrier worker could not be safely terminated after cancellation", {
+          taskId,
+          promptId: promptId ?? "",
+          processId: workerCleanup.processId ?? null,
+          verified: workerCleanup.verified ?? false,
+          error: workerCleanup.message
+        });
+      }
+    }
+    if (!promptStoppedAfterWorkerCleanup) {
       deps.logger.warn("comfy", "cancel-prompt-still-running", "ComfyUI prompt remained active after interruption; restarting the owned runtime", {
         taskId,
         promptId: promptId ?? "",
         workerSettled
       });
     }
-    if (settings.safeCancel && workerSettled && promptStopped) {
+    if (settings.safeCancel && workerSettled && promptStoppedAfterWorkerCleanup) {
       try {
         await (deps.freeComfyMemory ?? freeMemory)(settings);
         await updateCancelledTask({
@@ -144,6 +183,16 @@ export interface QueueRecoveryDependencies {
   stopComfyRuntime?(settings: Settings): Promise<boolean>;
   onRuntimeRestarted?(): void;
   isCancellationCurrent?(taskId: string): boolean;
+  isAetherScaleTask?(taskId: string): boolean;
+  terminateAetherScaleWorker?(
+    taskId: string,
+    settings: Settings
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    processId?: number;
+    verified?: boolean;
+  }>;
   settingsForTask(task: QueueTask, settings: AppState["settings"]): AppState["settings"];
   errorMeta(error: unknown): Record<string, unknown>;
 }

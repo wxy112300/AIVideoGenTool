@@ -170,6 +170,13 @@ export async function findComfyRoot(settings: Settings): Promise<string> {
   const homeDirectory = os.homedir();
   const localAppData =
     process.env.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
+  const configuredDataCandidates = uniqueWindowsPaths([
+    rootFromConfiguredDirectory(settings.modelDirectory),
+    rootFromConfiguredDirectory(settings.outputDirectory)
+  ]);
+  for (const candidate of configuredDataCandidates) {
+    if (await exists(path.join(candidate, "custom_nodes"))) return candidate;
+  }
   const candidates = uniqueWindowsPaths([
     ...buildComfyCandidates({
       homeDirectory,

@@ -126,6 +126,39 @@ function scanFixture(): EnvironmentScanResult {
       updateAvailable: false,
       compatibilityState: "error"
     }],
+    dlss5Runtime: {
+      state: "invalid",
+      bundleId: "vapourkit-nightly-2026-08-31",
+      nodeRevision: "310524aa283602832cbdd827ce4e35565c859a7e",
+      runtimeDirectory: "C:\\ComfyUI\\custom_nodes\\ComfyUI-DLSS5\\runtime",
+      configPath: "C:\\ComfyUI\\custom_nodes\\ComfyUI-DLSS5\\runtime\\config.json",
+      manifestPath: "C:\\ComfyUI\\custom_nodes\\ComfyUI-DLSS5\\runtime\\install-manifest.json",
+      source: "app-managed",
+      installed: true,
+      configValid: false,
+      srReady: false,
+      nrReady: false,
+      runtimeValidated: false,
+      pythonPath: "",
+      srPluginPath: "",
+      srRuntimePath: "",
+      missingFiles: ["config.json"],
+      unexpectedFiles: ["manual-note.txt"],
+      error: "runtime/config.json 缺失或不是有效 JSON"
+    },
+    depthAnything: {
+      repository: "depth-anything/Depth-Anything-V2-Small-hf",
+      revision: "5426e4f0f36572d16453bbda7a8389317b1bef99",
+      cacheDirectory: "C:\\ComfyUI\\models\\depthanything\\Depth-Anything-V2-Small-hf",
+      source: "",
+      modelFiles: [],
+      foundFiles: [],
+      missingFiles: ["model.safetensors"],
+      available: false,
+      pythonPath: "",
+      runtimeVerified: false,
+      error: ""
+    },
     issues: [{
       id: "comfy-database",
       label: "ComfyUI database",
@@ -162,7 +195,19 @@ describe("environment scan diagnostics", () => {
       llamaCudaVersion: "12.9",
       llamaGpuOffload: false,
       llamaCppPythonReady: false,
-      gpuDevices: ["0:NVIDIA GeForce RTX 4090; driver=580.00; vram=24GiB"]
+      gpuDevices: ["0:NVIDIA GeForce RTX 4090; driver=580.00; vram=24GiB"],
+      dlss5RuntimeState: "invalid",
+      dlss5RuntimeSource: "app-managed",
+      dlss5SrReady: false,
+      dlss5NrReady: false,
+      dlss5RuntimeValidated: false,
+      dlss5RuntimeMissingFiles: ["config.json"],
+      dlss5RuntimeUnexpectedFiles: ["manual-note.txt"],
+      depthAnythingSource: "",
+      depthAnythingAvailable: false,
+      depthAnythingRevision: "5426e4f0f36572d16453bbda7a8389317b1bef99",
+      depthAnythingRuntimeVerified: false,
+      depthAnythingMissingFiles: ["model.safetensors"]
     });
     expect(diagnostics.errors).toEqual(expect.arrayContaining([
       expect.stringContaining("system:git"),
@@ -174,7 +219,9 @@ describe("environment scan diagnostics", () => {
       expect.stringContaining("comfy-core: Core commit is unknown"),
       expect.stringContaining("llama-cpp-python: CUDA backend was not loaded"),
       expect.stringContaining("attention-runtime: SageAttention is unavailable"),
-      expect.stringContaining("model:minimax-h3")
+      expect.stringContaining("model:minimax-h3"),
+      expect.stringContaining("dlss5-runtime: runtime/config.json"),
+      expect.stringContaining("depth-anything: guide model not ready")
     ]));
     expect(JSON.stringify(diagnostics)).not.toContain("C:\\\\Users\\\\Example");
     expect(JSON.stringify(diagnostics)).not.toContain("C:\\\\ComfyUI\\\\models");

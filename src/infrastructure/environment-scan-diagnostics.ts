@@ -97,6 +97,37 @@ export function buildEnvironmentScanDiagnostics(
     }
   }
 
+  if (scan.dlss5Runtime) {
+    const runtime = scan.dlss5Runtime;
+    if (runtime.error) {
+      warnings.push(`dlss5-runtime: ${runtime.error}`);
+    } else if (runtime.installed && !runtime.srReady) {
+      warnings.push(
+        `dlss5-runtime: ${runtime.nrReady ? "basic NR ready; " : ""}SR runtime not ready${runtime.missingFiles.length
+          ? `; missing=${runtime.missingFiles.join(", ")}`
+          : ""}`
+      );
+    }
+    if (runtime.unexpectedFiles.length) {
+      warnings.push(
+        `dlss5-runtime: unmanaged files=${runtime.unexpectedFiles.join(", ")}`
+      );
+    }
+  }
+
+  if (scan.depthAnything) {
+    const depth = scan.depthAnything;
+    if (depth.error) {
+      warnings.push(`depth-anything: ${depth.error}`);
+    } else if (!depth.available) {
+      warnings.push(
+        `depth-anything: guide model not ready${depth.missingFiles.length
+          ? `; missing=${depth.missingFiles.join(", ")}`
+          : ""}`
+      );
+    }
+  }
+
   for (const issue of scan.issues) {
     const finding = `issue:${issue.id} (${issue.label}): ${issue.detail}`;
     if (issue.severity === "error") errors.push(finding);
@@ -149,6 +180,18 @@ export function buildEnvironmentScanDiagnostics(
       customNodeVersions: scan.customNodes
         .filter((node) => node.installed)
         .map((node) => `${node.id}:${versionLabel(node.version)}`),
+      dlss5RuntimeState: scan.dlss5Runtime?.state ?? "not-scanned",
+      dlss5RuntimeSource: scan.dlss5Runtime?.source ?? "not-scanned",
+      dlss5SrReady: scan.dlss5Runtime?.srReady ?? false,
+      dlss5NrReady: scan.dlss5Runtime?.nrReady ?? false,
+      dlss5RuntimeValidated: scan.dlss5Runtime?.runtimeValidated ?? false,
+      dlss5RuntimeMissingFiles: scan.dlss5Runtime?.missingFiles ?? [],
+      dlss5RuntimeUnexpectedFiles: scan.dlss5Runtime?.unexpectedFiles ?? [],
+      depthAnythingSource: scan.depthAnything?.source ?? "not-scanned",
+      depthAnythingAvailable: scan.depthAnything?.available ?? false,
+      depthAnythingRevision: scan.depthAnything?.revision ?? "",
+      depthAnythingRuntimeVerified: scan.depthAnything?.runtimeVerified ?? false,
+      depthAnythingMissingFiles: scan.depthAnything?.missingFiles ?? [],
     },
     errors: unique(errors),
     warnings: unique(warnings)

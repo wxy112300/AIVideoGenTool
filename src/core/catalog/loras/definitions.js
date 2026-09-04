@@ -34,6 +34,8 @@ export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
 export const H3_PINK_FLUFFY_BUNNY_LORA_FILENAME = "PinkFluffyBunny-pruned-v1-rank128.safetensors";
 export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
 export const H3_REALISM_PEOPLE_LORA_FILENAME = "h3-realism-people-t2v-i2v-r2v.safetensors";
+export const H3_FACIAL_REALISM_CLOSEUP_LORA_ID = "minimax-h3-facial-realism-closeup";
+export const H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME = "minimax-h3-facial-realism-closeup-cp2000.safetensors";
 export const VIDEO_LORA_DEFINITIONS = [{
         id: H3_CKPT850_LORA_ID,
         name: "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback",
@@ -388,6 +390,47 @@ export const VIDEO_LORA_DEFINITIONS = [{
                         targetSubdirectory: "loras",
                         recommendedFilename: H3_AFTER_MIDNIGHT_LORA_FILENAME,
                         notes: "当前确认的 Ref2VA NSFW v1.2 权重；建议强度 1.0，并使用 Euler + Beta。仅适用于 R2V，多参考图工作流不能直接移植到 FL2VA。"
+                    }
+                }]
+        }
+    }, {
+        id: H3_FACIAL_REALISM_CLOSEUP_LORA_ID,
+        name: "MiniMax H3 Facial Realism CloseUp",
+        filename: H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME,
+        strength: 0.8,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "quality",
+        promptPrefixes: ["Facial Realism"],
+        catalogOrder: 96,
+        variant: "fl2va",
+        rules: {
+            orderPriority: 40,
+            settingConflicts: [],
+            combinations: [{
+                    loraId: H3_TURBO_LORA_ID,
+                    severity: "warning",
+                    localeKey: "facialRealismTurbo"
+                }, {
+                    loraId: H3_REALISM_PEOPLE_LORA_ID,
+                    severity: "warning",
+                    localeKey: "facialRealismPeople"
+                }]
+        },
+        scan: {
+            vram: "LoRA · rank 16 · 2000 steps · strength 0.8 · trigger Facial Realism",
+            integrated: true,
+            components: [{
+                    label: "MiniMax H3 Facial Realism CloseUp LoRA",
+                    expected: `loras/${H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME}`,
+                    patterns: [/loras\/minimax-h3-facial-realism-closeup-cp2000\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "prithivMLmods / MiniMax-H3-Facial-Realism-CloseUp",
+                        downloadUrl: `https://huggingface.co/prithivMLmods/MiniMax-H3-Facial-Realism-CloseUp/resolve/main/${H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME,
+                        notes: "实验性人脸写实特写 LoRA；触发词 Facial Realism。作者推荐 checkpoint 1800/2000，当前仓库提供 cp2000；未提供固定强度，应用默认 0.8，建议先做同 Seed 对照。"
                     }
                 }]
         }

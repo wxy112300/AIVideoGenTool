@@ -21,9 +21,20 @@ import {
 } from "./image-workflow.js";
 import {
   h3NativeUpscaleDimensions,
+  uniqueAetherScaleUpscaleFilename,
+  uniqueDlss5UpscaleFilename,
   uniqueUpscaleFilename,
   upscaleDimensions
 } from "./upscale.js";
+import {
+  AETHERSCALE_MODEL_ID,
+  normalizeAetherScaleTarget
+} from "./aetherscale.js";
+import {
+  DLSS5_MODEL_ID,
+  normalizeUpscaleTarget,
+  requireLegacyUpscaleTargetHeight
+} from "./dlss5.js";
 import { videoLoraSelection } from "./video-loras.js";
 import {
   normalizeH3MemoryOptions,
@@ -34,6 +45,7 @@ import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "./video-draft-normalization.js";
 import {
   h3WorkflowPathForInput,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel
@@ -257,7 +269,9 @@ export function extensionTaskFromDraft(
     throw new Error("当前模型不支持视频续写。");
   }
   const now = clock.now().toISOString();
-  const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
+  const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) ||
+    isMiniMaxH3R2vModel(draft.modelId) ||
+    isMiniMaxH3ContinuumModel(draft.modelId);
   const h3VideoVaeMode = isH3
     ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
     : undefined;
@@ -298,6 +312,12 @@ export function extensionTaskFromDraft(
     trimEndSeconds: draft.trimEndSeconds,
     sourceAssetId: draft.sourceAssetId,
     sourceVersionId: draft.sourceVersionId,
+    ...(draft.h3ContinuumArtifactPath
+      ? { h3ContinuumArtifactPath: draft.h3ContinuumArtifactPath }
+      : {}),
+    ...(draft.h3ContinuumArtifact
+      ? { h3ContinuumArtifact: structuredClone(draft.h3ContinuumArtifact) }
+      : {}),
     ...(h3ReferenceSlots ? { h3ReferenceSlots } : {}),
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,
@@ -317,13 +337,15 @@ export function extensionTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
-    h3SaveJointAv: draft.h3SaveJointAv,
+    h3SaveJointAv: isMiniMaxH3ContinuumModel(draft.modelId) ? true : draft.h3SaveJointAv,
     spectrumMode,
     spectrumModelAwareMode: "off",
     ...h3MemoryOptions,
     ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
     maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
-    overlapFrames: state.settings.ltxExtensionOverlapFrames,
+    overlapFrames: isMiniMaxH3ContinuumModel(draft.modelId)
+      ? 22
+      : state.settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: state.settings.ltxExtensionUnloadBetweenStages,
     progress: 0
   };
@@ -335,29 +357,109 @@ export function upscaleTaskFromRequest(
   clock: QueueTaskFactoryClock = defaultClock
 ): UpscaleQueueTask {
   const now = clock.now().toISOString();
+  const hasAetherScaleFields = request.modelId === AETHERSCALE_MODEL_ID ||
+    request.aetherScale !== undefined;
+  if (hasAetherScaleFields) {
+    if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined) {
+      throw new Error("AetherScale 任务不能与 legacy/HECer target 字段混用。");
+    }
+    const target = normalizeAetherScaleTarget(request);
+    return {
+      id: clock.id(),
+      taskType: "upscale",
+      status: "waiting",
+      createdAt: now,
+      updatedAt: now,
+      outputFilename: uniqueAetherScaleUpscaleFilename(
+        request.sourceFilename,
+        target.aetherScale.mode,
+        outputNames(state)
+      ),
+      modelId: AETHERSCALE_MODEL_ID,
+      workflowPath: "builtin:upscale/aetherscale-dlss5",
+      duration: request.duration,
+      fps: request.fps,
+      seed: Math.floor(clock.random() * 0xffffffff),
+      keepSeedOnCopy: true,
+      sourceAssetId: request.sourceAssetId,
+      sourceVersionId: request.sourceVersionId,
+      sourceFilePath: request.sourceFilePath,
+      sourceFilename: request.sourceFilename,
+      sourceWidth: request.sourceWidth,
+      sourceHeight: request.sourceHeight,
+      targetWidth: target.targetWidth,
+      targetHeight: undefined,
+      targetOutputHeight: target.targetOutputHeight,
+      upscaleMode: "pixel",
+      tileMode: "auto",
+      faceRestore: false,
+      aetherScale: structuredClone(target.aetherScale),
+      progress: 0
+    };
+  }
+  const hasDlss5Fields = request.modelId === DLSS5_MODEL_ID ||
+    request.targetScale !== undefined || request.dlss5 !== undefined;
+  if (hasDlss5Fields) {
+    const target = normalizeUpscaleTarget(request);
+    if (target.provider !== "dlss5") throw new Error("DLSS5 target normalization failed");
+    return {
+      id: clock.id(),
+      taskType: "upscale",
+      status: "waiting",
+      createdAt: now,
+      updatedAt: now,
+      outputFilename: uniqueDlss5UpscaleFilename(
+        request.sourceFilename,
+        target.scale,
+        outputNames(state)
+      ),
+      modelId: DLSS5_MODEL_ID,
+      workflowPath: `builtin:upscale/${DLSS5_MODEL_ID}`,
+      duration: request.duration,
+      fps: request.fps,
+      seed: Math.floor(clock.random() * 0xffffffff),
+      keepSeedOnCopy: true,
+      sourceAssetId: request.sourceAssetId,
+      sourceVersionId: request.sourceVersionId,
+      sourceFilePath: request.sourceFilePath,
+      sourceFilename: request.sourceFilename,
+      sourceWidth: request.sourceWidth,
+      sourceHeight: request.sourceHeight,
+      targetWidth: target.targetWidth,
+      targetScale: target.targetScale,
+      targetOutputHeight: target.targetOutputHeight,
+      upscaleMode: "pixel",
+      tileMode: "auto",
+      faceRestore: false,
+      dlss5: structuredClone(target.dlss5),
+      progress: 0
+    };
+  }
+  // Keep existing pixel/H3 queue snapshots strict and unchanged.
+  const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight);
   const h3Native = request.upscaleMode === "h3-native";
   if (h3Native && !request.h3NativeInput) {
     throw new Error("H3 原生二次采样缺少已提交的 JointAV 输入快照。");
   }
   if (
     h3Native &&
-    request.targetHeight !== 720 &&
-    request.targetHeight !== 768 &&
-    request.targetHeight !== 1080 &&
-    request.targetHeight !== 1440
+    targetHeight !== 720 &&
+    targetHeight !== 768 &&
+    targetHeight !== 1080 &&
+    targetHeight !== 1440
   ) {
     throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
   }
-  if (h3Native && request.targetHeight >= 1080 && request.h3NativeInput?.provider !== "learned-3d") {
+  if (h3Native && targetHeight >= 1080 && request.h3NativeInput?.provider !== "learned-3d") {
     throw new Error("H3 1080p/1440p 必须冻结 learned 3D upscaler provider。");
   }
   const [targetWidth, targetOutputHeight] = h3Native
     ? h3NativeUpscaleDimensions(
         request.sourceWidth,
         request.sourceHeight,
-        request.targetHeight as 720 | 768 | 1080 | 1440
+        targetHeight as 720 | 768 | 1080 | 1440
       )
-    : upscaleDimensions(request.sourceWidth, request.sourceHeight, request.targetHeight);
+    : upscaleDimensions(request.sourceWidth, request.sourceHeight, targetHeight);
   return {
     id: clock.id(),
     taskType: "upscale",
@@ -366,7 +468,7 @@ export function upscaleTaskFromRequest(
     updatedAt: now,
     outputFilename: uniqueUpscaleFilename(
       request.sourceFilename,
-      request.targetHeight,
+      targetHeight,
       outputNames(state)
     ),
     modelId: request.modelId,
@@ -392,7 +494,7 @@ export function upscaleTaskFromRequest(
     sourceWidth: request.sourceWidth,
     sourceHeight: request.sourceHeight,
     targetWidth,
-    targetHeight: request.targetHeight,
+    targetHeight,
     targetOutputHeight,
     upscaleMode: h3Native ? "h3-native" : "pixel",
     tileMode: request.tileMode === "fast" || request.tileMode === "auto"

@@ -7,11 +7,12 @@ import type {
   ImageEditDraft,
   ImagePromptPreset,
   PromptEnhanceMode,
+  VideoLoraSelection,
   WorkflowCapabilities
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
-import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
+import { continuumMaxDurationSeconds, generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
@@ -60,7 +61,13 @@ export interface CreatePageControllerOptions {
   };
   createPrompt: Omit<CreatePromptControllerOptions, "context" | "patchDraft" | "patchDraftForMode" | "setWorkflowCapability" | "syncPromptEnqueueUi" | "updateH3PromptCheck" | "isPromptEnhancing" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "getPromptEnhanceMode" | "setPromptEnhanceMode" | "getH3PromptPreset" | "setH3PromptPreset"> & {
     syncPromptEnqueueUi(promptText: string): void;
-    updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: import("../../../types").H3PromptMode, hasVideoReference?: boolean): void;
+    updateH3PromptCheck(
+      promptText: string,
+      hasEndImage: boolean,
+      mode?: import("../../../types").H3PromptMode,
+      hasVideoReference?: boolean,
+      videoLoras?: readonly VideoLoraSelection[]
+    ): void;
     getPromptEnhanceMode(): PromptEnhanceMode;
     setPromptEnhanceMode(mode: PromptEnhanceMode): void;
     getH3PromptPreset(): H3PromptPreset;
@@ -153,7 +160,7 @@ export function mountCreatePageController(
               )) {
                 return configuredModel;
               }
-              if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)) {
+              if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId) || isMiniMaxH3ContinuumModel(state.draft.modelId)) {
                 return state.draft.modelId;
               }
               const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
@@ -212,6 +219,8 @@ export function mountCreatePageController(
                     sourceAssetId: undefined,
                     sourceVersionId: undefined,
                     h3ContextLatentPath: undefined,
+                    h3ContinuumArtifactPath: undefined,
+                    h3ContinuumArtifact: undefined,
                     sourceWidth: 0,
                     sourceHeight: 0,
                     endImageWidth: 0,
@@ -219,10 +228,9 @@ export function mountCreatePageController(
                   }),
               ratio: "source" as const,
               duration: isMiniMaxH3R2vModel(modelId)
-                ? Math.min(
-                    videoSourceDraft.duration,
-                    motionContextMaxDurationSeconds()
-                  )
+                ? Math.min(videoSourceDraft.duration, motionContextMaxDurationSeconds())
+                : isMiniMaxH3ContinuumModel(modelId)
+                  ? Math.min(videoSourceDraft.duration, continuumMaxDurationSeconds())
                 : videoSourceDraft.duration,
               spectrumMode: isMiniMaxH3R2vModel(modelId)
                 ? "off" as const
@@ -237,6 +245,8 @@ export function mountCreatePageController(
                 sourceAssetId: undefined,
                 sourceVersionId: undefined,
                 h3ContextLatentPath: undefined,
+                h3ContinuumArtifactPath: undefined,
+                h3ContinuumArtifact: undefined,
                 sourceWidth: 0,
                 sourceHeight: 0,
                 endImageWidth: 0,
@@ -424,6 +434,7 @@ export function mountCreatePageController(
         const nextKey = options.bundledWorkflowKey(value, state.draft.inputMode);
         const oldBundledPath = options.bundledWorkflows[oldKey]?.path;
         const nextIsR2V = isMiniMaxH3R2vModel(value);
+        const nextIsContinuum = isMiniMaxH3ContinuumModel(value);
         const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
         const existingSlots = state.draft.h3ReferenceSlots;
         const imageInputSlots = [
@@ -457,6 +468,10 @@ export function mountCreatePageController(
           modelId: value,
           videoLoras: [],
           h3ReferenceSlots: slotsForR2V,
+          h3ContinuumArtifactPath: state.draft.h3ContinuumArtifactPath,
+          h3ContinuumArtifact: state.draft.h3ContinuumArtifact
+            ? structuredClone(state.draft.h3ContinuumArtifact)
+            : undefined,
           startImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredStartImage,
           sourceWidth: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageWidth,
           sourceHeight: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageHeight,
@@ -472,9 +487,16 @@ export function mountCreatePageController(
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const,
+                h3SaveJointAv: nextIsContinuum ? true : state.draft.h3SaveJointAv,
                 spectrumMode: isMiniMaxH3Q3GgufModel(value) || state.draft.inputMode === "video" && nextIsR2V
                   ? "off" as const
-                  : state.draft.spectrumMode
+                  : state.draft.spectrumMode,
+                ...(nextIsContinuum && state.draft.inputMode === "video"
+                  ? {
+                      trimStartSeconds: 0,
+                      trimEndSeconds: state.draft.sourceVideoDuration
+                    }
+                  : {})
               }
             : {}),
           ...(!bundled?.supportsEndImage && !nextIsR2V

@@ -8,6 +8,18 @@
 
 ## Unreleased
 
+## 0.59.0 — 2026-09-04
+
+- 历史视频详情页在摘要的“原始生成/分辨率提升版本”后，仅在当前版本存在已验证的 JointAV artifact 时显示 `JointAV` 标记，便于直接判断是否可用于 H3 续写或原生超分。
+
+- 修复 AetherScale carrier 首次运行后 ReShade 正常重写 `ReShade.ini` 导致后续任务在执行前被误阻塞的问题：安装暂存仍严格校验六个运行时文件，运行时只对清单明确允许变更的配置文件做有限大小校验，并修复根目录白名单文件误报；短片默认 warm-up 从 120 调整为 8 帧，避免 5 秒片段几乎全程处于预热阶段。真实 Neural feature/evaluation 证据仍需单独验证。
+
+- Replaced the unusable monolithic DLSS5 runtime package with a pinned, transactional HECer basic-NR runtime assembled from Python 3.13.7, VapourSynth R79, NumPy 2.3.3, `vsdlssnr.dll`, and `nvngx_dlssnr.dll` 310.8.SF-v2. Install, update, repair, rollback, and manifest-owned uninstall now preserve unmanaged files; SR and guided NR remain blocked until their upstream wrappers are usable.
+
+- 新增 app-owned `LocalVideoStudioH3ArtifactToContinuumState` bridge：把已加载的完整 H3 JointAV latent 转换为 H3 Continuum 的尾部 state，时间网格与 state 校验委托给 Continuum，不改变既有 artifact 格式或旧工作流；Extend 新增独立的 H3 Continuum 模式，支持选择/拖拽 Native AV、History 一键 Continue 自动绑定、队列快照和输出目录归档。Bridge runtime smoke 已通过，完整 GPU 视频续写仍需在目标机器执行最小真实任务。
+
+- 修复视频续写模式的提示词增强在未提供尾帧截图时无法工作的问题：主进程会从源视频的选定裁剪末端自动抽取临时边界帧，按实际视频时长校准，并在末帧不可解码时向前重试；视频元数据或裁剪区间未就绪时，创建页会阻止提前发起请求。临时边界帧在成功、失败和取消后清理，多语言对白锁定兼容保持不变。
+
 ## 0.58.1 — 2026-09-03
 
 - 将 H3 Motion Context 推荐/最新版本更新为 `v0.5.1`（核心升级始于 `v0.5.0`），并记录其 ComfyUI `0.34.0+` 原生 H3 layout 兼容证据；`v0.3.1` 仍保留为 ComfyUI `0.32/0.33` 的最低兼容回退线。应用 API workflow 不引入 `Chain`，后续仍需在本机完成 v0.5.x 的 `/object_info` 与最小真实续写 smoke。

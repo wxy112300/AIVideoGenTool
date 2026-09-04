@@ -389,6 +389,56 @@ export class NativeAvArtifactService {
   constructor(private readonly deps: NativeAvArtifactServiceDependencies) {}
 
   /**
+   * Resolve and inspect a user-selected payload. Manual selection is kept
+   * inside the managed output/h3-native-av directory and requires the
+   * adjacent manifest, so a random safetensors file cannot enter a queue
+   * snapshot as if it were a verified H3 artifact.
+   */
+  async inspectPath(
+    referencePath: string,
+    outputDirectory: string
+  ): Promise<NativeAvArtifactInspection> {
+    const requested = referencePath.trim();
+    if (!requested) return failure("invalid", "H3 AV artifact 路径为空");
+    const directory = artifactDirectory(outputDirectory);
+    const candidate = path.resolve(path.isAbsolute(requested)
+      ? requested
+      : path.join(outputDirectory, requested));
+    if (!isWithinDirectory(directory, candidate) || path.extname(candidate).toLowerCase() !== ".safetensors") {
+      return failure("invalid", "请选择当前 output/h3-native-av 目录下的 .safetensors artifact");
+    }
+    const payloadFilename = path.basename(candidate);
+    const manifestPath = safeArtifactPath(
+      outputDirectory,
+      payloadFilename.replace(/\.safetensors$/iu, ".json")
+    );
+    const [payloadStat, manifestStat] = await Promise.all([
+      this.deps.fileSystem.stat(candidate),
+      this.deps.fileSystem.stat(manifestPath)
+    ]);
+    if (!payloadStat?.isFile() || !manifestStat?.isFile()) {
+      return {
+        status: "missing",
+        reason: "所选 H3 AV 缺少相邻 manifest 或 payload 文件",
+        payloadPath: candidate,
+        manifestPath
+      };
+    }
+    try {
+      const manifest = JSON.parse(await this.deps.fileSystem.readText(manifestPath)) as unknown;
+      if (!isNativeAvContinuationArtifact(manifest)) {
+        return failure("invalid", `manifest 无效：${validateNativeAvContinuationArtifact(manifest) ?? "未知错误"}`);
+      }
+      if (manifest.payload.filename !== payloadFilename) {
+        return failure("invalid", "所选 payload 与相邻 manifest 不匹配");
+      }
+      return this.inspect(manifest, outputDirectory);
+    } catch (error) {
+      return failure("invalid", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
    * Commit a file already produced by a ComfyUI serializer node. The payload
    * stays on disk throughout this path: Electron only reads the bounded
    * safetensors header and streams bytes for the hash before publishing the

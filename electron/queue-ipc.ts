@@ -26,7 +26,7 @@ export function registerQueueMutationIpc(deps: QueueMutationIpcDependencies): vo
       patch: Pick<
         UpscaleQueueTask,
         "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
-        "modelId" | "workflowPath" |
+        "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" |
         "tileMode" | "faceRestore" | "outputFilename"
       >
     ) => service.updateUpscale(taskId, patch)

@@ -231,8 +231,12 @@ describe("extracted Electron IPC adapters", () => {
       getCrashDumpsDirectory: () => "C:\\crashes"
     });
 
-    expect(handlers.size).toBe(9);
+    expect(handlers.size).toBe(10);
     expect(await call("file:pick-image")).toBe("C:\\picked.png");
+    expect(await call("file:pick-h3-native-av")).toBe("C:\\picked.png");
+    expect(showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
+      filters: [{ name: "H3 Native AV", extensions: ["safetensors"] }]
+    }));
     expect(await call("file:pick-directory", "C:\\defaults", true)).toBe("C:\\picked.png");
     expect(mkdir).toHaveBeenCalled();
     expect(stat).toHaveBeenCalled();

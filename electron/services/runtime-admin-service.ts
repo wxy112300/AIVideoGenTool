@@ -8,6 +8,7 @@ import type {
 } from "../../src/types.js";
 import {
   forceStopComfyProcesses,
+  installDepthAnything,
   installAttentionAcceleration,
   installCustomNode,
   installLlamaCppPython,
@@ -50,6 +51,7 @@ export interface RuntimeAdminServiceDependencies {
   installLlamaCppPython?: typeof installLlamaCppPython;
   uninstallLlamaCppPython?: typeof uninstallLlamaCppPython;
   installAttentionAcceleration?: typeof installAttentionAcceleration;
+  installDepthAnything?: typeof installDepthAnything;
 }
 
 export class RuntimeAdminService {
@@ -67,6 +69,7 @@ export class RuntimeAdminService {
   private readonly installLlama: typeof installLlamaCppPython;
   private readonly uninstallLlama: typeof uninstallLlamaCppPython;
   private readonly installAttention: typeof installAttentionAcceleration;
+  private readonly installDepth: typeof installDepthAnything;
 
   constructor(deps: RuntimeAdminServiceDependencies) {
     this.store = deps.store;
@@ -83,6 +86,7 @@ export class RuntimeAdminService {
     this.installLlama = deps.installLlamaCppPython ?? installLlamaCppPython;
     this.uninstallLlama = deps.uninstallLlamaCppPython ?? uninstallLlamaCppPython;
     this.installAttention = deps.installAttentionAcceleration ?? installAttentionAcceleration;
+    this.installDepth = deps.installDepthAnything ?? installDepthAnything;
   }
 
   start(kind: LocalServiceKind, settings: Settings): Promise<ConnectionResult> {
@@ -287,6 +291,31 @@ export class RuntimeAdminService {
       "attention-install",
       "Attention acceleration installation started",
       () => this.installAttention(settings, (message) => {
+        onProgress?.(message);
+      })
+    );
+  }
+
+  installDepthAnything(
+    settings: Settings,
+    onProgress?: ProgressListener
+  ): Promise<ConnectionResult> {
+    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) {
+      return Promise.resolve({
+        ok: false,
+        message: "当前有生成或提示词任务正在运行，停止任务后才能安装 Depth Anything。"
+      });
+    }
+    return this.loggedOperation(
+      "environment",
+      "depth-anything-install",
+      "Depth Anything installation started",
+      () => this.installDepth(settings, (message) => {
+        this.logger.info(
+          "environment",
+          "depth-anything-install-progress",
+          message
+        );
         onProgress?.(message);
       })
     );

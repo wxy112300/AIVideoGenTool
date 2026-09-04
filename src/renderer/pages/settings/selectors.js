@@ -179,6 +179,17 @@ export function deriveCoreNodeState(environmentScan) {
 export function coreNodeRowTone(available, known) {
     return available ? "found" : known ? "missing" : "warning";
 }
+export function isDlss5RuntimeUnavailable(runtime) {
+    return Boolean(runtime && (runtime.state === "missing" ||
+        runtime.state === "invalid" ||
+        (runtime.state === "ready" && !runtime.srReady && !runtime.nrReady)));
+}
+export function isAetherScaleRuntimeUnavailable(runtime) {
+    return Boolean(runtime && (runtime.state === "missing" ||
+        runtime.state === "invalid" ||
+        runtime.state === "remote" ||
+        (runtime.state === "ready" && !runtime.carrierReady)));
+}
 export function deriveCustomNodeCardState(options) {
     const queued = options.queuedIndex >= 0;
     const revisionUpdateAvailable = Boolean(options.node.installed &&
@@ -194,12 +205,15 @@ export function deriveCustomNodeCardState(options) {
             : options.finalizing && options.inFinalizingBatch
                 ? "finalizing"
                 : null;
+    const runtimeUnavailable = options.node.installed && options.runtimeUnavailable === true;
     const status = phase ?? (revisionUpdateAvailable
         ? "update"
         : options.node.compatibilityState === "error"
         ? "compatibility-error"
         : options.node.updateAvailable && options.node.loaded
             ? "update"
+            : runtimeUnavailable
+                ? "runtime-missing"
             : options.node.installed && options.node.runtimeVerified && Boolean(options.node.runtimeMissingNodeTypes?.length)
                 ? "runtime-missing"
                 : options.node.loaded && !options.node.runtimeVerified && !options.node.compatibilityNotice
@@ -213,11 +227,15 @@ export function deriveCustomNodeCardState(options) {
         queued,
         phase,
         status,
-        tone: customNodeStatusTone(options.node, phase !== null),
+        tone: runtimeUnavailable && phase === null
+            ? "missing"
+            : customNodeStatusTone(options.node, phase !== null),
         primaryOperation: !options.node.installed
             ? "install"
             : revisionUpdateAvailable
                 ? "update"
+                : runtimeUnavailable
+                    ? "repair"
                 : options.node.runtimeRepairable || Boolean(options.node.loadError) || options.node.compatibilityState === "error"
                     ? "repair"
                     : options.node.updateAvailable

@@ -179,6 +179,22 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；推薦順序為效能 LoRA、人物/質量 LoRA、內容 LoRA。"
     }
   },
+  "minimax-h3-facial-realism-closeup": {
+    guide: {
+      summary: "實驗性 H3 人臉寫實特寫 LoRA；觸發詞為 Facial Realism。",
+      recommendedStrength: "作者未提供固定強度；應用程式預設 0.8，建議先用 0.6–0.8 做同 Seed 對照。",
+      effects: "增強近景皮膚紋理、眼神、自然眨眼和微表情；不會自行加速取樣。",
+      stacking: "建議放在 Turbo 後；先不要與 Realism People 等人物寫實 LoRA 疊加，分別做對照。",
+      compatibility: "目前僅開放給已驗證的 MiniMax H3 FL2VA INT8 pruned ConvRot 圖生影片；Ref2VA、INT4、Q3 和影片續寫尚未驗證。",
+      source: "prithivMLmods / MiniMax-H3-Facial-Realism-CloseUp · cp2000"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前基礎模型或輸入模式。",
+      facialRealismTurbo: "Facial Realism CloseUp 技術上可與 Turbo 疊加，但低步數與實驗性人臉適配器需要同 Seed 對照；建議 Turbo 在前。",
+      facialRealismPeople: "Facial Realism CloseUp 與 Realism People 都會改變人物寫實細節；未經充分驗證，請先分別使用並檢查瑕疵、膚色和身份一致性。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，人物和質量 LoRA 後載入。"
+    }
+  },
   "minimax-h3-pink-fluffy-bunny-nsfw": {
     guide: {
       summary: "社羣 NSFW 內容 LoRA，用於增強 H3 對成人內容、身體細節和相關姿態的響應。它不會替代 Prompt。",

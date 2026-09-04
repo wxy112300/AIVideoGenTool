@@ -36,6 +36,7 @@ const api: AppApi = {
     ipcRenderer.invoke("queue:set-h3-live-preview", enabled),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   pickVideo: () => ipcRenderer.invoke("file:pick-video"),
+  pickH3NativeAv: () => ipcRenderer.invoke("file:pick-h3-native-av"),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
   saveClipboardImage: (data: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke("file:save-clipboard-image", data, mimeType),
@@ -108,6 +109,8 @@ const api: AppApi = {
     ipcRenderer.invoke("llama-cpp-python:uninstall", settings),
   installAttentionAcceleration: (settings) =>
     ipcRenderer.invoke("attention-acceleration:install", settings),
+  installDepthAnything: (settings) =>
+    ipcRenderer.invoke("depth-anything:install", settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
   enqueueExtension: (draft: Draft) =>
     ipcRenderer.invoke("queue:enqueue-extension", draft),

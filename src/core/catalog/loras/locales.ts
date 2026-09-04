@@ -187,6 +187,22 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；推荐顺序为性能 LoRA、人物/质量 LoRA、内容 LoRA。"
     }
   },
+  "minimax-h3-facial-realism-closeup": {
+    guide: {
+      summary: "实验性 H3 人脸写实特写 LoRA；触发词为 Facial Realism。",
+      recommendedStrength: "作者未提供固定强度；应用默认 0.8，建议先用 0.6–0.8 做同 Seed 对照。",
+      effects: "增强近景皮肤纹理、眼神、自然眨眼和微表情；不会自行加速采样。",
+      stacking: "建议放在 Turbo 后；先不要与 Realism People 等人物写实 LoRA 叠加，分别做对照。",
+      compatibility: "当前仅开放给已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；Ref2VA、INT4、Q3 和视频续写暂未验证。",
+      source: "prithivMLmods / MiniMax-H3-Facial-Realism-CloseUp · cp2000"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      facialRealismTurbo: "Facial Realism CloseUp 可与 Turbo 技术上叠加，但低步数与实验性人脸适配器需要同 Seed 对照；建议 Turbo 在前。",
+      facialRealismPeople: "Facial Realism CloseUp 与 Realism People 都会改变人物写实细节；未经充分验证，请先分别使用并检查伪影、肤色和身份一致性。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，人物和质量 LoRA 后加载。"
+    }
+  },
   "minimax-h3-pink-fluffy-bunny-nsfw": {
     guide: {
       summary: "社区 NSFW 内容 LoRA，用于增强 H3 对成人内容、身体细节和相关姿态的响应。它不会替代 Prompt。",
@@ -375,6 +391,22 @@ const enUS: Record<string, CatalogLoraLocale> = {
       realismTurbo: "Realism People can stack with Turbo, but low-step sampling may reduce people detail; place Turbo first and compare against standard 20-step sampling with the same Seed.",
       realismAfterMidnight: "Realism People and AfterMidnight both alter people and body detail. This stack is not fully validated; lower both strengths and inspect skin tone, hands, and motion.",
       orderSuggestion: "Place {current} before {previous}; the recommended order is performance, people/quality, then content LoRAs."
+    }
+  },
+  "minimax-h3-facial-realism-closeup": {
+    guide: {
+      summary: "An experimental H3 facial-realism close-up LoRA; its trigger is Facial Realism.",
+      recommendedStrength: "The author does not publish a fixed strength; the app defaults to 0.8, so start with a same-Seed comparison around 0.6–0.8.",
+      effects: "Improves close-up skin texture, eyes, natural blinks, and micro-expressions; it does not accelerate sampling by itself.",
+      stacking: "Place it after Turbo; do not initially stack it with Realism People or another people-realism adapter. Compare them separately first.",
+      compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; Ref2VA, INT4, Q3, and video extension remain unvalidated.",
+      source: "prithivMLmods / MiniMax-H3-Facial-Realism-CloseUp · cp2000"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      facialRealismTurbo: "Facial Realism CloseUp can technically stack with Turbo, but low-step sampling and this experimental facial adapter need a same-Seed comparison; place Turbo first.",
+      facialRealismPeople: "Facial Realism CloseUp and Realism People both alter people-realism detail. This stack is not fully validated; use them separately first and inspect artifacts, skin tone, and identity consistency.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before people and quality LoRAs."
     }
   },
   "minimax-h3-pink-fluffy-bunny-nsfw": {

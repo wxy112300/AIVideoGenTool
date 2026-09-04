@@ -116,4 +116,16 @@ export function registerEnvironmentIpc(deps: EnvironmentIpcDependencies): void {
         (message) => sendIfAlive(event, "attention-acceleration:log", message)
       )
   );
+  deps.ipc.handle(
+    "depth-anything:install",
+    (event, settings: Settings) =>
+      deps.admin.installDepthAnything(
+        settings,
+        (message) => sendIfAlive(event, "dependency-install:log", {
+          kind: "model-assets",
+          id: "depth-anything-v2",
+          message
+        })
+      )
+  );
 }

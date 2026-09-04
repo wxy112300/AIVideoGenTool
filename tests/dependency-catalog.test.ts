@@ -7,7 +7,11 @@ import {
   H3_AV_SERIALIZER_REVISION,
   H3_CONTINUUM_REVISION,
   H3_LATENT_UPSCALER_REVISION,
-  H3_ULTIMATE_UPSCALE_REVISION
+  H3_ULTIMATE_UPSCALE_REVISION,
+  DLSS5_NODE_REPOSITORY,
+  DLSS5_NODE_REVISION,
+  DLSS5_RUNTIME_BUNDLE_ID,
+  DLSS5_RUNTIME_ARTIFACTS
 } from "../src/core/catalog";
 
 describe("dependency catalog", () => {
@@ -40,6 +44,8 @@ describe("dependency catalog", () => {
       "seedvr2",
       "flashvsr",
       "frame-interpolation",
+      "comfyui-dlss5",
+      "comfyui-aetherscale",
       "h3-motion-context",
       "h3-continuum",
       "h3-latent-upscaler",
@@ -62,6 +68,15 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("seedvr2")).toMatchObject({
       minimumVersion: "2.5.24",
       required: true
+    });
+    expect(customNodeDefinition("comfyui-dlss5")).toMatchObject({
+      repositoryUrl: DLSS5_NODE_REPOSITORY,
+      directoryName: "ComfyUI-DLSS5",
+      installRevision: DLSS5_NODE_REVISION,
+      minimumVersion: "0.2.2",
+      recommendedVersion: "0.2.2",
+      nodeTypes: ["DLSSSuperResolution", "DLSS5DepthAnythingV2", "DLSS5OpticalFlow"],
+      required: false
     });
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
@@ -228,12 +243,34 @@ describe("dependency catalog", () => {
       nodeTypes: [
         "LocalVideoStudioH3SaveJointAV",
         "LocalVideoStudioH3LoadJointAV",
+        "LocalVideoStudioH3ArtifactToContinuumState",
         "LocalVideoStudioRequireGpuVAE",
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"
       ],
       required: false
     });
+  });
+
+  it("pins the verified HECer basic NR runtime", () => {
+    expect(DLSS5_RUNTIME_BUNDLE_ID).toBe("hecer-nr-310.8-r79-py313");
+    expect(DLSS5_RUNTIME_ARTIFACTS).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "vapourkit",
+        capability: "nr-required",
+        repository: "https://github.com/Kim2091/vapourkit",
+        releaseTag: "9898804f76c792ba865aa930bd07badf4e1d7d24",
+        assetName: "vsdlssnr.7z",
+        bytes: 70_076,
+        sha256: "0a4894464badc6588d707bb5ee41506a38e1f749884864ed3846a961ffd4d0cb",
+        expectedFiles: ["vsdlssnr.dll"]
+      }),
+      expect.objectContaining({
+        id: "dlss-nr",
+        releaseTag: "dlssnr-310.8.SF-v2",
+        expectedFiles: ["nvngx_dlssnr.dll"]
+      })
+    ]));
   });
 
 });

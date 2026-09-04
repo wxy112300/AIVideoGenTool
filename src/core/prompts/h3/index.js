@@ -61,3 +61,4 @@ export function promptSnippetFor(id) {
 }
 export { createDefaultH3AutoPromptSeedInstructions, h3AutoPromptSeedFor, h3AutoPromptSeeds } from "./auto-seeds.js";
 export { createDefaultH3PromptPresets, defaultH3PromptPresets } from "./content.js";
+export { h3LoraPromptInstruction, h3LoraPromptLibrary, h3LoraPromptProfileFor } from "./loras.js";

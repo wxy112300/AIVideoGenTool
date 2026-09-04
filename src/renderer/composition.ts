@@ -4,7 +4,11 @@ import {
 import { ensureMotionContextSourceSlot } from "../core/h3-reference";
 import { uiKeys } from "../core/i18n-keys";
 import { normalizeVideoDraft } from "../core/video-draft-normalization";
+import { DLSS5_MODEL_ID, requireLegacyUpscaleTargetHeight } from "../core/dlss5";
+import { AETHERSCALE_DEFAULT_MODE, AETHERSCALE_DEFAULT_STYLE_PROFILE, AETHERSCALE_MODEL_ID, isAetherScaleMode, isAetherScaleStyleProfile } from "../core/aetherscale";
 import {
+  continuumMaxDurationSeconds,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds,
   normalizeH3Steps
@@ -43,8 +47,10 @@ export function createRendererNavigation(
 ): RendererNavigation {
   function navigateToCreationMode(mode: CreationMode): void {
     const state = deps.getState();
-    if (mode === "video-extension" && isMiniMaxH3R2vModel(state.draft.modelId)) {
-      const maxDuration = motionContextMaxDurationSeconds();
+    if (mode === "video-extension" && (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3ContinuumModel(state.draft.modelId))) {
+      const maxDuration = isMiniMaxH3ContinuumModel(state.draft.modelId)
+        ? continuumMaxDurationSeconds()
+        : motionContextMaxDurationSeconds();
       if (state.draft.duration > maxDuration) {
         deps.patchDraft({ duration: maxDuration });
       }
@@ -110,6 +116,10 @@ function draftFromQueueTask(
     trimEndSeconds: extension ? task.trimEndSeconds : 0,
     sourceAssetId: extension ? task.sourceAssetId : undefined,
     sourceVersionId: extension ? task.sourceVersionId : undefined,
+    h3ContinuumArtifactPath: extension ? task.h3ContinuumArtifactPath : undefined,
+    h3ContinuumArtifact: extension && task.h3ContinuumArtifact
+      ? structuredClone(task.h3ContinuumArtifact)
+      : undefined,
     ...(extension
       ? {
           extensionPromptVersions: [{
@@ -176,6 +186,8 @@ export function createQueueWorkspaceCoordinator(
 
   const editUpscaleTask = (task: UpscaleQueueTask): void => {
     const editingWaitingTask = task.status === "waiting";
+    const dlss5Selected = task.modelId === DLSS5_MODEL_ID;
+    const aetherScaleSelected = task.modelId === AETHERSCALE_MODEL_ID;
     deps.ui.upscaleDialog = {
       ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
       assetId: task.sourceAssetId,
@@ -183,7 +195,23 @@ export function createQueueWorkspaceCoordinator(
       ...(task.upscaleMode === "h3-native"
         ? { h3Provider: task.h3NativeInput?.provider ?? "bilinear" }
         : {}),
-      targetHeight: task.targetHeight,
+      ...(dlss5Selected
+        ? {
+            targetScale: task.targetScale ?? task.dlss5?.scale ?? 2,
+            dlss5Quality: task.dlss5?.quality ?? "quality"
+          }
+        : aetherScaleSelected
+          ? {
+              aetherScaleMode: isAetherScaleMode(task.aetherScale?.mode)
+                ? task.aetherScale.mode
+                : AETHERSCALE_DEFAULT_MODE,
+              aetherStyleProfile: isAetherScaleStyleProfile(task.aetherScale?.styleProfile)
+                ? task.aetherScale.styleProfile
+                : AETHERSCALE_DEFAULT_STYLE_PROFILE
+            }
+        : {
+            targetHeight: requireLegacyUpscaleTargetHeight(task.targetHeight)
+          }),
       modelId: task.upscaleMode === "h3-native"
         ? "minimax_h3_latent_upscaler"
         : task.modelId as NonNullable<RendererUiState["upscaleDialog"]>["modelId"],

@@ -13,11 +13,17 @@ import type {
 } from "../src/types.js";
 import { createImageSourceVersion, nextImageVersionNumber } from "../src/core/image-project.js";
 import { imageModelAdapterFor } from "../src/core/image-workflow.js";
-import { extensionOutputDimensions, outputDimensions } from "../src/core/workflow.js";
+import {
+  continuumVisibleFrameCountForTask,
+  extensionOutputDimensions,
+  isMiniMaxH3ContinuumModel,
+  isMiniMaxH3Model,
+  outputDimensions
+} from "../src/core/workflow.js";
 import { videoLoraSelection } from "../src/core/video-loras.js";
 import { upscaleOutputDimensions } from "../src/core/upscale.js";
-import { isMiniMaxH3Model } from "../src/core/workflow.js";
 import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
+import { AETHERSCALE_MODEL_ID } from "../src/core/aetherscale.js";
 
 export interface ImageHistoryResult {
   taskId: string;
@@ -223,7 +229,10 @@ export function persistVideoHistoryResult(
   }
   if (task.taskType === "extension") {
     const [width, height] = extensionOutputDimensions(task);
-    const totalDuration = task.trimEndSeconds - task.trimStartSeconds + task.duration;
+    const generatedDuration = isMiniMaxH3ContinuumModel(task.modelId)
+      ? continuumVisibleFrameCountForTask(task) / 24
+      : task.duration;
+    const totalDuration = task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
     const version: AssetVersion = {
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
@@ -286,6 +295,31 @@ export function persistVideoHistoryResult(
     workflowPath: task.workflowPath, comfyPromptId: result.promptId,
     comfyOutputs: result.comfyOutputs, files: result.files,
     tileMode: task.tileMode, faceRestore: task.faceRestore, startedAt: task.startedAt,
+    sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
+    ...(task.modelId === "dlss5-sr" && task.dlss5
+      ? {
+          upscaleProvider: "dlss5",
+          upscaleOperation: task.dlss5.operation,
+          upscaleScale: task.dlss5.scale,
+          upscaleQuality: task.dlss5.quality,
+          upscaleGuideProfile: task.dlss5.guideProfile,
+          upscaleNodeRevision: task.dlss5.nodeRevision,
+          upscaleRuntimeBundleId: task.dlss5.runtimeBundleId
+        }
+      : {}),
+    ...(task.modelId === AETHERSCALE_MODEL_ID && task.aetherScale
+      ? {
+          upscaleProvider: task.aetherScale.provider,
+          upscaleOperation: task.aetherScale.operation,
+          upscaleCarrierMode: task.aetherScale.mode,
+          upscaleStyleProfile: task.aetherScale.styleProfile,
+          upscaleMotionProfile: task.aetherScale.motionProfile,
+          upscaleWarmupFrames: task.aetherScale.warmupFrames,
+          upscaleSceneCutThreshold: task.aetherScale.sceneCutThreshold,
+          upscaleNodeRevision: task.aetherScale.nodeRevision,
+          upscaleRuntimeBundleId: task.aetherScale.runtimeBundleId
+        }
+      : {}),
     h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
   };
   asset.versions.push(version);

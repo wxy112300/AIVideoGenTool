@@ -10,16 +10,19 @@ import type {
   PromptVersion,
   Settings,
   UiLocale,
+  VideoLoraSelection,
   WorkflowCapabilities
 } from "../../../types";
 import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import {
+  continuumSampledFrameCountForSeconds,
   extensionSafetyForTask,
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   isMiniMaxH3BoundaryExtensionModel,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -99,18 +102,23 @@ export function interpolationEstimate(draft: Draft): {
 } {
   return {
     multiplier: frameInterpolationMultiplier(draft),
-    generatedFrames: generationFrameCountForTask(draft),
+    generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
+      ? continuumSampledFrameCountForSeconds(draft.duration)
+      : generationFrameCountForTask(draft),
     outputFrames: outputFrameCountForTask(draft)
   };
 }
 
 export function extensionSafetyForDraft(draft: Draft, settings: Settings) {
+  const nativeH3 = isMiniMaxH3Fl2vaModel(draft.modelId) ||
+    isMiniMaxH3R2vModel(draft.modelId) ||
+    isMiniMaxH3ContinuumModel(draft.modelId);
   return extensionSafetyForTask({
     ...draft,
-    resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
+    resolution: nativeH3
       ? draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution
       : settings.ltxExtensionResolution,
-    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
+    maxGeneratedFrames: nativeH3
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -169,12 +177,16 @@ export function createModelOptionViewModels(
 ): CreateModelOptionViewModel[] {
   const scanned = environmentScan
     ? orderVideoProfiles(
-        environmentScan.modelProfiles.filter((profile) => profile.category === "video")
+        environmentScan.modelProfiles.filter((profile) =>
+          profile.category === "video" && profile.role !== "guide"
+        )
       )
     : undefined;
   const profiles = scanned?.length
     ? scanned
-    : modelCatalog.list("video").map((entry) => ({
+    : modelCatalog.list("video")
+      .filter((entry) => entry.definition.role !== "guide")
+      .map((entry) => ({
         id: entry.definition.id,
         name: modelCatalog.localized(entry.definition.id)?.name ?? entry.definition.id,
         available: true,
@@ -211,7 +223,9 @@ export function createModelOptionViewModels(
             : "";
       const catalogCapabilities = modelCatalog.get(profile.id)?.definition.capabilities;
       const modeLabel = draft.inputMode === "video"
-        ? catalogCapabilities?.supportsReferenceSlots
+        ? isMiniMaxH3ContinuumModel(profile.id)
+          ? t(uiKeys.create.modelStatus.continuumRecommended)
+          : catalogCapabilities?.supportsReferenceSlots
           ? t(uiKeys.create.modelStatus.motionContextRecommended)
           : catalogCapabilities?.supportsEndFrame
             ? t(uiKeys.create.modelStatus.endFrameCompatible)
@@ -323,14 +337,16 @@ export function h3PromptCheckMarkup(
   hasVideoReference: boolean,
   durationSeconds: number,
   escapeHtml: (value: unknown) => string,
-  ui: PromptUi = h3PromptPackFor("zh-CN").ui
+  ui: PromptUi = h3PromptPackFor("zh-CN").ui,
+  videoLoras: readonly VideoLoraSelection[] = []
 ): string {
   const result = checkH3Prompt(promptText, {
     hasEndImage,
     mode,
     hasImageReference,
     hasVideoReference,
-    durationSeconds
+    durationSeconds,
+    videoLoras
   });
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
     <div class="h3-prompt-check-heading"><strong>${ui.t("promptCheckTitle")}</strong><span>${escapeHtml(result.summary)}</span></div>

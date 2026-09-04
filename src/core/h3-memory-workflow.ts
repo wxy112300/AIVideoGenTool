@@ -55,7 +55,8 @@ const knownModelPatchClasses = new Set([
   ...attentionClasses,
   "LoraLoaderModelOnly",
   "MiniMaxH3SigmaShift",
-  "ModelSamplingMiniMaxH3"
+  "ModelSamplingMiniMaxH3",
+  "H3ContinuumJoin"
 ]);
 
 const message = (

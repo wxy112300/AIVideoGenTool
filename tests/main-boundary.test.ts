@@ -103,7 +103,7 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(81);
+    expect(invokeChannels.size).toBe(83);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
 
@@ -187,7 +187,8 @@ describe("main/preload boundary characterization", () => {
         "custom-node:uninstall",
         "llama-cpp-python:install",
         "llama-cpp-python:uninstall",
-        "attention-acceleration:install"
+        "attention-acceleration:install",
+        "depth-anything:install"
       ],
       "app-query-ipc": [
         "state:get",
@@ -203,6 +204,7 @@ describe("main/preload boundary characterization", () => {
       "native-host-ipc": [
         "file:pick-image",
         "file:pick-video",
+        "file:pick-h3-native-av",
         "file:pick-workflow",
         "file:pick-python",
         "file:pick-directory",

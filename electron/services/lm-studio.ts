@@ -34,6 +34,7 @@ import {
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
+import { h3LoraPromptInstruction } from "../../src/core/prompts/h3/loras.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
@@ -319,6 +320,7 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
            "User request (preserve its concrete words and meaning):",
            sourcePrompt
          ]),
+    h3LoraPromptInstruction(request.videoLoras),
     ...(cameraIntent ? [cameraIntent] : []),
     ...(hardConstraints ? [hardConstraints] : []),
     ...(contentLocks ? [contentLocks] : []),

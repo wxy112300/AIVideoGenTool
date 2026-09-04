@@ -1,5 +1,26 @@
+import { buildDlss5UpscaleWorkflow, isDlss5Scale, requireLegacyUpscaleTargetHeight } from "./dlss5.js";
+import { AETHERSCALE_MODEL_ID, buildAetherScaleUpscaleWorkflow, isAetherScaleMode } from "./aetherscale.js";
 import { seedVr2NativeModelFilename, seedVr2NativeRequiredNodes, seedVr2NativeVaeFilename } from "./seedvr2-native.js";
 const upscaleEstimateProfiles = {
+    "dlss5-sr": {
+        // DLSS5 has not passed a local benchmark yet. Keep this profile explicit
+        // so the UI can render a pending benchmark state instead of inventing a
+        // VRAM or duration estimate.
+        baseVramMinGb: 0,
+        baseVramMaxGb: 0,
+        vramPerAreaMinGb: 0,
+        vramPerAreaMaxGb: 0,
+        secondsPerFrameMin: 0,
+        secondsPerFrameMax: 0
+    },
+    "aetherscale-dlss5": {
+        baseVramMinGb: 0,
+        baseVramMaxGb: 0,
+        vramPerAreaMinGb: 0,
+        vramPerAreaMaxGb: 0,
+        secondsPerFrameMin: 0,
+        secondsPerFrameMax: 0
+    },
     minimax_h3_latent_upscaler: {
         baseVramMinGb: 21.5,
         baseVramMaxGb: 22.75,
@@ -88,17 +109,18 @@ export function estimateUpscaleResources(input) {
     };
 }
 export function upscaleDimensions(sourceWidth, sourceHeight, targetShortEdge) {
+    const requiredTargetShortEdge = requireLegacyUpscaleTargetHeight(targetShortEdge);
     const safeWidth = Math.max(1, sourceWidth);
     const safeHeight = Math.max(1, sourceHeight);
     const sourceShortEdge = Math.min(safeWidth, safeHeight);
     const sourceLongEdge = Math.max(safeWidth, safeHeight);
     if (sourceShortEdge === sourceLongEdge) {
-        return [targetShortEdge, targetShortEdge];
+        return [requiredTargetShortEdge, requiredTargetShortEdge];
     }
-    const targetLongEdge = Math.max(16, Math.round((targetShortEdge * sourceLongEdge) / sourceShortEdge / 16) * 16);
+    const targetLongEdge = Math.max(16, Math.round((requiredTargetShortEdge * sourceLongEdge) / sourceShortEdge / 16) * 16);
     return safeWidth >= safeHeight
-        ? [targetLongEdge, targetShortEdge]
-        : [targetShortEdge, targetLongEdge];
+        ? [targetLongEdge, requiredTargetShortEdge]
+        : [requiredTargetShortEdge, targetLongEdge];
 }
 function snapUpToEven(value) {
     return Math.ceil(value / 2) * 2;
@@ -218,6 +240,56 @@ export function uniqueUpscaleFilename(sourceFilename, targetHeight, existingName
         if (!existingNames.some((name) => name.toLowerCase() === candidate.toLowerCase())) {
             return candidate;
         }
+    }
+    return `${stem}-${Date.now()}.mp4`;
+}
+export function createDlss5UpscaleFilename(sourceFilename, scale) {
+    if (!isDlss5Scale(scale))
+        throw new Error("DLSS5 filename scale must be 2, 3 or 4");
+    const stem = sourceFilename
+        .replace(/\.(mp4|webm|mov|m4v|mkv)$/i, "")
+        .replace(/-dlss-[234]x$/i, "")
+        .replace(/-v\d+$/i, "");
+    const metadata = stem.match(/^(.*?)-(?:\d+p|4K)-(\d+(?:\.\d+)?s)-(\d{8}-\d{6})$/i);
+    const base = metadata
+        ? `${metadata[1]}-dlss-${scale}x-${metadata[2]}-${metadata[3]}`
+        : `${stem.replace(/-(?:720p|768p|1080p|1440p|2160p|4K)$/i, "")}-dlss-${scale}x`;
+    return `${base}-v01.mp4`;
+}
+export function uniqueDlss5UpscaleFilename(sourceFilename, scale, existingNames) {
+    const base = createDlss5UpscaleFilename(sourceFilename, scale);
+    if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase()))
+        return base;
+    const stem = base.replace(/\.mp4$/i, "");
+    for (let version = 2; version < 1000; version += 1) {
+        const candidate = `${stem.replace(/-v\d+$/i, "")}-v${String(version).padStart(2, "0")}.mp4`;
+        if (!existingNames.some((name) => name.toLowerCase() === candidate.toLowerCase()))
+            return candidate;
+    }
+    return `${stem}-${Date.now()}.mp4`;
+}
+function aetherScaleModeLabel(mode) {
+    if (!isAetherScaleMode(mode))
+        throw new Error("AetherScale filename mode is invalid");
+    return mode === "native_1x" ? "1x" : mode === "quality_1_5x" ? "1.5x" : mode === "balanced_1_724x" ? "1.724x" : mode === "performance_2x" ? "2x" : "3x";
+}
+export function createAetherScaleUpscaleFilename(sourceFilename, mode) {
+    const label = aetherScaleModeLabel(mode);
+    const stem = sourceFilename
+        .replace(/\.(mp4|webm|mov|m4v|mkv)$/iu, "")
+        .replace(/-aether-(?:1|1\.5|1\.724|2|3)x$/iu, "")
+        .replace(/-v\d+$/iu, "");
+    return `${stem.replace(/-(?:720p|768p|1080p|1440p|2160p|4K)$/iu, "")}-aether-${label}-v01.mp4`;
+}
+export function uniqueAetherScaleUpscaleFilename(sourceFilename, mode, existingNames) {
+    const base = createAetherScaleUpscaleFilename(sourceFilename, mode);
+    if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase()))
+        return base;
+    const stem = base.replace(/\.mp4$/iu, "");
+    for (let version = 2; version < 1000; version += 1) {
+        const candidate = `${stem.replace(/-v\d+$/iu, "")}-v${String(version).padStart(2, "0")}.mp4`;
+        if (!existingNames.some((name) => name.toLowerCase() === candidate.toLowerCase()))
+            return candidate;
     }
     return `${stem}-${Date.now()}.mp4`;
 }
@@ -408,8 +480,9 @@ function renderNativeSeedVr2Workflow(task, sourceVideo, segment) {
     };
 }
 function seedVr2Profile(task) {
-    const highResolution = task.targetHeight >= 1440;
-    const ultraHighResolution = task.targetHeight >= 2160;
+    const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight);
+    const highResolution = targetHeight >= 1440;
+    const ultraHighResolution = targetHeight >= 2160;
     if (task.tileMode === "safe") {
         return {
             batchSize: 9,
@@ -434,6 +507,13 @@ function seedVr2Profile(task) {
     };
 }
 export function renderUpscaleWorkflow(task, sourceVideo, models, objectInfo, nativeSeedVr2Segment) {
+    if (task.modelId === AETHERSCALE_MODEL_ID) {
+        return buildAetherScaleUpscaleWorkflow(task, sourceVideo, objectInfo);
+    }
+    if (task.modelId === "dlss5-sr") {
+        return buildDlss5UpscaleWorkflow(task, sourceVideo, objectInfo);
+    }
+    const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight);
     const sourceShortEdge = Math.max(1, Math.min(task.sourceWidth, task.sourceHeight));
     const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
         ? new Set(Object.keys(objectInfo))
@@ -527,7 +607,7 @@ export function renderUpscaleWorkflow(task, sourceVideo, models, objectInfo, nat
                 dit: ["3", 0],
                 vae: ["4", 0],
                 seed: task.seed,
-                resolution: task.targetHeight,
+                resolution: targetHeight,
                 max_resolution: 0,
                 batch_size: profile.batchSize,
                 uniform_batch_size: true,
@@ -548,7 +628,7 @@ export function renderUpscaleWorkflow(task, sourceVideo, models, objectInfo, nat
             inputs: {
                 frames: ["1", 0],
                 preset: "Long Video (Low VRAM)",
-                scale: task.targetHeight >= sourceShortEdge * 3 ? 4 : 2,
+                scale: targetHeight >= sourceShortEdge * 3 ? 4 : 2,
                 unload_model: true,
                 seed: Math.max(1, task.seed),
                 audio: ["1", 2]

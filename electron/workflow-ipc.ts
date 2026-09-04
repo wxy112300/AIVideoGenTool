@@ -4,11 +4,13 @@ import type { IpcMain } from "electron";
 import type { BundledWorkflow, Draft, Settings } from "../src/types.js";
 import {
   extensionWorkflowSafetyErrors,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3R2vModel,
   workflowSupportsEndImage,
   workflowSupportsExtensionForModel,
   workflowSupportsH3BoundaryExtension,
+  workflowSupportsH3ContinuumExtension,
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
 import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
@@ -112,6 +114,19 @@ async function bundledWorkflowFor(
         path: candidate,
         supportsEndImage: false,
         supportsVideoExtension: workflowSupportsH3MotionContextExtension(source)
+      });
+    }
+    if (isMiniMaxH3ContinuumModel(modelId)) {
+      const filename = "minimax_h3_continuum_extend_api.json";
+      const candidate = await findWorkflow(deps, filename);
+      if (!candidate) return null;
+      const source = await readJson(deps.fileSystem, candidate);
+      return attachWorkflowMetadata({
+        modelId,
+        label: "内置 · MiniMax H3 Continuum · Native AV 接续",
+        path: candidate,
+        supportsEndImage: false,
+        supportsVideoExtension: workflowSupportsH3ContinuumExtension(source)
       });
     }
     if (isMiniMaxH3Fl2vaModel(modelId)) {

@@ -62,7 +62,7 @@ describe("H3 native AV completion collector", () => {
     )).toMatchObject({
       role: "final-clean-av",
       producerNodeId: "LocalVideoStudioH3SaveJointAV",
-      producerNodeVersion: "0.2.3",
+      producerNodeVersion: "0.3.0",
       workflowId: "minimax_h3_i2v_api.json",
       width: 864,
       height: 480,

@@ -46,6 +46,10 @@ const h3MotionContextCore = {
   recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
   minimumVersion: "0.32.0"
 } as const;
+const h3ContinuumCore = {
+  recommendedVersion: "0.34.2",
+  minimumVersion: "0.34.0"
+} as const;
 
 function metadata(
   filename: string,
@@ -101,6 +105,11 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
   minimax_h3_r2v_extend_api: metadata("minimax_h3_r2v_extend_api.json", ["video-helper-suite", "h3-motion-context", "kjnodes"], {
     comfyUi: h3MotionContextCore,
     verifiedAt: "2026-09-03"
+  }),
+  minimax_h3_continuum_extend_api: metadata("minimax_h3_continuum_extend_api.json", ["h3-continuum", "local-video-studio-h3-av", "kjnodes"], {
+    comfyUi: h3ContinuumCore,
+    upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum",
+    verifiedAt: "2026-09-04"
   }),
   minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
     comfyUi: h3Core

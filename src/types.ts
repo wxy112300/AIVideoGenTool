@@ -306,6 +306,9 @@ export interface Draft {
   sourceAssetId?: string;
   sourceVersionId?: string;
   h3ContextLatentPath?: string;
+  /** Optional H3 Native AV artifact used by the Continuum extension mode. */
+  h3ContinuumArtifactPath?: string;
+  h3ContinuumArtifact?: NativeAvContinuationArtifact;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
   extensionPromptVersions?: PromptVersion[];
@@ -518,6 +521,124 @@ export interface GenerationQueueTask extends VideoQueueTaskBase {
   modelProfile?: LtxExtensionModelProfile;
 }
 
+export type UpscaleTargetHeight = 720 | 768 | 1080 | 1440 | 2160;
+export type Dlss5Scale = 2 | 3 | 4;
+export type Dlss5Quality = "quality" | "balanced" | "performance";
+export type Dlss5GuideProfile = "depth-anything-v2-small-farneback";
+
+export interface Dlss5UpscaleOptions {
+  operation: "super-resolution";
+  scale: Dlss5Scale;
+  quality: Dlss5Quality;
+  guideProfile: Dlss5GuideProfile;
+  /** Immutable HECer source revision captured when the task is queued. */
+  nodeRevision: string;
+  /** Immutable app-owned runtime bundle captured when the task is queued. */
+  runtimeBundleId: string;
+}
+
+/**
+ * AetherScale's carrier-backed modes are deliberately separate from the
+ * HECer scale enum above.  The upstream worker owns these exact factors and
+ * perf-quality values; they must not leak into the HECer queue contract.
+ */
+export type AetherScaleCarrierMode =
+  | "native_1x"
+  | "quality_1_5x"
+  | "balanced_1_724x"
+  | "performance_2x"
+  | "ultra_performance_3x";
+
+export type AetherScaleStyleProfile = "faithful" | "enhanced";
+
+export interface AetherScaleDlss5Options {
+  provider: "aetherscale-carrier";
+  operation: "neural-upscale" | "neural-enhance";
+  mode: AetherScaleCarrierMode;
+  styleProfile: AetherScaleStyleProfile;
+  motionProfile: "torch-lk-compact-v1";
+  /** Immutable AetherScale source revision captured when the task is queued. */
+  nodeRevision: string;
+  /** Immutable carrier bundle captured when the task is queued. */
+  runtimeBundleId: string;
+  targetWidth: number;
+  targetHeight: number;
+  warmupFrames: number;
+  sceneCutThreshold: number;
+}
+
+export type Dlss5ProviderId = "hecer" | "aetherscale-carrier";
+
+export type Dlss5ProviderReadiness =
+  | "missing"
+  | "installed"
+  | "statically-recognizable"
+  | "registered"
+  | "runtime-ready"
+  | "smoke-passed"
+  | "blocked-upstream"
+  | "incompatible";
+
+/** Additive provider-specific evidence; HECer remains represented by dlss5Runtime. */
+export interface Dlss5ProviderStatus {
+  provider: Dlss5ProviderId;
+  nodeId: string;
+  nodeRevision: string;
+  runtimeBundleId: string;
+  level: Dlss5ProviderReadiness;
+  availableForQueue: boolean;
+  installed: boolean;
+  schemaValidated: boolean;
+  runtimeValidated: boolean;
+  smokeValidated: boolean;
+  missingFiles: string[];
+  incompatibleFiles: string[];
+  blockedReason: string;
+  evidence: string[];
+}
+
+export type AetherScaleRuntimeState =
+  | "ready"
+  | "missing"
+  | "invalid"
+  | "offline"
+  | "remote"
+  | "unknown";
+
+/** Task-owned native worker evidence published by the AetherScale adapter. */
+export interface AetherScaleWorkerState {
+  processId: number;
+  parentProcessId: number;
+  workerPath: string;
+  runtimeDirectory: string;
+  startedAt: string;
+}
+
+/** Offline/app-managed evidence for AetherScale's carrier runtime. */
+export interface AetherScaleRuntimeStatus {
+  state: AetherScaleRuntimeState;
+  provider: "aetherscale-carrier";
+  bundleId: string;
+  nodeRevision: string;
+  runtimeDirectory: string;
+  manifestPath: string;
+  workerPath: string;
+  source: "app-managed" | "manual" | "";
+  installed: boolean;
+  manifestValid: boolean;
+  carrierReady: boolean;
+  motionReady: boolean;
+  vfxReady: boolean;
+  runtimeValidated: boolean;
+  smokeValidated: boolean;
+  pythonPath: string;
+  missingFiles: string[];
+  unexpectedFiles: string[];
+  incompatibleFiles: string[];
+  error: string;
+  workerState?: AetherScaleWorkerState;
+}
+
 export interface UpscaleQueueTask extends VideoQueueTaskBase {
   taskType: "upscale";
   /** Absent on legacy persisted tasks and treated as pixel-video upscale. */
@@ -529,7 +650,11 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
-  targetHeight: 720 | 768 | 1080 | 1440 | 2160;
+  /** Legacy fixed short-edge target; DLSS5 tasks use targetScale instead. */
+  targetHeight?: UpscaleTargetHeight;
+  targetScale?: Dlss5Scale;
+  dlss5?: Dlss5UpscaleOptions;
+  aetherScale?: AetherScaleDlss5Options;
   /** Actual aligned output height; legacy pixel tasks use targetHeight. */
   targetOutputHeight?: number;
   tileMode: "auto" | "safe" | "fast";
@@ -604,6 +729,9 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   sourceAssetId?: string;
   sourceVersionId?: string;
   h3ContextLatentPath?: string;
+  /** Optional H3 Native AV artifact selected for Continuum extension. */
+  h3ContinuumArtifactPath?: string;
+  h3ContinuumArtifact?: NativeAvContinuationArtifact;
   h3ContextSavePrefix?: string;
   h3ContextSavedPath?: string;
   /** Motion Context keeps the source video in slot 1 and optional refs after it. */
@@ -637,7 +765,11 @@ export interface UpscaleRequest {
   sourceHeight: number;
   duration: number;
   fps: number;
-  targetHeight: UpscaleQueueTask["targetHeight"];
+  /** Legacy fixed short-edge target; DLSS5 requests use targetScale instead. */
+  targetHeight?: UpscaleTargetHeight;
+  targetScale?: Dlss5Scale;
+  dlss5?: Dlss5UpscaleOptions;
+  aetherScale?: AetherScaleDlss5Options;
   modelId: string;
   tileMode: UpscaleQueueTask["tileMode"];
   faceRestore: boolean;
@@ -773,6 +905,22 @@ export interface AssetVersion {
   files: HistoryFile[];
   tileMode?: UpscaleQueueTask["tileMode"];
   faceRestore?: boolean;
+  /** Lineage and provider metadata for derived video versions. */
+  sourceAssetId?: string;
+  sourceVersionId?: string;
+  upscaleProvider?: string;
+  upscaleOperation?: string;
+  upscaleScale?: Dlss5Scale;
+  upscaleQuality?: Dlss5Quality;
+  upscaleGuideProfile?: Dlss5GuideProfile;
+  /** Provider-specific AetherScale carrier metadata; absent on legacy/HECer versions. */
+  upscaleCarrierMode?: AetherScaleCarrierMode;
+  upscaleStyleProfile?: AetherScaleStyleProfile;
+  upscaleMotionProfile?: AetherScaleDlss5Options["motionProfile"];
+  upscaleWarmupFrames?: number;
+  upscaleSceneCutThreshold?: number;
+  upscaleNodeRevision?: string;
+  upscaleRuntimeBundleId?: string;
   startedAt?: string;
   h3ContextLatentPath?: string;
   h3ContinuationData?: NativeAvContinuationData;
@@ -967,6 +1115,55 @@ export interface LlamaCppPythonStatus {
   nativeCrashCode?: string;
 }
 
+export type Dlss5RuntimeState =
+  | "ready"
+  | "missing"
+  | "invalid"
+  | "offline"
+  | "remote"
+  | "unknown";
+
+/** Offline file/config evidence for the app-managed HECer SR runtime. */
+export interface Dlss5RuntimeStatus {
+  state: Dlss5RuntimeState;
+  bundleId: string;
+  nodeRevision: string;
+  runtimeDirectory: string;
+  configPath: string;
+  manifestPath: string;
+  source: "app-managed" | "manual" | "";
+  installed: boolean;
+  configValid: boolean;
+  srReady: boolean;
+  nrReady: boolean;
+  /** Reserved for a real runtime/status probe; offline scans keep this false. */
+  runtimeValidated: boolean;
+  pythonPath: string;
+  srPluginPath: string;
+  srRuntimePath: string;
+  nrPluginPath?: string;
+  nrRuntimePath?: string;
+  missingFiles: string[];
+  unexpectedFiles: string[];
+  error: string;
+}
+
+/** File evidence for the pinned Depth Anything guide weight. */
+export interface DepthAnythingAssetStatus {
+  repository: string;
+  revision: string;
+  /** Resolved directory containing the user-managed model.safetensors file. */
+  cacheDirectory: string;
+  source: "app-managed" | "external" | "mixed" | "";
+  modelFiles: string[];
+  foundFiles: string[];
+  missingFiles: string[];
+  available: boolean;
+  pythonPath: string;
+  runtimeVerified: boolean;
+  error: string;
+}
+
 export type EnvironmentItemId =
   | "node"
   | "git"
@@ -1060,6 +1257,8 @@ export interface ModelScanProfile {
   id: string;
   name: string;
   category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
+  /** Absent on legacy profiles and equivalent to `generation`. */
+  role?: "generation" | "guide";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
@@ -1252,6 +1451,14 @@ export interface EnvironmentScanResult {
   items: EnvironmentItem[];
   modelProfiles: ModelScanProfile[];
   customNodes: CustomNodeStatus[];
+  /** Additive DLSS5 runtime evidence; absent in older persisted scan payloads. */
+  dlss5Runtime?: Dlss5RuntimeStatus;
+  /** Additive Depth Anything guide evidence; absent in older persisted scan payloads. */
+  depthAnything?: DepthAnythingAssetStatus;
+  /** Additive per-provider DLSS5 evidence; old scans remain HECer-compatible. */
+  dlss5Providers?: Partial<Record<Dlss5ProviderId, Dlss5ProviderStatus>>;
+  /** Additive AetherScale carrier evidence; independent from dlss5Runtime. */
+  aetherScaleRuntime?: AetherScaleRuntimeStatus;
   issues: EnvironmentIssue[];
   /** Additive summary for the ComfyUI environment page. */
   environmentSummary?: ComfyUiEnvironmentSummary;
@@ -1330,6 +1537,8 @@ export interface EnhanceRequest {
   imagePaths?: string[];
   h3PromptMode?: H3PromptMode;
   h3PromptPreset?: H3PromptPreset;
+  /** Optional H3 LoRAs currently enabled in the creation draft. */
+  videoLoras?: VideoLoraSelection[];
   h3DurationSeconds?: number;
   h3AspectRatio?: string;
   referenceMediaPaths?: string[];
@@ -1550,6 +1759,7 @@ export interface AppApi {
   setQueueH3LivePreview(enabled: boolean): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickVideo(): Promise<string | null>;
+  pickH3NativeAv(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
   saveClipboardImage(data: ArrayBuffer, mimeType: string): Promise<string>;
   readImageMarkup(documentPath: string): Promise<string | null>;
@@ -1615,11 +1825,12 @@ export interface AppApi {
   installLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
   uninstallLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
   installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
+  installDepthAnything(settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueImageEdit(draft: ImageEditDraft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
-  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
+  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
   continueQueue(): Promise<AppState>;
@@ -1664,7 +1875,7 @@ export type NotificationKind =
   | "queue-complete";
 
 export interface DependencyInstallProgress {
-  kind: "custom-node" | "python-runtime";
+  kind: "custom-node" | "python-runtime" | "model-assets";
   id: string;
   message: string;
 }

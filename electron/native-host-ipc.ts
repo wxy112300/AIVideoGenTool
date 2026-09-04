@@ -34,6 +34,13 @@ export function registerNativeHostIpc(deps: NativeHostIpcDependencies): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  deps.ipc.handle("file:pick-h3-native-av", async () => {
+    const result = await deps.dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "H3 Native AV", extensions: ["safetensors"] }]
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   deps.ipc.handle("file:pick-workflow", async () => {
     const result = await deps.dialog.showOpenDialog({
       properties: ["openFile"],

@@ -1,4 +1,21 @@
 import type { CatalogCustomNodeDefinition } from "./types.js";
+import {
+  DLSS5_NODE_DIRECTORY,
+  DLSS5_NODE_ID,
+  DLSS5_NODE_REQUIRED_NODE_TYPES,
+  DLSS5_NODE_REPOSITORY,
+  DLSS5_NODE_REVISION,
+  DLSS5_NODE_VERSION
+} from "./dlss5.js";
+import {
+  AETHERSCALE_NODE_DIRECTORY,
+  AETHERSCALE_NODE_ID,
+  AETHERSCALE_NODE_REQUIRED_NODE_TYPES,
+  AETHERSCALE_NODE_REPOSITORY,
+  AETHERSCALE_NODE_REVISION,
+  AETHERSCALE_NODE_VERSION,
+  AETHERSCALE_RUNTIME_BUNDLE_ID
+} from "./aetherscale.js";
 
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
@@ -18,7 +35,7 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.2.3";
+export const H3_AV_SERIALIZER_REVISION = "0.3.0";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.6.0";
 export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.7.0";
 export const H3_CONTINUUM_REVISION = "fe4ff9c20c2cc8bb375625d1534f5673a737d1be";
@@ -157,6 +174,57 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   aliases: ["comfyui-frame-interpolation"],
   releaseSource: "github-release",
   nodeTypes: ["RIFE VFI"],
+  required: false
+}, {
+  id: DLSS5_NODE_ID,
+  priority: 135,
+  name: "ComfyUI DLSS5",
+  purpose: "HECer 原版 NVIDIA DLSS 5 Super Resolution 节点与 Depth/Optical Flow 导引节点",
+  repositoryUrl: DLSS5_NODE_REPOSITORY,
+  directoryName: DLSS5_NODE_DIRECTORY,
+  aliases: ["comfyui-dlss5", "ComfyUI-DLSS5"],
+  releaseSource: "github-release",
+  installRevision: DLSS5_NODE_REVISION,
+  nodeTypes: DLSS5_NODE_REQUIRED_NODE_TYPES,
+  minimumVersion: DLSS5_NODE_VERSION,
+  recommendedVersion: DLSS5_NODE_VERSION,
+  latestVersion: DLSS5_NODE_VERSION,
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "HECer v0.2.2 的 requirements 必须安装到当前选中的 ComfyUI Python（Python 3.10–3.13）；SR 还需要 Windows/NVIDIA/D3D12、VapourKit Python、vsdlsssr.dll 与 nvngx_dlss.dll。本条只记录固定来源和静态要求，尚无本机运行证据。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-03",
+    sourceUrl: `https://github.com/HECer/ComfyUI-DLSS5/tree/${DLSS5_NODE_REVISION}`,
+    note: "固定 HECer v0.2.2 revision；首发只登记 DLSSSuperResolution、Depth Anything V2 和 Farneback Optical Flow 所需节点。",
+    commit: DLSS5_NODE_REVISION,
+    checks: ["static"]
+  }],
+  required: false
+}, {
+  id: AETHERSCALE_NODE_ID,
+  priority: 136,
+  name: "ComfyUI AetherScale",
+  purpose: "AetherScale v0.5.5 的 Motion Analysis 与 carrier-backed Neural Rendering 节点",
+  repositoryUrl: AETHERSCALE_NODE_REPOSITORY,
+  directoryName: AETHERSCALE_NODE_DIRECTORY,
+  aliases: ["comfyui-aetherscale", "ComfyUI-AetherScale"],
+  releaseSource: "github-release",
+  installRevision: AETHERSCALE_NODE_REVISION,
+  runtimeBundleId: AETHERSCALE_RUNTIME_BUNDLE_ID,
+  nodeTypes: AETHERSCALE_NODE_REQUIRED_NODE_TYPES,
+  minimumVersion: AETHERSCALE_NODE_VERSION,
+  recommendedVersion: AETHERSCALE_NODE_VERSION,
+  latestVersion: AETHERSCALE_NODE_VERSION,
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "需要当前选中的 ComfyUI Python（Python 3.10+）；requirements.txt 按上游 v0.5.5 保持为空。carrier runtime 单独由应用按固定 Merserk Visual Enhancer v1.0 白名单安装，生产 workflow 禁止自动 bootstrap；nvidia-vfx 仅是可选 VFX 能力，不阻塞 carrier。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-04",
+    sourceUrl: `https://github.com/vizart-vj/ComfyUI-AetherScale/tree/${AETHERSCALE_NODE_REVISION}`,
+    note: "固定 AetherScale v0.5.5 commit；生产图只允许 Motion Analysis 与 carrier-backed Neural Rendering，Runtime/VFX/Diagnostics 节点不参与应用 workflow。",
+    commit: AETHERSCALE_NODE_REVISION,
+    checks: ["static"]
+  }],
   required: false
 }, {
   id: "comfyui-multimodal-prompt-nodes",
@@ -430,7 +498,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "local-video-studio-h3-av",
   priority: 147,
   name: "Local Video Studio H3 AV Serializer",
-  purpose: "在 output root 下安全保存/加载 H3 joint AV safetensors artifact",
+  purpose: "在 output root 下安全保存/加载 H3 joint AV safetensors artifact，并桥接到 H3 Continuum state",
   repositoryUrl: "builtin://LocalVideoStudio-H3",
   directoryName: "LocalVideoStudio-H3",
   aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
@@ -440,11 +508,12 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   nodeTypes: [
     "LocalVideoStudioH3SaveJointAV",
     "LocalVideoStudioH3LoadJointAV",
+    "LocalVideoStudioH3ArtifactToContinuumState",
     "LocalVideoStudioRequireGpuVAE",
     "LocalVideoStudioH3RequireGpuVAE",
     "LocalVideoStudioH3AnchorConditioning"
   ],
-  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。",
+  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge 只在 ComfyUI-H3-Continuum 已加载时工作，并委托其 state contract，不复制采样逻辑。",
   required: false
 }, {
   id: "spectrum-minimax-h3",

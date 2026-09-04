@@ -4,6 +4,13 @@ import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
+import {
+  DEPTH_ANYTHING_V2_SMALL_REPOSITORY
+} from "../core/catalog/models/depth-anything.js";
+import {
+  DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY,
+  depthAnythingBuiltinMetadataFile
+} from "./depth-anything-metadata.js";
 
 function replaceRequired(source: string, before: string, after: string, label: string): string {
   if (source.includes(after)) return source;
@@ -11,6 +18,417 @@ function replaceRequired(source: string, before: string, after: string, label: s
     throw new Error(`MMH3 Ultimate Upscale 源码缺少 ${label}，已停止修改。`);
   }
   return source.replace(before, after);
+}
+
+const aetherScaleCarrierPatchMarker =
+  "# Local Video Studio AetherScale carrier registry ownership guard";
+const aetherScaleCarrierInterruptPatchMarker =
+  "# Local Video Studio AetherScale carrier cooperative interrupt";
+const aetherScaleCarrierWorkerStatePatchMarker =
+  "# Local Video Studio AetherScale carrier worker ownership state";
+
+export const aetherScaleCarrierPatchFiles = [
+  "backend/carrier.py"
+] as const;
+
+function replaceAetherScaleRequired(
+  source: string,
+  before: string,
+  after: string,
+  label: string
+): string {
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) {
+    throw new Error(`ComfyUI-AetherScale 源码缺少 ${label}，已停止修改。`);
+  }
+  return source.replace(before, after);
+}
+
+/**
+ * Make the upstream carrier's per-user GPU preference transactional. The
+ * worker is a closed native executable, so the guard records the previous
+ * value before launch and restores it on both normal completion and failure.
+ */
+export function patchAetherScaleCarrierSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (
+    patched.includes(aetherScaleCarrierPatchMarker) &&
+    patched.includes(aetherScaleCarrierInterruptPatchMarker) &&
+    patched.includes(aetherScaleCarrierWorkerStatePatchMarker) &&
+    patched.includes("_lvs_check_comfy_interrupt()") &&
+    patched.includes("_lvs_write_worker_state(proc)") &&
+    patched.includes("_lvs_clear_worker_state(proc.pid)")
+  ) return patched;
+
+  const registryGuard = [
+    aetherScaleCarrierPatchMarker,
+    "",
+    "def _lvs_restore_windows_gpu_preference(info: dict[str, Any]) -> None:",
+    "    if not isinstance(info, dict) or not info.get(\"applied\") or info.get(\"restored\"):",
+    "        return",
+    "    if os.name != \"nt\" or winreg is None:",
+    "        info[\"restored\"] = True",
+    "        return",
+    "    worker = str(info.get(\"worker\") or \"\")",
+    "    previous = info.get(\"previous\")",
+    "    key_path = r\"Software\\Microsoft\\DirectX\\UserGpuPreferences\"",
+    "    try:",
+    "        with winreg.CreateKeyEx(",
+    "            winreg.HKEY_CURRENT_USER,",
+    "            key_path,",
+    "            0,",
+    "            winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,",
+    "        ) as key:",
+    "            if isinstance(previous, dict) and previous.get(\"exists\"):",
+    "                winreg.SetValueEx(",
+    "                    key,",
+    "                    worker,",
+    "                    0,",
+    "                    int(previous.get(\"type\", winreg.REG_SZ)),",
+    "                    previous.get(\"value\", \"\"),",
+    "                )",
+    "            else:",
+    "                try:",
+    "                    winreg.DeleteValue(key, worker)",
+    "                except FileNotFoundError:",
+    "                    pass",
+    "        info[\"restored\"] = True",
+    "    except Exception as exc:",
+    "        info[\"restore_error\"] = f\"{type(exc).__name__}: {exc}\"",
+    "",
+  ].join("\n");
+  patched = replaceAetherScaleRequired(
+    patched,
+    "def _set_windows_gpu_preference(executable: Path, preference: str) -> dict[str, Any]:",
+    `${registryGuard}\ndef _set_windows_gpu_preference(executable: Path, preference: str) -> dict[str, Any]:`,
+    "registry guard insertion point"
+  );
+
+  const workerStateConstant = [
+    aetherScaleCarrierWorkerStatePatchMarker,
+    "CARRIER_WORKER_STATE = CARRIER_ROOT / \"carrier_process.json\"",
+    "",
+    "def _lvs_write_worker_state(proc: Any) -> None:",
+    "    pid = int(getattr(proc, \"pid\", 0) or 0)",
+    "    if pid <= 0:",
+    "        raise CarrierError(\"Carrier worker did not expose a process id.\")",
+    "    payload = {",
+    "        \"pid\": pid,",
+    "        \"parent_pid\": int(os.getpid()),",
+    "        \"worker\": str(WORKER.resolve()),",
+    "        \"runtime\": str(CARRIER_RUNTIME.resolve()),",
+    "        \"started_at\": time.time(),",
+    "    }",
+    "    temporary = CARRIER_WORKER_STATE.with_name(",
+    "        CARRIER_WORKER_STATE.name + f\".{os.getpid()}.partial\"",
+    "    )",
+    "    try:",
+    "        temporary.write_text(json.dumps(payload, sort_keys=True), encoding=\"utf-8\")",
+    "        temporary.replace(CARRIER_WORKER_STATE)",
+    "    except Exception as exc:",
+    "        try:",
+    "            temporary.unlink(missing_ok=True)",
+    "        except Exception:",
+    "            pass",
+    "        raise CarrierError(\"Unable to publish the AetherScale carrier worker ownership state.\") from exc",
+    "",
+    "def _lvs_clear_worker_state(pid: Any) -> None:",
+    "    try:",
+    "        if not CARRIER_WORKER_STATE.is_file():",
+    "            return",
+    "        payload = json.loads(CARRIER_WORKER_STATE.read_text(encoding=\"utf-8\"))",
+    "        if int(payload.get(\"pid\", 0)) != int(pid):",
+    "            return",
+    "        CARRIER_WORKER_STATE.unlink(missing_ok=True)",
+    "    except Exception:",
+    "        pass",
+    ""
+  ].join("\n");
+  patched = replaceAetherScaleRequired(
+    patched,
+    'CARRIER_MANIFEST = CARRIER_ROOT / "carrier_manifest.json"',
+    `CARRIER_MANIFEST = CARRIER_ROOT / "carrier_manifest.json"\n${workerStateConstant}`,
+    "worker ownership state insertion point"
+  );
+
+  const interruptHelper = [
+    aetherScaleCarrierInterruptPatchMarker,
+    "",
+    "def _lvs_check_comfy_interrupt() -> None:",
+    "    try:",
+    "        import comfy.model_management as _lvs_comfy_model_management",
+    "    except Exception:",
+    "        return",
+    "    _lvs_comfy_model_management.throw_exception_if_processing_interrupted()",
+    "",
+  ].join("\n");
+  patched = replaceAetherScaleRequired(
+    patched,
+    "def process_carrier(\n",
+    `${interruptHelper}def process_carrier(\n`,
+    "cooperative interrupt insertion point"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    '        "registry_value": None,\n',
+    '        "registry_value": None,\n        "previous": None,\n        "restored": False,\n',
+    "registry ownership record"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "            winreg.SetValueEx(\n                key,\n                str(executable.resolve()),\n",
+    "            worker_path = str(executable.resolve())\n            try:\n                previous_value, previous_type = winreg.QueryValueEx(key, worker_path)\n                info[\"previous\"] = {\"exists\": True, \"value\": previous_value, \"type\": previous_type}\n            except OSError:\n                info[\"previous\"] = {\"exists\": False}\n            winreg.SetValueEx(\n                key,\n                worker_path,\n",
+    "previous registry value capture"
+  );
+
+  const popenBlock = [
+    "    proc = subprocess.Popen(",
+    "        [str(WORKER), \"--video\"],",
+    "        cwd=str(CARRIER_RUNTIME),",
+    "        stdin=subprocess.PIPE,",
+    "        stdout=subprocess.PIPE,",
+    "        stderr=subprocess.PIPE,",
+    "        creationflags=creation_flags,",
+    "    )"
+  ].join("\n");
+  const guardedPopenBlock = [
+    "    try:",
+    "        proc = subprocess.Popen(",
+    "            [str(WORKER), \"--video\"],",
+    "            cwd=str(CARRIER_RUNTIME),",
+    "            stdin=subprocess.PIPE,",
+    "            stdout=subprocess.PIPE,",
+    "            stderr=subprocess.PIPE,",
+    "            creationflags=creation_flags,",
+    "        )",
+    "    except Exception:",
+    "        _lvs_restore_windows_gpu_preference(gpu_routing)",
+    "        raise"
+  ].join("\n");
+  patched = replaceAetherScaleRequired(
+    patched,
+    popenBlock,
+    guardedPopenBlock,
+    "worker process launch guard"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    `${guardedPopenBlock}\n    assert proc.stdin and proc.stdout and proc.stderr`,
+    `${guardedPopenBlock}\n    try:\n        assert proc.stdin and proc.stdout and proc.stderr\n        _lvs_write_worker_state(proc)\n    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        raise`,
+    "worker ownership state publication"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "        for i in range(batch):\n",
+    "        for i in range(batch):\n            _lvs_check_comfy_interrupt()\n",
+    "per-frame cooperative interrupt"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "                proc.terminate()\n                raise",
+    "                proc.terminate()\n                _lvs_restore_windows_gpu_preference(gpu_routing)\n                _lvs_clear_worker_state(proc.pid)\n                raise",
+    "internal motion failure cleanup"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "        t.join(timeout=2)\n        if code:",
+    "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        if code:",
+    "normal worker completion cleanup"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        if code:",
+    "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        _lvs_clear_worker_state(proc.pid)\n        if code:",
+    "normal worker ownership cleanup"
+  );
+  patched = replaceAetherScaleRequired(
+    patched,
+    "    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        raise",
+    "    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        _lvs_clear_worker_state(proc.pid)\n        raise",
+    "worker failure cleanup"
+  );
+  return patched;
+}
+
+export const dlss5DepthAnythingPatchFiles = [
+  "nodes.py",
+  `${DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY}/config.json`,
+  `${DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY}/preprocessor_config.json`
+] as const;
+
+const dlss5DepthAnythingPatchMarker =
+  "# Local Video Studio Depth Anything local-weight compatibility layer";
+
+function replaceDlss5Required(
+  source: string,
+  before: string,
+  after: string,
+  label: string
+): string {
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) {
+    throw new Error(`ComfyUI-DLSS5 源码缺少 ${label}，已停止修改。`);
+  }
+  return source.replace(before, after);
+}
+
+/**
+ * Make the app-managed Small profile use one ordinary ComfyUI model weight.
+ * The upstream node accepts a Hugging Face repo id and would otherwise
+ * download metadata and weights lazily during queue execution. The adapter
+ * keeps Base/Large behavior intact while making the catalogued Small profile
+ * deterministic and offline-safe.
+ */
+export function patchDlss5DepthAnythingSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (patched.includes(dlss5DepthAnythingPatchMarker)) return patched;
+
+  const metadataPathExpression = DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY
+    .split("/")
+    .map((part) => JSON.stringify(part))
+    .join(" / ");
+  const helper = [
+    dlss5DepthAnythingPatchMarker,
+    `_LVS_DEPTH_ANYTHING_SMALL_MODEL_ID = ${JSON.stringify(DEPTH_ANYTHING_V2_SMALL_REPOSITORY)}`,
+    `_LVS_DEPTH_ANYTHING_SMALL_METADATA_DIR = PACKAGE / ${metadataPathExpression}`,
+    "",
+    "def _lvs_depth_anything_small_model_directory():",
+    "    roots = []",
+    "    try:",
+    "        import folder_paths",
+    "    except Exception:",
+    "        folder_paths = None",
+    "    if folder_paths is not None:",
+    "        try:",
+    "            roots.extend(Path(value) for value in folder_paths.get_folder_paths(\"depthanything\"))",
+    "        except (AttributeError, KeyError, TypeError):",
+    "            pass",
+    "        models_dir = getattr(folder_paths, \"models_dir\", None)",
+    "        if models_dir:",
+    "            roots.append(Path(models_dir) / \"depthanything\")",
+    "    roots.append(PROJECT.parent / \"models\" / \"depthanything\")",
+    "    seen = set()",
+    "    for root in roots:",
+    "        candidate = root / \"Depth-Anything-V2-Small-hf\"",
+    "        key = str(candidate).lower()",
+    "        if key in seen:",
+    "            continue",
+    "        seen.add(key)",
+    "        if (candidate / \"model.safetensors\").is_file():",
+    "            return candidate",
+    "    raise FileNotFoundError(\"Depth Anything V2 Small 权重未找到。请将 model.safetensors 放入 ComfyUI/models/depthanything/Depth-Anything-V2-Small-hf。\")",
+    ""
+  ].join("\n");
+  patched = replaceDlss5Required(
+    patched,
+    "_DEPTH_CACHE = {}",
+    `_DEPTH_CACHE = {}\n\n${helper}`,
+    "Depth Anything 本地模型发现 helper"
+  );
+  patched = replaceDlss5Required(
+    patched,
+    "from transformers import AutoImageProcessor, AutoModelForDepthEstimation",
+    "from transformers import AutoConfig, AutoImageProcessor, AutoModelForDepthEstimation",
+    "Depth Anything Transformers 导入"
+  );
+  const before = [
+    "        key = (model_id, str(device))",
+    "        if key not in _DEPTH_CACHE:",
+    "            processor = AutoImageProcessor.from_pretrained(model_id)",
+    "            network = (",
+    "                AutoModelForDepthEstimation.from_pretrained(model_id).eval().to(device)",
+    "            )"
+  ].join("\n");
+  const after = [
+    "        model_source = (",
+    "            _lvs_depth_anything_small_model_directory()",
+    "            if model_id == _LVS_DEPTH_ANYTHING_SMALL_MODEL_ID",
+    "            else model_id",
+    "        )",
+    "        key = (model_id, str(model_source), str(device))",
+    "        if key not in _DEPTH_CACHE:",
+    "            if model_id == _LVS_DEPTH_ANYTHING_SMALL_MODEL_ID:",
+    "                metadata_directory = str(_LVS_DEPTH_ANYTHING_SMALL_METADATA_DIR)",
+    "                processor = AutoImageProcessor.from_pretrained(",
+    "                    metadata_directory, local_files_only=True",
+    "                )",
+    "                config = AutoConfig.from_pretrained(",
+    "                    metadata_directory, local_files_only=True",
+    "                )",
+    "                network = (",
+    "                    AutoModelForDepthEstimation.from_pretrained(",
+    "                        str(model_source),",
+    "                        config=config,",
+    "                        local_files_only=True,",
+    "                        use_safetensors=True,",
+    "                    ).eval().to(device)",
+    "                )",
+    "            else:",
+    "                processor = AutoImageProcessor.from_pretrained(model_id)",
+    "                network = (",
+    "                    AutoModelForDepthEstimation.from_pretrained(model_id).eval().to(device)",
+    "                )"
+  ].join("\n");
+  return replaceDlss5Required(
+    patched,
+    before,
+    after,
+    "Depth Anything Small 模型加载块"
+  );
+}
+
+async function writeIfChanged(filename: string, contents: string): Promise<boolean> {
+  const current = await fs.readFile(filename, "utf8").catch(() => null);
+  if (current === contents) return false;
+  await fs.mkdir(path.dirname(filename), { recursive: true });
+  await fs.writeFile(filename, contents, "utf8");
+  return true;
+}
+
+export async function prepareAetherScaleCarrier(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const carrierPath = path.join(targetDirectory, "backend", "carrier.py");
+  const source = await fs.readFile(carrierPath, "utf8");
+  const patched = patchAetherScaleCarrierSource(source);
+  if (patched !== source) {
+    await fs.writeFile(carrierPath, patched, "utf8");
+    report("已为 AetherScale carrier 应用 GPU 注册表所有权回收适配");
+  } else {
+    report("AetherScale carrier GPU 注册表所有权回收适配已就绪");
+  }
+}
+
+export async function prepareDlss5DepthAnything(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const nodesPath = path.join(targetDirectory, "nodes.py");
+  const source = await fs.readFile(nodesPath, "utf8");
+  const patched = patchDlss5DepthAnythingSource(source);
+  const metadataDirectory = path.join(
+    targetDirectory,
+    ...DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY.split("/")
+  );
+  const [nodesChanged, configChanged, preprocessorChanged] = await Promise.all([
+    patched !== source
+      ? fs.writeFile(nodesPath, patched, "utf8").then(() => true)
+      : Promise.resolve(false),
+    writeIfChanged(
+      path.join(metadataDirectory, "config.json"),
+      depthAnythingBuiltinMetadataFile("config.json")
+    ),
+    writeIfChanged(
+      path.join(metadataDirectory, "preprocessor_config.json"),
+      depthAnythingBuiltinMetadataFile("preprocessor_config.json")
+    )
+  ]);
+  report(
+    nodesChanged || configChanged || preprocessorChanged
+      ? "已为 DLSS5 Depth Anything Small 应用本地 safetensors 加载适配，并写入内置 JSON 元数据"
+      : "DLSS5 Depth Anything Small 本地 safetensors 适配与内置 JSON 元数据已就绪"
+  );
 }
 
 export function patchMmh3UltimateUpscaleSource(source: string): string {

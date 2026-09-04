@@ -415,6 +415,43 @@ describe("Settings accessibility markup", () => {
     expect(markup).not.toContain('data-rescan-node="minimax-h3-prompt-writer"');
   });
 
+  it("shows DLSS5 runtime failure instead of treating the node source check as readiness", () => {
+    const environmentScan = {
+      scannedAt: "2026-09-04T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [{
+        id: "comfyui-dlss5",
+        name: "ComfyUI DLSS5",
+        purpose: "DLSS5 super resolution",
+        repositoryUrl: "https://example.invalid/dlss5.git",
+        installed: true,
+        loaded: true,
+        runtimeVerified: true,
+        loadError: "",
+        directory: "C:\\ComfyUI\\custom_nodes\\ComfyUI-DLSS5",
+        required: false,
+        version: "0.2.2",
+        updateAvailable: false
+      }],
+      dlss5Runtime: {
+        state: "invalid",
+        srReady: false,
+        error: "runtime/config.json 缺失或不是有效 JSON",
+        missingFiles: ["config.json"]
+      }
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup).toContain("已安装 · DLSS5 runtime 不可用");
+    expect(markup).toContain("runtime/config.json 缺失或不是有效 JSON");
+    expect(markup).toContain('data-install-node="comfyui-dlss5" data-node-operation="repair"');
+    expect(markup).not.toContain("文件与版本检查通过");
+  });
+
   it("renders one install action for an uninstalled H3 Optimizations node", () => {
     const environmentScan = {
       scannedAt: "2026-08-27T00:00:00.000Z",

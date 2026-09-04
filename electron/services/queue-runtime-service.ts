@@ -12,6 +12,7 @@ import {
   h3VideoVaeAvailabilityFromModelProfiles,
   resolveH3VideoVaeMode
 } from "../../src/core/h3-video-vae.js";
+import { AETHERSCALE_MODEL_ID } from "../../src/core/aetherscale.js";
 import {
   cleanupCancelledQueueTask,
   type QueueRecoveryDependencies
@@ -21,6 +22,7 @@ import type { QueueRuntimeCapability } from "../ports/queue-runtime.js";
 import type { ComfyRuntimeStateController } from "../../src/infrastructure/comfy-runtime-state.js";
 import { safeLogErrorMessage, type AppLogger } from "../../src/infrastructure/app-logger.js";
 import type { QueueIsolationReason } from "./queue-execution-side-effects.js";
+import { terminateAetherScaleWorker } from "./aetherscale-runtime.js";
 
 export interface QueueRuntimeProfileAlignmentResult {
   ok: boolean;
@@ -341,6 +343,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       "logger" | "updateTask" | "getComfyRuntimeState" |
       "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "getSubmittedPromptId" |
       "restartComfyUi" | "stopComfyRuntime" | "isCancellationCurrent"
+      | "isAetherScaleTask" | "terminateAetherScaleWorker"
     > = {
       logger: this.deps.logger,
       updateTask: this.deps.updateTask,
@@ -369,6 +372,24 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
         return current.queueLifecycleTaskId === currentTaskId &&
           (current.queueLifecycle === "cancelling" || current.queueLifecycle === "cleaning") &&
           task?.status === "cancelled";
+      },
+      isAetherScaleTask: (currentTaskId) =>
+        this.deps.store.get().queue.find((item) => item.id === currentTaskId)?.modelId === AETHERSCALE_MODEL_ID,
+      terminateAetherScaleWorker: async (currentTaskId, currentSettings) => {
+        const task = this.deps.store.get().queue.find((item) => item.id === currentTaskId);
+        if (task?.modelId !== AETHERSCALE_MODEL_ID) {
+          return { ok: true, message: "当前取消任务不是 AetherScale。" };
+        }
+        const scan = await this.deps.scanEnvironment(currentSettings, "dependencies");
+        const nodeDirectory = scan.customNodes.find((node) => node.id === "comfyui-aetherscale")?.directory ?? "";
+        if (!scan.comfyRoot || !nodeDirectory) {
+          return {
+            ok: false,
+            verified: false,
+            message: "未找到当前选中 ComfyUI 的 AetherScale 节点目录，未执行本机 worker 终止。"
+          };
+        }
+        return terminateAetherScaleWorker(scan.comfyRoot, nodeDirectory);
       }
     };
     return cleanupCancelledQueueTask(recoveryDependencies, taskId, settings, worker);

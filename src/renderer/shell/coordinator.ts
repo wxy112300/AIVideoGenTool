@@ -198,6 +198,11 @@ export function createRendererShellCoordinator(
     const upscaleHeight = element.dataset.upscaleHeight;
     if (upscaleHeight) {
       deps.ui.modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
+      return;
+    }
+    const upscaleScale = element.dataset.upscaleScale;
+    if (upscaleScale) {
+      deps.ui.modalControlFocusSelector = `[data-upscale-scale="${CSS.escape(upscaleScale)}"]`;
     }
   }
 

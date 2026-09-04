@@ -1,5 +1,9 @@
 import type {
+  AetherScaleCarrierMode,
+  AetherScaleStyleProfile,
   AssetVersion,
+  Dlss5Quality,
+  Dlss5Scale,
   EnvironmentScanResult,
   HistoryAsset,
   HistoryMigrationProgress,
@@ -14,12 +18,32 @@ import type {
   UpscaleResourceEstimate,
   UpscaleResourceEstimateInput
 } from "../../core/upscale";
-import { h3NativeUpscaleDimensions } from "../../core/upscale";
+import {
+  createAetherScaleUpscaleFilename,
+  createDlss5UpscaleFilename,
+  h3NativeUpscaleDimensions
+} from "../../core/upscale";
+import {
+  DLSS5_MODEL_ID,
+  DLSS5_SCALE_VALUES,
+  dlss5OutputDimensions,
+  isDlss5Quality,
+  isDlss5Scale
+} from "../../core/dlss5";
+import {
+  AETHERSCALE_DEFAULT_MODE,
+  AETHERSCALE_DEFAULT_STYLE_PROFILE,
+  AETHERSCALE_MODEL_ID,
+  AETHERSCALE_MODE_SPECS,
+  aetherScaleOutputGeometry,
+  isAetherScaleMode,
+  isAetherScaleStyleProfile
+} from "../../core/aetherscale";
 
 type IconRenderer = (name: string, className?: string) => string;
 type HtmlEscaper = (value: unknown) => string;
 
-type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler";
+type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5";
 type UpscaleTargetHeight = 720 | 768 | 1080 | 1440 | 2160;
 type UpscaleTileMode = "auto" | "safe" | "fast";
 
@@ -69,7 +93,11 @@ export interface UpscaleDialogState {
   busy?: boolean;
   assetId: string;
   versionId: string;
-  targetHeight: UpscaleTargetHeight;
+  targetHeight?: UpscaleTargetHeight;
+  targetScale?: Dlss5Scale;
+  dlss5Quality?: Dlss5Quality;
+  aetherScaleMode?: AetherScaleCarrierMode;
+  aetherStyleProfile?: AetherScaleStyleProfile;
   modelId: UpscaleModelId;
   tileMode: UpscaleTileMode;
 }
@@ -104,6 +132,263 @@ interface UpscaleModelProfileOption {
   id: string;
   name: string;
   available: boolean;
+}
+
+interface Dlss5UiStatus {
+  tone: "available" | "warning" | "missing";
+  available: boolean;
+  message: string;
+  smokeValidated?: boolean;
+}
+
+function dlss5UiStatus(
+  environment: EnvironmentScanResult | null,
+  t: Translate
+): Dlss5UiStatus {
+  if (!environment) {
+    return {
+      tone: "warning",
+      available: true,
+      message: t(uiKeys.upscale.dlss5Pending)
+    };
+  }
+
+  const profile = environment.modelProfiles?.find((item) => item.id === DLSS5_MODEL_ID);
+  const customNodes = Array.isArray(environment.customNodes)
+    ? environment.customNodes
+    : undefined;
+  const node = customNodes?.find((item) => item.id === "comfyui-dlss5");
+  const runtime = environment.dlss5Runtime;
+  const depth = environment.depthAnything;
+  const remoteRuntime = runtime?.state === "remote";
+  const nvidia = environment.items?.find((item) => item.id === "nvidia");
+
+  if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5GpuMissing)
+    };
+  }
+
+  if (
+    profile?.missingCustomNodeIds?.includes("comfyui-dlss5") ||
+    (customNodes && !node) ||
+    (node && !remoteRuntime && !node.installed)
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5NodeMissing)
+    };
+  }
+  if (
+    node?.loadError ||
+    node?.runtimeRepairable ||
+    node?.runtimeMissingNodeTypes?.length ||
+    node?.compatibilityState === "error" ||
+    profile?.customNodeCompatibility === "error" ||
+    (node?.runtimeVerified && !node.loaded)
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5NodeMissing)
+    };
+  }
+  if (profile?.runtimeMissingNodes?.length) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5SchemaMissing)
+    };
+  }
+  if (
+    runtime &&
+    (
+      runtime.state === "missing" ||
+      runtime.state === "invalid" ||
+      (runtime.state === "ready" && !runtime.srReady) ||
+      (remoteRuntime && runtime.runtimeValidated && !runtime.srReady)
+    )
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5RuntimeMissing)
+    };
+  }
+  if (profile?.runtimeVerified === true && profile.runtimeReady === false) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5RuntimeMissing)
+    };
+  }
+  if (depth && !depth.available) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5GuideMissing)
+    };
+  }
+  if (profile?.available === false) {
+    return {
+      tone: "missing",
+      available: false,
+      message: t(uiKeys.upscale.dlss5SchemaMissing)
+    };
+  }
+  if (
+    profile?.customNodeCompatibility === "warning" ||
+    node?.compatibilityState === "warning" ||
+    profile?.runtimeVerified === false ||
+    runtime?.state === "offline" ||
+    runtime?.state === "unknown" ||
+    (depth && !depth.runtimeVerified) ||
+    (runtime && !runtime.runtimeValidated)
+  ) {
+    return {
+      tone: "warning",
+      available: true,
+      message: t(uiKeys.upscale.dlss5Pending)
+    };
+  }
+  return { tone: "available", available: true, message: t(uiKeys.upscale.dlss5Ready) };
+}
+
+function aetherScaleUiStatus(
+  environment: EnvironmentScanResult | null,
+  t: Translate
+): Dlss5UiStatus {
+  if (!environment) {
+    return {
+      tone: "warning",
+      available: true,
+      smokeValidated: false,
+      message: t(uiKeys.upscale.aetherscalePending)
+    };
+  }
+
+  const provider = environment.dlss5Providers?.["aetherscale-carrier"];
+  const profile = environment.modelProfiles?.find((item) => item.id === AETHERSCALE_MODEL_ID);
+  const node = environment.customNodes?.find((item) => item.id === "comfyui-aetherscale");
+  const runtime = environment.aetherScaleRuntime;
+  const nvidia = environment.items?.find((item) => item.id === "nvidia");
+  const smokeValidated = Boolean(provider?.smokeValidated || runtime?.smokeValidated);
+
+  if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleGpuMissing)
+    };
+  }
+  if (
+    profile?.missingCustomNodeIds?.includes("comfyui-aetherscale") ||
+    (environment.customNodes && !node) ||
+    (node && !node.installed)
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleNodeMissing)
+    };
+  }
+  if (
+    node?.loadError ||
+    node?.runtimeRepairable ||
+    node?.runtimeMissingNodeTypes?.length ||
+    node?.compatibilityState === "error" ||
+    profile?.customNodeCompatibility === "error"
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleNodeMissing)
+    };
+  }
+  if (profile?.runtimeMissingNodes?.length || provider?.schemaValidated === false) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleSchemaMissing)
+    };
+  }
+  if (
+    runtime &&
+    (runtime.state === "missing" || runtime.state === "invalid" || !runtime.carrierReady)
+  ) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleRuntimeMissing)
+    };
+  }
+  if (provider && !provider.availableForQueue) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: provider.blockedReason
+        ? `${t(uiKeys.upscale.aetherscaleRuntimeMissing)} · ${provider.blockedReason}`
+        : t(uiKeys.upscale.aetherscaleRuntimeMissing)
+    };
+  }
+  if (profile?.available === false) {
+    return {
+      tone: "missing",
+      available: false,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscaleSchemaMissing)
+    };
+  }
+  if (
+    profile?.customNodeCompatibility === "warning" ||
+    node?.compatibilityState === "warning" ||
+    profile?.runtimeVerified === false ||
+    runtime?.state === "offline" ||
+    runtime?.state === "unknown" ||
+    (provider && !provider.runtimeValidated)
+  ) {
+    return {
+      tone: "warning",
+      available: true,
+      smokeValidated,
+      message: t(uiKeys.upscale.aetherscalePending)
+    };
+  }
+  return {
+    tone: "available",
+    available: true,
+    smokeValidated,
+    message: t(uiKeys.upscale.aetherscaleReady)
+  };
+}
+
+function estimateUpscaleDiskBytes(
+  version: AssetVersion,
+  targetWidth: number,
+  targetHeight: number
+): number | null {
+  const sourceFile = version.files.find((file) =>
+    /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename) &&
+    typeof file.sizeBytes === "number" &&
+    Number.isFinite(file.sizeBytes) &&
+    file.sizeBytes > 0
+  );
+  if (!sourceFile?.sizeBytes) return null;
+  const sourcePixels = Math.max(1, version.width * version.height);
+  const targetPixels = Math.max(1, targetWidth * targetHeight);
+  return Math.max(
+    sourceFile.sizeBytes,
+    Math.ceil(sourceFile.sizeBytes * targetPixels / sourcePixels)
+  );
 }
 
 function directoryMigrationProgressValue(
@@ -278,16 +563,67 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   if (!resolved) return "";
   const { asset, version } = resolved;
   const busy = Boolean(dialog.busy);
+  const isDlss5Selected = dialog.modelId === DLSS5_MODEL_ID;
+  const isAetherScaleSelected = dialog.modelId === AETHERSCALE_MODEL_ID;
   const h3Selected = dialog.modelId === "minimax_h3_latent_upscaler";
   const h3Artifact = version.h3ContinuationData?.status === "available"
     ? version.h3ContinuationData.artifact
     : undefined;
   const h3Available = Boolean(h3Artifact);
-  const [targetWidth, outputHeight] = h3Selected
-    ? h3NativeUpscaleDimensions(version.width, version.height, dialog.targetHeight === 2160 ? 1440 : dialog.targetHeight)
-    : options.upscaleDimensions(version.width, version.height, dialog.targetHeight);
+  const legacyTargetHeight = dialog.targetHeight ?? 720;
+  const selectedScale = isDlss5Scale(dialog.targetScale) ? dialog.targetScale : 2;
+  const selectedQuality = isDlss5Quality(dialog.dlss5Quality)
+    ? dialog.dlss5Quality
+    : "quality";
+  const selectedAetherStyle = isAetherScaleStyleProfile(dialog.aetherStyleProfile)
+    ? dialog.aetherStyleProfile
+    : AETHERSCALE_DEFAULT_STYLE_PROFILE;
+  const aetherStatus = aetherScaleUiStatus(options.environment, options.t);
+  const aetherAdvancedReady = Boolean(aetherStatus.smokeValidated);
+  const aetherModeOptions = isAetherScaleSelected
+    ? AETHERSCALE_MODE_SPECS.flatMap((spec) => {
+        const mainMode = spec.mode === "performance_2x" || spec.mode === "ultra_performance_3x";
+        if (!aetherAdvancedReady && !mainMode) return [];
+        try {
+          return [{ spec, geometry: aetherScaleOutputGeometry(version.width, version.height, spec.mode) }];
+        } catch {
+          return [];
+        }
+      })
+    : [];
+  const requestedAetherMode = isAetherScaleMode(dialog.aetherScaleMode)
+    ? dialog.aetherScaleMode
+    : AETHERSCALE_DEFAULT_MODE;
+  const selectedAetherMode = aetherModeOptions.find(({ spec }) => spec.mode === requestedAetherMode)?.spec.mode
+    ?? aetherModeOptions.find(({ spec }) => spec.mode === AETHERSCALE_DEFAULT_MODE)?.spec.mode
+    ?? AETHERSCALE_DEFAULT_MODE;
+  let aetherGeometry: ReturnType<typeof aetherScaleOutputGeometry> | null = null;
+  let aetherGeometryError = "";
+  if (isAetherScaleSelected) {
+    try {
+      aetherGeometry = aetherScaleOutputGeometry(
+        version.width,
+        version.height,
+        selectedAetherMode
+      );
+    } catch (error) {
+      aetherGeometryError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const [targetWidth, outputHeight] = isAetherScaleSelected && aetherGeometry
+    ? [aetherGeometry.width, aetherGeometry.height]
+    : isDlss5Selected
+      ? dlss5OutputDimensions(version.width, version.height, selectedScale)
+      : h3Selected
+        ? h3NativeUpscaleDimensions(
+            version.width,
+            version.height,
+            legacyTargetHeight === 2160 ? 1440 : legacyTargetHeight
+          )
+        : options.upscaleDimensions(version.width, version.height, legacyTargetHeight);
   const sourceShortEdge = options.versionShortEdge(version);
-  const selectedTargetHeight = dialog.targetHeight;
+  const selectedTargetHeight = legacyTargetHeight;
+  const dlss5Status = dlss5UiStatus(options.environment, options.t);
   const estimate = options.estimateUpscaleResources({
     modelId: dialog.modelId,
     sourceWidth: version.width,
@@ -299,12 +635,17 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   });
   const formatEstimateGb = (value: number) =>
     `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} GB`;
-  const estimatedVram = `${formatEstimateGb(estimate.vramMinGb)}-${formatEstimateGb(estimate.vramMaxGb)}`;
-  const estimatedTime = options.formatUpscaleEstimateRange(
-    estimate.secondsMin,
-    estimate.secondsMax
-  );
-  const detectedVramBytes = options.environment?.gpus[0]?.vramTotalBytes ??
+  const estimatedVram = isDlss5Selected
+    ? options.t(uiKeys.upscale.dlss5BenchmarkPending)
+    : isAetherScaleSelected
+      ? "—"
+      : `${formatEstimateGb(estimate.vramMinGb)}-${formatEstimateGb(estimate.vramMaxGb)}`;
+  const estimatedTime = isDlss5Selected
+    ? options.t(uiKeys.upscale.dlss5BenchmarkPending)
+    : isAetherScaleSelected
+      ? "—"
+    : options.formatUpscaleEstimateRange(estimate.secondsMin, estimate.secondsMax);
+  const detectedVramBytes = options.environment?.gpus?.[0]?.vramTotalBytes ??
     options.performance?.vramTotalBytes ??
     0;
   const vramWarning = detectedVramBytes > 0 &&
@@ -325,16 +666,64 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     })) ?? fallbackProfiles;
   const profiles: UpscaleModelProfileOption[] = [
     ...pixelProfiles,
-    { id: "minimax_h3_latent_upscaler", name: "H3 Latent Upscale", available: h3Available }
+    { id: "minimax_h3_latent_upscaler", name: "H3 Latent Upscale", available: h3Available },
+    { id: DLSS5_MODEL_ID, name: options.t(uiKeys.upscale.dlss5Name), available: dlss5Status.available },
+    { id: AETHERSCALE_MODEL_ID, name: options.t(uiKeys.upscale.aetherscaleName), available: aetherStatus.available }
   ];
-  const outputFilename = options.createUpscaleFilename(
-    version.outputFilename,
-    dialog.targetHeight
-  );
+  const outputFilename = isAetherScaleSelected
+    ? createAetherScaleUpscaleFilename(version.outputFilename, selectedAetherMode)
+    : isDlss5Selected
+    ? createDlss5UpscaleFilename(version.outputFilename, selectedScale)
+    : options.createUpscaleFilename(version.outputFilename, legacyTargetHeight);
   const supportsTileMode = dialog.modelId === "seedvr2";
   const targetOptions = h3Selected
     ? [720, 768, 1080, 1440] as const
     : [720, 1080, 1440, 2160] as const;
+  const estimatedDiskBytes = isDlss5Selected || isAetherScaleSelected
+    ? estimateUpscaleDiskBytes(version, targetWidth, outputHeight)
+    : null;
+  const targetMarkup = isAetherScaleSelected
+    ? `<div><label>${options.t(uiKeys.upscale.aetherscaleMode)}</label><div class="upscale-resolution upscale-scale-resolution aetherscale-mode-options">
+            ${aetherModeOptions.map(({ spec, geometry }) => {
+              const disabled = busy || !aetherStatus.available;
+              const label = spec.mode === "native_1x"
+                ? options.t(uiKeys.upscale.aetherscaleModeNative)
+                : spec.mode === "quality_1_5x"
+                  ? options.t(uiKeys.upscale.aetherscaleModeQuality)
+                  : spec.mode === "balanced_1_724x"
+                    ? options.t(uiKeys.upscale.aetherscaleModeBalanced)
+                    : spec.mode === "performance_2x"
+                      ? options.t(uiKeys.upscale.aetherscaleModePerformance)
+                      : options.t(uiKeys.upscale.aetherscaleModeUltra);
+              const title = `${geometry.width} × ${geometry.height}`;
+              return `<button class="${spec.mode === selectedAetherMode ? "primary" : "secondary"}" data-aetherscale-mode="${spec.mode}" aria-label="${options.escapeHtml(`${label} · ${title}`)}" title="${options.escapeHtml(title)}"${disabled ? " disabled" : ""}>${options.escapeHtml(label)}</button>`;
+            }).join("")}
+          </div></div>`
+    : isDlss5Selected
+    ? `<div><label>${options.t(uiKeys.upscale.scale)}</label><div class="upscale-resolution upscale-scale-resolution">
+            ${DLSS5_SCALE_VALUES.map((scale) => {
+              const [width, height] = dlss5OutputDimensions(version.width, version.height, scale);
+              return `<button class="${scale === selectedScale ? "primary" : "secondary"}" data-upscale-scale="${scale}" aria-label="${scale}× · ${width} × ${height}" title="${width} × ${height}"${busy || !dlss5Status.available ? " disabled" : ""}>${scale}×</button>`;
+            }).join("")}
+          </div></div>`
+    : `<div><label>${options.t(uiKeys.upscale.targetResolution)}</label><div class="upscale-resolution">
+            ${targetOptions.map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}"${busy || height <= sourceShortEdge || (dialog.h3Provider === "bilinear" && height >= 1080) || (dialog.h3Provider === "learned-3d" && height < 1080) ? " disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+          </div></div>`;
+  const methodMarkup = isAetherScaleSelected
+    ? `<label>${options.t(uiKeys.upscale.aetherscaleStyle)}<select id="upscale-aetherscale-style" ${busy || !aetherStatus.available ? "disabled" : ""}><option value="faithful" ${selectedAetherStyle === "faithful" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleFaithful)}</option><option value="enhanced" ${selectedAetherStyle === "enhanced" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleEnhanced)}</option></select></label>`
+    : isDlss5Selected
+    ? `<label>${options.t(uiKeys.upscale.quality)}<select id="upscale-dlss-quality" ${busy || !dlss5Status.available ? "disabled" : ""}><option value="quality" ${selectedQuality === "quality" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityQuality)}</option><option value="balanced" ${selectedQuality === "balanced" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityBalanced)}</option><option value="performance" ${selectedQuality === "performance" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityPerformance)}</option></select></label>`
+    : `<label>${options.t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile" ${busy ? "disabled" : ""}><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${options.t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${options.t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${options.t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${options.t(uiKeys.upscale.nodeFixed)}</span>`}</label>`;
+  const dlss5StatusMarkup = isDlss5Selected
+    ? `<div class="upscale-dlss-status ${dlss5Status.tone}" role="${dlss5Status.tone === "missing" ? "alert" : "status"}"><strong>${options.t(uiKeys.upscale.dlss5Experimental)}</strong><span>${dlss5Status.message}</span><small>${options.t(uiKeys.upscale.dlss5SettingsHint)}</small></div>`
+    : "";
+  const aetherStatusMarkup = isAetherScaleSelected && aetherStatus.tone === "missing"
+    ? `<div class="upscale-dlss-status missing" role="alert"><span>${aetherStatus.message}</span>${aetherGeometryError ? `<small>${options.escapeHtml(aetherGeometryError)}</small>` : ""}</div>`
+    : "";
+  const enqueueDisabled = busy ||
+    (h3Selected && !h3Available) ||
+    (isDlss5Selected && !dlss5Status.available) ||
+    (isAetherScaleSelected && (!aetherStatus.available || !aetherGeometry || (!aetherAdvancedReady && selectedAetherMode !== "performance_2x" && selectedAetherMode !== "ultra_performance_3x")));
   const t = options.t;
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
@@ -345,18 +734,16 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
         </div>
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${options.escapeHtml(asset.title)}</strong><code>${options.escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${options.formatVideoDuration(version.duration)}</span></div>
-          <div><label>${t(uiKeys.upscale.targetResolution)}</label><div class="upscale-resolution">
-            ${targetOptions.map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}"${busy || height <= sourceShortEdge || (dialog.h3Provider === "bilinear" && height >= 1080) || (dialog.h3Provider === "learned-3d" && height < 1080) ? " disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
-          </div></div>
+          ${targetMarkup}
           <div class="settings-grid two">
             <label>${t(uiKeys.upscale.model)}<select id="upscale-model" ${busy ? "disabled" : ""}>${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select></label>
-            <label>${t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile" ${busy ? "disabled" : ""}><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${t(uiKeys.upscale.nodeFixed)}</span>`}</label>
+            ${methodMarkup}
           </div>
-          <p class="muted">${h3Selected ? t(uiKeys.upscale.h3NativeDescription) : t(uiKeys.upscale.pixelVideoDescription)}</p>${h3Selected && !h3Available ? `<p class="upscale-estimate-note warning">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}
-          <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>${t(uiKeys.upscale.estimatedPeak, { value: estimatedVram })}</span><span>${t(uiKeys.upscale.estimatedTime, { value: estimatedTime })}</span></div></div>
-          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">${t(uiKeys.upscale.estimateNote, { frames: estimate.frameCount })} ${vramWarning ? t(uiKeys.upscale.vramWarning, { vram: options.formatBytes(detectedVramBytes) }) : t(uiKeys.upscale.actualImpact)}</p>
+          <p class="muted">${isAetherScaleSelected ? t(uiKeys.upscale.aetherscaleDescription) : isDlss5Selected ? t(uiKeys.upscale.dlss5Description) : h3Selected ? t(uiKeys.upscale.h3NativeDescription) : t(uiKeys.upscale.pixelVideoDescription)}</p>${h3Selected && !h3Available ? `<p class="upscale-estimate-note warning">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}${dlss5StatusMarkup}${aetherStatusMarkup}
+          <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>${t(uiKeys.upscale.estimatedPeak, { value: estimatedVram })}</span><span>${t(uiKeys.upscale.estimatedTime, { value: estimatedTime })}</span>${isDlss5Selected || isAetherScaleSelected ? `<span>${estimatedDiskBytes ? t(uiKeys.upscale.estimatedDisk, { value: options.formatBytes(estimatedDiskBytes) }) : t(uiKeys.upscale.diskEstimatePending)}</span>` : ""}</div></div>
+          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">${isAetherScaleSelected ? `${t(uiKeys.upscale.aetherscaleBenchmarkPending)} · ${t(uiKeys.upscale.actualImpact)}` : isDlss5Selected ? `${t(uiKeys.upscale.dlss5BenchmarkPending)} · ${t(uiKeys.upscale.actualImpact)}` : `${t(uiKeys.upscale.estimateNote, { frames: estimate.frameCount })} ${vramWarning ? t(uiKeys.upscale.vramWarning, { vram: options.formatBytes(detectedVramBytes) }) : t(uiKeys.upscale.actualImpact)}`}</p>
         </div>
-        <div class="dialog-actions" aria-live="polite"><button class="secondary button-with-icon" id="cancel-upscale" ${busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale" ${busy || (h3Selected && !h3Available) ? "disabled" : ""}>${options.icon(busy ? "refresh-cw" : dialog.taskId ? "save" : "plus")}${busy ? t(uiKeys.runtime.enqueueing) : dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
+        <div class="dialog-actions" aria-live="polite"><button class="secondary button-with-icon" id="cancel-upscale" ${busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale" ${enqueueDisabled ? "disabled" : ""}>${options.icon(busy ? "refresh-cw" : dialog.taskId ? "save" : "plus")}${busy ? t(uiKeys.runtime.enqueueing) : dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
       </section>
     </div>`;
 }

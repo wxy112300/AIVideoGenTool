@@ -4,6 +4,7 @@ import {
   H3_CKPT850_LORA,
   H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
+  H3_FACIAL_REALISM_CLOSEUP_LORA,
   H3_REALISM_PEOPLE_LORA,
   H3_REF2V_TURBO_LORA,
   H3_SLA_TURBO_LORA,
@@ -28,6 +29,7 @@ describe("video LoRA catalog", () => {
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_CAMERA_MOTION_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
+      H3_FACIAL_REALISM_CLOSEUP_LORA.id,
       H3_REALISM_PEOPLE_LORA.id
     ]);
     expect(H3_SLA_TURBO_LORA).toMatchObject({
@@ -40,6 +42,13 @@ describe("video LoRA catalog", () => {
       strength: 0.8,
       purpose: "quality",
       compatibleModelIds: ["minimax_h3_fl2va", "minimax_h3_ref2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_FACIAL_REALISM_CLOSEUP_LORA).toMatchObject({
+      strength: 0.8,
+      purpose: "quality",
+      promptPrefixes: ["Facial Realism"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
     expect(H3_CAMERA_MOTION_LORA).toMatchObject({
@@ -157,6 +166,17 @@ describe("video LoRA catalog", () => {
         severity: "warning"
       }),
     ]));
+  });
+
+  it("adds the Facial Realism trigger at the start of the execution Prompt", () => {
+    expect(videoPromptForLoras(
+      "a woman looks toward the camera",
+      [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    )).toBe("Facial Realism, a woman looks toward the camera");
+    expect(videoPromptForLoras(
+      "Facial Realism, a woman looks toward the camera",
+      [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    )).toBe("Facial Realism, a woman looks toward the camera");
   });
 
   it("retires ckpt850 from active choices without breaking legacy record parsing", () => {

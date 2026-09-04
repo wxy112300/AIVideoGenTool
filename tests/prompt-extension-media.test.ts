@@ -28,6 +28,10 @@ describe("extension prompt boundary media", () => {
       trimStartSeconds: 2,
       trimEndSeconds: 2.01
     })).toBe(2);
+    expect(promptExtensionFrameTime({
+      trimStartSeconds: 2,
+      trimEndSeconds: 8
+    }, 7.96)).toBeCloseTo(7.96 - 1 / 24);
   });
 
   it("keeps ordinary prompt requests unchanged", async () => {

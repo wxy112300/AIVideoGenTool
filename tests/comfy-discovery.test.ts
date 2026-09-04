@@ -50,6 +50,24 @@ describe("ComfyUI installation discovery", () => {
     });
   });
 
+  it("prefers a configured custom-node data root over a separate Desktop core", async () => {
+    const workspace = await temporaryRoot("aivideo-comfy-desktop-");
+    const coreRoot = path.join(workspace, "install", "ComfyUI");
+    const dataRoot = path.join(workspace, "data");
+    await fs.mkdir(path.join(dataRoot, "models"), { recursive: true });
+    await fs.mkdir(path.join(dataRoot, "custom_nodes", "ComfyUI-DLSS5"), { recursive: true });
+    await fs.mkdir(coreRoot, { recursive: true });
+    await fs.writeFile(path.join(coreRoot, "main.py"), "", "utf8");
+    const settings = {
+      ...createDefaultState().settings,
+      comfyInstallDirectory: coreRoot,
+      modelDirectory: path.join(dataRoot, "models"),
+      outputDirectory: path.join(dataRoot, "output")
+    };
+
+    expect(await findComfyRoot(settings)).toBe(path.resolve(dataRoot));
+  });
+
   it("recognizes a Windows portable layout separately from manual source", async () => {
     const portableRoot = await temporaryRoot("aivideo-comfy-portable-");
     const sourceDirectory = path.join(portableRoot, "ComfyUI");

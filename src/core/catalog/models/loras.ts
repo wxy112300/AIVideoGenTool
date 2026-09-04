@@ -57,6 +57,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-TW": { name: "MiniMax H3 Realism People", badge: "H3 專屬 · 人物寫實", description: "增強人物皮膚、表情、手部活動、電影燈光和輕微紀錄片式鏡頭感。" },
     "en-US": { name: "MiniMax H3 Realism People", badge: "H3 only · people realism", description: "Improves skin texture, expressions, hands at work, film lighting, and subtle documentary camera motion." }
   },
+  "minimax-h3-facial-realism-closeup": {
+    "zh-CN": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 专属 · 人脸特写", description: "增强人脸特写的皮肤纹理、眼神与微表情；触发词：Facial Realism。" },
+    "zh-TW": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 專屬 · 人臉特寫", description: "增強人臉特寫的皮膚紋理、眼神與微表情；觸發詞：Facial Realism。" },
+    "en-US": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 only · facial close-up", description: "Enhances close-up facial realism, skin texture, eyes, and micro-expressions; trigger: Facial Realism." }
+  },
   "minimax-h3-pink-fluffy-bunny-nsfw": {
     "zh-CN": { name: "PinkFluffyBunny NSFW", badge: "H3 专属 · NSFW", description: "MiniMax H3 FL2VA pruned 底模的社区 NSFW 内容 LoRA。" },
     "zh-TW": { name: "PinkFluffyBunny NSFW", badge: "H3 專屬 · NSFW", description: "MiniMax H3 FL2VA pruned 底模的社群 NSFW 內容 LoRA。" },

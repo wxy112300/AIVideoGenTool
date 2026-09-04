@@ -8,6 +8,7 @@ import {
   selectLmStudioModel,
   unloadLmStudioModels
 } from "../electron/services/lm-studio.js";
+import { H3_FACIAL_REALISM_CLOSEUP_LORA } from "../src/core/video-loras.js";
 
 describe("LM Studio model selection", () => {
   it("keeps an explicitly configured model", () => {
@@ -109,6 +110,23 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[1]?.role).toBe("user");
     expect(body.messages[1]?.content).toContain("请使用中文输出");
     expect(body.messages[1]?.content).toContain("一个女孩站在窗边");
+  });
+
+  it("passes the selected H3 LoRA context to the legacy LM Studio vision path", async () => {
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "一位女性看向镜头",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "I2VA",
+        videoLoras: [H3_FACIAL_REALISM_CLOSEUP_LORA]
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.messages[1]?.content).toContain("minimax-h3-facial-realism-closeup");
+    expect(body.messages[1]?.content).toContain("canonical trigger: Facial Realism");
   });
 
   it("sends multiple reference images with H3-specific visual instructions", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
-import { queueTaskFromDraft } from "../src/core/queue-task-factory";
+import { queueTaskFromDraft, upscaleTaskFromRequest } from "../src/core/queue-task-factory";
+import { DEFAULT_DLSS5_UPSCALE_OPTIONS } from "../src/core/dlss5";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
 import { queueTaskHasRecoveryCheckpoint, queueTaskInput, queueTaskInputUrl, queueWorkProgressText, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
@@ -506,6 +507,98 @@ describe("queue history persistence", () => {
     expect(state.history[0]?.versions[0]?.h3ContinuationData).toEqual({
       status: "invalid",
       reason: "H3 AV 标记为 available，但没有已提交的 artifact。"
+    });
+  });
+
+  it("persists DLSS lineage and frozen provider metadata on the derived version", () => {
+    const state = createDefaultState();
+    state.history = [{
+      mediaKind: "video",
+      id: "asset-dlss",
+      taskId: "source-task",
+      title: "source",
+      outputFilename: "source.mp4",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+      modelId: "realesrgan",
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: 2,
+      resolution: 480,
+      prompt: "source",
+      seed: 1,
+      comfyPromptId: "source-prompt",
+      comfyOutputs: {},
+      files: [],
+      versions: [{
+        id: "source-version",
+        kind: "original",
+        createdAt: "2026-09-03T00:00:00.000Z",
+        outputFilename: "source.mp4",
+        modelId: "realesrgan",
+        width: 832,
+        height: 480,
+        duration: 2,
+        fps: 24,
+        workflowPath: "source-workflow.json",
+        comfyPromptId: "source-prompt",
+        comfyOutputs: {},
+        files: []
+      }]
+    }];
+    const task = upscaleTaskFromRequest({
+      sourceAssetId: "asset-dlss",
+      sourceVersionId: "source-version",
+      sourceFilePath: "C:/output/source.mp4",
+      sourceFilename: "source.mp4",
+      sourceWidth: 832,
+      sourceHeight: 480,
+      duration: 2,
+      fps: 24,
+      targetScale: 2,
+      dlss5: DEFAULT_DLSS5_UPSCALE_OPTIONS,
+      modelId: "dlss5-sr",
+      tileMode: "safe",
+      faceRestore: true
+    }, state, {
+      now: () => new Date("2026-09-03T00:01:00.000Z"),
+      id: () => "dlss-task",
+      random: () => 0.25
+    });
+    state.queue = [task];
+
+    persistVideoHistoryResult(state, {
+      task,
+      completedAt: "2026-09-03T00:02:00.000Z",
+      promptId: "dlss-prompt",
+      comfyOutputs: { "5": { output: "source-dlss-2x-v01.mp4" } },
+      files: [{
+        filename: task.outputFilename,
+        subfolder: "",
+        type: "output",
+        absolutePath: `C:/output/${task.outputFilename}`
+      }],
+      id: () => "dlss-version"
+    });
+
+    expect(state.history[0]?.defaultVersionId).toBe("dlss-version");
+    expect(state.history[0]?.versions).toHaveLength(2);
+    expect(state.history[0]?.versions[1]).toMatchObject({
+      id: "dlss-version",
+      kind: "upscale",
+      sourceAssetId: "asset-dlss",
+      sourceVersionId: "source-version",
+      upscaleProvider: "dlss5",
+      upscaleOperation: "super-resolution",
+      upscaleScale: 2,
+      upscaleQuality: "quality",
+      upscaleGuideProfile: "depth-anything-v2-small-farneback",
+      upscaleNodeRevision: DEFAULT_DLSS5_UPSCALE_OPTIONS.nodeRevision,
+      upscaleRuntimeBundleId: DEFAULT_DLSS5_UPSCALE_OPTIONS.runtimeBundleId,
+      width: 1664,
+      height: 960,
+      fps: 24
     });
   });
 });

@@ -3,7 +3,14 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AppState, Draft, ImageEditDraft, Settings, UpscaleRequest } from "../src/types.js";
+import type {
+  AppState,
+  Draft,
+  ImageEditDraft,
+  NativeAvArtifactInspection,
+  Settings,
+  UpscaleRequest
+} from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { activateCreationDraft } from "../src/core/creation-drafts.js";
 import { findImageProjectLineage, normalizeImageEditDraft } from "../src/core/image-project.js";
@@ -16,6 +23,7 @@ import {
   extensionSafetyForTask,
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3Q3GgufModel,
@@ -25,9 +33,11 @@ import {
   validateApiWorkflow,
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
+  workflowSupportsH3ContinuumExtension,
   workflowSupportsH3MotionContextExtension,
   workflowSupportsH3MotionContextReferences,
-  workflowSupportsH3TurboSampling
+  workflowSupportsH3TurboSampling,
+  miniMaxH3ModelAssetNames
 } from "../src/core/workflow.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
 import {
@@ -51,6 +61,14 @@ import {
   resolveH3VideoVaeMode
 } from "../src/core/h3-video-vae.js";
 import {
+  AETHERSCALE_MODEL_ID,
+  normalizeAetherScaleTarget
+} from "../src/core/aetherscale.js";
+import {
+  DLSS5_MODEL_ID,
+  normalizeUpscaleTarget
+} from "../src/core/dlss5.js";
+import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts
 } from "../src/core/h3-reference.js";
@@ -73,6 +91,7 @@ import {
   resolveComfyOutputDirectory,
   scanEnvironment
 } from "./services/environment.js";
+import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 import { archiveImagePaths, archiveImageReferences, hashImageFile } from "../src/infrastructure/image-asset-library.js";
 import { isPathWithinDirectory } from "../src/infrastructure/video-history-migration.js";
 
@@ -84,6 +103,10 @@ export interface QueueEnqueueServiceDependencies {
   effectiveImageInputLibraryDirectory(settings: Settings): Promise<string>;
   resolveTaskOutputDirectory(): Promise<string>;
   imageInspection: ImageInspectionPort;
+  inspectNativeAvArtifact?: (
+    referencePath: string,
+    outputDirectory: string
+  ) => Promise<NativeAvArtifactInspection>;
 }
 
 export type QueueEnqueueDependencies = QueueEnqueueServiceDependencies & { ipc: IpcMain };
@@ -296,6 +319,153 @@ export class QueueEnqueueService {
     }
     if (learnedProfile.customNodeCompatibility === "error") {
       throw new Error("H3 Learned 3D 节点版本不兼容，请在设置 → 节点与依赖中更新后重试。");
+    }
+  }
+
+  private validateDlss5EnqueuePreflight(
+    request: UpscaleRequest
+  ): UpscaleRequest {
+    if (request.upscaleMode === "h3-native") {
+      throw new Error("DLSS5 任务不能与 H3 原生二次采样 provider 混用。");
+    }
+    const target = normalizeUpscaleTarget(request);
+    if (target.provider !== "dlss5") throw new Error("DLSS5 目标规范化失败。");
+    return {
+      ...request,
+      upscaleMode: "pixel",
+      modelId: DLSS5_MODEL_ID,
+      targetHeight: undefined,
+      targetScale: target.targetScale,
+      dlss5: structuredClone(target.dlss5),
+      tileMode: "auto",
+      faceRestore: false
+    };
+  }
+
+  private validateAetherScaleEnqueuePreflight(
+    request: UpscaleRequest
+  ): UpscaleRequest {
+    if (request.upscaleMode === "h3-native") {
+      throw new Error("AetherScale 任务不能与 H3 原生二次采样 provider 混用。");
+    }
+    if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined) {
+      throw new Error("AetherScale 任务不能与 legacy/HECer target 字段混用。");
+    }
+    const target = normalizeAetherScaleTarget(request);
+    return {
+      ...request,
+      upscaleMode: "pixel",
+      modelId: AETHERSCALE_MODEL_ID,
+      targetHeight: undefined,
+      targetScale: undefined,
+      dlss5: undefined,
+      aetherScale: structuredClone(target.aetherScale),
+      tileMode: "auto",
+      faceRestore: false
+    };
+  }
+
+  private async checkAetherScaleEnqueueEnvironment(
+    request: UpscaleRequest,
+    settings: Settings
+  ): Promise<void> {
+    if (!isLocalComfyUrl(settings.comfyUrl)) {
+      throw new Error("AetherScale carrier 需要与当前 Windows 本地 ComfyUI 使用同一台机器；远程 ComfyUI 仅支持连接。");
+    }
+    const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
+    if (!environment) {
+      this.deps.logger.info("queue", "upscale-enqueue-environment-preflight-deferred", "未阻塞入队：AetherScale 环境检查将在任务准备阶段重新执行", {
+        provider: AETHERSCALE_MODEL_ID,
+        mode: request.aetherScale?.mode
+      });
+      return;
+    }
+    const node = environment.customNodes?.find((candidate) => candidate.id === "comfyui-aetherscale");
+    if (!node?.installed || Boolean(node.loadError) || node.compatibilityState === "error" || node.runtimeRepairable ||
+        (node.runtimeVerified && !node.loaded)) {
+      throw new Error(
+        node?.loadError
+          ? `AetherScale 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
+          : "AetherScale 节点尚未安装或未通过静态检查，请先在设置 → 节点与依赖中安装并重新扫描。"
+      );
+    }
+    if (node.runtimeMissingNodeTypes?.length) {
+      throw new Error("AetherScale 节点 schema 尚未通过当前 ComfyUI 检查，请刷新环境后重试。");
+    }
+    const profile = environment.modelProfiles?.find((candidate) => candidate.id === AETHERSCALE_MODEL_ID);
+    if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
+      throw new Error("AetherScale 节点 schema 尚未通过当前 ComfyUI 检查，请刷新环境后重试。");
+    }
+    const nvidia = environment.items?.find((item) => item.id === "nvidia");
+    if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
+      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，AetherScale carrier 只能在 Windows + NVIDIA 环境运行。");
+    }
+    const runtime = environment.aetherScaleRuntime;
+    if (runtime && (!runtime.carrierReady || runtime.state === "missing" || runtime.state === "invalid")) {
+      const detail = runtime.error || runtime.missingFiles.join("、") || runtime.incompatibleFiles.join("、");
+      throw new Error(`AetherScale carrier runtime 尚未就绪${detail ? `：${detail}` : ""}。请在设置 → 节点与依赖中完成安装并重新扫描。`);
+    }
+  }
+
+  private async checkDlss5EnqueueEnvironment(
+    request: UpscaleRequest,
+    settings: Settings
+  ): Promise<void> {
+    if (!isLocalComfyUrl(settings.comfyUrl)) return;
+    const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
+    if (!environment) {
+      this.deps.logger.info("queue", "upscale-enqueue-environment-preflight-deferred", "未阻塞入队：DLSS5 环境检查将在任务准备阶段重新执行", {
+        provider: DLSS5_MODEL_ID,
+        targetScale: request.targetScale
+      });
+      return;
+    }
+    const customNodes = Array.isArray(environment.customNodes)
+      ? environment.customNodes
+      : undefined;
+    const node = customNodes?.find((candidate) => candidate.id === "comfyui-dlss5");
+    if (customNodes && !node) {
+      throw new Error("DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。");
+    }
+    if (node && (
+      !node.installed ||
+      Boolean(node.loadError) ||
+      node.runtimeRepairable ||
+      node.compatibilityState === "error" ||
+      (node.runtimeVerified && !node.loaded)
+    )) {
+      throw new Error(
+        node.loadError
+          ? `DLSS5 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
+          : "DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。"
+      );
+    }
+    if (node?.runtimeMissingNodeTypes?.length) {
+      throw new Error("DLSS5 节点 schema 尚未通过当前 ComfyUI 检查，请在设置 → 节点与依赖中刷新并重试。");
+    }
+    const profile = environment.modelProfiles?.find((candidate) => candidate.id === DLSS5_MODEL_ID);
+    if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
+      throw new Error("DLSS5 节点 schema 尚未通过当前 ComfyUI 检查，请在设置 → 节点与依赖中刷新并重试。");
+    }
+    const nvidia = environment.items?.find((item) => item.id === "nvidia");
+    if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
+      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，DLSS Super Resolution 只能在 Windows + NVIDIA 环境运行。");
+    }
+    const runtime = environment.dlss5Runtime;
+    const runtimeUnavailable = runtime && (
+      runtime.state === "missing" ||
+      runtime.state === "invalid" ||
+      (runtime.state === "ready" && !runtime.srReady) ||
+      (runtime.state === "remote" && runtime.runtimeValidated && !runtime.srReady)
+    );
+    if (runtimeUnavailable) {
+      const detail = runtime.error || runtime.missingFiles.join("、");
+      throw new Error(`DLSS5 Super Resolution runtime 尚未就绪${detail ? `：${detail}` : ""}。请在设置 → 节点与依赖中完成安装并重新扫描。`);
+    }
+    const depth = environment.depthAnything;
+    if (depth && !depth.available) {
+      const detail = depth.error || depth.missingFiles.join("、");
+      throw new Error(`Depth Anything V2 Small 权重尚未就绪${detail ? `：${detail}` : ""}。请按设置页模型卡下载 model.safetensors，放入指定 ComfyUI 模型目录后重新扫描。`);
     }
   }
 
@@ -671,6 +841,7 @@ export class QueueEnqueueService {
       throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
     }
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
+    const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
     const preparedDraft = structuredClone(draft);
     if (motionContext) {
       preparedDraft.h3ReferenceSlots = ensureMotionContextSourceSlot(
@@ -684,6 +855,47 @@ export class QueueEnqueueService {
       if (!preparedDraft.h3ReferenceSlots.every((slot) => slot.mediaPath.trim())) {
         throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
       }
+    }
+    if (continuum) {
+      // Continuum consumes a JointAV boundary for the complete source latent;
+      // never let a stale boundary-frame trim leak into its immutable task.
+      preparedDraft.trimStartSeconds = 0;
+      preparedDraft.trimEndSeconds = preparedDraft.sourceVideoDuration;
+      const outputDirectory = await deps.resolveTaskOutputDirectory();
+      const artifactPath = preparedDraft.h3ContinuumArtifact
+        ? path.join(
+            outputDirectory,
+            preparedDraft.h3ContinuumArtifact.payload.subfolder,
+            preparedDraft.h3ContinuumArtifact.payload.filename
+          )
+        : preparedDraft.h3ContinuumArtifactPath?.trim() || "";
+      if (!artifactPath) {
+        throw new Error("Continuum 续写需要一个已验证的 H3 Native AV artifact；请从 History 继续，或选择 output/h3-native-av 下的 safetensors 文件。");
+      }
+      if (!deps.inspectNativeAvArtifact) {
+        throw new Error("当前运行时没有可用的 H3 Native AV artifact 校验服务，请重启应用后重试。");
+      }
+      const inspection = await deps.inspectNativeAvArtifact(artifactPath, outputDirectory);
+      const artifact = inspection.status === "available" ? inspection.artifact : undefined;
+      if (!artifact) {
+        throw new Error(`Continuum 输入 artifact 不可用：${inspection.reason ?? "manifest 或 payload 校验失败"}`);
+      }
+      const assets = miniMaxH3ModelAssetNames(draft.modelId);
+      if (
+        artifact.modelFamily !== "minimax-h3" ||
+        !assets ||
+        artifact.diffusionModelFilename !== assets.diffusionModel
+      ) {
+        throw new Error("所选 JointAV 与 MiniMax H3 Continuum 当前权重不兼容；请使用同一套 FL2VA INT8 模型生成的 artifact。");
+      }
+      if (
+        preparedDraft.sourceWidth > 0 && preparedDraft.sourceHeight > 0 &&
+        (artifact.width !== preparedDraft.sourceWidth || artifact.height !== preparedDraft.sourceHeight)
+      ) {
+        throw new Error(`所选 JointAV 分辨率 ${artifact.width}×${artifact.height} 与源视频 ${preparedDraft.sourceWidth}×${preparedDraft.sourceHeight} 不一致。`);
+      }
+      preparedDraft.h3ContinuumArtifactPath = inspection.payloadPath ?? artifact.payload.absolutePath;
+      preparedDraft.h3ContinuumArtifact = artifact;
     }
     if (draft.h3MemoryOptimizationMode !== "off" && dependencyScan) {
       const memoryNode = dependencyScan.customNodes.find((node) => node.id === "h3-optimizations");
@@ -707,6 +919,8 @@ export class QueueEnqueueService {
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
+      : continuum
+        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 Native AV loader、state bridge、Join/Finish 或视频输出节点"]
       : isMiniMaxH3R2vModel(draft.modelId)
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
         : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);
@@ -787,7 +1001,17 @@ export class QueueEnqueueService {
     if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
       throw new Error("源视频文件不存在，无法加入提升队列");
     }
+    const isAetherScale = request.modelId === AETHERSCALE_MODEL_ID || request.aetherScale !== undefined;
+    const isDlss5 = !isAetherScale && (request.modelId === DLSS5_MODEL_ID ||
+      request.targetScale !== undefined || request.dlss5 !== undefined);
     let preparedRequest = request;
+    if (isAetherScale) {
+      preparedRequest = this.validateAetherScaleEnqueuePreflight(request);
+      await this.checkAetherScaleEnqueueEnvironment(preparedRequest, current.settings);
+    } else if (isDlss5) {
+      preparedRequest = this.validateDlss5EnqueuePreflight(request);
+      await this.checkDlss5EnqueueEnvironment(preparedRequest, current.settings);
+    }
     if (request.upscaleMode === "h3-native") {
       if (
         request.targetHeight !== 720 &&

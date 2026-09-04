@@ -58,7 +58,7 @@ export function mountCreatePromptController(options) {
         }
         options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
         options.syncPromptEnqueueUi(promptInput.value);
-        options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"));
+        options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.videoLoras);
         updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi(), isMiniMaxH3Model(draft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset()) : undefined);
     }, { signal });
     if (promptInput) {
@@ -216,6 +216,12 @@ export function mountCreatePromptController(options) {
                 h3PromptPreset: isCurrentH3
                     ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
                     : undefined,
+                videoLoras: draft.videoLoras.map((lora) => ({
+                    ...lora,
+                    compatibleModelIds: [...lora.compatibleModelIds],
+                    compatibleInputModes: [...lora.compatibleInputModes],
+                    ...(lora.promptPrefixes ? { promptPrefixes: [...lora.promptPrefixes] } : {})
+                })),
                 h3DurationSeconds: draft.duration,
                 h3AspectRatio: draft.ratio === "source"
                     ? draft.sourceHeight > draft.sourceWidth ? "9:16" : "16:9"

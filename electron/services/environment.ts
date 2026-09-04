@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type {
   AttentionAccelerationStatus,
+  AetherScaleRuntimeStatus,
   ConnectionResult,
   ComfyUiCompatibility,
   CustomNodeInstallMode,
@@ -15,6 +16,9 @@ import type {
   EnvironmentItemId,
   EnvironmentScanResult,
   EnvironmentScanScope,
+  Dlss5RuntimeStatus,
+  DepthAnythingAssetStatus,
+  Dlss5ProviderStatus,
   GpuDeviceInfo,
   LlamaServerStatus,
   LlamaCppPythonStatus,
@@ -33,6 +37,13 @@ import {
 } from "../../src/core/image-workflow.js";
 import {
   customNodeCatalog,
+  AETHERSCALE_NODE_ID,
+  AETHERSCALE_NODE_REVISION,
+  AETHERSCALE_RUNTIME_BUNDLE_ID,
+  AETHERSCALE_CARRIER_RUNTIME_BUNDLE,
+  DLSS5_NODE_ID,
+  DLSS5_NODE_REVISION,
+  DLSS5_RUNTIME_BUNDLE_ID,
   modelCatalog
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
@@ -49,6 +60,25 @@ import {
   installCustomNodePackage,
   uninstallCustomNodePackage
 } from "./dependency-installer.js";
+import {
+  comfyDepthAnythingModelDirectory,
+  emptyDepthAnythingStatus,
+  prepareDepthAnythingAssets,
+  scanDepthAnythingAssets
+} from "./depth-anything-assets.js";
+import {
+  dlss5RuntimeDirectory,
+  emptyDlss5RuntimeStatus,
+  installDlss5Runtime,
+  scanDlss5Runtime
+} from "./dlss5-runtime.js";
+import {
+  aetherScaleCarrierRuntimeDirectory,
+  emptyAetherScaleRuntimeStatus,
+  installAetherScaleRuntime,
+  scanAetherScaleRuntime,
+  uninstallAetherScaleRuntime
+} from "./aetherscale-runtime.js";
 import { prepareH3PromptWriter } from "../../src/infrastructure/dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
@@ -125,6 +155,7 @@ import {
   listeningPid,
   stopComfyUiService
 } from "./comfy-shutdown-service.js";
+import { isLocalComfyUrl } from "./comfy-endpoint.js";
 
 export {
   ltxAudioVaeCompatible,
@@ -300,7 +331,7 @@ export function normalizeProxyUrl(value: string): string {
   return parsed.toString().replace(/\/$/, "");
 }
 
-function downloadEnvironment(settings: Settings): NodeJS.ProcessEnv {
+function downloadEnvironment(settings: Settings, comfyRoot = ""): NodeJS.ProcessEnv {
   // Detached Python processes on a Chinese Windows locale otherwise inherit
   // GBK for stderr. A custom node that logs an emoji while reporting an
   // import error can then crash ComfyUI itself with UnicodeEncodeError.
@@ -352,6 +383,7 @@ interface ModelProfileDefinition {
   id: string;
   name: string;
   category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
+  role?: "generation" | "guide";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
@@ -1657,6 +1689,7 @@ function catalogModelProfileDefinitionsFor(
     id: entry.definition.id,
     name: locale?.name ?? entry.definition.id,
     category: entry.definition.category,
+    ...(entry.definition.role ? { role: entry.definition.role } : {}),
     managedBy: scan.managedBy,
     badge: locale?.badge ?? "",
     description: locale?.description ?? "",
@@ -1734,6 +1767,7 @@ export function evaluateModelProfiles(
       id: profile.id,
       name: profile.name,
       category: profile.category,
+      ...(profile.role ? { role: profile.role } : {}),
       managedBy: profile.managedBy,
       badge: profile.badge,
       description: profile.description,
@@ -3967,6 +4001,26 @@ export async function installCustomNode(
     findComfyRoot,
     findExecutable,
     findComfyPython,
+    installDlss5Runtime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
+      installDlss5Runtime(nodeSettings, comfyRoot, nodeDirectory, {
+        downloadEnvironment,
+        findComfyPython,
+        findExecutable,
+        renameWithRetry,
+        retryableRenameError,
+        runLoggedProcess
+      }, report),
+    installAetherScaleRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
+      installAetherScaleRuntime(nodeSettings, comfyRoot, nodeDirectory, {
+        downloadEnvironment,
+        findComfyPython,
+        findExecutable,
+        renameWithRetry,
+        retryableRenameError,
+        runLoggedProcess
+      }, report),
+    uninstallAetherScaleRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
+      uninstallAetherScaleRuntime(nodeSettings, comfyRoot, nodeDirectory, report),
     resolveBundledNodeDirectory: async (_nodeId, directoryName) => {
       const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
       const candidates = [
@@ -3992,6 +4046,24 @@ export async function installCustomNode(
     renameWithRetry,
     runLoggedProcess
   }, onLog, mode);
+}
+
+export async function installDepthAnything(
+  settings: Settings,
+  onLog?: (message: string) => void
+): Promise<ConnectionResult> {
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    return {
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会安装本地 Depth Anything 资产。"
+    };
+  }
+  const comfyRoot = await findComfyRoot(settings);
+  if (!comfyRoot) {
+    return { ok: false, message: "没有找到 ComfyUI 数据目录，无法检查 Depth Anything。" };
+  }
+  const modelDirectory = comfyDataDirectories(settings, comfyRoot).modelDirectory;
+  return prepareDepthAnythingAssets(settings, comfyRoot, [modelDirectory], onLog);
 }
 
 export async function uninstallCustomNode(
@@ -4189,12 +4261,14 @@ export async function runLoggedProcess(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
+    signal?: AbortSignal;
     onLog?: (message: string) => void;
   }
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const output: string[] = [];
     let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     const child = spawn(executable, args, {
       cwd: options.cwd,
       env: options.env,
@@ -4208,16 +4282,12 @@ export async function runLoggedProcess(
         options.onLog?.(line);
       }
     };
-    child.stdout?.on("data", append);
-    child.stderr?.on("data", append);
-    const finishReject = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(Object.assign(error, { stdout: output.join("").trim() }));
+    const removeAbortListener = () => {
+      if (options.signal && abortListener) {
+        options.signal.removeEventListener("abort", abortListener);
+      }
     };
-    const timeout = setTimeout(() => {
-      options.onLog?.("命令超过等待上限，正在终止子进程……");
+    const terminateChild = () => {
       child.kill();
       if (process.platform === "win32" && child.pid) {
         const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
@@ -4228,18 +4298,46 @@ export async function runLoggedProcess(
       } else {
         child.kill("SIGTERM");
       }
+    };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    const finishReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      removeAbortListener();
+      reject(Object.assign(error, { stdout: output.join("").trim() }));
+    };
+    const finishResolve = (text: string) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      removeAbortListener();
+      resolve(text);
+    };
+    const abortListener = () => {
+      if (settled) return;
+      options.onLog?.("命令已取消，正在终止子进程……");
+      terminateChild();
+      finishReject(new Error("命令已取消"));
+    };
+    timeout = setTimeout(() => {
+      options.onLog?.("命令超过等待上限，正在终止子进程……");
+      terminateChild();
       finishReject(new Error(`命令运行超过 ${Math.round((options.timeoutMs ?? 900_000) / 60_000)} 分钟，已停止`));
     }, options.timeoutMs ?? 900_000);
+    if (options.signal) {
+      if (options.signal.aborted) abortListener();
+      else options.signal.addEventListener("abort", abortListener, { once: true });
+    }
     child.once("error", (error) => {
       finishReject(error);
     });
     child.once("close", (code) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
       const text = output.join("").trim();
-      if (code === 0) resolve(text);
-      else reject(Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: text }));
+      if (code === 0) finishResolve(text);
+      else finishReject(Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: text }));
     });
   });
 }
@@ -4611,6 +4709,177 @@ export function refreshModelProfileRuntimeEvidence(
   });
 }
 
+async function environmentModelFiles(
+  settings: Settings,
+  comfyRoot: string,
+  modelDirectory: string
+): Promise<string[]> {
+  const modelFiles = await listModelFiles(modelDirectory);
+  if (settings.promptModelDirectory.trim()) {
+    const promptDirectory = path.resolve(settings.promptModelDirectory);
+    if (promptDirectory.toLowerCase() !== path.resolve(modelDirectory).toLowerCase()) {
+      const promptFiles = await listModelFiles(promptDirectory);
+      modelFiles.push(...promptFiles.map((filename) => `prompt_models/${filename}`));
+    }
+  }
+  if (
+    comfyRoot &&
+    await exists(
+      path.join(
+        comfyRoot,
+        "custom_nodes",
+        "ComfyUI-Frame-Interpolation",
+        "ckpts",
+        "rife",
+        "rife47.pth"
+      )
+    )
+  ) {
+    modelFiles.push("frame_interpolation/rife47.pth");
+  }
+  return modelFiles;
+}
+
+async function scanManagedGuideAssets(
+  settings: Settings,
+  comfyRoot: string
+): Promise<{
+  dlss5Runtime: Dlss5RuntimeStatus;
+  depthAnything: DepthAnythingAssetStatus;
+  aetherScaleRuntime: AetherScaleRuntimeStatus;
+}> {
+  const local = isLocalComfyUrl(settings.comfyUrl);
+  const runtimeDirectory = comfyRoot
+    ? dlss5RuntimeDirectory(comfyRoot)
+    : "";
+  const aetherRuntimeDirectory = comfyRoot
+    ? aetherScaleCarrierRuntimeDirectory(comfyRoot)
+    : "";
+  if (!local) {
+    return {
+      dlss5Runtime: emptyDlss5RuntimeStatus(runtimeDirectory, "remote", "远程 ComfyUI 仅支持连接；未扫描本地 DLSS5 runtime。"),
+      depthAnything: emptyDepthAnythingStatus(
+        comfyRoot ? comfyDepthAnythingModelDirectory(comfyRoot) : "",
+        "远程 ComfyUI 仅支持连接；未扫描本地 Depth Anything 资产。"
+      ),
+      aetherScaleRuntime: emptyAetherScaleRuntimeStatus(
+        aetherRuntimeDirectory,
+        "remote",
+        "远程 ComfyUI 仅支持连接；未扫描本地 AetherScale carrier runtime。"
+      )
+    };
+  }
+  const [dlss5Runtime, depthAnything, aetherScaleRuntime] = await Promise.all([
+    comfyRoot
+      ? scanDlss5Runtime(comfyRoot)
+      : Promise.resolve(emptyDlss5RuntimeStatus(runtimeDirectory, "missing", "未找到 ComfyUI 数据目录。")),
+    scanDepthAnythingAssets(comfyRoot, {
+      modelDirectories: [comfyDataDirectories(settings, comfyRoot).modelDirectory]
+    }),
+    comfyRoot
+      ? scanAetherScaleRuntime(comfyRoot)
+      : Promise.resolve(emptyAetherScaleRuntimeStatus(aetherRuntimeDirectory, "missing", "未找到 ComfyUI 数据目录。"))
+  ]);
+  return { dlss5Runtime, depthAnything, aetherScaleRuntime };
+}
+
+function buildDlss5ProviderStatuses(
+  customNodes: CustomNodeStatus[],
+  modelProfiles: ModelScanProfile[],
+  dlss5Runtime: Dlss5RuntimeStatus,
+  aetherScaleRuntime: AetherScaleRuntimeStatus
+): Partial<Record<"hecer" | "aetherscale-carrier", Dlss5ProviderStatus>> {
+  const hecerNode = customNodes.find((node) => node.id === DLSS5_NODE_ID);
+  const aetherNode = customNodes.find((node) => node.id === AETHERSCALE_NODE_ID);
+  const hecerProfile = modelProfiles.find((profile) => profile.id === "dlss5-sr");
+  const aetherProfile = modelProfiles.find((profile) => profile.id === "aetherscale-dlss5");
+  const nodeHealthy = (node: CustomNodeStatus | undefined): boolean => Boolean(
+    node?.installed &&
+    !node.loadError &&
+    !node.runtimeRepairable &&
+    node.compatibilityState !== "error"
+  );
+  const schemaValidated = (
+    node: CustomNodeStatus | undefined,
+    profile: ModelScanProfile | undefined
+  ): boolean => Boolean(
+    nodeHealthy(node) &&
+    profile?.runtimeVerified &&
+    !(profile.runtimeMissingNodes?.length) &&
+    !(node?.runtimeMissingNodeTypes?.length)
+  );
+  const hecerSchemaValidated = schemaValidated(hecerNode, hecerProfile);
+  const aetherSchemaValidated = schemaValidated(aetherNode, aetherProfile);
+  const hecerInstalled = Boolean(hecerNode?.installed);
+  const aetherInstalled = Boolean(aetherNode?.installed);
+  const hecerBlockedReason = "HECer ComfyUI-DLSS5 v0.2.2 的 SR wrapper 仍缺少上游发布的 vsdlsssr.dll；保持可见但 fail closed，不回退到其他 provider。";
+  const aetherBlockedReason = !aetherInstalled
+    ? "AetherScale 节点尚未安装。"
+    : !nodeHealthy(aetherNode)
+      ? aetherNode?.loadError || aetherNode?.compatibilityNotice || "AetherScale 节点加载或版本检查未通过。"
+      : !aetherSchemaValidated
+        ? "AetherScale v0.5.5 schema 尚未通过当前 ComfyUI /object_info 检查。"
+        : !aetherScaleRuntime.carrierReady
+          ? aetherScaleRuntime.error || "固定 carrier 六文件 runtime 尚未就绪。"
+          : "";
+  const aetherLevel: Dlss5ProviderStatus["level"] = !aetherInstalled
+    ? "missing"
+    : !nodeHealthy(aetherNode) || aetherScaleRuntime.state === "invalid"
+      ? "incompatible"
+      : !aetherSchemaValidated
+        ? "installed"
+        : !aetherScaleRuntime.carrierReady
+          ? "statically-recognizable"
+          : aetherScaleRuntime.smokeValidated
+            ? "smoke-passed"
+            : "runtime-ready";
+  return {
+    hecer: {
+      provider: "hecer",
+      nodeId: DLSS5_NODE_ID,
+      nodeRevision: DLSS5_NODE_REVISION,
+      runtimeBundleId: DLSS5_RUNTIME_BUNDLE_ID,
+      level: hecerInstalled && nodeHealthy(hecerNode) ? "blocked-upstream" : hecerInstalled ? "incompatible" : "missing",
+      availableForQueue: false,
+      installed: hecerInstalled,
+      schemaValidated: hecerSchemaValidated,
+      runtimeValidated: dlss5Runtime.runtimeValidated,
+      smokeValidated: false,
+      missingFiles: [...dlss5Runtime.missingFiles],
+      incompatibleFiles: [...dlss5Runtime.unexpectedFiles],
+      blockedReason: hecerBlockedReason,
+      evidence: [
+        `node revision ${DLSS5_NODE_REVISION}`,
+        `HECer runtime bundle ${DLSS5_RUNTIME_BUNDLE_ID}`,
+        hecerSchemaValidated ? "DLSSSuperResolution schema 已从当前 object_info 读取" : "DLSSSuperResolution schema 尚未取得当前 object_info 证据",
+        "上游 wrapper 缺失 vsdlsssr.dll；未启用 Real-ESRGAN/其他 provider fallback"
+      ]
+    },
+    "aetherscale-carrier": {
+      provider: "aetherscale-carrier",
+      nodeId: AETHERSCALE_NODE_ID,
+      nodeRevision: AETHERSCALE_NODE_REVISION,
+      runtimeBundleId: AETHERSCALE_RUNTIME_BUNDLE_ID,
+      level: aetherLevel,
+      availableForQueue: nodeHealthy(aetherNode) && aetherSchemaValidated && aetherScaleRuntime.carrierReady,
+      installed: aetherInstalled,
+      schemaValidated: aetherSchemaValidated,
+      runtimeValidated: aetherScaleRuntime.runtimeValidated,
+      smokeValidated: aetherScaleRuntime.smokeValidated,
+      missingFiles: [...aetherScaleRuntime.missingFiles],
+      incompatibleFiles: [...aetherScaleRuntime.incompatibleFiles],
+      blockedReason: aetherBlockedReason,
+      evidence: [
+        `node revision ${AETHERSCALE_NODE_REVISION}`,
+        `carrier archive ${AETHERSCALE_CARRIER_RUNTIME_BUNDLE.archiveSha256}`,
+        aetherSchemaValidated ? "AetherScaleMotionAnalysis/AetherScaleNeuralRendering schema 已从当前 object_info 读取" : "AetherScale schema 尚未取得当前 object_info 证据",
+        aetherScaleRuntime.carrierReady ? "carrier 六文件离线 hash/PE 校验通过" : "carrier 六文件离线校验未通过",
+        aetherScaleRuntime.vfxReady ? "可选 nvidia-vfx 已找到" : "可选 nvidia-vfx 不可用；不阻塞 carrier"
+      ]
+    }
+  };
+}
+
 async function scanFullEnvironment(
   settings: Settings
 ): Promise<EnvironmentScanResult> {
@@ -4638,29 +4907,8 @@ async function scanFullEnvironment(
       };
   const modelDirectory = directories.modelDirectory;
   const outputDirectory = directories.outputDirectory;
-  const modelFiles = await listModelFiles(modelDirectory);
-  if (settings.promptModelDirectory.trim()) {
-    const promptDirectory = path.resolve(settings.promptModelDirectory);
-    if (promptDirectory.toLowerCase() !== path.resolve(modelDirectory).toLowerCase()) {
-      const promptFiles = await listModelFiles(promptDirectory);
-      modelFiles.push(...promptFiles.map((filename) => `prompt_models/${filename}`));
-    }
-  }
-  if (
-    comfyRoot &&
-    await exists(
-      path.join(
-        comfyRoot,
-        "custom_nodes",
-        "ComfyUI-Frame-Interpolation",
-        "ckpts",
-        "rife",
-        "rife47.pth"
-      )
-    )
-  ) {
-    modelFiles.push("frame_interpolation/rife47.pth");
-  }
+  const modelFiles = await environmentModelFiles(settings, comfyRoot, modelDirectory);
+  const { dlss5Runtime, depthAnything, aetherScaleRuntime } = await scanManagedGuideAssets(settings, comfyRoot);
   const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
   const desktopComfyBaseUrl = "http://127.0.0.1:8000";
   const runtimeComfyBaseUrl = await firstReachableServiceBase(
@@ -4722,6 +4970,12 @@ async function scanFullEnvironment(
   const modelProfiles = mergeModelProfilesWithCustomNodes(
     scannedModelProfiles,
     runtimeValidatedCustomNodes
+  );
+  const dlss5Providers = buildDlss5ProviderStatuses(
+    runtimeValidatedCustomNodes,
+    modelProfiles,
+    dlss5Runtime,
+    aetherScaleRuntime
   );
   const llamaServer: LlamaServerStatus = {
     found: false,
@@ -4839,6 +5093,10 @@ async function scanFullEnvironment(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
+    dlss5Runtime,
+    depthAnything,
+    dlss5Providers,
+    aetherScaleRuntime,
     issues: scopedIssues,
     environmentSummary
   };
@@ -4924,6 +5182,7 @@ async function scanEnvironmentDependencies(
     ? previous.pythonRuntimes
     : await discoverPythonRuntimes(settings, comfyRoot, comfyInstallation);
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ?? pythonRuntimes[0];
+  const managedGuideAssets = await scanManagedGuideAssets(settings, comfyRoot);
   const latestNodeVersionsPromise = runtimeOnly
     ? Promise.resolve(Object.fromEntries(
         previous.customNodes
@@ -4959,14 +5218,39 @@ async function scanEnvironmentDependencies(
     llamaCppPython,
     runtimeComfyBaseUrl
   );
-  const runtimeProfiles = refreshModelProfileRuntimeEvidence(
-    previous.modelProfiles,
-    settings,
-    runtimeNodeIds
-  );
+  const runtimeProfiles = runtimeOnly
+    ? refreshModelProfileRuntimeEvidence(
+        previous.modelProfiles,
+        settings,
+        runtimeNodeIds
+      )
+    : await (async () => {
+        const directories = comfyRoot
+          ? comfyDataDirectories(settings, comfyRoot)
+          : {
+              modelDirectory: settings.modelDirectory.trim(),
+              outputDirectory: settings.outputDirectory.trim()
+            };
+        const modelFiles = await environmentModelFiles(
+          settings,
+          comfyRoot,
+          directories.modelDirectory
+        );
+        return evaluateModelProfiles(
+          modelFiles,
+          settings.ltxExtensionModelProfile,
+          runtimeNodeIds
+        );
+      })();
   const modelProfiles = mergeModelProfilesWithCustomNodes(
     runtimeProfiles,
     runtimeValidatedCustomNodes
+  );
+  const dlss5Providers = buildDlss5ProviderStatuses(
+    runtimeValidatedCustomNodes,
+    modelProfiles,
+    managedGuideAssets.dlss5Runtime,
+    managedGuideAssets.aetherScaleRuntime
   );
   const issues = await scanEnvironmentIssues(
     comfyRoot,
@@ -5029,6 +5313,10 @@ async function scanEnvironmentDependencies(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
+    dlss5Runtime: managedGuideAssets.dlss5Runtime,
+    depthAnything: managedGuideAssets.depthAnything,
+    dlss5Providers,
+    aetherScaleRuntime: managedGuideAssets.aetherScaleRuntime,
     issues: scopedIssues,
     environmentSummary
   };

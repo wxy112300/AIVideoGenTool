@@ -11,6 +11,8 @@ import {
 } from "../src/core/video-loras";
 import {
   activityTimeoutMinutesForTask,
+  continuumMaxDurationSeconds,
+  continuumSampledFrameCountForSeconds,
   extensionWorkflowSafetyErrors,
   extensionSafetyForTask,
   extensionOutputDimensions,
@@ -22,6 +24,7 @@ import {
   outputDimensions,
   outputFrameCountForTask,
   renderWorkflow,
+  isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3SpectrumEligible,
@@ -1252,6 +1255,45 @@ describe("generation VRAM safety", () => {
     }).safe).toBe(false);
   });
 
+  it("budgets Continuum as sampled context plus new frames", () => {
+    const continuumExtension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_continuum",
+      resolution: 480,
+      duration: 14,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      maxGeneratedFrames: 362,
+      overlapFrames: 22,
+      trimEndSeconds: 10
+    };
+    expect(extensionSafetyForTask(continuumExtension)).toMatchObject({
+      safe: true,
+      generatedFrames: 362,
+      maxGeneratedFrames: 362,
+      maxDurationSeconds: 14,
+      minimumContextSeconds: 22 / 24
+    });
+    expect(continuumMaxDurationSeconds()).toBe(14);
+    const fiveSecond480p = extensionSafetyForTask({
+      ...continuumExtension,
+      duration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: continuumExtension.sourceVideoDuration
+    });
+    expect(fiveSecond480p).toMatchObject({
+      safe: true,
+      generatedFrames: 141,
+      maxGeneratedFrames: 362
+    });
+    expect(extensionSafetyForTask({ ...continuumExtension, duration: 15 }).safe).toBe(false);
+    expect(extensionSafetyForTask({ ...continuumExtension, trimEndSeconds: 8 })).toMatchObject({
+      safe: false,
+      message: expect.stringContaining("末尾")
+    });
+  });
+
   it("aligns MiniMax H3 dimensions to the required 32-pixel grid", () => {
     expect(outputDimensions({
       ...task,
@@ -1688,6 +1730,49 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(latentRendered["7"]?.inputs.latent_path).toContain("clip_00001.safetensors");
     expect(latentRendered["8"]?.inputs.context_latent).toEqual(["7", 0]);
     expect(JSON.stringify(latentRendered)).not.toContain("{{");
+  });
+
+  it("renders the H3 Continuum Native AV bridge and trims only the overlap", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_continuum_extend_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const continuumTask: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_continuum",
+      resolution: 480,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      maxGeneratedFrames: 362,
+      overlapFrames: 22,
+      h3SaveJointAv: true
+    };
+    const rendered = renderWorkflow(source, continuumTask, {
+      h3AvInputArtifact: "h3-native-av/source.safetensors",
+      h3AvArtifactFilename: "h3-native-av/h3av-continuation",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(isMiniMaxH3ContinuumModel(continuumTask.modelId)).toBe(true);
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(workflowSupportsExtensionForModel(source, continuumTask.modelId)).toBe(true);
+    expect(continuumSampledFrameCountForSeconds(5)).toBe(141);
+    expect(rendered["5"]?.inputs.artifact).toBe("h3-native-av/source.safetensors");
+    expect(rendered["6"]?.inputs.joint_av).toEqual(["5", 0]);
+    expect(rendered["7"]?.inputs.length).toBe(141);
+    expect(rendered["9"]?.inputs).toMatchObject({
+      latent: ["5", 0],
+      previous_state: ["6", 0],
+      continuity: "Balanced — 22 frames",
+      extend_seconds: 5
+    });
+    expect(rendered["17"]?.inputs.plan).toEqual(["9", 3]);
+    expect(rendered["20"]?.inputs.filename).toBe("h3-native-av/h3av-continuation");
+    expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 
   it("injects Motion Context image and extra-video slots after the locked source video", () => {

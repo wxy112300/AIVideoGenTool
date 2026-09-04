@@ -18,7 +18,8 @@ const knownModelPatchClasses = new Set([
     ...attentionClasses,
     "LoraLoaderModelOnly",
     "MiniMaxH3SigmaShift",
-    "ModelSamplingMiniMaxH3"
+    "ModelSamplingMiniMaxH3",
+    "H3ContinuumJoin"
 ]);
 const message = (key, params = {}, locale = "zh-CN") => workflowMessage(key, params, locale);
 function modelLink(value) {

@@ -264,4 +264,46 @@ describe("renderer composition", () => {
     });
     expect(harness.renderOverlay).toHaveBeenCalledTimes(1);
   });
+
+  it("opens a DLSS5 task with multiplier state instead of a legacy target height", () => {
+    const harness = createQueueHarness();
+    const task = {
+      id: "upscale-dlss5-1",
+      taskType: "upscale",
+      status: "waiting",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "source-dlss-3x-v01.mp4",
+      modelId: "dlss5-sr",
+      workflowPath: "builtin:upscale/dlss5-sr",
+      upscaleMode: "pixel",
+      duration: 2,
+      fps: 24,
+      sourceAssetId: "asset-dlss5",
+      sourceVersionId: "version-dlss5",
+      sourceFilePath: "C:/input/source.mp4",
+      sourceFilename: "source.mp4",
+      sourceWidth: 832,
+      sourceHeight: 480,
+      targetWidth: 2496,
+      targetScale: 3,
+      targetOutputHeight: 1440,
+      tileMode: "auto",
+      faceRestore: false,
+      dlss5: { scale: 3, quality: "balanced" }
+    } as unknown as UpscaleQueueTask;
+
+    harness.coordinator.editUpscaleTask(task);
+
+    expect(harness.ui.upscaleDialog).toEqual({
+      taskId: "upscale-dlss5-1",
+      assetId: "asset-dlss5",
+      versionId: "version-dlss5",
+      targetScale: 3,
+      dlss5Quality: "balanced",
+      modelId: "dlss5-sr",
+      tileMode: "auto"
+    });
+    expect(harness.ui.upscaleDialog).not.toHaveProperty("targetHeight");
+  });
 });
