@@ -4,6 +4,7 @@ import {
   H3_CKPT850_LORA,
   H3_CAMERA_MOTION_LORA,
   H3_EQUI360_LORA,
+  H3_VR180_SBS_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_FACIAL_REALISM_CLOSEUP_LORA,
   H3_REALISM_PEOPLE_LORA,
@@ -31,6 +32,7 @@ describe("video LoRA catalog", () => {
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_CAMERA_MOTION_LORA.id,
       H3_EQUI360_LORA.id,
+      H3_VR180_SBS_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
       H3_FACIAL_REALISM_CLOSEUP_LORA.id,
       H3_REALISM_PEOPLE_LORA.id
@@ -42,7 +44,7 @@ describe("video LoRA catalog", () => {
       compatibleInputModes: ["image"]
     });
     expect(H3_REALISM_PEOPLE_LORA).toMatchObject({
-      strength: 0.8,
+      strength: 0.85,
       purpose: "quality",
       compatibleModelIds: ["minimax_h3_fl2va", "minimax_h3_ref2va"],
       compatibleInputModes: ["image"]
@@ -65,6 +67,13 @@ describe("video LoRA catalog", () => {
       strength: 1,
       purpose: "style",
       promptPrefixes: ["equirect360"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_VR180_SBS_LORA).toMatchObject({
+      strength: 1,
+      purpose: "style",
+      promptPrefixes: ["vr180sbs"],
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
@@ -176,6 +185,32 @@ describe("video LoRA catalog", () => {
         severity: "warning"
       }),
     ]));
+  });
+
+  it("supports the optional Realism People and Camera Motion dual stack", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_CAMERA_MOTION_LORA, H3_REALISM_PEOPLE_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_CAMERA_MOTION_LORA.id, H3_REALISM_PEOPLE_LORA.id].sort().join(":")}`,
+        severity: "warning"
+      })
+    ]));
+
+    const instruction = h3LoraPromptInstruction([
+      H3_CAMERA_MOTION_LORA,
+      H3_REALISM_PEOPLE_LORA
+    ]);
+    expect(instruction).toContain("canonical trigger: camera motion");
+    expect(instruction).toContain("optical depth of field");
+    expect(instruction).toContain("canonical trigger: r34l1sm");
+    expect(instruction).toContain("natural skin texture");
   });
 
   it("adds the Facial Realism trigger at the start of the execution Prompt", () => {
@@ -310,6 +345,40 @@ describe("video LoRA catalog", () => {
     expect(instruction).toContain("equirect360");
     expect(instruction).toContain("equirectangular spherical projection");
     expect(instruction).toContain("mono 360");
+  });
+
+  it("adds the VR180 SBS trigger and keeps it on the H3 generation path", () => {
+    expect(videoPromptForLoras(
+      "a quiet beach at sunset",
+      [H3_VR180_SBS_LORA]
+    )).toBe("vr180sbs, a quiet beach at sunset");
+    expect(videoPromptForLoras(
+      "vr180sbs, a quiet beach at sunset",
+      [H3_VR180_SBS_LORA]
+    )).toBe("vr180sbs, a quiet beach at sunset");
+    expect(videoLoraCompatibleWithDraft(
+      H3_VR180_SBS_LORA,
+      "minimax_h3_fl2va",
+      "image"
+    )).toBe(true);
+    expect(videoLoraCompatibleWithDraft(
+      H3_VR180_SBS_LORA,
+      "minimax_h3_fl2va",
+      "video"
+    )).toBe(false);
+    expect(videoLoraCompatibleWithDraft(
+      H3_VR180_SBS_LORA,
+      "minimax_h3_ref2va",
+      "image"
+    )).toBe(false);
+  });
+
+  it("passes the VR180 SBS layout guidance to the H3 prompt enhancer", () => {
+    const instruction = h3LoraPromptInstruction([H3_VR180_SBS_LORA]);
+    expect(instruction).toContain("vr180sbs");
+    expect(instruction).toContain("side-by-side");
+    expect(instruction).toContain("left-eye");
+    expect(instruction).toContain("21:9");
   });
 
   it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {

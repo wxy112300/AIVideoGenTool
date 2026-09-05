@@ -19,6 +19,18 @@ export const h3LoraPromptLibrary: Readonly<Record<string, H3LoraPromptProfile>> 
     instruction: "When the user requests a 360-degree or immersive environment, describe a full equirectangular spherical projection with the horizon near the vertical middle and a complete environment wrapping around the viewer. Preserve the user's subject, action, camera intent, and soundscape; do not invent a headset or stereoscopic view.",
     usage: "This adapter is for mono 360° equirectangular T2VA output. Keep the layout sentence concise and place it after the trigger; prefer static-camera or locked-tripod wording when it fits the user's request. Do not claim stereo, VR180, reference-image control, or 8-step Turbo support."
   },
+  "minimax-h3-vr180-sbs": {
+    id: "minimax-h3-vr180-sbs",
+    triggerWord: "vr180sbs",
+    instruction: "When the user requests VR180 stereo, describe one 180-degree scene as a side-by-side layout: the left half is the left-eye view and the right half is the right-eye view of the same scene, nearly identical with a slight horizontal offset. Preserve the user's subject, action, camera, timing, audio, and reference constraints; never turn it into top-bottom stereo, a mono 360-degree equirectangular panorama, or unsupported headset metadata prose.",
+    usage: "Use the fixed layout sentence after the trigger and keep the adapter at strength 1.0 with native H3 21:9, 768p output. The app injects vr180sbs separately; do not repeat it as scene prose. Do not claim I2V, 8-step Turbo, or automatic 2:1 spherical packaging; those remain outside the validated path."
+  },
+  "minimax-h3-camera-motion-v1": {
+    id: "minimax-h3-camera-motion-v1",
+    triggerWord: "camera motion",
+    instruction: "When the user asks for a cinematic camera move, clarify one coherent optical camera path and preserve the requested subject, action, framing, timing, and reference identity. When it fits the shot, retain natural optical depth of field, lens falloff, and restrained handheld micro-shake; do not force camera movement, shallow focus, or shake onto a static shot.",
+    usage: "This is a camera/motion adapter, not a subject or action adapter. Keep explicit push-in, pull-out, orbit, tracking, aerial, static-camera, timing, and framing constraints authoritative. When combined with Realism People, keep the camera path restrained and avoid contradictory moves."
+  },
   "minimax-h3-facial-realism-closeup": {
     id: "minimax-h3-facial-realism-closeup",
     triggerWord: "Facial Realism",
@@ -28,8 +40,8 @@ export const h3LoraPromptLibrary: Readonly<Record<string, H3LoraPromptProfile>> 
   "minimax-h3-realism-people": {
     id: "minimax-h3-realism-people",
     triggerWord: "r34l1sm",
-    instruction: "For human-centered shots, preserve believable skin, facial expression, hands, gestures, film lighting, and natural movement where relevant; do not turn a non-human or non-people request into a portrait.",
-    usage: "This is a broad people-realism adapter. Keep any close-up emphasis subordinate to the user's requested framing, and do not invent camera motion or content that the user did not request."
+    instruction: "For human-centered shots, favor natural skin texture, visible pores, believable translucency, restrained highlights, and lifelike facial expression and hand motion; reduce oily shine and plastic or CG-looking skin without making skin gritty or changing identity. Do not turn a non-human or non-people request into a portrait.",
+    usage: "This is a broad people-realism adapter. Keep any close-up emphasis subordinate to the user's requested framing, and do not invent camera motion or content that the user did not request. When combined with Camera Motion, keep optical and handheld cues subtle and let the user's explicit camera direction win."
   }
 };
 

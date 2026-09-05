@@ -11,6 +11,7 @@ import {
 } from "../src/renderer/pages/create/view-model";
 import { createDefaultDraft } from "../src/core/defaults";
 import { isImageModelSelectable } from "../src/renderer/shared/status";
+import { videoSettingChangeRequiresRender } from "../src/renderer/pages/create/page-controller";
 
 function videoCheck(overrides: Partial<Parameters<typeof videoEnqueueBlockReason>[0]> = {}) {
   return videoEnqueueBlockReason({
@@ -147,6 +148,11 @@ describe("create enqueue preflight checks", () => {
     expect(resolutionAfterJointAvPreference(1080, true)).toBe(1080);
     expect(resolutionAfterJointAvPreference(720, false)).toBe(720);
     expect(selectedVideoResolution(1080, [360, 480, 540, 720, 768])).toBe(768);
+  });
+
+  it("rerenders resolution options after the video aspect ratio changes", () => {
+    expect(videoSettingChangeRequiresRender("ratio")).toBe(true);
+    expect(videoSettingChangeRequiresRender("resolution")).toBe(false);
   });
 
   it("validates Create 1080 against its 720p first pass", () => {

@@ -78,6 +78,7 @@ describe("model catalog", () => {
       "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-camera-motion-v1",
       "minimax-h3-equi360",
+      "minimax-h3-vr180-sbs",
       "minimax-h3-after-midnight-ref2va-nsfw",
       "minimax-h3-facial-realism-closeup",
       "minimax-h3-realism-people"
@@ -205,7 +206,7 @@ describe("model catalog", () => {
       badge: "最多 3 Picture · 原生品質"
     });
     expect(modelCatalog.localized("minimax-h3-realism-people", "zh-TW")).toMatchObject({
-      badge: "H3 專屬 · 人物寫實"
+      badge: "H3 專屬 · 皮膚/人物寫實"
     });
     expect(modelCatalog.localized("community/gemma-4-26b-a4b-uncensored-q4", "zh-TW")).toMatchObject({
       badge: "Uncensored · MoE Q4"

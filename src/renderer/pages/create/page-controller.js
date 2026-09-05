@@ -10,6 +10,9 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
 import { resolutionAfterJointAvPreference } from "./view-model";
 let creationModeTransitionRevision = 0;
+export function videoSettingChangeRequiresRender(id) {
+    return ["ratio", "fps", "frame-interpolation", "spectrum-mode"].includes(id);
+}
 export function mountCreatePageController(options) {
     const events = new AbortController();
     const signal = events.signal;
@@ -408,7 +411,7 @@ export function mountCreatePageController(options) {
                                             { seed: value ? Number(value) : null };
             options.patchDraft(patch);
             options.syncEnqueueUi();
-            if (id === "fps" || id === "frame-interpolation" || id === "spectrum-mode") {
+            if (videoSettingChangeRequiresRender(id)) {
                 options.context.requestRender();
             }
         }, { signal });

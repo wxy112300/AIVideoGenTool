@@ -69,9 +69,9 @@ const zhCN: Record<string, CatalogLoraLocale> = {
   "minimax-h3-camera-motion-v1": {
     guide: {
       summary: "社区 MiniMax H3 Camera Motion 运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动。",
-      recommendedStrength: "默认 0.8；作者建议 0.8–1.0，超过 1.2 可能不稳定。",
-      effects: "通过 camera motion 触发词增强镜头运动控制，不改变基础模型或音频策略。",
-      stacking: "建议单独作为运镜 LoRA 使用；先与无 LoRA 基准对照，再考虑与 Turbo 或人物 LoRA 组合。",
+      recommendedStrength: "默认 0.8；作者建议 0.8–1.0，超过 1.2 可能不稳定。与 Realism People 组合时先保持 0.8。",
+      effects: "通过 camera motion 触发词增强镜头运动控制；需要电影感镜头时，可保留光学景深、镜头衰减和克制的手持微抖等摄影语言。",
+      stacking: "可与 Realism People 组成可选双 LoRA：Camera Motion 0.80 + Realism People 0.85；先做同 Prompt/Seed 对照，再加入其他 LoRA。",
       compatibility: "仅当前已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；暂不开放 INT4、Q3、R2V 或视频续写。",
       source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
     },
@@ -92,6 +92,20 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；360° 几何 LoRA 建议先单独验证，再与运镜、人物或性能 LoRA 组合。"
+    }
+  },
+  "minimax-h3-vr180-sbs": {
+    guide: {
+      summary: "MiniMax H3 VR180 SBS 立体 LoRA，将同一 180° 场景的左眼/右眼画面并排输出；应用会自动加入触发词 vr180sbs。",
+      recommendedStrength: "固定 1.0；使用 21:9、768p；保留左半为左眼、右半为右眼的固定布局说明。",
+      effects: "把画面组织为左右眼并排的 180° 立体布局，并保留轻微水平视差；不会提升基础 H3 的人物、文字或音频质量。",
+      stacking: "建议单独使用；不要与 Equirectangular 360° 或其他空间布局/几何 LoRA 叠加，先检查左右眼一致性、边缘暗角和快速横摇。",
+      compatibility: "模型卡按 H3 原生 T2VA 的 21:9/768p 评估；当前应用沿用 H3 FL2VA 非续写创建路径，I2V、其他比例、8-step Turbo 和视频续写未验证。生成后仍需外部拉伸为 2:1 并写入立体球面元数据。",
+      source: "rehan-fal / minimax-h3-vr180-sbs-lora · v2 · 2500 steps"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；VR180 空间布局 LoRA 应单独验证，不要与 360° 几何或其他布局适配器叠加。"
     }
   },
   "minimax-h3-turbo-v4-step600-ema-pruned": {
@@ -187,10 +201,10 @@ const zhCN: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-realism-people": {
     guide: {
-      summary: "人物写实质量 LoRA，增强近景面部、自然皮肤纹理、微表情、手部活动、电影灯光和轻微纪录片式镜头感。应用会自动把触发词 r34l1sm 放到执行 Prompt 开头。",
-      recommendedStrength: "默认 0.8；作者 intended strength 为 1.0，0.6–0.8 更轻。多 LoRA 叠加时建议先从 0.6–0.8 测试。",
-      effects: "可能改变肤色、调色、镜头运动、人物朝向和肢体物理；强度过高时可能降低纹理清晰度或放大手部瑕疵。",
-      stacking: "建议放在 Turbo 之后、NSFW 内容 LoRA 之前。首次使用应保留相同 Prompt/Seed 的无 LoRA 对照；与其他人物 LoRA 叠加时分别降低强度。",
+      summary: "人物/皮肤写实质量 LoRA，增强自然皮肤纹理、毛孔、透光感、近景面部、微表情和手部活动，缓解油光与塑料感。应用会自动把触发词 r34l1sm 放到执行 Prompt 开头。",
+      recommendedStrength: "应用默认 0.85；作者 intended strength 为 1.0，0.6–0.8 更轻。与 Camera Motion 组合时先保持 0.85。",
+      effects: "改善皮肤质感、面部表演和人物细节；强度过高时仍可能改变肤色、调色、镜头运动或放大手部瑕疵。",
+      stacking: "可与 Camera Motion 组成可选双 LoRA（Camera Motion 0.80 + Realism People 0.85）；建议 Camera Motion 在前、Realism People 在后，并保留无 LoRA 对照。",
       compatibility: "作者权重支持 H3 T2V/I2V/R2V；当前应用开放给已接入的 INT8 FL2VA 图生视频与 INT8 R2V，多参考续写和 INT4/GGUF 尚未验证。",
       source: "fal / MiniMax-H3-Realism-People-LoRA"
     },
@@ -198,6 +212,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
       realismTurbo: "Realism People 可与 Turbo 叠加，但低步数可能削弱人物细节；建议 Turbo 在前，并与标准 20 步做同 Seed 对照。",
       realismAfterMidnight: "Realism People 与 AfterMidnight 都会改变人物和身体细节；组合属于未充分验证路径，建议分别降低强度并检查肤色、手部和动作。",
+      realismCameraMotion: "Realism People + Camera Motion 可作为可选双 LoRA（0.85 + 0.80）；当前组合尚未完成真实 smoke，先用同 Prompt/Seed 对照，出现塑料感、过锐或运镜不稳时降低强度。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；推荐顺序为性能 LoRA、人物/质量 LoRA、内容 LoRA。"
     }
   },
@@ -289,9 +304,9 @@ const enUS: Record<string, CatalogLoraLocale> = {
   "minimax-h3-camera-motion-v1": {
     guide: {
       summary: "A community MiniMax H3 Camera Motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial camera movement.",
-      recommendedStrength: "Default 0.8; the author recommends 0.8–1.0, while values above 1.2 may become unstable.",
-      effects: "Uses the camera motion trigger to strengthen camera-movement control without changing the base model or audio policy.",
-      stacking: "Use it by itself first; compare against a no-LoRA baseline before combining it with Turbo or people LoRAs.",
+      recommendedStrength: "Default 0.8; the author recommends 0.8–1.0, while values above 1.2 may become unstable. Keep 0.8 when pairing it with Realism People.",
+      effects: "Uses the camera motion trigger to strengthen camera control; for cinematic shots, prompt guidance can preserve optical depth of field, lens falloff, and restrained handheld micro-shake.",
+      stacking: "Optional dual stack with Realism People: Camera Motion 0.80 + Realism People 0.85. Compare the same Prompt/Seed before adding other LoRAs.",
       compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; INT4, Q3, R2V, and video extension remain disabled.",
       source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
     },
@@ -312,6 +327,20 @@ const enUS: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       orderSuggestion: "Place {current} before {previous}; validate the 360° geometry adapter alone before combining it with camera-motion, people, or performance adapters."
+    }
+  },
+  "minimax-h3-vr180-sbs": {
+    guide: {
+      summary: "A MiniMax H3 VR180 side-by-side stereo LoRA that places the same 180-degree scene in left- and right-eye views; the app automatically prefixes vr180sbs.",
+      recommendedStrength: "Keep 1.0; use 21:9 at 768p and retain the fixed left-eye-left/right-eye-right layout sentence.",
+      effects: "Organizes the frame into side-by-side 180-degree stereo views with slight horizontal disparity; it does not improve base H3 people, text, or audio quality.",
+      stacking: "Use it alone first; do not stack it with Equirectangular 360° or other spatial-layout/geometry LoRAs. Inspect eye consistency, edge vignette, and fast pans.",
+      compatibility: "The model card evaluates native H3 T2VA at 21:9/768p; the app exposes the H3 FL2VA non-extension creation path. I2V, other ratios, eight-step Turbo, and video extension remain unvalidated. Stretch the output externally to 2:1 and add spherical stereo metadata.",
+      source: "rehan-fal / minimax-h3-vr180-sbs-lora · v2 · 2500 steps"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      orderSuggestion: "Place {current} before {previous}; validate the VR180 spatial-layout adapter alone and do not stack it with 360° geometry or another layout adapter."
     }
   },
   "minimax-h3-turbo-v4-step600-ema-pruned": {
@@ -407,10 +436,10 @@ const enUS: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-realism-people": {
     guide: {
-      summary: "A people-realism quality LoRA for close-up faces, natural skin texture, micro-expressions, hands at work, film lighting, and subtle documentary camera motion. The app automatically prefixes the execution Prompt with r34l1sm.",
-      recommendedStrength: "Default 0.8; the author's intended strength is 1.0, with 0.6–0.8 for a lighter effect. Start at 0.6–0.8 when stacking LoRAs.",
-      effects: "May alter skin tone, grading, camera movement, gaze, and body physics; excessive strength can soften texture or amplify hand artifacts.",
-      stacking: "Place it after Turbo and before NSFW content LoRAs. Keep a same-Prompt/same-Seed baseline without the adapter, and lower each strength when combining people-focused LoRAs.",
+      summary: "A skin/people-realism quality LoRA for natural skin texture, visible pores, translucency, close-up faces, micro-expressions, hands, film lighting, and restrained documentary camera feel. It reduces oily or plastic-looking skin; the app automatically prefixes the execution Prompt with r34l1sm.",
+      recommendedStrength: "The app defaults to 0.85; the author's intended strength is 1.0, with 0.6–0.8 for a lighter effect. Keep 0.85 when pairing it with Camera Motion.",
+      effects: "Improves skin texture, facial performance, and people detail; excessive strength may still alter skin tone, grading, camera movement, or amplify hand artifacts.",
+      stacking: "Optional dual stack with Camera Motion (Camera Motion 0.80 + Realism People 0.85). Place Camera Motion first, keep a no-LoRA baseline, and lower each strength if artifacts appear.",
       compatibility: "The author supplies one H3 T2V/I2V/R2V weight. The app currently enables validated INT8 FL2VA image-to-video and INT8 R2V; multi-reference extension and INT4/GGUF remain unvalidated.",
       source: "fal / MiniMax-H3-Realism-People-LoRA"
     },
@@ -418,6 +447,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       realismTurbo: "Realism People can stack with Turbo, but low-step sampling may reduce people detail; place Turbo first and compare against standard 20-step sampling with the same Seed.",
       realismAfterMidnight: "Realism People and AfterMidnight both alter people and body detail. This stack is not fully validated; lower both strengths and inspect skin tone, hands, and motion.",
+      realismCameraMotion: "Realism People + Camera Motion is an optional dual stack (0.85 + 0.80). The combination has not had a real smoke yet; compare the same Prompt/Seed first and lower strength if skin looks plastic/over-sharp or camera motion becomes unstable.",
       orderSuggestion: "Place {current} before {previous}; the recommended order is performance, people/quality, then content LoRAs."
     }
   },

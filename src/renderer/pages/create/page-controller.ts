@@ -25,6 +25,10 @@ import { resolutionAfterJointAvPreference } from "./view-model";
 
 let creationModeTransitionRevision = 0;
 
+export function videoSettingChangeRequiresRender(id: string): boolean {
+  return ["ratio", "fps", "frame-interpolation", "spectrum-mode"].includes(id);
+}
+
 export interface CreatePageControllerOptions {
   context: RendererContext;
   setCreationMode(mode: CreationMode): void;
@@ -522,7 +526,7 @@ export function mountCreatePageController(
         { seed: value ? Number(value) : null };
       options.patchDraft(patch);
       options.syncEnqueueUi();
-      if (id === "fps" || id === "frame-interpolation" || id === "spectrum-mode") {
+      if (videoSettingChangeRequiresRender(id)) {
         options.context.requestRender();
       }
     }, { signal });

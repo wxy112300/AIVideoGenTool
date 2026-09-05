@@ -5,6 +5,7 @@ import {
   H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_EQUI360_LORA,
+  H3_VR180_SBS_LORA,
   H3_REALISM_PEOPLE_LORA,
   H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
@@ -166,6 +167,36 @@ describe("renderWorkflow", () => {
       lora_name: "h3-equi360-lora-step2500.safetensors"
     });
     expect(rendered["6"]?.inputs.prompt).toBe("equirect360, 人物自然转身");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      scheduler: "simple",
+      steps: 20
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
+  });
+
+  it("renders VR180 SBS as an optional H3 LoRA without enabling Turbo sampling", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_VR180_SBS_LORA],
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const vr180Loader = Object.values(rendered).find((node) =>
+      node.class_type === "LoraLoaderModelOnly" &&
+      node.inputs.lora_name === "h3-vr180-sbs-lora-v2.safetensors"
+    );
+
+    expect(vr180Loader?.inputs).toMatchObject({
+      strength_model: 1,
+      lora_name: "h3-vr180-sbs-lora-v2.safetensors"
+    });
+    expect(rendered["6"]?.inputs.prompt).toBe("vr180sbs, 人物自然转身");
     expect(rendered["8"]?.inputs).toMatchObject({
       scheduler: "simple",
       steps: 20
@@ -661,7 +692,7 @@ describe("renderWorkflow", () => {
       node.class_type === "MiniMaxH3ImageToVideo"
     );
 
-    expect(realismLoader?.inputs.strength_model).toBe(0.8);
+    expect(realismLoader?.inputs.strength_model).toBe(0.85);
     expect(conditioning?.inputs.prompt).toBe("r34l1sm, a woman speaks beside a window");
   });
 

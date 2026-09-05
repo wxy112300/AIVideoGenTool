@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.59.3**。本 patch 修复图片任务入队同步触发全量环境扫描并因探针超时而失败的问题；图片入队现在与视频一致，使用已完成的扫描缓存，并在冷缓存时把模型和节点校验延后到执行阶段。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.59.4**。本 patch 新增可选 H3 VR180 SBS v2 LoRA，并整理 Realism People 与 Camera Motion 双 LoRA 使用建议；同时修复视频创建页切换画面比例后清晰度选项中的实际输出尺寸未同步更新的问题。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -25,7 +25,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、MiniMax H3 Continuum（Extend，依赖 Native AV）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | HiDream-O1-Image、Z-Image / Z-Image-Turbo、Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | H3 committed JointAV 原生二次采样（720p/768p bilinear；runtime-ready 时 1080p/1440p learned 3D）、SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
-| H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Camera Motion、Equirectangular 360°、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
+| H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Camera Motion、Equirectangular 360°、VR180 SBS、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF |
 
 表中的“支持”表示相关 UI、队列快照和 ComfyUI 工作流已经纳入当前集成范围。实际可用性仍取决于模型文件、节点版本、Python 依赖、PyTorch/CUDA 运行时和硬件资源；各组合应以设置页检查结果及真实最小任务为准。H3 768p 对运行时兼容性较为敏感，不匹配的 CUDA 扩展可能回退到通用实现，从而增加显存占用或降低执行性能。

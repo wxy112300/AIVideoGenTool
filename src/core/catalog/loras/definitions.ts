@@ -53,6 +53,9 @@ export const H3_EQUI360_LORA_ID = "minimax-h3-equi360";
 export const H3_EQUI360_LORA_FILENAME = "h3-equi360-lora-step2500.safetensors";
 export const H3_EQUI360_LORA_REVISION =
   "edfbcd3292b714f9f24a1864903c7fb6f7afd991";
+export const H3_VR180_SBS_LORA_ID = "minimax-h3-vr180-sbs";
+export const H3_VR180_SBS_LORA_FILENAME = "h3-vr180-sbs-lora-v2.safetensors";
+export const H3_VR180_SBS_LORA_REVISION = "b2c4323";
 export const H3_TURBO_V4_LORA_ID = "minimax-h3-turbo-v4-step600-ema-pruned";
 export const H3_TURBO_V4_LORA_FILENAME =
   "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors";
@@ -309,6 +312,42 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     }]
   }
 }, {
+  id: H3_VR180_SBS_LORA_ID,
+  name: "MiniMax H3 VR180 SBS",
+  filename: H3_VR180_SBS_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "style",
+  promptPrefixes: ["vr180sbs"],
+  catalogOrder: 97,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 30,
+    settingConflicts: [],
+    combinations: []
+  },
+  scan: {
+    vram: "LoRA · VR180 SBS 立体 · v2 · strength 1.0 · 131 MB",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 VR180 SBS LoRA · v2",
+      expected: `loras/${H3_VR180_SBS_LORA_FILENAME}`,
+      patterns: [/loras\/h3-vr180-sbs-lora-v2\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "rehan-fal / minimax-h3-vr180-sbs-lora",
+        downloadUrl: `https://huggingface.co/rehan-fal/minimax-h3-vr180-sbs-lora/resolve/${H3_VR180_SBS_LORA_REVISION}/${H3_VR180_SBS_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_VR180_SBS_LORA_FILENAME,
+        revision: H3_VR180_SBS_LORA_REVISION,
+        sha256: "c7f0b3bfa361cf54aabae1cc8d567b126145101f185934684ee2171bd2550969",
+        license: "MiniMax Community License",
+        notes: "VR180 立体 SBS LoRA；执行 Prompt 会自动加入触发词 vr180sbs，并要求固定的左右眼并排布局说明。推荐 H3 原生 T2VA、21:9、768p、强度 1.0；生成后需要把输出拉伸为 2:1 并写入立体球面元数据。不要改用 H3 8-step Turbo；I2V、快速横摇和左右眼一致性尚未在本应用中验证。"
+      }
+    }]
+  }
+}, {
   id: LEGACY_H3_TURBO_LORA_ID,
   name: "LightX2V Turbo 4-Step · legacy v0.1",
   retired: true,
@@ -527,7 +566,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   id: H3_REALISM_PEOPLE_LORA_ID,
   name: "MiniMax H3 Realism People",
   filename: H3_REALISM_PEOPLE_LORA_FILENAME,
-  strength: 0.8,
+  strength: 0.85,
   modelFamily: "minimax-h3",
   compatibleModelIds: [H3_FL2VA_MODEL_ID, "minimax_h3_ref2va"],
   compatibleInputModes: ["image"],
@@ -545,10 +584,14 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
       loraId: H3_AFTER_MIDNIGHT_LORA_ID,
       severity: "warning",
       localeKey: "realismAfterMidnight"
+    }, {
+      loraId: H3_CAMERA_MOTION_LORA_ID,
+      severity: "warning",
+      localeKey: "realismCameraMotion"
     }]
   },
   scan: {
-    vram: "rank 32 · strength 0.8 · trigger r34l1sm",
+    vram: "rank 32 · strength 0.85 · trigger r34l1sm",
     integrated: true,
     components: [{
       label: "MiniMax H3 Realism People LoRA",
@@ -559,7 +602,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         downloadUrl: `https://huggingface.co/fal/MiniMax-H3-Realism-People-LoRA/resolve/main/${H3_REALISM_PEOPLE_LORA_FILENAME}?download=true`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_REALISM_PEOPLE_LORA_FILENAME,
-        notes: "MiniMax H3 人物写实 LoRA。执行 Prompt 会自动加入触发词 r34l1sm；默认强度 0.8，作者 intended strength 为 1.0。"
+        notes: "MiniMax H3 人物写实 LoRA。执行 Prompt 会自动加入触发词 r34l1sm；应用默认强度 0.85，作者 intended strength 为 1.0。"
       }
     }]
   }

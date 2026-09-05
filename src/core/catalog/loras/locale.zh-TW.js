@@ -52,9 +52,9 @@ export const zhTWLoraLocales = {
     "minimax-h3-camera-motion-v1": {
         guide: {
             summary: "社群 MiniMax H3 Camera Motion 運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。",
-            recommendedStrength: "預設 0.8；作者建議 0.8–1.0，超過 1.2 可能不穩定。",
-            effects: "透過 camera motion 觸發詞增強鏡頭運動控制，不改變基礎模型或音訊策略。",
-            stacking: "建議單獨作為運鏡 LoRA 使用；先與無 LoRA 基準對照，再考慮與 Turbo 或人物 LoRA 組合。",
+            recommendedStrength: "預設 0.8；作者建議 0.8–1.0，超過 1.2 可能不穩定。與 Realism People 組合時先保持 0.8。",
+            effects: "透過 camera motion 觸發詞增強鏡頭運動控制；需要電影感鏡頭時，可保留光學景深、鏡頭衰減與克制的手持微抖等攝影語言。",
+            stacking: "可與 Realism People 組成可選雙 LoRA：Camera Motion 0.80 + Realism People 0.85；先做同 Prompt/Seed 對照，再加入其他 LoRA。",
             compatibility: "僅目前已驗證的 MiniMax H3 FL2VA INT8 pruned ConvRot 圖生影片；暫不開放 INT4、Q3、R2V 或影片續寫。",
             source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
         },
@@ -77,6 +77,21 @@ export const zhTWLoraLocales = {
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；360° 幾何 LoRA 建議先單獨驗證，再與運鏡、人物或效能 LoRA 組合。"
         }
     },
+    "minimax-h3-vr180-sbs": {
+        guide: {
+            summary: "MiniMax H3 VR180 SBS 立體 LoRA，將同一個 180° 場景的左眼/右眼畫面並排輸出；應用會自動加入觸發詞 vr180sbs。",
+            recommendedStrength: "固定 1.0；使用 21:9、768p；保留左半為左眼、右半為右眼的固定佈局說明。",
+            effects: "把畫面組織為左右眼並排的 180° 立體佈局，並保留輕微水平視差；不會提升基礎 H3 的人物、文字或音訊品質。",
+            stacking: "建議單獨使用；不要與 Equirectangular 360° 或其他空間佈局/幾何 LoRA 疊加，先檢查左右眼一致性、邊緣暗角和快速橫搖。",
+            compatibility: "模型卡按 H3 原生 T2VA 的 21:9/768p 評估；目前應用沿用 H3 FL2VA 非續寫建立路徑，I2V、其他比例、8-step Turbo 與影片續寫未驗證。生成後仍需外部拉伸為 2:1 並寫入立體球面中繼資料。",
+            source: "rehan-fal / minimax-h3-vr180-sbs-lora · v2 · 2500 steps"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；VR180 空間佈局 LoRA 應單獨驗證，不要與 360° 幾何或其他佈局適配器疊加。"
+        }
+    },
+
     "minimax-h3-turbo-v4-step600-ema-pruned": {
         guide: {
             summary: "社群 MiniMax H3 Turbo v4 step600 EMA pruned 轉換，面向 6–8 步品質優先路徑。",
@@ -170,10 +185,10 @@ export const zhTWLoraLocales = {
     },
     "minimax-h3-realism-people": {
         guide: {
-            summary: "人物寫實質量 LoRA，增強近景面部、自然皮膚紋理、微表情、手部活動、電影燈光和輕微紀錄片式鏡頭感。應用會自動把觸發詞 r34l1sm 放到執行 Prompt 開頭。",
-            recommendedStrength: "預設 0.8；作者 intended strength 為 1.0，0.6–0.8 更輕。多 LoRA 疊加時建議先從 0.6–0.8 測試。",
-            effects: "可能改變膚色、調色、鏡頭運動、人物朝向和肢體物理；強度過高時可能降低紋理清晰度或放大手部瑕疵。",
-            stacking: "建議放在 Turbo 之後、NSFW 內容 LoRA 之前。首次使用應保留相同 Prompt/Seed 的無 LoRA 對照；與其他人物 LoRA 疊加時分別降低強度。",
+            summary: "人物/皮膚寫實質量 LoRA，增強自然皮膚紋理、毛孔、透光感、近景面部、微表情和手部活動，減少油光與塑料感。應用會自動把觸發詞 r34l1sm 放到執行 Prompt 開頭。",
+            recommendedStrength: "應用程式預設 0.85；作者 intended strength 為 1.0，0.6–0.8 更輕。與 Camera Motion 組合時先保持 0.85。",
+            effects: "改善皮膚質感、面部表演和人物細節；強度過高時仍可能改變膚色、調色、鏡頭運動或放大手部瑕疵。",
+            stacking: "可與 Camera Motion 組成可選雙 LoRA（Camera Motion 0.80 + Realism People 0.85）；建議 Camera Motion 在前、Realism People 在後，並保留無 LoRA 對照。",
             compatibility: "作者權重支援 H3 T2V/I2V/R2V；目前應用開放給已接入的 INT8 FL2VA 圖生影片與 INT8 R2V，多參考續寫和 INT4/GGUF 尚未驗證。",
             source: "fal / MiniMax-H3-Realism-People-LoRA"
         },
@@ -181,6 +196,7 @@ export const zhTWLoraLocales = {
             incompatible: "{name} 不相容目前基礎模型或輸入模式。",
             realismTurbo: "Realism People 可與 Turbo 疊加，但低步數可能削弱人物細節；建議 Turbo 在前，並與標準 20 步做同 Seed 對照。",
             realismAfterMidnight: "Realism People 與 AfterMidnight 都會改變人物和身體細節；組合屬於未充分驗證路徑，建議分別降低強度並檢查膚色、手部和動作。",
+            realismCameraMotion: "Realism People + Camera Motion 可作為可選雙 LoRA（0.85 + 0.80）；目前組合尚未完成真實 smoke，先用同 Prompt/Seed 對照，出現塑料感、過銳或運鏡不穩時降低強度。",
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；推薦順序為效能 LoRA、人物/質量 LoRA、內容 LoRA。"
         }
     },

@@ -16,14 +16,19 @@ const catalogLocales = {
         "en-US": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 only · fast four-step", description: "The latest official v1.1 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path; no SLA node required." }
     },
     "minimax-h3-camera-motion-v1": {
-        "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动。" },
-        "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。" },
-        "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement." }
+        "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动；可配合提示词表达光学景深、镜头衰减和克制的手持微抖。" },
+        "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動；可配合提示詞表達光學景深、鏡頭衰減與克制的手持微抖。" },
+        "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement, with prompt guidance for optical depth of field, lens falloff, and restrained handheld micro-shake." }
     },
     "minimax-h3-equi360": {
         "zh-CN": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 专属 · 360° 全景", description: "生成 360° 等距柱状全景视频；触发词：equirect360。推荐 21:9、768p T2VA，输出需再封装为 2:1 球面视频。" },
         "zh-TW": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 專屬 · 360° 全景", description: "生成 360° 等距柱狀全景影片；觸發詞：equirect360。建議 21:9、768p T2VA，輸出需再封裝為 2:1 球面影片。" },
         "en-US": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 only · 360° panorama", description: "Generates 360° equirectangular video; trigger: equirect360. Use the 21:9 768p T2VA path, then package the output as 2:1 spherical video." }
+    },
+    "minimax-h3-vr180-sbs": {
+        "zh-CN": { name: "MiniMax H3 VR180 SBS 立体", badge: "H3 专属 · VR180 立体", description: "生成左右眼并排的 VR180 立体视频；触发词：vr180sbs。推荐 21:9、768p、强度 1.0，输出需拉伸为 2:1 并写入立体球面元数据。" },
+        "zh-TW": { name: "MiniMax H3 VR180 SBS 立體", badge: "H3 專屬 · VR180 立體", description: "生成左右眼並排的 VR180 立體影片；觸發詞：vr180sbs。建議 21:9、768p、強度 1.0，輸出需拉伸為 2:1 並寫入立體球面中繼資料。" },
+        "en-US": { name: "MiniMax H3 VR180 SBS stereo", badge: "H3 only · VR180 stereo", description: "Generates side-by-side left/right-eye VR180 stereo video; trigger: vr180sbs. Use 21:9, 768p, and strength 1.0, then stretch to 2:1 and add spherical stereo metadata." }
     },
     "minimax-h3-turbo-v4-step600-ema-pruned": {
         "zh-CN": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 专属 · 综合首选", description: "社区 v4 step600 EMA pruned Turbo，建议 8 步，当前作为综合质量、稳定性和速度的首选。" },
@@ -56,9 +61,9 @@ const catalogLocales = {
         "en-US": { name: "LightX2V Turbo 4-Step", badge: "H3 only · performance", description: "A distilled LoRA that compresses MiniMax H3 FL2VA sampling from about 20 steps to 6–8 steps." }
     },
     "minimax-h3-realism-people": {
-        "zh-CN": { name: "MiniMax H3 Realism People", badge: "H3 专属 · 人物写实", description: "增强人物皮肤、表情、手部活动、电影灯光和轻微纪录片式镜头感。" },
-        "zh-TW": { name: "MiniMax H3 Realism People", badge: "H3 專屬 · 人物寫實", description: "增強人物皮膚、表情、手部活動、電影燈光和輕微紀錄片式鏡頭感。" },
-        "en-US": { name: "MiniMax H3 Realism People", badge: "H3 only · people realism", description: "Improves skin texture, expressions, hands at work, film lighting, and subtle documentary camera motion." }
+        "zh-CN": { name: "MiniMax H3 Realism People", badge: "H3 专属 · 皮肤/人物写实", description: "增强自然皮肤纹理、毛孔、透光感和人物表演，缓解油光与塑料感；同时改善手部活动、电影灯光和轻微纪录片式镜头感。" },
+        "zh-TW": { name: "MiniMax H3 Realism People", badge: "H3 專屬 · 皮膚/人物寫實", description: "增強自然皮膚紋理、毛孔、透光感與人物表演，減少油光與塑料感；同時改善手部活動、電影燈光和輕微紀錄片式鏡頭感。" },
+        "en-US": { name: "MiniMax H3 Realism People", badge: "H3 only · skin/people realism", description: "Improves natural skin texture, pores, translucency, and human performance while reducing oily or plastic-looking skin; it also helps hands, film lighting, and subtle documentary camera motion." }
     },
     "minimax-h3-facial-realism-closeup": {
         "zh-CN": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 专属 · 人脸特写", description: "增强人脸特写的皮肤纹理、眼神与微表情；触发词：Facial Realism。" },

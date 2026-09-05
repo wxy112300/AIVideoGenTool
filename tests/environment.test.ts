@@ -1203,7 +1203,7 @@ describe("ComfyUI environment candidates", () => {
     expect(realism).toMatchObject({
       available: true,
       integrated: true,
-      badge: "H3 专属 · 人物写实",
+      badge: "H3 专属 · 皮肤/人物写实",
       category: "lora"
     });
     expect(realism?.components[0]?.installGuide).toMatchObject({
@@ -1214,6 +1214,27 @@ describe("ComfyUI environment candidates", () => {
     expect(realism?.components[0]?.installGuide.downloadUrl).toContain(
       "/h3-realism-people-t2v-i2v-r2v.safetensors"
     );
+  });
+
+  it("detects the MiniMax H3 VR180 SBS v2 LoRA and exposes its pinned download", () => {
+    const profiles = evaluateModelProfiles([
+      "loras\\h3-vr180-sbs-lora-v2.safetensors"
+    ]);
+    const vr180 = profiles.find((profile) => profile.id === "minimax-h3-vr180-sbs");
+
+    expect(vr180).toMatchObject({
+      available: true,
+      integrated: true,
+      badge: "H3 专属 · VR180 立体",
+      category: "lora"
+    });
+    expect(vr180?.components[0]?.installGuide).toMatchObject({
+      sourceLabel: "rehan-fal / minimax-h3-vr180-sbs-lora",
+      targetSubdirectory: "loras",
+      recommendedFilename: "h3-vr180-sbs-lora-v2.safetensors",
+      revision: "b2c4323",
+      sha256: "c7f0b3bfa361cf54aabae1cc8d567b126145101f185934684ee2171bd2550969"
+    });
   });
 
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
