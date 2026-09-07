@@ -1,5 +1,6 @@
 import type { AppState, GenerationQueueTask, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   isImageGenerationQueueTask,
@@ -129,6 +130,7 @@ export interface QueueExecutorDependencies {
   resolveTaskOutputDirectory(): Promise<string>;
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
+  findExistingH3MotionContextOutput?(expectedPath: string): Promise<HistoryFile | undefined>;
   releasePromptRuntime(settings: Settings): Promise<number>;
   prepareQueueRuntimeForTask(taskId: string, modelId: string, settings: Settings, reason: QueueIsolationReason): Promise<boolean>;
   stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean, queueWillContinue: boolean): Promise<boolean>;
@@ -160,6 +162,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     resolveTaskOutputDirectory,
     requireExistingImageOutput,
     requireExistingVideoOutput,
+    findExistingH3MotionContextOutput,
     releasePromptRuntime,
     prepareQueueRuntimeForTask: prepareQueueRuntime,
     stabilizeH3RuntimeBetweenTasks,
@@ -825,6 +828,32 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         });
         const completedTask = store.get().queue.find((item) => item.id === task.id);
         if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
+        if (
+          completedTask.taskType === "extension" &&
+          isMiniMaxH3R2vModel(completedTask.modelId) &&
+          completedTask.h3ContextSavedPath &&
+          findExistingH3MotionContextOutput
+        ) {
+          const motionContextFile = await findExistingH3MotionContextOutput(
+            completedTask.h3ContextSavedPath
+          );
+          if (motionContextFile) {
+            const motionContextPath = path.resolve(motionContextFile.absolutePath ?? "");
+            if (!files.some((file) => file.absolutePath && path.resolve(file.absolutePath) === motionContextPath)) {
+              files = [...files, motionContextFile];
+            }
+            logger.info("queue", "h3-motion-context-output-ready", "Motion Context latent output validated", {
+              taskId: completedTask.id,
+              outputSubfolder: motionContextFile.subfolder,
+              outputFilename: motionContextFile.filename,
+              outputBytes: motionContextFile.sizeBytes
+            });
+          } else {
+            logger.warn("queue", "h3-motion-context-output-missing", "Motion Context completed without a validated latent output", {
+              taskId: completedTask.id
+            });
+          }
+        }
         const completedAt = new Date().toISOString();
         const h3ContinuationData = h3AvSerializerNodeId
           ? await commitH3NativeAvOutput(result, h3AvSerializerNodeId, artifactCommitTask, completedAt)

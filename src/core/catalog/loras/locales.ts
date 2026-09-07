@@ -91,6 +91,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      ratio21By9: "{name} 推荐使用 21:9；当前比例为 {ratio}，其他比例可能破坏空间布局。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；360° 几何 LoRA 建议先单独验证，再与运镜、人物或性能 LoRA 组合。"
     }
   },
@@ -105,6 +106,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      ratio21By9: "{name} 推荐使用 21:9；当前比例为 {ratio}，其他比例可能破坏空间布局。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；VR180 空间布局 LoRA 应单独验证，不要与 360° 几何或其他布局适配器叠加。"
     }
   },
@@ -326,6 +328,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
+      ratio21By9: "{name} is designed for 21:9; the current ratio is {ratio}. Other ratios may break the spatial layout.",
       orderSuggestion: "Place {current} before {previous}; validate the 360° geometry adapter alone before combining it with camera-motion, people, or performance adapters."
     }
   },
@@ -340,6 +343,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
+      ratio21By9: "{name} is designed for 21:9; the current ratio is {ratio}. Other ratios may break the spatial layout.",
       orderSuggestion: "Place {current} before {previous}; validate the VR180 spatial-layout adapter alone and do not stack it with 360° geometry or another layout adapter."
     }
   },

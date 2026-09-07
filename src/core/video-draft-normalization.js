@@ -25,6 +25,7 @@ export function normalizeVideoDraft(draft) {
     const policy = resolveVideoGenerationPolicy({
         modelId,
         inputMode: draft.inputMode,
+        ratio: draft.ratio,
         spectrumMode: draft.spectrumMode,
         videoLoras
     });

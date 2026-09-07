@@ -1,5 +1,6 @@
 import path from "node:path";
 import { H3_CONTINUATION_ARTIFACT_SUBFOLDER } from "./h3-continuation-artifact.js";
+import { H3_MOTION_CONTEXT_SUBFOLDER } from "./h3-motion-context.js";
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
 export function historyVideoVersionPaths(version, outputDirectory) {
     const results = new Set();
@@ -17,11 +18,11 @@ export function historyVideoVersionPaths(version, outputDirectory) {
 }
 export function historyVideoVersionAuxiliaryPaths(version, outputDirectory) {
     const artifact = version.h3ContinuationData?.artifact;
-    if (!artifact || !outputDirectory.trim())
+    if (!outputDirectory.trim())
         return [];
     const root = path.resolve(outputDirectory);
     const results = new Set();
-    for (const file of [artifact.manifest, artifact.payload]) {
+    for (const file of artifact ? [artifact.manifest, artifact.payload] : []) {
         if (file.subfolder !== H3_CONTINUATION_ARTIFACT_SUBFOLDER ||
             !file.filename.trim() ||
             path.basename(file.filename) !== file.filename)
@@ -33,6 +34,20 @@ export function historyVideoVersionAuxiliaryPaths(version, outputDirectory) {
             path.isAbsolute(relative))
             continue;
         results.add(candidate);
+    }
+    const contextPath = version.h3ContextLatentPath?.trim();
+    if (contextPath) {
+        const candidate = path.resolve(contextPath);
+        const relative = path.relative(root, candidate);
+        const firstSegment = relative.split(path.sep)[0];
+        if (firstSegment &&
+            new Set([H3_MOTION_CONTEXT_SUBFOLDER, "h3_context"]).has(firstSegment) &&
+            relative !== ".." &&
+            !relative.startsWith(`..${path.sep}`) &&
+            !path.isAbsolute(relative) &&
+            path.extname(candidate).toLowerCase() === ".safetensors") {
+            results.add(candidate);
+        }
     }
     return [...results];
 }

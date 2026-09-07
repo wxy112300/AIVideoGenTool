@@ -127,6 +127,18 @@ export function videoLoraConfigurationIssues(context) {
                 message: loraRuleText(lora.id, "retired", context.locale).replace("{name}", lora.name)
             });
         }
+        if (context.ratio !== undefined &&
+            context.ratio !== "21:9" &&
+            (lora.id === H3_EQUI360_LORA_ID || lora.id === H3_VR180_SBS_LORA_ID)) {
+            push({
+                code: `ratio:${lora.id}`,
+                severity: "warning",
+                loraIds: [lora.id],
+                message: loraRuleText(lora.id, "ratio21By9", context.locale)
+                    .replace("{name}", lora.name)
+                    .replace("{ratio}", context.ratio)
+            });
+        }
         definition.rules.settingConflicts.forEach((conflict) => {
             if (!conflict.values.includes(settingValues[conflict.setting]))
                 return;

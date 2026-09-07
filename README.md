@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.59.4**。本 patch 新增可选 H3 VR180 SBS v2 LoRA，并整理 Realism People 与 Camera Motion 双 LoRA 使用建议；同时修复视频创建页切换画面比例后清晰度选项中的实际输出尺寸未同步更新的问题。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.59.5**。本 patch 收录开发 harness 与文档入口、H3 生态推荐版本更新，以及依赖、历史与工作流兼容性调整。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -181,9 +181,9 @@ npm.cmd run test
 npm.cmd run verify
 ```
 
-`npm.cmd run verify` 会执行全部测试、TypeScript 检查和生产构建。它证明代码和静态工作流通过，不等同于某个本地模型已经真实生成成功。
+`npm.cmd run verify` 会执行全部测试、TypeScript 检查、生产构建和 UX 文本对比度检查。它证明代码和静态工作流通过，不等同于某个本地模型已经真实生成成功。
 
-开发者和 Coding Agent 从 [AGENTS.md](AGENTS.md) 与 [Agent Start Here](docs/AGENT_START_HERE.md) 开始；模型/工作流、架构、UX 分别由以下契约约束：
+开发者和 Coding Agent 从 [AGENTS.md](AGENTS.md) 与 [开发文档入口](docs/README.md) 开始，按任务选择 [混合 agent 工作流](docs/development/WORKFLOW.md)，通过 [代码地图](docs/AGENT_START_HERE.md) 定位实现；模型/工作流、架构、UX 分别由以下契约约束：
 
 - [工作流契约](docs/WORKFLOW_CONTRACT.md)
 - [架构契约](docs/ARCHITECTURE_CONTRACT.md)

@@ -82,11 +82,11 @@ describe("dependency scanner", () => {
       runtimeVerified: true,
       loaded: true,
       loadError: "",
-      updateNotice: expect.stringContaining("推荐 v0.4.1"),
+      updateNotice: expect.stringContaining("推荐 v0.4.5"),
       compatibilityState: "warning",
       runtimeNotice: expect.stringContaining("发现 1 个模型")
     });
-    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.1");
+    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.5");
   });
 
   it("uses Prompt Writer runtime endpoints when object_info is temporarily unavailable", async () => {
@@ -471,12 +471,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.23",
+      recommendedVersion: "0.2.24",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
     });
-    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.23");
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.24");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {

@@ -27,6 +27,7 @@ import {
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { h3TokenCountForTask } from "../../src/core/h3-token-count.js";
+import { h3MotionContextSavePrefixForTask } from "../../src/core/h3-motion-context.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import {
@@ -797,7 +798,7 @@ export async function submitTask(
             ...(h3MotionContext
               ? {
                   h3ContextLatentPath: task.h3ContextLatentPath ?? "",
-                  h3ContextSavePrefix: task.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+                  h3ContextSavePrefix: task.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id),
                   h3ReferenceImages: extraReferenceImages,
                   // H3_REF_VIDEO_0 is reserved by the workflow's source context.
                   h3ReferenceVideos: ["", ...extraReferenceVideos]

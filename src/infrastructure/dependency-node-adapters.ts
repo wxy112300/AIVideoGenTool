@@ -797,18 +797,18 @@ export function patchH3PromptWriterGemmaChatHandler(source: string): string {
 
 export function patchH3PromptWriterBriefLimit(source: string): string {
   let patched = source.replace(
-    /(^def _validated_generation_context\([\s\S]*?^\s*)if len\(brief\) > 2000:\r?\n(\s*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu,
+    /(^def _validated_generation_context\([\s\S]*?^\s*)if len\(brief\) > (?:2000|8000):\r?\n(\s*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/mu,
     (_match, prefix: string, indent: string) =>
       `${prefix}if len(brief) > 20_000:\n${indent}raise AssemblyError("BRIEF_TOO_LONG", "Creative brief cannot exceed 20,000 characters.")`
   );
   patched = patched.replace(
-    /(^[ \t]*brief = _required_text\(body, "creative_brief", "Creative brief"\)\r?\n)([ \t]*)if len\(brief\) > 2000:\r?\n([ \t]*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu,
+    /(^[ \t]*brief = _required_text\(body, "creative_brief", "Creative brief"\)\r?\n)([ \t]*)if len\(brief\) > (?:2000|8000):\r?\n([ \t]*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/mu,
     (_match, briefLine: string, checkIndent: string, raiseIndent: string) =>
       `${briefLine}${checkIndent}if len(brief) > 20_000:\n${raiseIndent}raise AssemblyError("BRIEF_TOO_LONG", "Creative brief cannot exceed 20,000 characters.")`
   );
   if (
     source.includes("def _validated_generation_context") &&
-    /(^def _validated_generation_context[\s\S]*?^\s*)if len\(brief\) > 2000:\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu.test(patched)
+    /(^def _validated_generation_context[\s\S]*?^\s*)if len\(brief\) > (?:2000|8000):\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/mu.test(patched)
   ) {
     throw new Error(
       "MiniMax H3 Prompt Writer 的 creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
@@ -816,7 +816,7 @@ export function patchH3PromptWriterBriefLimit(source: string): string {
   }
   if (
     source.includes('brief = _required_text(body, "creative_brief", "Creative brief")') &&
-    /brief = _required_text\(body, "creative_brief", "Creative brief"\)[\s\S]*?if len\(brief\) > 2000:\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/u.test(patched)
+    /brief = _required_text\(body, "creative_brief", "Creative brief"\)[\s\S]*?if len\(brief\) > (?:2000|8000):\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/u.test(patched)
   ) {
     throw new Error(
       "MiniMax H3 Prompt Writer 的 assemble_request creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
@@ -825,8 +825,8 @@ export function patchH3PromptWriterBriefLimit(source: string): string {
   return patched;
 }
 
-/** Normalize older Writer releases and earlier app patches to the upstream
- * 0.4.1 non-Thinking budget. Gemma completion is owned by its native chat
+/** Normalize older Writer releases and earlier app patches to the standard
+ * 2,048-token non-Thinking budget. Gemma completion is owned by its native chat
  * handler; increasing this limit only consumes context when stop tokens fail.
  */
 export function patchH3PromptWriterOutputBudget(source: string): string {

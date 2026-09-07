@@ -459,6 +459,7 @@ export function buildVideoCreatePageViewModel(
   const videoPolicy = resolveVideoGenerationPolicy({
     modelId: draft.modelId,
     inputMode: draft.inputMode,
+    ratio: draft.ratio,
     spectrumMode: draft.spectrumMode,
     attentionMode: state.settings.h3AttentionMode,
     videoLoras: draft.videoLoras,

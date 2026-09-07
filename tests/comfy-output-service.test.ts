@@ -139,4 +139,28 @@ describe("ComfyOutputService", () => {
     await expect(current.requireExistingNativeAvOutput(result, "99"))
       .rejects.toThrow("H3 AV serializer 输出不存在或为空");
   });
+
+  it("validates the managed Motion Context latent beside Native AV output", async () => {
+    const state = createDefaultState();
+    state.settings.outputDirectory = "C:/ComfyUI/output";
+    const current = service(
+      state,
+      (filename) => filename.toLowerCase().includes("task-1") && filename.toLowerCase().endsWith("clip_00001.safetensors")
+    );
+
+    await expect(current.findExistingH3MotionContextOutput(
+      "C:/ComfyUI/output/h3-motion-context/task-1/clip_00001.safetensors"
+    )).resolves.toEqual(expect.objectContaining({
+      filename: "clip_00001.safetensors",
+      subfolder: "h3-motion-context/task-1",
+      type: "output",
+      format: "safetensors",
+      absolutePath: path.resolve("C:/ComfyUI/output/h3-motion-context/task-1/clip_00001.safetensors"),
+      sizeBytes: 1
+    }));
+
+    await expect(current.findExistingH3MotionContextOutput(
+      "C:/ComfyUI/output/h3-motion-context/task-missing/clip_00001.safetensors"
+    )).resolves.toBeUndefined();
+  });
 });

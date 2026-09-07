@@ -28,6 +28,7 @@ import {
 import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
+import { h3MotionContextSavePrefixForTask } from "./h3-motion-context.js";
 
 export interface WorkflowContext {
   inputImage: string;
@@ -1601,7 +1602,7 @@ export function renderWorkflow(
     END_IMAGE: context.endImage ?? "",
     SOURCE_VIDEO: context.sourceVideo ?? "",
     H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
-    H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+    H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id),
     H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
     H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
     H3_AV_SOURCE_WIDTH: context.h3AvSourceWidth ?? outputWidth,

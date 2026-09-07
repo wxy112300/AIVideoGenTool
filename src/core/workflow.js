@@ -4,6 +4,7 @@ import { normalizeVideoSteps, resolveVideoGenerationPolicy, shouldApplySpectrum 
 import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
+import { h3MotionContextSavePrefixForTask } from "./h3-motion-context.js";
 export function attachH3JointAvSerializer(workflow, filename) {
     if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
         throw new Error("H3 AV serializer 只能附加到 API-format workflow。");
@@ -1197,7 +1198,7 @@ export function renderWorkflow(source, task, context = {}) {
         END_IMAGE: context.endImage ?? "",
         SOURCE_VIDEO: context.sourceVideo ?? "",
         H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
-        H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+        H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id),
         H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
         H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
         H3_AV_SOURCE_WIDTH: context.h3AvSourceWidth ?? outputWidth,

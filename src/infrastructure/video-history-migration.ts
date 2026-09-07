@@ -9,6 +9,7 @@ import type {
   QueueTask
 } from "../types.js";
 import { H3_CONTINUATION_ARTIFACT_SUBFOLDER } from "../core/h3-continuation-artifact.js";
+import { H3_MOTION_CONTEXT_SUBFOLDER } from "../core/h3-motion-context.js";
 
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
 
@@ -90,8 +91,16 @@ function fileIsH3Artifact(file: HistoryFile): boolean {
     [".json", ".safetensors"].includes(path.extname(file.filename).toLowerCase());
 }
 
+function fileIsH3MotionContext(file: HistoryFile): boolean {
+  return file.type === "output" &&
+    [H3_MOTION_CONTEXT_SUBFOLDER, "h3_context"].some((folder) =>
+      file.subfolder === folder || file.subfolder.startsWith(`${folder}/`)
+    ) &&
+    path.extname(file.filename).toLowerCase() === ".safetensors";
+}
+
 function fileIsManagedVideoOutput(file: HistoryFile): boolean {
-  return fileIsVideo(file) || fileIsH3Artifact(file);
+  return fileIsVideo(file) || fileIsH3Artifact(file) || fileIsH3MotionContext(file);
 }
 
 function h3ArtifactFiles(version: AssetVersion): HistoryFile[] {

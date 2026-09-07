@@ -16,6 +16,7 @@ import {
   type HistorySort
 } from "../../../core/history-filter";
 import { videoPromptForLoras } from "../../../core/video-loras";
+import { H3_MOTION_CONTEXT_SUBFOLDER } from "../../../core/h3-motion-context";
 import {
   renderHistoryHeading,
   renderImageMediaStatus,
@@ -297,6 +298,27 @@ function historyComputeMode(version: AssetVersion, options: HistoryPageOptions):
     : spectrumLabel;
 }
 
+function h3MotionContextHistoryFileForPath(
+  value: string | undefined
+): HistoryFile | undefined {
+  const normalized = value?.trim().replaceAll("\\", "/");
+  if (!normalized) return undefined;
+  const parts = normalized.split("/").filter(Boolean);
+  const filename = parts.at(-1);
+  if (!filename) return undefined;
+  const newFolderIndex = parts.lastIndexOf(H3_MOTION_CONTEXT_SUBFOLDER);
+  const legacyFolderIndex = parts.lastIndexOf("h3_context");
+  const folderIndex = Math.max(newFolderIndex, legacyFolderIndex);
+  if (folderIndex < 0 || folderIndex >= parts.length - 1) return undefined;
+  return {
+    filename,
+    subfolder: parts.slice(folderIndex, -1).join("/"),
+    type: "output",
+    format: "safetensors",
+    absolutePath: value
+  };
+}
+
 export function renderImageHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
@@ -423,8 +445,12 @@ export function renderHistoryDetailPage(
     : "";
   const fileIdentity = (file: HistoryFile): string => file.absolutePath || `${file.subfolder}/${file.filename}`;
   const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
+  const motionContextFile = h3MotionContextHistoryFileForPath(version.h3ContextLatentPath);
   const outputFiles = [...version.files];
-  for (const file of jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []) {
+  for (const file of [
+    ...(jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []),
+    ...(motionContextFile ? [motionContextFile] : [])
+  ]) {
     const identity = fileIdentity(file);
     if (!outputFiles.some((candidate) =>
       fileIdentity(candidate) === identity

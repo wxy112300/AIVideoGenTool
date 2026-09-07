@@ -73,6 +73,11 @@ import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts
 } from "../src/core/h3-reference.js";
+import {
+  H3_MOTION_CONTEXT_FILENAME,
+  H3_MOTION_CONTEXT_SUBFOLDER,
+  h3MotionContextSavePrefixForTask
+} from "../src/core/h3-motion-context.js";
 import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract.js";
 import { releaseVersionAtLeast } from "../src/core/release-version.js";
 import { isH3NativeHighResolution } from "../src/core/h3-capabilities.js";
@@ -985,8 +990,10 @@ export class QueueEnqueueService {
     const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
     if (isMiniMaxH3R2vModel(task.modelId)) {
       const outputDirectory = await deps.resolveTaskOutputDirectory();
-      task.h3ContextSavePrefix = `h3_context/${task.id}/clip`;
-      task.h3ContextSavedPath = outputDirectory ? path.join(outputDirectory, "h3_context", task.id, "clip_00001.safetensors") : undefined;
+      task.h3ContextSavePrefix = h3MotionContextSavePrefixForTask(task.id);
+      task.h3ContextSavedPath = outputDirectory
+        ? path.join(outputDirectory, H3_MOTION_CONTEXT_SUBFOLDER, task.id, H3_MOTION_CONTEXT_FILENAME)
+        : undefined;
       task.h3ContextLatentPath = preparedDraft.h3ContextLatentPath &&
         Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) < 0.05 &&
         await fs.stat(preparedDraft.h3ContextLatentPath).catch(() => null)

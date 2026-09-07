@@ -41,6 +41,7 @@ export interface VideoGenerationPolicy {
 export interface VideoGenerationPolicyInput {
   modelId: string;
   inputMode: Draft["inputMode"];
+  ratio?: Draft["ratio"];
   spectrumMode?: string;
   attentionMode?: string;
   videoLoras?: readonly VideoLoraSelection[];
@@ -109,6 +110,7 @@ export function resolveVideoGenerationPolicy(
     issues: videoLoraConfigurationIssues({
       modelId: input.modelId,
       inputMode: input.inputMode,
+      ratio: input.ratio,
       spectrumMode: input.spectrumMode ?? "off",
       attentionMode: input.attentionMode ?? "sage",
       videoLoras: input.videoLoras ?? [],

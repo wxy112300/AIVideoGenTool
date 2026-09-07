@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultDraft } from "../src/core/defaults";
-import { H3_SLA_TURBO_LORA, H3_TURBO_LORA, H3_TURBO_V4_LORA } from "../src/core/video-loras";
+import {
+  H3_EQUI360_LORA,
+  H3_SLA_TURBO_LORA,
+  H3_TURBO_LORA,
+  H3_TURBO_V4_LORA
+} from "../src/core/video-loras";
 import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy,
@@ -119,6 +124,31 @@ describe("video generation policy", () => {
       spectrumMode: "balanced",
       videoLoras: []
     })).toBe(true);
+  });
+
+  it("reports the spatial LoRA ratio warning through the generation policy", () => {
+    const wrongRatio = resolveVideoGenerationPolicy({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      ratio: "16:9",
+      videoLoras: [H3_EQUI360_LORA]
+    });
+
+    expect(wrongRatio.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `ratio:${H3_EQUI360_LORA.id}`,
+        severity: "warning"
+      })
+    ]));
+
+    const correctRatio = resolveVideoGenerationPolicy({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      ratio: "21:9",
+      videoLoras: [H3_EQUI360_LORA]
+    });
+
+    expect(correctRatio.issues.some((issue) => issue.code === `ratio:${H3_EQUI360_LORA.id}`)).toBe(false);
   });
 
   it("disables Spectrum for R2V extension while keeping it available for R2V generation", () => {

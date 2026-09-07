@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
-import { queueTaskFromDraft, upscaleTaskFromRequest } from "../src/core/queue-task-factory";
+import { extensionTaskFromDraft, queueTaskFromDraft, upscaleTaskFromRequest } from "../src/core/queue-task-factory";
 import { DEFAULT_DLSS5_UPSCALE_OPTIONS } from "../src/core/dlss5";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
@@ -507,6 +507,60 @@ describe("queue history persistence", () => {
     expect(state.history[0]?.versions[0]?.h3ContinuationData).toEqual({
       status: "invalid",
       reason: "H3 AV 标记为 available，但没有已提交的 artifact。"
+    });
+  });
+
+  it("persists Motion Context only when the validated auxiliary file is in the output set", () => {
+    const state = createDefaultState();
+    const task = extensionTaskFromDraft({
+      ...createDefaultDraft(),
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 848,
+      sourceHeight: 480,
+      workflowPath: "workflow.json",
+      duration: 1
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "motion-task",
+      random: () => 0.5
+    });
+    task.h3ContextSavedPath = "C:/ComfyUI/output/h3-motion-context/motion-task/clip_00001.safetensors";
+    state.queue = [task];
+
+    persistVideoHistoryResult(state, {
+      task,
+      completedAt: "2026-08-12T12:30:00.000Z",
+      promptId: "motion-prompt",
+      comfyOutputs: { output: true },
+      files: [
+        {
+          filename: task.outputFilename,
+          subfolder: "Videos",
+          type: "output",
+          absolutePath: `C:/output/Videos/${task.outputFilename}`
+        },
+        {
+          filename: "clip_00001.safetensors",
+          subfolder: "h3-motion-context/motion-task",
+          type: "output",
+          format: "safetensors",
+          absolutePath: task.h3ContextSavedPath,
+          sizeBytes: 1024
+        }
+      ],
+      id: () => "motion-version"
+    });
+
+    expect(state.history[0]?.versions[0]).toMatchObject({
+      h3ContextLatentPath: task.h3ContextSavedPath,
+      files: expect.arrayContaining([
+        expect.objectContaining({ filename: "clip_00001.safetensors", subfolder: "h3-motion-context/motion-task" })
+      ])
     });
   });
 

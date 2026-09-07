@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+暂无未发布条目。
+
+## 0.59.5 — 2026-09-07
+
+- 重建开发 harness 与文档入口：统一文档分类，盘点 58 份旧文档；定义 Astra/Sol 规划与集成、Luna 数据处理与有界实现的混合流程，提供小修短路径、任务/证据模板及 DLSS5 阻塞接续卡；精简 AGENTS 与代码地图，保留验证清单、文件/运行资源协调与全部旧证据，不改变产品运行逻辑。
+- Spectrum MiniMax H3 推荐版本从 `v0.2.23` 更新为 `v0.2.24`：上游移除已验证 few-step/progressive 流程中的两个不必要 actual-evaluation barriers；RES Multistep 不再隐式把末尾 actual tail 提升到 3，当前内置工作流传入的 `tail_actual_steps=1` 可按原值生效。应用不切换现有 RES/ER-SDE 采样器，也不新增 SA/PECE UI；实际速度与画质仍需在目标机器做同参数对照验证。
+- MiniMax H3 Prompt Writer 推荐版本从 `v0.4.1` 对齐到上游最新 `v0.4.5`。应用依赖的 `/h3studio/*` 接口保持兼容，兼容补丁已针对上游后端源码回放并通过 Python 语法检查；新增的 Auto VRAM、媒体工具和外部路由器不改变本应用现有提示词工作流，真实 Prompt Writer generation smoke 仍待目标 ComfyUI 环境复核。
+
 ## 0.59.4 — 2026-09-05
 
 - 将现有的 MiniMax H3 Realism People 与 Camera Motion LoRA 整理为可选双 LoRA 使用建议：默认强度分别为 0.85 与 0.80，保留 `r34l1sm` / `camera motion` 自动触发词，并把自然皮肤与电影运镜意图交给 H3 提示词增强模型；组合提示为非阻断警告，尚未宣称真实 smoke 通过。

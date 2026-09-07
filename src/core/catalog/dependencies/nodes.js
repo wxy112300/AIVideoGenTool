@@ -1,9 +1,9 @@
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.23";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.24";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
-export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.1";
+export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.5";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.5.1";
@@ -252,13 +252,13 @@ const customNodeDefinitions = [{
         minimumVersion: MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION,
         recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION,
         compatibilityEvidence: [{
-                verifiedAt: "2026-08-26",
-                sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer",
-                note: "0.4.1 包含非 Thinking 输出预算、Direct GGUF 卸载和 Windows 运行时兼容修复；本项目只记录静态/API 证据，不把社区版本当作运行通过。",
-                commit: "0.4.1",
-                checks: ["static", "object-info"]
+                verifiedAt: "2026-09-07",
+                sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.5",
+                note: "0.4.5 保留应用依赖的 /h3studio/status、/models、/runtime/gguf/diagnostics、/media/upload、/media、/generate、/cancel 和 /unload 接口；新增 Auto VRAM、媒体编辑/拼贴、浮动媒体面板、主题/界面尺寸和外部 llama.cpp 路由器能力。应用兼容补丁已对 v0.4.5 后端源码回放并通过 Python 语法检查；尚未把这项静态证据当作本机真实 Prompt Writer generation smoke。",
+                commit: "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+                checks: ["static"]
             }],
-        runtimeRequirement: "上游 0.4.1+ 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端。旧版 0.3.x 可通过应用修复流程回补输出预算与卸载兼容层。更新节点不会覆盖已通过自检的后端；请在设置 → 节点与依赖中安装或重装/修复，不要重复安装第二个版本。",
+        runtimeRequirement: "上游 0.4.x 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端。旧版 0.3.x 可通过应用修复流程回补输出预算与卸载兼容层。更新节点不会覆盖已通过自检的后端；请在设置 → 节点与依赖中安装或重装/修复，不要重复安装第二个版本。",
         required: false
     }, {
         id: "h3-motion-context",
@@ -510,11 +510,11 @@ const customNodeDefinitions = [{
         minimumVersion: SPECTRUM_MINIMUM_VERSION,
         recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
         compatibilityEvidence: [{
-                verifiedAt: "2026-08-31",
-                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.23",
-                note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast；v0.2.23 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 balanced。现有 Euler、RES、ER-SDE、普通 SA-Solver、Continuum、Diff-Aid、Untwisting RoPE 与工作流参数不变。",
+                verifiedAt: "2026-09-07",
+                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.24",
+                note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast；v0.2.23 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 balanced；v0.2.24 移除已验证 few-step/progressive 流程中不必要的 actual-evaluation barriers：active PECE 的终端 Untwist 延后仅在明确的安全元数据和窄边界下生效，corrector 仍保持 actual；RES Multistep 不再隐式把 final tail 提升到 3，现有工作流传入的 tail_actual_steps 按原值生效。当前内置 H3 仍使用 RES/ER-SDE，不切换为 SA/PECE；现有模型、LoRA、Continuum、Diff-Aid、Untwisting RoPE 与工作流结构保持兼容。",
                 comfyUi: "0.33.1",
-                commit: "987be55",
+                commit: "a360f64",
                 workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
                 checks: ["static"]
         }],

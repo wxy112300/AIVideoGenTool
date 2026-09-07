@@ -284,6 +284,8 @@ export class ApplicationRuntime {
         comfyOutputService.requireExistingImageOutput(result, outputRoot, alternateRoots),
       requireExistingVideoOutput: (result, alternateRoots) =>
         comfyOutputService.requireExistingVideoOutput(result, alternateRoots),
+      findExistingH3MotionContextOutput: (expectedPath) =>
+        comfyOutputService.findExistingH3MotionContextOutput(expectedPath),
       commitH3NativeAvOutput: async (result, serializerNodeId, task, completedAt) => {
         const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
         return nativeAvArtifactCollector.commitCompletion(

@@ -290,6 +290,7 @@ describe("History accessibility markup", () => {
     const artifactVersion = {
       ...videoVersion,
       id: "video-version-with-av",
+      h3ContextLatentPath: "C:\\fixtures\\h3-motion-context\\task-001\\clip_00001.safetensors",
       h3ContinuationData: {
         status: "available",
         artifact: {
@@ -370,9 +371,11 @@ describe("History accessibility markup", () => {
     expect(artifactPage).not.toContain('history.page.nativeAvTitle');
     expect(artifactPage).toContain("h3av_artifact-001.safetensors");
     expect(artifactPage).toContain("h3av_artifact-001.json");
+    expect(artifactPage).toContain("clip_00001.safetensors");
     expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.safetensors"');
     expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.json"');
-    expect(artifactPage.match(/class="output-file"/g)).toHaveLength(3);
+    expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-motion-context\\task-001\\clip_00001.safetensors"');
+    expect(artifactPage.match(/class="output-file"/g)).toHaveLength(4);
     expect(videoPage).toContain('<media-controller id="history-player"');
     expect(videoPage).toContain('autohide="1"');
     expect(videoPage).toContain('fullscreenelement="history-player"');

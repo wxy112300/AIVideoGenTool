@@ -1763,11 +1763,11 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       frameInterpolation: "off",
       spectrumMode: "off",
       maxGeneratedFrames: 362,
-      h3ContextSavePrefix: "h3_context/task-1/clip"
+      h3ContextSavePrefix: "h3-motion-context/task-1/clip"
     };
     const rendered = renderWorkflow(source, h3MotionExtension, {
       sourceVideo: "uploaded/context.mp4",
-      h3ContextSavePrefix: "h3_context/task-1/clip"
+      h3ContextSavePrefix: "h3-motion-context/task-1/clip"
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(workflowSupportsH3MotionContextExtension(source)).toBe(true);
@@ -1788,12 +1788,12 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       context_frames: ["5", 0],
       context_audio: ["5", 2]
     });
-    expect(rendered["15"]?.inputs.filename_prefix).toBe("h3_context/task-1/clip");
+    expect(rendered["15"]?.inputs.filename_prefix).toBe("h3-motion-context/task-1/clip");
 
     const latentRendered = renderWorkflow(source, h3MotionExtension, {
       sourceVideo: "uploaded/context.mp4",
-      h3ContextLatentPath: "D:/ComfyUI/output/h3_context/old/clip_00001.safetensors",
-      h3ContextSavePrefix: "h3_context/task-1/clip"
+      h3ContextLatentPath: "D:/ComfyUI/output/h3-motion-context/old/clip_00001.safetensors",
+      h3ContextSavePrefix: "h3-motion-context/task-1/clip"
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
     expect(latentRendered["7"]?.inputs.latent_path).toContain("clip_00001.safetensors");
     expect(latentRendered["8"]?.inputs.context_latent).toEqual(["7", 0]);

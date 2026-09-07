@@ -81,6 +81,7 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      ratio21By9: "{name} 建議使用 21:9；目前比例為 {ratio}，其他比例可能破壞空間佈局。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；360° 幾何 LoRA 建議先單獨驗證，再與運鏡、人物或效能 LoRA 組合。"
     }
   },
@@ -95,6 +96,7 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      ratio21By9: "{name} 建議使用 21:9；目前比例為 {ratio}，其他比例可能破壞空間佈局。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；VR180 空間佈局 LoRA 應單獨驗證，不要與 360° 幾何或其他佈局適配器疊加。"
     }
   },

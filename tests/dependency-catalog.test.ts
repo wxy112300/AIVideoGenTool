@@ -81,8 +81,11 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.4.1",
-      compatibilityEvidence: [{ checks: ["static", "object-info"] }],
+      recommendedVersion: "0.4.5",
+      compatibilityEvidence: [{
+        commit: "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+        checks: ["static"]
+      }],
       required: false
     });
     expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
@@ -146,11 +149,11 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.23"
+      recommendedVersion: "0.2.24"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
-      commit: "987be55",
+      commit: "a360f64",
       checks: ["static"]
     });
     expect(customNodeDefinition("h3-optimizations")).toMatchObject({

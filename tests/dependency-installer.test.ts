@@ -450,6 +450,26 @@ describe("dependency installer", () => {
     expect(patchH3PromptWriterBriefLimit(patched)).toBe(patched);
   });
 
+  it("keeps the long-brief compatibility patch for the upstream 8K limit", () => {
+    const source = [
+      "def _validated_generation_context(source):",
+      "    brief = source.get(\"creative_brief\")",
+      "    if len(brief) > 8000:",
+      "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 8,000 characters.\")",
+      "",
+      "def assemble_request(body):",
+      "    brief = _required_text(body, \"creative_brief\", \"Creative brief\")",
+      "    if len(brief) > 8000:",
+      "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 8,000 characters.\")"
+    ].join("\n");
+
+    const patched = patchH3PromptWriterBriefLimit(source);
+
+    expect(patched.match(/if len\(brief\) > 20_000:/gu)).toHaveLength(2);
+    expect(patched).not.toContain("Creative brief cannot exceed 8,000 characters.");
+    expect(patchH3PromptWriterBriefLimit(patched)).toBe(patched);
+  });
+
   it("accepts the newer upstream GGMLType value fallback", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-current-adapter-"));
     temporaryDirectories.push(directory);

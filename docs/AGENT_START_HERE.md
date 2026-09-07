@@ -1,79 +1,46 @@
 # Agent Start Here
 
-This guide is the shortest reliable route into Local Video Studio. Read the contract named for the change in `AGENTS.md`; then use this map instead of searching from `src/main.ts` outward.
+代码地图，不是全量阅读清单。工作分类见 [文档入口](README.md)，跨阶段任务用 [混合流程](development/WORKFLOW.md)。先检查当前 diff，再进入目标路径；旧计划不代表当前实现状态。
 
-## 1. Classify the request
+## 请求 → 契约 → 代码
 
-| Request | Read first | Primary implementation |
+| 请求 | 必要契约/参考 | 实现入口 |
 | --- | --- | --- |
-| Queue, history, paths, IPC, persistence, process exit | `ARCHITECTURE_CONTRACT.md` | `electron/main.ts`, `electron/store.ts`, `electron/services/`, `src/core/` |
-| Application boundary, lifecycle, composition | `ARCHITECTURE_CONTRACT.md` | `electron/application-runtime.ts`, `electron/services/`, `electron/ports/`, `electron/*-ipc.ts`, `src/renderer/entry.ts` |
-| Agent-controlled real UI/application smoke | [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md), `ARCHITECTURE_CONTRACT.md` | packaged/development Electron, preload `window.studio`, CDP `Runtime.evaluate`, `AppApi` queue/runtime methods |
-| History 大数据量性能、媒体延迟加载、滚动恢复 | `UX_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md` | `src/renderer/pages/history/`, `src/renderer/render-coordinator.ts` |
-| 真实 Electron 启动、冷/热状态与 Chromium 性能证据 | `ARCHITECTURE_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md`, active Closure Plan C04 | `scripts/capture-c04-electron-evidence.mjs`, `scripts/dev.mjs`, `electron/main.ts` 的默认关闭 C04 seam |
-| Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
-| Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
-| Long video, video Extend, Native AV continuation | `WORKFLOW_CONTRACT.md`, [`LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md`](LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md) | `src/core/`, `electron/queue-*`, `electron/services/extension-media.ts`, `workflows/` |
-| ComfyUI discovery, core/runtime repair, nodes, Python, installation | `DEPENDENCIES_AND_SETUP.md` | `electron/services/environment.ts`, Settings environment/dependency controllers |
-| Image workspace | `IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md` | image draft/workflow/history modules |
+| Queue、历史、持久化、路径、IPC | [Architecture](ARCHITECTURE_CONTRACT.md) | `src/core/queue*.ts`、`electron/queue-*.ts`、`electron/store.ts`、`src/types.ts` |
+| 应用生命周期、运行时 | Architecture | `electron/application-runtime.ts`、`electron/services/`、`electron/ports/`、`electron/*-ipc.ts` |
+| Renderer 交互/布局 | [UX](UX_CONTRACT.md) | `src/renderer/pages/`、`src/styles/`、`src/renderer/render-coordinator.ts` |
+| History 媒体调度/滚动性能 | UX；按需查 [性能证据](Plan/investigation/2026.9.1-wp-c04-electron-performance-evidence.md) | `src/renderer/pages/history/`、render coordinator |
+| 模型、LoRA、节点 | [Workflow](WORKFLOW_CONTRACT.md) | `src/core/catalog/models/`、`catalog/loras/`、`catalog/dependencies/` |
+| 视频 graph/参数 | Workflow | `src/core/workflow.ts`、`video-policy.ts`、`workflows/` |
+| 新图片编辑模型 | Workflow + UX（有 UI 变化时） | `src/core/image-workflow.ts`、image draft/queue/history 模块、catalog |
+| Extend / 长视频 | Workflow；先找对应 [TASK](tasks/README.md) | `src/core/` 的 extension/artifact helpers、`electron/queue-*`、`electron/services/extension-media.ts` |
+| Prompt 增强 | [Prompt Pack](PROMPT_PACK_DESIGN.md) + Workflow | `src/core/prompts/`、`src/renderer/prompt-packs.ts`、prompt services/catalog |
+| 环境/节点安装升级 | [Dependencies](DEPENDENCIES_AND_SETUP.md) | `electron/services/environment.ts`、dependency scanner/installer、`src/infrastructure/dependency-node-adapters.ts`、Settings controllers |
+| DLSS5 被卡接续 | [DLSS5 TASK](tasks/2026-09-07-dlss5-runtime/TASK.md) | `src/core/dlss5.ts`、`aetherscale.ts`、两套 runtime services/catalog |
+| 真实 Electron 验收 | [API runbook](AGENT_ELECTRON_API_RUNBOOK.md) + Architecture | preload `window.studio`、typed AppApi、loopback CDP、`scripts/capture-c04-electron-evidence.mjs` |
+| 文档/agent 流程 | [Document policy](development/DOCUMENT_POLICY.md) | AGENTS、docs 入口、对应 TASK；不运行 GPU |
 
-Inspect `git status` before reading or editing hotspot files. This repository is often edited by multiple agents; current disk content wins over an old conversation snapshot.
+路径以仓库根为基准；表中缩写与通配符需先用 `rg --files` 定位，不猜文件存在。
 
-已完成、被取代或仅用于历史追溯的计划见 [`archive/README.md`](archive/README.md)；归档内容不是当前实现的 source of truth。
+## 单一事实来源
 
-## 2. Sources of truth in code
+- 组件文件名、下载路径、兼容性：catalog；不复制到手工维护的第二张模型清单。节点优先级由 `customNodeCatalog` 的 `priority` 定义。
+- 持久化默认值/迁移：`src/core/defaults.ts`、`electron/store.ts`、`src/types.ts`。新任务沿用旧 ID，替代须设计迁移。
+- 队列快照：`src/core/queue-task-factory.ts`；执行与副作用：`electron/queue-executor.ts`、`queue-execution-side-effects.ts`、`queue-worker.ts`。
+- 应用服务图：`electron/application-runtime.ts` 不引入 Electron globals；`electron/main.ts` 是 Electron composition root。
+- Renderer：`src/renderer/entry.ts` 是 preload 入口，`studio-client.ts` 和 context 向页面传能力；页面不直接读 preload global。
+- 当前功能约束：架构/UX/工作流契约。当前任务下一步：TASK。历史实验结果：带日期与版本的 evidence。
 
-- Model definitions, variants, components, download targets and localized metadata: `src/core/catalog/models/` and `src/core/catalog/index.ts`.
-- LoRA compatibility, triggers, strength, ordering and conflicts: `src/core/catalog/loras/definitions.ts`.
-- Custom-node repositories, directory names, offline/runtime probes and Settings priority: `customNodeCatalog` in `src/core/catalog/dependencies/nodes.ts` (lower `priority` values appear first; new entries must declare one).
-- Video workflow selection and placeholder policy: `src/core/workflow.ts`, `src/core/video-policy.ts`, and `workflows/*.json`.
-- Image workflow construction and required runtime nodes: `src/core/image-workflow.ts`.
-- Queue task snapshots and pure mutations: `src/core/queue-task-factory.ts` and `src/core/queue.ts`.
-- Embedded application graph: `electron/application-runtime.ts` constructs the application services and injected ports without importing Electron; `electron/services/` owns application operations and `electron/ports/` owns platform seams.
-- Queue mutation IPC: `electron/queue-registration.ts` and `electron/queue-control-ipc.ts`; queue commands live in `electron/queue-control-service.ts` and `electron/queue-mutation-service.ts`; execution orchestration is split across `electron/queue-executor.ts`, `electron/queue-execution-side-effects.ts`, `electron/queue-worker.ts`, and `electron/services/comfy-ui.ts`. `electron/main.ts` remains the Electron composition root and supplies ComfyUI/runtime callbacks; it is still a Gate review hotspot.
-- Renderer composition: `src/renderer/entry.ts` is the single preload boundary, `src/renderer/studio-client.ts` projects application/events/assets/host capabilities, `src/renderer/context.ts` carries them into page modules, and `src/renderer/render-coordinator.ts` governs immediate command renders versus frame-coalesced event refreshes. `src/main.ts` remains the renderer composition layer.
-- Persisted defaults and migrations: `src/core/defaults.ts`, `electron/store.ts`, and `src/types.ts`.
-- Settings installation UX: `src/renderer/pages/settings/` plus preload/IPC handlers.
+## 进入运行时前
 
-Current validation boundaries are explicit: the renderer source has one `window.studio` read in `src/renderer/entry.ts`, page modules do not read the preload global, and the application runtime has no Electron import. P02/P03 automated and synthetic renderer checks pass. `scripts/capture-c04-electron-evidence.mjs` is the rerunnable real Electron evidence path for isolated cold/warm startup, migration, DOM/Long Task, CDP trace, screenshot, and bounded close checks; its output still does not replace a real ComfyUI generation or a development run when the local Vite listener is unavailable.
+模型接入按 [Workflow 的 Integration Checklist](WORKFLOW_CONTRACT.md#model-integration-checklist)完成 UI、snapshot、adapter、文件/节点扫描、执行、错误、取消/恢复和历史闭环。
+包文件存在、schema 通过、真实输出成功分别报告。
 
-When an Agent must exercise a real UI-backed application path, use [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md): connect to an explicitly launched local Electron renderer through loopback CDP and call the existing typed `window.studio`/`AppApi` methods. This is a local test/operator bridge over preload and IPC, not evidence of a public HTTP, Headless, Browser, or LAN API. Record actual renderer/API invocation, ComfyUI execution, task-ID-based history/output verification, and app-owned process cleanup separately from static or synthetic checks.
+`npm.cmd ci` 只安装本仓库应用依赖；ComfyUI 核心、选定 Python、注册 custom node、模型权重是独立层。检查实际选中实例，不能把另一个 data 目录的安装结果当作成功。Settings 安装/卸载行为与备份策略见 Dependencies。
 
-Do not copy the complete catalog into README or another hand-maintained list. User-facing summaries may name model families, but component filenames and download targets belong to the catalog.
+真实 app smoke 按 API runbook 运行；原始 ComfyUI 请求只证明下层服务，不能证明 UI/IPC/queue/history 全链路。构建、运行与 cleanup 要先协调资源。验证命令和回归范围统一见 [CHANGE_VERIFICATION](CHANGE_VERIFICATION.md)，此处不重复维护。
 
-## 3. What “integrate a model” means
+## 历史资料
 
-A visible dropdown option is not an integration. Complete all applicable items:
-
-1. Add or update the catalog entry, including category, adapter, input modes, variants, required/optional components and authoritative install guides.
-2. Declare required core/custom node types and add any custom-node package to the environment catalog.
-3. Add an API-format workflow or a typed workflow builder. Never use a normal UI workflow as the execution artifact.
-4. Implement model-specific prompt, size, frame, seed, sampler, scheduler, precision, attention, offload, VAE and unload policy without leaking it into other models.
-5. Make Create availability, queue snapshots, history metadata and Settings scanning use the same identifiers.
-6. Keep offline file recognition separate from runtime node validation. A stopped ComfyUI must not make installed files appear missing.
-7. Test missing, partially installed and ready states. Verify queue-time validation and execution-time `/object_info` checks.
-8. Run repository verification and static workflow validation. Only call the model “working” after a real minimal output succeeds.
-
-When replacing a model or workflow, preserve old history labels and persisted identifiers unless a migration is explicitly designed.
-
-## 4. Correct installation model
-
-There are four distinct operations:
-
-- **Application dependencies:** `npm.cmd ci` installs Electron/TypeScript/Vite packages for this repository.
-- **ComfyUI core:** installed separately as Desktop, Portable or source. Settings → ComfyUI environment selects the actual core and data directories, binds the Python runtime, and exposes service/version/compatibility and safe core-repair actions.
-- **Custom nodes:** Settings → Nodes & dependencies may clone/update registered repositories and run `requirements.txt` with the selected ComfyUI Python. The operation must stream progress, time out, retain logs and restart/recheck when safe. App-managed node uninstall permanently removes the catalog directory; reinstall restores the supported package by downloading it again, while manually installed nodes remain outside the app's uninstall scope. `llama-cpp-python` and installable H3 acceleration packages belong to this dependency surface; they are not a generic ComfyUI core repair.
-- **Temporary H3 Attention UI:** Until H3 Memory Optimization is complete and gated, the existing H3 Attention selector remains in Settings → Performance & acceleration. Environment extraction must not duplicate, delete, or migrate that selector.
-- **Weights:** large diffusion models, encoders, VAEs and LoRAs are not stored in Git and are not generally downloaded by the app. Settings component info provides the source, filename and exact catalog target directory.
-
-Always inspect the selected instance. Installing a node into one ComfyUI data directory while connecting to another service is a common false-success condition.
-
-## 5. Minimum checks by task
-
-- Catalog/metadata only: catalog tests plus typecheck.
-- Node installer or environment scan: offline scan, selected multi-install instance, streamed success/failure output, timeout behavior, restart/recheck and full `npm.cmd run verify`.
-- Workflow logic: focused workflow tests, all bundled users of shared fields, static JSON construction, full verify and a real minimal ComfyUI run when available.
-- Renderer interaction: focused controller tests, typing/focus preservation, loading/error/success states, both required viewport sizes and full verify.
-- Agent-controlled real application smoke: follow [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md); report renderer/API invocation, actual ComfyUI execution, history/output verification, and cleanup separately from static or synthetic validation.
-
-Report “static validation passed” when no real ComfyUI generation was run. Never convert absence of an error into a performance or quality claim.
+全量分类见 [DOCUMENT_INVENTORY](development/DOCUMENT_INVENTORY.md)，默认不读；已归档内容见 [archive](archive/README.md)。
+图片、H3 Native/长视频、旧 recovery handoff 均含不同日期的实现状态。只有任务需要其证据时按章节引用；不要从旧版本号、旧 CPU VAE 或旧 phase 清单恢复当前策略。

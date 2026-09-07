@@ -54,6 +54,7 @@ export function resolveVideoGenerationPolicy(input) {
         issues: videoLoraConfigurationIssues({
             modelId: input.modelId,
             inputMode: input.inputMode,
+            ratio: input.ratio,
             spectrumMode: input.spectrumMode ?? "off",
             attentionMode: input.attentionMode ?? "sage",
             videoLoras: input.videoLoras ?? [],

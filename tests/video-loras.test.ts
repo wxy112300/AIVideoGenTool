@@ -381,6 +381,41 @@ describe("video LoRA catalog", () => {
     expect(instruction).toContain("21:9");
   });
 
+  it("warns when 180 or 360 spatial LoRAs are used outside 21:9", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      ratio: "16:9",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_EQUI360_LORA, H3_VR180_SBS_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `ratio:${H3_EQUI360_LORA.id}`,
+        severity: "warning",
+        message: expect.stringContaining("21:9")
+      }),
+      expect.objectContaining({
+        code: `ratio:${H3_VR180_SBS_LORA.id}`,
+        severity: "warning",
+        message: expect.stringContaining("21:9")
+      })
+    ]));
+
+    const matchingRatioIssues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      ratio: "21:9",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_EQUI360_LORA, H3_VR180_SBS_LORA]
+    });
+
+    expect(matchingRatioIssues.some((issue) => issue.code.startsWith("ratio:"))).toBe(false);
+  });
+
   it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {
     const issues = videoLoraConfigurationIssues({
       modelId: "minimax_h3_fl2va",

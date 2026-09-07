@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
   AppState,
   AssetVersion,
@@ -141,6 +142,20 @@ export interface VideoHistoryResult {
   id(): string;
 }
 
+function h3MotionContextPathFor(
+  task: VideoQueueTask,
+  files: HistoryFile[]
+): string | undefined {
+  const expected = "h3ContextSavedPath" in task
+    ? task.h3ContextSavedPath?.trim()
+    : undefined;
+  if (!expected) return undefined;
+  const expectedPath = path.resolve(expected);
+  return files.find((file) =>
+    file.absolutePath && path.resolve(file.absolutePath) === expectedPath
+  )?.absolutePath;
+}
+
 function h3ContinuationDataFor(
   task: VideoQueueTask,
   value: NativeAvContinuationData | undefined
@@ -233,6 +248,7 @@ export function persistVideoHistoryResult(
       ? continuumVisibleFrameCountForTask(task) / 24
       : task.duration;
     const totalDuration = task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
+    const h3ContextLatentPath = h3MotionContextPathFor(task, result.files);
     const version: AssetVersion = {
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
@@ -249,7 +265,7 @@ export function persistVideoHistoryResult(
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
-      h3ContextLatentPath: task.h3ContextSavedPath,
+      h3ContextLatentPath,
       h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
     };
     const asset: HistoryAsset = {
@@ -272,7 +288,7 @@ export function persistVideoHistoryResult(
       motion: task.motion, prompt: task.prompt, seed: task.seed, inputMode: "video",
       sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight,
       sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
-      h3ContextLatentPath: task.h3ContextSavedPath,
+      h3ContextLatentPath,
       sourceVideoPath: task.sourceVideoPath, sourceVideoDuration: task.sourceVideoDuration,
       trimStartSeconds: task.trimStartSeconds, trimEndSeconds: task.trimEndSeconds,
       h3ReferenceSlots: task.h3ReferenceSlots?.map((slot) => ({ ...slot })),
