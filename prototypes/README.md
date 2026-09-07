@@ -2,7 +2,7 @@
 
 > Baseline synchronized with the implemented desktop UI on 2026-08-09. These files are now historical reference material; new modules must be designed and validated against the current renderer under `src/` first.
 
-The approved image-workspace implementation phases and cross-agent ownership are documented in `docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`.
+The current image-workspace follow-up is tracked in `docs/tasks/2026-09-07-image-workspace/TASK.md`; the original implementation plan remains historical in `docs/archive/image-workspace/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`.
 
 - `create.html`: three creation modes—image editing, image-to-video/R2F reference slots, and video continuation. Image editing reuses the H3-style single prompt editor, version history, combinable intent hints, reusable instruction inserts, multimodal rewriting and batch controls.
 - `queue.html`: one expanded running task, live preview, performance telemetry, recovery state, compact pending tasks, and multi-Seed image batches represented as one task.

@@ -316,7 +316,7 @@
 `prototypes/` 中的交互仍使用示例数据；正式 Electron 应用已经连接真实
 ComfyUI、LM Studio、Windows 文件选择和 Explorer，并使用原子 JSON 持久化。
 SQLite、作品版本组和真实 Upscale 后端仍未完成。当前实现与验证边界以
-`docs/LOCAL_CODEX_HANDOFF.md` 为准。
+当前实现与验证边界以 `docs/WORKFLOW_CONTRACT.md`、`docs/DEPENDENCIES_AND_SETUP.md` 及对应的 `docs/tasks/` TASK 为准。
 
 ## 13. 第一阶段验收标准
 

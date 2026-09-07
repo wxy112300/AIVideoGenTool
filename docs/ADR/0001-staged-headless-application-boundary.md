@@ -3,7 +3,7 @@
 状态：Accepted for modularization
 日期：2026-08-31
 决策起始提交：`b7182fa020695a3e9e56a45eb5ad61fc79bf6ebd`
-关联计划：`docs/Plan/active/2026.8.31-headless-service-web-api-rearchitecture.md`
+关联历史计划：[模块化架构收口计划](../archive/modular-architecture/2026.8.31-headless-service-web-api-rearchitecture.md)
 
 ## Context
 

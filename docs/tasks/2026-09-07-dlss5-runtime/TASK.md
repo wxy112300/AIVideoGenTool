@@ -6,7 +6,7 @@
 - Route: blocked / integration
 - Scope: 保存两套 provider 的已记录边界与下次最小验证入口；本轮不安装、不运行 GPU。
 - Baseline: 2026-09-07 当前工作树只读检查 + 2026-09-04 双 provider 计划；不是本机运行状态采样。
-- Authority: [双 provider 计划](../../Plan/active/2026.9.4-dlss5-dual-provider-parallel-integration.md)、[Workflow contract](../../WORKFLOW_CONTRACT.md)。后续执行须重读当前文件/版本。
+- Authority: [双 provider 研究/实施参考](../../research/dlss5/2026.9.4-dlss5-dual-provider-parallel-integration.md)、[Workflow contract](../../WORKFLOW_CONTRACT.md)。后续执行须重读当前文件/版本。
 
 ## Resume
 
@@ -33,8 +33,8 @@ A1 证据写入本任务的 `evidence/aether-smoke.md`：当前 ComfyUI `/object
 
 | 结论 | 类别 | 已检查来源 | 限制/失效条件 |
 | --- | --- | --- | --- |
-| 双 provider 独立 ID/运行时；禁止混 DLL | source | [计划 §1、§11](../../Plan/active/2026.9.4-dlss5-dual-provider-parallel-integration.md) | 后续用户或已批准契约变更 |
-| 已记录 SR wrapper 缺失 | source | [旧调查](../../Plan/investigation/2026.9.3-dlss5-upscale-integration-plan.md) | 新 release/hash，或原检查范围不完整；本轮未重新下载 |
+| 双 provider 独立 ID/运行时；禁止混 DLL | source | [计划 §1、§11](../../research/dlss5/2026.9.4-dlss5-dual-provider-parallel-integration.md) | 后续用户或已批准契约变更 |
+| 已记录 SR wrapper 缺失 | source | [旧调查](../../research/dlss5/2026.9.3-dlss5-upscale-integration-plan.md) | 新 release/hash，或原检查范围不完整；本轮未重新下载 |
 | basic-NR bundle 与 SR unavailable 分离 | static | [dlss5 catalog](../../../src/core/catalog/dependencies/dlss5.ts) 的 runtime bundle/unavailableCapabilities | 当前 catalog/revision 变化；记录的 NR 实测不是本轮重测 |
 | HECer SR 不可入队；Aether 按 schema/carrier 状态分级 | static | [environment](../../../electron/services/environment.ts) 的 provider status 构造 | 当前实现变化；未调用实际环境扫描 |
 | carrier graph/验证代码与 fixture tests 存在 | static inspection | [aetherscale core](../../../src/core/aetherscale.ts)、[runtime](../../../electron/services/aetherscale-runtime.ts)、[tests](../../../tests/aetherscale.test.ts) | 本轮未执行 tests/runtime，不能据此宣称通过 |

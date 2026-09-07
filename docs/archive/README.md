@@ -15,5 +15,13 @@
 ## 分类归档
 
 - [UI/UX 计划与阶段记录](./ux-ui/README.md)
+- [H3 adoption 与恢复计划](./h3-adoption/)
+- [H3 Native AV / 长视频历史方案](./h3-long-video/)
+- [H3 Memory Optimization 历史方案](./h3-memory/)
+- [图片工作台历史计划](./image-workspace/)
+- [History 性能收口计划](./history-performance/)
+- [模块化架构收口计划](./modular-architecture/)
+- [ComfyUI 设置重构计划](./comfyui-settings/)
+- [早期云端/交接说明](./legacy-handoff/)
 
-其他仍可能继续执行的模型、图片工作区、架构和依赖计划暂不归档，继续保留在 `docs/` 顶层。
+DLSS5、H3 研究和图片模型研究已移入 Research 与 Evidence，当前状态只从任务入口进入。归档文件不承担当前任务状态。
