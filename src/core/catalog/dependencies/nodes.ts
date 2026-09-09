@@ -177,6 +177,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: DLSS5_NODE_ID,
+  retired: true,
   priority: 135,
   name: "ComfyUI DLSS5",
   purpose: "HECer 原版 NVIDIA DLSS 5 Super Resolution 节点与 Depth/Optical Flow 导引节点",
@@ -202,6 +203,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: AETHERSCALE_NODE_ID,
+  retired: true,
   priority: 136,
   name: "ComfyUI AetherScale",
   purpose: "AetherScale v0.5.5 的 Motion Analysis 与 carrier-backed Neural Rendering 节点",
@@ -566,8 +568,10 @@ export function compareDependencyIds(leftId: string, rightId: string): number {
 }
 
 export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] =
-  [...customNodeDefinitions].sort(compareCustomNodeDefinitions);
+  customNodeDefinitions
+    .filter((definition) => definition.retired !== true)
+    .sort(compareCustomNodeDefinitions);
 
 export function customNodeDefinition(id: string): CatalogCustomNodeDefinition | undefined {
-  return customNodeCatalog.find((definition) => definition.id === id);
+  return customNodeDefinitions.find((definition) => definition.id === id);
 }

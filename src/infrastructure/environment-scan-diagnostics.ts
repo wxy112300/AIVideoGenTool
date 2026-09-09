@@ -21,6 +21,8 @@ export function buildEnvironmentScanDiagnostics(
     scan.pythonRuntimes[0];
   const errors: string[] = [];
   const warnings: string[] = [];
+  const attentionPackageFallback = scan.attentionAcceleration.probeState === "failed"
+    ? "not-verified" : "not-installed";
 
   for (const item of scan.items) {
     if (item.ok) continue;
@@ -144,20 +146,24 @@ export function buildEnvironmentScanDiagnostics(
       comfyCompatibility: scan.comfyCompatibility.compatibilityState || "unknown",
       selectedPythonVersion: versionLabel(selectedPython?.version ?? ""),
       selectedPythonSource: selectedPython?.source ?? "unknown",
+      attentionProbeState: scan.attentionAcceleration.probeState ?? "unknown",
+      attentionProbeStage: scan.attentionAcceleration.probeStage ?? "",
+      attentionProbeError: scan.attentionAcceleration.probeError ?? "",
+      attentionProbeDurationMs: scan.attentionAcceleration.durationMs,
       torchVersion: versionLabel(scan.attentionAcceleration.torchVersion),
       torchvisionVersion: versionLabel(scan.attentionAcceleration.torchvisionVersion ?? ""),
       torchaudioVersion: versionLabel(scan.attentionAcceleration.torchaudioVersion ?? ""),
       cudaVersion: versionLabel(scan.attentionAcceleration.cudaVersion),
       sageAttentionVersion: versionLabel(
         scan.attentionAcceleration.sageAttentionVersion,
-        "not-installed"
+        attentionPackageFallback
       ),
       sageNativeReady: scan.attentionAcceleration.sageNativeReady ?? false,
       sageNativeError: scan.attentionAcceleration.sageNativeError ?? "",
-      tritonVersion: versionLabel(scan.attentionAcceleration.tritonVersion, "not-installed"),
+      tritonVersion: versionLabel(scan.attentionAcceleration.tritonVersion, attentionPackageFallback),
       comfyKitchenVersion: versionLabel(
         scan.attentionAcceleration.comfyKitchenVersion ?? "",
-        "not-installed"
+        attentionPackageFallback
       ),
       comfyKitchenBackends: scan.attentionAcceleration.comfyKitchenBackends ?? [],
       attentionRuntimeReady: scan.attentionAcceleration.ready,

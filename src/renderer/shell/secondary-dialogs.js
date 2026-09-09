@@ -73,6 +73,10 @@ function findUpscaleAssetVersion(history, dialog) {
     return asset && version ? { asset, version } : null;
 }
 function dlss5UiStatus(environment, t) {
+    return { tone: "warning", available: false, message: t(uiKeys.upscale.dlss5Retired) };
+}
+/** Legacy HECer status logic retained as the seam for a future provider adapter. */
+function legacyDlss5UiStatus(environment, t) {
     if (!environment) {
         return { tone: "warning", available: true, message: t(uiKeys.upscale.dlss5Pending) };
     }
@@ -130,6 +134,14 @@ function dlss5UiStatus(environment, t) {
     return { tone: "available", available: true, message: t(uiKeys.upscale.dlss5Ready) };
 }
 function aetherScaleUiStatus(environment, t) {
+    return {
+        tone: "warning",
+        available: false,
+        message: t(uiKeys.upscale.aetherscaleRetired)
+    };
+}
+/** Legacy AetherScale status logic retained as the seam for a future provider adapter. */
+function legacyAetherScaleUiStatus(environment, t) {
     if (!environment) {
         return {
             tone: "warning",
@@ -420,8 +432,8 @@ export function renderUpscaleDialog(options) {
     const dlss5StatusMarkup = isDlss5Selected
         ? `<div class="upscale-dlss-status ${dlss5Status.tone}" role="${dlss5Status.tone === "missing" ? "alert" : "status"}"><strong>${options.t(uiKeys.upscale.dlss5Experimental)}</strong><span>${dlss5Status.message}</span><small>${options.t(uiKeys.upscale.dlss5SettingsHint)}</small></div>`
         : "";
-    const aetherStatusMarkup = isAetherScaleSelected && aetherStatus.tone === "missing"
-        ? `<div class="upscale-dlss-status missing" role="alert"><span>${aetherStatus.message}</span>${aetherGeometryError ? `<small>${options.escapeHtml(aetherGeometryError)}</small>` : ""}</div>`
+    const aetherStatusMarkup = isAetherScaleSelected && !aetherStatus.available
+        ? `<div class="upscale-dlss-status ${aetherStatus.tone}" role="${aetherStatus.tone === "missing" ? "alert" : "status"}"><span>${aetherStatus.message}</span>${aetherGeometryError ? `<small>${options.escapeHtml(aetherGeometryError)}</small>` : ""}</div>`
         : "";
     const enqueueDisabled = busy ||
         (h3Selected && !h3Available) ||

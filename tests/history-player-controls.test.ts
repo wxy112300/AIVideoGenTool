@@ -288,6 +288,82 @@ describe("history player fullscreen controls", () => {
     expect(normalModeLeftArrow.defaultPrevented).toBe(true);
     cleanup();
   });
+
+  it("toggles playback with Space in normal and fullscreen modes", () => {
+    const root = document.createElement("main");
+    root.innerHTML = `<div class="history-player"><video data-history-asset="video-1" data-history-version="version-1"></video></div>`;
+    document.body.append(root);
+    const player = root.querySelector<HTMLElement>(".history-player");
+    const video = root.querySelector<HTMLVideoElement>("video");
+    if (!player || !video) throw new Error("history player fixture was not created");
+
+    let paused = true;
+    Object.defineProperty(video, "paused", {
+      configurable: true,
+      get: () => paused
+    });
+    const play = vi.spyOn(video, "play").mockImplementation(async () => {
+      paused = false;
+    });
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => {
+      paused = true;
+    });
+
+    const context = createContext(root, createDefaultState);
+    const options = {
+      context,
+      playback: null,
+      navigation: {} as HistoryPageControllerOptions["navigation"],
+      media: {
+        loadImageHistoryThumbnail: async () => true,
+        loadHistoryCoverFromCache: async () => false,
+        loadHistoryCardVideo: () => null,
+        releaseHistoryCardVideo: () => undefined,
+        scheduleHistoryCoverWarmup: () => undefined,
+        cancelHistoryCoverWarmup: () => undefined,
+        stopHistoryCoverWarmup: () => undefined,
+        chooseHistoryCoverTime: async (_video, fallbackTime) => fallbackTime,
+        saveHistoryCover: async () => undefined,
+        formatVideoDuration: () => "0s"
+      },
+      actions: {} as HistoryPageControllerOptions["actions"],
+      filter: {} as HistoryPageControllerOptions["filter"],
+      tags: {} as HistoryPageControllerOptions["tags"],
+      historyLayout: "masonry" as const,
+      isImageHistoryDetail: false,
+      bindHistoryMasonry: () => undefined,
+      bindHistoryAlbum: () => undefined,
+      bindImageHistoryViewer: () => undefined,
+      bindHistoryTitleMarquees: () => undefined,
+      restoreHistoryLayoutAnchor: () => undefined,
+      imageLightbox: {} as HistoryPageControllerOptions["imageLightbox"],
+      openHistoryContextMenu: () => undefined,
+      openImageHistoryContextMenu: () => undefined
+    } satisfies HistoryPageControllerOptions;
+    const cleanup = mountHistoryPageController(options);
+
+    const normalModeSpace = new KeyboardEvent("keydown", {
+      key: " ",
+      code: "Space",
+      bubbles: true,
+      cancelable: true
+    });
+    video.dispatchEvent(normalModeSpace);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(normalModeSpace.defaultPrevented).toBe(true);
+
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: player });
+    const fullscreenSpace = new KeyboardEvent("keydown", {
+      key: " ",
+      code: "Space",
+      bubbles: true,
+      cancelable: true
+    });
+    document.dispatchEvent(fullscreenSpace);
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(fullscreenSpace.defaultPrevented).toBe(true);
+    cleanup();
+  });
 });
 
 describe("history favorite synchronization", () => {

@@ -49,6 +49,9 @@ import {
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { buildEnvironmentScanDiagnostics } from "../../src/infrastructure/environment-scan-diagnostics.js";
+import { inspectAttentionPython, type AttentionPythonProbe } from "./attention-python-probe.js";
+import { EnvironmentScanCoordinator } from "./environment-scan-coordinator.js";
+import { collectEnvironmentRuntimeEvidence } from "./environment-runtime-evidence.js";
 import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import {
   availableComfyNodeIds,
@@ -2296,7 +2299,8 @@ async function discoverPythonRuntimes(
     selected: Boolean(settings.comfyPythonPath.trim()) &&
       path.resolve(filename).toLowerCase() === path.resolve(settings.comfyPythonPath).toLowerCase()
   })));
-  return candidates.filter((candidate) => Boolean(candidate.version));
+  // A transient --version failure must not silently select a different Python.
+  return candidates.filter((candidate) => Boolean(candidate.version) || candidate.selected);
 }
 
 async function findComfyPython(
@@ -2319,22 +2323,6 @@ async function findComfyPython(
     runtimes.find((runtime) => runtime.source === "path")?.path ??
     runtimes[0]?.path ??
     "";
-}
-
-interface AttentionPythonProbe {
-  pythonVersion?: string;
-  torchVersion?: string;
-  torchvisionVersion?: string;
-  torchaudioVersion?: string;
-  cudaVersion?: string;
-  gpuName?: string;
-  gpuArchitecture?: string;
-  sageAttentionVersion?: string;
-  sageNativeReady?: boolean;
-  sageNativeError?: string;
-  tritonVersion?: string;
-  comfyKitchenVersion?: string;
-  comfyKitchenBackends?: string[];
 }
 
 export function h3TorchRuntimeReady(probe: Pick<
@@ -2373,7 +2361,7 @@ function h3TargetAttentionWheelForProbe(
 }
 
 export function attentionWheelForProbe(
-  probe: AttentionPythonProbe
+  probe: Omit<AttentionPythonProbe, "probeState">
 ): { version: string; filename: string; url: string } | null {
   const python = probe.pythonVersion?.match(/^(\d+)\.(\d+)/);
   const torch = probe.torchVersion?.match(/^(\d+)\.(\d+)/);
@@ -2432,45 +2420,6 @@ export function comfyKitchenConvRotCudaOptimized(cudaVersion: string): boolean {
   );
 }
 
-async function inspectAttentionPython(python: string): Promise<AttentionPythonProbe> {
-  if (!python) return {};
-  const script = [
-    "import json, platform, importlib.metadata as md",
-    "def version(name):",
-    "    try: return md.version(name)",
-    "    except md.PackageNotFoundError: return ''",
-    "result={'pythonVersion':platform.python_version(),'torchvisionVersion':version('torchvision'),'torchaudioVersion':version('torchaudio'),'sageAttentionVersion':version('sageattention'),'sageNativeReady':False,'tritonVersion':version('triton-windows') or version('triton'),'comfyKitchenVersion':version('comfy-kitchen'),'comfyKitchenBackends':[]}",
-    "try:",
-    "    import torch",
-    "    result['torchVersion']=torch.__version__",
-    "    result['cudaVersion']=torch.version.cuda or ''",
-    "    if torch.cuda.is_available():",
-    "        result['gpuName']=torch.cuda.get_device_name(0)",
-    "        cap=torch.cuda.get_device_capability(0)",
-    "        result['gpuArchitecture']=f'{cap[0]}.{cap[1]}'",
-    "except Exception as error: result['probeError']=str(error)",
-    "try:",
-    "    from sageattention import _fused",
-    "    result['sageNativeReady']=True",
-    "except Exception as error: result['sageNativeError']=str(error)",
-    "try:",
-    "    import comfy_kitchen as ck",
-    "    result['comfyKitchenBackends']=[str(name) for name in ck.list_backends()]",
-    "except Exception as error: result['comfyKitchenProbeError']=str(error)",
-    "print(json.dumps(result))"
-  ].join("\n");
-  try {
-    const { stdout } = await execFileAsync(python, ["-c", script], {
-      encoding: "utf8",
-      timeout: 30_000,
-      windowsHide: true
-    });
-    return JSON.parse(stdout.trim()) as AttentionPythonProbe;
-  } catch {
-    return {};
-  }
-}
-
 export function kjNodesAttentionSourceCompatible(source: string): boolean {
   return source.includes("PathchSageAttentionKJ") &&
     source.includes("optimized_attention_override") &&
@@ -2507,6 +2456,12 @@ async function inspectAttentionAcceleration(
 ): Promise<AttentionAccelerationStatus> {
   const pythonPath = pythonPathOverride || await findComfyPython(settings, comfyRoot, installation);
   const probe = await inspectAttentionPython(pythonPath);
+  const probeFailed = probe.probeState === "failed";
+  if (probeFailed || probe.probeError) {
+    appLogger.warn("environment", "attention-probe-failed", "Attention validation reported a failure", {
+      stage: probe.probeStage, durationMs: probe.durationMs, error: probe.probeError
+    });
+  }
   const wheel = attentionWheelForProbe(probe);
   const targetWheel = h3TargetAttentionWheelForProbe(probe);
   const kjNodesInstalled = Boolean(comfyRoot) && (
@@ -2525,7 +2480,7 @@ async function inspectAttentionAcceleration(
     (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
   const torchRuntimeReady = h3TorchRuntimeReady(probe);
   const ready = Boolean(
-    pythonPath && wheel && gpuSupported && torchRuntimeReady && sageReady && sageNativeReady &&
+    !probeFailed && pythonPath && wheel && gpuSupported && torchRuntimeReady && sageReady && sageNativeReady &&
     tritonReady && kjNodesCompatible && convRotCudaOptimized
   );
   const missing = [
@@ -2547,6 +2502,10 @@ async function inspectAttentionAcceleration(
       : ""
   ].filter(Boolean);
   return {
+    probeState: probe.probeState,
+    probeError: probe.probeError,
+    probeStage: probe.probeStage,
+    durationMs: probe.durationMs,
     pythonPath,
     pythonVersion: probe.pythonVersion ?? "",
     torchVersion: probe.torchVersion ?? "",
@@ -2567,10 +2526,10 @@ async function inspectAttentionAcceleration(
     recommendedSageVersion: wheel?.version ?? "",
     recommendedWheel: wheel?.filename ?? "",
     supported: Boolean(
-      pythonPath && gpuSupported && (torchRuntimeReady ? wheel : targetWheel)
+      !probeFailed && pythonPath && gpuSupported && (torchRuntimeReady ? wheel : targetWheel)
     ),
     ready,
-    detail: ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
+    detail: probeFailed ? `H3 环境检测未完成（${probe.probeStage || "Python"}）：${probe.probeError || "探针异常"}。请重新扫描；当前结果不能判断依赖是否缺失。` : ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
       missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境"
   };
 }
@@ -2588,7 +2547,8 @@ function readStatsString(value: unknown, keys: string[]): string {
 
 async function inspectComfyCompatibility(
   baseUrl: string,
-  installation: ComfyInstallation | null
+  installation: ComfyInstallation | null,
+  runtimeEvidence?: { objectInfo: Record<string, unknown> | null }
 ): Promise<ComfyUiCompatibility> {
   const sourceDirectory = installation?.sourceDirectory ?? "";
   let version = "";
@@ -2598,7 +2558,7 @@ async function inspectComfyCompatibility(
   let nativeH3AvSamplingFromSource = false;
   const [statsResult, objectInfoResult] = await Promise.allSettled([
       fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(3500) }),
-      fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(8000) })
+      runtimeEvidence ? Promise.resolve(null) : fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(8000) })
   ]);
   if (statsResult.status === "fulfilled") {
     const statsResponse = statsResult.value;
@@ -2615,10 +2575,15 @@ async function inspectComfyCompatibility(
   }
   if (objectInfoResult.status === "fulfilled") {
     const objectInfoResponse = objectInfoResult.value;
-    if (objectInfoResponse.ok) {
+    if (objectInfoResponse?.ok) {
       objectInfo = await objectInfoResponse.json();
       checkedFrom = "api";
     }
+  }
+
+  if (runtimeEvidence?.objectInfo) {
+    objectInfo = runtimeEvidence.objectInfo;
+    checkedFrom = "api";
   }
 
   if (!version) version = await readComfySourceVersion(sourceDirectory);
@@ -4883,6 +4848,7 @@ function buildDlss5ProviderStatuses(
 async function scanFullEnvironment(
   settings: Settings
 ): Promise<EnvironmentScanResult> {
+  const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const userHome = os.homedir();
   const [comfyRoot, comfyInstallations] = await Promise.all([
     findComfyRoot(settings),
@@ -4907,39 +4873,27 @@ async function scanFullEnvironment(
       };
   const modelDirectory = directories.modelDirectory;
   const outputDirectory = directories.outputDirectory;
-  const modelFiles = await environmentModelFiles(settings, comfyRoot, modelDirectory);
-  const { dlss5Runtime, depthAnything, aetherScaleRuntime } = await scanManagedGuideAssets(settings, comfyRoot);
   const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
   const desktopComfyBaseUrl = "http://127.0.0.1:8000";
-  const runtimeComfyBaseUrl = await firstReachableServiceBase(
-    [
+  const [modelFiles, { dlss5Runtime, depthAnything, aetherScaleRuntime }, runtimeEvidence, pythonRuntimes] = await Promise.all([
+    environmentModelFiles(settings, comfyRoot, modelDirectory),
+    scanManagedGuideAssets(settings, comfyRoot),
+    collectEnvironmentRuntimeEvidence([
       configuredComfyBaseUrl,
       ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
-    ],
-    "/object_info"
-  );
-  const runtimeNodeIds = runtimeComfyBaseUrl
-    ? await fetch(`${runtimeComfyBaseUrl}/object_info`, {
-        signal: AbortSignal.timeout(8000)
-      })
-        .then(async (response) => response.ok
-          ? availableComfyNodeIds(await response.json())
-          : undefined)
-        .catch(() => undefined)
-    : undefined;
+    ]),
+    discoverPythonRuntimes(settings, comfyRoot, comfyInstallation)
+  ]);
+  const runtimeComfyBaseUrl = runtimeEvidence.baseUrl;
+  const runtimeNodeIds = runtimeEvidence.objectInfo
+    ? availableComfyNodeIds(runtimeEvidence.objectInfo) : undefined;
   const scannedModelProfiles = evaluateModelProfiles(
     modelFiles,
     settings.ltxExtensionModelProfile,
     runtimeNodeIds
   );
-  const pythonRuntimes = await discoverPythonRuntimes(
-    settings,
-    comfyRoot,
-    comfyInstallation
-  );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
-  const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const [customNodes, attentionAcceleration, llamaCppPython] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
@@ -4948,7 +4902,8 @@ async function scanFullEnvironment(
         latestNodeVersions["spectrum-minimax-h3"] ?? "",
         runtimeComfyBaseUrl || settings.comfyUrl,
         latestNodeVersions["h3-motion-context"] ?? "",
-        latestNodeVersions
+        latestNodeVersions,
+        { nodeIds: runtimeNodeIds ?? null }
       )
     ),
     inspectAttentionAcceleration(
@@ -5022,10 +4977,11 @@ async function scanFullEnvironment(
     "/system_stats"
   );
   const detectedComfyBaseUrl =
-    reachableComfyBaseUrl || configuredComfyBaseUrl;
+    runtimeComfyBaseUrl || reachableComfyBaseUrl || configuredComfyBaseUrl;
   const comfyCompatibility = await inspectComfyCompatibility(
     detectedComfyBaseUrl,
-    comfyInstallation
+    comfyInstallation,
+    runtimeEvidence
   );
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
   const [
@@ -5103,6 +5059,7 @@ async function scanFullEnvironment(
 }
 
 const environmentScanCache = new Map<string, EnvironmentScanResult>();
+const environmentScanCoordinator = new EnvironmentScanCoordinator<EnvironmentScanResult>();
 
 function cacheEnvironmentScan(key: string, scan: EnvironmentScanResult): void {
   environmentScanCache.delete(key);
@@ -5161,22 +5118,15 @@ async function scanEnvironmentDependencies(
     : null;
   const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
   const desktopComfyBaseUrl = "http://127.0.0.1:8000";
-  const runtimeComfyBaseUrl = await firstReachableServiceBase(
+  const runtimeEvidence = await collectEnvironmentRuntimeEvidence(
     [
       configuredComfyBaseUrl,
       ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
-    ],
-    "/object_info"
+    ]
   );
-  const runtimeNodeIds = runtimeComfyBaseUrl
-    ? await fetch(`${runtimeComfyBaseUrl}/object_info`, {
-        signal: AbortSignal.timeout(8000)
-      })
-        .then(async (response) => response.ok
-          ? availableComfyNodeIds(await response.json())
-          : undefined)
-        .catch(() => undefined)
-    : undefined;
+  const runtimeComfyBaseUrl = runtimeEvidence.baseUrl;
+  const runtimeNodeIds = runtimeEvidence.objectInfo
+    ? availableComfyNodeIds(runtimeEvidence.objectInfo) : undefined;
   const runtimeOnly = scope === "runtime";
   const pythonRuntimes = runtimeOnly
     ? previous.pythonRuntimes
@@ -5198,7 +5148,8 @@ async function scanEnvironmentDependencies(
         latestNodeVersions["spectrum-minimax-h3"] ?? "",
         runtimeComfyBaseUrl || settings.comfyUrl,
         latestNodeVersions["h3-motion-context"] ?? "",
-        latestNodeVersions
+        latestNodeVersions,
+        { nodeIds: runtimeNodeIds ?? null }
       )
     ),
     runtimeOnly
@@ -5266,10 +5217,11 @@ async function scanEnvironmentDependencies(
     ],
     "/system_stats"
   );
-  const detectedComfyBaseUrl = reachableComfyBaseUrl || configuredComfyBaseUrl;
+  const detectedComfyBaseUrl = runtimeComfyBaseUrl || reachableComfyBaseUrl || configuredComfyBaseUrl;
   const comfyCompatibility = await inspectComfyCompatibility(
     detectedComfyBaseUrl,
-    comfyInstallation
+    comfyInstallation,
+    runtimeEvidence
   );
   const comfyApiItem = await localServiceItem(
     "comfyui-api",
@@ -5322,7 +5274,7 @@ async function scanEnvironmentDependencies(
   };
 }
 
-export async function scanEnvironment(
+async function runEnvironmentScan(
   settings: Settings,
   scope: EnvironmentScanScope = "full"
 ): Promise<EnvironmentScanResult> {
@@ -5379,4 +5331,17 @@ export async function scanEnvironment(
   const full = await scanFullEnvironment(settings);
   cacheEnvironmentScan(cacheKey, full);
   return recordDiagnostics(full);
+}
+
+export function scanEnvironment(
+  settings: Settings,
+  scope: EnvironmentScanScope = "full"
+): Promise<EnvironmentScanResult> {
+  // Capture settings before queued work starts; later draft edits are unrelated.
+  const snapshot = structuredClone(settings);
+  return environmentScanCoordinator.run(
+    environmentScanCacheKey(snapshot), scope,
+    () => runEnvironmentScan(snapshot, scope),
+    { fresh: scope !== "full" }
+  );
 }

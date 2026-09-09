@@ -255,7 +255,9 @@ export function deriveAccelerationState(settings, environmentScan) {
         pythonRuntimes[0]?.path || "";
     const effectivePythonPath = settings.comfyPythonPath || detectedPythonPath;
     const selectedPythonRuntime = pythonRuntimes.find((runtime) => runtime.path.toLowerCase() === effectivePythonPath.toLowerCase());
-    const status = attention?.ready
+    const status = attention?.probeState === "failed"
+        ? "failed"
+        : attention?.ready
         ? "ready"
         : attention?.supported === false
             ? "unsupported"
@@ -264,7 +266,7 @@ export function deriveAccelerationState(settings, environmentScan) {
         attention,
         status,
         tone: status === "ready" ? "available" : status === "unsupported" ? "missing" : "warning",
-        canInstall: attention?.supported === true,
+        canInstall: status !== "failed" && attention?.supported === true,
         installAction: status === "ready" ? "repair" : "install",
         pythonRuntimes,
         effectivePythonPath,

@@ -375,7 +375,9 @@ export function deriveAccelerationState(
   const selectedPythonRuntime = pythonRuntimes.find(
     (runtime) => runtime.path.toLowerCase() === effectivePythonPath.toLowerCase()
   );
-  const status = attention?.ready
+  const status = attention?.probeState === "failed"
+    ? "failed" as const
+    : attention?.ready
     ? "ready" as const
     : attention?.supported === false
       ? "unsupported" as const
@@ -384,7 +386,7 @@ export function deriveAccelerationState(
     attention,
     status,
     tone: status === "ready" ? "available" as const : status === "unsupported" ? "missing" as const : "warning" as const,
-    canInstall: attention?.supported === true,
+    canInstall: status !== "failed" && attention?.supported === true,
     installAction: status === "ready" ? "repair" as const : "install" as const,
     pythonRuntimes,
     effectivePythonPath,

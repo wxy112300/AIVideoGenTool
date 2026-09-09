@@ -122,7 +122,7 @@ describe("MiniMax H3 prompt templates", () => {
   });
 
   it("gives the detailed cinematic preset extra local output headroom", () => {
-    expect(h3PromptExpansionTokenBudget("T2VA", 5, "detailed-cinematic")).toBe(1792);
+    expect(h3PromptExpansionTokenBudget("T2VA", 5, "detailed-cinematic")).toBe(2048);
     expect(h3PromptExpansionTokenBudget("R2V", 5, "detailed-cinematic")).toBe(2304);
     expect(h3PromptExpansionTokenBudget("FL2VA", 15, "detailed-cinematic")).toBe(2880);
   });
@@ -144,6 +144,18 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3ShotPolicyForPrompt("Two shots: the camera cuts to a close-up.")).toBe("allow-multiple");
     expect(h3PromptPriorityInstruction("default-single")).toContain("explicit request and labeled notes first");
     expect(h3PromptPriorityInstruction("default-single")).toContain("exactly one continuous [Shot 1]");
+  });
+
+  it("gives detailed expansion a source-fidelity gate before compression", () => {
+    const instruction = h3PromptControlInstruction({
+      rawPrompt: "A woman opens the gate, runs across the yard, then turns back toward the camera.",
+      mode: "T2VA",
+      preset: "detailed-cinematic"
+    });
+
+    expect(instruction).toContain("every concrete user-specified subject, action, action order");
+    expect(instruction).toContain("never collapse a chain of user actions into a generic summary");
+    expect(instruction).toContain("shorten static reference inventory and assistant-added detail first");
   });
 
   it("treats complete silence separately from no background music", () => {

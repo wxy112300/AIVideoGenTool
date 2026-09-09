@@ -106,6 +106,32 @@ function eventPathContainsElement(event: Event, element: HTMLElement): boolean {
   );
 }
 
+function isHistoryPlayerSpaceKey(event: KeyboardEvent): boolean {
+  return event.key === " " || event.key === "Spacebar" || event.code === "Space";
+}
+
+function eventPathContainsHistoryPlayerControl(event: Event): boolean {
+  return event.composedPath().some((target) => {
+    if (!(target instanceof HTMLElement)) return false;
+    if (
+      target instanceof HTMLAnchorElement ||
+      target instanceof HTMLButtonElement ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLTextAreaElement
+    ) return true;
+    const tagName = target.tagName.toLowerCase();
+    return tagName.startsWith("media-") &&
+      tagName !== "media-controller" &&
+      tagName !== "media-gesture-receiver";
+  });
+}
+
+function toggleHistoryPlayerPlayback(video: HTMLVideoElement): void {
+  if (video.paused) void video.play().catch(() => undefined);
+  else video.pause();
+}
+
 function isHistoryPlayerFullscreen(player: HTMLElement): boolean {
   const fullscreenElement = document.fullscreenElement;
   return fullscreenElement === player ||
@@ -276,8 +302,19 @@ export function mountHistoryPageController(
 
     document.addEventListener("keydown", (event) => {
       if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const isFullscreen = isHistoryPlayerFullscreen(detailPlayer);
+      if (!isFullscreen && !eventPathContainsElement(event, detailPlayer)) return;
+      if (isHistoryPlayerSpaceKey(event)) {
+        // Media Chrome handles this when its controller owns focus, but a
+        // fullscreen document can deliver the key outside that event path.
+        // Controls keep their own Space semantics, so do not toggle twice.
+        if (event.repeat || eventPathContainsHistoryPlayerControl(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        toggleHistoryPlayerPlayback(detailVideo);
+        return;
+      }
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      if (!isHistoryPlayerFullscreen(detailPlayer) && !eventPathContainsElement(event, detailPlayer)) return;
       // Keep horizontal arrows available to the vertical volume slider when
       // it owns focus. The player timeline uses percentage seeks.
       if (eventPathContainsTag(event, "media-volume-range")) return;

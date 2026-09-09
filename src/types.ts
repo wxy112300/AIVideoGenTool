@@ -1472,6 +1472,11 @@ export interface PythonRuntimeCandidate {
 }
 
 export interface AttentionAccelerationStatus {
+  /** Failed validation is unknown, never evidence that packages are absent. */
+  probeState?: "complete" | "failed";
+  probeError?: string;
+  probeStage?: string;
+  durationMs?: number;
   pythonPath: string;
   pythonVersion: string;
   torchVersion: string;

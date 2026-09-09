@@ -223,6 +223,7 @@ type SettingsCopyKey =
   | "accel.ready"
   | "accel.pending"
   | "accel.unsupported"
+  | "accel.probeFailed"
   | "accel.mode"
   | "accel.modeTip"
   | "accel.modeSage"
@@ -516,6 +517,7 @@ const zhCN: SettingsCopyCatalog = {
   "accel.ready": "已就绪",
   "accel.pending": "待安装/修复",
   "accel.unsupported": "环境不支持",
+  "accel.probeFailed": "检测未完成，请重新扫描",
   "accel.mode": "H3 Attention 后端",
   "accel.modeTip": "只影响 MiniMax H3 工作流；其他模型的采样和节点策略在各自的模型或工作流设置中管理。",
   "accel.modeSage": "自动加速 · SageAttention CUDA FP16",
@@ -785,6 +787,7 @@ const zhTW: SettingsCopyCatalog = {
   "accel.ready": "已就緒",
   "accel.pending": "待安裝/修復",
   "accel.unsupported": "環境不支援",
+  "accel.probeFailed": "偵測未完成，請重新掃描",
   "accel.mode": "H3 Attention 後端",
   "accel.modeTip": "只影響 MiniMax H3 工作流程；其他模型的採樣與節點策略在各自的模型或工作流程設定中管理。",
   "accel.modeSage": "自動加速 · SageAttention CUDA FP16",
@@ -1075,6 +1078,7 @@ const enUS: SettingsCopyCatalog = {
   "accel.ready": "Ready",
   "accel.pending": "Needs install/repair",
   "accel.unsupported": "Environment unsupported",
+  "accel.probeFailed": "Detection incomplete; scan again",
   "accel.mode": "H3 Attention backend",
   "accel.modeTip": "This only affects MiniMax H3 workflows. Other models keep their own sampling and node policies.",
   "accel.modeSage": "Automatic acceleration · SageAttention CUDA FP16",

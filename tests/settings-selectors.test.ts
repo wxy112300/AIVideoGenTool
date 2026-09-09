@@ -254,6 +254,30 @@ describe("settings selectors", () => {
     });
   });
 
+  it("keeps a failed attention probe uncertain and blocks installation", () => {
+    const settings = createDefaultState().settings;
+    const scan = {
+      attentionAcceleration: {
+        probeState: "failed",
+        probeError: "probe timed out",
+        supported: false,
+        ready: false,
+        pythonPath: "D:\\ComfyUI\\.venv\\Scripts\\python.exe",
+        torchVersion: "2.10.0+cu130",
+        sageAttentionVersion: "",
+        tritonVersion: "",
+        comfyKitchenBackends: ["cuda"],
+        kjNodesInstalled: true,
+        kjNodesCompatible: true
+      }
+    } as EnvironmentScanResult;
+    expect(deriveAccelerationState(settings, scan)).toMatchObject({
+      status: "failed",
+      tone: "warning",
+      canInstall: false
+    });
+  });
+
   it("limits the H3 video VAE selector to scanned files and falls back safely", () => {
     const profile = (fp16: boolean, int8Convrot: boolean): ModelScanProfile => ({
       id: "minimax_h3_fl2va",

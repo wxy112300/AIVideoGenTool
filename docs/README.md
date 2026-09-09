@@ -11,7 +11,7 @@
 | 升级已有节点、插件、工作流 | catalog 当前 revision + [环境约定](DEPENDENCIES_AND_SETUP.md) | [升级](development/WORKFLOW.md#upgrade) |
 | 研究 prompt 增强 | [Prompt Pack 边界](PROMPT_PACK_DESIGN.md) | [对照实验](development/WORKFLOW.md#prompt) |
 | Extend、长视频 | [H3 长视频 TASK](tasks/2026-09-07-h3-long-video/TASK.md) + 工作流契约 + 当前 adapter/queue/artifact 代码 | [探索方案](development/WORKFLOW.md#extension) |
-| 继续被卡方案，例如 DLSS5 | [任务入口](tasks/README.md) → 对应 TASK | [阻塞恢复](development/WORKFLOW.md#blocked) |
+| 继续被卡方案 | [任务入口](tasks/README.md) → 对应 TASK | [阻塞恢复](development/WORKFLOW.md#blocked) |
 | 整理开发文档 | [文档职责](development/DOCUMENT_POLICY.md) + [全量旧文档盘点](development/DOCUMENT_INVENTORY.md) | 有界迁移、保留证据 |
 
 常规任务不需要读完全表、全量盘点或整套历史计划。已派发的 Luna 工作包从指定路径/章节开始。

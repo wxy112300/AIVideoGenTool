@@ -95,6 +95,7 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
     adapterId: "dlss5-sr",
     order: 95,
     inputModes: ["video"],
+    retired: true,
     scan: {
       managedBy: "comfyui",
       vram: "Windows + NVIDIA · DLSS SR runtime · 待实机验证",
@@ -106,17 +107,17 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
       components: []
     }
   }, {
-    name: "DLSS Super Resolution · 实验性",
-    badge: "Windows + NVIDIA · 实验性",
-    description: "HECer 原版 DLSS Super Resolution 候选路径，固定使用 Depth 和 Farneback motion guides；2×/3×/4× 与速度/质量仍需本机验证。"
+    name: "DLSS Super Resolution · 已归档",
+    badge: "Windows + NVIDIA · 已归档",
+    description: "HECer 原版 DLSS Super Resolution 历史候选路径，已淘汰；仅保留历史记录与面板替换接缝。"
   }, {
-    name: "DLSS Super Resolution · Experimental",
-    badge: "Windows + NVIDIA · Experimental",
-    description: "Candidate path using the original HECer DLSS Super Resolution node with fixed depth and Farneback motion guides; 2x/3x/4x behavior and performance still require local validation."
+    name: "DLSS Super Resolution · Archived",
+    badge: "Windows + NVIDIA · Archived",
+    description: "Historical candidate using the original HECer DLSS Super Resolution node; retired and retained only for history and panel replacement."
   }, {
-    name: "DLSS Super Resolution · 實驗性",
-    badge: "Windows + NVIDIA · 實驗性",
-    description: "使用 HECer 原版 DLSS Super Resolution 節點與固定深度、Farneback motion 導引；2×/3×/4× 行為與效能仍待本機驗證。"
+    name: "DLSS Super Resolution · 已歸檔",
+    badge: "Windows + NVIDIA · 已歸檔",
+    description: "使用 HECer 原版 DLSS Super Resolution 節點的歷史候選路徑；已淘汰，僅保留歷史記錄與面板替換接縫。"
   }),
   entry({
     id: "aetherscale-dlss5",
@@ -125,6 +126,7 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
     adapterId: "aetherscale-dlss5",
     order: 96,
     inputModes: ["video"],
+    retired: true,
     scan: {
       managedBy: "comfyui",
       vram: "Windows + NVIDIA · carrier DLSS5 · 待实机验证",
@@ -134,17 +136,17 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
       components: []
     }
   }, {
-    name: "AetherScale DLSS5 Neural Rendering",
-    badge: "Carrier · 实验性",
-    description: "AetherScale v0.5.5 的 temporal motion + carrier-backed Neural Rendering；主路径提供 2×/3×，1× Enhance 与 1.5×/1.724× 在独立状态满足后使用。"
+    name: "AetherScale DLSS5 Neural Rendering · 已归档",
+    badge: "Carrier · 已归档",
+    description: "AetherScale v0.5.5 的历史 carrier-backed Neural Rendering 路径，已淘汰；仅保留历史记录与面板替换接缝。"
   }, {
-    name: "AetherScale DLSS5 Neural Rendering",
-    badge: "Carrier · Experimental",
-    description: "AetherScale v0.5.5 temporal motion plus carrier-backed Neural Rendering. The main path exposes 2x/3x; 1x Enhance and 1.5x/1.724x require their own readiness evidence."
+    name: "AetherScale DLSS5 Neural Rendering · Archived",
+    badge: "Carrier · Archived",
+    description: "Historical AetherScale v0.5.5 carrier-backed Neural Rendering path; retired and retained only for history and panel replacement."
   }, {
-    name: "AetherScale DLSS5 Neural Rendering",
-    badge: "Carrier · 實驗性",
-    description: "AetherScale v0.5.5 temporal motion 與 carrier-backed Neural Rendering；主路徑提供 2×/3×，1× Enhance 與 1.5×/1.724× 需各自通過就緒證據。"
+    name: "AetherScale DLSS5 Neural Rendering · 已歸檔",
+    badge: "Carrier · 已歸檔",
+    description: "AetherScale v0.5.5 temporal motion 與 carrier-backed Neural Rendering 的歷史路徑；已淘汰，僅保留歷史記錄與面板替換接縫。"
   }),
   entry({ id: "flashvsr", family: "flashvsr", category: "upscale", adapterId: "flashvsr", order: 90, inputModes: ["video"], scan: { vram: "预计峰值 14–19 GB", components: [
     component("FlashVSR 模型", "FlashVSR/FlashVSR1_1.safetensors（或上游长文件名）", /flashvsr\/(?:flashvsr1_1|wan2_1-t2v-1\.1_3b_flashvsr_fp32)\.safetensors$/i, guide("1038lab / FlashVSR", "https://huggingface.co/1038lab/FlashVSR/resolve/main/FlashVSR1_1.safetensors", "FlashVSR", "FlashVSR1_1.safetensors", "节点当前运行时会优先读取 FlashVSR1_1.safetensors；上游 README 中的 Wan2_1-T2V-1.1_3B_FlashVSR_fp32.safetensors 也会被识别。")),

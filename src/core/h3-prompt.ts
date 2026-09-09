@@ -229,6 +229,7 @@ export function h3PromptControlInstruction(input: H3PromptControlInput): string 
     lines.push(`${input.mode} endpoint module: keep exact reference endpoint geometry and bridge states causally; no morph, teleport, unexplained cut, or premature pose.`);
   }
   if (plan.preset === "detailed-cinematic") {
+    lines.push("Detailed source-fidelity gate: before expanding, silently checklist every concrete user-specified subject, action, action order, camera/viewpoint, route, timing, dialogue, sound, and prohibition. Render every checklist item as an explicit observable fact or event in the final H3 fields in the same order; never collapse a chain of user actions into a generic summary or omit a later action because the reference already shows the opening state. If output space is tight, shorten static reference inventory and assistant-added detail first, never a user-required action, camera instruction, reaction, dialogue, or constraint.");
     lines.push("Detailed-expansion budget: spend extra words on requested CHANGE, causal motion/reaction, camera route, dialogue, sound, continuity, and endpoint; state static reference/atmosphere once, remove filler before actionable beats.");
   }
   return lines.join("\n");
@@ -312,7 +313,7 @@ export function h3PromptExpansionTokenBudget(
   );
   const detailed = preset === "detailed-cinematic";
   const minimum = detailed
-    ? mode === "R2V" ? 2304 : 1792
+    ? mode === "R2V" ? 2304 : 2048
     : mode === "R2V" ? 1792 : 1280;
   const perSlice = detailed ? 960 : 640;
   const maximum = detailed ? 3072 : 2048;

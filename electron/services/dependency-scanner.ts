@@ -463,7 +463,8 @@ export async function scanCustomNodes(
   latestSpectrumVersion = "",
   runtimeBaseUrl = "",
   latestMotionContextVersion = "",
-  latestNodeVersions: Readonly<Record<string, string>> = {}
+  latestNodeVersions: Readonly<Record<string, string>> = {},
+  runtimeEvidence?: { nodeIds: Set<string> | null }
 ): Promise<CustomNodeStatus[]> {
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
@@ -479,7 +480,7 @@ export async function scanCustomNodes(
   const motionContextDirectories = await findMotionContextDirectories(entries, customNodesDirectory);
   const h3MemoryDirectories = await findH3MemoryDirectories(entries, customNodesDirectory);
   const serviceRoot = (runtimeBaseUrl || settings.comfyUrl).replace(/\/+$/, "");
-  const serviceNodeIds = await fetch(
+  const serviceNodeIds = runtimeEvidence ? runtimeEvidence.nodeIds : await fetch(
     `${serviceRoot}/object_info`,
     { signal: AbortSignal.timeout(5_000) }
   )

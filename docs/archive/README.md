@@ -23,5 +23,6 @@
 - [模块化架构收口计划](./modular-architecture/)
 - [ComfyUI 设置重构计划](./comfyui-settings/)
 - [早期云端/交接说明](./legacy-handoff/)
+- [DLSS5 退役方案与调研](./dlss5/README.md)
 
-DLSS5、H3 研究和图片模型研究已移入 Research 与 Evidence，当前状态只从任务入口进入。归档文件不承担当前任务状态。
+DLSS5 历史方案已集中到 `archive/dlss5/`；H3 研究和图片模型研究仍分别位于 Research 与 Evidence。归档文件不承担当前任务状态。

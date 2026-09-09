@@ -3,7 +3,8 @@
 只保存任务链接，不复制状态；打开对应 TASK 的 Resume 获取当前结论。这里只列已纳入新流程的任务，不声称覆盖所有正在运行的 Codex 任务。模型名称不是文件所有权证明。
 
 - [开发 harness 与文档治理](2026-09-07-harness/TASK.md)
-- [DLSS5：恢复调查入口与阻塞条件](2026-09-07-dlss5-runtime/TASK.md)
+- [环境扫描可靠性与耗时](2026-09-09-environment-scan/TASK.md)
+- [DLSS5 历史方案归档](../archive/dlss5/README.md)
 - [H3 高分辨率与 JointAV 收口](2026-09-07-h3-high-resolution/TASK.md)
 - [H3 Native AV、Extend 与长视频](2026-09-07-h3-long-video/TASK.md)
 - [图片工作台剩余事项](2026-09-07-image-workspace/TASK.md)

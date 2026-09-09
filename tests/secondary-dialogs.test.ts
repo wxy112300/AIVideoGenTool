@@ -309,7 +309,8 @@ describe("secondary dialog markup", () => {
     expect(markup).toContain('aria-label="3× · 2496 × 1440"');
     expect(markup).toContain("2496 × 1440");
     expect(markup).toContain("source-dlss-3x-v01.mp4");
-    expect(markup).toContain(uiKeys.upscale.dlss5Pending);
+    expect(markup).toContain(uiKeys.upscale.dlss5Retired);
+    expect(markup).toContain('id="enqueue-upscale" disabled');
     expect(markup).toContain(uiKeys.upscale.dlss5BenchmarkPending);
     expect(markup).toContain(uiKeys.upscale.estimatedDisk);
   });
@@ -369,9 +370,11 @@ describe("secondary dialog markup", () => {
     expect(markup.split(uiKeys.upscale.aetherscaleBenchmarkPending)).toHaveLength(2);
     expect(markup).toContain("864");
     expect(markup).toContain("1728");
+    expect(markup).toContain(uiKeys.upscale.aetherscaleRetired);
+    expect(markup).toContain('id="enqueue-upscale" disabled');
   });
 
-  it("fails closed with a recovery reason when the DLSS5 node is missing", () => {
+  it("keeps the retired DLSS5 panel closed regardless of legacy node state", () => {
     const version = {
       id: "version-dlss5-missing",
       kind: "original",
@@ -414,7 +417,7 @@ describe("secondary dialog markup", () => {
 
     expect(markup).toMatch(/data-upscale-scale="2"[^>]*disabled/);
     expect(markup).toContain('id="enqueue-upscale" disabled');
-    expect(markup).toContain(uiKeys.upscale.dlss5NodeMissing);
-    expect(markup).toContain(uiKeys.upscale.dlss5SettingsHint);
+    expect(markup).toContain(uiKeys.upscale.dlss5Retired);
+    expect(markup).not.toContain(uiKeys.upscale.dlss5NodeMissing);
   });
 });

@@ -16,7 +16,7 @@
 | Extend / 长视频 | Workflow；先找对应 [TASK](tasks/README.md) | `src/core/` 的 extension/artifact helpers、`electron/queue-*`、`electron/services/extension-media.ts` |
 | Prompt 增强 | [Prompt Pack](PROMPT_PACK_DESIGN.md) + Workflow | `src/core/prompts/`、`src/renderer/prompt-packs.ts`、prompt services/catalog |
 | 环境/节点安装升级 | [Dependencies](DEPENDENCIES_AND_SETUP.md) | `electron/services/environment.ts`、dependency scanner/installer、`src/infrastructure/dependency-node-adapters.ts`、Settings controllers |
-| DLSS5 被卡接续 | [DLSS5 TASK](tasks/2026-09-07-dlss5-runtime/TASK.md) | `src/core/dlss5.ts`、`aetherscale.ts`、两套 runtime services/catalog |
+| DLSS5 历史归档 | [DLSS5 archive](archive/dlss5/README.md) | 旧 ID/兼容卸载、保留的 upscale 面板接缝；新 provider 需另建任务 |
 | 真实 Electron 验收 | [API runbook](AGENT_ELECTRON_API_RUNBOOK.md) + Architecture | preload `window.studio`、typed AppApi、loopback CDP、`scripts/capture-c04-electron-evidence.mjs` |
 | 文档/agent 流程 | [Document policy](development/DOCUMENT_POLICY.md) | AGENTS、docs 入口、对应 TASK；不运行 GPU |
 

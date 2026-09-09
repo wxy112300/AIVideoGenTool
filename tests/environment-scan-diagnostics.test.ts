@@ -171,6 +171,18 @@ function scanFixture(): EnvironmentScanResult {
 }
 
 describe("environment scan diagnostics", () => {
+  it("records failed probes as unverified rather than inventing missing packages", () => {
+    const scan = scanFixture();
+    Object.assign(scan.attentionAcceleration, {
+      probeState: "failed", probeStage: "torch", probeError: "timeout", durationMs: 30001,
+      sageAttentionVersion: "", tritonVersion: "", comfyKitchenVersion: "", ready: false
+    });
+    expect(buildEnvironmentScanDiagnostics(scan).inventory).toMatchObject({
+      attentionProbeState: "failed", attentionProbeStage: "torch", attentionProbeError: "timeout",
+      attentionProbeDurationMs: 30001, sageAttentionVersion: "not-verified",
+      tritonVersion: "not-verified", comfyKitchenVersion: "not-verified"
+    });
+  });
   it("records environment versions and actionable scan findings", () => {
     const diagnostics = buildEnvironmentScanDiagnostics(scanFixture());
 

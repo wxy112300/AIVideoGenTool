@@ -415,6 +415,12 @@ export async function installCustomNodePackage(
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
+  if (definition.retired) {
+    return {
+      ok: false,
+      message: `${definition.name} 已归档，当前不再提供安装、更新或修复。`
+    };
+  }
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     return {
       ok: false,

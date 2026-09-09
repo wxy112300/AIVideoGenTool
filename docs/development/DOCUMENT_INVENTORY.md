@@ -48,14 +48,14 @@
 | [X-MinimaxH3 adoption v2](../archive/h3-adoption/2026.9.1-x-minimaxh3-feature-adoption-v2.md) | archive | Superseded / historical implementation draft | keep | 已被 V3 与当前 H3 TASK 取代。 |
 | [H3 V3 recovery handoff](../archive/h3-adoption/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3-handoff.md) | archive | WP2 Gate 未完成；WP4–WP8 不得声称完成 | keep | handoff 依赖历史未提交工作区，当前接续由 TASK 承担。 |
 | [H3 V3 recovery plan](../archive/h3-adoption/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3.md) | archive | Partially completed / retained as recovery history | keep | 目标代理和逐 Gate 要求保留为历史，当前状态由 TASK 承担。 |
-| [DLSS5 dual-provider integration](../research/dlss5/2026.9.4-dlss5-dual-provider-parallel-integration.md) | research | Implementation reference；HECer/AetherScale 分开 | current reference | 当前阻塞与下一步唯一从 DLSS5 TASK 进入，不重启旧调查。 |
+| [DLSS5 dual-provider integration](../archive/dlss5/2026.9.4-dlss5-dual-provider-parallel-integration.md) | archive | Retired；HECer/AetherScale 均淘汰 | keep | 历史实施参考；当前不再作为 provider 或任务入口。 |
 | [ComfyUI settings rearchitecture](../archive/comfyui-settings/2026.8.27-comfyui-settings-rearchitecture.md) | archive | Archived；WP-00–WP-06 完成 | keep | 统一归入 `archive/**`，旧 `Plan/archive` 路径不再作为入口。 |
 | [AD-01 H3 runtime/ComfyUI investigation](../research/h3/2026.8.31-ad01-x-minimaxh3-runtime-comfyui-investigation.md) | research | Static validated | keep | 归属已被取代的 adoption 计划；作为研究证据保留。 |
 | [WP-C03 History detail source of truth](../research/history/2026.8.31-wp-c03-history-detail-source-of-truth.md) | research | 记录 harness 已淘汰结构 | keep | 历史边界与当前 History 契约分开。 |
 | [WP-01/WP-P00 performance baseline](../research/history/2026.8.31-wp01-wpp00-boundary-performance-baseline.md) | research | 历史 baseline | keep | 性能结论依赖当时边界；与 C04/History 最新证据关联。 |
 | [WP-C04 Electron performance evidence](../research/history/2026.9.1-wp-c04-electron-performance-evidence.md) | research | Completed，严格性能预算残差未技术通过 | current reference | 用户接受项不能被改写成自动化性能通过，记录含历史机器路径。 |
 | [H3 1080p/1440p integration research](../research/h3/2026.9.2-h3-1080-1440-integration-research.md) | research | 当前实施决策输入；不代表已产品化 | current reference | 调研结论与当前 H3 TASK 的 Gate 绑定。 |
-| [DLSS5 upscale integration research](../research/dlss5/2026.9.3-dlss5-upscale-integration-plan.md) | research | Proposed / static research only | keep | 旧候选路线不重新成为执行入口。 |
+| [DLSS5 upscale integration research](../archive/dlss5/2026.9.3-dlss5-upscale-integration-plan.md) | archive | Retired / historical static research | keep | 旧候选路线不重新成为执行入口。 |
 | [Product Requirements](../PRODUCT_REQUIREMENTS.md) | contract | unknown | current reference | 根需求未标版本/状态，可能与当前图片、队列和模型边界不完全一致。 |
 | [Prompt Pack Design](../PROMPT_PACK_DESIGN.md) | contract | unknown | current reference | 设计规则未标状态，需检查与当前 defaults/persistence 的一致性。 |
 | [Renderer modularization plan](../archive/modular-architecture/RENDERER_MODULARIZATION_PLAN.md) | archive | Superseded / historical architecture plan | keep | 当前模块边界以 Architecture Contract 和已收口计划为准。 |
@@ -71,6 +71,6 @@
 2. H3 高分辨率、H3 长视频、图片工作台各保留一个当前 TASK；旧长计划只保留历史事实、停止条件和替代链接。
 3. `docs/archive/**` 是本轮统一的历史入口；`docs/archive/ux-ui` 继续作为既有 UI/UX 历史子目录，旧 `Plan/archive` 文件已迁入主题 archive。
 4. evidence、research、静态 schema 检查和真实 GPU/ComfyUI 生成证据仍分层记录；任何“已接入”“verified”不替代运行验证。
-5. 当前入口的状态、证据和下一步已在 TASK/契约/Research 索引中分开；DLSS5 的 HECer SR 与 AetherScale 仍保持独立。
+5. 当前入口的状态、证据和下一步已在 TASK/契约/Research 索引中分开；DLSS5 的 HECer SR 与 AetherScale 历史材料已集中到 `docs/archive/dlss5/`。
 
 结论：本表保留初始 58 份文档的分类基线和风险事实，不是实时任务数据库；本轮物理移动、当前入口和状态以链接到的 TASK、契约、Research/Evidence、Archive 为准。

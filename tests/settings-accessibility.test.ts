@@ -180,6 +180,44 @@ describe("Settings accessibility markup", () => {
     expect(pathsMarkup).not.toContain('id="settings-environment-section"');
   });
 
+  it("renders failed attention probes as incomplete without inventing missing packages", () => {
+    const environmentScan = {
+      comfyRoot: "C:\\ComfyUI",
+      comfyInstallType: "manual",
+      pythonRuntimes: [],
+      attentionAcceleration: {
+        probeState: "failed",
+        probeError: "probe timed out",
+        supported: false,
+        ready: false,
+        pythonPath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+        pythonVersion: "3.12.8",
+        torchVersion: "2.10.0+cu130",
+        sageAttentionVersion: "2.2.0+cu130torch2.10",
+        tritonVersion: "3.2.0",
+        kjNodesInstalled: true,
+        kjNodesCompatible: true,
+        comfyKitchenBackends: ["cuda"]
+      }
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({
+      settingsTab: "nodes",
+      environmentScan
+    }), renderOptions);
+
+    const cardStart = markup.indexOf("h3-acceleration-card");
+    const cardEnd = markup.indexOf('<article class="panel custom-node-card missing">', cardStart);
+    const card = markup.slice(cardStart, cardEnd > cardStart ? cardEnd : undefined);
+    expect(card).toContain("检测未完成，请重新扫描");
+    expect(card).toContain("3.12.8");
+    expect(card).toContain("2.2.0+cu130torch2.10");
+    expect(card).toContain("3.2.0");
+    expect(card).toContain("KJNodes 模型级补丁可用");
+    expect(card).not.toContain("环境不支持");
+    expect(card).not.toContain("未安装");
+    expect(card).toMatch(/id="install-attention-acceleration"[^>]*disabled/);
+  });
+
   it("keeps the manual scan action available on non-system Settings tabs", () => {
     const markup = renderSettingsPage(viewModel({ settingsTab: "lora" }), renderOptions);
 

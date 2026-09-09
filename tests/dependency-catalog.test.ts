@@ -44,8 +44,6 @@ describe("dependency catalog", () => {
       "seedvr2",
       "flashvsr",
       "frame-interpolation",
-      "comfyui-dlss5",
-      "comfyui-aetherscale",
       "h3-motion-context",
       "h3-continuum",
       "h3-latent-upscaler",
@@ -70,6 +68,7 @@ describe("dependency catalog", () => {
       required: true
     });
     expect(customNodeDefinition("comfyui-dlss5")).toMatchObject({
+      retired: true,
       repositoryUrl: DLSS5_NODE_REPOSITORY,
       directoryName: "ComfyUI-DLSS5",
       installRevision: DLSS5_NODE_REVISION,
@@ -78,6 +77,12 @@ describe("dependency catalog", () => {
       nodeTypes: ["DLSSSuperResolution", "DLSS5DepthAnythingV2", "DLSS5OpticalFlow"],
       required: false
     });
+    expect(customNodeDefinition("comfyui-aetherscale")).toMatchObject({
+      retired: true,
+      required: false
+    });
+    expect(customNodeCatalog.some((item) => item.id === "comfyui-dlss5")).toBe(false);
+    expect(customNodeCatalog.some((item) => item.id === "comfyui-aetherscale")).toBe(false);
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",

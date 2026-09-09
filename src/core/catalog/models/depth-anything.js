@@ -34,6 +34,7 @@ export const depthAnythingV2 = entry({
     adapterId: "depth-anything-v2",
     order: 1,
     inputModes: ["video"],
+    retired: true,
     scan: {
         managedBy: "comfyui",
         vram: "Depth guide · Transformers · 24.8M params · runtime required",

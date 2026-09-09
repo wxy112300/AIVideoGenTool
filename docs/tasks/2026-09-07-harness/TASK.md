@@ -12,10 +12,10 @@
 
 - 问题：事实、计划、证据与历史混写；active 目录不能表达真实状态；重复全量阅读/实验占用高级模型上下文。
 - 决定：小修短路径 + 标准混合流程；一个 TASK 管当前状态，契约管产品事实，evidence 管来源与实验。
-- 已落地：docs 首页、工作流、模板、文档生命周期、初始 58 份文档分类、代码地图、DLSS5 阻塞接续卡及精简 AGENTS。
+- 已落地：docs 首页、工作流、模板、文档生命周期、初始 58 份文档分类、代码地图、DLSS5 历史归档卡及精简 AGENTS。
 - 本批次完成：实际移动 27 份文档，新增 H3 高分辨率/H3 长视频/图片工作台 3 个当前 TASK，新增 Research 索引和长视频 evidence 入口，修复受影响链接。
 - 不做：全局模型配置、自动调度器、产品功能变更、GPU/ComfyUI 试验、依赖安装；不删除历史证据。
-- 后续：只从 3 个新 TASK 和既有 DLSS5 TASK 接续；needs-review 项按各 TASK 的证据门槛处理。
+- 后续：只从 3 个新 TASK 接续；needs-review 项按各 TASK 的证据门槛处理，DLSS5 改由主题 archive 保留历史。
 
 ## Plan and ownership
 
@@ -43,7 +43,7 @@
 | History 计划与 WP-C03/WP-01/C04 记录 | `docs/archive/history-performance/`、`docs/research/history/` | 已接受收口与尚未技术通过的性能证据分开 |
 | 模块化、Settings、云端 handoff | 对应 `docs/archive/modular-architecture/`、`docs/archive/comfyui-settings/`、`docs/archive/legacy-handoff/` | 已完成/被替代/历史交接统一归档；当前架构以契约为准 |
 | 图片工作台计划与模型研究 | `docs/archive/image-workspace/`、`docs/research/image-edit/` | 混合长计划归档；独立 AI 放大保留 needs-review |
-| DLSS5 旧计划/调查 | `docs/research/dlss5/` | HECer SR 与 AetherScale 独立保留；当前状态唯一从 DLSS5 TASK 进入 |
+| DLSS5 旧计划/调查 | `docs/archive/dlss5/` | HECer SR 与 AetherScale 均已淘汰；仅保留历史证据和停止条件 |
 | H3 P0 文件 | `docs/tasks/2026-09-07-h3-long-video/evidence/` | 保留静态基线，不把它升级为 Native runtime 完成证据 |
 
 明确收口的历史计划：7 份（H3 adoption v1、v2；H3 Memory；History performance；Renderer modularization；Headless rearchitecture；ComfyUI Settings；H3 v3 为 partially completed history，不计入 done）。
@@ -53,7 +53,7 @@
 - `docs/tasks/2026-09-07-h3-high-resolution/TASK.md`：1440p learned Upscale 的质量/组合证据，以及 native 1440p 失败边界；本轮不重跑 GPU。
 - `docs/tasks/2026-09-07-h3-long-video/TASK.md`：真实 workflow/生成、取消清理和长批次媒体证据；当前只有静态/core/schema 基线。
 - `docs/tasks/2026-09-07-image-workspace/TASK.md`：独立 AI 放大实现与真实模型 smoke；旧 CPU VAE 仅是历史事实。
-- `docs/tasks/2026-09-07-dlss5-runtime/TASK.md`：HECer wrapper 外部资产仍缺；AetherScale carrier/feature-18 真实输出尚未在本卡确认。
+- `docs/archive/dlss5/TASK.md`：HECer wrapper 外部资产与 AetherScale carrier/feature-18 的历史阻塞记录；不再作为当前执行入口。
 
 下一步：接手 agent 只需读取相应 TASK、当前契约和已链接 Research/Evidence；不从已归档长计划重新建立执行入口。
 

@@ -21,16 +21,18 @@ import { createModelOptionViewModels, orderVideoProfiles } from "../src/renderer
 import type { EnvironmentScanResult } from "../src/types";
 
 describe("DLSS5 phase A catalog and pure contracts", () => {
-  it("registers the provider without pretending it owns a checkpoint", () => {
+  it("retains retired provider metadata without pretending it owns a checkpoint", () => {
     expect(modelCatalog.get("dlss5-sr")?.definition).toMatchObject({
       category: "upscale",
       adapterId: "dlss5-sr",
+      retired: true,
       inputModes: ["video"]
     });
     expect(modelCatalog.get("dlss5-sr")?.definition.scan?.components).toEqual([]);
     expect(modelCatalog.get("depth-anything-v2")?.definition).toMatchObject({
       category: "video",
       role: "guide",
+      retired: true,
       adapterId: "depth-anything-v2"
     });
     const depthComponent = modelCatalog.get("depth-anything-v2")?.definition.scan?.components;

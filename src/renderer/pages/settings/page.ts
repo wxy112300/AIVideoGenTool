@@ -304,6 +304,7 @@ export function renderSettingsPage(
   const attention = accelerationState.attention;
   const attentionTone = accelerationState.tone;
   const attentionStatus = accelerationState.status;
+  const attentionProbeFailed = attentionStatus === "failed";
   const h3VideoVaeState = deriveH3VideoVaeState(settings, environmentScan);
   const h3VideoVaeTone = h3VideoVaeState.tone;
   const h3VideoVaeStatusIcon = h3VideoVaeState.status === "missing"
@@ -329,6 +330,8 @@ export function renderSettingsPage(
   const attentionInstallStage = attentionInstallLines.at(-1) ?? s("accel.preparing");
   const attentionStatusIcon = attentionStatus === "ready"
     ? "circle-check"
+    : attentionProbeFailed
+      ? "circle-help"
     : attentionStatus === "unsupported"
       ? "circle-alert"
       : "circle-help";
@@ -691,12 +694,12 @@ export function renderSettingsPage(
         <p>${s("nodes.h3AccelerationDescription")}</p>
         <p class="muted">${s("nodes.h3AccelerationTarget")}${escape(attention?.pythonPath || s("accel.scanFill"))}</p>
         <div class="attention-runtime-grid">
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || s("accel.notInstalled"))} · ${(attention?.comfyKitchenBackends ?? []).map((backend) => escape(backend)).join(s("shared.listSeparator")) || s("accel.eagerFallback")}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notFound")))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))} · ${(attention?.comfyKitchenBackends ?? []).map((backend) => escape(backend)).join(s("shared.listSeparator")) || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.eagerFallback"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.noWheel")))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
-        <p class="muted h3-acceleration-operation-note">${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</p>
+        <p class="muted h3-acceleration-operation-note">${attentionProbeFailed ? `<strong>${s("accel.probeFailed")}</strong><span>${escape(attention?.probeError || "")}</span>` : ""}${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</p>
         <div class="attention-install-progress" id="attention-install-progress" aria-live="polite" ${viewModel.attentionAccelerationInstalling ? "" : "hidden"}>
           <div class="progress indeterminate" role="progressbar" aria-label="${s("accel.progress")}" aria-valuemin="0" aria-valuemax="100"><span></span></div>
           <strong id="attention-install-stage">${escape(attentionInstallStage)}</strong>
@@ -707,7 +710,7 @@ export function renderSettingsPage(
         </details>
       </div>
       <div class="custom-node-actions">
-        <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : s("accel.pending")}</span>
+        <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : attentionProbeFailed ? s("accel.probeFailed") : s("accel.pending")}</span>
         <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>
       </div>
     </article>`;
@@ -866,7 +869,7 @@ export function renderSettingsPage(
       <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
         <div class="section-heading">
           <div><h2>${s("accel.strategyTitle")}</h2><span class="muted">${s("accel.strategyDescription")}</span></div>
-          <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
+          <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : attentionProbeFailed ? `${icon("circle-help")} ${s("accel.probeFailed")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
@@ -877,8 +880,8 @@ export function renderSettingsPage(
             </select>
           </label>
           <div class="acceleration-summary">
-            <span class="acceleration-summary-icon">${icon(attentionStatus === "ready" ? "circle-check" : attentionStatus === "pending" ? "circle-help" : "circle-alert")}</span>
-            <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
+            <span class="acceleration-summary-icon">${icon(attentionStatus === "ready" ? "circle-check" : attentionStatus === "unsupported" ? "circle-alert" : "circle-help")}</span>
+            <div><strong>${escape(attentionProbeFailed ? s("accel.probeFailed") : attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
         </div>
       </section>

@@ -6,7 +6,7 @@
 
 - [H3 research](h3/)：社区方案、ComfyUI/Native AV/高分辨率调查。
 - [History research and evidence](history/)：性能基线、C04 packaged evidence、History detail harness 诊断。
-- [DLSS5 research](dlss5/)：HECer SR 与 AetherScale 的独立来源和接入参考；当前状态以 [DLSS5 TASK](../tasks/2026-09-07-dlss5-runtime/TASK.md) 为准。
+- [DLSS5 historical research](../archive/dlss5/README.md)：HECer SR 与 AetherScale 的来源、接入计划和失败边界已归档，不再作为当前研究或实施入口。
 - [Image model research](image-edit/)：图片编辑模型的候选和验证边界；工作台剩余事项以 [image-workspace TASK](../tasks/2026-09-07-image-workspace/TASK.md) 为准。
 
 ## 使用规则

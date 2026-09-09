@@ -31,7 +31,6 @@ import {
   prepareMultimodalPromptNodes
 } from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
-import { DLSS5_NODE_REVISION } from "../src/core/catalog";
 
 const dlss5DepthAnythingSource = [
   "from transformers import AutoImageProcessor, AutoModelForDepthEstimation",
@@ -864,61 +863,20 @@ describe("dependency installer", () => {
     expect(result.log).toContain(`节点 revision 已校验：${pinnedRevision}`);
   });
 
-  it("runs the DLSS5 runtime transaction after the shared node checkout", async () => {
-    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-dlss5-node-install-"));
-    temporaryDirectories.push(comfyRoot);
-    const processCalls: string[][] = [];
-    const installRuntime = vi.fn(async (
-      _settings: Parameters<NonNullable<DependencyInstallerRuntime["installDlss5Runtime"]>>[0],
-      root: string,
-      nodeDirectory: string,
-      report?: (message: string) => void
-    ) => {
-      expect(root).toBe(comfyRoot);
-      expect(nodeDirectory).toBe(path.join(comfyRoot, "custom_nodes", "ComfyUI-DLSS5"));
-      report?.("fixture DLSS5 runtime");
-      return { ok: true, message: "fixture runtime ready" };
-    });
-    const runtime: DependencyInstallerRuntime = {
-      downloadEnvironment: () => ({}),
-      proxyLogLabel: () => "",
-      findComfyRoot: async () => comfyRoot,
-      findExecutable: async () => "git.exe",
-      findComfyPython: async () => "selected-comfy-python.exe",
-      exists,
-      retryableRenameError: () => false,
-      renameWithRetry: async (source, target) => fs.rename(source, target),
-      runLoggedProcess: async (_executable, args) => {
-        processCalls.push(args);
-        if (args[0] === "clone") {
-          const cloneDirectory = args.at(-1)!;
-          await fs.mkdir(cloneDirectory, { recursive: true });
-          await fs.writeFile(
-            path.join(cloneDirectory, "nodes.py"),
-            dlss5DepthAnythingSource,
-            "utf8"
-          );
-        }
-        if (args.includes("rev-parse") && args.includes("HEAD")) return DLSS5_NODE_REVISION;
-        return "";
-      },
-      installDlss5Runtime: installRuntime
-    };
-
+  it.each([
+    ["comfyui-dlss5", "ComfyUI DLSS5"],
+    ["comfyui-aetherscale", "ComfyUI AetherScale"]
+  ] as const)("rejects installation of retired DLSS5 node %s", async (nodeId, nodeName) => {
     const result = await installCustomNodePackage(
-      "comfyui-dlss5",
+      nodeId,
       { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
-      runtime
+      {} as DependencyInstallerRuntime
     );
 
-    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
-    expect(installRuntime).toHaveBeenCalledOnce();
-    expect(processCalls).toEqual(expect.arrayContaining([
-      expect.arrayContaining(["clone", "--depth", "1", "--no-checkout"]),
-      expect.arrayContaining(["fetch", "--depth", "1", "origin", DLSS5_NODE_REVISION]),
-      expect.arrayContaining(["checkout", "--detach", DLSS5_NODE_REVISION])
-    ]));
-    expect(result.log).toContain("fixture DLSS5 runtime");
+    expect(result).toEqual({
+      ok: false,
+      message: `${nodeName} 已归档，当前不再提供安装、更新或修复。`
+    });
   });
 
   it("installs the app-owned serializer from a bundled package with a recoverable backup", async () => {

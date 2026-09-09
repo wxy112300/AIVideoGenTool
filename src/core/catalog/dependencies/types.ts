@@ -1,5 +1,7 @@
 export interface CatalogCustomNodeDefinition {
   id: string;
+  /** Retired definitions remain addressable for legacy cleanup, but are not active install choices. */
+  retired?: boolean;
   /** Stable Settings display/install order; lower values are more important and practical. */
   priority: number;
   name: string;

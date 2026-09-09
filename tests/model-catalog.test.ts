@@ -39,6 +39,9 @@ describe("model catalog", () => {
     expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step-768p-v1")?.definition.retired).toBe(true);
     expect(modelCatalog.get("minimax-h3-pink-fluffy-bunny-nsfw")?.definition.retired).toBe(true);
     expect(modelCatalog.get("minimax-h3-turbo-ckpt850-ema")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("dlss5-sr")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("aetherscale-dlss5")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("depth-anything-v2")?.definition.retired).toBe(true);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).not.toEqual(expect.arrayContaining([
       "minimax-h3-lightx2v-turbo-4step",
       "minimax-h3-lightx2v-turbo-4step-768p-v1",
@@ -64,8 +67,6 @@ describe("model catalog", () => {
       "seedvr2-native-int8",
       "minimax_h3_latent_upscaler",
       "seedvr2",
-      "aetherscale-dlss5",
-      "dlss5-sr",
       "flashvsr",
       "realesrgan"
     ]);
