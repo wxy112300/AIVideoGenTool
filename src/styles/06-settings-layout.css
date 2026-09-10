@@ -550,6 +550,36 @@
   color: var(--muted);
   font-size: 11px;
 }
+.app-cache-panel { display: grid; gap: 14px; }
+.app-cache-panel .section-heading { margin-bottom: 0; }
+.app-cache-summary {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(56,65,78,.52);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.app-cache-total { display: grid; gap: 4px; min-width: 0; }
+.app-cache-total > span { color: #8d9caf; font-size: 10px; }
+.app-cache-total strong { color: #e5effc; font-size: 20px; line-height: 1.1; }
+.app-cache-summary .app-log-stats { justify-content: flex-end; }
+.app-cache-progress { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid rgba(56,65,78,.52); border-radius: 10px; background: rgba(15,22,31,.42); }
+.app-cache-progress[hidden] { display: none; }
+.app-cache-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #dce7f5; font-size: 11px; }
+.app-cache-progress-head strong { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.app-cache-progress-head span { flex: 0 0 auto; color: #8d9caf; font-variant-numeric: tabular-nums; }
+.app-cache-progress-bar { height: 7px; overflow: hidden; border-radius: 99px; background: #29303a; }
+.app-cache-progress-bar span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #6ca1ff, #a3c3ff); transition: width .25s ease; }
+.app-cache-progress-bar.indeterminate span { width: 34%; animation: app-cache-progress-slide 1.2s ease-in-out infinite; }
+.app-cache-progress-detail { display: flex; flex-wrap: wrap; gap: 5px 14px; color: #8d9caf; font-size: 10px; line-height: 1.4; }
+.app-cache-progress-detail span:empty { display: none; }
+@keyframes app-cache-progress-slide { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
+.app-cache-panel > [role="alert"],
+.app-cache-panel > [role="status"] { margin: 0; }
 .app-log-directory-actions { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
 .app-log-directory-actions > span { color: #8d9caf; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .app-log-directory-actions > div { min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -740,6 +770,11 @@
   }
 
   .app-log-summary {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .app-cache-summary {
     grid-template-columns: 1fr;
     gap: 10px;
   }

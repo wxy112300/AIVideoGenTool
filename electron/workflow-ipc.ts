@@ -117,13 +117,13 @@ async function bundledWorkflowFor(
       });
     }
     if (isMiniMaxH3ContinuumModel(modelId)) {
-      const filename = "minimax_h3_continuum_extend_api.json";
+      const filename = "minimax_h3_continuum_v38_extend_api.json";
       const candidate = await findWorkflow(deps, filename);
       if (!candidate) return null;
       const source = await readJson(deps.fileSystem, candidate);
       return attachWorkflowMetadata({
         modelId,
-        label: "内置 · MiniMax H3 Continuum · Native AV 接续",
+        label: "内置 · MiniMax H3 Continuum V3.8 · 边界帧 + Video Guide 接续",
         path: candidate,
         supportsEndImage: false,
         supportsVideoExtension: workflowSupportsH3ContinuumExtension(source)

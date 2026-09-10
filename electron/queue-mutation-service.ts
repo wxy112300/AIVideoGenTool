@@ -20,6 +20,11 @@ import {
   normalizeAetherScaleTarget
 } from "../src/core/aetherscale.js";
 import {
+  KONOHAMARU_MODEL_ID,
+  KONOHAMARU_WORKFLOW_PATH,
+  normalizeKonohamaruTarget
+} from "../src/core/konohamaru-dlss5.js";
+import {
   DLSS5_MODEL_ID,
   normalizeUpscaleTarget,
   requireLegacyUpscaleTargetHeight
@@ -55,7 +60,7 @@ export class QueueMutationService {
     patch: Pick<
       UpscaleQueueTask,
       "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
-      "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" |
+      "targetScale" | "dlss5" | "aetherScale" | "konohamaru" | "modelId" | "workflowPath" |
       "tileMode" | "faceRestore" | "outputFilename"
     >
   ): Promise<AppState> {
@@ -65,16 +70,68 @@ export class QueueMutationService {
       throw new Error("待编辑的 Upscale 任务不存在。");
     }
     const currentMode = current.upscaleMode ?? "pixel";
-    const currentIsAetherScale = current.modelId === AETHERSCALE_MODEL_ID ||
-      current.aetherScale !== undefined;
-    const currentIsDlss5 = !currentIsAetherScale && (current.modelId === DLSS5_MODEL_ID ||
+    const currentIsKonohamaru = current.modelId === KONOHAMARU_MODEL_ID ||
+      current.konohamaru !== undefined;
+    const currentIsAetherScale = !currentIsKonohamaru && (current.modelId === AETHERSCALE_MODEL_ID ||
+      current.aetherScale !== undefined);
+    const currentIsDlss5 = !currentIsKonohamaru && !currentIsAetherScale && (current.modelId === DLSS5_MODEL_ID ||
       current.targetScale !== undefined || current.dlss5 !== undefined);
-    const requestedIsAetherScale = patch.modelId === AETHERSCALE_MODEL_ID ||
-      patch.aetherScale !== undefined;
-    const requestedIsDlss5 = !requestedIsAetherScale && (patch.modelId === DLSS5_MODEL_ID ||
+    const requestedIsKonohamaru = patch.modelId === KONOHAMARU_MODEL_ID ||
+      patch.konohamaru !== undefined;
+    const requestedIsAetherScale = !requestedIsKonohamaru && (patch.modelId === AETHERSCALE_MODEL_ID ||
+      patch.aetherScale !== undefined);
+    const requestedIsDlss5 = !requestedIsKonohamaru && !requestedIsAetherScale && (patch.modelId === DLSS5_MODEL_ID ||
       patch.targetScale !== undefined || patch.dlss5 !== undefined);
-    if (currentIsAetherScale !== requestedIsAetherScale || currentIsDlss5 !== requestedIsDlss5) {
+    if (
+      currentIsKonohamaru !== requestedIsKonohamaru ||
+      currentIsAetherScale !== requestedIsAetherScale ||
+      currentIsDlss5 !== requestedIsDlss5
+    ) {
       throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+    }
+    if (currentIsKonohamaru) {
+      const target = normalizeKonohamaruTarget({
+        modelId: patch.modelId,
+        sourceWidth: current.sourceWidth,
+        sourceHeight: current.sourceHeight,
+        targetWidth: patch.targetWidth,
+        targetOutputHeight: patch.targetOutputHeight,
+        targetHeight: patch.targetHeight,
+        targetScale: patch.targetScale,
+        dlss5: patch.dlss5,
+        aetherScale: patch.aetherScale,
+        konohamaru: patch.konohamaru
+      });
+      if (patch.upscaleMode !== currentMode) {
+        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+      }
+      const safePatch = {
+        ...patch,
+        upscaleMode: "pixel" as const,
+        modelId: KONOHAMARU_MODEL_ID,
+        workflowPath: KONOHAMARU_WORKFLOW_PATH,
+        targetWidth: target.targetWidth,
+        targetHeight: undefined,
+        targetScale: undefined,
+        targetOutputHeight: target.targetOutputHeight,
+        tileMode: "auto" as const,
+        faceRestore: false,
+        dlss5: undefined,
+        aetherScale: undefined,
+        konohamaru: structuredClone(target.options),
+        h3NativeInput: undefined
+      };
+      const next = await store.update((state) => {
+        const previousQueue = state.queue.map((item) => ({ ...item }));
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, safePatch);
+        state.queuePauseBoundary = adjustQueuePauseBoundary(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        );
+      });
+      sendState(next);
+      return next;
     }
     if (currentIsAetherScale) {
       const target = normalizeAetherScaleTarget({

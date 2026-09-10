@@ -48,9 +48,11 @@ export type WorkflowMessageKey =
   | "motionContextBudget"
   | "motionContextSummary"
   | "continuumMinimum"
+  | "continuumDurationMinimum"
   | "continuumEndRequired"
   | "continuumBudget"
   | "continuumSummary"
+  | "continuumV38Summary"
   | "sulphurOnly"
   | "contextMinimum"
   | "sulphurResolution"
@@ -118,9 +120,11 @@ const zhCN: WorkflowLocale = {
   motionContextBudget: "新增片段与 22 帧运动上下文合计需要采样 {sampledFrames} 帧，超过 H3 当前 {maxGeneratedFrames} 帧预算。请缩短新增时长。",
   motionContextSummary: "H3 Motion Context：采样 {sampledFrames}/{maxGeneratedFrames} 帧，其中前 22 帧承接上一段运动和音频并在输出前自动裁掉。",
   continuumMinimum: "H3 Continuum 至少需要保留约 0.92 秒（22 帧）源视频，并提供匹配的 Native AV artifact。",
+  continuumDurationMinimum: "H3 Continuum V3.8 单次 chunk 至少需要 {minimum} 秒。",
   continuumEndRequired: "H3 Continuum 当前要求续写边界位于源视频末尾；Native AV 对应完整源视频，不能与中途裁剪边界混用。",
   continuumBudget: "H3 Continuum 需要采样 {sampledFrames} 帧，超过当前 {maxGeneratedFrames} 帧预算；请缩短新增时长。",
   continuumSummary: "H3 Continuum：从 Native AV 续写，采样 {sampledFrames}/{maxGeneratedFrames} 帧，保留 22 帧连续性上下文，输出新增 {visibleFrames} 帧。",
+  continuumV38Summary: "H3 Continuum V3.8：使用边界帧 + Video Guide，采样 {sampledFrames}/{maxGeneratedFrames} 帧，输出约 {visibleFrames} 帧；单次 chunk 至少 4 秒。",
   sulphurOnly: "当前只允许 Sulphur 2 使用原生视频续写任务。",
   contextMinimum: "至少保留 {seconds} 秒，才能提供 {frames} 帧续写上下文。",
   sulphurResolution: "Sulphur 2 续写只允许 360p 或 480p 基准分辨率。",
@@ -185,9 +189,11 @@ const enUS: Partial<WorkflowLocale> = {
   motionContextBudget: "The new segment plus 22 motion-context frames needs {sampledFrames} sampled frames, exceeding the current H3 budget of {maxGeneratedFrames}. Shorten the new segment.",
   motionContextSummary: "H3 Motion Context: sampling {sampledFrames}/{maxGeneratedFrames} frames; the first 22 carry motion and audio from the previous segment and are trimmed from output.",
   continuumMinimum: "H3 Continuum needs about 0.92 seconds (22 frames) of source video plus a matching Native AV artifact.",
+  continuumDurationMinimum: "H3 Continuum V3.8 requires each chunk to be at least {minimum} seconds.",
   continuumEndRequired: "H3 Continuum currently requires the extension boundary to be the end of the source video; Native AV represents the complete source and cannot be mixed with a mid-video trim.",
   continuumBudget: "H3 Continuum needs {sampledFrames} sampled frames, exceeding the current budget of {maxGeneratedFrames}. Shorten the new segment.",
   continuumSummary: "H3 Continuum: continuing from Native AV, sampling {sampledFrames}/{maxGeneratedFrames} frames, retaining 22 continuity frames and outputting {visibleFrames} new frames.",
+  continuumV38Summary: "H3 Continuum V3.8: using a boundary frame plus Video Guide, sampling {sampledFrames}/{maxGeneratedFrames} frames and outputting about {visibleFrames} frames; each chunk is at least 4 seconds.",
   sulphurOnly: "Only Sulphur 2 may use native video extension tasks here.",
   contextMinimum: "Keep at least {seconds} seconds to provide {frames} frames of extension context.",
   sulphurResolution: "Sulphur 2 extension allows only 360p or 480p base resolution.",

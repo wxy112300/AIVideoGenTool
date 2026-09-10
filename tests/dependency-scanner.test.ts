@@ -555,7 +555,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("keeps Motion Context 0.3.1 as the minimum, recommends 0.5.1, and reports renamed duplicate copies", async () => {
+  it("keeps Motion Context 0.3.1 as the minimum, recommends 0.6.2, and reports renamed duplicate copies", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-motion-context-scan-"));
     temporaryDirectories.push(comfyRoot);
     const customNodesRoot = path.join(comfyRoot, "custom_nodes");
@@ -588,8 +588,8 @@ describe("dependency scanner", () => {
       directory: primaryDirectory,
       version: "0.3.0",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.5.1",
-      latestVersion: "0.5.1",
+      recommendedVersion: "0.6.2",
+      latestVersion: "0.6.2",
       updateAvailable: true,
       compatibilityState: "error",
       duplicateDirectories: [duplicateDirectory]
@@ -597,7 +597,7 @@ describe("dependency scanner", () => {
     expect(motionContext?.compatibilityNotice).toContain("2 个 H3 Motion Context 副本");
   });
 
-  it("surfaces the v0.5.1 recommendation without rejecting the v0.3.1 fallback", async () => {
+  it("surfaces the v0.6.2 recommendation without rejecting the v0.3.1 fallback", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-motion-context-recommendation-"));
     temporaryDirectories.push(comfyRoot);
     const directory = path.join(comfyRoot, "custom_nodes", "ComfyUI-H3-Motion-Context");
@@ -618,11 +618,11 @@ describe("dependency scanner", () => {
       installed: true,
       version: "0.3.1",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.5.1",
-      latestVersion: "0.5.1",
+      recommendedVersion: "0.6.2",
+      latestVersion: "0.6.2",
       updateAvailable: true,
       compatibilityState: "warning",
-      updateNotice: expect.stringContaining("当前 v0.3.1，推荐 v0.5.1")
+      updateNotice: expect.stringContaining("当前 v0.3.1，推荐 v0.6.2")
     });
   });
 

@@ -49,6 +49,8 @@ function createActions(
     openUpscaleDialog: () => undefined,
     requestHistoryDeletion: () => undefined,
     requestHistoryVersionDeletion: () => undefined,
+    requestJointAvDeletion: () => undefined,
+    requestMotionContextDeletion: () => undefined,
     requestImageVersionDeletion: () => undefined,
     copyHistoryText: async () => undefined,
     copyHistoryFile: async () => undefined,

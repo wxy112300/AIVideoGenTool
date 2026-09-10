@@ -1,4 +1,4 @@
-import { extractComfyOutputFiles } from "../comfy-output.js";
+import { extractComfyOutputFiles, isPersistentComfyOutputFile } from "../comfy-output.js";
 import { qwenImageEdit2511Capability } from "./capabilities.js";
 export function cachedImageProfileAllowsEnqueue(profile) {
     return Boolean(profile?.category === "image" &&
@@ -278,7 +278,7 @@ export function renderImageWorkflow(workflow, uploadedPictures, uploadedMasks = 
     return visit(workflow);
 }
 export function parseImageOutputs(history) {
-    return extractComfyOutputFiles(history)
+    return extractComfyOutputFiles(history).filter(isPersistentComfyOutputFile)
         .map((file) => imageOutputCandidateFromValue(file))
         .filter((file) => file !== null);
 }

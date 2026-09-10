@@ -44,7 +44,10 @@ import {
   DLSS5_NODE_ID,
   DLSS5_NODE_REVISION,
   DLSS5_RUNTIME_BUNDLE_ID,
-  modelCatalog
+  modelCatalog,
+  KONOHAMARU_NODE_ID,
+  KONOHAMARU_NODE_REVISION,
+  KONOHAMARU_RUNTIME_BUNDLE_ID
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
@@ -82,6 +85,10 @@ import {
   scanAetherScaleRuntime,
   uninstallAetherScaleRuntime
 } from "./aetherscale-runtime.js";
+import {
+  installKonohamaruNeuralUpstreamRuntime,
+  installKonohamaruVideo2dlssnrRuntime
+} from "./konohamaru-runtime.js";
 import { prepareH3PromptWriter } from "../../src/infrastructure/dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
@@ -138,7 +145,7 @@ import {
   launchComfyUiVisible,
   launchDetached,
   localEndpoint,
-  waitForService
+  waitForComfyServiceStartup
 } from "./local-service-process.js";
 import {
   appManagedComfyDatabaseFilename,
@@ -3237,6 +3244,14 @@ export async function startLocalService(
 
 let pendingLocalComfyStart: Promise<ConnectionResult> | null = null;
 
+function waitForOwnedComfyService(url: string, signal?: AbortSignal) {
+  return waitForComfyServiceStartup(
+    url,
+    () => ownedComfyProcessIdSnapshot().length > 0,
+    signal
+  );
+}
+
 interface LocalServiceOperationOptions extends ComfyRuntimeStartOptions {
   onProgress?: (message: string) => void;
 }
@@ -3276,7 +3291,8 @@ async function startLocalServiceOperation(
   );
   try {
     const healthUrl = await startComfyUi(settings, options);
-    const ready = await waitForService(healthUrl, 120_000, signal);
+    const startup = await waitForOwnedComfyService(healthUrl, signal);
+    const ready = startup.ready;
     const result = ready
       ? {
           ok: true,
@@ -3284,7 +3300,9 @@ async function startLocalServiceOperation(
         }
       : {
           ok: false,
-          message: "已等待 2 分钟，但接口仍未就绪。ComfyUI 可能仍在加载，请稍后重新扫描。"
+          message: startup.graceUsed
+            ? "ComfyUI 进程仍在运行，但等待 5 分钟后接口仍未就绪。请检查启动日志。"
+            : "ComfyUI 进程在启动阶段提前退出，接口未就绪。请检查启动日志。"
         };
     if (ready && ownership === "app") await rememberOwnedComfyListener(settings);
     if (!ready) {
@@ -3416,12 +3434,15 @@ export async function restartLocalService(
       : "正在启动 ComfyUI……");
     const healthUrl = await startComfyUi(settings, options);
     report("正在等待 ComfyUI 接口就绪……");
-    const ready = await waitForService(healthUrl);
+    const startup = await waitForOwnedComfyService(healthUrl);
+    const ready = startup.ready;
     const result = ready
       ? { ok: true, message: "ComfyUI 服务已重启并连接成功。" }
       : {
           ok: false,
-          message: "ComfyUI 已重新启动，但等待 2 分钟后接口仍未就绪。"
+          message: startup.graceUsed
+            ? "ComfyUI 已重新启动且进程仍在运行，但等待 5 分钟后接口仍未就绪。"
+            : "ComfyUI 重启进程已提前退出，接口未就绪。"
         };
     if (ready) await rememberOwnedComfyListener(settings);
     report(result.message);
@@ -3975,6 +3996,24 @@ export async function installCustomNode(
         retryableRenameError,
         runLoggedProcess
       }, report),
+    installKonohamaruNeuralUpstreamRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
+      installKonohamaruNeuralUpstreamRuntime(nodeSettings, comfyRoot, nodeDirectory, {
+        downloadEnvironment,
+        findComfyPython,
+        findExecutable,
+        renameWithRetry,
+        retryableRenameError,
+        runLoggedProcess
+      }, report),
+    installKonohamaruVideo2dlssnrRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
+      installKonohamaruVideo2dlssnrRuntime(nodeSettings, comfyRoot, nodeDirectory, {
+        downloadEnvironment,
+        findComfyPython,
+        findExecutable,
+        renameWithRetry,
+        retryableRenameError,
+        runLoggedProcess
+      }, report),
     installAetherScaleRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
       installAetherScaleRuntime(nodeSettings, comfyRoot, nodeDirectory, {
         downloadEnvironment,
@@ -4120,7 +4159,7 @@ export async function installLlamaCppPython(
     if (wasRunning) {
       reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
       const healthUrl = await startComfyUi(settings);
-      if (!(await waitForService(healthUrl))) {
+      if (!(await waitForOwnedComfyService(healthUrl)).ready) {
         throw new Error("llama-cpp-python 安装完成，但 ComfyUI 重启后未在等待时间内就绪。");
       }
       reportRestart("ComfyUI 已重启并恢复连接");
@@ -4136,7 +4175,7 @@ export async function installLlamaCppPython(
       try {
         reportRestart("安装过程异常，正在尝试恢复 ComfyUI……");
         const healthUrl = await startComfyUi(settings);
-        await waitForService(healthUrl);
+        await waitForOwnedComfyService(healthUrl);
         reportRestart("ComfyUI 已恢复");
       } catch (recoveryError) {
         reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
@@ -4181,7 +4220,7 @@ export async function uninstallLlamaCppPython(
     if (wasRunning) {
       reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
       const restartedHealthUrl = await startComfyUi(settings);
-      if (!(await waitForService(restartedHealthUrl))) {
+      if (!(await waitForOwnedComfyService(restartedHealthUrl)).ready) {
         throw new Error("llama-cpp-python 卸载完成，但 ComfyUI 重启后未在等待时间内就绪。");
       }
       reportRestart("ComfyUI 已重启并恢复连接");
@@ -4197,7 +4236,7 @@ export async function uninstallLlamaCppPython(
       try {
         reportRestart("卸载过程异常，正在尝试恢复 ComfyUI……");
         const restartedHealthUrl = await startComfyUi(settings);
-        await waitForService(restartedHealthUrl);
+        await waitForOwnedComfyService(restartedHealthUrl);
         reportRestart("ComfyUI 已恢复");
       } catch (recoveryError) {
         reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
@@ -4555,8 +4594,8 @@ export async function installAttentionAcceleration(
     if (wasRunning) {
       report("正在重新启动 ComfyUI 并加载更新后的节点……");
       const health = await startComfyUi(settings);
-      if (!(await waitForService(health))) {
-        throw new Error("依赖安装成功，但 ComfyUI 在 2 分钟内没有恢复就绪。");
+      if (!(await waitForOwnedComfyService(health)).ready) {
+        throw new Error("依赖安装成功，但 ComfyUI 在 5 分钟内没有恢复就绪。");
       }
       report("ComfyUI 已重新启动");
     }
@@ -4574,7 +4613,7 @@ export async function installAttentionAcceleration(
       try {
         report("安装未完整结束，正在尝试恢复 ComfyUI……");
         const health = await startComfyUi(settings);
-        await waitForService(health);
+        await waitForOwnedComfyService(health);
       } catch (recoveryError) {
         report(`恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
       }
@@ -4753,11 +4792,13 @@ function buildDlss5ProviderStatuses(
   modelProfiles: ModelScanProfile[],
   dlss5Runtime: Dlss5RuntimeStatus,
   aetherScaleRuntime: AetherScaleRuntimeStatus
-): Partial<Record<"hecer" | "aetherscale-carrier", Dlss5ProviderStatus>> {
+): Partial<Record<"hecer" | "aetherscale-carrier" | "konohamaru", Dlss5ProviderStatus>> {
   const hecerNode = customNodes.find((node) => node.id === DLSS5_NODE_ID);
   const aetherNode = customNodes.find((node) => node.id === AETHERSCALE_NODE_ID);
+  const konohamaruNode = customNodes.find((node) => node.id === KONOHAMARU_NODE_ID);
   const hecerProfile = modelProfiles.find((profile) => profile.id === "dlss5-sr");
   const aetherProfile = modelProfiles.find((profile) => profile.id === "aetherscale-dlss5");
+  const konohamaruProfile = modelProfiles.find((profile) => profile.id === "dlss5-konohamaru");
   const nodeHealthy = (node: CustomNodeStatus | undefined): boolean => Boolean(
     node?.installed &&
     !node.loadError &&
@@ -4775,8 +4816,10 @@ function buildDlss5ProviderStatuses(
   );
   const hecerSchemaValidated = schemaValidated(hecerNode, hecerProfile);
   const aetherSchemaValidated = schemaValidated(aetherNode, aetherProfile);
+  const konohamaruSchemaValidated = schemaValidated(konohamaruNode, konohamaruProfile);
   const hecerInstalled = Boolean(hecerNode?.installed);
   const aetherInstalled = Boolean(aetherNode?.installed);
+  const konohamaruInstalled = Boolean(konohamaruNode?.installed);
   const hecerBlockedReason = "HECer ComfyUI-DLSS5 v0.2.2 的 SR wrapper 仍缺少上游发布的 vsdlsssr.dll；保持可见但 fail closed，不回退到其他 provider。";
   const aetherBlockedReason = !aetherInstalled
     ? "AetherScale 节点尚未安装。"
@@ -4840,6 +4883,41 @@ function buildDlss5ProviderStatuses(
         aetherSchemaValidated ? "AetherScaleMotionAnalysis/AetherScaleNeuralRendering schema 已从当前 object_info 读取" : "AetherScale schema 尚未取得当前 object_info 证据",
         aetherScaleRuntime.carrierReady ? "carrier 六文件离线 hash/PE 校验通过" : "carrier 六文件离线校验未通过",
         aetherScaleRuntime.vfxReady ? "可选 nvidia-vfx 已找到" : "可选 nvidia-vfx 不可用；不阻塞 carrier"
+      ]
+    },
+    konohamaru: {
+      provider: "konohamaru",
+      nodeId: KONOHAMARU_NODE_ID,
+      nodeRevision: KONOHAMARU_NODE_REVISION,
+      runtimeBundleId: KONOHAMARU_RUNTIME_BUNDLE_ID,
+      level: !konohamaruInstalled
+        ? "missing"
+        : !nodeHealthy(konohamaruNode)
+          ? "incompatible"
+          : !konohamaruSchemaValidated
+            ? "installed"
+            : "runtime-ready",
+      availableForQueue: konohamaruSchemaValidated,
+      installed: konohamaruInstalled,
+      schemaValidated: konohamaruSchemaValidated,
+      runtimeValidated: Boolean(konohamaruProfile?.runtimeVerified && konohamaruProfile.runtimeReady),
+      smokeValidated: false,
+      missingFiles: konohamaruNode?.loadError?.includes("缺失") ? [konohamaruNode.loadError] : [],
+      incompatibleFiles: konohamaruNode?.loadError?.includes("Git LFS") ? [konohamaruNode.loadError] : [],
+      blockedReason: !konohamaruInstalled
+        ? "Konohamaru DLSS5 节点尚未安装。"
+        : !nodeHealthy(konohamaruNode)
+          ? konohamaruNode?.loadError || "Konohamaru 节点文件或 Git LFS runtime 未通过检查。"
+          : !konohamaruSchemaValidated
+            ? "Konohamaru 节点 schema 尚未通过当前 ComfyUI /object_info 检查。"
+            : "",
+      evidence: [
+        `node revision ${KONOHAMARU_NODE_REVISION}`,
+        `DLSS5 runtime bundle ${KONOHAMARU_RUNTIME_BUNDLE_ID}`,
+        konohamaruSchemaValidated
+          ? "NvidiaDLSSVideoUpscale/NvidiaDLSSFrameInterpolation schema 已从当前 object_info 读取"
+          : "Konohamaru schema 尚未取得当前 object_info 证据",
+        "native runtime 文件由 Git LFS 管理；本机真实 Neural Rendering/补帧 smoke 尚未完成"
       ]
     }
   };

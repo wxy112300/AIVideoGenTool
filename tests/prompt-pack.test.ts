@@ -14,6 +14,20 @@ describe("prompt packs", () => {
     expect(zhSnippet?.text).toContain("The camera pushes in");
   });
 
+  it("provides a localized one-take shortcut with a stable model-facing lock", () => {
+    const zhSnippet = h3PromptPackFor("zh-CN").snippets.find((snippet) => snippet.id === "camera-continuous-take");
+    const twSnippet = h3PromptPackFor("zh-TW").snippets.find((snippet) => snippet.id === "camera-continuous-take");
+    const enSnippet = h3PromptPackFor("en-US").snippets.find((snippet) => snippet.id === "camera-continuous-take");
+
+    expect(zhSnippet?.label).toBe("一镜到底 · 禁止切镜头");
+    expect(twSnippet?.label).toBe("一鏡到底 · 禁止切鏡頭");
+    expect(enSnippet?.label).toBe("One continuous take · no cuts");
+    expect(zhSnippet?.text).toBe(twSnippet?.text);
+    expect(zhSnippet?.text).toBe(enSnippet?.text);
+    expect(zhSnippet?.text).toContain("exactly one unbroken [Shot 1]");
+    expect(zhSnippet?.text).toContain("no cuts");
+  });
+
   it("keeps model-facing preset content stable across locales", () => {
     const zhPack = h3PromptPackFor("zh-CN");
     const twPack = h3PromptPackFor("zh-TW");

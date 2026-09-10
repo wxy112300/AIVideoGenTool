@@ -12,7 +12,7 @@ import type {
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
-import { continuumMaxDurationSeconds, generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
+import { continuumV38MaxDurationSeconds, generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
@@ -21,9 +21,15 @@ import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
+import {
+  h3LatentSaveModeFor,
+  normalizeH3LatentSaveMode,
+  h3SaveJointAvForLatentSaveMode
+} from "../../../core/h3-latent-save";
 import { resolutionAfterJointAvPreference } from "./view-model";
 
 let creationModeTransitionRevision = 0;
+let modelSelectionRevision = 0;
 
 export function videoSettingChangeRequiresRender(id: string): boolean {
   return ["ratio", "fps", "frame-interpolation", "spectrum-mode"].includes(id);
@@ -234,7 +240,7 @@ export function mountCreatePageController(
               duration: isMiniMaxH3R2vModel(modelId)
                 ? Math.min(videoSourceDraft.duration, motionContextMaxDurationSeconds())
                 : isMiniMaxH3ContinuumModel(modelId)
-                  ? Math.min(videoSourceDraft.duration, continuumMaxDurationSeconds())
+                  ? Math.max(4, Math.min(videoSourceDraft.duration, continuumV38MaxDurationSeconds()))
                 : videoSourceDraft.duration,
               spectrumMode: isMiniMaxH3R2vModel(modelId)
                 ? "off" as const
@@ -414,9 +420,13 @@ export function mountCreatePageController(
     input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
   });
 
-  root.querySelector<HTMLSelectElement>("#h3-save-joint-av")?.addEventListener("change", (event) => {
-    const h3SaveJointAv = (event.currentTarget as HTMLSelectElement).value === "save";
+  root.querySelector<HTMLSelectElement>("#h3-latent-save-mode")?.addEventListener("change", (event) => {
+    const h3LatentSaveMode = normalizeH3LatentSaveMode(
+      (event.currentTarget as HTMLSelectElement).value
+    );
+    const h3SaveJointAv = h3SaveJointAvForLatentSaveMode(h3LatentSaveMode);
     options.patchDraft({
+      h3LatentSaveMode,
       h3SaveJointAv,
       ...(getState()?.draft.resolution === 1080
         ? { resolution: resolutionAfterJointAvPreference(1080, h3SaveJointAv) }
@@ -431,57 +441,64 @@ export function mountCreatePageController(
       if (!state) return;
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
+        const selectionRevision = ++modelSelectionRevision;
         const requestMode = state.draft.inputMode === "video"
           ? "video-extension"
           : "image-to-video";
-        const oldKey = options.bundledWorkflowKey(bundledWorkflowModelId(state.draft), state.draft.inputMode);
-        const nextKey = options.bundledWorkflowKey(value, state.draft.inputMode);
+        const previousDraft = state.draft;
+        const oldKey = options.bundledWorkflowKey(bundledWorkflowModelId(previousDraft), previousDraft.inputMode);
+        const nextKey = options.bundledWorkflowKey(value, previousDraft.inputMode);
         const oldBundledPath = options.bundledWorkflows[oldKey]?.path;
         const nextIsR2V = isMiniMaxH3R2vModel(value);
         const nextIsContinuum = isMiniMaxH3ContinuumModel(value);
-        const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
-        const existingSlots = state.draft.h3ReferenceSlots;
+        const oldWasR2V = isMiniMaxH3R2vModel(previousDraft.modelId);
+        const existingSlots = previousDraft.h3ReferenceSlots;
         const imageInputSlots = [
-          { path: state.draft.startImagePath, width: state.draft.sourceWidth, height: state.draft.sourceHeight },
-          { path: state.draft.endImagePath, width: state.draft.endImageWidth, height: state.draft.endImageHeight }
+          { path: previousDraft.startImagePath, width: previousDraft.sourceWidth, height: previousDraft.sourceHeight },
+          { path: previousDraft.endImagePath, width: previousDraft.endImageWidth, height: previousDraft.endImageHeight }
         ].filter((item) => Boolean(item.path));
-        const slotsForR2V = nextIsR2V && state.draft.inputMode === "video"
-          ? ensureMotionContextSourceSlot(existingSlots, state.draft.sourceVideoPath)
-          : nextIsR2V && state.draft.inputMode !== "video" && !existingSlots.length
+        const slotsForR2V = nextIsR2V && previousDraft.inputMode === "video"
+          ? ensureMotionContextSourceSlot(existingSlots, previousDraft.sourceVideoPath)
+          : nextIsR2V && previousDraft.inputMode !== "video" && !existingSlots.length
             ? imageInputSlots.map((item) => newH3ReferenceSlot(item.path, "image", item))
             : existingSlots;
         const existingImageSlots = existingSlots.filter((slot) => slot.mediaType === "image");
         const restoredStartSlot = oldWasR2V ? existingImageSlots[0] : undefined;
         const restoredEndSlot = oldWasR2V ? existingImageSlots[1] : undefined;
-        const restoredStartImage = restoredStartSlot?.mediaPath ?? state.draft.startImagePath;
-        const restoredStartImageWidth = restoredStartSlot?.width ?? state.draft.sourceWidth;
-        const restoredStartImageHeight = restoredStartSlot?.height ?? state.draft.sourceHeight;
-        const restoredEndImage = restoredEndSlot?.mediaPath ?? state.draft.endImagePath;
-        const restoredEndImageWidth = restoredEndSlot?.width ?? state.draft.endImageWidth ?? 0;
-        const restoredEndImageHeight = restoredEndSlot?.height ?? state.draft.endImageHeight ?? 0;
-        const bundled = options.bundledWorkflows[nextKey] ??
-          await options.context.application.getBundledWorkflow(value, state.draft.inputMode);
-        if (bundled) {
+        const restoredStartImage = restoredStartSlot?.mediaPath ?? previousDraft.startImagePath;
+        const restoredStartImageWidth = restoredStartSlot?.width ?? previousDraft.sourceWidth;
+        const restoredStartImageHeight = restoredStartSlot?.height ?? previousDraft.sourceHeight;
+        const restoredEndImage = restoredEndSlot?.mediaPath ?? previousDraft.endImagePath;
+        const restoredEndImageWidth = restoredEndSlot?.width ?? previousDraft.endImageWidth ?? 0;
+        const restoredEndImageHeight = restoredEndSlot?.height ?? previousDraft.endImageHeight ?? 0;
+        const cachedBundled = options.bundledWorkflows[nextKey];
+        const bundledPromise = cachedBundled
+          ? Promise.resolve(cachedBundled)
+          : options.context.application.getBundledWorkflow(value, previousDraft.inputMode)
+              .catch(() => null);
+        const rememberBundledWorkflow = (bundled: BundledWorkflow): void => {
           options.bundledWorkflows[nextKey] = bundled;
           options.workflowCapabilities[bundled.path] = {
             supportsEndImage: bundled.supportsEndImage,
             supportsVideoExtension: bundled.supportsVideoExtension
           };
-        }
-        options.patchDraftForMode(requestMode, () => ({
+        };
+        if (cachedBundled) rememberBundledWorkflow(cachedBundled);
+        options.patchDraft({
           modelId: value,
           videoLoras: [],
           h3ReferenceSlots: slotsForR2V,
-          h3ContinuumArtifactPath: state.draft.h3ContinuumArtifactPath,
-          h3ContinuumArtifact: state.draft.h3ContinuumArtifact
-            ? structuredClone(state.draft.h3ContinuumArtifact)
+          h3ContextLatentPath: previousDraft.h3ContextLatentPath,
+          h3ContinuumArtifactPath: previousDraft.h3ContinuumArtifactPath,
+          h3ContinuumArtifact: previousDraft.h3ContinuumArtifact
+            ? structuredClone(previousDraft.h3ContinuumArtifact)
             : undefined,
-          startImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredStartImage,
-          sourceWidth: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageWidth,
-          sourceHeight: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageHeight,
-          endImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredEndImage,
-          endImageWidth: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredEndImageWidth,
-          endImageHeight: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredEndImageHeight,
+          startImagePath: nextIsR2V && previousDraft.inputMode !== "video" ? "" : restoredStartImage,
+          sourceWidth: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredStartImageWidth,
+          sourceHeight: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredStartImageHeight,
+          endImagePath: nextIsR2V && previousDraft.inputMode !== "video" ? "" : restoredEndImage,
+          endImageWidth: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredEndImageWidth,
+          endImageHeight: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredEndImageHeight,
           ...(isMiniMaxH3Model(value)
             ? {
                 ratio: "source" as const,
@@ -491,28 +508,59 @@ export function mountCreatePageController(
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const,
-                h3SaveJointAv: nextIsContinuum ? true : state.draft.h3SaveJointAv,
-                spectrumMode: isMiniMaxH3Q3GgufModel(value) || state.draft.inputMode === "video" && nextIsR2V
+                h3LatentSaveMode: h3LatentSaveModeFor(
+                  previousDraft,
+                  previousDraft.inputMode === "video" && oldWasR2V
+                ),
+                h3SaveJointAv: h3SaveJointAvForLatentSaveMode(
+                  h3LatentSaveModeFor(
+                    previousDraft,
+                    previousDraft.inputMode === "video" && oldWasR2V
+                  )
+                ),
+                spectrumMode: isMiniMaxH3Q3GgufModel(value) || previousDraft.inputMode === "video" && nextIsR2V
                   ? "off" as const
-                  : state.draft.spectrumMode,
-                ...(nextIsContinuum && state.draft.inputMode === "video"
+                  : previousDraft.spectrumMode,
+                ...(nextIsContinuum && previousDraft.inputMode === "video"
                   ? {
                       trimStartSeconds: 0,
-                      trimEndSeconds: state.draft.sourceVideoDuration
+                      trimEndSeconds: previousDraft.sourceVideoDuration
                     }
                   : {})
               }
             : {}),
-          ...(isMiniMaxH3Model(state.draft.modelId) && !isMiniMaxH3Model(value) && state.draft.ratio === "21:9"
+          ...(isMiniMaxH3Model(previousDraft.modelId) && !isMiniMaxH3Model(value) && previousDraft.ratio === "21:9"
             ? { ratio: "source" as const }
             : {}),
-          ...(!bundled?.supportsEndImage && !nextIsR2V
+          ...(cachedBundled && !cachedBundled.supportsEndImage && !nextIsR2V
             ? { endImagePath: "", endImageWidth: 0, endImageHeight: 0 }
             : {}),
-          workflowPath: bundled?.path ?? (state.draft.workflowPath === oldBundledPath ? "" : state.draft.workflowPath)
-        }));
+          workflowPath: cachedBundled?.path ?? (previousDraft.workflowPath === oldBundledPath ? "" : previousDraft.workflowPath)
+        });
         options.enableSpectrumByDefaultIfAvailable(requestMode);
         options.context.requestRender();
+        const bundled = await bundledPromise;
+        if (selectionRevision !== modelSelectionRevision || !bundled) return;
+        const currentRoute = options.context.getRoute();
+        const currentState = getState();
+        if (
+          currentRoute.page !== "create" ||
+          currentRoute.creationMode !== requestMode ||
+          currentState?.draft.inputMode !== previousDraft.inputMode ||
+          currentState?.draft.modelId !== value
+        ) return;
+        rememberBundledWorkflow(bundled);
+        const workflowNeedsUpdate = currentState.draft.workflowPath !== bundled.path ||
+          !bundled.supportsEndImage && !nextIsR2V && Boolean(currentState.draft.endImagePath);
+        if (workflowNeedsUpdate) {
+          options.patchDraft({
+            workflowPath: bundled.path,
+            ...(!bundled.supportsEndImage && !nextIsR2V
+              ? { endImagePath: "", endImageWidth: 0, endImageHeight: 0 }
+              : {})
+          });
+          options.context.requestRender();
+        }
         return;
       }
       const patch =
@@ -549,7 +597,8 @@ export function mountCreatePageController(
     const maxDuration = state.draft.inputMode === "video"
       ? extensionSafetyForDraft(state.draft, state.settings).maxDurationSeconds
       : generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
-    const duration = Math.max(1, Math.min(maxDuration, Number(value) || 1));
+    const minimumDuration = isMiniMaxH3ContinuumModel(state.draft.modelId) ? 4 : 1;
+    const duration = Math.max(minimumDuration, Math.min(maxDuration, Number(value) || minimumDuration));
     options.patchDraft({ duration });
     options.syncEnqueueUi();
     if (range) range.value = String(duration);

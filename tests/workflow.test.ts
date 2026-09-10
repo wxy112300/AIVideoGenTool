@@ -15,6 +15,7 @@ import {
   activityTimeoutMinutesForTask,
   continuumMaxDurationSeconds,
   continuumSampledFrameCountForSeconds,
+  continuumV38SampledFrameCountForSeconds,
   extensionWorkflowSafetyErrors,
   extensionSafetyForTask,
   extensionOutputDimensions,
@@ -27,6 +28,7 @@ import {
   outputFrameCountForTask,
   renderWorkflow,
   isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumV38Workflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3SpectrumEligible,
@@ -159,12 +161,12 @@ describe("renderWorkflow", () => {
     }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
     const equirectangularLoader = Object.values(rendered).find((node) =>
       node.class_type === "LoraLoaderModelOnly" &&
-      node.inputs.lora_name === "h3-equi360-lora-step2500.safetensors"
+      node.inputs.lora_name === "h3-equi360-reviewed-v2-step2500.safetensors"
     );
 
     expect(equirectangularLoader?.inputs).toMatchObject({
       strength_model: 1,
-      lora_name: "h3-equi360-lora-step2500.safetensors"
+      lora_name: "h3-equi360-reviewed-v2-step2500.safetensors"
     });
     expect(rendered["6"]?.inputs.prompt).toBe("equirect360, 人物自然转身");
     expect(rendered["8"]?.inputs).toMatchObject({
@@ -262,16 +264,7 @@ describe("renderWorkflow", () => {
     const turboTask: QueueTask = {
       ...task,
       modelId: "minimax_h3_fl2va",
-      videoLoras: [{
-        id: "minimax-h3-lightx2v-turbo-4step",
-        name: "LightX2V Turbo 4-Step",
-        filename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-        strength: 0.75,
-        modelFamily: "minimax-h3",
-        compatibleModelIds: ["minimax_h3_fl2va"],
-        compatibleInputModes: ["image"],
-        purpose: "performance"
-      }],
+      videoLoras: [H3_TURBO_LORA],
       duration: 5,
       fps: 24,
       steps: 8,
@@ -301,30 +294,30 @@ describe("renderWorkflow", () => {
       class_type: "LoraLoaderModelOnly",
       inputs: {
         model: ["1", 0],
-        lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-        strength_model: 0.75
+        lora_name: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+        strength_model: 1
       }
     });
     expect(rendered["21"]).toMatchObject({
       class_type: "MiniMaxH3SigmaShift",
       inputs: {
         model: ["19", 0],
-        shift_video: 12,
+        shift_video: 6,
         shift_audio: 3
       }
     });
-    expect(rendered["7"]?.inputs.sampler_name).toBe("er_sde");
+    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
     expect(rendered["8"]?.inputs).toMatchObject({
       model: ["21", 0],
       scheduler: "beta",
-      steps: 8,
+      steps: 4,
       denoise: 1
     });
     const migratedLegacyTask = renderWorkflow(source, {
       ...turboTask,
       steps: 12
     }, { inputImage: "first.png" }) as Record<string, { inputs: Record<string, unknown> }>;
-    expect(migratedLegacyTask["8"]?.inputs.steps).toBe(8);
+    expect(migratedLegacyTask["8"]?.inputs.steps).toBe(4);
 
     const pytorch = renderWorkflow(source, {
       ...turboTask,
@@ -354,7 +347,7 @@ describe("renderWorkflow", () => {
     expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
-  it("renders the official H3 FL2VA v1.1 Turbo sampler contract", () => {
+  it("renders the official H3 FL2VA v1.2 Turbo sampler contract", () => {
     const source = JSON.parse(
       readFileSync(
         new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
@@ -386,7 +379,7 @@ describe("renderWorkflow", () => {
     })).toBe(true);
 
     expect(rendered["20"]?.inputs).toMatchObject({
-      lora_name: "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+      lora_name: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
       strength_model: 1
     });
     expect(rendered["21"]?.inputs).toMatchObject({
@@ -1800,6 +1793,42 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(JSON.stringify(latentRendered)).not.toContain("{{");
   });
 
+  it("applies each unified latent save mode to its available H3 output", () => {
+    const generationSource = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_fl2va_first_pass_av_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as Record<string, unknown>;
+    const motionContextSource = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as Record<string, unknown>;
+    const outputTypes = (source: Record<string, unknown>, task: QueueTask | ExtensionQueueTask) =>
+      new Set(
+        Object.values(renderWorkflow(source, task) as Record<string, { class_type?: string }>)
+          .map((node) => node.class_type)
+          .filter((classType): classType is string => Boolean(classType))
+      );
+
+    for (const mode of ["all", "joint-av", "motion-context", "none"] as const) {
+      const generationTypes = outputTypes(generationSource, {
+        ...task,
+        modelId: "minimax_h3_fl2va",
+        h3LatentSaveMode: mode
+      });
+      const motionContextTypes = outputTypes(motionContextSource, {
+        ...extensionTask,
+        modelId: "minimax_h3_ref2va",
+        h3LatentSaveMode: mode
+      });
+      expect(generationTypes.has("LocalVideoStudioH3SaveJointAV")).toBe(mode === "all" || mode === "joint-av");
+      expect(motionContextTypes.has("MiniMaxH3MotionContextSaveLatent")).toBe(mode === "all" || mode === "motion-context");
+    }
+  });
+
   it("renders the H3 Continuum Native AV bridge and trims only the overlap", () => {
     const source = JSON.parse(
       readFileSync(
@@ -1840,6 +1869,61 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     });
     expect(rendered["17"]?.inputs.plan).toEqual(["9", 3]);
     expect(rendered["20"]?.inputs.filename).toBe("h3-native-av/h3av-continuation");
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("renders the H3 Continuum V3.8 boundary-frame and Video Guide path", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_continuum_v38_extend_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const continuumTask: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_continuum",
+      workflowPath: "workflows/minimax_h3_continuum_v38_extend_api.json",
+      resolution: 480,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      maxGeneratedFrames: 362,
+      overlapFrames: 22,
+      h3SaveJointAv: true
+    };
+    const rendered = renderWorkflow(source, continuumTask, {
+      sourceVideo: "uploaded/h3-continuum-guide.mp4",
+      h3AvInputArtifact: "h3-native-av/source.safetensors",
+      h3AvSourceFrameIndex: 123,
+      h3AvArtifactFilename: "h3-native-av/h3av-continuation",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(isMiniMaxH3ContinuumV38Workflow(continuumTask.workflowPath)).toBe(true);
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(workflowSupportsExtensionForModel(source, continuumTask.modelId)).toBe(true);
+    expect(continuumV38SampledFrameCountForSeconds(5)).toBe(124);
+    expect(rendered["8"]?.inputs.file).toBe("uploaded/h3-continuum-guide.mp4");
+    expect(rendered["9"]?.inputs.artifact).toBe("h3-native-av/source.safetensors");
+    expect(rendered["11"]?.inputs).toMatchObject({
+      image: ["10", 0],
+      batch_index: 123,
+      length: 1
+    });
+    expect(rendered["12"]?.inputs).toMatchObject({
+      first_frame: ["11", 0],
+      reference_video_1: ["8", 0],
+      chunks: 1,
+      chunk_seconds: 5,
+      size_source: "Manual"
+    });
+    expect(rendered["15"]?.inputs).toMatchObject({
+      images: ["13", 0],
+      audio: ["14", 0],
+      assembly_plan: ["12", 2]
+    });
+    expect(rendered["18"]?.inputs.joint_av).toEqual(["12", 0]);
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 

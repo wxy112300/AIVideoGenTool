@@ -529,6 +529,7 @@ describe("queue execution snapshots", () => {
       sourceVideoDuration: 12,
       trimEndSeconds: 12,
       workflowPath: "extend.json",
+      h3ContextLatentPath: "source-context.safetensors",
       spectrumMode: "balanced" as const,
       fps: 12 as const,
       frameInterpolation: "rife2x" as const,
@@ -549,6 +550,7 @@ describe("queue execution snapshots", () => {
     expect(queued.fps).toBe(24);
     expect(queued.frameInterpolation).toBe("off");
     expect(queued.sourceVideoPath).toBe("source.mp4");
+    expect(queued.h3ContextLatentPath).toBe("source-context.safetensors");
     expect(queued.h3ReferenceSlots?.map((slot) => [slot.mediaType, slot.mediaPath])).toEqual([
       ["video", "source.mp4"],
       ["image", "subject.png"]

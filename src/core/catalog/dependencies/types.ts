@@ -29,6 +29,8 @@ export interface CatalogCustomNodeDefinition {
   runtimeBundleId?: string;
   /** Optional nodes with external toolchains can opt out of the bulk installer. */
   bulkInstall?: boolean;
+  /** Native runtime assets are tracked by Git LFS and require a real checkout. */
+  requiresGitLfs?: boolean;
   /** False when the package may be recognized by the app but must be installed manually. */
   appInstallable?: boolean;
   /** Feature-scoped nodes used by optional workflow paths. */

@@ -62,6 +62,7 @@ export const snippetLocale = {
     "camera-pull-out-reveal": { group: "镜头运动", label: "后退拉开并展开环境" },
     "camera-pedestal-up": { group: "镜头运动", label: "升降配合镜头" },
     "camera-restrictions": { group: "镜头运动", label: "禁止意外绕行" },
+    "camera-continuous-take": { group: "镜头运动", label: "一镜到底 · 禁止切镜头" },
     "camera-pan-right": { group: "镜头运动", label: "向右摇摄" },
     "camera-tracking": { group: "镜头运动", label: "跟拍" },
     "camera-static": { group: "镜头运动", label: "固定镜头" },

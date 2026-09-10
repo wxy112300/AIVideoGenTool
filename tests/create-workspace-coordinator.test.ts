@@ -178,6 +178,8 @@ describe("create workspace coordinator", () => {
       duration: 12,
       width: 1280,
       height: 720,
+      h3ContextLatentPath: "C:/history/h3-motion-context/clip_00001.safetensors",
+      h3ContinuumArtifactPath: "C:/history/h3-native-av/h3av_payload.safetensors",
       resolution: 720,
       resetSeed: true
     });
@@ -186,8 +188,32 @@ describe("create workspace coordinator", () => {
     expect(getState().draft.inputMode).toBe("video");
     expect(getState().draft.sourceVideoPath).toBe("history.mp4");
     expect(getState().draft.sourceAssetId).toBe("asset-1");
+    expect(getState().draft.h3ContextLatentPath).toBe("C:/history/h3-motion-context/clip_00001.safetensors");
+    expect(getState().draft.h3ContinuumArtifactPath).toBe("C:/history/h3-native-av/h3av_payload.safetensors");
     expect(getState().draft.seed).toBeNull();
     expect(getState().videoExtensionDraft?.sourceVideoPath).toBe("history.mp4");
     expect(coordinator.getDraftDirty()).toBe(false);
+  });
+
+  it("infers the R2V Extend model when history only provides a Motion Context latent", async () => {
+    const { coordinator, getState } = createCoordinatorHarness();
+
+    await coordinator.selectDraftVideo("history.mp4", {
+      assetId: "asset-motion-context",
+      versionId: "version-motion-context",
+      duration: 8,
+      width: 1280,
+      height: 720,
+      h3LatentSaveMode: "motion-context",
+      h3ContextLatentPath: "C:/history/h3-motion-context/clip_00001.safetensors",
+      resolution: 720,
+      resetSeed: true
+    });
+
+    expect(getState().draft.modelId).toBe("minimax_h3_ref2va");
+    expect(getState().draft.h3LatentSaveMode).toBe("motion-context");
+    expect(getState().draft.h3ContextLatentPath).toBe("C:/history/h3-motion-context/clip_00001.safetensors");
+    expect(getState().draft.h3ReferenceSlots[0]?.mediaPath).toBe("history.mp4");
+    expect(getState().videoExtensionDraft?.modelId).toBe("minimax_h3_ref2va");
   });
 });

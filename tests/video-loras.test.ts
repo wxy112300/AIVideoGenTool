@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
-  H3_CKPT850_LORA,
   H3_CAMERA_MOTION_LORA,
+  H3_CINEMATIC_REALISM_LORA,
+  H3_BETTER_HUMAN_MOTION_LORA,
   H3_EQUI360_LORA,
   H3_VR180_SBS_LORA,
   H3_AFTER_MIDNIGHT_LORA,
@@ -12,12 +13,14 @@ import {
   H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
   H3_TURBO_V4_LORA,
+  normalizeHistoryVideoLoras,
   normalizeVideoLoras,
   reorderVideoLoras,
   videoLorasAfterAdding,
   videoLoraSelection,
   videoLoraCompatibleWithDraft,
   videoLoraConfigurationIssues,
+  videoLorasForCreation,
   videoPromptForLoras
 } from "../src/core/video-loras";
 import { h3LoraPromptInstruction } from "../src/core/prompts/h3/loras";
@@ -30,6 +33,8 @@ describe("video LoRA catalog", () => {
       H3_TURBO_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
+      H3_CINEMATIC_REALISM_LORA.id,
+      H3_BETTER_HUMAN_MOTION_LORA.id,
       H3_CAMERA_MOTION_LORA.id,
       H3_EQUI360_LORA.id,
       H3_VR180_SBS_LORA.id,
@@ -60,6 +65,20 @@ describe("video LoRA catalog", () => {
       strength: 0.8,
       purpose: "motion",
       promptPrefixes: ["camera motion"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_CINEMATIC_REALISM_LORA).toMatchObject({
+      strength: 0.5,
+      purpose: "style",
+      promptPrefixes: ["DY"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_BETTER_HUMAN_MOTION_LORA).toMatchObject({
+      strength: 0.4,
+      purpose: "motion",
+      promptPrefixes: [],
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
@@ -142,6 +161,28 @@ describe("video LoRA catalog", () => {
     ]);
   });
 
+  it("upgrades persisted LightX2V and Equi360 selections to the current upstream weights", () => {
+    const [turbo, equi] = normalizeVideoLoras([
+      {
+        ...H3_TURBO_LORA,
+        id: "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
+        filename: "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+      },
+      {
+        ...H3_EQUI360_LORA,
+        filename: "h3-equi360-lora-step2500.safetensors"
+      }
+    ]);
+    expect(turbo).toMatchObject({
+      id: H3_TURBO_LORA.id,
+      filename: H3_TURBO_LORA.filename
+    });
+    expect(equi).toMatchObject({
+      id: H3_EQUI360_LORA.id,
+      filename: H3_EQUI360_LORA.filename
+    });
+  });
+
   it("preserves the detected ComfyUI-relative filename for built-in LoRAs", () => {
     expect(normalizeVideoLoras([{
       ...H3_AFTER_MIDNIGHT_LORA,
@@ -187,6 +228,38 @@ describe("video LoRA catalog", () => {
     ]));
   });
 
+  it("adds Cinema's trigger while keeping Better Human Motion trigger-free", () => {
+    expect(videoPromptForLoras(
+      "a woman walks through a softly lit hallway",
+      [H3_CINEMATIC_REALISM_LORA, H3_BETTER_HUMAN_MOTION_LORA]
+    )).toBe("DY, a woman walks through a softly lit hallway");
+    expect(videoPromptForLoras(
+      "DY, a woman walks through a softly lit hallway",
+      [H3_CINEMATIC_REALISM_LORA]
+    )).toBe("DY, a woman walks through a softly lit hallway");
+  });
+
+  it("warns about unvalidated Cinema and Better Human Motion stacks", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_CINEMATIC_REALISM_LORA, H3_BETTER_HUMAN_MOTION_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_BETTER_HUMAN_MOTION_LORA.id, H3_CINEMATIC_REALISM_LORA.id].sort().join(":")}`,
+        severity: "warning"
+      }),
+      expect.objectContaining({
+        code: `order:${H3_CINEMATIC_REALISM_LORA.id}:${H3_BETTER_HUMAN_MOTION_LORA.id}`,
+        severity: "warning"
+      })
+    ]));
+  });
+
   it("supports the optional Realism People and Camera Motion dual stack", () => {
     const issues = videoLoraConfigurationIssues({
       modelId: "minimax_h3_fl2va",
@@ -224,24 +297,48 @@ describe("video LoRA catalog", () => {
     )).toBe("Facial Realism, a woman looks toward the camera");
   });
 
-  it("retires ckpt850 from active choices without breaking legacy record parsing", () => {
-    expect(BUILTIN_VIDEO_LORAS.some((lora) => lora.id === H3_CKPT850_LORA.id)).toBe(false);
-    expect(H3_CKPT850_LORA.retired).toBe(true);
-    const parsed = normalizeVideoLoras([H3_CKPT850_LORA]);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0]?.id).toBe(H3_CKPT850_LORA.id);
+  it("removes obsolete LoRAs from creation and keeps name-only history snapshots", () => {
+    const removed = [
+      ["minimax-h3-turbo-ckpt850-ema", "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback"],
+      ["minimax-h3-lightx2v-turbo-4step", "LightX2V Turbo 4-Step · legacy v0.1"],
+      ["minimax-h3-lightx2v-turbo-4step-768p-v1", "LightX2V Turbo 4-Step v1.0 · 768p"],
+      ["minimax-h3-pink-fluffy-bunny-nsfw", "PinkFluffyBunny NSFW"]
+    ].map(([id, name]) => ({
+      id,
+      name,
+      filename: "stale.safetensors",
+      strength: 1,
+      modelFamily: "minimax-h3",
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"],
+      purpose: "content"
+    }));
+
+    expect(BUILTIN_VIDEO_LORAS.some((lora) => removed.some((item) => item.id === lora.id))).toBe(false);
+    expect(normalizeVideoLoras(removed)).toEqual([]);
+
+    const history = normalizeHistoryVideoLoras(removed);
+    expect(history.map((lora) => ({
+      id: lora.id,
+      name: lora.name,
+      filename: lora.filename,
+      strength: lora.strength,
+      historyOnly: lora.historyOnly
+    }))).toEqual(removed.map(({ id, name }) => ({
+      id,
+      name,
+      filename: "",
+      strength: 0,
+      historyOnly: true
+    })));
+    expect(videoLorasForCreation(history)).toEqual([]);
     expect(videoLoraConfigurationIssues({
       modelId: "minimax_h3_fl2va",
       inputMode: "image",
       spectrumMode: "off",
       attentionMode: "sage",
-      videoLoras: parsed
-    })).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: `retired:${H3_CKPT850_LORA.id}`,
-        severity: "error"
-      })
-    ]));
+      videoLoras: history
+    })).toEqual([]);
   });
 
   it("rejects stacking the v4 quality Turbo with another Turbo variant", () => {
@@ -267,12 +364,12 @@ describe("video LoRA catalog", () => {
       inputMode: "image",
       spectrumMode: "balanced",
       attentionMode: "sage",
-      videoLoras: [H3_CKPT850_LORA, H3_SLA_TURBO_LORA]
+      videoLoras: [H3_TURBO_LORA, H3_SLA_TURBO_LORA]
     });
 
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: `combination:${[H3_CKPT850_LORA.id, H3_SLA_TURBO_LORA.id].sort().join(":")}`,
+        code: `combination:${[H3_TURBO_LORA.id, H3_SLA_TURBO_LORA.id].sort().join(":")}`,
         severity: "error"
       })
     ]));
@@ -414,31 +511,6 @@ describe("video LoRA catalog", () => {
     });
 
     expect(matchingRatioIssues.some((issue) => issue.code.startsWith("ratio:"))).toBe(false);
-  });
-
-  it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {
-    const issues = videoLoraConfigurationIssues({
-      modelId: "minimax_h3_fl2va",
-      inputMode: "image",
-      spectrumMode: "off",
-      attentionMode: "sage",
-      videoLoras: [{
-        id: "minimax-h3-pink-fluffy-bunny-nsfw",
-        name: "PinkFluffyBunny NSFW",
-        filename: "PinkFluffyBunny-pruned-v1-rank128.safetensors",
-        strength: 0.5,
-        modelFamily: "minimax-h3",
-        compatibleModelIds: ["minimax_h3_fl2va"],
-        compatibleInputModes: ["image"],
-        purpose: "content"
-      }]
-    });
-    expect(issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "retired:minimax-h3-pink-fluffy-bunny-nsfw",
-        severity: "error"
-      })
-    ]));
   });
 
   it("warns when LoRAs are loaded against their recommended order", () => {

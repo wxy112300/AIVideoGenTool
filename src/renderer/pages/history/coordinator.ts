@@ -6,6 +6,7 @@ import type {
 import type { CreationMode, HistoryKind, Page, RendererCleanup, RendererContext } from "../../contracts";
 import type { RendererUiState } from "../../ui-state";
 import { normalizeHistoryFilter, historyFilterSignature } from "../../../core/history-filter";
+import { isH3MotionContextHistoryFile } from "../../../core/h3-motion-context";
 import { swapHistoryDetailFragments } from "./detail-transition";
 import {
   historyAssetsByNewest,
@@ -157,6 +158,23 @@ export function createHistoryWorkspaceCoordinator(
     deps.renderOverlay();
   };
 
+  const requestMotionContextDeletion = (assetId: string, versionId: string): void => {
+    const asset = deps.getState().history.find((item) => item.id === assetId);
+    const version = asset?.versions.find((item) => item.id === versionId);
+    const hasMotionContext = Boolean(version?.h3ContextLatentPath?.trim()) ||
+      Boolean(version?.files.some(isH3MotionContextHistoryFile));
+    if (!asset || !version || !hasMotionContext) return;
+    deps.rememberModalFocus();
+    deps.ui.pendingConfirmation = {
+      kind: "delete-motion-context",
+      assetId,
+      versionId,
+      title: asset.title
+    };
+    deps.ui.confirmationBusy = false;
+    deps.renderOverlay();
+  };
+
   const requestImageVersionDeletion = (projectId: string, versionId: string): void => {
     const state = deps.getState();
     const project = state.imageHistory.find((item) => item.id === projectId);
@@ -290,6 +308,7 @@ export function createHistoryWorkspaceCoordinator(
         requestHistoryDeletion,
         requestHistoryVersionDeletion,
         requestJointAvDeletion,
+        requestMotionContextDeletion,
         requestImageVersionDeletion,
         copyHistoryText: historyActions.copyHistoryText,
         copyHistoryFile: historyActions.copyHistoryFile,

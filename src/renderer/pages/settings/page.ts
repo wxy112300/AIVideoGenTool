@@ -1,4 +1,5 @@
 import type {
+  AppCacheSnapshot,
   AppLogSnapshot,
   EnvironmentScanResult,
   H3PromptPreset,
@@ -100,6 +101,10 @@ export interface SettingsPageViewModel {
   appLogs: AppLogSnapshot | null;
   appLogsLoading: boolean;
   appLogsError: string;
+  appCache: AppCacheSnapshot | null;
+  appCacheLoading: boolean;
+  appCacheClearing: boolean;
+  appCacheError: string;
 }
 
 export interface SettingsPageOptions {
@@ -236,6 +241,36 @@ export function renderSettingsPage(
   const selectedAutoPromptSeedDescription = selectedAutoPromptSeed
     ? settingsH3AutoPromptSeedDescription(settings.uiLocale, selectedAutoPromptSeed.id, selectedAutoPromptSeed.instruction)
     : s("prompt.autoVideoPresetRandomHint");
+  const appCache = viewModel.appCache;
+  const cacheTotal = viewModel.appCacheLoading
+    ? t(uiKeys.settings.system.cacheLoading)
+    : appCache
+      ? options.formatBytes(appCache.totalBytes)
+      : "—";
+  const cacheSession = appCache ? options.formatBytes(appCache.currentSessionBytes) : "—";
+  const cacheTemporary = appCache ? options.formatBytes(appCache.temporaryBytes) : "—";
+  const cacheDirectories = appCache ? String(appCache.temporaryDirectoryCount) : "—";
+  const cacheClearDisabled = viewModel.appCacheLoading ||
+    viewModel.appCacheClearing ||
+    viewModel.hasRunningQueueTask;
+  const cachePanel = `
+    <section class="panel settings-section app-cache-panel">
+      <div class="section-heading">
+        <div><h2>${t(uiKeys.settings.system.cacheTitle)}</h2><span class="muted">${t(uiKeys.settings.system.cacheDescription)}</span></div>
+        <div class="button-row"><button class="secondary button-with-icon" id="refresh-app-cache" ${viewModel.appCacheLoading || viewModel.appCacheClearing ? "disabled" : ""}>${icon(viewModel.appCacheLoading ? "refresh-cw" : "rotate-ccw")}${t(uiKeys.settings.system.cacheRefresh)}</button><button class="secondary destructive button-with-icon" id="clear-app-cache" ${cacheClearDisabled ? "disabled" : ""}>${icon(viewModel.appCacheClearing ? "refresh-cw" : "trash-2")}${viewModel.appCacheClearing ? t(uiKeys.settings.system.cacheClearing) : t(uiKeys.settings.system.cacheClear)}</button></div>
+      </div>
+      <div class="app-cache-summary">
+        <div class="app-cache-total"><span>${t(uiKeys.settings.system.cacheTotal)}</span><strong id="app-cache-total" aria-live="polite">${cacheTotal}</strong></div>
+        <div class="app-log-stats"><div class="app-log-stat"><span>${t(uiKeys.settings.system.cacheSession)}</span><strong id="app-cache-session">${cacheSession}</strong></div><div class="app-log-stat"><span>${t(uiKeys.settings.system.cacheTemporary)}</span><strong id="app-cache-temporary">${cacheTemporary}</strong></div><div class="app-log-stat"><span>${t(uiKeys.settings.system.cacheDirectories)}</span><strong id="app-cache-directories">${cacheDirectories}</strong></div></div>
+      </div>
+      <div id="app-cache-progress" class="app-cache-progress" role="status" aria-live="polite" hidden>
+        <div class="app-cache-progress-head"><strong id="app-cache-progress-stage"></strong><span id="app-cache-progress-elapsed"></span></div>
+        <div id="app-cache-progress-bar" class="app-cache-progress-bar indeterminate" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+        <div class="app-cache-progress-detail"><span id="app-cache-progress-count"></span><span id="app-cache-progress-bytes"></span><span id="app-cache-progress-remaining"></span></div>
+      </div>
+      ${viewModel.hasRunningQueueTask ? `<p class="muted" role="status">${t(uiKeys.settings.system.cacheBusy)}</p>` : ""}
+      ${viewModel.appCacheError ? `<p class="error" role="alert">${escape(viewModel.appCacheError)}</p>` : ""}
+    </section>`;
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
@@ -474,8 +509,9 @@ export function renderSettingsPage(
             <label>${t(uiKeys.settings.system.modelDirectory)}<div class="input-action"><input id="model-directory" value="${escape(effectiveModelDirectory)}" placeholder="${t(uiKeys.settings.system.modelDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div></label>
           </div>
         </div>
-        <div class="asset-library-settings-row"><div><strong>${t(uiKeys.settings.system.assetLibraryMaintenance)}</strong><span class="muted">${t(uiKeys.settings.system.assetLibraryDescription)}</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}${t(uiKeys.settings.system.organizeAssetLibrary)}</button></div>
+         <div class="asset-library-settings-row"><div><strong>${t(uiKeys.settings.system.assetLibraryMaintenance)}</strong><span class="muted">${t(uiKeys.settings.system.assetLibraryDescription)}</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}${t(uiKeys.settings.system.organizeAssetLibrary)}</button></div>
       </section>
+      ${cachePanel}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.system.proxyTitle)}</h2><span class="muted">${t(uiKeys.settings.system.proxyDescription)}</span></div><span class="model-badge">${t(settings.proxyEnabled ? uiKeys.settings.system.enabled : uiKeys.settings.system.disabled)}</span></div>
         <div class="settings-grid two">

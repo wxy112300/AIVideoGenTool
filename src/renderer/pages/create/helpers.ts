@@ -18,6 +18,7 @@ import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import {
   continuumSampledFrameCountForSeconds,
+  continuumV38SampledFrameCountForSeconds,
   extensionSafetyForTask,
   frameInterpolationMultiplier,
   generationFrameCountForTask,
@@ -103,7 +104,9 @@ export function interpolationEstimate(draft: Draft): {
   return {
     multiplier: frameInterpolationMultiplier(draft),
     generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
-      ? continuumSampledFrameCountForSeconds(draft.duration)
+      ? draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
+        ? continuumV38SampledFrameCountForSeconds(draft.duration)
+        : continuumSampledFrameCountForSeconds(draft.duration)
       : generationFrameCountForTask(draft),
     outputFrames: outputFrameCountForTask(draft)
   };

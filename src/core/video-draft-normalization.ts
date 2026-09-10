@@ -10,6 +10,8 @@ import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy
 } from "./video-policy.js";
+import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
+import { isMiniMaxH3R2vModel } from "./workflow.js";
 
 export function normalizeH3FrameSettings(
   draft: Pick<Draft, "modelId" | "fps" | "frameInterpolation">
@@ -47,6 +49,10 @@ export function normalizeVideoDraft(draft: Draft): Draft {
   });
   const spectrumMode = policy.spectrum.allowed ? draft.spectrumMode : "off";
   const spectrumAutomaticallyDisabled = draft.spectrumMode !== "off" && spectrumMode === "off";
+  const h3LatentSaveMode = h3LatentSaveModeFor(
+    draft,
+    draft.inputMode === "video" && isMiniMaxH3R2vModel(modelId)
+  );
 
   return {
     ...draft,
@@ -58,6 +64,8 @@ export function normalizeVideoDraft(draft: Draft): Draft {
     spectrumMode,
     spectrumModeUserSet: spectrumAutomaticallyDisabled ? false : draft.spectrumModeUserSet,
     spectrumModelAwareMode: spectrumMode === "off" ? "off" : draft.spectrumModelAwareMode,
+    h3LatentSaveMode,
+    h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
     ...normalizeH3MemoryOptions(draft)
   };
 }

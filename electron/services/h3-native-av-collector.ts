@@ -10,7 +10,9 @@ import {
 import {
   generationFrameCountForTask,
   continuumSampledFrameCountForSeconds,
+  continuumV38SampledFrameCountForSeconds,
   isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumV38Workflow,
   isMiniMaxH3R2vModel,
   miniMaxH3ModelAssetNames,
   outputDimensions
@@ -65,7 +67,9 @@ export function nativeAvArtifactMetadataForTask(
   const frameCount = task.taskType === "upscale"
     ? h3Upscale!.artifact.frameCount
     : task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)
-      ? continuumSampledFrameCountForSeconds(task.duration)
+      ? isMiniMaxH3ContinuumV38Workflow(task.workflowPath)
+        ? continuumV38SampledFrameCountForSeconds(task.duration)
+        : continuumSampledFrameCountForSeconds(task.duration)
     : generationFrameCountForTask(task) + contextFrames;
   const workflowId = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
   return {

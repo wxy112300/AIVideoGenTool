@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssetVersion, HistoryAsset } from "../src/types";
 import {
+  estimateKonohamaruDiskBytes,
   renderImageAssetLibraryDialog,
   renderUpscaleDialog
 } from "../src/renderer/shell/secondary-dialogs";
@@ -209,6 +210,80 @@ describe("secondary dialog markup", () => {
     expect(markup).not.toMatch(/data-upscale-height="1080"[^>]*disabled/);
     expect(markup).not.toMatch(/data-upscale-height="1440"[^>]*disabled/);
     expect(markup).not.toContain("data-upscale-method");
+  });
+
+  it("keeps retired DLSS5 providers out of the active Konohamaru picker and lays out its controls as a full row", () => {
+    const version = {
+      id: "version-konohamaru",
+      kind: "original",
+      createdAt: "2026-09-02T00:00:00.000Z",
+      outputFilename: "h3-480p.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 864,
+      height: 480,
+      duration: 2,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: []
+    } as AssetVersion;
+    const asset = { id: "asset-konohamaru", title: "Konohamaru", versions: [version] } as HistoryAsset;
+    const markup = renderUpscaleDialog({
+      dialog: {
+        assetId: asset.id,
+        versionId: version.id,
+        modelId: "dlss5-konohamaru",
+        konohamaruMode: "quality_1_5x",
+        konohamaruNrStyle: "Natural",
+        konohamaruNrIntensity: 1,
+        konohamaruFrameInterpolation: "off",
+        tileMode: "auto"
+      },
+      history: [asset],
+      environment: null,
+      performance: null,
+      icon: () => "",
+      escapeHtml: String,
+      formatBytes: String,
+      formatVideoDuration: String,
+      formatUpscaleEstimateRange: () => "",
+      createUpscaleFilename,
+      estimateUpscaleResources: () => ({ frameCount: 48, vramMinGb: 0, vramMaxGb: 0, secondsMin: 0, secondsMax: 0, internalScale: 1.5 }),
+      upscaleDimensions,
+      versionShortEdge,
+      t: (key) => key
+    });
+
+    expect(markup).not.toContain(uiKeys.upscale.dlss5Name);
+    expect(markup).not.toContain(uiKeys.upscale.aetherscaleName);
+    expect(markup).toContain('class="upscale-provider-controls upscale-konohamaru-settings-row"');
+    expect(markup).toContain('class="upscale-konohamaru-range-row"');
+    expect(markup).toContain('class="field-label-row"');
+    expect(markup).not.toContain(uiKeys.upscale.konohamaruDescription);
+    expect(markup).toContain(uiKeys.upscale.konohamaruOutputNote);
+    expect(markup).toContain('id="upscale-konohamaru-style"');
+    expect(markup).toContain('id="upscale-konohamaru-intensity"');
+    expect(markup).toContain('id="upscale-konohamaru-fps"');
+  });
+
+  it("estimates Konohamaru disk use from output FPS and Auto H.264 instead of source video size", () => {
+    const version = {
+      id: "version-konohamaru-estimate",
+      kind: "original",
+      createdAt: "2026-09-02T00:00:00.000Z",
+      outputFilename: "h3-480p.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 864,
+      height: 480,
+      duration: 10,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: [{ filename: "h3-480p.mp4", subfolder: "", type: "output", sizeBytes: 1024 }]
+    } as AssetVersion;
+
+    const estimated = estimateKonohamaruDiskBytes(version, 2592, 1440, 120);
+
+    expect(estimated).not.toBeNull();
+    expect(estimated!).toBeGreaterThan(55 * 1024 * 1024);
   });
 
   it("keeps learned targets disabled when editing a queued bilinear H3 task", () => {

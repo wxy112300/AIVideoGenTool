@@ -6,7 +6,10 @@ import type {
   ImageTargetResolution,
   ModelScanProfile
 } from "../../types.js";
-import { extractComfyOutputFiles } from "../comfy-output.js";
+import {
+  extractComfyOutputFiles,
+  isPersistentComfyOutputFile
+} from "../comfy-output.js";
 import type {
   ComfyApiWorkflow,
   CompiledImagePrompt,
@@ -404,6 +407,7 @@ export function renderImageWorkflow(
 
 export function parseImageOutputs(history: unknown): ImageOutputCandidate[] {
   return extractComfyOutputFiles(history)
+    .filter(isPersistentComfyOutputFile)
     .map((file) => imageOutputCandidateFromValue(file))
     .filter((file): file is ImageOutputCandidate => file !== null);
 }

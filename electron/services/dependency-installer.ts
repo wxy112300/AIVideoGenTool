@@ -4,7 +4,10 @@ import path from "node:path";
 import {
   AETHERSCALE_NODE_ID,
   customNodeDefinition,
-  DLSS5_NODE_ID
+  DLSS5_NODE_ID,
+  KONOHAMARU_NODE_ID,
+  KONOHAMARU_NEURAL_UPSTREAM_ADDON,
+  KONOHAMARU_RUNTIME_FILES
 } from "../../src/core/catalog/index.js";
 import type { CustomNodeInstallMode, Settings } from "../../src/types.js";
 import {
@@ -12,6 +15,10 @@ import {
   patchH3PromptWriterSource,
   patchAetherScaleCarrierSource,
   aetherScaleCarrierPatchFiles,
+  konohamaruNeuralUpstreamPatchFiles,
+  KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME,
+  konohamaruVideo2dlssnrSource,
+  patchKonohamaruNeuralUpstreamSource,
   patchDlss5DepthAnythingSource,
   patchMmh3UltimateUpscaleSource,
   patchMultimodalPromptContextSize,
@@ -20,6 +27,7 @@ import {
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   prepareDlss5DepthAnything,
+  prepareKonohamaruNeuralUpstream,
   prepareAetherScaleCarrier,
   prepareH3PromptWriter,
   prepareMmh3UltimateUpscale,
@@ -34,6 +42,10 @@ import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 import { isLocalComfyUrl } from "./comfy-endpoint.js";
 import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
 import { installAetherScaleRuntime, uninstallAetherScaleRuntime } from "./aetherscale-runtime.js";
+import {
+  installKonohamaruNeuralUpstreamRuntime,
+  installKonohamaruVideo2dlssnrRuntime
+} from "./konohamaru-runtime.js";
 
 function normalizedRepositoryUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "").replace(/\.git$/iu, "").toLowerCase();
@@ -121,6 +133,15 @@ function gitStatusPath(line: string): string {
   return renameSeparator >= 0 ? value.slice(renameSeparator + 4) : value;
 }
 
+function isKonohamaruManagedRuntimePath(filename: string): boolean {
+  const normalized = filename.replaceAll("\\", "/").toLowerCase();
+  return normalized === "bin/runtime/host/renodx-dlss5.addon64" ||
+    normalized.startsWith("bin/runtime/host/renodx-dlss5.addon64.disabled-") ||
+    normalized === "bin/runtime/host/nvngx.dll.addon64" ||
+    normalized.startsWith("bin/runtime/video2dlssnr/") ||
+    normalized.startsWith("bin/runtime/video2dlssnr-backups/");
+}
+
 /**
  * The H3 compatibility shim is intentionally applied inside the node checkout
  * because the upstream Python imports need to see it at runtime. That makes
@@ -146,23 +167,34 @@ async function nodeHasOnlyAppPatch(
         ? mmh3PatchFiles
       : nodeId === DLSS5_NODE_ID
           ? dlss5DepthAnythingPatchFiles
-          : nodeId === AETHERSCALE_NODE_ID
+      : nodeId === AETHERSCALE_NODE_ID
             ? aetherScaleCarrierPatchFiles
+          : nodeId === KONOHAMARU_NODE_ID
+            ? konohamaruNeuralUpstreamPatchFiles
           : [];
   const paths = statusOutput
     .split(/\r?\n/u)
     .map((line) => line.trimEnd())
     .filter(Boolean)
     .map(gitStatusPath);
-  if (!paths.length || paths.some((filename) => !patchFiles.includes(filename))) {
+  if (!paths.length || paths.some((filename) =>
+    !patchFiles.includes(filename) &&
+    !(nodeId === KONOHAMARU_NODE_ID && isKonohamaruManagedRuntimePath(filename))
+  )) {
     return false;
   }
   for (const filename of paths) {
+    if (nodeId === KONOHAMARU_NODE_ID && isKonohamaruManagedRuntimePath(filename)) continue;
     const current = await fs.readFile(path.join(targetDirectory, filename), "utf8").catch(() => null);
     if (current === null) return false;
     let expected = "";
     if (nodeId === DLSS5_NODE_ID && filename !== "nodes.py") {
       expected = depthAnythingBuiltinMetadataFile(path.basename(filename));
+    } else if (
+      nodeId === KONOHAMARU_NODE_ID &&
+      filename === KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME
+    ) {
+      expected = konohamaruVideo2dlssnrSource;
     } else {
       let baseline = "";
       try {
@@ -188,9 +220,11 @@ async function nodeHasOnlyAppPatch(
             ? patchQwenVlComfyDesktopLogging(baseline)
           : nodeId === "mmh3-ultimate-upscale"
               ? patchMmh3UltimateUpscaleSource(baseline)
-              : nodeId === AETHERSCALE_NODE_ID
+          : nodeId === AETHERSCALE_NODE_ID
                 ? patchAetherScaleCarrierSource(baseline)
-                : patchDlss5DepthAnythingSource(baseline);
+          : nodeId === KONOHAMARU_NODE_ID
+                  ? patchKonohamaruNeuralUpstreamSource(baseline, filename)
+                  : patchDlss5DepthAnythingSource(baseline);
     }
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }
@@ -279,6 +313,20 @@ export interface DependencyInstallerRuntime {
     nodeDirectory: string,
     onLog?: (message: string) => void
   ): Promise<{ ok: boolean; message: string; log?: string }>;
+  /** Optional app-managed neural-upstream add-on transaction for Konohamaru. */
+  installKonohamaruNeuralUpstreamRuntime?(
+    settings: Settings,
+    comfyRoot: string,
+    nodeDirectory: string,
+    onLog?: (message: string) => void
+  ): Promise<{ ok: boolean; message: string; log?: string }>;
+  /** Optional app-managed video2dlssnr temporal backend transaction for Konohamaru. */
+  installKonohamaruVideo2dlssnrRuntime?(
+    settings: Settings,
+    comfyRoot: string,
+    nodeDirectory: string,
+    onLog?: (message: string) => void
+  ): Promise<{ ok: boolean; message: string; log?: string }>;
   /** Optional app-managed carrier transaction for the AetherScale node. */
   installAetherScaleRuntime?(
     settings: Settings,
@@ -326,6 +374,42 @@ async function ensurePinnedGitRevision(
     );
   }
   report(`节点 revision 已校验：${actualRevision}`);
+}
+
+function isGitLfsPointer(bytes: Buffer): boolean {
+  return bytes
+    .subarray(0, 160)
+    .toString("utf8")
+    .startsWith("version https://git-lfs.github.com/spec/v1");
+}
+
+/**
+ * Konohamaru ships native DLSS5 assets through Git LFS. A successful git
+ * checkout is not sufficient: without LFS the files are tiny pointer text
+ * files and the ComfyUI node only fails much later during execution.
+ */
+export async function verifyKonohamaruRuntimeArtifacts(
+  targetDirectory: string
+): Promise<void> {
+  const problems: string[] = [];
+  for (const relativeFilename of KONOHAMARU_RUNTIME_FILES) {
+    if (relativeFilename === `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}`) continue;
+    const filename = path.join(targetDirectory, ...relativeFilename.split("/"));
+    try {
+      const bytes = await fs.readFile(filename);
+      if (!bytes.byteLength || isGitLfsPointer(bytes)) {
+        problems.push(`${relativeFilename}（Git LFS pointer）`);
+      }
+    } catch {
+      problems.push(`${relativeFilename}（缺失）`);
+    }
+  }
+  if (problems.length) {
+    throw new Error(
+      `Konohamaru DLSS5 runtime 文件未完成 Git LFS hydration：${problems.join("、")}。` +
+      "请安装 Git LFS 后在设置中重新安装/更新该节点。"
+    );
+  }
 }
 
 async function installBundledNodePackage(
@@ -477,6 +561,14 @@ export async function installCustomNodePackage(
     } else {
       const git = await runtime.findExecutable("git.exe");
       if (!git) throw new Error("缺少 Git，无法下载节点包。");
+      if (definition.requiresGitLfs) {
+        report("正在检查 Git LFS……");
+        await runtime.runLoggedProcess(
+          git,
+          ["lfs", "version"],
+          { timeoutMs: 30_000, env: commandEnvironment, onLog: report }
+        );
+      }
       if (await runtime.exists(targetDirectory)) {
       const isGitDirectory = await runtime.exists(path.join(targetDirectory, ".git"));
       let repositoryMatches = false;
@@ -523,7 +615,8 @@ export async function installCustomNodePackage(
               "comfyui-qwenvl-lora",
               "mmh3-ultimate-upscale",
               DLSS5_NODE_ID,
-              AETHERSCALE_NODE_ID
+              AETHERSCALE_NODE_ID,
+              KONOHAMARU_NODE_ID
             ].includes(definition.id) &&
               await nodeHasOnlyAppPatch(
                 definition.id,
@@ -534,7 +627,9 @@ export async function installCustomNodePackage(
                 commandEnvironment
               );
             if (appPatchOnly) {
-              const upstreamUnchanged = definition.id === DLSS5_NODE_ID || definition.id === AETHERSCALE_NODE_ID
+              const upstreamUnchanged = definition.id === DLSS5_NODE_ID ||
+                definition.id === AETHERSCALE_NODE_ID ||
+                definition.id === KONOHAMARU_NODE_ID
                 ? pinnedRevisionMatches
                 : await h3PromptWriterUpstreamUnchanged(
                     targetDirectory,
@@ -767,6 +862,43 @@ export async function installCustomNodePackage(
       }
     }
 
+    if (definition.id === KONOHAMARU_NODE_ID) {
+      report("正在下载 Konohamaru DLSS5 的 Git LFS runtime 文件……");
+      const git = await runtime.findExecutable("git.exe");
+      if (!git) throw new Error("缺少 Git，无法完成 Konohamaru DLSS5 runtime 下载。");
+      await runtime.runLoggedProcess(
+        git,
+        ["-C", targetDirectory, "lfs", "pull"],
+        { timeoutMs: 600_000, env: commandEnvironment, onLog: report }
+      );
+      await verifyKonohamaruRuntimeArtifacts(targetDirectory);
+      report("Konohamaru DLSS5 runtime 文件已通过 Git LFS 完整性校验");
+      if (!runtime.installKonohamaruNeuralUpstreamRuntime) {
+        throw new Error("Konohamaru neural-upstream runtime 安装器未接入当前应用运行时。");
+      }
+      report("正在安装 Konohamaru neural-upstream DLSS5 addon（固定 SHA-256）……");
+      const upstreamRuntimeResult = await runtime.installKonohamaruNeuralUpstreamRuntime(
+        settings,
+        comfyRoot,
+        targetDirectory,
+        report
+      );
+      if (upstreamRuntimeResult.log) report(upstreamRuntimeResult.log);
+      if (!upstreamRuntimeResult.ok) throw new Error(upstreamRuntimeResult.message);
+      if (!runtime.installKonohamaruVideo2dlssnrRuntime) {
+        throw new Error("Konohamaru video2dlssnr runtime 安装器未接入当前应用运行时。");
+      }
+      report("正在安装 Konohamaru video2dlssnr temporal feature-18 runtime（固定 SHA-256）……");
+      const video2dlssnrRuntimeResult = await runtime.installKonohamaruVideo2dlssnrRuntime(
+        settings,
+        comfyRoot,
+        targetDirectory,
+        report
+      );
+      if (video2dlssnrRuntimeResult.log) report(video2dlssnrRuntimeResult.log);
+      if (!video2dlssnrRuntimeResult.ok) throw new Error(video2dlssnrRuntimeResult.message);
+    }
+
     if (definition.id === "comfyui-gguf-h3" && !h3GgufPrepared) {
       report("正在检查 H3 GGUF 独立节点适配层……");
       await prepareH3Gguf(targetDirectory, report);
@@ -790,6 +922,10 @@ export async function installCustomNodePackage(
     if (definition.id === AETHERSCALE_NODE_ID && !aetherScalePrepared) {
       report("正在检查 AetherScale carrier 注册表回收适配层……");
       await prepareAetherScaleCarrier(targetDirectory, report);
+    }
+    if (definition.id === KONOHAMARU_NODE_ID) {
+      report("正在检查 Konohamaru video2dlssnr + neural-upstream 源码兼容层……");
+      await prepareKonohamaruNeuralUpstream(targetDirectory, report);
     }
     if (definition.id === "minimax-h3-prompt-writer" && !h3PromptWriterPrepared) {
       report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");

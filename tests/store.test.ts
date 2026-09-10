@@ -93,6 +93,37 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("migrates the legacy H3 save switch into the unified latent mode", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const legacyDraft = { ...state.draft, h3SaveJointAv: false } as Record<string, unknown>;
+    delete legacyDraft.h3LatentSaveMode;
+    const legacyExtensionDraft = {
+      ...state.draft,
+      inputMode: "video" as const,
+      modelId: "minimax_h3_ref2va",
+      h3SaveJointAv: false
+    } as Record<string, unknown>;
+    delete legacyExtensionDraft.h3LatentSaveMode;
+    await fs.writeFile(filename, JSON.stringify({
+      ...state,
+      schemaVersion: 13,
+      draft: legacyDraft,
+      videoExtensionDraft: legacyExtensionDraft
+    }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.draft.h3LatentSaveMode).toBe("none");
+      expect(loaded.draft.h3SaveJointAv).toBe(false);
+      expect(loaded.videoExtensionDraft?.h3LatentSaveMode).toBe("motion-context");
+      expect(loaded.videoExtensionDraft?.h3SaveJointAv).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates retired SageAttention 2++ values without inventing missing history metadata", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -802,13 +833,64 @@ describe("queue lock recovery", () => {
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({
-          id: "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
+          id: "minimax-h3-lightx2v-turbo-4step-768p-v1.2",
           strength: 1,
           modelFamily: "minimax-h3"
         })
       ]);
       expect(loaded.settings.defaultVideoModel).toBe("minimax_h3_fl2va");
       expect(loaded.draft.steps).toBe(4);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps removed LoRAs as name-only history snapshots", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.history = [{
+      mediaKind: "video",
+      id: "history-removed-lora",
+      title: "旧项目",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      modelId: "minimax_h3_fl2va",
+      outputFilename: "old.mp4",
+      duration: 2,
+      fps: 24,
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+      videoLoras: [{
+        id: "minimax-h3-pink-fluffy-bunny-nsfw",
+        name: "PinkFluffyBunny NSFW",
+        filename: "PinkFluffyBunny-pruned-v1-rank128.safetensors",
+        strength: 0.5,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_fl2va"],
+        compatibleInputModes: ["image"],
+        purpose: "content"
+      }],
+      files: []
+    } as unknown as HistoryAsset];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      const lora = loaded.history[0]?.videoLoras[0];
+      const versionLora = loaded.history[0]?.versions[0]?.videoLoras[0];
+      expect(lora).toMatchObject({
+        id: "minimax-h3-pink-fluffy-bunny-nsfw",
+        name: "PinkFluffyBunny NSFW",
+        filename: "",
+        strength: 0,
+        historyOnly: true
+      });
+      expect(versionLora).toMatchObject({
+        id: "minimax-h3-pink-fluffy-bunny-nsfw",
+        filename: "",
+        historyOnly: true
+      });
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

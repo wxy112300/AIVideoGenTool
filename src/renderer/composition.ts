@@ -7,12 +7,20 @@ import { normalizeVideoDraft } from "../core/video-draft-normalization";
 import { DLSS5_MODEL_ID, requireLegacyUpscaleTargetHeight } from "../core/dlss5";
 import { AETHERSCALE_DEFAULT_MODE, AETHERSCALE_DEFAULT_STYLE_PROFILE, AETHERSCALE_MODEL_ID, isAetherScaleMode, isAetherScaleStyleProfile } from "../core/aetherscale";
 import {
+  KONOHAMARU_DEFAULT_MODE,
+  KONOHAMARU_DEFAULT_NR_STYLE,
+  KONOHAMARU_MODEL_ID,
+  isKonohamaruMode,
+  isKonohamaruNrStyle
+} from "../core/konohamaru-dlss5";
+import {
   continuumMaxDurationSeconds,
   isMiniMaxH3ContinuumModel,
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "../core/workflow";
+import { videoLorasForCreation } from "../core/video-loras";
 import type {
   AppState,
   Draft,
@@ -101,6 +109,7 @@ function draftFromQueueTask(
     ? task.resolution as Draft["resolution"]
     : 480;
   const extension = task.taskType === "extension";
+  const videoLoras = videoLorasForCreation(task.videoLoras);
   return normalizeVideoDraft({
     ...currentDraft,
     inputMode: extension ? "video" : "image",
@@ -116,6 +125,9 @@ function draftFromQueueTask(
     trimEndSeconds: extension ? task.trimEndSeconds : 0,
     sourceAssetId: extension ? task.sourceAssetId : undefined,
     sourceVersionId: extension ? task.sourceVersionId : undefined,
+    h3LatentSaveMode: task.h3LatentSaveMode,
+    h3SaveJointAv: task.h3SaveJointAv ?? currentDraft.h3SaveJointAv,
+    h3ContextLatentPath: extension ? task.h3ContextLatentPath : undefined,
     h3ContinuumArtifactPath: extension ? task.h3ContinuumArtifactPath : undefined,
     h3ContinuumArtifact: extension && task.h3ContinuumArtifact
       ? structuredClone(task.h3ContinuumArtifact)
@@ -145,12 +157,12 @@ function draftFromQueueTask(
         : []
       : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     modelId: task.modelId,
-    videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? [],
+    videoLoras,
     workflowPath: task.workflowPath,
     ratio: task.ratio,
     resolution,
     duration: task.duration,
-    steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
+    steps: normalizeH3Steps(task.steps, task.modelId, videoLoras),
     fps: task.fps,
     frameInterpolation: task.frameInterpolation,
     motion: task.motion,
@@ -188,6 +200,7 @@ export function createQueueWorkspaceCoordinator(
     const editingWaitingTask = task.status === "waiting";
     const dlss5Selected = task.modelId === DLSS5_MODEL_ID;
     const aetherScaleSelected = task.modelId === AETHERSCALE_MODEL_ID;
+    const konohamaruSelected = task.modelId === KONOHAMARU_MODEL_ID;
     deps.ui.upscaleDialog = {
       ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
       assetId: task.sourceAssetId,
@@ -209,6 +222,19 @@ export function createQueueWorkspaceCoordinator(
                 ? task.aetherScale.styleProfile
                 : AETHERSCALE_DEFAULT_STYLE_PROFILE
             }
+          : konohamaruSelected
+            ? {
+                konohamaruMode: isKonohamaruMode(task.konohamaru?.mode)
+                  ? task.konohamaru!.mode
+                  : KONOHAMARU_DEFAULT_MODE,
+                konohamaruNrStyle: isKonohamaruNrStyle(task.konohamaru?.nrStyle)
+                  ? task.konohamaru!.nrStyle
+                  : KONOHAMARU_DEFAULT_NR_STYLE,
+                konohamaruNrIntensity: task.konohamaru?.nrIntensity ?? 1,
+                konohamaruFrameInterpolation: task.konohamaru?.frameInterpolation.enabled
+                  ? task.konohamaru.frameInterpolation.outputFps
+                  : "off"
+              }
         : {
             targetHeight: requireLegacyUpscaleTargetHeight(task.targetHeight)
           }),

@@ -6,6 +6,7 @@ import type {
 import {
   extractComfyOutputFiles,
   extractComfyNativeAvOutputFiles,
+  isPersistentComfyOutputFile,
   isVideoOutputFilename
 } from "../../src/core/comfy-output.js";
 import { attachAbsoluteOutputPaths } from "../../src/core/comfy-output-paths.js";
@@ -45,7 +46,7 @@ export class ComfyOutputService {
       );
     }
 
-    const reportedFiles = extractComfyOutputFiles(result);
+    const reportedFiles = extractComfyOutputFiles(result).filter(isPersistentComfyOutputFile);
     const roots = [...new Set([outputDirectory, ...alternateRoots].filter(Boolean))];
     let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputDirectory);
     for (const root of roots) {
@@ -163,7 +164,7 @@ export class ComfyOutputService {
         "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
       );
     }
-    const reportedFiles = extractComfyOutputFiles(result);
+    const reportedFiles = extractComfyOutputFiles(result).filter(isPersistentComfyOutputFile);
     const configuredRoots = [outputRoot, ...alternateRoots].filter(Boolean);
     const parentRoots = configuredRoots
       .filter((root) => ["images", "videos"].includes(path.basename(path.resolve(root)).toLowerCase()))

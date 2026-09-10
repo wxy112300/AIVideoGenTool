@@ -44,6 +44,7 @@ describe("dependency catalog", () => {
       "seedvr2",
       "flashvsr",
       "frame-interpolation",
+      "comfyui-dlss-frame-interpolation",
       "h3-motion-context",
       "h3-continuum",
       "h3-latent-upscaler",
@@ -118,12 +119,12 @@ describe("dependency catalog", () => {
     });
     expect(customNodeDefinition("h3-motion-context")).toMatchObject({
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.5.1",
-      latestVersion: "0.5.1",
+      recommendedVersion: "0.6.2",
+      latestVersion: "0.6.2",
       runtimeRequirement: expect.stringContaining("ComfyUI 0.34.0+"),
       compatibilityEvidence: expect.arrayContaining([expect.objectContaining({
         comfyUi: "0.34.0",
-        commit: "429e952",
+        commit: "5335715",
         checks: ["static"]
       })])
     });
@@ -181,17 +182,13 @@ describe("dependency catalog", () => {
       installRevision: H3_CONTINUUM_REVISION,
       license: "MIT",
       nodeTypes: [
-        "H3ContinuumSamplerV3",
-        "H3ContinuumAdvancedV3",
-        "H3ContinuumAssembleV3",
-        "H3ContinuumJoin",
-        "H3ContinuumFinish",
-        "H3ContinuumSaveState",
-        "H3ContinuumLoadState"
+        "H3ContinuumSamplerV38",
+        "H3ContinuumLoadVideo",
+        "H3ContinuumAssembleSeamV35"
       ],
-      minimumVersion: "3.6.0",
-      recommendedVersion: "3.7.0",
-      latestVersion: "3.7.0",
+      minimumVersion: "3.8.0",
+      recommendedVersion: "3.8.0",
+      latestVersion: "3.8.0",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{

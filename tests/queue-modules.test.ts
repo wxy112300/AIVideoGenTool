@@ -344,12 +344,13 @@ describe("queue renderer task priority", () => {
     expect(markup).not.toContain("create.options.h3MemoryPreserveNative");
   });
 
-  it("shows the effective JointAV save preference on H3 queue cards", () => {
+  it("shows the unified latent save preference on H3 queue cards", () => {
     const state = createDefaultState();
     const task = queueTaskFromDraft({
       ...createDefaultDraft(),
       startImagePath: "C:/input/start.png",
       workflowPath: "workflow.json",
+      h3LatentSaveMode: "none",
       h3SaveJointAv: false
     }, state, {
       now: () => new Date("2026-09-03T12:00:00.000Z"),
@@ -371,8 +372,8 @@ describe("queue renderer task priority", () => {
       elapsedText: () => "—"
     });
 
-    expect(render(task)).toContain("queue.card.jointAvDisabled");
-    expect(render({ ...task, h3SaveJointAv: undefined })).toContain("queue.card.jointAvEnabled");
+    expect(render(task)).toContain("queue.card.latentSaveModecreate.videoSettings.saveLatentNone");
+    expect(render({ ...task, h3LatentSaveMode: "all", h3SaveJointAv: true })).toContain("queue.card.latentSaveModecreate.videoSettings.saveLatentAll");
   });
 
   it("shows the final H3 delivery resolution instead of the first-pass resolution", () => {

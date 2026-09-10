@@ -25,4 +25,25 @@ describe("prompt CPU fallback confirmation", () => {
     expect(html).toContain('class="primary button-with-icon"');
     expect(html).not.toContain('class="primary destructive button-with-icon"');
   });
+
+  it("renders a destructive Motion Context deletion confirmation", () => {
+    const html = renderConfirmationDialog({
+      request: {
+        kind: "delete-motion-context",
+        assetId: "asset-1",
+        versionId: "version-1",
+        title: "Motion fixture"
+      },
+      confirmationBusy: false,
+      imageHistoryIds: new Set(),
+      t: (key, params) => `${key}:${JSON.stringify(params ?? {})}`,
+      icon: (name) => `<i>${name}</i>`,
+      escapeHtml: (value) => String(value)
+    });
+
+    expect(html).toContain("dialog.deleteMotionContext.title");
+    expect(html).toContain("dialog.deleteMotionContext.warning");
+    expect(html).toContain("history.page.deleteMotionContext");
+    expect(html).toContain('class="primary destructive button-with-icon"');
+  });
 });

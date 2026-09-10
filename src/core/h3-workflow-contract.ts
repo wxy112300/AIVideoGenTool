@@ -26,7 +26,7 @@ interface NodeRef {
 
 interface RuntimeInputRequirement {
   name: string;
-  type: "ANY" | "LATENT" | "CONDITIONING" | "MODEL" | "VAE" | "NOISE" | "SAMPLER" | "SIGMAS" | "FLOAT" | "INT" | "STRING" | "BOOLEAN" | "COMBO" | "H3_CONTINUUM_STATE" | "H3_CONTINUUM_PLAN";
+  type: "ANY" | "IMAGE" | "AUDIO" | "LATENT" | "CONDITIONING" | "MODEL" | "VAE" | "NOISE" | "SAMPLER" | "SIGMAS" | "FLOAT" | "INT" | "STRING" | "BOOLEAN" | "COMBO" | "H3_CONTINUUM_STATE" | "H3_CONTINUUM_PLAN" | "H3_CONTINUUM_ASSEMBLY_PLAN";
 }
 
 interface RuntimeNodeRequirement {
@@ -102,6 +102,25 @@ const CONTINUUM_CLASSES = [
   "LocalVideoStudioH3ArtifactToContinuumState",
   "H3ContinuumJoin",
   "H3ContinuumFinish",
+  "LocalVideoStudioH3SaveJointAV"
+] as const;
+
+const CONTINUUM_V38_CLASSES = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "PathchSageAttentionKJ",
+  "KSamplerSelect",
+  "BasicScheduler",
+  "ImageFromBatch",
+  "H3ContinuumLoadVideo",
+  "H3ContinuumSamplerV38",
+  "VAEDecode",
+  "VAEDecodeAudio",
+  "H3ContinuumAssembleSeamV35",
+  "CreateVideo",
+  "SaveVideo",
+  "LocalVideoStudioH3LoadJointAV",
   "LocalVideoStudioH3SaveJointAV"
 ] as const;
 
@@ -206,6 +225,32 @@ const RUNTIME_NODE_REQUIREMENTS: Readonly<Record<string, RuntimeNodeRequirement>
       { name: "plan", type: "H3_CONTINUUM_PLAN" }
     ],
     outputs: ["IMAGE", "AUDIO", "H3_CONTINUUM_STATE", "STRING"]
+  },
+  H3ContinuumSamplerV38: {
+    inputs: [
+      { name: "model", type: "MODEL" },
+      { name: "clip", type: "ANY" },
+      { name: "video_vae", type: "VAE" },
+      { name: "sampler", type: "SAMPLER" },
+      { name: "sigmas", type: "SIGMAS" },
+      { name: "sequence_prompt", type: "STRING" },
+      { name: "chunks", type: "ANY" },
+      { name: "chunk_seconds", type: "ANY" }
+    ]
+  },
+  H3ContinuumLoadVideo: {
+    inputs: [
+      { name: "enable_video", type: "ANY" },
+      { name: "file", type: "STRING" },
+      { name: "force_rate", type: "ANY" }
+    ]
+  },
+  H3ContinuumAssembleSeamV35: {
+    inputs: [
+      { name: "images", type: "IMAGE" },
+      { name: "audio", type: "AUDIO" },
+      { name: "assembly_plan", type: "ANY" }
+    ]
   },
   LocalVideoStudioH3RequireGpuVAE: {
     inputs: [{ name: "vae", type: "VAE" }],
@@ -385,6 +430,43 @@ function requireOutputReference(
   }
 }
 
+function requireOutputReferenceAtNodeId(
+  errors: string[],
+  nodes: Map<string, ApiNode>,
+  nodeId: string | undefined,
+  classType: string,
+  inputName: string,
+  expectedClass: string,
+  outputIndex: number
+): void {
+  const value = nodeId ? inputsFor(nodes.get(nodeId))[inputName] : undefined;
+  const reference = nodeRef(value);
+  if (!reference || !nodes.has(reference.nodeId)) {
+    errors.push(`${classType}.${inputName} 必须引用已存在的 workflow 节点`);
+    return;
+  }
+  if (nodes.get(reference.nodeId)?.class_type !== expectedClass) {
+    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass}`);
+  } else if (reference.outputIndex !== outputIndex) {
+    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass} 的 output ${outputIndex}`);
+  }
+}
+
+function nodeIdReferencing(
+  nodes: Map<string, ApiNode>,
+  classType: string,
+  inputName: string,
+  sourceNodeId: string | undefined,
+  outputIndex?: number
+): string | undefined {
+  if (!sourceNodeId) return undefined;
+  return nodeIdsForClass(nodes, classType).find((nodeId) => {
+    const reference = nodeRef(inputsFor(nodes.get(nodeId))[inputName]);
+    return reference?.nodeId === sourceNodeId &&
+      (outputIndex === undefined || reference.outputIndex === outputIndex);
+  });
+}
+
 function validateContinuum(nodes: Map<string, ApiNode>, errors: string[]): void {
   const available = classTypes(nodes);
   addMissingClasses(errors, CONTINUUM_CLASSES, available);
@@ -421,6 +503,116 @@ function validateContinuum(nodes: Map<string, ApiNode>, errors: string[]): void 
     if ("first_frame" in inputs || "last_frame" in inputs) {
       errors.push("Continuum 的 MiniMaxH3ImageToVideo 必须只提供文本 conditioning，不能携带首尾帧 keyframe");
     }
+  }
+}
+
+function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): void {
+  const available = classTypes(nodes);
+  addMissingClasses(errors, CONTINUUM_V38_CLASSES, available);
+  const serialized = JSON.stringify(Object.fromEntries(nodes));
+  for (const placeholder of [
+    "H3_AV_INPUT_ARTIFACT",
+    "H3_AV_ARTIFACT_FILENAME",
+    "H3_AV_SOURCE_FRAME_INDEX",
+    "SOURCE_VIDEO",
+    "PROMPT",
+    "WIDTH",
+    "HEIGHT",
+    "H3_CONTINUUM_CHUNKS",
+    "H3_CONTINUUM_CHUNK_SECONDS",
+    "SEED",
+    "OUTPUT_FILENAME"
+  ]) {
+    if (!serialized.includes(`{{${placeholder}}}`)) {
+      errors.push(`Continuum V3.8 workflow 缺少 {{${placeholder}}} 占位符`);
+    }
+  }
+
+  const loadId = nodeIdsForClass(nodes, "LocalVideoStudioH3LoadJointAV")[0];
+  if (loadId && inputsFor(nodes.get(loadId)).artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
+    errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+  }
+  const sourceLoadId = nodeIdsForClass(nodes, "H3ContinuumLoadVideo")[0];
+  if (sourceLoadId) {
+    const inputs = inputsFor(nodes.get(sourceLoadId));
+    if (inputs.file !== "{{SOURCE_VIDEO}}") {
+      errors.push("H3ContinuumLoadVideo.file 必须保留 SOURCE_VIDEO 占位符");
+    }
+    if (inputs.enable_video !== true) {
+      errors.push("H3ContinuumLoadVideo.enable_video 必须启用");
+    }
+  }
+
+  const samplerId = nodeIdsForClass(nodes, "H3ContinuumSamplerV38")[0];
+  if (samplerId) {
+    const inputs = inputsFor(nodes.get(samplerId));
+    if (inputs.sequence_prompt !== "{{PROMPT}}") {
+      errors.push("H3ContinuumSamplerV38.sequence_prompt 必须保留 PROMPT 占位符");
+    }
+    if (inputs.chunks !== "{{H3_CONTINUUM_CHUNKS}}") {
+      errors.push("H3ContinuumSamplerV38.chunks 必须保留 H3_CONTINUUM_CHUNKS 占位符");
+    }
+    if (inputs.chunk_seconds !== "{{H3_CONTINUUM_CHUNK_SECONDS}}") {
+      errors.push("H3ContinuumSamplerV38.chunk_seconds 必须保留 H3_CONTINUUM_CHUNK_SECONDS 占位符");
+    }
+    if (inputs.width !== "{{WIDTH}}" || inputs.height !== "{{HEIGHT}}") {
+      errors.push("H3ContinuumSamplerV38.width/height 必须保留 WIDTH/HEIGHT 占位符");
+    }
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "model", "PathchSageAttentionKJ", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "clip", "CLIPLoader", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "video_vae", "VAELoader", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "sampler", "KSamplerSelect", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "sigmas", "BasicScheduler", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, "H3ContinuumSamplerV38", "reference_video_1", "H3ContinuumLoadVideo", 0);
+  }
+
+  const artifactDecodeId = nodeIdReferencing(nodes, "VAEDecode", "samples", loadId, 0);
+  const frameId = nodeIdReferencing(nodes, "ImageFromBatch", "image", artifactDecodeId, 0);
+  if (frameId) {
+    const frameInputs = inputsFor(nodes.get(frameId));
+    if (frameInputs.batch_index !== "{{H3_AV_SOURCE_FRAME_INDEX}}") {
+      errors.push("ImageFromBatch.batch_index 必须保留 H3_AV_SOURCE_FRAME_INDEX 占位符");
+    }
+    if (frameInputs.length !== 1) {
+      errors.push("ImageFromBatch.length 必须固定为 1，以便只传递 JointAV 边界帧");
+    }
+  } else {
+    errors.push("ImageFromBatch.image 必须引用 JointAV loader 解码出的边界帧序列");
+  }
+
+  const generatedDecodeId = nodeIdReferencing(nodes, "VAEDecode", "samples", samplerId, 0);
+  const audioDecodeId = nodeIdReferencing(nodes, "VAEDecodeAudio", "samples", samplerId, 1);
+  const finalizeId = nodeIdsForClass(nodes, "H3ContinuumAssembleSeamV35")[0];
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "images", "VAEDecode", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "audio", "VAEDecodeAudio", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "assembly_plan", "H3ContinuumSamplerV38", 2);
+  if (generatedDecodeId === undefined) {
+    errors.push("VAEDecode.samples 必须有一个节点引用 H3ContinuumSamplerV38 的 video latent output 0");
+  }
+  if (audioDecodeId === undefined) {
+    errors.push("VAEDecodeAudio.samples 必须引用 H3ContinuumSamplerV38 的 audio latent output 1");
+  }
+  if (finalizeId) {
+    const finalizeInputs = inputsFor(nodes.get(finalizeId));
+    const imageReference = nodeRef(finalizeInputs.images);
+    if (generatedDecodeId && imageReference?.nodeId !== generatedDecodeId) {
+      errors.push("H3ContinuumAssembleSeamV35.images 必须引用 sampler video latent 解码出的图像");
+    }
+    const audioReference = nodeRef(finalizeInputs.audio);
+    if (audioDecodeId && audioReference?.nodeId !== audioDecodeId) {
+      errors.push("H3ContinuumAssembleSeamV35.audio 必须引用 sampler audio latent 解码出的音频");
+    }
+  }
+  const createVideoId = nodeIdsForClass(nodes, "CreateVideo")[0];
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "images", "H3ContinuumAssembleSeamV35", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1);
+  const saveVideoId = nodeIdsForClass(nodes, "SaveVideo")[0];
+  requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0);
+  const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
+  requireOutputReferenceAtNodeId(errors, nodes, serializerId, "LocalVideoStudioH3SaveJointAV", "joint_av", "H3ContinuumSamplerV38", 0);
+  const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
+  if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
+    errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
   }
 }
 
@@ -532,7 +724,11 @@ function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void
 export function h3ComfyAvWorkflowKind(source: unknown): H3ComfyAvWorkflowKind | null {
   const nodes = graphNodes(source);
   const classes = classTypes(nodes);
-  if (classes.has("H3ContinuumJoin") || classes.has("H3ContinuumFinish")) {
+  if (
+    classes.has("H3ContinuumSamplerV38") ||
+    classes.has("H3ContinuumJoin") ||
+    classes.has("H3ContinuumFinish")
+  ) {
     return "continuum-extension";
   }
   if (
@@ -550,7 +746,10 @@ export function validateH3ComfyWorkflow(source: unknown): H3ComfyWorkflowValidat
   if (!kind) return { valid: true, kind: null, errors: [] };
   const errors: string[] = [];
   if (kind === "first-pass-av") validateFirstPass(nodes, errors);
-  else if (kind === "continuum-extension") validateContinuum(nodes, errors);
+  else if (kind === "continuum-extension") {
+    if (classTypes(nodes).has("H3ContinuumSamplerV38")) validateContinuumV38(nodes, errors);
+    else validateContinuum(nodes, errors);
+  }
   else validateSecondPass(nodes, errors);
   return { valid: errors.length === 0, kind, errors: [...new Set(errors)] };
 }
@@ -631,9 +830,12 @@ export function h3ComfyWorkflowRuntimeIssues(
   if (!isRecord(objectInfo)) return ["/object_info 响应无效，无法验证 H3 AV 节点 schema"];
   const workflowClassTypes = classTypes(graphNodes(workflow));
   const continuum = kind === "continuum-extension";
+  const continuumV38 = continuum && workflowClassTypes.has("H3ContinuumSamplerV38");
   const ultimate = kind === "second-sampling-av" && workflowClassTypes.has("MMH3UltimateUpscale");
   const workflowClasses = kind === "continuum-extension"
-    ? CONTINUUM_CLASSES
+    ? continuumV38
+      ? CONTINUUM_V38_CLASSES
+      : CONTINUUM_CLASSES
     : kind === "first-pass-av"
     ? FIRST_PASS_CLASSES
     : ultimate
@@ -644,12 +846,18 @@ export function h3ComfyWorkflowRuntimeIssues(
   );
   const runtimeClasses = new Set<string>([
     ...(continuum
-      ? [
-          "LocalVideoStudioH3LoadJointAV",
-          "LocalVideoStudioH3ArtifactToContinuumState",
-          "H3ContinuumJoin",
-          "H3ContinuumFinish"
-        ]
+      ? continuumV38
+        ? [
+            "H3ContinuumLoadVideo",
+            "H3ContinuumSamplerV38",
+            "H3ContinuumAssembleSeamV35"
+          ]
+        : [
+            "LocalVideoStudioH3LoadJointAV",
+            "LocalVideoStudioH3ArtifactToContinuumState",
+            "H3ContinuumJoin",
+            "H3ContinuumFinish"
+          ]
       : []),
     ...(kind === "second-sampling-av"
       ? ultimate

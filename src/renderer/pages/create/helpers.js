@@ -1,7 +1,7 @@
 import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
-import { continuumSampledFrameCountForSeconds, extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCountForTask, isMiniMaxH3BoundaryExtensionModel, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputFrameCountForTask } from "../../../core/workflow";
+import { continuumSampledFrameCountForSeconds, continuumV38SampledFrameCountForSeconds, extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCountForTask, isMiniMaxH3BoundaryExtensionModel, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputFrameCountForTask } from "../../../core/workflow";
 import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -59,7 +59,9 @@ export function interpolationEstimate(draft) {
     return {
         multiplier: frameInterpolationMultiplier(draft),
         generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
-            ? continuumSampledFrameCountForSeconds(draft.duration)
+        ? draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
+            ? continuumV38SampledFrameCountForSeconds(draft.duration)
+            : continuumSampledFrameCountForSeconds(draft.duration)
             : generationFrameCountForTask(draft),
         outputFrames: outputFrameCountForTask(draft)
     };

@@ -16,7 +16,10 @@ import {
   type HistorySort
 } from "../../../core/history-filter";
 import { videoPromptForLoras } from "../../../core/video-loras";
-import { H3_MOTION_CONTEXT_SUBFOLDER } from "../../../core/h3-motion-context";
+import {
+  h3MotionContextHistoryFileForPath,
+  isH3MotionContextHistoryFile
+} from "../../../core/h3-motion-context";
 import {
   renderHistoryHeading,
   renderImageMediaStatus,
@@ -298,27 +301,6 @@ function historyComputeMode(version: AssetVersion, options: HistoryPageOptions):
     : spectrumLabel;
 }
 
-function h3MotionContextHistoryFileForPath(
-  value: string | undefined
-): HistoryFile | undefined {
-  const normalized = value?.trim().replaceAll("\\", "/");
-  if (!normalized) return undefined;
-  const parts = normalized.split("/").filter(Boolean);
-  const filename = parts.at(-1);
-  if (!filename) return undefined;
-  const newFolderIndex = parts.lastIndexOf(H3_MOTION_CONTEXT_SUBFOLDER);
-  const legacyFolderIndex = parts.lastIndexOf("h3_context");
-  const folderIndex = Math.max(newFolderIndex, legacyFolderIndex);
-  if (folderIndex < 0 || folderIndex >= parts.length - 1) return undefined;
-  return {
-    filename,
-    subfolder: parts.slice(folderIndex, -1).join("/"),
-    type: "output",
-    format: "safetensors",
-    absolutePath: value
-  };
-}
-
 export function renderImageHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
@@ -445,7 +427,11 @@ export function renderHistoryDetailPage(
     : "";
   const fileIdentity = (file: HistoryFile): string => file.absolutePath || `${file.subfolder}/${file.filename}`;
   const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
-  const motionContextFile = h3MotionContextHistoryFileForPath(version.h3ContextLatentPath);
+  const motionContextFile = h3MotionContextHistoryFileForPath(
+    version.h3ContextLatentPath,
+    version.files
+  ) ?? version.files.find(isH3MotionContextHistoryFile);
+  const motionContextIdentity = motionContextFile ? fileIdentity(motionContextFile) : "";
   const outputFiles = [...version.files];
   for (const file of [
     ...(jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []),
@@ -573,6 +559,7 @@ export function renderHistoryDetailPage(
           : outputFiles.map((file) => {
               const identity = fileIdentity(file);
               const isJointAvPayload = identity === jointAvPayloadIdentity;
+              const isMotionContextFile = Boolean(motionContextIdentity) && identity === motionContextIdentity;
               const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
               const sizeText = sizeBytes == null
                 ? options.t(uiKeys.history.page.fileSizeUnknown)
@@ -582,7 +569,9 @@ export function renderHistoryDetailPage(
                 : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`;
               const deleteAction = isJointAvPayload
                 ? `<button class="secondary danger button-with-icon" data-delete-joint-av="${options.escapeHtml(asset.id)}" data-joint-av-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteJointAv)}</button>`
-                : "";
+                : isMotionContextFile
+                  ? `<button class="secondary danger button-with-icon" data-delete-motion-context="${options.escapeHtml(asset.id)}" data-motion-context-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteMotionContext)}</button>`
+                  : "";
               return `<div class="output-file"><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
             }).join("")}
       </div>

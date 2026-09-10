@@ -14,6 +14,16 @@ import type {
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";
+import {
+  h3LatentSaveModeFor
+} from "../../../core/h3-latent-save";
+
+const h3LatentSaveModeLabelKeys = {
+  all: uiKeys.create.videoSettings.saveLatentAll,
+  "joint-av": uiKeys.create.videoSettings.saveLatentJointAv,
+  "motion-context": uiKeys.create.videoSettings.saveLatentMotionContext,
+  none: uiKeys.create.videoSettings.saveLatentNone
+} as const;
 
 export type QueueTaskInput =
   | { kind: "image"; path: string; referenceIndex?: number }
@@ -223,8 +233,14 @@ export function renderQueueTaskCard(
         ? `<span title="${t(uiKeys.queue.card.spectrumOnTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOn)}${task.spectrumModelAwareMode && task.spectrumModelAwareMode !== "off" ? ` · ${t(uiKeys.queue.card.modelAware, { mode: task.spectrumModelAwareMode })}` : ""}</span>`
         : `<span title="${t(uiKeys.queue.card.spectrumOffTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOff)}</span>`
     : "";
-  const h3JointAvSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
-    ? `<span>${t(task.h3SaveJointAv === false ? uiKeys.queue.card.jointAvDisabled : uiKeys.queue.card.jointAvEnabled)}</span>`
+  const h3LatentSaveSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
+    ? (() => {
+        const mode = h3LatentSaveModeFor(
+          task,
+          task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
+        );
+        return `<span>${t(uiKeys.queue.card.latentSaveMode)}${t(h3LatentSaveModeLabelKeys[mode])}</span>`;
+      })()
     : "";
   const loraSummary = task.taskType !== "image-generation" && task.videoLoras?.length
     ? task.videoLoras.map((lora, index) => `<span class="task-meta-lora" title="${options.escapeHtml(lora.filename)}">${t(uiKeys.queue.card.loraStrength, { index: index + 1, name: options.escapeHtml(lora.name), strength: lora.strength })}</span>`).join("")
@@ -241,9 +257,9 @@ export function renderQueueTaskCard(
   const metadata = task.taskType === "image-generation"
     ? `<span>${t(uiKeys.queue.card.imageProcessing)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}</span><span>${options.escapeHtml(imageQueueQuality?.label ?? task.qualityProfile)}${imageQueueQuality ? ` · ${imageQueueQuality.steps} ${t(uiKeys.queue.card.steps)} · CFG ${imageQueueQuality.cfg}` : ""}</span>${imageQueueQuality?.lightning ? `<span>${t(uiKeys.queue.card.lightningLora)}</span>` : ""}<span>${t(uiKeys.queue.card.pictureCanvas, { pictures: task.pictures.length, markings: task.pictures.reduce((count, picture) => count + (picture.markup?.objectCount ?? 0), 0) })}</span><span>${t(uiKeys.queue.card.pngIntermediate)}</span>`
     : task.taskType === "generation"
-    ? `<span>${options.escapeHtml(options.modelName(task.modelId))}</span>${loraSummary}<span>${task.h3DeliveryResolution ?? task.resolution}p</span><span>${task.duration}${t(uiKeys.queue.card.seconds)}</span><span>${options.frameRateSummary(frameSettings!.fps, frameSettings!.frameInterpolation)}</span>${h3ComputeSummary}${h3JointAvSummary}<span>Seed ${options.escapeHtml(seedText)}</span>`
+    ? `<span>${options.escapeHtml(options.modelName(task.modelId))}</span>${loraSummary}<span>${task.h3DeliveryResolution ?? task.resolution}p</span><span>${task.duration}${t(uiKeys.queue.card.seconds)}</span><span>${options.frameRateSummary(frameSettings!.fps, frameSettings!.frameInterpolation)}</span>${h3ComputeSummary}${h3LatentSaveSummary}<span>Seed ${options.escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
-      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${extensionRetainSummary}${h3ComputeSummary}${h3JointAvSummary}`
+      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${extensionRetainSummary}${h3ComputeSummary}${h3LatentSaveSummary}`
       : `<span>${t(uiKeys.queue.card.upscale)}</span><span>${task.upscaleMode === "h3-native" ? t(uiKeys.upscale.h3NativeMethod) : options.escapeHtml(options.modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>${t(uiKeys.queue.card.batchUnload)}</span>`;
   const attentionTask = task.status === "failed" || task.status === "cancelled";
   const recoveryCheckpointAvailable = queueTaskHasRecoveryCheckpoint(task);

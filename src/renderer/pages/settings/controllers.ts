@@ -12,6 +12,10 @@ import {
   type SettingsLogsControllerOptions
 } from "./logs-controller";
 import {
+  mountSettingsCacheController,
+  type SettingsCacheControllerOptions
+} from "./cache-controller";
+import {
   mountSettingsNodeDependencyController,
   type SettingsNodeDependencyControllerOptions
 } from "./node-dependency-controller";
@@ -30,6 +34,7 @@ export interface SettingsControllersOptions {
     SettingsNodeDependencyControllerOptions &
     SettingsServiceControllerOptions;
   logs: SettingsLogsControllerOptions;
+  cache: SettingsCacheControllerOptions;
   page: SettingsPageControllerOptions;
 }
 
@@ -43,6 +48,7 @@ export function mountSettingsControllers(
     mountSettingsEnvironmentController(context, options.environment),
     mountSettingsNodeDependencyController(context, options.environment),
     mountSettingsLogsController(context, options.logs),
+    mountSettingsCacheController(context, options.cache),
     mountSettingsPageController(options.page)
   ];
   return () => cleanups.reverse().forEach((cleanup) => cleanup());

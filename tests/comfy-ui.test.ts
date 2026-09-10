@@ -18,8 +18,10 @@ import {
   workProgressForNode,
   safeComfyUploadFilename,
   shouldAttachH3JointAvSerializer,
-  serviceSilenceLimitMs
+  serviceSilenceLimitMs,
+  workflowTaskForComfyOutput
 } from "../electron/services/comfy-ui.js";
+import { createDefaultState } from "../src/core/defaults.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
 import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
 import { H3_FACIAL_REALISM_CLOSEUP_LORA } from "../src/core/video-loras.js";
@@ -33,6 +35,20 @@ describe("ComfyUI task liveness", () => {
   it("keeps the strict limit before connection or after WebSocket disconnect", () => {
     expect(serviceSilenceLimitMs(90 * 60_000, false, false, false)).toBe(3 * 60_000);
     expect(serviceSilenceLimitMs(90 * 60_000, false, true, true)).toBe(3 * 60_000);
+  });
+});
+
+describe("ComfyUI video output routing", () => {
+  it("routes upscale SaveVideo into the configured video subfolder", () => {
+    const settings = createDefaultState().settings;
+    settings.outputDirectory = "C:\\ComfyUI\\output\\Videos";
+    settings.imageOutputDirectory = "C:\\ComfyUI\\output\\Images";
+    const task = { outputFilename: "clip.mp4" };
+
+    expect(workflowTaskForComfyOutput(task, settings)).toEqual({
+      outputFilename: "Videos/clip.mp4"
+    });
+    expect(task.outputFilename).toBe("clip.mp4");
   });
 });
 
@@ -214,6 +230,24 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Reference grounding");
     expect(instruction).toContain("User-intent preservation rule");
     expect(instruction).toContain("Final user-intent lock");
+  });
+
+  it("adds a no-cut continuity contract when expanding an extension prompt", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "人物继续向前走。",
+      modelId: "minimax_h3_continuum",
+      h3PromptMode: "FL2VA",
+      extensionSource: {
+        filePath: "source.mp4",
+        trimStartSeconds: 0,
+        trimEndSeconds: 5
+      }
+    });
+
+    expect(instruction).toContain("EXTENSION CONTINUITY CONTRACT (highest priority)");
+    expect(instruction).toContain("not a new shot or a scene reset");
+    expect(instruction).toContain("Do not cut, montage, jump in time");
+    expect(instruction).toContain("preserve every established subject, character identity");
   });
 
   it("passes the selected H3 LoRA into prompt enhancement context", () => {

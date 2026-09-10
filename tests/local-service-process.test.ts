@@ -1,11 +1,54 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { localEndpoint, waitForService } from "../electron/services/local-service-process";
+import {
+  comfyServiceStartupGraceTimeoutMs,
+  localEndpoint,
+  serviceStartupTimeoutMs,
+  waitForComfyServiceStartup,
+  waitForService
+} from "../electron/services/local-service-process";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("local service endpoint policy", () => {
+  it("extends a slow ComfyUI cold start only while its process remains alive", async () => {
+    const wait = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    await expect(waitForComfyServiceStartup(
+      "http://127.0.0.1:8188/system_stats",
+      () => true,
+      undefined,
+      wait
+    )).resolves.toEqual({ ready: true, graceUsed: true });
+    expect(wait).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8188/system_stats",
+      serviceStartupTimeoutMs,
+      undefined
+    );
+    expect(wait).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8188/system_stats",
+      comfyServiceStartupGraceTimeoutMs,
+      undefined
+    );
+  });
+
+  it("does not extend startup after the ComfyUI process exits", async () => {
+    const wait = vi.fn().mockResolvedValue(false);
+
+    await expect(waitForComfyServiceStartup(
+      "http://127.0.0.1:8188/system_stats",
+      () => false,
+      undefined,
+      wait
+    )).resolves.toEqual({ ready: false, graceUsed: false });
+    expect(wait).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts loopback HTTP endpoints and applies the service default port", () => {
     expect(localEndpoint("http://localhost", 8188)).toEqual({
       host: "127.0.0.1",

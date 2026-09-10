@@ -1,4 +1,6 @@
 import type {
+  AppCacheClearResult,
+  AppCacheSnapshot,
   AppLogSnapshot,
   AppState,
   BundledWorkflow,
@@ -183,6 +185,10 @@ export function createSettingsWorkspaceCoordinator(
   let selectedInstallGuide: SettingsInstallGuideSelection | null = null;
   let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
   let settingsImagePromptPreset: ImagePromptPreset = "faithful";
+  let appCache: AppCacheSnapshot | null = null;
+  let appCacheLoading = false;
+  let appCacheClearing = false;
+  let appCacheError = "";
 
   const uiText = (
     key: string,
@@ -337,6 +343,53 @@ export function createSettingsWorkspaceCoordinator(
     deps.clearAppLogScreen
   );
 
+  const loadAppCache = async (): Promise<void> => {
+    if (appCacheLoading || appCacheClearing) return;
+    appCacheLoading = true;
+    appCacheError = "";
+    deps.render();
+    try {
+      appCache = await deps.context.application.getAppCache();
+    } catch (error) {
+      appCacheError = error instanceof Error ? error.message : String(error);
+    } finally {
+      appCacheLoading = false;
+      deps.render();
+    }
+  };
+
+  const clearAppCache = async (): Promise<void> => {
+    if (appCacheLoading || appCacheClearing) return;
+    if (deps.getState().queue.some((task) => task.status === "running")) {
+      deps.showMessage(uiText(uiKeys.settings.system.cacheBusy), { kind: "warning" });
+      return;
+    }
+    appCacheClearing = true;
+    appCacheError = "";
+    deps.render();
+    try {
+      const result: AppCacheClearResult = await deps.context.application.clearAppCache();
+      appCache = result.after;
+      const affectedDirectories = result.skippedTemporaryDirectories + result.errors.length;
+      if (affectedDirectories > 0) {
+        deps.showMessage(uiText(uiKeys.settings.actions.cacheClearPartial, {
+          size: formatBytes(result.clearedBytes),
+          count: affectedDirectories
+        }), { kind: "warning" });
+      } else {
+        deps.showMessage(uiText(uiKeys.settings.actions.cacheClearCompleted, {
+          size: formatBytes(result.clearedBytes)
+        }));
+      }
+    } catch (error) {
+      appCacheError = error instanceof Error ? error.message : String(error);
+      deps.showMessage(uiText(uiKeys.settings.actions.cacheClearFailed, { error: appCacheError }), { kind: "error" });
+    } finally {
+      appCacheClearing = false;
+      deps.render();
+    }
+  };
+
   const settingsPage = (): string => {
     const state = deps.getState();
     const comfyRuntime = deps.getComfyRuntimeState();
@@ -379,6 +432,10 @@ export function createSettingsWorkspaceCoordinator(
         appLogs: deps.getAppLogs(),
         appLogsLoading: deps.getAppLogsLoading(),
         appLogsError: deps.getAppLogsError(),
+        appCache,
+        appCacheLoading,
+        appCacheClearing,
+        appCacheError,
         settingsHaveUnsavedChanges,
         promptRuntimeControlIcon: deps.promptRuntimeControlIcon,
         promptRuntimeControlTitle: deps.promptRuntimeControlTitle
@@ -488,6 +545,9 @@ export function createSettingsWorkspaceCoordinator(
     if (settingsTab === "logs" && !deps.getAppLogs() && !deps.getAppLogsLoading()) {
       void deps.loadAppLogs();
     }
+    if (settingsTab === "system" && !appCache && !appCacheLoading && !appCacheError) {
+      void loadAppCache();
+    }
     const state = deps.getState();
     if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
       void runEnvironmentScan(settingsDraft ?? state.settings);
@@ -570,6 +630,14 @@ export function createSettingsWorkspaceCoordinator(
         },
         openAppLogContextMenu: appLogContextMenu.open,
         setAppLogFollowTail: deps.setAppLogFollowTail
+      },
+      cache: {
+        loadAppCache: () => {
+          void loadAppCache();
+        },
+        clearAppCache: () => {
+          void clearAppCache();
+        }
       },
       page: {
         context: deps.context,

@@ -1,6 +1,6 @@
 # Agent Start Here
 
-代码地图，不是全量阅读清单。工作分类见 [文档入口](README.md)，跨阶段任务用 [混合流程](development/WORKFLOW.md)。先检查当前 diff，再进入目标路径；旧计划不代表当前实现状态。
+代码地图，不是全量阅读清单。工作分类见 [文档入口](README.md)，跨阶段任务用 [单 agent 优先流程](development/WORKFLOW.md)。先检查当前 diff，再进入目标路径；旧计划不代表当前实现状态。
 
 ## 请求 → 契约 → 代码
 

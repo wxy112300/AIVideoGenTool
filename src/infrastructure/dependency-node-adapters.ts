@@ -11,6 +11,15 @@ import {
   DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY,
   depthAnythingBuiltinMetadataFile
 } from "./depth-anything-metadata.js";
+import { KONOHAMARU_NEURAL_UPSTREAM_RELEASE } from "../core/catalog/dependencies/konohamaru.js";
+import {
+  KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME,
+  konohamaruVideo2dlssnrSource
+} from "./konohamaru-video2dlssnr.js";
+export {
+  KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME,
+  konohamaruVideo2dlssnrSource
+};
 
 function replaceRequired(source: string, before: string, after: string, label: string): string {
   if (source.includes(after)) return source;
@@ -18,6 +27,363 @@ function replaceRequired(source: string, before: string, after: string, label: s
     throw new Error(`MMH3 Ultimate Upscale 源码缺少 ${label}，已停止修改。`);
   }
   return source.replace(before, after);
+}
+
+const konohamaruNeuralUpstreamPatchMarker =
+  "# Local Video Studio neural-upstream runtime compatibility layer";
+const konohamaruFrameCountPatchMarker =
+  "# Local Video Studio full-video frame-count compatibility layer";
+
+export const konohamaruNeuralUpstreamPatchFiles = [
+  "__init__.py",
+  "dlss_engine/core/paths.py",
+  "dlss_engine/core/runtime.py",
+  "dlss_engine/video/processor.py",
+  "dlss_engine/frame_interpolation/processor.py",
+  KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME
+] as const;
+
+function replaceKonohamaruRequired(
+  source: string,
+  before: string,
+  after: string,
+  label: string
+): string {
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) {
+    throw new Error(`ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 ${label}，已停止修改。`);
+  }
+  return source.replace(before, after);
+}
+
+export function patchKonohamaruPathsSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (!patched.includes(konohamaruNeuralUpstreamPatchMarker)) {
+    patched = replaceKonohamaruRequired(
+      patched,
+      'ADDON = HOST_DIR / "renodx-dlss5.addon64"',
+      'ADDON = HOST_DIR / "nvngx.dll.addon64"',
+      "DLSS5 addon 路径"
+    );
+    patched = replaceKonohamaruRequired(
+      patched,
+      'for name in ("nvngx.dll", "renodx-dlss5.addon64", "nvngx_dlssnr.dll", "_nvngx.dll"):',
+      'for name in ("nvngx.dll", "nvngx.dll.addon64", "nvngx_dlssnr.dll", "_nvngx.dll"):',
+      "Wine host 文件链接列表"
+    );
+    patched = patched.replace(
+      'ADDON = HOST_DIR / "nvngx.dll.addon64"',
+      `${konohamaruNeuralUpstreamPatchMarker}\nADDON = HOST_DIR / "nvngx.dll.addon64"`
+    );
+  }
+  const video2dlssnrPathMarker =
+    "# Local Video Studio video2dlssnr temporal video backend path";
+  if (!patched.includes(video2dlssnrPathMarker) && patched.includes("NEURAL_RUNTIME = HOST_DIR")) {
+    patched = replaceKonohamaruRequired(
+      patched,
+      'NEURAL_RUNTIME = HOST_DIR / "nvngx_dlssnr.dll"',
+      [
+        'NEURAL_RUNTIME = HOST_DIR / "nvngx_dlssnr.dll"',
+        video2dlssnrPathMarker,
+        'VIDEO2DLSSNR_RUNTIME_DIR = ROOT / "bin" / "runtime" / "video2dlssnr"',
+        'VIDEO2DLSSNR_EXE = VIDEO2DLSSNR_RUNTIME_DIR / "video2dlssnr.exe"'
+      ].join("\n"),
+      "video2dlssnr runtime 路径"
+    );
+  }
+  return patched;
+}
+
+function replaceKonohamaruFeatureVerifier(source: string): string {
+  const start = source.indexOf("def verify_feature_18(");
+  const end = start >= 0 ? source.indexOf("@dataclass", start) : -1;
+  if (start < 0 || end < 0) {
+    throw new Error("ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 feature-18 verifier，已停止修改。");
+  }
+  const verifier = [
+    konohamaruNeuralUpstreamPatchMarker,
+    "def verify_feature_18(",
+    "    worker_logs: list[str], reshade_log: str | None = None",
+    ") -> dict[str, object]:",
+    "    if reshade_log is None:",
+    "        reshade_log_path = RESHADE_LOG",
+    "        reshade_log = (",
+    "            reshade_log_path.read_text(encoding=\"utf-8\", errors=\"replace\")",
+    "            if reshade_log_path.exists()",
+    "            else \"\"",
+    "        )",
+    "    # neural-upstream runs feature 18 at render resolution, then lets the",
+    "    # ordinary DLSS SR path perform the requested output upscaling.",
+    "    upstream_addon_loaded = \"DLSS5 NR Pre-Upscale\" in reshade_log",
+    "    upstream_feature_created = bool(re.search(",
+    "        r\"SNIPPET CreateFeature\\(18,\\s*[^)]*\\)\\s*->\\s*0x0*1\\b\",",
+    "        reshade_log,",
+    "    ))",
+    "    upstream_feature_evaluated = \"ran=1 rebound colour\" in reshade_log",
+    "    upstream_verified = upstream_addon_loaded and upstream_feature_created and upstream_feature_evaluated",
+    "    legacy_feature_created = \"feature 18 created via the signed snippet\" in reshade_log",
+    "    legacy_feature_evaluated = \"inline feature 18 evaluation succeeded\" in reshade_log",
+    "    runtime_initialized = \"signed DLSSNR 310.8.0 D3D12 runtime initialized\" in reshade_log",
+    "    legacy_verified = runtime_initialized and legacy_feature_created and legacy_feature_evaluated",
+    "    if not (upstream_verified or legacy_verified):",
+    "        evidence = \"\\n\".join(",
+    "            line",
+    "            for line in reshade_log.splitlines()",
+    "            if \"DLSS 5 Neural Rendering\" in line",
+    "            or \"DLSSNR\" in line",
+    "            or \"DLSS5 NR Pre-Upscale\" in line",
+    "            or \"SNIPPET CreateFeature(18\" in line",
+    "            or \"feature 18\" in line",
+    "        )",
+    "        raise RuntimeError(",
+    "            \"The carrier render completed, but neither neural-upstream render-resolution \"",
+    "            \"enhancement nor legacy signed DLSSNR feature-18 execution was verified.\\n\"",
+    "            + (evidence[-6000:] or \"ReShade produced no DLSSNR evidence.\")",
+    "        )",
+    "    carrier_matches = re.findall(",
+    "        r\"DLSS carrier ready:.*result=0x([0-9A-Fa-f]{8})\", \"\\n\".join(worker_logs)",
+    "    )",
+    "    return {",
+    "        \"reshade_log\": reshade_log,",
+    "        \"nr_upscaling_active\": legacy_verified and \"[upscaling]\" in reshade_log,",
+    "        \"nr_enhancement_active\": upstream_verified or legacy_feature_evaluated,",
+    "        \"neural_pipeline\": (",
+    "            \"neural-upstream-render-resolution\" if upstream_verified",
+    "            else \"renodx-direct-feature18\"",
+    "        ),",
+    "        \"nr_native_fallback\": \"NR upscaling fell back to native\" in reshade_log,",
+    "        \"carrier_create_result\": (",
+    "            f\"0x{carrier_matches[-1].upper()}\" if carrier_matches else \"unreported\"",
+    "        ),",
+    "        \"feature_18_confirmed\": True,",
+    "        \"evidence\": [",
+    "            line",
+    "            for line in reshade_log.splitlines()",
+    "            if \"signed DLSSNR\" in line",
+    "            or \"DLSS5 NR Pre-Upscale\" in line",
+    "            or \"SNIPPET CreateFeature(18\" in line",
+    "            or \"ran=1 rebound colour\" in line",
+    "            or \"feature 18 created\" in line",
+    "            or \"feature 18 evaluation succeeded\" in line",
+    "            or \"NR upscaling fell back\" in line",
+    "        ],",
+    "    }",
+    "",
+  ].join("\n");
+  return `${source.slice(0, start)}${verifier}${source.slice(end)}`;
+}
+
+export function patchKonohamaruRuntimeSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
+  patched = replaceKonohamaruRequired(
+    patched,
+    '"release": "RenoDX DLSS5 runtime (unlocked)",',
+    `"release": "neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} add-on (app-managed)",`,
+    "runtime release 标识"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    'f"RenoDX add-on: {runtime_bundle.get(\'addon\', {}).get(\'path\', \'unavailable\')}",',
+    'f"DLSS5 add-on: {runtime_bundle.get(\'addon\', {}).get(\'path\', \'unavailable\')}",',
+    "runtime failure add-on 文案"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    '        RUNTIME / "renodx-dlss5.addon64",\n',
+    '        RUNTIME / "renodx-dlss5.addon64",\n        RUNTIME / "nvngx.dll.addon64",\n',
+    "旧 flat runtime 检查"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    '"Move host files (nvngx.dll, dxgi.dll, renodx-dlss5.addon64, ReShade.ini, "',
+    '"Move host files (nvngx.dll, dxgi.dll, nvngx.dll.addon64, ReShade.ini, "',
+    "flat runtime 错误文案"
+  );
+  return replaceKonohamaruFeatureVerifier(patched);
+}
+
+export function patchKonohamaruProcessorSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (!patched.includes(konohamaruFrameCountPatchMarker)) {
+    patched = replaceKonohamaruRequired(
+      patched,
+      [
+        "            else:",
+        '                frame_count = int(metadata["frames"])',
+        "                if frame_count <= 0:",
+        '                    exact = ffmpeg.probe_video(source, count_mode="exact")',
+        '                    frame_count = int(exact["frames"])',
+        '                    metadata["frames"] = frame_count',
+        '                    metadata["frame_count_source"] = exact["frame_count_source"]'
+      ].join("\n"),
+      [
+        "            else:",
+        `                ${konohamaruFrameCountPatchMarker}`,
+        '                frame_count = int(metadata["frames"])',
+        '                duration_seconds = float(metadata.get("duration", 0.0) or 0.0)',
+        '                expected_frame_count = duration_seconds * float(metadata.get("fps", 0.0) or 0.0)',
+        "                # Some MP4 files expose nb_frames=1 even though the stream contains the full clip.",
+        "                # Compare the metadata count with duration × FPS before trusting it.",
+        "                if frame_count <= 0 or (",
+        "                    expected_frame_count > max(1.5, frame_count * 1.5)",
+        "                ):",
+        '                    exact = ffmpeg.probe_video(source, count_mode="exact")',
+        '                    frame_count = int(exact["frames"])',
+        '                    metadata["frames"] = frame_count',
+        '                    metadata["frame_count_source"] = exact["frame_count_source"]'
+      ].join("\n"),
+      "video 完整帧数校验"
+    );
+  }
+  const video2dlssnrImport =
+    "from .video2dlssnr import convert_video_video2dlssnr";
+  const fullVideoProcessor = patched.includes("def convert_video(");
+  if (fullVideoProcessor && !patched.includes(video2dlssnrImport)) {
+    patched = replaceKonohamaruRequired(
+      patched,
+      "from .sizing import resolve_native_settings, resolve_output_size, resolve_upscaling_mode",
+      [
+        "from .sizing import resolve_native_settings, resolve_output_size, resolve_upscaling_mode",
+        video2dlssnrImport
+      ].join("\n"),
+      "video2dlssnr backend import"
+    );
+  }
+  const video2dlssnrDispatchMarker =
+    "# Local Video Studio video2dlssnr temporal video backend dispatch";
+  if (fullVideoProcessor && !patched.includes(video2dlssnrDispatchMarker)) {
+    patched = replaceKonohamaruRequired(
+      patched,
+      "    is_preview = preview_seconds is not None or preview_frames is not None\n",
+      [
+        "    is_preview = preview_seconds is not None or preview_frames is not None",
+        video2dlssnrDispatchMarker,
+        "    return convert_video_video2dlssnr(",
+        "        source,",
+        "        options,",
+        "        progress,",
+        "        output_directory=output_directory,",
+        "        jobs_directory=jobs_directory,",
+        "        logs_directory=logs_directory,",
+        "    )",
+        ""
+      ].join("\n"),
+      "video2dlssnr backend dispatch"
+    );
+  }
+  if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
+  patched = replaceKonohamaruRequired(
+    patched,
+    '                "pipeline": "renodx-dlssnr-feature18",',
+    `                ${konohamaruNeuralUpstreamPatchMarker}\n                "pipeline": "neural-upstream-dlssnr-feature18",`,
+    "video report pipeline 标识"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    '                "nr_native_fallback": nr_native_fallback,\n',
+    '                "nr_native_fallback": nr_native_fallback,\n                "nr_enhancement_active": bool(feature_evidence["nr_enhancement_active"]),\n                "neural_pipeline": feature_evidence["neural_pipeline"],\n',
+    "video report Neural enhancement 状态"
+  );
+  return patched.replace(
+    '                    f"{HOST_DIR.name}/renodx-dlss5.addon64",',
+    '                    f"{HOST_DIR.name}/nvngx.dll.addon64",'
+  );
+}
+
+function patchKonohamaruFrameInterpolationProcessorSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (patched.includes(konohamaruFrameCountPatchMarker)) return patched;
+  const sourceRateMatch = patched.match(/^(?<indent>\s*)source_rate = Fraction\(metadata\["rate"\]\)$/mu);
+  const indent = sourceRateMatch?.groups?.indent;
+  if (!indent) {
+    throw new Error("ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 source rate 帧数块，已停止修改。");
+  }
+  const innerIndent = `${indent}    `;
+  return replaceKonohamaruRequired(
+    patched,
+    [
+      `${indent}source_rate = Fraction(metadata["rate"])`,
+      `${indent}cfr = bool(metadata.get("cfr", True))`,
+      `${indent}frames = int(metadata["frames"])`,
+      `${indent}if frames <= 0:`,
+      `${innerIndent}frames = int(ffmpeg.probe_video(source, count_mode="exact")["frames"])`
+    ].join("\n"),
+    [
+      `${indent}source_rate = Fraction(metadata["rate"])`,
+      `${indent}cfr = bool(metadata.get("cfr", True))`,
+      `${indent}${konohamaruFrameCountPatchMarker}`,
+      `${indent}frames = int(metadata["frames"])`,
+      `${indent}duration_seconds = float(metadata.get("duration", 0.0) or 0.0)`,
+      `${indent}expected_frame_count = duration_seconds * float(source_rate)`,
+      `${indent}# Keep frame interpolation on the complete decoded stream when MP4 metadata under-counts it.`,
+      `${indent}if frames <= 0 or (`,
+      `${innerIndent}expected_frame_count > max(1.5, frames * 1.5)`,
+      `${indent}):`,
+      `${innerIndent}exact = ffmpeg.probe_video(source, count_mode="exact")`,
+      `${innerIndent}frames = int(exact["frames"])`,
+      `${innerIndent}metadata["frames"] = frames`,
+      `${innerIndent}metadata["frame_count_source"] = exact["frame_count_source"]`
+    ].join("\n"),
+    "补帧完整帧数校验"
+  );
+}
+
+export function patchKonohamaruRootSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
+  const insertion = [
+    konohamaruNeuralUpstreamPatchMarker,
+    "def _lvs_neural_rendering_active(report):",
+    "    return bool(report.get(\"nr_upscaling_active\") or report.get(\"nr_enhancement_active\"))",
+    ""
+  ].join("\n");
+  patched = replaceKonohamaruRequired(
+    patched,
+    "UPSCALE_FACTORS = {mode[\"label\"]: factor for factor, mode in UPSCALING_MODES.items()}\n",
+    `UPSCALE_FACTORS = {mode["label"]: factor for factor, mode in UPSCALING_MODES.items()}\n\n${insertion}`,
+    "node strict guard helper 插入点"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    'if require_neural_upscaling and options.upscaling_factor > 1.0 and not report["nr_upscaling_active"]:',
+    'if require_neural_upscaling and options.upscaling_factor > 1.0 and not _lvs_neural_rendering_active(report):',
+    "视频 strict Neural guard"
+  );
+  patched = replaceKonohamaruRequired(
+    patched,
+    'if require_neural_upscaling and factor > 1.0 and not evidence["nr_upscaling_active"]:',
+    'if require_neural_upscaling and factor > 1.0 and not (evidence["nr_upscaling_active"] or evidence.get("nr_enhancement_active")):',
+    "图片 strict Neural guard"
+  );
+  return replaceKonohamaruRequired(
+    patched,
+    '            "nr_upscaling_active": bool(evidence["nr_upscaling_active"]),\n',
+    '            "nr_upscaling_active": bool(evidence["nr_upscaling_active"]),\n            "nr_enhancement_active": bool(evidence.get("nr_enhancement_active")),\n            "neural_pipeline": evidence.get("neural_pipeline", "unknown"),\n',
+    "图片 report Neural enhancement 状态"
+  );
+}
+
+export function patchKonohamaruNeuralUpstreamSource(
+  source: string,
+  filename: string
+): string {
+  switch (filename.replaceAll("\\", "/")) {
+    case "__init__.py":
+      return patchKonohamaruRootSource(source);
+    case "dlss_engine/core/paths.py":
+      return patchKonohamaruPathsSource(source);
+    case "dlss_engine/core/runtime.py":
+      return patchKonohamaruRuntimeSource(source);
+    case "dlss_engine/video/processor.py":
+      return patchKonohamaruProcessorSource(source);
+    case "dlss_engine/frame_interpolation/processor.py":
+      return patchKonohamaruFrameInterpolationProcessorSource(source);
+    case KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME:
+      return konohamaruVideo2dlssnrSource;
+    default:
+      throw new Error(`未知的 Konohamaru neural-upstream patch 文件：${filename}`);
+  }
 }
 
 const aetherScaleCarrierPatchMarker =
@@ -383,6 +749,29 @@ async function writeIfChanged(filename: string, contents: string): Promise<boole
   await fs.mkdir(path.dirname(filename), { recursive: true });
   await fs.writeFile(filename, contents, "utf8");
   return true;
+}
+
+export async function prepareKonohamaruNeuralUpstream(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const results = await Promise.all(konohamaruNeuralUpstreamPatchFiles.map(async (filename) => {
+    const sourcePath = path.join(targetDirectory, ...filename.split("/"));
+    const source = filename === KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME
+      ? konohamaruVideo2dlssnrSource
+      : await fs.readFile(sourcePath, "utf8");
+    const patched = filename === KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME
+      ? source
+      : patchKonohamaruNeuralUpstreamSource(source, filename);
+    const changed = await writeIfChanged(sourcePath, patched);
+    return { filename, changed };
+  }));
+  const changed = results.some((result) => result.changed);
+  report(
+    changed
+      ? "已将 Konohamaru DLSS5 视频切换到 video2dlssnr 时序 Neural enhancement，并保留 image/DLSSG strict guard"
+      : "Konohamaru video2dlssnr + neural-upstream 兼容层已就绪"
+  );
 }
 
 export async function prepareAetherScaleCarrier(

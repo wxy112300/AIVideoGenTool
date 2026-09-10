@@ -9,6 +9,10 @@ const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
 export function isVideoOutputFilename(filename) {
     return videoOutputPattern.test(filename);
 }
+/** Only ComfyUI output-folder files are durable enough for history. */
+export function isPersistentComfyOutputFile(file) {
+    return file.type === "output";
+}
 export function extractComfyOutputFiles(value) {
     const results = [];
     const seen = new Set();

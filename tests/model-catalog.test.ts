@@ -31,14 +31,14 @@ describe("model catalog", () => {
     expect(modelCatalog.get("qwen-image-edit-2511")?.definition.promptPackId).toBe("qwen-image-edit");
   });
 
-  it("keeps retired IDs available for persisted records but out of active lists", () => {
+  it("removes severely outdated LoRA IDs from the active catalog", () => {
     expect(modelCatalog.get("minimax_h3_fl2va_turbo")?.definition.retired).toBe(true);
     expect(modelCatalog.list("video").some((entry) => entry.definition.id === "minimax_h3_fl2va_turbo"))
       .toBe(false);
-    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step")?.definition.retired).toBe(true);
-    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step-768p-v1")?.definition.retired).toBe(true);
-    expect(modelCatalog.get("minimax-h3-pink-fluffy-bunny-nsfw")?.definition.retired).toBe(true);
-    expect(modelCatalog.get("minimax-h3-turbo-ckpt850-ema")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step")).toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step-768p-v1")).toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-pink-fluffy-bunny-nsfw")).toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-turbo-ckpt850-ema")).toBeUndefined();
     expect(modelCatalog.get("dlss5-sr")?.definition.retired).toBe(true);
     expect(modelCatalog.get("aetherscale-dlss5")?.definition.retired).toBe(true);
     expect(modelCatalog.get("depth-anything-v2")?.definition.retired).toBe(true);
@@ -64,6 +64,7 @@ describe("model catalog", () => {
       "lama-inpaint"
     ]);
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
+      "dlss5-konohamaru",
       "seedvr2-native-int8",
       "minimax_h3_latent_upscaler",
       "seedvr2",
@@ -74,9 +75,11 @@ describe("model catalog", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
       "minimax-h3-turbo-v4-step600-ema-pruned",
       "minimax-h3-turbo-sla-4step",
-      "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
+      "minimax-h3-lightx2v-turbo-4step-768p-v1.2",
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
+      "minimax-h3-cinematic-realism",
+      "minimax-h3-better-human-motion",
       "minimax-h3-camera-motion-v1",
       "minimax-h3-equi360",
       "minimax-h3-vr180-sbs",

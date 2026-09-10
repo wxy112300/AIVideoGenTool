@@ -127,6 +127,8 @@ export type H3VideoVaeBackend = Exclude<H3VideoVaeMode, "auto">;
 export type H3SpectrumMode = "off" | "balanced";
 export type H3SpectrumModelAwareMode = "off" | "schedule" | "schedule_confidence" | "full";
 export type H3MemoryOptimizationMode = "off" | "preserve-native" | "auto" | "force-quant";
+/** Unified H3 auxiliary latent output preference. */
+export type H3LatentSaveMode = "all" | "joint-av" | "motion-context" | "none";
 
 /** Serializable policy result captured with an immutable video queue task. */
 export interface H3MemoryExecutionPlanSnapshot {
@@ -329,7 +331,9 @@ export interface Draft {
   spectrumMode: H3SpectrumMode;
   spectrumModelAwareMode: H3SpectrumModelAwareMode;
   spectrumModeUserSet?: boolean;
-  /** Save reusable H3 joint video/audio latents alongside the rendered video. */
+  /** Unified preference for saving reusable H3 auxiliary latent outputs. */
+  h3LatentSaveMode?: H3LatentSaveMode;
+  /** Compatibility mirror for persisted clients and legacy queue records. */
   h3SaveJointAv: boolean;
   /** Requested H3 Memory Optimization mode for this creation workspace. */
   h3MemoryOptimizationMode: H3MemoryOptimizationMode;
@@ -346,6 +350,8 @@ export interface VideoLoraSelection {
   name: string;
   filename: string;
   strength: number;
+  /** True when an obsolete LoRA is retained in history as a name-only snapshot. */
+  historyOnly?: boolean;
   modelFamily: string;
   compatibleModelIds: string[];
   compatibleInputModes: Array<"image" | "video">;
@@ -467,6 +473,8 @@ interface VideoQueueTaskBase extends QueueTaskBase {
    * Older persisted tasks may omit this and fall back to the current setting.
    */
   h3LivePreview?: boolean;
+  /** Queue-time unified H3 auxiliary latent output preference. */
+  h3LatentSaveMode?: H3LatentSaveMode;
   /** Queue-time H3 JointAV output preference; legacy tasks default to enabled. */
   h3SaveJointAv?: boolean;
 }
@@ -567,7 +575,45 @@ export interface AetherScaleDlss5Options {
   sceneCutThreshold: number;
 }
 
-export type Dlss5ProviderId = "hecer" | "aetherscale-carrier";
+export type KonohamaruDlss5Mode =
+  | "native_1x"
+  | "quality_1_5x"
+  | "balanced_1_724x"
+  | "performance_2x"
+  | "ultra_performance_3x";
+export type KonohamaruNrPreset = "Default" | "Preset #1" | "Preset #2" | "Preset #3";
+export type KonohamaruNrStyle = "Default" | "Natural" | "Cinematic";
+export type KonohamaruDlssModelPreset = "Default" | "J" | "K" | "L" | "M";
+export type KonohamaruDlssEngine = "Auto" | "Native DLSSG" | "Cascade";
+export type KonohamaruFrameOutputFps = 60 | 120;
+
+export interface KonohamaruDlss5Options {
+  provider: "konohamaru";
+  operation: "video-upscale";
+  mode: KonohamaruDlss5Mode;
+  /** Product invariant: a larger output must never silently be a fallback resize. */
+  requireNeuralUpscaling: true;
+  nrPreset: KonohamaruNrPreset;
+  nrStyle: KonohamaruNrStyle;
+  nrIntensity: number;
+  localToneStrength: number;
+  localStructureStrength: number;
+  skinStructureStrength: number;
+  automaticMask: boolean;
+  dlssModelPreset: KonohamaruDlssModelPreset;
+  outputDetailStrength: number;
+  frameInterpolation: {
+    enabled: boolean;
+    outputFps: KonohamaruFrameOutputFps;
+    dlssEngine: KonohamaruDlssEngine;
+  };
+  /** Immutable upstream source revision captured when the task is queued. */
+  nodeRevision: string;
+  /** Immutable app-owned catalog/runtime identity captured when queued. */
+  runtimeBundleId: string;
+}
+
+export type Dlss5ProviderId = "hecer" | "aetherscale-carrier" | "konohamaru";
 
 export type Dlss5ProviderReadiness =
   | "missing"
@@ -655,6 +701,7 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   targetScale?: Dlss5Scale;
   dlss5?: Dlss5UpscaleOptions;
   aetherScale?: AetherScaleDlss5Options;
+  konohamaru?: KonohamaruDlss5Options;
   /** Actual aligned output height; legacy pixel tasks use targetHeight. */
   targetOutputHeight?: number;
   tileMode: "auto" | "safe" | "fast";
@@ -767,9 +814,13 @@ export interface UpscaleRequest {
   fps: number;
   /** Legacy fixed short-edge target; DLSS5 requests use targetScale instead. */
   targetHeight?: UpscaleTargetHeight;
+  /** Frozen output geometry for providers whose multiplier is not a legacy short-edge target. */
+  targetWidth?: number;
+  targetOutputHeight?: number;
   targetScale?: Dlss5Scale;
   dlss5?: Dlss5UpscaleOptions;
   aetherScale?: AetherScaleDlss5Options;
+  konohamaru?: KonohamaruDlss5Options;
   modelId: string;
   tileMode: UpscaleQueueTask["tileMode"];
   faceRestore: boolean;
@@ -885,6 +936,7 @@ export interface AssetVersion {
   steps?: H3StepCount;
   attentionMode?: Settings["h3AttentionMode"];
   h3VideoVaeMode?: H3VideoVaeBackend;
+  h3LatentSaveMode?: H3LatentSaveMode;
   h3SaveJointAv?: boolean;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
@@ -919,6 +971,12 @@ export interface AssetVersion {
   upscaleMotionProfile?: AetherScaleDlss5Options["motionProfile"];
   upscaleWarmupFrames?: number;
   upscaleSceneCutThreshold?: number;
+  /** Provider-specific Konohamaru DLSS5 metadata; absent on legacy versions. */
+  upscaleNrPreset?: KonohamaruNrPreset;
+  upscaleNrStyle?: KonohamaruNrStyle;
+  upscaleNrIntensity?: number;
+  upscaleFrameOutputFps?: KonohamaruFrameOutputFps;
+  upscaleDlssEngine?: KonohamaruDlssEngine;
   upscaleNodeRevision?: string;
   upscaleRuntimeBundleId?: string;
   startedAt?: string;
@@ -1659,6 +1717,39 @@ export interface AppLogSnapshot {
   text: string;
 }
 
+export interface AppCacheSnapshot {
+  currentSessionBytes: number;
+  temporaryBytes: number;
+  temporaryDirectoryCount: number;
+  totalBytes: number;
+  scannedAt: string;
+}
+
+export type AppCacheProgressPhase =
+  | "scanning"
+  | "clearing-session"
+  | "clearing-temporary"
+  | "rescanning"
+  | "completed";
+
+export interface AppCacheProgress {
+  phase: AppCacheProgressPhase;
+  current: number;
+  total: number;
+  processedBytes: number;
+  totalBytes: number;
+  startedAt: string;
+}
+
+export interface AppCacheClearResult {
+  before: AppCacheSnapshot;
+  after: AppCacheSnapshot;
+  clearedBytes: number;
+  currentSessionCleared: boolean;
+  skippedTemporaryDirectories: number;
+  errors: string[];
+}
+
 export interface TaskPreview {
   taskId: string;
   dataUrl: string;
@@ -1780,6 +1871,8 @@ export interface AppApi {
   ): Promise<BundledWorkflow | null>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
   readAppLogs(limit?: number): Promise<AppLogSnapshot>;
+  getAppCache(): Promise<AppCacheSnapshot>;
+  clearAppCache(): Promise<AppCacheClearResult>;
   openAppLogDirectory(kind: "logs" | "crashDumps"): Promise<boolean>;
   reportRendererError(message: string, meta?: Record<string, unknown>): Promise<void>;
   reportUserAction(action: string, meta?: Record<string, unknown>): Promise<void>;
@@ -1835,7 +1928,7 @@ export interface AppApi {
   enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueImageEdit(draft: ImageEditDraft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
-  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
+  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "targetScale" | "dlss5" | "aetherScale" | "konohamaru" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
   continueQueue(): Promise<AppState>;
@@ -1852,6 +1945,7 @@ export interface AppApi {
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   deleteHistoryVersion(assetId: string, versionId: string): Promise<AppState>;
   deleteHistoryJointAv(assetId: string, versionId: string): Promise<AppState>;
+  deleteHistoryMotionContext(assetId: string, versionId: string): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
@@ -1860,6 +1954,7 @@ export interface AppApi {
   onPromptRuntimeStateChanged(callback: (state: PromptRuntimeState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onPromptProgress(callback: (progress: PromptProgress) => void): () => void;
+  onAppCacheProgress(callback: (progress: AppCacheProgress) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
   onDependencyInstallLog(

@@ -1,4 +1,5 @@
 import type {
+  AppCacheSnapshot,
   AppLogSnapshot,
   AppState,
   EnvironmentScanResult,
@@ -48,6 +49,10 @@ export interface SettingsViewModelDependencies {
   appLogs: AppLogSnapshot | null;
   appLogsLoading: boolean;
   appLogsError: string;
+  appCache: AppCacheSnapshot | null;
+  appCacheLoading: boolean;
+  appCacheClearing: boolean;
+  appCacheError: string;
   settingsHaveUnsavedChanges(): boolean;
   promptRuntimeControlIcon(): string;
   promptRuntimeControlTitle(settings: Settings): string;
@@ -104,6 +109,10 @@ export function buildSettingsPageViewModel(
       "ComfyUI\\models",
     appLogs: options.appLogs,
     appLogsLoading: options.appLogsLoading,
-    appLogsError: options.appLogsError
+    appLogsError: options.appLogsError,
+    appCache: options.appCache,
+    appCacheLoading: options.appCacheLoading,
+    appCacheClearing: options.appCacheClearing,
+    appCacheError: options.appCacheError
   };
 }

@@ -1,20 +1,20 @@
 import type { Draft, ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
 import {
-  H3_CKPT850_LORA_FILENAME,
-  H3_CKPT850_LORA_ID,
   H3_FL2VA_MODEL_ID,
   H3_SLA_TURBO_LORA_FILENAME,
   H3_SLA_TURBO_LORA_ID,
   H3_CAMERA_MOTION_LORA_FILENAME,
   H3_CAMERA_MOTION_LORA_ID,
+  H3_CINEMATIC_REALISM_LORA_FILENAME,
+  H3_CINEMATIC_REALISM_LORA_ID,
+  H3_BETTER_HUMAN_MOTION_LORA_FILENAME,
+  H3_BETTER_HUMAN_MOTION_LORA_ID,
   H3_EQUI360_LORA_FILENAME,
   H3_EQUI360_LORA_ID,
   H3_VR180_SBS_LORA_FILENAME,
   H3_VR180_SBS_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
   H3_AFTER_MIDNIGHT_LORA_ID,
-  H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
-  H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME,
   H3_FACIAL_REALISM_CLOSEUP_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
@@ -26,9 +26,7 @@ import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   H3_TURBO_LORA_IDS,
-  H3_TURBO_768P_V1_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
-  LEGACY_H3_TURBO_LORA_ID,
   LEGACY_H3_TURBO_MODEL_ID,
   LEGACY_H3_REF2V_TURBO_MODEL_ID,
   VIDEO_LORA_DEFINITIONS
@@ -40,21 +38,21 @@ import type {
 import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
 
 export {
-  H3_CKPT850_LORA_FILENAME,
-  H3_CKPT850_LORA_ID,
   H3_FL2VA_MODEL_ID,
   H3_SLA_TURBO_LORA_FILENAME,
   H3_SLA_TURBO_LORA_ID,
   H3_CAMERA_MOTION_LORA_FILENAME,
   H3_CAMERA_MOTION_LORA_ID,
+  H3_CINEMATIC_REALISM_LORA_FILENAME,
+  H3_CINEMATIC_REALISM_LORA_ID,
+  H3_BETTER_HUMAN_MOTION_LORA_FILENAME,
+  H3_BETTER_HUMAN_MOTION_LORA_ID,
   H3_EQUI360_LORA_FILENAME,
   H3_EQUI360_LORA_ID,
   H3_VR180_SBS_LORA_FILENAME,
   H3_VR180_SBS_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
   H3_AFTER_MIDNIGHT_LORA_ID,
-  H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
-  H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME,
   H3_FACIAL_REALISM_CLOSEUP_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
@@ -66,9 +64,7 @@ export {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   H3_TURBO_LORA_IDS,
-  H3_TURBO_768P_V1_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
-  LEGACY_H3_TURBO_LORA_ID,
   LEGACY_H3_REF2V_TURBO_MODEL_ID,
   LEGACY_H3_TURBO_MODEL_ID
 };
@@ -124,24 +120,31 @@ function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
 }
 
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
-export const H3_CKPT850_LORA = requiredBuiltinVideoLora(H3_CKPT850_LORA_ID);
 export const H3_SLA_TURBO_LORA = requiredBuiltinVideoLora(H3_SLA_TURBO_LORA_ID);
 export const H3_CAMERA_MOTION_LORA = requiredBuiltinVideoLora(H3_CAMERA_MOTION_LORA_ID);
+export const H3_CINEMATIC_REALISM_LORA = requiredBuiltinVideoLora(H3_CINEMATIC_REALISM_LORA_ID);
+export const H3_BETTER_HUMAN_MOTION_LORA = requiredBuiltinVideoLora(H3_BETTER_HUMAN_MOTION_LORA_ID);
 export const H3_EQUI360_LORA = requiredBuiltinVideoLora(H3_EQUI360_LORA_ID);
 export const H3_VR180_SBS_LORA = requiredBuiltinVideoLora(H3_VR180_SBS_LORA_ID);
 export const H3_TURBO_V4_LORA = requiredBuiltinVideoLora(H3_TURBO_V4_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
-export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
 export const H3_AFTER_MIDNIGHT_LORA = requiredBuiltinVideoLora(H3_AFTER_MIDNIGHT_LORA_ID);
 export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
 export const H3_FACIAL_REALISM_CLOSEUP_LORA = requiredBuiltinVideoLora(H3_FACIAL_REALISM_CLOSEUP_LORA_ID);
-export const H3_PINK_FLUFFY_BUNNY_LORA = requiredBuiltinVideoLora(H3_PINK_FLUFFY_BUNNY_LORA_ID);
+
+const LEGACY_H3_TURBO_V11_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.1";
+const LEGACY_H3_EQUI360_LORA_FILENAME = "h3-equi360-lora-step2500.safetensors";
+const REMOVED_VIDEO_LORA_NAMES: Readonly<Record<string, string>> = {
+  "minimax-h3-turbo-ckpt850-ema": "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback",
+  "minimax-h3-lightx2v-turbo-4step": "LightX2V Turbo 4-Step · legacy v0.1",
+  "minimax-h3-lightx2v-turbo-4step-768p-v1": "LightX2V Turbo 4-Step v1.0 · 768p",
+  "minimax-h3-pink-fluffy-bunny-nsfw": "PinkFluffyBunny NSFW"
+};
 
 const legacyTurboLoraIdSet = new Set<string>([
   ...H3_TURBO_LORA_IDS,
-  LEGACY_H3_TURBO_LORA_ID,
-  H3_TURBO_768P_V1_LORA_ID
+  LEGACY_H3_TURBO_V11_LORA_ID
 ]);
 
 export function isH3TurboLoraId(id: string): boolean {
@@ -152,8 +155,12 @@ export function isH3SlaTurboLoraId(id: string): boolean {
   return id === H3_SLA_TURBO_LORA_ID;
 }
 
-export function isH3TurboFourStepV11LoraId(id: string): boolean {
-  return id === H3_TURBO_LORA_ID;
+export function isH3TurboFourStepLoraId(id: string): boolean {
+  return id === H3_TURBO_LORA_ID || id === LEGACY_H3_TURBO_V11_LORA_ID;
+}
+
+export function isRemovedVideoLoraId(id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(REMOVED_VIDEO_LORA_NAMES, id);
 }
 
 export function isH3TurboV4LoraId(id: string): boolean {
@@ -242,6 +249,7 @@ export function videoLoraConfigurationIssues(context: {
   };
 
   context.videoLoras.forEach((lora) => {
+    if (lora.historyOnly === true) return;
     if (!videoLoraCompatibleWithDraft(lora, context.modelId, context.inputMode)) {
       push({
         code: `compatibility:${lora.id}`,
@@ -385,12 +393,16 @@ export function normalizeVideoLoras(
   const normalized = items.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const candidate = item as Partial<VideoLoraSelection>;
-    if (typeof candidate.id !== "string" || !candidate.id.trim() ||
+    if (typeof candidate.id !== "string" || !candidate.id.trim()) return [];
+    const rawId = candidate.id.trim();
+    if (candidate.historyOnly === true || isRemovedVideoLoraId(rawId)) return [];
+    const canonicalId = rawId === LEGACY_H3_TURBO_V11_LORA_ID ? H3_TURBO_LORA_ID : rawId;
+    if (
       typeof candidate.name !== "string" || !candidate.name.trim() ||
       typeof candidate.filename !== "string" || !candidate.filename.trim()) return [];
-    const builtin = allBuiltinVideoLoras.find((lora) => lora.id === candidate.id);
+    const builtin = allBuiltinVideoLoras.find((lora) => lora.id === canonicalId);
     const definition: VideoLoraSelection = builtin ?? {
-        id: candidate.id.trim(),
+        id: canonicalId,
         name: candidate.name.trim(),
         filename: candidate.filename.trim(),
         strength: 1,
@@ -406,12 +418,18 @@ export function normalizeVideoLoras(
           ? candidate.promptPrefixes.filter((prefix): prefix is string => typeof prefix === "string")
           : []
       };
+    const normalizedFilename = builtin && (
+      rawId === LEGACY_H3_TURBO_V11_LORA_ID ||
+      (rawId === H3_EQUI360_LORA_ID && candidate.filename.trim() === LEGACY_H3_EQUI360_LORA_FILENAME)
+    )
+      ? builtin.filename
+      : candidate.filename.trim();
     const normalizedItem = videoLoraSelection(
       definition,
       typeof candidate.strength === "number" && Number.isFinite(candidate.strength)
         ? Math.max(0, Math.min(2, candidate.strength))
         : builtin?.strength ?? 1,
-      candidate.filename.trim()
+      normalizedFilename
     );
     return [normalizedItem];
   });
@@ -430,6 +448,63 @@ export function normalizeVideoLoras(
   return normalized.filter((lora, index) =>
     normalized.findIndex((candidate) => candidate.id === lora.id) === index
   );
+}
+
+/** Preserve removed LoRAs in history as name-only snapshots without reintroducing them to creation. */
+export function normalizeHistoryVideoLoras(
+  value: unknown,
+  legacyModelId = ""
+): VideoLoraSelection[] {
+  const items = Array.isArray(value) ? value : [];
+  const normalizedActive = normalizeVideoLoras(items, legacyModelId);
+  const activeById = new Map(normalizedActive.map((lora) => [lora.id, lora]));
+  const result: VideoLoraSelection[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const candidate = item as Partial<VideoLoraSelection>;
+    if (typeof candidate.id !== "string" || !candidate.id.trim()) continue;
+    const rawId = candidate.id.trim();
+    if (isRemovedVideoLoraId(rawId)) {
+      if (seen.has(rawId)) continue;
+      seen.add(rawId);
+      result.push({
+        id: rawId,
+        name: typeof candidate.name === "string" && candidate.name.trim()
+          ? candidate.name.trim()
+          : REMOVED_VIDEO_LORA_NAMES[rawId] ?? rawId,
+        filename: "",
+        strength: 0,
+        historyOnly: true,
+        modelFamily: "history",
+        compatibleModelIds: [],
+        compatibleInputModes: [],
+        purpose: "style",
+        promptPrefixes: []
+      });
+      continue;
+    }
+    const canonicalId = rawId === LEGACY_H3_TURBO_V11_LORA_ID ? H3_TURBO_LORA_ID : rawId;
+    const active = activeById.get(canonicalId);
+    if (!active || seen.has(canonicalId)) continue;
+    seen.add(canonicalId);
+    result.push({ ...active });
+  }
+
+  for (const active of normalizedActive) {
+    if (seen.has(active.id)) continue;
+    seen.add(active.id);
+    result.push({ ...active });
+  }
+  return result;
+}
+
+/** Strip history-only snapshots before copying a history record into a creation draft. */
+export function videoLorasForCreation(
+  value: readonly VideoLoraSelection[] | undefined
+): VideoLoraSelection[] {
+  return normalizeVideoLoras(value);
 }
 
 export function videoLoraCompatibleWithModel(

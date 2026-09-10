@@ -34,40 +34,38 @@ export interface CatalogVideoLoraDefinition extends VideoLoraSelection {
 }
 
 /** The current default FL2VA Turbo adapter. */
-export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.1";
+export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.2";
 export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
 export const LEGACY_H3_REF2V_TURBO_MODEL_ID = "minimax_h3_ref2va_turbo";
 export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME =
-  "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors";
-export const H3_CKPT850_LORA_ID = "minimax-h3-turbo-ckpt850-ema";
-export const H3_CKPT850_LORA_FILENAME =
-  "minimax_h3_turbo_4step_ema_ckpt850.safetensors";
+  "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors";
 export const H3_SLA_TURBO_LORA_ID = "minimax-h3-turbo-sla-4step";
 export const H3_SLA_TURBO_LORA_FILENAME =
   "minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors";
 export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
 export const H3_CAMERA_MOTION_LORA_FILENAME =
   "camera_motion_h3_lora_v1_3000_pruned.safetensors";
+export const H3_CINEMATIC_REALISM_LORA_ID = "minimax-h3-cinematic-realism";
+export const H3_CINEMATIC_REALISM_LORA_FILENAME =
+  "Minimax H3真实电影质感V0.1.safetensors";
+export const H3_CINEMATIC_REALISM_LORA_REVISION = "05c48f1";
+export const H3_BETTER_HUMAN_MOTION_LORA_ID = "minimax-h3-better-human-motion";
+export const H3_BETTER_HUMAN_MOTION_LORA_FILENAME =
+  "better_motion_h3_lora_v1_500.safetensors";
+export const H3_BETTER_HUMAN_MOTION_LORA_REVISION = "11229b6";
 export const H3_EQUI360_LORA_ID = "minimax-h3-equi360";
-export const H3_EQUI360_LORA_FILENAME = "h3-equi360-lora-step2500.safetensors";
-export const H3_EQUI360_LORA_REVISION =
-  "edfbcd3292b714f9f24a1864903c7fb6f7afd991";
+export const H3_EQUI360_LORA_FILENAME = "h3-equi360-reviewed-v2-step2500.safetensors";
+export const H3_EQUI360_LORA_REVISION = "main";
 export const H3_VR180_SBS_LORA_ID = "minimax-h3-vr180-sbs";
 export const H3_VR180_SBS_LORA_FILENAME = "h3-vr180-sbs-lora-v2.safetensors";
 export const H3_VR180_SBS_LORA_REVISION = "b2c4323";
 export const H3_TURBO_V4_LORA_ID = "minimax-h3-turbo-v4-step600-ema-pruned";
 export const H3_TURBO_V4_LORA_FILENAME =
   "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors";
-export const LEGACY_H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
-export const LEGACY_H3_TURBO_LORA_FILENAME =
-  "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors";
 export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
 export const H3_TURBO_8STEP_V1_LORA_FILENAME =
   "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors";
-export const H3_TURBO_768P_V1_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1";
-export const H3_TURBO_768P_V1_LORA_FILENAME =
-  "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors";
 export const H3_REF2V_TURBO_LORA_ID = "minimax-h3-ref2v-turbo-4step-v01";
 export const H3_REF2V_TURBO_LORA_FILENAME =
   "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors";
@@ -79,12 +77,8 @@ export const H3_TURBO_LORA_IDS = [
   H3_SLA_TURBO_LORA_ID,
   H3_TURBO_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
-  H3_CKPT850_LORA_ID,
   H3_REF2V_TURBO_LORA_ID
 ] as const;
-export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
-export const H3_PINK_FLUFFY_BUNNY_LORA_FILENAME =
-  "PinkFluffyBunny-pruned-v1-rank128.safetensors";
 export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
 export const H3_REALISM_PEOPLE_LORA_FILENAME =
   "h3-realism-people-t2v-i2v-r2v.safetensors";
@@ -93,41 +87,6 @@ export const H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME =
   "minimax-h3-facial-realism-closeup-cp2000.safetensors";
 
 export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
-  id: H3_CKPT850_LORA_ID,
-  name: "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback",
-  retired: true,
-  filename: H3_CKPT850_LORA_FILENAME,
-  strength: 1,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "performance",
-  promptPrefixes: [],
-  catalogOrder: 116,
-  variant: "turbo",
-  rules: {
-    orderPriority: 10,
-    settingConflicts: [],
-    combinations: [],
-    workflowRequirement: "h3-turbo-sampling"
-  },
-  scan: {
-    vram: "LoRA · ckpt850 EMA · 4+ steps · strength 1.0",
-    integrated: true,
-    components: [{
-      label: "MiniMax H3 Turbo ckpt850 EMA LoRA",
-      expected: `loras/${H3_CKPT850_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_turbo_4step_ema_ckpt850\.safetensors$/i],
-      installGuide: {
-        sourceLabel: "amirjan122222 / MiniMax-H3-Turbo-Lora",
-        downloadUrl: `https://huggingface.co/amirjan122222/MiniMax-H3-Turbo-Lora/resolve/main/${H3_CKPT850_LORA_FILENAME}?download=true`,
-        targetSubdirectory: "loras",
-        recommendedFilename: H3_CKPT850_LORA_FILENAME,
-        notes: "ckpt850 EMA 旧 Turbo 训练线已因画面质量不稳定而退役；仅保留旧队列与历史记录兼容，新任务请使用当前受支持的 Turbo LoRA。"
-      }
-    }]
-  }
-}, {
   id: H3_SLA_TURBO_LORA_ID,
   name: "MiniMax H3 Turbo-SLA · 4-step",
   filename: H3_SLA_TURBO_LORA_FILENAME,
@@ -164,7 +123,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   }
 }, {
   id: H3_TURBO_LORA_ID,
-  name: "LightX2V Turbo 4-Step v1.1 · 768p",
+  name: "LightX2V Turbo 4-Step v1.2 · 768p",
   filename: H3_TURBO_LORA_FILENAME,
   strength: 1,
   modelFamily: "minimax-h3",
@@ -181,18 +140,18 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     workflowRequirement: "h3-turbo-sampling"
   },
   scan: {
-    vram: "LoRA · v1.1 · 4 steps · 768p · strength 1.0",
+    vram: "LoRA · v1.2 · 4 steps · 768p · strength 1.0",
     integrated: true,
     components: [{
-      label: "MiniMax H3 LightX2V Turbo 4-Step v1.1 768p LoRA",
+      label: "MiniMax H3 LightX2V Turbo 4-Step v1.2 768p LoRA",
       expected: `loras/${H3_TURBO_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.1_768p_comfyui_bf16\.safetensors$/i],
+      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.2_768p_comfyui_bf16\.safetensors$/i],
       installGuide: {
         sourceLabel: "LightX2V / Minimax-h3-Turbo",
         downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_LORA_FILENAME,
-        notes: "官方最新 FL2VA 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
+        notes: "官方当前 FL2VA v1.2 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
       }
     }]
   }
@@ -276,6 +235,107 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     }]
   }
 }, {
+  id: H3_CINEMATIC_REALISM_LORA_ID,
+  name: "MiniMax H3 Cinematic Realism",
+  filename: H3_CINEMATIC_REALISM_LORA_FILENAME,
+  strength: 0.5,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "style",
+  promptPrefixes: ["DY"],
+  catalogOrder: 101,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 30,
+    settingConflicts: [],
+    combinations: [{
+      loraId: H3_TURBO_LORA_ID,
+      severity: "warning",
+      localeKey: "cinematicRealismTurbo"
+    }, {
+      loraId: H3_CAMERA_MOTION_LORA_ID,
+      severity: "warning",
+      localeKey: "cinematicRealismCameraMotion"
+    }, {
+      loraId: H3_BETTER_HUMAN_MOTION_LORA_ID,
+      severity: "warning",
+      localeKey: "cinematicRealismBetterMotion"
+    }, {
+      loraId: H3_REALISM_PEOPLE_LORA_ID,
+      severity: "warning",
+      localeKey: "cinematicRealismPeople"
+    }]
+  },
+  scan: {
+    vram: "LoRA · cinematic realism · v0.1 · strength 0.5 · trigger DY",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 Cinematic Realism LoRA v0.1",
+      expected: `loras/${H3_CINEMATIC_REALISM_LORA_FILENAME}`,
+      patterns: [/loras\/Minimax H3真实电影质感V0\.1\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "orangesouth / MinimaxH3CinematicRealism",
+        downloadUrl: `https://huggingface.co/orangesouth/MinimaxH3CinematicRealism/resolve/${H3_CINEMATIC_REALISM_LORA_REVISION}/Minimax%20H3%E7%9C%9F%E5%AE%9E%E7%94%B5%E5%BD%B1%E8%B4%A8%E6%84%9FV0.1.safetensors?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_CINEMATIC_REALISM_LORA_FILENAME,
+        revision: H3_CINEMATIC_REALISM_LORA_REVISION,
+        notes: "社区电影质感 LoRA；触发词 DY。源仓库建议强度 0.7，高动态片段建议降到 0.5；应用默认 0.5 以减少风格过重和 warping。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频；源仓库附带的第三方节点画布不纳入应用工作流。"
+      }
+    }]
+  }
+}, {
+  id: H3_BETTER_HUMAN_MOTION_LORA_ID,
+  name: "MiniMax H3 Better Human Motion",
+  filename: H3_BETTER_HUMAN_MOTION_LORA_FILENAME,
+  strength: 0.4,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "motion",
+  promptPrefixes: [],
+  catalogOrder: 100,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 20,
+    settingConflicts: [],
+    combinations: [{
+      loraId: H3_TURBO_LORA_ID,
+      severity: "warning",
+      localeKey: "betterHumanMotionTurbo"
+    }, {
+      loraId: H3_CAMERA_MOTION_LORA_ID,
+      severity: "warning",
+      localeKey: "betterHumanMotionCameraMotion"
+    }, {
+      loraId: H3_CINEMATIC_REALISM_LORA_ID,
+      severity: "warning",
+      localeKey: "betterHumanMotionCinematicRealism"
+    }, {
+      loraId: H3_REALISM_PEOPLE_LORA_ID,
+      severity: "warning",
+      localeKey: "betterHumanMotionPeople"
+    }]
+  },
+  scan: {
+    vram: "LoRA · better human motion · v1 step500 · strength 0.4",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 Better Human Motion LoRA v1 step500",
+      expected: `loras/${H3_BETTER_HUMAN_MOTION_LORA_FILENAME}`,
+      patterns: [/loras\/better_motion_h3_lora_v1_500\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "vpakarinen / better-human-motion-h3-lora",
+        downloadUrl: `https://huggingface.co/vpakarinen/better-human-motion-h3-lora/resolve/${H3_BETTER_HUMAN_MOTION_LORA_REVISION}/${H3_BETTER_HUMAN_MOTION_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_BETTER_HUMAN_MOTION_LORA_FILENAME,
+        revision: H3_BETTER_HUMAN_MOTION_LORA_REVISION,
+        license: "Apache-2.0",
+        notes: "Better Human Motion H3 LoRA；模型卡建议强度 0.4–0.8、15–30 步；应用默认 0.4，先用同 Seed 对照。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频。"
+      }
+    }]
+  }
+}, {
   id: H3_EQUI360_LORA_ID,
   name: "MiniMax H3 Equirectangular 360°",
   filename: H3_EQUI360_LORA_FILENAME,
@@ -293,21 +353,20 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     combinations: []
   },
   scan: {
-    vram: "LoRA · 360° 等距柱状 · step2500 · strength 1.0 · 131 MB",
+    vram: "LoRA · 360° 等距柱状 · reviewed v2 · step2500 · strength 1.0 · 131 MB",
     integrated: true,
     components: [{
-      label: "MiniMax H3 Equirectangular 360° LoRA · step2500",
+      label: "MiniMax H3 Equirectangular 360° LoRA · reviewed v2 · step2500",
       expected: `loras/${H3_EQUI360_LORA_FILENAME}`,
-      patterns: [/loras\/h3-equi360-lora-step2500\.safetensors$/i],
+      patterns: [/loras\/h3-equi360-reviewed-v2-step2500\.safetensors$/i],
       installGuide: {
-        sourceLabel: "shamanic / minimax-h3-equi360-lora",
-        downloadUrl: `https://huggingface.co/shamanic/minimax-h3-equi360-lora/resolve/${H3_EQUI360_LORA_REVISION}/${H3_EQUI360_LORA_FILENAME}?download=true`,
+        sourceLabel: "shamanic / minimax-h3-equi360-lora · reviewed v2",
+        downloadUrl: `https://huggingface.co/shamanic/minimax-h3-equi360-lora/resolve/main/${H3_EQUI360_LORA_FILENAME}?download=true`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_EQUI360_LORA_FILENAME,
         revision: H3_EQUI360_LORA_REVISION,
-        sha256: "472e317679287ecfe2b45476b8715efb9c5c66f92fa487471114d204b155e16a",
         license: "MiniMax Community License",
-        notes: "360° 等距柱状全景 LoRA；执行 Prompt 会自动加入触发词 equirect360。推荐 H3 原生 T2VA、21:9、768p、强度 1.0；生成后需要把 21:9 输出拉伸为 2:1 并写入 equirectangular 球面元数据。8-step Turbo、I2V/Ref2VA 和视频续写未验证；模型卡提示接缝与镜头运动先验可能带来失真。"
+        notes: "Reviewed v2 · September 2026。该版本替代上游此前发布的 v1；执行 Prompt 会自动加入触发词 equirect360。推荐 H3 原生 T2VA、21:9、768p、强度 1.0；生成后需要把 21:9 输出拉伸为 2:1 并写入 equirectangular 球面元数据。8-step Turbo、I2V/Ref2VA 和视频续写未验证；模型卡提示接缝与镜头运动先验可能带来失真。"
       }
     }]
   }
@@ -348,41 +407,6 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     }]
   }
 }, {
-  id: LEGACY_H3_TURBO_LORA_ID,
-  name: "LightX2V Turbo 4-Step · legacy v0.1",
-  retired: true,
-  filename: LEGACY_H3_TURBO_LORA_FILENAME,
-  strength: 0.75,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "performance",
-  promptPrefixes: [],
-  catalogOrder: 1,
-  variant: "turbo",
-  rules: {
-    orderPriority: 10,
-    settingConflicts: [],
-    combinations: [],
-    workflowRequirement: "h3-turbo-sampling"
-  },
-  scan: {
-    vram: "LoRA · legacy v0.1 · 4–8 steps · strength 0.75",
-    integrated: true,
-    components: [{
-      label: "MiniMax H3 LightX2V Turbo legacy v0.1 LoRA",
-      expected: `loras/${LEGACY_H3_TURBO_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16\.safetensors$/i],
-      installGuide: {
-        sourceLabel: "LightX2V / Kijai ComfyUI conversion",
-        downloadUrl: `https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/${LEGACY_H3_TURBO_LORA_FILENAME}`,
-        targetSubdirectory: "loras",
-        recommendedFilename: LEGACY_H3_TURBO_LORA_FILENAME,
-        notes: "旧版 v0.1，仅保留用于读取旧队列/历史记录；新任务请使用官方 v1.1 768p 4 步版本。"
-      }
-    }]
-  }
-}, {
   id: H3_TURBO_8STEP_V1_LORA_ID,
   name: "LightX2V Turbo 8-Step v1.0",
   filename: H3_TURBO_8STEP_V1_LORA_FILENAME,
@@ -412,42 +436,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_8STEP_V1_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_8STEP_V1_LORA_FILENAME,
-        notes: "官方 v1.0 FL2VA 8 步权重。目前没有对应的 8-step v1.1；保留作为 8 步质量与音频稳定性备选。综合首选使用 v4，极速 4 步使用 v1.1 或 Turbo-SLA。不要与其他 Turbo 变体叠加。"
-      }
-    }]
-  }
-}, {
-  id: H3_TURBO_768P_V1_LORA_ID,
-  name: "LightX2V Turbo 4-Step v1.0 · 768p",
-  retired: true,
-  filename: H3_TURBO_768P_V1_LORA_FILENAME,
-  strength: 0.75,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "performance",
-  promptPrefixes: [],
-  catalogOrder: 109,
-  variant: "turbo",
-  rules: {
-    orderPriority: 10,
-    settingConflicts: [],
-    combinations: [],
-    workflowRequirement: "h3-turbo-sampling"
-  },
-  scan: {
-    vram: "LoRA · v1.0 · 4 steps · 768p · strength 0.75",
-    integrated: true,
-    components: [{
-      label: "MiniMax H3 LightX2V Turbo 4-Step v1.0 768p LoRA",
-      expected: `loras/${H3_TURBO_768P_V1_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.0_768p_comfyui_bf16\.safetensors$/i],
-      installGuide: {
-        sourceLabel: "LightX2V / Minimax-h3-Turbo",
-        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_768P_V1_LORA_FILENAME}`,
-        targetSubdirectory: "loras",
-        recommendedFilename: H3_TURBO_768P_V1_LORA_FILENAME,
-        notes: "已由官方 v1.1 768p 4 步版本替代；仅保留用于读取旧队列/历史记录。新任务请改用 v1.1。"
+        notes: "官方 v1.0 FL2VA 8 步权重。目前没有对应的 8-step v1.1；保留作为 8 步质量与音频稳定性备选。综合首选使用 v4，极速 4 步使用当前 v1.2 或 Turbo-SLA。不要与其他 Turbo 变体叠加。"
       }
     }]
   }
@@ -603,42 +592,6 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         targetSubdirectory: "loras",
         recommendedFilename: H3_REALISM_PEOPLE_LORA_FILENAME,
         notes: "MiniMax H3 人物写实 LoRA。执行 Prompt 会自动加入触发词 r34l1sm；应用默认强度 0.85，作者 intended strength 为 1.0。"
-      }
-    }]
-  }
-}, {
-  id: H3_PINK_FLUFFY_BUNNY_LORA_ID,
-  name: "PinkFluffyBunny NSFW",
-  retired: true,
-  filename: H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
-  strength: 0.5,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "content",
-  promptPrefixes: [],
-  catalogOrder: 90,
-  rules: {
-    orderPriority: 50,
-    settingConflicts: [],
-    combinations: [{
-      loraId: H3_TURBO_LORA_ID,
-      severity: "warning",
-      localeKey: "pinkTurbo"
-    }]
-  },
-  scan: {
-    vram: "pruned v1 · rank 128 · strength 0.5",
-    integrated: true,
-    components: [{
-      label: "PinkFluffyBunny NSFW LoRA",
-      expected: `loras/${H3_PINK_FLUFFY_BUNNY_LORA_FILENAME}`,
-      patterns: [/loras\/PinkFluffyBunny-pruned-v1-rank128\.safetensors$/i],
-      installGuide: {
-        sourceLabel: "SexGod1979 / PinkFluffyBunny-MiniMax-H3",
-        downloadUrl: `https://huggingface.co/SexGod1979/PinkFluffyBunny-MiniMax-H3/resolve/main/${H3_PINK_FLUFFY_BUNNY_LORA_FILENAME}?download=true`,
-        targetSubdirectory: "loras",
-        recommendedFilename: H3_PINK_FLUFFY_BUNNY_LORA_FILENAME
       }
     }]
   }

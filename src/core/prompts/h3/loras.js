@@ -17,6 +17,17 @@ export const h3LoraPromptLibrary = {
         instruction: "When the user asks for a cinematic camera move, clarify one coherent optical camera path and preserve the requested subject, action, framing, timing, and reference identity. When it fits the shot, retain natural optical depth of field, lens falloff, and restrained handheld micro-shake; do not force camera movement, shallow focus, or shake onto a static shot.",
         usage: "This is a camera/motion adapter, not a subject or action adapter. Keep explicit push-in, pull-out, orbit, tracking, aerial, static-camera, timing, and framing constraints authoritative. When combined with Realism People, keep the camera path restrained and avoid contradictory moves."
     },
+    "minimax-h3-cinematic-realism": {
+        id: "minimax-h3-cinematic-realism",
+        triggerWord: "DY",
+        instruction: "For cinematic image-to-video shots, favor a softer, lower-contrast film grade with gentle highlight rolloff, natural tonal separation, and restrained color contrast while preserving the user's subject, action, framing, lighting direction, timing, and soundscape.",
+        usage: "This is a style and grading adapter, not a camera, subject, or motion adapter. Do not make every shot dramatic or add film grain, lens flare, shallow focus, or a new color palette unless the user asks for it."
+    },
+    "minimax-h3-better-human-motion": {
+        id: "minimax-h3-better-human-motion",
+        instruction: "For human-centered shots, favor natural, continuous body mechanics with believable weight transfer, joint timing, balance, and restrained hand motion. Preserve the user's requested action, identity, framing, timing, camera path, and audio; do not invent extra gestures or movement.",
+        usage: "This is a human-motion adapter, not a camera-motion or style adapter. Keep the action simple enough to remain coherent, and avoid exaggerated speed, acrobatics, or impossible body articulation unless explicitly requested."
+    },
     "minimax-h3-facial-realism-closeup": {
         id: "minimax-h3-facial-realism-closeup",
         triggerWord: "Facial Realism",

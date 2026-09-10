@@ -63,6 +63,15 @@ export function mountHistoryActionsController(context, options) {
                 options.requestJointAvDeletion(assetId, versionId);
         }, { signal });
     });
+    root.querySelectorAll("[data-delete-motion-context]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            stopAction(event);
+            const assetId = button.dataset.deleteMotionContext;
+            const versionId = button.dataset.motionContextVersionId;
+            if (assetId && versionId)
+                options.requestMotionContextDeletion(assetId, versionId);
+        }, { signal });
+    });
     const patchFavoriteButtons = (assetId, favorite) => {
         root.querySelectorAll("[data-history-favorite]").forEach((button) => {
             if (button.dataset.historyFavorite !== assetId)

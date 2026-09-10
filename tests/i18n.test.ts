@@ -8,6 +8,8 @@ import {
 import { uiKeys } from "../src/core/i18n-keys";
 import { zhCNCatalog } from "../src/core/locales/zh-CN";
 import { enUSCatalog } from "../src/core/locales/en-US";
+import { uiKeys as runtimeUiKeys } from "../src/core/i18n-keys.js";
+import { zhCNCatalog as runtimeZhCNCatalog } from "../src/core/locales/zh-CN.js";
 
 describe("UI locale foundation", () => {
   it("keeps Chinese as the default and normalizes unknown values", () => {
@@ -89,5 +91,13 @@ describe("UI locale foundation", () => {
     const translator = createTranslator("zh-TW");
     expect(translator.t(uiKeys.nav.queue)).toBe("佇列");
     expect(translator.t(uiKeys.create.imageToVideo)).toBe("圖生影片");
+  });
+
+  it("keeps the runtime JavaScript key and catalog modules localized", () => {
+    const cacheTitleKey = runtimeUiKeys.settings.system.cacheTitle;
+    const clearCacheKey = runtimeUiKeys.settings.system.cacheClear;
+    expect(cacheTitleKey).toBe("settings.system.cacheTitle");
+    expect(runtimeZhCNCatalog[cacheTitleKey]).toBe("缓存管理");
+    expect(runtimeZhCNCatalog[clearCacheKey]).toBe("清理缓存");
   });
 });

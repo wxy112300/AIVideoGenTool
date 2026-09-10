@@ -3,7 +3,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { customNodeCatalog } from "../../src/core/catalog/index.js";
+import {
+  customNodeCatalog,
+  KONOHAMARU_NODE_ID,
+  KONOHAMARU_NEURAL_UPSTREAM_ADDON,
+  KONOHAMARU_RUNTIME_FILES
+} from "../../src/core/catalog/index.js";
 import {
   compareReleaseVersions,
   normalizeReleaseVersion
@@ -23,6 +28,10 @@ import {
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
 } from "../../src/infrastructure/dependency-node-adapters.js";
+import {
+  konohamaruNeuralUpstreamRuntimeProblems,
+  konohamaruVideo2dlssnrRuntimeProblems
+} from "./konohamaru-runtime.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -141,6 +150,26 @@ async function directoryContainsNodeTypes(
     fs.readFile(path.join(directory, filename), "utf8").catch(() => "")
   ));
   return nodeTypes.some((nodeType) => sources.some((source) => source.includes(nodeType)));
+}
+
+async function konohamaruRuntimeProblems(directory: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const relativeFilename of KONOHAMARU_RUNTIME_FILES) {
+    if (relativeFilename === `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}`) continue;
+    const filename = path.join(directory, ...relativeFilename.split("/"));
+    try {
+      const bytes = await fs.readFile(filename);
+      const header = bytes.subarray(0, 160).toString("utf8");
+      if (!bytes.byteLength || header.startsWith("version https://git-lfs.github.com/spec/v1")) {
+        problems.push(`${relativeFilename}${header.startsWith("version ") ? "（Git LFS pointer）" : "（空文件）"}`);
+      }
+    } catch {
+      problems.push(`${relativeFilename}（缺失）`);
+    }
+  }
+  problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(directory));
+  problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(directory));
+  return problems;
 }
 
 async function findH3MemoryDirectories(
@@ -536,7 +565,15 @@ export async function scanCustomNodes(
     let compatibilityNotice = "";
     let updateNotice = "";
     let optionalUpdateRecommended = false;
-    if (definition.id === "video-helper-suite" && directory) {
+    if (definition.id === KONOHAMARU_NODE_ID && directory) {
+      const problems = await konohamaruRuntimeProblems(directory);
+      if (problems.length) {
+        compatibilityError = `Konohamaru DLSS5 runtime 未通过完整性复检：${problems.join("、")}`;
+        compatibilityNotice = "请安装 Git LFS 后执行一键安装/更新；运行时 DLL/EXE/addon 不接受 pointer、错误哈希或旧 addon 混载。";
+        updateNotice = compatibilityNotice;
+        optionalUpdateRecommended = true;
+      }
+    } else if (definition.id === "video-helper-suite" && directory) {
       compatibilityError = await Promise.all([
         fs.readFile(path.join(directory, "videohelpersuite", "utils.py"), "utf8"),
         fs.readFile(path.join(directory, "videohelpersuite", "nodes.py"), "utf8"),

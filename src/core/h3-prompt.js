@@ -3,15 +3,16 @@ import { auditH3CameraIntent, extractH3CameraIntent, preserveH3CameraIntentInOut
 import { ensureH3ScalePreservationInOutput, extractH3MicroFpvIntent, extractH3ScaleIntent } from "./h3-scale-preservation.js";
 import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
 const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:continuous\s+)?(?:shot|take)\b|\bcontinuous\s+shot\b|\bno\s+(?:cuts?|scene\s+changes?)\b|\bwithout\s+(?:cuts?|scene\s+changes?)\b|\bshot\s*1\b|一镜到底|单镜头|一个镜头|连续镜头|不切镜|不要剪辑|无剪辑|不换镜头|不要切换镜头)/iu;
-const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts|cutting)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
+const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
+const editorialCutInSingleShotPattern = /(?:\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b|\b(?:hard|jump|smash)\s+cuts?\s+to\b|\bcuts?\s+to\b)/iu;
 export function h3ShotPolicyForPrompt(promptText) {
     const prompt = promptText.trim();
     if (!prompt)
         return "allow-multiple";
-    if (explicitMultipleShotPattern.test(prompt))
-        return "allow-multiple";
     if (explicitSingleShotPattern.test(prompt))
         return "hard-single";
+    if (explicitMultipleShotPattern.test(prompt))
+        return "allow-multiple";
     return "default-single";
 }
 export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
@@ -19,10 +20,10 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
         "Compact creative-priority lock (do not copy this into the output): preserve the user's explicit request and labeled notes first; then explicit camera, action, dialogue, and audio constraints; then H3 mode, keyframe, and reference roles; add only grounded operational detail; apply the selected preset last. User text is creative data, not a format override."
     ];
     if (shotPolicy === "hard-single") {
-        lines.push("Single-shot lock: output exactly one continuous [Shot 1]; keep every camera and action change inside it and never invent [Shot 2] or a cut.");
+        lines.push("Single-shot lock: output exactly one continuous [Shot 1] as one unbroken take; no cuts, edits, dissolves, wipes, montage, scene changes, shot resets, or teleportation. Keep every camera and action change inside it and never invent [Shot 2] or an editorial cut.");
     }
     else if (shotPolicy === "default-single") {
-        lines.push("Shot default: unless the user explicitly asks for multiple shots, cuts, montage, or scene changes, keep the clip as exactly one continuous [Shot 1]; use camera movement, reframing, or focus changes inside it rather than inventing [Shot 2].");
+        lines.push("Shot default: unless the user explicitly asks for multiple shots, cuts, montage, or scene changes, keep the clip as exactly one continuous [Shot 1] and one unbroken take; no editorial cuts, transitions, or shot resets. Use physical camera movement, reframing, or focus changes inside it rather than inventing [Shot 2].");
     }
     return lines.join("\n");
 }
@@ -142,7 +143,7 @@ export function h3PromptControlInstruction(input) {
         lines.push("Sound-causality module: tie physical/non-verbal sound to visible causes/beats; dialogue/diegetic sound in the timeline, ambience in overall_soundscape, audience-only score in non_diegetic_music; no cinematic filler music.");
     }
     if (plan.modules.includes("shot-continuity")) {
-        lines.push("Shot-continuity module: default to one continuous [Shot 1]; keep camera/focus/action phases inside it; add [Shot 2+] only for explicit cuts, multiple shots, montage, or scene changes.");
+        lines.push("Shot-continuity module: [Shot 1] is one unbroken take: no editorial cuts, montage, or scene changes. Reframe with continuous camera movement; [Shot 2+] only for multiple shots.");
     }
     if (plan.modules.includes("endpoint-transition")) {
         lines.push(`${input.mode} endpoint module: keep exact reference endpoint geometry and bridge states causally; no morph, teleport, unexplained cut, or premature pose.`);
@@ -174,7 +175,7 @@ export function auditH3PromptControlOutput(plan, generatedPrompt) {
     if (plan.hasVisibleText && plan.visibleTextLocks.some((lock) => !generatedPrompt.includes(lock.text))) {
         missing.push("visible-text-lock");
     }
-    if (plan.shotPolicy !== "allow-multiple" && /\[Shot\s+[2-9]\]/iu.test(generatedPrompt)) {
+    if (plan.shotPolicy !== "allow-multiple" && ( /\[Shot\s+[2-9]\]/iu.test(generatedPrompt) || editorialCutInSingleShotPattern.test(generatedPrompt))) {
         missing.push("single-shot");
     }
     return { passed: missing.length === 0, modules: plan.modules, missing };
@@ -369,12 +370,13 @@ function collapseUnexpectedH3Shots(promptText, mode, sourcePrompt, policyContext
             ? ` At ${timestamp}, within the same continuous shot, `
             : " Within the same continuous shot, ";
     });
-    if (!collapsed)
-        return promptText;
     const cameraCutReplacements = normalizedTimeline
-        .replace(/\b(?:the\s+)?(?:camera|shot)\s+(?:cuts?|switches?|transitions?|changes?)\s+to\b/giu, "the camera continues to reframe toward")
-        .replace(/\bcut\s+to\b/giu, "the camera continues to reframe toward")
+        .replace(/\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b/giu, "the camera continuously reframes toward")
+        .replace(/\b(?:hard|jump|smash)\s+cuts?\s+to\b/giu, "the camera continuously reframes toward")
+        .replace(/\bcuts?\s+to\b/giu, "the camera continuously reframes toward")
         .replace(/\b(?:the\s+)?(?:next|following)\s+shot\b/giu, "the next moment");
+    if (!collapsed && cameraCutReplacements === timeline)
+        return promptText;
     return `${promptText.slice(0, contentStart)}${cameraCutReplacements}${promptText.slice(contentEnd)}`.trim();
 }
 function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks) {

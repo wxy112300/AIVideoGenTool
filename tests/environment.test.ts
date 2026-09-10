@@ -1034,7 +1034,7 @@ describe("ComfyUI environment candidates", () => {
     expect(fl2va?.available).toBe(true);
     expect(fl2va?.integrated).toBe(true);
     expect(profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step")).toBeUndefined();
-    expect(profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.1")?.available).toBe(false);
+    expect(profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.2")?.available).toBe(false);
     expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(true);
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
   });
@@ -1096,15 +1096,15 @@ describe("ComfyUI environment candidates", () => {
     expect(missing?.available).toBe(false);
   });
 
-  it("detects the current MiniMax H3 LightX2V v1.1 Turbo profile only with its recommended LoRA", () => {
+  it("detects the current MiniMax H3 LightX2V v1.2 Turbo profile only with its recommended LoRA", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "vae\\minimax_h3_video_vae_fp16.safetensors",
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
-      "loras\\minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+      "loras\\minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
     ]);
-    const turbo = profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.1");
+    const turbo = profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.2");
 
     expect(turbo).toMatchObject({
       available: true,
@@ -1114,7 +1114,7 @@ describe("ComfyUI environment candidates", () => {
     });
     expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
       targetSubdirectory: "loras",
-      recommendedFilename: "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+      recommendedFilename: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
     });
 
     const legacyOnly = evaluateModelProfiles([
@@ -1123,7 +1123,7 @@ describe("ComfyUI environment candidates", () => {
       "vae\\minimax_h3_video_vae_fp16.safetensors",
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
       "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
-    ]).find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.1");
+    ]).find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.2");
     expect(legacyOnly?.available).toBe(false);
   });
 

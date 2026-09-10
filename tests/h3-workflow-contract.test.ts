@@ -141,6 +141,27 @@ describe("H3 clean AV workflow contract", () => {
     expect(validateH3ComfyWorkflow(ultimate)).toMatchObject({ valid: true, kind: "second-sampling-av" });
   });
 
+  it("validates the Continuum V3.8 boundary-frame and Video Guide graph", () => {
+    const source = workflow("minimax_h3_continuum_v38_extend_api.json");
+    expect(h3ComfyAvWorkflowKind(source)).toBe("continuum-extension");
+    expect(validateH3ComfyWorkflow(source)).toMatchObject({
+      valid: true,
+      kind: "continuum-extension"
+    });
+  });
+
+  it("fails closed when the running ComfyUI has not loaded the V3.8 nodes", () => {
+    const issues = h3ComfyWorkflowRuntimeIssues(
+      workflow("minimax_h3_continuum_v38_extend_api.json"),
+      objectInfo()
+    );
+    expect(issues).toEqual(expect.arrayContaining([
+      "/object_info 缺少精确 class_type=H3ContinuumSamplerV38",
+      "/object_info 缺少精确 class_type=H3ContinuumLoadVideo",
+      "/object_info 缺少精确 class_type=H3ContinuumAssembleSeamV35"
+    ]));
+  });
+
   it("rejects a second pass that loses the audio branch or input artifact placeholder", () => {
     const source = structuredClone(workflow("minimax_h3_fl2va_second_sample_av_api.json")) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
     const concat = Object.values(source).find((node) => node.class_type === "LTXVConcatAVLatent");

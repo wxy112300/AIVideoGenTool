@@ -88,6 +88,9 @@ export interface VideoCreatePageViewModel {
   continuumArtifactReady: boolean;
   continuumArtifactFilename: string;
   continuumArtifactHistoryBound: boolean;
+  motionContextLatentReady: boolean;
+  motionContextLatentFilename: string;
+  motionContextLatentHistoryBound: boolean;
   h3Mode?: H3PromptMode;
   enhanceMode: "faithful" | "sulphur-native" | "h3-vision";
   h3PromptEnhanceTitle: string;
@@ -110,6 +113,8 @@ export interface VideoCreatePageViewModel {
   spectrumTitle: string;
   spectrumModeDisabled: boolean;
   jointAvLabelMarkup: string;
+  latentSaveModeOptionsMarkup: string;
+  latentSaveModeTitle: string;
   loraLabelMarkup: string;
   installReadyLoraDefinitions: ReadonlyArray<InstallReadyLoraDefinition>;
   installReadyLoraEmptyLabel: string;
@@ -380,6 +385,20 @@ export function renderCreatePage(
           ${viewModel.continuumArtifactReady ? `<button class="ghost button-with-icon" id="clear-h3-continuum-av" type="button">${icon("x")}${t(uiKeys.create.continuumArtifact.clear)}</button>` : ""}
         </div>
       </section>` : ""}
+      ${viewModel.extending && viewModel.isR2V ? `<section class="continuum-artifact-panel h3-motion-context-latent-panel" aria-labelledby="motion-context-latent-title">
+        <div class="section-heading">
+          <div><h2 id="motion-context-latent-title">${t(uiKeys.create.motionContextLatent.title)}</h2><span class="muted">${t(uiKeys.create.motionContextLatent.description)}</span></div>
+        </div>
+        <div class="continuum-artifact-drop ${viewModel.motionContextLatentReady ? "has-artifact" : ""}" id="pick-h3-motion-context-latent" data-drop-h3-motion-context-latent data-drop-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}">
+          <span class="drop-icon">${icon("database")}</span>
+          <strong>${t(viewModel.motionContextLatentReady ? uiKeys.create.motionContextLatent.change : uiKeys.create.motionContextLatent.choose)}</strong>
+          <span>${viewModel.motionContextLatentFilename ? escapeHtml(viewModel.motionContextLatentFilename) : t(uiKeys.create.motionContextLatent.pendingValidation)}</span>
+        </div>
+        <div class="continuum-artifact-meta">
+          <span class="muted">${viewModel.motionContextLatentHistoryBound ? t(uiKeys.create.motionContextLatent.historyBound) : t(uiKeys.create.motionContextLatent.pendingValidation)}</span>
+          ${viewModel.motionContextLatentReady ? `<button class="ghost button-with-icon" id="clear-h3-motion-context-latent" type="button">${icon("x")}${t(uiKeys.create.motionContextLatent.clear)}</button>` : ""}
+        </div>
+      </section>` : ""}
       ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
         <div class="section-heading">
           <div><h2>${t(uiKeys.create.r2vReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span></div>
@@ -430,7 +449,7 @@ export function renderCreatePage(
         <span>${viewModel.isContinuum
           ? t(uiKeys.create.continuumArtifact.description)
           : viewModel.isR2V
-          ? promptUi.t(viewModel.draft.h3ContextLatentPath ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
+          ? promptUi.t(viewModel.motionContextLatentReady ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
           : promptUi.t("extensionBoundaryDescription")}</span>
       </div>` : ""}
       <div class="composer-settings">
@@ -464,10 +483,9 @@ export function renderCreatePage(
             ${viewModel.spectrumOptionsMarkup}
           </select>
         </label>
-        <label class="settings-field settings-joint-av ${viewModel.isContinuum ? "continuum-joint-av" : ""}">${viewModel.jointAvLabelMarkup}
-          <select id="h3-save-joint-av">
-            <option value="save" ${viewModel.isContinuum || viewModel.draft.h3SaveJointAv ? "selected" : ""}>${t(uiKeys.create.videoSettings.saveJointAvEnabled)}</option>
-            ${viewModel.isContinuum ? "" : `<option value="skip" ${viewModel.draft.h3SaveJointAv ? "" : "selected"}>${t(uiKeys.create.videoSettings.saveJointAvDisabled)}</option>`}
+        <label class="settings-field settings-latent-save">${viewModel.jointAvLabelMarkup}
+          <select id="h3-latent-save-mode" title="${escapeHtml(viewModel.latentSaveModeTitle)}">
+            ${viewModel.latentSaveModeOptionsMarkup}
           </select>
         </label>` : ""}
           </div>
@@ -502,7 +520,7 @@ export function renderCreatePage(
           <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.motionTitle)}</strong><span>${t(uiKeys.create.videoSettings.motionDescription)}</span></div></div>
           <div class="composer-control-grid composer-motion-grid">
         <label class="settings-field settings-duration">${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}
-          <div class="inline-field"><input id="duration" type="range" min="1" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" min="1" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
+          <div class="inline-field"><input id="duration" type="range" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
         </label>
         <label class="settings-field settings-fps">${t(uiKeys.create.videoSettings.targetFps)}
           <select id="fps" ${viewModel.isMiniMaxH3 ? "disabled" : ""}>

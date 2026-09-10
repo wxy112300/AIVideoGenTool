@@ -11,6 +11,7 @@ export interface HistoryActionsControllerOptions {
   requestHistoryDeletion(assetId: string): void;
   requestHistoryVersionDeletion(assetId: string, versionId: string): void;
   requestJointAvDeletion(assetId: string, versionId: string): void;
+  requestMotionContextDeletion(assetId: string, versionId: string): void;
   requestImageVersionDeletion(projectId: string, versionId: string): void;
   copyHistoryText(value: string, successMessage: string): Promise<void>;
   copyHistoryFile(filename: string): Promise<void>;
@@ -86,6 +87,15 @@ export function mountHistoryActionsController(
       const assetId = button.dataset.deleteJointAv;
       const versionId = button.dataset.jointAvVersionId;
       if (assetId && versionId) options.requestJointAvDeletion(assetId, versionId);
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLElement>("[data-delete-motion-context]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      stopAction(event);
+      const assetId = button.dataset.deleteMotionContext;
+      const versionId = button.dataset.motionContextVersionId;
+      if (assetId && versionId) options.requestMotionContextDeletion(assetId, versionId);
     }, { signal });
   });
 

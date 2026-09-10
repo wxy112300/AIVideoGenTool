@@ -131,6 +131,10 @@ export async function acceptConfirmation(context, options) {
             options.setState(await context.application.deleteHistoryJointAv(request.assetId, request.versionId));
             options.notify(t(uiKeys.runtime.jointAvDeleted));
         }
+        else if (request.kind === "delete-motion-context") {
+            options.setState(await context.application.deleteHistoryMotionContext(request.assetId, request.versionId));
+            options.notify(t(uiKeys.runtime.motionContextDeleted));
+        }
         options.setRequest(null);
         options.setBusy(false);
         options.render();

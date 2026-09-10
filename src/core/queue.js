@@ -1,5 +1,5 @@
 import { createOutputFilename } from "./filename.js";
-import { uniqueAetherScaleUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename } from "./upscale.js";
+import { uniqueAetherScaleUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueKonohamaruUpscaleFilename, uniqueUpscaleFilename } from "./upscale.js";
 export function isImageGenerationQueueTask(task) {
     return task.taskType === "image-generation";
 }
@@ -325,11 +325,15 @@ export function duplicateQueueTask(state, taskId, clock = defaultClock) {
     ];
     const outputFilename = source.taskType === "generation" || source.taskType === "extension"
         ? createOutputFilename(source.modelId, source.resolution, source.duration, names)
-        : source.modelId === "aetherscale-dlss5" && source.aetherScale
-            ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names)
-        : source.modelId === "dlss5-sr"
-            ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale, names)
-            : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
+        : source.modelId === "dlss5-konohamaru" && source.konohamaru
+            ? uniqueKonohamaruUpscaleFilename(source.sourceFilename, source.konohamaru.mode, names, source.konohamaru.frameInterpolation.enabled
+                ? source.konohamaru.frameInterpolation.outputFps
+                : "off")
+            : source.modelId === "aetherscale-dlss5" && source.aetherScale
+                ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names)
+                : source.modelId === "dlss5-sr"
+                    ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale, names)
+                    : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
     return [...state.queue, {
             ...source,
             id: clock.id(),
@@ -350,6 +354,9 @@ export function duplicateQueueTask(state, taskId, clock = defaultClock) {
             : {}),
         ...(source.taskType === "upscale" && source.modelId === "aetherscale-dlss5" && source.aetherScale
             ? { aetherScale: structuredClone(source.aetherScale) }
+            : {}),
+        ...(source.taskType === "upscale" && source.modelId === "dlss5-konohamaru" && source.konohamaru
+            ? { konohamaru: structuredClone(source.konohamaru) }
             : {}),
             ...(source.taskType === "upscale"
                 ? { seedVr2Checkpoint: undefined, seedVr2Progress: undefined }

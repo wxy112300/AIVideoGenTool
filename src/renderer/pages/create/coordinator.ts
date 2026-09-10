@@ -5,6 +5,7 @@ import type {
   EnvironmentScanResult,
   H3PromptMode,
   H3PromptPreset,
+  H3LatentSaveMode,
   H3ReferenceSlot,
   ImageEditDraft,
   ImagePromptPreset,
@@ -106,6 +107,7 @@ export interface CreateWorkspaceCoordinator {
       width: number;
       height: number;
       modelId?: string;
+      h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
@@ -679,6 +681,7 @@ export function createCreateWorkspaceCoordinator(
       width: number;
       height: number;
       modelId?: string;
+      h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
@@ -688,10 +691,20 @@ export function createCreateWorkspaceCoordinator(
     renderAfterSave = true
   ): Promise<void> {
     const state = getState();
-    const selectedModelId = source?.modelId ?? state.draft.modelId;
+    // History can carry both H3 auxiliary inputs without explicitly storing a
+    // model choice in older records. Infer the model from the input contract so
+    // the visible Extend panel and the eventual queue task stay aligned.
+    const sourceModelId = source?.modelId ?? (
+      source?.h3ContinuumArtifact || source?.h3ContinuumArtifactPath
+        ? "minimax_h3_continuum"
+        : source?.h3ContextLatentPath
+          ? "minimax_h3_ref2va"
+          : undefined
+    );
+    const selectedModelId = sourceModelId ?? state.draft.modelId;
     const preserveMotionContextDraft = state.draft.inputMode === "video" && isMiniMaxH3R2vModel(state.draft.modelId);
     let selectedWorkflowPath = state.draft.workflowPath;
-    if (source?.modelId) {
+    if (sourceModelId) {
       const workflowModelId = bundledWorkflowModelId({
         modelId: selectedModelId,
         videoLoras: []
@@ -722,6 +735,7 @@ export function createCreateWorkspaceCoordinator(
       trimEndSeconds: source?.duration ?? 0,
       sourceAssetId: source?.assetId,
       sourceVersionId: source?.versionId,
+      h3LatentSaveMode: source?.h3LatentSaveMode,
       h3ContextLatentPath: source?.h3ContextLatentPath,
       h3ContinuumArtifactPath: source?.h3ContinuumArtifactPath,
       h3ContinuumArtifact: source?.h3ContinuumArtifact
@@ -729,7 +743,7 @@ export function createCreateWorkspaceCoordinator(
         : undefined,
       sourceWidth: source?.width ?? 0,
       sourceHeight: source?.height ?? 0,
-      videoLoras: source?.modelId ? [] : state.draft.videoLoras,
+      videoLoras: sourceModelId ? [] : state.draft.videoLoras,
       workflowPath: selectedWorkflowPath,
       ratio: "source",
       h3ReferenceSlots: isMiniMaxH3R2vModel(selectedModelId)

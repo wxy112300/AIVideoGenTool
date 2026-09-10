@@ -3,7 +3,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
-import { mountUpscaleController } from "../src/renderer/shell/upscale-controller";
+import {
+  mountUpscaleController,
+  renderUpscaleOverlayPreservingScroll
+} from "../src/renderer/shell/upscale-controller";
 import type { AppState, AssetVersion, HistoryAsset } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
 
@@ -15,6 +18,18 @@ afterEach(() => {
 });
 
 describe("upscale controller", () => {
+  it("preserves the upscale dialog scroll position when an option rerenders the overlay", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `<section class="upscale-dialog"></section>`;
+    root.querySelector<HTMLElement>(".upscale-dialog")!.scrollTop = 240;
+
+    renderUpscaleOverlayPreservingScroll(root, () => {
+      root.innerHTML = `<section class="upscale-dialog"></section>`;
+    });
+
+    expect(root.querySelector<HTMLElement>(".upscale-dialog")?.scrollTop).toBe(240);
+  });
+
   it("enqueues a DLSS5 multiplier task with its actual output geometry", async () => {
     const state = createDefaultState();
     const version = {

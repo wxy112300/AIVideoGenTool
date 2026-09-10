@@ -2,6 +2,8 @@ import { modelCatalog } from "./catalog/index.js";
 import { normalizeH3MemoryOptions } from "./h3-memory-policy.js";
 import { baseVideoModelId, normalizeVideoLoras, videoLoraCompatibleWithDraft } from "./video-loras.js";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "./video-policy.js";
+import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
+import { isMiniMaxH3R2vModel } from "./workflow.js";
 export function normalizeH3FrameSettings(draft) {
     return modelCatalog.isFamily(draft.modelId, "minimax-h3")
         ? { fps: 24, frameInterpolation: "off" }
@@ -31,6 +33,7 @@ export function normalizeVideoDraft(draft) {
     });
     const spectrumMode = policy.spectrum.allowed ? draft.spectrumMode : "off";
     const spectrumAutomaticallyDisabled = draft.spectrumMode !== "off" && spectrumMode === "off";
+    const h3LatentSaveMode = h3LatentSaveModeFor(draft, draft.inputMode === "video" && isMiniMaxH3R2vModel(modelId));
     return {
         ...draft,
         modelId,
@@ -41,6 +44,8 @@ export function normalizeVideoDraft(draft) {
         spectrumMode,
         spectrumModeUserSet: spectrumAutomaticallyDisabled ? false : draft.spectrumModeUserSet,
         spectrumModelAwareMode: spectrumMode === "off" ? "off" : draft.spectrumModelAwareMode,
+        h3LatentSaveMode,
+        h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
         ...normalizeH3MemoryOptions(draft)
     };
 }

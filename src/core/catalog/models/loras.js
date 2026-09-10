@@ -1,24 +1,29 @@
 import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
 const catalogLocales = {
-    "minimax-h3-turbo-ckpt850-ema": {
-        "zh-CN": { name: "MiniMax H3 Turbo ckpt850 EMA · 已退役", badge: "H3 · 已退役", description: "旧 Turbo 训练线画面质量不稳定；仅保留旧记录兼容，不再用于新任务。" },
-        "zh-TW": { name: "MiniMax H3 Turbo ckpt850 EMA · 已退役", badge: "H3 · 已退役", description: "舊 Turbo 訓練線畫面品質不穩定；僅保留舊記錄相容，不再用於新任務。" },
-        "en-US": { name: "MiniMax H3 Turbo ckpt850 EMA · retired", badge: "H3 · retired", description: "This older Turbo training line is visually unstable; it remains only for legacy record compatibility and is no longer available for new tasks." }
-    },
     "minimax-h3-turbo-sla-4step": {
         "zh-CN": { name: "MiniMax H3 Turbo-SLA · 4 步", badge: "H3 专属 · 极速", description: "官方 768p 四步稀疏注意力 Turbo LoRA，需要 H3 SLA Attention 节点；追求最快速度时优先考虑。" },
         "zh-TW": { name: "MiniMax H3 Turbo-SLA · 4 步", badge: "H3 專屬 · 極速", description: "官方 768p 四步稀疏注意力 Turbo LoRA，需要 H3 SLA Attention 節點；追求最快速度時優先考慮。" },
         "en-US": { name: "MiniMax H3 Turbo-SLA · four-step", badge: "H3 only · fastest", description: "Official 768p four-step sparse-attention Turbo LoRA requiring the H3 SLA Attention node; prioritize it for the fastest path." }
     },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
-        "zh-CN": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 专属 · 4 步快速", description: "官方最新 v1.1 FL2VA Turbo LoRA，配套 4 步、video shift 6 和 audio shift 3；无需 SLA 节点。" },
-        "zh-TW": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 專屬 · 4 步快速", description: "官方最新 v1.1 FL2VA Turbo LoRA，搭配 4 步、video shift 6 與 audio shift 3；不需要 SLA 節點。" },
-        "en-US": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 only · fast four-step", description: "The latest official v1.1 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path; no SLA node required." }
+    "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
+        "zh-CN": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 专属 · 4 步快速", description: "官方当前 v1.2 FL2VA Turbo LoRA，配套 4 步、video shift 6 和 audio shift 3；无需 SLA 节点。" },
+        "zh-TW": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 專屬 · 4 步快速", description: "官方目前 v1.2 FL2VA Turbo LoRA，搭配 4 步、video shift 6 與 audio shift 3；不需要 SLA 節點。" },
+        "en-US": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 only · fast four-step", description: "The current official v1.2 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path; no SLA node required." }
     },
     "minimax-h3-camera-motion-v1": {
         "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动；可配合提示词表达光学景深、镜头衰减和克制的手持微抖。" },
         "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動；可配合提示詞表達光學景深、鏡頭衰減與克制的手持微抖。" },
         "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement, with prompt guidance for optical depth of field, lens falloff, and restrained handheld micro-shake." }
+    },
+    "minimax-h3-cinematic-realism": {
+        "zh-CN": { name: "MiniMax H3 Cinematic Realism", badge: "H3 专属 · 电影质感", description: "降低 H3 默认对比度，提供更柔和、便于调色的电影基调；触发词：DY。" },
+        "zh-TW": { name: "MiniMax H3 Cinematic Realism", badge: "H3 專屬 · 電影質感", description: "降低 H3 預設對比度，提供更柔和、便於調色的電影基調；觸發詞：DY。" },
+        "en-US": { name: "MiniMax H3 Cinematic Realism", badge: "H3 only · cinematic grade", description: "Softens H3's default contrast for a gentler, easier-to-grade cinematic look; trigger: DY." }
+    },
+    "minimax-h3-better-human-motion": {
+        "zh-CN": { name: "MiniMax H3 Better Human Motion", badge: "H3 专属 · 人体动作", description: "增强更自然、更连贯的人体动作和身体运动；不需要额外触发词。" },
+        "zh-TW": { name: "MiniMax H3 Better Human Motion", badge: "H3 專屬 · 人體動作", description: "增強更自然、更連貫的人體動作和身體運動；不需要額外觸發詞。" },
+        "en-US": { name: "MiniMax H3 Better Human Motion", badge: "H3 only · human motion", description: "Improves natural, consistent body movement and action timing without an additional trigger word." }
     },
     "minimax-h3-equi360": {
         "zh-CN": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 专属 · 360° 全景", description: "生成 360° 等距柱状全景视频；触发词：equirect360。推荐 21:9、768p T2VA，输出需再封装为 2:1 球面视频。" },
@@ -40,11 +45,6 @@ const catalogLocales = {
         "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 8 步品質備選", description: "官方 v1.0 FL2VA 8 步路線；目前沒有對應的 8-step v1.1，保留作品質與音訊穩定性備選，綜合首選請用 v4。" },
         "en-US": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 only · eight-step fallback", description: "The official v1.0 FL2VA eight-step path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback." }
     },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1": {
-        "zh-CN": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 专属 · 768p 性能", description: "官方 v1.0 768p FL2VA Turbo LoRA，专为 768p 四步路径准备。" },
-        "zh-TW": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 專屬 · 768p 效能", description: "官方 v1.0 768p FL2VA Turbo LoRA，專為 768p 四步路徑準備。" },
-        "en-US": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 only · 768p performance", description: "Official v1.0 FL2VA Turbo LoRA for the dedicated 768p four-step path." }
-    },
     "minimax-h3-ref2v-turbo-4step-v01": {
         "zh-CN": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 专属 · 性能", description: "官方 Ref2VA 多参考图 Turbo LoRA，仅用于 R2V 四步路径。" },
         "zh-TW": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 專屬 · 效能", description: "官方 Ref2VA 多參考圖 Turbo LoRA，僅用於 R2V 四步路徑。" },
@@ -54,11 +54,6 @@ const catalogLocales = {
         "zh-CN": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V 专属 · NSFW", description: "当前确认的 AfterMidnight v1.2 内容 LoRA，仅适用于 MiniMax H3 Ref2VA。" },
         "zh-TW": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V 專屬 · NSFW", description: "目前確認的 AfterMidnight v1.2 內容 LoRA，僅適用於 MiniMax H3 Ref2VA。" },
         "en-US": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V only · NSFW", description: "The currently confirmed AfterMidnight v1.2 content LoRA for MiniMax H3 Ref2VA only." }
-    },
-    "minimax-h3-lightx2v-turbo-4step": {
-        "zh-CN": { name: "LightX2V Turbo 4-Step", badge: "H3 专属 · 性能", description: "MiniMax H3 FL2VA 的蒸馏 LoRA，把约 20 步采样压缩到 6–8 步。" },
-        "zh-TW": { name: "LightX2V Turbo 4-Step", badge: "H3 專屬 · 效能", description: "MiniMax H3 FL2VA 的蒸餾 LoRA，把約 20 步取樣壓縮到 6–8 步。" },
-        "en-US": { name: "LightX2V Turbo 4-Step", badge: "H3 only · performance", description: "A distilled LoRA that compresses MiniMax H3 FL2VA sampling from about 20 steps to 6–8 steps." }
     },
     "minimax-h3-realism-people": {
         "zh-CN": { name: "MiniMax H3 Realism People", badge: "H3 专属 · 皮肤/人物写实", description: "增强自然皮肤纹理、毛孔、透光感和人物表演，缓解油光与塑料感；同时改善手部活动、电影灯光和轻微纪录片式镜头感。" },
@@ -70,11 +65,6 @@ const catalogLocales = {
         "zh-TW": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 專屬 · 人臉特寫", description: "增強人臉特寫的皮膚紋理、眼神與微表情；觸發詞：Facial Realism。" },
         "en-US": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 only · facial close-up", description: "Enhances close-up facial realism, skin texture, eyes, and micro-expressions; trigger: Facial Realism." }
     },
-    "minimax-h3-pink-fluffy-bunny-nsfw": {
-        "zh-CN": { name: "PinkFluffyBunny NSFW", badge: "H3 专属 · NSFW", description: "MiniMax H3 FL2VA pruned 底模的社区 NSFW 内容 LoRA。" },
-        "zh-TW": { name: "PinkFluffyBunny NSFW", badge: "H3 專屬 · NSFW", description: "MiniMax H3 FL2VA pruned 底模的社群 NSFW 內容 LoRA。" },
-        "en-US": { name: "PinkFluffyBunny NSFW", badge: "H3 only · NSFW", description: "A community NSFW content LoRA for the MiniMax H3 FL2VA pruned base model." }
-    }
 };
 export const loraModelEntries = VIDEO_LORA_DEFINITIONS.map((lora) => ({
     definition: {

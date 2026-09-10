@@ -4,11 +4,15 @@ import type {
   AetherScaleCarrierMode,
   AetherScaleStyleProfile,
   Dlss5Quality,
-  Dlss5Scale
+  Dlss5Scale,
+  KonohamaruDlss5Mode,
+  KonohamaruFrameOutputFps,
+  KonohamaruNrStyle
 } from "../../types";
 import {
   createAetherScaleUpscaleFilename,
   createDlss5UpscaleFilename,
+  createKonohamaruUpscaleFilename,
   createUpscaleFilename,
   h3NativeUpscaleDimensions,
   upscaleDimensions
@@ -30,6 +34,17 @@ import {
   isAetherScaleMode,
   isAetherScaleStyleProfile
 } from "../../core/aetherscale";
+import {
+  KONOHAMARU_DEFAULT_MODE,
+  KONOHAMARU_DEFAULT_NR_STYLE,
+  KONOHAMARU_MODEL_ID,
+  defaultKonohamaruOptions,
+  isKonohamaruFrameOutputFps,
+  isKonohamaruMode,
+  isKonohamaruNrStyle,
+  konohamaruFrameFpsOptions,
+  konohamaruOutputGeometry
+} from "../../core/konohamaru-dlss5";
 import { versionVideoIndex } from "../pages/history/helpers";
 import { uiKeys } from "../../core/i18n-keys";
 
@@ -59,6 +74,49 @@ function renderedAetherScaleMode(
       : AETHERSCALE_DEFAULT_MODE;
 }
 
+function renderedKonohamaruMode(
+  root: HTMLElement,
+  dialog: UpscaleDialogState
+): KonohamaruDlss5Mode {
+  const selectedButton = root.querySelector<HTMLElement>('[data-konohamaru-mode].primary');
+  const renderedMode = selectedButton?.dataset.konohamaruMode;
+  return isKonohamaruMode(renderedMode)
+    ? renderedMode
+    : isKonohamaruMode(dialog.konohamaruMode)
+      ? dialog.konohamaruMode
+      : KONOHAMARU_DEFAULT_MODE;
+}
+
+function renderedKonohamaruFrame(
+  root: HTMLElement,
+  dialog: UpscaleDialogState
+): "off" | KonohamaruFrameOutputFps {
+  const value = root.querySelector<HTMLSelectElement>("#upscale-konohamaru-fps")?.value ??
+    String(dialog.konohamaruFrameInterpolation ?? "off");
+  if (value === "off") return "off";
+  const fps = Number(value);
+  return isKonohamaruFrameOutputFps(fps) ? fps : "off";
+}
+
+export function renderUpscaleOverlayPreservingScroll(
+  root: HTMLElement,
+  renderOverlay: () => void
+): void {
+  const currentDialog = root.querySelector<HTMLElement>(".upscale-dialog");
+  const scrollTop = currentDialog?.scrollTop;
+  renderOverlay();
+  if (scrollTop === undefined) return;
+
+  const restoreScroll = () => {
+    const nextDialog = root.querySelector<HTMLElement>(".upscale-dialog");
+    if (nextDialog) nextDialog.scrollTop = scrollTop;
+  };
+  restoreScroll();
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(restoreScroll);
+  }
+}
+
 export function mountUpscaleController(
   context: RendererContext,
   options: UpscaleControllerOptions
@@ -67,6 +125,7 @@ export function mountUpscaleController(
   const signal = events.signal;
   const root = options.root;
   const t = context.t;
+  const renderUpscaleOverlay = () => renderUpscaleOverlayPreservingScroll(root, options.renderOverlay);
   const closeUpscale = () => {
     if (options.getDialog()?.busy) return;
     options.setDialog(null);
@@ -91,7 +150,7 @@ export function mountUpscaleController(
         ...dialog,
         targetScale: scale
       });
-      options.renderOverlay();
+      renderUpscaleOverlay();
     }, { signal });
   });
 
@@ -105,7 +164,18 @@ export function mountUpscaleController(
         ...dialog,
         aetherScaleMode: mode
       });
-      options.renderOverlay();
+      renderUpscaleOverlay();
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLElement>("[data-konohamaru-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dialog = options.getDialog();
+      const mode = button.dataset.konohamaruMode;
+      if (!dialog || !isKonohamaruMode(mode)) return;
+      options.rememberModalControlFocus(button);
+      options.setDialog({ ...dialog, konohamaruMode: mode });
+      renderUpscaleOverlay();
     }, { signal });
   });
 
@@ -118,7 +188,7 @@ export function mountUpscaleController(
         ...dialog,
         targetHeight: Number(button.dataset.upscaleHeight) as UpscaleDialogState["targetHeight"]
       });
-      options.renderOverlay();
+      renderUpscaleOverlay();
     }, { signal });
   });
   root.querySelector("#upscale-model")?.addEventListener("change", (event) => {
@@ -127,13 +197,14 @@ export function mountUpscaleController(
     const modelId = (event.currentTarget as HTMLSelectElement).value as UpscaleDialogState["modelId"];
     const h3Selected = modelId === "minimax_h3_latent_upscaler";
     const aetherScaleSelected = modelId === AETHERSCALE_MODEL_ID;
+    const konohamaruSelected = modelId === KONOHAMARU_MODEL_ID;
     options.rememberModalControlFocus(event.currentTarget as HTMLElement);
     options.setDialog({
       ...dialog,
       modelId,
       targetHeight: h3Selected
         ? (dialog.targetHeight === 768 ? 768 : 720)
-        : aetherScaleSelected
+        : aetherScaleSelected || konohamaruSelected
           ? undefined
           : (dialog.targetHeight === 768 ? 1080 : dialog.targetHeight ?? 1080),
       targetScale: isDlss5Scale(dialog.targetScale) ? dialog.targetScale : 2,
@@ -144,9 +215,22 @@ export function mountUpscaleController(
       aetherStyleProfile: isAetherScaleStyleProfile(dialog.aetherStyleProfile)
         ? dialog.aetherStyleProfile
         : AETHERSCALE_DEFAULT_STYLE_PROFILE,
+      konohamaruMode: isKonohamaruMode(dialog.konohamaruMode)
+        ? dialog.konohamaruMode
+        : KONOHAMARU_DEFAULT_MODE,
+      konohamaruNrStyle: isKonohamaruNrStyle(dialog.konohamaruNrStyle)
+        ? dialog.konohamaruNrStyle
+        : KONOHAMARU_DEFAULT_NR_STYLE,
+      konohamaruNrIntensity: typeof dialog.konohamaruNrIntensity === "number"
+        ? Math.max(0, Math.min(2, dialog.konohamaruNrIntensity))
+        : 1,
+      konohamaruFrameInterpolation: dialog.konohamaruFrameInterpolation === "off" ||
+        isKonohamaruFrameOutputFps(dialog.konohamaruFrameInterpolation)
+        ? dialog.konohamaruFrameInterpolation
+        : "off",
       tileMode: dialog.tileMode
     });
-    options.renderOverlay();
+    renderUpscaleOverlay();
   }, { signal });
   root.querySelector("#upscale-aetherscale-style")?.addEventListener("change", (event) => {
     const dialog = options.getDialog();
@@ -157,7 +241,7 @@ export function mountUpscaleController(
       ...dialog,
       aetherStyleProfile: styleProfile
     });
-    options.renderOverlay();
+    renderUpscaleOverlay();
   }, { signal });
   root.querySelector("#upscale-dlss-quality")?.addEventListener("change", (event) => {
     const dialog = options.getDialog();
@@ -168,7 +252,33 @@ export function mountUpscaleController(
       ...dialog,
       dlss5Quality: quality
     });
-    options.renderOverlay();
+    renderUpscaleOverlay();
+  }, { signal });
+  root.querySelector("#upscale-konohamaru-style")?.addEventListener("change", (event) => {
+    const dialog = options.getDialog();
+    const style = (event.currentTarget as HTMLSelectElement).value;
+    if (!dialog || !isKonohamaruNrStyle(style)) return;
+    options.rememberModalControlFocus(event.currentTarget as HTMLElement);
+    options.setDialog({ ...dialog, konohamaruNrStyle: style });
+    renderUpscaleOverlay();
+  }, { signal });
+  root.querySelector("#upscale-konohamaru-intensity")?.addEventListener("input", (event) => {
+    const dialog = options.getDialog();
+    if (!dialog) return;
+    const intensity = Math.max(0, Math.min(2, Number((event.currentTarget as HTMLInputElement).value)));
+    options.setDialog({ ...dialog, konohamaruNrIntensity: Number.isFinite(intensity) ? intensity : 1 });
+    const output = root.querySelector<HTMLOutputElement>("#upscale-konohamaru-intensity-value");
+    if (output) output.value = (Number.isFinite(intensity) ? intensity : 1).toFixed(1);
+  }, { signal });
+  root.querySelector("#upscale-konohamaru-fps")?.addEventListener("change", (event) => {
+    const dialog = options.getDialog();
+    if (!dialog) return;
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    const fps = value === "off" ? "off" : Number(value);
+    if (fps !== "off" && !isKonohamaruFrameOutputFps(fps)) return;
+    options.rememberModalControlFocus(event.currentTarget as HTMLElement);
+    options.setDialog({ ...dialog, konohamaruFrameInterpolation: fps });
+    renderUpscaleOverlay();
   }, { signal });
   root.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
     const dialog = options.getDialog();
@@ -178,7 +288,7 @@ export function mountUpscaleController(
       ...dialog,
       tileMode: (event.currentTarget as HTMLSelectElement).value as UpscaleDialogState["tileMode"]
     });
-    options.renderOverlay();
+    renderUpscaleOverlay();
   }, { signal });
   root.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
     const dialog = options.getDialog();
@@ -187,6 +297,12 @@ export function mountUpscaleController(
     const selectedAetherMode = dialog.modelId === AETHERSCALE_MODEL_ID
       ? renderedAetherScaleMode(root, dialog)
       : AETHERSCALE_DEFAULT_MODE;
+    const selectedKonohamaruMode = dialog.modelId === KONOHAMARU_MODEL_ID
+      ? renderedKonohamaruMode(root, dialog)
+      : KONOHAMARU_DEFAULT_MODE;
+    const selectedKonohamaruFrame = dialog.modelId === KONOHAMARU_MODEL_ID
+      ? renderedKonohamaruFrame(root, dialog)
+      : "off" as const;
     options.reportUserAction(dialog.taskId ? "upscale-task-update" : "upscale-task-enqueue", {
       taskId: dialog.taskId ?? dialog.replaceTaskId,
       modelId: dialog.modelId,
@@ -194,6 +310,8 @@ export function mountUpscaleController(
         ? { aetherScaleMode: selectedAetherMode }
         : dialog.modelId === DLSS5_MODEL_ID
         ? { targetScale: isDlss5Scale(dialog.targetScale) ? dialog.targetScale : 2 }
+        : dialog.modelId === KONOHAMARU_MODEL_ID
+        ? { konohamaruMode: selectedKonohamaruMode, konohamaruFrameInterpolation: selectedKonohamaruFrame }
         : { targetHeight: dialog.targetHeight })
     });
     const asset = state.history.find((item) => item.id === dialog.assetId);
@@ -205,10 +323,11 @@ export function mountUpscaleController(
       return;
     }
     options.setDialog({ ...dialog, busy: true });
-    options.renderOverlay();
+    renderUpscaleOverlay();
     try {
       const dlss5Selected = dialog.modelId === DLSS5_MODEL_ID;
       const aetherScaleSelected = dialog.modelId === AETHERSCALE_MODEL_ID;
+      const konohamaruSelected = dialog.modelId === KONOHAMARU_MODEL_ID;
       const selectedScale: Dlss5Scale = isDlss5Scale(dialog.targetScale)
         ? dialog.targetScale
         : 2;
@@ -218,11 +337,16 @@ export function mountUpscaleController(
       const selectedAetherStyle: AetherScaleStyleProfile = isAetherScaleStyleProfile(dialog.aetherStyleProfile)
         ? dialog.aetherStyleProfile
         : AETHERSCALE_DEFAULT_STYLE_PROFILE;
-      const legacyTargetHeight = dlss5Selected || aetherScaleSelected
+      const legacyTargetHeight = dlss5Selected || aetherScaleSelected || konohamaruSelected
         ? undefined
         : requireLegacyUpscaleTargetHeight(dialog.targetHeight);
       const h3Native = dialog.modelId === "minimax_h3_latent_upscaler";
-      const [targetWidth, targetOutputHeight] = aetherScaleSelected
+      const [targetWidth, targetOutputHeight] = konohamaruSelected
+        ? (() => {
+            const geometry = konohamaruOutputGeometry(version.width, version.height, selectedKonohamaruMode);
+            return [geometry.width, geometry.height] as [number, number];
+          })()
+        : aetherScaleSelected
         ? (() => {
             const geometry = aetherScaleOutputGeometry(version.width, version.height, selectedAetherMode);
             return [geometry.width, geometry.height] as [number, number];
@@ -253,7 +377,38 @@ export function mountUpscaleController(
         selectedAetherMode,
         selectedAetherStyle
       );
-      const upscalePatch = aetherScaleSelected
+      const konohamaruStyle: KonohamaruNrStyle = isKonohamaruNrStyle(dialog.konohamaruNrStyle)
+        ? dialog.konohamaruNrStyle
+        : KONOHAMARU_DEFAULT_NR_STYLE;
+      const konohamaruIntensity = typeof dialog.konohamaruNrIntensity === "number" && Number.isFinite(dialog.konohamaruNrIntensity)
+        ? Math.max(0, Math.min(2, dialog.konohamaruNrIntensity))
+        : 1;
+      const konohamaruFrameChoices = konohamaruFrameFpsOptions(version.fps);
+      const safeKonohamaruFrame = konohamaruFrameChoices.includes(selectedKonohamaruFrame)
+        ? selectedKonohamaruFrame
+        : "off" as const;
+      const konohamaru = defaultKonohamaruOptions(
+        selectedKonohamaruMode,
+        safeKonohamaruFrame !== "off",
+        safeKonohamaruFrame === 120 ? 120 : 60,
+        konohamaruStyle,
+        konohamaruIntensity
+      );
+      const upscalePatch = konohamaruSelected
+        ? {
+            targetWidth,
+            targetHeight: undefined,
+            targetScale: undefined,
+            targetOutputHeight,
+            konohamaru,
+            upscaleMode: "pixel" as const,
+            modelId: KONOHAMARU_MODEL_ID,
+            workflowPath: "builtin:upscale/dlss5-konohamaru",
+            tileMode: "auto" as const,
+            faceRestore: false,
+            outputFilename: createKonohamaruUpscaleFilename(sourceFile.filename, selectedKonohamaruMode, safeKonohamaruFrame)
+          }
+        : aetherScaleSelected
         ? {
             targetWidth,
             targetOutputHeight,
@@ -311,7 +466,18 @@ export function mountUpscaleController(
           duration: version.duration,
           fps: version.fps,
           faceRestore: false,
-          ...(aetherScaleSelected
+          ...(konohamaruSelected
+            ? {
+                targetWidth,
+                targetOutputHeight,
+                targetHeight: undefined,
+                targetScale: undefined,
+                konohamaru,
+                upscaleMode: "pixel" as const,
+                modelId: KONOHAMARU_MODEL_ID,
+                tileMode: "auto" as const
+              }
+            : aetherScaleSelected
             ? {
                 targetWidth,
                 targetOutputHeight,

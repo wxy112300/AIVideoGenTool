@@ -1,88 +1,63 @@
-# 任务、工作包与证据模板
+# 任务与可选委派模板
 
-跨会话、多 agent、运行时调查或多阶段任务，复制第一段到 `docs/tasks/YYYY-MM-DD-topic/TASK.md`。局部小修无需建档。删除不适用字段；不要为填表制造工作。
+默认当前 agent 直接完成。小修无需建档；跨会话或多阶段任务才用 docs/tasks/YYYY-MM-DD-topic/TASK.md。删去不适用字段，不为填表制造工作。
 
 ## TASK.md
 
 ```markdown
-# <任务标题>
-- Status: triage | investigating | ready | implementing | validating | blocked | done | superseded
-- Updated: <日期>
-- Owner: <任务/agent标识；没有执行者写 unassigned；模型不是身份>
-- Route: bug | integration | upgrade | prompt | extension | blocked
-- Scope: <目标及本次明确不涉及的边界>
-- Baseline: <Git revision + 本次相关 dirty 文件/hash；上游 revision 如适用>
-- Authority: <当前用户决定、契约章节；不是整份阅读清单>
+# <任务>
+- Status: triage | investigating | implementing | validating | blocked | done | superseded
+- Updated / Owner:
+- Scope / Authority:
+- Baseline: <revision + 相关dirty状态/上游版本>
+- Execution: direct（默认）
+- Tree ledger（仅委派时）: cap=1 created=0 depth<=1 concurrency<=1 corrective-followups<=1
+- User override: none（有明确扩容指令才记录）
 
-## Resume（每阶段更新，尽量一屏）
-- 已确认：
-- 本次决定及原因：
-- 已完成 / 尚未完成：
-- 下一步最小动作：
-- 不要重复：
-- 阻塞 / 解锁条件：
+## Resume
+- 已确认 / 决定：
+- 已完成 / 下一步：
+- 阻塞 / 解锁条件 / 不要重复：
 
-## Plan and ownership
-| 包 | 负责人/执行者 | 允许写文件 | 只读/禁止文件 | 依赖 | 验收 | 状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| W1 | <owner / worker> | <精确范围> | <精确范围> | <无/W0> | <可观察结果> | ready |
+## Implementation and resources
+- 修改范围 / 保留行为：
+- 必要步骤（不自动拆成agent）：
+- 文件、build/GPU/服务归属和释放：
+- 验收：
 
-## Resources
-- worktree / build output:
-- GPU / ComfyUI / ports / userData:
-- 已确认持有者与释放条件（无则 unassigned，禁止推断资源空闲）:
-
-## Evidence
-| 结论 | 类别 | 来源/版本/日期 | 证据路径 | 限制/失效条件 |
-| --- | --- | --- | --- | --- |
-| <简短事实> | source/static/schema/runtime/quality | <精确来源> | <链接> | <不可外推的范围> |
-
-## Acceptance / handoff
-- 要通过的检查：
-- 实际命令与结果：
-- 未运行项与原因：
-- 实际模型/effort及不可用替代（如有委派）：
-- 可取得的usage/调用数/耗时（不可得写unknown）：
-- preserved 行为 / 兼容性 / 清理：
-- 版本影响：patch / minor / major；Unreleased 或版本号：
-- 下一任只需读：
+## Evidence / handoff
+- 关键结论及来源/版本/证据路径：
+- 实际命令、结果、对应文件状态：
+- 可复用检查 / 必须补的验证：
+- 未运行项、限制、清理：
+- 实际模型/effort；可见usage与耗时（unknown如不可得）：
+- 版本影响 / Unreleased：
 ```
 
-只保留一份当前状态；详细计划超出摘要需求时才增加 `PLAN.md`，TASK 链接章节，不复制状态。状态与产品集成程度是两件事：一次纯调查可 done，但产品 runtime 仍未验证。
+TASK 是唯一当前摘要。调用者历史预算延续到续接任务，不因修改状态或压缩上下文重置。这里的状态不是 Codex goal 或 automation。
 
-## 发给 Luna 的工作包
+## 例外委派（满足 WORKFLOW 条件后才使用）
 
 ```text
-目标：<一个可验收交付>
-模型：Luna；工具显式选本会话可用 ID，按需要选 effort
-上下文：不继承完整会话；下面已列全部必要约束
-先读：<TASK + 精确契约/源码章节>
-基线：<当前 revision/dirty 注意事项，开工重读>
-允许编辑：<独占文件/新文件>
-禁止编辑：<共享类型/入口/其他任务文件>
-输入与方法：<固定URL/revision，筛选范围，预期处理规模>
-验收：<focused checks 或计数/hash对照>
-停止/升级条件：<缺文件、schema冲突、资源被占、方案外变更>
-资源：<只读 / 已协调的运行窗口与目录>
-交付：短结论 + diff/证据路径 + 实际检查 + 反证/未完成 + 下一步
-不要：回传完整日志、重复全量研究、递归派发、扩大范围
+委派理由：替代父级哪一段尚未做的工作；为何直接执行/脚本不足
+Tree：本请求累计创建数/上限；本子agent禁止派生；最多一次纠偏
+交付：一个完整、可独立验收的结果，含适用验证
+模型/effort：实际工具支持且明确选择；不可用则当前agent做
+上下文：最小必要用户约束、契约章节与来源；不继承整个会话
+输入/基线：精确路径/revision/hash与处理范围，开工重读
+允许写 / 禁止写 / 资源归属：
+停止条件：有限数据范围、命令尝试/运行时限、缺失依赖
+验收：客观结果，记录命令/结果/文件状态，避免父级重做
+反馈：正常过程自行完成；最终仅结论、文件/证据、验证、未决项
+不要：阶段审批、常规进度回传、完整日志、递归派发、范围扩张
 ```
 
-父 agent 按当前工具 schema 派发，不能把模型名称写在正文就当作实际选模。工作包缺必要信息时 worker 先完成独立部分，再提出具体缺口。
+派发前记累计数；失败/替换同样计数，不创建替代 worker。正常只派单与验收两次父级介入；一次纠偏后仍不收敛，由当前 agent 接手或说明阻塞。不缺关键约束时 worker 自行选择常规实现方法。
 
-## evidence/<topic>.md（需要可复用调查时才创建）
+## 可复用证据（需要时才建 evidence/<topic>.md）
 
-```markdown
-# <证据标题>
-- Date / collector:
-- Question:
-- Source: <URL + release/commit；本机资料写文件/revision>
-- Artifact: <size + SHA-256，未下载写未下载>
-- Method: <实际命令/匹配范围/环境>
-- Result: <关键匹配或明确计数的负结果>
-- Counterevidence / limits:
-- Invalidated by: <版本、hash、输入、环境等变化>
-- Raw artifacts: <忽略目录下可复用位置；不可用则说明>
-```
+记录问题、来源/日期/revision、asset size/SHA-256、实际方法/命令、结果/反证、环境、文件状态、失效条件和原始材料定位。
+区分 source、static、schema、runtime、quality；文件存在/fixture通过不等于真实输出。
+父级只复核关键证据与 diff；同一整合状态的可核对验证结果复用。日志和媒体留忽略目录，不贴进主上下文。
 
-证据类别：source=文档/上游声明；static=源码/类型/图构造检查；schema=实际节点接口检查；runtime=实际运行产物；quality=同条件质量评估。类别不是线性升级证书，必须保留环境、参数和范围。日志及媒体不进 Git，保留必要脱敏摘要与定位。
+成本记录以全树为范围，同时区分昂贵父级的额外派单、阅读、验收、纠偏和重复检查；数据未知就写 unknown，不通过频繁采样或重复执行测“节省”。

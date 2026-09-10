@@ -215,6 +215,46 @@ describe("History application services", () => {
     expect(store.get().history[0]?.versions[0]?.files[0]?.absolutePath).toBe(filename);
   });
 
+  it("drops transient Konohamaru previews when restoring durable history files", async () => {
+    const root = await temporaryRoot();
+    const output = path.join(root, "output");
+    const filename = path.join(output, "Videos", "result.mp4");
+    await fs.mkdir(path.dirname(filename), { recursive: true });
+    await fs.writeFile(filename, "video");
+    const temporary = {
+      filename: "temporary.mp4",
+      subfolder: "dlss5-video-output-abc",
+      type: "temp",
+      absolutePath: path.join(root, "temp", "temporary.mp4")
+    };
+    const durable = {
+      filename: "result.mp4",
+      subfolder: "Videos",
+      type: "output"
+    };
+    const state = createDefaultState();
+    state.settings.outputDirectory = output;
+    const version = {
+      ...videoVersion("original", [temporary, durable]),
+      comfyOutputs: {
+        outputs: {
+          "2": { images: [temporary] },
+          "3": { images: [durable] }
+        }
+      }
+    };
+    state.history = [videoAsset("asset-1", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+
+    await query.restoreHistoryOutputPaths();
+
+    expect(store.get().history[0]?.versions[0]?.files).toEqual([{
+      ...durable,
+      absolutePath: filename
+    }]);
+  });
+
   it("skips persistence when history and coupled queue paths are already restored", async () => {
     const root = await temporaryRoot();
     const output = path.join(root, "output");
@@ -440,6 +480,42 @@ describe("History application services", () => {
     await expect(fs.readFile(upscaleVideoPath, "utf8")).resolves.toBe("upscale");
   });
 
+  it("resolves a stale recorded video path before deleting a version", async () => {
+    const root = await temporaryRoot();
+    const output = path.join(root, "output");
+    const videosDirectory = path.join(output, "Videos");
+    const currentVideoPath = path.join(videosDirectory, "original.mp4");
+    const upscaleVideoPath = path.join(videosDirectory, "upscale.mp4");
+    await fs.mkdir(videosDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(currentVideoPath, "original"),
+      fs.writeFile(upscaleVideoPath, "upscale")
+    ]);
+    const original = videoVersion("original", [{
+      filename: "original.mp4",
+      subfolder: "Videos",
+      type: "output",
+      absolutePath: path.join(root, "old-output", "Videos", "original.mp4")
+    }]);
+    const upscale = videoVersion("upscale", [{
+      filename: "upscale.mp4",
+      subfolder: "Videos",
+      type: "output",
+      absolutePath: upscaleVideoPath
+    }], "upscale");
+    const state = createDefaultState();
+    state.settings.outputDirectory = output;
+    state.history = [videoAsset("asset-1", [original, upscale])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+
+    await destructiveFor(store, query).deleteVideoVersion("asset-1", "original");
+
+    expect(store.get().history[0]?.versions.map((version) => version.id)).toEqual(["upscale"]);
+    await expect(fs.stat(currentVideoPath)).rejects.toThrow();
+    await expect(fs.readFile(upscaleVideoPath, "utf8")).resolves.toBe("upscale");
+  });
+
   it("deletes JointAV without deleting the version video", async () => {
     const root = await temporaryRoot();
     const artifactDirectory = path.join(root, "h3-native-av");
@@ -479,6 +555,44 @@ describe("History application services", () => {
     expect(store.get().history[0]?.versions[0]?.h3ContinuationData).toMatchObject({
       status: "missing"
     });
+  });
+
+  it("deletes Motion Context latent without deleting the version video", async () => {
+    const root = await temporaryRoot();
+    const contextDirectory = path.join(root, "h3-motion-context", "task-1");
+    const videoPath = path.join(root, "original.mp4");
+    const contextPath = path.join(contextDirectory, "clip_00001.safetensors");
+    await fs.mkdir(contextDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(contextPath, "latent")
+    ]);
+    const version = videoVersion("original", [
+      { filename: "original.mp4", subfolder: "", type: "output", absolutePath: videoPath },
+      {
+        filename: "clip_00001.safetensors",
+        subfolder: "h3-motion-context/task-1",
+        type: "output",
+        format: "safetensors",
+        absolutePath: contextPath,
+        sizeBytes: 6
+      }
+    ]);
+    version.h3ContextLatentPath = contextPath;
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-1", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+
+    await destructiveFor(store, query).deleteMotionContext("asset-1", "original");
+
+    await expect(fs.readFile(videoPath, "utf8")).resolves.toBe("video");
+    await expect(fs.stat(contextPath)).rejects.toThrow();
+    expect(store.get().history[0]?.versions[0]?.h3ContextLatentPath).toBeUndefined();
+    expect(store.get().history[0]?.versions[0]?.files).toEqual([
+      { filename: "original.mp4", subfolder: "", type: "output", absolutePath: videoPath }
+    ]);
   });
 
   it("keeps history metadata when a partial file deletion fails", async () => {

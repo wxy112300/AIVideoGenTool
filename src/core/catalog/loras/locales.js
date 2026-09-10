@@ -1,22 +1,5 @@
 import { zhTWLoraLocales } from "./locale.zh-TW.js";
 const zhCN = {
-    "minimax-h3-turbo-ckpt850-ema": {
-        guide: {
-            summary: "MiniMax H3 Turbo ckpt850 EMA 旧 Turbo 训练线已退役，仅为旧队列与历史记录保留兼容。",
-            recommendedStrength: "不再推荐新任务使用；请改用当前受支持的 Turbo LoRA。",
-            effects: "旧版 4 步路径可能出现过锐、塑料感、颗粒和运动稳定性问题，因此停止作为新任务选项。",
-            stacking: "仅供旧记录读取；不要重新组合或作为新的 Turbo 对照。",
-            compatibility: "仅保留旧 MiniMax H3 FL2VA 图生视频记录的读取兼容，不再作为新任务路径。",
-            source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
-        },
-        rules: {
-            incompatible: "{name} 不兼容当前基础模型或输入模式。",
-            retired: "{name} 已因画面质量不稳定而停止用于新任务；请改用当前受支持的 Turbo LoRA。",
-            turboVariant: "ckpt850 与其他 Turbo 变体不可同时使用；请保留单独对照。",
-            turboSpectrum: "ckpt850 可与 Spectrum 共存，但请先保留关闭 Spectrum 的同 Seed 基准。",
-            orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
-        }
-    },
     "minimax-h3-turbo-sla-4step": {
         guide: {
             summary: "官方 MiniMax H3 Turbo-SLA 4 步 768p 稀疏注意力 LoRA；需要配合 H3 SLA Attention 节点。",
@@ -35,18 +18,18 @@ const zhCN = {
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
         }
     },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+    "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
         guide: {
-            summary: "官方 LightX2V v1.1 FL2VA Turbo LoRA，针对 768p 四步路径更新。",
+            summary: "官方当前 LightX2V v1.2 FL2VA Turbo LoRA，针对 768p 四步路径更新。",
             recommendedStrength: "默认 1.0；按官方路径使用。先固定 4 步、video shift 6、audio shift 3 和 Euler 做基准。",
-            effects: "在 768p 下减少采样步数；四步对 Prompt、Seed、运动连续性和音频稳定性更敏感，质量变化应与旧版本做同 Seed 对照。",
-            stacking: "性能 LoRA 放在人物或内容 LoRA 前面；不要与 8-step、旧版 v1.0 768p 或其他 Turbo 同时叠加。",
+            effects: "在 768p 下减少采样步数；四步对 Prompt、Seed、运动连续性和音频稳定性更敏感。",
+            stacking: "性能 LoRA 放在人物或内容 LoRA 前面；不要与 8-step 或其他 Turbo 同时叠加。",
             compatibility: "仅 MiniMax H3 FL2VA 图生视频的 768p 路径；不适用于 Ref2VA 或视频续写。",
-            source: "LightX2V / Minimax-h3-Turbo 官方 v1.1 ComfyUI 权重"
+            source: "LightX2V / Minimax-h3-Turbo 官方 v1.2 ComfyUI 权重"
         },
         rules: {
             incompatible: "{name} 不兼容当前基础模型或输入模式。",
-            turboSpectrum: "v1.1 768p Turbo 与 Spectrum 的组合需要同 Seed 对照；出现画面退化时先关闭 Spectrum。",
+            turboSpectrum: "v1.2 768p Turbo 与 Spectrum 的组合需要同 Seed 对照；出现画面退化时先关闭 Spectrum。",
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
         }
     },
@@ -62,6 +45,42 @@ const zhCN = {
         rules: {
             incompatible: "{name} 不兼容当前基础模型或输入模式。",
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；运镜 LoRA 建议先单独验证，再与性能或人物 LoRA 组合。"
+        }
+    },
+    "minimax-h3-cinematic-realism": {
+        guide: {
+            summary: "社区 MiniMax H3 Cinematic Realism 电影质感 LoRA，降低 H3 默认对比度，提供更柔和、更容易后期调色的电影基调；应用会自动把触发词 DY 放到执行 Prompt 开头。",
+            recommendedStrength: "应用默认 0.5；源仓库建议 0.7，高动态片段降到 0.5；强度越高风格越重，也更容易出现 warping。",
+            effects: "压低 H3 的硬对比度，强化柔和电影调色和影像质感；它只改变风格，不负责人物或镜头运动。",
+            stacking: "建议先单独使用并保留无 LoRA 同 Seed 基线；可与 Better Human Motion、Camera Motion 或 Realism People 试验叠加，但未完成真实 smoke，出现变形、过度调色或运动不稳时先降低强度。",
+            compatibility: "当前仅开放给已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；Ref2VA、INT4、Q3、视频续写及源仓库附带的第三方节点画布暂未验证。",
+            source: "orangesouth / MinimaxH3CinematicRealism · 05c48f1"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            cinematicRealismTurbo: "Cinematic Realism 可与 Turbo 叠加，但低步数路径尚未验证；建议 Turbo 在前，并用标准步数做同 Seed 对照。",
+            cinematicRealismCameraMotion: "Cinematic Realism + Camera Motion 可作为风格/运镜组合，但尚未完成真实 smoke；先用 0.50 + 0.80 对照，出现过度调色或运镜不稳时降低强度。",
+            cinematicRealismBetterMotion: "Cinematic Realism + Better Human Motion 可作为风格/人体动作组合，但尚未完成真实 smoke；先用 0.50 + 0.40 同 Seed 对照，出现 warping 时优先降低 Cinema。",
+            cinematicRealismPeople: "Cinematic Realism + Realism People 都会改变画面质感；组合尚未充分验证，先保留无 LoRA 基线并分别降低强度检查肤色、对比度和细节。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，动作 LoRA 其次，风格和人物质量 LoRA 后加载。"
+        }
+    },
+    "minimax-h3-better-human-motion": {
+        guide: {
+            summary: "Better Human Motion H3 人体动作 LoRA，增强更自然、更连贯的身体运动和动作节奏；不注入额外触发词。",
+            recommendedStrength: "应用默认 0.4；模型卡建议 0.4–0.8，先从 0.4–0.5 起步，并用 15–30 步做同 Seed 对照。",
+            effects: "改善人体动作的自然度、连续性和重量转移；强度过高可能放大身体变形、手部瑕疵或动作过冲。",
+            stacking: "建议先单独使用并保留无 LoRA 同 Seed 基线；可与 Camera Motion、Cinematic Realism 或 Realism People 试验叠加，优先保持 Better Human Motion 在前。",
+            compatibility: "模型卡标注 H3 T2V/I2V；当前应用仅开放给已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频，R2V、Ref2VA、INT4、Q3 和视频续写暂未验证。",
+            source: "vpakarinen / better-human-motion-h3-lora · 11229b6 · Apache-2.0"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            betterHumanMotionTurbo: "Better Human Motion 可与 Turbo 叠加，但低步数和人体动作适配尚未验证；建议 Turbo 在前，并与标准步数做同 Seed 对照。",
+            betterHumanMotionCameraMotion: "Better Human Motion + Camera Motion 都会改变运动轨迹；组合尚未充分验证，先分别检查人体动作与镜头运动，再从较低强度开始。",
+            betterHumanMotionCinematicRealism: "Better Human Motion + Cinematic Realism 可作为动作/风格组合；建议 Better Human Motion 在前（0.40 + 0.50），先保留无 LoRA 基线。",
+            betterHumanMotionPeople: "Better Human Motion + Realism People 都会改变人物细节；组合尚未充分验证，先分别检查动作、手部和皮肤细节。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；人体动作 LoRA 通常先加载，风格和人物质量 LoRA 后加载。"
         }
     },
     "minimax-h3-equi360": {
@@ -98,8 +117,8 @@ const zhCN = {
         guide: {
             summary: "社区 MiniMax H3 Turbo v4 step600 EMA pruned 转换，面向 6–8 步质量优先路径。",
             recommendedStrength: "默认 1.0；建议 6–8 步，优先 8 步；Euler + Beta、video shift 12、audio shift 6（作者给出 4–6）。",
-            effects: "相比 4-step 更重视细节、运动连续性和同步音频；仍需与官方 v1.1 做同 Seed 对照。",
-            stacking: "作为独立 Turbo 变体，不要与官方 v1.1、8-step v1.0 或其他 Turbo 同时叠加；建议放在人物或内容 LoRA 前。",
+            effects: "相比 4-step 更重视细节、运动连续性和同步音频；仍需与官方 v1.2 做同 Seed 对照。",
+            stacking: "作为独立 Turbo 变体，不要与官方 v1.2、8-step v1.0 或其他 Turbo 同时叠加；建议放在人物或内容 LoRA 前。",
             compatibility: "仅当前已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；暂不开放 R2V、INT4、Q3 或视频续写。",
             source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
         },
@@ -111,7 +130,7 @@ const zhCN = {
     },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         guide: {
-            summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路线；当前没有对应的 8-step v1.1，保留作质量与音频稳定性备选。",
+            summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路线；当前没有对应的 8-step v1.1，保留作质量与音频稳定性备选；4 步路线请使用当前 v1.2。",
             recommendedStrength: "默认 0.75；建议 8 步、0.65–0.85。综合首选优先尝试 v4。",
             effects: "相比 4 步路线更保守地保留运动、细节和音频稳定性，但版本较旧、速度较慢。",
             stacking: "性能 LoRA 放在内容或人物 LoRA 前面；不要与其他 Turbo LoRA 同时叠加。",
@@ -121,21 +140,6 @@ const zhCN = {
         rules: {
             incompatible: "{name} 不兼容当前基础模型或输入模式。",
             turboSpectrum: "Turbo v1.0 可与 Spectrum v0.2.6+ 叠加；遇到质量退化时先关闭 Spectrum 对照。",
-            orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
-        }
-    },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1": {
-        guide: {
-            summary: "官方 LightX2V v1.0 768p FL2VA Turbo LoRA，针对 768p 四步采样优化。",
-            recommendedStrength: "默认 0.75；建议 0.65–0.85。先在 768p 使用，不要与 8-step v1.0 同时叠加。",
-            effects: "在 768p 下速度最快，但四步对 Prompt、Seed 和运动稳定性更敏感。",
-            stacking: "性能 LoRA 放在人物、内容或风格 LoRA 前面；一次只选一个 Turbo 变体。",
-            compatibility: "仅 MiniMax H3 FL2VA 图生视频的 768p 路径；不用于 R2V 或视频续写。",
-            source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
-        },
-        rules: {
-            incompatible: "{name} 不兼容当前基础模型或输入模式。",
-            turboSpectrum: "768p Turbo 可与 Spectrum v0.2.6+ 叠加；先保留关闭 Spectrum 的基准结果。",
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
         }
     },
@@ -167,22 +171,6 @@ const zhCN = {
             incompatible: "{name} 不兼容当前基础模型或输入模式。",
             afterMidnightTurbo: "AfterMidnight 仅用于 Ref2VA；与 Ref2V Turbo 组合时必须使用 Euler + Beta，并检查音频与时序稳定性。",
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
-        }
-    },
-    "minimax-h3-lightx2v-turbo-4step": {
-        guide: {
-            summary: "把 H3 FL2VA 从标准约 20 步切换到 LightX2V Turbo 6–8 步采样，用更少步骤缩短生成时间。",
-            recommendedStrength: "默认 0.75；建议 0.65–0.85。4 步仅适合实验，稳定测试优先使用 8 步。",
-            effects: "速度明显提高，但过强或步数过低可能损失细节、运动稳定性和音频质量。",
-            stacking: "与内容或风格 LoRA 同用时建议放在前面；若组合后质量下降，先降低其他 LoRA 强度，再回退标准 20 步。",
-            compatibility: "仅 MiniMax H3 FL2VA 图生视频；会同时切换 ER-SDE、Beta 与 Turbo 步数策略。Spectrum v0.2.6+ 可与这条原生 ER-SDE 路径叠加。",
-            source: "LightX2V / Kijai ComfyUI conversion"
-        },
-        rules: {
-            incompatible: "{name} 不兼容当前基础模型或输入模式。",
-            retired: "{name} 已停止用于新任务；请改用当前受支持的 LoRA。",
-            turboSpectrum: "Spectrum v0.2.6+ 可与 LightX2V Turbo 的原生 ER-SDE 路径叠加；更早版本请先更新。",
-            orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
         }
     },
     "minimax-h3-realism-people": {
@@ -218,41 +206,8 @@ const zhCN = {
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，人物和质量 LoRA 后加载。"
         }
     },
-    "minimax-h3-pink-fluffy-bunny-nsfw": {
-        guide: {
-            summary: "社区 NSFW 内容 LoRA，用于增强 H3 对成人内容、身体细节和相关姿态的响应。它不会替代 Prompt。",
-            recommendedStrength: "默认 0.5；建议先在 0.35–0.65 间测试。高于 0.7 更容易出现过度特征和画面瑕疵。",
-            effects: "会改变内容倾向、身体结构和局部细节；作者标注为 alpha，人物一致性与音频仍需抽样验证。",
-            stacking: "与 Turbo 同用时建议放在 Turbo 后面。若出现鬼影、僵硬或细节退化，先降低本项强度，再单独关闭 Turbo 对照。",
-            compatibility: "当前仅用于 MiniMax H3 FL2VA pruned INT8 图生视频；不提供给 R2V 或视频续写。",
-            source: "SexGod1979 / PinkFluffyBunny-MiniMax-H3"
-        },
-        rules: {
-            incompatible: "{name} 不兼容当前基础模型或输入模式。",
-            retired: "{name} 已停止用于新任务；请改用当前受支持的 Ref2VA NSFW LoRA。",
-            pinkTurbo: "PinkFluffyBunny 与 Turbo 可以组合，但属于未经充分验证的 alpha 叠加；建议 Turbo 在前，并分别保留单 LoRA 对照结果。",
-            orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
-        }
-    }
 };
 const enUS = {
-    "minimax-h3-turbo-ckpt850-ema": {
-        guide: {
-            summary: "The older MiniMax H3 Turbo ckpt850 EMA training line is retired and retained only for legacy queue and history compatibility.",
-            recommendedStrength: "Do not use it for new tasks; choose a currently supported Turbo LoRA.",
-            effects: "The old four-step path can produce oversharpening, plastic or grainy frames, and unstable motion, so it is no longer a new-task option.",
-            stacking: "For legacy record reading only; do not create a new stack or Turbo comparison with it.",
-            compatibility: "Retained only to read old MiniMax H3 FL2VA image-to-video records; it is no longer a new-task path.",
-            source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
-        },
-        rules: {
-            incompatible: "{name} is incompatible with the current base model or input mode.",
-            retired: "{name} is retired for new tasks because of unstable visual quality; choose a currently supported Turbo LoRA.",
-            turboVariant: "ckpt850 cannot be combined with another Turbo variant; keep a separate comparison.",
-            turboSpectrum: "ckpt850 can coexist with Spectrum, but keep a same-Seed Spectrum-off baseline first.",
-            orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
-        }
-    },
     "minimax-h3-turbo-sla-4step": {
         guide: {
             summary: "The official MiniMax H3 Turbo-SLA four-step 768p sparse-attention LoRA; it requires the H3 SLA Attention node.",
@@ -271,18 +226,18 @@ const enUS = {
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
         }
     },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+    "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
         guide: {
-            summary: "The latest official LightX2V v1.1 FL2VA Turbo LoRA for the dedicated 768p four-step path.",
+            summary: "The current official LightX2V v1.2 FL2VA Turbo LoRA for the dedicated 768p four-step path.",
             recommendedStrength: "Default 1.0; start with four steps, video shift 6, audio shift 3, and Euler as the baseline.",
-            effects: "Reduces the 768p sampling budget, while four steps are more sensitive to Prompt, Seed, temporal motion, and audio stability; compare with the old version using the same Seed.",
-            stacking: "Load it before people or content LoRAs; do not stack it with the eight-step, retired v1.0 768p, or another Turbo variant.",
+            effects: "Reduces the 768p sampling budget, while four steps are more sensitive to Prompt, Seed, temporal motion, and audio stability.",
+            stacking: "Load it before people or content LoRAs; do not stack it with the eight-step or another Turbo variant.",
             compatibility: "MiniMax H3 FL2VA image-to-video 768p only; not for Ref2VA or video extension.",
-            source: "Official LightX2V / Minimax-h3-Turbo v1.1 ComfyUI weight"
+            source: "Official LightX2V / Minimax-h3-Turbo v1.2 ComfyUI weight"
         },
         rules: {
             incompatible: "{name} is incompatible with the current base model or input mode.",
-            turboSpectrum: "The v1.1 768p Turbo path needs a same-Seed comparison with Spectrum; disable Spectrum first if image quality drops.",
+            turboSpectrum: "The v1.2 768p Turbo path needs a same-Seed comparison with Spectrum; disable Spectrum first if image quality drops.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
         }
     },
@@ -298,6 +253,42 @@ const enUS = {
         rules: {
             incompatible: "{name} is incompatible with the current base model or input mode.",
             orderSuggestion: "Place {current} before {previous}; validate the camera-motion LoRA alone before combining it with performance or people LoRAs."
+        }
+    },
+    "minimax-h3-cinematic-realism": {
+        guide: {
+            summary: "A community MiniMax H3 Cinematic Realism LoRA that softens H3's default contrast for a gentler, easier-to-grade film look; the app automatically prefixes the execution Prompt with DY.",
+            recommendedStrength: "The app defaults to 0.5; the source recommends 0.7 and lowering to 0.5 for high-dynamic clips. Higher strength makes the look heavier and may increase warping.",
+            effects: "Lowers H3's hard contrast and adds a softer cinematic grade; it changes style only and does not provide people or camera-motion control.",
+            stacking: "Use it alone first with a no-LoRA same-Seed baseline. It can be tested with Better Human Motion, Camera Motion, or Realism People, but those stacks have not had a real smoke; lower strength if warping, over-grading, or unstable motion appears.",
+            compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; Ref2VA, INT4, Q3, video extension, and the source workflow's third-party nodes remain unvalidated.",
+            source: "orangesouth / MinimaxH3CinematicRealism · 05c48f1"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+            cinematicRealismTurbo: "Cinematic Realism can stack with Turbo, but the low-step path is not validated; place Turbo first and compare against standard steps with the same Seed.",
+            cinematicRealismCameraMotion: "Cinematic Realism + Camera Motion is an optional style/camera stack, but it has not had a real smoke; compare 0.50 + 0.80 first and lower strength if grading or camera motion becomes unstable.",
+            cinematicRealismBetterMotion: "Cinematic Realism + Better Human Motion is an optional style/human-motion stack, but it has not had a real smoke; compare 0.50 + 0.40 first and lower Cinema if warping appears.",
+            cinematicRealismPeople: "Cinematic Realism + Realism People both alter the visual grade; this stack is not fully validated. Keep a no-LoRA baseline and lower each strength while inspecting skin, contrast, and detail.",
+            orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first, motion LoRAs next, and style or people-quality LoRAs afterward."
+        }
+    },
+    "minimax-h3-better-human-motion": {
+        guide: {
+            summary: "A Better Human Motion H3 adapter for more natural, consistent body movement and action timing; it does not inject an extra trigger word.",
+            recommendedStrength: "The app defaults to 0.4; the model card recommends 0.4–0.8. Start around 0.4–0.5 and compare with the same Seed at 15–30 steps.",
+            effects: "Improves natural body mechanics, continuity, and weight transfer; excessive strength may amplify body warping, hand artifacts, or overextended motion.",
+            stacking: "Use it alone first with a no-LoRA same-Seed baseline. It can be tested with Camera Motion, Cinematic Realism, or Realism People; keep Better Human Motion before style and people-quality adapters.",
+            compatibility: "The model card lists H3 T2V/I2V; the app currently enables only the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path. R2V, Ref2VA, INT4, Q3, and video extension remain unvalidated.",
+            source: "vpakarinen / better-human-motion-h3-lora · 11229b6 · Apache-2.0"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+            betterHumanMotionTurbo: "Better Human Motion can stack with Turbo, but the low-step human-motion path is not validated; place Turbo first and compare against standard steps with the same Seed.",
+            betterHumanMotionCameraMotion: "Better Human Motion + Camera Motion both alter motion trajectories; this stack is not fully validated. Compare body motion and camera motion separately before starting at lower strengths.",
+            betterHumanMotionCinematicRealism: "Better Human Motion + Cinematic Realism is an optional motion/style stack; place Better Human Motion first (0.40 + 0.50) and keep a no-LoRA baseline.",
+            betterHumanMotionPeople: "Better Human Motion + Realism People both alter people detail; this stack is not fully validated. Inspect motion, hands, and skin separately before increasing strength.",
+            orderSuggestion: "Place {current} before {previous}; human-motion LoRAs usually load before style and people-quality LoRAs."
         }
     },
     "minimax-h3-equi360": {
@@ -334,8 +325,8 @@ const enUS = {
         guide: {
             summary: "A community MiniMax H3 Turbo v4 step600 EMA pruned conversion for a quality-first six-to-eight-step path.",
             recommendedStrength: "Default 1.0; use six to eight steps, preferably eight, with Euler + Beta, video shift 12, and audio shift 6 (the author reports 4–6 for audio shift).",
-            effects: "Prioritizes detail, temporal continuity, and synchronized audio over the four-step path; compare it with the official v1.1 using the same Seed.",
-            stacking: "Treat it as a standalone Turbo variant; do not stack it with official v1.1, eight-step v1.0, or another Turbo variant. Load it before people or content LoRAs.",
+            effects: "Prioritizes detail, temporal continuity, and synchronized audio over the four-step path; compare it with the official v1.2 using the same Seed.",
+            stacking: "Treat it as a standalone Turbo variant; do not stack it with official v1.2, eight-step v1.0, or another Turbo variant. Load it before people or content LoRAs.",
             compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; R2V, INT4, Q3, and video extension remain disabled.",
             source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
         },
@@ -347,7 +338,7 @@ const enUS = {
     },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         guide: {
-            summary: "The official LightX2V v1.0 FL2VA eight-step Turbo path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback.",
+            summary: "The official LightX2V v1.0 FL2VA eight-step Turbo path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback while the four-step path uses current v1.2.",
             recommendedStrength: "Default 0.75; use eight steps at 0.65–0.85. Prefer v4 as the overall starting point.",
             effects: "More conservatively preserves motion, detail, and audio stability than the four-step paths, but it is older and slower.",
             stacking: "Load performance LoRAs before content or people LoRAs; never stack multiple Turbo variants together.",
@@ -357,21 +348,6 @@ const enUS = {
         rules: {
             incompatible: "{name} is incompatible with the current base model or input mode.",
             turboSpectrum: "Turbo v1.0 can stack with Spectrum v0.2.6+; disable Spectrum for a baseline if quality drops.",
-            orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
-        }
-    },
-    "minimax-h3-lightx2v-turbo-4step-768p-v1": {
-        guide: {
-            summary: "Official LightX2V v1.0 768p FL2VA Turbo LoRA optimized for the dedicated 768p four-step path.",
-            recommendedStrength: "Default 0.75; start around 0.65–0.85. Use it at 768p and do not stack it with the eight-step v1.0 variant.",
-            effects: "Fastest at 768p, but four steps are more sensitive to Prompt, Seed, and motion stability.",
-            stacking: "Load it before people, content, or style LoRAs; select only one Turbo variant at a time.",
-            compatibility: "MiniMax H3 FL2VA image-to-video 768p only; not for R2V or video extension.",
-            source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
-        },
-        rules: {
-            incompatible: "{name} is incompatible with the current base model or input mode.",
-            turboSpectrum: "The 768p Turbo path can stack with Spectrum v0.2.6+; keep a Spectrum-off baseline first.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
         }
     },
@@ -403,22 +379,6 @@ const enUS = {
             incompatible: "{name} is incompatible with the current base model or input mode.",
             afterMidnightTurbo: "AfterMidnight is Ref2VA-only; when combined with Ref2V Turbo, use Euler + Beta and inspect audio and temporal stability.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
-        }
-    },
-    "minimax-h3-lightx2v-turbo-4step": {
-        guide: {
-            summary: "Switches H3 FL2VA from standard roughly 20-step sampling to LightX2V Turbo 6–8-step sampling for shorter generation time.",
-            recommendedStrength: "Default 0.75; start around 0.65–0.85. Four steps are experimental; use eight steps for stable tests.",
-            effects: "Significantly faster, but excessive strength or too few steps can reduce detail, motion stability, and audio quality.",
-            stacking: "Place it before content or style LoRAs; if quality drops, lower other LoRA strengths first, then compare against standard 20-step sampling.",
-            compatibility: "MiniMax H3 FL2VA image-to-video only; also switches the ER-SDE, Beta, and Turbo step strategy. Spectrum v0.2.6+ can stack with this native ER-SDE path.",
-            source: "LightX2V / Kijai ComfyUI conversion"
-        },
-        rules: {
-            incompatible: "{name} is incompatible with the current base model or input mode.",
-            retired: "{name} is retired for new tasks; choose the currently supported replacement LoRA.",
-            turboSpectrum: "Spectrum v0.2.6+ can stack with LightX2V Turbo's native ER-SDE path; update older versions first.",
-            orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
         }
     },
     "minimax-h3-realism-people": {
@@ -454,22 +414,6 @@ const enUS = {
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before people and quality LoRAs."
         }
     },
-    "minimax-h3-pink-fluffy-bunny-nsfw": {
-        guide: {
-            summary: "A community NSFW content LoRA for H3 response to adult content, body detail, and related poses. It does not replace the Prompt.",
-            recommendedStrength: "Default 0.5; test between 0.35–0.65 first. Above 0.7 is more likely to create excessive traits and artifacts.",
-            effects: "Changes content tendency, body structure, and local detail; the author marks it alpha, so identity consistency and audio still need sampling validation.",
-            stacking: "Place it after Turbo when combined. If ghosting, stiffness, or detail degradation appears, lower this strength first and compare with Turbo disabled.",
-            compatibility: "Currently for MiniMax H3 FL2VA pruned INT8 image-to-video only; not available for R2V or video extension.",
-            source: "SexGod1979 / PinkFluffyBunny-MiniMax-H3"
-        },
-        rules: {
-            incompatible: "{name} is incompatible with the current base model or input mode.",
-            retired: "{name} is retired for new tasks; choose the currently supported Ref2VA NSFW LoRA.",
-            pinkTurbo: "PinkFluffyBunny can be combined with Turbo, but the alpha stack is not fully validated; place Turbo first and keep single-LoRA comparison results.",
-            orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
-        }
-    }
 };
 const genericRules = {
     "zh-CN": {

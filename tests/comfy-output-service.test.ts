@@ -101,6 +101,41 @@ describe("ComfyOutputService", () => {
     })).resolves.toHaveLength(1);
   });
 
+  it("does not persist temporary node previews when SaveVideo also reports the final file", async () => {
+    const state = createDefaultState();
+    state.settings.outputDirectory = "C:/ComfyUI/output";
+    const current = service(
+      state,
+      (filename) => filename.toLowerCase().endsWith("final_00001_.mp4")
+    );
+
+    const files = await current.requireExistingVideoOutput({
+      outputs: {
+        "2": {
+          images: [{
+            filename: "temporary.mp4",
+            subfolder: "dlss5-video-output-abc",
+            type: "temp"
+          }]
+        },
+        "3": {
+          images: [{
+            filename: "final_00001_.mp4",
+            subfolder: "Videos",
+            type: "output"
+          }]
+        }
+      }
+    });
+
+    expect(files).toEqual([expect.objectContaining({
+      filename: "final_00001_.mp4",
+      subfolder: "Videos",
+      type: "output",
+      absolutePath: path.resolve("C:/ComfyUI/output/Videos/final_00001_.mp4")
+    })]);
+  });
+
   it("requires a native AV descriptor from the expected serializer node", async () => {
     const state = createDefaultState();
     state.settings.outputDirectory = "C:/ComfyUI/output";

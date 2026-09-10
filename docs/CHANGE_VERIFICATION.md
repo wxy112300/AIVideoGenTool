@@ -57,3 +57,7 @@ Follow `WORKFLOW_CONTRACT.md`. In particular:
 - Use isolated test state/media and explicit local endpoints for runtime checks. Follow [AGENT_ELECTRON_API_RUNBOOK.md](AGENT_ELECTRON_API_RUNBOOK.md) for real application smoke; launching an app can take over the configured local ComfyUI listener.
 - If a dependency or another task prevents a required check, finish independent checks and report the exact missing evidence. Do not claim the gate passed or terminate another task's process to obtain a result.
 - Report command/result, relevant environment and tested revision or file state. Concurrent edits during a run can invalidate its result; a sub-agent's passing test is evidence for its tested state, not automatic proof of final integration.
+
+## Avoid duplicate executor checks
+
+The current agent owns verification; a separate senior supervisor/reviewer is not required. Reuse a tool-observed check with its command, result and matching integrated file state, regardless of executor. A worker's focused test does not replace a required full gate. Run missing checks or rerun affected checks only for changed inputs, failures or unresolved evidence; do not repeat a passing gate merely for parent sign-off.

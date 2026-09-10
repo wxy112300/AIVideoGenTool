@@ -16,6 +16,20 @@ import {
   AETHERSCALE_NODE_VERSION,
   AETHERSCALE_RUNTIME_BUNDLE_ID
 } from "./aetherscale.js";
+import {
+  KONOHAMARU_NODE_DIRECTORY,
+  KONOHAMARU_NODE_ID,
+  KONOHAMARU_NODE_REQUIRED_NODE_TYPES,
+  KONOHAMARU_NODE_REPOSITORY,
+  KONOHAMARU_NODE_REVISION,
+  KONOHAMARU_NEURAL_UPSTREAM_ADDON,
+  KONOHAMARU_NEURAL_UPSTREAM_RELEASE,
+  KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL,
+  KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
+  KONOHAMARU_VIDEO2DLSSNR_RELEASE,
+  KONOHAMARU_RUNTIME_BUNDLE_ID,
+  KONOHAMARU_RUNTIME_SOURCE_URL
+} from "./konohamaru.js";
 
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
@@ -25,7 +39,7 @@ export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.5";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
-export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.5.1";
+export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.6.2";
 export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = "0.34.0";
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
 export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
@@ -36,9 +50,9 @@ export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e327
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
 export const H3_AV_SERIALIZER_REVISION = "0.3.0";
-export const H3_CONTINUUM_MINIMUM_VERSION = "3.6.0";
-export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.7.0";
-export const H3_CONTINUUM_REVISION = "fe4ff9c20c2cc8bb375625d1534f5673a737d1be";
+export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.0";
+export const H3_CONTINUUM_REVISION = "b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3";
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "inpaint-nodes",
@@ -176,6 +190,39 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   nodeTypes: ["RIFE VFI"],
   required: false
 }, {
+  id: KONOHAMARU_NODE_ID,
+  priority: 132,
+  name: "ComfyUI NVIDIA DLSS 5 Visual Enhancer · Temporal Neural",
+  purpose: "Konohamaru04 的 DLSS5 视频超分、时序 Neural enhancement 与 DLSSG 补帧节点",
+  repositoryUrl: KONOHAMARU_NODE_REPOSITORY,
+  directoryName: KONOHAMARU_NODE_DIRECTORY,
+  aliases: ["comfyui-dlss-frame-interpolation", "ComfyUI-DLSS-Frame-Interpolation"],
+  installRevision: KONOHAMARU_NODE_REVISION,
+  runtimeBundleId: KONOHAMARU_RUNTIME_BUNDLE_ID,
+  nodeTypes: KONOHAMARU_NODE_REQUIRED_NODE_TYPES,
+  requiresGitLfs: true,
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: `需要当前 ComfyUI Python、FFmpeg/FFprobe、NVIDIA RTX 与兼容驱动；DLSS SR/DLSSG DLL、worker、旧 image-path DLSSNR runtime 由上游 Git LFS 管理，${KONOHAMARU_NEURAL_UPSTREAM_ADDON} 由应用固定下载 ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 并校验 SHA-256。视频时序 Neural enhancement 使用应用固定下载并校验的 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 四文件 runtime，不复制其内置 FFmpeg；视频链为 LoadVideo → video2dlssnr temporal Neural enhancement/upscale → 可选 DLSS Frame Interpolation → SaveVideo。`,
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-09",
+    sourceUrl: KONOHAMARU_RUNTIME_SOURCE_URL,
+    note: "固定 upstream commit；静态复核确认三个节点使用原生 VIDEO/IMAGE 类型，README 提供 3× 视频超分与 120 FPS 补帧组合示例。上游公开样例不是本机 RTX 4090 smoke 证据。",
+    commit: KONOHAMARU_NODE_REVISION,
+    checks: ["static"]
+  }, {
+    verifiedAt: "2026-09-10",
+    sourceUrl: KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL,
+    note: `本机 RTX 4090 的 neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 结果保留为历史 image-path 证据；render resolution 的 feature 18 产生并执行成功，但视频路径未继续采用其固定 jitter carrier。`,
+    checks: ["static", "minimal-run"]
+  }, {
+    verifiedAt: "2026-09-10",
+    sourceUrl: KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
+    note: `本机 RTX 4090 使用 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 对同一段 124 帧素材实测：124/124 帧输出，约 5.9 fps，首帧后的帧差持续正常；这是时序 feature-18 minimal-run 证据，不代表所有片源的画质验收。`,
+    checks: ["static", "minimal-run"]
+  }],
+  required: false
+}, {
   id: DLSS5_NODE_ID,
   retired: true,
   priority: 135,
@@ -298,8 +345,16 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: H3_MOTION_CONTEXT_MINIMUM_VERSION,
   recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
   latestVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
-  runtimeRequirement: "推荐 v0.5.1（包含 v0.5.0 的核心升级）需要 ComfyUI 0.34.0+；ComfyUI 0.32/0.33 继续保留 v0.3.1 回退线。v0.5 的 Chain 仅用于手工画布串联，本应用 API workflow 不依赖它；安装或更新后必须重启所选 ComfyUI，并通过 /object_info 与最小真实 H3 续写复检。",
+  runtimeRequirement: "推荐 v0.6.2（v0.6 增加手工画布 Chain 自动串联、segments 和槽位清理，v0.6.2 修复旧画布的空 segments）需要 ComfyUI 0.34.0+；ComfyUI 0.32/0.33 继续保留 v0.3.1 回退线。本应用 API workflow 仍使用四个基础节点，不依赖 Chain；安装或更新后必须重启所选 ComfyUI，并通过 /object_info 与最小真实 H3 续写复检。",
   compatibilityEvidence: [{
+    verifiedAt: "2026-09-10",
+    sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.6.2",
+    note: "v0.6.2 要求 ComfyUI 0.34.0+，修复旧 Chain 画布中空字符串 segments 无法通过 INT 校验的问题，并更新官方示例为 segments=0；v0.6.1 还为槽位检查/清理接口增加同源保护并限制 latent 路径在 output 目录内，v0.6.0 增加 Chain 自动串联、segments 和 Clear latents。上游变更主要影响手工画布串联；本应用 API workflow 仍不引入 Chain。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
+    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    commit: "5335715",
+    workflowIds: ["minimax_h3_r2v_extend_api"],
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-09-03",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.5.1",
     note: "v0.5.1 是 v0.5.0 核心升级后的补充发布，更新官方 example workflow；仍要求 ComfyUI 0.34.0+。本应用 API workflow 不依赖上游示例图，因此不改变现有四个基础节点、显式正数 slot 或 Chain 不参与应用执行的判断。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
@@ -329,7 +384,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "h3-continuum",
   priority: 142,
   name: "ComfyUI H3 Continuum",
-  purpose: "使用 H3 原生 AV latent 连续采样、分块长视频和可恢复续写；后续用于 History JointAV Extend",
+  purpose: "使用 H3 Continuum V3.8 的公开 sampler、Video Guide 和 Finalize 进行分块长视频与接续；History JointAV 作为边界资产保留",
   repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
   directoryName: "ComfyUI-H3-Continuum",
   aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
@@ -337,24 +392,20 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   installRevision: H3_CONTINUUM_REVISION,
   license: "MIT",
   nodeTypes: [
-    "H3ContinuumSamplerV3",
-    "H3ContinuumAdvancedV3",
-    "H3ContinuumAssembleV3",
-    "H3ContinuumJoin",
-    "H3ContinuumFinish",
-    "H3ContinuumSaveState",
-    "H3ContinuumLoadState"
+    "H3ContinuumSamplerV38",
+    "H3ContinuumLoadVideo",
+    "H3ContinuumAssembleSeamV35"
   ],
   minimumVersion: H3_CONTINUUM_MINIMUM_VERSION,
   recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
   latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
   bulkInstall: false,
   appInstallable: true,
-  runtimeRequirement: "要求 ComfyUI >=0.32.0；当前固定 v3.7.0。节点包无额外 Python 依赖，但安装后必须重启所选 ComfyUI，并通过 /object_info 和真实 H3 smoke 验证；文件安装成功不等于 Native Masked AV 可运行。",
+  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum v3.8.0。V3.8 公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
   compatibilityEvidence: [{
-    verifiedAt: "2026-09-03",
-    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.7.0",
-    note: "v3.7.0 发布包包含 V3 sampler、Advanced、Assemble 以及可恢复 state 节点；上游发布页声明 ComfyUI 0.34.2 runtime verification。本条只记录上游静态发布证据，不代表本机运行已通过。",
+    verifiedAt: "2026-09-10",
+    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3",
+    note: "v3.8.0 发布后的当前 main 已包含 Review/continuation 热修；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize），并提供 H3ContinuumLoadVideo 作为 Video Guide 输入；上游 README 标注 ComfyUI 0.34.2 验证。旧 Join/Finish/SaveState ID 不在当前公开节点面内。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
     comfyUi: "0.34.2",
     commit: H3_CONTINUUM_REVISION,
     checks: ["static"]

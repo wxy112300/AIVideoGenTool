@@ -69,6 +69,11 @@ export const bundledWorkflowMetadata = {
         upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum",
         verifiedAt: "2026-09-04"
     }),
+    minimax_h3_continuum_v38_extend_api: metadata("minimax_h3_continuum_v38_extend_api.json", ["h3-continuum", "local-video-studio-h3-av", "kjnodes"], {
+        comfyUi: h3ContinuumCore,
+        upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.8.0",
+        verifiedAt: "2026-09-10"
+    }),
     minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
         comfyUi: h3Core
     }),

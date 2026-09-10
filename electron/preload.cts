@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppApi,
+  AppCacheClearResult,
+  AppCacheProgress,
+  AppCacheSnapshot,
   ComfyRuntimeState,
   CreationDraftSnapshots,
   Draft,
@@ -53,6 +56,8 @@ const api: AppApi = {
   getPerformanceMetrics: (settings: Settings) =>
     ipcRenderer.invoke("performance:get", settings),
   readAppLogs: (limit?: number) => ipcRenderer.invoke("logs:read", limit),
+  getAppCache: () => ipcRenderer.invoke("cache:get") as Promise<AppCacheSnapshot>,
+  clearAppCache: () => ipcRenderer.invoke("cache:clear") as Promise<AppCacheClearResult>,
   openAppLogDirectory: (kind: "logs" | "crashDumps") =>
     ipcRenderer.invoke("logs:open-directory", kind),
   reportRendererError: (message: string, meta?: Record<string, unknown>) =>
@@ -142,6 +147,8 @@ const api: AppApi = {
     ipcRenderer.invoke("history:delete-version", assetId, versionId),
   deleteHistoryJointAv: (assetId: string, versionId: string) =>
     ipcRenderer.invoke("history:delete-joint-av", assetId, versionId),
+  deleteHistoryMotionContext: (assetId: string, versionId: string) =>
+    ipcRenderer.invoke("history:delete-motion-context", assetId, versionId),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
   setImageHistoryCover: (projectId: string, versionId?: string) =>
@@ -171,6 +178,12 @@ const api: AppApi = {
       callback(progress as PromptProgress);
     ipcRenderer.on("prompt:progress", listener);
     return () => ipcRenderer.removeListener("prompt:progress", listener);
+  },
+  onAppCacheProgress: (callback: (progress: AppCacheProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as AppCacheProgress);
+    ipcRenderer.on("cache:progress", listener);
+    return () => ipcRenderer.removeListener("cache:progress", listener);
   },
   onPromptRuntimeStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: unknown) =>

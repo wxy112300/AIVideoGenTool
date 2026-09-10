@@ -8,8 +8,29 @@
 
 ## Unreleased
 
+- 修复从历史页继续创作后，创建模式 route 与当前视频草稿短暂不同步时，模型下拉只更新隐藏草稿、页面仍锁在 Motion Context 模型的问题；模型切换现在以当前可见草稿为准，并在 Continuum JointAV 与 R2V Motion Context 之间切换时同时保留两类历史输入。
+- 重排 Konohamaru DLSS5 提升面板：NR 强度数值固定在滑杆右侧，设置说明改为统一 info 提示，补齐底部 Auto H.264 输出体积说明与按输出 FPS/帧数的估算，并在选项重绘时保持面板滚动位置。
+- Settings 新增缓存管理面板，显示当前 Electron 会话缓存与应用临时目录大小，支持带阶段、目录计数、已用时间和预计剩余时间的安全清理；运行中的任务不会被强制删除。
+- 修复历史详情删除视频版本时，旧 `absolutePath` 已失效却仍被当作删除成功、导致当前 ComfyUI 输出目录中的实际文件残留的问题；版本删除现在复用播放路径解析，按真实路径删除并继续保护其他版本共享的文件。
+- 修复 Konohamaru DLSS5 视频处理器把部分 MP4 的 `nb_frames=1` 元数据误当成整段视频帧数，导致输出只保留首帧却继续沿用原音频时长的问题；视频超分与 DLSSG 补帧现在会在“时长 × FPS”明显超过元数据帧数时强制精确计数，并在节点更新/修复时幂等写入兼容层。
+- 修复 Konohamaru 视频路径继续复用 ReShade carrier 的固定 jitter 导致时序增强重复首帧的问题；当前默认改用官方 `video2dlssnr v1.3` raw-frame backend，固定校验四个 runtime 文件，逐帧读取/输出并在最终封装前验证帧数与尺寸；可选 DLSSG 补帧仍在其后执行。
+- 将 Konohamaru 视频放大与补帧节点的默认编码质量从无损 `Max` 改为 `Auto (Default)`；`Max` 仍可显式选择，但不再让 4K/60 FPS 短片产生不必要的超大文件。
+- Konohamaru 的活动 UI、执行前检查和安装器现在区分 Git LFS 节点 runtime、旧 image-path 的 `neural-upstream` addon 与视频用 `video2dlssnr` runtime；不满足任一必需 runtime 时保持 fail closed，不把输出尺寸变化误报为 Neural 成功。
+- 修复 ComfyUI 升级后冷启动导入节点超过 2 分钟时，队列误判自动启动失败并终止仍在正常初始化的进程；保留 2 分钟基础等待，仅在 app-owned ComfyUI 进程仍存活时追加最多 3 分钟宽限，进程提前退出仍会快速失败，取消时立即退出。
+- “保存 latent 数据”下拉选项现在为每种保存模式提供悬停提示，并同步更新关闭下拉后的当前模式提示，明确说明会影响哪些输出文件及输入 latent 复用是否受影响。
+- H3 的 JointAV 与 Motion Context 输出合并为“保存 latent 数据”四态选项：全部保存、只 JointAV、只 Motion Context、都不保存；旧 `h3SaveJointAv` 草稿、队列和历史记录会自动映射到新选项，输入 latent 的复用不受保存选项影响。
+- 将 H3 Motion Context 推荐/最新版本更新至上游 `v0.6.2`（2026-09-06）：`v0.6` 增加手工画布 Chain 自动串联、`segments` 和编号 latent 清理，`v0.6.1` 增加接口同源保护，`v0.6.2` 修复旧 Chain 工作流的空 `segments`。现有 API workflow 保持四个基础节点及 22/24 上下文参数，不启用 Chain；未宣称 GPU 性能提升或完成真实 H3 smoke。
+- 历史视频详情页现在会把已记录的 Motion Context latent 与其他输出文件并列显示文件名和大小，并提供与 JointAV 一致的确认删除操作；删除只清理受管控的 `h3-motion-context`/`h3_context` latent 文件，主视频和其他版本保持不变。
+- 视频创建页新增 Motion Context latent 选择/拖拽入口；从 History 继续创作时会同时带入 JointAV 与 Motion Context 文件，切换 Boundary、Motion Context、Continuum 时保留各自可复用的输入；latent 被移除时入队自动退回从源视频读取。未宣称实际 GPU 加速收益。
+- 调整开发 harness 成本策略：默认当前 agent 独立完成，取消固定高级规划/复核与 Luna 执行分工；例外委派限制为每项请求累计最多 1 个子 agent、深度/并发 1、最多 1 次纠偏，复用同状态验证结果，并按整棵 agent tree 与昂贵父级参与衡量成本。仅修改开发规范，未改变产品运行逻辑。
 - 修复环境扫描偶发将 Python 探针超时或输出异常误报为 H3 整组依赖未安装的问题：保留分阶段版本证据并显示检测未完成，记录错误与耗时；合并重复扫描、共享节点 API 快照，并行执行独立文件和解释器发现，减少重复检查。保留离线/在线验证边界和显式选择的 Python；不改变生成策略或依赖安装版本。
 - 开发文档治理：实际迁移 27 份已完成/被替代/历史计划、研究和证据记录至主题 `archive/`、`research/` 与任务 evidence，新增 H3 高分辨率、H3 长视频、图片工作台 3 个当前 TASK，保留 DLSS5 双 provider 独立状态并修复受影响链接；不改变产品代码或运行时。
+
+## 0.60.0 — 2026-09-10
+
+- 将 Konohamaru DLSS5 的默认运行时接入官方 `neural-upstream v0.3.0` image-path 兼容层与 `video2dlssnr v1.3` 视频 backend：应用固定下载并校验 `nvngx.dll.addon64` 与视频四文件 runtime，自动隔离活动目录中的 RenoDX addon；当前视频执行链固定为“DLSS SR 超分 → 输出分辨率时序 Neural enhancement → 可选 DLSSG 补帧”。
+- 保留旧 Konohamaru 队列快照的 bundle ID 读取兼容，但不会把旧任务静默改写为新运行时；旧 RenoDX 运行时不再与新 addon 混载，缺失或哈希不符时执行前 fail closed。
+- 本版本确认 RTX 4090 上 `neural-upstream` image-path 的 feature-18 执行证据，并保留其作为兼容诊断；视频 backend 采用官方 `video2dlssnr` 的逐帧 raw protocol，不把后置 direct NR upscaling 的失败误报为成功。完整长片画质/速度基准仍需按目标素材单独验收。
 
 ## 0.59.5 — 2026-09-07
 
@@ -312,7 +333,7 @@
 
 ## 0.43.0 — 2026-08-24
 
-- 重新整理 MiniMax H3 LoRA：默认 FL2VA 4-step 切换至官方 LightX2V v1.1 768p 权重与 shift 6 / Euler 参数，旧版 v0.1、v1.0 768p 和 PinkFluffyBunny 仅保留为历史兼容记录，不再进入新任务或环境扫描。
+- 重新整理 MiniMax H3 LoRA：默认 FL2VA 4-step 切换至官方 LightX2V v1.2 768p 权重与 shift 6 / Euler 参数；ckpt850 EMA、旧版 v0.1、v1.0 768p 和 PinkFluffyBunny 从新任务目录移除，历史仅保留名称快照，不再带入创作页或环境扫描。
 - NSFW LoRA 改为 AfterMidnight Ref2VA v1.2，仅开放给 R2V；保留旧队列/历史记录的读取能力，但不会物理删除用户 ComfyUI 目录中的旧文件。
 
 ## 0.42.14 — 2026-08-24

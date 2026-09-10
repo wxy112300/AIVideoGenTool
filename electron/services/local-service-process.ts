@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
+
+export const serviceStartupTimeoutMs = 120_000;
+export const comfyServiceStartupGraceTimeoutMs = 180_000;
+
+export interface ServiceStartupWaitResult {
+  ready: boolean;
+  graceUsed: boolean;
+}
+
 export function localEndpoint(rawUrl: string, fallbackPort: number): {
   host: string;
   port: number;
@@ -106,7 +115,7 @@ export async function launchComfyUiVisible(
 
 export async function waitForService(
   url: string,
-  timeoutMs = 120_000,
+  timeoutMs = serviceStartupTimeoutMs,
   signal?: AbortSignal
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -138,4 +147,22 @@ export async function waitForService(
     });
   }
   return false;
+}
+
+export async function waitForComfyServiceStartup(
+  url: string,
+  isProcessAlive: () => boolean,
+  signal?: AbortSignal,
+  wait: typeof waitForService = waitForService
+): Promise<ServiceStartupWaitResult> {
+  if (await wait(url, serviceStartupTimeoutMs, signal)) {
+    return { ready: true, graceUsed: false };
+  }
+  if (signal?.aborted || !isProcessAlive()) {
+    return { ready: false, graceUsed: false };
+  }
+  return {
+    ready: await wait(url, comfyServiceStartupGraceTimeoutMs, signal),
+    graceUsed: true
+  };
 }

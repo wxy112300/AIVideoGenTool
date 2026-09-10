@@ -30,6 +30,7 @@ import {
   isMiniMaxH3Q3GgufModel,
   isMiniMaxH3R2vModel,
   h3WorkflowPathForInput,
+  h3ContinuumWorkflowPathForInput,
   normalizeH3Steps,
   validateApiWorkflow,
   workflowSupportsEndImage,
@@ -66,6 +67,10 @@ import {
   normalizeAetherScaleTarget
 } from "../src/core/aetherscale.js";
 import {
+  KONOHAMARU_MODEL_ID,
+  normalizeKonohamaruTarget
+} from "../src/core/konohamaru-dlss5.js";
+import {
   DLSS5_MODEL_ID,
   normalizeUpscaleTarget
 } from "../src/core/dlss5.js";
@@ -78,6 +83,11 @@ import {
   H3_MOTION_CONTEXT_SUBFOLDER,
   h3MotionContextSavePrefixForTask
 } from "../src/core/h3-motion-context.js";
+import {
+  h3LatentSaveModeFor,
+  h3LatentSaveModeSavesJointAv,
+  h3LatentSaveModeSavesMotionContext
+} from "../src/core/h3-latent-save.js";
 import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract.js";
 import { releaseVersionAtLeast } from "../src/core/release-version.js";
 import { isH3NativeHighResolution } from "../src/core/h3-capabilities.js";
@@ -280,7 +290,7 @@ export class QueueEnqueueService {
     if (draft.modelId !== "minimax_h3_fl2va") {
       throw new Error("Create 原生 1080p 当前仅支持 MiniMax H3 FL2VA Base。");
     }
-    if (!draft.h3SaveJointAv) {
+    if (!h3LatentSaveModeSavesJointAv(h3LatentSaveModeFor(draft))) {
       throw new Error("Create 原生 1080p 需要开启 JointAV 输出。");
     }
     if (draft.videoLoras.length) {
@@ -347,6 +357,87 @@ export class QueueEnqueueService {
       tileMode: "auto",
       faceRestore: false
     };
+  }
+
+  private validateKonohamaruEnqueuePreflight(
+    request: UpscaleRequest
+  ): UpscaleRequest {
+    if (request.upscaleMode === "h3-native") {
+      throw new Error("Konohamaru DLSS5 任务不能与 H3 原生二次采样 provider 混用。");
+    }
+    if (
+      request.targetHeight !== undefined ||
+      request.targetScale !== undefined ||
+      request.dlss5 !== undefined ||
+      request.aetherScale !== undefined
+    ) {
+      throw new Error("Konohamaru DLSS5 任务不能与 legacy/HECer/AetherScale target 字段混用。");
+    }
+    const target = normalizeKonohamaruTarget(request);
+    return {
+      ...request,
+      upscaleMode: "pixel",
+      modelId: KONOHAMARU_MODEL_ID,
+      targetHeight: undefined,
+      targetScale: undefined,
+      dlss5: undefined,
+      aetherScale: undefined,
+      targetWidth: target.targetWidth,
+      targetOutputHeight: target.targetOutputHeight,
+      konohamaru: structuredClone(target.options),
+      tileMode: "auto",
+      faceRestore: false
+    };
+  }
+
+  private async checkKonohamaruEnqueueEnvironment(
+    request: UpscaleRequest,
+    settings: Settings
+  ): Promise<void> {
+    // Remote ComfyUI owns its own custom_nodes/runtime. The task still gets
+    // strict schema validation at submission; this app only preflights a
+    // local scan when it manages the ComfyUI data directory.
+    if (!isLocalComfyUrl(settings.comfyUrl)) return;
+    const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
+    if (!environment) {
+      this.deps.logger.info("queue", "upscale-enqueue-environment-preflight-deferred", "未阻塞入队：Konohamaru DLSS5 环境检查将在任务准备阶段重新执行", {
+        provider: KONOHAMARU_MODEL_ID,
+        mode: request.konohamaru?.mode,
+        frameInterpolation: request.konohamaru?.frameInterpolation.enabled
+      });
+      return;
+    }
+    const customNodes = Array.isArray(environment.customNodes)
+      ? environment.customNodes
+      : undefined;
+    const node = customNodes?.find((candidate) => candidate.id === "comfyui-dlss-frame-interpolation");
+    if (customNodes && !node) {
+      throw new Error("Konohamaru DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。");
+    }
+    if (node && (
+      !node.installed ||
+      Boolean(node.loadError) ||
+      node.runtimeRepairable ||
+      node.compatibilityState === "error" ||
+      (node.runtimeVerified && !node.loaded)
+    )) {
+      throw new Error(
+        node.loadError
+          ? `Konohamaru DLSS5 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
+          : "Konohamaru DLSS5 节点尚未通过检查，请先在设置 → 节点与依赖中修复/更新并重新扫描。"
+      );
+    }
+    if (node?.runtimeMissingNodeTypes?.length) {
+      throw new Error(`Konohamaru DLSS5 节点 schema 尚未通过当前 ComfyUI 检查：${node.runtimeMissingNodeTypes.join("、")}。`);
+    }
+    const profile = environment.modelProfiles?.find((candidate) => candidate.id === KONOHAMARU_MODEL_ID);
+    if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
+      throw new Error(`Konohamaru DLSS5 schema 尚未通过当前 ComfyUI 检查${profile.runtimeMissingNodes?.length ? `：${profile.runtimeMissingNodes.join("、")}` : ""}。请刷新环境后重试。`);
+    }
+    const nvidia = environment.items?.find((item) => item.id === "nvidia");
+    if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
+      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，Konohamaru DLSS5 需要 NVIDIA RTX 环境。");
+    }
   }
 
   private validateAetherScaleEnqueuePreflight(
@@ -642,7 +733,7 @@ export class QueueEnqueueService {
       modelId: draft.modelId,
       videoLoras: draft.videoLoras
     })) {
-      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；v4 使用 Euler、Beta、video shift 12、audio shift 6；8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
+      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.2/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；v4 使用 Euler、Beta、video shift 12、audio shift 6；8-step 路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");
@@ -862,6 +953,9 @@ export class QueueEnqueueService {
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
     const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
     const preparedDraft = structuredClone(draft);
+    if (continuum) {
+      preparedDraft.workflowPath = h3ContinuumWorkflowPathForInput(preparedDraft.workflowPath);
+    }
     if (motionContext) {
       preparedDraft.h3ReferenceSlots = ensureMotionContextSourceSlot(
         preparedDraft.h3ReferenceSlots,
@@ -933,13 +1027,13 @@ export class QueueEnqueueService {
         throw new Error(`H3 Memory Optimization 不可用：${executionPlan.reasons.join("、")}`);
       }
     }
-    const workflow = await readWorkflow(draft.workflowPath, "续写工作流");
+    const workflow = await readWorkflow(preparedDraft.workflowPath, "续写工作流");
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
       : continuum
-        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 Native AV loader、state bridge、Join/Finish 或视频输出节点"]
+        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 JointAV loader、边界帧、Video Guide、V3.8 sampler 或视频输出节点"]
       : isMiniMaxH3R2vModel(draft.modelId)
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
         : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);
@@ -989,15 +1083,30 @@ export class QueueEnqueueService {
     const current = store.get();
     const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
     if (isMiniMaxH3R2vModel(task.modelId)) {
-      const outputDirectory = await deps.resolveTaskOutputDirectory();
-      task.h3ContextSavePrefix = h3MotionContextSavePrefixForTask(task.id);
-      task.h3ContextSavedPath = outputDirectory
-        ? path.join(outputDirectory, H3_MOTION_CONTEXT_SUBFOLDER, task.id, H3_MOTION_CONTEXT_FILENAME)
+      if (h3LatentSaveModeSavesMotionContext(h3LatentSaveModeFor(task, true))) {
+        const outputDirectory = await deps.resolveTaskOutputDirectory();
+        task.h3ContextSavePrefix = h3MotionContextSavePrefixForTask(task.id);
+        task.h3ContextSavedPath = outputDirectory
+          ? path.join(outputDirectory, H3_MOTION_CONTEXT_SUBFOLDER, task.id, H3_MOTION_CONTEXT_FILENAME)
+          : undefined;
+      }
+      const contextPath = preparedDraft.h3ContextLatentPath?.trim();
+      const contextFile = contextPath
+        ? await fs.stat(contextPath).catch(() => undefined)
         : undefined;
-      task.h3ContextLatentPath = preparedDraft.h3ContextLatentPath &&
-        Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) < 0.05 &&
-        await fs.stat(preparedDraft.h3ContextLatentPath).catch(() => null)
-        ? preparedDraft.h3ContextLatentPath : undefined;
+      if (contextPath && !contextFile?.isFile()) {
+        // A History entry can outlive its auxiliary latent file. Keep the
+        // extension task usable by removing the stale path; renderWorkflow
+        // will then remove the optional loader and read the source video.
+        preparedDraft.h3ContextLatentPath = undefined;
+        logger.info("queue", "h3-motion-context-latent-fallback", "Motion Context latent 不可用，回退到从源视频读取", {
+          path: contextPath
+        });
+      }
+      task.h3ContextLatentPath = contextPath &&
+        contextFile?.isFile() &&
+        Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) < 0.05
+        ? contextPath : undefined;
     }
     const safety = extensionSafetyForTask(task, current.settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
@@ -1022,11 +1131,15 @@ export class QueueEnqueueService {
     if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
       throw new Error("源视频文件不存在，无法加入提升队列");
     }
-    const isAetherScale = request.modelId === AETHERSCALE_MODEL_ID || request.aetherScale !== undefined;
-    const isDlss5 = !isAetherScale && (request.modelId === DLSS5_MODEL_ID ||
+    const isKonohamaru = request.modelId === KONOHAMARU_MODEL_ID || request.konohamaru !== undefined;
+    const isAetherScale = !isKonohamaru && (request.modelId === AETHERSCALE_MODEL_ID || request.aetherScale !== undefined);
+    const isDlss5 = !isKonohamaru && !isAetherScale && (request.modelId === DLSS5_MODEL_ID ||
       request.targetScale !== undefined || request.dlss5 !== undefined);
     let preparedRequest = request;
-    if (isAetherScale) {
+    if (isKonohamaru) {
+      preparedRequest = this.validateKonohamaruEnqueuePreflight(request);
+      await this.checkKonohamaruEnqueueEnvironment(preparedRequest, current.settings);
+    } else if (isAetherScale) {
       preparedRequest = this.validateAetherScaleEnqueuePreflight(request);
       await this.checkAetherScaleEnqueueEnvironment(preparedRequest, current.settings);
     } else if (isDlss5) {

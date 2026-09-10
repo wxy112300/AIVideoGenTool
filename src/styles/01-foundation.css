@@ -394,6 +394,13 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .upscale-estimates { min-width: 150px; display: grid; justify-items: end; gap: 3px !important; }
 .upscale-estimates span { color: #b9c9df; font-size: 11px; white-space: nowrap; }
 .upscale-policy-readonly { min-height: 42px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #303846; border-radius: 10px; color: var(--muted); background: #0f1319; font-size: 12px; }
+.upscale-konohamaru-settings-row { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 12px; min-width: 0; }
+.upscale-konohamaru-settings-row > label { min-width: 0; }
+.upscale-konohamaru-settings-row .field-label-row { min-height: 17px; align-items: flex-start; }
+.upscale-konohamaru-settings-row select { min-width: 0; }
+.upscale-konohamaru-range-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
+.upscale-konohamaru-range-row input[type="range"] { width: 100%; min-width: 0; }
+.upscale-konohamaru-range-row output { min-width: 0; padding: 7px 6px; border: 1px solid #303846; border-radius: 8px; color: #dce9ff; background: #0f1319; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.25; text-align: center; }
 .upscale-estimate-note { margin: -9px 2px 0; color: #8290a3; font-size: 10px; line-height: 1.45; }
 .upscale-estimate-note.warning { color: #e4b76b; }
 .upscale-resolution { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
@@ -508,6 +515,7 @@ pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; bac
   .page-heading, .section-heading, .workflow-field, .task-card { align-items: stretch; flex-direction: column; }
   nav { flex-wrap: wrap; justify-content: flex-end; }
   .settings-grid, .settings-grid.two { grid-template-columns: 1fr; }
+  .upscale-konohamaru-settings-row { grid-template-columns: 1fr; }
   .interpolation-summary { grid-template-columns: 1fr; }
   .media-grid.paired { grid-template-columns: 1fr; }
   .task-actions { justify-content: flex-start; }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createDefaultDraft, createDefaultImageEditDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import type { AppState, QueueTask } from "../src/types";
@@ -141,6 +142,61 @@ describe("queue command services", () => {
       workflowPath: "workflow.json"
     }))
       .rejects.toThrow("需要开启 JointAV 输出");
+  });
+
+  it("falls back to source video when a selected Motion Context latent is missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-context-fallback-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      const missingLatentPath = path.join(root, "missing-context.safetensors");
+      const outputRoot = path.join(root, "output");
+      await Promise.all([
+        fs.mkdir(outputRoot, { recursive: true }),
+        fs.writeFile(sourcePath, "video")
+      ]);
+      const state = createDefaultState();
+      const enqueueInfo = vi.fn();
+      const enqueueLogger = {
+        debug: vi.fn(), info: enqueueInfo, warn: vi.fn(), error: vi.fn()
+      } as never;
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: enqueueLogger,
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => outputRoot,
+        imageInspection: { readDimensions: () => ({ width: 640, height: 360 }) }
+      });
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_ref2va",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 2,
+        trimStartSeconds: 0,
+        trimEndSeconds: 2,
+        workflowPath: fileURLToPath(new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url)),
+        h3ContextLatentPath: missingLatentPath
+      };
+
+      const next = await service.enqueueExtension(draft);
+
+      expect(next.queue[0]).toMatchObject({
+        taskType: "extension",
+        modelId: "minimax_h3_ref2va",
+        sourceVideoPath: sourcePath
+      });
+      expect(next.queue[0]?.h3ContextLatentPath).toBeUndefined();
+      expect(next.draft.h3ContextLatentPath).toBeUndefined();
+      expect(enqueueInfo).toHaveBeenCalledWith(
+        "queue",
+        "h3-motion-context-latent-fallback",
+        expect.any(String),
+        { path: missingLatentPath }
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("enqueues an image task without starting a fresh environment scan", async () => {

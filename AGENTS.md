@@ -9,13 +9,14 @@ Local Video Studio is a Windows Electron image/video studio backed by ComfyUI. T
 - Cross-session or multi-stage work uses one `docs/tasks/<date>-<topic>/TASK.md`; resume its summary before searching old plans. Small local fixes need no formal document.
 - Within repository requirements: latest user instruction → accepted working behavior → architecture/UX/workflow contracts → current code and evidence → historical plans/prototypes. Current disk is the editing baseline, not proof of correctness.
 
-## Hybrid agents
+## Execution cost and agent tree
 
-- Default preference: Astra/Sol owns planning, ambiguous decisions and final integration; Luna handles bulk evidence processing and bounded implementation. The user-selected lead remains the lead; model names do not confer authority over independent tasks.
-- Delegate independent, well-specified work when useful. Explicitly select available Luna for workers; avoid accidental inheritance of an expensive lead model. Give exact files, constraints, checks and output limits with fresh/minimal context.
-- Standard tasks use [WORKFLOW](docs/development/WORKFLOW.md) and [TASK_TEMPLATE](docs/development/TASK_TEMPLATE.md). Small fixes stay local; workers do not recursively delegate by default.
-- Keep raw logs/archive listings out of the lead context. Return concise findings, evidence paths, counterevidence and next steps. Reuse fixed-version/hash evidence; reopen blocked work when its trigger changes or prior evidence is insufficient.
-- The lead reviews integration and evidence. Delegation guarantees neither correctness nor savings; report unavailable tools/models.
+- Default: the current agent completes the task end to end. Luna can plan, implement and validate bounded work without an Astra/Sol supervisor. Do not split work merely by model name or task phase.
+- Delegate only when a bounded independent result will replace substantial parent work, has objective acceptance, and the parent has useful non-overlapping work. If dispatch + context + review + rework may cost as much as direct execution, stay local; use scripts for bulk data first.
+- Default tree budget per user request: 0 children; an eligible exception allows at most 1 child created in total, depth 1, concurrency 1. Count failed/replacement children too; turns, compaction and sequential batches do not reset the budget. No grandchildren or new tasks/CLI agents to bypass it. Only an explicit user instruction expands these limits.
+- If delegating, use one complete work package, explicit available worker model, minimal context, finite input/attempt scope and one final result. Plan one dispatch and one acceptance; allow at most one corrective follow-up to the same worker, then complete locally or report the blocker. No supervisor/reviewer chain, duplicate investigation or routine status polling.
+- Parent acceptance checks the scoped diff and decisive evidence, not the entire worker investigation again. Reuse checks on the same integrated file state; changed inputs or unresolved risks justify additional checks. Product verification requirements remain intact.
+- Standard routes and exception details: [WORKFLOW](docs/development/WORKFLOW.md). Use [TASK_TEMPLATE](docs/development/TASK_TEMPLATE.md) only when needed. Track whole-tree cost and expensive parent involvement, not just worker price; unavailable usage is unknown. Historical model assignments do not override this policy.
 
 ## Product invariants
 

@@ -11,10 +11,14 @@ import type {
 } from "../../src/types.js";
 import {
   historyVideoPaths,
-  historyVideoVersionPaths,
   historyVideoVersionAuxiliaryPaths,
   removeHistoryVideoVersion
 } from "../../src/core/history-delete.js";
+import {
+  h3MotionContextHistoryFileForPath,
+  isH3MotionContextHistoryFile,
+  H3_MOTION_CONTEXT_SUBFOLDER
+} from "../../src/core/h3-motion-context.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
@@ -82,19 +86,17 @@ export class HistoryDestructiveService {
     if (asset.versions.length <= 1) {
       throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
     }
-    const versionPaths = [
-      ...historyVideoVersionPaths(version, current.settings.outputDirectory),
-      ...historyVideoVersionAuxiliaryPaths(version, current.settings.outputDirectory)
-    ];
-    const otherVersionPaths = new Set(
-      asset.versions
-        .filter((item) => item.id !== versionId)
-        .flatMap((item) => [
-          ...historyVideoVersionPaths(item, current.settings.outputDirectory),
-          ...historyVideoVersionAuxiliaryPaths(item, current.settings.outputDirectory)
-        ])
+    const versionPaths = await this.videoVersionPaths(version, current.settings);
+    const otherVersions = asset.versions.filter((item) => item.id !== versionId);
+    const resolvedOtherVersionPaths = await Promise.all(
+      otherVersions.map((item) => this.videoVersionPaths(item, current.settings))
     );
-    const filesToDelete = versionPaths.filter((filename) => !otherVersionPaths.has(filename));
+    const otherVersionPaths = new Set(
+      resolvedOtherVersionPaths.flat().map(normalizedHistoryPath)
+    );
+    const filesToDelete = versionPaths.filter((filename) =>
+      !otherVersionPaths.has(normalizedHistoryPath(filename))
+    );
     this.deps.logger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
       assetId,
       versionId,
@@ -128,6 +130,21 @@ export class HistoryDestructiveService {
       );
       throw error;
     }
+  }
+
+  private async videoVersionPaths(
+    version: AssetVersion,
+    settings: Settings
+  ): Promise<string[]> {
+    const resolvedVideos = await Promise.all(
+      version.files
+        .filter((file) => /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename))
+        .map((file) => this.deps.resolveHistoryFile(file, settings))
+    );
+    return [...new Set([
+      ...resolvedVideos.filter((filename): filename is string => Boolean(filename)),
+      ...historyVideoVersionAuxiliaryPaths(version, settings.outputDirectory)
+    ].map((filename) => path.resolve(filename)))];
   }
 
   async deleteJointAv(assetId: string, versionId: string): Promise<AppState> {
@@ -170,6 +187,62 @@ export class HistoryDestructiveService {
       return next;
     } catch (error) {
       this.logFailure("joint-av-delete-failed", "JointAV deletion failed", assetId, startedAt, error, { versionId });
+      throw error;
+    }
+  }
+
+  async deleteMotionContext(assetId: string, versionId: string): Promise<AppState> {
+    const startedAt = Date.now();
+    const current = this.deps.store.get();
+    const asset = current.history.find((item) => item.id === assetId);
+    const version = asset?.versions.find((item) => item.id === versionId);
+    const contextFile = version
+      ? h3MotionContextHistoryFileForPath(version.h3ContextLatentPath, version.files) ??
+        version.files.find(isH3MotionContextHistoryFile)
+      : undefined;
+    if (!asset || !version || !contextFile) {
+      throw new Error("当前版本没有可删除的 Motion Context latent 文件。");
+    }
+    const resolved = await this.deps.resolveHistoryFile(contextFile, current.settings);
+    const filename = resolved
+      ? managedMotionContextPath(resolved, current.settings.outputDirectory)
+      : null;
+    if (!filename) {
+      throw new Error("当前版本没有可定位的 Motion Context latent 文件。");
+    }
+    this.deps.logger.info("history", "motion-context-delete-started", "开始删除 Motion Context latent 文件", {
+      assetId,
+      versionId,
+      filename: path.basename(filename)
+    });
+    try {
+      await this.unlinkFiles([filename], "Motion Context latent 文件");
+      const next = await this.deps.store.update((state) => {
+        const targetAsset = state.history.find((item) => item.id === assetId);
+        const target = targetAsset?.versions.find((item) => item.id === versionId);
+        if (!targetAsset || !target) throw new Error("视频记录或版本不存在。");
+        target.files = target.files.filter((file) =>
+          !sameMotionContextFile(file, contextFile, filename)
+        );
+        target.h3ContextLatentPath = undefined;
+        if (targetAsset.defaultVersionId === versionId) targetAsset.files = target.files;
+      });
+      this.deps.logger.info("history", "motion-context-delete-succeeded", "Motion Context latent 文件已删除", {
+        assetId,
+        versionId,
+        durationMs: Date.now() - startedAt
+      });
+      this.deps.sendState(next);
+      return next;
+    } catch (error) {
+      this.logFailure(
+        "motion-context-delete-failed",
+        "Motion Context latent deletion failed",
+        assetId,
+        startedAt,
+        error,
+        { versionId }
+      );
       throw error;
     }
   }
@@ -277,4 +350,39 @@ export class HistoryDestructiveService {
       message
     });
   }
+}
+
+function normalizedHistoryPath(filename: string): string {
+  const resolved = path.resolve(filename);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function managedMotionContextPath(filename: string, outputDirectory: string): string | null {
+  if (!outputDirectory.trim()) return null;
+  const root = path.resolve(outputDirectory);
+  const candidate = path.resolve(filename);
+  const relative = path.relative(root, candidate);
+  const firstSegment = relative.split(path.sep)[0]?.toLowerCase();
+  const managedRoots = new Set([H3_MOTION_CONTEXT_SUBFOLDER, "h3_context"]);
+  if (
+    !firstSegment ||
+    !managedRoots.has(firstSegment) ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative) ||
+    path.extname(candidate).toLowerCase() !== ".safetensors"
+  ) return null;
+  return candidate;
+}
+
+function sameMotionContextFile(
+  file: HistoryFile,
+  candidate: HistoryFile,
+  resolvedPath: string
+): boolean {
+  if (!isH3MotionContextHistoryFile(file)) return false;
+  if (file.absolutePath && path.resolve(file.absolutePath) === resolvedPath) return true;
+  return file.filename.toLowerCase() === candidate.filename.toLowerCase() &&
+    file.subfolder.replaceAll("\\", "/").toLowerCase() ===
+      candidate.subfolder.replaceAll("\\", "/").toLowerCase();
 }

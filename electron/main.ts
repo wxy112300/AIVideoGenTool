@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   protocol,
+  session,
   shell,
   type MenuItemConstructorOptions
 } from "electron";
@@ -59,6 +60,7 @@ import { createStudioPaths, type StudioPaths } from "./services/studio-paths.js"
 import { createStudioEventBus } from "./services/studio-event-bus.js";
 import { createWindowStudioEventBridge } from "./window-event-bridge.js";
 import { registerWindowShellIpc } from "./window-shell-ipc.js";
+import { registerCacheIpc } from "./cache-ipc.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -548,6 +550,17 @@ function registerIpc(
     performance: getPerformanceMetrics,
     reconcileConfiguredComfyListenerOwnership,
     runtimeState: comfyRuntimeState
+  });
+  registerCacheIpc({
+    ipc: ipcMain,
+    session: session.defaultSession,
+    canClearTemporary: () => {
+      const currentState = store.get();
+      return !currentState.queue.some((task) => task.status === "running") &&
+        !activeQueueService().activeController &&
+        !activeQueueService().runningWorker &&
+        !activePromptService().runningWorker;
+    }
   });
   registerNativeHostIpc({
     ipc: ipcMain,

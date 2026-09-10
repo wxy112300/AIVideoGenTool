@@ -1,5 +1,5 @@
 import { modelCatalog } from "./catalog/index.js";
-import { isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepV11LoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel } from "./video-loras.js";
+import { isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepLoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel } from "./video-loras.js";
 
 /**
  * Gate A: keep the optimization opt-in until a real ComfyUI smoke run has
@@ -64,8 +64,8 @@ function turboProfileFor(input) {
     if (loras.some((lora) => isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, model))) {
         return "h3-turbo-v4";
     }
-    if (loras.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, model))) {
-        return "h3-turbo-v11";
+    if (loras.some((lora) => isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, model))) {
+        return "h3-turbo-v12";
     }
     if (isH3Ref2vTurboEnabled({ modelId: model, videoLoras: loras }))
         return "h3-ref2v-turbo";

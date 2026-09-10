@@ -12,7 +12,8 @@ import type {
   Settings
 } from "../../src/types.js";
 import {
-  extractComfyOutputFiles
+  extractComfyOutputFiles,
+  isPersistentComfyOutputFile
 } from "../../src/core/comfy-output.js";
 import {
   attachAbsoluteOutputPaths,
@@ -68,15 +69,17 @@ export function restoreRecordedHistoryFiles(
   recordedFiles: HistoryFile[],
   outputDirectory: string
 ): HistoryFile[] {
+  const durableReportedFiles = reportedFiles.filter(isPersistentComfyOutputFile);
+  const durableRecordedFiles = recordedFiles.filter(isPersistentComfyOutputFile);
   const recordedPaths = new Map(
-    recordedFiles
+    durableRecordedFiles
       .filter((file) => file.absolutePath)
       .map((file) => [
         `${file.subfolder}\u0000${file.filename}\u0000${file.type}`,
         file.absolutePath!
       ])
   );
-  const files = reportedFiles.length ? reportedFiles : recordedFiles;
+  const files = durableReportedFiles.length ? durableReportedFiles : durableRecordedFiles;
   return files.map((file) => {
     const recordedPath = recordedPaths.get(
       `${file.subfolder}\u0000${file.filename}\u0000${file.type}`
@@ -136,16 +139,18 @@ function restoredHistoryVersionFiles(
   version: AssetVersion,
   outputDirectory: string
 ): HistoryFile[] {
-  const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs);
+  const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs)
+    .filter(isPersistentComfyOutputFile);
+  const recordedVersionFiles = version.files.filter(isPersistentComfyOutputFile);
   return isSegmentedSeedVr2Output(version.comfyOutputs)
     ? restoreSegmentedSeedVr2OutputPaths(
-        version.files,
+        recordedVersionFiles,
         originalVersionFiles,
         outputDirectory
       )
     : restoreRecordedHistoryFiles(
         originalVersionFiles.length ? originalVersionFiles : version.files,
-        version.files,
+        recordedVersionFiles,
         outputDirectory
       );
 }
@@ -154,7 +159,8 @@ function restoredHistoryAssetFiles(
   asset: HistoryAsset,
   outputDirectory: string
 ): HistoryFile[] {
-  const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs);
+  const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs)
+    .filter(isPersistentComfyOutputFile);
   return restoreRecordedHistoryFiles(
     originalAssetFiles.length ? originalAssetFiles : asset.files,
     asset.files,

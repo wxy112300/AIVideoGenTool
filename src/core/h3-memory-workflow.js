@@ -1,6 +1,6 @@
 import { h3MemoryPrecisionModeFor, normalizeH3MemoryChunkRows, normalizeH3MemoryOptimizationMode, resolveMiniMaxH3ExecutionPlan } from "./h3-memory-policy.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
-const consumerClasses = new Set(["BasicScheduler", "BasicGuider"]);
+const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38"]);
 const managedClasses = new Set([
     "H3MemoryOptimization",
     "SpectrumApplyMiniMaxH3",
@@ -237,7 +237,7 @@ export function normalizeMiniMaxH3ModelPatchChain(workflow, options) {
         return;
     }
     if (needsModelChain && (!consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
-        !consumers.some(([, node]) => node.class_type === "BasicGuider"))) {
+        !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38"))) {
         throw new Error(message("h3PatchConsumersMissing", {}, locale));
     }
     const finalModelInput = requiredModelLink(consumers[0]?.[1].inputs?.model, locale);

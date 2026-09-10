@@ -2,15 +2,17 @@ import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-promp
 import { createOutputFilename } from "./filename.js";
 import { expandImageSeeds } from "./image-project.js";
 import { imageModelAdapterFor, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
-import { h3NativeUpscaleDimensions, uniqueAetherScaleUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
+import { h3NativeUpscaleDimensions, uniqueAetherScaleUpscaleFilename, uniqueKonohamaruUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { AETHERSCALE_MODEL_ID, normalizeAetherScaleTarget } from "./aetherscale.js";
+import { KONOHAMARU_MODEL_ID, KONOHAMARU_WORKFLOW_PATH, normalizeKonohamaruTarget } from "./konohamaru-dlss5.js";
 import { DLSS5_MODEL_ID, normalizeUpscaleTarget, requireLegacyUpscaleTargetHeight } from "./dlss5.js";
 import { videoLoraSelection } from "./video-loras.js";
 import { normalizeH3MemoryOptions, resolveMiniMaxH3ExecutionPlan } from "./h3-memory-policy.js";
 import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
+import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "./video-draft-normalization.js";
-import { h3WorkflowPathForInput, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel } from "./workflow.js";
+import { h3ContinuumWorkflowPathForInput, h3WorkflowPathForInput, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel } from "./workflow.js";
 const defaultClock = {
     now: () => new Date(),
     id: () => crypto.randomUUID(),
@@ -59,8 +61,11 @@ export function queueTaskFromDraft(draft, state, clock = defaultClock, options =
         ...state.queue.map((item) => item.outputFilename),
         ...state.history.map((item) => item.outputFilename)
     ];
+    const h3LatentSaveMode = h3LatentSaveModeFor(draft);
     const h3DeliveryResolution = draft.modelId === "minimax_h3_fl2va" &&
-        draft.videoLoras.length === 0 && draft.h3SaveJointAv && draft.resolution === 1080
+        draft.videoLoras.length === 0 &&
+        h3SaveJointAvForLatentSaveMode(h3LatentSaveMode) &&
+        draft.resolution === 1080
         ? 1080
         : undefined;
     const firstPassResolution = firstPassResolutionFor(draft);
@@ -97,7 +102,8 @@ export function queueTaskFromDraft(draft, state, clock = defaultClock, options =
         attentionMode: state.settings.h3AttentionMode,
         h3VideoVaeMode,
         h3LivePreview: state.settings.h3LivePreview,
-        h3SaveJointAv: draft.h3SaveJointAv,
+        h3LatentSaveMode,
+        h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
         spectrumMode: draft.spectrumMode,
         spectrumModelAwareMode: "off",
         ...h3MemoryOptions,
@@ -164,7 +170,7 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         throw new Error("当前模型不支持视频续写。");
     }
     const now = clock.now().toISOString();
-    const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
+    const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId) || isMiniMaxH3ContinuumModel(draft.modelId);
     const h3VideoVaeMode = isH3
         ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
         : undefined;
@@ -185,6 +191,7 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
             h3LivePreview: state.settings.h3LivePreview
         })
         : undefined;
+    const h3LatentSaveMode = h3LatentSaveModeFor(draft, isMiniMaxH3R2vModel(draft.modelId));
     return {
         id: clock.id(),
         taskType: "extension",
@@ -200,12 +207,17 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         trimEndSeconds: draft.trimEndSeconds,
         sourceAssetId: draft.sourceAssetId,
         sourceVersionId: draft.sourceVersionId,
+        ...(isMiniMaxH3R2vModel(draft.modelId) && draft.h3ContextLatentPath
+            ? { h3ContextLatentPath: draft.h3ContextLatentPath }
+            : {}),
         ...(h3ReferenceSlots ? { h3ReferenceSlots } : {}),
         sourceWidth: draft.sourceWidth,
         sourceHeight: draft.sourceHeight,
         modelId: draft.modelId,
         videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
-        workflowPath: draft.workflowPath,
+        workflowPath: isMiniMaxH3ContinuumModel(draft.modelId)
+            ? h3ContinuumWorkflowPathForInput(draft.workflowPath)
+            : draft.workflowPath,
         ratio: "source",
         resolution,
         duration: draft.duration,
@@ -219,7 +231,8 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         attentionMode: state.settings.h3AttentionMode,
         h3VideoVaeMode,
         h3LivePreview: state.settings.h3LivePreview,
-        h3SaveJointAv: draft.h3SaveJointAv,
+        h3LatentSaveMode,
+        h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
         spectrumMode,
         spectrumModelAwareMode: "off",
         ...h3MemoryOptions,
@@ -232,6 +245,48 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
 }
 export function upscaleTaskFromRequest(request, state, clock = defaultClock) {
     const now = clock.now().toISOString();
+    const hasKonohamaruFields = request.modelId === KONOHAMARU_MODEL_ID ||
+        request.konohamaru !== undefined;
+    if (hasKonohamaruFields) {
+        if (request.targetHeight !== undefined ||
+            request.targetScale !== undefined ||
+            request.dlss5 !== undefined ||
+            request.aetherScale !== undefined) {
+            throw new Error("Konohamaru DLSS5 任务不能与 legacy/HECer/AetherScale target 字段混用。");
+        }
+        const target = normalizeKonohamaruTarget(request);
+        const frameOutputFps = target.options.frameInterpolation.enabled
+            ? target.options.frameInterpolation.outputFps
+            : "off";
+        return {
+            id: clock.id(),
+            taskType: "upscale",
+            status: "waiting",
+            createdAt: now,
+            updatedAt: now,
+            outputFilename: uniqueKonohamaruUpscaleFilename(request.sourceFilename, target.options.mode, outputNames(state), frameOutputFps),
+            modelId: KONOHAMARU_MODEL_ID,
+            workflowPath: KONOHAMARU_WORKFLOW_PATH,
+            duration: request.duration,
+            fps: request.fps,
+            seed: Math.floor(clock.random() * 0xffffffff),
+            keepSeedOnCopy: true,
+            sourceAssetId: request.sourceAssetId,
+            sourceVersionId: request.sourceVersionId,
+            sourceFilePath: request.sourceFilePath,
+            sourceFilename: request.sourceFilename,
+            sourceWidth: request.sourceWidth,
+            sourceHeight: request.sourceHeight,
+            targetWidth: target.targetWidth,
+            targetHeight: undefined,
+            targetOutputHeight: target.targetOutputHeight,
+            upscaleMode: "pixel",
+            tileMode: "auto",
+            faceRestore: false,
+            konohamaru: structuredClone(target.options),
+            progress: 0
+        };
+    }
     const hasAetherScaleFields = request.modelId === AETHERSCALE_MODEL_ID ||
         request.aetherScale !== undefined;
     if (hasAetherScaleFields) {

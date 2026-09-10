@@ -2,8 +2,10 @@ import type {
   AppState,
   AssetVersion,
   Draft,
+  HistoryAsset,
   ImageAssetVersion,
   ImageHistoryProject,
+  H3LatentSaveMode,
   NativeAvContinuationArtifact,
   UpscaleQueueTask
 } from "../../../types";
@@ -17,19 +19,40 @@ import {
   firstSupportedImageModelId,
   imageModelCapabilityFor
 } from "../../../core/image-workflow";
-import { normalizeH3Steps, isMiniMaxH3R2vModel, isRetiredVideoModel } from "../../../core/workflow";
+import { normalizeH3Steps, isMiniMaxH3Model, isMiniMaxH3R2vModel, isRetiredVideoModel } from "../../../core/workflow";
+import { videoLorasForCreation } from "../../../core/video-loras";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
-import { DLSS5_MODEL_ID } from "../../../core/dlss5";
 import {
-  AETHERSCALE_DEFAULT_MODE,
-  AETHERSCALE_DEFAULT_STYLE_PROFILE,
-  AETHERSCALE_MODEL_ID
-} from "../../../core/aetherscale";
+  h3LatentSaveModeFor,
+  h3SaveJointAvForLatentSaveMode
+} from "../../../core/h3-latent-save";
+import {
+  h3MotionContextHistoryFileForPath,
+  isH3MotionContextHistoryFile
+} from "../../../core/h3-motion-context";
+import {
+  KONOHAMARU_DEFAULT_MODE,
+  KONOHAMARU_DEFAULT_NR_STYLE,
+  KONOHAMARU_MODEL_ID
+} from "../../../core/konohamaru-dlss5";
 import { modelCatalog } from "../../../core/catalog";
 import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { modelName } from "../../shared/labels";
 import { currentHistoryVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./helpers";
 import type { UpscaleDialogState } from "../../shell/secondary-dialogs";
+
+function motionContextLatentPathFor(
+  asset: Pick<HistoryAsset, "h3ContextLatentPath"> | undefined,
+  version: Pick<AssetVersion, "h3ContextLatentPath" | "files"> | undefined
+): string | undefined {
+  if (!version) return asset?.h3ContextLatentPath;
+  for (const candidate of [version.h3ContextLatentPath, asset?.h3ContextLatentPath]) {
+    const file = h3MotionContextHistoryFileForPath(candidate, version.files);
+    if (file?.absolutePath) return file.absolutePath;
+  }
+  const file = version.files.find(isH3MotionContextHistoryFile);
+  return file?.absolutePath ?? version.h3ContextLatentPath ?? asset?.h3ContextLatentPath;
+}
 
 export interface HistoryActionsOptions {
   context: RendererContext;
@@ -49,6 +72,7 @@ export interface HistoryActionsOptions {
       width: number;
       height: number;
       modelId?: string;
+      h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
@@ -122,6 +146,12 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const continuationArtifact = version.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
+    const motionContextLatentPath = isExtension
+      ? motionContextLatentPathFor(asset, version)
+      : undefined;
+    const h3LatentSaveMode = isExtension && isMiniMaxH3Model(asset.modelId)
+      ? h3LatentSaveModeFor(version, isMiniMaxH3R2vModel(asset.modelId))
+      : undefined;
     const historyPromptVersion = {
       id: crypto.randomUUID(),
       label: t(uiKeys.history.actions.fromHistory),
@@ -131,6 +161,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const existingPromptVersions = isExtension && state.draft.extensionPromptVersions?.length
       ? state.draft.extensionPromptVersions
       : state.draft.promptVersions;
+    const videoLoras = videoLorasForCreation(asset.videoLoras);
     const draft: Draft = {
       ...state.draft,
       inputMode: isExtension ? "video" : "image",
@@ -148,6 +179,13 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
       sourceAssetId: asset.sourceAssetId,
       sourceVersionId: asset.sourceVersionId,
+      ...(isExtension ? { h3ContextLatentPath: motionContextLatentPath } : { h3ContextLatentPath: undefined }),
+      ...(h3LatentSaveMode
+        ? {
+            h3LatentSaveMode,
+            h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode)
+          }
+        : {}),
       h3ContinuumArtifactPath: isExtension && continuationArtifact
         ? continuationArtifact.payload.absolutePath
         : undefined,
@@ -162,7 +200,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         : isExtension
           ? []
           : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
-      videoLoras: asset.videoLoras?.map((lora) => ({ ...lora })) ?? [],
+      videoLoras,
       ratio: asset.ratio ?? state.draft.ratio,
       resolution: nearestSupportedVideoResolution(
         requestedResolution,
@@ -170,7 +208,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         state.draft.resolution
       ) as Draft["resolution"],
       duration: asset.duration,
-      steps: normalizeH3Steps(asset.steps, asset.modelId, asset.videoLoras),
+      steps: normalizeH3Steps(asset.steps, asset.modelId, videoLoras),
       fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24) ? asset.fps ?? 24 : 24) as Draft["fps"],
       frameInterpolation: asset.frameInterpolation ?? "off",
       spectrumMode: preferredVersion(asset).spectrumMode ?? "off",
@@ -270,10 +308,23 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const continuationArtifact = version?.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
+    const motionContextLatentPath = motionContextLatentPathFor(asset, version);
     if (!asset || !version || !filename) {
       context.notify(t(uiKeys.history.actions.videoUnavailable), { renderPage: false });
       return;
     }
+    const sourceModelId = continuationArtifact
+      ? "minimax_h3_continuum"
+      : isMiniMaxH3R2vModel(version.modelId)
+        ? version.modelId
+        : isMiniMaxH3R2vModel(asset.modelId)
+          ? asset.modelId
+          : motionContextLatentPath
+            ? "minimax_h3_ref2va"
+            : undefined;
+    const h3LatentSaveMode = sourceModelId && isMiniMaxH3Model(sourceModelId)
+      ? h3LatentSaveModeFor(version, isMiniMaxH3R2vModel(sourceModelId))
+      : undefined;
     try {
       await options.selectDraftVideo(filename, {
         assetId: asset.id,
@@ -281,8 +332,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         duration: version.duration,
         width: version.width,
         height: version.height,
-        modelId: continuationArtifact ? "minimax_h3_continuum" : undefined,
-        h3ContextLatentPath: version.h3ContextLatentPath,
+        modelId: sourceModelId,
+        h3LatentSaveMode,
+        h3ContextLatentPath: motionContextLatentPath,
         h3ContinuumArtifactPath: continuationArtifact?.payload.absolutePath,
         h3ContinuumArtifact: continuationArtifact
           ? structuredClone(continuationArtifact)
@@ -305,26 +357,29 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const version = currentHistoryVersion(asset, options.getSelectedHistoryVersionId());
     const targetShortEdge = ([720, 1080, 1440, 2160] as const).find((shortEdge) => shortEdge > versionShortEdge(version));
     const configuredModel = state.settings.defaultUpscaleModel;
-    const configuredModelId = (["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", DLSS5_MODEL_ID, AETHERSCALE_MODEL_ID] as const).includes(
-      configuredModel as "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | typeof DLSS5_MODEL_ID
+    const configuredModelId = (["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", KONOHAMARU_MODEL_ID] as const).includes(
+      configuredModel as "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | typeof KONOHAMARU_MODEL_ID
     )
       ? configuredModel as UpscaleDialogState["modelId"]
       : "seedvr2";
-    // A source already at/above the legacy 2160 short-edge ceiling still has
-    // a valid DLSS multiplier path, so keep History → Upscale reachable.
-    const selectedModelId = !targetShortEdge
-      ? configuredModelId === AETHERSCALE_MODEL_ID ? AETHERSCALE_MODEL_ID : DLSS5_MODEL_ID
-      : configuredModelId;
-    const dlss5Selected = selectedModelId === DLSS5_MODEL_ID;
-    const aetherScaleSelected = selectedModelId === AETHERSCALE_MODEL_ID;
-    if (!targetShortEdge && !dlss5Selected && !aetherScaleSelected) return;
+    // Retired DLSS5 providers are no longer selectable; keep History → Upscale
+    // reachable for large sources through the active Konohamaru provider.
+    const selectedModelId = targetShortEdge ? configuredModelId : KONOHAMARU_MODEL_ID;
+    const konohamaruSelected = selectedModelId === KONOHAMARU_MODEL_ID;
+    if (!targetShortEdge && !konohamaruSelected) return;
     options.rememberModalFocus();
     options.setDialog({
       assetId: asset.id,
       versionId: version.id,
       ...(targetShortEdge ? { targetHeight: targetShortEdge } : {}),
-      ...(dlss5Selected ? { targetScale: 2 as const, dlss5Quality: "quality" as const } : {}),
-      ...(aetherScaleSelected ? { aetherScaleMode: AETHERSCALE_DEFAULT_MODE, aetherStyleProfile: AETHERSCALE_DEFAULT_STYLE_PROFILE } : {}),
+      ...(konohamaruSelected
+        ? {
+            konohamaruMode: KONOHAMARU_DEFAULT_MODE,
+            konohamaruNrStyle: KONOHAMARU_DEFAULT_NR_STYLE,
+            konohamaruNrIntensity: 1,
+            konohamaruFrameInterpolation: "off" as const
+          }
+        : {}),
       modelId: selectedModelId,
       tileMode: state.settings.upscaleTileMode
     });

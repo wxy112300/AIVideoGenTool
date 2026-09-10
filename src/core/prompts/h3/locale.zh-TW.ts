@@ -68,6 +68,7 @@ export const snippetLocale: Record<string, PromptSnippetLocale> = {
   "camera-pull-out-reveal": { group: "鏡頭運動", label: "後退拉開並展開環境" },
   "camera-pedestal-up": { group: "鏡頭運動", label: "升降配合鏡頭" },
   "camera-restrictions": { group: "鏡頭運動", label: "禁止意外繞行" },
+  "camera-continuous-take": { group: "鏡頭運動", label: "一鏡到底 · 禁止切鏡頭" },
   "camera-pan-right": { group: "鏡頭運動", label: "向右搖攝" },
   "camera-tracking": { group: "鏡頭運動", label: "跟拍" },
   "camera-static": { group: "鏡頭運動", label: "固定鏡頭" },

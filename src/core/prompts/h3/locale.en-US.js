@@ -62,6 +62,7 @@ export const snippetLocale = {
     "camera-pull-out-reveal": { group: "Camera motion", label: "Pull out and reveal the environment" },
     "camera-pedestal-up": { group: "Camera motion", label: "Pedestal with the camera" },
     "camera-restrictions": { group: "Camera motion", label: "Prevent accidental orbiting" },
+    "camera-continuous-take": { group: "Camera motion", label: "One continuous take · no cuts" },
     "camera-pan-right": { group: "Camera motion", label: "Pan right" },
     "camera-tracking": { group: "Camera motion", label: "Tracking shot" },
     "camera-static": { group: "Camera motion", label: "Static camera" },

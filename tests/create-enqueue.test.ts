@@ -134,13 +134,21 @@ describe("create enqueue preflight checks", () => {
     const draft = createDefaultDraft();
     expect(videoResolutionOptionsForDraft(draft, false, true)).toContain(1080);
     expect(videoResolutionOptionsForDraft(draft, false, false)).not.toContain(1080);
-    expect(videoResolutionOptionsForDraft({ ...draft, h3SaveJointAv: false }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "none", h3SaveJointAv: false }, false, true)).not.toContain(1080);
     expect(videoResolutionOptionsForDraft({ ...draft, modelId: "minimax_h3_fl2va_q3_gguf" }, false, true)).not.toContain(1080);
     expect(videoResolutionOptionsForDraft({ ...draft, videoLoras: [{
       id: "fixture", name: "Fixture", filename: "fixture.safetensors", strength: 1
     }] }, false, true)).not.toContain(1080);
     expect(videoResolutionOptionsForDraft(draft, true, true)).not.toContain(1080);
     expect(videoResolutionOptionsForDraft(draft, false, true)).not.toContain(1440);
+  });
+
+  it("maps the unified latent save modes to the H3 1080 JointAV requirement", () => {
+    const draft = createDefaultDraft();
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "all" }, false, true)).toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "joint-av" }, false, true)).toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "motion-context" }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "none" }, false, true)).not.toContain(1080);
   });
 
   it("falls back from 1080 to the preceding tier when JointAV saving is disabled", () => {

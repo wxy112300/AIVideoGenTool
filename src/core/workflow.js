@@ -1,10 +1,11 @@
-import { H3_AFTER_MIDNIGHT_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepV11LoraId, isH3TurboV4LoraId, isH3TurboLoraId, videoLoraCompatibleWithModel, videoLoraFilename, videoPromptForLoras } from "./video-loras.js";
+import { H3_AFTER_MIDNIGHT_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepLoraId, isH3TurboV4LoraId, isH3TurboLoraId, videoLoraCompatibleWithModel, videoLoraFilename, videoPromptForLoras } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy, shouldApplySpectrum } from "./video-policy.js";
 import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
 import { h3MotionContextSavePrefixForTask } from "./h3-motion-context.js";
+import { h3LatentSaveModeFor, h3LatentSaveModeSavesJointAv, h3LatentSaveModeSavesMotionContext } from "./h3-latent-save.js";
 export function attachH3JointAvSerializer(workflow, filename) {
     if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
         throw new Error("H3 AV serializer 只能附加到 API-format workflow。");
@@ -64,6 +65,21 @@ export function isMiniMaxH3Model(modelId) {
     return modelCatalog.isFamily(modelId, "minimax-h3");
 }
 export const H3_CONTINUUM_CONTEXT_FRAMES = 22;
+export const H3_CONTINUUM_V38_MIN_DURATION_SECONDS = 4;
+export const H3_CONTINUUM_V38_WORKFLOW_FILENAME = "minimax_h3_continuum_v38_extend_api.json";
+export const H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME = "minimax_h3_continuum_extend_api.json";
+function workflowBasename(workflowPath) {
+    return workflowPath.replaceAll("\\", "/").split("/").pop() ?? workflowPath;
+}
+export function isMiniMaxH3ContinuumV38Workflow(workflowPath) {
+    return workflowBasename(workflowPath ?? "") === H3_CONTINUUM_V38_WORKFLOW_FILENAME;
+}
+export function h3ContinuumWorkflowPathForInput(workflowPath) {
+    if (workflowBasename(workflowPath) !== H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME)
+        return workflowPath;
+    const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
+    return `${workflowPath.slice(0, separatorIndex + 1)}${H3_CONTINUUM_V38_WORKFLOW_FILENAME}`;
+}
 const h3WorkflowPairs = [
     ["minimax_h3_i2v_api.json", "minimax_h3_t2va_api.json"],
     ["minimax_h3_fl2va_turbo_api.json", "minimax_h3_t2va_turbo_api.json"],
@@ -94,7 +110,7 @@ export function isMiniMaxH3LivePreviewSupported(modelId) {
     return modelCatalog.get(modelId)?.definition.capabilities?.supportsLivePreview !== false;
 }
 function applyMiniMaxH3Spectrum(workflow, locale = "zh-CN", modelAwareMode = "off") {
-    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!consumers.length) {
         throw new Error(workflowMessage("spectrumConsumersMissing", {}, locale));
@@ -146,7 +162,7 @@ function applyMiniMaxH3Spectrum(workflow, locale = "zh-CN", modelAwareMode = "of
 function applyMiniMaxH3LivePreview(workflow, tinyVae) {
     if (!tinyVae)
         return;
-    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     const modelInput = consumers[0]?.inputs?.model;
     if (!Array.isArray(modelInput) || typeof modelInput[0] !== "string")
@@ -178,7 +194,7 @@ function applyVideoLoraStack(workflow, task, locale = "zh-CN") {
         return;
     const attentionNodes = Object.values(workflow).filter((node) => (node.class_type === "PathchSageAttentionKJ" || node.class_type === "H3SLAAttention") &&
         Array.isArray(node.inputs?.model));
-    const directConsumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    const directConsumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     const targets = attentionNodes.length ? attentionNodes : directConsumers;
     const targetInput = targets[0]?.inputs?.model;
@@ -250,7 +266,7 @@ function applyMiniMaxH3SlaAttention(workflow, task, locale = "zh-CN") {
         task.videoLoras?.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)) === true;
     if (!enabled)
         return;
-    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!consumers.length) {
         throw new Error(workflowMessage("slaConsumersMissing", {}, locale));
@@ -325,33 +341,33 @@ function applyMiniMaxH3SlaAttention(workflow, task, locale = "zh-CN") {
 /**
  * The bundled H3 graphs are kept as conservative baselines and receive the
  * model-specific Turbo sampler patch at render time. Ref2VA Turbo uses the
- * original v0.1 shift, the current official FL2VA v1.1 768p LoRA uses the
+ * original v0.1 shift, the current official FL2VA v1.2 768p LoRA uses the
  * updated shift, and the optional v4 step600 quality variant uses its own
  * 6–8-step shift contract. This keeps old persisted tasks renderable without
  * allowing one Turbo variant's settings to leak into another path.
  */
 function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
     const ref2vTurbo = isH3Ref2vTurboEnabled(task);
-    const fl2vaV11Turbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
-        Boolean(task.videoLoras?.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)));
+    const fl2vaFourStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
+        Boolean(task.videoLoras?.some((lora) => isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)));
     const fl2vaV4Turbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
         Boolean(task.videoLoras?.some((lora) => isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)));
     const fl2vaSlaTurbo = isMiniMaxH3Model(task.modelId) &&
         !isMiniMaxH3R2vModel(task.modelId) &&
         Boolean(task.videoLoras?.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)));
     const afterMidnight = Boolean(task.videoLoras?.some((lora) => lora.id === H3_AFTER_MIDNIGHT_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)));
-    if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !fl2vaSlaTurbo && !afterMidnight)
+    if (!ref2vTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo && !afterMidnight)
         return;
     const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
     const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
-    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!sampler?.inputs || !schedulers.length || !consumers.length)
         return;
     sampler.inputs.sampler_name = "euler";
     for (const scheduler of schedulers)
         scheduler.inputs.scheduler = "beta";
-    if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !fl2vaSlaTurbo)
+    if (!ref2vTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo)
         return;
     const existing = Object.entries(workflow).find(([, node]) => node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3");
     const currentModel = existing?.[1].inputs?.model ?? consumers[0]?.inputs?.model;
@@ -367,8 +383,8 @@ function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
         class_type: existing?.[1].class_type ?? "MiniMaxH3SigmaShift",
         inputs: {
             model: currentModel,
-            shift_video: fl2vaV11Turbo || fl2vaSlaTurbo ? 6 : 12,
-            shift_audio: fl2vaV11Turbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
+        shift_video: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 6 : 12,
+        shift_audio: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
         }
     };
     for (const node of consumers)
@@ -453,8 +469,8 @@ export function workflowSupportsH3TurboSampling(source, options = {}) {
             typeof node.inputs.shift_audio === "number");
     if (nativeTurbo)
         return true;
-    const fl2vaV11Turbo = options.videoLoras?.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")) === true;
-    if (fl2vaV11Turbo &&
+    const fl2vaFourStepTurbo = options.videoLoras?.some((lora) => isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")) === true;
+    if (fl2vaFourStepTurbo &&
         hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
         hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
         nodes.some((node) => (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
@@ -585,6 +601,25 @@ function continuumFrameCountForSeconds(durationSeconds, contextFrames = H3_CONTI
 export function continuumSampledFrameCountForSeconds(durationSeconds, contextFrames = H3_CONTINUUM_CONTEXT_FRAMES) {
     return continuumFrameCountForSeconds(durationSeconds, contextFrames);
 }
+export function continuumV38SampledFrameCountForSeconds(durationSeconds) {
+    const safeDuration = Number.isFinite(durationSeconds)
+        ? Math.max(1, durationSeconds)
+        : 1;
+    return frameCountForTask({ modelId: "minimax_h3_fl2va", duration: safeDuration }, 24);
+}
+export function continuumV38MaxDurationSeconds(maxGeneratedFrames = 362, maxDurationSeconds = 15) {
+    const frameBudget = Number.isFinite(maxGeneratedFrames)
+        ? Math.max(1, Math.floor(maxGeneratedFrames))
+        : 362;
+    const upperBound = Number.isFinite(maxDurationSeconds)
+        ? Math.max(1, Math.floor(maxDurationSeconds))
+        : 15;
+    for (let duration = upperBound; duration >= H3_CONTINUUM_V38_MIN_DURATION_SECONDS; duration -= 1) {
+        if (continuumV38SampledFrameCountForSeconds(duration) <= frameBudget)
+            return duration;
+    }
+    return H3_CONTINUUM_V38_MIN_DURATION_SECONDS;
+}
 export function continuumVisibleFrameCountForTask(task) {
     return Math.max(1, continuumSampledFrameCountForSeconds(task.duration) - H3_CONTINUUM_CONTEXT_FRAMES);
 }
@@ -610,6 +645,8 @@ export function frameInterpolationMultiplier(task) {
 }
 export function outputFrameCountForTask(task) {
     if (task.modelId && isMiniMaxH3ContinuumModel(task.modelId)) {
+        if (isMiniMaxH3ContinuumV38Workflow(task.workflowPath))
+            return Math.max(1, Math.round(task.duration * 24));
         return Math.max(1, continuumSampledFrameCountForSeconds(task.duration) - H3_CONTINUUM_CONTEXT_FRAMES);
     }
     if (task.modelId && isMiniMaxH3Model(task.modelId)) {
@@ -655,6 +692,18 @@ export function workflowSupportsH3ContinuumExtension(source) {
         const classType = node.class_type;
         return typeof classType === "string" ? [classType] : [];
     }));
+    if (classTypes.has("H3ContinuumSamplerV38")) {
+        return [
+            "H3_AV_INPUT_ARTIFACT", "H3_AV_ARTIFACT_FILENAME", "H3_AV_SOURCE_FRAME_INDEX",
+            "SOURCE_VIDEO", "PROMPT", "WIDTH", "HEIGHT", "H3_CONTINUUM_CHUNKS",
+            "H3_CONTINUUM_CHUNK_SECONDS", "SEED", "OUTPUT_FILENAME"
+        ].every((placeholder) => serialized.includes(`{{${placeholder}}}`)) &&
+            [
+                "LocalVideoStudioH3LoadJointAV", "VAEDecode", "ImageFromBatch", "H3ContinuumLoadVideo",
+                "H3ContinuumSamplerV38", "VAEDecodeAudio", "H3ContinuumAssembleSeamV35", "CreateVideo",
+                "SaveVideo", "LocalVideoStudioH3SaveJointAV"
+            ].every((classType) => classTypes.has(classType));
+    }
     return [
         "H3_AV_INPUT_ARTIFACT",
         "H3_AV_ARTIFACT_FILENAME",
@@ -797,7 +846,7 @@ export function activityTimeoutMinutesForTask(task, ltxExtensionTimeoutMinutes) 
         return 90;
     if (task.modelId === "seedvr2-native-int8")
         return 90;
-    if (task.modelId === "dlss5-sr")
+    if (task.modelId === "dlss5-sr" || task.modelId === "dlss5-konohamaru")
         return 90;
     if (task.taskType === "extension")
         return ltxExtensionTimeoutMinutes;
@@ -863,10 +912,15 @@ export function extensionSafetyForTask(task, locale = "zh-CN") {
         }));
     }
     if (isMiniMaxH3ContinuumModel(task.modelId)) {
+        const continuumV38 = isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
         const contextFrames = H3_CONTINUUM_CONTEXT_FRAMES;
         const generationSafety = generationSafetyForTask(task, locale);
-        const maxDurationSeconds = continuumMaxDurationSeconds(task.maxGeneratedFrames, contextFrames, generationSafety.maxDurationSeconds);
-        const sampledFrames = continuumSampledFrameCountForSeconds(task.duration, contextFrames);
+        const maxDurationSeconds = continuumV38
+            ? continuumV38MaxDurationSeconds(task.maxGeneratedFrames, generationSafety.maxDurationSeconds)
+            : continuumMaxDurationSeconds(task.maxGeneratedFrames, contextFrames, generationSafety.maxDurationSeconds);
+        const sampledFrames = continuumV38
+            ? continuumV38SampledFrameCountForSeconds(task.duration)
+            : continuumSampledFrameCountForSeconds(task.duration, contextFrames);
         const result = (safe, message) => ({
             ...generationSafety,
             maxDurationSeconds,
@@ -892,6 +946,9 @@ export function extensionSafetyForTask(task, locale = "zh-CN") {
         if (task.trimEndSeconds - task.trimStartSeconds < contextFrames / 24) {
             return result(false, message("continuumMinimum"));
         }
+        if (continuumV38 && task.duration < H3_CONTINUUM_V38_MIN_DURATION_SECONDS) {
+            return result(false, message("continuumDurationMinimum", { minimum: H3_CONTINUUM_V38_MIN_DURATION_SECONDS }));
+        }
         if (!generationSafety.safe && task.duration <= maxDurationSeconds) {
             return result(false, generationSafety.message);
         }
@@ -901,11 +958,17 @@ export function extensionSafetyForTask(task, locale = "zh-CN") {
                 maxGeneratedFrames: task.maxGeneratedFrames
             }));
         }
-        return result(true, message("continuumSummary", {
-            sampledFrames,
-            visibleFrames: Math.max(1, sampledFrames - contextFrames),
-            maxGeneratedFrames: task.maxGeneratedFrames
-        }));
+        return result(true, continuumV38
+            ? message("continuumV38Summary", {
+                sampledFrames,
+                visibleFrames: Math.max(1, Math.round(task.duration * 24)),
+                maxGeneratedFrames: task.maxGeneratedFrames
+            })
+            : message("continuumSummary", {
+                sampledFrames,
+                visibleFrames: Math.max(1, sampledFrames - contextFrames),
+                maxGeneratedFrames: task.maxGeneratedFrames
+            }));
     }
     if (isMiniMaxH3R2vModel(task.modelId)) {
         const contextFrames = H3_CONTINUUM_CONTEXT_FRAMES;
@@ -1175,6 +1238,13 @@ export function extensionOutputDimensions(task) {
     return legacyVideoDimensions(task);
 }
 export function renderWorkflow(source, task, context = {}) {
+    const h3LatentSaveMode = h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId));
+    const continuumV38 = task.taskType === "extension" &&
+        isMiniMaxH3ContinuumModel(task.modelId) &&
+        isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
+    const continuumSampledFrames = continuumV38
+        ? continuumV38SampledFrameCountForSeconds(task.duration)
+        : continuumSampledFrameCountForSeconds(task.duration);
     const [width, height] = task.taskType === "extension"
         ? extensionOutputDimensions(task)
         : outputDimensions(task);
@@ -1198,9 +1268,16 @@ export function renderWorkflow(source, task, context = {}) {
         END_IMAGE: context.endImage ?? "",
         SOURCE_VIDEO: context.sourceVideo ?? "",
         H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
-        H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id),
+        H3_CONTEXT_SAVE_PREFIX: h3LatentSaveModeSavesMotionContext(h3LatentSaveMode)
+            ? context.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id)
+            : "",
         H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
         H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
+        H3_AV_SOURCE_FRAME_INDEX: context.h3AvSourceFrameIndex ?? (continuumV38
+            ? Math.max(0, ((task.taskType === "extension"
+                ? task.h3ContinuumArtifact?.frameCount
+                : undefined) ?? continuumSampledFrames) - 1)
+            : 0),
         H3_AV_SOURCE_WIDTH: context.h3AvSourceWidth ?? outputWidth,
         H3_AV_SOURCE_HEIGHT: context.h3AvSourceHeight ?? outputHeight,
         H3_AV_SCALE_BY: context.h3AvScaleBy ?? 2,
@@ -1221,9 +1298,11 @@ export function renderWorkflow(source, task, context = {}) {
         TRIM_END: task.taskType === "extension" ? task.trimEndSeconds : 0,
         EXTENSION_FRAMES: task.taskType === "extension"
             ? isMiniMaxH3ContinuumModel(task.modelId)
-                ? continuumSampledFrameCountForSeconds(task.duration)
+                ? continuumSampledFrames
                 : generationFrameCountForTask(task)
             : 0,
+        H3_CONTINUUM_CHUNKS: continuumV38 ? 1 : 0,
+        H3_CONTINUUM_CHUNK_SECONDS: continuumV38 ? task.duration : 0,
         OVERLAP_FRAMES: task.taskType === "extension" ? task.overlapFrames : 0,
         UNLOAD_BETWEEN_STAGES: task.taskType === "extension"
             ? task.unloadBetweenStages
@@ -1236,7 +1315,7 @@ export function renderWorkflow(source, task, context = {}) {
         FPS: fps,
         SOURCE_FPS: fps / interpolationMultiplier,
         FRAMES: context.frames ?? (task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)
-            ? continuumSampledFrameCountForSeconds(task.duration)
+            ? continuumSampledFrames
             : task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
                 ? generationFrameCountForTask(task) + H3_CONTINUUM_CONTEXT_FRAMES
                 : generationFrameCountForTask(task)),
@@ -1286,6 +1365,19 @@ export function renderWorkflow(source, task, context = {}) {
         return rendered;
     }
     const workflow = rendered;
+    if (isMiniMaxH3Model(task.modelId)) {
+        const outputNodeTypes = new Set();
+        if (!h3LatentSaveModeSavesJointAv(h3LatentSaveMode))
+            outputNodeTypes.add("LocalVideoStudioH3SaveJointAV");
+        if (!h3LatentSaveModeSavesMotionContext(h3LatentSaveMode))
+            outputNodeTypes.add("MiniMaxH3MotionContextSaveLatent");
+        if (outputNodeTypes.size) {
+            for (const [nodeId, node] of Object.entries(workflow)) {
+                if (node.class_type && outputNodeTypes.has(node.class_type))
+                    delete workflow[nodeId];
+            }
+        }
+    }
     applyVideoLoraStack(workflow, task, context.locale);
     if (isMiniMaxH3Model(task.modelId)) {
         const steps = normalizeH3Steps(task.steps, task.modelId, task.videoLoras);
@@ -1374,7 +1466,7 @@ export function renderWorkflow(source, task, context = {}) {
     }
     const h3HeavyDecode = isMiniMaxH3Model(task.modelId) &&
         ((task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)
-            ? continuumSampledFrameCountForSeconds(task.duration)
+            ? continuumSampledFrames
             : generationFrameCountForTask(task)) > 124 ||
             outputWidth * outputHeight > 960 * 544);
     const availableVramBytes = context.vramAvailableBytes ?? context.vramTotalBytes ?? 0;

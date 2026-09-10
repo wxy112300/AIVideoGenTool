@@ -8,6 +8,7 @@ import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
   H3MemoryRuntimeEvidence,
+  H3LatentSaveMode,
   QueueTask,
   QueueWorkProgress,
   UpscaleQueueTask,
@@ -28,6 +29,11 @@ import {
 } from "../../src/core/workflow.js";
 import { h3TokenCountForTask } from "../../src/core/h3-token-count.js";
 import { h3MotionContextSavePrefixForTask } from "../../src/core/h3-motion-context.js";
+import {
+  h3LatentSaveModeFor,
+  h3LatentSaveModeSavesJointAv,
+  h3LatentSaveModeSavesMotionContext
+} from "../../src/core/h3-latent-save.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import {
@@ -41,6 +47,23 @@ import {
   assertAetherScaleObjectInfoSchema,
   normalizeAetherScaleTarget
 } from "../../src/core/aetherscale.js";
+import {
+  assertKonohamaruObjectInfoSchema,
+  KONOHAMARU_MODEL_ID,
+  normalizeKonohamaruTarget
+} from "../../src/core/konohamaru-dlss5.js";
+import {
+  KONOHAMARU_NODE_DIRECTORY,
+  KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID,
+  KONOHAMARU_LEGACY_RUNTIME_FILES,
+  KONOHAMARU_NEURAL_UPSTREAM_ADDON,
+  KONOHAMARU_RUNTIME_BUNDLE_ID,
+  KONOHAMARU_RUNTIME_FILES
+} from "../../src/core/catalog/index.js";
+import {
+  konohamaruNeuralUpstreamRuntimeProblems,
+  konohamaruVideo2dlssnrRuntimeProblems
+} from "./konohamaru-runtime.js";
 import {
   assertDlss5ObjectInfoSchema,
   DLSS5_MODEL_ID
@@ -62,6 +85,7 @@ import {
 import {
   prepareExtensionContext,
   prepareH3BoundaryFrame,
+  prepareH3ContinuumGuide,
   prepareH3MotionContext
 } from "./extension-media.js";
 import { comfyDataDirectories, comfyOutputSubfolder } from "./environment.js";
@@ -218,6 +242,15 @@ export function h3PromptInstruction(
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
+  const extensionContinuityInstruction = request.extensionSource
+    ? [
+        "EXTENSION CONTINUITY CONTRACT (highest priority):",
+        "This is a continuation of an existing video, not a new shot or a scene reset.",
+        "Continue immediately from the selected video's final visible moment and preserve every established subject, character identity, clothing, props, environment, lighting, palette, spatial layout, camera position, lens, framing, motion direction, and audio context unless the user explicitly requests a change.",
+        "Do not cut, montage, jump in time, change angle or location, remove or reinvent existing elements, or introduce a new shot. Describe only the next continuous action.",
+        "The first generated moment must follow the source boundary directly; do not restage the scene or replace its main subject."
+      ].join("\n")
+    : "";
   const controlInstruction = h3PromptControlInstruction({
     rawPrompt: request.prompt,
     mode,
@@ -242,6 +275,7 @@ export function h3PromptInstruction(
   return [
     "You are the prompt director for MiniMax H3 video generation.",
     priorityInstruction,
+    ...(extensionContinuityInstruction ? [extensionContinuityInstruction] : []),
     controlInstruction,
     ...(annotationInstruction ? [annotationInstruction] : []),
     userIntent,
@@ -496,7 +530,7 @@ export async function warmNativePromptModel(
   );
 }
 
-function workflowTaskForComfyOutput<T extends GenerationQueueTask | ExtensionQueueTask>(
+export function workflowTaskForComfyOutput<T extends { outputFilename: string }>(
   task: T,
   settings: Settings
 ): T {
@@ -532,9 +566,13 @@ function h3NativeUpscaleWorkflowTask(task: UpscaleQueueTask): GenerationQueueTas
 export function shouldAttachH3JointAvSerializer(
   modelId: string,
   preference: boolean | undefined,
-  serializerAvailable: boolean
+  serializerAvailable: boolean,
+  latentSaveMode?: H3LatentSaveMode
 ): boolean {
-  return isMiniMaxH3Model(modelId) && preference !== false && serializerAvailable;
+  const saveJointAv = latentSaveMode === undefined
+    ? preference !== false
+    : h3LatentSaveModeSavesJointAv(latentSaveMode);
+  return isMiniMaxH3Model(modelId) && saveJointAv && serializerAvailable;
 }
 
 function h3ContinuumArtifactReference(task: ExtensionQueueTask): string {
@@ -617,6 +655,81 @@ export async function assertAetherScaleExecutionReady(
   }
 }
 
+async function konohamaruRuntimeProblems(
+  nodeDirectory: string,
+  runtimeBundleId: string
+): Promise<string[]> {
+  const problems: string[] = [];
+  const expectedFiles = runtimeBundleId === KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID
+    ? KONOHAMARU_LEGACY_RUNTIME_FILES
+    : KONOHAMARU_RUNTIME_FILES;
+  for (const relativeFilename of expectedFiles) {
+    if (
+      runtimeBundleId !== KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID &&
+      relativeFilename === `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}`
+    ) continue;
+    const filename = path.join(nodeDirectory, ...relativeFilename.split("/"));
+    try {
+      const bytes = await fs.readFile(filename);
+      const header = bytes.subarray(0, 160).toString("utf8");
+      if (!bytes.byteLength || header.startsWith("version https://git-lfs.github.com/spec/v1")) {
+        problems.push(`${relativeFilename}${header.startsWith("version ") ? "（Git LFS pointer）" : "（空文件）"}`);
+      }
+    } catch {
+      problems.push(`${relativeFilename}（缺失）`);
+    }
+  }
+  if (runtimeBundleId !== KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID) {
+    problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory));
+  }
+  if (runtimeBundleId === KONOHAMARU_RUNTIME_BUNDLE_ID) {
+    problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory));
+  }
+  return problems;
+}
+
+export async function assertKonohamaruExecutionReady(
+  task: UpscaleQueueTask,
+  settings: Settings,
+  objectInfo: unknown
+): Promise<void> {
+  if (task.modelId !== KONOHAMARU_MODEL_ID) return;
+  if (!task.konohamaru) {
+    throw new Error("Konohamaru DLSS5 任务缺少不可变的 provider/options 快照，已拒绝执行。");
+  }
+  const target = normalizeKonohamaruTarget({
+    modelId: task.modelId,
+    sourceWidth: task.sourceWidth,
+    sourceHeight: task.sourceHeight,
+    targetWidth: task.targetWidth,
+    targetOutputHeight: task.targetOutputHeight,
+    konohamaru: task.konohamaru
+  });
+  if (target.targetWidth !== task.targetWidth || target.targetOutputHeight !== task.targetOutputHeight) {
+    throw new Error("Konohamaru 任务冻结的输出尺寸与当前 source/mode 不一致，已拒绝执行。");
+  }
+  assertKonohamaruObjectInfoSchema(objectInfo, {
+    frameInterpolation: target.options.frameInterpolation.enabled
+  });
+  if (!isLocalComfyUrl(settings.comfyUrl)) return;
+  const comfyRoot = await findComfyRoot(settings);
+  if (!comfyRoot) throw new Error("没有找到当前本地 ComfyUI 数据目录，无法执行 Konohamaru DLSS5 任务。");
+  const nodeDirectory = path.join(
+    comfyRoot,
+    "custom_nodes",
+    KONOHAMARU_NODE_DIRECTORY
+  );
+  const problems = await konohamaruRuntimeProblems(
+    nodeDirectory,
+    target.options.runtimeBundleId
+  );
+  if (problems.length) {
+    throw new Error(
+      `Konohamaru DLSS5 runtime 未通过执行前复检：${problems.join("、")}。请在设置中重新安装/更新节点；旧队列若仍使用 legacy RenoDX profile，需要在旧 runtime 仍活动时执行或重新创建任务。`
+    );
+  }
+}
+
 export interface ComfyProgressContext {
   spectrumOuterSteps?: number;
 }
@@ -691,6 +804,9 @@ export async function submitTask(
   if (task.taskType === "upscale" && task.modelId === DLSS5_MODEL_ID) {
     await assertDlss5ExecutionReady(task, settings, objectInfo);
   }
+  if (task.taskType === "upscale" && task.modelId === KONOHAMARU_MODEL_ID) {
+    await assertKonohamaruExecutionReady(task, settings, objectInfo);
+  }
   if (task.taskType === "upscale" && task.modelId === AETHERSCALE_MODEL_ID) {
     await assertAetherScaleExecutionReady(task, settings, objectInfo);
   }
@@ -741,17 +857,30 @@ export async function submitTask(
         if (!artifactReference) {
           throw new Error("Continuum 任务缺少已验证的 H3 Native AV artifact 快照。");
         }
-        prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
-          h3AvInputArtifact: artifactReference,
-          h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
-          vramTotalBytes,
-          locale: settings.uiLocale,
-          vramAvailableBytes,
-          h3PreviewTinyVae,
-          ...(h3MemoryRequested
-            ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
-            : {})
-        });
+        const preparedGuide = await prepareH3ContinuumGuide(task, signal);
+        try {
+          const uploadedGuide = await uploadInput(
+            baseUrl,
+            preparedGuide.filePath,
+            signal,
+            "H3 Continuum Video Guide"
+          );
+          prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+            sourceVideo: uploadedGuide,
+            h3AvInputArtifact: artifactReference,
+            h3AvSourceFrameIndex: Math.max(0, (task.h3ContinuumArtifact?.frameCount ?? 1) - 1),
+            h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
+            vramTotalBytes,
+            locale: settings.uiLocale,
+            vramAvailableBytes,
+            h3PreviewTinyVae,
+            ...(h3MemoryRequested
+              ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
+              : {})
+          });
+        } finally {
+          await preparedGuide.cleanup();
+        }
       } else {
         const prepared = h3Boundary
           ? await prepareH3BoundaryFrame(task, signal)
@@ -798,7 +927,11 @@ export async function submitTask(
             ...(h3MotionContext
               ? {
                   h3ContextLatentPath: task.h3ContextLatentPath ?? "",
-                  h3ContextSavePrefix: task.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id),
+                  h3ContextSavePrefix: h3LatentSaveModeSavesMotionContext(
+                    h3LatentSaveModeFor(task, true)
+                  )
+                    ? task.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id)
+                    : "",
                   h3ReferenceImages: extraReferenceImages,
                   // H3_REF_VIDEO_0 is reserved by the workflow's source context.
                   h3ReferenceVideos: ["", ...extraReferenceVideos]
@@ -924,7 +1057,7 @@ export async function submitTask(
         "源视频"
       );
       uploadedUpscaleSource = sourceVideo;
-      prompt = renderUpscaleWorkflow(task, sourceVideo, {
+      prompt = renderUpscaleWorkflow(workflowTaskForComfyOutput(task, settings), sourceVideo, {
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
       }, objectInfo, options.nativeSeedVr2Segment);
@@ -936,7 +1069,8 @@ export async function submitTask(
     shouldAttachH3JointAvSerializer(
       task.modelId,
       task.h3SaveJointAv,
-      Boolean(objectInfo.LocalVideoStudioH3SaveJointAV)
+      Boolean(objectInfo.LocalVideoStudioH3SaveJointAV),
+      h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId))
     )
   ) {
     const existingSerializerIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
@@ -1347,6 +1481,12 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   }
   if (classType === "AetherScaleNeuralRendering") {
     return { start: 25, end: 82, label: "AetherScale DLSS5 Neural Rendering", tracksSteps: false };
+  }
+  if (classType === "NvidiaDLSSVideoUpscale") {
+    return { start: 5, end: 72, label: "Konohamaru DLSS5 Neural Rendering", tracksSteps: true };
+  }
+  if (classType === "NvidiaDLSSFrameInterpolation") {
+    return { start: 72, end: 96, label: "Konohamaru DLSS5 补帧", tracksSteps: true };
   }
   if (classType === "DLSS5DepthAnythingV2") {
     return { start: 5, end: 20, label: "估计视频深度", tracksSteps: false };

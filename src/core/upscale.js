@@ -1,5 +1,6 @@
 import { buildDlss5UpscaleWorkflow, isDlss5Scale, requireLegacyUpscaleTargetHeight } from "./dlss5.js";
 import { AETHERSCALE_MODEL_ID, buildAetherScaleUpscaleWorkflow, isAetherScaleMode } from "./aetherscale.js";
+import { KONOHAMARU_MODEL_ID, buildKonohamaruUpscaleWorkflow, isKonohamaruMode, konohamaruModeSpec } from "./konohamaru-dlss5.js";
 import { seedVr2NativeModelFilename, seedVr2NativeRequiredNodes, seedVr2NativeVaeFilename } from "./seedvr2-native.js";
 const upscaleEstimateProfiles = {
     "dlss5-sr": {
@@ -14,6 +15,16 @@ const upscaleEstimateProfiles = {
         secondsPerFrameMax: 0
     },
     "aetherscale-dlss5": {
+        baseVramMinGb: 0,
+        baseVramMaxGb: 0,
+        vramPerAreaMinGb: 0,
+        vramPerAreaMaxGb: 0,
+        secondsPerFrameMin: 0,
+        secondsPerFrameMax: 0
+    },
+    [KONOHAMARU_MODEL_ID]: {
+        // The upstream project publishes a sample timing but no local 4090
+        // benchmark. Keep this explicit so the panel does not invent a promise.
         baseVramMinGb: 0,
         baseVramMaxGb: 0,
         vramPerAreaMinGb: 0,
@@ -293,6 +304,42 @@ export function uniqueAetherScaleUpscaleFilename(sourceFilename, mode, existingN
     }
     return `${stem}-${Date.now()}.mp4`;
 }
+function konohamaruModeLabel(mode) {
+    if (!isKonohamaruMode(mode))
+        throw new Error("Konohamaru filename mode is invalid");
+    return mode === "native_1x"
+        ? "1x"
+        : mode === "quality_1_5x"
+            ? "1.5x"
+            : mode === "balanced_1_724x"
+                ? "1.724x"
+                : mode === "performance_2x"
+                    ? "2x"
+                    : "3x";
+}
+export function createKonohamaruUpscaleFilename(sourceFilename, mode, frameOutputFps = "off") {
+    const spec = konohamaruModeSpec(mode);
+    const label = konohamaruModeLabel(spec.mode);
+    const frameSuffix = frameOutputFps === "off" ? "" : `-fg${frameOutputFps}`;
+    const stem = sourceFilename
+        .replace(/\.(mp4|webm|mov|m4v|mkv)$/iu, "")
+        .replace(/-dlss5-kono-(?:1|1\.5|1\.724|2|3)x(?:-fg(?:60|120))?$/iu, "")
+        .replace(/-v\d+$/iu, "")
+        .replace(/-(?:720p|768p|1080p|1440p|2160p|4K)$/iu, "");
+    return `${stem}-dlss5-kono-${label}${frameSuffix}-v01.mp4`;
+}
+export function uniqueKonohamaruUpscaleFilename(sourceFilename, mode, existingNames, frameOutputFps = "off") {
+    const base = createKonohamaruUpscaleFilename(sourceFilename, mode, frameOutputFps);
+    if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase()))
+        return base;
+    const stem = base.replace(/\.mp4$/iu, "");
+    for (let version = 2; version < 1000; version += 1) {
+        const candidate = `${stem.replace(/-v\d+$/iu, "")}-v${String(version).padStart(2, "0")}.mp4`;
+        if (!existingNames.some((name) => name.toLowerCase() === candidate.toLowerCase()))
+            return candidate;
+    }
+    return `${stem}-${Date.now()}.mp4`;
+}
 function loadVideoNode(sourceVideo, useExternalBatching) {
     return {
         class_type: "VHS_LoadVideo",
@@ -507,6 +554,9 @@ function seedVr2Profile(task) {
     };
 }
 export function renderUpscaleWorkflow(task, sourceVideo, models, objectInfo, nativeSeedVr2Segment) {
+    if (task.modelId === KONOHAMARU_MODEL_ID) {
+        return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo);
+    }
     if (task.modelId === AETHERSCALE_MODEL_ID) {
         return buildAetherScaleUpscaleWorkflow(task, sourceVideo, objectInfo);
     }

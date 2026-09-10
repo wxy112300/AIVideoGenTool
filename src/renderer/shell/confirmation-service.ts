@@ -10,6 +10,7 @@ export type ConfirmationRequest =
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
   | { kind: "delete-joint-av"; assetId: string; versionId: string; title: string }
+  | { kind: "delete-motion-context"; assetId: string; versionId: string; title: string }
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
@@ -35,6 +36,7 @@ export type ConfirmationApplicationApi = Pick<RendererApplicationApi,
   | "deleteImageHistoryVersion"
   | "deleteHistoryVersion"
   | "deleteHistoryJointAv"
+  | "deleteHistoryMotionContext"
 >;
 
 export interface ConfirmationRuntimeContext {
@@ -197,6 +199,9 @@ export async function acceptConfirmation(
     } else if (request.kind === "delete-joint-av") {
       options.setState(await context.application.deleteHistoryJointAv(request.assetId, request.versionId));
       options.notify(t(uiKeys.runtime.jointAvDeleted));
+    } else if (request.kind === "delete-motion-context") {
+      options.setState(await context.application.deleteHistoryMotionContext(request.assetId, request.versionId));
+      options.notify(t(uiKeys.runtime.motionContextDeleted));
     }
     options.setRequest(null);
     options.setBusy(false);

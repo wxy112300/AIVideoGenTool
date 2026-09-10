@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.59.5**。本 patch 收录开发 harness 与文档入口、H3 生态推荐版本更新，以及依赖、历史与工作流兼容性调整。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.60.0**。本 minor release 接入 Konohamaru DLSS5；当前视频路径使用官方 `video2dlssnr v1.3` 先做 DLSS SR 超分，再在输出分辨率执行时序 Neural enhancement，并可选接入 DLSSG 补帧；版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -25,7 +25,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、MiniMax H3 Continuum（Extend，依赖 Native AV）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | HiDream-O1-Image、Z-Image / Z-Image-Turbo、Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | H3 committed JointAV 原生二次采样（720p/768p bilinear；runtime-ready 时 1080p/1440p learned 3D）、SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
-| H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Camera Motion、Equirectangular 360°、VR180 SBS、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
+| H3 LoRA | LightX2V Turbo v1.2（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Cinema、Better Human Motion、Camera Motion、Equirectangular 360°、VR180 SBS、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF |
 
 表中的“支持”表示相关 UI、队列快照和 ComfyUI 工作流已经纳入当前集成范围。实际可用性仍取决于模型文件、节点版本、Python 依赖、PyTorch/CUDA 运行时和硬件资源；各组合应以设置页检查结果及真实最小任务为准。H3 768p 对运行时兼容性较为敏感，不匹配的 CUDA 扩展可能回退到通用实现，从而增加显存占用或降低执行性能。
@@ -148,9 +148,9 @@ start-ui-proxy.bat http://127.0.0.1:7890
 7. 打开 **创建 → 视频**，选择 **MiniMax H3 FL2VA · INT8**。添加首帧图片，或不添加图片以使用 T2VA；输入提示词并选择较短时长。768p 是官方质量基线；显存不足时可选择 360p/480p 低显存实验档，540p/720p 也保留为中间档位，但较低分辨率的结果不代表 H3 的标准质量。
 8. 加入队列，在队列页查看 ComfyUI 阶段、采样进度、显存和安装/运行日志。首次任务成功输出后，再逐步增加时长或启用 Turbo、Spectrum 和实时预览。
 
-FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo v1.1 768p/8-step 和 Ref2V 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型；AfterMidnight 只适用于 Ref2VA。
+FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo v1.2 768p/8-step 和 Ref2V 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型；AfterMidnight 只适用于 Ref2VA。
 
-Motion Context 推荐当前最新的 `v0.5.1`（核心升级始于 `v0.5.0`），需要 ComfyUI `0.34.0+`；ComfyUI `0.32/0.33` 继续使用 `v0.3.1` 回退线。应用 API 工作流不依赖新增的 `Chain` 画布节点。
+Motion Context 推荐当前最新的 `v0.6.2`（`v0.6` 增加手工画布 Chain 自动串联、`segments` 和槽位清理，`v0.6.2` 修复旧画布的空 `segments`），需要 ComfyUI `0.34.0+`；ComfyUI `0.32/0.33` 继续使用 `v0.3.1` 回退线。应用 API 工作流仍只使用四个基础节点，不依赖 `Chain` 画布节点。
 
 ### 6. 理解就绪状态
 
@@ -183,7 +183,7 @@ npm.cmd run verify
 
 `npm.cmd run verify` 会执行全部测试、TypeScript 检查、生产构建和 UX 文本对比度检查。它证明代码和静态工作流通过，不等同于某个本地模型已经真实生成成功。
 
-开发者和 Coding Agent 从 [AGENTS.md](AGENTS.md) 与 [开发文档入口](docs/README.md) 开始，按任务选择 [混合 agent 工作流](docs/development/WORKFLOW.md)，通过 [代码地图](docs/AGENT_START_HERE.md) 定位实现；模型/工作流、架构、UX 分别由以下契约约束：
+开发者和 Coding Agent 从 [AGENTS.md](AGENTS.md) 与 [开发文档入口](docs/README.md) 开始，按任务选择 [单 agent 优先工作流](docs/development/WORKFLOW.md)，通过 [代码地图](docs/AGENT_START_HERE.md) 定位实现；模型/工作流、架构、UX 分别由以下契约约束：
 
 - [工作流契约](docs/WORKFLOW_CONTRACT.md)
 - [架构契约](docs/ARCHITECTURE_CONTRACT.md)

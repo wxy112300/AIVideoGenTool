@@ -41,6 +41,9 @@ const environmentSources = new Map([
 const appQuerySources = new Map([
   ["app-query-ipc", source("electron/app-query-ipc.ts")]
 ]);
+const cacheSources = new Map([
+  ["cache-ipc", source("electron/cache-ipc.ts")]
+]);
 const nativeHostSources = new Map([
   ["native-host-ipc", source("electron/native-host-ipc.ts")]
 ]);
@@ -65,6 +68,7 @@ const registrationSources = new Map([
   ...promptSources,
   ...environmentSources,
   ...appQuerySources,
+  ...cacheSources,
   ...nativeHostSources,
   ...workflowSources,
   ...imageAssetSources,
@@ -103,7 +107,7 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(83);
+    expect(invokeChannels.size).toBe(86);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
 
@@ -146,6 +150,7 @@ describe("main/preload boundary characterization", () => {
         "history:update-metadata",
         "history:delete-version",
         "history:delete-joint-av",
+        "history:delete-motion-context",
         "image-history:set-cover",
         "image-history:delete-version"
       ],
@@ -200,6 +205,10 @@ describe("main/preload boundary characterization", () => {
         "logs:user-action",
         "logs:notification",
         "performance:get"
+      ],
+      "cache-ipc": [
+        "cache:get",
+        "cache:clear"
       ],
       "native-host-ipc": [
         "file:pick-image",
@@ -306,6 +315,7 @@ describe("main/preload boundary characterization", () => {
       "prompt-runtime:changed",
       "task:preview",
       "prompt:progress",
+      "cache:progress",
       "window:close-requested",
       "attention-acceleration:log",
       "dependency-install:log",
@@ -325,6 +335,10 @@ describe("main/preload boundary characterization", () => {
       ...collectChannels(
         environmentSources.get("environment-ipc") ?? "",
         /sendIfAlive\(event,\s*"([^"]+)"/g
+      ),
+      ...collectChannels(
+        cacheSources.get("cache-ipc") ?? "",
+        /event\.sender\.send\(\s*"([^"]+)"/g
       )
     ]);
     const bridgeChannels = new Set(collectChannels(
@@ -343,7 +357,8 @@ describe("main/preload boundary characterization", () => {
     expect(webContentsChannels).toEqual(new Set(["window:close-requested"]));
     expect(senderChannels).toEqual(new Set([
       "attention-acceleration:log",
-      "dependency-install:log"
+      "dependency-install:log",
+      "cache:progress"
     ]));
     expect(bridgeChannels).toEqual(new Set([
       "state:changed",
@@ -356,6 +371,7 @@ describe("main/preload boundary characterization", () => {
     ]));
     expect(environmentSources.get("environment-ipc")).toContain('sendIfAlive(event, "attention-acceleration:log"');
     expect(environmentSources.get("environment-ipc")).toContain('sendIfAlive(event, "dependency-install:log"');
+    expect(cacheSources.get("cache-ipc")).toContain('event.sender.send("cache:progress"');
     expect(mainSource).not.toContain('mainWindow?.webContents.send("attention-acceleration:log"');
     expect(mainSource).not.toContain('mainWindow?.webContents.send("dependency-install:log"');
   });

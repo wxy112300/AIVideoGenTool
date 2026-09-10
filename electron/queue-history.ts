@@ -18,13 +18,19 @@ import {
   continuumVisibleFrameCountForTask,
   extensionOutputDimensions,
   isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumV38Workflow,
   isMiniMaxH3Model,
+  isMiniMaxH3R2vModel,
   outputDimensions
 } from "../src/core/workflow.js";
-import { videoLoraSelection } from "../src/core/video-loras.js";
+import { normalizeHistoryVideoLoras } from "../src/core/video-loras.js";
 import { upscaleOutputDimensions } from "../src/core/upscale.js";
 import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
 import { AETHERSCALE_MODEL_ID } from "../src/core/aetherscale.js";
+import {
+  h3LatentSaveModeFor,
+  h3LatentSaveModeSavesJointAv
+} from "../src/core/h3-latent-save.js";
 
 export interface ImageHistoryResult {
   taskId: string;
@@ -161,7 +167,9 @@ function h3ContinuationDataFor(
   value: NativeAvContinuationData | undefined
 ): NativeAvContinuationData | undefined {
   if (!isMiniMaxH3Model(task.modelId)) return undefined;
-  if (task.h3SaveJointAv === false) {
+  if (!h3LatentSaveModeSavesJointAv(
+    h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId))
+  )) {
     return {
       status: "disabled",
       reason: "创建此任务时已关闭 JointAV 输出。"
@@ -188,6 +196,10 @@ export function persistVideoHistoryResult(
   result: VideoHistoryResult
 ): void {
   const task = result.task;
+  const h3LatentSaveMode = h3LatentSaveModeFor(
+    task,
+    task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
+  );
   state.queue = state.queue.filter((item) => item.id !== task.id);
   if (task.taskType === "generation") {
     const [width, height] = outputDimensions({
@@ -197,10 +209,13 @@ export function persistVideoHistoryResult(
     const version: AssetVersion = {
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
-      videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), width, height,
+      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), width, height,
       duration: task.duration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
-      h3SaveJointAv: task.h3SaveJointAv !== false,
+      h3LatentSaveMode: isMiniMaxH3Model(task.modelId) ? h3LatentSaveMode : undefined,
+      h3SaveJointAv: isMiniMaxH3Model(task.modelId)
+        ? h3LatentSaveModeSavesJointAv(h3LatentSaveMode)
+        : task.h3SaveJointAv !== false,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
@@ -220,7 +235,7 @@ export function persistVideoHistoryResult(
       updatedAt: result.completedAt, modelId: task.modelId,
       favorite: false, rating: null,
       tags: [],
-      videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), duration: task.duration,
+      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), duration: task.duration,
       resolution: task.h3DeliveryResolution ?? task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
@@ -244,7 +259,8 @@ export function persistVideoHistoryResult(
   }
   if (task.taskType === "extension") {
     const [width, height] = extensionOutputDimensions(task);
-    const generatedDuration = isMiniMaxH3ContinuumModel(task.modelId)
+    const generatedDuration = isMiniMaxH3ContinuumModel(task.modelId) &&
+      !isMiniMaxH3ContinuumV38Workflow(task.workflowPath)
       ? continuumVisibleFrameCountForTask(task) / 24
       : task.duration;
     const totalDuration = task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
@@ -252,7 +268,7 @@ export function persistVideoHistoryResult(
     const version: AssetVersion = {
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
-      videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), width, height,
+      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), width, height,
       duration: totalDuration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
@@ -262,6 +278,10 @@ export function persistVideoHistoryResult(
       h3MemoryExecutionPlan: task.h3MemoryExecutionPlan,
       h3MemoryRuntimeEvidence: result.h3MemoryRuntimeEvidence,
       frameInterpolation: task.frameInterpolation, ratio: "source", motion: task.motion,
+      h3LatentSaveMode: isMiniMaxH3Model(task.modelId) ? h3LatentSaveMode : undefined,
+      h3SaveJointAv: isMiniMaxH3Model(task.modelId)
+        ? h3LatentSaveModeSavesJointAv(h3LatentSaveMode)
+        : undefined,
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
@@ -275,7 +295,7 @@ export function persistVideoHistoryResult(
       updatedAt: result.completedAt, modelId: task.modelId,
       favorite: false, rating: null,
       tags: [],
-      videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), duration: totalDuration,
+      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), duration: totalDuration,
       resolution: task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: "source",
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
@@ -307,7 +327,10 @@ export function persistVideoHistoryResult(
     id: result.id(), taskId: task.id, kind: "upscale", createdAt: result.completedAt,
     outputFilename: task.outputFilename, modelId: task.modelId,
     width: targetWidth, height: targetHeight, duration: task.duration,
-    fps: task.fps, seed: task.seed, performanceStats: result.performanceStats,
+    fps: task.modelId === "dlss5-konohamaru" && task.konohamaru?.frameInterpolation.enabled
+      ? task.konohamaru.frameInterpolation.outputFps
+      : task.fps,
+    seed: task.seed, performanceStats: result.performanceStats,
     workflowPath: task.workflowPath, comfyPromptId: result.promptId,
     comfyOutputs: result.comfyOutputs, files: result.files,
     tileMode: task.tileMode, faceRestore: task.faceRestore, startedAt: task.startedAt,
@@ -334,6 +357,21 @@ export function persistVideoHistoryResult(
           upscaleSceneCutThreshold: task.aetherScale.sceneCutThreshold,
           upscaleNodeRevision: task.aetherScale.nodeRevision,
           upscaleRuntimeBundleId: task.aetherScale.runtimeBundleId
+      }
+      : {}),
+    ...(task.modelId === "dlss5-konohamaru" && task.konohamaru
+      ? {
+          upscaleProvider: task.konohamaru.provider,
+          upscaleOperation: task.konohamaru.operation,
+          upscaleNrPreset: task.konohamaru.nrPreset,
+          upscaleNrStyle: task.konohamaru.nrStyle,
+          upscaleNrIntensity: task.konohamaru.nrIntensity,
+          upscaleFrameOutputFps: task.konohamaru.frameInterpolation.enabled
+            ? task.konohamaru.frameInterpolation.outputFps
+            : undefined,
+          upscaleDlssEngine: task.konohamaru.frameInterpolation.dlssEngine,
+          upscaleNodeRevision: task.konohamaru.nodeRevision,
+          upscaleRuntimeBundleId: task.konohamaru.runtimeBundleId
         }
       : {}),
     h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)

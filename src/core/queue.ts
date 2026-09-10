@@ -6,7 +6,12 @@ import type {
   UpscaleQueueTask
 } from "../types.js";
 import { createOutputFilename } from "./filename.js";
-import { uniqueAetherScaleUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename } from "./upscale.js";
+import {
+  uniqueAetherScaleUpscaleFilename,
+  uniqueDlss5UpscaleFilename,
+  uniqueKonohamaruUpscaleFilename,
+  uniqueUpscaleFilename
+} from "./upscale.js";
 
 export function isImageGenerationQueueTask(
   task: QueueTask
@@ -371,6 +376,7 @@ export type UpscaleTaskPatch = Pick<
   UpscaleQueueTask,
   "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
   "targetScale" | "dlss5" | "aetherScale" |
+  "konohamaru" |
   "modelId" | "workflowPath" |
   "tileMode" | "faceRestore" | "outputFilename"
 > & Partial<Pick<UpscaleQueueTask, "h3NativeInput">>;
@@ -464,6 +470,15 @@ export function duplicateQueueTask(
   ];
   const outputFilename = source.taskType === "generation" || source.taskType === "extension"
     ? createOutputFilename(source.modelId, source.resolution, source.duration, names)
+    : source.modelId === "dlss5-konohamaru" && source.konohamaru
+      ? uniqueKonohamaruUpscaleFilename(
+          source.sourceFilename,
+          source.konohamaru.mode,
+          names,
+          source.konohamaru.frameInterpolation.enabled
+            ? source.konohamaru.frameInterpolation.outputFps
+            : "off"
+        )
     : source.modelId === "aetherscale-dlss5" && source.aetherScale
       ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names)
     : source.modelId === "dlss5-sr"
@@ -489,6 +504,9 @@ export function duplicateQueueTask(
       : {}),
     ...(source.taskType === "upscale" && source.modelId === "aetherscale-dlss5" && source.aetherScale
       ? { aetherScale: structuredClone(source.aetherScale) }
+      : {}),
+    ...(source.taskType === "upscale" && source.modelId === "dlss5-konohamaru" && source.konohamaru
+      ? { konohamaru: structuredClone(source.konohamaru) }
       : {}),
     ...(source.taskType === "upscale"
       ? { seedVr2Checkpoint: undefined, seedVr2Progress: undefined }

@@ -10,6 +10,7 @@ import {
   h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
+import { promptSnippetFor } from "../src/core/prompts/index.js";
 
 describe("MiniMax H3 prompt templates", () => {
   it("selects only the control modules required by the request", () => {
@@ -47,6 +48,8 @@ describe("MiniMax H3 prompt templates", () => {
     expect(instruction).toContain("PRESERVE, CHANGE, or INFER");
     expect(instruction).toContain("Camera-route module");
     expect(instruction).toContain("Speech-gate module");
+    expect(instruction).toContain("one unbroken take");
+    expect(instruction).toContain("editorial cut");
     expect(instruction).toContain("Detailed-expansion budget");
     expect(instruction.length).toBeLessThan(2600);
   });
@@ -73,6 +76,29 @@ describe("MiniMax H3 prompt templates", () => {
 
     expect(audit.passed).toBe(false);
     expect(audit.missing).toEqual(expect.arrayContaining(["camera-control", "single-shot"]));
+  });
+
+  it("treats the one-take shortcut as a hard single-shot request", () => {
+    const shortcut = promptSnippetFor("camera-continuous-take");
+
+    expect(h3ShotPolicyForPrompt(shortcut)).toBe("hard-single");
+    expect(h3PromptPriorityInstruction(h3ShotPolicyForPrompt(shortcut))).toContain("one unbroken take");
+  });
+
+  it("audits and repairs editorial cuts hidden inside a single Shot 1", () => {
+    const source = "A woman walks across the room while the camera follows her.";
+    const output = [
+      "integrated_multimodal_description: [Shot 1] The camera follows her, then cuts to a close-up of her face.",
+      "overall_soundscape: N/A",
+      "non_diegetic_music: N/A"
+    ].join("\n");
+    const plan = buildH3PromptControlPlan({ rawPrompt: source, mode: "T2VA" });
+    const audit = auditH3PromptControlOutput(plan, output);
+
+    expect(audit.missing).toContain("single-shot");
+    const normalized = normalizeH3PromptOutput(output, "T2VA", 5, [], [], source, source);
+    expect(normalized).not.toContain("cuts to");
+    expect(normalized).toContain("continuously reframes toward");
   });
 
   it("repairs compiler-owned camera and scale locks without inventing a new beat", () => {

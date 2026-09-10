@@ -8,6 +8,7 @@ import {
   seedVr2NativeRequiredNodes,
   seedVr2NativeVaeFilename
 } from "../../seedvr2-native.js";
+import { KONOHAMARU_NODE_ID } from "../dependencies/konohamaru.js";
 
 export const postProcessModelEntries: CatalogModelEntry[] = [
   entry({
@@ -88,6 +89,39 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
     component("SeedVR2 主模型", "SEEDVR2/seedvr2_ema_3b 或 7b", /(?:^|\/)seedvr2\/.*seedvr2_ema_(?:3b|7b).*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors", "SEEDVR2", "seedvr2_ema_3b_fp8_e4m3fn.safetensors")),
     component("SeedVR2 VAE", "SEEDVR2/ema_vae*", /seedvr2\/.*ema_vae.*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors", "SEEDVR2", "ema_vae_fp16.safetensors"))
   ] } }, { name: "SeedVR2", badge: "推荐", description: "视频时间一致性优先，适合人物和真实画面。" }, { name: "SeedVR2", badge: "Recommended", description: "Prioritizes temporal consistency for people and realistic footage." }, { name: "SeedVR2", badge: "推薦", description: "優先維持影片時間一致性，適合人物和真實畫面。" }),
+  entry({
+    id: "dlss5-konohamaru",
+    family: "dlss5-konohamaru",
+    category: "upscale",
+    adapterId: "dlss5-konohamaru",
+    order: 115,
+    inputModes: ["video"],
+    scan: {
+      managedBy: "comfyui",
+      vram: "NVIDIA RTX · DLSS5 runtime · 本机基准待完成",
+      integrated: true,
+      requiredCustomNodeIds: [KONOHAMARU_NODE_ID],
+      runtimeNodeTypes: [
+        "LoadVideo",
+        "SaveVideo",
+        "NvidiaDLSSVideoUpscale",
+        "NvidiaDLSSFrameInterpolation"
+      ],
+      components: []
+    }
+  }, {
+    name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
+    badge: "DLSS5 · 可混合",
+    description: "video2dlssnr 先做 DLSS SR 超分，再在输出分辨率执行时序 Neural enhancement；可选在同一任务中再用 DLSSG 补帧。"
+  }, {
+    name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
+    badge: "DLSS5 · Composable",
+    description: "video2dlssnr performs DLSS SR upscaling first, then temporal Neural enhancement at the output resolution, with optional DLSSG frame interpolation in the same task."
+  }, {
+    name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
+    badge: "DLSS5 · 可混合",
+    description: "video2dlssnr 先執行 DLSS SR 超分，再在輸出分辨率執行時序 Neural enhancement；可選在同一任務中再使用 DLSSG 補幀。"
+  }),
   entry({
     id: "dlss5-sr",
     family: "dlss5",

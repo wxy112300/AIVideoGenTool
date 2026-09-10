@@ -1,17 +1,17 @@
 # 开发 harness 与文档治理
 
 - Status: done
-- Updated: 2026-09-07
-- Owner: 当前用户任务负责人（Astra）；Luna 仅负责明确的调查/文档工作包
+- Updated: 2026-09-09
+- Owner: 当前任务执行者；2026-09-09 调整由单 agent 完成，未派发子 agent
 - Route: documentation / workflow design
 - Scope: 定义混合 agent 流程、文档分类和可恢复交接；本批次实际整理历史计划、研究、证据与当前 TASK 入口，不触碰产品契约和业务代码。
 - Baseline: 用户工作树已含多个未提交产品变更；本任务接续此前 AGENTS、Agent Start Here、Change Verification 修改。
-- Authority: 用户要求高级 agent 规划、Luna 大量数据处理/明确执行；减少上下文浪费。
+- Authority: 2026-09-09 用户要求减少 Expensive Parent Participation、限制整个 Agent Tree；替代此前固定高级规划/Luna执行偏好。
 
 ## Resume
 
 - 问题：事实、计划、证据与历史混写；active 目录不能表达真实状态；重复全量阅读/实验占用高级模型上下文。
-- 决定：小修短路径 + 标准混合流程；一个 TASK 管当前状态，契约管产品事实，evidence 管来源与实验。
+- 当前决定：默认单 agent；例外累计最多1个子agent、深度1、并发1、最多1次纠偏；同状态验证复用。保留文档分类与历史归档，下面9月7日记录只用于追溯。
 - 已落地：docs 首页、工作流、模板、文档生命周期、初始 58 份文档分类、代码地图、DLSS5 历史归档卡及精简 AGENTS。
 - 本批次完成：实际移动 27 份文档，新增 H3 高分辨率/H3 长视频/图片工作台 3 个当前 TASK，新增 Research 索引和长视频 evidence 入口，修复受影响链接。
 - 不做：全局模型配置、自动调度器、产品功能变更、GPU/ComfyUI 试验、依赖安装；不删除历史证据。
@@ -66,3 +66,8 @@
 - 实际 token/费用：unknown；不以字符数或模型名称推断节省比例。
 - 版本影响：patch 级开发文档变更，记 Unreleased，不单独 bump。
 - 接续只读：本摘要 → docs 首页 → 目标 TASK/流程章节；原始调查按需定位。
+
+## 2026-09-09 成本纠偏
+
+用户反馈旧分工增加全树 token 消耗；本次移除固定高级规划/复核与常态 worker 配置，同步入口、流程、模板、文档职责和验证规则。累计额度跨回合/压缩/替换延续，不通过 CLI 或新任务绕过。
+本轮直接执行，新增子 agent=0；父级派单/worker复核=0。无应用构建/GPU/依赖操作，版本影响 patch，记 Unreleased。实际 token/费用 unknown，未宣称降幅。校验覆盖10份文档、70个本地链接、8个锚点、13处script引用，均通过；git diff --check通过，无文件删除。

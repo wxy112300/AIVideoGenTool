@@ -99,6 +99,65 @@ export function mountVideoExtensionController(context, options) {
         });
         context.requestRender();
     }, { signal });
+    const motionContextLatentZone = root.querySelector("[data-drop-h3-motion-context-latent]");
+    const setMotionContextLatent = (filename) => {
+        if (!/\.safetensors$/iu.test(filename)) {
+            context.notify(t(uiKeys.create.validation.motionContextLatentMissing), { kind: "error" });
+            return;
+        }
+        options.patchDraft({ h3ContextLatentPath: filename });
+        context.requestRender();
+    };
+    const pickMotionContextLatent = async () => {
+        const filename = await context.hostCapabilities.pickH3NativeAv();
+        if (filename)
+            setMotionContextLatent(filename);
+    };
+    if (motionContextLatentZone) {
+        motionContextLatentZone.addEventListener("click", (event) => {
+            event.stopImmediatePropagation();
+            void pickMotionContextLatent();
+        }, { signal });
+        motionContextLatentZone.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ")
+                return;
+            event.preventDefault();
+            void pickMotionContextLatent();
+        }, { signal });
+        const clearDragState = () => motionContextLatentZone.classList.remove("drag-over");
+        motionContextLatentZone.addEventListener("dragenter", (event) => {
+            event.preventDefault();
+            motionContextLatentZone.classList.add("drag-over");
+        }, { signal });
+        motionContextLatentZone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            if (event.dataTransfer)
+                event.dataTransfer.dropEffect = "copy";
+            motionContextLatentZone.classList.add("drag-over");
+        }, { signal });
+        motionContextLatentZone.addEventListener("dragleave", clearDragState, { signal });
+        motionContextLatentZone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            clearDragState();
+            const file = event.dataTransfer?.files.item(0);
+            if (!file || !/\.safetensors$/iu.test(file.name)) {
+                context.notify(t(uiKeys.create.validation.motionContextLatentMissing), { kind: "error" });
+                return;
+            }
+            const filename = context.hostCapabilities.getDroppedFilePath(file);
+            if (!filename) {
+                context.notify(t(uiKeys.create.validation.motionContextLatentMissing), { kind: "error" });
+                return;
+            }
+            setMotionContextLatent(filename);
+        }, { signal });
+    }
+    root.querySelector("#clear-h3-motion-context-latent")?.addEventListener("click", (event) => {
+        event.stopImmediatePropagation();
+        options.patchDraft({ h3ContextLatentPath: undefined });
+        context.requestRender();
+    }, { signal });
     const zone = root.querySelector("[data-drop-video]");
     if (zone) {
         const clearDragState = () => zone.classList.remove("drag-over");

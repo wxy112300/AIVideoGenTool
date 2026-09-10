@@ -75,6 +75,10 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
     appLogs: null,
     appLogsLoading: false,
     appLogsError: "",
+    appCache: null,
+    appCacheLoading: false,
+    appCacheClearing: false,
+    appCacheError: "",
     ...overrides
   };
 }
@@ -112,6 +116,11 @@ describe("Settings accessibility markup", () => {
     expect(pathsMarkup).toContain('id="ui-locale" aria-label="settings.locale.title"');
     expect(pathsMarkup).toContain('id="queue-isolation-mode"');
     expect(pathsMarkup).toContain('<option value="lora" selected>');
+    expect(pathsMarkup).toContain('id="app-cache-total"');
+    expect(pathsMarkup).toContain('id="refresh-app-cache"');
+    expect(pathsMarkup).toContain('id="clear-app-cache"');
+    expect(pathsMarkup).toContain('id="app-cache-progress"');
+    expect(pathsMarkup).toContain('id="app-cache-progress-bar" class="app-cache-progress-bar indeterminate" role="progressbar"');
   });
 
   it("keeps the ComfyUI environment page concise while preserving environment evidence", () => {

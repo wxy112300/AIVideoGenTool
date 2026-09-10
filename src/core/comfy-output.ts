@@ -14,6 +14,13 @@ export function isVideoOutputFilename(filename: string): boolean {
   return videoOutputPattern.test(filename);
 }
 
+/** Only ComfyUI output-folder files are durable enough for history. */
+export function isPersistentComfyOutputFile(
+  file: Pick<HistoryFile, "type">
+): boolean {
+  return file.type === "output";
+}
+
 export function extractComfyOutputFiles(value: unknown): HistoryFile[] {
   const results: HistoryFile[] = [];
   const seen = new Set<string>();

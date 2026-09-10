@@ -1,4 +1,6 @@
 import { modelCatalog } from "./catalog/index.js";
+import { h3LatentSaveModeFor } from "./h3-latent-save.js";
+import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "./workflow.js";
 const MAX_REASONABLE_SECONDS = 24 * 60 * 60;
 const BASE_VIDEO_PIXELS = 480 ** 2;
 const BASE_VIDEO_DURATION = 5;
@@ -152,7 +154,9 @@ function videoSample(asset, version, seconds) {
             frameInterpolation: version.frameInterpolation ?? asset.frameInterpolation,
             spectrumMode: version.spectrumMode ?? asset.spectrumMode,
             spectrumModelAwareMode: version.spectrumModelAwareMode ?? asset.spectrumModelAwareMode,
-            saveJointAv: version.h3SaveJointAv ?? (model.family === "minimax-h3" ? true : undefined),
+            latentSaveMode: isMiniMaxH3Model(modelId)
+                ? h3LatentSaveModeFor(version, taskType === "extension" && isMiniMaxH3R2vModel(modelId))
+                : undefined,
             loras: loraSignature(version.videoLoras ?? asset.videoLoras),
             sourceMode: asset.inputMode,
             referenceCount,
@@ -277,7 +281,9 @@ function featureDistance(task, sample) {
         compareText("frameInterpolation", task.frameInterpolation);
         compareText("spectrumMode", task.spectrumMode);
         compareText("spectrumModelAwareMode", task.spectrumModelAwareMode);
-        compareBoolean("saveJointAv", task.h3SaveJointAv !== false);
+        compareText("latentSaveMode", isMiniMaxH3Model(task.modelId)
+            ? h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId))
+            : undefined);
         compareText("loras", loraSignature(task.videoLoras));
         compareText("sourceMode", task.taskType === "extension" ? "video" : "image");
         compareNumber("referenceCount", task.taskType === "generation"

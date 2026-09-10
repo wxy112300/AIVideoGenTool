@@ -10,6 +10,7 @@ import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
   H3AttentionMode,
+  H3LatentSaveMode,
   H3VideoVaeBackend,
   QueueLifecycle,
   QueueTask,
@@ -38,6 +39,7 @@ import {
 } from "../src/core/h3-memory-policy.js";
 import {
   generationSafetyForTask,
+  h3ContinuumWorkflowPathForInput,
   isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
@@ -49,9 +51,14 @@ import { normalizeH3AttentionMode } from "../src/core/recovery.js";
 import {
   LEGACY_H3_TURBO_MODEL_ID,
   baseVideoModelId,
+  normalizeHistoryVideoLoras,
   normalizeVideoLoras
 } from "../src/core/video-loras.js";
 import { normalizeVideoDraft } from "../src/core/video-draft-normalization.js";
+import {
+  normalizeH3LatentSaveMode,
+  h3SaveJointAvForLatentSaveMode
+} from "../src/core/h3-latent-save.js";
 
 interface ReplaceStateFileOptions {
   attempts?: number;
@@ -187,6 +194,40 @@ function migrateH3VideoVaeMode(value: unknown, modelId: string): H3VideoVaeBacke
   return isMiniMaxH3Model(modelId) ? normalizeH3VideoVaeBackend(value) : undefined;
 }
 
+function migrateH3LatentSaveFields(
+  value: { h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
+  modelId: string,
+  legacyMotionContextSaved: boolean
+): { h3LatentSaveMode?: H3LatentSaveMode; h3SaveJointAv?: boolean } {
+  if (!isMiniMaxH3Model(modelId)) return {};
+  const h3LatentSaveMode = normalizeH3LatentSaveMode(
+    value.h3LatentSaveMode,
+    value.h3SaveJointAv,
+    legacyMotionContextSaved
+  );
+  return {
+    h3LatentSaveMode,
+    h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode)
+  };
+}
+
+function migrateDraftH3LatentSaveMode(
+  draft: Partial<Draft> | undefined
+): Partial<Draft> | undefined {
+  if (!draft || Object.prototype.hasOwnProperty.call(draft, "h3LatentSaveMode")) {
+    return draft;
+  }
+  const modelId = baseVideoModelId(draft.modelId ?? "");
+  return {
+    ...draft,
+    h3LatentSaveMode: normalizeH3LatentSaveMode(
+      undefined,
+      draft.h3SaveJointAv,
+      draft.inputMode === "video" && isMiniMaxH3R2vModel(modelId)
+    )
+  };
+}
+
 function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenerationQueueTask {
   const runs = Array.isArray(task.runs)
     ? task.runs.map((run, index) => {
@@ -255,6 +296,11 @@ function migrateQueueTask(
     (task as QueueTask & { videoLoras?: unknown }).videoLoras,
     legacyModelId
   );
+  const h3LatentSaveFields = migrateH3LatentSaveFields(
+    task as QueueTask & { h3LatentSaveMode?: unknown },
+    modelId,
+    task.taskType === "extension" && isMiniMaxH3R2vModel(modelId)
+  );
   if (task.taskType === "extension") {
     const memoryOptions = normalizeH3MemoryOptions(
       task as QueueTask & {
@@ -282,6 +328,7 @@ function migrateQueueTask(
         : defaultH3LivePreview,
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+      ...h3LatentSaveFields,
       ...memoryOptions,
       ...(normalizedSlots ? { h3ReferenceSlots: normalizedSlots } : {}),
       automaticRetryAttempt
@@ -312,6 +359,7 @@ function migrateQueueTask(
       : defaultH3LivePreview,
     spectrumMode: task.spectrumMode ?? "off",
     spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+    ...h3LatentSaveFields,
     ...memoryOptions,
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     automaticRetryAttempt,
@@ -332,7 +380,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     (asset as HistoryAsset & { h3VideoVaeMode?: unknown }).h3VideoVaeMode,
     modelId
   );
-  const videoLoras = normalizeVideoLoras(
+  const videoLoras = normalizeHistoryVideoLoras(
     (asset as HistoryAsset & { videoLoras?: unknown }).videoLoras,
     legacyModelId
   );
@@ -363,7 +411,12 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       versions: asset.versions.map((version) => ({
         ...version,
         modelId: baseVideoModelId(version.modelId),
-        videoLoras: normalizeVideoLoras(version.videoLoras, version.modelId),
+        ...migrateH3LatentSaveFields(
+          version as AssetVersion & { h3LatentSaveMode?: unknown },
+          baseVideoModelId(version.modelId),
+          asset.inputMode === "video" && isMiniMaxH3R2vModel(baseVideoModelId(version.modelId))
+        ),
+        videoLoras: normalizeHistoryVideoLoras(version.videoLoras, version.modelId),
         attentionMode: migrateOptionalH3AttentionMode(version.attentionMode),
         h3VideoVaeMode: migrateH3VideoVaeMode(
           (version as AssetVersion & { h3VideoVaeMode?: unknown }).h3VideoVaeMode,
@@ -407,6 +460,11 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     startedAt: asset.startedAt,
     attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
     h3VideoVaeMode,
+    ...migrateH3LatentSaveFields(
+      asset as LegacyHistoryAsset & { h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
+      modelId,
+      asset.inputMode === "video" && isMiniMaxH3R2vModel(modelId)
+    ),
     ...assetMemoryOptions,
     ...(normalizeNativeAvContinuationData(
       (asset as LegacyHistoryAsset & { h3ContinuationData?: unknown }).h3ContinuationData
@@ -484,13 +542,14 @@ export class JsonStore implements StateRepository {
       const imageHistory = normalizeImageHistory(saved.imageHistory);
       const history = (saved.history ?? []).map(migrateHistoryAsset);
       const savedDraft = saved.draft;
+      const migratedSavedDraft = migrateDraftH3LatentSaveMode(savedDraft);
       const hasIndependentExtensionPromptState = Array.isArray(savedDraft?.extensionPromptVersions) &&
         savedDraft.extensionPromptVersions.length > 0 &&
         Number.isInteger(savedDraft.extensionActivePromptVersion);
       const legacyExtensionDraft = !hasIndependentExtensionPromptState && savedDraft?.inputMode === "video";
       const mergedDraft = normalizeDraftH3MemoryOptions(ensureDraftPromptState({
         ...defaultState.draft,
-        ...savedDraft,
+        ...migratedSavedDraft,
         ...(legacyExtensionDraft
           ? {
               promptVersions: defaultState.draft.promptVersions,
@@ -506,22 +565,24 @@ export class JsonStore implements StateRepository {
       }));
       const savedVideoExtensionDraft = saved.videoExtensionDraft;
       const savedImageToVideoDraft = saved.imageToVideoDraft;
-      const mergedImageToVideoDraft = savedImageToVideoDraft?.inputMode === "image"
+      const migratedSavedVideoExtensionDraft = migrateDraftH3LatentSaveMode(savedVideoExtensionDraft);
+      const migratedSavedImageToVideoDraft = migrateDraftH3LatentSaveMode(savedImageToVideoDraft);
+      const mergedImageToVideoDraft = migratedSavedImageToVideoDraft?.inputMode === "image"
         ? normalizeDraftH3MemoryOptions(ensureDraftPromptState({
             ...defaultState.draft,
-            ...savedImageToVideoDraft,
+            ...migratedSavedImageToVideoDraft,
             inputMode: "image",
-            h3ReferenceSlots: normalizeH3ReferenceSlots(savedImageToVideoDraft.h3ReferenceSlots)
+            h3ReferenceSlots: normalizeH3ReferenceSlots(migratedSavedImageToVideoDraft.h3ReferenceSlots)
           }))
         : mergedDraft.inputMode === "image"
           ? structuredClone(mergedDraft)
           : structuredClone(defaultState.imageToVideoDraft ?? defaultState.draft);
-      const mergedVideoExtensionDraft = savedVideoExtensionDraft?.inputMode === "video"
+      const mergedVideoExtensionDraft = migratedSavedVideoExtensionDraft?.inputMode === "video"
         ? normalizeDraftH3MemoryOptions(ensureDraftPromptState({
             ...defaultState.draft,
-            ...savedVideoExtensionDraft,
+            ...migratedSavedVideoExtensionDraft,
             inputMode: "video",
-            h3ReferenceSlots: normalizeH3ReferenceSlots(savedVideoExtensionDraft.h3ReferenceSlots)
+            h3ReferenceSlots: normalizeH3ReferenceSlots(migratedSavedVideoExtensionDraft.h3ReferenceSlots)
           }))
         : mergedDraft.inputMode === "video"
           ? structuredClone(mergedDraft)
@@ -618,6 +679,9 @@ export class JsonStore implements StateRepository {
         needsPersist = true;
       }
       if (JSON.stringify(history) !== JSON.stringify(saved.history)) {
+        needsPersist = true;
+      }
+      if (JSON.stringify(migratedQueue) !== JSON.stringify(saved.queue ?? [])) {
         needsPersist = true;
       }
       const normalizedH3ReferenceSlots = normalizeH3ReferenceSlots(
@@ -719,6 +783,13 @@ export class JsonStore implements StateRepository {
         this.state.draft.inputMode = "image";
         this.state.draft.workflowPath = "";
         needsPersist = true;
+      }
+      if (isMiniMaxH3ContinuumModel(this.state.draft.modelId)) {
+        const migratedWorkflowPath = h3ContinuumWorkflowPathForInput(this.state.draft.workflowPath);
+        if (migratedWorkflowPath !== this.state.draft.workflowPath) {
+          this.state.draft.workflowPath = migratedWorkflowPath;
+          needsPersist = true;
+        }
       }
       const retiredPromptModelFallback = retiredPromptModelFallbacks[this.state.settings.promptModelId];
       if (retiredPromptModelFallback) {

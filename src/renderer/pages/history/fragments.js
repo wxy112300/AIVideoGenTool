@@ -64,11 +64,16 @@ export function renderPerformanceStatsMarkup(stats, options) {
 export function renderVideoLoraSnapshotMarkup(loras, options) {
     if (!loras.length)
         return `<p class="history-empty-note">${options.t(uiKeys.history.detail.noLora)}</p>`;
-    return `<div class="history-snapshot-list">${loras.map((lora, index) => `
+    return `<div class="history-snapshot-list">${loras.map((lora, index) => {
+        const details = lora.historyOnly === true
+            ? `<div><strong>${options.escapeHtml(lora.name)}</strong></div>`
+            : `<div><strong>${options.escapeHtml(lora.name)}</strong><p>${options.escapeHtml(lora.modelFamily)} · ${options.videoLoraPurposeLabel(lora.purpose)} · ${options.t(uiKeys.history.detail.loraStrengthValue, { value: lora.strength })}</p><code>${options.escapeHtml(lora.filename || options.t(uiKeys.history.detail.fileNameNotSaved))}</code></div>`;
+        return `
     <div class="history-snapshot-item">
       <span class="history-snapshot-index">${index + 1}</span>
-      <div><strong>${options.escapeHtml(lora.name)}</strong><p>${options.escapeHtml(lora.modelFamily)} · ${options.videoLoraPurposeLabel(lora.purpose)} · ${options.t(uiKeys.history.detail.loraStrengthValue, { value: lora.strength })}</p><code>${options.escapeHtml(lora.filename || options.t(uiKeys.history.detail.fileNameNotSaved))}</code></div>
-    </div>`).join("")}</div>`;
+      ${details}
+    </div>`;
+    }).join("")}</div>`;
 }
 export function renderVideoInputSnapshotMarkup(asset, options) {
     const items = [];

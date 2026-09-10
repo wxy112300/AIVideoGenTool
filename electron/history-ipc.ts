@@ -45,6 +45,9 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
   deps.ipc.handle("history:delete-joint-av", async (_event, assetId: string, versionId: string) =>
     deps.destructive.deleteJointAv(assetId, versionId)
   );
+  deps.ipc.handle("history:delete-motion-context", async (_event, assetId: string, versionId: string) =>
+    deps.destructive.deleteMotionContext(assetId, versionId)
+  );
   deps.ipc.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) =>
     deps.metadata.setImageCover(projectId, versionId)
   );

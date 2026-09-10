@@ -114,6 +114,17 @@ describe("queue duration estimator", () => {
     expect(estimateQueueTaskSeconds(task({ h3SaveJointAv: false }), history)).toBe(100);
   });
 
+  it("matches the unified latent output modes separately", () => {
+    const history = {
+      video: [
+        videoHistory(220, { h3LatentSaveMode: "all" }),
+        videoHistory(110, { h3LatentSaveMode: "joint-av" })
+      ]
+    };
+    expect(estimateQueueTaskSeconds(task({ h3LatentSaveMode: "all" }), history)).toBe(220);
+    expect(estimateQueueTaskSeconds(task({ h3LatentSaveMode: "joint-av" }), history)).toBe(110);
+  });
+
   it("uses the complete recorded duration for a matching composite H3 1080 task", () => {
     const history = {
       video: [videoHistory(420, { resolution: 1080, h3SaveJointAv: true })]

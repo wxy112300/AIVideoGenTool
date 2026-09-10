@@ -13,11 +13,24 @@ import { generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Model, i
 import { BUILTIN_VIDEO_LORAS, H3_SLA_TURBO_LORA_ID, H3_TURBO_LORA_ID, isH3SlaTurboLoraId, isH3TurboLoraId, profileProvidesVideoLora, videoLoraCompatibleWithModel, videoLoraCompatibleWithDraft } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
 import { loraRuleText } from "../../../core/catalog/loras/locales";
+import { H3_LATENT_SAVE_MODES, h3LatentSaveModeFor, h3LatentSaveModeSavesJointAv } from "../../../core/h3-latent-save";
 import { escapeHtml } from "../../shared/dom";
 import { fieldLabelWithTip } from "../../shared/markup";
 import { imageWorkflowStatus, isImageModelSelectable, promptModelStatus } from "../../shared/status";
 import { modelName } from "../../shared/labels";
 import { activeImagePrompt, activePrompt, createModelOptionViewModels, extensionSafetyForDraft, h3PromptCheckMarkup, h3PromptModeForDraft, h3PromptPresetOptions, interpolationEstimate, promptSnippetOptions } from "./helpers";
+const h3LatentSaveModeOptionKeys = {
+    all: uiKeys.create.videoSettings.saveLatentAll,
+    "joint-av": uiKeys.create.videoSettings.saveLatentJointAv,
+    "motion-context": uiKeys.create.videoSettings.saveLatentMotionContext,
+    none: uiKeys.create.videoSettings.saveLatentNone
+};
+const h3LatentSaveModeTipKeys = {
+    all: uiKeys.create.videoSettings.saveLatentAllTip,
+    "joint-av": uiKeys.create.videoSettings.saveLatentJointAvTip,
+    "motion-context": uiKeys.create.videoSettings.saveLatentMotionContextTip,
+    none: uiKeys.create.videoSettings.saveLatentNoneTip
+};
 export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTranslator("zh-CN").t) {
     const imageCapability = imageModelCapabilityFor(draft.modelId);
     const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
@@ -56,7 +69,9 @@ export function videoResolutionOptionsForDraft(draft, extending, jointAvSerializ
         ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
         : [480, 540, 720];
     const h3Create1080 = !extending && draft.modelId === "minimax_h3_fl2va" &&
-        draft.videoLoras.length === 0 && draft.h3SaveJointAv && jointAvSerializerInstalled;
+        draft.videoLoras.length === 0 &&
+        h3LatentSaveModeSavesJointAv(h3LatentSaveModeFor(draft)) &&
+        jointAvSerializerInstalled;
     return h3Create1080 ? [...base, 1080] : base;
 }
 export function resolutionAfterJointAvPreference(resolution, saveJointAv) {
@@ -234,7 +249,11 @@ export function buildVideoCreatePageViewModel(options) {
     const isContinuum = isMiniMaxH3ContinuumModel(draft.modelId);
     const continuumArtifactReady = Boolean(draft.h3ContinuumArtifact?.payload.filename || draft.h3ContinuumArtifactPath?.trim());
     const continuumArtifactFilename = draft.h3ContinuumArtifact?.payload.filename ?? draft.h3ContinuumArtifactPath?.split(/[\\/]/u).pop() ?? "";
+    const motionContextLatentReady = Boolean(draft.h3ContextLatentPath?.trim());
+    const motionContextLatentFilename = draft.h3ContextLatentPath?.split(/[\\/]/u).pop() ?? "";
+    const motionContextLatentHistoryBound = Boolean(motionContextLatentReady && draft.sourceAssetId && draft.sourceVersionId);
     const extending = draft.inputMode === "video";
+    const h3LatentSaveMode = h3LatentSaveModeFor(draft, extending && isR2V);
     const continuumEffectiveDraft = isContinuum && extending && draft.sourceVideoDuration > 0
         ? {
             ...draft,
@@ -373,6 +392,9 @@ export function buildVideoCreatePageViewModel(options) {
         continuumArtifactReady,
         continuumArtifactFilename,
         continuumArtifactHistoryBound: Boolean(draft.h3ContinuumArtifact),
+        motionContextLatentReady,
+        motionContextLatentFilename,
+        motionContextLatentHistoryBound,
         h3Mode,
         enhanceMode,
         h3PromptEnhanceTitle: isMiniMaxH3
@@ -410,6 +432,11 @@ export function buildVideoCreatePageViewModel(options) {
                 });
                 return `<option value="${value}" ${selectedResolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
             }).join(""),
+        latentSaveModeOptionsMarkup: H3_LATENT_SAVE_MODES.map((mode) => {
+            const tip = t(h3LatentSaveModeTipKeys[mode]);
+            return `<option value="${mode}" data-description="${escapeHtml(tip)}" title="${escapeHtml(tip)}" ${h3LatentSaveMode === mode ? "selected" : ""}>${t(h3LatentSaveModeOptionKeys[mode])}</option>`;
+        }).join(""),
+        latentSaveModeTitle: t(h3LatentSaveModeTipKeys[h3LatentSaveMode]),
         stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
             const label = turboEnabled
                 ? value === 4
@@ -448,7 +475,7 @@ export function buildVideoCreatePageViewModel(options) {
                     ? t(uiKeys.create.validation.spectrumInstall)
                     : t(uiKeys.create.validation.spectrumNative),
         spectrumModeDisabled: draft.spectrumMode !== "balanced" && !(spectrumEligible && spectrumLoaded),
-        jointAvLabelMarkup: fieldLabelWithTip(t(uiKeys.create.videoSettings.saveJointAv), t(uiKeys.create.videoSettings.saveJointAvDescription)),
+        jointAvLabelMarkup: fieldLabelWithTip(t(uiKeys.create.videoSettings.saveLatentData), t(uiKeys.create.videoSettings.saveLatentDataDescription)),
         loraLabelMarkup: fieldLabelWithTip(t(uiKeys.create.validation.loraLabel), t(uiKeys.create.validation.loraDescription)),
         installReadyLoraDefinitions,
         installReadyLoraEmptyLabel: !environmentScan

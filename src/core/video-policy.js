@@ -1,6 +1,6 @@
 import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js";
 import { releaseVersionAtLeast } from "./release-version.js";
-import { isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepV11LoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel, videoLoraConfigurationIssues } from "./video-loras.js";
+import { isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepLoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel, videoLoraConfigurationIssues } from "./video-loras.js";
 const standardStepOptions = [20, 16, 12];
 const turboStepOptions = [4, 6, 8];
 export function resolveVideoGenerationPolicy(input) {
@@ -14,7 +14,7 @@ export function resolveVideoGenerationPolicy(input) {
         modelId: input.modelId,
         videoLoras: input.videoLoras
     });
-    const fl2vaV11TurboEnabled = input.videoLoras?.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)) === true;
+    const fl2vaFourStepTurboEnabled = input.videoLoras?.some((lora) => isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)) === true;
     const fl2vaSlaTurboEnabled = input.videoLoras?.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)) === true;
     const h3TurboV4Enabled = input.videoLoras?.some((lora) => isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)) === true;
     const supportedByModel = definition?.capabilities?.supportsSpectrum === true;
@@ -27,19 +27,19 @@ export function resolveVideoGenerationPolicy(input) {
     return {
         isH3,
         turboEnabled,
-        steps: {
+            steps: {
             mode: turboEnabled ? "turbo" : "standard",
             options: h3TurboV4Enabled
                 ? [6, 8]
                 : definition?.capabilities?.generationSteps ??
-                    (fl2vaV11TurboEnabled || fl2vaSlaTurboEnabled ? [4] : turboEnabled ? turboStepOptions : standardStepOptions),
-            defaultValue: fl2vaV11TurboEnabled || fl2vaSlaTurboEnabled || ref2vTurboEnabled
+                    (fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled ? [4] : turboEnabled ? turboStepOptions : standardStepOptions),
+            defaultValue: fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled || ref2vTurboEnabled
                 ? 4
                 : h3TurboV4Enabled
                     ? 8
                     : definition?.capabilities?.defaultGenerationSteps ??
                         (turboEnabled ? 8 : 20),
-            maxValue: fl2vaV11TurboEnabled || fl2vaSlaTurboEnabled
+            maxValue: fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled
                 ? 4
                 : h3TurboV4Enabled
                     ? 8

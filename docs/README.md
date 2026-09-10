@@ -14,20 +14,20 @@
 | 继续被卡方案 | [任务入口](tasks/README.md) → 对应 TASK | [阻塞恢复](development/WORKFLOW.md#blocked) |
 | 整理开发文档 | [文档职责](development/DOCUMENT_POLICY.md) + [全量旧文档盘点](development/DOCUMENT_INVENTORY.md) | 有界迁移、保留证据 |
 
-常规任务不需要读完全表、全量盘点或整套历史计划。已派发的 Luna 工作包从指定路径/章节开始。
+常规任务不需要读完全表、全量盘点或整套历史计划。默认当前 agent 直接完成；仅满足成本与树上限条件时委派，从指定路径/章节开始。
 
 ## 分类与分工
 
 | 类别 | 回答的问题 | 权威入口 / 新文档位置 | 维护者 |
 | --- | --- | --- | --- |
 | 项目规则 | 必须保持什么、如何协作？ | 根 [AGENTS.md](../AGENTS.md) | 任务负责人，涉及规则变更时审阅 |
-| 产品契约 | 产品承诺和边界是什么？ | 下方契约列表；现有路径保留 | Astra/Sol 定义/审阅，执行者可提案 |
-| 开发流程 | 怎样从请求做到验收？ | [development/WORKFLOW.md](development/WORKFLOW.md) | Astra/Sol |
+| 产品契约 | 产品承诺和边界是什么？ | 下方契约列表；现有路径保留 | 当前任务执行者；不明确的产品变更按授权处理 |
+| 开发流程 | 怎样从请求做到验收？ | [development/WORKFLOW.md](development/WORKFLOW.md) | 当前任务执行者 |
 | 操作手册 | 如何重复执行某项检查？ | 环境、验证、Electron runbook；新内容用 `docs/runbooks/` | 执行者维护，负责人验收 |
 | 任务/计划 | 此次目标、决定、下一步是什么？ | `docs/tasks/<date>-<topic>/TASK.md` | 每个任务唯一负责人 |
-| 研究与证据 | 根据什么做出判断？ | 同一任务的可选 `evidence/`；长期研究用 `docs/research/` | Luna 收集，负责人解释 |
-| 架构决策 | 为什么选择这条长期路线？ | `docs/ADR/` | Astra/Sol |
-| 历史 | 当时做了什么？ | [archive](archive/README.md)；不再新增 `Plan/archive` | Luna 按明确清单整理 |
+| 研究与证据 | 根据什么做出判断？ | 同一任务的可选 `evidence/`；长期研究用 `docs/research/` | 当前执行者收集与判断 |
+| 架构决策 | 为什么选择这条长期路线？ | `docs/ADR/` | 当前任务执行者 |
+| 历史 | 当时做了什么？ | [archive](archive/README.md)；不再新增 `Plan/archive` | 当前执行者按明确清单整理 |
 
 新目录按实际需要创建，不生成空目录或每任务全套文件。分类中的“维护者”是职责，不授予任何任务对其他正在工作 agent 的控制权。
 
