@@ -341,6 +341,30 @@ export function renderSettingsPage(
   const attentionTone = accelerationState.tone;
   const attentionStatus = accelerationState.status;
   const attentionProbeFailed = attentionStatus === "failed";
+  const probeEvidenceLabel = (
+    evidence: EnvironmentScanResult["attentionAcceleration"]["probeEvidence"]
+  ): string => {
+    if (!evidence) return s("accel.verificationPending");
+    const timestamp = evidence.verifiedAt
+      ? ` · ${options.formatScanTime(evidence.verifiedAt)}`
+      : "";
+    if (evidence.source === "live" && evidence.state === "valid") {
+      return `${s("accel.verificationLive")}${timestamp}`;
+    }
+    if (evidence.source === "cache" && evidence.state === "valid") {
+      return `${s("accel.verificationCached")}${timestamp}`;
+    }
+    if (evidence.source === "previous" && evidence.state === "valid") {
+      return `${s("accel.verificationPrevious")}${timestamp}`;
+    }
+    return `${s("accel.verificationPending")}${timestamp}`;
+  };
+  const attentionVerificationLabel = probeEvidenceLabel(attention?.probeEvidence);
+  const llamaVerificationLabel = probeEvidenceLabel(environmentScan?.llamaCppPython?.probeEvidence);
+  const runtimeVerificationBlocked = viewModel.environmentScanning ||
+    viewModel.attentionAccelerationInstalling ||
+    viewModel.llamaCppPythonInstalling ||
+    !environmentScan?.comfyRoot;
   const h3VideoVaeState = deriveH3VideoVaeState(settings, environmentScan);
   const h3VideoVaeTone = h3VideoVaeState.tone;
   const h3VideoVaeStatusIcon = h3VideoVaeState.status === "missing"
@@ -710,11 +734,12 @@ export function renderSettingsPage(
       <div class="custom-node-copy">
         <div class="model-title"><h3>${s("nodes.llamaTitle")}</h3><span class="model-badge">${s("nodes.llamaBadge")}</span></div>
         <p>${s("nodes.llamaDescription")}</p>
-        <div class="component-list">
-          <div class="component-row ${llamaPythonRowTone}"><span class="component-state">${icon(llamaPythonStatusIcon)}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaPythonDetail)}</code></div></div>
-        </div>
-        ${llamaPythonEnvironment ? `<p class="muted">${escape(llamaPythonEnvironment)}</p>` : ""}
-        ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("nodes.installing"))}</pre></details>` : ""}
+         <div class="component-list">
+           <div class="component-row ${llamaPythonRowTone}"><span class="component-state">${icon(llamaPythonStatusIcon)}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaPythonDetail)}</code></div></div>
+         </div>
+         ${llamaPythonEnvironment ? `<p class="muted">${escape(llamaPythonEnvironment)}</p>` : ""}
+         <p class="muted probe-evidence" data-probe-evidence="llama">${escape(llamaVerificationLabel)}</p>
+         ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("nodes.installing"))}</pre></details>` : ""}
       </div>
       <div class="custom-node-actions">
         <span class="model-availability ${llamaPythonTone}" role="status" aria-live="polite">${icon(llamaPythonStatusIcon)} ${llamaPythonStatus}</span>
@@ -728,9 +753,10 @@ export function renderSettingsPage(
     <article class="panel custom-node-card ${attentionTone} h3-acceleration-card">
       <div class="custom-node-copy">
         <div class="model-title"><h3>${s("nodes.h3AccelerationTitle")}</h3><span class="model-badge">${s("nodes.h3AccelerationBadge")}</span></div>
-        <p>${s("nodes.h3AccelerationDescription")}</p>
-        <p class="muted">${s("nodes.h3AccelerationTarget")}${escape(attention?.pythonPath || s("accel.scanFill"))}</p>
-        <div class="attention-runtime-grid">
+         <p>${s("nodes.h3AccelerationDescription")}</p>
+         <p class="muted">${s("nodes.h3AccelerationTarget")}${escape(attention?.pythonPath || s("accel.scanFill"))}</p>
+         <p class="muted probe-evidence" data-probe-evidence="attention">${escape(attentionVerificationLabel)}</p>
+         <div class="attention-runtime-grid">
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notFound")))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))} · ${(attention?.comfyKitchenBackends ?? []).map((backend) => escape(backend)).join(s("shared.listSeparator")) || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.eagerFallback"))}</code></article>
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.noWheel")))}</code></article>
@@ -746,9 +772,10 @@ export function renderSettingsPage(
           <pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre>
         </details>
       </div>
-      <div class="custom-node-actions">
-        <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : attentionProbeFailed ? s("accel.probeFailed") : s("accel.pending")}</span>
-        <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>
+       <div class="custom-node-actions">
+         <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : attentionProbeFailed ? s("accel.probeFailed") : s("accel.pending")}</span>
+         <button class="secondary button-with-icon" id="verify-python-runtime" ${runtimeVerificationBlocked ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${s("accel.verifyRuntime")}</button>
+         <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>
       </div>
     </article>`;
   const customNodeCards = customNodes.map((node) => {

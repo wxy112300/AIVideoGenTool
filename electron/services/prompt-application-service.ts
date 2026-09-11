@@ -29,6 +29,7 @@ import type { PromptOperationOrigin } from "../../src/core/prompt-runtime-state.
 import type { StateRepository } from "../ports/state-repository.js";
 import {
   alignLocalComfyUiRuntimeProfile,
+  inspectLlamaCppPythonRuntime,
   scanEnvironment,
   startLocalService
 } from "./environment.js";
@@ -597,12 +598,21 @@ export class PromptApplicationService {
         `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isQwenVlPeftPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM/Qwen-VL/qwen3-vl-8b-instruct 与 ComfyUI/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b" : isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
       );
     }
-    if (isGemmaPromptModel(settings.promptModelId) && !scan.llamaCppPython.ready) {
-      const runtime = scan.llamaCppPython;
-      const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
-      throw new Error(
-        `Gemma H3 Prompt Writer 的 llama-cpp-python 尚未就绪：${detail}。请在设置 → 节点与依赖中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
-      );
+    if (isGemmaPromptModel(settings.promptModelId)) {
+      const selectedPython = scan.pythonRuntimes.find((item) => item.selected) ?? scan.pythonRuntimes[0];
+      const pythonPath = scan.llamaCppPython.pythonPath || selectedPython?.path || "";
+      // Gemma performs a native llama import/model self-check immediately
+      // before use. Runtime-scoped scans may project the previous snapshot,
+      // but queue execution must never rely on that projection for this path.
+      const runtime = pythonPath
+        ? await inspectLlamaCppPythonRuntime(pythonPath)
+        : scan.llamaCppPython;
+      if (!runtime.ready) {
+        const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
+        throw new Error(
+          `Gemma H3 Prompt Writer 的 llama-cpp-python 尚未就绪：${detail}。请在设置 → 节点与依赖中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
+        );
+      }
     }
     if (isComfyMultimodalPromptModel(settings.promptModelId)) {
       if (profile.missingCustomNodeIds?.length) {

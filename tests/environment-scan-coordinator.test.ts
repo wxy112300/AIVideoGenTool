@@ -137,4 +137,34 @@ describe("EnvironmentScanCoordinator", () => {
     await expect(fresh).resolves.toBe("new");
     await expect(freshFollower).resolves.toBe("new");
   });
+
+  it("upgrades a queued auto validation to live without losing the waiter", async () => {
+    const first = deferred<string>();
+    const calls: Array<{ scope: string; validation: string }> = [];
+    const coordinator = new EnvironmentScanCoordinator<string>();
+    const active = coordinator.run("selected", "full", async (spec) => {
+      calls.push({ scope: spec.scope, validation: spec.pythonValidation });
+      return first.promise;
+    }, { validation: "auto" });
+    const queuedAuto = coordinator.run("selected", "dependencies", async (spec) => {
+      calls.push({ scope: spec.scope, validation: spec.pythonValidation });
+      return "dependencies";
+    }, { validation: "auto", fresh: true });
+    const queuedLive = coordinator.run("selected", "dependencies", async (spec) => {
+      calls.push({ scope: spec.scope, validation: spec.pythonValidation });
+      return "live";
+    }, {
+      validation: "live",
+      fresh: true
+    });
+
+    expect(queuedLive).toBe(queuedAuto);
+    first.resolve("full");
+    await expect(active).resolves.toBe("full");
+    await expect(queuedLive).resolves.toBe("live");
+    expect(calls).toEqual([
+      { scope: "full", validation: "auto" },
+      { scope: "dependencies", validation: "live" }
+    ]);
+  });
 });

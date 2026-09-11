@@ -263,7 +263,7 @@ export class ApplicationRuntime {
     const environmentQuery = new EnvironmentQueryService({
       logger: this.deps.logger,
       errorMeta: this.deps.errorMeta,
-      scanEnvironment: (settings, scope) => scanEnvironment(settings, scope)
+      scanEnvironment: (settings, scope, options) => scanEnvironment(settings, scope, options)
     });
     const mediaReadService = new MediaReadService({
       store: this.deps.store,

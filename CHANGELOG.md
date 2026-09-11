@@ -8,6 +8,11 @@
 
 ## Unreleased
 
+## 0.61.1 — 2026-09-11
+
+- 修复 Windows 杀毒/索引器短暂占用自定义节点 `.update-*` 临时目录时，一键安装在节点替换后仍以 `EBUSY rmdir` 失败、进而跳过 Konohamaru Git LFS、neural-upstream 与 video2dlssnr runtime 安装的问题；锁定类临时清理错误现在记录待清理目录并继续，目标替换、Git LFS pointer、文件大小与 runtime 哈希校验仍保持 fail closed。
+- 增加环境扫描提速能力：为 H3/llama Python 原生探针增加进程内短期缓存、身份与轻量指纹校验、TTL/LRU/安装失效保护和 live/cache/previous 证据；普通扫描可复用有效原生结果，依赖与 API/模型/KJ 状态仍按当前 scope 刷新，并新增强制“重新验证运行环境”入口、分段 telemetry 与同进程 `scan-benchmark` 验收动作。三组本机复测中，full 缓存命中相对 cold 扫描约降低 67.2%；未宣称真实生成质量或长期失败率。
+
 ## 0.61.0 — 2026-09-11
 
 - 执行 ComfyUI `0.35.0` / MiniMax H3 升级：新 H3 任务统一冻结 native execution policy（Sage/Sage-Triton/PyTorch/Comfy Kitchen、native SLA、compatibility/native runtime、Comfy compiler）并在 claim-time 校验 0.35 节点 schema；撤回 H3 Memory/H3-Optimizations 活动路线但保留旧快照可读性；新增普通 loader 的 FL2VA/Ref2VA PDD 8-step pruned LoRA 清单。未下载权重；隔离 ComfyUI 0.35 schema、Sage kernel 与低分辨率底层 graph smoke 已部分验证，但应用自有启动链仍在节点初始化阶段超时，真实应用队列成片与质量评估待后续处理。

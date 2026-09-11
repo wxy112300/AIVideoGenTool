@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   h3PromptWriterPatchFiles,
   installCustomNodePackage,
+  removeTemporaryNodeCheckout,
   uninstallCustomNodePackage,
   withWindowsGitLongPaths,
   type DependencyInstallerRuntime
@@ -266,6 +267,34 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("does not fail an install when Windows keeps a temporary checkout locked", async () => {
+    const report = vi.fn();
+    const error = Object.assign(new Error("resource busy or locked"), { code: "EBUSY" });
+    const remove = vi.fn(async () => { throw error; });
+
+    await expect(removeTemporaryNodeCheckout(
+      "C:\\ComfyUI\\custom_nodes\\node.update-locked",
+      report,
+      remove as typeof fs.rm
+    )).resolves.toBeUndefined();
+
+    expect(remove).toHaveBeenCalledWith(
+      "C:\\ComfyUI\\custom_nodes\\node.update-locked",
+      expect.objectContaining({ recursive: true, force: true, maxRetries: 5 })
+    );
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("EBUSY"));
+  });
+
+  it("keeps non-locking temporary checkout cleanup failures strict", async () => {
+    const error = Object.assign(new Error("invalid path"), { code: "EINVAL" });
+
+    await expect(removeTemporaryNodeCheckout(
+      "invalid",
+      vi.fn(),
+      vi.fn(async () => { throw error; }) as typeof fs.rm
+    )).rejects.toBe(error);
+  });
+
   it("rejects all app-managed node mutations for remote ComfyUI", async () => {
     const remoteSettings = {
       ...createDefaultState().settings,

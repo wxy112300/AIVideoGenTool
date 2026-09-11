@@ -1,6 +1,7 @@
 import type {
   ConnectionKind,
   ConnectionResult,
+  EnvironmentScanOptions,
   EnvironmentScanResult,
   EnvironmentScanScope,
   Settings
@@ -15,7 +16,8 @@ export interface EnvironmentQueryServiceDependencies {
   testComfyUi?: (settings: Settings) => Promise<string>;
   scanEnvironment?: (
     settings: Settings,
-    scope: EnvironmentScanScope
+    scope: EnvironmentScanScope,
+    options?: EnvironmentScanOptions
   ) => Promise<EnvironmentScanResult>;
 }
 
@@ -31,7 +33,8 @@ export class EnvironmentQueryService {
   private readonly testService: (settings: Settings) => Promise<string>;
   private readonly scanService: (
     settings: Settings,
-    scope: EnvironmentScanScope
+    scope: EnvironmentScanScope,
+    options?: EnvironmentScanOptions
   ) => Promise<EnvironmentScanResult>;
 
   constructor(deps: EnvironmentQueryServiceDependencies) {
@@ -81,25 +84,33 @@ export class EnvironmentQueryService {
 
   async scan(
     settings: Settings,
-    requestedScope: unknown
+    requestedScope: unknown,
+    requestedOptions?: EnvironmentScanOptions
   ): Promise<EnvironmentScanResult> {
-    const scope = normalizeScope(requestedScope);
+    const requested = normalizeScope(requestedScope);
+    const forcePythonProbe = requestedOptions?.forcePythonProbe === true;
+    const scope = requested === "runtime" && forcePythonProbe ? "dependencies" : requested;
+    const options: EnvironmentScanOptions = forcePythonProbe
+      ? { forcePythonProbe: true }
+      : {};
     const startedAt = Date.now();
     this.logger.info(
       "environment",
       "scan-started",
       "Environment scan started",
-      { requestedScope: scope }
+      { requestedScope: requested, effectiveScope: scope, forcePythonProbe }
     );
     try {
-      const result = await this.scanService(settings, scope);
+      const result = await this.scanService(settings, scope, options);
       this.logger.info(
         "environment",
         "scan-finished",
         "Environment scan finished",
         {
           durationMs: Date.now() - startedAt,
-          requestedScope: scope,
+          requestedScope: requested,
+          effectiveScope: scope,
+          forcePythonProbe,
           checkedFrom: result.comfyCompatibility.checkedFrom,
           gpuCount: result.gpus.length,
           modelProfiles: result.modelProfiles.length,

@@ -3,6 +3,7 @@ import type {
   ModelComponentStatus,
   Settings
 } from "../../../types";
+import type { EnvironmentRefreshReason } from "../../environment-refresh-coordinator";
 import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
@@ -17,7 +18,10 @@ export interface SettingsPageControllerOptions {
   getInstallGuide(): SettingsInstallGuideSelection | null;
   settingsHaveUnsavedChanges(): boolean;
   syncSettingsDirtyUi(): void;
-  runEnvironmentScan(settings: Settings): Promise<EnvironmentScanResult | null>;
+  runEnvironmentScan(
+    settings: Settings,
+    reason?: EnvironmentRefreshReason
+  ): Promise<EnvironmentScanResult | null>;
   loadAppLogs(): void;
   togglePromptModel(): Promise<void>;
   requestSaveSettings(settings: Settings): Promise<"saved" | "migration-required">;
@@ -124,6 +128,12 @@ export function mountSettingsPageController(
     const settings = options.formSettings();
     options.setSettingsDraft(settings);
     void options.runEnvironmentScan(settings);
+  }, { signal });
+
+  root.querySelector("#verify-python-runtime")?.addEventListener("click", () => {
+    const settings = options.formSettings();
+    options.setSettingsDraft(settings);
+    void options.runEnvironmentScan(settings, "runtime-verification");
   }, { signal });
 
   root.querySelector("#save-settings")?.addEventListener("click", async () => {

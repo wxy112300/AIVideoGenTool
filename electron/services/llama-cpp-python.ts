@@ -1,4 +1,5 @@
 import type { Settings, LlamaCppPythonStatus } from "../../src/types.js";
+import { pythonProbeCache } from "./python-probe-cache.js";
 
 export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.4";
 export const LLAMA_CPP_PYTHON_WHEEL_ROOT =
@@ -151,7 +152,7 @@ const probeScript = [
 // remains intentional when this probe is refactored.
 export const LLAMA_CPP_PYTHON_PROBE_SCRIPT = probeScript;
 
-function emptyStatus(pythonPath = ""): LlamaCppPythonStatus {
+export function emptyLlamaCppPythonStatus(pythonPath = ""): LlamaCppPythonStatus {
   return {
     packageName: "llama-cpp-python",
     pythonPath,
@@ -271,7 +272,7 @@ export async function inspectLlamaCppPython(
   pythonPath: string,
   runLoggedProcess: LlamaCppPythonRuntime["runLoggedProcess"]
 ): Promise<LlamaCppPythonStatus> {
-  if (!pythonPath) return emptyStatus();
+  if (!pythonPath) return emptyLlamaCppPythonStatus();
   try {
     const output = await runLoggedProcess(
       pythonPath,
@@ -504,9 +505,15 @@ export async function installLlamaCppPythonPackage(
   onLog?: (message: string) => void,
   options: { forceReinstall?: boolean } = {}
 ): Promise<LlamaCppInstallResult> {
-  return sharedLlamaOperationLock(settings, onLog, () =>
-    installLlamaCppPythonPackageUnlocked(settings, runtime, onLog, options)
-  );
+  return sharedLlamaOperationLock(settings, onLog, async () => {
+    const finishMutation = pythonProbeCache.beginMutation();
+    try {
+      return await installLlamaCppPythonPackageUnlocked(settings, runtime, onLog, options);
+    } finally {
+      finishMutation();
+      pythonProbeCache.invalidate(undefined, "mutation");
+    }
+  });
 }
 
 async function uninstallLlamaCppPythonPackageUnlocked(
@@ -580,7 +587,13 @@ export async function uninstallLlamaCppPythonPackage(
   runtime: LlamaCppPythonRuntime,
   onLog?: (message: string) => void
 ): Promise<LlamaCppInstallResult> {
-  return sharedLlamaOperationLock(settings, onLog, () =>
-    uninstallLlamaCppPythonPackageUnlocked(settings, runtime, onLog)
-  );
+  return sharedLlamaOperationLock(settings, onLog, async () => {
+    const finishMutation = pythonProbeCache.beginMutation();
+    try {
+      return await uninstallLlamaCppPythonPackageUnlocked(settings, runtime, onLog);
+    } finally {
+      finishMutation();
+      pythonProbeCache.invalidate(undefined, "mutation");
+    }
+  });
 }

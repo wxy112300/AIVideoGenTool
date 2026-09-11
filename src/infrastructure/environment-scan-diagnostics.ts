@@ -150,6 +150,10 @@ export function buildEnvironmentScanDiagnostics(
       attentionProbeStage: scan.attentionAcceleration.probeStage ?? "",
       attentionProbeError: scan.attentionAcceleration.probeError ?? "",
       attentionProbeDurationMs: scan.attentionAcceleration.durationMs,
+      attentionProbeSource: scan.attentionAcceleration.probeEvidence?.source ?? "none",
+      attentionProbeEvidenceState: scan.attentionAcceleration.probeEvidence?.state ?? "unknown",
+      attentionProbeVerifiedAt: scan.attentionAcceleration.probeEvidence?.verifiedAt ?? "",
+      attentionProbeAgeMs: scan.attentionAcceleration.probeEvidence?.ageMs,
       torchVersion: versionLabel(scan.attentionAcceleration.torchVersion),
       torchvisionVersion: versionLabel(scan.attentionAcceleration.torchvisionVersion ?? ""),
       torchaudioVersion: versionLabel(scan.attentionAcceleration.torchaudioVersion ?? ""),
@@ -173,6 +177,12 @@ export function buildEnvironmentScanDiagnostics(
       llamaCudaVersion: versionLabel(scan.llamaCppPython.cudaVersion),
       llamaGpuOffload: scan.llamaCppPython.gpuOffload,
       llamaCppPythonReady: scan.llamaCppPython.ready,
+      llamaProbeSource: scan.llamaCppPython.probeEvidence?.source ?? "none",
+      llamaProbeEvidenceState: scan.llamaCppPython.probeEvidence?.state ?? "unknown",
+      llamaProbeVerifiedAt: scan.llamaCppPython.probeEvidence?.verifiedAt ?? "",
+      llamaProbeAgeMs: scan.llamaCppPython.probeEvidence?.ageMs,
+      nativeProbeStarted: scan.scanTelemetry?.nativeProbeStarted ?? false,
+      nativeProbeDurationMs: scan.scanTelemetry?.nativeProbeDurationMs,
       gpuDevices: scan.gpus.map((gpu) =>
         `${gpu.index}:${gpu.name}; driver=${gpu.driverVersion}; vram=${Math.round(gpu.vramTotalBytes / 1024 ** 3)}GiB`
       ),

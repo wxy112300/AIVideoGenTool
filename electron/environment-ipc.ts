@@ -3,6 +3,7 @@ import type {
   ConnectionKind,
   CustomNodeInstallMode,
   EnvironmentIssue,
+  EnvironmentScanOptions,
   LocalServiceKind,
   Settings
 } from "../src/types.js";
@@ -31,8 +32,8 @@ export function registerEnvironmentIpc(deps: EnvironmentIpcDependencies): void {
   );
   deps.ipc.handle(
     "environment:scan",
-    (_event, settings: Settings, requestedScope: unknown) =>
-      deps.query.scan(settings, requestedScope)
+    (_event, settings: Settings, requestedScope: unknown, options?: EnvironmentScanOptions) =>
+      deps.query.scan(settings, requestedScope, options)
   );
   deps.ipc.handle(
     "service:start",

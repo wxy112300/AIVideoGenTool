@@ -93,6 +93,11 @@ export function mountSettingsPageController(options) {
         options.setSettingsDraft(settings);
         void options.runEnvironmentScan(settings);
     }, { signal });
+    root.querySelector("#verify-python-runtime")?.addEventListener("click", () => {
+        const settings = options.formSettings();
+        options.setSettingsDraft(settings);
+        void options.runEnvironmentScan(settings, "runtime-verification");
+    }, { signal });
     root.querySelector("#save-settings")?.addEventListener("click", async () => {
         const state = options.context.getState();
         if (!state)

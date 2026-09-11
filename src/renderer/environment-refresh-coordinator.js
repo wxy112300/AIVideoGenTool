@@ -1,9 +1,14 @@
 export function environmentScanScopeForReason(reason) {
     if (reason === "service-change")
         return "runtime";
+    if (reason === "runtime-verification")
+        return "dependencies";
     if (reason === "dependency-change")
         return "dependencies";
     return "full";
+}
+export function environmentScanOptionsForReason(reason) {
+    return reason === "runtime-verification" ? { forcePythonProbe: true } : undefined;
 }
 export class EnvironmentRefreshCoordinator {
     dependencies;
@@ -19,7 +24,11 @@ export class EnvironmentRefreshCoordinator {
         this.dependencies.notify(this.dependencies.scanningMessage(), { durationMs: 300_000 });
         this.dependencies.requestRender();
         try {
-            const scan = await this.dependencies.scan(settings, environmentScanScopeForReason(reason));
+            const scope = environmentScanScopeForReason(reason);
+            const options = environmentScanOptionsForReason(reason);
+            const scan = options
+                ? await this.dependencies.scan(settings, scope, options)
+                : await this.dependencies.scan(settings, scope);
             if (requestId === this.latestRequestId) {
                 this.dependencies.commit(scan);
                 this.dependencies.afterCommit(scan);

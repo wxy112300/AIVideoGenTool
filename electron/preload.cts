@@ -10,6 +10,7 @@ import type {
   DependencyInstallProgress,
   EnhanceRequest,
   EnvironmentIssue,
+  EnvironmentScanOptions,
   EnvironmentScanScope,
   HistoryMigrationProgress,
   HistoryCoverLookup,
@@ -103,8 +104,11 @@ const api: AppApi = {
   releasePromptModel: () => ipcRenderer.invoke("prompt:release"),
   testConnection: (kind, settings) =>
     ipcRenderer.invoke("connection:test", kind, settings),
-  scanEnvironment: (settings: Settings, scope?: EnvironmentScanScope) =>
-    ipcRenderer.invoke("environment:scan", settings, scope),
+  scanEnvironment: (
+    settings: Settings,
+    scope?: EnvironmentScanScope,
+    options?: EnvironmentScanOptions
+  ) => ipcRenderer.invoke("environment:scan", settings, scope, options),
   startLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>

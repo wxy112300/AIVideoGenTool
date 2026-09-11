@@ -1216,6 +1216,8 @@ export interface LlamaCppPythonStatus {
   nativeCrash?: boolean;
   /** Windows/native exit code when a probe crash was identified. */
   nativeCrashCode?: string;
+  /** Evidence describing when and how the native Python probe was observed. */
+  probeEvidence?: PythonProbeEvidence;
 }
 
 export type Dlss5RuntimeState =
@@ -1431,6 +1433,54 @@ export interface CustomNodeStatus {
 export type CustomNodeInstallMode = "install" | "update" | "repair" | "reinstall";
 
 export type EnvironmentScanScope = "full" | "runtime" | "dependencies";
+
+export type PythonProbeEvidenceReason =
+  | "empty"
+  | "expired"
+  | "identity-changed"
+  | "fingerprint-changed"
+  | "uncacheable"
+  | "forced"
+  | "mutation"
+  | "inflight-invalidated"
+  | "probe-failed"
+  | "no-python"
+  | "runtime-previous";
+
+export interface PythonProbeEvidence {
+  source: "live" | "cache" | "previous" | "none";
+  state: "valid" | "expired" | "invalidated" | "mutating" | "failed" | "unknown";
+  /** Wall-clock time when the successful native probe finished. */
+  verifiedAt?: string;
+  /** Age from the monotonic clock at the time this evidence was projected. */
+  ageMs?: number;
+  /** Stable diagnostic code; never contains the full local path. */
+  reason?: PythonProbeEvidenceReason;
+}
+
+export interface EnvironmentScanOptions {
+  /** Bypass the short-lived native Python evidence cache. */
+  forcePythonProbe?: boolean;
+}
+
+export type EnvironmentScanValidation = "reuse" | "auto" | "live";
+
+export interface EnvironmentScanTelemetry {
+  requestedScope: EnvironmentScanScope;
+  effectiveScope: EnvironmentScanScope;
+  validation: EnvironmentScanValidation;
+  fullFallback: boolean;
+  totalMs: number;
+  discoveryMs?: number;
+  runtimeApiMs?: number;
+  catalogReleaseMs?: number;
+  fileScanMs?: number;
+  fingerprintMs?: number;
+  nativeProbeStarted: number;
+  nativeProbeDurationMs?: number;
+  attention?: PythonProbeEvidence;
+  llama?: PythonProbeEvidence;
+}
 export type ComfyUiEndpointScope = "local" | "remote" | "unconfigured";
 export type ComfyUiEnvironmentStatus =
   | "ready"
@@ -1567,6 +1617,8 @@ export interface EnvironmentScanResult {
   issues: EnvironmentIssue[];
   /** Additive summary for the ComfyUI environment page. */
   environmentSummary?: ComfyUiEnvironmentSummary;
+  /** Additive process-local scan timing/evidence; absent on legacy snapshots. */
+  scanTelemetry?: EnvironmentScanTelemetry;
 }
 
 export interface PythonRuntimeCandidate {
@@ -1604,6 +1656,8 @@ export interface AttentionAccelerationStatus {
   supported: boolean;
   ready: boolean;
   detail: string;
+  /** Evidence describing when and how the native Python probe was observed. */
+  probeEvidence?: PythonProbeEvidence;
 }
 
 export type PromptEnhanceMode = "faithful" | "sulphur-native" | "h3-vision" | "image-edit";
@@ -1958,7 +2012,8 @@ export interface AppApi {
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   scanEnvironment(
     settings: Settings,
-    scope?: EnvironmentScanScope
+    scope?: EnvironmentScanScope,
+    options?: EnvironmentScanOptions
   ): Promise<EnvironmentScanResult>;
   startLocalService(
     kind: LocalServiceKind,

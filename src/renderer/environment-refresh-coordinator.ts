@@ -1,4 +1,9 @@
-import type { EnvironmentScanResult, EnvironmentScanScope, Settings } from "../types";
+import type {
+  EnvironmentScanOptions,
+  EnvironmentScanResult,
+  EnvironmentScanScope,
+  Settings
+} from "../types";
 import type { RendererNotifyOptions } from "./contracts";
 
 export type EnvironmentRefreshReason =
@@ -6,10 +11,15 @@ export type EnvironmentRefreshReason =
   | "manual"
   | "settings-change"
   | "service-change"
-  | "dependency-change";
+  | "dependency-change"
+  | "runtime-verification";
 
 export interface EnvironmentRefreshCoordinatorDependencies {
-  scan(settings: Settings, scope: EnvironmentScanScope): Promise<EnvironmentScanResult>;
+  scan(
+    settings: Settings,
+    scope: EnvironmentScanScope,
+    options?: EnvironmentScanOptions
+  ): Promise<EnvironmentScanResult>;
   setScanning(scanning: boolean): void;
   setError(message: string): void;
   commit(scan: EnvironmentScanResult): void;
@@ -26,8 +36,15 @@ export function environmentScanScopeForReason(
   reason: EnvironmentRefreshReason
 ): EnvironmentScanScope {
   if (reason === "service-change") return "runtime";
+  if (reason === "runtime-verification") return "dependencies";
   if (reason === "dependency-change") return "dependencies";
   return "full";
+}
+
+export function environmentScanOptionsForReason(
+  reason: EnvironmentRefreshReason
+): EnvironmentScanOptions | undefined {
+  return reason === "runtime-verification" ? { forcePythonProbe: true } : undefined;
 }
 
 export class EnvironmentRefreshCoordinator {
@@ -47,10 +64,11 @@ export class EnvironmentRefreshCoordinator {
     this.dependencies.requestRender();
 
     try {
-      const scan = await this.dependencies.scan(
-        settings,
-        environmentScanScopeForReason(reason)
-      );
+      const scope = environmentScanScopeForReason(reason);
+      const options = environmentScanOptionsForReason(reason);
+      const scan = options
+        ? await this.dependencies.scan(settings, scope, options)
+        : await this.dependencies.scan(settings, scope);
       if (requestId === this.latestRequestId) {
         this.dependencies.commit(scan);
         this.dependencies.afterCommit(scan);

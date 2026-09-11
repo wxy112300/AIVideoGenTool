@@ -15,7 +15,10 @@ import type {
   EnvironmentItem,
   EnvironmentItemId,
   EnvironmentScanResult,
+  EnvironmentScanOptions,
   EnvironmentScanScope,
+  EnvironmentScanTelemetry,
+  EnvironmentScanValidation,
   Dlss5RuntimeStatus,
   DepthAnythingAssetStatus,
   Dlss5ProviderStatus,
@@ -25,6 +28,7 @@ import type {
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
+  PythonProbeEvidence,
   PythonRuntimeCandidate,
   Settings
 } from "../../src/types.js";
@@ -54,7 +58,27 @@ import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { buildEnvironmentScanDiagnostics } from "../../src/infrastructure/environment-scan-diagnostics.js";
 import { inspectAttentionPython, type AttentionPythonProbe } from "./attention-python-probe.js";
-import { EnvironmentScanCoordinator } from "./environment-scan-coordinator.js";
+import {
+  defaultEnvironmentScanValidation,
+  EnvironmentScanCoordinator,
+  type EnvironmentScanSpec
+} from "./environment-scan-coordinator.js";
+import {
+  emptyLlamaCppPythonStatus,
+  inspectLlamaCppPython,
+  installLlamaCppPythonPackage,
+  uninstallLlamaCppPythonPackage,
+  type LlamaCppPythonRuntime
+} from "./llama-cpp-python.js";
+import {
+  pythonProbeCache,
+  type ProbeFamily,
+  type PythonProbeCacheResult
+} from "./python-probe-cache.js";
+import {
+  resolveProbeIdentity,
+  type ProbeIdentity
+} from "./python-probe-fingerprint.js";
 import { collectEnvironmentRuntimeEvidence } from "./environment-runtime-evidence.js";
 import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import {
@@ -91,12 +115,6 @@ import {
   installKonohamaruVideo2dlssnrRuntime
 } from "./konohamaru-runtime.js";
 import { prepareH3PromptWriter } from "../../src/infrastructure/dependency-node-adapters.js";
-import {
-  inspectLlamaCppPython,
-  installLlamaCppPythonPackage,
-  uninstallLlamaCppPythonPackage,
-  type LlamaCppPythonRuntime
-} from "./llama-cpp-python.js";
 import { comfyRuntimeState } from "../../src/infrastructure/comfy-runtime-state.js";
 import {
   attachComfyUiRepairPlans,
@@ -2460,10 +2478,12 @@ async function inspectAttentionAcceleration(
   settings: Settings,
   comfyRoot: string,
   installation: ComfyInstallation | null,
-  pythonPathOverride = ""
+  pythonPathOverride = "",
+  probeOverride?: AttentionPythonProbe,
+  probeEvidence?: PythonProbeEvidence
 ): Promise<AttentionAccelerationStatus> {
   const pythonPath = pythonPathOverride || await findComfyPython(settings, comfyRoot, installation);
-  const probe = await inspectAttentionPython(pythonPath);
+  const probe = probeOverride ?? await inspectAttentionPython(pythonPath);
   const probeFailed = probe.probeState === "failed";
   if (probeFailed || probe.probeError) {
     appLogger.warn("environment", "attention-probe-failed", "Attention validation reported a failure", {
@@ -2538,8 +2558,242 @@ async function inspectAttentionAcceleration(
     ),
     ready,
     detail: probeFailed ? `H3 环境检测未完成（${probe.probeStage || "Python"}）：${probe.probeError || "探针异常"}。请重新扫描；当前结果不能判断依赖是否缺失。` : ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
-      missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境"
+      missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境",
+    ...(probeEvidence ? { probeEvidence } : {})
   };
+}
+
+interface PythonRuntimeProbeScan {
+  attention: AttentionAccelerationStatus;
+  llama: LlamaCppPythonStatus;
+  attentionMetrics: PythonProbeCacheResult<AttentionPythonProbe>["metrics"];
+  llamaMetrics: PythonProbeCacheResult<LlamaCppPythonStatus>["metrics"];
+}
+
+function runtimeProbeTelemetry(
+  probes: PythonRuntimeProbeScan
+): Pick<EnvironmentScanTelemetry, "fingerprintMs" | "nativeProbeStarted" | "nativeProbeDurationMs"> {
+  const metrics = [probes.attentionMetrics, probes.llamaMetrics];
+  const fingerprintDurations = metrics.map((item) => item.fingerprintDurationMs);
+  const nativeDurations = metrics
+    .filter((item) => item.nativeStarted)
+    .map((item) => item.nativeDurationMs)
+    .filter((value): value is number => typeof value === "number");
+  return {
+    fingerprintMs: fingerprintDurations.length
+      ? Math.max(...fingerprintDurations)
+      : undefined,
+    nativeProbeStarted: metrics.filter((item) => item.nativeStarted).length,
+    nativeProbeDurationMs: nativeDurations.length
+      ? Math.max(...nativeDurations)
+      : undefined
+  };
+}
+
+function probeIdentityFor(
+  comfyRoot: string,
+  installation: Pick<ComfyInstallation, "sourceDirectory"> | null,
+  pythonPath: string
+): ProbeIdentity {
+  return {
+    pythonPath,
+    coreDirectory: installation?.sourceDirectory || comfyRoot,
+    dataDirectory: comfyRoot
+  };
+}
+
+function attentionProbeCanCache(probe: AttentionPythonProbe): boolean {
+  return probe.probeState === "complete" &&
+    !probe.probeError &&
+    !(probe.errors?.length);
+}
+
+function llamaProbeCanCache(status: LlamaCppPythonStatus): boolean {
+  return !status.error &&
+    status.nativeCrash !== true &&
+    !status.nativeCrashCode;
+}
+
+function failedAttentionProbe(
+  pythonPath: string,
+  probeEvidence: PythonProbeEvidence
+): AttentionPythonProbe {
+  return {
+    probeState: "failed",
+    probeStage: probeEvidence.state === "mutating" ? "mutation" : "python",
+    probeError: probeEvidence.state === "mutating"
+      ? "Python 运行环境正在变更，原生探针已暂缓。"
+      : pythonPath
+        ? "本轮没有取得可复用的 Python 原生探针结果。"
+        : "未找到所选 ComfyUI Python。"
+  };
+}
+
+function failedLlamaStatus(
+  pythonPath: string,
+  probeEvidence: PythonProbeEvidence
+): LlamaCppPythonStatus {
+  const status = emptyLlamaCppPythonStatus(pythonPath);
+  return {
+    ...status,
+    detail: probeEvidence.state === "mutating"
+      ? "Python 运行环境正在变更，等待完成后重新验证。"
+      : status.detail,
+    ready: false,
+    probeEvidence
+  };
+}
+
+async function scanPythonRuntimeProbes(
+  settings: Settings,
+  comfyRoot: string,
+  installation: ComfyInstallation | null,
+  pythonPath: string,
+  validation: EnvironmentScanValidation,
+  forceReason: NonNullable<PythonProbeEvidence["reason"]> = "forced"
+): Promise<PythonRuntimeProbeScan> {
+  const candidateIdentity = probeIdentityFor(comfyRoot, installation, pythonPath);
+  const resolvedIdentity = candidateIdentity.pythonPath.trim() &&
+    candidateIdentity.coreDirectory.trim() && candidateIdentity.dataDirectory.trim()
+    ? await resolveProbeIdentity(candidateIdentity)
+    : null;
+  const identity = resolvedIdentity ?? candidateIdentity;
+  const cacheableIdentity = Boolean(resolvedIdentity);
+  if (pythonProbeCache.isMutating(identity)) {
+    const mutatingEvidence: PythonProbeEvidence = {
+      source: "none",
+      state: "mutating",
+      reason: "mutation"
+    };
+    const attention = await inspectAttentionAcceleration(
+      settings,
+      comfyRoot,
+      installation,
+      pythonPath,
+      failedAttentionProbe(pythonPath, mutatingEvidence),
+      mutatingEvidence
+    );
+    return {
+      attention,
+      llama: failedLlamaStatus(pythonPath, mutatingEvidence),
+      attentionMetrics: {
+        nativeStarted: false,
+        fingerprintDurationMs: 0,
+        source: "none"
+      },
+      llamaMetrics: {
+        nativeStarted: false,
+        fingerprintDurationMs: 0,
+        source: "none"
+      }
+    };
+  }
+  const mode = validation === "live" ? "live" : "auto";
+  const cycle = mode === "live" && cacheableIdentity
+    ? pythonProbeCache.beginValidationCycle(identity, forceReason)
+    : undefined;
+  const runAttention = async (): Promise<PythonProbeCacheResult<AttentionPythonProbe>> => {
+    if (!cacheableIdentity) {
+      const probe = await inspectAttentionPython(pythonPath);
+      return {
+        value: probe,
+        evidence: {
+          source: "live",
+          state: probe.probeState === "failed" ? "failed" : "valid",
+          reason: probe.probeState === "failed" ? "probe-failed" : "uncacheable"
+        },
+        metrics: {
+          nativeStarted: true,
+          nativeDurationMs: probe.durationMs,
+          fingerprintDurationMs: 0,
+          source: "live"
+        }
+      };
+    }
+    return pythonProbeCache.readOrRun(
+      identity,
+      "attention",
+      mode,
+      async () => {
+        const probe = await inspectAttentionPython(pythonPath);
+        return {
+          value: probe,
+          cacheable: attentionProbeCanCache(probe),
+          state: probe.probeState === "failed" ? "failed" : "valid",
+          reason: probe.probeState === "failed" ? "probe-failed" : "uncacheable"
+        };
+      },
+      cycle ? { cycle } : {}
+    );
+  };
+  const runLlama = async (): Promise<PythonProbeCacheResult<LlamaCppPythonStatus>> => {
+    if (!cacheableIdentity) {
+      const status = await inspectLlamaCppPython(pythonPath, runLoggedProcess);
+      return {
+        value: status,
+        evidence: {
+          source: "live",
+          state: status.error || status.nativeCrash ? "failed" : "valid",
+          reason: status.error || status.nativeCrash ? "probe-failed" : "uncacheable"
+        },
+        metrics: {
+          nativeStarted: true,
+          fingerprintDurationMs: 0,
+          source: "live"
+        }
+      };
+    }
+    return pythonProbeCache.readOrRun(
+      identity,
+      "llama",
+      mode,
+      async () => {
+        const status = await inspectLlamaCppPython(pythonPath, runLoggedProcess);
+        return {
+          value: status,
+          cacheable: llamaProbeCanCache(status),
+          state: status.error || status.nativeCrash ? "failed" : "valid",
+          reason: status.error || status.nativeCrash ? "probe-failed" : "uncacheable"
+        };
+      },
+      cycle ? { cycle } : {}
+    );
+  };
+  const [attentionResult, llamaResult] = await Promise.all([runAttention(), runLlama()]);
+  const attentionEvidence = attentionResult.evidence;
+  const llamaEvidence = llamaResult.evidence;
+  const attention = await inspectAttentionAcceleration(
+    settings,
+    comfyRoot,
+    installation,
+    pythonPath,
+    attentionResult.value ?? failedAttentionProbe(pythonPath, attentionEvidence),
+    attentionEvidence
+  );
+  const llama = llamaResult.value
+    ? {
+        ...llamaResult.value,
+        ready: llamaEvidence.state === "valid" ? llamaResult.value.ready : false,
+        probeEvidence: llamaEvidence
+      }
+    : failedLlamaStatus(pythonPath, llamaEvidence);
+  return {
+    attention,
+    llama,
+    attentionMetrics: attentionResult.metrics,
+    llamaMetrics: llamaResult.metrics
+  };
+}
+
+function projectedPreviousStatus<T extends AttentionAccelerationStatus | LlamaCppPythonStatus>(
+  status: T,
+  projectedEvidence: PythonProbeEvidence
+): T {
+  return {
+    ...status,
+    ready: projectedEvidence.state === "valid" ? status.ready : false,
+    probeEvidence: projectedEvidence
+  } as T;
 }
 
 function readStatsString(value: unknown, keys: string[]): string {
@@ -3483,7 +3737,7 @@ async function restartComfyUiIfRunning(
   });
 }
 
-export async function updateComfyUi(
+async function updateComfyUiUnlocked(
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   if (!localEndpoint(settings.comfyUrl, 8188)) {
@@ -3556,6 +3810,18 @@ export async function updateComfyUi(
       message: `ComfyUI 更新失败：${processError.message}`,
       log: [processError.stdout, processError.stderr].filter(Boolean).join("\n")
     };
+  }
+}
+
+export async function updateComfyUi(
+  settings: Settings
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const finishMutation = pythonProbeCache.beginMutation();
+  try {
+    return await updateComfyUiUnlocked(settings);
+  } finally {
+    finishMutation();
+    pythonProbeCache.invalidate(undefined, "mutation");
   }
 }
 
@@ -3729,7 +3995,7 @@ async function repairComfyCorePyavIssue(
   }
 }
 
-export async function repairEnvironmentIssue(
+async function repairEnvironmentIssueUnlocked(
   issueId: EnvironmentIssue["id"],
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
@@ -3973,6 +4239,19 @@ export async function repairEnvironmentIssue(
       message: error instanceof Error ? error.message : String(error),
       log: repairLog.join("\n")
     };
+  }
+}
+
+export async function repairEnvironmentIssue(
+  issueId: EnvironmentIssue["id"],
+  settings: Settings
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const finishMutation = pythonProbeCache.beginMutation();
+  try {
+    return await repairEnvironmentIssueUnlocked(issueId, settings);
+  } finally {
+    finishMutation();
+    pythonProbeCache.invalidate(undefined, "mutation");
   }
 }
 
@@ -4394,6 +4673,7 @@ export async function installAttentionAcceleration(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const finishMutation = pythonProbeCache.beginMutation();
   const log: string[] = [];
   const report = (message: string) => {
     log.push(message);
@@ -4624,6 +4904,9 @@ export async function installAttentionAcceleration(
       message: error instanceof Error ? error.message : String(error),
       log: log.join("\n")
     };
+  } finally {
+    finishMutation();
+    pythonProbeCache.invalidate(undefined, "mutation");
   }
 }
 
@@ -4925,7 +5208,8 @@ function buildDlss5ProviderStatuses(
 }
 
 async function scanFullEnvironment(
-  settings: Settings
+  settings: Settings,
+  validation: EnvironmentScanValidation = "auto"
 ): Promise<EnvironmentScanResult> {
   const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const userHome = os.homedir();
@@ -4973,7 +5257,7 @@ async function scanFullEnvironment(
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
-  const [customNodes, attentionAcceleration, llamaCppPython] = await Promise.all([
+  const [customNodes, pythonProbes] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
         comfyRoot,
@@ -4985,17 +5269,16 @@ async function scanFullEnvironment(
         { nodeIds: runtimeNodeIds ?? null }
       )
     ),
-    inspectAttentionAcceleration(
+    scanPythonRuntimeProbes(
       settings,
       comfyRoot,
       comfyInstallation,
-      selectedPython?.path ?? ""
-    ),
-    inspectLlamaCppPython(
       selectedPython?.path ?? "",
-      runLoggedProcess
+      validation
     )
   ]);
+  const attentionAcceleration = pythonProbes.attention;
+  const llamaCppPython = pythonProbes.llama;
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
     llamaCppPython,
@@ -5133,7 +5416,17 @@ async function scanFullEnvironment(
     dlss5Providers,
     aetherScaleRuntime,
     issues: scopedIssues,
-    environmentSummary
+    environmentSummary,
+    scanTelemetry: {
+      requestedScope: "full",
+      effectiveScope: "full",
+      validation,
+      fullFallback: false,
+      totalMs: 0,
+      ...runtimeProbeTelemetry(pythonProbes),
+      attention: attentionAcceleration.probeEvidence,
+      llama: llamaCppPython.probeEvidence
+    }
   };
 }
 
@@ -5172,13 +5465,56 @@ function environmentScanCacheKey(settings: Settings): string {
 export function getCachedEnvironmentScan(
   settings: Settings
 ): EnvironmentScanResult | undefined {
-  return environmentScanCache.get(environmentScanCacheKey(settings));
+  const cached = environmentScanCache.get(environmentScanCacheKey(settings));
+  if (!cached) return undefined;
+  const snapshot = structuredClone(cached);
+  const selectedPython = snapshot.pythonRuntimes.find((runtime) => runtime.selected) ??
+    snapshot.pythonRuntimes[0];
+  if (!selectedPython?.path || (
+    !snapshot.attentionAcceleration.probeEvidence &&
+    !snapshot.llamaCppPython.probeEvidence
+  )) {
+    return snapshot;
+  }
+  const identity = probeIdentityFor(
+    snapshot.comfyRoot,
+    snapshot.comfySourceDirectory
+      ? {
+          sourceDirectory: snapshot.comfySourceDirectory
+        }
+      : null,
+    selectedPython.path
+  );
+  if (snapshot.attentionAcceleration.probeEvidence) {
+    const projected = pythonProbeCache.projectPreviousSync(
+      identity,
+      "attention",
+      snapshot.attentionAcceleration
+    );
+    snapshot.attentionAcceleration = projectedPreviousStatus(
+      snapshot.attentionAcceleration,
+      projected.evidence
+    );
+  }
+  if (snapshot.llamaCppPython.probeEvidence) {
+    const projected = pythonProbeCache.projectPreviousSync(
+      identity,
+      "llama",
+      snapshot.llamaCppPython
+    );
+    snapshot.llamaCppPython = projectedPreviousStatus(
+      snapshot.llamaCppPython,
+      projected.evidence
+    );
+  }
+  return snapshot;
 }
 
 async function scanEnvironmentDependencies(
   settings: Settings,
   previous: EnvironmentScanResult,
-  scope: Exclude<EnvironmentScanScope, "full">
+  scope: Exclude<EnvironmentScanScope, "full">,
+  validation: EnvironmentScanValidation
 ): Promise<EnvironmentScanResult | null> {
   const [comfyRoot, comfyInstallations] = await Promise.all([
     findComfyRoot(settings),
@@ -5219,7 +5555,7 @@ async function scanEnvironmentDependencies(
           .map((node) => [node.id, node.latestVersion])
       ))
     : latestCatalogNodeReleaseVersions(settings);
-  const [customNodes, attentionAcceleration, llamaCppPython] = await Promise.all([
+  const [customNodes, pythonProbes] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
         comfyRoot,
@@ -5232,17 +5568,33 @@ async function scanEnvironmentDependencies(
       )
     ),
     runtimeOnly
-      ? Promise.resolve(previous.attentionAcceleration)
-      : inspectAttentionAcceleration(
+      ? Promise.all([
+          pythonProbeCache.projectPrevious(
+            probeIdentityFor(comfyRoot, comfyInstallation, selectedPython?.path ?? ""),
+            "attention",
+            previous.attentionAcceleration
+          ),
+          pythonProbeCache.projectPrevious(
+            probeIdentityFor(comfyRoot, comfyInstallation, selectedPython?.path ?? ""),
+            "llama",
+            previous.llamaCppPython
+          )
+        ]).then(([attentionResult, llamaResult]) => ({
+          attention: projectedPreviousStatus(previous.attentionAcceleration, attentionResult.evidence),
+          llama: projectedPreviousStatus(previous.llamaCppPython, llamaResult.evidence),
+          attentionMetrics: attentionResult.metrics,
+          llamaMetrics: llamaResult.metrics
+        }))
+      : scanPythonRuntimeProbes(
           settings,
           comfyRoot,
           comfyInstallation,
-          selectedPython?.path ?? ""
-        ),
-    runtimeOnly
-      ? Promise.resolve(previous.llamaCppPython)
-      : inspectLlamaCppPython(selectedPython?.path ?? "", runLoggedProcess)
+          selectedPython?.path ?? "",
+          validation
+        )
   ]);
+  const attentionAcceleration = pythonProbes.attention;
+  const llamaCppPython = pythonProbes.llama;
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
     llamaCppPython,
@@ -5349,24 +5701,65 @@ async function scanEnvironmentDependencies(
     dlss5Providers,
     aetherScaleRuntime: managedGuideAssets.aetherScaleRuntime,
     issues: scopedIssues,
-    environmentSummary
+    environmentSummary,
+    scanTelemetry: {
+      requestedScope: scope,
+      effectiveScope: scope,
+      validation,
+      fullFallback: false,
+      totalMs: 0,
+      ...runtimeProbeTelemetry(pythonProbes),
+      attention: attentionAcceleration.probeEvidence,
+      llama: llamaCppPython.probeEvidence
+    }
   };
 }
 
 async function runEnvironmentScan(
   settings: Settings,
-  scope: EnvironmentScanScope = "full"
+  spec: EnvironmentScanSpec,
+  requestedScope: EnvironmentScanScope = spec.scope
 ): Promise<EnvironmentScanResult> {
+  const startedAt = Date.now();
+  const scope = spec.scope;
   const recordDiagnostics = (result: EnvironmentScanResult): EnvironmentScanResult => {
+    const attentionEvidence = result.attentionAcceleration.probeEvidence;
+    const llamaEvidence = result.llamaCppPython.probeEvidence;
+    const previousTelemetry = result.scanTelemetry;
+    const telemetry: EnvironmentScanTelemetry = {
+      requestedScope,
+      effectiveScope: result.scanTelemetry?.effectiveScope ?? scope,
+      validation: spec.pythonValidation,
+      fullFallback: result.scanTelemetry?.fullFallback ?? false,
+      totalMs: Math.max(0, Date.now() - startedAt),
+      fingerprintMs: previousTelemetry?.fingerprintMs,
+      nativeProbeStarted: [attentionEvidence, llamaEvidence]
+        .filter((item) => item?.source === "live").length,
+      nativeProbeDurationMs: previousTelemetry?.nativeProbeDurationMs ?? (
+        attentionEvidence?.source === "live"
+          ? result.attentionAcceleration.durationMs
+          : undefined
+      ),
+      attention: attentionEvidence,
+      llama: llamaEvidence
+    };
+    result = { ...result, scanTelemetry: telemetry };
     const diagnostics = buildEnvironmentScanDiagnostics(result);
     appLogger.info(
       "environment",
       "scan-inventory",
       "Environment versions and dependency inventory",
-      { requestedScope: scope, ...diagnostics.inventory }
+      {
+        requestedScope,
+        effectiveScope: telemetry.effectiveScope,
+        validation: spec.pythonValidation,
+        ...diagnostics.inventory,
+        scanTelemetry: telemetry
+      }
     );
     const findingsMeta = {
-      requestedScope: scope,
+      requestedScope,
+      effectiveScope: telemetry.effectiveScope,
       errorCount: diagnostics.errors.length,
       warningCount: diagnostics.warnings.length,
       errors: diagnostics.errors,
@@ -5397,30 +5790,71 @@ async function runEnvironmentScan(
     return result;
   };
   const cacheKey = environmentScanCacheKey(settings);
+  let fullFallback = false;
   if (scope !== "full") {
     const previous = environmentScanCache.get(cacheKey);
     if (previous) {
-      const partial = await scanEnvironmentDependencies(settings, previous, scope);
+      const partial = await scanEnvironmentDependencies(
+        settings,
+        previous,
+        scope,
+        spec.pythonValidation
+      );
       if (partial) {
-        cacheEnvironmentScan(cacheKey, partial);
-        return recordDiagnostics(partial);
+        partial.scanTelemetry = {
+          requestedScope,
+          effectiveScope: scope,
+          validation: spec.pythonValidation,
+          fullFallback: false,
+          totalMs: 0,
+          fingerprintMs: partial.scanTelemetry?.fingerprintMs,
+          nativeProbeStarted: partial.scanTelemetry?.nativeProbeStarted ?? 0,
+          nativeProbeDurationMs: partial.scanTelemetry?.nativeProbeDurationMs,
+          attention: partial.scanTelemetry?.attention,
+          llama: partial.scanTelemetry?.llama
+        };
+        const decorated = recordDiagnostics(partial);
+        cacheEnvironmentScan(cacheKey, decorated);
+        return decorated;
       }
     }
+    fullFallback = true;
   }
-  const full = await scanFullEnvironment(settings);
-  cacheEnvironmentScan(cacheKey, full);
-  return recordDiagnostics(full);
+  const full = await scanFullEnvironment(settings, spec.pythonValidation);
+  full.scanTelemetry = {
+    requestedScope,
+    effectiveScope: "full",
+    validation: spec.pythonValidation,
+    fullFallback,
+    totalMs: 0,
+    fingerprintMs: full.scanTelemetry?.fingerprintMs,
+    nativeProbeStarted: full.scanTelemetry?.nativeProbeStarted ?? 0,
+    nativeProbeDurationMs: full.scanTelemetry?.nativeProbeDurationMs,
+    attention: full.scanTelemetry?.attention,
+    llama: full.scanTelemetry?.llama
+  };
+  const decorated = recordDiagnostics(full);
+  cacheEnvironmentScan(cacheKey, decorated);
+  return decorated;
 }
 
 export function scanEnvironment(
   settings: Settings,
-  scope: EnvironmentScanScope = "full"
+  scope: EnvironmentScanScope = "full",
+  options: EnvironmentScanOptions = {}
 ): Promise<EnvironmentScanResult> {
   // Capture settings before queued work starts; later draft edits are unrelated.
   const snapshot = structuredClone(settings);
+  const forcePythonProbe = options.forcePythonProbe === true;
+  const effectiveScope = scope === "runtime" && forcePythonProbe ? "dependencies" : scope;
+  const validation = forcePythonProbe || effectiveScope === "dependencies"
+    ? "live"
+    : defaultEnvironmentScanValidation(effectiveScope);
+  const fresh = effectiveScope !== "full" || forcePythonProbe;
   return environmentScanCoordinator.run(
-    environmentScanCacheKey(snapshot), scope,
-    () => runEnvironmentScan(snapshot, scope),
-    { fresh: scope !== "full" }
+    environmentScanCacheKey(snapshot),
+    effectiveScope,
+    (mergedSpec) => runEnvironmentScan(snapshot, mergedSpec, scope),
+    { fresh, validation }
   );
 }

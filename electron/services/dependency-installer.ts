@@ -39,6 +39,7 @@ import {
 } from "../../src/infrastructure/dependency-node-adapters.js";
 import { depthAnythingBuiltinMetadataFile } from "../../src/infrastructure/depth-anything-metadata.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
+import { pythonProbeCache } from "./python-probe-cache.js";
 import { isLocalComfyUrl } from "./comfy-endpoint.js";
 import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
 import { installAetherScaleRuntime, uninstallAetherScaleRuntime } from "./aetherscale-runtime.js";
@@ -72,6 +73,25 @@ export function withWindowsGitLongPaths(
     GIT_CONFIG_KEY_0: "core.longpaths",
     GIT_CONFIG_VALUE_0: "true"
   };
+}
+
+export async function removeTemporaryNodeCheckout(
+  directory: string,
+  report: (message: string) => void,
+  remove: typeof fs.rm = fs.rm
+): Promise<void> {
+  try {
+    await remove(directory, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200
+    });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "unknown";
+    if (!["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) throw error;
+    report(`临时更新目录仍被 Windows 占用，已保留供后续清理：${directory}（${code}）`);
+  }
 }
 
 function installationFailureMessage(error: unknown, details: string): string {
@@ -481,16 +501,11 @@ async function installBundledNodePackage(
     }
     throw error;
   } finally {
-    await fs.rm(replacementDirectory, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 200
-    });
+    await removeTemporaryNodeCheckout(replacementDirectory, report);
   }
 }
 
-export async function installCustomNodePackage(
+async function installCustomNodePackageUnlocked(
   nodeId: string,
   settings: Settings,
   runtime: DependencyInstallerRuntime,
@@ -762,12 +777,7 @@ export async function installCustomNodePackage(
           }
           report(`旧目录已备份：${backupDirectory}`);
         } finally {
-          await fs.rm(replacementDirectory, {
-            recursive: true,
-            force: true,
-            maxRetries: 5,
-            retryDelay: 200
-          });
+          await removeTemporaryNodeCheckout(replacementDirectory, report);
         }
       };
       if (mode === "reinstall") {
@@ -1105,7 +1115,23 @@ export async function installCustomNodePackage(
   }
 }
 
-export async function uninstallCustomNodePackage(
+export async function installCustomNodePackage(
+  nodeId: string,
+  settings: Settings,
+  runtime: DependencyInstallerRuntime,
+  onLog?: (message: string) => void,
+  mode: CustomNodeInstallMode = "install"
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const finishMutation = pythonProbeCache.beginMutation();
+  try {
+    return await installCustomNodePackageUnlocked(nodeId, settings, runtime, onLog, mode);
+  } finally {
+    finishMutation();
+    pythonProbeCache.invalidate(undefined, "mutation");
+  }
+}
+
+async function uninstallCustomNodePackageUnlocked(
   nodeId: string,
   settings: Settings,
   runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "uninstallAetherScaleRuntime">,
@@ -1176,5 +1202,20 @@ export async function uninstallCustomNodePackage(
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
+  }
+}
+
+export async function uninstallCustomNodePackage(
+  nodeId: string,
+  settings: Settings,
+  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "uninstallAetherScaleRuntime">,
+  onLog?: (message: string) => void
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const finishMutation = pythonProbeCache.beginMutation();
+  try {
+    return await uninstallCustomNodePackageUnlocked(nodeId, settings, runtime, onLog);
+  } finally {
+    finishMutation();
+    pythonProbeCache.invalidate(undefined, "mutation");
   }
 }

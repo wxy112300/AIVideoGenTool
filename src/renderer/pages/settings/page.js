@@ -607,6 +607,25 @@ export function renderSettingsPage(viewModel, options) {
     const attentionTone = accelerationState.tone;
     const attentionStatus = accelerationState.status;
     const attentionProbeFailed = attentionStatus === "failed";
+    const probeEvidenceLabel = (evidence) => {
+        if (!evidence)
+            return s("accel.verificationPending");
+        const timestamp = evidence.verifiedAt
+            ? ` · ${options.formatScanTime(evidence.verifiedAt)}`
+            : "";
+        if (evidence.source === "live" && evidence.state === "valid")
+            return `${s("accel.verificationLive")}${timestamp}`;
+        if (evidence.source === "cache" && evidence.state === "valid")
+            return `${s("accel.verificationCached")}${timestamp}`;
+        if (evidence.source === "previous" && evidence.state === "valid")
+            return `${s("accel.verificationPrevious")}${timestamp}`;
+        return `${s("accel.verificationPending")}${timestamp}`;
+    };
+    const attentionVerificationLabel = probeEvidenceLabel(attention?.probeEvidence);
+    const runtimeVerificationBlocked = viewModel.environmentScanning ||
+        viewModel.attentionAccelerationInstalling ||
+        viewModel.llamaCppPythonInstalling ||
+        !environmentScan?.comfyRoot;
     const h3VideoVaeState = deriveH3VideoVaeState(settings, environmentScan);
     const h3VideoVaeTone = h3VideoVaeState.tone;
     const h3VideoVaeStatusIcon = h3VideoVaeState.status === "missing"
@@ -752,6 +771,7 @@ export function renderSettingsPage(viewModel, options) {
           <div><h2>${s("accel.componentsTitle")}</h2><span class="muted">${s("accel.componentsDescription")}</span></div>
           <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : attentionProbeFailed ? `${icon("circle-help")} ${s("accel.probeFailed")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
+        <p class="muted probe-evidence" data-probe-evidence="attention">${escape(attentionVerificationLabel)}</p>
         <div class="attention-runtime-grid">
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notFound")))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))} · ${(attention?.comfyKitchenBackends ?? []).map(escape).join(", ") || (attentionProbeFailed ? s("accel.probeFailed") : "eager fallback")}</code></article>
@@ -759,6 +779,7 @@ export function renderSettingsPage(viewModel, options) {
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || (attentionProbeFailed ? s("accel.probeFailed") : s("accel.notInstalled")))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
+          <button class="secondary button-with-icon" id="verify-python-runtime" ${runtimeVerificationBlocked ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${s("accel.verifyRuntime")}</button>
           <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
           <div>${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
         </div>

@@ -8,6 +8,7 @@ const promptWriterEndpoint = "/h3studio/status";
 const supportedActions = new Set([
   "probe-prompt-writer",
   "scan",
+  "scan-benchmark",
   "restart-comfy",
   "repair-prompt-writer"
 ]);
@@ -101,6 +102,7 @@ function harnessHelp() {
     "Usage:",
     "  npm.cmd run harness:comfy -- probe-prompt-writer [--json]",
     "  npm.cmd run harness:comfy -- scan [--json]",
+    "  npm.cmd run harness:comfy -- scan-benchmark [--json]",
     "  npm.cmd run harness:comfy -- restart-comfy [--json]",
     "  npm.cmd run harness:comfy -- repair-prompt-writer [--json]",
     "",
@@ -165,6 +167,49 @@ export async function runHarnessAction(action, settings) {
     };
   }
 
+  if (action === "scan-benchmark") {
+    const rounds = [];
+    let lastScan = null;
+    const requests = [
+      { label: "full-auto-miss", scope: "full", options: {} },
+      { label: "full-auto-hit-1", scope: "full", options: {} },
+      { label: "full-auto-hit-2", scope: "full", options: {} },
+      { label: "full-auto-hit-3", scope: "full", options: {} },
+      { label: "full-force", scope: "full", options: { forcePythonProbe: true } }
+    ];
+    for (const request of requests) {
+      const startedAt = performance.now();
+      const scan = await environment.scanEnvironment(settings, request.scope, request.options);
+      lastScan = scan;
+      const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
+      const telemetry = scan.scanTelemetry;
+      rounds.push({
+        label: request.label,
+        elapsedMs,
+        requestedScope: telemetry?.requestedScope ?? request.scope,
+        effectiveScope: telemetry?.effectiveScope ?? request.scope,
+        validation: telemetry?.validation ?? "unknown",
+        fingerprintMs: telemetry?.fingerprintMs,
+        nativeProbeStarted: telemetry?.nativeProbeStarted ?? 0,
+        nativeProbeDurationMs: telemetry?.nativeProbeDurationMs,
+        attentionSource: telemetry?.attention?.source ?? "none",
+        llamaSource: telemetry?.llama?.source ?? "none",
+        attentionState: telemetry?.attention?.state ?? "unknown",
+        llamaState: telemetry?.llama?.state ?? "unknown",
+        attentionAgeMs: telemetry?.attention?.ageMs,
+        llamaAgeMs: telemetry?.llama?.ageMs,
+        attentionVerifiedAt: telemetry?.attention?.verifiedAt,
+        llamaVerifiedAt: telemetry?.llama?.verifiedAt
+      });
+    }
+    return {
+      action,
+      ok: rounds.length === requests.length,
+      rounds,
+      comfyRoot: lastScan?.comfyRoot || ""
+    };
+  }
+
   if (action === "restart-comfy") {
     const restart = await environment.restartLocalService("comfy", settings);
     const probe = restart.ok ? await probePromptWriter(settings) : null;
@@ -212,6 +257,15 @@ function humanResult(result) {
       `${result.promptWriter.loaded ? "已加载" : "未加载"}`
     );
     if (result.promptWriter.loadError) lines.push(`错误：${result.promptWriter.loadError}`);
+  }
+  if (result.rounds?.length) {
+    lines.push(
+      "",
+      "扫描基准：",
+      ...result.rounds.map((round) =>
+        `${round.label} · ${round.elapsedMs}ms · ${round.attentionSource}/${round.llamaSource} · native=${round.nativeProbeStarted}`
+      )
+    );
   }
   if (result.progress?.length) {
     lines.push("", "安装日志：", ...result.progress);

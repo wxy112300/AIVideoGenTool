@@ -231,7 +231,7 @@ export function createSettingsWorkspaceCoordinator(
   );
 
   const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
-    scan: (settings, scope) => deps.context.application.scanEnvironment(settings, scope),
+    scan: (settings, scope, options) => deps.context.application.scanEnvironment(settings, scope, options),
     setScanning: (value) => {
       environmentScanning = value;
     },

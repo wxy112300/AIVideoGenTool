@@ -224,6 +224,11 @@ type SettingsCopyKey =
   | "accel.pending"
   | "accel.unsupported"
   | "accel.probeFailed"
+  | "accel.verifyRuntime"
+  | "accel.verificationLive"
+  | "accel.verificationCached"
+  | "accel.verificationPrevious"
+  | "accel.verificationPending"
   | "accel.mode"
   | "accel.modeTip"
   | "accel.modeSage"
@@ -536,6 +541,11 @@ const zhCN: SettingsCopyCatalog = {
   "accel.pending": "待安装/修复",
   "accel.unsupported": "环境不支持",
   "accel.probeFailed": "检测未完成，请重新扫描",
+  "accel.verifyRuntime": "重新验证运行环境",
+  "accel.verificationLive": "已实时验证",
+  "accel.verificationCached": "已使用缓存验证",
+  "accel.verificationPrevious": "沿用上一轮验证结果",
+  "accel.verificationPending": "等待运行环境验证",
   "accel.mode": "H3 Attention 后端",
   "accel.modeTip": "只影响 MiniMax H3 工作流；其他模型的采样和节点策略在各自的模型或工作流设置中管理。",
   "accel.modeSage": "SageAttention CUDA · 备选",
@@ -824,6 +834,11 @@ const zhTW: SettingsCopyCatalog = {
   "accel.pending": "待安裝/修復",
   "accel.unsupported": "環境不支援",
   "accel.probeFailed": "偵測未完成，請重新掃描",
+  "accel.verifyRuntime": "重新驗證執行環境",
+  "accel.verificationLive": "已即時驗證",
+  "accel.verificationCached": "已使用快取驗證",
+  "accel.verificationPrevious": "沿用上一輪驗證結果",
+  "accel.verificationPending": "等待執行環境驗證",
   "accel.mode": "H3 Attention 後端",
   "accel.modeTip": "只影響 MiniMax H3 工作流程；其他模型的採樣與節點策略在各自的模型或工作流程設定中管理。",
   "accel.modeSage": "SageAttention CUDA · 備選",
@@ -1133,6 +1148,11 @@ const enUS: SettingsCopyCatalog = {
   "accel.pending": "Needs install/repair",
   "accel.unsupported": "Environment unsupported",
   "accel.probeFailed": "Detection incomplete; scan again",
+  "accel.verifyRuntime": "Re-verify runtime",
+  "accel.verificationLive": "Live verification",
+  "accel.verificationCached": "Cached verification",
+  "accel.verificationPrevious": "Using the previous verification",
+  "accel.verificationPending": "Runtime verification pending",
   "accel.mode": "H3 Attention backend",
   "accel.modeTip": "This only affects MiniMax H3 workflows. Other models keep their own sampling and node policies.",
   "accel.modeSage": "SageAttention CUDA · alternative",
