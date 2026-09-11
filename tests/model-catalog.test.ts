@@ -73,6 +73,8 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "h3-pdd-fl2va-8step",
+      "h3-pdd-ref2va-8step",
       "minimax-h3-turbo-v4-step600-ema-pruned",
       "minimax-h3-turbo-sla-4step",
       "minimax-h3-lightx2v-turbo-4step-768p-v1.2",

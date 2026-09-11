@@ -45,6 +45,26 @@ describe("ComfyUI runtime service", () => {
       .toMatchObject({ defaultImageModel: "", defaultVideoModel: "" });
   });
 
+  it("applies current acceleration settings to legacy H3 queue records", () => {
+    const settings = {
+      ...createDefaultState().settings,
+      h3AttentionMode: "comfy-kitchen" as const,
+      h3SparseAttentionMode: "native-sla" as const,
+      h3RuntimeMode: "native" as const,
+      h3ComfyCompilerMode: "disabled" as const
+    };
+
+    expect(comfyUiSettingsForQueueTask({
+      taskType: "generation",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toMatchObject({
+      h3AttentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "native-sla",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled"
+    });
+  });
+
   it("builds a source launch from the selected data and core directories", async () => {
     const launchDetached = vi.fn(async () => 1234);
     const preflightComfyCoreDependencies = vi.fn(async () => ({ ok: true, message: "" }));
@@ -98,8 +118,9 @@ describe("ComfyUI runtime service", () => {
     expect(env).toEqual({ TEST_ENV: "1" });
     expect(args).toEqual(expect.arrayContaining([
       "--port", "8288",
-      "--disable-smart-memory",
-      "--vram-headroom", "0.5",
+      "--cache-none",
+      "--disable-pinned-memory",
+      "--disable-async-offload",
       "--models-directory", "D:\\ComfyData\\models",
       "--base-directory", "D:\\ComfyData",
       "--output-directory", "D:\\ComfyData\\output"

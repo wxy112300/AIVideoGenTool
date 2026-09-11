@@ -68,6 +68,54 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("aligns waiting H3 tasks with saved acceleration settings during load", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task = queueTaskFromDraft(state.draft, state);
+    task.status = "waiting";
+    task.attentionMode = "sage";
+    task.h3SparseAttentionMode = "auto";
+    task.h3RuntimeMode = "compatibility";
+    task.h3ComfyCompilerMode = "auto";
+    task.h3ExecutionPolicy = {
+      attentionMode: "sage",
+      attentionOwner: "sage",
+      sparseAttentionMode: "off",
+      runtimeMode: "compatibility",
+      comfyCompilerMode: "auto",
+      spectrumEnabled: false,
+      previewEnabled: false,
+      allowed: true,
+      reasons: []
+    };
+    state.settings.h3AttentionMode = "comfy-kitchen";
+    state.settings.h3SparseAttentionMode = "sol-attn";
+    state.settings.h3RuntimeMode = "native";
+    state.settings.h3ComfyCompilerMode = "disabled";
+    state.queue = [task];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.queue[0]).toMatchObject({
+        attentionMode: "comfy-kitchen",
+        h3SparseAttentionMode: "sol-attn",
+        h3RuntimeMode: "native",
+        h3ComfyCompilerMode: "disabled",
+        h3ExecutionPolicy: {
+          attentionMode: "comfy-kitchen",
+          attentionOwner: "comfy-kitchen",
+          sparseAttentionMode: "sol-attn",
+          runtimeMode: "native",
+          comfyCompilerMode: "disabled"
+        }
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists and normalizes the H3 video VAE setting", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

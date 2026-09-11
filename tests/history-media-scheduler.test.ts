@@ -44,7 +44,7 @@ describe("history media scheduler", () => {
     scheduler.dispose();
   });
 
-  it("deduplicates successful keys and permits a retry after an unsuccessful task", async () => {
+  it("deduplicates active keys while leaving completion to the resource cache", async () => {
     const scheduler = createHistoryMediaScheduler(3);
     let runs = 0;
     scheduler.enqueue("same", () => {
@@ -63,12 +63,14 @@ describe("history media scheduler", () => {
       return true;
     });
     await flushScheduler();
+    expect(runs).toBe(2);
+
     scheduler.enqueue("same", () => {
       runs += 1;
       return true;
     });
     await flushScheduler();
-    expect(runs).toBe(2);
+    expect(runs).toBe(3);
     scheduler.dispose();
   });
 
@@ -112,6 +114,31 @@ describe("history media scheduler", () => {
     first.resolve(false);
     await flushScheduler();
     expect(started).toEqual(["first", "replacement"]);
+    scheduler.dispose();
+  });
+
+  it("preempts a lower-priority running task for interactive work", async () => {
+    const scheduler = createHistoryMediaScheduler(1);
+    const first = deferred<boolean>();
+    let firstSignal: AbortSignal | undefined;
+    const started: string[] = [];
+    scheduler.enqueue("prefetch", (signal) => {
+      firstSignal = signal;
+      started.push("prefetch");
+      return first.promise;
+    }, "prefetch");
+    await flushScheduler();
+
+    scheduler.enqueue("interactive", () => {
+      started.push("interactive");
+      return true;
+    }, "interactive");
+    expect(firstSignal?.aborted).toBe(true);
+    expect(started).toEqual(["prefetch"]);
+
+    first.resolve(false);
+    await flushScheduler();
+    expect(started).toEqual(["prefetch", "interactive"]);
     scheduler.dispose();
   });
 });

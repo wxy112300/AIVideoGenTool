@@ -944,7 +944,7 @@ describe("dependency installer", () => {
     expect(findComfyRoot).not.toHaveBeenCalled();
   });
 
-  it("installs H3 Optimizations through the shared clone path and streams progress", async () => {
+  it("rejects installation of withdrawn H3 Optimizations", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-install-"));
     temporaryDirectories.push(comfyRoot);
     const processCalls: string[][] = [];
@@ -982,18 +982,13 @@ describe("dependency installer", () => {
       (message) => logs.push(message)
     );
 
-    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
-    expect(processCalls).toEqual([
-      expect.arrayContaining([
-        "clone",
-        "--depth",
-        "1",
-        "https://github.com/Zironic/H3-Optimizations.git"
-      ])
-    ]);
-    expect(await exists(path.join(comfyRoot, "custom_nodes", "H3-Optimizations"))).toBe(true);
-    expect(logs).toContain("git clone");
-    expect(result.log).toContain("未发现 requirements.txt，无需安装额外 Python 依赖");
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("已归档")
+    });
+    expect(processCalls).toEqual([]);
+    expect(await exists(path.join(comfyRoot, "custom_nodes", "H3-Optimizations"))).toBe(false);
+    expect(logs).toEqual([]);
   });
 
   it("installs the optional Qwen3.6 node with the shared prebuilt backend and no CUDA Toolkit", async () => {

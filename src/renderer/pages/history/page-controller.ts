@@ -232,7 +232,9 @@ export function mountHistoryPageController(
     mountHistoryFilterController(options.context, options.filter),
     mountHistoryMediaController(options.context, options.media),
     mountImageHistoryMediaController(options.context, {
-      loadImageHistoryThumbnail: options.media.loadImageHistoryThumbnail
+      loadImageHistoryThumbnail: options.media.loadImageHistoryThumbnail,
+      subscribeImageHistoryThumbnail: options.media.subscribeImageHistoryThumbnail,
+      invalidateImageHistoryThumbnail: options.media.invalidateImageHistoryThumbnail
     }),
     mountHistoryActionsController(options.context, options.actions),
     mountHistoryTagsController(options.context, options.tags),

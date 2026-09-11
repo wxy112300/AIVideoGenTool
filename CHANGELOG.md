@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+## 0.61.0 — 2026-09-11
+
+- 执行 ComfyUI `0.35.0` / MiniMax H3 升级：新 H3 任务统一冻结 native execution policy（Sage/Sage-Triton/PyTorch/Comfy Kitchen、native SLA、compatibility/native runtime、Comfy compiler）并在 claim-time 校验 0.35 节点 schema；撤回 H3 Memory/H3-Optimizations 活动路线但保留旧快照可读性；新增普通 loader 的 FL2VA/Ref2VA PDD 8-step pruned LoRA 清单。未下载权重；隔离 ComfyUI 0.35 schema、Sage kernel 与低分辨率底层 graph smoke 已部分验证，但应用自有启动链仍在节点初始化阶段超时，真实应用队列成片与质量评估待后续处理。
+- H3/RTX 4090 的 Comfy 编译器默认改为关闭；设置页将原“自动”改为明确的实验性启用项，并提示它可能增加峰值显存。视频 History 详情补齐 H3 的 Attention、稀疏、运行时、编译器、VAE、Spectrum、预览、Turbo profile 与策略状态快照；H3 不再显示无效的动作幅度字段。
+- Settings 的 H3 Attention、稀疏、运行时与编译器选项改为描述实际后端、推荐程度和驻留风险，不再使用容易误解的“自动 / 关闭 / 原生”命名；全局稀疏设置只保留稠密与 SOL，旧 Auto、Native SLA、VSA 值迁回稠密，Turbo-SLA 仍由任务配方内部绑定专用 SLA，已有任务与 History 快照保持可读。
+- 修复 H3 加速设置只作用于新建任务的问题：保存后的 dense/sparse Attention、native runtime 与 compiler 现在会同步到等待中的 H3 任务；运行中的任务保持不变，失败/取消任务在重置重试时刷新为当前设置。
+- 修复 ComfyUI 0.35 + RTX 4090 动态显存下 Spectrum H3 离线 replay 在第一遍 20/20 后卡死的问题：应用生成图保留 Spectrum 第一遍自适应预测，但默认关闭高内存双遍 replay；手工 replay 图的进度也按两遍正确归一化。
+- 重构 History 媒体加载链：gallery 图片不再预先请求原图，图片/视频封面通过共享资源 store single-flight 解码，先呈现再异步保存；新增 source revision 条件写入、定向失效、preview/final 分离、可抢占视频预取和 120ms hover 意图治理。History focused 正确性测试与受控 Electron `history-media` 基准已通过；基准只报告当前实现时序，不宣称未经旧实现对照的固定提速比例。
 - 修复从历史页继续创作后，创建模式 route 与当前视频草稿短暂不同步时，模型下拉只更新隐藏草稿、页面仍锁在 Motion Context 模型的问题；模型切换现在以当前可见草稿为准，并在 Continuum JointAV 与 R2V Motion Context 之间切换时同时保留两类历史输入。
 - 重排 Konohamaru DLSS5 提升面板：NR 强度数值固定在滑杆右侧，设置说明改为统一 info 提示，补齐底部 Auto H.264 输出体积说明与按输出 FPS/帧数的估算，并在选项重绘时保持面板滚动位置。
 - Settings 新增缓存管理面板，显示当前 Electron 会话缓存与应用临时目录大小，支持带阶段、目录计数、已用时间和预计剩余时间的安全清理；运行中的任务不会被强制删除。

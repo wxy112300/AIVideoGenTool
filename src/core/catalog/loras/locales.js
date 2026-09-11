@@ -1,5 +1,35 @@
 import { zhTWLoraLocales } from "./locale.zh-TW.js";
 const zhCN = {
+    "h3-pdd-fl2va-8step": {
+        guide: {
+            summary: "ComfyUI 0.35 原生 PDD Acc FL2VA 8 步 LoRA；通过输出 head bank 在每个 sigma 区间使用对应 head，不依赖 H3-Optimizations。",
+            recommendedStrength: "固定 1.0；应用会固定 8 步、Euler、Simple、video shift 12、audio shift 3 和 CFG 1.0。",
+            effects: "把 FL2VA 采样预算压缩到 8 步，同时保留 PDD head bank 对不同 sigma 区间的适配；先与标准 20 步 Base 做同 Seed 对照。",
+            stacking: "这是独立的性能路径，只与 pruned INT8 ConvRot FL2VA 基座配套；不要与任何 Turbo LoRA 叠加，也不要把非 pruned 文件混到当前条目。",
+            compatibility: "仅 MiniMax H3 FL2VA pruned INT8 ConvRot 图生视频；需要 ComfyUI 0.35 原生 PDD 支持和普通 LoraLoaderModelOnly，Ref2VA、INT4、Q3 与视频续写不开放。",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            pddTurbo: "PDD Acc 与 Turbo LoRA 不能同时使用；请保留独立的 8 步 PDD 对照。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；PDD 是独立性能路径，先单独验证，再考虑与内容 LoRA 组合。"
+        }
+    },
+    "h3-pdd-ref2va-8step": {
+        guide: {
+            summary: "ComfyUI 0.35 原生 PDD Acc Ref2VA 8 步 LoRA；通过输出 head bank 支持多参考图 R2V 的分段采样。",
+            recommendedStrength: "固定 1.0；应用会固定 8 步、Euler、Simple、video shift 12、audio shift 3 和 CFG 1.0。",
+            effects: "把 Ref2VA 多参考图采样预算压缩到 8 步；参考图一致性、运动和音频需要与标准 R2V 同 Seed 对照。",
+            stacking: "这是独立的 R2V 性能路径，只与 pruned INT8 ConvRot Ref2VA 基座配套；不要与任何 Turbo LoRA 叠加，也不要用于 FL2VA 或视频续写。",
+            compatibility: "仅 MiniMax H3 Ref2VA pruned INT8 ConvRot 多参考图生成；需要 ComfyUI 0.35 原生 PDD 支持、普通 LoraLoaderModelOnly 和 MiniMaxH3ReferenceToVideo。",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            pddTurbo: "PDD Acc 与 Turbo LoRA 不能同时使用；请保留独立的 8 步 PDD R2V 对照。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；PDD 是独立性能路径，先单独验证，再考虑与 R2V 内容 LoRA 组合。"
+        }
+    },
     "minimax-h3-turbo-sla-4step": {
         guide: {
             summary: "官方 MiniMax H3 Turbo-SLA 4 步 768p 稀疏注意力 LoRA；需要配合 H3 SLA Attention 节点。",
@@ -208,6 +238,36 @@ const zhCN = {
     },
 };
 const enUS = {
+    "h3-pdd-fl2va-8step": {
+        guide: {
+            summary: "Native ComfyUI 0.35 PDD Acc FL2VA eight-step LoRA using the output head bank for sigma-range-specific heads, without H3-Optimizations.",
+            recommendedStrength: "Keep strength at 1.0; the app fixes eight steps, Euler, Simple, video shift 12, audio shift 3, and CFG 1.0.",
+            effects: "Compresses the FL2VA sampling budget to eight steps while retaining PDD head-bank selection across sigma ranges; compare it with standard 20-step Base using the same Seed.",
+            stacking: "Treat it as a standalone performance path for the pruned INT8 ConvRot FL2VA base; do not combine it with any Turbo LoRA or substitute the non-pruned file.",
+            compatibility: "MiniMax H3 FL2VA pruned INT8 ConvRot image-to-video only; requires native ComfyUI 0.35 PDD support and the stock LoraLoaderModelOnly. Ref2VA, INT4, Q3, and video extension are disabled.",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+            pddTurbo: "PDD Acc cannot be combined with a Turbo LoRA; keep a separate eight-step PDD comparison.",
+            orderSuggestion: "Place {current} before {previous}; PDD is a standalone performance path, so validate it alone before adding content LoRAs."
+        }
+    },
+    "h3-pdd-ref2va-8step": {
+        guide: {
+            summary: "Native ComfyUI 0.35 PDD Acc Ref2VA eight-step LoRA using the output head bank for multi-reference R2V sampling.",
+            recommendedStrength: "Keep strength at 1.0; the app fixes eight steps, Euler, Simple, video shift 12, audio shift 3, and CFG 1.0.",
+            effects: "Compresses multi-reference Ref2VA sampling to eight steps; compare reference consistency, motion, and audio with standard R2V using the same Seed.",
+            stacking: "Treat it as a standalone R2V performance path for the pruned INT8 ConvRot Ref2VA base; do not combine it with any Turbo LoRA or use it for FL2VA or video extension.",
+            compatibility: "MiniMax H3 Ref2VA pruned INT8 ConvRot multi-reference generation only; requires native ComfyUI 0.35 PDD support, the stock LoraLoaderModelOnly, and MiniMaxH3ReferenceToVideo.",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+            pddTurbo: "PDD Acc cannot be combined with a Turbo LoRA; keep a separate eight-step PDD R2V comparison.",
+            orderSuggestion: "Place {current} before {previous}; PDD is a standalone R2V performance path, so validate it alone before adding R2V content LoRAs."
+        }
+    },
     "minimax-h3-turbo-sla-4step": {
         guide: {
             summary: "The official MiniMax H3 Turbo-SLA four-step 768p sparse-attention LoRA; it requires the H3 SLA Attention node.",

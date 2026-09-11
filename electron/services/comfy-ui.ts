@@ -7,7 +7,6 @@ import type {
   GenerationQueueTask,
   ImageGenerationQueueTask,
   ImageGenerationRun,
-  H3MemoryRuntimeEvidence,
   H3LatentSaveMode,
   QueueTask,
   QueueWorkProgress,
@@ -69,19 +68,10 @@ import {
   DLSS5_MODEL_ID
 } from "../../src/core/dlss5.js";
 import {
-  h3MemoryOptimizationInputNames,
-  h3MemoryOptimizationRuntimeIssues
-} from "../../src/core/h3-memory-contract.js";
-import {
   h3ComfyWorkflowRuntimeIssues,
+  h3ExecutionNodeRuntimeIssues,
   validateH3ComfyWorkflow
 } from "../../src/core/h3-workflow-contract.js";
-import {
-  H3_MEMORY_PRODUCT_ENABLED,
-  h3MemoryPrecisionModeFor,
-  normalizeH3MemoryChunkRows,
-  normalizeH3MemoryOptimizationMode
-} from "../../src/core/h3-memory-policy.js";
 import {
   prepareExtensionContext,
   prepareH3BoundaryFrame,
@@ -732,17 +722,24 @@ export async function assertKonohamaruExecutionReady(
 
 export interface ComfyProgressContext {
   spectrumOuterSteps?: number;
+  spectrumOfflineReplay?: boolean;
 }
 
 export function progressContextForPrompt(prompt: unknown): ComfyProgressContext {
   if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) return {};
   const schedulerSteps = new Set<number>();
   let hasSpectrum = false;
+  let hasSpectrumOfflineReplay = false;
   for (const value of Object.values(prompt as Record<string, unknown>)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const node = value as Record<string, unknown>;
     if (node.class_type === "SpectrumApplyMiniMaxH3") {
       hasSpectrum = true;
+      const inputs = node.inputs;
+      if (inputs && typeof inputs === "object" && !Array.isArray(inputs) &&
+        (inputs as Record<string, unknown>).offline_smoothing_replay === true) {
+        hasSpectrumOfflineReplay = true;
+      }
     }
     if (node.class_type !== "BasicScheduler") continue;
     const inputs = node.inputs;
@@ -753,7 +750,10 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
     }
   }
   if (!hasSpectrum || schedulerSteps.size !== 1) return {};
-  return { spectrumOuterSteps: [...schedulerSteps][0] };
+  return {
+    spectrumOuterSteps: [...schedulerSteps][0],
+    ...(hasSpectrumOfflineReplay ? { spectrumOfflineReplay: true } : {})
+  };
 }
 
 export async function submitTask(
@@ -771,7 +771,6 @@ export async function submitTask(
   h3LivePreviewRequested: boolean;
   h3LivePreviewActive: boolean;
   h3TokenCount?: number;
-  h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   uploadedUpscaleSource?: string;
   h3AvSerializerNodeId?: string;
   progressContext?: ComfyProgressContext;
@@ -819,16 +818,8 @@ export async function submitTask(
   const h3PreviewTinyVae = h3LivePreviewRequested
     ? h3PreviewTinyVaeFromObjectInfo(objectInfo)
     : "";
-  const h3MemoryRequested = H3_MEMORY_PRODUCT_ENABLED &&
-    (task.taskType === "generation" || task.taskType === "extension") &&
-    task.h3MemoryOptimizationMode !== undefined &&
-    task.h3MemoryOptimizationMode !== "off";
-  const h3MemoryInputNames = h3MemoryRequested
-    ? h3MemoryOptimizationInputNames(objectInfo)
-    : undefined;
   let prompt: unknown;
   let uploadedUpscaleSource: string | undefined;
-  let h3MemoryRuntimeEvidence: H3MemoryRuntimeEvidence | undefined;
   let h3AvSerializerNodeId: string | undefined;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
@@ -873,10 +864,7 @@ export async function submitTask(
             vramTotalBytes,
             locale: settings.uiLocale,
             vramAvailableBytes,
-            h3PreviewTinyVae,
-            ...(h3MemoryRequested
-              ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
-              : {})
+            h3PreviewTinyVae
           });
         } finally {
           await preparedGuide.cleanup();
@@ -940,10 +928,7 @@ export async function submitTask(
             vramTotalBytes,
             locale: settings.uiLocale,
             vramAvailableBytes,
-            h3PreviewTinyVae,
-            ...(h3MemoryRequested
-              ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
-              : {})
+            h3PreviewTinyVae
           });
         } finally {
           await prepared.cleanup();
@@ -977,10 +962,7 @@ export async function submitTask(
         vramTotalBytes,
         locale: settings.uiLocale,
         vramAvailableBytes,
-        h3PreviewTinyVae,
-        ...(h3MemoryRequested
-          ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
-          : {})
+        h3PreviewTinyVae
       });
     } else {
       const supportsEndImage = workflowSupportsEndImage(source);
@@ -996,10 +978,7 @@ export async function submitTask(
         vramTotalBytes,
         locale: settings.uiLocale,
         vramAvailableBytes,
-        h3PreviewTinyVae,
-        ...(h3MemoryRequested
-          ? { h3MemoryInputNames: h3MemoryInputNames ? [...h3MemoryInputNames] : [] }
-          : {})
+        h3PreviewTinyVae
       });
     }
   } else if (task.taskType === "upscale" && task.upscaleMode === "h3-native") {
@@ -1091,38 +1070,6 @@ export async function submitTask(
     isMiniMaxH3Model(task.modelId)
     ? h3TokenCountForTask(task, h3ReferenceImageSizeFromPrompt(prompt))
     : undefined;
-  if (h3MemoryRequested) {
-    const requestedMode = normalizeH3MemoryOptimizationMode(task.h3MemoryOptimizationMode, "off");
-    const runtimeIssues = h3MemoryOptimizationRuntimeIssues(objectInfo, {
-      precisionMode: h3MemoryPrecisionModeFor(requestedMode),
-      chunkRows: normalizeH3MemoryChunkRows(task.h3MemoryChunkRows)
-    });
-    if (runtimeIssues.length) {
-      throw new Error(
-        `H3 Memory Optimization 运行时 schema 不兼容：${runtimeIssues.join("；")}。请在设置 → 节点与依赖中更新节点并重启 ComfyUI。`
-      );
-    }
-    const renderedMemoryNode = prompt && typeof prompt === "object" && !Array.isArray(prompt) &&
-      Object.values(prompt as Record<string, unknown>).some((value) =>
-        value && typeof value === "object" && !Array.isArray(value) &&
-        (value as Record<string, unknown>).class_type === "H3MemoryOptimization"
-      );
-    const renderedResidencyLimiter = prompt && typeof prompt === "object" && !Array.isArray(prompt) &&
-      Object.values(prompt as Record<string, unknown>).some((value) =>
-        value && typeof value === "object" && !Array.isArray(value) &&
-        (value as Record<string, unknown>).class_type === "H3AIMDOResidencyLimiter"
-      );
-    if (!renderedMemoryNode || !renderedResidencyLimiter) {
-      throw new Error("H3 Memory Optimization 已请求，但渲染后的工作流缺少 H3MemoryOptimization 或 H3AIMDOResidencyLimiter 节点。请检查工作流的 H3 模型链。" );
-    }
-    h3MemoryRuntimeEvidence = {
-      requestedMode,
-      chunkRows: normalizeH3MemoryChunkRows(task.h3MemoryChunkRows),
-      contract: "valid",
-      execution: "unknown",
-      note: "提交前 /object_info contract 已通过；当前未从 ComfyUI 日志稳定解析实际 provider 或 fallback。"
-    };
-  }
   const progressContext = progressContextForPrompt(prompt);
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
@@ -1131,9 +1078,13 @@ export async function submitTask(
     );
   }
   const h3RuntimeSchemaIssues = h3ComfyWorkflowRuntimeIssues(prompt, objectInfo);
-  if (h3RuntimeSchemaIssues.length) {
+  const h3ExecutionSchemaIssues = h3ExecutionNodeRuntimeIssues(prompt, objectInfo);
+  if (h3RuntimeSchemaIssues.length || h3ExecutionSchemaIssues.length) {
     throw new Error(
-      `H3 AV workflow 运行时 schema 不兼容：${h3RuntimeSchemaIssues.join("；")}。请在设置 → 节点与依赖中安装/更新对应节点并重启 ComfyUI。`
+      `H3 AV workflow 运行时 schema 不兼容：${[
+        ...h3RuntimeSchemaIssues,
+        ...h3ExecutionSchemaIssues
+      ].join("；")}。请在设置 → 节点与依赖中更新 ComfyUI 核心并重启服务。`
     );
   }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
@@ -1164,7 +1115,6 @@ export async function submitTask(
     h3LivePreviewRequested,
     h3LivePreviewActive: Boolean(h3PreviewTinyVae),
     ...(h3TokenCount == null ? {} : { h3TokenCount }),
-    ...(h3MemoryRuntimeEvidence ? { h3MemoryRuntimeEvidence } : {}),
     ...(h3AvSerializerNodeId ? { h3AvSerializerNodeId } : {}),
     ...(progressContext.spectrumOuterSteps == null ? {} : { progressContext }),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
@@ -1601,8 +1551,12 @@ function normalizedProgressValues(
     spectrumOuterSteps > 0 &&
     max > spectrumOuterSteps
   ) {
+    const replayWorkFactor = progressContext?.spectrumOfflineReplay === true &&
+      max === spectrumOuterSteps * 2
+      ? 2
+      : 1;
     return {
-      value: Math.min(spectrumOuterSteps, Math.max(0, value)),
+      value: Math.min(spectrumOuterSteps, Math.max(0, value / replayWorkFactor)),
       max: spectrumOuterSteps
     };
   }

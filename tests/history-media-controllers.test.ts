@@ -98,6 +98,7 @@ async function flushPromises(): Promise<void> {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   FakeIntersectionObserver.instances = [];
@@ -110,15 +111,24 @@ describe("history media controller scheduling", () => {
     const root = document.createElement("main");
     document.body.append(root);
     const surfaces = Array.from({ length: 500 }, (_, index) => createImageSurface(root, index));
+    const deferredImage = surfaces[0]?.querySelector<HTMLImageElement>("img");
+    if (deferredImage) {
+      Object.defineProperty(deferredImage, "complete", { configurable: true, value: true });
+      Object.defineProperty(deferredImage, "naturalWidth", { configurable: true, value: 0 });
+    }
     const loadImageHistoryThumbnail = vi.fn(async () => true);
 
     const cleanup = mountImageHistoryMediaController(createContext(root), {
       loadImageHistoryThumbnail
     });
+    surfaces[0]?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await flushPromises();
 
     expect(loadImageHistoryThumbnail).not.toHaveBeenCalled();
     expect(FakeIntersectionObserver.instances).toHaveLength(1);
+    expect(deferredImage?.getAttribute("src")).toBeNull();
+    expect(surfaces[0]?.dataset.imageMediaState).toBe("loading");
+    expect(surfaces[0]?.classList.contains("image-media-error")).toBe(false);
 
     FakeIntersectionObserver.instances[0]?.trigger(surfaces[0]!, true);
     await flushPromises();
@@ -214,10 +224,12 @@ describe("history media controller scheduling", () => {
     cleanup();
   });
 
-  it("initializes a deep video card when it is hovered before its batch", () => {
+  it("initializes a deep video card after the hover intent delay", async () => {
     vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+    vi.useFakeTimers();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     const root = document.createElement("main");
     document.body.append(root);
     const cards = Array.from({ length: 500 }, (_, index) => createVideoCard(root, index));
@@ -239,9 +251,90 @@ describe("history media controller scheduling", () => {
 
     const cleanup = mountHistoryMediaController(createContext(root), options);
     deepCard.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(120);
 
     expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
     expect(loadHistoryCardVideo).toHaveBeenCalledWith(deepCard);
+    cleanup();
+  });
+
+  it("cancels brief hover passes and starts only the final card", async () => {
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const root = document.createElement("main");
+    document.body.append(root);
+    const cards = Array.from({ length: 3 }, (_, index) => createVideoCard(root, index));
+    const loadHistoryCardVideo = vi.fn((media: HTMLElement) => media.querySelector("video"));
+    const options: HistoryMediaControllerOptions = {
+      loadImageHistoryThumbnail: async () => true,
+      loadHistoryCoverFromCache: async () => false,
+      loadHistoryCardVideo,
+      releaseHistoryCardVideo: () => undefined,
+      scheduleHistoryCoverWarmup: () => undefined,
+      cancelHistoryCoverWarmup: () => undefined,
+      stopHistoryCoverWarmup: () => undefined,
+      chooseHistoryCoverTime: async (_video, fallbackTime) => fallbackTime,
+      saveHistoryCover: async () => undefined,
+      formatVideoDuration: () => "0s"
+    };
+    const cleanup = mountHistoryMediaController(createContext(root), options);
+
+    cards.forEach((card) => {
+      card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      card.dispatchEvent(new MouseEvent("mouseenter"));
+      vi.advanceTimersByTime(80);
+      card.dispatchEvent(new MouseEvent("mouseleave"));
+    });
+    const finalCard = cards[2]!;
+    finalCard.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    finalCard.dispatchEvent(new MouseEvent("mouseenter"));
+    await vi.advanceTimersByTimeAsync(119);
+    expect(loadHistoryCardVideo).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
+    expect(loadHistoryCardVideo).toHaveBeenCalledWith(finalCard);
+    cleanup();
+  });
+
+  it("lets an explicit progress interaction bypass hover intent delay", () => {
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const root = document.createElement("main");
+    document.body.append(root);
+    const card = createVideoCard(root, 0);
+    const progress = document.createElement("button");
+    progress.className = "history-preview-progress";
+    card.append(progress);
+    const loadHistoryCardVideo = vi.fn((media: HTMLElement) => media.querySelector("video"));
+    const options: HistoryMediaControllerOptions = {
+      loadImageHistoryThumbnail: async () => true,
+      loadHistoryCoverFromCache: async () => false,
+      loadHistoryCardVideo,
+      releaseHistoryCardVideo: () => undefined,
+      scheduleHistoryCoverWarmup: () => undefined,
+      cancelHistoryCoverWarmup: () => undefined,
+      stopHistoryCoverWarmup: () => undefined,
+      chooseHistoryCoverTime: async (_video, fallbackTime) => fallbackTime,
+      saveHistoryCover: async () => undefined,
+      formatVideoDuration: () => "0s"
+    };
+    const cleanup = mountHistoryMediaController(createContext(root), options);
+    card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    const pointerDown = new Event("pointerdown", { bubbles: true, cancelable: true }) as PointerEvent;
+    Object.defineProperties(pointerDown, {
+      pointerType: { value: "mouse" },
+      button: { value: 0 },
+      pointerId: { value: 1 },
+      clientX: { value: 20 }
+    });
+    progress.dispatchEvent(pointerDown);
+
+    expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
     cleanup();
   });
 

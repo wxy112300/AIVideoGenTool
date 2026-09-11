@@ -1,332 +1,240 @@
-import { h3MemoryPrecisionModeFor, normalizeH3MemoryChunkRows, normalizeH3MemoryOptimizationMode, resolveMiniMaxH3ExecutionPlan } from "./h3-memory-policy.js";
+import { normalizeMiniMaxH3ModelPatchChain as normalizeNativeMiniMaxH3ModelPatchChain } from "./h3-model-patch-workflow.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
+
+/**
+ * Compatibility entry point for old callers and persisted task snapshots.
+ * H3 Memory Optimization and its residency limiter are withdrawn. The legacy
+ * memory fields are ignored and can never add a node back into a graph.
+ */
 const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38"]);
-const managedClasses = new Set([
-    "H3MemoryOptimization",
-    "SpectrumApplyMiniMaxH3",
-    "H3AIMDOResidencyLimiter",
-    "ModelPreviewOverrideKJ"
+const withdrawnMemoryClasses = new Set(["H3MemoryOptimization", "H3AIMDOResidencyLimiter"]);
+const postSamplingClasses = new Set(["SpectrumApplyMiniMaxH3", "ModelPreviewOverrideKJ"]);
+const legacyChainClasses = new Set([
+  "PathchSageAttentionKJ",
+  "H3SLAAttention",
+  "H3SparseAttention",
+  "H3SparseAttentionAdvanced",
+  "ModelAttentionBackend",
+  "BlockSparseAttention",
+  "SpectrumApplyMiniMaxH3",
+  "ModelPreviewOverrideKJ",
+  "H3MemoryOptimization",
+  "H3AIMDOResidencyLimiter",
+  "LoraLoaderModelOnly",
+  "MiniMaxH3SigmaShift",
+  "ModelSamplingMiniMaxH3",
+  "H3ContinuumJoin"
 ]);
-const attentionClasses = new Set([
-    "PathchSageAttentionKJ",
-    "H3SLAAttention",
-    "H3SparseAttention",
-    "H3SparseAttentionAdvanced"
-]);
-const knownModelPatchClasses = new Set([
-    ...managedClasses,
-    ...attentionClasses,
-    "LoraLoaderModelOnly",
-    "MiniMaxH3SigmaShift",
-    "ModelSamplingMiniMaxH3",
-    "H3ContinuumJoin"
-]);
+
 const message = (key, params = {}, locale = "zh-CN") => workflowMessage(key, params, locale);
+
 function modelLink(value) {
-    if (!Array.isArray(value) || typeof value[0] !== "string")
-        return null;
-    const output = value[1] === undefined ? 0 : value[1];
-    if (typeof output !== "number" || !Number.isInteger(output))
-        return null;
-    return [value[0], output];
+  if (!Array.isArray(value) || typeof value[0] !== "string") return null;
+  const output = value[1] === undefined ? 0 : value[1];
+  return typeof output === "number" && Number.isInteger(output)
+    ? [value[0], output]
+    : null;
 }
-function requiredModelLink(value, locale, cycle = false) {
-    const result = modelLink(value);
-    if (result)
-        return result;
-    throw new Error(message(cycle ? "h3PatchChainCycle" : "h3PatchChainUnknown", {}, locale));
+
+function requiredModelLink(value, locale) {
+  const result = modelLink(value);
+  if (result) return result;
+  throw new Error(message("h3PatchChainUnknown", {}, locale));
 }
-function attentionOwnerForClass(classType) {
-    if (classType === "PathchSageAttentionKJ")
-        return "sage";
-    if (classType === "H3SLAAttention")
-        return "sla";
-    if (classType === "H3SparseAttention" || classType === "H3SparseAttentionAdvanced")
-        return "h3-sparse";
-    return null;
+
+function bypassClasses(workflow, input, ids, locale, visited = new Set()) {
+  const link = requiredModelLink(input, locale);
+  if (!ids.has(link[0])) return link;
+  if (visited.has(link[0])) throw new Error(message("h3PatchChainCycle", {}, locale));
+  const nextVisited = new Set(visited);
+  nextVisited.add(link[0]);
+  const node = workflow[link[0]];
+  if (!node) throw new Error(message("h3PatchChainUnknown", {}, locale));
+  return bypassClasses(workflow, node.inputs?.model, ids, locale, nextVisited);
 }
-function inspectModelChain(workflow, finalInput, locale) {
-    let current = requiredModelLink(finalInput, locale);
+
+function removeClasses(workflow, classes, locale) {
+  const ids = new Set(
+    Object.entries(workflow)
+      .filter(([, node]) => classes.has(node.class_type ?? ""))
+      .map(([id]) => id)
+  );
+  for (const classType of classes) {
+    const matches = Object.values(workflow).filter((node) => node.class_type === classType);
+    if (matches.length > 1) {
+      throw new Error(message("h3PatchDuplicate", { nodeType: classType }, locale));
+    }
+  }
+  if (!ids.size) return ids;
+  for (const [nodeId, node] of Object.entries(workflow)) {
+    if (ids.has(nodeId) || !node.inputs) continue;
+    for (const [name, value] of Object.entries(node.inputs)) {
+      const link = modelLink(value);
+      if (link && ids.has(link[0])) {
+        node.inputs[name] = bypassClasses(workflow, link, ids, locale);
+      }
+    }
+  }
+  for (const id of ids) delete workflow[id];
+  return ids;
+}
+
+function assertNoMixedAttentionOwners(workflow, locale) {
+  const owners = new Set();
+  for (const node of Object.values(workflow)) {
+    if (!consumerClasses.has(node.class_type ?? "")) continue;
+    let current = modelLink(node.inputs?.model);
     const visited = new Set();
-    const attentionOwners = [];
-    while (true) {
-        const [nodeId] = current;
-        if (visited.has(nodeId))
-            throw new Error(message("h3PatchChainCycle", {}, locale));
-        visited.add(nodeId);
-        const node = workflow[nodeId];
-        const classType = node?.class_type;
-        if (!node || !classType)
-            throw new Error(message("h3PatchChainUnknown", {}, locale));
-        const attentionOwner = attentionOwnerForClass(classType);
-        if (attentionOwner)
-            attentionOwners.push({ nodeId, owner: attentionOwner });
-        if (!knownModelPatchClasses.has(classType)) {
-            if (node.inputs && Object.prototype.hasOwnProperty.call(node.inputs, "model"))
-                throw new Error(message("h3PatchChainUnknown", {}, locale));
-            return { baseInput: current, attentionOwners };
-        }
-        current = requiredModelLink(node.inputs?.model, locale);
+    while (current) {
+      if (visited.has(current[0])) throw new Error(message("h3PatchChainCycle", {}, locale));
+      visited.add(current[0]);
+      const patch = workflow[current[0]];
+      if (!patch || !legacyChainClasses.has(patch.class_type ?? "")) break;
+      if (patch.class_type === "PathchSageAttentionKJ") owners.add("sage");
+      if (patch.class_type === "H3SLAAttention") owners.add("sla");
+      if (patch.class_type === "H3SparseAttention" ||
+          patch.class_type === "H3SparseAttentionAdvanced" ||
+          patch.class_type === "BlockSparseAttention") owners.add("h3-sparse");
+      if (patch.class_type === "ModelAttentionBackend") {
+        owners.add(patch.inputs?.attention === "comfy kitchen attention" ? "comfy-kitchen" : "pytorch");
+      }
+      current = modelLink(patch.inputs?.model);
     }
+  }
+  if (owners.size > 1) throw new Error(message("h3AttentionConflict", {}, locale));
 }
-function existingNodeIds(workflow, classType, locale) {
-    const ids = Object.entries(workflow)
-        .filter(([, node]) => node.class_type === classType)
-        .map(([id]) => id);
-    if (ids.length > 1)
-        throw new Error(message("h3PatchDuplicate", { nodeType: classType }, locale));
-    return ids;
-}
-function validChunkRows(value) {
-    return typeof value === "number" &&
-        Number.isInteger(value) &&
-        value >= 256 &&
-        value <= 65536 &&
-        value % 256 === 0;
-}
-function spectrumInputs(model, modelAwareMode) {
-    return {
-        model,
-        enabled: true,
-        blend_weight: 0.5,
-        degree: 1,
-        ridge_lambda: 0.1,
-        window_size: 2,
-        flex_window: 0.75,
-        warmup_steps: 1,
-        tail_actual_steps: 1,
-        max_history: 8,
-        debug: true,
-        history_storage: "system_ram",
-        offline_archive_storage: "system_ram",
-        bootstrap_first_forecast: true,
-        anchor_residual_feedback: false,
-        selective_rollback_correction: false,
-        offline_smoothing_replay: true,
-        audio_blend_weight: 0,
-        ...(modelAwareMode !== "off"
-            ? {
-                model_aware_mode: modelAwareMode,
-                model_aware_risk_threshold: 0.65
-            }
-            : {})
-    };
-}
-function previewInputs(model, tinyVae) {
-    return {
-        model,
-        max_resolution: 512,
-        jpeg_quality: 72,
-        suppress_default_preview: true,
-        preview_frames: 1,
-        preview_fps: 12,
-        tiny_vae: tinyVae
-    };
-}
+
 function nextNumericNodeId(workflow) {
-    let next = Math.max(0, ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)) + 1;
-    return () => {
-        while (workflow[String(next)])
-            next += 1;
-        const id = String(next);
-        next += 1;
-        return id;
+  let next = Math.max(
+    0,
+    ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)
+  ) + 1;
+  return () => {
+    while (workflow[String(next)]) next += 1;
+    return String(next++);
+  };
+}
+
+function spectrumInputs(model, modelAwareMode) {
+  return {
+    model,
+    enabled: true,
+    blend_weight: 0.5,
+    degree: 1,
+    ridge_lambda: 0.1,
+    window_size: 2,
+    flex_window: 0.75,
+    warmup_steps: 1,
+    tail_actual_steps: 1,
+    max_history: 8,
+    debug: true,
+    history_storage: "system_ram",
+    offline_archive_storage: "system_ram",
+    bootstrap_first_forecast: true,
+    anchor_residual_feedback: false,
+    selective_rollback_correction: false,
+    // Keep legacy task rendering on the same safe single-pass Spectrum path
+    // as new tasks; ComfyUI 0.35 dynamic-VRAM replay can stall while staging
+    // the second H3 model pass after retaining the feature archive.
+    offline_smoothing_replay: false,
+    audio_blend_weight: 0,
+    ...(modelAwareMode !== "off"
+      ? { model_aware_mode: modelAwareMode, model_aware_risk_threshold: 0.65 }
+      : {})
+  };
+}
+
+function previewInputs(model, tinyVae) {
+  return {
+    model,
+    max_resolution: 512,
+    jpeg_quality: 72,
+    suppress_default_preview: true,
+    preview_frames: 1,
+    preview_fps: 12,
+    tiny_vae: tinyVae
+  };
+}
+
+function consumersFor(workflow) {
+  return Object.entries(workflow).filter(([, node]) =>
+    consumerClasses.has(node.class_type ?? "") && Array.isArray(node.inputs?.model)
+  );
+}
+
+function appendPostSamplingWrappers(workflow, options) {
+  const locale = options.locale ?? "zh-CN";
+  const consumers = consumersFor(workflow);
+  if (!consumers.length) throw new Error(message("h3PatchConsumersMissing", {}, locale));
+  if (
+    !consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
+    !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38")
+  ) {
+    throw new Error(message("h3PatchConsumersMissing", {}, locale));
+  }
+  const modelInputs = consumers.map(([, node]) => JSON.stringify(node.inputs?.model));
+  if (modelInputs.some((input) => input !== modelInputs[0])) {
+    throw new Error(message("h3PatchOutputsDiffer", {}, locale));
+  }
+
+  removeClasses(workflow, postSamplingClasses, locale);
+  const refreshedConsumers = consumersFor(workflow);
+  const allocate = nextNumericNodeId(workflow);
+  let output = requiredModelLink(refreshedConsumers[0]?.[1].inputs?.model, locale);
+  if (options.spectrumEnabled) {
+    const id = allocate();
+    workflow[id] = {
+      class_type: "SpectrumApplyMiniMaxH3",
+      inputs: spectrumInputs(output, options.spectrumModelAwareMode ?? "off")
     };
+    output = [id, 0];
+  }
+  if (options.previewEnabled && options.tinyVae?.trim()) {
+    const id = allocate();
+    workflow[id] = {
+      class_type: "ModelPreviewOverrideKJ",
+      inputs: previewInputs(output, options.tinyVae.trim())
+    };
+    output = [id, 0];
+  }
+  for (const [, consumer] of refreshedConsumers) consumer.inputs.model = output;
 }
-function bypassManagedLink(workflow, input, managedIds, locale, visited = new Set()) {
-    const link = requiredModelLink(input, locale);
-    const [nodeId] = link;
-    if (!managedIds.has(nodeId))
-        return link;
-    if (visited.has(nodeId))
-        throw new Error(message("h3PatchChainCycle", {}, locale));
-    const nextVisited = new Set(visited);
-    nextVisited.add(nodeId);
-    const node = workflow[nodeId];
-    if (!node)
-        throw new Error(message("h3PatchChainUnknown", {}, locale));
-    return bypassManagedLink(workflow, node.inputs?.model, managedIds, locale, nextVisited);
-}
-function replaceManagedReferences(workflow, managedIds, locale) {
-    for (const [nodeId, node] of Object.entries(workflow)) {
-        if (managedIds.has(nodeId) || !node.inputs)
-            continue;
-        for (const [name, value] of Object.entries(node.inputs)) {
-            if (!Array.isArray(value) || typeof value[0] !== "string" || !managedIds.has(value[0]))
-                continue;
-            node.inputs[name] = bypassManagedLink(workflow, value, managedIds, locale);
-        }
-    }
-}
-function assertManagedNodesReachable(workflow, consumers, requiredIds, locale) {
-    if (!requiredIds.length)
-        return;
-    const reachable = new Set();
-    for (const [, consumer] of consumers) {
-        let current = modelLink(consumer.inputs?.model);
-        const visited = new Set();
-        while (current) {
-            const [nodeId] = current;
-            if (visited.has(nodeId))
-                break;
-            visited.add(nodeId);
-            const node = workflow[nodeId];
-            if (!node || !managedClasses.has(node.class_type ?? ""))
-                break;
-            reachable.add(nodeId);
-            current = modelLink(node.inputs?.model);
-        }
-    }
-    if (requiredIds.some((id) => !reachable.has(id)))
-        throw new Error(message("h3PatchUnreachable", {}, locale));
-}
+
 export function normalizeMiniMaxH3ModelPatchChain(workflow, options) {
-    const locale = options.locale ?? "zh-CN";
-    const memoryMode = normalizeH3MemoryOptimizationMode(options.memoryMode, "off");
-    const spectrumEnabled = options.spectrumEnabled === true;
-    const previewEnabled = options.previewEnabled === true && Boolean(options.tinyVae?.trim());
-    if (memoryMode !== "off" && options.chunkRows !== undefined && !validChunkRows(options.chunkRows)) {
-        throw new Error(message("h3MemoryChunkRowsInvalid", {}, locale));
-    }
-    const chunkRows = normalizeH3MemoryChunkRows(options.chunkRows);
-    if (memoryMode !== "off" && !validChunkRows(chunkRows)) {
-        throw new Error(message("h3MemoryChunkRowsInvalid", {}, locale));
-    }
-    if (memoryMode !== "off" &&
-        (options.attentionMode === undefined ||
-            options.attentionMode === "sage" ||
-            options.attentionMode === "sage-triton")) {
-        const originalConsumerInputs = Object.values(workflow)
-            .filter((node) => consumerClasses.has(node.class_type ?? "") && Array.isArray(node.inputs?.model))
-            .map((node) => node.inputs?.model);
-        if (originalConsumerInputs.some((input) => JSON.stringify(input) !== JSON.stringify(originalConsumerInputs[0]))) {
-            throw new Error(message("h3PatchOutputsDiffer", {}, locale));
-        }
-        const sageNodeIds = new Set(Object.entries(workflow)
-            .filter(([, node]) => node.class_type === "PathchSageAttentionKJ")
-            .map(([id]) => id));
-        for (const sageNodeId of sageNodeIds) {
-            const upstreamModel = requiredModelLink(workflow[sageNodeId]?.inputs?.model, locale);
-            for (const node of Object.values(workflow)) {
-                if (!node.inputs)
-                    continue;
-                for (const [name, input] of Object.entries(node.inputs)) {
-                    if (Array.isArray(input) && input[0] === sageNodeId) {
-                        node.inputs[name] = upstreamModel;
-                    }
-                }
-            }
-            delete workflow[sageNodeId];
-        }
-    }
-    const memoryIds = existingNodeIds(workflow, "H3MemoryOptimization", locale);
-    const spectrumIds = existingNodeIds(workflow, "SpectrumApplyMiniMaxH3", locale);
-    const residencyLimiterIds = existingNodeIds(workflow, "H3AIMDOResidencyLimiter", locale);
-    const previewIds = existingNodeIds(workflow, "ModelPreviewOverrideKJ", locale);
-    const managedIds = new Set([
-        ...memoryIds,
-        ...spectrumIds,
-        ...residencyLimiterIds,
-        ...previewIds
-    ]);
-    const consumers = Object.entries(workflow).filter(([, node]) => consumerClasses.has(node.class_type ?? "") && Array.isArray(node.inputs?.model));
-    const needsModelChain = memoryMode !== "off" || spectrumEnabled || previewEnabled || managedIds.size > 0;
-    if (!consumers.length) {
-        if (needsModelChain)
-            throw new Error(message("h3PatchConsumersMissing", {}, locale));
-        return;
-    }
-    if (needsModelChain && (!consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
-        !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38"))) {
-        throw new Error(message("h3PatchConsumersMissing", {}, locale));
-    }
-    const finalModelInput = requiredModelLink(consumers[0]?.[1].inputs?.model, locale);
-    if (consumers.some(([, node]) => JSON.stringify(node.inputs?.model) !== JSON.stringify(finalModelInput)))
-        throw new Error(message("h3PatchOutputsDiffer", {}, locale));
-    const inspections = consumers.map(([, node]) => inspectModelChain(workflow, node.inputs?.model, locale));
-    const attentionOwners = [...new Map(inspections
-        .flatMap((inspection) => inspection.attentionOwners)
-        .map((item) => [item.nodeId, item.owner])).values()];
-    const executionPlan = resolveMiniMaxH3ExecutionPlan({
-        modelId: options.modelId,
-        inputMode: options.inputMode,
-        attentionMode: options.attentionMode,
-        h3MemoryOptimizationMode: memoryMode,
-        h3MemoryChunkRows: chunkRows,
-        spectrumMode: spectrumEnabled ? "balanced" : "off",
-        videoLoras: options.videoLoras,
-        h3LivePreview: previewEnabled,
-        existingGraphAttentionOwners: attentionOwners
-    });
-    if (executionPlan.reasons.includes("attention-conflict"))
-        throw new Error(message("h3AttentionConflict", {}, locale));
-    if (!executionPlan.allowed && (memoryMode !== "off" || spectrumEnabled)) {
-        throw new Error(message("h3MemoryPlanRejected", {
-            reasons: executionPlan.reasons.join(", ")
-        }, locale));
-    }
-    const baseModelOutput = bypassManagedLink(workflow, finalModelInput, managedIds, locale);
-    for (const id of managedIds)
-        bypassManagedLink(workflow, [id, 0], managedIds, locale);
-    replaceManagedReferences(workflow, managedIds, locale);
-    for (const id of managedIds)
-        delete workflow[id];
-    for (const [, consumer] of consumers)
-        consumer.inputs.model = baseModelOutput;
-    const allocateNodeId = nextNumericNodeId(workflow);
-    const memoryId = memoryMode !== "off" ? memoryIds[0] ?? allocateNodeId() : undefined;
-    const spectrumId = spectrumEnabled ? spectrumIds[0] ?? allocateNodeId() : undefined;
-    const residencyLimiterId = memoryMode !== "off"
-        ? residencyLimiterIds[0] ?? allocateNodeId()
-        : undefined;
-    const previewId = previewEnabled ? previewIds[0] ?? allocateNodeId() : undefined;
-    let output = baseModelOutput;
-    if (memoryId) {
-        const memoryInputs = {
-            model: output,
-            mlp_memory: "auto",
-            chunk_rows: chunkRows,
-            precision_mode: h3MemoryPrecisionModeFor(memoryMode),
-            qkv_streaming_mode: "Auto"
-        };
-        if (!options.memoryInputNames || options.memoryInputNames.has("fused_qkv")) {
-            memoryInputs.fused_qkv = "auto";
-        }
-        if (!options.memoryInputNames || options.memoryInputNames.has("preserve_precision")) {
-            memoryInputs.preserve_precision = true;
-        }
-        workflow[memoryId] = {
-            class_type: "H3MemoryOptimization",
-            inputs: memoryInputs
-        };
-        output = [memoryId, 0];
-    }
-    if (spectrumId) {
-        workflow[spectrumId] = {
-            class_type: "SpectrumApplyMiniMaxH3",
-            inputs: spectrumInputs(output, options.spectrumModelAwareMode ?? "off")
-        };
-        output = [spectrumId, 0];
-    }
-    if (residencyLimiterId) {
-        workflow[residencyLimiterId] = {
-            class_type: "H3AIMDOResidencyLimiter",
-            inputs: {
-                model: output,
-                residency: "2 blocks"
-            }
-        };
-        output = [residencyLimiterId, 0];
-    }
-    if (previewId) {
-        workflow[previewId] = {
-            class_type: "ModelPreviewOverrideKJ",
-            inputs: previewInputs(output, options.tinyVae.trim())
-        };
-        output = [previewId, 0];
-    }
-    for (const [, consumer] of consumers)
-        consumer.inputs.model = output;
-    assertManagedNodesReachable(workflow, consumers, [memoryId, spectrumId, residencyLimiterId, previewId]
-        .filter((id) => Boolean(id)), locale);
+  const locale = options.locale ?? "zh-CN";
+  const removedMemory = removeClasses(workflow, withdrawnMemoryClasses, locale);
+  assertNoMixedAttentionOwners(workflow, locale);
+
+  const wantsPostSampling = options.spectrumEnabled === true ||
+    (options.previewEnabled === true && Boolean(options.tinyVae?.trim()));
+  const hasPostSampling = Object.values(workflow).some((node) =>
+    postSamplingClasses.has(node.class_type ?? "")
+  );
+  const hasSigmaPostSampling = Object.values(workflow).some((node) =>
+    node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3"
+  );
+  const consumers = consumersFor(workflow);
+  const modelInputs = consumers.map(([, node]) => JSON.stringify(node.inputs?.model));
+  if (modelInputs.some((input) => input !== modelInputs[0])) {
+    throw new Error(message("h3PatchOutputsDiffer", {}, locale));
+  }
+
+  if (!wantsPostSampling && !hasPostSampling) return;
+  if (hasSigmaPostSampling) {
+    appendPostSamplingWrappers(workflow, options);
+    return;
+  }
+  if (!wantsPostSampling && !removedMemory.size) return;
+
+  normalizeNativeMiniMaxH3ModelPatchChain(workflow, {
+    modelId: options.modelId,
+    inputMode: options.inputMode,
+    attentionMode: options.attentionMode,
+    videoLoras: options.videoLoras,
+    spectrumEnabled: options.spectrumEnabled,
+    spectrumModelAwareMode: options.spectrumModelAwareMode,
+    previewEnabled: options.previewEnabled,
+    tinyVae: options.tinyVae,
+    locale: options.locale
+  });
 }

@@ -1627,6 +1627,9 @@ async function acceptConfirmation() {
         clearImageHistoryThumbnailCache: () => {
             historyMediaRuntime.clearImageHistoryThumbnailCache();
         },
+        invalidateHistoryMediaForAsset: (assetId) => {
+            historyMediaRuntime.invalidateHistoryMediaForAsset(assetId);
+        },
         setQueueActionBusy: (value) => {
             queueActionBusy = value;
         },

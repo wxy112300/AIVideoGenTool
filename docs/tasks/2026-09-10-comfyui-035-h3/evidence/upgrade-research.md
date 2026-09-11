@@ -1,10 +1,12 @@
 # ComfyUI 0.35.0 / MiniMax H3 调查证据
 
 - 类型：Research / source + static evidence。
-- 状态：调查完成，供讨论；不是已批准实现计划或运行时验收。
+- 状态：历史调查完成；事实供参考，实施建议已由 [2026-09-11 执行计划](../PLAN.md) 替代；不是运行时验收。
 - 日期：2026-09-10。
 - 范围：Windows Local Video Studio 的 H3 FL2VA、Ref2VA、Turbo、续写、JointAV 二次采样及其节点/加速策略。
 - 当前任务：[TASK](../TASK.md)。产品边界：[Workflow Contract](../../../WORKFLOW_CONTRACT.md)、[Dependencies](../../../DEPENDENCIES_AND_SETUP.md)。
+
+> 后续决定：用户要求移除 H3-Optimizations、清理失败 H3 Memory，并要求真实测试保持 Spectrum 开启；Motion Context 关闭 Spectrum 的已知边界维持现状，不再调查。本文后面的“观察项”“关闭 Spectrum 建基线”“不要一开始叠加 Spectrum”等为当时建议，现已失效；执行以 PLAN 为准。本文的机器/应用版本是调查时快照，不代表当前状态。
 
 ## 1. 基线与已证实的本机状态
 
@@ -91,11 +93,11 @@
 | PlagueKind SLA | 1.3.8 / `a05db58` | 保留作为已知路径；原生 SLA 独立适配与对照 |
 | Motion Context | 0.6.2 / `5335715` | 保留 0.34+ 原生 layout 路线及旧核心回退线；Spectrum 仍关闭 |
 | Continuum | 3.8.0 / `b10804f` | 沿新 sampler/finalize 路径测试，旧图按兼容策略处理 |
-| H3-Optimizations | catalog 0.2.20，产品强制 off | 维持观察项，不恢复旧 Memory 开关 |
+| H3-Optimizations | 历史 catalog 0.2.20；现已撤回 | 不进入活动 catalog/扫描/安装/工作流；仅保留旧数据兼容 |
 | H3 latent / learned upscale / MMH3 | 已有 catalog pins | 新核心没有证明替代这些业务链；保持 720→1080 两阶段、首帧 latent 锚定、GPU VAE 与恢复检查点 |
 | GGUF-H3 / INT4 / INT8 ConvRot VAE | 现有独立变体 | 首轮保持权重、精度和参数，分别验证核心兼容；不泛化原生 INT8 测试结果 |
 
-推荐版本改动还需统一 `comfy-compatibility.ts` 与 `workflow-metadata.ts`，并清理已撤回 H3 Memory 的陈旧 manifest package 标记。不要用 0.35 的新节点最低要求替换所有已有工作流的最低要求。
+（历史建议已执行）推荐版本已统一到 `0.35.0`，并清理了已撤回 H3 Memory 的活动 manifest package 标记；没有用 0.35 新节点最低要求替换所有已有工作流。
 
 ## 4. 供讨论的分阶段更新
 

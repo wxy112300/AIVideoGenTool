@@ -925,3 +925,127 @@ export function h3ComfyWorkflowRuntimeIssues(
   }
   return [...new Set(issues)];
 }
+
+function dynamicOptionKeys(spec: unknown): string[] {
+  const config = Array.isArray(spec) && isRecord(spec[1])
+    ? spec[1]
+    : isRecord(spec)
+      ? spec
+      : undefined;
+  const options = config?.options;
+  if (!Array.isArray(options)) return [];
+  return options.flatMap((option) =>
+    isRecord(option) && typeof option.key === "string" ? [option.key] : []
+  );
+}
+
+function runtimeInputIssue(
+  issues: string[],
+  objectInfo: Record<string, unknown>,
+  classType: string,
+  inputName: string,
+  expected: RuntimeInputRequirement["type"]
+): unknown {
+  const spec = inputSpecFor(objectInfo[classType], inputName);
+  if (spec === undefined) {
+    issues.push(`${classType}.${inputName} 不在 /object_info schema 中`);
+  } else if (!runtimeTypeMatches(spec, expected)) {
+    issues.push(`${classType}.${inputName} schema 类型不兼容：要求 ${expected}`);
+  }
+  return spec;
+}
+
+/**
+ * Validate the ComfyUI 0.35 native H3 patch nodes inserted by the renderer.
+ * These checks deliberately accept no H3-Optimizations inputs: the native
+ * nodes are the only active performance path after the upgrade.
+ */
+export function h3ExecutionNodeRuntimeIssues(
+  workflow: unknown,
+  objectInfo: unknown
+): string[] {
+  const nodes = graphNodes(workflow);
+  if (!isRecord(objectInfo)) return ["/object_info 响应无效，无法验证 H3 执行节点 schema"];
+  const issues: string[] = [];
+  const objectInfoRecord = objectInfo as Record<string, unknown>;
+  for (const [nodeId, node] of nodes) {
+    const classType = node.class_type;
+    if (classType !== "ModelAttentionBackend" && classType !== "BlockSparseAttention") continue;
+    if (!objectInfoRecord[classType]) {
+      issues.push(`/object_info 缺少精确 class_type=${classType}`);
+      continue;
+    }
+    runtimeInputIssue(issues, objectInfoRecord, classType, "model", "MODEL");
+    const outputs = outputTypesFor(objectInfoRecord[classType]);
+    if (outputs.length > 0 && !outputs.includes("MODEL")) {
+      issues.push(`${classType} /object_info 输出 schema 不包含 MODEL`);
+    }
+    if (classType === "ModelAttentionBackend") {
+      const attentionSpec = runtimeInputIssue(
+        issues,
+        objectInfoRecord,
+        classType,
+        "attention",
+        "COMBO"
+      );
+      const options = comboOptions(attentionSpec);
+      const actual = inputsFor(node).attention;
+      if (actual !== "pytorch attention" && actual !== "comfy kitchen attention") {
+        issues.push(`ModelAttentionBackend.attention 使用了未知值：${String(actual)}`);
+      } else if (options.length > 0 && !options.includes(actual)) {
+        issues.push(`ModelAttentionBackend.attention 不接受工作流值：${actual}`);
+      }
+      continue;
+    }
+
+    const selectionSpec = runtimeInputIssue(
+      issues,
+      objectInfoRecord,
+      classType,
+      "selection",
+      "ANY"
+    );
+    const selectionType = specType(selectionSpec);
+    if (selectionType !== "COMFY_DYNAMICCOMBO_V3" && selectionType !== "DYNAMIC_COMBO") {
+      issues.push("BlockSparseAttention.selection 必须是 ComfyUI 0.35 DynamicCombo schema");
+    }
+    for (const required of ["sol-attn", "sla", "vsa"]) {
+      if (!dynamicOptionKeys(selectionSpec).includes(required)) {
+        issues.push(`BlockSparseAttention.selection 缺少 ${required} 选项`);
+      }
+    }
+    for (const [inputName, expected] of [
+      ["start_percent", "FLOAT"],
+      ["end_percent", "FLOAT"],
+      ["dense_blocks", "STRING"],
+      ["min_tokens", "INT"],
+      ["extra_tokens", "INT"],
+      ["sink_conditioning", "COMBO"],
+      ["verbose", "BOOLEAN"]
+    ] as const) {
+      runtimeInputIssue(issues, objectInfoRecord, classType, inputName, expected);
+    }
+    const sinkSpec = inputSpecFor(objectInfoRecord[classType], "sink_conditioning");
+    const sinkOptions = comboOptions(sinkSpec);
+    if (sinkOptions.length > 0 && !sinkOptions.includes("exact_kv_and_rows")) {
+      issues.push("BlockSparseAttention.sink_conditioning 缺少 exact_kv_and_rows 选项");
+    }
+    const nodeInputs = inputsFor(node);
+    const selection = nodeInputs.selection;
+    if (typeof selection !== "string" || !["sol-attn", "sla", "vsa"].includes(selection)) {
+      issues.push(`BlockSparseAttention.selection 使用了未知值：${String(selection)}`);
+    } else {
+      const parameterName = selection === "sol-attn"
+        ? "selection.tau"
+        : "selection.keep_percent";
+      const parameterValue = nodeInputs[parameterName];
+      if (typeof parameterValue !== "number" || !Number.isFinite(parameterValue)) {
+        issues.push(`BlockSparseAttention.${parameterName} 必须通过 DynamicCombo 扁平输入提供数值`);
+      }
+    }
+    // Keep nodeId in the loop's diagnostics context without exposing it in
+    // the public contract; duplicate native nodes are caught by the patcher.
+    void nodeId;
+  }
+  return [...new Set(issues)];
+}

@@ -44,6 +44,7 @@ import {
   DLSS5_NODE_ID,
   DLSS5_NODE_REVISION,
   DLSS5_RUNTIME_BUNDLE_ID,
+  H3_COMFY_KITCHEN_VERSION,
   modelCatalog,
   KONOHAMARU_NODE_ID,
   KONOHAMARU_NODE_REVISION,
@@ -4418,7 +4419,7 @@ export async function installAttentionAcceleration(
     const torchRuntimeReady = h3TorchRuntimeReady(before);
     const needsCudaRuntimeUpgrade = !torchRuntimeReady;
     const needsComfyKitchenRepair = !(before.comfyKitchenBackends ?? [])
-      .some((backend) => backend.toLowerCase() === "cuda") || before.comfyKitchenVersion !== "0.2.31";
+      .some((backend) => backend.toLowerCase() === "cuda") || before.comfyKitchenVersion !== H3_COMFY_KITCHEN_VERSION;
     const initialWheel = attentionWheelForProbe(before);
     const targetWheel = needsCudaRuntimeUpgrade
       ? h3TargetAttentionWheelForProbe(before)
@@ -4510,7 +4511,7 @@ export async function installAttentionAcceleration(
       report("正在升级 ComfyUI 官方 comfy-kitchen CUDA 内核……");
       await runLoggedProcess(
         python,
-        [...commonPipArgs, "--upgrade", "comfy-kitchen==0.2.31"],
+        [...commonPipArgs, "--upgrade", `comfy-kitchen==${H3_COMFY_KITCHEN_VERSION}`],
         {
           env: environment,
           timeoutMs: 900_000,

@@ -26,6 +26,7 @@ describe("draft defaults", () => {
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);
     expect(createDefaultSettings().vramReserveGb).toBe(1);
+    expect(createDefaultSettings().h3ComfyCompilerMode).toBe("disabled");
     expect(createDefaultSettings().autoRetryFailedTasks).toBe(true);
     expect(createDefaultSettings().autoRetryCount).toBe(2);
     expect(createDefaultSettings().queueIsolationMode).toBe("lora");

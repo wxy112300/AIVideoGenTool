@@ -17,7 +17,7 @@ import { createTranslator, type Translate } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
-import { SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
+import { SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
 import {
@@ -52,6 +52,7 @@ import {
   BUILTIN_VIDEO_LORAS,
   H3_SLA_TURBO_LORA_ID,
   H3_TURBO_LORA_ID,
+  isH3PddLoraId,
   isH3SlaTurboLoraId,
   isH3TurboLoraId,
   profileProvidesVideoLora,
@@ -495,7 +496,8 @@ export function buildVideoCreatePageViewModel(
   const turboEnabled = videoPolicy.turboEnabled;
   const h3Steps = normalizeVideoSteps(draft.steps, videoPolicy);
   const selectedTurboLora = draft.videoLoras.find((lora) =>
-    isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+    (isH3TurboLoraId(lora.id) || isH3PddLoraId(lora.id)) &&
+    videoLoraCompatibleWithModel(lora, draft.modelId)
   );
   const turboLoraProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === (selectedTurboLora?.id ?? H3_TURBO_LORA_ID)
@@ -522,9 +524,12 @@ export function buildVideoCreatePageViewModel(
     (node) => node.id === "spectrum-minimax-h3"
   );
   const spectrumLoaded = Boolean(spectrumNode?.loaded);
+  const pddSelected = draft.videoLoras.some((lora) =>
+    isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+  );
   const spectrumTurboCompatible = !turboEnabled || releaseVersionAtLeast(
     spectrumNode?.version ?? "",
-    SPECTRUM_TURBO_MINIMUM_VERSION
+    pddSelected ? SPECTRUM_PDD_MINIMUM_VERSION : SPECTRUM_TURBO_MINIMUM_VERSION
   );
   const spectrumEligible = videoPolicy.spectrum.allowed && spectrumTurboCompatible;
   const spectrumReady = draft.spectrumMode !== "balanced" || (spectrumEligible && spectrumLoaded);

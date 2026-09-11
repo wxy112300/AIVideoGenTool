@@ -4,6 +4,7 @@ import {
   nextAutomaticRetryAttempt,
   nextH3AttentionModeAfterCudaFailure
 } from "../src/core/recovery.js";
+import { h3ExecutionPolicySnapshotFor } from "../src/core/h3-execution-policy.js";
 import { adjustQueuePauseBoundary } from "../src/core/queue.js";
 import { isMiniMaxH3Model } from "../src/core/workflow.js";
 import type { StateRepository } from "./ports/state-repository.js";
@@ -315,6 +316,24 @@ export async function recoverQueueFailure(
           : currentMode === attentionFrom;
         if (!shouldFallback) continue;
         queuedTask.attentionMode = attentionFallback;
+        const fallbackPolicy = h3ExecutionPolicySnapshotFor({
+          modelId: queuedTask.modelId,
+          inputMode: queuedTask.taskType === "extension" ? "video" : "image",
+          attentionMode: attentionFallback,
+          sparseAttentionMode: queuedTask.h3SparseAttentionMode,
+          runtimeMode: queuedTask.h3RuntimeMode,
+          comfyCompilerMode: queuedTask.h3ComfyCompilerMode,
+          spectrumMode: queuedTask.spectrumMode,
+          videoLoras: queuedTask.videoLoras,
+          h3LivePreview: queuedTask.h3LivePreview
+        });
+        queuedTask.h3ExecutionPolicy = {
+          ...fallbackPolicy,
+          reasons: [
+            ...fallbackPolicy.reasons,
+            `attention-fallback:${currentMode}->${attentionFallback}`
+          ]
+        };
         queuedTask.updatedAt = new Date().toISOString();
         affectedTaskCount += 1;
       }

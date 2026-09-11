@@ -32,7 +32,7 @@
 | [Dependencies and setup](../DEPENDENCIES_AND_SETUP.md) | runbook | unknown | current reference | 当前依赖、版本和修复流程变化快；需以真实扫描/安装结果复核。 |
 | [H3 community guide research](../research/h3/H3_COMMUNITY_GUIDE_RESEARCH.md) | research | 社区来源和经验数据；非产品契约 | keep | 来源时效短，必须与当前 TASK/契约分开使用。 |
 | [H3 long-video P0 evidence](../tasks/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md) | evidence | runtime/core/schema 基线已完成；真实 workflow/生成未完成 | current reference | 静态基线不能证明 Native long-video runtime-ready，且依赖 ComfyUI 环境。 |
-| [H3 Memory Optimization integration plan](../archive/h3-memory/H3_MEMORY_OPTIMIZATION_INTEGRATION_PLAN.md) | archive | 功能隐藏并强制关闭；保留实现历史 | keep | 关闭能力不能重新成为当前实施入口。 |
+| [H3 Memory 路线撤回说明](../archive/h3-memory/README.md) | archive | 失败路线已撤回；旧长计划已删除 | current boundary | 旧字段只读兼容，不能重新成为当前实施入口。 |
 | [H3 Native Masked AV long-video plan](../archive/h3-long-video/H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md) | archive | Native Masked AV 尚未实现、无真实生成证据 | keep | 与 P0 evidence 和 ComfyUI 版本状态耦合；由长视频 TASK 接续。 |
 | [H3 P0 evidence baseline](../tasks/2026-09-07-h3-long-video/evidence/H3_P0_EVIDENCE_BASELINE.md) | evidence | 记录 Phase 0 范围与基线 | current reference | 证据基线不能替代运行时完成度。 |
 | [H3 prompt writing guide](../research/h3/H3_PROMPT_WRITING_GUIDE.md) | research | 社区提示词总结；非默认策略 | keep | 不直接升级为模型/工作流契约。 |

@@ -147,7 +147,7 @@ export function renderCreatePage(viewModel, options) {
               <video id="source-video" src="studio-media://draft/video?source=${encodeURIComponent(viewModel.draft.sourceVideoPath)}" controls muted playsinline preload="metadata"></video>
               ${viewModel.videoReady
                 ? viewModel.isContinuum
-                  ? `<p class="continuum-boundary-note">${t(uiKeys.create.continuumArtifact.fullSourceBoundary)}</p>`
+                  ? ""
                   : `<div class="trim-panel">
                     <div class="trim-heading"><strong>${t(uiKeys.create.videoMedia.trimTitle)}</strong><span><output id="trim-start-output">${formatTrimTime(viewModel.draft.trimStartSeconds)}</output> — <output id="trim-end-output">${formatTrimTime(viewModel.draft.trimEndSeconds)}</output></span></div>
                     <div class="trim-editor" id="trim-editor" style="--trim-start:${viewModel.trimStartPercent}%;--trim-end:${viewModel.trimEndPercent}%">
@@ -162,7 +162,6 @@ export function renderCreatePage(viewModel, options) {
                       <span>${t(uiKeys.create.videoMedia.added)}<strong id="trim-added">${viewModel.draft.duration.toFixed(1)} ${t(uiKeys.create.videoMedia.seconds)}</strong></span>
                       <span>${t(uiKeys.create.videoMedia.estimatedOutput)}<strong id="trim-total">${t(uiKeys.create.videoSettings.approximateSeconds, { value: (viewModel.trimDuration + viewModel.draft.duration).toFixed(1) })}</strong></span>
                     </div>
-                    <p class="trim-help">${t(uiKeys.create.videoMedia.trimHelp)}</p>
                   </div>`
                 : `<p class="video-loading">${t(uiKeys.create.videoMedia.loadingVideo)}</p>`}
             </div>`
@@ -196,31 +195,25 @@ export function renderCreatePage(viewModel, options) {
           </div>`}
       ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel" aria-labelledby="continuum-artifact-title">
         <div class="section-heading">
-          <div><h2 id="continuum-artifact-title">${t(uiKeys.create.continuumArtifact.title)}</h2><span class="muted">${t(uiKeys.create.continuumArtifact.description)}</span></div>
+          <div><h2 id="continuum-artifact-title" title="${escapeHtml(t(uiKeys.create.continuumArtifact.description))}">${t(uiKeys.create.continuumArtifact.title)}</h2></div>
         </div>
-        <div class="continuum-artifact-drop ${viewModel.continuumArtifactReady ? "has-artifact" : ""}" id="pick-h3-continuum-av" data-drop-h3-continuum-av data-drop-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}">
+        <div class="continuum-artifact-drop ${viewModel.continuumArtifactReady ? "has-artifact" : ""}" id="pick-h3-continuum-av" data-drop-h3-continuum-av data-drop-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}" title="${escapeHtml(t(uiKeys.create.continuumArtifact.pendingValidation))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}">
           <span class="drop-icon">${icon("database")}</span>
           <strong>${t(viewModel.continuumArtifactReady ? uiKeys.create.continuumArtifact.change : uiKeys.create.continuumArtifact.choose)}</strong>
-          <span>${viewModel.continuumArtifactFilename ? escapeHtml(viewModel.continuumArtifactFilename) : t(uiKeys.create.continuumArtifact.pendingValidation)}</span>
+          ${viewModel.continuumArtifactFilename ? `<span>${escapeHtml(viewModel.continuumArtifactFilename)}</span>` : ""}
         </div>
-        <div class="continuum-artifact-meta">
-          <span class="muted">${viewModel.continuumArtifactHistoryBound ? t(uiKeys.create.continuumArtifact.historyBound) : t(uiKeys.create.continuumArtifact.pendingValidation)}</span>
-          ${viewModel.continuumArtifactReady ? `<button class="ghost button-with-icon" id="clear-h3-continuum-av" type="button">${icon("x")}${t(uiKeys.create.continuumArtifact.clear)}</button>` : ""}
-        </div>
+        ${viewModel.continuumArtifactReady ? `<div class="continuum-artifact-meta"><button class="ghost button-with-icon" id="clear-h3-continuum-av" type="button">${icon("x")}${t(uiKeys.create.continuumArtifact.clear)}</button></div>` : ""}
       </section>` : ""}
       ${viewModel.extending && viewModel.isR2V ? `<section class="continuum-artifact-panel h3-motion-context-latent-panel" aria-labelledby="motion-context-latent-title">
         <div class="section-heading">
-          <div><h2 id="motion-context-latent-title">${t(uiKeys.create.motionContextLatent.title)}</h2><span class="muted">${t(uiKeys.create.motionContextLatent.description)}</span></div>
+          <div><h2 id="motion-context-latent-title" title="${escapeHtml(t(uiKeys.create.motionContextLatent.description))}">${t(uiKeys.create.motionContextLatent.title)}</h2></div>
         </div>
-        <div class="continuum-artifact-drop ${viewModel.motionContextLatentReady ? "has-artifact" : ""}" id="pick-h3-motion-context-latent" data-drop-h3-motion-context-latent data-drop-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}">
+        <div class="continuum-artifact-drop ${viewModel.motionContextLatentReady ? "has-artifact" : ""}" id="pick-h3-motion-context-latent" data-drop-h3-motion-context-latent data-drop-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}" title="${escapeHtml(t(uiKeys.create.motionContextLatent.pendingValidation))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}">
           <span class="drop-icon">${icon("database")}</span>
           <strong>${t(viewModel.motionContextLatentReady ? uiKeys.create.motionContextLatent.change : uiKeys.create.motionContextLatent.choose)}</strong>
-          <span>${viewModel.motionContextLatentFilename ? escapeHtml(viewModel.motionContextLatentFilename) : t(uiKeys.create.motionContextLatent.pendingValidation)}</span>
+          ${viewModel.motionContextLatentFilename ? `<span>${escapeHtml(viewModel.motionContextLatentFilename)}</span>` : ""}
         </div>
-        <div class="continuum-artifact-meta">
-          <span class="muted">${viewModel.motionContextLatentHistoryBound ? t(uiKeys.create.motionContextLatent.historyBound) : t(uiKeys.create.motionContextLatent.pendingValidation)}</span>
-          ${viewModel.motionContextLatentReady ? `<button class="ghost button-with-icon" id="clear-h3-motion-context-latent" type="button">${icon("x")}${t(uiKeys.create.motionContextLatent.clear)}</button>` : ""}
-        </div>
+        ${viewModel.motionContextLatentReady ? `<div class="continuum-artifact-meta"><button class="ghost button-with-icon" id="clear-h3-motion-context-latent" type="button">${icon("x")}${t(uiKeys.create.motionContextLatent.clear)}</button></div>` : ""}
       </section>` : ""}
       ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
         <div class="section-heading">
@@ -263,15 +256,6 @@ export function renderCreatePage(viewModel, options) {
         <label class="prompt-snippet-picker"><span>${promptUi.t("snippetPicker")}</span><select id="prompt-snippet"><option value="">${promptUi.t("snippetPlaceholder")}</option>${viewModel.promptSnippetOptionsMarkup}</select></label>
         <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}${promptUi.t("insertSnippet")}</button>
       </div>
-      ${viewModel.isMiniMaxH3 ? viewModel.h3PromptCheckMarkup : ""}
-      ${viewModel.extending && viewModel.isMiniMaxH3 ? `<div class="h3-extension-note">
-        <strong>${viewModel.isContinuum ? t(uiKeys.create.continuumArtifact.title) : viewModel.isR2V ? promptUi.t("extensionR2vTitle") : promptUi.t("extensionBoundaryTitle")}</strong>
-        <span>${viewModel.isContinuum
-          ? t(uiKeys.create.continuumArtifact.description)
-          : viewModel.isR2V
-            ? promptUi.t(viewModel.motionContextLatentReady ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
-          : promptUi.t("extensionBoundaryDescription")}</span>
-      </div>` : ""}
       <div class="composer-settings">
         <section class="composer-control-group composer-output-group">
           <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.outputTitle)}</strong><span>${t(uiKeys.create.videoSettings.outputDescription)}</span></div></div>

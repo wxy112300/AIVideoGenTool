@@ -280,16 +280,21 @@ describe("queue execution snapshots", () => {
       h3SaveJointAv: false,
       spectrumMode: "balanced",
       spectrumModelAwareMode: "off",
-      h3MemoryOptimizationMode: "off",
-      h3MemoryOptimizationUserSet: false,
-      h3MemoryChunkRows: 4096,
-      h3MemoryExecutionPlan: expect.objectContaining({
-        memory: "off",
+      h3ExecutionPolicy: expect.objectContaining({
+        attentionMode: "sage",
+        attentionOwner: "sage",
+        sparseAttentionMode: "off",
+        runtimeMode: "compatibility",
+        comfyCompilerMode: "disabled",
         spectrumEnabled: true,
         allowed: true
       }),
       createdAt: "2026-08-12T12:00:00.000Z"
     });
+    expect(queued).not.toHaveProperty("h3MemoryOptimizationMode");
+    expect(queued).not.toHaveProperty("h3MemoryOptimizationUserSet");
+    expect(queued).not.toHaveProperty("h3MemoryChunkRows");
+    expect(queued).not.toHaveProperty("h3MemoryExecutionPlan");
     expect(queued.h3ReferenceSlots[0]?.mediaPath).toBe("ref.png");
 
     state.settings.h3LivePreview = true;
@@ -577,14 +582,15 @@ describe("queue execution snapshots", () => {
 
     expect(queued.spectrumMode).toBe("balanced");
     expect(queued.spectrumModelAwareMode).toBe("off");
-    expect(queued.h3MemoryOptimizationMode).toBe("off");
-    expect(queued.h3MemoryOptimizationUserSet).toBe(false);
-    expect(queued.h3MemoryChunkRows).toBe(4096);
-    expect(queued.h3MemoryExecutionPlan).toMatchObject({
-      memory: "off",
+    expect(queued.h3ExecutionPolicy).toMatchObject({
+      attentionMode: "sage",
+      attentionOwner: "sage",
+      sparseAttentionMode: "off",
       spectrumEnabled: true,
       allowed: true
     });
+    expect(queued).not.toHaveProperty("h3MemoryOptimizationMode");
+    expect(queued).not.toHaveProperty("h3MemoryExecutionPlan");
   });
 });
 

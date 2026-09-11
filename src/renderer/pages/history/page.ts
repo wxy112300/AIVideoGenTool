@@ -20,6 +20,7 @@ import {
   h3MotionContextHistoryFileForPath,
   isH3MotionContextHistoryFile
 } from "../../../core/h3-motion-context";
+import { isMiniMaxH3Model } from "../../../core/workflow";
 import {
   renderHistoryHeading,
   renderImageMediaStatus,
@@ -301,6 +302,128 @@ function historyComputeMode(version: AssetVersion, options: HistoryPageOptions):
     : spectrumLabel;
 }
 
+function historyCodeValue(
+  value: string,
+  options: Pick<HistoryPageOptions, "escapeHtml">
+): string {
+  return `<code>${options.escapeHtml(value)}</code>`;
+}
+
+function historyRequestedEffectiveValue(
+  requested: string | undefined,
+  effective: string | undefined,
+  options: Pick<HistoryPageOptions, "t" | "escapeHtml">
+): string {
+  if (requested === undefined && effective === undefined) {
+    return options.escapeHtml(options.t(uiKeys.history.detail.legacyNotSaved));
+  }
+  if (requested !== undefined && effective !== undefined && requested !== effective) {
+    return `${historyCodeValue(requested, options)} → ${historyCodeValue(effective, options)}`;
+  }
+  return historyCodeValue(requested ?? effective ?? "", options);
+}
+
+function historyBooleanValue(
+  value: boolean | undefined,
+  options: Pick<HistoryPageOptions, "t" | "escapeHtml">
+): string {
+  if (value === undefined) {
+    return options.escapeHtml(options.t(uiKeys.history.detail.legacyNotSaved));
+  }
+  const label = options.t(value ? uiKeys.history.page.enabled : uiKeys.history.page.disabled);
+  return `${options.escapeHtml(label)} · ${historyCodeValue(value ? "enabled" : "disabled", options)}`;
+}
+
+function renderH3ExecutionStrategyMarkup(
+  version: AssetVersion,
+  asset: HistoryAsset,
+  options: HistoryPageOptions
+): string {
+  const policy = version.h3ExecutionPolicy ?? asset.h3ExecutionPolicy;
+  const rows: string[] = [];
+  const addTranslatedRow = (
+    key: Parameters<HistoryPageOptions["t"]>[0],
+    value: string | undefined
+  ) => {
+    if (value !== undefined) {
+      rows.push(`<dt>${options.t(key)}</dt><dd>${value}</dd>`);
+    }
+  };
+  const attentionRequested = version.attentionMode ?? asset.attentionMode;
+  const attentionEffective = policy?.attentionMode;
+  if (attentionRequested !== undefined || attentionEffective !== undefined) {
+    addTranslatedRow(
+      uiKeys.history.page.attentionBackend,
+      historyRequestedEffectiveValue(attentionRequested, attentionEffective, options)
+    );
+  }
+  if (policy?.attentionOwner !== undefined) {
+    addTranslatedRow(uiKeys.history.page.attentionOwner, historyCodeValue(policy.attentionOwner, options));
+  }
+
+  const sparseRequested = version.h3SparseAttentionMode ?? asset.h3SparseAttentionMode;
+  if (sparseRequested !== undefined || policy?.sparseAttentionMode !== undefined) {
+    addTranslatedRow(
+      uiKeys.history.page.sparseAttention,
+      historyRequestedEffectiveValue(sparseRequested, policy?.sparseAttentionMode, options)
+    );
+  }
+
+  const runtimeRequested = version.h3RuntimeMode ?? asset.h3RuntimeMode;
+  if (runtimeRequested !== undefined || policy?.runtimeMode !== undefined) {
+    addTranslatedRow(
+      uiKeys.history.page.runtimePolicy,
+      historyRequestedEffectiveValue(runtimeRequested, policy?.runtimeMode, options)
+    );
+  }
+
+  const compilerRequested = version.h3ComfyCompilerMode ?? asset.h3ComfyCompilerMode;
+  if (compilerRequested !== undefined || policy?.comfyCompilerMode !== undefined) {
+    addTranslatedRow(
+      uiKeys.history.page.comfyCompiler,
+      historyRequestedEffectiveValue(compilerRequested, policy?.comfyCompilerMode, options)
+    );
+  }
+
+  const videoVae = version.h3VideoVaeMode ?? asset.h3VideoVaeMode;
+  if (videoVae !== undefined) {
+    addTranslatedRow(uiKeys.history.page.videoVae, historyCodeValue(videoVae, options));
+  }
+
+  const spectrumRequested = version.spectrumMode ?? asset.spectrumMode;
+  const spectrumEffective = policy
+    ? policy.spectrumEnabled ? "balanced" : "off"
+    : undefined;
+  const spectrumModelAware = version.spectrumModelAwareMode ?? asset.spectrumModelAwareMode;
+  if (spectrumRequested !== undefined || spectrumEffective !== undefined || spectrumModelAware !== undefined) {
+    const spectrumValue = historyRequestedEffectiveValue(spectrumRequested, spectrumEffective, options);
+    addTranslatedRow(
+      uiKeys.history.page.spectrum,
+      spectrumModelAware === undefined
+        ? spectrumValue
+        : `${spectrumValue} · model-aware=${historyCodeValue(spectrumModelAware, options)}`
+    );
+  }
+
+  if (policy?.previewEnabled !== undefined) {
+    addTranslatedRow(uiKeys.history.page.preview, historyBooleanValue(policy.previewEnabled, options));
+  }
+  if (policy?.turboProfile !== undefined) {
+    addTranslatedRow(uiKeys.history.page.turboProfile, historyCodeValue(policy.turboProfile, options));
+  }
+  if (policy) {
+    const policyReasons = policy.reasons ?? [];
+    const status = policy.allowed
+      ? `${options.escapeHtml(options.t(uiKeys.history.page.enabled))} · ${historyCodeValue("allowed", options)}`
+      : `${options.escapeHtml(options.t(uiKeys.history.page.disabled))} · ${historyCodeValue("rejected", options)}`;
+    const reasons = policyReasons.length > 0
+      ? ` · ${historyCodeValue(policyReasons.join(", "), options)}`
+      : "";
+    addTranslatedRow(uiKeys.history.page.policyStatus, `${status}${reasons}`);
+  }
+  return rows.join("");
+}
+
 export function renderImageHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
@@ -318,7 +441,7 @@ export function renderImageHistoryPage(
       <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
         <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
-            ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
+            ? `<img data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
             : ""}
           ${renderImageMediaStatus(options)}
           <div class="history-media-badges">
@@ -477,6 +600,13 @@ export function renderHistoryDetailPage(
     videoUpscaleAction
   ].filter(Boolean).join("");
   const videoMoreActions = [videoCopyAction, videoDeleteVersionAction, videoDeleteAction].filter(Boolean).join("");
+  const h3PolicySnapshot = version.h3ExecutionPolicy ?? asset.h3ExecutionPolicy;
+  const videoGenerationStrategyMarkup = isMiniMaxH3Model(version.modelId)
+    ? renderH3ExecutionStrategyMarkup(version, asset, options)
+    : `<dt>${options.t(uiKeys.history.page.attention)}</dt><dd>${options.escapeHtml(version.attentionMode ?? asset.attentionMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.computeMode)}</dt><dd>${options.escapeHtml(historyComputeMode(version, options))}</dd><dt>${options.t(uiKeys.history.page.motion)}</dt><dd>${options.escapeHtml(version.motion ?? asset.motion ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd>`;
+  const generationParameterMarkup = version.kind === "upscale"
+    ? `<dt>${options.t(uiKeys.history.page.tileMode)}</dt><dd>${options.escapeHtml(version.tileMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.faceRestore)}</dt><dd>${version.faceRestore == null ? options.t(uiKeys.history.detail.legacyNotSaved) : version.faceRestore ? options.t(uiKeys.history.page.enabled) : options.t(uiKeys.history.page.disabled)}</dd>`
+    : `<dt>${options.t(uiKeys.history.page.samplingSteps)}</dt><dd>${version.steps ?? options.t(uiKeys.history.page.workflowDefault)}</dd>${videoGenerationStrategyMarkup}`;
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.back)}</button>
@@ -533,7 +663,8 @@ export function renderHistoryDetailPage(
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.generationParams)}</h2>
-        <dl><dt>${options.t(uiKeys.history.page.model)}</dt><dd>${options.escapeHtml(options.modelName(version.modelId))}</dd><dt>${options.t(uiKeys.history.page.promptVersion)}</dt><dd>${version.promptVersion ?? asset.promptVersion ?? options.t(uiKeys.history.detail.legacyNotSaved)}</dd>${renderH3TokenCountMarkup(performanceStats, options)}${version.kind === "upscale" ? `<dt>${options.t(uiKeys.history.page.tileMode)}</dt><dd>${options.escapeHtml(version.tileMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.faceRestore)}</dt><dd>${version.faceRestore == null ? options.t(uiKeys.history.detail.legacyNotSaved) : version.faceRestore ? options.t(uiKeys.history.page.enabled) : options.t(uiKeys.history.page.disabled)}</dd>` : `<dt>${options.t(uiKeys.history.page.samplingSteps)}</dt><dd>${version.steps ?? options.t(uiKeys.history.page.workflowDefault)}</dd><dt>${options.t(uiKeys.history.page.attention)}</dt><dd>${options.escapeHtml(version.attentionMode ?? asset.attentionMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.computeMode)}</dt><dd>${options.escapeHtml(historyComputeMode(version, options))}</dd><dt>${options.t(uiKeys.history.page.motion)}</dt><dd>${options.escapeHtml(version.motion ?? asset.motion ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd>`}<dt>${options.t(uiKeys.history.page.seed)}</dt><dd><code>${version.seed ?? options.t(uiKeys.history.page.notApplicable)}</code></dd><dt>${options.t(uiKeys.history.page.workflow)}</dt><dd><code>${options.escapeHtml(version.workflowPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${options.escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        ${isMiniMaxH3Model(version.modelId) && h3PolicySnapshot ? `<p class="muted tiny">${options.t(uiKeys.history.page.executionPolicyNote)}</p>` : ""}
+        <dl><dt>${options.t(uiKeys.history.page.model)}</dt><dd>${options.escapeHtml(options.modelName(version.modelId))}</dd><dt>${options.t(uiKeys.history.page.promptVersion)}</dt><dd>${version.promptVersion ?? asset.promptVersion ?? options.t(uiKeys.history.detail.legacyNotSaved)}</dd>${renderH3TokenCountMarkup(performanceStats, options)}${generationParameterMarkup}<dt>${options.t(uiKeys.history.page.seed)}</dt><dd><code>${version.seed ?? options.t(uiKeys.history.page.notApplicable)}</code></dd><dt>${options.t(uiKeys.history.page.workflow)}</dt><dd><code>${options.escapeHtml(version.workflowPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${options.escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.videoOutput)}</h2>

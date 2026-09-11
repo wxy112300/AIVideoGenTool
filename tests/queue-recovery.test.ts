@@ -88,6 +88,48 @@ describe("queue recovery lifecycle", () => {
     expect(snapshots.at(-1)?.queueRunning).toBe(false);
   });
 
+  it("updates the H3 policy snapshot when CUDA recovery falls back Attention", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.status = "running";
+    state.queue = [task];
+    const store = {
+      get: () => structuredClone(state),
+      update: async (mutator: (current: AppState) => void) => {
+        mutator(state);
+        return structuredClone(state);
+      }
+    };
+    const updateTask = async (taskId: string, patch: Partial<QueueTask>): Promise<AppState> => {
+      const queued = state.queue.find((item) => item.id === taskId);
+      if (queued) Object.assign(queued, patch);
+      return structuredClone(state);
+    };
+
+    await recoverQueueFailure({
+      store: store as never,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      sendState: vi.fn(),
+      updateTask,
+      settingsForTask: (_task, settings) => settings,
+      errorMeta: () => ({})
+    }, {
+      task,
+      error: new Error("illegal memory access"),
+      aborted: false,
+      stalled: false
+    });
+
+    expect(state.queue[0]).toMatchObject({
+      attentionMode: "sage-triton",
+      h3ExecutionPolicy: {
+        attentionMode: "sage-triton",
+        attentionOwner: "sage",
+        reasons: ["attention-fallback:sage->sage-triton"]
+      }
+    });
+  });
+
   it("restores a retried task without moving the divider past the next batch task", async () => {
     const state = createDefaultState();
     const failed = queuedTask(state);

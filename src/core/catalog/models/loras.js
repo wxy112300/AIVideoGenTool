@@ -1,5 +1,15 @@
 import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
 const catalogLocales = {
+    "h3-pdd-fl2va-8step": {
+        "zh-CN": { name: "MiniMax H3 PDD FL2VA · 8 步", badge: "H3 专属 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank 路线；普通 LoRA loader、8 步 Euler + Simple，配套 pruned INT8 FL2VA 基座。" },
+        "zh-TW": { name: "MiniMax H3 PDD FL2VA · 8 步", badge: "H3 專屬 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank 路線；普通 LoRA loader、8 步 Euler + Simple，搭配 pruned INT8 FL2VA 基座。" },
+        "en-US": { name: "MiniMax H3 PDD FL2VA · eight-step", badge: "H3 only · PDD acceleration", description: "Native ComfyUI 0.35 PDD output-head-bank path using the stock LoRA loader, eight-step Euler + Simple, and the pruned INT8 FL2VA base." }
+    },
+    "h3-pdd-ref2va-8step": {
+        "zh-CN": { name: "MiniMax H3 PDD Ref2VA · 8 步", badge: "H3 R2V 专属 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank R2V 路线；普通 LoRA loader、8 步 Euler + Simple，配套 pruned INT8 Ref2VA 基座。" },
+        "zh-TW": { name: "MiniMax H3 PDD Ref2VA · 8 步", badge: "H3 R2V 專屬 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank R2V 路線；普通 LoRA loader、8 步 Euler + Simple，搭配 pruned INT8 Ref2VA 基座。" },
+        "en-US": { name: "MiniMax H3 PDD Ref2VA · eight-step", badge: "H3 R2V only · PDD acceleration", description: "Native ComfyUI 0.35 PDD output-head-bank R2V path using the stock LoRA loader, eight-step Euler + Simple, and the pruned INT8 Ref2VA base." }
+    },
     "minimax-h3-turbo-sla-4step": {
         "zh-CN": { name: "MiniMax H3 Turbo-SLA · 4 步", badge: "H3 专属 · 极速", description: "官方 768p 四步稀疏注意力 Turbo LoRA，需要 H3 SLA Attention 节点；追求最快速度时优先考虑。" },
         "zh-TW": { name: "MiniMax H3 Turbo-SLA · 4 步", badge: "H3 專屬 · 極速", description: "官方 768p 四步稀疏注意力 Turbo LoRA，需要 H3 SLA Attention 節點；追求最快速度時優先考慮。" },

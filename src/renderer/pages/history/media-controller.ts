@@ -3,10 +3,18 @@ import {
   scheduleHistoryBatches,
   type HistoryMediaTaskPriority
 } from "./media-scheduler";
+import type { MediaResourceConsumer } from "./media-resource-store";
 
 export interface HistoryMediaControllerOptions {
   loadImageHistoryThumbnail(image: HTMLImageElement, signal?: AbortSignal): Promise<boolean>;
+  subscribeImageHistoryThumbnail?(
+    image: HTMLImageElement,
+    priority: HistoryMediaTaskPriority,
+    consumer: Omit<MediaResourceConsumer, "priority" | "signal">
+  ): () => void;
+  invalidateImageHistoryThumbnail?(key: string): void;
   loadHistoryCoverFromCache(media: HTMLElement, signal?: AbortSignal): Promise<boolean>;
+  subscribeHistoryCover?(media: HTMLElement, priority: HistoryMediaTaskPriority): () => void;
   loadHistoryCardVideo(media: HTMLElement): HTMLVideoElement | null;
   releaseHistoryCardVideo(media: HTMLElement): void;
   scheduleHistoryCoverWarmup(mediaCards: HTMLElement[], priority?: HistoryMediaTaskPriority): void;
@@ -34,6 +42,85 @@ export function mountHistoryMediaController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+
+  let hoverTimer: number | null = null;
+  let hoverTarget: HTMLElement | null = null;
+  let activeHoverMedia: HTMLElement | null = null;
+  let retainedHoverMedia: HTMLElement | null = null;
+  let retainedHoverTimer: number | null = null;
+  const previewStarts = new Map<HTMLElement, () => void>();
+  const warmupPriorities = new Map<HTMLElement, HistoryMediaTaskPriority>();
+
+  const resumeBackgroundWarmup = (): void => {
+    if (activeHoverMedia || retainedHoverMedia || signal.aborted) return;
+    for (const [media, priority] of warmupPriorities) {
+      if (media.isConnected) options.scheduleHistoryCoverWarmup([media], priority);
+    }
+  };
+
+  const clearHoverTimer = (media?: HTMLElement): void => {
+    if (media && hoverTarget !== media) return;
+    if (hoverTimer !== null) window.clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hoverTarget = null;
+  };
+
+  const clearRetainedHover = (): void => {
+    if (retainedHoverTimer !== null) window.clearTimeout(retainedHoverTimer);
+    retainedHoverTimer = null;
+    retainedHoverMedia = null;
+  };
+
+  const releaseHoverMedia = (media: HTMLElement, scheduleWarmup: boolean): void => {
+    const video = media.querySelector<HTMLVideoElement>("video");
+    if (video) {
+      video.pause();
+      options.releaseHistoryCardVideo(media);
+    }
+    media.classList.remove("playing");
+    if (scheduleWarmup && media.isConnected) {
+      options.scheduleHistoryCoverWarmup([media], "viewport");
+    }
+  };
+
+  const confirmHover = (media: HTMLElement): void => {
+    clearHoverTimer(media);
+    if (!media.isConnected) return;
+    if (retainedHoverMedia) {
+      if (retainedHoverMedia !== media) releaseHoverMedia(retainedHoverMedia, false);
+      clearRetainedHover();
+    }
+    if (activeHoverMedia && activeHoverMedia !== media) {
+      releaseHoverMedia(activeHoverMedia, false);
+      activeHoverMedia = null;
+    }
+    options.stopHistoryCoverWarmup();
+    previewStarts.get(media)?.();
+    activeHoverMedia = media;
+  };
+
+  const requestHover = (media: HTMLElement): void => {
+    if (activeHoverMedia === media) return;
+    clearHoverTimer();
+    hoverTarget = media;
+    hoverTimer = window.setTimeout(() => confirmHover(media), 120);
+  };
+
+  const leaveHover = (media: HTMLElement): void => {
+    clearHoverTimer(media);
+    if (activeHoverMedia !== media) return;
+    activeHoverMedia = null;
+    media.classList.remove("playing");
+    media.querySelector<HTMLVideoElement>("video")?.pause();
+    clearRetainedHover();
+    retainedHoverMedia = media;
+    retainedHoverTimer = window.setTimeout(() => {
+      if (retainedHoverMedia !== media) return;
+      releaseHoverMedia(media, true);
+      clearRetainedHover();
+      resumeBackgroundWarmup();
+    }, 500);
+  };
 
   const historyMediaCards = [...root.querySelectorAll<HTMLElement>("[data-history-media]")];
   const initializedMediaCards = new WeakSet<HTMLElement>();
@@ -127,11 +214,12 @@ export function mountHistoryMediaController(
       if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      confirmHover(media);
       seeking = true;
       resumeAfterSeek = !video.paused;
       video.pause();
       media.classList.add("playing");
-      progress.setPointerCapture(event.pointerId);
+      progress.setPointerCapture?.(event.pointerId);
       seekToPointer(event.clientX);
     }, { signal });
     progress?.addEventListener("pointermove", (event) => {
@@ -146,8 +234,8 @@ export function mountHistoryMediaController(
       event.stopPropagation();
       if (commit) seekToPointer(event.clientX);
       seeking = false;
-      if (progress?.hasPointerCapture(event.pointerId)) {
-        progress.releasePointerCapture(event.pointerId);
+      if (progress?.hasPointerCapture?.(event.pointerId)) {
+        progress.releasePointerCapture?.(event.pointerId);
       }
       if (resumeAfterSeek) void video.play().catch(() => undefined);
       resumeAfterSeek = false;
@@ -175,18 +263,14 @@ export function mountHistoryMediaController(
       media.classList.add("playing");
       void video.play().catch(() => undefined);
     };
-    media.addEventListener("mouseenter", startPreview, { signal });
+    previewStarts.set(media, startPreview);
+    media.addEventListener("mouseenter", () => requestHover(media), { signal });
     media.addEventListener("mouseleave", () => {
       if (seeking) return;
-      media.classList.remove("playing");
-      video.pause();
       seekCover();
-      if (media.dataset.historyCoverCached !== "true") {
-        options.releaseHistoryCardVideo(media);
-        options.scheduleHistoryCoverWarmup([media], "viewport");
-      }
+      leaveHover(media);
     }, { signal });
-    if (media.matches(":hover")) startPreview();
+    if (media.matches(":hover")) requestHover(media);
   };
   const setupMediaCardFromEvent = (event: Event): void => {
     const target = event.target instanceof Element ? event.target : null;
@@ -199,6 +283,7 @@ export function mountHistoryMediaController(
   const cancelSetup = scheduleHistoryBatches(historyMediaCards, setupMediaCard);
 
   const loadHistoryCardCover = (media: HTMLElement) => {
+    if (options.subscribeHistoryCover) return;
     void options.loadHistoryCoverFromCache(media, signal);
   };
   let historyCoverCacheObserver: IntersectionObserver | null = null;
@@ -215,10 +300,14 @@ export function mountHistoryMediaController(
           const priority = bounds.bottom > 0 && bounds.top < window.innerHeight
             ? "viewport"
             : "prefetch";
+          warmupPriorities.set(media, priority);
           options.scheduleHistoryCoverWarmup([media], priority);
-        } else if (!media.matches(":hover") && !media.classList.contains("playing")) {
-          options.cancelHistoryCoverWarmup(media);
-          options.releaseHistoryCardVideo(media);
+        } else {
+          warmupPriorities.delete(media);
+          if (!media.matches(":hover") && !media.classList.contains("playing")) {
+            options.cancelHistoryCoverWarmup(media);
+            options.releaseHistoryCardVideo(media);
+          }
         }
       });
     };
@@ -232,12 +321,14 @@ export function mountHistoryMediaController(
     window.addEventListener("scroll", scheduleOnScroll, { passive: true, signal });
     scheduleNearViewport();
   } else {
-    historyCoverCacheObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const media = entry.target as HTMLElement;
-        if (entry.isIntersecting) loadHistoryCardCover(media);
-      });
-    }, { rootMargin: "800px 0px", threshold: 0 });
+    if (!options.subscribeHistoryCover) {
+      historyCoverCacheObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          const media = entry.target as HTMLElement;
+          if (entry.isIntersecting) loadHistoryCardCover(media);
+        });
+      }, { rootMargin: "800px 0px", threshold: 0 });
+    }
     historyCoverWarmupObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const media = entry.target as HTMLElement;
@@ -246,10 +337,14 @@ export function mountHistoryMediaController(
           const priority = bounds.bottom > 0 && bounds.top < window.innerHeight
             ? "viewport"
             : "prefetch";
+          warmupPriorities.set(media, priority);
           options.scheduleHistoryCoverWarmup([media], priority);
-        } else if (!media.matches(":hover") && !media.classList.contains("playing")) {
-          options.cancelHistoryCoverWarmup(media);
-          options.releaseHistoryCardVideo(media);
+        } else {
+          warmupPriorities.delete(media);
+          if (!media.matches(":hover") && !media.classList.contains("playing")) {
+            options.cancelHistoryCoverWarmup(media);
+            options.releaseHistoryCardVideo(media);
+          }
         }
       });
     }, { rootMargin: "320px 0px" });
@@ -271,5 +366,12 @@ export function mountHistoryMediaController(
     historyCoverCacheObserver?.disconnect();
     historyCoverWarmupObserver?.disconnect();
     options.stopHistoryCoverWarmup();
+    clearHoverTimer();
+    if (retainedHoverMedia) releaseHoverMedia(retainedHoverMedia, false);
+    clearRetainedHover();
+    if (activeHoverMedia) releaseHoverMedia(activeHoverMedia, false);
+    activeHoverMedia = null;
+    warmupPriorities.clear();
+    previewStarts.clear();
   };
 }

@@ -1,6 +1,6 @@
-import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js";
+import { modelCatalog, SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js";
 import { releaseVersionAtLeast } from "./release-version.js";
-import { isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepLoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel, videoLoraConfigurationIssues } from "./video-loras.js";
+import { isH3Ref2vTurboEnabled, isH3PddLoraId, isH3SlaTurboLoraId, isH3TurboFourStepLoraId, isH3TurboV4LoraId, isH3TurboEnabled, videoLoraCompatibleWithModel, videoLoraConfigurationIssues } from "./video-loras.js";
 const standardStepOptions = [20, 16, 12];
 const turboStepOptions = [4, 6, 8];
 export function resolveVideoGenerationPolicy(input) {
@@ -10,6 +10,8 @@ export function resolveVideoGenerationPolicy(input) {
         modelId: input.modelId,
         videoLoras: input.videoLoras
     });
+    const pddEnabled = input.videoLoras?.some((lora) => isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)) === true;
+    const lowStepPathEnabled = turboEnabled || pddEnabled;
     const ref2vTurboEnabled = isH3Ref2vTurboEnabled({
         modelId: input.modelId,
         videoLoras: input.videoLoras
@@ -26,25 +28,31 @@ export function resolveVideoGenerationPolicy(input) {
             : null;
     return {
         isH3,
-        turboEnabled,
+        turboEnabled: lowStepPathEnabled,
             steps: {
-            mode: turboEnabled ? "turbo" : "standard",
-            options: h3TurboV4Enabled
+            mode: lowStepPathEnabled ? "turbo" : "standard",
+            options: pddEnabled
+                ? [8]
+                : h3TurboV4Enabled
                 ? [6, 8]
                 : definition?.capabilities?.generationSteps ??
                     (fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled ? [4] : turboEnabled ? turboStepOptions : standardStepOptions),
-            defaultValue: fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled || ref2vTurboEnabled
+            defaultValue: pddEnabled
+                ? 8
+                : fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled || ref2vTurboEnabled
                 ? 4
                 : h3TurboV4Enabled
                     ? 8
                     : definition?.capabilities?.defaultGenerationSteps ??
                         (turboEnabled ? 8 : 20),
-            maxValue: fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled
+            maxValue: pddEnabled
+                ? 8
+                : fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled
                 ? 4
                 : h3TurboV4Enabled
                     ? 8
                     : definition?.capabilities?.maxGenerationSteps ??
-                        (turboEnabled ? 8 : 20)
+                        (lowStepPathEnabled ? 8 : 20)
         },
         spectrum: {
             supportedByModel,
@@ -84,6 +92,9 @@ export function shouldEnableSpectrumByDefault(draft, spectrumNode) {
     if (!spectrumNode?.installed)
         return false;
     if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(spectrumNode.version, SPECTRUM_TURBO_MINIMUM_VERSION))
+        return false;
+    const pddEnabled = draft.videoLoras?.some((lora) => isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)) === true;
+    if (pddEnabled && !releaseVersionAtLeast(spectrumNode.version, SPECTRUM_PDD_MINIMUM_VERSION))
         return false;
     return resolveVideoGenerationPolicy({
         modelId: draft.modelId,

@@ -67,6 +67,7 @@ export interface ConfirmationServiceOptions {
   setSelectedHistoryAssetId(assetId: string): void;
   setSelectedHistoryVersionId(versionId: string): void;
   clearImageHistoryThumbnailCache(): void;
+  invalidateHistoryMediaForAsset?(assetId: string): void;
   setQueueActionBusy(value: { taskId: string; action: "remove" | "cancel" } | null): void;
   releaseHistoryVideo(assetId: string): void;
   rememberModalFocus(): void;
@@ -169,6 +170,7 @@ export async function acceptConfirmation(
       return;
     } else if (request.kind === "delete-history") {
       options.releaseHistoryVideo(request.assetId);
+      options.invalidateHistoryMediaForAsset?.(request.assetId);
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
       options.setState(await context.application.deleteHistoryAsset(request.assetId));
       options.setSelectedHistoryAssetId("");
@@ -179,6 +181,7 @@ export async function acceptConfirmation(
       }
       options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
     } else if (request.kind === "delete-image-version") {
+      options.invalidateHistoryMediaForAsset?.(request.projectId);
       options.setState(await context.application.deleteImageHistoryVersion(request.projectId, request.versionId));
       options.clearImageHistoryThumbnailCache();
       options.setSelectedHistoryVersionId("");
@@ -192,6 +195,7 @@ export async function acceptConfirmation(
       options.notify(t(uiKeys.runtime.imageVersionDeleted));
     } else if (request.kind === "delete-video-version") {
       options.releaseHistoryVideo(request.assetId);
+      options.invalidateHistoryMediaForAsset?.(request.assetId);
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
       options.setState(await context.application.deleteHistoryVersion(request.assetId, request.versionId));
       options.setSelectedHistoryVersionId("");

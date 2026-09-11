@@ -37,7 +37,7 @@ const apiSchema: WorkflowSourceMetadata["schema"] = {
   sourceUrl: "https://docs.comfy.org/development/core-concepts/workflow"
 };
 
-const recommendedCore = "0.33.1";
+const recommendedCore = "0.35.0";
 const h3Core = {
   recommendedVersion: recommendedCore,
   minimumVersion: "0.31.0"
@@ -92,7 +92,7 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
     comfyUi: h3Core,
     upstreamUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d"
   }),
-  minimax_h3_i2v_api: metadata("minimax_h3_i2v_api.json", ["kjnodes", "h3-optimizations"], {
+  minimax_h3_i2v_api: metadata("minimax_h3_i2v_api.json", ["kjnodes"], {
     comfyUi: h3Core,
     upstreamUrl: "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json"
   }),
@@ -116,7 +116,7 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
     upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.8.0",
     verifiedAt: "2026-09-10"
   }),
-  minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
+  minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes"], {
     comfyUi: h3Core
   }),
   minimax_h3_t2va_gguf_q3_api: metadata("minimax_h3_t2va_gguf_q3_api.json", ["comfyui-gguf-h3", "kjnodes"], {

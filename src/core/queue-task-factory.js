@@ -7,7 +7,7 @@ import { AETHERSCALE_MODEL_ID, normalizeAetherScaleTarget } from "./aetherscale.
 import { KONOHAMARU_MODEL_ID, KONOHAMARU_WORKFLOW_PATH, normalizeKonohamaruTarget } from "./konohamaru-dlss5.js";
 import { DLSS5_MODEL_ID, normalizeUpscaleTarget, requireLegacyUpscaleTargetHeight } from "./dlss5.js";
 import { videoLoraSelection } from "./video-loras.js";
-import { normalizeH3MemoryOptions, resolveMiniMaxH3ExecutionPlan } from "./h3-memory-policy.js";
+import { h3ExecutionPolicySnapshotFor } from "./h3-execution-policy.js";
 import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
@@ -19,7 +19,7 @@ const defaultClock = {
     random: () => Math.random()
 };
 function firstPassResolutionFor(draft) {
-    return draft.resolution >= 1080 ? 720 : draft.resolution;
+    return draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution;
 }
 export function promptOf(draft) {
     const promptVersions = promptVersionsForDraft(draft);
@@ -43,13 +43,14 @@ export function queueTaskFromDraft(draft, state, clock = defaultClock, options =
     const h3VideoVaeMode = isMiniMaxH3Model(draft.modelId)
         ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
         : undefined;
-    const h3MemoryOptions = normalizeH3MemoryOptions(draft);
-    const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
-        ? resolveMiniMaxH3ExecutionPlan({
+    const h3ExecutionPolicy = isMiniMaxH3Model(draft.modelId)
+        ? h3ExecutionPolicySnapshotFor({
             modelId: draft.modelId,
             inputMode: "image",
             attentionMode: state.settings.h3AttentionMode,
-            ...h3MemoryOptions,
+            sparseAttentionMode: state.settings.h3SparseAttentionMode,
+            runtimeMode: state.settings.h3RuntimeMode,
+            comfyCompilerMode: state.settings.h3ComfyCompilerMode,
             spectrumMode: draft.spectrumMode,
             videoLoras: draft.videoLoras,
             h3LivePreview: state.settings.h3LivePreview
@@ -83,6 +84,8 @@ export function queueTaskFromDraft(draft, state, clock = defaultClock, options =
         sourceWidth: draft.sourceWidth,
         sourceHeight: draft.sourceHeight,
         endImagePath: draft.endImagePath,
+        endImageWidth: draft.endImageWidth,
+        endImageHeight: draft.endImageHeight,
         modelId: draft.modelId,
         videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
         workflowPath: h3WorkflowPathForInput(draft.workflowPath, draft.modelId, Boolean(draft.startImagePath || draft.endImagePath)),
@@ -102,12 +105,20 @@ export function queueTaskFromDraft(draft, state, clock = defaultClock, options =
         attentionMode: state.settings.h3AttentionMode,
         h3VideoVaeMode,
         h3LivePreview: state.settings.h3LivePreview,
+        h3SparseAttentionMode: isMiniMaxH3Model(draft.modelId)
+            ? state.settings.h3SparseAttentionMode
+            : undefined,
+        h3RuntimeMode: isMiniMaxH3Model(draft.modelId)
+            ? state.settings.h3RuntimeMode
+            : undefined,
+        h3ComfyCompilerMode: isMiniMaxH3Model(draft.modelId)
+            ? state.settings.h3ComfyCompilerMode
+            : undefined,
+        h3ExecutionPolicy,
         h3LatentSaveMode,
         h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
         spectrumMode: draft.spectrumMode,
         spectrumModelAwareMode: "off",
-        ...h3MemoryOptions,
-        ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
         progress: 0
     };
 }
@@ -127,7 +138,9 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
     }));
     const basePicture = draft.pictures[0];
     const targetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const aspectRatio = adapter?.sourceResolutionOnly ? "source" : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
+    const aspectRatio = adapter?.sourceResolutionOnly
+        ? "source"
+        : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
     const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
     return {
@@ -170,22 +183,25 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         throw new Error("当前模型不支持视频续写。");
     }
     const now = clock.now().toISOString();
-    const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId) || isMiniMaxH3ContinuumModel(draft.modelId);
+    const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) ||
+        isMiniMaxH3R2vModel(draft.modelId) ||
+        isMiniMaxH3ContinuumModel(draft.modelId);
     const h3VideoVaeMode = isH3
         ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
         : undefined;
-    const h3MemoryOptions = normalizeH3MemoryOptions(draft);
     const resolution = isH3 ? firstPassResolutionFor(draft) : state.settings.ltxExtensionResolution;
     const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
         ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
         : undefined;
     const spectrumMode = isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode;
-    const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
-        ? resolveMiniMaxH3ExecutionPlan({
+    const h3ExecutionPolicy = isMiniMaxH3Model(draft.modelId)
+        ? h3ExecutionPolicySnapshotFor({
             modelId: draft.modelId,
             inputMode: "video",
             attentionMode: state.settings.h3AttentionMode,
-            ...h3MemoryOptions,
+            sparseAttentionMode: state.settings.h3SparseAttentionMode,
+            runtimeMode: state.settings.h3RuntimeMode,
+            comfyCompilerMode: state.settings.h3ComfyCompilerMode,
             spectrumMode,
             videoLoras: draft.videoLoras,
             h3LivePreview: state.settings.h3LivePreview
@@ -210,6 +226,12 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         ...(isMiniMaxH3R2vModel(draft.modelId) && draft.h3ContextLatentPath
             ? { h3ContextLatentPath: draft.h3ContextLatentPath }
             : {}),
+        ...(draft.h3ContinuumArtifactPath
+            ? { h3ContinuumArtifactPath: draft.h3ContinuumArtifactPath }
+            : {}),
+        ...(draft.h3ContinuumArtifact
+            ? { h3ContinuumArtifact: structuredClone(draft.h3ContinuumArtifact) }
+            : {}),
         ...(h3ReferenceSlots ? { h3ReferenceSlots } : {}),
         sourceWidth: draft.sourceWidth,
         sourceHeight: draft.sourceHeight,
@@ -231,14 +253,18 @@ export function extensionTaskFromDraft(draft, state, clock = defaultClock, optio
         attentionMode: state.settings.h3AttentionMode,
         h3VideoVaeMode,
         h3LivePreview: state.settings.h3LivePreview,
+        h3SparseAttentionMode: isH3 ? state.settings.h3SparseAttentionMode : undefined,
+        h3RuntimeMode: isH3 ? state.settings.h3RuntimeMode : undefined,
+        h3ComfyCompilerMode: isH3 ? state.settings.h3ComfyCompilerMode : undefined,
+        h3ExecutionPolicy,
         h3LatentSaveMode,
         h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
         spectrumMode,
         spectrumModelAwareMode: "off",
-        ...h3MemoryOptions,
-        ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
         maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
-        overlapFrames: state.settings.ltxExtensionOverlapFrames,
+        overlapFrames: isMiniMaxH3ContinuumModel(draft.modelId)
+            ? 22
+            : state.settings.ltxExtensionOverlapFrames,
         unloadBetweenStages: state.settings.ltxExtensionUnloadBetweenStages,
         progress: 0
     };
@@ -279,6 +305,7 @@ export function upscaleTaskFromRequest(request, state, clock = defaultClock) {
             sourceHeight: request.sourceHeight,
             targetWidth: target.targetWidth,
             targetHeight: undefined,
+            targetScale: undefined,
             targetOutputHeight: target.targetOutputHeight,
             upscaleMode: "pixel",
             tileMode: "auto",
@@ -290,8 +317,9 @@ export function upscaleTaskFromRequest(request, state, clock = defaultClock) {
     const hasAetherScaleFields = request.modelId === AETHERSCALE_MODEL_ID ||
         request.aetherScale !== undefined;
     if (hasAetherScaleFields) {
-        if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined)
+        if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined) {
             throw new Error("AetherScale 任务不能与 legacy/HECer target 字段混用。");
+        }
         const target = normalizeAetherScaleTarget(request);
         return {
             id: clock.id(),
@@ -357,12 +385,17 @@ export function upscaleTaskFromRequest(request, state, clock = defaultClock) {
             progress: 0
         };
     }
+    // Keep existing pixel/H3 queue snapshots strict and unchanged.
     const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight);
     const h3Native = request.upscaleMode === "h3-native";
     if (h3Native && !request.h3NativeInput) {
         throw new Error("H3 原生二次采样缺少已提交的 JointAV 输入快照。");
     }
-    if (h3Native && targetHeight !== 720 && targetHeight !== 768 && targetHeight !== 1080 && targetHeight !== 1440) {
+    if (h3Native &&
+        targetHeight !== 720 &&
+        targetHeight !== 768 &&
+        targetHeight !== 1080 &&
+        targetHeight !== 1440) {
         throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
     }
     if (h3Native && targetHeight >= 1080 && request.h3NativeInput?.provider !== "learned-3d") {
@@ -389,6 +422,9 @@ export function upscaleTaskFromRequest(request, state, clock = defaultClock) {
                 steps: request.h3NativeInput.steps,
                 attentionMode: request.h3NativeInput.attentionMode,
                 h3VideoVaeMode: request.h3NativeInput.h3VideoVaeMode,
+                h3SparseAttentionMode: request.h3NativeInput.h3SparseAttentionMode ?? state.settings.h3SparseAttentionMode,
+                h3RuntimeMode: request.h3NativeInput.h3RuntimeMode ?? state.settings.h3RuntimeMode,
+                h3ComfyCompilerMode: request.h3NativeInput.h3ComfyCompilerMode ?? state.settings.h3ComfyCompilerMode,
                 videoLoras: request.h3NativeInput.videoLoras.map((lora) => ({ ...lora }))
             }
             : {}),

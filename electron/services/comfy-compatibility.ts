@@ -4,7 +4,7 @@ import { availableComfyNodeIds } from "./dependency-scanner.js";
 
 export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "43cb4ff";
 export const MINIMAX_H3_MINIMUM_COMFY_VERSION = "0.31.0";
-export const MINIMAX_H3_RECOMMENDED_COMFY_VERSION = "0.33.1";
+export const MINIMAX_H3_RECOMMENDED_COMFY_VERSION = "0.35.0";
 
 /**
  * Community compatibility evidence which is useful to surface, but is not a

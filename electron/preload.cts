@@ -12,6 +12,8 @@ import type {
   EnvironmentIssue,
   EnvironmentScanScope,
   HistoryMigrationProgress,
+  HistoryCoverLookup,
+  HistoryCoverSaveResult,
   HistoryMetadataPatch,
   ImageAssetLibraryProgress,
   PromptProgress,
@@ -74,10 +76,19 @@ const api: AppApi = {
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   readHistoryCover: (key: string, sourcePath: string) =>
     ipcRenderer.invoke("history-cover:read", key, sourcePath),
+  lookupHistoryCover: (key: string, sourcePath: string): Promise<HistoryCoverLookup> =>
+    ipcRenderer.invoke("history-cover:lookup", key, sourcePath),
   inspectH3NativeAvArtifact: (assetId: string, versionId: string) =>
     ipcRenderer.invoke("history:inspect-h3-artifact", assetId, versionId),
   saveHistoryCover: (key: string, sourcePath: string, data: ArrayBuffer) =>
     ipcRenderer.invoke("history-cover:save", key, sourcePath, data),
+  saveHistoryCoverIfCurrent: (input: {
+    key: string;
+    sourcePath: string;
+    sourceRevision: string;
+    data: ArrayBuffer;
+  }): Promise<HistoryCoverSaveResult> =>
+    ipcRenderer.invoke("history-cover:save-if-current", input),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
   openDirectory: (path: string) => ipcRenderer.invoke("file:open-directory", path),
   copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),

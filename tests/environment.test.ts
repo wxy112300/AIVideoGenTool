@@ -610,7 +610,7 @@ describe("ComfyUI environment candidates", () => {
     )).toBe("standard");
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --enable-dynamic-vram --async-offload 2"
-    )).toBe("h3-memory");
+    )).toBe("h3-native");
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --lowvram --cpu-vae --disable-smart-memory"
     )).toBe("h3-q3-3080");

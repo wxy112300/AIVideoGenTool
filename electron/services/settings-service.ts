@@ -8,7 +8,10 @@ import type {
   SettingsSaveMode
 } from "../../src/types.js";
 import { normalizeUiLocale } from "../../src/core/i18n.js";
-import { isMiniMaxH3Model } from "../../src/core/workflow.js";
+import {
+  applyH3AccelerationSettingsToWaitingTask,
+  normalizeH3GlobalSparseAttentionMode
+} from "../../src/core/h3-execution-policy.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import {
@@ -128,7 +131,8 @@ export class SettingsService {
     }
     settings = {
       ...settings,
-      uiLocale: normalizeUiLocale(settings.uiLocale)
+      uiLocale: normalizeUiLocale(settings.uiLocale),
+      h3SparseAttentionMode: normalizeH3GlobalSparseAttentionMode(settings.h3SparseAttentionMode)
     };
 
     const previous = this.deps.store.get().settings;
@@ -146,21 +150,19 @@ export class SettingsService {
       JSON.stringify(previous[key as keyof Settings]) !==
       JSON.stringify(settings[key as keyof Settings])
     );
+    const h3AccelerationChanged =
+      previous.h3AttentionMode !== settings.h3AttentionMode ||
+      previous.h3SparseAttentionMode !== settings.h3SparseAttentionMode ||
+      previous.h3RuntimeMode !== settings.h3RuntimeMode ||
+      previous.h3ComfyCompilerMode !== settings.h3ComfyCompilerMode;
     let updatedH3TaskCount = 0;
     const commitSettings = (state: AppState): void => {
       state.settings = settings;
-      if (previous.h3AttentionMode !== settings.h3AttentionMode) {
-        for (const task of state.queue) {
-          if (
-            task.status === "running" ||
-            task.taskType === "upscale" ||
-            task.taskType === "image-generation" ||
-            !isMiniMaxH3Model(task.modelId)
-          ) continue;
-          task.attentionMode = settings.h3AttentionMode;
-          task.updatedAt = new Date().toISOString();
-          updatedH3TaskCount += 1;
-        }
+      if (!h3AccelerationChanged) return;
+      for (const task of state.queue) {
+        if (!applyH3AccelerationSettingsToWaitingTask(task, settings)) continue;
+        task.updatedAt = new Date().toISOString();
+        updatedH3TaskCount += 1;
       }
     };
 

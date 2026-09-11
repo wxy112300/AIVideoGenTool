@@ -90,7 +90,9 @@ const assetMethodNames = [
   "saveImageCrop",
   "readImage",
   "readHistoryCover",
+  "lookupHistoryCover",
   "saveHistoryCover",
+  "saveHistoryCoverIfCurrent",
   "scanImageAssetLibrary",
   "organizeImageAssetLibrary",
   "cleanupImageAssetLibrary"

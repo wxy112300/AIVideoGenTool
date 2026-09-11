@@ -194,9 +194,20 @@ describe("DraftService", () => {
 });
 
 describe("SettingsService", () => {
-  it("keeps the single save path and refreshes only eligible queued H3 tasks", async () => {
+  it("applies saved H3 acceleration settings to waiting tasks without changing running or terminal tasks", async () => {
     const initial = createDefaultState();
     initial.settings.imageInputLibraryDirectory = path.join(process.cwd(), "input-library");
+    const oldPolicy = {
+      attentionMode: "sage" as const,
+      attentionOwner: "sage" as const,
+      sparseAttentionMode: "off" as const,
+      runtimeMode: "compatibility" as const,
+      comfyCompilerMode: "auto" as const,
+      spectrumEnabled: true,
+      previewEnabled: false,
+      allowed: true,
+      reasons: []
+    };
     initial.queue = [
       {
         id: "waiting-h3",
@@ -204,12 +215,18 @@ describe("SettingsService", () => {
         status: "waiting",
         modelId: "minimax_h3_fl2va",
         attentionMode: "sage",
+        h3SparseAttentionMode: "auto",
+        h3RuntimeMode: "compatibility",
+        h3ComfyCompilerMode: "auto",
+        h3ExecutionPolicy: oldPolicy,
+        spectrumMode: "balanced",
+        videoLoras: [],
         updatedAt: "2026-01-01T00:00:00.000Z"
       } as QueueTask,
       {
-        id: "running-h3",
+        id: "legacy-waiting-h3",
         taskType: "generation",
-        status: "running",
+        status: "waiting",
         modelId: "minimax_h3_fl2va",
         attentionMode: "sage",
         updatedAt: "2026-01-01T00:00:00.000Z"
@@ -220,6 +237,40 @@ describe("SettingsService", () => {
         status: "waiting",
         modelId: "minimax_h3_fl2va",
         attentionMode: "sage",
+        h3SparseAttentionMode: "auto",
+        h3RuntimeMode: "compatibility",
+        h3ComfyCompilerMode: "auto",
+        h3ExecutionPolicy: oldPolicy,
+        videoLoras: [],
+        h3NativeInput: {
+          attentionMode: "sage",
+          h3SparseAttentionMode: "auto",
+          h3RuntimeMode: "compatibility",
+          h3ComfyCompilerMode: "auto"
+        }
+      } as unknown as QueueTask,
+      {
+        id: "running-h3",
+        taskType: "generation",
+        status: "running",
+        modelId: "minimax_h3_fl2va",
+        attentionMode: "sage",
+        h3SparseAttentionMode: "auto",
+        h3RuntimeMode: "compatibility",
+        h3ComfyCompilerMode: "auto",
+        h3ExecutionPolicy: oldPolicy,
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      } as QueueTask,
+      {
+        id: "failed-h3",
+        taskType: "generation",
+        status: "failed",
+        modelId: "minimax_h3_fl2va",
+        attentionMode: "sage",
+        h3SparseAttentionMode: "auto",
+        h3RuntimeMode: "compatibility",
+        h3ComfyCompilerMode: "auto",
+        h3ExecutionPolicy: oldPolicy,
         updatedAt: "2026-01-01T00:00:00.000Z"
       } as QueueTask
     ];
@@ -232,7 +283,10 @@ describe("SettingsService", () => {
     });
     const nextSettings: Settings = {
       ...initial.settings,
-      h3AttentionMode: "pytorch",
+      h3AttentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
       uiLocale: "en-US"
     };
 
@@ -240,9 +294,62 @@ describe("SettingsService", () => {
 
     const persisted = repository.snapshot();
     expect(persisted.settings.uiLocale).toBe("en-US");
-    expect(persisted.queue.find((task) => task.id === "waiting-h3")?.attentionMode).toBe("pytorch");
-    expect(persisted.queue.find((task) => task.id === "running-h3")?.attentionMode).toBe("sage");
-    expect(persisted.queue.find((task) => task.id === "waiting-upscale")?.attentionMode).toBe("sage");
+    expect(persisted.queue.find((task) => task.id === "waiting-h3")).toMatchObject({
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
+      h3ExecutionPolicy: {
+        attentionMode: "comfy-kitchen",
+        attentionOwner: "comfy-kitchen",
+        sparseAttentionMode: "sol-attn",
+        runtimeMode: "native",
+        comfyCompilerMode: "disabled",
+        spectrumEnabled: true,
+        previewEnabled: false,
+        allowed: true,
+        reasons: []
+      }
+    });
+    expect(persisted.queue.find((task) => task.id === "legacy-waiting-h3")).toMatchObject({
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
+      h3ExecutionPolicy: {
+        attentionMode: "comfy-kitchen",
+        attentionOwner: "comfy-kitchen",
+        sparseAttentionMode: "sol-attn",
+        runtimeMode: "native",
+        comfyCompilerMode: "disabled"
+      }
+    });
+    expect(persisted.queue.find((task) => task.id === "waiting-upscale")).toMatchObject({
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
+      h3NativeInput: {
+        attentionMode: "comfy-kitchen",
+        h3SparseAttentionMode: "sol-attn",
+        h3RuntimeMode: "native",
+        h3ComfyCompilerMode: "disabled"
+      }
+    });
+    expect(persisted.queue.find((task) => task.id === "running-h3")).toMatchObject({
+      attentionMode: "sage",
+      h3SparseAttentionMode: "auto",
+      h3RuntimeMode: "compatibility",
+      h3ComfyCompilerMode: "auto",
+      h3ExecutionPolicy: oldPolicy
+    });
+    expect(persisted.queue.find((task) => task.id === "failed-h3")).toMatchObject({
+      attentionMode: "sage",
+      h3SparseAttentionMode: "auto",
+      h3RuntimeMode: "compatibility",
+      h3ComfyCompilerMode: "auto",
+      h3ExecutionPolicy: oldPolicy
+    });
     expect(sendState).toHaveBeenCalledTimes(1);
     expect(clearRendererDirty).toHaveBeenCalledTimes(1);
   });

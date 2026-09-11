@@ -127,6 +127,20 @@ export function mountSettingsFieldsController(
     context.requestRender();
   }, { signal });
 
+  const bindChoiceDescription = (selectId: string, descriptionId: string): void => {
+    const select = root.querySelector<HTMLSelectElement>(selectId);
+    const descriptionElement = root.querySelector<HTMLElement>(descriptionId);
+    select?.addEventListener("change", () => {
+      const description = select.selectedOptions.item(0)?.dataset.description;
+      if (!description) return;
+      select.title = description;
+      if (descriptionElement) descriptionElement.textContent = description;
+    }, { signal });
+  };
+  bindChoiceDescription("#h3-attention-mode", "#h3-attention-description");
+  bindChoiceDescription("#h3-sparse-attention-mode", "#h3-sparse-attention-description");
+  bindChoiceDescription("#h3-runtime-mode", "#h3-runtime-description");
+
   root.querySelector<HTMLButtonElement>("#discard-settings")?.addEventListener("click", () => {
     if (!options.hasUnsavedChanges()) return;
     options.setSettingsDraft(null);

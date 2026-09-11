@@ -21,6 +21,12 @@ import {
   H3_REALISM_PEOPLE_LORA_ID,
   H3_REF2V_TURBO_LORA_ID,
   H3_REF2V_TURBO_LORA_FILENAME,
+  H3_PDD_COMFY_REVISION,
+  H3_PDD_FL2VA_LORA_FILENAME,
+  H3_PDD_FL2VA_LORA_ID,
+  H3_PDD_LORA_IDS,
+  H3_PDD_REF2VA_LORA_FILENAME,
+  H3_PDD_REF2VA_LORA_ID,
   H3_TURBO_V4_LORA_FILENAME,
   H3_TURBO_V4_LORA_ID,
   H3_TURBO_LORA_FILENAME,
@@ -59,6 +65,12 @@ export {
   H3_REALISM_PEOPLE_LORA_ID,
   H3_REF2V_TURBO_LORA_FILENAME,
   H3_REF2V_TURBO_LORA_ID,
+  H3_PDD_COMFY_REVISION,
+  H3_PDD_FL2VA_LORA_FILENAME,
+  H3_PDD_FL2VA_LORA_ID,
+  H3_PDD_LORA_IDS,
+  H3_PDD_REF2VA_LORA_FILENAME,
+  H3_PDD_REF2VA_LORA_ID,
   H3_TURBO_V4_LORA_FILENAME,
   H3_TURBO_V4_LORA_ID,
   H3_TURBO_LORA_FILENAME,
@@ -129,6 +141,8 @@ export const H3_VR180_SBS_LORA = requiredBuiltinVideoLora(H3_VR180_SBS_LORA_ID);
 export const H3_TURBO_V4_LORA = requiredBuiltinVideoLora(H3_TURBO_V4_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
+export const H3_PDD_FL2VA_LORA = requiredBuiltinVideoLora(H3_PDD_FL2VA_LORA_ID);
+export const H3_PDD_REF2VA_LORA = requiredBuiltinVideoLora(H3_PDD_REF2VA_LORA_ID);
 export const H3_AFTER_MIDNIGHT_LORA = requiredBuiltinVideoLora(H3_AFTER_MIDNIGHT_LORA_ID);
 export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
 export const H3_FACIAL_REALISM_CLOSEUP_LORA = requiredBuiltinVideoLora(H3_FACIAL_REALISM_CLOSEUP_LORA_ID);
@@ -169,6 +183,22 @@ export function isH3TurboV4LoraId(id: string): boolean {
 
 export function isH3Ref2vTurboLoraId(id: string): boolean {
   return id === H3_REF2V_TURBO_LORA_ID;
+}
+
+export function isH3PddLoraId(id: string): boolean {
+  return (H3_PDD_LORA_IDS as readonly string[]).includes(id);
+}
+
+export function isH3PddFl2vaLoraId(id: string): boolean {
+  return id === H3_PDD_FL2VA_LORA_ID;
+}
+
+export function isH3PddRef2vaLoraId(id: string): boolean {
+  return id === H3_PDD_REF2VA_LORA_ID;
+}
+
+function isH3LowStepLoraId(id: string): boolean {
+  return isH3TurboLoraId(id) || isH3PddLoraId(id);
 }
 
 export function h3TurboLoraForSelection(
@@ -308,7 +338,7 @@ export function videoLoraConfigurationIssues(context: {
   });
 
   const selectedTurboLoras = context.videoLoras.filter((lora) =>
-    isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, context.modelId)
+    isH3LowStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, context.modelId)
   );
   for (let index = 1; index < selectedTurboLoras.length; index += 1) {
     const previous = selectedTurboLoras[index - 1]!;
@@ -361,12 +391,12 @@ export function videoLorasAfterAdding(
   loras: readonly VideoLoraSelection[],
   addition: VideoLoraSelection
 ): VideoLoraSelection[] {
-  const turboIndex = loras.findIndex((lora) => isH3TurboLoraId(lora.id));
-  const retained = isH3TurboLoraId(addition.id)
-    ? loras.filter((lora) => !isH3TurboLoraId(lora.id))
+  const turboIndex = loras.findIndex((lora) => isH3LowStepLoraId(lora.id));
+  const retained = isH3LowStepLoraId(addition.id)
+    ? loras.filter((lora) => !isH3LowStepLoraId(lora.id))
     : [...loras];
   const next = [...retained];
-  if (isH3TurboLoraId(addition.id) && turboIndex >= 0) {
+  if (isH3LowStepLoraId(addition.id) && turboIndex >= 0) {
     next.splice(Math.min(turboIndex, next.length), 0, addition);
   } else {
     next.push(addition);

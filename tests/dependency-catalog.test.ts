@@ -52,7 +52,6 @@ describe("dependency catalog", () => {
       "local-video-studio-h3-av",
       "mmh3-ultimate-upscale",
       "spectrum-minimax-h3",
-      "h3-optimizations",
       "plaguekind-h3-sla",
       "comfyui-gguf-h3"
     ]);
@@ -163,13 +162,14 @@ describe("dependency catalog", () => {
       checks: ["static"]
     });
     expect(customNodeDefinition("h3-optimizations")).toMatchObject({
+      retired: true,
       repositoryUrl: "https://github.com/Zironic/H3-Optimizations.git",
       nodeTypes: ["H3MemoryOptimization"],
       minimumVersion: "0.2.16",
       recommendedVersion: "0.2.20",
       latestVersion: "0.2.20",
       bulkInstall: false,
-      appInstallable: true,
+      appInstallable: false,
       compatibilityEvidence: [{
         commit: "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746",
         checks: ["static"]

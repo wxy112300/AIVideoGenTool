@@ -33,6 +33,7 @@ export interface HistoryDestructiveServiceDependencies {
   coverCacheKeysForHistoryItem(item: HistoryItem): string[];
   coverCacheKeyForVideoVersion(asset: HistoryAsset, version: AssetVersion): string;
   coverCacheKeyForImageVersion(project: ImageHistoryProject, version: ImageAssetVersion): string;
+  invalidateCoverCacheKeys?(keys: readonly string[]): Promise<void>;
   removeCoverCacheKeys(keys: readonly string[]): Promise<void>;
   errorMeta(error: unknown): Record<string, unknown>;
 }
@@ -47,7 +48,12 @@ export class HistoryDestructiveService {
     const asset = current.history.find((item) => item.id === assetId);
     const imageProject = current.imageHistory.find((item) => item.id === assetId);
     if (!asset && !imageProject) return current;
+    const coverCacheKeys = [
+      ...(asset ? this.deps.coverCacheKeysForHistoryItem(asset) : []),
+      ...(imageProject ? this.deps.coverCacheKeysForHistoryItem(imageProject) : [])
+    ];
     try {
+      await this.deps.invalidateCoverCacheKeys?.(coverCacheKeys);
       const filesToDelete = asset
         ? historyVideoPaths(asset, current.settings.outputDirectory)
         : await this.imageProjectFilesToDelete(imageProject!, current.settings);
@@ -60,10 +66,7 @@ export class HistoryDestructiveService {
           state.imageHistory = state.imageHistory.filter((item) => item.id !== assetId);
         }
       });
-      await this.deps.removeCoverCacheKeys([
-        ...(asset ? this.deps.coverCacheKeysForHistoryItem(asset) : []),
-        ...(imageProject ? this.deps.coverCacheKeysForHistoryItem(imageProject) : [])
-      ]);
+      await this.deps.removeCoverCacheKeys(coverCacheKeys);
       this.deps.logger.info("history", "delete-succeeded", "History asset deleted", {
         assetId,
         durationMs: Date.now() - startedAt,
@@ -86,6 +89,7 @@ export class HistoryDestructiveService {
     if (asset.versions.length <= 1) {
       throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
     }
+    const coverCacheKey = this.deps.coverCacheKeyForVideoVersion(asset, version);
     const versionPaths = await this.videoVersionPaths(version, current.settings);
     const otherVersions = asset.versions.filter((item) => item.id !== versionId);
     const resolvedOtherVersionPaths = await Promise.all(
@@ -103,15 +107,14 @@ export class HistoryDestructiveService {
       filename: version.outputFilename
     });
     try {
+      await this.deps.invalidateCoverCacheKeys?.([coverCacheKey]);
       await this.unlinkFiles(filesToDelete, "视频文件");
       const next = await this.deps.store.update((state) => {
         const target = state.history.find((item) => item.id === assetId);
         if (!target) throw new Error("视频记录不存在。");
         Object.assign(target, removeHistoryVideoVersion(target, versionId));
       });
-      await this.deps.removeCoverCacheKeys([
-        this.deps.coverCacheKeyForVideoVersion(asset, version)
-      ]);
+      await this.deps.removeCoverCacheKeys([coverCacheKey]);
       this.deps.logger.info("history", "video-version-delete-succeeded", "视频版本和生成文件已删除", {
         assetId,
         versionId,
@@ -265,7 +268,9 @@ export class HistoryDestructiveService {
       versionId,
       filename: version.file.filename
     });
+    const coverCacheKey = this.deps.coverCacheKeyForImageVersion(project, version);
     try {
+      await this.deps.invalidateCoverCacheKeys?.([coverCacheKey]);
       const resolvedFile = sharedByAnotherVersion
         ? null
         : await this.deps.resolveHistoryFile(version.file, current.settings);
@@ -281,9 +286,7 @@ export class HistoryDestructiveService {
         target.updatedAt = [...target.versions]
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? target.createdAt;
       });
-      await this.deps.removeCoverCacheKeys([
-        this.deps.coverCacheKeyForImageVersion(project, version)
-      ]);
+      await this.deps.removeCoverCacheKeys([coverCacheKey]);
       this.deps.logger.info("history", "image-version-delete-succeeded", "图片版本和生成文件已删除", {
         projectId,
         versionId,

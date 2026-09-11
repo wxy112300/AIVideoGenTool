@@ -3,6 +3,7 @@ import type {
   AppState,
   AssetVersion,
   H3MemoryRuntimeEvidence,
+  H3ExecutionPolicySnapshot,
   HistoryAsset,
   HistoryFile,
   ImageAssetVersion,
@@ -136,6 +137,15 @@ export function persistImageHistoryResult(
 
 type VideoQueueTask = Exclude<QueueTask, ImageGenerationQueueTask>;
 
+function h3ExecutionPolicyFor(
+  task: VideoQueueTask
+): H3ExecutionPolicySnapshot | undefined {
+  const policy = task.h3ExecutionPolicy;
+  return policy
+    ? { ...policy, reasons: [...policy.reasons] }
+    : undefined;
+}
+
 export interface VideoHistoryResult {
   task: VideoQueueTask;
   completedAt: string;
@@ -212,6 +222,10 @@ export function persistVideoHistoryResult(
       videoLoras: normalizeHistoryVideoLoras(task.videoLoras), width, height,
       duration: task.duration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
+      h3SparseAttentionMode: task.h3SparseAttentionMode,
+      h3RuntimeMode: task.h3RuntimeMode,
+      h3ComfyCompilerMode: task.h3ComfyCompilerMode,
+      h3ExecutionPolicy: h3ExecutionPolicyFor(task),
       h3LatentSaveMode: isMiniMaxH3Model(task.modelId) ? h3LatentSaveMode : undefined,
       h3SaveJointAv: isMiniMaxH3Model(task.modelId)
         ? h3LatentSaveModeSavesJointAv(h3LatentSaveMode)
@@ -240,6 +254,10 @@ export function persistVideoHistoryResult(
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
       spectrumMode: task.spectrumMode, spectrumModelAwareMode: task.spectrumModelAwareMode,
+      h3SparseAttentionMode: task.h3SparseAttentionMode,
+      h3RuntimeMode: task.h3RuntimeMode,
+      h3ComfyCompilerMode: task.h3ComfyCompilerMode,
+      h3ExecutionPolicy: h3ExecutionPolicyFor(task),
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
       h3MemoryChunkRows: task.h3MemoryChunkRows,
@@ -272,6 +290,10 @@ export function persistVideoHistoryResult(
       duration: totalDuration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
+      h3SparseAttentionMode: task.h3SparseAttentionMode,
+      h3RuntimeMode: task.h3RuntimeMode,
+      h3ComfyCompilerMode: task.h3ComfyCompilerMode,
+      h3ExecutionPolicy: h3ExecutionPolicyFor(task),
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
       h3MemoryChunkRows: task.h3MemoryChunkRows,
@@ -300,6 +322,10 @@ export function persistVideoHistoryResult(
       frameInterpolation: task.frameInterpolation, ratio: "source",
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
       spectrumMode: task.spectrumMode, spectrumModelAwareMode: task.spectrumModelAwareMode,
+      h3SparseAttentionMode: task.h3SparseAttentionMode,
+      h3RuntimeMode: task.h3RuntimeMode,
+      h3ComfyCompilerMode: task.h3ComfyCompilerMode,
+      h3ExecutionPolicy: h3ExecutionPolicyFor(task),
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
       h3MemoryChunkRows: task.h3MemoryChunkRows,

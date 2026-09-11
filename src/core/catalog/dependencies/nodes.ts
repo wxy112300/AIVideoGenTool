@@ -34,7 +34,9 @@ import {
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
+export const SPECTRUM_PDD_MINIMUM_VERSION = "0.2.21";
 export const SPECTRUM_RECOMMENDED_VERSION = "0.2.24";
+export const H3_COMFY_KITCHEN_VERSION = "0.2.33";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.5";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
@@ -440,6 +442,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "h3-optimizations",
+  retired: true,
   priority: 155,
   name: "H3 Optimizations",
   purpose: "为 MiniMax H3 提供可选的 QKV streaming、MLP chunking 和精度策略节点",
@@ -451,13 +454,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   recommendedVersion: H3_MEMORY_RECOMMENDED_VERSION,
   latestVersion: H3_MEMORY_LATEST_VERSION,
   bulkInstall: false,
-  appInstallable: true,
-  runtimeRequirement: "可选观察项，当前不参与应用工作流或批量安装；可手动安装以跟踪上游更新。上游声明 ComfyUI >=0.33.0、Python >=3.10。",
+  appInstallable: false,
+  runtimeRequirement: "已撤回：不再参与应用工作流、依赖扫描或安装；仅保留定义供旧状态读取和拒绝误安装。请使用 ComfyUI 0.35.0 原生 ModelAttentionBackend / BlockSparseAttention。",
   features: [{
     id: "h3-memory-optimization",
     name: "H3 Memory Optimization",
     nodeTypes: ["H3MemoryOptimization"],
-    description: "当前产品功能已隐藏并强制关闭；保留安装入口仅用于观察上游兼容性更新。"
+    description: "已撤回；旧任务/状态只做读取兼容，不再安装或执行。"
   }],
   compatibilityEvidence: [{
     verifiedAt: "2026-08-27",

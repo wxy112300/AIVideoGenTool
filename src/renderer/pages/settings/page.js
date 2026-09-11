@@ -438,7 +438,7 @@ export function renderSettingsPage(viewModel, options) {
     const workflowDependencies = coreNodeState.workflowDependencies;
     const nodeDependencyAvailable = coreNodeState.availableCount;
     const nodeDependencyTotal = coreNodeState.totalCount;
-    const customNodes = coreNodeState.customNodes;
+    const customNodes = coreNodeState.customNodes.filter((node) => node.retired !== true && node.id !== "h3-optimizations");
     const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
     const bulkActionMode = customNodeBulkActionMode(customNodes);
     const bulkActionLabel = bulkActionMode === "update"
@@ -465,7 +465,7 @@ export function renderSettingsPage(viewModel, options) {
         return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
     }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
-            <span class="muted">${s("nodes.minimumVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3MinimumVersion ?? "0.31.0")}</code> · ${s("nodes.recommendedVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3RecommendedVersion ?? "0.33.1")}</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility?.h3MinimumRevision ?? "")}</code></span>
+            <span class="muted">${s("nodes.minimumVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3MinimumVersion ?? "0.31.0")}</code> · ${s("nodes.recommendedVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3RecommendedVersion ?? "0.35.0")}</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility?.h3MinimumRevision ?? "")}</code></span>
             ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
@@ -648,9 +648,21 @@ export function renderSettingsPage(viewModel, options) {
     const attentionModeTips = {
         sage: s("accel.modeSageTip"),
         "sage-triton": s("accel.modeSageTritonTip"),
-        pytorch: s("accel.modePytorchTip")
+        pytorch: s("accel.modePytorchTip"),
+        "comfy-kitchen": s("accel.modeComfyKitchenTip")
     };
     const selectedAttentionModeTip = attentionModeTips[settings.h3AttentionMode] ?? attentionModeTips.sage;
+    const sparseModeTips = {
+        off: s("accel.sparseOffTip"),
+        "sol-attn": s("accel.sparseSolAttnTip")
+    };
+    const selectedSparseMode = settings.h3SparseAttentionMode === "sol-attn" ? "sol-attn" : "off";
+    const selectedSparseModeTip = sparseModeTips[selectedSparseMode];
+    const runtimeModeTips = {
+        compatibility: s("accel.runtimeCompatibilityTip"),
+        native: s("accel.runtimeNativeTip")
+    };
+    const selectedRuntimeModeTip = runtimeModeTips[settings.h3RuntimeMode];
     const h3VideoVaePanel = `
       <section class="panel settings-section acceleration-section h3-video-vae-panel ${h3VideoVaeTone}">
         <div class="section-heading">
@@ -680,16 +692,43 @@ export function renderSettingsPage(viewModel, options) {
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
-            <select id="h3-attention-mode" title="${escape(selectedAttentionModeTip)}">
+            <select id="h3-attention-mode" title="${escape(selectedAttentionModeTip)}" aria-describedby="h3-attention-description">
               <option value="sage" data-description="${escape(attentionModeTips.sage)}" title="${escape(attentionModeTips.sage)}" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
               <option value="sage-triton" data-description="${escape(attentionModeTips["sage-triton"])}" title="${escape(attentionModeTips["sage-triton"])}" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
               <option value="pytorch" data-description="${escape(attentionModeTips.pytorch)}" title="${escape(attentionModeTips.pytorch)}" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
+              <option value="comfy-kitchen" data-description="${escape(attentionModeTips["comfy-kitchen"])}" title="${escape(attentionModeTips["comfy-kitchen"])}" ${settings.h3AttentionMode === "comfy-kitchen" ? "selected" : ""}>${s("accel.modeComfyKitchen")}</option>
             </select>
+            <span class="field-hint" id="h3-attention-description">${escape(selectedAttentionModeTip)}</span>
           </label>
           <div class="acceleration-summary">
             <span class="acceleration-summary-icon">${icon(attentionStatus === "ready" ? "circle-check" : attentionStatus === "unsupported" ? "circle-alert" : "circle-help")}</span>
             <div><strong>${escape(attentionProbeFailed ? s("accel.probeFailed") : attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
+        </div>
+      </section>
+      <section class="panel settings-section acceleration-section">
+        <div class="section-heading"><div><h2>${s("accel.sparseMode")}</h2><span class="muted">${s("accel.sparseModeTip")}</span></div></div>
+        <div class="acceleration-strategy-grid">
+          <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.sparseMode"), s("accel.sparseModeTip"))}
+            <select id="h3-sparse-attention-mode" title="${escape(selectedSparseModeTip)}" aria-describedby="h3-sparse-attention-description">
+              <option value="off" data-description="${escape(sparseModeTips.off)}" title="${escape(sparseModeTips.off)}" ${selectedSparseMode === "off" ? "selected" : ""}>${s("accel.sparseOff")}</option>
+              <option value="sol-attn" data-description="${escape(sparseModeTips["sol-attn"])}" title="${escape(sparseModeTips["sol-attn"])}" ${selectedSparseMode === "sol-attn" ? "selected" : ""}>${s("accel.sparseSolAttn")}</option>
+            </select>
+            <span class="field-hint" id="h3-sparse-attention-description">${escape(selectedSparseModeTip)}</span>
+          </label>
+          <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.runtimeMode"), s("accel.runtimeModeTip"))}
+            <select id="h3-runtime-mode" title="${escape(selectedRuntimeModeTip)}" aria-describedby="h3-runtime-description">
+              <option value="compatibility" data-description="${escape(runtimeModeTips.compatibility)}" title="${escape(runtimeModeTips.compatibility)}" ${settings.h3RuntimeMode === "compatibility" ? "selected" : ""}>${s("accel.runtimeCompatibility")}</option>
+              <option value="native" data-description="${escape(runtimeModeTips.native)}" title="${escape(runtimeModeTips.native)}" ${settings.h3RuntimeMode === "native" ? "selected" : ""}>${s("accel.runtimeNative")}</option>
+            </select>
+            <span class="field-hint" id="h3-runtime-description">${escape(selectedRuntimeModeTip)}</span>
+          </label>
+          <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.compilerMode"), s("accel.compilerModeTip"))}
+            <select id="h3-comfy-compiler-mode" title="${escape(s("accel.compilerModeTip"))}">
+              <option value="disabled" ${settings.h3ComfyCompilerMode === "disabled" ? "selected" : ""}>${s("accel.compilerDisabled")}</option>
+              <option value="auto" ${settings.h3ComfyCompilerMode === "auto" ? "selected" : ""}>${s("accel.compilerAuto")}</option>
+            </select>
+          </label>
         </div>
       </section>
       ${h3VideoVaePanel}

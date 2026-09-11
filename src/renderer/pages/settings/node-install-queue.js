@@ -1,10 +1,10 @@
 export function customNodeIdsForBulkAction(nodes) {
-    const eligible = nodes.filter((node) => node.bulkInstall !== false);
+    const eligible = nodes.filter((node) => node.retired !== true && node.bulkInstall !== false);
     const actionable = eligible.filter((node) => !node.installed || node.updateAvailable || node.runtimeRepairable);
     return actionable.map((node) => node.id);
 }
 export function customNodeBulkActionMode(nodes) {
-    const actionable = nodes.filter((node) => node.bulkInstall !== false && (!node.installed || node.updateAvailable || node.runtimeRepairable));
+    const actionable = nodes.filter((node) => node.retired !== true && node.bulkInstall !== false && (!node.installed || node.updateAvailable || node.runtimeRepairable));
     const hasMissing = actionable.some((node) => !node.installed);
     const hasUpdates = actionable.some((node) => node.installed && (node.updateAvailable || node.runtimeRepairable));
     if (hasMissing && hasUpdates)

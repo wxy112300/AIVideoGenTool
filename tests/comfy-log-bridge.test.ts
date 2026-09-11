@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppLogger } from "../src/infrastructure/app-logger.js";
 import {
   ComfyLogBridge,
-  parseH3MemoryAppliedPlan,
   resolveComfyLogRoot
 } from "../electron/services/comfy-log-bridge.js";
 import { createDefaultSettings } from "../src/core/defaults.js";
@@ -24,24 +23,6 @@ afterEach(async () => {
 });
 
 describe("ComfyUI log bridge", () => {
-  it("classifies H3 Memory applied plans by actual providers", () => {
-    expect(parseH3MemoryAppliedPlan(
-      "[H3 Optimizations] applied plan: phase=node qkv_provider=standard_h3_qkv memory=baseline"
-    )).toMatchObject({
-      execution: "fallback",
-      qkvProvider: "standard_h3_qkv",
-      memoryProvider: "baseline"
-    });
-    expect(parseH3MemoryAppliedPlan(
-      "[H3 Optimizations] applied plan: phase=node qkv_provider=convrot_int8_dense_sage memory=streamed_q+streamed_out"
-    )).toMatchObject({
-      execution: "optimized",
-      qkvProvider: "convrot_int8_dense_sage",
-      memoryProvider: "streamed_q+streamed_out"
-    });
-    expect(parseH3MemoryAppliedPlan("ordinary ComfyUI line")).toBeNull();
-  });
-
   it("uses the discovered data root instead of the selected install directory", async () => {
     const settings = {
       ...createDefaultSettings(),

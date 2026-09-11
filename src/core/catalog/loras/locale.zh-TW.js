@@ -1,4 +1,34 @@
 export const zhTWLoraLocales = {
+    "h3-pdd-fl2va-8step": {
+        guide: {
+            summary: "ComfyUI 0.35 原生 PDD Acc FL2VA 8 步 LoRA；透過輸出 head bank 在不同 sigma 區間使用對應 head，不依賴 H3-Optimizations。",
+            recommendedStrength: "固定 1.0；應用程式會固定 8 步、Euler、Simple、video shift 12、audio shift 3 與 CFG 1.0。",
+            effects: "把 FL2VA 取樣預算壓縮到 8 步，同時保留 PDD head bank 對不同 sigma 區間的適配；先與標準 20 步 Base 做同 Seed 對照。",
+            stacking: "這是獨立的效能路徑，只與 pruned INT8 ConvRot FL2VA 基座配套；不要與任何 Turbo LoRA 疊加，也不要把非 pruned 檔案混入目前條目。",
+            compatibility: "僅 MiniMax H3 FL2VA pruned INT8 ConvRot 圖生影片；需要 ComfyUI 0.35 原生 PDD 支援與普通 LoraLoaderModelOnly，Ref2VA、INT4、Q3 與影片續寫不開放。",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            pddTurbo: "PDD Acc 不可與 Turbo LoRA 同時使用；請保留獨立的 8 步 PDD 對照。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；PDD 是獨立效能路徑，先單獨驗證，再考慮與內容 LoRA 組合。"
+        }
+    },
+    "h3-pdd-ref2va-8step": {
+        guide: {
+            summary: "ComfyUI 0.35 原生 PDD Acc Ref2VA 8 步 LoRA；透過輸出 head bank 支援多參考圖 R2V 的分段取樣。",
+            recommendedStrength: "固定 1.0；應用程式會固定 8 步、Euler、Simple、video shift 12、audio shift 3 與 CFG 1.0。",
+            effects: "把 Ref2VA 多參考圖取樣預算壓縮到 8 步；參考圖一致性、運動與音訊需要和標準 R2V 做同 Seed 對照。",
+            stacking: "這是獨立的 R2V 效能路徑，只與 pruned INT8 ConvRot Ref2VA 基座配套；不要與任何 Turbo LoRA 疊加，也不要用於 FL2VA 或影片續寫。",
+            compatibility: "僅 MiniMax H3 Ref2VA pruned INT8 ConvRot 多參考圖生成；需要 ComfyUI 0.35 原生 PDD 支援、普通 LoraLoaderModelOnly 與 MiniMaxH3ReferenceToVideo。",
+            source: "Kijai / MiniMax-H3-experimental · pinned ComfyUI PDD conversion"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            pddTurbo: "PDD Acc 不可與 Turbo LoRA 同時使用；請保留獨立的 8 步 PDD R2V 對照。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；PDD 是獨立 R2V 效能路徑，先單獨驗證，再考慮與 R2V 內容 LoRA 組合。"
+        }
+    },
     "minimax-h3-turbo-sla-4step": {
         guide: {
             summary: "官方 MiniMax H3 Turbo-SLA 4 步 768p 稀疏注意力 LoRA；需要搭配 H3 SLA Attention 節點。",

@@ -1,4 +1,5 @@
 import type { AppState, UpscaleQueueTask } from "../src/types.js";
+import { applyH3AccelerationSettingsToWaitingTask } from "../src/core/h3-execution-policy.js";
 import {
   activeQueueTaskIds,
   adjustQueuePauseBoundary,
@@ -447,6 +448,10 @@ export class QueueMutationService {
       const result = resetQueueTask(state.queue, taskId);
       state.queue = result.queue;
       reset = result.reset;
+      if (reset) {
+        const task = state.queue.find((candidate) => candidate.id === taskId);
+        if (task) applyH3AccelerationSettingsToWaitingTask(task, state.settings);
+      }
       state.queuePauseBoundary = adjustQueuePauseBoundary(
         previousQueue,
         state.queuePauseBoundary,

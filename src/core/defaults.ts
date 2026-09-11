@@ -69,6 +69,8 @@ export function createDefaultDraft(): Draft {
     spectrumModeUserSet: false,
     h3LatentSaveMode: "all",
     h3SaveJointAv: true,
+    // Kept at the withdrawn value so pre-upgrade renderers and state files
+    // remain readable; no new workflow consumes these fields.
     h3MemoryOptimizationMode: H3_MEMORY_DEFAULT_MODE,
     h3MemoryOptimizationUserSet: false,
     h3MemoryChunkRows: H3_MEMORY_DEFAULT_CHUNK_ROWS
@@ -107,6 +109,9 @@ export function createDefaultSettings(): Settings {
     imageOutputFormat: "png",
     vramReserveGb: 1,
     h3AttentionMode: "sage",
+    h3SparseAttentionMode: "off",
+    h3RuntimeMode: "compatibility",
+    h3ComfyCompilerMode: "disabled",
     h3VideoVaeMode: "fp16",
     h3LivePreview: false,
     autoOffload: true,

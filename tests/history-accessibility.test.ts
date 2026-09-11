@@ -161,6 +161,25 @@ describe("History accessibility markup", () => {
       height: 480,
       duration: 124 / 24,
       fps: 24,
+      steps: 20,
+      motion: "strong",
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
+      h3VideoVaeMode: "int8-convrot",
+      spectrumMode: "off",
+      h3ExecutionPolicy: {
+        attentionMode: "comfy-kitchen",
+        attentionOwner: "comfy-kitchen",
+        sparseAttentionMode: "sol-attn",
+        runtimeMode: "native",
+        comfyCompilerMode: "disabled",
+        spectrumEnabled: false,
+        previewEnabled: false,
+        allowed: true,
+        reasons: []
+      },
       workflowPath: "fixture-workflow.json",
       comfyPromptId: "video-prompt-detail",
       comfyOutputs: {},
@@ -377,6 +396,12 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain('data-delete-history="video-asset-detail"');
     expect(videoPage).not.toContain('class="history-detail-compact-actions"');
     expect(videoPage).toContain('class="history-record-section"');
+    expect(videoPage).toContain("history.page.attentionBackend");
+    expect(videoPage).toContain("history.page.sparseAttention");
+    expect(videoPage).toContain("history.page.comfyCompiler");
+    expect(videoPage).toContain("comfy-kitchen");
+    expect(videoPage).toContain("sol-attn");
+    expect(videoPage).not.toContain('<dt>history.page.motion</dt>');
     expect(videoPage).not.toContain('class="history-joint-av-indicator"');
     expect(artifactPage).toContain('class="history-joint-av-indicator">JointAV</span>');
     expect(artifactPage).not.toContain('data-h3-av-artifact');

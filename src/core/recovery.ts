@@ -19,11 +19,12 @@ export function nextH3AttentionModeAfterCudaFailure(
 ): H3AttentionMode | null {
   if (!current || current === "sage") return "sage-triton";
   if (current === "sage-triton") return "pytorch";
+  if (current === "comfy-kitchen") return "pytorch";
   return null;
 }
 
 export function normalizeH3AttentionMode(value: unknown): H3AttentionMode {
-  if (value === "sage-triton" || value === "pytorch") return value;
+  if (value === "sage-triton" || value === "pytorch" || value === "comfy-kitchen") return value;
   return "sage";
 }
 

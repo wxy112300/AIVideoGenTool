@@ -9,6 +9,8 @@ import {
   H3_AFTER_MIDNIGHT_LORA,
   H3_FACIAL_REALISM_CLOSEUP_LORA,
   H3_REALISM_PEOPLE_LORA,
+  H3_PDD_FL2VA_LORA,
+  H3_PDD_REF2VA_LORA,
   H3_REF2V_TURBO_LORA,
   H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
@@ -28,6 +30,8 @@ import { h3LoraPromptInstruction } from "../src/core/prompts/h3/loras";
 describe("video LoRA catalog", () => {
   it("groups performance LoRAs before functional LoRAs in the H3 catalog", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
+      H3_PDD_FL2VA_LORA.id,
+      H3_PDD_REF2VA_LORA.id,
       H3_TURBO_V4_LORA.id,
       H3_SLA_TURBO_LORA.id,
       H3_TURBO_LORA.id,
@@ -47,6 +51,20 @@ describe("video LoRA catalog", () => {
       purpose: "performance",
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
+    });
+    expect(H3_PDD_FL2VA_LORA).toMatchObject({
+      strength: 1,
+      purpose: "performance",
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"],
+      filename: "MiniMax-H3-FL2VA-Acc-8Step_pruned_comfy.safetensors"
+    });
+    expect(H3_PDD_REF2VA_LORA).toMatchObject({
+      strength: 1,
+      purpose: "performance",
+      compatibleModelIds: ["minimax_h3_ref2va"],
+      compatibleInputModes: ["image"],
+      filename: "MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors"
     });
     expect(H3_REALISM_PEOPLE_LORA).toMatchObject({
       strength: 0.85,
@@ -225,6 +243,23 @@ describe("video LoRA catalog", () => {
         code: `combination:${[H3_REALISM_PEOPLE_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
         severity: "warning"
       }),
+    ]));
+  });
+
+  it("rejects stacking a PDD LoRA with another low-step sampler LoRA", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      attentionMode: "sage",
+      videoLoras: [H3_PDD_FL2VA_LORA, H3_TURBO_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_PDD_FL2VA_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
+        severity: "error"
+      })
     ]));
   });
 

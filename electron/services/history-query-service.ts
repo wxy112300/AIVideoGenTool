@@ -9,7 +9,9 @@ import type {
   ImageAssetVersion,
   ImageHistoryProject,
   NativeAvContinuationArtifact,
-  Settings
+  Settings,
+  HistoryCoverLookup,
+  HistoryCoverSaveResult
 } from "../../src/types.js";
 import {
   extractComfyOutputFiles,
@@ -194,6 +196,9 @@ function historyPathRepairNeeded(
 }
 
 export class HistoryQueryService {
+  private readonly coverGenerations = new Map<string, number>();
+  private readonly coverWriteTails = new Map<string, Promise<void>>();
+
   constructor(private readonly deps: HistoryQueryServiceDependencies) {}
 
   coverPathFromDigest(digest: string, extension = ".jpg"): string {
@@ -235,10 +240,28 @@ export class HistoryQueryService {
   }
 
   async removeCoverCacheKeys(keys: readonly string[]): Promise<void> {
-    await Promise.all([...new Set(keys)].flatMap((key) => [
+    const uniqueKeys = [...new Set(keys)].filter((key) => Boolean(key));
+    await this.invalidateHistoryCoverKeys(uniqueKeys);
+    await Promise.all(uniqueKeys.flatMap((key) => [
       this.deps.fileSystem.remove(this.coverPath(key)).catch(() => undefined),
       this.deps.fileSystem.remove(this.coverMetadataPath(key)).catch(() => undefined)
     ]));
+  }
+
+  /**
+   * Advance the in-memory generation before a destructive operation starts.
+   * A save that already passed its source check is allowed to finish, but the
+   * caller waits for it before deleting the cache file. New saves observe the
+   * advanced generation and become stale instead of reviving a deleted cover.
+   */
+  async invalidateHistoryCoverKeys(keys: readonly string[]): Promise<void> {
+    const uniqueKeys = [...new Set(keys)].filter((key) => Boolean(key));
+    uniqueKeys.forEach((key) => {
+      this.coverGenerations.set(key, (this.coverGenerations.get(key) ?? 0) + 1);
+    });
+    await Promise.all(uniqueKeys.map((key) =>
+      this.coverWriteTails.get(key)?.catch(() => undefined)
+    ));
   }
 
   async resolveHistoryFile(
@@ -347,27 +370,41 @@ export class HistoryQueryService {
   }
 
   async readHistoryCover(key: string, sourcePath: string): Promise<string | null> {
-    if (!key || !sourcePath) return null;
-    const resolvedSource = await this.resolveHistorySourcePath(sourcePath);
-    const sourceStat = resolvedSource ? await this.safeStat(resolvedSource) : null;
-    if (!sourceStat?.isFile()) return null;
+    const result = await this.lookupHistoryCover(key, sourcePath);
+    return result.state === "hit" ? result.url : null;
+  }
+
+  async lookupHistoryCover(
+    key: string,
+    sourcePath: string
+  ): Promise<HistoryCoverLookup> {
+    if (!key || !sourcePath) return { state: "unavailable" };
+    const source = await this.historyCoverSourceState(key, sourcePath);
+    if (!source) return { state: "unavailable" };
     const [coverStat, metadataText] = await Promise.all([
       this.safeStat(this.coverPath(key)),
       this.deps.fileSystem.readText(this.coverMetadataPath(key)).catch(() => "")
     ]);
-    if (!coverStat?.isFile() || coverStat.size <= 0 || !metadataText) return null;
+    if (!coverStat?.isFile() || coverStat.size <= 0 || !metadataText) {
+      return { state: "miss", sourceRevision: source.sourceRevision };
+    }
     let metadata: HistoryCoverMetadata;
     try {
       metadata = JSON.parse(metadataText) as HistoryCoverMetadata;
     } catch {
-      return null;
+      return { state: "miss", sourceRevision: source.sourceRevision };
     }
     if (
-      metadata.sourceSize !== sourceStat.size ||
-      Math.abs(metadata.sourceMtimeMs - sourceStat.mtimeMs) > 1
-    ) return null;
-    const digest = historyCoverDigest(key);
-    return `studio-media://cover/${digest}${historyCoverExtension(key)}?v=${Math.round(coverStat.mtimeMs)}`;
+      metadata.sourceSize !== source.stat.size ||
+      Math.abs(metadata.sourceMtimeMs - source.stat.mtimeMs) > 1
+    ) {
+      return { state: "miss", sourceRevision: source.sourceRevision };
+    }
+    return {
+      state: "hit",
+      url: this.historyCoverUrl(key, coverStat.mtimeMs),
+      sourceRevision: source.sourceRevision
+    };
   }
 
   async saveHistoryCover(
@@ -384,31 +421,61 @@ export class HistoryQueryService {
     if (bytes.byteLength > 2 * 1024 * 1024) {
       throw new Error("历史封面缓存不能超过 2 MB");
     }
-    const resolvedSource = await this.resolveHistorySourcePath(sourcePath);
-    const sourceStat = resolvedSource ? await this.safeStat(resolvedSource) : null;
-    if (!sourceStat?.isFile()) return false;
-    await this.deps.fileSystem.makeDirectory(this.deps.paths.historyCoverDirectory);
-    const filename = this.coverPath(key);
-    const metadataFilename = this.coverMetadataPath(key);
-    const temporary = `${filename}.${randomUUID()}.tmp`;
-    const metadataTemporary = `${metadataFilename}.${randomUUID()}.tmp`;
-    const metadata: HistoryCoverMetadata = {
-      sourceSize: sourceStat.size,
-      sourceMtimeMs: sourceStat.mtimeMs,
-      generatedAt: new Date().toISOString()
-    };
-    try {
-      await this.deps.fileSystem.writeFile(temporary, bytes);
-      await this.deps.fileSystem.writeFile(metadataTemporary, JSON.stringify(metadata));
-      await this.deps.fileSystem.remove(filename);
-      await this.deps.fileSystem.remove(metadataFilename);
-      await this.deps.fileSystem.rename(temporary, filename);
-      await this.deps.fileSystem.rename(metadataTemporary, metadataFilename);
-    } finally {
-      await this.deps.fileSystem.remove(temporary).catch(() => undefined);
-      await this.deps.fileSystem.remove(metadataTemporary).catch(() => undefined);
+    const lookup = await this.lookupHistoryCover(key, sourcePath);
+    if (lookup.state === "unavailable") return false;
+    const result = await this.saveHistoryCoverIfCurrent({
+      key,
+      sourcePath,
+      sourceRevision: lookup.sourceRevision,
+      data: bytes.slice().buffer as ArrayBuffer
+    });
+    return result.state === "saved";
+  }
+
+  async saveHistoryCoverIfCurrent(input: {
+    key: string;
+    sourcePath: string;
+    sourceRevision: string;
+    data: ArrayBuffer;
+  }): Promise<HistoryCoverSaveResult> {
+    const bytes = new Uint8Array(input.data);
+    if (!input.key || !input.sourcePath || !bytes.byteLength) return { state: "failed" };
+    if (bytes.byteLength > 2 * 1024 * 1024) {
+      throw new Error("历史封面缓存不能超过 2 MB");
     }
-    return true;
+
+    return this.runSerializedCoverWrite(input.key, async () => {
+      const source = await this.historyCoverSourceState(input.key, input.sourcePath);
+      if (!source || source.sourceRevision !== input.sourceRevision) {
+        return { state: "stale" };
+      }
+      const filename = this.coverPath(input.key);
+      const metadataFilename = this.coverMetadataPath(input.key);
+      const temporary = `${filename}.${randomUUID()}.tmp`;
+      const metadataTemporary = `${metadataFilename}.${randomUUID()}.tmp`;
+      const metadata: HistoryCoverMetadata = {
+        sourceSize: source.stat.size,
+        sourceMtimeMs: source.stat.mtimeMs,
+        generatedAt: new Date().toISOString()
+      };
+      try {
+        await this.deps.fileSystem.makeDirectory(this.deps.paths.historyCoverDirectory);
+        await this.deps.fileSystem.writeFile(temporary, bytes);
+        await this.deps.fileSystem.writeFile(metadataTemporary, JSON.stringify(metadata));
+        await this.deps.fileSystem.remove(filename);
+        await this.deps.fileSystem.remove(metadataFilename);
+        await this.deps.fileSystem.rename(temporary, filename);
+        await this.deps.fileSystem.rename(metadataTemporary, metadataFilename);
+      } catch {
+        return { state: "failed" };
+      } finally {
+        await this.deps.fileSystem.remove(temporary).catch(() => undefined);
+        await this.deps.fileSystem.remove(metadataTemporary).catch(() => undefined);
+      }
+      const coverStat = await this.safeStat(filename);
+      if (!coverStat?.isFile()) return { state: "failed" };
+      return { state: "saved", url: this.historyCoverUrl(input.key, coverStat.mtimeMs) };
+    });
   }
 
   private coverPath(key: string): string {
@@ -417,6 +484,59 @@ export class HistoryQueryService {
       historyCoverDigest(key),
       historyCoverExtension(key)
     );
+  }
+
+  private historyCoverUrl(key: string, mtimeMs: number): string {
+    const digest = historyCoverDigest(key);
+    return `studio-media://cover/${digest}${historyCoverExtension(key)}?v=${Math.round(mtimeMs)}`;
+  }
+
+  private async historyCoverSourceState(
+    key: string,
+    sourcePath: string
+  ): Promise<{
+    resolvedSource: string;
+    stat: { readonly size: number; readonly mtimeMs: number };
+    sourceRevision: string;
+  } | null> {
+    const resolvedSource = await this.resolveHistorySourcePath(sourcePath);
+    const sourceStat = resolvedSource ? await this.safeStat(resolvedSource) : null;
+    if (!resolvedSource || !sourceStat?.isFile()) return null;
+    return {
+      resolvedSource,
+      stat: sourceStat,
+      sourceRevision: this.historyCoverSourceRevision(key, resolvedSource, sourceStat)
+    };
+  }
+
+  private historyCoverSourceRevision(
+    key: string,
+    resolvedSource: string,
+    sourceStat: { readonly size: number; readonly mtimeMs: number }
+  ): string {
+    return createHash("sha256")
+      .update(JSON.stringify({
+        generation: this.coverGenerations.get(key) ?? 0,
+        source: path.resolve(resolvedSource),
+        size: sourceStat.size,
+        mtimeMs: sourceStat.mtimeMs
+      }))
+      .digest("hex");
+  }
+
+  private async runSerializedCoverWrite<T>(
+    key: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.coverWriteTails.get(key) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(operation);
+    const marker = current.then(() => undefined, () => undefined);
+    this.coverWriteTails.set(key, marker);
+    try {
+      return await current;
+    } finally {
+      if (this.coverWriteTails.get(key) === marker) this.coverWriteTails.delete(key);
+    }
   }
 
   private coverMetadataPath(key: string): string {

@@ -1,78 +1,352 @@
 import type { RendererContext } from "../../contracts";
-import { uiKeys } from "../../../core/i18n-keys";
-import type { HistoryMediaControllerOptions } from "./media-controller";
-import { historyCoverCandidates } from "./helpers";
+import type {
+  HistoryCoverLookup,
+  HistoryCoverSaveResult
+} from "../../../types";
 import {
-  createHistoryMediaScheduler,
-  type HistoryMediaTaskPriority
-} from "./media-scheduler";
+  createMediaResourceStore,
+  type MediaRef,
+  type MediaResourceConsumer,
+  type Presentation
+} from "./media-resource-store";
+import { produceHistoryThumbnail } from "./thumbnail-producers";
+import type { HistoryMediaTaskPriority } from "./media-scheduler";
 
-const HISTORY_COVER_MAX_EDGE = 640;
-const IMAGE_HISTORY_THUMBNAIL_MAX_EDGE = 640;
-
-type HistoryMediaRuntime = Omit<HistoryMediaControllerOptions, "formatVideoDuration"> & {
+export interface HistoryMediaRuntime {
+  loadImageHistoryThumbnail(image: HTMLImageElement, signal?: AbortSignal): Promise<boolean>;
+  subscribeImageHistoryThumbnail(
+    image: HTMLImageElement,
+    priority: HistoryMediaTaskPriority,
+    consumer: Omit<MediaResourceConsumer, "priority" | "signal">
+  ): () => void;
+  invalidateImageHistoryThumbnail(key: string): void;
+  loadHistoryCoverFromCache(media: HTMLElement, signal?: AbortSignal): Promise<boolean>;
+  subscribeHistoryCover(media: HTMLElement, priority: HistoryMediaTaskPriority): () => void;
+  loadHistoryCardVideo(media: HTMLElement): HTMLVideoElement | null;
+  releaseHistoryCardVideo(media: HTMLElement): void;
+  scheduleHistoryCoverWarmup(mediaCards: HTMLElement[], priority?: HistoryMediaTaskPriority): void;
+  cancelHistoryCoverWarmup(media: HTMLElement): void;
+  stopHistoryCoverWarmup(): void;
+  invalidateHistoryMediaForAsset(assetId: string): void;
+  chooseHistoryCoverTime(
+    video: HTMLVideoElement,
+    fallbackTime: number,
+    duration: number,
+    seed: number,
+    isActive: () => boolean
+  ): Promise<number>;
+  saveHistoryCover(
+    media: HTMLElement,
+    video: HTMLVideoElement,
+    isActive: () => boolean
+  ): Promise<void>;
   clearImageHistoryThumbnailCache(): void;
-};
+  invalidate(keys?: readonly string[]): void;
+  dispose(): void;
+}
+
+function mediaRefForImage(image: HTMLImageElement): MediaRef {
+  const surface = image.closest<HTMLElement>("[data-image-media]");
+  const ratio = surface?.style.getPropertyValue("--media-ratio").split("/") ?? [];
+  return {
+    key: image.dataset.imageHistoryCacheKey?.trim() ||
+      image.dataset.imageHistorySource?.trim() ||
+      image.dataset.imageMediaUrl?.trim() || "",
+    kind: "image",
+    sourcePath: image.dataset.imageHistorySource?.trim() ||
+      surface?.dataset.imageMediaSource?.trim() || "",
+    sourceUrl: image.dataset.imageMediaUrl?.trim() || image.getAttribute("src")?.trim() || "",
+    width: Number(ratio[0]) || undefined,
+    height: Number(ratio[1]) || undefined
+  };
+}
+
+function mediaRefForVideo(media: HTMLElement): MediaRef {
+  const video = media.querySelector<HTMLVideoElement>("video");
+  return {
+    key: media.dataset.coverKey?.trim() || "",
+    kind: "video",
+    sourcePath: media.dataset.coverSource?.trim() || "",
+    sourceUrl: video?.dataset.historySrc?.trim() || "",
+    coverTime: Number(media.dataset.coverTime) || 0,
+    duration: Number(media.dataset.previewDuration) || undefined,
+    seed: Number(media.dataset.coverSeed) || 0
+  };
+}
+
+function imagePresentationLoad(
+  image: HTMLImageElement,
+  url: string,
+  signal: AbortSignal
+): Promise<boolean> {
+  if (signal.aborted || !image.isConnected) return Promise.resolve(false);
+  if (image.currentSrc === url && image.complete && image.naturalWidth > 0) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: number | undefined;
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      image.removeEventListener("load", onLoad);
+      image.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      resolve(loaded && !signal.aborted && image.naturalWidth > 0);
+    };
+    const onLoad = () => finish(true);
+    const onError = () => finish(false);
+    const onAbort = () => finish(false);
+    image.addEventListener("load", onLoad);
+    image.addEventListener("error", onError);
+    signal.addEventListener("abort", onAbort, { once: true });
+    timeout = window.setTimeout(() => finish(false), 10_000);
+    image.src = url;
+    if (image.currentSrc === url && image.complete && image.naturalWidth > 0) finish(true);
+  });
+}
+
+function legacyLookup(
+  context: RendererContext,
+  key: string,
+  sourcePath: string
+): Promise<HistoryCoverLookup> {
+  const lookup = context.assets.lookupHistoryCover;
+  if (typeof lookup === "function") return lookup(key, sourcePath);
+  return context.assets.readHistoryCover(key, sourcePath).then((url) => url
+    ? { state: "hit", url, sourceRevision: "legacy" }
+    : { state: "miss", sourceRevision: "legacy" });
+}
+
+async function legacySave(
+  context: RendererContext,
+  input: {
+    key: string;
+    sourcePath: string;
+    sourceRevision: string;
+    data: ArrayBuffer;
+  }
+): Promise<HistoryCoverSaveResult> {
+  const saveIfCurrent = context.assets.saveHistoryCoverIfCurrent;
+  if (typeof saveIfCurrent === "function") return saveIfCurrent(input);
+  const saved = await context.assets.saveHistoryCover(input.key, input.sourcePath, input.data);
+  if (!saved) return { state: "failed" };
+  const url = await context.assets.readHistoryCover(input.key, input.sourcePath);
+  return url ? { state: "saved", url } : { state: "failed" };
+}
 
 export function createHistoryMediaRuntime(
   context: RendererContext,
-  isHistoryListPage: () => boolean
+  _isHistoryListPage: () => boolean
 ): HistoryMediaRuntime {
-  const historyCoverDataUrls = new Map<string, string>();
-  const imageHistoryThumbnailDataUrls = new Map<string, string>();
-  const historyCoverCacheMisses = new Set<string>();
-  const historyCoverReads = new Map<string, Promise<{ value: string | null; failed: boolean }>>();
-  const historyCoverScheduler = createHistoryMediaScheduler(1);
+  const imageKeys = new Set<string>();
+  const coverPresentations = new WeakMap<HTMLElement, Presentation>();
+  const coverSubscriptions = new Map<HTMLElement, () => void>();
+  const rememberImageKey = (key: string): void => {
+    imageKeys.delete(key);
+    imageKeys.add(key);
+    while (imageKeys.size > 256) {
+      const oldest = imageKeys.values().next().value as string | undefined;
+      if (!oldest) break;
+      imageKeys.delete(oldest);
+    }
+  };
+  const store = createMediaResourceStore({
+    lookup: (ref) => legacyLookup(context, ref.key, ref.sourcePath),
+    produce: (ref, sourceRevision, signal, hooks) =>
+      produceHistoryThumbnail(ref, sourceRevision, signal, hooks),
+    save: (input) => legacySave(context, input),
+    onPersistenceFailure: (key, error) => {
+      void context.application.reportRendererError(
+        context.t("history.media.coverSaveFailed"),
+        { key, error: error instanceof Error ? error.message : String(error ?? "写入失败") }
+      );
+    }
+  });
+
+  const setHistoryCoverImage = async (
+    media: HTMLElement,
+    presentation: Presentation,
+    signal: AbortSignal
+  ): Promise<boolean> => {
+    const image = media.querySelector<HTMLImageElement>("[data-history-cover-image]");
+    if (!image || !presentation.url || signal.aborted || !media.isConnected) return false;
+    const previous = coverPresentations.get(media);
+    if (presentation.phase === "final") delete media.dataset.historyCoverCached;
+    image.hidden = false;
+    image.dataset.historyCoverPresentation = presentation.phase;
+    image.dataset.historyCoverOrigin = presentation.origin;
+    image.dataset.historyCoverRevision = presentation.sourceRevision;
+    const loaded = await imagePresentationLoad(image, presentation.url, signal);
+    const isCurrentPresentation = image.currentSrc === presentation.url || image.getAttribute("src") === presentation.url;
+    if (!loaded || signal.aborted || !media.isConnected || !isCurrentPresentation) {
+      if (
+        !loaded &&
+        previous &&
+        previous.url !== presentation.url &&
+        !signal.aborted &&
+        media.isConnected &&
+        isCurrentPresentation
+      ) {
+        image.src = previous.url;
+        image.dataset.historyCoverPresentation = previous.phase;
+        image.dataset.historyCoverOrigin = previous.origin;
+        image.dataset.historyCoverRevision = previous.sourceRevision;
+      }
+      return false;
+    }
+    media.classList.remove("media-loading", "media-error");
+    media.classList.add("has-history-cover");
+    coverPresentations.set(media, presentation);
+    if (presentation.phase === "final") {
+      media.dataset.historyCoverCached = "true";
+      delete media.dataset.historyCoverRefinement;
+    } else {
+      delete media.dataset.historyCoverCached;
+      delete media.dataset.historyCoverRefinement;
+    }
+    return true;
+  };
+
+  const historyCoverFailure = (
+    media: HTMLElement,
+    reason: "missing" | "decode" | "timeout" | "io"
+  ): void => {
+    if (!media.isConnected || media.dataset.historyCoverCached === "true") return;
+    if (
+      media.classList.contains("has-history-cover") &&
+      media.dataset.historyCoverPresentation === "preview"
+    ) {
+      media.classList.remove("media-loading", "media-error");
+      media.dataset.historyCoverRefinement = reason === "timeout" ? "deferred" : "failed";
+      return;
+    }
+    media.classList.remove("media-loading");
+    if (reason === "missing" || reason === "decode" || reason === "timeout" || reason === "io") {
+      media.classList.add("media-error");
+    }
+  };
+
+  const subscribeHistoryCover = (
+    media: HTMLElement,
+    priority: HistoryMediaTaskPriority,
+    consumer?: Omit<MediaResourceConsumer, "priority" | "signal">,
+    controllerOverride?: AbortController
+  ): (() => void) => {
+    const ref = mediaRefForVideo(media);
+    if (!ref.key || !ref.sourceUrl) return () => undefined;
+    const controller = controllerOverride ?? new AbortController();
+    const defaultConsumer = {
+      onPresentation: (presentation: Presentation) =>
+        setHistoryCoverImage(media, presentation, controller.signal),
+      onFailure: (reason: "missing" | "decode" | "timeout" | "io") =>
+        historyCoverFailure(media, reason)
+    };
+    const unsubscribeStore = store.subscribe(ref, {
+      priority,
+      signal: controller.signal,
+      onPresentation: consumer?.onPresentation ?? defaultConsumer.onPresentation,
+      onFailure: consumer?.onFailure ?? defaultConsumer.onFailure
+    });
+    const unsubscribe = () => {
+      if (coverSubscriptions.get(media) === unsubscribe) coverSubscriptions.delete(media);
+      controller.abort();
+      unsubscribeStore();
+    };
+    coverSubscriptions.set(media, unsubscribe);
+    return unsubscribe;
+  };
 
   const loadImageHistoryThumbnail = async (
     image: HTMLImageElement,
     signal?: AbortSignal
   ): Promise<boolean> => {
-    const key = image.dataset.imageHistoryCacheKey ?? "";
-    const sourcePath = image.dataset.imageHistorySource ?? "";
-    const isActive = () => !signal?.aborted && image.isConnected;
-    if (!key || !sourcePath || !isActive()) return false;
+    const ref = mediaRefForImage(image);
+    if (!ref.key || !ref.sourceUrl || !image.isConnected || signal?.aborted) return false;
+    rememberImageKey(ref.key);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    let result = false;
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const unsubscribe = store.subscribe(ref, {
+      priority: "interactive",
+      signal: controller.signal,
+      onPresentation: async (presentation) => {
+        image.src = presentation.url;
+        result = await imagePresentationLoad(image, presentation.url, controller.signal);
+        resolveCompletion();
+        return result;
+      },
+      onFailure: () => resolveCompletion()
+    });
+    controller.signal.addEventListener("abort", resolveCompletion, { once: true });
     try {
-      const cached = imageHistoryThumbnailDataUrls.get(key) ??
-        await context.assets.readHistoryCover(key, sourcePath);
-      if (cached && isActive()) {
-        imageHistoryThumbnailDataUrls.set(key, cached);
-        image.src = cached;
-        return true;
+      await completion;
+      return result;
+    } finally {
+      unsubscribe();
+      signal?.removeEventListener("abort", abort);
+    }
+  };
+
+  const subscribeImageHistoryThumbnail = (
+    image: HTMLImageElement,
+    priority: HistoryMediaTaskPriority,
+    consumer: Omit<MediaResourceConsumer, "priority" | "signal">
+  ): (() => void) => {
+    const ref = mediaRefForImage(image);
+    if (!ref.key || !ref.sourceUrl) return () => undefined;
+    rememberImageKey(ref.key);
+    const controller = new AbortController();
+    const unsubscribeStore = store.subscribe(ref, {
+      priority,
+      signal: controller.signal,
+      onPresentation: consumer.onPresentation,
+      onFailure: consumer.onFailure
+    });
+    return () => {
+      controller.abort();
+      unsubscribeStore();
+    };
+  };
+
+  const loadHistoryCoverFromCache = async (
+    media: HTMLElement,
+    signal?: AbortSignal
+  ): Promise<boolean> => {
+    const ref = mediaRefForVideo(media);
+    if (!ref.key || !ref.sourceUrl || !media.isConnected || signal?.aborted) return false;
+    let resolved = false;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const unsubscribe = subscribeHistoryCover(media, "viewport", {
+      onPresentation: async (presentation) => {
+        resolved = await setHistoryCoverImage(media, presentation, controller.signal);
+        resolveCompletion();
+        return resolved;
+      },
+      onFailure: (reason) => {
+        historyCoverFailure(media, reason);
+        resolveCompletion();
       }
-      if (!isActive()) return false;
-      const sourceData = await context.assets.readImage(sourcePath);
-      if (!sourceData || !isActive()) return false;
-      const source = document.createElement("img");
-      source.src = sourceData;
-      if (!isActive()) return false;
-      await source.decode();
-      if (!source.naturalWidth || !source.naturalHeight || !isActive()) return false;
-      const scale = Math.min(
-        1,
-        IMAGE_HISTORY_THUMBNAIL_MAX_EDGE / Math.max(source.naturalWidth, source.naturalHeight)
-      );
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
-      const canvasContext = canvas.getContext("2d");
-      if (!canvasContext || !isActive()) return false;
-      canvasContext.drawImage(source, 0, 0, canvas.width, canvas.height);
-      // PNG keeps the alpha channel so transparent BiRefNet results remain
-      // transparent in the history gallery instead of becoming black JPEGs.
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob || blob.size > 2 * 1024 * 1024 || !isActive()) return false;
-      const data = await blob.arrayBuffer();
-      if (!isActive()) return false;
-      const saved = await context.assets.saveHistoryCover(key, sourcePath, data);
-      if (!saved || !isActive()) return false;
-      const savedUrl = await context.assets.readHistoryCover(key, sourcePath);
-      if (!savedUrl || !isActive()) return false;
-      imageHistoryThumbnailDataUrls.set(key, savedUrl);
-      image.src = savedUrl;
-      return true;
-    } catch {
-      return false;
+    }, controller);
+    controller.signal.addEventListener("abort", resolveCompletion, { once: true });
+    try {
+      await completion;
+      return resolved;
+    } finally {
+      unsubscribe();
+      signal?.removeEventListener("abort", abort);
     }
   };
 
@@ -89,81 +363,6 @@ export function createHistoryMediaRuntime(
     return video;
   };
 
-  const setHistoryCoverImage = (media: HTMLElement, dataUrl: string): boolean => {
-    const image = media.querySelector<HTMLImageElement>("[data-history-cover-image]");
-    if (!image || !dataUrl) return false;
-    const key = media.dataset.coverKey;
-    image.hidden = false;
-    const showImage = () => {
-      if (image.src !== dataUrl || !media.isConnected) return;
-      image.hidden = false;
-      media.dataset.historyCoverCached = "true";
-      media.classList.remove("media-loading", "media-error");
-      media.classList.add("has-history-cover");
-    };
-    image.onload = showImage;
-    image.onerror = () => {
-      if (!media.isConnected || !image.isConnected || image.src !== dataUrl) return;
-      image.removeAttribute("src");
-      media.classList.remove("has-history-cover");
-      delete media.dataset.historyCoverCached;
-      if (key) {
-        historyCoverDataUrls.delete(key);
-        historyCoverCacheMisses.delete(key);
-      }
-      loadHistoryCardVideo(media);
-    };
-    image.src = dataUrl;
-    if (image.complete && image.naturalWidth > 0) showImage();
-    return true;
-  };
-
-  const markHistoryCoverWarmupFailed = (media: HTMLElement, signal: AbortSignal): void => {
-    if (signal.aborted || !isHistoryListPage() || !media.isConnected) return;
-    if (media.dataset.historyCoverCached === "true") return;
-    media.classList.remove("media-loading");
-    media.classList.add("media-error");
-  };
-
-  const loadHistoryCoverFromCache = async (
-    media: HTMLElement,
-    signal?: AbortSignal
-  ): Promise<boolean> => {
-    const key = media.dataset.coverKey;
-    const sourcePath = media.dataset.coverSource;
-    if (!key || !sourcePath) return false;
-    if (signal?.aborted || !media.isConnected) return false;
-    const cachedInMemory = historyCoverDataUrls.get(key);
-    if (cachedInMemory) return setHistoryCoverImage(media, cachedInMemory);
-    if (historyCoverCacheMisses.has(key)) return false;
-    let read = historyCoverReads.get(key);
-    if (!read) {
-      read = context.assets.readHistoryCover(key, sourcePath)
-        .then((value) => ({ value: value || null, failed: false }))
-        .catch((error) => {
-          void context.application.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          return { value: null, failed: true };
-        });
-      historyCoverReads.set(key, read);
-    }
-    try {
-      const result = await read;
-      if (historyCoverReads.get(key) === read) historyCoverReads.delete(key);
-      if (!result.value) {
-        if (!result.failed) historyCoverCacheMisses.add(key);
-        return false;
-      }
-      if (signal?.aborted || !media.isConnected) return false;
-      const cached = result.value;
-      historyCoverDataUrls.set(key, cached);
-      return setHistoryCoverImage(media, cached);
-    } catch {
-      return false;
-    }
-  };
-
   const releaseHistoryCardVideo = (media: HTMLElement): void => {
     const video = media.querySelector<HTMLVideoElement>("video");
     if (!video || video.dataset.historyLoaded !== "true") return;
@@ -177,270 +376,100 @@ export function createHistoryMediaRuntime(
     video.load();
   };
 
-  const historyCoverScore = (video: HTMLVideoElement): number | null => {
-    if (!video.videoWidth || !video.videoHeight) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 32;
-    canvas.height = 18;
-    const canvasContext = canvas.getContext("2d", { willReadFrequently: true });
-    if (!canvasContext) return null;
-    try {
-      canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const pixels = canvasContext.getImageData(0, 0, canvas.width, canvas.height).data;
-      let brightnessTotal = 0;
-      let brightnessSquaredTotal = 0;
-      let saturationTotal = 0;
-      for (let index = 0; index < pixels.length; index += 4) {
-        const red = pixels[index] ?? 0;
-        const green = pixels[index + 1] ?? 0;
-        const blue = pixels[index + 2] ?? 0;
-        const brightness = red * 0.299 + green * 0.587 + blue * 0.114;
-        brightnessTotal += brightness;
-        brightnessSquaredTotal += brightness * brightness;
-        saturationTotal += Math.max(red, green, blue) - Math.min(red, green, blue);
-      }
-      const pixelCount = pixels.length / 4;
-      const brightnessAverage = brightnessTotal / pixelCount;
-      const brightnessVariance = Math.max(
-        0,
-        brightnessSquaredTotal / pixelCount - brightnessAverage * brightnessAverage
-      );
-      const saturationAverage = saturationTotal / pixelCount;
-      const exposurePenalty = Math.abs(brightnessAverage - 128) * 0.35;
-      const unusablePenalty = brightnessAverage < 18 || brightnessAverage > 242 ? 120 : 0;
-      return Math.sqrt(brightnessVariance) * 1.5 + saturationAverage * 0.35 - exposurePenalty - unusablePenalty;
-    } catch {
-      return null;
-    }
-  };
-
-  const historyCoverBlob = (video: HTMLVideoElement): Promise<Blob | null> => {
-    if (!video.videoWidth || !video.videoHeight) return Promise.resolve(null);
-    const scale = Math.min(
-      1,
-      HISTORY_COVER_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight)
-    );
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-    const canvasContext = canvas.getContext("2d");
-    if (!canvasContext) return Promise.resolve(null);
-    try {
-      canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
-    } catch {
-      return Promise.resolve(null);
-    }
-    return new Promise((resolve) => {
-      try {
-        canvas.toBlob(resolve, "image/jpeg", 0.78);
-      } catch {
-        resolve(null);
-      }
-    });
-  };
-
-  const historyBlobDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result)));
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(blob);
-  });
-
-  const saveHistoryCover = async (
-    media: HTMLElement,
-    video: HTMLVideoElement,
-    isActive: () => boolean
-  ): Promise<void> => {
-    const key = media.dataset.coverKey;
-    const sourcePath = media.dataset.coverSource;
-    if (!key || !sourcePath || !isActive() || media.dataset.historyCoverCached === "true") return;
-    const frameScore = historyCoverScore(video);
-    if (frameScore == null || frameScore < -80) return;
-    const blob = await historyCoverBlob(video);
-    if (!blob || !isActive()) return;
-    const data = await blob.arrayBuffer();
-    if (!isActive()) return;
-    try {
-      if (!await context.assets.saveHistoryCover(key, sourcePath, data) || !isActive()) return;
-      const dataUrl = await historyBlobDataUrl(blob);
-      if (!isActive()) return;
-      historyCoverDataUrls.set(key, dataUrl);
-      historyCoverCacheMisses.delete(key);
-      setHistoryCoverImage(media, dataUrl);
-    } catch (error) {
-      void context.application.reportRendererError(context.t(uiKeys.history.media.coverSaveFailed), {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  };
-
-  const waitForHistoryVideoData = (
-    video: HTMLVideoElement,
-    signal: AbortSignal
-  ): Promise<boolean> => {
-    if (signal.aborted || video.readyState >= 2) return Promise.resolve(!signal.aborted);
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (ready: boolean) => {
-        if (settled) return;
-        settled = true;
-        video.removeEventListener("loadeddata", onReady);
-        video.removeEventListener("error", onError);
-        signal.removeEventListener("abort", onAbort);
-        window.clearTimeout(timeout);
-        resolve(ready);
-      };
-      const onReady = () => finish(true);
-      const onError = () => finish(false);
-      const onAbort = () => finish(false);
-      const timeout = window.setTimeout(() => finish(false), 10_000);
-      video.addEventListener("loadeddata", onReady, { once: true });
-      video.addEventListener("error", onError, { once: true });
-      signal.addEventListener("abort", onAbort, { once: true });
-      video.load();
-    });
-  };
-
-  const waitForHistorySeek = (
-    video: HTMLVideoElement,
-    time: number,
-    signal?: AbortSignal
-  ): Promise<void> => new Promise((resolve) => {
-    let settled = false;
-    let abortHandler: (() => void) | undefined;
-    let timeout: number | undefined;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      video.removeEventListener("seeked", finish);
-      if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
-      if (timeout !== undefined) window.clearTimeout(timeout);
-      resolve();
-    };
-    abortHandler = finish;
-    if (signal?.aborted) {
-      finish();
-      return;
-    }
-    timeout = window.setTimeout(finish, 1200);
-    video.addEventListener("seeked", finish, { once: true });
-    signal?.addEventListener("abort", abortHandler, { once: true });
-    try {
-      video.currentTime = time;
-    } catch {
-      finish();
-    }
-  });
-
-  const chooseHistoryCoverTime = async (
-    video: HTMLVideoElement,
-    fallbackTime: number,
-    duration: number,
-    seed: number,
-    isActive: () => boolean,
-    signal?: AbortSignal
-  ): Promise<number> => {
-    const candidates = historyCoverCandidates(duration, seed);
-    let bestTime = fallbackTime;
-    let bestScore: number | null = null;
-    for (const candidate of candidates) {
-      if (!isActive()) return bestTime;
-      await waitForHistorySeek(video, candidate, signal);
-      if (!isActive()) return bestTime;
-      const score = historyCoverScore(video);
-      if (score != null && (bestScore == null || score > bestScore)) {
-        bestScore = score;
-        bestTime = candidate;
-      }
-    }
-    if (!isActive()) return bestTime;
-    await waitForHistorySeek(video, bestTime, signal);
-    return bestTime;
-  };
-
-  const warmHistoryCover = async (
-    media: HTMLElement,
-    signal: AbortSignal
-  ): Promise<boolean> => {
-    const isWarmupActive = () =>
-      !signal.aborted &&
-      isHistoryListPage() &&
-      media.isConnected &&
-      !media.matches(":hover") &&
-      !media.classList.contains("playing");
-    if (!isWarmupActive()) return false;
-    if (media.dataset.historyCoverCached === "true") return true;
-    const source = media.querySelector<HTMLVideoElement>("video")?.dataset.historySrc;
-    const key = media.dataset.coverKey;
-    if (!source || !key) return false;
-    if (await loadHistoryCoverFromCache(media, signal) || signal.aborted) {
-      return media.dataset.historyCoverCached === "true";
-    }
-    if (!isWarmupActive() || media.dataset.historyLoaded === "true") return false;
-    media.classList.remove("media-error");
-    media.classList.add("media-loading");
-    const video = document.createElement("video");
-    video.muted = true;
-    video.crossOrigin = "anonymous";
-    video.preload = "auto";
-    video.src = source;
-    let coverSaved = false;
-    try {
-      if (!await waitForHistoryVideoData(video, signal) || signal.aborted) return false;
-      const duration = Number(media.dataset.previewDuration) || video.duration;
-      const fallbackTime = Number(media.dataset.coverTime) || 0;
-      const seed = Number(media.dataset.coverSeed) || 0;
-      const selectedTime = await chooseHistoryCoverTime(
-        video,
-        fallbackTime,
-        duration,
-        seed,
-        isWarmupActive,
-        signal
-      );
-      if (!isWarmupActive()) return false;
-      media.dataset.coverTime = String(selectedTime);
-      await saveHistoryCover(media, video, isWarmupActive);
-      coverSaved = historyCoverDataUrls.has(key);
-      return coverSaved;
-    } finally {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-      if (!coverSaved && isWarmupActive()) markHistoryCoverWarmupFailed(media, signal);
-    }
-  };
-
-  const stopHistoryCoverWarmup = (): void => {
-    historyCoverScheduler.clear();
-  };
-
   const scheduleHistoryCoverWarmup = (
     mediaCards: HTMLElement[],
     priority: HistoryMediaTaskPriority = "viewport"
   ): void => {
     mediaCards.forEach((media) => {
-      const key = media.dataset.coverKey?.trim();
-      if (!key) return;
-      historyCoverScheduler.enqueue(key, (signal) => warmHistoryCover(media, signal), priority);
+      if (coverSubscriptions.has(media)) return;
+      const unsubscribe = subscribeHistoryCover(media, priority);
+      if (!coverSubscriptions.has(media)) unsubscribe();
     });
   };
 
   const cancelHistoryCoverWarmup = (media: HTMLElement): void => {
-    const key = media.dataset.coverKey?.trim();
-    if (key) historyCoverScheduler.cancel(key);
+    const unsubscribe = coverSubscriptions.get(media);
+    if (!unsubscribe) return;
+    coverSubscriptions.delete(media);
+    unsubscribe();
+  };
+
+  const invalidateHistoryMediaForAsset = (assetId: string): void => {
+    const keys = new Set<string>();
+    document.querySelectorAll<HTMLElement>("[data-history]").forEach((item) => {
+      if (item.dataset.history !== assetId) return;
+      item.querySelectorAll<HTMLElement>("[data-cover-key], [data-image-history-cache-key]")
+        .forEach((element) => {
+          const key = element.dataset.coverKey?.trim() ||
+            element.dataset.imageHistoryCacheKey?.trim();
+          if (key) {
+            keys.add(key);
+            if (element.dataset.coverKey?.trim()) {
+              coverPresentations.delete(element);
+              delete element.dataset.historyCoverCached;
+            }
+          }
+        });
+    });
+    if (keys.size) store.invalidate([...keys]);
   };
 
   return {
     loadImageHistoryThumbnail,
+    subscribeImageHistoryThumbnail,
+    invalidateImageHistoryThumbnail: (key: string) => store.invalidate([key]),
     loadHistoryCoverFromCache,
+    subscribeHistoryCover: (media, priority) => {
+      const previous = coverSubscriptions.get(media);
+      previous?.();
+      return subscribeHistoryCover(media, priority);
+    },
     loadHistoryCardVideo,
     releaseHistoryCardVideo,
     scheduleHistoryCoverWarmup,
     cancelHistoryCoverWarmup,
-    stopHistoryCoverWarmup,
-    chooseHistoryCoverTime,
-    saveHistoryCover,
-    clearImageHistoryThumbnailCache: () => imageHistoryThumbnailDataUrls.clear()
+    stopHistoryCoverWarmup: () => {
+      for (const [media, unsubscribe] of coverSubscriptions) {
+        coverSubscriptions.delete(media);
+        unsubscribe();
+      }
+    },
+    invalidateHistoryMediaForAsset,
+    chooseHistoryCoverTime: async (_video, fallbackTime) => fallbackTime,
+    saveHistoryCover: async (media, video, isActive) => {
+      const key = media.dataset.coverKey?.trim();
+      const sourcePath = media.dataset.coverSource?.trim();
+      if (!key || !sourcePath || !isActive()) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(video.videoWidth || 640));
+      canvas.height = Math.max(1, Math.round(video.videoHeight || 360));
+      const canvasContext = canvas.getContext("2d");
+      if (!canvasContext) return;
+      canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
+      if (!blob || !isActive()) return;
+      const result = await legacySave(context, {
+        key,
+        sourcePath,
+        sourceRevision: "legacy",
+        data: await blob.arrayBuffer()
+      });
+      if (result.state === "saved" && isActive()) {
+        store.invalidate([key]);
+        await setHistoryCoverImage(media, {
+          url: result.url,
+          phase: "final",
+          origin: "disk",
+          sourceRevision: "legacy"
+        }, new AbortController().signal);
+      }
+    },
+    clearImageHistoryThumbnailCache: () => store.invalidate([...imageKeys]),
+    invalidate: (keys) => store.invalidate(keys),
+    dispose: () => {
+      for (const unsubscribe of coverSubscriptions.values()) unsubscribe();
+      coverSubscriptions.clear();
+      store.dispose();
+    }
   };
 }

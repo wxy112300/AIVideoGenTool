@@ -276,6 +276,17 @@ describe("UX/UI semantic token foundation", () => {
     expect(createPromptControllerSource).toContain("#enhance-prompt");
   });
 
+  it("keeps Create continuation artifacts compact with hover-only explanations", () => {
+    expect(createPageSource).not.toContain('class="h3-prompt-check');
+    expect(createPageSource).not.toContain('class="h3-extension-note"');
+    expect(createPageSource).not.toContain("class=\"trim-help\"");
+    expect(createPageSource).not.toContain("class=\"continuum-boundary-note\"");
+    expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.continuumArtifact.description))}"');
+    expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.motionContextLatent.description))}"');
+    expect(createPageSource).toContain("id=\"clear-h3-continuum-av\"");
+    expect(createPageSource).toContain("id=\"clear-h3-motion-context-latent\"");
+  });
+
   it("routes History and Settings headings through the shared sticky offset", () => {
     expect(historyCurationSource).toContain("  top: var(--ux-page-sticky-offset);");
     expect(historyStageSource).toContain("  top: var(--ux-page-sticky-offset);");

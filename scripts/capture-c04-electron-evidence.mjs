@@ -82,7 +82,7 @@ function printUsage() {
   console.log(`Usage: node --experimental-strip-types scripts/capture-c04-electron-evidence.mjs [options]
 
 Options:
-  --scenario <all|empty|history-500|legacy>  Scenario to run (default: all)
+  --scenario <all|empty|history-500|history-media|legacy>  Scenario to run (default: all)
   --samples <n>                              Cold and warm samples per scenario (default: 3)
   --output <directory>                       Evidence output directory
   --skip-trace                               Do not collect Chromium trace events
@@ -414,6 +414,182 @@ function makeElectronHistoryFixture(fixture) {
   };
 }
 
+const HISTORY_MEDIA_DEFINITION = Object.freeze({
+  fixtureId: "history-media-v1",
+  images: [
+    { id: "image-01", category: "missing", filename: "missing-image.png", width: 1280, height: 720 },
+    { id: "image-02", category: "regular", filename: "regular-wide.png", width: 1280, height: 720 },
+    { id: "image-03", category: "regular", filename: "regular-square.jpg", width: 1024, height: 1024 },
+    { id: "image-04", category: "regular", filename: "regular-tall.png", width: 720, height: 1080 },
+    { id: "image-05", category: "regular", filename: "regular-small.png", width: 800, height: 600 },
+    { id: "image-06", category: "large", filename: "large-wide.png", width: 2400, height: 1600 },
+    { id: "image-07", category: "large", filename: "large-square.png", width: 2048, height: 2048 },
+    { id: "image-08", category: "large", filename: "large-tall.png", width: 1800, height: 2400 },
+    { id: "image-09", category: "transparent", filename: "transparent-wide.png", width: 1200, height: 900 },
+    { id: "image-10", category: "transparent", filename: "transparent-tall.png", width: 900, height: 1200 },
+    { id: "image-11", category: "duplicate", filename: "regular-wide.png", width: 1280, height: 720, sharedWith: "image-02" },
+    { id: "image-12", category: "vertical", filename: "vertical-extra.png", width: 720, height: 1280 }
+  ],
+  videos: [
+    { id: "video-01", category: "short-wide", filename: "short-wide-01.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-02", category: "short-vertical", filename: "short-vertical-01.mp4", width: 360, height: 640, duration: 3 },
+    { id: "video-03", category: "short-wide", filename: "short-wide-02.mp4", width: 640, height: 360, duration: 4 },
+    { id: "video-04", category: "duplicate", filename: "short-wide-02.mp4", width: 640, height: 360, duration: 4, sharedWith: "video-03" },
+    { id: "video-05", category: "long-wide", filename: "long-wide.mp4", width: 960, height: 540, duration: 8 },
+    { id: "video-06", category: "long-vertical", filename: "long-vertical.mp4", width: 540, height: 960, duration: 8 },
+    { id: "video-07", category: "black-intro", filename: "black-intro.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-08", category: "short-wide", filename: "short-wide-03.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-09", category: "short-wide", filename: "short-wide-04.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-10", category: "short-wide", filename: "short-wide-05.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-11", category: "short-wide", filename: "short-wide-06.mp4", width: 640, height: 360, duration: 3 },
+    { id: "video-12", category: "missing", filename: "missing-video.mp4", width: 640, height: 360, duration: 3 }
+  ]
+});
+
+async function runMediaTool(command, args, cwd) {
+  try {
+    await execFileAsync(command, args, { cwd, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
+  } catch (error) {
+    const detail = error?.stderr?.trim() || error?.message || String(error);
+    throw new Error(`${path.basename(command)} failed: ${detail}`);
+  }
+}
+
+async function createHistoryMediaFixture(rootDirectory, baseFixture) {
+  const mediaDirectory = await ensureDirectory(path.join(rootDirectory, "media", "history-media"));
+  const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+  const ffprobe = process.env.FFPROBE_PATH || "ffprobe";
+  const generatedImages = new Set();
+  const imageColor = [
+    ["regular-wide.png", "testsrc2=size=1280x720:rate=1"],
+    ["regular-square.jpg", "testsrc2=size=1024x1024:rate=1"],
+    ["regular-tall.png", "testsrc2=size=720x1080:rate=1"],
+    ["regular-small.png", "testsrc2=size=800x600:rate=1"],
+    ["large-wide.png", "testsrc2=size=2400x1600:rate=1"],
+    ["large-square.png", "testsrc2=size=2048x2048:rate=1"],
+    ["large-tall.png", "testsrc2=size=1800x2400:rate=1"],
+    ["vertical-extra.png", "testsrc2=size=720x1280:rate=1"]
+  ];
+  for (const [filename, source] of imageColor) {
+    const destination = path.join(mediaDirectory, filename);
+    await runMediaTool(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", source,
+      "-frames:v", "1", ...(filename.endsWith(".jpg") ? ["-q:v", "3"] : []), destination
+    ], rootDirectory);
+    generatedImages.add(filename);
+  }
+  for (const [filename, source] of [
+    ["transparent-wide.png", "color=c=black@0.0:s=1200x900:d=1"],
+    ["transparent-tall.png", "color=c=black@0.0:s=900x1200:d=1"]
+  ]) {
+    const destination = path.join(mediaDirectory, filename);
+    await runMediaTool(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", source,
+      "-frames:v", "1", "-vf", "format=rgba", "-pix_fmt", "rgba", destination
+    ], rootDirectory);
+    generatedImages.add(filename);
+  }
+
+  const generatedVideos = new Set();
+  const videoDefinitions = HISTORY_MEDIA_DEFINITION.videos.filter((item) => item.category !== "missing" && !item.sharedWith);
+  for (const item of videoDefinitions) {
+    const destination = path.join(mediaDirectory, item.filename);
+    const common = [
+      "-hide_banner", "-loglevel", "error", "-y", "-an", "-c:v", "libx264", "-preset", "ultrafast",
+      "-pix_fmt", "yuv420p", "-movflags", "+faststart", destination
+    ];
+    if (item.category === "black-intro") {
+      await runMediaTool(ffmpeg, [
+        "-f", "lavfi", "-i", `color=c=black:s=${item.width}x${item.height}:r=24:d=0.8`,
+        "-f", "lavfi", "-i", `testsrc2=size=${item.width}x${item.height}:rate=24:duration=${Math.max(0.2, item.duration - 0.8)}`,
+        "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p", ...common
+      ], rootDirectory);
+    } else {
+      await runMediaTool(ffmpeg, [
+        "-f", "lavfi", "-i", `testsrc2=size=${item.width}x${item.height}:rate=24:duration=${item.duration}`,
+        ...common
+      ], rootDirectory);
+    }
+    generatedVideos.add(item.filename);
+  }
+
+  const actualMetadata = { images: {}, videos: {} };
+  for (const filename of generatedImages) {
+    try {
+      const result = await execFileAsync(ffprobe, [
+        "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,pix_fmt",
+        "-of", "json", path.join(mediaDirectory, filename)
+      ], { cwd: rootDirectory, windowsHide: true });
+      actualMetadata.images[filename] = JSON.parse(result.stdout).streams?.[0] ?? {};
+    } catch {
+      actualMetadata.images[filename] = {};
+    }
+  }
+  for (const filename of generatedVideos) {
+    try {
+      const result = await execFileAsync(ffprobe, [
+        "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,duration",
+        "-of", "json", path.join(mediaDirectory, filename)
+      ], { cwd: rootDirectory, windowsHide: true });
+      actualMetadata.videos[filename] = JSON.parse(result.stdout).streams?.[0] ?? {};
+    } catch {
+      actualMetadata.videos[filename] = {};
+    }
+  }
+
+  const fixture = {
+    videos: baseFixture.videos.slice(0, HISTORY_MEDIA_DEFINITION.videos.length).map((asset, index) => {
+      const definition = HISTORY_MEDIA_DEFINITION.videos[index];
+      const absolutePath = path.join(mediaDirectory, definition.filename);
+      const versions = asset.versions.map((version) => ({
+        ...version,
+        width: definition.width,
+        height: definition.height,
+        duration: definition.duration,
+        outputFilename: definition.filename,
+        files: [{
+          ...(version.files[0] ?? {}),
+          filename: definition.filename,
+          subfolder: "",
+          type: "output",
+          absolutePath
+        }]
+      }));
+      const currentVersion = versions.find((version) => version.id === asset.defaultVersionId) ?? versions.at(-1);
+      return {
+        ...asset,
+        outputFilename: definition.filename,
+        width: definition.width,
+        height: definition.height,
+        duration: definition.duration,
+        resolution: Math.min(definition.width, definition.height),
+        files: currentVersion?.files ?? [],
+        versions
+      };
+    }),
+    images: baseFixture.images.slice(0, HISTORY_MEDIA_DEFINITION.images.length).map((project, index) => {
+      const definition = HISTORY_MEDIA_DEFINITION.images[index];
+      const absolutePath = path.join(mediaDirectory, definition.filename);
+      return {
+        ...project,
+        versions: project.versions.map((version) => ({
+          ...version,
+          width: definition.width,
+          height: definition.height,
+          format: definition.filename.endsWith(".jpg") ? "jpg" : "png",
+          file: {
+            ...version.file,
+            filename: definition.filename,
+            subfolder: "",
+            absolutePath
+          }
+        }))
+      };
+    })
+  };
+  return { fixture: makeElectronHistoryFixture(fixture), mediaDirectory, actualMetadata };
+}
+
 async function collectPerformanceMetrics(client) {
   try {
     const response = await client.send("Performance.getMetrics");
@@ -639,6 +815,252 @@ async function runHistoryPerformance(client, runDirectory, stateCounts) {
   return evidence;
 }
 
+async function installHistoryMediaBenchmarkHook(client) {
+  return evaluate(client, [
+    "(() => {",
+    "const counters = Object.create(null);",
+    "const values = Object.create(null);",
+    "const maxima = Object.create(null);",
+    "const hook = {",
+    "count(name, delta = 1) { counters[name] = (Number(counters[name]) || 0) + Number(delta || 0); },",
+    "set(name, value) { values[name] = Number(value) || 0; },",
+    "max(name, value) { maxima[name] = Math.max(Number(maxima[name]) || 0, Number(value) || 0); },",
+    "begin(label) {",
+    "  for (const key of Object.keys(counters)) delete counters[key];",
+    "  for (const key of Object.keys(values)) delete values[key];",
+    "  for (const key of Object.keys(maxima)) delete maxima[key];",
+    "  values.label = label; values.startedAt = performance.now(); values.readImageIpcBytes = 0; performance.clearResourceTimings?.();",
+    "},",
+    "snapshot() { return { ...counters, ...values, ...maxima }; }",
+    "};",
+    "window.__historyMediaBenchmark = hook; hook.begin('startup'); return { installed: true };",
+    "})()"
+  ].join("\n"));
+}
+
+function historyMediaStateExpression(kind) {
+  return [
+    "(() => {",
+    "const kind = " + JSON.stringify(kind) + ";",
+    "const cards = [...document.querySelectorAll(kind === 'image' ? '.history-gallery-item.image-history-gallery-item' : '.history-gallery-item[data-history-kind=\"video\"]')];",
+    "const stateFor = (card) => {",
+    "  const surface = kind === 'image' ? card.querySelector('[data-image-media]') : card.querySelector('[data-history-media]');",
+    "  const image = surface?.querySelector('img');",
+    "  const ready = kind === 'image' ? Boolean(surface?.classList.contains('image-media-ready') && image?.complete && image?.naturalWidth > 0) : Boolean(surface?.classList.contains('has-history-cover') && image?.complete && image?.naturalWidth > 0);",
+    "  const terminal = Boolean(surface?.classList.contains('media-error') || surface?.classList.contains('image-media-error') || surface?.classList.contains('image-media-unavailable'));",
+    "  const rect = card.getBoundingClientRect();",
+    "  const visible = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;",
+    "  return { ready, terminal, visible };",
+    "};",
+    "const states = cards.map(stateFor);",
+    "return { now: performance.now(), total: states.length, ready: states.filter((state) => state.ready).length, visibleReady: states.filter((state) => state.ready && state.visible).length, terminal: states.filter((state) => state.terminal).length, visibleTerminal: states.filter((state) => state.terminal && state.visible).length, horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, gallery: Boolean(document.querySelector('.history-gallery')) };",
+    "})()"
+  ].join("\n");
+}
+
+async function measureHistoryMediaKind(client, kind, expectedAvailable, expectedMissing) {
+  const startedAt = await evaluate(
+    client,
+    "window.__historyMediaBenchmark?.begin(" + JSON.stringify(kind) + "); performance.now()"
+  );
+  const route = kind === "video"
+    ? await clickAndWait(client, '.nav-button[data-page="history"]', "Boolean(document.querySelector('.history-heading'))")
+    : await clickAndWait(client, '[role="tab"][data-history-kind="image"]', 'Boolean(document.querySelector(\'[role="tab"][data-history-kind="image"][aria-selected="true"]\'))');
+  let firstVisibleMs = null;
+  let allAvailableVisibleMs = null;
+  let missingTerminalMs = null;
+  let lastState = null;
+  let maxReady = 0;
+  let maxTerminal = 0;
+  let scrollSweepStarted = false;
+  let scrollSweepReturned = false;
+  const waitStartedAt = Date.now();
+  while (Date.now() - waitStartedAt < 20_000) {
+    lastState = await evaluate(client, historyMediaStateExpression(kind));
+    maxReady = Math.max(maxReady, Number(lastState?.ready) || 0);
+    maxTerminal = Math.max(maxTerminal, Number(lastState?.terminal) || 0);
+    const elapsed = Math.max(0, Number(lastState?.now) - Number(startedAt));
+    if (firstVisibleMs === null && Number(lastState?.visibleReady) > 0) firstVisibleMs = elapsed;
+    if (!scrollSweepStarted && elapsed >= 500) {
+      await evaluate(client, "window.scrollTo(0, Math.max(0, document.documentElement.scrollHeight - window.innerHeight))");
+      scrollSweepStarted = true;
+    } else if (scrollSweepStarted && !scrollSweepReturned && elapsed >= 5_000) {
+      await evaluate(client, "window.scrollTo(0, 0)");
+      scrollSweepReturned = true;
+    }
+    if (allAvailableVisibleMs === null && Number(lastState?.ready) >= expectedAvailable) allAvailableVisibleMs = elapsed;
+    if (missingTerminalMs === null && Number(lastState?.terminal) >= expectedMissing) missingTerminalMs = elapsed;
+    if (route.ready && maxReady >= expectedAvailable && maxTerminal >= expectedMissing) break;
+    await sleep(80);
+  }
+  const metrics = await evaluate(client, "window.__historyMediaBenchmark?.snapshot?.() ?? {}");
+  const resourceSummary = await evaluate(client, [
+    "(() => {",
+    "const resources = performance.getEntriesByType('resource').filter((entry) => typeof entry.name === 'string');",
+    "const source = resources.filter((entry) => entry.name.startsWith('studio-media://history/'));",
+    "const covers = resources.filter((entry) => entry.name.startsWith('studio-media://cover/'));",
+    "return { sourceRequests: source.length, coverRequests: covers.length, sourceTransferBytes: source.reduce((total, entry) => total + (Number(entry.transferSize) || 0), 0), coverTransferBytes: covers.reduce((total, entry) => total + (Number(entry.transferSize) || 0), 0) };",
+    "})()"
+  ].join("\n"));
+  const longTasks = await evaluate(client, [
+    "(() => {",
+    "const start = " + JSON.stringify(startedAt) + ";",
+    "const end = performance.now();",
+    "const entries = Array.isArray(window.__c04LongTasks) ? window.__c04LongTasks : [];",
+    "return entries.filter((entry) => entry.startTime + entry.duration >= start - 1 && entry.startTime <= end + 1).map((entry) => ({ name: entry.name, startTime: entry.startTime, duration: entry.duration }));",
+    "})()"
+  ].join("\n"));
+  return {
+    kind,
+    status: route.ready && maxReady >= expectedAvailable && maxTerminal >= expectedMissing ? "actual" : "incomplete",
+    route,
+    firstVisibleMs,
+    allAvailableVisibleMs,
+    missingTerminalMs,
+    state: lastState,
+    peakReady: maxReady,
+    peakTerminal: maxTerminal,
+    metrics: {
+      ...metrics,
+      readImageIpcBytes: Number(metrics.readImageIpcBytes) || 0,
+      coverLookups: Number(metrics.coverLookups) || 0,
+      coverHits: Number(metrics.coverHits) || 0,
+      sourceImageLoads: Number(metrics.sourceImageLoads) || 0,
+      sourceVideoLoads: Number(metrics.sourceVideoLoads) || 0,
+      protocolSourceRequests: Number(resourceSummary.sourceRequests) || 0,
+      protocolCoverRequests: Number(resourceSummary.coverRequests) || 0,
+      protocolSourceTransferBytes: Number(resourceSummary.sourceTransferBytes) || 0,
+      protocolCoverTransferBytes: Number(resourceSummary.coverTransferBytes) || 0,
+      counterSource: Number(metrics.sourceImageLoads || metrics.sourceVideoLoads || metrics.coverLookups || metrics.objectUrlsCreated)
+        ? "renderer-hook"
+        : "protocol-dom-only",
+      sourceDecodes: Number(metrics.sourceDecodes) || 0,
+      seeks: Number(metrics.seeks) || 0,
+      canceledRequests: Number(metrics.canceledRequests) || 0,
+      objectUrlsCreated: Number(metrics.objectUrlsCreated) || 0,
+      objectUrlsRevoked: Number(metrics.objectUrlsRevoked) || 0,
+      liveObjectUrls: Number(metrics.liveObjectUrls) || 0,
+      unreferencedBlobBytes: Number(metrics.unreferencedBlobBytes) || 0,
+      activeOwnedVideoPeak: Number(metrics.activeOwnedVideoPeak) || 0
+    },
+    longTaskMaxMs: longTasks.length ? Math.max(...longTasks.map((entry) => entry.duration)) : null,
+    longTaskCount: longTasks.length
+  };
+}
+
+async function measureHistoryHover(client) {
+  const started = await evaluate(client, [
+    "(() => { const media = document.querySelector('[data-history-media]');",
+    "if (!media) return null; const start = performance.now();",
+    "media.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false })); return { start }; })()"
+  ].join("\n"));
+  if (!started) return { status: "not-tested", hoverFromEnterMs: null, retainedMs: null };
+  let playingAt = null;
+  const waitStartedAt = Date.now();
+  while (Date.now() - waitStartedAt < 2_000) {
+    const state = await evaluate(client, [
+      "(() => { const media = document.querySelector('[data-history-media]');",
+      "return media ? { playing: media.classList.contains('playing'), now: performance.now() } : null; })()"
+    ].join("\n"));
+    if (state?.playing) {
+      playingAt = Number(state.now) - Number(started.start);
+      break;
+    }
+    await sleep(30);
+  }
+  await evaluate(client, "document.querySelector('[data-history-media]')?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))");
+  await sleep(650);
+  return { status: playingAt === null ? "incomplete" : "actual", hoverFromEnterMs: playingAt, retainedMs: playingAt === null ? null : 500 };
+}
+
+async function measureHistoryDetailFirstFrame(client) {
+  const started = await evaluate(client, "window.__historyMediaBenchmark?.begin('detail'); performance.now()");
+  const opened = await pointerClickAndWait(client, '.history-gallery-item[data-history-kind="video"]', "Boolean(document.querySelector('.history-detail-hero'))");
+  if (!opened.ready) return { status: "blocked", opened, detailFirstFrameMs: null };
+  const frame = await evaluate(client, [
+    "(() => {",
+    "const video = document.querySelector('.history-player video');",
+    "if (!(video instanceof HTMLVideoElement)) return { status: 'missing', detailFirstFrameMs: null };",
+    "const start = " + JSON.stringify(started) + ";",
+    "return new Promise((resolve) => {",
+    "  let settled = false;",
+    "  const finish = (status, fallback = false) => { if (settled) return; settled = true; resolve({ status, fallback, detailFirstFrameMs: performance.now() - start, readyState: video.readyState, currentTime: video.currentTime }); };",
+    "  video.muted = true;",
+    "  if (typeof video.requestVideoFrameCallback === 'function') video.requestVideoFrameCallback(() => finish('actual'));",
+    "  else video.addEventListener('loadeddata', () => requestAnimationFrame(() => finish('actual', true)), { once: true });",
+    "  void video.play().catch(() => finish('play-rejected'));",
+    "  if (video.readyState >= 2 && typeof video.requestVideoFrameCallback !== 'function') requestAnimationFrame(() => finish('actual', true));",
+    "  setTimeout(() => finish('timeout'), 8_000);",
+    "});",
+    "})()"
+  ].join("\n"));
+  const returned = await clickAndWait(client, ".history-detail-back-button", "Boolean(document.querySelector('.history-heading'))");
+  return { ...frame, opened, returned };
+}
+
+async function runHistoryMediaViewportSmoke(client, runDirectory) {
+  const viewports = [];
+  for (const [width, height] of [[1280, 800], [1440, 900]]) {
+    const override = { width, height, deviceScaleFactor: 1, mobile: false };
+    try {
+      await client.send("Emulation.setDeviceMetricsOverride", override);
+      await clickAndWait(client, '.nav-button[data-page="history"]', "Boolean(document.querySelector('.history-heading'))");
+      const snapshot = await evaluate(client, [
+        "(() => ({",
+        "viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },",
+        "cards: document.querySelectorAll('.history-gallery-item').length,",
+        "videoCards: document.querySelectorAll('.history-gallery-item[data-history-kind=\"video\"]').length,",
+        "imageCards: document.querySelectorAll('.image-history-gallery-item').length,",
+        "horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,",
+        "galleryOriginalSrcs: [...document.querySelectorAll('.image-history-gallery-item img')].filter((image) => image.src.startsWith('studio-media://history/')).length",
+        "}))()"
+      ].join("\n"));
+      const screenshotPath = path.join(runDirectory, "history-media-" + width + "x" + height + ".png");
+      const screenshot = await captureScreenshot(client, screenshotPath);
+      viewports.push({ status: "actual", requested: { width, height }, snapshot, screenshot });
+    } catch (error) {
+      viewports.push({ status: "blocked", requested: { width, height }, error: error.message });
+    }
+  }
+  await client.send("Emulation.clearDeviceMetricsOverride").catch(() => undefined);
+  return viewports;
+}
+
+async function runHistoryMediaPerformance(client, runDirectory, phase, stateCounts, expected) {
+  const result = {
+    status: "actual",
+    stateCounts,
+    phase,
+    cacheMode: phase === "cold" ? "cold-disk" : phase === "warm" ? "warm-disk" : "warmup",
+    rounds: {},
+    warmMemory: "not-tested",
+    hover: "not-tested",
+    detail: "not-tested",
+    uiSmoke: "not-tested",
+    limitations: [
+      "Metrics are from the controlled fixture and software-rendered isolated Electron session.",
+      "activeOwnedVideoPeak counts app-created cover videos, not Chromium's hardware decoder process.",
+      "No pre-change build was available in this run, so this is an after/current measurement rather than a before/after improvement claim."
+    ]
+  };
+  result.rounds.video = await measureHistoryMediaKind(client, "video", expected.video, 1);
+  result.rounds.image = await measureHistoryMediaKind(client, "image", expected.image, 1);
+  if (phase !== "warmup") {
+    await clickAndWait(client, '.nav-button[data-page="history"]', "Boolean(document.querySelector('.history-heading'))");
+    await clickAndWait(client, '[role="tab"][data-history-kind="video"]', 'Boolean(document.querySelector(\'[role="tab"][data-history-kind="video"][aria-selected="true"]\'))');
+    result.hover = await measureHistoryHover(client);
+    result.detail = await measureHistoryDetailFirstFrame(client);
+    result.uiSmoke = await runHistoryMediaViewportSmoke(client, runDirectory);
+    await clickAndWait(client, '.nav-button[data-page="create"]', "Boolean(document.querySelector('.create-page-heading'))");
+    result.warmMemory = {
+      video: await measureHistoryMediaKind(client, "video", expected.video, 1),
+      image: await measureHistoryMediaKind(client, "image", expected.image, 1)
+    };
+  }
+  result.status = [result.rounds.video, result.rounds.image].every((round) => round.status === "actual") ? "actual" : "incomplete";
+  return result;
+}
+
 async function collectCoreSurfaceSmoke(client) {
   const evidence = {
     status: "actual",
@@ -805,6 +1227,12 @@ async function buildFixtureState(kind, fixture, createDefaultState, rootDirector
   state.settings.outputDirectory = "";
   state.settings.imageOutputDirectory = "";
   state.settings.imageInputLibraryDirectory = path.join(rootDirectory, "media", "input");
+  if (kind === "history-media") {
+    const mediaFixture = await createHistoryMediaFixture(rootDirectory, fixture);
+    state.history = mediaFixture.fixture.videos;
+    state.imageHistory = mediaFixture.fixture.images;
+    return state;
+  }
   if (kind === "history-500") {
     state.history = fixture.videos;
     state.imageHistory = fixture.images;
@@ -954,6 +1382,7 @@ async function runElectronSession({ scenario, phase, sample, fixtureState, rootD
     await client.send("Runtime.enable").catch(() => undefined);
     await client.send("Performance.enable").catch(() => undefined);
     await installLongTaskObserver(client);
+    if (scenario.id === "history-media") await installHistoryMediaBenchmarkHook(client);
     if (traceRequested) startupTrace = await startTrace(client);
     result.traceSupport = {
       requested: traceRequested,
@@ -997,6 +1426,17 @@ async function runElectronSession({ scenario, phase, sample, fixtureState, rootD
             video: result.startup.state?.historyCount ?? null,
             image: result.startup.state?.imageHistoryCount ?? null
           }
+        );
+      } else if (scenario.id === "history-media") {
+        result.historyPerformance = await runHistoryMediaPerformance(
+          client,
+          runDirectory,
+          phase,
+          {
+            video: result.startup.state?.historyCount ?? null,
+            image: result.startup.state?.imageHistoryCount ?? null
+          },
+          { video: 11, image: 11 }
         );
       }
     }
@@ -1151,7 +1591,7 @@ async function main() {
     printUsage();
     return;
   }
-  const validScenarios = new Set(["empty", "history-500", "legacy"]);
+  const validScenarios = new Set(["empty", "history-500", "history-media", "legacy"]);
   if (options.scenario !== "all" && !validScenarios.has(options.scenario)) {
     throw new Error(`Unsupported scenario: ${options.scenario}`);
   }
@@ -1164,11 +1604,17 @@ async function main() {
   const defaultsModule = await import(pathToFileURL(path.join(workspaceDirectory, "dist", "electron", "src", "core", "defaults.js")).href);
   const fixture = makeElectronHistoryFixture(fixtureModule.createHistoryPerformanceFixture(500));
   const selectedScenarios = options.scenario === "all"
-    ? ["empty", "history-500", "legacy"]
+    ? ["empty", "history-500", "history-media", "legacy"]
     : [options.scenario];
   const scenarioDefinitions = selectedScenarios.map((id) => ({
     id,
-    description: id === "empty" ? "fresh default state" : id === "history-500" ? "500 video and 500 image history records" : "schema v2 history state requiring current migration"
+    description: id === "empty"
+      ? "fresh default state"
+      : id === "history-500"
+        ? "500 video and 500 image history records"
+        : id === "history-media"
+          ? "12 generated image/video history records with controlled cache and missing-file cases"
+          : "schema v2 history state requiring current migration"
   }));
   const manifest = {
     schemaVersion: 1,
@@ -1192,6 +1638,14 @@ async function main() {
     mode: "packaged",
     gpuMode: "disabled-by-harness",
     sandboxMode: "disabled-by-harness",
+    historyMediaFixture: selectedScenarios.includes("history-media")
+      ? {
+          fixtureId: HISTORY_MEDIA_DEFINITION.fixtureId,
+          expected: { videoCards: 12, imageCards: 12, availablePerKind: 11, missingPerKind: 1 },
+          images: HISTORY_MEDIA_DEFINITION.images,
+          videos: HISTORY_MEDIA_DEFINITION.videos
+        }
+      : null,
     evidencePolicy: {
       actual: "Captured through the production Electron entry with a real BrowserWindow and CDP.",
       static: "Derived from existing repository contracts/tests; not substituted for runtime evidence.",
@@ -1216,6 +1670,18 @@ async function main() {
     const warmRoot = await ensureDirectory(path.join(outputRoot, "isolated", scenario.id, "warm"));
     const warmState = await buildFixtureState(scenario.id, fixture, defaultsModule.createDefaultState, warmRoot);
     await writeFixtureState(warmRoot, warmState);
+    if (scenario.id === "history-media") {
+      console.log("[c04] history-media prewarming disk cache");
+      await runElectronSession({
+        scenario,
+        phase: "warmup",
+        sample: 0,
+        fixtureState: warmState,
+        rootDirectory: warmRoot,
+        outputRoot,
+        options
+      });
+    }
     for (let sample = 1; sample <= options.samples; sample += 1) {
       const coldRoot = await ensureDirectory(path.join(outputRoot, "isolated", scenario.id, "cold", `sample-${sample}`));
       const coldState = await buildFixtureState(scenario.id, fixture, defaultsModule.createDefaultState, coldRoot);

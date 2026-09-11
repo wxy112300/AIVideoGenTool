@@ -42,10 +42,7 @@ import {
   requireLegacyUpscaleTargetHeight
 } from "./dlss5.js";
 import { videoLoraSelection } from "./video-loras.js";
-import {
-  normalizeH3MemoryOptions,
-  resolveMiniMaxH3ExecutionPlan
-} from "./h3-memory-policy.js";
+import { h3ExecutionPolicySnapshotFor } from "./h3-execution-policy.js";
 import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import {
@@ -121,13 +118,14 @@ export function queueTaskFromDraft(
   const h3VideoVaeMode = isMiniMaxH3Model(draft.modelId)
     ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
     : undefined;
-  const h3MemoryOptions = normalizeH3MemoryOptions(draft);
-  const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
-    ? resolveMiniMaxH3ExecutionPlan({
+  const h3ExecutionPolicy = isMiniMaxH3Model(draft.modelId)
+    ? h3ExecutionPolicySnapshotFor({
         modelId: draft.modelId,
         inputMode: "image",
         attentionMode: state.settings.h3AttentionMode,
-        ...h3MemoryOptions,
+        sparseAttentionMode: state.settings.h3SparseAttentionMode,
+        runtimeMode: state.settings.h3RuntimeMode,
+        comfyCompilerMode: state.settings.h3ComfyCompilerMode,
         spectrumMode: draft.spectrumMode,
         videoLoras: draft.videoLoras,
         h3LivePreview: state.settings.h3LivePreview
@@ -191,12 +189,20 @@ export function queueTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
+    h3SparseAttentionMode: isMiniMaxH3Model(draft.modelId)
+      ? state.settings.h3SparseAttentionMode
+      : undefined,
+    h3RuntimeMode: isMiniMaxH3Model(draft.modelId)
+      ? state.settings.h3RuntimeMode
+      : undefined,
+    h3ComfyCompilerMode: isMiniMaxH3Model(draft.modelId)
+      ? state.settings.h3ComfyCompilerMode
+      : undefined,
+    h3ExecutionPolicy,
     h3LatentSaveMode,
     h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: "off",
-    ...h3MemoryOptions,
-    ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
     progress: 0
   };
 }
@@ -290,18 +296,19 @@ export function extensionTaskFromDraft(
   const h3VideoVaeMode = isH3
     ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
     : undefined;
-  const h3MemoryOptions = normalizeH3MemoryOptions(draft);
   const resolution = isH3 ? firstPassResolutionFor(draft) : state.settings.ltxExtensionResolution;
   const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
     ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
     : undefined;
   const spectrumMode = isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode;
-  const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
-    ? resolveMiniMaxH3ExecutionPlan({
+  const h3ExecutionPolicy = isMiniMaxH3Model(draft.modelId)
+    ? h3ExecutionPolicySnapshotFor({
         modelId: draft.modelId,
         inputMode: "video",
         attentionMode: state.settings.h3AttentionMode,
-        ...h3MemoryOptions,
+        sparseAttentionMode: state.settings.h3SparseAttentionMode,
+        runtimeMode: state.settings.h3RuntimeMode,
+        comfyCompilerMode: state.settings.h3ComfyCompilerMode,
         spectrumMode,
         videoLoras: draft.videoLoras,
         h3LivePreview: state.settings.h3LivePreview
@@ -361,12 +368,14 @@ export function extensionTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
+    h3SparseAttentionMode: isH3 ? state.settings.h3SparseAttentionMode : undefined,
+    h3RuntimeMode: isH3 ? state.settings.h3RuntimeMode : undefined,
+    h3ComfyCompilerMode: isH3 ? state.settings.h3ComfyCompilerMode : undefined,
+    h3ExecutionPolicy,
     h3LatentSaveMode,
     h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
     spectrumMode,
     spectrumModelAwareMode: "off",
-    ...h3MemoryOptions,
-    ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
     maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
     overlapFrames: isMiniMaxH3ContinuumModel(draft.modelId)
       ? 22
@@ -557,6 +566,9 @@ export function upscaleTaskFromRequest(
           steps: request.h3NativeInput.steps,
           attentionMode: request.h3NativeInput.attentionMode,
           h3VideoVaeMode: request.h3NativeInput.h3VideoVaeMode,
+          h3SparseAttentionMode: request.h3NativeInput.h3SparseAttentionMode ?? state.settings.h3SparseAttentionMode,
+          h3RuntimeMode: request.h3NativeInput.h3RuntimeMode ?? state.settings.h3RuntimeMode,
+          h3ComfyCompilerMode: request.h3NativeInput.h3ComfyCompilerMode ?? state.settings.h3ComfyCompilerMode,
           videoLoras: request.h3NativeInput.videoLoras.map((lora) => ({ ...lora }))
         }
       : {}),

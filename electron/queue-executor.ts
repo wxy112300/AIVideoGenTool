@@ -1,4 +1,4 @@
-import type { AppState, GenerationQueueTask, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
+import type { AppState, GenerationQueueTask, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,6 @@ import { executeNativeSeedVr2Upscale } from "./services/seedvr2-upscale.js";
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
 import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-logger.js";
-import { parseH3MemoryAppliedPlan } from "./services/comfy-log-bridge.js";
 import { upscaleTaskFromRequest } from "../src/core/queue-task-factory.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import type { QueueWorkerController } from "./queue-worker.js";
@@ -91,6 +90,9 @@ function h3CreateSecondPassTask(
       scaleBy: 1080 / Math.min(checkpoint.artifact.width, checkpoint.artifact.height),
       h3VideoVaeMode: task.h3VideoVaeMode!,
       attentionMode: task.attentionMode!,
+      h3SparseAttentionMode: task.h3SparseAttentionMode,
+      h3RuntimeMode: task.h3RuntimeMode,
+      h3ComfyCompilerMode: task.h3ComfyCompilerMode,
       steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
       videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? []
     }
@@ -624,7 +626,6 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let promptId: string;
       let result: unknown;
       let files: HistoryFile[];
-      let h3MemoryRuntimeEvidence: H3MemoryRuntimeEvidence | undefined;
       let h3AvSerializerNodeId: string | undefined;
         let seedVr2IntermediatePaths: string[] = [];
         if (segmentedSeedVr2) {
@@ -643,7 +644,6 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           ({ promptId } = submitted);
           const { clientId, nodeTypes } = submitted;
           h3TokenCount = submitted.h3TokenCount;
-          h3MemoryRuntimeEvidence = submitted.h3MemoryRuntimeEvidence;
           h3AvSerializerNodeId = submitted.h3AvSerializerNodeId;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
           if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
@@ -676,7 +676,6 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           });
           let lastLoggedProgress = -5;
           let lastLoggedStage = "";
-          let lastH3MemoryPlanSignature = "";
           const initialProgressOffset = h3CompositeTask && executionTask.taskType === "upscale" ? 50 : 0;
           const initialProgressScale = h3CompositeTask ? 0.5 : 1;
           result = await waitForTask(
@@ -715,35 +714,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             previewHandler,
             isComputeActive,
             { taskId: task.id, modelId: task.modelId },
-            h3MemoryRuntimeEvidence
-              ? (line) => {
-                  const evidence = parseH3MemoryAppliedPlan(line);
-                  if (!evidence) return;
-                  const signature = `${evidence.execution}:${evidence.qkvProvider}:${evidence.memoryProvider}`;
-                  if (signature === lastH3MemoryPlanSignature) return;
-                  lastH3MemoryPlanSignature = signature;
-                  h3MemoryRuntimeEvidence = {
-                    ...h3MemoryRuntimeEvidence!,
-                    execution: evidence.execution,
-                    note: evidence.note
-                  };
-                  void updateTask(task.id, {
-                    h3MemoryRuntimeEvidence: h3MemoryRuntimeEvidence
-                  });
-                  logger.info("comfy", "h3-memory-runtime-evidence", evidence.note, {
-                    taskId: task.id,
-                    promptId,
-                    execution: evidence.execution,
-                    qkvProvider: evidence.qkvProvider,
-                    memoryProvider: evidence.memoryProvider
-                  });
-                  if (evidence.execution === "fallback") {
-                    throw new Error(
-                      `H3 Memory Optimization 未启用 bounded QKV：qkv_provider=${evidence.qkvProvider}，memory=${evidence.memoryProvider}。任务已停止以避免继续占满显存。`
-                    );
-                  }
-                }
-              : undefined,
+            undefined,
               submitted.progressContext
           );
           files = await sideEffects.trackVideoOutput(result);
@@ -945,7 +916,6 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           comfyOutputs: result,
           files,
           performanceStats: taskPerformanceStats,
-          h3MemoryRuntimeEvidence,
           h3ContinuationData
         });
         if (isMiniMaxH3Model(completedTask.modelId)) {

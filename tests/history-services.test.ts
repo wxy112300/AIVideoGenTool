@@ -294,6 +294,35 @@ describe("History application services", () => {
     expect(await fs.readdir(path.join(root, "covers"))).toHaveLength(2);
   });
 
+  it("returns a source revision and rejects a save after the source changes", async () => {
+    const root = await temporaryRoot();
+    const source = path.join(root, "source.mp4");
+    await fs.writeFile(source, "video");
+    const store = repository(createDefaultState());
+    const query = queryFor(store, root);
+    const key = "history-cover-revision-key";
+
+    const initial = await query.lookupHistoryCover(key, source);
+    expect(initial.state).toBe("miss");
+    if (initial.state !== "miss") return;
+
+    await expect(query.saveHistoryCoverIfCurrent({
+      key,
+      sourcePath: source,
+      sourceRevision: initial.sourceRevision,
+      data: new Uint8Array([1, 2, 3]).buffer
+    })).resolves.toMatchObject({ state: "saved" });
+
+    await fs.writeFile(source, "video-updated");
+    await expect(query.saveHistoryCoverIfCurrent({
+      key,
+      sourcePath: source,
+      sourceRevision: initial.sourceRevision,
+      data: new Uint8Array([4, 5, 6]).buffer
+    })).resolves.toEqual({ state: "stale" });
+    await expect(query.readHistoryCover(key, source)).resolves.toBeNull();
+  });
+
   it("updates curation metadata and image cover selection directly", async () => {
     const state = createDefaultState();
     const image = imageProject("project-1", [

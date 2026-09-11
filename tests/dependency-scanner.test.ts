@@ -221,7 +221,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("recognizes H3 Optimizations by package markers and keeps it app-installable", async () => {
+  it("does not expose withdrawn H3 Optimizations in the active scan", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-scan-"));
     temporaryDirectories.push(comfyRoot);
     const directory = path.join(comfyRoot, "custom_nodes", "H3-Optimizations");
@@ -241,25 +241,11 @@ describe("dependency scanner", () => {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:1"
     });
-    const h3Memory = statuses.find((status) => status.id === "h3-optimizations");
-
-    expect(h3Memory).toMatchObject({
-      installed: true,
-      loaded: true,
-      runtimeVerified: false,
-      directory,
-      version: "0.2.20",
-      minimumVersion: "0.2.16",
-      recommendedVersion: "0.2.20",
-      latestVersion: "0.2.20",
-      appInstallable: true,
-      bulkInstall: false,
-      updateAvailable: false,
-      revisionDirtyState: "unknown"
-    });
+    expect(statuses.some((status) => status.id === "h3-optimizations")).toBe(false);
+    expect(directory).toContain("H3-Optimizations");
   });
 
-  it("reports duplicate H3 Optimizations directories without selecting them as one install", async () => {
+  it("does not select duplicate withdrawn H3 Optimizations directories", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-duplicates-"));
     temporaryDirectories.push(comfyRoot);
     const first = path.join(comfyRoot, "custom_nodes", "manual-h3-memory");
@@ -277,12 +263,9 @@ describe("dependency scanner", () => {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:1"
     });
-    const h3Memory = statuses.find((status) => status.id === "h3-optimizations");
-
-    expect(h3Memory?.directory).toBe(second);
-    expect(h3Memory?.duplicateDirectories).toEqual([first]);
-    expect(h3Memory?.compatibilityState).toBe("warning");
-    expect(h3Memory?.compatibilityNotice).toContain("H3 Optimizations");
+    expect(statuses.some((status) => status.id === "h3-optimizations")).toBe(false);
+    expect(first).toContain("manual-h3-memory");
+    expect(second).toContain("H3-Optimizations");
   });
 
   it("marks an offline KJNodes installation without the H3 preview node for update", async () => {

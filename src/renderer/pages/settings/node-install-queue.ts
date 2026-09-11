@@ -43,7 +43,7 @@ export interface CustomNodeInstallQueueDependencies {
 }
 
 export function customNodeIdsForBulkAction(nodes: readonly CustomNodeStatus[]): string[] {
-  const eligible = nodes.filter((node) => node.bulkInstall !== false);
+  const eligible = nodes.filter((node) => node.retired !== true && node.bulkInstall !== false);
   const actionable = eligible.filter((node) =>
     !node.installed || node.updateAvailable || node.runtimeRepairable
   );
@@ -56,7 +56,7 @@ export function customNodeBulkActionMode(
   nodes: readonly CustomNodeStatus[]
 ): CustomNodeBulkActionMode {
   const actionable = nodes.filter((node) =>
-    node.bulkInstall !== false && (
+    node.retired !== true && node.bulkInstall !== false && (
       !node.installed || node.updateAvailable || node.runtimeRepairable
     )
   );

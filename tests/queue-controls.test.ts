@@ -216,6 +216,59 @@ describe("queue rapid-operation guards", () => {
     expect(result.queueLifecycleTaskId).toBeUndefined();
   });
 
+  it("refreshes H3 acceleration settings when a failed task is reset", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.modelId = "minimax_h3_fl2va";
+    task.status = "failed";
+    task.attentionMode = "sage";
+    task.h3SparseAttentionMode = "auto";
+    task.h3RuntimeMode = "compatibility";
+    task.h3ComfyCompilerMode = "auto";
+    task.h3ExecutionPolicy = {
+      attentionMode: "sage",
+      attentionOwner: "sage",
+      sparseAttentionMode: "off",
+      runtimeMode: "compatibility",
+      comfyCompilerMode: "auto",
+      spectrumEnabled: false,
+      previewEnabled: false,
+      allowed: true,
+      reasons: []
+    };
+    state.settings.h3AttentionMode = "comfy-kitchen";
+    state.settings.h3SparseAttentionMode = "sol-attn";
+    state.settings.h3RuntimeMode = "native";
+    state.settings.h3ComfyCompilerMode = "disabled";
+    state.queue = [task];
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:reset")!({}, task.id) as AppState;
+    expect(result.queue[0]).toMatchObject({
+      status: "waiting",
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "sol-attn",
+      h3RuntimeMode: "native",
+      h3ComfyCompilerMode: "disabled",
+      h3ExecutionPolicy: {
+        attentionMode: "comfy-kitchen",
+        attentionOwner: "comfy-kitchen",
+        sparseAttentionMode: "sol-attn",
+        runtimeMode: "native",
+        comfyCompilerMode: "disabled",
+        allowed: true,
+        reasons: []
+      }
+    });
+  });
+
   it("keeps reset blocked while an error lifecycle still has an active worker", async () => {
     const state = createDefaultState();
     const task = queuedTask(state);

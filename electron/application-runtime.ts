@@ -353,6 +353,7 @@ export class ApplicationRuntime {
         historyQuery.coverCacheKeyForVideoVersion(asset, version),
       coverCacheKeyForImageVersion: (project, version) =>
         historyQuery.coverCacheKeyForImageVersion(project, version),
+      invalidateCoverCacheKeys: (keys) => historyQuery.invalidateHistoryCoverKeys(keys),
       removeCoverCacheKeys: (keys) => historyQuery.removeCoverCacheKeys(keys),
       errorMeta: this.deps.errorMeta
     });

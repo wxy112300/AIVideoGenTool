@@ -37,7 +37,7 @@ TASK 当前摘要尽量一屏；AGENTS 目标约 6 KB。长证据在细节文件
 
 - 已采用统一 docs 入口、任务/证据模板、开发流程和旧文档分类清单。
 - 2026-09-07 已实际迁移 27 份文档：15 份进入主题 archive、10 份进入 research、2 份进入 H3 长视频任务 evidence；没有删除原始证据，也没有接管产品实现。当前入口只从 TASK、契约或 Research 进入。
-- 本轮已收口确定的 H3 v1/v2、H3 Memory、History 性能、模块化架构、ComfyUI Settings 等历史计划；H3 v3、Native/长视频和图片工作台仍分别保留历史边界与唯一当前 TASK，证据不足处标为 needs-review/blocked。DLSS5 已按用户决定移入主题 archive。
+- 本轮已收口确定的 H3 v1/v2、H3 Memory、History 性能、模块化架构、ComfyUI Settings 等历史计划；H3 Memory 的长实施计划已删除，仅保留同目录撤回说明；H3 v3、Native/长视频和图片工作台仍分别保留历史边界与唯一当前 TASK，证据不足处标为 needs-review/blocked。DLSS5 已按用户决定移入主题 archive。
 - 后续只复核明确列出的当前 TASK：H3 高分辨率的 1440p 质量/组合证据、H3 长视频真实 workflow/生成证据、图片工作台独立 AI 放大；本轮不重放 GPU 或下载资产。
 - 与当前行为直接冲突的入口先降为历史/待复核来源；不可为了“整理”重放旧 GPU 策略。归档文件仍保留停止指令、安全事件和唯一验收证据，并注明其历史范围。
 - 以后每个功能任务关闭时顺手收口自己的文档：稳定结论进契约，证据保留，旧 plan 标 superseded。这比周期性全库大扫除更便宜。

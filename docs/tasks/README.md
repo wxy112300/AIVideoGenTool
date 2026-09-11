@@ -4,7 +4,7 @@
 
 - [开发 harness 与文档治理](2026-09-07-harness/TASK.md)
 - [环境扫描可靠性与耗时](2026-09-09-environment-scan/TASK.md)
-- [History 封面、缩略图与视频加载提速](2026-09-10-history-media-performance/TASK.md)
+- [ComfyUI 0.35.0 与 H3 升级](2026-09-10-comfyui-035-h3/TASK.md)
 - [DLSS5 历史方案归档](../archive/dlss5/README.md)
 - [H3 高分辨率与 JointAV 收口](2026-09-07-h3-high-resolution/TASK.md)
 - [H3 Native AV、Extend 与长视频](2026-09-07-h3-long-video/TASK.md)

@@ -232,6 +232,24 @@ type SettingsCopyKey =
   | "accel.modeSageTritonTip"
   | "accel.modePytorch"
   | "accel.modePytorchTip"
+  | "accel.modeComfyKitchen"
+  | "accel.modeComfyKitchenTip"
+  | "accel.sparseMode"
+  | "accel.sparseModeTip"
+  | "accel.sparseOff"
+  | "accel.sparseOffTip"
+  | "accel.sparseSolAttn"
+  | "accel.sparseSolAttnTip"
+  | "accel.runtimeMode"
+  | "accel.runtimeModeTip"
+  | "accel.runtimeCompatibility"
+  | "accel.runtimeCompatibilityTip"
+  | "accel.runtimeNative"
+  | "accel.runtimeNativeTip"
+  | "accel.compilerMode"
+  | "accel.compilerModeTip"
+  | "accel.compilerAuto"
+  | "accel.compilerDisabled"
   | "accel.auto"
   | "accel.stable"
   | "accel.compatible"
@@ -520,12 +538,30 @@ const zhCN: SettingsCopyCatalog = {
   "accel.probeFailed": "检测未完成，请重新扫描",
   "accel.mode": "H3 Attention 后端",
   "accel.modeTip": "只影响 MiniMax H3 工作流；其他模型的采样和节点策略在各自的模型或工作流设置中管理。",
-  "accel.modeSage": "自动加速 · SageAttention CUDA FP16",
-  "accel.modeSageTip": "使用 CUDA FP16 SageAttention 内核；环境匹配时通常速度最快，但需要精确匹配的 CUDA、PyTorch 与 wheel。",
-  "accel.modeSageTriton": "稳定加速 · SageAttention Triton FP16",
-  "accel.modeSageTritonTip": "使用 Triton FP16 SageAttention 内核；相比 CUDA FP16 更适合作为稳定回退，仍需要 SageAttention 与 Triton 环境。",
-  "accel.modePytorch": "兼容模式 · PyTorch Attention",
-  "accel.modePytorchTip": "使用 PyTorch 原生 Attention；不依赖 SageAttention 或 Triton，兼容性最高，但通常速度较慢。",
+  "accel.modeSage": "SageAttention CUDA · 备选",
+  "accel.modeSageTip": "备选。CUDA FP16 SageAttention 是已验证基线，但当前 4090 同任务实测慢于 Triton + SOL；仍要求 CUDA、PyTorch 与 wheel 精确匹配。",
+  "accel.modeSageTriton": "SageAttention Triton · 推荐",
+  "accel.modeSageTritonTip": "推荐。当前 4090 同任务中，搭配 SOL 速度最快；稠密模式的峰值显存也最低。需要 SageAttention 与 Triton 环境。",
+  "accel.modePytorch": "PyTorch Attention · 兼容回退",
+  "accel.modePytorchTip": "仅作兼容回退。不依赖 SageAttention 或 Triton，兼容性最高，但通常最慢，不作为当前 4090 的性能推荐。",
+  "accel.modeComfyKitchen": "Comfy Kitchen INT8 · 稠密次选",
+  "accel.modeComfyKitchenTip": "稠密模式次选。当前 4090 同任务比 Sage CUDA 稠密更快且内存更低；与 SOL 组合已出现爆显存，只建议搭配稠密 Attention。",
+  "accel.sparseMode": "H3 稀疏 Attention",
+  "accel.sparseModeTip": "全局只保留已可测试的稠密与 SOL。Turbo-SLA 的专用 SLA 由任务配方内部绑定；未验证的 VSA 不在这里显示。",
+  "accel.sparseOff": "稠密 Attention · 稳定推荐",
+  "accel.sparseOffTip": "稳定推荐。使用所选后端的完整稠密路径，是排查质量、显存和兼容性的基线；Comfy Kitchen 只建议使用此项。",
+  "accel.sparseSolAttn": "SOL-Attn 稀疏 · 性能推荐（实验）",
+  "accel.sparseSolAttnTip": "性能推荐但仍属实验。当前 4090 同任务搭配 Sage Triton 最快；它降低平均显存但不降低峰值显存，不要与 Comfy Kitchen 组合。",
+  "accel.runtimeMode": "H3 运行时策略",
+  "accel.runtimeModeTip": "选择 H3 的模型驻留与卸载方式。当前 4090/64 GB 实测应优先固定驻留。",
+  "accel.runtimeCompatibility": "固定驻留 · 强烈推荐",
+  "accel.runtimeCompatibilityTip": "强烈推荐。不启用 Dynamic VRAM 或 async offload；当前测试更快，RAM 峰值约 34–37 GiB，Shared GPU 低于 1 GiB。",
+  "accel.runtimeNative": "动态显存 + 异步卸载 · 不推荐",
+  "accel.runtimeNativeTip": "不推荐。当前测试慢约 13–20%，RAM 峰值接近 63 GiB、Shared GPU 约 25 GiB，只节省约 1 GiB 专用显存，容易受系统负载影响而 OOM。",
+  "accel.compilerMode": "Comfy 编译器",
+  "accel.compilerModeTip": "这不是智能择优；启用后 ComfyUI 会记录显存分配、预取并尝试 CUDA Graph，可能增加峰值显存。当前 RTX 4090/H3 默认关闭；关闭时仅对 H3 启用 --disable-comfy-compiler。",
+  "accel.compilerAuto": "启用 Comfy 编译器 · 高显存实验",
+  "accel.compilerDisabled": "禁用 Comfy 编译器 · H3/4090 推荐",
   "accel.auto": "自动加速",
   "accel.stable": "稳定加速",
   "accel.compatible": "兼容模式",
@@ -790,12 +826,30 @@ const zhTW: SettingsCopyCatalog = {
   "accel.probeFailed": "偵測未完成，請重新掃描",
   "accel.mode": "H3 Attention 後端",
   "accel.modeTip": "只影響 MiniMax H3 工作流程；其他模型的採樣與節點策略在各自的模型或工作流程設定中管理。",
-  "accel.modeSage": "自動加速 · SageAttention CUDA FP16",
-  "accel.modeSageTip": "使用 CUDA FP16 SageAttention 核心；環境相符時通常速度最快，但需要精確相符的 CUDA、PyTorch 與 wheel。",
-  "accel.modeSageTriton": "穩定加速 · SageAttention Triton FP16",
-  "accel.modeSageTritonTip": "使用 Triton FP16 SageAttention 核心；相較 CUDA FP16 更適合作為穩定回退，仍需要 SageAttention 與 Triton 環境。",
-  "accel.modePytorch": "相容模式 · PyTorch Attention",
-  "accel.modePytorchTip": "使用 PyTorch 原生 Attention；不依賴 SageAttention 或 Triton，相容性最高，但通常速度較慢。",
+  "accel.modeSage": "SageAttention CUDA · 備選",
+  "accel.modeSageTip": "備選。CUDA FP16 SageAttention 是已驗證基線，但目前 4090 同任務實測慢於 Triton + SOL；仍要求 CUDA、PyTorch 與 wheel 精確相符。",
+  "accel.modeSageTriton": "SageAttention Triton · 推薦",
+  "accel.modeSageTritonTip": "推薦。目前 4090 同任務中，搭配 SOL 速度最快；稠密模式的峰值顯存也最低。需要 SageAttention 與 Triton 環境。",
+  "accel.modePytorch": "PyTorch Attention · 相容回退",
+  "accel.modePytorchTip": "僅作相容回退。不依賴 SageAttention 或 Triton，相容性最高，但通常最慢，不作為目前 4090 的效能推薦。",
+  "accel.modeComfyKitchen": "Comfy Kitchen INT8 · 稠密次選",
+  "accel.modeComfyKitchenTip": "稠密模式次選。目前 4090 同任務比 Sage CUDA 稠密更快且記憶體更低；與 SOL 組合已出現顯存不足，只建議搭配稠密 Attention。",
+  "accel.sparseMode": "H3 稀疏 Attention",
+  "accel.sparseModeTip": "全域只保留已可測試的稠密與 SOL。Turbo-SLA 的專用 SLA 由任務配方內部綁定；未驗證的 VSA 不在這裡顯示。",
+  "accel.sparseOff": "稠密 Attention · 穩定推薦",
+  "accel.sparseOffTip": "穩定推薦。使用所選後端的完整稠密路徑，是排查品質、顯存與相容性的基線；Comfy Kitchen 只建議使用此項。",
+  "accel.sparseSolAttn": "SOL-Attn 稀疏 · 效能推薦（實驗）",
+  "accel.sparseSolAttnTip": "效能推薦但仍屬實驗。目前 4090 同任務搭配 Sage Triton 最快；它降低平均顯存但不降低峰值顯存，不要與 Comfy Kitchen 組合。",
+  "accel.runtimeMode": "H3 執行時策略",
+  "accel.runtimeModeTip": "選擇 H3 的模型駐留與卸載方式。目前 4090/64 GB 實測應優先固定駐留。",
+  "accel.runtimeCompatibility": "固定駐留 · 強烈推薦",
+  "accel.runtimeCompatibilityTip": "強烈推薦。不啟用 Dynamic VRAM 或 async offload；目前測試更快，RAM 峰值約 34–37 GiB，Shared GPU 低於 1 GiB。",
+  "accel.runtimeNative": "動態顯存 + 非同步卸載 · 不推薦",
+  "accel.runtimeNativeTip": "不推薦。目前測試慢約 13–20%，RAM 峰值接近 63 GiB、Shared GPU 約 25 GiB，只節省約 1 GiB 專用顯存，容易受系統負載影響而 OOM。",
+  "accel.compilerMode": "Comfy 編譯器",
+  "accel.compilerModeTip": "這不是智慧擇優；啟用後 ComfyUI 會記錄顯存配置、預取並嘗試 CUDA Graph，可能增加峰值顯存。目前 RTX 4090/H3 預設關閉；關閉時僅對 H3 啟用 --disable-comfy-compiler。",
+  "accel.compilerAuto": "啟用 Comfy 編譯器 · 高顯存實驗",
+  "accel.compilerDisabled": "停用 Comfy 編譯器 · H3/4090 建議",
   "accel.auto": "自動加速",
   "accel.stable": "穩定加速",
   "accel.compatible": "相容模式",
@@ -1081,12 +1135,30 @@ const enUS: SettingsCopyCatalog = {
   "accel.probeFailed": "Detection incomplete; scan again",
   "accel.mode": "H3 Attention backend",
   "accel.modeTip": "This only affects MiniMax H3 workflows. Other models keep their own sampling and node policies.",
-  "accel.modeSage": "Automatic acceleration · SageAttention CUDA FP16",
-  "accel.modeSageTip": "Uses the CUDA FP16 SageAttention kernel; it is usually the fastest option on a matching environment, but requires an exact CUDA, PyTorch, and wheel match.",
-  "accel.modeSageTriton": "Stable acceleration · SageAttention Triton FP16",
-  "accel.modeSageTritonTip": "Uses the Triton FP16 SageAttention kernel; it is a steadier fallback than CUDA FP16, but still requires SageAttention and Triton.",
-  "accel.modePytorch": "Compatibility mode · PyTorch Attention",
-  "accel.modePytorchTip": "Uses native PyTorch Attention; it does not depend on SageAttention or Triton, so compatibility is highest but it is usually slower.",
+  "accel.modeSage": "SageAttention CUDA · alternative",
+  "accel.modeSageTip": "Alternative. CUDA FP16 SageAttention is a validated baseline, but the current 4090 comparison was slower than Triton + SOL. It still requires an exact CUDA, PyTorch, and wheel match.",
+  "accel.modeSageTriton": "SageAttention Triton · recommended",
+  "accel.modeSageTritonTip": "Recommended. In the current matched 4090 runs it was fastest with SOL, while its dense path also had the lowest peak VRAM. Requires SageAttention and Triton.",
+  "accel.modePytorch": "PyTorch Attention · compatibility fallback",
+  "accel.modePytorchTip": "Compatibility fallback only. It does not require SageAttention or Triton, but is usually slowest and is not the current performance recommendation for RTX 4090.",
+  "accel.modeComfyKitchen": "Comfy Kitchen INT8 · dense runner-up",
+  "accel.modeComfyKitchenTip": "Runner-up for dense mode. It beat dense Sage CUDA with lower memory in the current matched 4090 run. Kitchen + SOL has run out of memory, so use Kitchen only with dense Attention.",
+  "accel.sparseMode": "H3 sparse Attention",
+  "accel.sparseModeTip": "Only the testable dense and SOL paths are exposed globally. Turbo-SLA binds its dedicated SLA inside the task recipe; unvalidated VSA is hidden.",
+  "accel.sparseOff": "Dense Attention · stable recommendation",
+  "accel.sparseOffTip": "Stable recommendation. Uses the full dense path of the selected backend and provides the quality, memory, and compatibility baseline. Comfy Kitchen should use this option only.",
+  "accel.sparseSolAttn": "SOL-Attn sparse · performance recommendation (experimental)",
+  "accel.sparseSolAttnTip": "Recommended for performance but still experimental. It was fastest with Sage Triton in the current matched 4090 runs. It lowers average, not peak, VRAM; do not combine it with Comfy Kitchen.",
+  "accel.runtimeMode": "H3 runtime policy",
+  "accel.runtimeModeTip": "Choose how H3 models remain resident or offload. Current RTX 4090/64 GB measurements strongly favor fixed residency.",
+  "accel.runtimeCompatibility": "Fixed residency · strongly recommended",
+  "accel.runtimeCompatibilityTip": "Strongly recommended. Does not enable dynamic VRAM or async offload. Current runs were faster, with roughly 34–37 GiB peak RAM and under 1 GiB shared GPU memory.",
+  "accel.runtimeNative": "Dynamic VRAM + async offload · not recommended",
+  "accel.runtimeNativeTip": "Not recommended. Current runs were about 13–20% slower, reached roughly 63 GiB RAM and 25 GiB shared GPU memory, and saved only about 1 GiB dedicated VRAM, leaving the run sensitive to OOM.",
+  "accel.compilerMode": "Comfy compiler",
+  "accel.compilerModeTip": "This is not an optimizer selector. Enabling it records allocations, prefetches modules, and may try CUDA Graphs; peak VRAM can increase. It is off by default for H3 on RTX 4090. Off adds --disable-comfy-compiler only for H3.",
+  "accel.compilerAuto": "Enable Comfy compiler · high-VRAM experiment",
+  "accel.compilerDisabled": "Disable Comfy compiler · recommended for H3/4090",
   "accel.auto": "Automatic acceleration",
   "accel.stable": "Stable acceleration",
   "accel.compatible": "Compatibility mode",

@@ -10,6 +10,7 @@ import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
   H3AttentionMode,
+  H3SparseAttentionMode,
   H3LatentSaveMode,
   H3VideoVaeBackend,
   QueueLifecycle,
@@ -38,6 +39,14 @@ import {
   normalizeH3MemoryOptions
 } from "../src/core/h3-memory-policy.js";
 import {
+  applyH3AccelerationSettingsToWaitingTask,
+  normalizeH3AttentionMode,
+  normalizeH3ComfyCompilerMode,
+  normalizeH3GlobalSparseAttentionMode,
+  normalizeH3RuntimeMode,
+  normalizeH3SparseAttentionMode
+} from "../src/core/h3-execution-policy.js";
+import {
   generationSafetyForTask,
   h3ContinuumWorkflowPathForInput,
   isMiniMaxH3ContinuumModel,
@@ -47,7 +56,6 @@ import {
   isRetiredVideoModel,
   normalizeH3Steps
 } from "../src/core/workflow.js";
-import { normalizeH3AttentionMode } from "../src/core/recovery.js";
 import {
   LEGACY_H3_TURBO_MODEL_ID,
   baseVideoModelId,
@@ -190,6 +198,18 @@ function migrateOptionalH3AttentionMode(value: unknown): H3AttentionMode | undef
   return value === undefined ? undefined : normalizeH3AttentionMode(value);
 }
 
+function migrateOptionalH3SparseAttentionMode(value: unknown): H3SparseAttentionMode | undefined {
+  return value === undefined ? undefined : normalizeH3SparseAttentionMode(value);
+}
+
+function migrateOptionalH3RuntimeMode(value: unknown): Settings["h3RuntimeMode"] | undefined {
+  return value === undefined ? undefined : normalizeH3RuntimeMode(value);
+}
+
+function migrateOptionalH3ComfyCompilerMode(value: unknown): Settings["h3ComfyCompilerMode"] | undefined {
+  return value === undefined ? undefined : normalizeH3ComfyCompilerMode(value);
+}
+
 function migrateH3VideoVaeMode(value: unknown, modelId: string): H3VideoVaeBackend | undefined {
   return isMiniMaxH3Model(modelId) ? normalizeH3VideoVaeBackend(value) : undefined;
 }
@@ -326,6 +346,15 @@ function migrateQueueTask(
       h3LivePreview: typeof task.h3LivePreview === "boolean"
         ? task.h3LivePreview
         : defaultH3LivePreview,
+      ...(migrateOptionalH3SparseAttentionMode((task as QueueTask & { h3SparseAttentionMode?: unknown }).h3SparseAttentionMode) !== undefined
+        ? { h3SparseAttentionMode: migrateOptionalH3SparseAttentionMode((task as QueueTask & { h3SparseAttentionMode?: unknown }).h3SparseAttentionMode) }
+        : {}),
+      ...(migrateOptionalH3RuntimeMode((task as QueueTask & { h3RuntimeMode?: unknown }).h3RuntimeMode) !== undefined
+        ? { h3RuntimeMode: migrateOptionalH3RuntimeMode((task as QueueTask & { h3RuntimeMode?: unknown }).h3RuntimeMode) }
+        : {}),
+      ...(migrateOptionalH3ComfyCompilerMode((task as QueueTask & { h3ComfyCompilerMode?: unknown }).h3ComfyCompilerMode) !== undefined
+        ? { h3ComfyCompilerMode: migrateOptionalH3ComfyCompilerMode((task as QueueTask & { h3ComfyCompilerMode?: unknown }).h3ComfyCompilerMode) }
+        : {}),
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
       ...h3LatentSaveFields,
@@ -357,6 +386,15 @@ function migrateQueueTask(
     h3LivePreview: typeof task.h3LivePreview === "boolean"
       ? task.h3LivePreview
       : defaultH3LivePreview,
+    ...(migrateOptionalH3SparseAttentionMode((task as QueueTask & { h3SparseAttentionMode?: unknown }).h3SparseAttentionMode) !== undefined
+      ? { h3SparseAttentionMode: migrateOptionalH3SparseAttentionMode((task as QueueTask & { h3SparseAttentionMode?: unknown }).h3SparseAttentionMode) }
+      : {}),
+    ...(migrateOptionalH3RuntimeMode((task as QueueTask & { h3RuntimeMode?: unknown }).h3RuntimeMode) !== undefined
+      ? { h3RuntimeMode: migrateOptionalH3RuntimeMode((task as QueueTask & { h3RuntimeMode?: unknown }).h3RuntimeMode) }
+      : {}),
+    ...(migrateOptionalH3ComfyCompilerMode((task as QueueTask & { h3ComfyCompilerMode?: unknown }).h3ComfyCompilerMode) !== undefined
+      ? { h3ComfyCompilerMode: migrateOptionalH3ComfyCompilerMode((task as QueueTask & { h3ComfyCompilerMode?: unknown }).h3ComfyCompilerMode) }
+      : {}),
     spectrumMode: task.spectrumMode ?? "off",
     spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
     ...h3LatentSaveFields,
@@ -614,6 +652,9 @@ export class JsonStore implements StateRepository {
           ...defaultState.settings,
           ...savedSettings,
           h3AttentionMode: normalizeH3AttentionMode(savedH3AttentionMode),
+          h3SparseAttentionMode: normalizeH3GlobalSparseAttentionMode(savedSettings.h3SparseAttentionMode),
+          h3RuntimeMode: normalizeH3RuntimeMode(savedSettings.h3RuntimeMode),
+          h3ComfyCompilerMode: normalizeH3ComfyCompilerMode(savedSettings.h3ComfyCompilerMode),
           h3VideoVaeMode: normalizeH3VideoVaeMode(savedSettings.h3VideoVaeMode),
           h3PromptPresets,
           imagePromptPresets,
@@ -651,10 +692,19 @@ export class JsonStore implements StateRepository {
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
         saved.settings?.h3VideoVaeMode !== this.state.settings.h3VideoVaeMode ||
+        saved.settings?.h3AttentionMode !== this.state.settings.h3AttentionMode ||
+        saved.settings?.h3SparseAttentionMode !== this.state.settings.h3SparseAttentionMode ||
+        saved.settings?.h3RuntimeMode !== this.state.settings.h3RuntimeMode ||
+        saved.settings?.h3ComfyCompilerMode !== this.state.settings.h3ComfyCompilerMode ||
         JSON.stringify(mergedDraft) !== JSON.stringify(this.state.draft) ||
         JSON.stringify(mergedImageToVideoDraft) !== JSON.stringify(this.state.imageToVideoDraft) ||
         JSON.stringify(mergedVideoExtensionDraft) !== JSON.stringify(this.state.videoExtensionDraft) ||
         JSON.stringify(saved.settings?.h3AutoPromptSeedInstructions) !== JSON.stringify(h3AutoPromptSeedInstructions);
+      for (const task of this.state.queue) {
+        if (applyH3AccelerationSettingsToWaitingTask(task, this.state.settings)) {
+          needsPersist = true;
+        }
+      }
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
         needsPersist = true;

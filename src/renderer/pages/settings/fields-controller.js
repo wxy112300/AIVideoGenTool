@@ -92,6 +92,21 @@ export function mountSettingsFieldsController(context, options) {
         options.setSettingsDraft(options.formSettings());
         context.requestRender();
     }, { signal });
+    const bindChoiceDescription = (selectId, descriptionId) => {
+        const select = root.querySelector(selectId);
+        const descriptionElement = root.querySelector(descriptionId);
+        select?.addEventListener("change", () => {
+            const description = select.selectedOptions.item(0)?.dataset.description;
+            if (!description)
+                return;
+            select.title = description;
+            if (descriptionElement)
+                descriptionElement.textContent = description;
+        }, { signal });
+    };
+    bindChoiceDescription("#h3-attention-mode", "#h3-attention-description");
+    bindChoiceDescription("#h3-sparse-attention-mode", "#h3-sparse-attention-description");
+    bindChoiceDescription("#h3-runtime-mode", "#h3-runtime-description");
     root.querySelector("#discard-settings")?.addEventListener("click", () => {
         if (!options.hasUnsavedChanges())
             return;

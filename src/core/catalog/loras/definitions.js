@@ -26,6 +26,15 @@ export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
 export const H3_TURBO_8STEP_V1_LORA_FILENAME = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors";
 export const H3_REF2V_TURBO_LORA_ID = "minimax-h3-ref2v-turbo-4step-v01";
 export const H3_REF2V_TURBO_LORA_FILENAME = "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors";
+export const H3_PDD_COMFY_REVISION = "f94b1bcc9442e531b73e0ee819ddfc3656072648";
+export const H3_PDD_FL2VA_LORA_ID = "h3-pdd-fl2va-8step";
+export const H3_PDD_FL2VA_LORA_FILENAME = "MiniMax-H3-FL2VA-Acc-8Step_pruned_comfy.safetensors";
+export const H3_PDD_REF2VA_LORA_ID = "h3-pdd-ref2va-8step";
+export const H3_PDD_REF2VA_LORA_FILENAME = "MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors";
+export const H3_PDD_LORA_IDS = [
+    H3_PDD_FL2VA_LORA_ID,
+    H3_PDD_REF2VA_LORA_ID
+];
 export const H3_AFTER_MIDNIGHT_LORA_ID = "minimax-h3-after-midnight-ref2va-nsfw";
 export const H3_AFTER_MIDNIGHT_LORA_FILENAME = "AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors";
 export const H3_TURBO_LORA_IDS = [
@@ -39,7 +48,90 @@ export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
 export const H3_REALISM_PEOPLE_LORA_FILENAME = "h3-realism-people-t2v-i2v-r2v.safetensors";
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_ID = "minimax-h3-facial-realism-closeup";
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME = "minimax-h3-facial-realism-closeup-cp2000.safetensors";
+const h3PddTurboCombinationRules = () => H3_TURBO_LORA_IDS.map((loraId) => ({
+    loraId,
+    severity: "error",
+    localeKey: "pddTurbo"
+}));
 export const VIDEO_LORA_DEFINITIONS = [{
+        id: H3_PDD_FL2VA_LORA_ID,
+        name: "MiniMax H3 PDD FL2VA · 8-step",
+        filename: H3_PDD_FL2VA_LORA_FILENAME,
+        strength: 1,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "performance",
+        promptPrefixes: [],
+        catalogOrder: 122,
+        variant: "turbo",
+        rules: {
+            orderPriority: 5,
+            settingConflicts: [],
+            combinations: h3PddTurboCombinationRules(),
+            workflowRequirement: "h3-pdd-sampling"
+        },
+        scan: {
+            vram: "LoRA · PDD output head bank · 8 steps · pruned INT8 ConvRot only · strength 1.0",
+            integrated: true,
+            runtimeNodeTypes: ["LoraLoaderModelOnly", "MiniMaxH3SigmaShift", "ModelAttentionBackend"],
+            components: [{
+                    label: "MiniMax H3 FL2VA PDD Acc 8-Step · pruned ComfyUI LoRA",
+                    expected: `loras/${H3_PDD_FL2VA_LORA_FILENAME}`,
+                    patterns: [/loras\/MiniMax-H3-FL2VA-Acc-8Step_pruned_comfy\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "Kijai / MiniMax-H3-experimental",
+                        downloadUrl: `https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/${H3_PDD_COMFY_REVISION}/loras/${H3_PDD_FL2VA_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_PDD_FL2VA_LORA_FILENAME,
+                        revision: H3_PDD_COMFY_REVISION,
+                        bytes: 1725921392,
+                        sha256: "e97b813a6f857b9dab310f31ec30a8334f63a3e7dcb5d07c0c91933d3447a897",
+                        license: "Apache-2.0",
+                        notes: "ComfyUI 0.35 原生 PDD head-bank LoRA；使用普通 LoraLoaderModelOnly，不需要 H3-Optimizations 或其他自定义 PDD 节点。应用会固定 8 步、Euler、Simple、video shift 12、audio shift 3 和 CFG 1.0。当前只接受与 pruned INT8 ConvRot FL2VA 基座配套的 pruned 文件；同目录的非 pruned 文件不作为本条目的可用替代，避免基座错配。不要与任何 Turbo LoRA 叠加。"
+                    }
+                }]
+        }
+    }, {
+        id: H3_PDD_REF2VA_LORA_ID,
+        name: "MiniMax H3 PDD Ref2VA · 8-step",
+        filename: H3_PDD_REF2VA_LORA_FILENAME,
+        strength: 1,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_ref2va"],
+        compatibleInputModes: ["image"],
+        purpose: "performance",
+        promptPrefixes: [],
+        catalogOrder: 121,
+        variant: "turbo",
+        rules: {
+            orderPriority: 5,
+            settingConflicts: [],
+            combinations: h3PddTurboCombinationRules(),
+            workflowRequirement: "h3-pdd-sampling"
+        },
+        scan: {
+            vram: "LoRA · PDD output head bank · 8 steps · pruned INT8 ConvRot only · strength 1.0",
+            integrated: true,
+            runtimeNodeTypes: ["LoraLoaderModelOnly", "MiniMaxH3SigmaShift", "ModelAttentionBackend"],
+            components: [{
+                    label: "MiniMax H3 Ref2VA PDD Acc 8-Step · pruned ComfyUI LoRA",
+                    expected: `loras/${H3_PDD_REF2VA_LORA_FILENAME}`,
+                    patterns: [/loras\/MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "Kijai / MiniMax-H3-experimental",
+                        downloadUrl: `https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/${H3_PDD_COMFY_REVISION}/loras/${H3_PDD_REF2VA_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_PDD_REF2VA_LORA_FILENAME,
+                        revision: H3_PDD_COMFY_REVISION,
+                        bytes: 1725921392,
+                        sha256: "6f18e1c2eccb14b37322607730f26b16bf1169b56cd098ea006cffaec43d1e39",
+                        license: "Apache-2.0",
+                        notes: "ComfyUI 0.35 原生 PDD head-bank LoRA；使用普通 LoraLoaderModelOnly，不需要 H3-Optimizations 或其他自定义 PDD 节点。应用会固定 8 步、Euler、Simple、video shift 12、audio shift 3 和 CFG 1.0。当前只接受与 pruned INT8 ConvRot Ref2VA 基座配套的 pruned 文件；同目录的非 pruned 文件不作为本条目的可用替代，避免基座错配。不要与任何 Turbo LoRA 叠加。"
+                    }
+                }]
+        }
+    }, {
         id: H3_SLA_TURBO_LORA_ID,
         name: "MiniMax H3 Turbo-SLA · 4-step",
         filename: H3_SLA_TURBO_LORA_FILENAME,

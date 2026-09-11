@@ -9,7 +9,7 @@ const maxFailureReadBytes = 1024 * 1024;
 const maxIncrementalLines = 200;
 const maxFailureLines = 600;
 
-const relevantLinePattern = /(?:traceback|exception|error|failed|fatal|critical|warning|warn|out of memory|cuda|oom|llama|execution|executing|node|queue|loading|unload|model|cache|vision.?llm|prompt.?writer|h3 optimizations)/iu;
+const relevantLinePattern = /(?:traceback|exception|error|failed|fatal|critical|warning|warn|out of memory|cuda|oom|llama|execution|executing|node|queue|loading|unload|model|cache|vision.?llm|prompt.?writer)/iu;
 const errorLinePattern = /(?:traceback|exception|\berror\b|failed|fatal|critical|out of memory|cuda error|cuda out of memory|\boom\b|illegal instruction|invalid response|http 5\d\d)/iu;
 const warningLinePattern = /(?:\bwarning\b|\bwarn\b|deprecated|retry|fallback|slow)/iu;
 const ansiEscapePattern = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
@@ -45,31 +45,6 @@ export interface ComfyLogSyncResult {
   errors: number;
   available: boolean;
   truncated: boolean;
-}
-
-export interface H3MemoryAppliedPlanEvidence {
-  execution: "optimized" | "fallback";
-  qkvProvider: string;
-  memoryProvider: string;
-  note: string;
-}
-
-export function parseH3MemoryAppliedPlan(
-  line: string
-): H3MemoryAppliedPlanEvidence | null {
-  if (!line.includes("[H3 Optimizations] applied plan:")) return null;
-  const qkvProvider = line.match(/\bqkv_provider=([^\s]+)/u)?.[1]?.replace(/^"|"$/gu, "");
-  const memoryProvider = line.match(/\bmemory=([^\s]+)/u)?.[1]?.replace(/^"|"$/gu, "");
-  if (!qkvProvider || !memoryProvider) return null;
-  const fallback = qkvProvider === "standard_h3_qkv" || memoryProvider === "baseline";
-  return {
-    execution: fallback ? "fallback" : "optimized",
-    qkvProvider,
-    memoryProvider,
-    note: fallback
-      ? `H3 Memory 运行时回退：qkv_provider=${qkvProvider}，memory=${memoryProvider}。`
-      : `H3 Memory 优化已启用：qkv_provider=${qkvProvider}，memory=${memoryProvider}。`
-  };
 }
 
 function logLevelForLine(line: string): "info" | "warn" | "error" {

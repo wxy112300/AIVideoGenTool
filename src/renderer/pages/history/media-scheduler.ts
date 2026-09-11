@@ -6,6 +6,7 @@ export type HistoryMediaTask = (
 
 export interface HistoryMediaScheduler {
   enqueue(key: string, task: HistoryMediaTask, priority?: HistoryMediaTaskPriority): void;
+  reprioritize(key: string, priority: HistoryMediaTaskPriority): void;
   cancel(key: string): void;
   clear(): void;
   dispose(): void;
@@ -60,7 +61,6 @@ export function createHistoryMediaScheduler(concurrency: number): HistoryMediaSc
   const limit = Math.max(1, Math.floor(concurrency));
   const pending = new Map<string, ScheduledTask>();
   const running = new Map<string, ScheduledTask>();
-  const completed = new Set<string>();
   let sequence = 0;
   let disposed = false;
 
@@ -79,14 +79,25 @@ export function createHistoryMediaScheduler(concurrency: number): HistoryMediaSc
       running.set(task.key, task);
       Promise.resolve()
         .then(() => task.task(controller.signal))
-        .then((success) => {
-          if (success === true && !controller.signal.aborted) completed.add(task.key);
-        })
+        .then(() => undefined)
         .catch(() => undefined)
         .finally(() => {
           if (running.get(task.key) === task) running.delete(task.key);
           pump();
         });
+    }
+  };
+
+  const preemptFor = (priority: HistoryMediaTaskPriority): void => {
+    if (running.size < limit) return;
+    const candidate = [...running.values()]
+      .filter((task) => !task.controller?.signal.aborted)
+      .sort((left, right) =>
+        priorityOrder[right.priority] - priorityOrder[left.priority] ||
+        right.sequence - left.sequence
+      )[0];
+    if (candidate && priorityOrder[priority] < priorityOrder[candidate.priority]) {
+      candidate.controller?.abort();
     }
   };
 
@@ -99,7 +110,7 @@ export function createHistoryMediaScheduler(concurrency: number): HistoryMediaSc
 
   return {
     enqueue: (key, task, priority = "prefetch") => {
-      if (disposed || !key || completed.has(key)) return;
+      if (disposed || !key) return;
       const existing = pending.get(key);
       if (existing) {
         if (priorityOrder[priority] < priorityOrder[existing.priority]) {
@@ -109,12 +120,24 @@ export function createHistoryMediaScheduler(concurrency: number): HistoryMediaSc
       }
       const activeTask = running.get(key);
       if (activeTask) {
+        if (priorityOrder[priority] < priorityOrder[activeTask.priority]) {
+          activeTask.priority = priority;
+        }
         if (activeTask.controller?.signal.aborted) {
           pending.set(key, { key, task, priority, sequence: sequence++ });
         }
         return;
       }
       pending.set(key, { key, task, priority, sequence: sequence++ });
+      preemptFor(priority);
+      pump();
+    },
+    reprioritize: (key, priority) => {
+      if (disposed) return;
+      const pendingTask = pending.get(key);
+      if (pendingTask) pendingTask.priority = priority;
+      const runningTask = running.get(key);
+      if (runningTask) runningTask.priority = priority;
       pump();
     },
     cancel,

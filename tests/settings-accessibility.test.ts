@@ -247,9 +247,24 @@ describe("Settings accessibility markup", () => {
     expect(accelerationMarkup).not.toContain('id="comfy-python-candidate"');
     expect(accelerationMarkup).toContain("H3 加速策略");
     expect(accelerationMarkup).not.toContain("临时入口");
-    expect(accelerationMarkup).toContain('title="使用 CUDA FP16 SageAttention 内核；环境匹配时通常速度最快，但需要精确匹配的 CUDA、PyTorch 与 wheel。"');
-    expect(accelerationMarkup).toContain('title="使用 Triton FP16 SageAttention 内核；相比 CUDA FP16 更适合作为稳定回退，仍需要 SageAttention 与 Triton 环境。"');
-    expect(accelerationMarkup).toContain('title="使用 PyTorch 原生 Attention；不依赖 SageAttention 或 Triton，兼容性最高，但通常速度较慢。"');
+    expect(accelerationMarkup).toContain('id="h3-attention-mode"');
+    expect(accelerationMarkup).toContain('aria-describedby="h3-attention-description"');
+    expect(accelerationMarkup).toContain('title="备选。CUDA FP16 SageAttention 是已验证基线，但当前 4090 同任务实测慢于 Triton + SOL；仍要求 CUDA、PyTorch 与 wheel 精确匹配。"');
+    expect(accelerationMarkup).toContain('title="推荐。当前 4090 同任务中，搭配 SOL 速度最快；稠密模式的峰值显存也最低。需要 SageAttention 与 Triton 环境。"');
+    expect(accelerationMarkup).toContain('title="仅作兼容回退。不依赖 SageAttention 或 Triton，兼容性最高，但通常最慢，不作为当前 4090 的性能推荐。"');
+    expect(accelerationMarkup).toContain('id="h3-sparse-attention-mode"');
+    expect(accelerationMarkup).toContain('aria-describedby="h3-sparse-attention-description"');
+    expect(accelerationMarkup).toContain('title="稳定推荐。使用所选后端的完整稠密路径，是排查质量、显存和兼容性的基线；Comfy Kitchen 只建议使用此项。"');
+    expect(accelerationMarkup).toContain('title="性能推荐但仍属实验。当前 4090 同任务搭配 Sage Triton 最快；它降低平均显存但不降低峰值显存，不要与 Comfy Kitchen 组合。"');
+    expect(accelerationMarkup).toContain('id="h3-sparse-attention-description">稳定推荐。使用所选后端的完整稠密路径，是排查质量、显存和兼容性的基线；Comfy Kitchen 只建议使用此项。</span>');
+    expect(accelerationMarkup).not.toContain('value="auto" data-description=');
+    expect(accelerationMarkup).not.toContain('value="native-sla"');
+    expect(accelerationMarkup).not.toContain('value="vsa"');
+    expect(accelerationMarkup).not.toContain("原生 SLA · 10% 保留");
+    expect(accelerationMarkup).toContain("固定驻留 · 强烈推荐");
+    expect(accelerationMarkup).toContain("动态显存 + 异步卸载 · 不推荐");
+    expect(accelerationMarkup).toContain('aria-describedby="h3-runtime-description"');
+    expect(accelerationMarkup).toContain("RAM 峰值接近 63 GiB、Shared GPU 约 25 GiB");
   });
 
   it("removes model-page scan summaries and keeps image/upscale controls in their intended places", () => {
@@ -499,7 +514,7 @@ describe("Settings accessibility markup", () => {
     expect(markup).not.toContain("文件与版本检查通过");
   });
 
-  it("renders one install action for an uninstalled H3 Optimizations node", () => {
+  it("hides a withdrawn H3 Optimizations node from Settings actions", () => {
     const environmentScan = {
       scannedAt: "2026-08-27T00:00:00.000Z",
       userHome: "C:\\Users\\Test",
@@ -529,13 +544,8 @@ describe("Settings accessibility markup", () => {
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
 
-    expect(markup.match(/data-install-node="h3-optimizations"/g)).toHaveLength(1);
-    expect(markup).toContain('data-install-node="h3-optimizations" data-node-operation="install"');
-    expect(markup).toContain("推荐版本：v0.2.20");
-    expect(markup).toContain("最新发布：v0.2.20");
-    expect(markup).toContain('<span class="button-count">1</span>');
-    expect(markup).not.toContain('data-rescan-node="h3-optimizations"');
-    expect(markup).not.toContain("data-open-node-source");
+    expect(markup).not.toContain("h3-optimizations");
+    expect(markup).not.toContain("H3 Optimizations");
   });
 
   it("renders a user-triggered install action for the learned H3 upscaler", () => {

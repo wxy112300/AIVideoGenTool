@@ -38,26 +38,25 @@ import {
   workflowSupportsH3ContinuumExtension,
   workflowSupportsH3MotionContextExtension,
   workflowSupportsH3MotionContextReferences,
+  workflowSupportsH3PddSampling,
   workflowSupportsH3TurboSampling,
   miniMaxH3ModelAssetNames
 } from "../src/core/workflow.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
 import {
-  isH3SlaTurboLoraId,
   isH3TurboEnabled,
+  isH3PddLoraId,
   normalizeVideoLoras,
   videoLoraCompatibleWithModel,
   videoLoraConfigurationIssues
 } from "../src/core/video-loras.js";
 import {
   SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
+  SPECTRUM_PDD_MINIMUM_VERSION,
   SPECTRUM_TURBO_MINIMUM_VERSION
 } from "../src/core/catalog/index.js";
 import { resolveVideoGenerationPolicy } from "../src/core/video-policy.js";
-import {
-  normalizeH3MemoryOptions,
-  resolveMiniMaxH3ExecutionPlan
-} from "../src/core/h3-memory-policy.js";
+import { resolveH3ExecutionPolicy } from "../src/core/h3-execution-policy.js";
 import {
   h3VideoVaeAvailabilityFromModelProfiles,
   resolveH3VideoVaeMode
@@ -607,18 +606,19 @@ export class QueueEnqueueService {
       videoLoras: draft.videoLoras,
       locale: enqueueSettings.uiLocale
     });
-    const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
+    const initialH3ExecutionPolicy = resolveH3ExecutionPolicy({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
       attentionMode: enqueueSettings.h3AttentionMode,
-      h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
-      h3MemoryChunkRows: draft.h3MemoryChunkRows,
+      sparseAttentionMode: enqueueSettings.h3SparseAttentionMode,
+      runtimeMode: enqueueSettings.h3RuntimeMode,
+      comfyCompilerMode: enqueueSettings.h3ComfyCompilerMode,
       spectrumMode: draft.spectrumMode,
       videoLoras: draft.videoLoras,
       h3LivePreview: enqueueSettings.h3LivePreview
     });
-    if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
-      throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
+    if (isMiniMaxH3Model(draft.modelId) && !initialH3ExecutionPolicy.allowed) {
+      throw new Error(`H3 执行策略不可用：${initialH3ExecutionPolicy.reasons.join("、")}`);
     }
     if (draft.spectrumMode === "balanced" && !videoPolicy.spectrum.allowed) {
       throw new Error(isMiniMaxH3Q3GgufModel(draft.modelId)
@@ -628,14 +628,15 @@ export class QueueEnqueueService {
     const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
-    const h3UsesSlaAttention = isMiniMaxH3Model(draft.modelId) && draft.videoLoras.some((lora) =>
-      isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
-    );
+    if (draft.videoLoras.some((lora) =>
+      isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+    ) && !workflowSupportsH3PddSampling(workflow, { modelId: draft.modelId })) {
+      throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
+    }
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
-      !h3UsesSlaAttention &&
-      enqueueSettings.h3AttentionMode !== "pytorch";
+      (enqueueSettings.h3AttentionMode === "sage" || enqueueSettings.h3AttentionMode === "sage-triton");
     const dependencyScanRequired = isMiniMaxH3Model(draft.modelId) || draft.videoLoras.length > 0 || draft.spectrumMode === "balanced" ||
-      h3UsesSageAttention || draft.h3MemoryOptimizationMode !== "off";
+      h3UsesSageAttention;
     const dependencyScan = dependencyScanRequired
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
@@ -653,23 +654,6 @@ export class QueueEnqueueService {
       : undefined) ?? undefined;
     if (isMiniMaxH3Model(draft.modelId) && dependencyScan && !h3VideoVaeMode) {
       throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
-    }
-    if (draft.h3MemoryOptimizationMode !== "off" && dependencyScan) {
-      const memoryNode = dependencyScan?.customNodes.find((node) => node.id === "h3-optimizations");
-      const executionPlan = resolveMiniMaxH3ExecutionPlan({
-        modelId: draft.modelId,
-        inputMode: draft.inputMode,
-        attentionMode: enqueueSettings.h3AttentionMode,
-        h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
-        h3MemoryChunkRows: draft.h3MemoryChunkRows,
-        spectrumMode: draft.spectrumMode,
-        videoLoras: draft.videoLoras,
-        h3LivePreview: enqueueSettings.h3LivePreview,
-        memoryNode: memoryNode ?? null
-      });
-      if (!executionPlan.allowed) {
-        throw new Error(`H3 Memory Optimization 不可用：${executionPlan.reasons.join("、")}`);
-      }
     }
     if (draft.videoLoras.length) {
       const issues = videoLoraConfigurationIssues({
@@ -695,14 +679,6 @@ export class QueueEnqueueService {
         if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
       }
     }
-    if (h3UsesSlaAttention && dependencyScan) {
-      const slaNode = dependencyScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
-      if (!slaNode?.loaded) {
-        throw new Error(slaNode?.installed
-          ? "Turbo-SLA 节点已安装但尚未被当前 ComfyUI 加载，请重启 ComfyUI 后重新扫描。"
-          : "Turbo-SLA 需要 H3 SLA Attention 节点，请先在设置 → 节点与依赖中安装并重启 ComfyUI。");
-      }
-    }
     if (draft.spectrumMode === "balanced" && dependencyScan) {
       const spectrum = dependencyScan?.customNodes.find(
         (node) => node.id === "spectrum-minimax-h3"
@@ -715,6 +691,11 @@ export class QueueEnqueueService {
         SPECTRUM_TURBO_MINIMUM_VERSION
       )) {
         throw new Error(`LightX2V Turbo + Spectrum 需要 Spectrum v${SPECTRUM_TURBO_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+      }
+      if (draft.videoLoras.some((lora) =>
+        isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+      ) && !releaseVersionAtLeast(spectrum.version, SPECTRUM_PDD_MINIMUM_VERSION)) {
+        throw new Error(`PDD Acc + Spectrum 需要 Spectrum v${SPECTRUM_PDD_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
       }
       if (draft.spectrumModelAwareMode !== "off" && !releaseVersionAtLeast(
         spectrum.version,
@@ -915,23 +896,24 @@ export class QueueEnqueueService {
     }).find((issue) => issue.severity === "error");
     if (loraIssue) throw new Error(loraIssue.message);
     this.rejectUnavailableH3NativeResolution(draft);
-    const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
+    const initialH3ExecutionPolicy = resolveH3ExecutionPolicy({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
       attentionMode: enqueueSettings.h3AttentionMode,
-      h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
-      h3MemoryChunkRows: draft.h3MemoryChunkRows,
+      sparseAttentionMode: enqueueSettings.h3SparseAttentionMode,
+      runtimeMode: enqueueSettings.h3RuntimeMode,
+      comfyCompilerMode: enqueueSettings.h3ComfyCompilerMode,
       spectrumMode: draft.spectrumMode,
       videoLoras: draft.videoLoras,
       h3LivePreview: enqueueSettings.h3LivePreview
     });
-    if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
-      throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
+    if (isMiniMaxH3Model(draft.modelId) && !initialH3ExecutionPolicy.allowed) {
+      throw new Error(`H3 执行策略不可用：${initialH3ExecutionPolicy.reasons.join("、")}`);
     }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
-    const dependencyScanRequired = isMiniMaxH3Model(draft.modelId) || draft.h3MemoryOptimizationMode !== "off";
+    const dependencyScanRequired = isMiniMaxH3Model(draft.modelId);
     const dependencyScan = dependencyScanRequired
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
@@ -1009,23 +991,6 @@ export class QueueEnqueueService {
       }
       preparedDraft.h3ContinuumArtifactPath = inspection.payloadPath ?? artifact.payload.absolutePath;
       preparedDraft.h3ContinuumArtifact = artifact;
-    }
-    if (draft.h3MemoryOptimizationMode !== "off" && dependencyScan) {
-      const memoryNode = dependencyScan.customNodes.find((node) => node.id === "h3-optimizations");
-      const executionPlan = resolveMiniMaxH3ExecutionPlan({
-        modelId: draft.modelId,
-        inputMode: draft.inputMode,
-        attentionMode: enqueueSettings.h3AttentionMode,
-        h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
-        h3MemoryChunkRows: draft.h3MemoryChunkRows,
-        spectrumMode: draft.spectrumMode,
-        videoLoras: draft.videoLoras,
-        h3LivePreview: enqueueSettings.h3LivePreview,
-        memoryNode: memoryNode ?? null
-      });
-      if (!executionPlan.allowed) {
-        throw new Error(`H3 Memory Optimization 不可用：${executionPlan.reasons.join("、")}`);
-      }
     }
     const workflow = await readWorkflow(preparedDraft.workflowPath, "续写工作流");
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
@@ -1263,6 +1228,9 @@ export class QueueEnqueueService {
           scaleBy: request.targetHeight / Math.min(artifact.width, artifact.height),
           h3VideoVaeMode,
           attentionMode: version.attentionMode ?? asset.attentionMode ?? current.settings.h3AttentionMode,
+          h3SparseAttentionMode: current.settings.h3SparseAttentionMode,
+          h3RuntimeMode: current.settings.h3RuntimeMode,
+          h3ComfyCompilerMode: current.settings.h3ComfyCompilerMode,
           steps: normalizeH3Steps(version.steps ?? asset.steps, artifact.executionModelId, videoLoras),
           videoLoras: videoLoras.map((lora) => ({ ...lora }))
         }

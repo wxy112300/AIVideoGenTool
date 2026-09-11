@@ -11,6 +11,7 @@ import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   isH3Ref2vTurboEnabled,
+  isH3PddLoraId,
   isH3SlaTurboLoraId,
   isH3TurboFourStepLoraId,
   isH3TurboV4LoraId,
@@ -25,7 +26,8 @@ import {
   resolveVideoGenerationPolicy,
   shouldApplySpectrum
 } from "./video-policy.js";
-import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
+import { normalizeMiniMaxH3ModelPatchChain } from "./h3-model-patch-workflow.js";
+import { normalizeMiniMaxH3ModelPatchChain as normalizeLegacyMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
 import { h3MotionContextSavePrefixForTask } from "./h3-motion-context.js";
@@ -57,7 +59,6 @@ export interface WorkflowContext {
   h3AvScaleBy?: number;
   h3LearnedUpscalerModel?: string;
   h3PreviewTinyVae: string;
-  h3MemoryInputNames: readonly string[];
   locale?: UiLocale;
 }
 
@@ -272,7 +273,12 @@ function applyMiniMaxH3Spectrum(
       bootstrap_first_forecast: true,
       anchor_residual_feedback: false,
       selective_rollback_correction: false,
-      offline_smoothing_replay: true,
+      // Keep application-generated Spectrum graphs single-pass on the
+      // 4090/native VRAM path. Offline replay retains a multi-GB feature
+      // archive and reloads the H3 model for a second pass; on ComfyUI 0.35
+      // this can stall during dynamic-VRAM model staging. Spectrum's adaptive
+      // forecast remains enabled for the first pass.
+      offline_smoothing_replay: false,
       audio_blend_weight: 0,
       ...(modelAwareMode && modelAwareMode !== "off"
         ? {
@@ -326,7 +332,10 @@ function applyVideoLoraStack(
   if (!isMiniMaxH3Model(task.modelId) || selected.length === 0) return;
 
   const attentionNodes = Object.values(workflow).filter((node) =>
-    (node.class_type === "PathchSageAttentionKJ" || node.class_type === "H3SLAAttention") &&
+    (node.class_type === "PathchSageAttentionKJ" ||
+      node.class_type === "H3SLAAttention" ||
+      node.class_type === "ModelAttentionBackend" ||
+      node.class_type === "BlockSparseAttention") &&
     Array.isArray(node.inputs?.model)
   );
   const directConsumers = Object.values(workflow).filter((node) =>
@@ -508,6 +517,9 @@ function applyMiniMaxH3Ref2vTurboSampling(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
   task: GenerationQueueTask | ExtensionQueueTask
 ): void {
+  if (task.taskType === "generation" && task.videoLoras?.some((lora) =>
+    isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+  )) return;
   const ref2vTurbo = isH3Ref2vTurboEnabled(task);
   const fl2vaFourStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
     Boolean(task.videoLoras?.some((lora) =>
@@ -536,30 +548,154 @@ function applyMiniMaxH3Ref2vTurboSampling(
   sampler.inputs.sampler_name = "euler";
   for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
   if (!ref2vTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo) return;
+  upsertMiniMaxH3SamplingShift(workflow, consumers, {
+    shiftVideo: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 6 : 12,
+    shiftAudio: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
+  });
+}
+
+type H3ModelLink = [string, number];
+
+const h3PostShiftPatchClasses = new Set([
+  "SpectrumApplyMiniMaxH3",
+  "ModelPreviewOverrideKJ"
+]);
+
+function h3ModelLink(value: unknown): H3ModelLink | null {
+  if (!Array.isArray(value) || typeof value[0] !== "string") return null;
+  const output = value[1] === undefined ? 0 : value[1];
+  return typeof output === "number" && Number.isInteger(output)
+    ? [value[0], output]
+    : null;
+}
+
+function h3SamplingShiftIsReachable(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  consumer: { inputs?: Record<string, unknown> },
+  shiftId: string
+): boolean {
+  let current = h3ModelLink(consumer.inputs?.model);
+  const visited = new Set<string>();
+  while (current) {
+    const [nodeId] = current;
+    if (nodeId === shiftId) return true;
+    if (visited.has(nodeId)) return false;
+    visited.add(nodeId);
+    const node = workflow[nodeId];
+    if (!node) return false;
+    current = h3ModelLink(node.inputs?.model);
+  }
+  return false;
+}
+
+function samplingShiftInsertionPoint(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  consumer: { inputs?: Record<string, unknown> }
+): { postNodeId?: string; upstream: H3ModelLink } | null {
+  let current = h3ModelLink(consumer.inputs?.model);
+  const visited = new Set<string>();
+  let deepestPostNodeId: string | undefined;
+  let deepestPostUpstream: H3ModelLink | undefined;
+  while (current) {
+    const [nodeId] = current;
+    if (visited.has(nodeId)) return null;
+    visited.add(nodeId);
+    const node = workflow[nodeId];
+    if (!node) return null;
+    if (h3PostShiftPatchClasses.has(node.class_type ?? "")) {
+      const upstream = h3ModelLink(node.inputs?.model);
+      if (!upstream) return null;
+      // The graph is traversed from the sampler backwards, so the last
+      // wrapper encountered is the deepest wrapper, immediately after the
+      // attention/LoRA/sigma portion of the model chain.
+      deepestPostNodeId = nodeId;
+      deepestPostUpstream = upstream;
+    }
+    current = h3ModelLink(node.inputs?.model);
+  }
+  const upstream = deepestPostUpstream ?? h3ModelLink(consumer.inputs?.model);
+  return upstream
+    ? { ...(deepestPostNodeId ? { postNodeId: deepestPostNodeId } : {}), upstream }
+    : null;
+}
+
+function upsertMiniMaxH3SamplingShift(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  consumers: Array<{ inputs?: Record<string, unknown> }>,
+  shift: { shiftVideo: number; shiftAudio: number }
+): void {
   const existing = Object.entries(workflow).find(([, node]) =>
     node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3"
   );
-  const currentModel = existing?.[1].inputs?.model ?? consumers[0]?.inputs?.model;
-  if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string") return;
-  if (existing && Object.values(workflow).some((node) =>
-    (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
-    JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel)
+  if (existing && consumers.every((consumer) =>
+    h3SamplingShiftIsReachable(workflow, consumer, existing[0])
+  )) {
+    existing[1].inputs = {
+      ...(existing[1].inputs ?? {}),
+      shift_video: shift.shiftVideo,
+      shift_audio: shift.shiftAudio
+    };
+    return;
+  }
+
+  const insertionPoints = consumers.map((consumer) => samplingShiftInsertionPoint(workflow, consumer));
+  if (insertionPoints.some((point) => !point)) return;
+  const first = insertionPoints[0]!;
+  if (insertionPoints.some((point) =>
+    point!.postNodeId !== first.postNodeId || JSON.stringify(point!.upstream) !== JSON.stringify(first.upstream)
   )) return;
-  if (!existing && consumers.some((node) =>
-    JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel)
-  )) return;
+
   const nodeId = existing?.[0] ?? String(
     Math.max(0, ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)) + 1
   );
   workflow[nodeId] = {
     class_type: existing?.[1].class_type ?? "MiniMaxH3SigmaShift",
     inputs: {
-      model: currentModel,
-      shift_video: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 6 : 12,
-      shift_audio: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
+      ...(existing?.[1].inputs ?? {}),
+      model: first.upstream,
+      shift_video: shift.shiftVideo,
+      shift_audio: shift.shiftAudio
     }
   };
-  for (const node of consumers) node.inputs!.model = [nodeId, 0];
+  if (first.postNodeId) {
+    workflow[first.postNodeId]!.inputs!.model = [nodeId, 0];
+  } else {
+    for (const consumer of consumers) consumer.inputs!.model = [nodeId, 0];
+  }
+}
+
+/**
+ * PDD Acc is a native ComfyUI 0.35 output-head-bank LoRA path. It deliberately
+ * uses the stock loader and only changes the sampler contract around the
+ * loaded model: Euler + Simple, eight steps, and the native H3 sigma shift.
+ */
+function applyMiniMaxH3PddSampling(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  task: GenerationQueueTask | ExtensionQueueTask
+): void {
+  if (task.taskType !== "generation") return;
+  const pdd = task.videoLoras?.find((lora) =>
+    isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+  );
+  if (!pdd) return;
+
+  const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
+  const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
+  const consumers = Object.values(workflow).filter((node) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    Array.isArray(node.inputs?.model)
+  );
+  if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
+
+  sampler.inputs.sampler_name = "euler";
+  for (const scheduler of schedulers) {
+    scheduler.inputs!.scheduler = "simple";
+    scheduler.inputs!.steps = 8;
+  }
+  upsertMiniMaxH3SamplingShift(workflow, consumers, {
+    shiftVideo: 12,
+    shiftAudio: 3
+  });
 }
 
 export function normalizeH3Steps(
@@ -567,6 +703,9 @@ export function normalizeH3Steps(
   modelId = "",
   videoLoras?: GenerationQueueTask["videoLoras"]
 ): H3StepCount {
+  if (videoLoras?.some((lora) =>
+    isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, modelId)
+  )) return 8;
   return normalizeVideoSteps(value, resolveVideoGenerationPolicy({
     modelId,
     inputMode: "image",
@@ -703,6 +842,28 @@ export function workflowSupportsH3TurboSampling(
     hasNode("KSamplerSelect", () => true) &&
     hasNode("BasicScheduler", () => true) &&
     hasNode("BasicGuider", (inputs) => Array.isArray(inputs.model));
+}
+
+export function workflowSupportsH3PddSampling(
+  source: unknown,
+  options: { modelId?: string } = {}
+): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const nodes = Object.values(source as Record<string, unknown>).filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node) && typeof node === "object" && !Array.isArray(node)
+  );
+  const hasNode = (classType: string, predicate: (inputs: Record<string, unknown>) => boolean = () => true) =>
+    nodes.some((node) => {
+      if (node.class_type !== classType) return false;
+      const inputs = node.inputs;
+      return Boolean(inputs) && typeof inputs === "object" && !Array.isArray(inputs) &&
+        predicate(inputs as Record<string, unknown>);
+    });
+  return hasNode("KSamplerSelect") &&
+    hasNode("BasicScheduler") &&
+    hasNode("BasicGuider", (inputs) => Array.isArray(inputs.model)) &&
+    (options.modelId !== "minimax_h3_ref2va" || hasNode("MiniMaxH3ReferenceToVideo"));
 }
 
 export function workflowSupportsVideoExtension(source: unknown): boolean {
@@ -1888,32 +2049,65 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
-  applyMiniMaxH3SlaAttention(workflow, task, context.locale);
-  applyMiniMaxH3Ref2vTurboSampling(workflow, task);
+  const usesUpgradedH3ExecutionPolicy = task.h3ExecutionPolicy !== undefined ||
+    task.h3SparseAttentionMode !== undefined ||
+    task.h3RuntimeMode !== undefined ||
+    task.h3ComfyCompilerMode !== undefined;
+  if (!usesUpgradedH3ExecutionPolicy) {
+    // Persisted pre-upgrade tasks remain renderable through the withdrawn
+    // compatibility reader. Newly created tasks always carry the explicit
+    // execution-policy snapshot and use native ComfyUI 0.35 nodes below.
+    applyMiniMaxH3SlaAttention(workflow, task, context.locale);
+  }
   if (isMiniMaxH3Model(task.modelId)) {
     const inputMode = task.taskType === "extension" ? "video" : "image";
-    normalizeMiniMaxH3ModelPatchChain(workflow, {
+    const spectrumEnabled = shouldApplySpectrum({
       modelId: task.modelId,
       inputMode,
-      attentionMode: task.attentionMode,
-      videoLoras: task.videoLoras,
-      memoryMode: task.h3MemoryOptimizationMode,
-      chunkRows: task.h3MemoryChunkRows,
-      spectrumEnabled: shouldApplySpectrum({
+      spectrumMode: task.spectrumMode,
+      videoLoras: task.videoLoras
+    });
+    if (usesUpgradedH3ExecutionPolicy) {
+      normalizeMiniMaxH3ModelPatchChain(workflow, {
         modelId: task.modelId,
         inputMode,
-        spectrumMode: task.spectrumMode,
-        videoLoras: task.videoLoras
-      }),
-      spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
-      previewEnabled: Boolean(context.h3PreviewTinyVae),
-      tinyVae: context.h3PreviewTinyVae ?? "",
-      memoryInputNames: context.h3MemoryInputNames
-        ? new Set(context.h3MemoryInputNames)
-        : undefined,
-      locale: context.locale
-    });
+        attentionMode: task.attentionMode,
+        sparseAttentionMode: task.h3SparseAttentionMode,
+        runtimeMode: task.h3RuntimeMode,
+        comfyCompilerMode: task.h3ComfyCompilerMode,
+        videoLoras: task.videoLoras,
+        spectrumEnabled,
+        spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+        previewEnabled: Boolean(context.h3PreviewTinyVae),
+        tinyVae: context.h3PreviewTinyVae ?? "",
+        locale: context.locale
+      });
+    } else {
+      normalizeLegacyMiniMaxH3ModelPatchChain(workflow, {
+        modelId: task.modelId,
+        inputMode,
+        attentionMode: task.attentionMode,
+        videoLoras: task.videoLoras,
+        // H3 Memory was withdrawn. Keep the legacy reader/rendering path for
+        // old task snapshots, but never re-inject its retired nodes.
+        memoryMode: "off",
+        spectrumEnabled,
+        spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+        previewEnabled: Boolean(context.h3PreviewTinyVae),
+        tinyVae: context.h3PreviewTinyVae ?? "",
+        locale: context.locale
+      });
+    }
   }
+  if (isMiniMaxH3Model(task.modelId) && task.videoLoras?.some((lora) =>
+    isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+  )) {
+    if (!workflowSupportsH3PddSampling(workflow, { modelId: task.modelId })) {
+      throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
+    }
+  }
+  applyMiniMaxH3PddSampling(workflow, task);
+  applyMiniMaxH3Ref2vTurboSampling(workflow, task);
   const emptyReferenceNodeIds = new Set(
     Object.entries(workflow)
       .filter(([, node]) =>

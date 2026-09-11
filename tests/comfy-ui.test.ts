@@ -650,14 +650,14 @@ describe("ComfyUI task progress", () => {
       },
       spectrum: {
         class_type: "SpectrumApplyMiniMaxH3",
-        inputs: {}
+        inputs: { offline_smoothing_replay: true }
       }
     });
 
-    expect(progressContext).toEqual({ spectrumOuterSteps: 20 });
+    expect(progressContext).toEqual({ spectrumOuterSteps: 20, spectrumOfflineReplay: true });
     expect(progressForNode("SamplerCustomAdvanced", 2, 40, progressContext)).toEqual({
-      progress: 20.6,
-      label: "扩散采样 2/20"
+      progress: 17.3,
+      label: "扩散采样 1/20"
     });
     expect(workProgressForNode(
       "SamplerCustomAdvanced",
@@ -666,10 +666,18 @@ describe("ComfyUI task progress", () => {
       0,
       1_000,
       progressContext
-    )).toMatchObject({ value: 2, max: 20, unit: "step" });
+    )).toMatchObject({ value: 1, max: 20, unit: "step" });
     expect(workProgressForNode(
       "SamplerCustomAdvanced",
       21,
+      40,
+      0,
+      1_000,
+      progressContext
+    )).toMatchObject({ value: 10.5, max: 20, unit: "step" });
+    expect(workProgressForNode(
+      "SamplerCustomAdvanced",
+      40,
       40,
       0,
       1_000,

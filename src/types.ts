@@ -119,7 +119,13 @@ export interface H3HighResolutionEnvironment {
 }
 
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
-export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
+export type H3AttentionMode = "sage" | "sage-triton" | "pytorch" | "comfy-kitchen";
+export type H3SparseAttentionMode = "auto" | "off" | "sol-attn" | "native-sla" | "vsa";
+/** Sparse choices exposed globally; recipe-specific and unavailable modes stay internal. */
+export type H3GlobalSparseAttentionMode = Extract<H3SparseAttentionMode, "off" | "sol-attn">;
+export type H3RuntimeMode = "compatibility" | "native";
+export type H3ComfyCompilerMode = "auto" | "disabled";
+export type H3AttentionOwner = "pytorch" | "sage" | "comfy-kitchen" | "h3-sparse" | "sla";
 /** User-facing selection for the final MiniMax H3 video VAE. */
 export type H3VideoVaeMode = "auto" | "fp16" | "int8-convrot";
 /** Resolved backend persisted with a task or history record. */
@@ -140,6 +146,25 @@ export interface H3MemoryExecutionPlanSnapshot {
   allowed: boolean;
   reasons: string[];
   chunkRows: number;
+}
+
+/**
+ * Serializable H3 execution policy used by a queue task. Waiting tasks follow
+ * saved H3 acceleration settings; once a task starts, this policy remains
+ * fixed for that execution. The withdrawn H3 Memory fields above remain
+ * readable for old queue/history records, but are never produced for new work.
+ */
+export interface H3ExecutionPolicySnapshot {
+  attentionMode: H3AttentionMode;
+  attentionOwner: H3AttentionOwner;
+  sparseAttentionMode: H3SparseAttentionMode;
+  runtimeMode: H3RuntimeMode;
+  comfyCompilerMode: H3ComfyCompilerMode;
+  spectrumEnabled: boolean;
+  turboProfile?: string;
+  previewEnabled: boolean;
+  allowed: boolean;
+  reasons: string[];
 }
 
 /** Runtime evidence deliberately keeps execution provider unknown until logs are stable. */
@@ -335,12 +360,10 @@ export interface Draft {
   h3LatentSaveMode?: H3LatentSaveMode;
   /** Compatibility mirror for persisted clients and legacy queue records. */
   h3SaveJointAv: boolean;
-  /** Requested H3 Memory Optimization mode for this creation workspace. */
-  h3MemoryOptimizationMode: H3MemoryOptimizationMode;
-  /** True when the user explicitly chose the memory mode. */
+  /** Legacy H3 Memory fields are accepted only while loading old drafts. */
+  h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
   h3MemoryOptimizationUserSet?: boolean;
-  /** H3 Memory Optimization row chunk size; upstream defaults to 4096. */
-  h3MemoryChunkRows: number;
+  h3MemoryChunkRows?: number;
 }
 
 export type VideoLoraPurpose = "performance" | "style" | "content" | "character" | "motion" | "quality";
@@ -394,6 +417,12 @@ export interface Settings {
   imageOutputFormat: ImageOutputFormat;
   vramReserveGb: number;
   h3AttentionMode: H3AttentionMode;
+  /** Global settings accept the public subset; task runtime may project a resolved native SLA here. */
+  h3SparseAttentionMode: H3SparseAttentionMode;
+  /** ComfyUI runtime policy for MiniMax H3 tasks. */
+  h3RuntimeMode: H3RuntimeMode;
+  /** Comfy model compiler policy; independent from async offload. */
+  h3ComfyCompilerMode: H3ComfyCompilerMode;
   /** Default final video VAE selection for MiniMax H3 workflows. */
   h3VideoVaeMode: H3VideoVaeMode;
   h3LivePreview: boolean;
@@ -459,6 +488,11 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   attentionMode?: Settings["h3AttentionMode"];
   /** Resolved final MiniMax H3 video VAE backend for this execution. */
   h3VideoVaeMode?: H3VideoVaeBackend;
+  /** H3 acceleration policy; waiting tasks refresh it from saved Settings. */
+  h3SparseAttentionMode?: H3SparseAttentionMode;
+  h3RuntimeMode?: H3RuntimeMode;
+  h3ComfyCompilerMode?: H3ComfyCompilerMode;
+  h3ExecutionPolicy?: H3ExecutionPolicySnapshot;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   /** Queue-time H3 Memory Optimization request; absent only in legacy records. */
@@ -469,8 +503,8 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   videoLoras?: VideoLoraSelection[];
   /**
-   * Queue-time snapshot of the optional H3 preview observer.
-   * Older persisted tasks may omit this and fall back to the current setting.
+   * Queue-time H3 preview observer choice. Older persisted tasks may omit this
+   * and fall back to the current setting.
    */
   h3LivePreview?: boolean;
   /** Queue-time unified H3 auxiliary latent output preference. */
@@ -728,6 +762,9 @@ export interface H3NativeUpscaleInputSnapshot {
   scaleBy: number;
   h3VideoVaeMode: H3VideoVaeBackend;
   attentionMode: Settings["h3AttentionMode"];
+  h3SparseAttentionMode?: H3SparseAttentionMode;
+  h3RuntimeMode?: H3RuntimeMode;
+  h3ComfyCompilerMode?: H3ComfyCompilerMode;
   steps: H3StepCount;
   videoLoras: VideoLoraSelection[];
 }
@@ -935,6 +972,10 @@ export interface AssetVersion {
   promptVersion?: number;
   steps?: H3StepCount;
   attentionMode?: Settings["h3AttentionMode"];
+  h3SparseAttentionMode?: H3SparseAttentionMode;
+  h3RuntimeMode?: H3RuntimeMode;
+  h3ComfyCompilerMode?: H3ComfyCompilerMode;
+  h3ExecutionPolicy?: H3ExecutionPolicySnapshot;
   h3VideoVaeMode?: H3VideoVaeBackend;
   h3LatentSaveMode?: H3LatentSaveMode;
   h3SaveJointAv?: boolean;
@@ -1058,6 +1099,10 @@ export interface HistoryAsset {
   ratio?: Draft["ratio"];
   promptVersion?: number;
   attentionMode?: Settings["h3AttentionMode"];
+  h3SparseAttentionMode?: H3SparseAttentionMode;
+  h3RuntimeMode?: H3RuntimeMode;
+  h3ComfyCompilerMode?: H3ComfyCompilerMode;
+  h3ExecutionPolicy?: H3ExecutionPolicySnapshot;
   h3VideoVaeMode?: H3VideoVaeBackend;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
@@ -1335,6 +1380,8 @@ export interface ModelScanProfile {
 
 export interface CustomNodeStatus {
   id: string;
+  /** Recognized historical package that is hidden and cannot be installed. */
+  retired?: boolean;
   name: string;
   purpose: string;
   repositoryUrl: string;
@@ -1842,6 +1889,15 @@ export interface CreationDraftSnapshots {
   videoExtensionDraft?: Draft;
 }
 
+export type HistoryCoverLookup =
+  | { state: "hit"; url: string; sourceRevision: string }
+  | { state: "miss"; sourceRevision: string }
+  | { state: "unavailable" };
+
+export type HistoryCoverSaveResult =
+  | { state: "saved"; url: string }
+  | { state: "stale" | "failed" };
+
 export interface AppApi {
   getState(): Promise<AppState>;
   getComfyRuntimeState(): Promise<ComfyRuntimeState>;
@@ -1880,8 +1936,15 @@ export interface AppApi {
   pickDirectory(defaultPath?: string, createIfMissing?: boolean): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
+  lookupHistoryCover(key: string, sourcePath: string): Promise<HistoryCoverLookup>;
   inspectH3NativeAvArtifact(assetId: string, versionId: string): Promise<NativeAvArtifactInspection>;
   saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
+  saveHistoryCoverIfCurrent(input: {
+    key: string;
+    sourcePath: string;
+    sourceRevision: string;
+    data: ArrayBuffer;
+  }): Promise<HistoryCoverSaveResult>;
   showItemInFolder(path: string): Promise<boolean>;
   openDirectory(path: string): Promise<boolean>;
   copyFile(path: string): Promise<ConnectionResult>;

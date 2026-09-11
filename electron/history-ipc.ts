@@ -17,6 +17,9 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
   deps.ipc.handle("history-cover:read", async (_event, key: string, sourcePath: string) =>
     deps.query.readHistoryCover(key, sourcePath)
   );
+  deps.ipc.handle("history-cover:lookup", async (_event, key: string, sourcePath: string) =>
+    deps.query.lookupHistoryCover(key, sourcePath)
+  );
   deps.ipc.handle(
     "history:inspect-h3-artifact",
     async (_event, assetId: string, versionId: string) =>
@@ -30,6 +33,23 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
       sourcePath: string,
       data: ArrayBuffer | Uint8Array
     ) => deps.query.saveHistoryCover(key, sourcePath, data)
+  );
+  deps.ipc.handle(
+    "history-cover:save-if-current",
+    async (
+      _event,
+      input: {
+        key: string;
+        sourcePath: string;
+        sourceRevision: string;
+        data: ArrayBuffer | Uint8Array;
+      }
+    ) => deps.query.saveHistoryCoverIfCurrent({
+      ...input,
+      data: input.data instanceof ArrayBuffer
+        ? input.data
+        : input.data.slice().buffer as ArrayBuffer
+    })
   );
   deps.ipc.handle("history:delete", async (_event, assetId: string) =>
     deps.destructive.deleteHistory(assetId)

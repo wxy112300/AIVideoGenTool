@@ -30,7 +30,7 @@ describe("bundled workflow provenance", () => {
           ? "0.34.0"
           : filename.startsWith("minimax_h3_continuum")
             ? "0.34.2"
-            : "0.33.1"
+            : "0.35.0"
       );
     }
   });

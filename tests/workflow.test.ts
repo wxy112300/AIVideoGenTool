@@ -7,6 +7,8 @@ import {
   H3_EQUI360_LORA,
   H3_VR180_SBS_LORA,
   H3_REALISM_PEOPLE_LORA,
+  H3_PDD_FL2VA_LORA,
+  H3_PDD_REF2VA_LORA,
   H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
   H3_TURBO_V4_LORA
@@ -39,6 +41,7 @@ import {
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension,
   workflowSupportsH3MotionContextReferences,
+  workflowSupportsH3PddSampling,
   workflowSupportsH3TurboSampling,
   workflowSupportsVideoExtension
 } from "../src/core/workflow";
@@ -338,7 +341,7 @@ describe("renderWorkflow", () => {
     );
     expect(turboSpectrumNode?.[1].inputs).toMatchObject({
       model: ["21", 0],
-      offline_smoothing_replay: true,
+      offline_smoothing_replay: false,
       audio_blend_weight: 0,
       model_aware_mode: "full",
       model_aware_risk_threshold: 0.65
@@ -392,6 +395,135 @@ describe("renderWorkflow", () => {
       scheduler: "beta",
       steps: 4
     });
+  });
+
+  it("renders PDD Acc through the native H3 0.35 chain and keeps Spectrum upstream of sampling", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_PDD_FL2VA_LORA],
+      attentionMode: "comfy-kitchen",
+      h3SparseAttentionMode: "off",
+      h3RuntimeMode: "compatibility",
+      h3ComfyCompilerMode: "auto",
+      spectrumMode: "balanced",
+      spectrumModelAwareMode: "full",
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    const backend = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "ModelAttentionBackend"
+    );
+    const spectrum = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "SpectrumApplyMiniMaxH3"
+    );
+    const shift = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "MiniMaxH3SigmaShift"
+    );
+    const sampler = Object.values(rendered).find((node) => node.class_type === "KSamplerSelect");
+    const schedulers = Object.values(rendered).filter((node) => node.class_type === "BasicScheduler");
+
+    expect(backend?.[1].inputs).toMatchObject({
+      attention: "comfy kitchen attention"
+    });
+    expect(spectrum?.[1].inputs.model).toEqual([shift?.[0], 0]);
+    expect(shift?.[1].inputs).toMatchObject({
+      shift_video: 12,
+      shift_audio: 3
+    });
+    expect(sampler?.inputs.sampler_name).toBe("euler");
+    expect(schedulers).toHaveLength(1);
+    expect(schedulers[0]?.inputs).toMatchObject({
+      model: [spectrum?.[0], 0],
+      scheduler: "simple",
+      steps: 8
+    });
+    expect(Object.values(rendered).some((node) =>
+      node.class_type === "H3MemoryOptimization" || node.class_type === "H3AIMDOResidencyLimiter"
+    )).toBe(false);
+    expect(workflowSupportsH3PddSampling(rendered, {
+      modelId: "minimax_h3_fl2va"
+    })).toBe(true);
+  });
+
+  it("serializes native BlockSparseAttention DynamicCombo inputs in ComfyUI 0.35 wire format", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const cases = [
+      { attentionMode: "sage" as const, sparseMode: "sol-attn" as const, selection: "sol-attn", parameter: "selection.tau", value: 1.3 },
+      { attentionMode: "comfy-kitchen" as const, sparseMode: "native-sla" as const, selection: "sla", parameter: "selection.keep_percent", value: 10 },
+      { attentionMode: "pytorch" as const, sparseMode: "sol-attn" as const, selection: "sol-attn", parameter: "selection.tau", value: 1.3 }
+    ];
+
+    for (const testCase of cases) {
+      const videoLoras = testCase.sparseMode === "native-sla"
+        ? [H3_SLA_TURBO_LORA]
+        : undefined;
+      const rendered = renderWorkflow(source, {
+        ...task,
+        modelId: "minimax_h3_fl2va",
+        videoLoras,
+        attentionMode: testCase.attentionMode,
+        h3SparseAttentionMode: testCase.sparseMode,
+        h3RuntimeMode: "native",
+        h3ComfyCompilerMode: "auto",
+        steps: 20,
+        duration: 5,
+        fps: 24,
+        frameInterpolation: "off"
+      }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+      const sparse = Object.entries(rendered).find(([, node]) =>
+        node.class_type === "BlockSparseAttention"
+      );
+
+      expect(sparse).toBeDefined();
+      expect(sparse?.[1].inputs.selection).toBe(testCase.selection);
+      expect(sparse?.[1].inputs[testCase.parameter]).toBe(testCase.value);
+      expect(sparse?.[1].inputs).not.toHaveProperty("selection.selection");
+      expect(sparse?.[1].inputs).not.toHaveProperty("tau");
+      expect(sparse?.[1].inputs).not.toHaveProperty("keep_percent");
+    }
+  });
+
+  it("renders the PDD Ref2VA sampler contract on the native R2V graph", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_r2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_ref2va",
+      videoLoras: [H3_PDD_REF2VA_LORA],
+      h3SparseAttentionMode: "off",
+      h3RuntimeMode: "compatibility",
+      h3ComfyCompilerMode: "auto",
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "reference.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const sampler = Object.values(rendered).find((node) => node.class_type === "KSamplerSelect");
+    const scheduler = Object.values(rendered).find((node) => node.class_type === "BasicScheduler");
+    const shift = Object.values(rendered).find((node) => node.class_type === "MiniMaxH3SigmaShift");
+
+    expect(sampler?.inputs.sampler_name).toBe("euler");
+    expect(scheduler?.inputs).toMatchObject({
+      scheduler: "simple",
+      steps: 8
+    });
+    expect(shift?.inputs).toMatchObject({
+      shift_video: 12,
+      shift_audio: 3
+    });
+    expect(workflowSupportsH3PddSampling(rendered, {
+      modelId: "minimax_h3_ref2va"
+    })).toBe(true);
   });
 
   it("renders Turbo-SLA as sparse attention before Sigma and can coexist with Spectrum", () => {
@@ -795,7 +927,7 @@ describe("renderWorkflow", () => {
         enabled: true,
         history_storage: "system_ram",
         offline_archive_storage: "system_ram",
-        offline_smoothing_replay: true,
+        offline_smoothing_replay: false,
         blend_weight: 0.5,
         audio_blend_weight: 0,
         debug: true

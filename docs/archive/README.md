@@ -17,7 +17,7 @@
 - [UI/UX 计划与阶段记录](./ux-ui/README.md)
 - [H3 adoption 与恢复计划](./h3-adoption/)
 - [H3 Native AV / 长视频历史方案](./h3-long-video/)
-- [H3 Memory Optimization 历史方案](./h3-memory/)
+- [H3 Memory 路线撤回说明](./h3-memory/)
 - [图片工作台历史计划](./image-workspace/)
 - [History 性能收口计划](./history-performance/)
 - [模块化架构收口计划](./modular-architecture/)
