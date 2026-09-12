@@ -8,7 +8,11 @@
 
 ## Unreleased
 
-- 修复 H3 Continuum Extend 在 ComfyUI `/object_info` 将 `H3ContinuumLoadVideo.file` 暴露为字符串文件下拉时，被应用误判为非 `STRING` schema 并在提交前跳过任务的问题；文件选择器 wire shape 现在按字符串输入接受，其他 H3 AV 类型检查仍保持 fail closed，错误提示也会区分 ComfyUI 核心与对应自定义节点。
+## 0.61.3 — 2026-09-12
+
+- 根据 H3 同参数质量对照结果，将 SOL-Attn 从“性能推荐”改为明确的实验性速度优先选项；设置标签和说明现在警告它会改变同 seed 输出，并可能导致明显的视频质量下降，稠密 Attention 继续作为稳定推荐。
+
+- 修复 H3 Continuum Extend 在 ComfyUI 0.35 将 `H3ContinuumLoadVideo.file` 暴露为 V3 `COMBO` schema 时，被应用仍按 `STRING` 预检并在提交前跳过任务的问题；运行时契约现在按该节点真实的上传型 Combo socket 校验，并兼容旧式字符串选项数组，其他 H3 AV 类型检查仍保持 fail closed。
 
 ## 0.61.1 — 2026-09-11
 

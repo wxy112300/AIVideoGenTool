@@ -107,12 +107,9 @@ describe("ComfyUI 0.35 native H3 runtime contract", () => {
 });
 
 describe("H3 Continuum V3.8 runtime contract", () => {
-  it("accepts the string-valued file picker schema used by Load Video", () => {
+  function continuumObjectInfo(fileSpec: unknown) {
     const noSchema = {};
-    const workflow = {
-      "1": { class_type: "H3ContinuumSamplerV38", inputs: {} }
-    };
-    const objectInfo = {
+    return {
       UNETLoader: noSchema,
       CLIPLoader: noSchema,
       VAELoader: noSchema,
@@ -124,7 +121,7 @@ describe("H3 Continuum V3.8 runtime contract", () => {
         input: {
           required: {
             enable_video: ["BOOLEAN", {}],
-            file: [["uploaded/h3-continuum-guide.mp4"], { video_upload: true }],
+            file: fileSpec,
             force_rate: ["FLOAT", {}]
           }
         }
@@ -166,7 +163,35 @@ describe("H3 Continuum V3.8 runtime contract", () => {
         output: ["STRING"]
       }
     };
+  }
+
+  const workflow = {
+    "1": { class_type: "H3ContinuumSamplerV38", inputs: {} }
+  };
+
+  it("accepts the legacy string-valued file picker schema used by Load Video", () => {
+    const objectInfo = continuumObjectInfo([
+      ["uploaded/h3-continuum-guide.mp4"],
+      { video_upload: true }
+    ]);
 
     expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toEqual([]);
+  });
+
+  it("accepts the ComfyUI 0.35 V3 COMBO schema used by Load Video", () => {
+    const objectInfo = continuumObjectInfo([
+      "COMBO",
+      { options: ["uploaded/h3-continuum-guide.mp4"], video_upload: true }
+    ]);
+
+    expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toEqual([]);
+  });
+
+  it("still rejects a non-combo Load Video file socket", () => {
+    const objectInfo = continuumObjectInfo(["INT", {}]);
+
+    expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toContain(
+      "H3ContinuumLoadVideo.file schema 类型不兼容：要求 COMBO"
+    );
   });
 });

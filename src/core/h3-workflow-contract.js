@@ -206,7 +206,10 @@ const RUNTIME_NODE_REQUIREMENTS = {
     H3ContinuumLoadVideo: {
         inputs: [
             { name: "enable_video", type: "ANY" },
-            { name: "file", type: "STRING" },
+            // The V3 node declares this as io.Combo.Input(upload=video). The API
+            // workflow value is a filename string, but ComfyUI 0.35 correctly
+            // advertises the input socket itself as COMBO in /object_info.
+            { name: "file", type: "COMBO" },
             { name: "force_rate", type: "ANY" }
         ]
     },

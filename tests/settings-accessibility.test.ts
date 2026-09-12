@@ -255,7 +255,8 @@ describe("Settings accessibility markup", () => {
     expect(accelerationMarkup).toContain('id="h3-sparse-attention-mode"');
     expect(accelerationMarkup).toContain('aria-describedby="h3-sparse-attention-description"');
     expect(accelerationMarkup).toContain('title="稳定推荐。使用所选后端的完整稠密路径，是排查质量、显存和兼容性的基线；Comfy Kitchen 只建议使用此项。"');
-    expect(accelerationMarkup).toContain('title="性能推荐但仍属实验。当前 4090 同任务搭配 Sage Triton 最快；它降低平均显存但不降低峰值显存，不要与 Comfy Kitchen 组合。"');
+    expect(accelerationMarkup).toContain("SOL-Attn 稀疏 · 速度优先（会影响质量）");
+    expect(accelerationMarkup).toContain('title="实验性速度优先。实际 H3 对照已观察到明显的视频质量下降，并会改变同 seed 输出；影响程度因素材而异。当前 4090 搭配 Sage Triton 最快，但不降低峰值显存，且不要与 Comfy Kitchen 组合。"');
     expect(accelerationMarkup).toContain('id="h3-sparse-attention-description">稳定推荐。使用所选后端的完整稠密路径，是排查质量、显存和兼容性的基线；Comfy Kitchen 只建议使用此项。</span>');
     expect(accelerationMarkup).not.toContain('value="auto" data-description=');
     expect(accelerationMarkup).not.toContain('value="native-sla"');
