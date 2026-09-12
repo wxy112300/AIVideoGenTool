@@ -29,6 +29,7 @@ describe("MiniMax H3 prompt templates", () => {
       "exact-rotation",
       "micro-scale",
       "action-mechanics",
+      "human-motion-integrity",
       "subject-reaction",
       "speech-gate",
       "sound-causality",
@@ -48,14 +49,36 @@ describe("MiniMax H3 prompt templates", () => {
     expect(instruction).toContain("PRESERVE, CHANGE, or INFER");
     expect(instruction).toContain("Camera-route module");
     expect(instruction).toContain("Speech-gate module");
-    expect(instruction).toContain("one unbroken take");
+    expect(instruction).toContain("one continuous [Shot 1]");
     expect(instruction).toContain("editorial cut");
     expect(instruction).toContain("Detailed-expansion coverage");
+    expect(instruction).toContain("Human-motion integrity module");
     expect(instruction).toContain("never a concise rewrite");
     expect(instruction).toContain("at least two applicable grounded execution details");
     expect(instruction).toContain("180-320 grounded English words");
     expect(instruction).toContain("350-500 grounded English words");
-    expect(instruction.length).toBeLessThan(3300);
+    expect(instruction.length).toBeLessThan(4000);
+  });
+
+  it("keeps FL2VA and R2V entity ownership distinct", () => {
+    const fl2va = h3PromptControlInstruction({
+      rawPrompt: "The giant reaches toward the tiny person.",
+      mode: "FL2VA",
+      hasReferenceMedia: true
+    });
+    expect(fl2va).toContain("FL2VA subject-correspondence module");
+    expect(fl2va).toContain("not by screen position or apparent frame size");
+    expect(fl2va).toContain("clothing ownership");
+    expect(fl2va).toContain("omit unknown traits");
+
+    const r2v = h3PromptControlInstruction({
+      rawPrompt: "Use the two referenced characters in one scene.",
+      mode: "R2V",
+      hasReferenceMedia: true
+    });
+    expect(r2v).toContain("R2V entity-role module");
+    expect(r2v).toContain("every source asset one explicit job");
+    expect(r2v).toContain("originating subjects");
   });
 
   it("does not classify ordinary appearance wording as subject interaction", () => {
@@ -86,7 +109,7 @@ describe("MiniMax H3 prompt templates", () => {
     const shortcut = promptSnippetFor("camera-continuous-take");
 
     expect(h3ShotPolicyForPrompt(shortcut)).toBe("hard-single");
-    expect(h3PromptPriorityInstruction(h3ShotPolicyForPrompt(shortcut))).toContain("one unbroken take");
+    expect(h3PromptPriorityInstruction(h3ShotPolicyForPrompt(shortcut))).toContain("one continuous [Shot 1]");
   });
 
   it("audits and repairs editorial cuts hidden inside a single Shot 1", () => {
@@ -119,7 +142,8 @@ describe("MiniMax H3 prompt templates", () => {
 
     expect(normalized).toContain("180 degrees");
     expect(normalized).not.toContain("360-degree");
-    expect(normalized).toContain("Scale continuity:");
+    expect(normalized).toContain("Scale relation:");
+    expect(normalized).not.toMatch(/source-age|adult|child|baby|toy|doll/iu);
     expect(normalized).not.toContain("[Shot 2]");
   });
 
@@ -173,7 +197,9 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3ShotPolicyForPrompt("[Shot 1] only: the camera follows the girl.")).toBe("hard-single");
     expect(h3ShotPolicyForPrompt("Two shots: the camera cuts to a close-up.")).toBe("allow-multiple");
     expect(h3PromptPriorityInstruction("default-single")).toContain("explicit request and labeled notes first");
-    expect(h3PromptPriorityInstruction("default-single")).toContain("exactly one continuous [Shot 1]");
+    expect(h3PromptPriorityInstruction("default-single")).toContain("one continuous [Shot 1]");
+    expect(h3ShotPolicyForPrompt("[Shot 1] A woman walks forward.")).toBe("default-single");
+    expect(h3ShotPolicyForPrompt("")).toBe("default-single");
   });
 
   it("gives detailed expansion a source-fidelity gate before compression", () => {
@@ -260,6 +286,15 @@ describe("MiniMax H3 prompt templates", () => {
     const output = "integrated_multimodal_description: [Shot 1] The room is quiet. [Shot 2] At 00:03.000, cut to a close-up.\noverall_soundscape: N/A\nnon_diegetic_music: N/A";
 
     expect(normalizeH3PromptOutput(output, "T2VA", 5, [], [], source, source)).toContain("[Shot 2]");
+  });
+
+  it("folds an unrequested R2V second shot into the default continuous take", () => {
+    const source = "<Subject 1> walks through the room.";
+    const output = "detailed_description: [Shot 1] <Subject 1> walks. [Shot 2] At 00:03.000, the camera cuts closer.\noverall_soundscape: N/A\nnon_diegetic_music: N/A";
+
+    const normalized = normalizeH3PromptOutput(output, "R2V", 5, [], [], source, source);
+    expect(normalized).not.toContain("[Shot 2]");
+    expect(normalized).toContain("within the same continuous shot");
   });
 
 });

@@ -1,4 +1,4 @@
-import type { EnhanceRequest, PromptProgressReporter, Settings } from "../../src/types.js";
+import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
 import {
   qwenVlPeftPromptModel
 } from "../../src/core/prompt-models.js";
@@ -179,15 +179,15 @@ function modelFolderName(value: string | undefined, fallback: string): string {
   return value?.replace(/\\/gu, "/").split("/").filter(Boolean).at(-1) || fallback;
 }
 
-function imagePathForRequest(request: EnhanceRequest): string | null {
+function imagePathsForRequest(request: EnhanceRequest, mode: H3PromptMode): string[] {
   const candidates = [
     ...(request.imagePaths ?? []),
     request.imagePath ?? ""
-  ].filter(Boolean);
-  const image = candidates.find((value) =>
+  ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+  const images = candidates.filter((value) =>
     /\.(?:png|jpe?g|webp|bmp|gif)$/iu.test(value)
   );
-  return image || null;
+  return mode === "FL2VA" ? images.slice(0, 2) : images.slice(0, 1);
 }
 
 function promptForRequest(request: EnhanceRequest, settings: Settings, warmup: boolean): string {
@@ -204,7 +204,7 @@ function promptForRequest(request: EnhanceRequest, settings: Settings, warmup: b
  */
 export function buildQwenVlPeftPromptWorkflow(
   request: EnhanceRequest,
-  uploadedImage: string | null,
+  uploadedImages: readonly string[] | string | null,
   settings: Settings,
   warmup = false
 ): Record<string, PromptNode> {
@@ -218,6 +218,9 @@ export function buildQwenVlPeftPromptWorkflow(
   );
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const prompt = promptForRequest(request, settings, warmup);
+  const images = typeof uploadedImages === "string"
+    ? [uploadedImages]
+    : [...(uploadedImages ?? [])];
   const workflow: Record<string, PromptNode> = {
     "qwenvl-model": {
       class_type: "QwenVLModelLoader",
@@ -248,21 +251,33 @@ export function buildQwenVlPeftPromptWorkflow(
       }
     }
   };
-  if (uploadedImage) {
-    workflow["qwenvl-image"] = {
-      class_type: "LoadImage",
-      inputs: { image: uploadedImage }
-    };
-    workflow["qwenvl-image-budget"] = {
-      class_type: "ImageScaleToTotalPixels",
-      inputs: {
-        image: ["qwenvl-image", 0],
-        upscale_method: "lanczos",
-        megapixels: 1,
-        resolution_steps: 32
-      }
-    };
-    workflow["qwenvl-caption"]!.inputs.image = ["qwenvl-image-budget", 0];
+  if (images.length) {
+    let imageNode: [string, number] = ["qwenvl-image-budget", 0];
+    images.forEach((uploadedImage, index) => {
+      const loadId = index === 0 ? "qwenvl-image" : `qwenvl-image-${index}`;
+      const budgetId = index === 0 ? "qwenvl-image-budget" : `qwenvl-image-budget-${index}`;
+      workflow[loadId] = {
+        class_type: "LoadImage",
+        inputs: { image: uploadedImage }
+      };
+      workflow[budgetId] = {
+        class_type: "ImageScaleToTotalPixels",
+        inputs: {
+          image: [loadId, 0],
+          upscale_method: "lanczos",
+          megapixels: 1,
+          resolution_steps: 32
+        }
+      };
+      if (index === 0) return;
+      const batchId = `qwenvl-image-batch-${index}`;
+      workflow[batchId] = {
+        class_type: "ImageBatch",
+        inputs: { image1: imageNode, image2: [budgetId, 0] }
+      };
+      imageNode = [batchId, 0];
+    });
+    workflow["qwenvl-caption"]!.inputs.image = imageNode;
   } else {
     workflow["qwenvl-image"] = {
       class_type: "EmptyImage",
@@ -304,12 +319,22 @@ export async function enhancePromptWithQwenVlPeft(
       { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
     );
     validateQwenVlRuntimeChoices(objectInfo, settings);
-    const sourceImage = imagePathForRequest(request);
-    const uploadedImage = sourceImage
-      ? await uploadInput(baseUrl, sourceImage, signal, "提示词参考图")
-      : null;
+    const mode = request.h3PromptMode ?? inferH3PromptMode(
+      Boolean(request.imagePath || request.imagePaths?.length),
+      (request.imagePaths?.length ?? 0) > 1
+    );
+    if (mode === "R2V") {
+      throw new Error("MiniMax H3 Prompt Rewriter LoRA 不支持 R2VA。请改用 Qwen3.6/Qwen3.8 或 H3 Prompt Writer。");
+    }
+    const sourceImages = imagePathsForRequest(request, mode);
+    if (mode === "FL2VA" && sourceImages.length !== 2) {
+      throw new Error("FL2VA Prompt Rewriter 需要按顺序提供首帧和尾帧两张图片。");
+    }
+    const uploadedImages = await Promise.all(sourceImages.map((sourceImage, index) =>
+      uploadInput(baseUrl, sourceImage, signal, `提示词参考图 ${index + 1}`)
+    ));
     onProgress?.("uploading", 18);
-    const prompt = buildQwenVlPeftPromptWorkflow(request, uploadedImage, settings, warmup);
+    const prompt = buildQwenVlPeftPromptWorkflow(request, uploadedImages, settings, warmup);
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
       throw new Error(
@@ -333,7 +358,7 @@ export async function enhancePromptWithQwenVlPeft(
       promptId: result.prompt_id,
       clientId,
       modelId: settings.promptModelId,
-      inputImage: Boolean(uploadedImage),
+      inputImageCount: uploadedImages.length,
       nodeTypes: [...new Set(Object.values(nodeTypes))]
     });
     const history = await waitForTask(
@@ -360,11 +385,6 @@ export async function enhancePromptWithQwenVlPeft(
     if (warmup) return output;
     if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
     const sourcePrompt = stripPromptAnnotations(request.prompt);
-    const imageCount = request.imagePaths?.length ?? 0;
-    const mode = request.h3PromptMode ?? inferH3PromptMode(
-      Boolean(request.imagePath || imageCount > 0),
-      imageCount > 1
-    );
     return normalizeH3PromptOutput(
       output,
       mode,

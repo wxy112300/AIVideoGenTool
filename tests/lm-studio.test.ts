@@ -208,6 +208,10 @@ describe("LM Studio prompt enhancement requests", () => {
       expect.objectContaining({ type: "text", text: expect.stringContaining("Variation token: variation-11") }),
       expect.objectContaining({ type: "image_url" })
     ]);
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({ type: "text", text: expect.stringContaining("Community Auto Prompter compatibility contract") }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
     readFile.mockRestore();
   });
 

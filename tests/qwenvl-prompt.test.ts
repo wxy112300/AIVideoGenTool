@@ -67,6 +67,29 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     expect(workflow["qwenvl-caption"]?.inputs.image).toEqual(["qwenvl-image-budget", 0]);
   });
 
+  it("preserves FL2VA first/last image order as one two-image batch", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = modelId;
+    const workflow = buildQwenVlPeftPromptWorkflow(
+      {
+        prompt: "Move continuously from the first frame to the last frame.",
+        modelId: "minimax_h3_fl2va",
+        h3PromptMode: "FL2VA",
+        imagePaths: ["first.png", "last.png"]
+      },
+      ["uploaded-first.png", "uploaded-last.png"],
+      settings
+    );
+
+    expect(workflow["qwenvl-image"]?.inputs.image).toBe("uploaded-first.png");
+    expect(workflow["qwenvl-image-1"]?.inputs.image).toBe("uploaded-last.png");
+    expect(workflow["qwenvl-image-batch-1"]?.inputs).toEqual({
+      image1: ["qwenvl-image-budget", 0],
+      image2: ["qwenvl-image-budget-1", 0]
+    });
+    expect(workflow["qwenvl-caption"]?.inputs.image).toEqual(["qwenvl-image-batch-1", 0]);
+  });
+
   it("keeps JSON metadata application-managed instead of exposing it as a download requirement", () => {
     expect(qwenVlManagedMetadata).toHaveLength(10);
     expect(qwenVlManagedMetadata.every((asset) => asset.relativePath.endsWith(".json"))).toBe(true);

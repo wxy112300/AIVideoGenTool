@@ -393,16 +393,38 @@ export function bundledWorkflowModelId(value) {
 export function videoLoraFilename(loras, id) {
     return loras?.find((lora) => lora.id === id)?.filename ?? "";
 }
+export function promptContainsVideoLoraTrigger(prompt, trigger) {
+    const normalizedPrompt = prompt.replace(/\s+/gu, " ").trim().toLowerCase();
+    const normalizedTrigger = trigger.replace(/\s+/gu, " ").trim().toLowerCase();
+    if (!normalizedTrigger)
+        return true;
+    let searchFrom = 0;
+    while (searchFrom < normalizedPrompt.length) {
+        const index = normalizedPrompt.indexOf(normalizedTrigger, searchFrom);
+        if (index < 0)
+            return false;
+        const before = normalizedPrompt[index - 1];
+        const after = normalizedPrompt[index + normalizedTrigger.length];
+        const isTokenCharacter = (value) => Boolean(value && /[\p{L}\p{N}]/u.test(value));
+        if (!isTokenCharacter(before) && !isTokenCharacter(after))
+            return true;
+        searchFrom = index + normalizedTrigger.length;
+    }
+    return false;
+}
 export function videoPromptForLoras(prompt, loras) {
-    const prefixes = [...new Set((loras ?? []).flatMap((lora) => lora.promptPrefixes ?? videoLoraDefinition(lora.id)?.promptPrefixes ?? []))];
-    return prefixes.reduceRight((current, prefix) => {
-        const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const existing = new RegExp(`(^|[\\s,;:])${escaped}(?=$|[\\s,;:])`, "iu");
-        const withoutDuplicate = current
-            .replace(existing, "$1")
-            .replace(/([,;:])\s*[,;:]+\s*/gu, "$1 ")
-            .replace(/^\s*[,;:]\s*/u, "")
-            .trim();
-        return withoutDuplicate ? `${prefix}, ${withoutDuplicate}` : prefix;
-    }, prompt.trim());
+    const prefixes = [...new Set((loras ?? []).flatMap((lora) => lora.promptPrefixes ?? videoLoraDefinition(lora.id)?.promptPrefixes ?? []).map((prefix) => prefix.trim()).filter(Boolean))];
+    const normalizedPrompt = prompt.trim();
+    const missingPrefixes = prefixes.filter((prefix) => !promptContainsVideoLoraTrigger(normalizedPrompt, prefix));
+    if (!missingPrefixes.length)
+        return normalizedPrompt;
+    const triggerText = missingPrefixes.join(", ");
+    const referencePreamble = normalizedPrompt.match(/^(For the target video, at 0\.00 seconds[^\n]*? is (?:fully|partially) referenced\.|How the reference pictures align with the target video[^\n]*\.)(?:\s*\n\s*)?/iu);
+    if (!referencePreamble) {
+        return normalizedPrompt ? `${triggerText}, ${normalizedPrompt}` : triggerText;
+    }
+    const body = normalizedPrompt.slice(referencePreamble[0].length).trim();
+    return body
+        ? `${referencePreamble[1]}\n\n${triggerText}, ${body}`
+        : `${referencePreamble[1]}\n\n${triggerText}`;
 }

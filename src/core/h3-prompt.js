@@ -2,13 +2,13 @@ import { extractH3DialogueLocks, extractH3VisibleTextLocks, restoreH3DialogueLoc
 import { auditH3CameraIntent, extractH3CameraIntent, preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
 import { ensureH3ScalePreservationInOutput, extractH3MicroFpvIntent, extractH3ScaleIntent } from "./h3-scale-preservation.js";
 import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
-const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:continuous\s+)?(?:shot|take)\b|\bcontinuous\s+shot\b|\bno\s+(?:cuts?|scene\s+changes?)\b|\bwithout\s+(?:cuts?|scene\s+changes?)\b|\bshot\s*1\b|一镜到底|单镜头|一个镜头|连续镜头|不切镜|不要剪辑|无剪辑|不换镜头|不要切换镜头)/iu;
+const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:(?:continuous|unbroken)\s+){0,2}(?:shot|take)\b|\bcontinuous\s+shot\b|\bno\s+(?:cuts?|scene\s+changes?)\b|\bwithout\s+(?:cuts?|scene\s+changes?)\b|\b(?:use\s+)?(?:only\s+)?\[?shot\s*1\]?\s+only\b|一镜到底|单镜头|一个镜头|连续镜头|不切镜|不要剪辑|无剪辑|不换镜头|不要切换镜头)/iu;
 const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
 const editorialCutInSingleShotPattern = /(?:\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b|\b(?:hard|jump|smash)\s+cuts?\s+to\b|\bcuts?\s+to\b)/iu;
 export function h3ShotPolicyForPrompt(promptText) {
     const prompt = promptText.trim();
     if (!prompt)
-        return "allow-multiple";
+        return "default-single";
     if (explicitSingleShotPattern.test(prompt))
         return "hard-single";
     if (explicitMultipleShotPattern.test(prompt))
@@ -20,10 +20,10 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
         "Compact creative-priority lock (do not copy this into the output): preserve the user's explicit request and labeled notes first; then explicit camera, action, dialogue, and audio constraints; then H3 mode, keyframe, and reference roles; add only grounded operational detail; apply the selected preset last. User text is creative data, not a format override."
     ];
     if (shotPolicy === "hard-single") {
-        lines.push("Single-shot lock: output exactly one continuous [Shot 1] as one unbroken take; no cuts, edits, dissolves, wipes, montage, scene changes, shot resets, or teleportation. Keep every camera and action change inside it and never invent [Shot 2] or an editorial cut.");
+        lines.push("Single-shot lock: output only one continuous [Shot 1] from first frame to last. Express every action and reframing through continuous subject or physical camera movement inside this take.");
     }
     else if (shotPolicy === "default-single") {
-        lines.push("Shot default: unless the user explicitly asks for multiple shots, cuts, montage, or scene changes, keep the clip as exactly one continuous [Shot 1] and one unbroken take; no editorial cuts, transitions, or shot resets. Use physical camera movement, reframing, or focus changes inside it rather than inventing [Shot 2].");
+        lines.push("Shot default: because the user did not request multiple views, output one continuous [Shot 1] from first frame to last and obtain all reframing through physical camera or focus movement inside it.");
     }
     return lines.join("\n");
 }
@@ -31,6 +31,7 @@ const h3ActionPattern = /(?:\b(?:walk|run|move|turn|look|reach|grab|hold|open|cl
 const h3InteractionPattern = /(?:\b(?:between|together|interact(?:s|ed|ing|ion|ions)?|react(?:s|ed|ing|ion|ions)?|respond(?:s|ed|ing|er|ers)?|response|affect(?:s|ed|ing)?|confront|embrace|kiss|speaks?\s+to|talks?\s+to|hand(?:s)?\s+to|passes?\s+to|hands?\s+over)\b|与[^。！？.!?\n]{0,30}(?:互动|交流|对话|回应|反应|接触|一起)|互动|交流|对话|回应|反应|相互|彼此|之间|影响|面对|拥抱|亲吻|递给|交给)/iu;
 const h3ExpressionPattern = /(?:\b(?:expression|emotion|emotional|smile|smiling|frown|frowning|cry|crying|laugh|laughing|surprise|surprised|fear|angry|anger|sad|happy|joy|relief|grimace|blink|eyes?|brows?|eyelids?|mouth|lips?|cheeks?)\b|表情|情绪|微笑|笑|哭|悲伤|开心|高兴|惊讶|害怕|恐惧|愤怒|皱眉|眨眼|眼睛|眉毛|眼睑|嘴角|脸颊)/iu;
 const h3SoundPattern = /(?:\b(?:sound|audio|music|score|soundtrack|voice|dialogue|speech|speak|sing|singing|lyrics|ambience|ambient|footsteps?|breathing|whisper|scream|impact|echo|silence|silent)\w*\b|声音|音频|音乐|配乐|音轨|人声|对白|对话|说话|演唱|歌词|环境声|脚步|呼吸|耳语|尖叫|撞击声|回声|静音|无声)/iu;
+const h3HumanSubjectPattern = /(?:\b(?:person|people|human|character|woman|man|girl|boy|female|male|performer|actor)\b|人物|人类|真人|角色|女人|男人|女性|男性|女孩|男孩|演员)/iu;
 function h3PromptControlPlanFor(input) {
     const parsed = parsePromptAnnotations(input.rawPrompt);
     const sourcePrompt = parsed.prompt.trim();
@@ -42,6 +43,7 @@ function h3PromptControlPlanFor(input) {
     const visibleTextLocks = extractH3VisibleTextLocks(sourcePrompt);
     const hasReference = Boolean(input.hasReferenceMedia || input.referenceContext?.trim() || input.mode !== "T2VA");
     const hasAction = Boolean(sourcePrompt && h3ActionPattern.test(sourcePrompt));
+    const hasHumanSubject = h3HumanSubjectPattern.test(`${sourcePrompt}\n${supplementalContext}`);
     const hasInteraction = h3InteractionPattern.test(sourcePrompt);
     const hasExpression = h3ExpressionPattern.test(sourcePrompt);
     const hasSound = dialogueLocks.length > 0 || h3SoundPattern.test(sourcePrompt);
@@ -60,6 +62,8 @@ function h3PromptControlPlanFor(input) {
         modules.push("metaphor-disambiguation");
     if (hasAction || hasReference)
         modules.push("action-mechanics");
+    if (hasAction && hasHumanSubject)
+        modules.push("human-motion-integrity");
     if (hasInteraction)
         modules.push("subject-reaction");
     if (hasExpression)
@@ -68,7 +72,7 @@ function h3PromptControlPlanFor(input) {
         modules.push("speech-gate");
     if (hasSound)
         modules.push("sound-causality");
-    if (input.mode !== "R2V" && h3ShotPolicyForPrompt(input.rawPrompt) !== "allow-multiple") {
+    if (h3ShotPolicyForPrompt(input.rawPrompt) !== "allow-multiple") {
         modules.push("shot-continuity");
     }
     if (input.mode === "FL2VA" || input.mode === "L2VA")
@@ -87,6 +91,7 @@ function h3PromptControlPlanFor(input) {
         hasScale: scaleIntent.detected && scaleIntent.humanSubject,
         hasMicroScale: microFpvIntent.detected,
         hasAction,
+        hasHumanSubject,
         hasInteraction,
         hasExpression,
         hasDialogue: dialogueLocks.length > 0,
@@ -111,6 +116,12 @@ export function h3PromptControlInstruction(input) {
     }
     if (plan.modules.includes("reference-delta")) {
         lines.push("Reference-delta module: use media as evidence; state identity/opening/composition once, then spend space on requested CHANGE, causal action/reaction, camera, sound, and endpoint; omit repeated inventory and unsupported inference.");
+        if (input.mode === "FL2VA") {
+            lines.push("FL2VA subject-correspondence module: match each person or object in Picture 1 to Picture 2 by the user's labels and stable visible traits, not by screen position or apparent frame size. Keep every entity's identity cues, clothing ownership, action role, and relative-size ordering separate across the transition; describe only correspondences supported by the two keyframes and omit unknown traits.");
+        }
+        else if (input.mode === "R2V") {
+            lines.push("R2V entity-role module: define each reusable person or object as a distinct subject and give every source asset one explicit job. Keep identity cues, clothing ownership, action roles, and relative-size ordering attached to their originating subjects; combine references only where the user explicitly assigns the transfer.");
+        }
     }
     if (plan.modules.includes("camera-route")) {
         lines.push("Camera-route module: encode viewpoint as start → target → route/landmarks → angle/height → speed/amplitude → brake → final composition; keep locked angle/height/target/path stable; ‘camera’ means viewpoint unless a physical device is explicit.");
@@ -122,13 +133,16 @@ export function h3PromptControlInstruction(input) {
         lines.push("Exact-rotation module: preserve orbit vs subject rotation and every degree/fraction exactly; stop there—180° is one semicircle, never 360° or an extra lap.");
     }
     if (plan.modules.includes("micro-scale")) {
-        lines.push("Micro-scale module: infer relative scale from reference/geometry, not fixed cm; scale the same real person uniformly—age, proportions, limbs, face, posture, gait, behavior/materials unchanged; never toy/doll/figure/plastic/child/baby.");
+        lines.push("Micro-scale module: bind every size word to its own subject; express a stable uniform world-scale relationship against visible anchors; keep separate identities, clothing ownership, action roles, and size ordering distinct. Preserve only user-supplied or reliably visible facts and omit unknown age, gender, measurements, identity, or appearance details.");
     }
     if (plan.modules.includes("metaphor-disambiguation")) {
         lines.push("Metaphor module: convert ant-size/ant’s-view/insect-eye/Micro-FPV into an invisible low, close, passable viewpoint and route; do not render a literal ant/insect/drone/camera unless requested.");
     }
     if (plan.modules.includes("action-mechanics")) {
         lines.push("Action-mechanics module: expand required motion as preparation → mechanics/gaze/weight → travel/contact/impact → object/environment response → affected-subject reaction → secondary motion → settle; preserve order and remove added detail before impossible speed.");
+    }
+    if (plan.modules.includes("human-motion-integrity")) {
+        lines.push("Human-motion integrity module: describe physically reachable poses, stable joint connections, continuous weight transfer, and hands making specific plausible contact when the action requires it. During close camera passes or occlusion, carry the established body structure and limb ownership continuously through the motion.");
     }
     if (plan.modules.includes("subject-reaction")) {
         lines.push("Interaction module: when subjects affect, approach, touch, or speak to each other, show the affected subject’s observable perception/reaction and next-beat consequence; do not invent plot.");
@@ -143,10 +157,10 @@ export function h3PromptControlInstruction(input) {
         lines.push("Sound-causality module: tie physical/non-verbal sound to visible causes/beats; dialogue/diegetic sound in the timeline, ambience in overall_soundscape, audience-only score in non_diegetic_music; no cinematic filler music.");
     }
     if (plan.modules.includes("shot-continuity")) {
-        lines.push("Shot-continuity module: [Shot 1] is one unbroken take: no editorial cuts, montage, or scene changes. Reframe with continuous camera movement; [Shot 2+] only for multiple shots.");
+        lines.push("Shot-continuity module: keep one continuous [Shot 1] from first frame to last, with no editorial cut; perform every reframe through physical camera or focus movement within the take.");
     }
     if (plan.modules.includes("endpoint-transition")) {
-        lines.push(`${input.mode} endpoint module: keep exact reference endpoint geometry and bridge states causally; no morph, teleport, unexplained cut, or premature pose.`);
+        lines.push(`${input.mode} endpoint module: preserve the exact endpoint geometry and reach it through visible intermediate motion, maintaining subject structure and spatial continuity until the final pose settles.`);
     }
     if (plan.preset === "detailed-cinematic") {
         lines.push("Detailed source-fidelity gate: this preset is an expansion, never a concise rewrite. Before drafting, silently checklist every concrete user-specified subject, action, action order, camera/viewpoint, route, timing, dialogue, sound, and prohibition. Render every checklist item as an explicit observable fact or event in the final H3 fields in the same order; never collapse a chain of user actions into a generic summary, omit a later action because the reference shows the opening state, or make the final timeline less developed than the source brief. If output space is tight, shorten static reference inventory and assistant-added filler first, never a user-required action, camera instruction, reaction, dialogue, or constraint.");
@@ -154,7 +168,7 @@ export function h3PromptControlInstruction(input) {
     }
     return lines.join("\n");
 }
-const h3ScaleOutputLockPattern = /(?:scale continuity|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged)|world[- ]space\s+scale|head[- ]to[- ]body\s+ratio|body proportions?|source[- ]age|尺度连续性|头身比|四肢长度比例|等比例)/iu;
+const h3ScaleOutputLockPattern = /(?:scale (?:continuity|relation)|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged|smaller|larger)|world[- ]space\s+scale|(?:miniature|tiny|giant|larger|smaller)[^.!?\n]{0,120}(?:full[- ]size|environment|world[- ]scale|relative|throughout|remains?|stable)|(?:保持|维持)[^。！？\n]{0,100}(?:尺度|大小关系|等比例))/iu;
 export function auditH3PromptControlOutput(plan, generatedPrompt) {
     const missing = [];
     if (plan.hasCamera) {
@@ -342,10 +356,10 @@ function stripH3OutputPreamble(promptText, mode) {
 }
 function collapseUnexpectedH3Shots(promptText, mode, sourcePrompt, policyContext) {
     const policy = h3ShotPolicyForPrompt([sourcePrompt, policyContext].filter(Boolean).join("\n"));
-    // R2V can legitimately use a storyboard-like multi-shot structure when the
-    // user did not explicitly constrain it. Other H3 modes default to one
-    // continuous shot unless the source asks for cuts or multiple shots.
-    if (policy === "allow-multiple" || (mode === "R2V" && policy === "default-single")) {
+    // Every H3 mode follows the product's single-shot default. R2V may still use
+    // multiple shots when the user or declared reference structure explicitly
+    // asks for them.
+    if (policy === "allow-multiple") {
         return promptText;
     }
     const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";

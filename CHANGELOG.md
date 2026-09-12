@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+## 0.61.6 — 2026-09-13
+
+- 修复自动 LoRA 在 H3 Prompt 正文已含触发词时仍重复注入，以及缺失触发词抢占参考图声明开头的问题：完整词边界检测现在由创建检查与执行组装共用；已有 `Facial Realism`、`r34l1sm`、`camera motion` 等 trigger 保持原位，只有缺失项才自动加入；I2VA/FL2VA/L2VA 的官方参考对齐声明始终保持在绝对开头。
+- 重构 H3 Prompt 增强控制层：所有模式默认单个连续 `[Shot 1]`，只有用户明确要求多视角/切镜才放开多镜头；缩短最终单镜头、真人材质、摄影机和尺寸修复文本，避免把 cut、toy、child 等失败概念反复写回 H3 正文。未知年龄、性别和精确尺寸不再从 tiny 等词推断；巨型/微型多角色按各自身份、服装、动作和相对尺度绑定，人物动作增加正向的关节、重心、手部接触与遮挡连续性指导。
+- 修复 FL2VA/R2VA/Extend 与增强后端语义不一致：FL2VA 按顺序向 MiniMax H3 Prompt Rewriter 提供首尾两张图并建立跨帧实体对应，R2VA 保持来源与 Subject 职责隔离且在不支持的 Rewriter 上给出可操作提示，Extend 从精确末帧状态连续续接；Qwen3.6/Qwen3.8、H3 Prompt Writer 和 Prompt Rewriter 共用优先级与输出审计，参考图自动起稿合同只在自动模式启用。
+- 修复摄影机审计在输出开头回灌整段原始 camera 语句、造成超长重复 Prompt 的问题，改为只补结构化路径、目标、角度、旋转终点和空间关系；保留十个预设及全部快捷插入项的 ID、顺序和入口，快捷文本继续先进入增强器，并改为更短的正向可执行意图。
+- 修复 H3“影视细节扩写”预设可能反向缩写、输出短于其他预设或省略用户动作的问题：要求逐项保留用户事实与动作顺序，并为每个动作补充至少两类适用的动作机制、反应、摄影机或因果声音细节；Base 与 R2VA 使用各自的建议覆盖区间，长原文从原文基线继续扩展而不为字数区间压缩。保持十个预设、用户自定义正文和现有模式入口不变。
+
 ## 0.61.5 — 2026-09-12
 
 - 修复 H3 Continuum V3.8 把 sampler 的视频 latent 列表直接交给 JointAV serializer、导致 `H3 AV serializer 只接受 joint NestedTensor` 的运行时失败；工作流现在先用核心 `LTXVConcatAVLatent` 合并视频和音频 latent，静态与运行时契约会 fail closed 校验两路连接。RTX 4090 + ComfyUI 0.35.0 的 768p/5s/20-step 实际生成已通过，产出 MP4 与新的 JointAV safetensors。

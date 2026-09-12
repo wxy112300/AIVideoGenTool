@@ -235,10 +235,11 @@ export function h3PromptInstruction(
   const extensionContinuityInstruction = request.extensionSource
     ? [
         "EXTENSION CONTINUITY CONTRACT (highest priority):",
-        "This is a continuation of an existing video, not a new shot or a scene reset.",
-        "Continue immediately from the selected video's final visible moment and preserve every established subject, character identity, clothing, props, environment, lighting, palette, spatial layout, camera position, lens, framing, motion direction, and audio context unless the user explicitly requests a change.",
-        "Do not cut, montage, jump in time, change angle or location, remove or reinvent existing elements, or introduce a new shot. Describe only the next continuous action.",
-        "The first generated moment must follow the source boundary directly; do not restage the scene or replace its main subject."
+        "Treat the extracted boundary image as the exact last-visible state of the source video and the first state of the continuation.",
+        "Carry forward only the subjects, identity cues, clothing, props, environment, lighting, spatial layout, framing, motion direction, and audio state established at that boundary, then apply the user's requested next action.",
+        shotPolicy === "allow-multiple"
+          ? "Begin continuously from that boundary; use any later editorial change only where the user explicitly requested it."
+          : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state."
       ].join("\n")
     : "";
   const controlInstruction = h3PromptControlInstruction({
@@ -276,7 +277,9 @@ export function h3PromptInstruction(
     ...(contentLocks ? [contentLocks] : []),
     ...(scaleInstruction ? [scaleInstruction] : []),
     h3SmallModelPromptContract(mode, preset),
-    h3AutoPrompterContract(mode, duration, referenceContext),
+    ...(isH3ReferenceAutoPrompt(request)
+      ? [h3AutoPrompterContract(mode, duration, referenceContext)]
+      : []),
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,
     h3DurationPlan(mode, duration, preset),
     "Official H3 output fields (use this order, but do not copy these labels as commentary or add a visual inventory):",

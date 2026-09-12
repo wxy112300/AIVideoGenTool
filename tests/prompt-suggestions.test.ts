@@ -9,7 +9,8 @@ describe("prompt snippets", () => {
     expect(promptSnippetFor("camera-push-in")).toContain("pushes in");
     expect(promptSnippetFor("continuity-body-gaze-lock")).toContain("gaze");
     expect(promptSnippetFor("visual-live-action-human")).toContain("live-action");
-    expect(promptSnippetFor("visual-anti-cg-plastic")).toContain("plastic");
+    expect(promptSnippetFor("visual-anti-cg-plastic")).toContain("photographic material behavior");
+    expect(promptSnippetFor("visual-anti-cg-plastic")).not.toMatch(/CGI|toy|doll|wax|plastic/iu);
     expect(promptSnippetFor("capture-smartphone-1x")).toContain("1x");
     expect(promptSnippetFor("dialogue-mandarin")).toContain("<d>[Chinese]");
     expect(promptSnippetFor("screen-text")).toContain("exactly");

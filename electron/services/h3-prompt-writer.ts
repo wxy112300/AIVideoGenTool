@@ -4,6 +4,7 @@ import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } f
 import { managedPromptModel } from "../../src/core/prompt-models.js";
 import {
   h3AutoPromptInstruction,
+  h3AutoPrompterContract,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -160,6 +161,36 @@ function writerMode(mode?: H3PromptMode, imageEdit = false): "T2VA" | "I2VA" | "
   return mode === "R2V" ? "Reference" : mode || "I2VA";
 }
 
+type H3PromptWriterMode = ReturnType<typeof writerMode>;
+
+function isImageMediaPath(value: string): boolean {
+  return /\.(?:png|jpe?g|webp|bmp|gif|tiff?)$/iu.test(value);
+}
+
+/**
+ * Extend requests without user keyframes are target T2VA requests, but the
+ * extracted continuation boundary is still a real image that the Writer must
+ * inspect. The upstream Writer rejects every media file in T2VA, so use its
+ * single-image I2VA transport contract while keeping the target/output mode
+ * separate for final normalization.
+ */
+function promptWriterModeForRequest(
+  request: EnhanceRequest,
+  imageEdit: boolean,
+  mediaPaths: readonly string[]
+): H3PromptWriterMode {
+  const targetMode = writerMode(request.h3PromptMode, imageEdit);
+  if (
+    !imageEdit &&
+    targetMode === "T2VA" &&
+    request.extensionSource &&
+    mediaPaths.some(isImageMediaPath)
+  ) {
+    return "I2VA";
+  }
+  return targetMode;
+}
+
 export function extractImageEditPromptFromWriter(value: string): string {
   const field = value.match(
     /(?:^|\n)\s*(?:[*#\s]*)(?:detailed_description|integrated_multimodal_description)\s*:\s*([\s\S]*?)(?=\n\s*(?:[*#\s]*)(?:subject_definitions|summary|retention_analysis|overall_soundscape|non_diegetic_music)\s*:|$)/iu
@@ -243,7 +274,6 @@ export async function enhancePromptWithH3PromptWriter(
   onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
   const root = baseUrl(settings);
-  const mode = writerMode(request.h3PromptMode, imageEdit);
   const h3Mode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || request.imagePaths?.length),
     (request.imagePaths?.length ?? 0) > 1
@@ -263,6 +293,12 @@ export async function enhancePromptWithH3PromptWriter(
   const mediaPaths = (request.referenceMediaPaths || request.imagePaths || (request.imagePath ? [request.imagePath] : []))
     .filter(Boolean)
     .slice(0, 12);
+  const mode = promptWriterModeForRequest(request, imageEdit, mediaPaths);
+  const usesExtensionBoundaryTransport = !imageEdit &&
+    h3Mode === "T2VA" &&
+    mode === "I2VA" &&
+    Boolean(request.extensionSource) &&
+    mediaPaths.some(isImageMediaPath);
   const controlInstruction = imageEdit
     ? ""
     : h3PromptControlInstruction({
@@ -289,6 +325,12 @@ export async function enhancePromptWithH3PromptWriter(
     const scaleInstruction = imageEdit
       ? ""
       : h3ScalePreservationInstruction(sourcePrompt, h3Mode, scaleContext);
+    const transportModeInstruction = usesExtensionBoundaryTransport
+      ? [
+          `Prompt Writer media transport: the target/output mode is ${h3Mode}, but this continuation request is inspected through the ${mode} single-image transport because the extracted boundary frame is visual grounding and T2VA does not accept media uploads.`,
+          "Treat that attached image as the exact last-visible source state and first state of the continuation. Emit the final prompt in the target/output mode; do not add an I2VA alignment line or invent/renumber <Picture N> labels unless the user explicitly supplied them."
+        ].join(" ")
+      : "";
     const presetBrief = imageEdit
       ? ""
       : [
@@ -309,6 +351,10 @@ export async function enhancePromptWithH3PromptWriter(
       hardConstraints,
       contentLocks,
       scaleInstruction,
+      isH3ReferenceAutoPrompt(request)
+        ? h3AutoPrompterContract(h3Mode, request.h3DurationSeconds ?? 5, request.referenceContext)
+        : "",
+      transportModeInstruction,
       h3DurationPlan(h3Mode, request.h3DurationSeconds ?? 5, h3Preset),
       presetBrief
     ].filter(Boolean).join("\n\n");
@@ -334,14 +380,9 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
     if (imageEdit) return stripPromptAnnotations(extractImageEditPromptFromWriter(result.prompt));
-    const imageCount = request.imagePaths?.length ?? 0;
-    const modeForOutput = request.h3PromptMode ?? inferH3PromptMode(
-      Boolean(request.imagePath || imageCount > 0),
-      imageCount > 1
-    );
     return normalizeH3PromptOutput(
       result.prompt.trim(),
-      modeForOutput,
+      h3Mode,
       request.h3DurationSeconds ?? 5,
       extractH3DialogueLocks(sourcePrompt),
       extractH3VisibleTextLocks(sourcePrompt),

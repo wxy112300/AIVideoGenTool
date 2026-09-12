@@ -108,7 +108,7 @@ export function extractH3ScaleIntent(
 }
 
 export function h3ScalePreservationContract(): string {
-  return "Scale-semantics rule: when a size adjective or shrink/grow request refers to a subject, interpret it as one uniform change in physical world scale unless the user explicitly requests a body-shape transformation. Never infer a toy, doll, figure, child, baby, or local anatomy change from smallness; preserve the source identity, age, facial and body proportions, joints, posture, gait, behavior, and natural materials. Treat ant/insect/micro-FPV wording as a viewpoint or scale metaphor unless the user explicitly requests an actual animal or device, and translate the metaphor into observable camera height, clearance, route, and motion.";
+  return "Scale-semantics rule: bind every size word to a specific subject and express it as a stable, uniform world-scale relationship against visible scene anchors unless the user requests a shape transformation. Preserve only user-supplied or reliably reference-visible identity, appearance, clothing ownership, and full-body proportions. Omit unknown age, gender, measurements, identity, and appearance facts instead of guessing them. Treat ant/insect/micro-FPV shorthand as an observable low viewpoint or relative-scale instruction when context supports that reading.";
 }
 
 function modeScaleRule(mode: H3PromptMode): string {
@@ -142,13 +142,11 @@ export function h3ScalePreservationInstruction(
     : intent.direction === "larger"
       ? "larger than the surrounding world"
       : "at the explicitly requested relative scale";
-  const mechanicsRule = intent.humanIdentity
-    ? "Keep the identified human living and flesh-and-blood with natural skin, hair, clothing, contact, weight, and motion, not manufactured or plastic."
-    : "Keep the subject's original material, anatomy, contact, weight, and motion natural rather than turning it into a manufactured or stylized object.";
   const lines = [
     "Scale semantics lock (high priority):",
-    `When size words describe a human/character, rewrite them as the same source/reference identity and age made ${direction} by one uniform world-space factor relative to the full-size environment. Preserve facial maturity, face shape, head-to-body and limb-length ratios, joints, hands, feet, posture, gait, expressions, voice, clothing, materials, and age-appropriate behavior; never infer a child, baby, toy, doll, figure, plastic model, local body deformation, or scale drift.`,
-    `${mechanicsRule} Shorter or longer travel distance is not shorter or longer limbs; move the camera or lens closer instead of enlarging the head.`,
+    `Bind each requested size to its own identified subject and express that subject as ${direction} by one stable, uniform world-space factor. Keep separate subjects, clothing ownership, action roles, and larger-to-smaller relationships distinct.`,
+    "Preserve only identity, appearance, clothing, voice, and full-body proportions that the user supplied or the references visibly support. Omit unknown age, gender, exact measurements, and appearance details instead of inferring them from a size word.",
+    "Describe natural contact, weight, travel, and camera distance when they make the scale relationship observable. Keep changes in framing separate from changes in world scale.",
     "Reference-derived scale lock: first estimate the subject's relative world scale from the supplied reference image(s), the support surface, and visible environmental anchors such as fingers, fabric weave, floor seams, leaves, cups, furniture, or doors. Use relational scale language when a ruler is not visible; preserve an explicitly supplied measurement, but never assume a fixed centimeter range or invent false precision.",
     modeScaleRule(mode),
     explicitChangeRule,
@@ -172,7 +170,7 @@ export function h3ScalePreservationInstruction(
 }
 
 function scaleOutputAlreadyLocked(promptText: string): boolean {
-  return /(?:scale continuity|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged)|world[- ]space\s+scale|(?:preserve|maintain|keep|unchanged|consistent|same)[^.!?\n]{0,100}(?:head[- ]to[- ]body\s+ratio|limb[- ]length|body proportions?|source age|age-appropriate))/iu.test(promptText);
+  return /(?:scale (?:continuity|relation)|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged|smaller|larger)|world[- ]space\s+scale|(?:miniature|tiny|giant|larger|smaller)[^.!?\n]{0,120}(?:full[- ]size|environment|world[- ]scale|relative|throughout|remains?|stable)|(?:保持|维持)[^。！？\n]{0,100}(?:尺度|大小关系|等比例))/iu.test(promptText);
 }
 
 function microScaleOutputAlreadyLocked(promptText: string): boolean {
@@ -186,27 +184,24 @@ function scaleOutputLock(intent: H3ScaleIntent, promptText: string): string {
       ? "physically larger than the surrounding environment"
       : "at the requested physical scale relative to the environment";
   if (/[\p{Script=Han}]/u.test(promptText)) {
-    const materialRule = intent.humanIdentity
-      ? "角色仍应是具有自然皮肤、头发、衣物和运动表现的真人，而不是玩具、娃娃或塑料人偶。"
-      : "主体保持原有自然材质和运动表现，不得变成玩具、娃娃、塑料模型或其他人工制品。";
-    return `尺度连续性：同一个主体保持原始身份和年龄，仅相对于完整尺寸的环境以统一的整体物理尺度${intent.direction === "smaller" ? "缩小" : intent.direction === "larger" ? "放大" : "变化"}。保留脸部成熟度、头身比、四肢长度比例、关节位置、手脚、姿态、步态、动作、表情和年龄相符的行为，不得局部改变身体比例、出现年龄退化或在镜头之间漂移；${materialRule}`;
+    return intent.direction === "relative"
+      ? "尺度关系：画面中已明确的大、小主体保持各自独立的身份、衣物归属和动作角色，其大小次序相对于可见环境参照全程稳定。"
+      : `尺度关系：被描述为${intent.direction === "smaller" ? "微小" : "巨大"}的主体相对于完整尺寸的可见环境保持统一、稳定的世界尺度；仅保留用户或参考画面已经明确的身份、外观、衣物和全身比例。`;
   }
-  const subjectDescription = intent.humanIdentity ? "the same source-age human" : "the same source subject";
-  const materialRule = intent.humanIdentity
-    ? "Keep the subject living and flesh-and-blood with natural skin, hair, clothing and motion, not a manufactured figure."
-    : "Keep the subject's original material and motion natural, not manufactured or stylized.";
-  return `Scale continuity: ${subjectDescription} remains ${direction} through one uniform world-space change only. Preserve identity, source age and age-appropriate behavior, facial maturity, head-to-body ratio, limb-length ratios, joint placement, hands, feet, posture, gait, gestures and expressions; do not locally resize body parts, regress the age, or let the scale drift. ${materialRule}`;
+  return intent.direction === "relative"
+    ? "Scale relation: the explicitly larger and smaller subjects remain separately identifiable, retain their own clothing and action roles, and keep the requested size ordering stable against visible environment anchors throughout the shot."
+    : `Scale relation: the described subject remains ${direction} by one stable, uniform world-scale factor against visible full-size environment anchors. Preserve only the identity, appearance, clothing, and full-body proportions established by the user or reference.`;
 }
 
 function microScaleOutputLock(intent: H3ScaleIntent, promptText: string): string {
   if (/[\p{Script=Han}]/u.test(promptText)) {
     return intent.microFpvViewpoint
-      ? "隐喻尺度与镜头：ant-size、ant's view、insect-eye、Micro-FPV 等词在此仅表示贴近支撑表面的微型视角，不要生成真实蚂蚁、昆虫、无人机或画面内的实体相机；根据参考图和环境参照估算微小真人的相对尺度，不假定固定厘米数，让不可见镜头保持在与微小角色同一数量级的高度并贴近表面，沿真实可通行路径连续跟随。"
-      : "隐喻尺度：ant-size、insect-size 等词在此仅表示微小真人与环境的相对尺度，不要生成真实蚂蚁或昆虫；根据参考图和环境参照估算尺度，保持真人身份、年龄和等比例身体结构，不假定固定厘米数。";
+      ? "尺度视点：将输入中的微型尺度简称落实为贴近主体支撑表面、与主体世界高度相称的不可见成像视点；依据可见环境参照判断相对尺度，并沿真实可通行路径连续跟随。"
+      : "尺度执行：将输入中的微型尺度简称落实为主体与可见环境参照之间的相对世界尺度，仅保持用户或参考画面已明确的身份和全身比例。";
   }
   return intent.microFpvViewpoint
-    ? "Metaphor-to-execution lock: ant-size, ant's view, insect-eye, and Micro-FPV are viewpoint/scale metaphors here, not literal ants, insects, drones, or an on-screen camera. Infer the tiny human's relative world scale from the supplied reference and environmental anchors rather than a fixed centimeter value; keep the invisible viewpoint close to the same support surface and roughly at the tiny subject's own height, following a continuous passable route."
-    : "Metaphor-to-execution lock: ant-size and insect-size are scale metaphors here, not literal ants or insects. Infer the tiny human's relative world scale from the supplied reference and environmental anchors, preserve the same real human identity and proportions, and do not assume a fixed centimeter value.";
+    ? "Scale-viewpoint execution: interpret the supplied micro-scale shorthand as an invisible image-forming viewpoint close to the subject's support surface and approximate world height. Infer relative scale from visible environmental anchors and follow one continuous passable route."
+    : "Scale execution: interpret the supplied micro-scale shorthand through the subject's relative world scale against visible environmental anchors, preserving only reference-grounded identity and full-body proportions.";
 }
 
 export function ensureH3ScalePreservationInOutput(

@@ -51,9 +51,15 @@ A model reuses an existing Pack through its model catalog `promptPackId`. A mode
 
 The locale file maps that stable ID to labels such as `慢速推近` or `Slow push-in`. The inserted value is always the English `text`.
 
+H3 snippets are editable intent seeds, not complete prompts sent directly to the video model. Every snippet remains available in every H3 mode and passes through the selected prompt enhancer together with the user's surrounding text. The enhancer resolves its camera, sound, dialogue, scale, reference, and continuity meaning for T2VA/I2VA/FL2VA/L2VA/R2VA/Extend; do not hide or silently drop a snippet because one backend needs a different rendering.
+
+Keep snippet text short, positive, and executable. Prefer a concrete subject action, camera path, sound source, or endpoint over a catalogue of failure concepts. Stable snippet IDs and the existing flat picker order are compatibility and UX contracts; changing model-facing wording does not require regrouping the picker.
+
 ## Presets
 
 Preset IDs remain stable for persisted Settings and history compatibility. Pack content owns the built-in English default bodies. Locale files only provide the preset label and description shown in Create and Settings.
+
+The ten H3 presets remain independent choices rather than composable groups. Every preset first preserves the base prompt and mode/reference semantics. `detailed-cinematic` is an expansion contract: it retains every concrete source instruction and develops each action with grounded mechanics, reactions, camera behavior, timing, or causal sound; it must not become a concise rewrite. Single-shot behavior is a product-level default and is not owned solely by the single-shot preset.
 
 ## Update workflow
 

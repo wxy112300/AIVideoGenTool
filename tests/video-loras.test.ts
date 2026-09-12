@@ -139,7 +139,7 @@ describe("video LoRA catalog", () => {
     }
   });
 
-  it("adds the Realism People trigger at the start of the execution Prompt without duplication", () => {
+  it("adds a missing Realism People trigger without relocating an existing one", () => {
     expect(videoPromptForLoras(
       "a woman turns toward the window",
       [H3_REALISM_PEOPLE_LORA]
@@ -151,7 +151,7 @@ describe("video LoRA catalog", () => {
     expect(videoPromptForLoras(
       "a woman, r34l1sm, turns toward the window",
       [H3_REALISM_PEOPLE_LORA]
-    )).toBe("r34l1sm, a woman, turns toward the window");
+    )).toBe("a woman, r34l1sm, turns toward the window");
   });
 
   it("freezes automatic prompt prefixes into a queued LoRA selection snapshot", () => {
@@ -321,7 +321,7 @@ describe("video LoRA catalog", () => {
     expect(instruction).toContain("natural skin texture");
   });
 
-  it("adds the Facial Realism trigger at the start of the execution Prompt", () => {
+  it("adds the Facial Realism trigger without displacing the reference declaration", () => {
     expect(videoPromptForLoras(
       "a woman looks toward the camera",
       [H3_FACIAL_REALISM_CLOSEUP_LORA]
@@ -330,6 +330,30 @@ describe("video LoRA catalog", () => {
       "Facial Realism, a woman looks toward the camera",
       [H3_FACIAL_REALISM_CLOSEUP_LORA]
     )).toBe("Facial Realism, a woman looks toward the camera");
+    expect(videoPromptForLoras(
+      "A woman looks toward the camera. Facial Realism.",
+      [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    )).toBe("A woman looks toward the camera. Facial Realism.");
+    expect(videoPromptForLoras(
+      [
+        "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+        "integrated_multimodal_description: [Shot 1] A woman looks toward the camera."
+      ].join("\n\n"),
+      [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    )).toBe([
+      "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+      "Facial Realism, integrated_multimodal_description: [Shot 1] A woman looks toward the camera."
+    ].join("\n\n"));
+    expect(videoPromptForLoras(
+      [
+        "How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark; Picture 2 aligns with the 5.17-second mark.",
+        "integrated_multimodal_description: [Shot 1] The subject crosses the room."
+      ].join("\n\n"),
+      [H3_FACIAL_REALISM_CLOSEUP_LORA]
+    )).toBe([
+      "How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark; Picture 2 aligns with the 5.17-second mark.",
+      "Facial Realism, integrated_multimodal_description: [Shot 1] The subject crosses the room."
+    ].join("\n\n"));
   });
 
   it("removes obsolete LoRAs from creation and keeps name-only history snapshots", () => {

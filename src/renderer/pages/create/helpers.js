@@ -179,8 +179,18 @@ export function insertPromptSnippet(promptInput, snippet) {
     const after = promptInput.value.slice(end);
     const prefix = before && !/\s$/u.test(before) ? "\n" : "";
     const suffix = after && !/^\s/u.test(after) ? "\n" : "";
+    const inserted = `${prefix}${snippet}${suffix}`;
     promptInput.focus();
-    promptInput.setRangeText(`${prefix}${snippet}${suffix}`, start, end, "end");
+    promptInput.setRangeText(inserted, start, end, "end");
+    const placeholder = [
+        "Write the exact original dialogue here.",
+        "Write the exact spoken words here.",
+        "Write the original text here"
+    ].find((value) => snippet.includes(value));
+    if (placeholder) {
+        const placeholderStart = start + prefix.length + snippet.indexOf(placeholder);
+        promptInput.setSelectionRange(placeholderStart, placeholderStart + placeholder.length);
+    }
     promptInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 export function imageFileIsSupported(file) {

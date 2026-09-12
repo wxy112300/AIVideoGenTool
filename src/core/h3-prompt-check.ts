@@ -1,6 +1,9 @@
 import type { H3PromptMode, VideoLoraSelection } from "../types.js";
 import { inferH3PromptMode } from "./h3-prompt.js";
-import { videoLoraDefinition } from "./video-loras.js";
+import {
+  promptContainsVideoLoraTrigger,
+  videoLoraDefinition
+} from "./video-loras.js";
 import {
   extractH3DialogueLocks,
   type H3DialogueLock,
@@ -121,24 +124,6 @@ function sentenceCount(section: string): number {
   return Math.max(1, content.match(/[.!?](?=\s|$)/gu)?.length ?? 1);
 }
 
-function promptContainsLoraTrigger(prompt: string, trigger: string): boolean {
-  const normalizedPrompt = prompt.replace(/\s+/gu, " ").trim().toLowerCase();
-  const normalizedTrigger = trigger.replace(/\s+/gu, " ").trim().toLowerCase();
-  if (!normalizedTrigger) return true;
-  let searchFrom = 0;
-  while (searchFrom < normalizedPrompt.length) {
-    const index = normalizedPrompt.indexOf(normalizedTrigger, searchFrom);
-    if (index < 0) return false;
-    const before = normalizedPrompt[index - 1];
-    const after = normalizedPrompt[index + normalizedTrigger.length];
-    const isTokenCharacter = (value: string | undefined): boolean =>
-      Boolean(value && /[\p{L}\p{N}]/u.test(value));
-    if (!isTokenCharacter(before) && !isTokenCharacter(after)) return true;
-    searchFrom = index + normalizedTrigger.length;
-  }
-  return false;
-}
-
 function promptPrefixesForLora(lora: VideoLoraSelection): string[] {
   return [...new Set((lora.promptPrefixes ?? videoLoraDefinition(lora.id)?.promptPrefixes ?? [])
     .map((prefix) => prefix.trim())
@@ -157,7 +142,7 @@ export function checkH3Prompt(
   const items: H3PromptCheckItem[] = [];
   for (const lora of options.videoLoras ?? []) {
     const missingTriggers = promptPrefixesForLora(lora)
-      .filter((trigger) => !promptContainsLoraTrigger(prompt, trigger));
+      .filter((trigger) => !promptContainsVideoLoraTrigger(prompt, trigger));
     if (!missingTriggers.length) continue;
     items.push({
       level: "warning",

@@ -24,8 +24,9 @@ describe("prompt packs", () => {
     expect(enSnippet?.label).toBe("One continuous take · no cuts");
     expect(zhSnippet?.text).toBe(twSnippet?.text);
     expect(zhSnippet?.text).toBe(enSnippet?.text);
-    expect(zhSnippet?.text).toContain("exactly one unbroken [Shot 1]");
-    expect(zhSnippet?.text).toContain("no cuts");
+    expect(zhSnippet?.text).toContain("One continuous unbroken take");
+    expect(zhSnippet?.text).toContain("no editorial cut");
+    expect(zhSnippet?.text).not.toMatch(/dissolves|wipes|montage|shot resets|teleportation/iu);
   });
 
   it("keeps model-facing preset content stable across locales", () => {

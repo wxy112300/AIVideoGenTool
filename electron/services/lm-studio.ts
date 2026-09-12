@@ -11,6 +11,7 @@ import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
+  h3AutoPrompterContract,
   h3AutoPromptInstruction,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -325,6 +326,9 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
     ...(hardConstraints ? [hardConstraints] : []),
     ...(contentLocks ? [contentLocks] : []),
     ...(scaleInstruction ? [scaleInstruction] : []),
+    ...(isH3ReferenceAutoPrompt(request)
+      ? [h3AutoPrompterContract(mode, Number(duration), referenceContext)]
+      : []),
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     mode === "T2VA"
       ? "No image reference is attached; the user intent above is the source material for the T2VA timeline."

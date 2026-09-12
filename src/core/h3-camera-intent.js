@@ -422,13 +422,63 @@ export function auditH3CameraIntent(sourcePrompt, generatedPrompt) {
     };
 }
 function cameraFallbackSentence(intent) {
-    const rotationLock = intent.rotationDegrees.length
-        ? ` The camera's orbit sweep is exact: ${intent.rotationDegrees.map((degrees) => `${degrees} degrees`).join(" and ")} only, then it stops at the requested endpoint; do not continue around the subject.`
+    const motionLabels = {
+        arc: "Arc Shot",
+        pan: "pan",
+        tilt: "tilt",
+        push: "push-in",
+        pull: "pull-back",
+        track: "tracking movement",
+        zoom: "optical zoom",
+        roll: "camera roll",
+        static: "static framing",
+        generic: "physical camera movement"
+    };
+    const motions = intent.motionKinds.map((kind) => motionLabels[kind]);
+    const targetAnchor = intent.targetAnchors[0];
+    const target = !targetAnchor
+        ? ""
+        : intent.motionKinds.includes("arc")
+            ? ` around ${targetAnchor}`
+            : intent.motionKinds.some((kind) => kind === "push" || kind === "zoom")
+                ? ` toward ${targetAnchor}`
+                : ` while keeping ${targetAnchor} framed`;
+    const angle = intent.angleKinds.length ? ` from a ${intent.angleKinds.join(" and ")} viewpoint` : "";
+    const rotation = intent.rotationDegrees.length
+        ? ` through exactly ${intent.rotationDegrees.map((degrees) => `${degrees} degrees`).join(" and ")}, settling at that endpoint`
         : "";
-    const microLock = intent.microFpvMetaphor
-        ? " The micro-scale wording is a viewpoint metaphor: keep the invisible camera close to the support surface at the tiny subject's height and do not render an ant, insect, drone, or physical camera."
+    const source = intent.sourceClauses.join(" ");
+    const spatial = [];
+    if (/(?:inside|indoors|interior|within|里面|内部|内侧|室内)/iu.test(source))
+        spatial.push("beginning inside the established space");
+    if (/(?:outside|outdoors|exterior|outward|外面|外部|外侧|向外)/iu.test(source))
+        spatial.push("oriented toward the exterior");
+    if (/(?:through|穿过|透过)/iu.test(source))
+        spatial.push("passing through the visible opening");
+    if (/(?:behind|后方|后面)/iu.test(source))
+        spatial.push("maintaining the requested rear relation");
+    if (/(?:above|上方)/iu.test(source))
+        spatial.push("maintaining the requested position above the target");
+    if (/(?:below|under|下方)/iu.test(source))
+        spatial.push("maintaining the requested position below the target");
+    if (/(?:\bleft\b|左侧)/iu.test(source))
+        spatial.push("maintaining the requested left-side relation");
+    if (/(?:\bright\b|右侧)/iu.test(source))
+        spatial.push("maintaining the requested right-side relation");
+    if (/(?:\bclockwise\b|顺时针)/iu.test(source))
+        spatial.push("moving clockwise");
+    if (/(?:\b(?:counterclockwise|anticlockwise)\b|逆时针)/iu.test(source))
+        spatial.push("moving counterclockwise");
+    const relation = spatial.length ? `, ${spatial.join(", ")}` : "";
+    const subjectRelation = approachesViewCameraPattern.test(source)
+        ? " The described subject moves toward the lens."
+        : lookAtViewCameraPattern.test(source)
+            ? " The described subject looks into the lens."
+            : "";
+    const micro = intent.microFpvMetaphor
+        ? " The invisible viewpoint remains close to the support surface at the reference-grounded miniature height."
         : "";
-    return `The viewpoint camera must preserve this explicit user direction in the shot, keeping its camera angle and primary trajectory for the entire shot without switching to another viewpoint: ${intent.sourceClauses.join(" ")}${rotationLock}${microLock}`;
+    return `The viewpoint camera uses one continuous ${motions.join(" followed by ") || "physical camera"} path${target}${angle}${rotation}${relation}.${subjectRelation}${micro}`;
 }
 export function preserveH3CameraIntentInOutput(generatedPrompt, sourcePrompt, mode) {
     const intent = extractH3CameraIntent(sourcePrompt);

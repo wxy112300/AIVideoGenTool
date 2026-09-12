@@ -148,7 +148,7 @@ describe("H3 camera intent guard", () => {
     ).passed).toBe(true);
   });
 
-  it("conservatively restores the original camera wording inside the H3 shot", () => {
+  it("restores structured camera facts without echoing the original clause", () => {
     const source = "The camera rotates around the girl, showing the view from inside the room looking outside.";
     const repaired = preserveH3CameraIntentInOutput(
       "integrated_multimodal_description: [Shot 1] The girl turns slowly.\n\noverall_soundscape: Quiet room tone.\n\nnon_diegetic_music: N/A",
@@ -156,8 +156,11 @@ describe("H3 camera intent guard", () => {
       "T2VA"
     );
 
-    expect(repaired).toContain("The viewpoint camera must preserve this explicit user direction in the shot");
-    expect(repaired).toContain(source);
+    expect(repaired).toContain("one continuous Arc Shot path around girl");
+    expect(repaired).toContain("beginning inside the established space");
+    expect(repaired).toContain("oriented toward the exterior");
+    expect(repaired).not.toContain("must preserve this explicit user direction");
+    expect(repaired).not.toContain(source);
     expect(repaired).toContain("overall_soundscape:");
   });
 

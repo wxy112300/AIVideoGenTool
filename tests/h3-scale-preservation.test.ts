@@ -104,9 +104,10 @@ describe("H3 scale semantics", () => {
       "A tiny person walks past a coffee mug."
     );
 
-    expect(normalized).toContain("Scale continuity:");
-    expect(normalized).toContain("head-to-body ratio");
-    expect(normalized.indexOf("Scale continuity:")).toBeLessThan(normalized.indexOf("[Shot 1]"));
+    expect(normalized).toContain("Scale relation:");
+    expect(normalized).toContain("uniform world-scale factor");
+    expect(normalized.indexOf("Scale relation:")).toBeLessThan(normalized.indexOf("[Shot 1]"));
+    expect(normalized).not.toMatch(/source-age|adult|child|baby|toy|doll/iu);
   });
 
   it("uses the R2V detailed description field and avoids duplicate locks", () => {
@@ -125,8 +126,8 @@ describe("H3 scale semantics", () => {
     );
     const repeated = ensureH3ScalePreservationInOutput(normalized, "R2V", "A giant woman crosses the street.");
 
-    expect(normalized).toContain("detailed_description:\nScale continuity:");
-    expect(repeated.match(/Scale continuity:/gu)).toHaveLength(1);
+    expect(normalized).toContain("detailed_description:\nScale relation:");
+    expect(repeated.match(/Scale relation:/gu)).toHaveLength(1);
   });
 
   it("uses annotation context when repairing a final prompt", () => {
@@ -137,19 +138,32 @@ describe("H3 scale semantics", () => {
       "Note: make her a proportional tiny real human, not a toy or child."
     );
 
-    expect(repaired).toContain("Scale continuity:");
-    expect(repaired).toContain("source-age human");
+    expect(repaired).toContain("Scale relation:");
+    expect(repaired).not.toMatch(/source-age|adult|child|baby|toy|doll/iu);
   });
 
   it("adds the micro-scale lock even when a normal scale lock is already present", () => {
-    const output = "integrated_multimodal_description: Scale continuity: the same source-age human remains physically smaller than the environment. [Shot 1] The tiny person walks.";
+    const output = "integrated_multimodal_description: Scale relation: the described person remains miniature relative to the full-size environment. [Shot 1] The tiny person walks.";
     const repaired = ensureH3ScalePreservationInOutput(
       output,
       "T2VA",
       "An ant-size tiny person walks from A to B using ant's view."
     );
 
-    expect(repaired).toContain("Metaphor-to-execution lock");
-    expect(repaired.match(/Metaphor-to-execution lock:/gu)).toHaveLength(1);
+    expect(repaired).toContain("Scale-viewpoint execution");
+    expect(repaired.match(/Scale-viewpoint execution:/gu)).toHaveLength(1);
+    expect(repaired).not.toMatch(/source-age|adult|child|baby|toy|doll/iu);
+  });
+
+  it("keeps a mixed giant/miniature relation plural and omits inferred age", () => {
+    const repaired = ensureH3ScalePreservationInOutput(
+      "integrated_multimodal_description: [Shot 1] A dark-coated person stands beside a red-jacketed person.",
+      "FL2VA",
+      "A giant person in a dark coat reaches toward a miniature person in a red jacket."
+    );
+
+    expect(repaired).toContain("explicitly larger and smaller subjects");
+    expect(repaired).toContain("clothing and action roles");
+    expect(repaired).not.toMatch(/\b(?:same|adult|child|baby|toy|doll)\b/iu);
   });
 });

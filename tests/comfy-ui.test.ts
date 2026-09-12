@@ -245,9 +245,9 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("EXTENSION CONTINUITY CONTRACT (highest priority)");
-    expect(instruction).toContain("not a new shot or a scene reset");
-    expect(instruction).toContain("Do not cut, montage, jump in time");
-    expect(instruction).toContain("preserve every established subject, character identity");
+    expect(instruction).toContain("exact last-visible state");
+    expect(instruction).toContain("inside the same connected take");
+    expect(instruction).toContain("Carry forward only the subjects");
   });
 
   it("passes the selected H3 LoRA into prompt enhancement context", () => {
@@ -291,7 +291,8 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("Scale semantics lock");
-    expect(instruction).toContain("same source/reference identity and age");
+    expect(instruction).toContain("Keep separate subjects, clothing ownership, action roles");
+    expect(instruction).toContain("Omit unknown age, gender, exact measurements");
     expect(instruction).toContain("For T2VA");
     expect(instruction).toContain("等比例缩小的真人");
   });
