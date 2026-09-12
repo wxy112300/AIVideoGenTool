@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- 修复 H3 Continuum Extend 在 ComfyUI `/object_info` 将 `H3ContinuumLoadVideo.file` 暴露为字符串文件下拉时，被应用误判为非 `STRING` schema 并在提交前跳过任务的问题；文件选择器 wire shape 现在按字符串输入接受，其他 H3 AV 类型检查仍保持 fail closed，错误提示也会区分 ComfyUI 核心与对应自定义节点。
+
 ## 0.61.1 — 2026-09-11
 
 - 修复 Windows 杀毒/索引器短暂占用自定义节点 `.update-*` 临时目录时，一键安装在节点替换后仍以 `EBUSY rmdir` 失败、进而跳过 Konohamaru Git LFS、neural-upstream 与 video2dlssnr runtime 安装的问题；锁定类临时清理错误现在记录待清理目录并继续，目标替换、Git LFS pointer、文件大小与 runtime 哈希校验仍保持 fail closed。

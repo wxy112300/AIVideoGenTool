@@ -102,15 +102,85 @@ function restoreHistoryPlayback(root, snapshot) {
     else
         video.addEventListener("loadedmetadata", restore, { once: true });
 }
+function videoSourceKey(video) {
+    return video.getAttribute("src") || video.currentSrc;
+}
+function captureCreateVideoPlayback(root, page) {
+    if (page !== "create")
+        return null;
+    const video = root.querySelector("#source-video");
+    if (!video)
+        return null;
+    const player = root.querySelector(".extend-video-player");
+    const fullscreenElement = document.fullscreenElement;
+    return {
+        video,
+        source: videoSourceKey(video),
+        currentTime: video.currentTime,
+        paused: video.paused,
+        muted: video.muted,
+        volume: video.volume,
+        playbackRate: video.playbackRate,
+        fullscreen: Boolean(player && fullscreenElement &&
+            (fullscreenElement === player || player.contains(fullscreenElement)))
+    };
+}
+function stopVideoPlayback(video) {
+    video.pause();
+    video.removeAttribute("src");
+    video.querySelectorAll("source").forEach((source) => source.remove());
+    video.load();
+}
+function restoreCreateVideoPlayback(root, snapshot) {
+    const candidate = root.querySelector("#source-video");
+    if (!candidate || videoSourceKey(candidate) !== snapshot.source) {
+        stopVideoPlayback(snapshot.video);
+        return;
+    }
+    if (candidate !== snapshot.video) {
+        // The freshly rendered candidate may already have started a metadata
+        // request. Stop it before returning the existing media element to the DOM.
+        stopVideoPlayback(candidate);
+        candidate.replaceWith(snapshot.video);
+    }
+    const video = snapshot.video;
+    const restore = () => {
+        // A later render may replace the source or leave the create page. Never
+        // restart a detached player in that case.
+        if (!video.isConnected || !root.contains(video))
+            return;
+        if (Number.isFinite(snapshot.volume)) {
+            video.volume = Math.min(1, Math.max(0, snapshot.volume));
+        }
+        video.muted = snapshot.muted;
+        video.playbackRate = snapshot.playbackRate;
+        if (Number.isFinite(video.duration) && Number.isFinite(snapshot.currentTime)) {
+            video.currentTime = Math.min(Math.max(0, snapshot.currentTime), video.duration);
+        }
+        if (snapshot.paused)
+            video.pause();
+        else
+            void video.play().catch(() => undefined);
+    };
+    if (video.readyState >= 1)
+        restore();
+    else
+        video.addEventListener("loadedmetadata", restore, { once: true });
+}
+function restoreCreateVideoPlayerFullscreen(root, snapshot) {
+    if (!snapshot.fullscreen || document.fullscreenElement)
+        return;
+    const player = root.querySelector(".extend-video-player");
+    if (!player || typeof player.requestFullscreen !== "function")
+        return;
+    void player.requestFullscreen().catch(() => undefined);
+}
 function stopRenderedVideoPlayback(root) {
     root.querySelectorAll("video").forEach((video) => {
-        video.pause();
         // Pausing alone is not sufficient for a media element that is about to be
         // detached. Clear its source and abort pending decode/play promises so a
         // late metadata callback cannot restart audio in the background.
-        video.removeAttribute("src");
-        video.querySelectorAll("source").forEach((source) => source.remove());
-        video.load();
+        stopVideoPlayback(video);
     });
 }
 export function createRenderCoordinator(options) {
@@ -141,7 +211,9 @@ export function createRenderCoordinator(options) {
             if (previousPage === "queue")
                 options.beforeRenderQueue();
             const playback = captureHistoryPlayback(options.root, previousPage);
-            stopRenderedVideoPlayback(options.root);
+            const createVideoPlayback = captureCreateVideoPlayback(options.root, previousPage);
+            if (!createVideoPlayback)
+                stopRenderedVideoPlayback(options.root);
             options.closeAppLogContextMenu();
             const content = previousPage === "create" ? options.renderPages.create() :
                 previousPage === "queue" ? options.renderPages.queue() :
@@ -166,6 +238,10 @@ export function createRenderCoordinator(options) {
                 icon: options.icon,
                 escapeHtml: options.escapeHtml
             });
+            if (createVideoPlayback) {
+                restoreCreateVideoPlayback(options.root, createVideoPlayback);
+                restoreCreateVideoPlayerFullscreen(options.root, createVideoPlayback);
+            }
             renderIcons(options.root);
             options.bindShell();
             options.addPageCleanup(options.bindHistoryViewportControls());

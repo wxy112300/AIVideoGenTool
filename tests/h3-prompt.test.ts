@@ -50,8 +50,12 @@ describe("MiniMax H3 prompt templates", () => {
     expect(instruction).toContain("Speech-gate module");
     expect(instruction).toContain("one unbroken take");
     expect(instruction).toContain("editorial cut");
-    expect(instruction).toContain("Detailed-expansion budget");
-    expect(instruction.length).toBeLessThan(2600);
+    expect(instruction).toContain("Detailed-expansion coverage");
+    expect(instruction).toContain("never a concise rewrite");
+    expect(instruction).toContain("at least two applicable grounded execution details");
+    expect(instruction).toContain("180-320 grounded English words");
+    expect(instruction).toContain("350-500 grounded English words");
+    expect(instruction.length).toBeLessThan(3300);
   });
 
   it("does not classify ordinary appearance wording as subject interaction", () => {
@@ -181,7 +185,8 @@ describe("MiniMax H3 prompt templates", () => {
 
     expect(instruction).toContain("every concrete user-specified subject, action, action order");
     expect(instruction).toContain("never collapse a chain of user actions into a generic summary");
-    expect(instruction).toContain("shorten static reference inventory and assistant-added detail first");
+    expect(instruction).toContain("make the final timeline less developed than the source brief");
+    expect(instruction).toContain("shorten static reference inventory and assistant-added filler first");
   });
 
   it("treats complete silence separately from no background music", () => {

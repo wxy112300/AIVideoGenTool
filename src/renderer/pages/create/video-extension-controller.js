@@ -196,6 +196,25 @@ export function mountVideoExtensionController(context, options) {
     const video = root.querySelector("#source-video");
     if (!video)
         return () => events.abort();
+    const player = root.querySelector("#extend-video-player");
+    video.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!player)
+            return;
+        const fullscreenElement = document.fullscreenElement;
+        const isFullscreen = fullscreenElement === player ||
+            Boolean(fullscreenElement && player.contains(fullscreenElement));
+        if (isFullscreen) {
+            if (typeof document.exitFullscreen === "function") {
+                void document.exitFullscreen().catch(() => undefined);
+            }
+            return;
+        }
+        if (typeof player.requestFullscreen === "function") {
+            void player.requestFullscreen().catch(() => undefined);
+        }
+    }, { signal });
     video.addEventListener("loadedmetadata", () => {
         video.pause();
         const draft = getDraft();
@@ -245,6 +264,43 @@ export function mountVideoExtensionController(context, options) {
             return;
         video.pause();
         video.currentTime = end;
+    }, { signal });
+    const previewExtensionBoundary = root.querySelector("#preview-extension-boundary");
+    const getExtensionBoundary = () => {
+        const draft = getDraft();
+        if (!draft)
+            return null;
+        const duration = Number.isFinite(video.duration) && video.duration > 0
+            ? video.duration
+            : draft.sourceVideoDuration;
+        if (!Number.isFinite(duration) || duration <= 0)
+            return null;
+        const boundary = isMiniMaxH3ContinuumModel(draft.modelId)
+            ? duration
+            : draft.trimEndSeconds > 0 ? draft.trimEndSeconds : duration;
+        return Math.min(duration, Math.max(0, boundary));
+    };
+    const seekToExtensionBoundary = () => {
+        if (getExtensionBoundary() === null)
+            return;
+        video.pause();
+        const seek = () => {
+            if (!video.isConnected)
+                return;
+            const boundary = getExtensionBoundary();
+            if (boundary === null)
+                return;
+            video.currentTime = boundary;
+            video.pause();
+        };
+        if (video.readyState >= 1)
+            seek();
+        else
+            video.addEventListener("loadedmetadata", seek, { once: true, signal });
+    };
+    previewExtensionBoundary?.addEventListener("click", (event) => {
+        event.stopImmediatePropagation();
+        seekToExtensionBoundary();
     }, { signal });
     const startInput = root.querySelector("#trim-start");
     const endInput = root.querySelector("#trim-end");

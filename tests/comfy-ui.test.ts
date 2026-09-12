@@ -456,8 +456,10 @@ describe("native Qwen prompt workflow", () => {
     expect(faithful).toContain("Prioritize the user's explicit content first");
     expect(continuous).toContain("one continuous shot with no cuts");
     expect(detailed).toContain("Detailed cinematic expansion rule");
-    expect(detailed).toContain("reasonable, scene-grounded operational details");
-    expect(detailed).toContain("There is no fixed 350-500 or 500-word target");
+    expect(detailed).toContain("the most fully developed timeline, never a concise rewrite");
+    expect(detailed).toContain("at least two applicable kinds of scene-grounded execution detail");
+    expect(detailed).toContain("roughly 180-320 grounded English words");
+    expect(detailed).toContain("coverage floor and planning range");
     expect(faithful).not.toBe(continuous);
     expect(detailed).not.toBe(continuous);
   });

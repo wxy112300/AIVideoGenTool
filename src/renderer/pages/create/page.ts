@@ -321,7 +321,22 @@ export function renderCreatePage(
       ${viewModel.extending
         ? viewModel.draft.sourceVideoPath
           ? `<div class="video-editor">
-              <video id="source-video" src="studio-media://draft/video?source=${encodeURIComponent(viewModel.draft.sourceVideoPath)}" controls muted playsinline preload="metadata"></video>
+              <media-controller id="extend-video-player" class="panel history-player extend-video-player" autohide="1" fullscreenelement="extend-video-player" aria-label="${escapeHtml(t(uiKeys.create.videoExtension))}">
+                <video id="source-video" slot="media" src="studio-media://draft/video?source=${encodeURIComponent(viewModel.draft.sourceVideoPath)}" muted playsinline preload="metadata"></video>
+                <media-control-bar class="history-player-control-bar extend-video-control-bar">
+                  <media-play-button></media-play-button>
+                  <button class="history-player-nav-button extend-video-boundary-button" id="preview-extension-boundary" type="button" ${!viewModel.videoReady ? "disabled" : ""} aria-label="${escapeHtml(t(uiKeys.create.videoMedia.previewExtensionBoundary))}" title="${escapeHtml(t(uiKeys.create.videoMedia.previewExtensionBoundary))}">${icon("skip-forward")}</button>
+                  <media-time-range></media-time-range>
+                  <div class="history-player-volume">
+                    <media-mute-button></media-mute-button>
+                    <media-volume-range></media-volume-range>
+                  </div>
+                  <span class="history-player-control-divider history-player-utility-divider" aria-hidden="true"></span>
+                  <div class="history-player-utility-group">
+                    <media-fullscreen-button></media-fullscreen-button>
+                  </div>
+                </media-control-bar>
+              </media-controller>
               ${viewModel.videoReady
                 ? viewModel.isContinuum
                   ? ""

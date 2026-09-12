@@ -294,7 +294,8 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       expect(String(generateBody.creative_brief)).toContain("Reference-driven H3 auto-creation mode");
       expect(String(generateBody.creative_brief)).toContain("Variation token: variation-13");
       expect(String(generateBody.creative_brief)).toContain("Selected H3 expansion preset: detailed-cinematic");
-      expect(String(generateBody.creative_brief)).toContain("high-detail, production-ready H3 prompt");
+      expect(String(generateBody.creative_brief)).toContain("the most fully developed, production-ready H3 prompt");
+      expect(String(generateBody.creative_brief)).toContain("never a concise rewrite or summary");
       expect(generateBody.mode).toBe("I2VA");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });

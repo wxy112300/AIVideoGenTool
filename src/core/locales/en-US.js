@@ -1256,6 +1256,7 @@ export const enUSCatalog = {
     [uiKeys.create.videoMedia.trimTitle]: "Trim kept range",
     [uiKeys.create.videoMedia.trimStart]: "Trim start",
     [uiKeys.create.videoMedia.trimEnd]: "Trim end",
+    [uiKeys.create.videoMedia.previewExtensionBoundary]: "Jump to extension start",
     [uiKeys.create.videoMedia.kept]: "Kept",
     [uiKeys.create.videoMedia.discarded]: "Discarded",
     [uiKeys.create.videoMedia.added]: "Added",

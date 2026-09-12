@@ -1,7 +1,7 @@
 # H3 Native AV、Extend 与长视频
 
 - Status: needs-review
-- Updated: 2026-09-07
+- Updated: 2026-09-12
 - Owner: unassigned
 - Route: integration / blocked-by-evidence
 - Scope: 合并 Native Masked AV、Motion Context、H3 Continuum 与长视频方案的关系；不把不同 continuation 语义合成一个 provider。
@@ -12,6 +12,7 @@
 - 当前应用已经有 H3 JointAV artifact、History lineage 与 H3 Continuum bridge；发布记录明确完整 GPU 视频续写仍需目标环境的最小真实任务。
 - Motion Context、FL2VA boundary continuation、Continuum JointAV continuation 和 Native Masked AV 是不同路径。它们不能互相静默 fallback，也不能因共享 “Extend” 文案而共用完成状态。
 - 旧 Native Masked AV 与长视频方案的设计、时间网格和安全边界已归档；它们在当时没有 Native workflow 的真实生成证据，不能由目录名或旧 P0 记录升级为 runtime-ready。
+- 2026-09-12 另一台目标电脑首次提交 Continuum 768p/14s 时，在采样前被应用误报 `H3ContinuumLoadVideo.file` 不是 `STRING`。实际 `/object_info` 使用 ComfyUI 文件选择器的字符串 COMBO wire shape；应用校验器已兼容该形状并保留其他类型的严格检查。该记录只证明提交前误拦截，不证明完整 GPU 续写已通过。
 
 ## Next
 

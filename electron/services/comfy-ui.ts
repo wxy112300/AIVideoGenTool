@@ -1084,7 +1084,7 @@ export async function submitTask(
       `H3 AV workflow 运行时 schema 不兼容：${[
         ...h3RuntimeSchemaIssues,
         ...h3ExecutionSchemaIssues
-      ].join("；")}。请在设置 → 节点与依赖中更新 ComfyUI 核心并重启服务。`
+      ].join("；")}。请在设置 → 节点与依赖中更新对应的 ComfyUI 核心或自定义节点，并重启服务。`
     );
   }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;

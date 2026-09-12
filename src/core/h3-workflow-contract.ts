@@ -796,12 +796,23 @@ function comboOptions(spec: unknown): string[] {
   return [];
 }
 
+function isStringComboSpec(spec: unknown): boolean {
+  return Array.isArray(spec) &&
+    Array.isArray(spec[0]) &&
+    spec[0].every((value) => typeof value === "string");
+}
+
 function runtimeTypeMatches(spec: unknown, expected: RuntimeInputRequirement["type"]): boolean {
   if (expected === "ANY") return spec !== undefined;
   const actual = specType(spec);
   if (expected === "COMBO") {
-    return comboOptions(spec).length > 0 || actual === "COMBO" || actual === "STRING";
+    return isStringComboSpec(spec) || actual === "COMBO" || actual === "STRING";
   }
+  // ComfyUI file pickers are serialized as strings in API workflows, while
+  // /object_info exposes them as a string-valued combo (the current files plus
+  // upload metadata). Treat that wire shape as STRING without weakening the
+  // checks for numeric, boolean, or model/socket inputs.
+  if (expected === "STRING" && isStringComboSpec(spec)) return true;
   return actual === expected;
 }
 

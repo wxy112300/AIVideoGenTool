@@ -5,7 +5,11 @@ import { createDefaultState } from "../src/core/defaults";
 import { createRenderCoordinator, type RenderCoordinatorOptions } from "../src/renderer/render-coordinator";
 import { createRendererUiState } from "../src/renderer/ui-state";
 
-function createCoordinator(root: HTMLElement, currentPage: "settings" | "history-detail" = "settings") {
+function createCoordinator(
+  root: HTMLElement,
+  currentPage: "settings" | "history-detail" | "create" = "settings",
+  renderCreate: () => string = () => ""
+) {
   const state = createDefaultState();
   const ui = createRendererUiState();
   const noop = () => undefined;
@@ -20,7 +24,7 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
     getPerformanceMetrics: () => null,
     t: ((key: string) => key) as RenderCoordinatorOptions["t"],
     renderPages: {
-      create: () => "",
+      create: renderCreate,
       queue: () => "",
       history: () => "",
       historyDetail: () => `<div class="history-player"><video data-history-asset="asset-1" data-history-version="version-1" src="next.mp4"></video></div>`,
@@ -138,6 +142,63 @@ describe("render coordinator focus preservation", () => {
     expect(restored.currentTime).toBeCloseTo(12);
     expect(restored.playbackRate).toBeCloseTo(1.25);
     expect(play).toHaveBeenCalled();
+    document.body.replaceChildren();
+  });
+
+  it("reuses the Extend video element and keeps its locked frame across state renders", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    root.innerHTML = `<div class="video-editor"><video id="source-video" src="studio-media://draft/video?source=clip.mp4"></video></div>`;
+    const previous = root.querySelector<HTMLVideoElement>("#source-video");
+    if (!previous) throw new Error("previous video was not created");
+    Object.defineProperties(previous, {
+      currentTime: { configurable: true, writable: true, value: 4.2 },
+      paused: { configurable: true, value: true },
+      muted: { configurable: true, writable: true, value: true },
+      volume: { configurable: true, writable: true, value: 0.42 },
+      playbackRate: { configurable: true, writable: true, value: 1.25 },
+      readyState: { configurable: true, value: 1 },
+      duration: { configurable: true, value: 10 }
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const renderCreate = vi.fn(() => `<div class="video-editor"><video id="source-video" src="studio-media://draft/video?source=clip.mp4"></video></div>`);
+    const { coordinator } = createCoordinator(root, "create", renderCreate);
+
+    coordinator.render();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    const restored = root.querySelector<HTMLVideoElement>("#source-video");
+    expect(restored).toBe(previous);
+    expect(restored?.currentTime).toBeCloseTo(4.2);
+    expect(restored?.muted).toBe(true);
+    expect(restored?.volume).toBeCloseTo(0.42);
+    expect(restored?.playbackRate).toBeCloseTo(1.25);
+    expect(renderCreate).toHaveBeenCalledTimes(1);
+    document.body.replaceChildren();
+  });
+
+  it("cleans up the old Extend video when a different source is selected", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    root.innerHTML = `<div class="video-editor"><video id="source-video" src="studio-media://draft/video?source=old.mp4"></video></div>`;
+    const previous = root.querySelector<HTMLVideoElement>("#source-video");
+    if (!previous) throw new Error("previous video was not created");
+    Object.defineProperties(previous, {
+      paused: { configurable: true, value: true },
+      readyState: { configurable: true, value: 1 }
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const renderCreate = vi.fn(() => `<div class="video-editor"><video id="source-video" src="studio-media://draft/video?source=new.mp4"></video></div>`);
+    const { coordinator } = createCoordinator(root, "create", renderCreate);
+
+    coordinator.render();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    const restored = root.querySelector<HTMLVideoElement>("#source-video");
+    expect(restored).not.toBe(previous);
+    expect(previous.getAttribute("src")).toBeNull();
     document.body.replaceChildren();
   });
 });

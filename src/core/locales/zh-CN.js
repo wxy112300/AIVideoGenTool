@@ -1256,6 +1256,7 @@ export const zhCNCatalog = {
     [uiKeys.create.videoMedia.trimTitle]: "裁剪保留范围",
     [uiKeys.create.videoMedia.trimStart]: "裁剪起点",
     [uiKeys.create.videoMedia.trimEnd]: "裁剪终点",
+    [uiKeys.create.videoMedia.previewExtensionBoundary]: "定位续写起点",
     [uiKeys.create.videoMedia.kept]: "保留",
     [uiKeys.create.videoMedia.discarded]: "裁掉",
     [uiKeys.create.videoMedia.added]: "新增",

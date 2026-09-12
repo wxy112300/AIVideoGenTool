@@ -74,6 +74,17 @@ interface DeferredHistoryDetailPlayer {
   playerMarkup: string;
 }
 
+interface CreateVideoPlaybackSnapshot {
+  video: HTMLVideoElement;
+  source: string;
+  currentTime: number;
+  paused: boolean;
+  muted: boolean;
+  volume: number;
+  playbackRate: number;
+  fullscreen: boolean;
+}
+
 function isHistoryDetailPage(page: Page): boolean {
   return page === "history-detail" || page === "image-history-detail";
 }
@@ -319,6 +330,88 @@ function restoreHistoryPlayback(
   else video.addEventListener("loadedmetadata", restore, { once: true });
 }
 
+function videoSourceKey(video: HTMLVideoElement): string {
+  return video.getAttribute("src") || video.currentSrc;
+}
+
+function captureCreateVideoPlayback(
+  root: HTMLElement,
+  page: Page
+): CreateVideoPlaybackSnapshot | null {
+  if (page !== "create") return null;
+  const video = root.querySelector<HTMLVideoElement>("#source-video");
+  if (!video) return null;
+  const player = root.querySelector<HTMLElement>(".extend-video-player");
+  const fullscreenElement = document.fullscreenElement;
+  return {
+    video,
+    source: videoSourceKey(video),
+    currentTime: video.currentTime,
+    paused: video.paused,
+    muted: video.muted,
+    volume: video.volume,
+    playbackRate: video.playbackRate,
+    fullscreen: Boolean(
+      player &&
+      fullscreenElement &&
+      (fullscreenElement === player || player.contains(fullscreenElement))
+    )
+  };
+}
+
+function stopVideoPlayback(video: HTMLVideoElement): void {
+  video.pause();
+  video.removeAttribute("src");
+  video.querySelectorAll("source").forEach((source) => source.remove());
+  video.load();
+}
+
+function restoreCreateVideoPlayback(
+  root: HTMLElement,
+  snapshot: CreateVideoPlaybackSnapshot
+): void {
+  const candidate = root.querySelector<HTMLVideoElement>("#source-video");
+  if (!candidate || videoSourceKey(candidate) !== snapshot.source) {
+    stopVideoPlayback(snapshot.video);
+    return;
+  }
+  if (candidate !== snapshot.video) {
+    // The freshly rendered candidate may already have started a metadata
+    // request. Stop it before returning the existing media element to the DOM.
+    stopVideoPlayback(candidate);
+    candidate.replaceWith(snapshot.video);
+  }
+
+  const video = snapshot.video;
+  const restore = (): void => {
+    // A later render may replace the source or leave the create page. Never
+    // restart a detached player in that case.
+    if (!video.isConnected || !root.contains(video)) return;
+    if (Number.isFinite(snapshot.volume)) {
+      video.volume = Math.min(1, Math.max(0, snapshot.volume));
+    }
+    video.muted = snapshot.muted;
+    video.playbackRate = snapshot.playbackRate;
+    if (Number.isFinite(video.duration) && Number.isFinite(snapshot.currentTime)) {
+      video.currentTime = Math.min(Math.max(0, snapshot.currentTime), video.duration);
+    }
+    if (snapshot.paused) video.pause();
+    else void video.play().catch(() => undefined);
+  };
+  if (video.readyState >= 1) restore();
+  else video.addEventListener("loadedmetadata", restore, { once: true });
+}
+
+function restoreCreateVideoPlayerFullscreen(
+  root: HTMLElement,
+  snapshot: CreateVideoPlaybackSnapshot
+): void {
+  if (!snapshot.fullscreen || document.fullscreenElement) return;
+  const player = root.querySelector<HTMLElement>(".extend-video-player");
+  if (!player || typeof player.requestFullscreen !== "function") return;
+  void player.requestFullscreen().catch(() => undefined);
+}
+
 function stopRenderedVideoPlayback(root: HTMLElement): void {
   root.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
     // History cards keep an inert <video> shell until their scheduler brings
@@ -334,13 +427,10 @@ function stopRenderedVideoPlayback(root: HTMLElement): void {
       !video.paused
     );
     if (!hasActiveMedia) return;
-    video.pause();
     // Pausing alone is not sufficient for a media element that is about to be
     // detached. Clear its source and abort pending decode/play promises so a
     // late metadata callback cannot restart audio in the background.
-    video.removeAttribute("src");
-    video.querySelectorAll("source").forEach((source) => source.remove());
-    video.load();
+    stopVideoPlayback(video);
   });
 }
 
@@ -377,7 +467,8 @@ export function createRenderCoordinator(
       options.beforeRenderHistory();
       if (previousPage === "queue") options.beforeRenderQueue();
       const playback = captureHistoryPlayback(options.root, previousPage);
-      stopRenderedVideoPlayback(options.root);
+      const createVideoPlayback = captureCreateVideoPlayback(options.root, previousPage);
+      if (!createVideoPlayback) stopRenderedVideoPlayback(options.root);
       if (enteringHistoryDetail) {
         const mainContent = takeHistoryMainContent(options.root);
         if (mainContent) {
@@ -438,6 +529,10 @@ export function createRenderCoordinator(
         icon: options.icon,
         escapeHtml: options.escapeHtml
       });
+      if (createVideoPlayback) {
+        restoreCreateVideoPlayback(options.root, createVideoPlayback);
+        restoreCreateVideoPlayerFullscreen(options.root, createVideoPlayback);
+      }
       if (page === "history" || isHistoryDetailPage(page)) bindShellController();
       if (restorePreservedHistory && preservedList) {
         const renderedMain = options.root.querySelector<HTMLElement>(".app-shell.history-shell > main");

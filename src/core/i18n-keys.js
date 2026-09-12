@@ -1331,6 +1331,7 @@ export const uiKeys = {
             trimTitle: "create.videoMedia.trimTitle",
             trimStart: "create.videoMedia.trimStart",
             trimEnd: "create.videoMedia.trimEnd",
+            previewExtensionBoundary: "create.videoMedia.previewExtensionBoundary",
             kept: "create.videoMedia.kept",
             discarded: "create.videoMedia.discarded",
             added: "create.videoMedia.added",

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { h3ExecutionNodeRuntimeIssues } from "../src/core/h3-workflow-contract.js";
+import {
+  h3ComfyWorkflowRuntimeIssues,
+  h3ExecutionNodeRuntimeIssues
+} from "../src/core/h3-workflow-contract.js";
 
 function nativeH3Workflow() {
   return {
@@ -91,5 +94,79 @@ describe("ComfyUI 0.35 native H3 runtime contract", () => {
     expect(h3ExecutionNodeRuntimeIssues({
       "1": { class_type: "UNETLoader", inputs: {} }
     }, {})).toEqual([]);
+  });
+
+  it("does not accept a numeric combo where a string input is required", () => {
+    const objectInfo = nativeH3ObjectInfo() as any;
+    objectInfo.BlockSparseAttention.input.required.dense_blocks = [[1, 2], {}];
+
+    expect(h3ExecutionNodeRuntimeIssues(nativeH3Workflow(), objectInfo)).toContain(
+      "BlockSparseAttention.dense_blocks schema 类型不兼容：要求 STRING"
+    );
+  });
+});
+
+describe("H3 Continuum V3.8 runtime contract", () => {
+  it("accepts the string-valued file picker schema used by Load Video", () => {
+    const noSchema = {};
+    const workflow = {
+      "1": { class_type: "H3ContinuumSamplerV38", inputs: {} }
+    };
+    const objectInfo = {
+      UNETLoader: noSchema,
+      CLIPLoader: noSchema,
+      VAELoader: noSchema,
+      PathchSageAttentionKJ: noSchema,
+      KSamplerSelect: noSchema,
+      BasicScheduler: noSchema,
+      ImageFromBatch: noSchema,
+      H3ContinuumLoadVideo: {
+        input: {
+          required: {
+            enable_video: ["BOOLEAN", {}],
+            file: [["uploaded/h3-continuum-guide.mp4"], { video_upload: true }],
+            force_rate: ["FLOAT", {}]
+          }
+        }
+      },
+      H3ContinuumSamplerV38: {
+        input: {
+          required: {
+            model: ["MODEL", {}],
+            clip: ["CLIP", {}],
+            video_vae: ["VAE", {}],
+            sampler: ["SAMPLER", {}],
+            sigmas: ["SIGMAS", {}],
+            sequence_prompt: ["STRING", {}],
+            chunks: ["INT", {}],
+            chunk_seconds: ["FLOAT", {}]
+          }
+        }
+      },
+      H3ContinuumAssembleSeamV35: {
+        input: {
+          required: {
+            images: ["IMAGE", {}],
+            audio: ["AUDIO", {}],
+            assembly_plan: ["H3_CONTINUUM_ASSEMBLY_PLAN", {}]
+          }
+        }
+      },
+      LocalVideoStudioH3LoadJointAV: {
+        input: { required: { artifact: ["STRING", {}] } },
+        output: ["LATENT"]
+      },
+      LocalVideoStudioH3SaveJointAV: {
+        input: {
+          required: {
+            joint_av: ["LATENT", {}],
+            filename: ["STRING", {}]
+          }
+        },
+        output: ["STRING"]
+      }
+    };
+
+    expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toEqual([]);
   });
 });

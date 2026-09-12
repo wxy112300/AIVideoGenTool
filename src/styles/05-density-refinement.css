@@ -251,14 +251,39 @@ main { padding-top: 0; }
   font-size: 11px;
 }
 
-.video-editor > video {
+.video-editor > .extend-video-player {
+  position: relative;
   width: 100%;
+  height: auto;
   aspect-ratio: 16 / 9;
   display: block;
   border: 1px solid rgba(57, 66, 80, .72);
-  border-radius: 13px;
+  background: #07090c;
+}
+
+.video-editor > .extend-video-player > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
   background: #07090c;
   object-fit: contain;
+}
+
+/* Extend needs a clean last-frame workspace. Keep the History control
+   language, but remove its blur and make the paused player obey Media
+   Chrome's user-inactive state too. */
+.extend-video-control-bar {
+  background: linear-gradient(180deg, rgba(9, 13, 20, 0), rgba(9, 13, 20, .34));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.extend-video-player[userinactive] > .extend-video-control-bar {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 .video-loading,

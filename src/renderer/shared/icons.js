@@ -53,6 +53,7 @@ const lucideIconSet = {
     Settings: SettingsIcon,
     ShieldAlert,
     ShieldCheck,
+    SkipForward,
     Sparkles,
     SlidersHorizontal,
     Square,
