@@ -8,6 +8,11 @@
 
 ## Unreleased
 
+## 0.61.5 — 2026-09-12
+
+- 修复 H3 Continuum V3.8 把 sampler 的视频 latent 列表直接交给 JointAV serializer、导致 `H3 AV serializer 只接受 joint NestedTensor` 的运行时失败；工作流现在先用核心 `LTXVConcatAVLatent` 合并视频和音频 latent，静态与运行时契约会 fail closed 校验两路连接。RTX 4090 + ComfyUI 0.35.0 的 768p/5s/20-step 实际生成已通过，产出 MP4 与新的 JointAV safetensors。
+- 修复 Continuum sampler 前动态插入的 `VRAM_Debug` 被按采样后卸载阶段计算、令总体进度提前跳到 80%–96% 的问题；前置释放节点现在归入续写状态准备，sampler 即使不发送逐步 WebSocket 事件也会显示计划的 `0/20` Step，而不是丢失 Step 总数。
+
 ## 0.61.4 — 2026-09-12
 
 - 修复 H3 Continuum Extend 在真正采样前解码上一段边界帧时，通用 `VAEDecode` 进度映射误将任务提前推到 82% 以上的问题；进度器现在按工作流节点角色区分源视频准备与最终输出解码，并将 `H3ContinuumSamplerV38` 纳入 14%–80% 的扩散采样区间及 Step 统计。

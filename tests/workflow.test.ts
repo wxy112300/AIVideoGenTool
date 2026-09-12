@@ -2055,7 +2055,11 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       audio: ["14", 0],
       assembly_plan: ["12", 2]
     });
-    expect(rendered["18"]?.inputs.joint_av).toEqual(["12", 0]);
+    expect(rendered["18"]?.inputs).toEqual({
+      video_latent: ["12", 0],
+      audio_latent: ["12", 1]
+    });
+    expect(rendered["19"]?.inputs.joint_av).toEqual(["18", 0]);
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 

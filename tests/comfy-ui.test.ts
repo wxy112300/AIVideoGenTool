@@ -650,7 +650,11 @@ describe("ComfyUI task progress", () => {
       sourceState: { class_type: "LocalVideoStudioH3LoadJointAV", inputs: {} },
       sourceDecode: {
         class_type: "VAEDecode",
-        inputs: { samples: ["sourceState", 0] }
+        inputs: { samples: ["sourceRelease", 0] }
+      },
+      sourceRelease: {
+        class_type: "VRAM_Debug",
+        inputs: { any_input: ["sourceState", 0] }
       },
       sourceFrame: {
         class_type: "ImageFromBatch",
@@ -658,8 +662,9 @@ describe("ComfyUI task progress", () => {
       },
       sampler: {
         class_type: "H3ContinuumSamplerV38",
-        inputs: { first_frame: ["sourceFrame", 0] }
+        inputs: { first_frame: ["sourceFrame", 0], sigmas: ["scheduler", 0] }
       },
+      scheduler: { class_type: "BasicScheduler", inputs: { steps: 20 } },
       outputDecode: {
         class_type: "VAEDecode",
         inputs: { samples: ["sampler", 0] }
@@ -670,10 +675,16 @@ describe("ComfyUI task progress", () => {
     expect(progressContext.continuumNodeRoles).toEqual({
       sourceVideo: "source-video",
       sourceState: "source-state",
+      sourceRelease: "source-preparation",
       sourceDecode: "source-decode",
       sourceFrame: "source-frame",
       sampler: "sampler",
       assembly: "assembly"
+    });
+    expect(progressContext.continuumSamplerSteps).toEqual({ sampler: 20 });
+    expect(progressForNode("VRAM_Debug", 1, 1, progressContext, "sourceRelease")).toEqual({
+      progress: 7,
+      label: "准备续写状态"
     });
     expect(progressForNode("VAEDecode", 1, 2, progressContext, "sourceDecode")).toEqual({
       progress: 9.5,

@@ -723,7 +723,8 @@ export async function assertKonohamaruExecutionReady(
 export interface ComfyProgressContext {
   spectrumOuterSteps?: number;
   spectrumOfflineReplay?: boolean;
-  continuumNodeRoles?: Record<string, "source-video" | "source-state" | "source-decode" | "source-frame" | "sampler" | "assembly">;
+  continuumNodeRoles?: Record<string, "source-video" | "source-state" | "source-preparation" | "source-decode" | "source-frame" | "sampler" | "assembly">;
+  continuumSamplerSteps?: Record<string, number>;
 }
 
 export function progressContextForPrompt(prompt: unknown): ComfyProgressContext {
@@ -733,6 +734,7 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
   let hasSpectrum = false;
   let hasSpectrumOfflineReplay = false;
   const continuumNodeRoles: NonNullable<ComfyProgressContext["continuumNodeRoles"]> = {};
+  const continuumSamplerSteps: NonNullable<ComfyProgressContext["continuumSamplerSteps"]> = {};
   const continuumSamplerIds: string[] = [];
   for (const [nodeId, value] of Object.entries(graph)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
@@ -786,7 +788,42 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
       const decodeNodeId = Array.isArray(sourceImage) && typeof sourceImage[0] === "string"
         ? sourceImage[0]
         : undefined;
-      if (decodeNodeId) continuumNodeRoles[decodeNodeId] = "source-decode";
+      if (decodeNodeId) {
+        continuumNodeRoles[decodeNodeId] = "source-decode";
+        const decodeNode = graph[decodeNodeId];
+        const decodeInputs = decodeNode && typeof decodeNode === "object" && !Array.isArray(decodeNode)
+          ? (decodeNode as Record<string, unknown>).inputs
+          : undefined;
+        let upstream = decodeInputs && typeof decodeInputs === "object" && !Array.isArray(decodeInputs)
+          ? (decodeInputs as Record<string, unknown>).samples
+          : undefined;
+        const visited = new Set<string>();
+        while (Array.isArray(upstream) && typeof upstream[0] === "string" && !visited.has(upstream[0])) {
+          const upstreamId = upstream[0];
+          visited.add(upstreamId);
+          const upstreamNode = graph[upstreamId];
+          if (!upstreamNode || typeof upstreamNode !== "object" || Array.isArray(upstreamNode)) break;
+          const upstreamRecord = upstreamNode as Record<string, unknown>;
+          if (upstreamRecord.class_type !== "VRAM_Debug") break;
+          continuumNodeRoles[upstreamId] = "source-preparation";
+          const upstreamInputs = upstreamRecord.inputs;
+          upstream = upstreamInputs && typeof upstreamInputs === "object" && !Array.isArray(upstreamInputs)
+            ? (upstreamInputs as Record<string, unknown>).any_input
+            : undefined;
+        }
+      }
+      const sigmas = (samplerInputs as Record<string, unknown>).sigmas;
+      const schedulerId = Array.isArray(sigmas) && typeof sigmas[0] === "string" ? sigmas[0] : undefined;
+      const scheduler = schedulerId ? graph[schedulerId] : undefined;
+      const schedulerInputs = scheduler && typeof scheduler === "object" && !Array.isArray(scheduler)
+        ? (scheduler as Record<string, unknown>).inputs
+        : undefined;
+      const steps = schedulerInputs && typeof schedulerInputs === "object" && !Array.isArray(schedulerInputs)
+        ? (schedulerInputs as Record<string, unknown>).steps
+        : undefined;
+      if (typeof steps === "number" && Number.isSafeInteger(steps) && steps > 0) {
+        continuumSamplerSteps[samplerId] = steps;
+      }
     }
   }
   const context: ComfyProgressContext = {};
@@ -795,6 +832,7 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
     if (hasSpectrumOfflineReplay) context.spectrumOfflineReplay = true;
   }
   if (continuumSamplerIds.length > 0) context.continuumNodeRoles = continuumNodeRoles;
+  if (Object.keys(continuumSamplerSteps).length > 0) context.continuumSamplerSteps = continuumSamplerSteps;
   return context;
 }
 
@@ -1600,6 +1638,9 @@ function progressStageForNode(
   if (role === "source-state") {
     return { start: 5, end: 7, label: "读取续写状态", tracksSteps: false };
   }
+  if (role === "source-preparation") {
+    return { start: 7, end: 7, label: "准备续写状态", tracksSteps: false };
+  }
   if (role === "source-decode") {
     return { start: 7, end: 12, label: "解码续写边界帧", tracksSteps: true };
   }
@@ -1961,10 +2002,11 @@ export async function waitForTask(
         if (message.type === "executing" && typeof message.data?.node === "string") {
           activeNodeId = message.data.node;
           activeNodeStartedAt = Date.now();
+          const plannedSteps = progressContext.continuumSamplerSteps?.[activeNodeId];
           const stage = progressForNode(
             nodeTypes[activeNodeId],
-            undefined,
-            undefined,
+            plannedSteps ? 0 : undefined,
+            plannedSteps,
             progressContext,
             activeNodeId
           );
@@ -1973,7 +2015,24 @@ export async function waitForTask(
             nodeId: activeNodeId,
             classType: nodeTypes[activeNodeId] ?? "unknown"
           });
-          reportProgress(stage.progress, stage.label, false, false, undefined, true);
+          reportProgress(
+            stage.progress,
+            stage.label,
+            false,
+            Boolean(plannedSteps),
+            plannedSteps
+              ? workProgressForNode(
+                  nodeTypes[activeNodeId],
+                  0,
+                  plannedSteps,
+                  activeNodeStartedAt,
+                  activeNodeStartedAt,
+                  progressContext,
+                  activeNodeId
+                )
+              : undefined,
+            true
+          );
         }
         if (
           message.type === "progress" &&
@@ -2045,14 +2104,32 @@ export async function waitForTask(
               nodeId: message.data.node,
               classType: nodeTypes[message.data.node] ?? "unknown"
             });
+            const plannedSteps = progressContext.continuumSamplerSteps?.[message.data.node];
             const stage = progressForNode(
               nodeTypes[message.data.node],
-              1,
-              1,
+              plannedSteps ?? 1,
+              plannedSteps ?? 1,
               progressContext,
               message.data.node
             );
-            reportProgress(stage.progress, `${stage.label} 完成`, false, false, undefined, true);
+            reportProgress(
+              stage.progress,
+              `${stage.label} 完成`,
+              false,
+              Boolean(plannedSteps),
+              plannedSteps
+                ? workProgressForNode(
+                    nodeTypes[message.data.node],
+                    plannedSteps,
+                    plannedSteps,
+                    activeNodeStartedAt,
+                    Date.now(),
+                    progressContext,
+                    message.data.node
+                  )
+                : undefined,
+              true
+            );
           }
           const preview = await executedPreviewDataUrl(
             baseUrl,

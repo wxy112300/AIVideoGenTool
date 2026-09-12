@@ -118,6 +118,7 @@ const CONTINUUM_V38_CLASSES = [
   "VAEDecode",
   "VAEDecodeAudio",
   "H3ContinuumAssembleSeamV35",
+  "LTXVConcatAVLatent",
   "CreateVideo",
   "SaveVideo",
   "LocalVideoStudioH3LoadJointAV",
@@ -611,8 +612,11 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
   requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1);
   const saveVideoId = nodeIdsForClass(nodes, "SaveVideo")[0];
   requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0);
+  const concatId = nodeIdsForClass(nodes, "LTXVConcatAVLatent")[0];
+  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "video_latent", "H3ContinuumSamplerV38", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "audio_latent", "H3ContinuumSamplerV38", 1);
   const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, serializerId, "LocalVideoStudioH3SaveJointAV", "joint_av", "H3ContinuumSamplerV38", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, serializerId, "LocalVideoStudioH3SaveJointAV", "joint_av", "LTXVConcatAVLatent", 0);
   const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
   if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
     errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
@@ -864,7 +868,8 @@ export function h3ComfyWorkflowRuntimeIssues(
         ? [
             "H3ContinuumLoadVideo",
             "H3ContinuumSamplerV38",
-            "H3ContinuumAssembleSeamV35"
+            "H3ContinuumAssembleSeamV35",
+            "LTXVConcatAVLatent"
           ]
         : [
             "LocalVideoStudioH3LoadJointAV",

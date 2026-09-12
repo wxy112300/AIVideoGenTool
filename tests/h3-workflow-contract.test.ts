@@ -149,6 +149,15 @@ describe("H3 Continuum V3.8 runtime contract", () => {
           }
         }
       },
+      LTXVConcatAVLatent: {
+        input: {
+          required: {
+            video_latent: ["LATENT", {}],
+            audio_latent: ["LATENT", {}]
+          }
+        },
+        output: ["LATENT"]
+      },
       LocalVideoStudioH3LoadJointAV: {
         input: { required: { artifact: ["STRING", {}] } },
         output: ["LATENT"]
