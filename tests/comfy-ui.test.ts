@@ -644,6 +644,60 @@ describe("ComfyUI task progress", () => {
     });
   });
 
+  it("keeps Continuum source preparation before sampling and exposes sampler steps", () => {
+    const progressContext = progressContextForPrompt({
+      sourceVideo: { class_type: "H3ContinuumLoadVideo", inputs: {} },
+      sourceState: { class_type: "LocalVideoStudioH3LoadJointAV", inputs: {} },
+      sourceDecode: {
+        class_type: "VAEDecode",
+        inputs: { samples: ["sourceState", 0] }
+      },
+      sourceFrame: {
+        class_type: "ImageFromBatch",
+        inputs: { image: ["sourceDecode", 0] }
+      },
+      sampler: {
+        class_type: "H3ContinuumSamplerV38",
+        inputs: { first_frame: ["sourceFrame", 0] }
+      },
+      outputDecode: {
+        class_type: "VAEDecode",
+        inputs: { samples: ["sampler", 0] }
+      },
+      assembly: { class_type: "H3ContinuumAssembleSeamV35", inputs: {} }
+    });
+
+    expect(progressContext.continuumNodeRoles).toEqual({
+      sourceVideo: "source-video",
+      sourceState: "source-state",
+      sourceDecode: "source-decode",
+      sourceFrame: "source-frame",
+      sampler: "sampler",
+      assembly: "assembly"
+    });
+    expect(progressForNode("VAEDecode", 1, 2, progressContext, "sourceDecode")).toEqual({
+      progress: 9.5,
+      label: "解码续写边界帧 1/2"
+    });
+    expect(progressForNode("H3ContinuumSamplerV38", 4, 20, progressContext, "sampler")).toEqual({
+      progress: 27.2,
+      label: "Continuum 扩散采样 4/20"
+    });
+    expect(workProgressForNode(
+      "H3ContinuumSamplerV38",
+      4,
+      20,
+      0,
+      1_000,
+      progressContext,
+      "sampler"
+    )).toMatchObject({ value: 4, max: 20, unit: "step" });
+    expect(progressForNode("VAEDecode", 1, 2, progressContext, "outputDecode")).toEqual({
+      progress: 85,
+      label: "解码视频 1/2"
+    });
+  });
+
   it("normalizes Spectrum replay progress to the rendered scheduler steps", () => {
     const progressContext = progressContextForPrompt({
       scheduler: {

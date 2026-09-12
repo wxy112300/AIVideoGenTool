@@ -13,6 +13,7 @@
 - Motion Context、FL2VA boundary continuation、Continuum JointAV continuation 和 Native Masked AV 是不同路径。它们不能互相静默 fallback，也不能因共享 “Extend” 文案而共用完成状态。
 - 旧 Native Masked AV 与长视频方案的设计、时间网格和安全边界已归档；它们在当时没有 Native workflow 的真实生成证据，不能由目录名或旧 P0 记录升级为 runtime-ready。
 - 2026-09-12 另一台目标电脑两次提交 Continuum 768p/14s 时，均在采样前被应用误报 `H3ContinuumLoadVideo.file` 不是 `STRING`。第一次修复只覆盖旧式“字符串选项数组”编码；固定的 Continuum V3 节点实际声明 `io.Combo.Input(upload=video)`，ComfyUI 0.35 会在 `/object_info` 中使用 `["COMBO", { options: ... }]`。运行时契约现已按输入 socket 的真实 `COMBO` 类型校验，同时兼容旧编码，且保留非 Combo 类型的 fail-closed 检查。该记录只证明提交前误拦截，不证明完整 GPU 续写已通过。
+- 2026-09-12 Continuum 首次真实进入图执行后，应用进度在采样开始前跳到 80% 以上且没有正确 Step。根因是源 JointAV 为提取边界帧而执行的前置 `VAEDecode` 被通用映射当成最终输出解码，随后单调进度保护阻止回退；同时 `H3ContinuumSamplerV38` 未登记为 step-tracked sampler。当前进度上下文会从实际 API 图识别 source-state/source-decode/source-frame/sampler/assembly 角色，前置解码保持在 5%–14%，Sampler 使用 14%–80% 并上报 Step，最终 VAE/拼接/保存仍位于尾段。
 
 ## Next
 

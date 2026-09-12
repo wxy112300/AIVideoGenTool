@@ -723,16 +723,28 @@ export async function assertKonohamaruExecutionReady(
 export interface ComfyProgressContext {
   spectrumOuterSteps?: number;
   spectrumOfflineReplay?: boolean;
+  continuumNodeRoles?: Record<string, "source-video" | "source-state" | "source-decode" | "source-frame" | "sampler" | "assembly">;
 }
 
 export function progressContextForPrompt(prompt: unknown): ComfyProgressContext {
   if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) return {};
+  const graph = prompt as Record<string, unknown>;
   const schedulerSteps = new Set<number>();
   let hasSpectrum = false;
   let hasSpectrumOfflineReplay = false;
-  for (const value of Object.values(prompt as Record<string, unknown>)) {
+  const continuumNodeRoles: NonNullable<ComfyProgressContext["continuumNodeRoles"]> = {};
+  const continuumSamplerIds: string[] = [];
+  for (const [nodeId, value] of Object.entries(graph)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const node = value as Record<string, unknown>;
+    if (node.class_type === "H3ContinuumSamplerV38") {
+      continuumSamplerIds.push(nodeId);
+      continuumNodeRoles[nodeId] = "sampler";
+    } else if (node.class_type === "H3ContinuumLoadVideo") {
+      continuumNodeRoles[nodeId] = "source-video";
+    } else if (node.class_type === "H3ContinuumAssembleSeamV35") {
+      continuumNodeRoles[nodeId] = "assembly";
+    }
     if (node.class_type === "SpectrumApplyMiniMaxH3") {
       hasSpectrum = true;
       const inputs = node.inputs;
@@ -749,11 +761,41 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
       schedulerSteps.add(steps);
     }
   }
-  if (!hasSpectrum || schedulerSteps.size !== 1) return {};
-  return {
-    spectrumOuterSteps: [...schedulerSteps][0],
-    ...(hasSpectrumOfflineReplay ? { spectrumOfflineReplay: true } : {})
-  };
+  if (continuumSamplerIds.length > 0) {
+    for (const [nodeId, value] of Object.entries(graph)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      if ((value as Record<string, unknown>).class_type === "LocalVideoStudioH3LoadJointAV") {
+        continuumNodeRoles[nodeId] = "source-state";
+      }
+    }
+    for (const samplerId of continuumSamplerIds) {
+      const sampler = graph[samplerId] as Record<string, unknown>;
+      const samplerInputs = sampler.inputs;
+      if (!samplerInputs || typeof samplerInputs !== "object" || Array.isArray(samplerInputs)) continue;
+      const firstFrame = (samplerInputs as Record<string, unknown>).first_frame;
+      const frameNodeId = Array.isArray(firstFrame) && typeof firstFrame[0] === "string"
+        ? firstFrame[0]
+        : undefined;
+      if (!frameNodeId) continue;
+      continuumNodeRoles[frameNodeId] = "source-frame";
+      const frameNode = graph[frameNodeId];
+      if (!frameNode || typeof frameNode !== "object" || Array.isArray(frameNode)) continue;
+      const frameInputs = (frameNode as Record<string, unknown>).inputs;
+      if (!frameInputs || typeof frameInputs !== "object" || Array.isArray(frameInputs)) continue;
+      const sourceImage = (frameInputs as Record<string, unknown>).image;
+      const decodeNodeId = Array.isArray(sourceImage) && typeof sourceImage[0] === "string"
+        ? sourceImage[0]
+        : undefined;
+      if (decodeNodeId) continuumNodeRoles[decodeNodeId] = "source-decode";
+    }
+  }
+  const context: ComfyProgressContext = {};
+  if (hasSpectrum && schedulerSteps.size === 1) {
+    context.spectrumOuterSteps = [...schedulerSteps][0];
+    if (hasSpectrumOfflineReplay) context.spectrumOfflineReplay = true;
+  }
+  if (continuumSamplerIds.length > 0) context.continuumNodeRoles = continuumNodeRoles;
+  return context;
 }
 
 export async function submitTask(
@@ -1116,7 +1158,7 @@ export async function submitTask(
     h3LivePreviewActive: Boolean(h3PreviewTinyVae),
     ...(h3TokenCount == null ? {} : { h3TokenCount }),
     ...(h3AvSerializerNodeId ? { h3AvSerializerNodeId } : {}),
-    ...(progressContext.spectrumOuterSteps == null ? {} : { progressContext }),
+    ...(Object.keys(progressContext).length === 0 ? {} : { progressContext }),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };
 }
@@ -1423,6 +1465,9 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   if (classType === "LoadVideo") {
     return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
   }
+  if (classType === "H3ContinuumLoadVideo") {
+    return { start: 2, end: 5, label: "读取续写源视频", tracksSteps: false };
+  }
   if (classType === "VHS_VideoInfoSource") {
     return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
   }
@@ -1499,10 +1544,16 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
     classType === "KSampler" ||
     classType === "KSamplerAdvanced" ||
     classType === "SamplerCustomAdvanced" ||
+    classType === "H3ContinuumSamplerV38" ||
     classType === "LTXVExtendSampler" ||
     classType === "LTXVLoopingSampler"
   ) {
-    return { start: 14, end: 80, label: "扩散采样", tracksSteps: true };
+    return {
+      start: 14,
+      end: 80,
+      label: classType === "H3ContinuumSamplerV38" ? "Continuum 扩散采样" : "扩散采样",
+      tracksSteps: true
+    };
   }
   if (classType === "MMH3UltimateUpscale") {
     return { start: 14, end: 80, label: "H3 分块重采样", tracksSteps: true };
@@ -1534,7 +1585,28 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   if (classType === "SaveVideo") {
     return { start: 98.5, end: 99.5, label: "编码并保存", tracksSteps: true };
   }
+  if (classType === "H3ContinuumAssembleSeamV35") {
+    return { start: 93, end: 97, label: "拼接续写音视频", tracksSteps: false };
+  }
   return { start: 12, end: 14, label: classType, tracksSteps: false };
+}
+
+function progressStageForNode(
+  classType: string | undefined,
+  nodeId: string | undefined,
+  progressContext?: ComfyProgressContext
+): NodeProgressStage {
+  const role = nodeId ? progressContext?.continuumNodeRoles?.[nodeId] : undefined;
+  if (role === "source-state") {
+    return { start: 5, end: 7, label: "读取续写状态", tracksSteps: false };
+  }
+  if (role === "source-decode") {
+    return { start: 7, end: 12, label: "解码续写边界帧", tracksSteps: true };
+  }
+  if (role === "source-frame") {
+    return { start: 12, end: 14, label: "提取续写边界帧", tracksSteps: false };
+  }
+  return nodeStage(classType);
 }
 
 function normalizedProgressValues(
@@ -1567,9 +1639,10 @@ export function progressForNode(
   classType: string | undefined,
   value?: number,
   max?: number,
-  progressContext?: ComfyProgressContext
+  progressContext?: ComfyProgressContext,
+  nodeId?: string
 ): { progress: number; label: string } {
-  const stage = nodeStage(classType);
+  const stage = progressStageForNode(classType, nodeId, progressContext);
   const normalized = normalizedProgressValues(classType, value, max, progressContext);
   const progressValue = normalized?.value ?? value;
   const progressMax = normalized?.max ?? max;
@@ -1610,12 +1683,13 @@ export function workProgressForNode(
   max: number,
   startedAt: number,
   sampledAt = Date.now(),
-  progressContext?: ComfyProgressContext
+  progressContext?: ComfyProgressContext,
+  nodeId?: string
 ): QueueWorkProgress | undefined {
   const normalized = normalizedProgressValues(classType, value, max, progressContext);
   const progressValue = normalized?.value ?? value;
   const progressMax = normalized?.max ?? max;
-  if (!nodeStage(classType).tracksSteps || progressMax <= 0) return undefined;
+  if (!progressStageForNode(classType, nodeId, progressContext).tracksSteps || progressMax <= 0) return undefined;
   return {
     value: progressValue,
     max: progressMax,
@@ -1887,7 +1961,13 @@ export async function waitForTask(
         if (message.type === "executing" && typeof message.data?.node === "string") {
           activeNodeId = message.data.node;
           activeNodeStartedAt = Date.now();
-          const stage = progressForNode(nodeTypes[activeNodeId]);
+          const stage = progressForNode(
+            nodeTypes[activeNodeId],
+            undefined,
+            undefined,
+            progressContext,
+            activeNodeId
+          );
           logger.info("comfy", "node-started", "ComfyUI started node", {
             promptId,
             nodeId: activeNodeId,
@@ -1920,20 +2000,22 @@ export async function waitForTask(
               nodeTypes[nodeId],
               message.data.value,
               message.data.max,
-              progressContext
+              progressContext,
+              nodeId
             );
             reportProgress(
               stage.progress,
               stage.label,
               false,
-              nodeStage(nodeTypes[nodeId]).tracksSteps,
+              progressStageForNode(nodeTypes[nodeId], nodeId, progressContext).tracksSteps,
               workProgressForNode(
                 nodeTypes[nodeId],
                 message.data.value,
                 message.data.max,
                 activeNodeStartedAt,
                 Date.now(),
-                progressContext
+                progressContext,
+                nodeId
               )
             );
           }
@@ -1966,7 +2048,9 @@ export async function waitForTask(
             const stage = progressForNode(
               nodeTypes[message.data.node],
               1,
-              1
+              1,
+              progressContext,
+              message.data.node
             );
             reportProgress(stage.progress, `${stage.label} 完成`, false, false, undefined, true);
           }
