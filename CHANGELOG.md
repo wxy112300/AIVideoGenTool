@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+## 0.61.7 — 2026-09-13
+
+- 调整 H3 LoRA 自动触发词的执行位置：结构化 T2VA/I2VA/FL2VA/L2VA Prompt 现在把缺失 trigger 放入 `integrated_multimodal_description` 的 `[Shot 1]` 开头，Ref2VA 放入 `detailed_description` 的 `[Shot 1]` 开头；官方参考声明与字段结构保持不变，已有 trigger 仍保留原位，旧自由文本 Prompt 继续兼容前缀注入。
+
 ## 0.61.6 — 2026-09-13
 
 - 修复自动 LoRA 在 H3 Prompt 正文已含触发词时仍重复注入，以及缺失触发词抢占参考图声明开头的问题：完整词边界检测现在由创建检查与执行组装共用；已有 `Facial Realism`、`r34l1sm`、`camera motion` 等 trigger 保持原位，只有缺失项才自动加入；I2VA/FL2VA/L2VA 的官方参考对齐声明始终保持在绝对开头。

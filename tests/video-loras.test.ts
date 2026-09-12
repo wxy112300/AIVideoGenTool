@@ -342,7 +342,7 @@ describe("video LoRA catalog", () => {
       [H3_FACIAL_REALISM_CLOSEUP_LORA]
     )).toBe([
       "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
-      "Facial Realism, integrated_multimodal_description: [Shot 1] A woman looks toward the camera."
+      "integrated_multimodal_description: [Shot 1] Facial Realism, A woman looks toward the camera."
     ].join("\n\n"));
     expect(videoPromptForLoras(
       [
@@ -352,8 +352,40 @@ describe("video LoRA catalog", () => {
       [H3_FACIAL_REALISM_CLOSEUP_LORA]
     )).toBe([
       "How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark; Picture 2 aligns with the 5.17-second mark.",
-      "Facial Realism, integrated_multimodal_description: [Shot 1] The subject crosses the room."
+      "integrated_multimodal_description: [Shot 1] Facial Realism, The subject crosses the room."
     ].join("\n\n"));
+  });
+
+  it("places missing triggers inside the first structured H3 shot", () => {
+    expect(videoPromptForLoras(
+      [
+        "subject_definitions:",
+        "<Subject 1> is the woman in <Picture 1>.",
+        "",
+        "summary:",
+        "[reference generation] The target video follows <Subject 1>.",
+        "",
+        "detailed_description:",
+        "The target video uses a restrained live-action style.",
+        "[Shot 1] A static medium shot holds on <Subject 1>."
+      ].join("\n"),
+      [H3_REALISM_PEOPLE_LORA, H3_CINEMATIC_REALISM_LORA]
+    )).toBe([
+      "subject_definitions:",
+      "<Subject 1> is the woman in <Picture 1>.",
+      "",
+      "summary:",
+      "[reference generation] The target video follows <Subject 1>.",
+      "",
+      "detailed_description:",
+      "The target video uses a restrained live-action style.",
+      "[Shot 1] r34l1sm, DY, A static medium shot holds on <Subject 1>."
+    ].join("\n"));
+
+    expect(videoPromptForLoras(
+      "integrated_multimodal_description: [Shot 1] A woman holds still. DY.",
+      [H3_CINEMATIC_REALISM_LORA]
+    )).toBe("integrated_multimodal_description: [Shot 1] A woman holds still. DY.");
   });
 
   it("removes obsolete LoRAs from creation and keeps name-only history snapshots", () => {

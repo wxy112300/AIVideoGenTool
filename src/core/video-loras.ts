@@ -615,6 +615,19 @@ export function promptContainsVideoLoraTrigger(prompt: string, trigger: string):
   return false;
 }
 
+function promptWithTriggersInFirstH3Shot(
+  prompt: string,
+  triggerText: string
+): string | undefined {
+  const section = /(?:integrated_multimodal_description|detailed_description)\s*:/iu.exec(prompt);
+  if (!section) return undefined;
+  const sectionBodyStart = section.index + section[0].length;
+  const firstShot = /\[Shot 1\]\s*/iu.exec(prompt.slice(sectionBodyStart));
+  if (!firstShot) return undefined;
+  const insertionIndex = sectionBodyStart + firstShot.index + firstShot[0].length;
+  return `${prompt.slice(0, insertionIndex)}${triggerText}, ${prompt.slice(insertionIndex)}`;
+}
+
 export function videoPromptForLoras(
   prompt: string,
   loras: readonly VideoLoraSelection[] | undefined
@@ -629,6 +642,9 @@ export function videoPromptForLoras(
   if (!missingPrefixes.length) return normalizedPrompt;
 
   const triggerText = missingPrefixes.join(", ");
+  const structuredPrompt = promptWithTriggersInFirstH3Shot(normalizedPrompt, triggerText);
+  if (structuredPrompt) return structuredPrompt;
+
   const referencePreamble = normalizedPrompt.match(
     /^(For the target video, at 0\.00 seconds[^\n]*? is (?:fully|partially) referenced\.|How the reference pictures align with the target video[^\n]*\.)(?:\s*\n\s*)?/iu
   );
