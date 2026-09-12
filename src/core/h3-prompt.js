@@ -109,15 +109,16 @@ export function h3PromptControlInstruction(input) {
     const plan = h3PromptControlPlanFor(input);
     const lines = [
         "H3 execution control header (silent; never echo): priority = LOCKED user request/notes > exact dialogue/visible text > H3 mode/keyframes/reference roles > grounded execution > preset.",
-        "Classify facts as PRESERVE, CHANGE, or INFER. Preserve locked facts, execute requested changes, infer only grounded details, and add prose only when it controls visible action, camera, sound, continuity, or the endpoint."
+        "Source-fidelity gate: classify facts as PRESERVE, CHANGE, or INFER. The user's original prompt is authoritative for intent, subjects, role-action ownership, order, camera, timing, dialogue, sound, and outcome; reference media is authoritative for supported visible facts. Keep every user-required item explicit and in order, expanding it only with compatible observable detail; never summarize, substitute, reassign, reverse, or omit it. When evidence is ambiguous, retain the user's wording."
     ];
     if (plan.annotationCount) {
         lines.push("Editorial-note module: apply each extracted note to its nearest clause, then remove note markers/text; never render or speak a note.");
     }
     if (plan.modules.includes("reference-delta")) {
-        lines.push("Reference-delta module: use media as evidence; state identity/opening/composition once, then spend space on requested CHANGE, causal action/reaction, camera, sound, and endpoint; omit repeated inventory and unsupported inference.");
+        lines.push("Reference understanding (silent, before drafting): identify which visible subject each user-named role refers to and what each subject is doing. Treat the user's role and action assignments as authoritative; use the image only to ground supported appearance, position, contact, and relative scale. When the image is ambiguous, retain the user's labels and requested role-action mapping. Output only the final H3 prompt.");
+        lines.push("Reference-delta module: state identity/opening/composition once, then spend space on requested CHANGE, causal action/reaction, camera, sound, and endpoint; omit repeated inventory and unsupported inference.");
         if (input.mode === "FL2VA") {
-            lines.push("FL2VA subject-correspondence module: match each person or object in Picture 1 to Picture 2 by the user's labels and stable visible traits, not by screen position or apparent frame size. Keep every entity's identity cues, clothing ownership, action role, and relative-size ordering separate across the transition; describe only correspondences supported by the two keyframes and omit unknown traits.");
+            lines.push("FL2VA subject-correspondence module: carry the same user role-action mapping from Picture 1 to Picture 2 using stable visible traits and continuity evidence, not screen position or apparent frame size. Keep identity cues, clothing ownership, action role, and relative-size ordering with their original subjects; retain the user's neutral role labels when a match is unclear.");
         }
         else if (input.mode === "R2V") {
             lines.push("R2V entity-role module: define each reusable person or object as a distinct subject and give every source asset one explicit job. Keep identity cues, clothing ownership, action roles, and relative-size ordering attached to their originating subjects; combine references only where the user explicitly assigns the transfer.");
@@ -163,7 +164,7 @@ export function h3PromptControlInstruction(input) {
         lines.push(`${input.mode} endpoint module: preserve the exact endpoint geometry and reach it through visible intermediate motion, maintaining subject structure and spatial continuity until the final pose settles.`);
     }
     if (plan.preset === "detailed-cinematic") {
-        lines.push("Detailed source-fidelity gate: this preset is an expansion, never a concise rewrite. Before drafting, silently checklist every concrete user-specified subject, action, action order, camera/viewpoint, route, timing, dialogue, sound, and prohibition. Render every checklist item as an explicit observable fact or event in the final H3 fields in the same order; never collapse a chain of user actions into a generic summary, omit a later action because the reference shows the opening state, or make the final timeline less developed than the source brief. If output space is tight, shorten static reference inventory and assistant-added filler first, never a user-required action, camera instruction, reaction, dialogue, or constraint.");
+        lines.push("Detailed source-fidelity gate: this preset is an expansion, never a concise rewrite. Silently checklist every concrete user-specified item and render each as an explicit observable fact or event in the same order. If output space is tight, shorten static reference inventory and assistant-added filler first.");
         lines.push("Detailed-expansion coverage: substantially develop every user-written action with at least two applicable grounded execution details chosen from preparation, gaze/expression, posture/weight, contact/force, momentum/deceleration, affected-subject or object response, camera target/path/speed/settling, and causally synchronized physical sound. For an approximately five-second Base prompt, normally write roughly 180-320 grounded English words in the integrated timeline; for R2V, normally start with roughly 350-500 grounded English words in detailed_description. Scale upward with duration and complexity; treat these as coverage floors, not padding targets or hard maxima.");
     }
     return lines.join("\n");

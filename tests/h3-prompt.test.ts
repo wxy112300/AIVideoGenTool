@@ -46,7 +46,11 @@ describe("MiniMax H3 prompt templates", () => {
       hasReferenceMedia: true
     });
     expect(instruction).toContain("LOCKED user request");
+    expect(instruction).toContain("Source-fidelity gate");
     expect(instruction).toContain("PRESERVE, CHANGE, or INFER");
+    expect(instruction).toContain("user's original prompt is authoritative");
+    expect(instruction).toContain("reference media is authoritative for supported visible facts");
+    expect(instruction).toContain("never summarize, substitute, reassign, reverse, or omit it");
     expect(instruction).toContain("Camera-route module");
     expect(instruction).toContain("Speech-gate module");
     expect(instruction).toContain("one continuous [Shot 1]");
@@ -66,10 +70,15 @@ describe("MiniMax H3 prompt templates", () => {
       mode: "FL2VA",
       hasReferenceMedia: true
     });
+    expect(fl2va).toContain("Reference understanding");
+    expect(fl2va).toContain("Source-fidelity gate");
+    expect(fl2va).toContain("which visible subject each user-named role refers to");
+    expect(fl2va).toContain("user's role and action assignments as authoritative");
+    expect(fl2va).toContain("retain the user's labels and requested role-action mapping");
     expect(fl2va).toContain("FL2VA subject-correspondence module");
-    expect(fl2va).toContain("not by screen position or apparent frame size");
+    expect(fl2va).toContain("not screen position or apparent frame size");
     expect(fl2va).toContain("clothing ownership");
-    expect(fl2va).toContain("omit unknown traits");
+    expect(fl2va).toContain("with their original subjects");
 
     const r2v = h3PromptControlInstruction({
       rawPrompt: "Use the two referenced characters in one scene.",
@@ -209,9 +218,11 @@ describe("MiniMax H3 prompt templates", () => {
       preset: "detailed-cinematic"
     });
 
-    expect(instruction).toContain("every concrete user-specified subject, action, action order");
-    expect(instruction).toContain("never collapse a chain of user actions into a generic summary");
-    expect(instruction).toContain("make the final timeline less developed than the source brief");
+    expect(instruction).toContain("user's original prompt is authoritative");
+    expect(instruction).toContain("role-action ownership");
+    expect(instruction).toContain("Keep every user-required item explicit and in order");
+    expect(instruction).toContain("never summarize, substitute, reassign, reverse, or omit it");
+    expect(instruction).toContain("this preset is an expansion, never a concise rewrite");
     expect(instruction).toContain("shorten static reference inventory and assistant-added filler first");
   });
 

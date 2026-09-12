@@ -71,6 +71,11 @@ describe("H3 scale semantics", () => {
       const instruction = h3ScalePreservationInstruction("A tiny person stands beside a full-size door.", mode);
       expect(instruction).toContain("Scale semantics lock");
       expect(instruction).toContain(expectedRule);
+      if (mode === "R2V") {
+        expect(instruction).toContain("clothing owner, and action role");
+        expect(instruction).toContain("Leave unsupported person attributes unspecified");
+        expect(instruction).not.toContain("assign identity, age, and anatomy");
+      }
     }
   });
 

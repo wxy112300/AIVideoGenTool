@@ -120,7 +120,7 @@ function modeScaleRule(mode: H3PromptMode): string {
     case "L2VA":
       return "For L2VA, preserve this relation while the action converges on the exact Picture 1 final frame.";
     case "R2V":
-      return "For R2V, assign identity, age, and anatomy to the character reference and use the environment or height reference only as the scale anchor.";
+      return "For R2V, bind each known identity cue, appearance cue, clothing owner, and action role to its assigned character reference, and use the environment or height reference only as the scale anchor. Leave unsupported person attributes unspecified.";
     case "T2VA":
     default:
       return "For T2VA, establish the relation in the opening beat and make it legible against a full-size environmental anchor.";
