@@ -123,6 +123,12 @@ describe("history actions", () => {
     } as unknown as HistoryAsset;
     const state = createDefaultState();
     state.history = [asset];
+    state.draft.promptVersions.push({
+      id: "stale-prompt",
+      label: "旧草稿",
+      text: "must not survive",
+      createdAt: version.createdAt
+    });
     const saveDraftImmediately = vi.fn(async () => undefined);
     const context = {
       root: document.createElement("main"),
@@ -157,8 +163,9 @@ describe("history actions", () => {
 
     await createHistoryActions(options).editHistoryAsset(asset.id);
 
-    const draft = saveDraftImmediately.mock.calls[0]?.[0] as { videoLoras?: unknown[] } | undefined;
+    const draft = saveDraftImmediately.mock.calls[0]?.[0] as { videoLoras?: unknown[]; promptVersions?: Array<{ text: string }> } | undefined;
     expect(draft?.videoLoras).toEqual([]);
+    expect(draft?.promptVersions).toEqual([expect.objectContaining({ text: "a person walking" })]);
   });
 
   it("carries the recorded Motion Context file alongside a Continuum artifact", async () => {
@@ -255,7 +262,8 @@ describe("history actions", () => {
         modelId: "minimax_h3_continuum",
         h3ContextLatentPath: "C:/history/h3-motion-context/version-with-latents/clip_00001.safetensors",
         h3ContinuumArtifactPath: "C:/history/h3-native-av/h3av_payload.safetensors",
-        h3ContinuumArtifact: artifact
+        h3ContinuumArtifact: artifact,
+        resetPrompt: true
       }),
       false
     );
@@ -345,7 +353,8 @@ describe("history actions", () => {
         h3LatentSaveMode: "motion-context",
         h3ContextLatentPath: "C:/history/h3-motion-context/version-motion-context-only/clip_00001.safetensors",
         h3ContinuumArtifactPath: undefined,
-        h3ContinuumArtifact: undefined
+        h3ContinuumArtifact: undefined,
+        resetPrompt: true
       }),
       false
     );

@@ -14,7 +14,7 @@ import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks
 } from "../../src/core/h3-dialogue.js";
-import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
+import { applyPromptRevision, stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import {
   isManagedPromptModel,
   managedPromptModel,
@@ -299,6 +299,9 @@ export async function enhancePromptWithLlamaServer(
     .replace(/\s*```$/u, "")
     .trim();
   if (request.mode === "image-edit") return stripPromptAnnotations(normalizedContent);
+  if (request.promptStrategy === "targeted-revision") {
+    return applyPromptRevision(request.prompt, normalizedContent);
+  }
   const sourcePrompt = stripPromptAnnotations(request.prompt);
   const imageCount = request.imagePaths?.length ?? 0;
   const mode = request.h3PromptMode ?? inferH3PromptMode(

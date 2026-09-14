@@ -1674,6 +1674,7 @@ export type H3PromptPreset =
   | "product-brand"
   | "music-video"
   | "narrative-animation"
+  | "annotation-revision"
   | "multi-reference";
 
 export type H3PromptMode = "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "R2V";
@@ -1691,7 +1692,7 @@ export interface EnhanceRequest {
   imageTargetModelId?: string;
   origin?: PromptOperationOrigin;
   mode?: PromptEnhanceMode;
-  promptStrategy?: "rewrite" | "reference-auto";
+  promptStrategy?: "rewrite" | "reference-auto" | "targeted-revision";
   autoPromptSeedId?: string;
   autoPromptSeedInstruction?: string;
   autoPromptVariationId?: string;

@@ -90,6 +90,27 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     expect(workflow["qwenvl-caption"]?.inputs.image).toEqual(["qwenvl-image-batch-1", 0]);
   });
 
+  it("sends annotation revision as replacement blocks instead of a full rewrite", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = modelId;
+    const workflow = buildQwenVlPeftPromptWorkflow(
+      {
+        prompt: "[Shot 1] The tiny person lifts the giant.（批注：动作主体写反了。） Camera remains fixed.",
+        modelId: "minimax_h3_i2va",
+        mode: "h3-vision",
+        promptStrategy: "targeted-revision",
+        h3PromptMode: "I2VA",
+        h3PromptPreset: "annotation-revision"
+      },
+      ["uploaded-first.png"],
+      settings
+    );
+
+    expect(workflow["qwenvl-caption"]?.inputs.prompt).toContain("Targeted prompt revision");
+    expect(workflow["qwenvl-caption"]?.inputs.prompt).toContain("<EDIT_TARGET_1>The tiny person lifts the giant.</EDIT_TARGET_1>");
+    expect(workflow["qwenvl-caption"]?.inputs.prompt).not.toContain("Official H3 output fields");
+  });
+
   it("keeps JSON metadata application-managed instead of exposing it as a download requirement", () => {
     expect(qwenVlManagedMetadata).toHaveLength(10);
     expect(qwenVlManagedMetadata.every((asset) => asset.relativePath.endsWith(".json"))).toBe(true);

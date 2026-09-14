@@ -53,6 +53,10 @@ export function activeImagePrompt(draft, locale = "zh-CN") {
     };
 }
 export function h3PromptModeForDraft(draft) {
+    if (draft.inputMode === "video" &&
+        (isMiniMaxH3BoundaryExtensionModel(draft.modelId) || isMiniMaxH3ContinuumModel(draft.modelId))) {
+        return "I2VA";
+    }
     return inferH3PromptMode(Boolean(draft.startImagePath), Boolean(draft.endImagePath), isMiniMaxH3R2vModel(draft.modelId));
 }
 export function interpolationEstimate(draft) {

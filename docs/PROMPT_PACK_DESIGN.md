@@ -59,7 +59,24 @@ Keep snippet text short, positive, and executable. Prefer a concrete subject act
 
 Preset IDs remain stable for persisted Settings and history compatibility. Pack content owns the built-in English default bodies. Locale files only provide the preset label and description shown in Create and Settings.
 
-The ten H3 presets remain independent choices rather than composable groups. Every preset first preserves the base prompt and mode/reference semantics. `detailed-cinematic` is an expansion contract: it retains every concrete source instruction and develops each action with grounded mechanics, reactions, camera behavior, timing, or causal sound; it must not become a concise rewrite. Single-shot behavior is a product-level default and is not owned solely by the single-shot preset.
+The eleven H3 presets remain independent choices rather than composable groups: ten general choices plus the R2V-only multi-reference preset. Every ordinary preset first preserves the base prompt and mode/reference semantics. `detailed-cinematic` is an expansion contract: it retains every concrete source instruction and develops each action with grounded mechanics, reactions, camera behavior, timing, or causal sound; it must not become a concise rewrite. Single-shot behavior is a product-level default and is not owned solely by the single-shot preset.
+
+`detailed-cinematic` also has an application-side acceptance gate. Its main timeline must exceed both the duration/mode coverage floor and the source-prompt baseline, and same-language output must retain enough meaningful source terms to reject obvious topic or action loss. A failed gate does not create a new prompt version. This check is deliberately limited to the most-detailed preset; shorter presets retain their own density tradeoffs.
+
+## Extend prompt profiles
+
+Extend does not infer prompt format from the visible image slots alone. The application extracts the exact selected boundary frame for every visual enhancer, then chooses the H3 prompt contract from the execution workflow:
+
+- FL2VA boundary continuation and Continuum V3.8 are I2VA-shaped for the new segment. Their extracted/decoded boundary is the concrete first-frame anchor, so the final prompt begins with the official `<Picture 1>` first-frame alignment declaration and develops forward from that state.
+- Motion Context remains R2VA video continuation. `<Video 1>` is the locked source video carrying motion/audio context; the extracted boundary image is an enhancer-only inspection aid and must not create or renumber a `<Picture N>` execution reference.
+
+All profiles preserve user-owned subject/action assignments and continue from the observed boundary state. A missing UI Slot 1 image is therefore not evidence for T2VA. History “继续创作” starts a fresh prompt-version branch: editing an existing History task restores only that task's prompt, while continuing from a media output clears the previous draft prompt so the first new user input becomes version one.
+
+`annotation-revision` is a special editing workflow rather than a full-prompt expansion style. It requires one or more explicitly labeled inline notes, such as `（批注：……）`, `【修改：……】`, `[Note: ...]`, or `{Instruction: ...}`, immediately after the clause to revise. Bare parentheses remain prompt content. The enhancer asks the model for numbered replacement fragments only, then programmatically splices those fragments into the note-stripped approved draft. Missing, empty, unchanged, or malformed replacements fail closed and leave the original prompt untouched; model output outside the requested replacement tags is ignored. Reference media may resolve a marked identity, action, position, contact, or scale correction, but cannot widen the editable scope.
+
+All H3 enhancer outputs pass through one envelope normalizer before version creation. It accepts the official plain-text fields as-is, unwraps a JSON object or common response wrapper when a backend emits one, and removes outer Markdown fences or Markdown emphasis around official field headings. The persisted prompt remains plain H3 text; JSON and Markdown presentation syntax are never part of the prompt version.
+
+An empty editor entry is a placeholder, not a historical prompt version. The first user input replaces that sole placeholder and becomes version one; later manual edits and enhancer results follow the normal branching/version rules.
 
 ## Update workflow
 

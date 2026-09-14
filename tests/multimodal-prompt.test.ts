@@ -180,6 +180,27 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);
   });
 
+  it("uses the shared targeted revision contract for Qwen3.6 and Qwen3.8", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "[Shot 1] The giant looks away.（批注：让巨人看向掌心。） The tiny person waves.",
+        modelId: "minimax_h3_i2va",
+        mode: "h3-vision",
+        promptStrategy: "targeted-revision",
+        h3PromptMode: "I2VA",
+        h3PromptPreset: "annotation-revision"
+      },
+      ["reference.png"],
+      settings
+    );
+
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("Targeted prompt revision");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("<EDIT_TARGET_1>The giant looks away.</EDIT_TARGET_1>");
+    expect(workflow["vision-llm"]?.inputs.prompt).not.toContain("H3 execution control header");
+  });
+
   it("caps detailed cinematic output at the VisionLLM schema maximum", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";

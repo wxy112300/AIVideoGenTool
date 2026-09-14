@@ -32,6 +32,35 @@ export function appendPromptVersion(
   return [...promptVersions, promptVersion];
 }
 
+export function updateManualPromptVersion(
+  promptVersions: readonly PromptVersion[],
+  activePromptVersion: number,
+  text: string,
+  manualLabel: string,
+  createVersion: () => Pick<PromptVersion, "id" | "createdAt"> = () => ({
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString()
+  })
+): { promptVersions: PromptVersion[]; activePromptVersion: number } {
+  const versions = [...promptVersions];
+  const active = activeIndexForVersions(activePromptVersion, versions);
+  const current = versions[active];
+  if (current?.label === manualLabel) {
+    versions[active] = { ...current, text };
+    return { promptVersions: versions, activePromptVersion: active };
+  }
+
+  const version = { ...createVersion(), label: manualLabel, text };
+  if (versions.length === 1 && !current?.text.trim()) {
+    versions[0] = version;
+    return { promptVersions: versions, activePromptVersion: 0 };
+  }
+
+  versions.splice(active + 1);
+  versions.push(version);
+  return { promptVersions: versions, activePromptVersion: versions.length - 1 };
+}
+
 export function promptVersionsForDraft(draft: DraftPromptSource): readonly PromptVersion[] {
   if (draft.inputMode === "video" && draft.extensionPromptVersions?.length) {
     return draft.extensionPromptVersions;

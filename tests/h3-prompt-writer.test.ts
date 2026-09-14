@@ -297,13 +297,15 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       expect(String(generateBody.creative_brief)).toContain("Selected H3 expansion preset: detailed-cinematic");
       expect(String(generateBody.creative_brief)).toContain("the most fully developed, production-ready H3 prompt");
       expect(String(generateBody.creative_brief)).toContain("never a concise rewrite or summary");
+      expect(String(generateBody.creative_brief)).toContain("DETAILED CINEMATIC EXPANSION GATE");
+      expect(String(generateBody.system_prompt_override)).toContain("detailed cinematic prompt writer");
       expect(generateBody.mode).toBe("I2VA");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
   });
 
-  it("uses a media-capable transport for a blank T2VA extension while keeping T2VA output", async () => {
+  it("writes a boundary/Continuum extension as anchored I2VA output", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-extension-auto-writer-"));
     const boundary = path.join(directory, "extension-boundary.png");
     await fs.writeFile(boundary, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -330,12 +332,15 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       }
       if (url.endsWith("/h3studio/generate")) {
         generateBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ prompt: [
-          "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
-          "integrated_multimodal_description: [Shot 1] The continuation begins from the extracted boundary state and the subject moves forward.",
-          "overall_soundscape: N/A",
-          "non_diegetic_music: N/A"
-        ].join("\\n\\n") });
+        return Response.json({ prompt: `\`\`\`json
+${JSON.stringify({
+  prompt: {
+    integrated_multimodal_description: "[Shot 1] The continuation begins from the extracted boundary state and the subject moves forward.",
+    overall_soundscape: "N/A",
+    non_diegetic_music: "N/A"
+  }
+})}
+\`\`\`` });
       }
       if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
       throw new Error(`Unexpected request: ${url}`);
@@ -348,7 +353,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         modelId: "minimax_h3_continuum",
         mode: "h3-vision",
         promptStrategy: "reference-auto",
-        h3PromptMode: "T2VA",
+        h3PromptMode: "I2VA",
         h3PromptPreset: "official-storyboard",
         h3DurationSeconds: 5,
         imagePaths: [boundary],
@@ -363,12 +368,52 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
 
       expect(uploadMode).toBe("I2VA");
       expect(generateBody.mode).toBe("I2VA");
-      expect(String(generateBody.creative_brief)).toContain("target/output mode is T2VA");
+      expect(String(generateBody.creative_brief)).toContain("exact first frame of the new target segment");
       expect(result).toContain("integrated_multimodal_description:");
-      expect(result).not.toContain("For the target video, at 0.00 seconds");
+      expect(result).toContain("For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.");
+      expect(result).not.toContain("```json");
+      expect(result.trim().startsWith("{")).toBe(false);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("returns only annotated replacements and preserves the rest of an approved prompt", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    let generateBody: Record<string, unknown> = {};
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.2.0" });
+      if (url.endsWith("/h3studio/models")) return Response.json({ models: [{
+        id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        path: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        runtime_ready: true
+      }] });
+      if (url.endsWith("/h3studio/generate")) {
+        generateBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({
+          prompt: "<EDIT_TARGET_1>The giant carefully lifts the tiny person.</EDIT_TARGET_1>"
+        });
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await enhancePromptWithH3PromptWriter({
+      prompt: "[Shot 1] The tiny person lifts the giant.（批注：动作主体写反，改成巨人托起微小角色。） Camera remains fixed.",
+      modelId: "minimax_h3_hybrid",
+      mode: "h3-vision",
+      promptStrategy: "targeted-revision",
+      h3PromptMode: "T2VA",
+      h3PromptPreset: "annotation-revision"
+    }, settings, new AbortController().signal);
+
+    expect(result).toBe("[Shot 1] The giant carefully lifts the tiny person. Camera remains fixed.");
+    expect(String(generateBody.creative_brief)).toContain("<EDIT_TARGET_1>The tiny person lifts the giant.</EDIT_TARGET_1>");
+    expect(String(generateBody.creative_brief)).toContain("动作主体写反");
+    expect(String(generateBody.system_prompt_override)).toContain("return only the requested EDIT_TARGET replacement blocks");
   });
 
   it("releases the in-process writer model through ComfyUI", async () => {

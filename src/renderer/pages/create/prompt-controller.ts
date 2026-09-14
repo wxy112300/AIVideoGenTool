@@ -7,11 +7,14 @@ import type {
   VideoLoraSelection
 } from "../../../types";
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
+import { buildPromptRevisionPlan } from "../../../core/prompt-annotations";
+import { assertDetailedCinematicExpansion } from "../../../core/h3-prompt";
 import {
   activePromptIndexForDraft,
   appendPromptVersion,
   promptPatchForDraft,
-  promptVersionsForDraft
+  promptVersionsForDraft,
+  updateManualPromptVersion
 } from "../../../core/draft-prompts";
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
 import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
@@ -98,23 +101,13 @@ export function mountCreatePromptController(
     if (!draft) return;
     options.invalidatePromptEditHistory();
     resizePromptInput(promptInput);
-    const versions = [...promptVersionsForDraft(draft)];
-    const activePromptVersion = activePromptIndexForDraft(draft);
-    const current = versions[activePromptVersion];
-    let nextActivePromptVersion = activePromptVersion;
-    if (current?.label === promptUi().t("manualEditVersion")) {
-      versions[activePromptVersion] = { ...current, text: promptInput.value };
-    } else {
-      versions.splice(activePromptVersion + 1);
-      versions.push({
-        id: crypto.randomUUID(),
-        label: promptUi().t("manualEditVersion"),
-        text: promptInput.value,
-        createdAt: new Date().toISOString()
-      });
-      nextActivePromptVersion = versions.length - 1;
-    }
-    options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
+    const updated = updateManualPromptVersion(
+      promptVersionsForDraft(draft),
+      activePromptIndexForDraft(draft),
+      promptInput.value,
+      promptUi().t("manualEditVersion")
+    );
+    options.patchDraft(promptPatchForDraft(draft, updated.promptVersions, updated.activePromptVersion));
     options.syncPromptEnqueueUi(promptInput.value);
     options.updateH3PromptCheck(
       promptInput.value,
@@ -234,6 +227,10 @@ export function mountCreatePromptController(
     if (!draft) return;
     const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
     const h3Mode = h3PromptModeForDraft(draft);
+    const selectedH3Preset = isCurrentH3
+      ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
+      : undefined;
+    const targetedRevision = selectedH3Preset === "annotation-revision";
     const currentPrompt = activePrompt(draft, options.context.getState()?.settings.uiLocale).text;
     const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
       ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
@@ -252,13 +249,24 @@ export function mountCreatePromptController(
       ), { kind: "error" });
       return;
     }
+    if (targetedRevision) {
+      try {
+        buildPromptRevisionPlan(currentPrompt);
+      } catch (error) {
+        options.context.notify(
+          error instanceof Error ? error.message : promptUi().t("annotationRevisionMissing"),
+          { kind: "error" }
+        );
+        return;
+      }
+    }
     if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0 && !hasExtensionBoundary) {
       options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
       return;
     }
     const promptSettings = options.context.getState()?.settings;
     const configuredAutoPromptSeedId = promptSettings?.h3AutoPromptSeedId?.trim() || undefined;
-    const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() &&
+    const autoPromptSeed = isCurrentH3 && !targetedRevision && !currentPrompt.trim() &&
       (referenceMediaPaths.length > 0 || hasExtensionBoundary)
       ? h3AutoPromptSeedFor(
           h3Mode,
@@ -299,7 +307,9 @@ export function mountCreatePromptController(
         modelId: draft.modelId,
         origin: requestOrigin,
         mode: requestMode,
-        promptStrategy: autoPromptSeed ? "reference-auto" : undefined,
+        promptStrategy: autoPromptSeed
+          ? "reference-auto"
+          : targetedRevision ? "targeted-revision" : undefined,
         autoPromptSeedId: autoPromptSeed?.id,
         autoPromptSeedInstruction: autoPromptSeed
           ? promptSettings?.h3AutoPromptSeedInstructions?.[autoPromptSeed.id]
@@ -308,9 +318,7 @@ export function mountCreatePromptController(
         imagePath: draft.startImagePath || undefined,
         imagePaths: isH3Vision ? h3ImagePaths : undefined,
         h3PromptMode: h3Mode,
-        h3PromptPreset: isCurrentH3
-          ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
-          : undefined,
+        h3PromptPreset: selectedH3Preset,
         videoLoras: draft.videoLoras.map((lora) => ({
           ...lora,
           compatibleModelIds: [...lora.compatibleModelIds],
@@ -331,6 +339,9 @@ export function mountCreatePromptController(
             }
           : undefined
       });
+      if (isCurrentH3 && selectedH3Preset === "detailed-cinematic") {
+        assertDetailedCinematicExpansion(text, h3Mode, draft.duration, currentPrompt);
+      }
       options.setPromptRuntimeLoaded(true);
       options.invalidatePromptEditHistory();
       options.patchDraftForMode(requestOrigin, (nextDraft) => {

@@ -15,6 +15,8 @@ import { imageEditPromptContractForTarget } from "../../src/core/image-prompt.js
 import {
   h3ExplicitConstraintSummary,
   h3DurationPlan,
+  h3DetailedExpansionGateInstruction,
+  h3ExtensionContinuityInstruction,
   inferH3PromptMode,
   h3PromptControlInstruction,
   h3PromptPriorityInstruction,
@@ -31,8 +33,10 @@ import {
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
 import { h3LoraPromptInstruction } from "../../src/core/prompts/h3/loras.js";
 import {
+  applyPromptRevision,
   parsePromptAnnotations,
   promptAnnotationInstruction,
+  promptRevisionInstruction,
   stripPromptAnnotations
 } from "../../src/core/prompt-annotations.js";
 
@@ -280,6 +284,7 @@ export async function enhancePromptWithH3PromptWriter(
   );
   const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
   const h3PresetText = settings.h3PromptPresets[h3Preset]?.trim() || defaultH3PromptPresets[h3Preset];
+  const targetedRevision = request.promptStrategy === "targeted-revision";
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
@@ -337,8 +342,16 @@ export async function enhancePromptWithH3PromptWriter(
           `Selected H3 expansion preset: ${h3Preset}. Preserve explicit user content first, then apply this expansion policy:`,
           h3PresetText
         ].join("\n");
-    const creativeBrief = [
+    const creativeBrief = targetedRevision
+      ? promptRevisionInstruction(request.prompt, request.referenceContext, h3PresetText)
+      : [
       priorityInstruction,
+      request.extensionSource
+        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy)
+        : "",
+      h3Preset === "detailed-cinematic"
+        ? h3DetailedExpansionGateInstruction(h3Mode, request.h3DurationSeconds ?? 5, sourcePrompt)
+        : "",
       controlInstruction,
       annotationInstruction,
       isH3ReferenceAutoPrompt(request)
@@ -367,7 +380,13 @@ export async function enhancePromptWithH3PromptWriter(
         creative_brief: creativeBrief,
         model_id: model.id,
         session_id: sessionId,
-        ...(imageEdit ? { system_prompt_override: imageEditSystemPrompt(request) } : {}),
+        ...(imageEdit
+          ? { system_prompt_override: imageEditSystemPrompt(request) }
+          : targetedRevision
+            ? { system_prompt_override: "You are a precise prompt revision engine. Follow the creative brief and return only the requested EDIT_TARGET replacement blocks, with no complete prompt or commentary." }
+            : h3Preset === "detailed-cinematic"
+              ? { system_prompt_override: "You are the detailed cinematic prompt writer for MiniMax H3. Preserve every concrete user instruction and expand each action into a chronological, physically executable audiovisual timeline. Meet the explicit main-timeline coverage floor in the creative brief. Return only the official H3 fields for the requested mode, with no JSON, Markdown, analysis, preface, or summary outside those fields." }
+              : {}),
         aspect_ratio: request.h3AspectRatio || "16:9",
         duration_seconds: request.h3DurationSeconds || 5,
         thinking: false,
@@ -380,6 +399,7 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
     if (imageEdit) return stripPromptAnnotations(extractImageEditPromptFromWriter(result.prompt));
+    if (targetedRevision) return applyPromptRevision(request.prompt, result.prompt);
     return normalizeH3PromptOutput(
       result.prompt.trim(),
       h3Mode,

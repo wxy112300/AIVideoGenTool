@@ -6,7 +6,8 @@ import {
   clearPromptVersion,
   ensureDraftPromptState,
   promptPatchForDraft,
-  promptVersionsForDraft
+  promptVersionsForDraft,
+  updateManualPromptVersion
 } from "../src/core/draft-prompts";
 
 describe("draft prompt state", () => {
@@ -78,5 +79,26 @@ describe("draft prompt state", () => {
     const next = { id: "four", label: "Four", text: "fourth", createdAt: "later" };
 
     expect(appendPromptVersion(versions, next)).toEqual([...versions, next]);
+  });
+
+  it("turns the initial blank placeholder into the first user-authored version", () => {
+    const blank = { id: "blank", label: "新建", text: "", createdAt: "before typing" };
+    const updated = updateManualPromptVersion(
+      [blank],
+      0,
+      "The user's first prompt.",
+      "手动编辑",
+      () => ({ id: "first-user-version", createdAt: "on first input" })
+    );
+
+    expect(updated).toEqual({
+      promptVersions: [{
+        id: "first-user-version",
+        label: "手动编辑",
+        text: "The user's first prompt.",
+        createdAt: "on first input"
+      }],
+      activePromptVersion: 0
+    });
   });
 });

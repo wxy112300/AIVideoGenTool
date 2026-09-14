@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import { mountVideoExtensionController } from "../src/renderer/pages/create/video-extension-controller";
+import { h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
 import type { Draft } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
 
@@ -77,6 +78,13 @@ afterEach(() => {
 });
 
 describe("Extend video boundary preview", () => {
+  it("uses the execution-time reference contract for each H3 extension family", () => {
+    const draft = createDefaultState().draft;
+    expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_fl2va", startImagePath: "" })).toBe("I2VA");
+    expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_continuum", startImagePath: "" })).toBe("I2VA");
+    expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_ref2va", startImagePath: "" })).toBe("R2V");
+  });
+
   it("jumps to the selected trim end", () => {
     const harness = createVideoHarness("minimax_h3_ref2va", 7.5);
 

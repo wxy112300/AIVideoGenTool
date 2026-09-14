@@ -61,6 +61,11 @@ export const defaultH3PromptPresets: Record<H3PromptPreset, string> = {
     "Describe readable silhouettes, facial performance, gaze, body mechanics, secondary motion, and camera timing. Use animation-specific motion such as squash and stretch, stepped stop-motion movement, layered parallax, or tactile props only when the requested style calls for it.",
     "Make the prompt executable at the supplied duration: use clear shot timing, purposeful transitions, synchronized sound, and no storyboard labels, panel layouts, or invented plot that competes with the user's idea."
   ].join("\n"),
+  "annotation-revision": [
+    "Treat the current prompt as an approved draft. Apply every labeled editorial annotation to its immediately preceding passage and revise only those marked passages.",
+    "Use attached reference media when a note asks for a correction to visible identity, action ownership, position, contact, composition, or relative scale. The user's stated role-action mapping remains authoritative when visual evidence is ambiguous.",
+    "Keep all unmarked text unchanged. Return no annotation markers or note text; if a requested replacement cannot be produced reliably, fail instead of rewriting the rest of the draft."
+  ].join("\n"),
   "multi-reference": [
     "Create a complete H3 R2V-style prompt, not a short caption. Understand the user's intended result and map every supplied reference to a precise job in the final video.",
     "Use the official R2V label semantics: <Subject N> identifies reusable people, objects, scenes, styles, actions, or poses; <Picture N> is reserved for a concrete frame or composition anchor; <Video N> identifies a source video's editing, continuation, camera, or temporal structure; <Audio N> identifies copied or referenced sound.",

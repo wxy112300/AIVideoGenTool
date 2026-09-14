@@ -80,6 +80,8 @@ export interface HistoryActionsOptions {
       resolution?: number;
       /** History continuation starts a fresh random seed. */
       resetSeed?: boolean;
+      /** History continuation starts a fresh prompt branch. */
+      resetPrompt?: boolean;
     },
     renderAfterSave?: boolean
   ): Promise<void>;
@@ -158,9 +160,6 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       text: asset.prompt,
       createdAt: new Date().toISOString()
     };
-    const existingPromptVersions = isExtension && state.draft.extensionPromptVersions?.length
-      ? state.draft.extensionPromptVersions
-      : state.draft.promptVersions;
     const videoLoras = videoLorasForCreation(asset.videoLoras);
     const draft: Draft = {
       ...state.draft,
@@ -216,12 +215,12 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       seed: asset.seed,
       ...(isExtension
         ? {
-            extensionPromptVersions: [...existingPromptVersions, historyPromptVersion],
-            extensionActivePromptVersion: existingPromptVersions.length
+            extensionPromptVersions: [historyPromptVersion],
+            extensionActivePromptVersion: 0
           }
         : {
-            promptVersions: [...state.draft.promptVersions, historyPromptVersion],
-            activePromptVersion: state.draft.promptVersions.length
+            promptVersions: [historyPromptVersion],
+            activePromptVersion: 0
           })
     };
     await options.saveDraftImmediately(draft);
@@ -294,7 +293,14 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       h3ContextLatentPath: undefined,
       h3ContinuumArtifactPath: undefined,
       h3ContinuumArtifact: undefined,
-      ratio: "source"
+      ratio: "source",
+      promptVersions: [{
+        id: crypto.randomUUID(),
+        label: state.draft.promptVersions[0]?.label ?? "原始",
+        text: "",
+        createdAt: new Date().toISOString()
+      }],
+      activePromptVersion: 0
     });
     options.reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
     options.navigateToCreationMode("image-to-video");
@@ -342,7 +348,8 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         resolution: Number.isFinite(asset.resolution) && asset.resolution > 0
           ? asset.resolution
           : versionShortEdge(version),
-        resetSeed: true
+        resetSeed: true,
+        resetPrompt: true
       }, false);
       options.navigateToCreationMode("video-extension");
     } catch (error) {

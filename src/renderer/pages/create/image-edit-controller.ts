@@ -1,6 +1,6 @@
 import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
-import { appendPromptVersion } from "../../../core/draft-prompts";
+import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
 import type { AppState, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
@@ -191,22 +191,13 @@ export function mountImageEditController(
     const draft = getDraft();
     if (!draft) return;
     options.invalidatePromptEditHistory();
-    const versions = [...draft.promptVersions];
-    const current = versions[draft.activePromptVersion];
-    let activePromptVersion = draft.activePromptVersion;
-    if (current?.label === t(uiKeys.create.interaction.manualEdit)) {
-      versions[activePromptVersion] = { ...current, text: promptInput.value };
-    } else {
-      versions.splice(activePromptVersion + 1);
-      versions.push({
-        id: crypto.randomUUID(),
-        label: t(uiKeys.create.interaction.manualEdit),
-        text: promptInput.value,
-        createdAt: new Date().toISOString()
-      });
-      activePromptVersion = versions.length - 1;
-    }
-    options.patchImageDraft({ promptVersions: versions, activePromptVersion });
+    const updated = updateManualPromptVersion(
+      draft.promptVersions,
+      draft.activePromptVersion,
+      promptInput.value,
+      t(uiKeys.create.interaction.manualEdit)
+    );
+    options.patchImageDraft(updated);
     options.resizePromptInput(promptInput);
     options.updateImagePromptWordCounter(promptInput.value);
     options.syncEnqueueUi();

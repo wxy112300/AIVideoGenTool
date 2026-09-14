@@ -135,6 +135,25 @@ describe("image workflow runtime preflight", () => {
 });
 
 describe("native Qwen prompt workflow", () => {
+  it("routes annotation revision through isolated replacement blocks", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "[Shot 1] The tiny person lifts the giant.（批注：动作主体写反，改成巨人托起微小角色。） Camera remains fixed.",
+      modelId: "minimax_h3_i2va",
+      mode: "h3-vision",
+      promptStrategy: "targeted-revision",
+      h3PromptMode: "I2VA",
+      h3PromptPreset: "annotation-revision",
+      referenceContext: "<Picture 1> = first frame"
+    });
+
+    expect(instruction).toContain("Targeted prompt revision");
+    expect(instruction).toContain("<EDIT_TARGET_1>The tiny person lifts the giant.</EDIT_TARGET_1>");
+    expect(instruction).toContain("动作主体写反");
+    expect(instruction).toContain("Keep all unmarked text unchanged");
+    expect(instruction).not.toContain("Official H3 output fields");
+    expect(instruction).not.toContain("H3 execution control header");
+  });
+
   it("uses a plain image-edit contract without H3 timeline instructions", () => {
     const instruction = imageEditPromptInstruction({
       prompt: "把 Picture 2 的人物放到 Picture 1 的场景中。",
@@ -236,7 +255,7 @@ describe("native Qwen prompt workflow", () => {
     const instruction = h3PromptInstruction({
       prompt: "人物继续向前走。",
       modelId: "minimax_h3_continuum",
-      h3PromptMode: "FL2VA",
+      h3PromptMode: "I2VA",
       extensionSource: {
         filePath: "source.mp4",
         trimStartSeconds: 0,
@@ -245,9 +264,28 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("EXTENSION CONTINUITY CONTRACT (highest priority)");
-    expect(instruction).toContain("exact last-visible state");
+    expect(instruction).toContain("exact last-visible source frame");
+    expect(instruction).toContain("<Picture 1>");
+    expect(instruction).toContain("official I2VA alignment declaration");
     expect(instruction).toContain("inside the same connected take");
     expect(instruction).toContain("Carry forward only the subjects");
+  });
+
+  it("keeps Motion Context as R2V video continuation without inventing a boundary picture", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "人物延续当前步态并向门口走。",
+      modelId: "minimax_h3_ref2va",
+      h3PromptMode: "R2V",
+      extensionSource: {
+        filePath: "source.mp4",
+        trimStartSeconds: 0,
+        trimEndSeconds: 5
+      }
+    });
+
+    expect(instruction).toContain("<Video 1> as the locked source video");
+    expect(instruction).toContain("visual inspection aid");
+    expect(instruction).toContain("must not become a new <Picture N>");
   });
 
   it("passes the selected H3 LoRA into prompt enhancement context", () => {
@@ -457,6 +495,8 @@ describe("native Qwen prompt workflow", () => {
     expect(faithful).toContain("Prioritize the user's explicit content first");
     expect(continuous).toContain("one continuous shot with no cuts");
     expect(detailed).toContain("Detailed cinematic expansion rule");
+    expect(detailed).toContain("DETAILED CINEMATIC EXPANSION GATE");
+    expect(detailed).toContain("at least 250 grounded words");
     expect(detailed).toContain("the most fully developed timeline, never a concise rewrite");
     expect(detailed).toContain("at least two applicable kinds of scene-grounded execution detail");
     expect(detailed).toContain("roughly 180-320 grounded English words");
@@ -514,6 +554,7 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("flexible causal timeline");
+    expect(instruction).toContain("at least 450 grounded words");
     expect(instruction).toContain("a fixed beat count or equal-time grid");
     expect(instruction).not.toContain("Plan 6 sequential development beats");
   });

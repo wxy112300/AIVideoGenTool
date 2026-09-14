@@ -17,7 +17,7 @@ import {
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
-import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
+import { applyPromptRevision, stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import {
@@ -383,6 +383,9 @@ export async function enhancePromptWithQwenVlPeft(
     onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["qwenvl-caption"]);
     if (warmup) return output;
+    if (request.promptStrategy === "targeted-revision") {
+      return applyPromptRevision(request.prompt, output);
+    }
     if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
     const sourcePrompt = stripPromptAnnotations(request.prompt);
     return normalizeH3PromptOutput(

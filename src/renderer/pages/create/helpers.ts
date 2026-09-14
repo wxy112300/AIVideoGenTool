@@ -89,6 +89,18 @@ export function activeImagePrompt(draft: ImageEditDraft, locale: UiLocale = "zh-
 }
 
 export function h3PromptModeForDraft(draft: Draft): H3PromptMode {
+  // Every H3 boundary/Continuum extension is executed from the exact source
+  // boundary frame. Continuum V3.8 wires that decoded frame to first_frame;
+  // the FL2VA boundary workflow extracts and uploads the same anchor. Model
+  // selection must therefore not downgrade an Extend draft with an empty UI
+  // image slot to T2VA. Motion Context remains R2V because its source video is
+  // a locked video reference and its context is injected on the latent path.
+  if (
+    draft.inputMode === "video" &&
+    (isMiniMaxH3BoundaryExtensionModel(draft.modelId) || isMiniMaxH3ContinuumModel(draft.modelId))
+  ) {
+    return "I2VA";
+  }
   return inferH3PromptMode(
     Boolean(draft.startImagePath),
     Boolean(draft.endImagePath),

@@ -13,6 +13,7 @@ export const uiLocale: PromptUiLocale = {
   autoPrompt: "增强提示词",
   autoPromptHint: "当前提示词为空，将根据参考媒体随机设计一版动作与镜头。",
   autoPromptMissingMedia: "空 Prompt 自动起稿需要至少一份参考图片或视频。",
+  annotationRevisionMissing: "批注修订需要至少一条批注，例如在目标句后添加（批注：把这里改成……）。",
   snippetPicker: "快速插入",
   snippetPlaceholder: "选择画质、镜头、动作、声音或对白预设",
   insertSnippet: "插入",
@@ -39,6 +40,7 @@ export const presetLocale: Record<H3PromptPreset, PromptPresetLocale> = {
   "product-brand": { label: "产品与品牌演示", description: "保护产品、界面、品牌素材和文案的真实性，强调功能动作与清晰收尾。" },
   "music-video": { label: "音乐视频与歌词", description: "把歌曲、歌词、节拍、表演和空间化文字作为同一条时间线设计。" },
   "narrative-animation": { label: "风格化动画叙事", description: "强调角色锁定、因果故事、表演节奏、风格化运动和镜头连续性。" },
+  "annotation-revision": { label: "批注修订", description: "把当前 Prompt 当作已确认稿件，只按（批注：……）等标记修改对应句子，其余内容保持不变。" },
   "multi-reference": { label: "多参考关系编排", description: "为 R2V 图片、视频和音频分配明确关系，并保持标签和复用关系稳定。" }
 };
 

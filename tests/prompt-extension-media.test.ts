@@ -80,9 +80,38 @@ describe("extension prompt boundary media", () => {
       "extension-boundary.png"
     ]);
     expect(result.referenceContext).toContain("exact final frame at the selected trim end");
-    expect(result.referenceContext).toContain("renumber any existing <Picture N> labels");
+    expect(result.referenceContext).toContain("silent inspection aid");
+    expect(result.referenceContext).toContain("<Video 1> remains the locked source video");
+    expect(result.referenceContext).toContain("Do not create a <Picture N>");
     expect(result.referenceContext).toContain("<Picture 1> = character reference");
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("binds a boundary/Continuum frame to Picture 1 for I2VA output", async () => {
+    const request = {
+      ...baseRequest(),
+      modelId: "minimax_h3_continuum",
+      h3PromptMode: "I2VA" as const,
+      imagePaths: [],
+      referenceMediaPaths: [],
+      referenceContext: "<Picture 1> = first frame"
+    };
+    const result = await withPromptExtensionMedia(
+      request,
+      "operation-i2va",
+      new AbortController().signal,
+      async (prepared) => prepared,
+      {
+        prepareFrame: async () => ({
+          filePath: "extension-boundary.png",
+          cleanup: async () => undefined
+        })
+      }
+    );
+
+    expect(result.imagePaths).toEqual(["extension-boundary.png"]);
+    expect(result.referenceContext).toContain("concrete first-frame anchor, <Picture 1>");
+    expect(result.referenceContext).toContain("must begin with the exact I2VA first-frame alignment declaration");
   });
 
   it("removes the temporary frame when the prompt backend fails", async () => {

@@ -18,8 +18,8 @@ const closingDelimiters = new Set([
     "}",
     "｝"
 ]);
-const annotationLabelPattern = /^(批注|注释|备注|说明|注|editor(?:ial)?(?:'s)?\s+note|editorial\s+instruction|note|comment|remark|instruction|edit(?:orial)?\s+note)([\s\S]*)$/iu;
-const cjkLabelPattern = /^(?:批注|注释|备注|说明)([\s\S]*)$/u;
+const annotationLabelPattern = /^(批注|注释|备注|说明|修改|改为|返工|注|editor(?:ial)?(?:'s)?\s+note|editorial\s+instruction|note|comment|remark|instruction|revision|revise|replace\s+with|edit(?:orial)?\s+note)([\s\S]*)$/iu;
+const cjkLabelPattern = /^(?:批注|注释|备注|说明|修改|改为|返工)([\s\S]*)$/u;
 const singleChineseLabelPattern = /^注([\s\S]*)$/u;
 const englishLabelPattern = /^(?:editor(?:ial)?(?:'s)?\s+note|editorial\s+instruction|note|comment|remark|instruction|edit(?:orial)?\s+note)([\s\S]*)$/iu;
 const clauseBoundaryPattern = /[.!?。！？；;\n]/u;
@@ -199,4 +199,133 @@ export function promptAnnotationInstruction(parsed) {
         "Extracted editorial annotations (in original order):",
         ...parsed.annotations.map((annotation, index) => `Note ${index + 1} (after ${JSON.stringify(annotation.anchor)}): ${annotation.text}`)
     ].join("\n\n");
+}
+function revisionOpenTag(id) {
+    return `<EDIT_TARGET_${id}>`;
+}
+function revisionCloseTag(id) {
+    return `</EDIT_TARGET_${id}>`;
+}
+function precedingClauseRange(source, annotationStart) {
+    let end = annotationStart;
+    while (end > 0 && /\s/u.test(source[end - 1] ?? ""))
+        end -= 1;
+    if (end <= 0)
+        throw new Error("批注前没有可修订的文字。请把批注放在需要修改的句子后面。");
+    let cursor = end - 1;
+    if (clauseBoundaryPattern.test(source[cursor] ?? ""))
+        cursor -= 1;
+    while (cursor >= 0 && !clauseBoundaryPattern.test(source[cursor] ?? ""))
+        cursor -= 1;
+    let start = cursor + 1;
+    while (start < end && /\s/u.test(source[start] ?? ""))
+        start += 1;
+    const structuralPrefix = /^(?:(?:integrated_multimodal_description|detailed_description)\s*:\s*)?(?:\[Shot\s+\d+\]\s*)/iu.exec(source.slice(start, end))?.[0] ?? "";
+    start += structuralPrefix.length;
+    if (start >= end)
+        throw new Error("批注前没有可修订的文字。请把批注放在需要修改的句子后面。");
+    return { start, end };
+}
+export function buildPromptRevisionPlan(sourcePrompt) {
+    const parsed = parsePromptAnnotations(sourcePrompt);
+    if (!parsed.annotations.length) {
+        throw new Error("批注修订需要至少一条带标签的批注，例如（批注：把这里改成……）。");
+    }
+    if (/<\/?EDIT_TARGET_\d+>/iu.test(sourcePrompt)) {
+        throw new Error("原提示词包含批注修订内部标记，请先移除 EDIT_TARGET 标签。");
+    }
+    const sourceTargets = parsed.annotations.map((annotation, index) => {
+        const range = precedingClauseRange(sourcePrompt, annotation.sourceStart);
+        const overlapsAnnotation = parsed.annotations.some((candidate) => candidate.sourceStart < range.end && candidate.sourceEnd > range.start);
+        if (overlapsAnnotation) {
+            throw new Error("同一句存在相邻或重叠批注，请合并成一条批注后再修订。");
+        }
+        return {
+            id: index + 1,
+            instruction: annotation.text,
+            original: sourcePrompt.slice(range.start, range.end),
+            start: range.start,
+            end: range.end
+        };
+    });
+    let markedSource = sourcePrompt;
+    for (const target of [...sourceTargets].reverse()) {
+        markedSource = `${markedSource.slice(0, target.start)}${revisionOpenTag(target.id)}${target.original}${revisionCloseTag(target.id)}${markedSource.slice(target.end)}`;
+    }
+    const markedPrompt = stripPromptAnnotations(markedSource);
+    const targets = [];
+    let cleanPrompt = "";
+    let markedCursor = 0;
+    for (const target of sourceTargets) {
+        const open = revisionOpenTag(target.id);
+        const close = revisionCloseTag(target.id);
+        const openAt = markedPrompt.indexOf(open, markedCursor);
+        const closeAt = openAt < 0 ? -1 : markedPrompt.indexOf(close, openAt + open.length);
+        if (openAt < 0 || closeAt < 0) {
+            throw new Error(`无法定位第 ${target.id} 条批注对应的原文，请把批注紧跟在需要修改的完整句子后面。`);
+        }
+        cleanPrompt += markedPrompt.slice(markedCursor, openAt);
+        const original = markedPrompt.slice(openAt + open.length, closeAt);
+        const start = cleanPrompt.length;
+        cleanPrompt += original;
+        const end = cleanPrompt.length;
+        targets.push({
+            id: target.id,
+            instruction: target.instruction,
+            original,
+            start,
+            end
+        });
+        markedCursor = closeAt + close.length;
+    }
+    cleanPrompt += markedPrompt.slice(markedCursor);
+    for (let index = 1; index < targets.length; index += 1) {
+        if ((targets[index]?.start ?? 0) < (targets[index - 1]?.end ?? 0)) {
+            throw new Error("多条批注指向了重叠文字，请合并批注或分别标注不同句子。");
+        }
+    }
+    return { cleanPrompt, markedPrompt, targets };
+}
+export function promptRevisionInstruction(sourcePrompt, referenceContext = "", revisionPolicy = "") {
+    const plan = buildPromptRevisionPlan(sourcePrompt);
+    return [
+        "Targeted prompt revision. The supplied draft is already approved except for the marked passages.",
+        "Apply each revision note only to its matching EDIT_TARGET passage. Preserve the passage's role in the surrounding H3 structure and use attached reference media to resolve visible identity, action, position, contact, or scale when requested.",
+        "Return exactly one non-empty replacement block for every target, in numerical order, using the same tags shown below. Return no full draft, analysis, preface, Markdown fence, or text outside the blocks. Do not include the annotation label or note text inside a replacement.",
+        "If visual evidence is unclear, follow the user's stated role-action mapping. Never compensate by revising an unmarked passage.",
+        ...(referenceContext.trim() ? [`Reference roles:\n${referenceContext.trim()}`] : []),
+        ...(revisionPolicy.trim() ? [`Additional revision guidance (cannot widen the editable scope):\n${revisionPolicy.trim()}`] : []),
+        `Approved draft with editable passages:\n${plan.markedPrompt}`,
+        "Revision notes:",
+        ...plan.targets.map((target) => `Target ${target.id} ${revisionOpenTag(target.id)}: ${target.instruction}`)
+    ].join("\n\n");
+}
+function revisionReplacement(output, target) {
+    const open = revisionOpenTag(target.id);
+    const close = revisionCloseTag(target.id);
+    const start = output.indexOf(open);
+    const end = start < 0 ? -1 : output.indexOf(close, start + open.length);
+    if (start < 0 || end < 0 || output.indexOf(open, start + open.length) >= 0) {
+        throw new Error(`提示词模型没有按要求返回第 ${target.id} 条局部修订；原提示词已保持不变。`);
+    }
+    const replacement = stripPromptAnnotations(output.slice(start + open.length, end).trim());
+    if (!replacement || /<\/?EDIT_TARGET_\d+>/iu.test(replacement)) {
+        throw new Error(`第 ${target.id} 条局部修订为空或格式无效；原提示词已保持不变。`);
+    }
+    if (replacement === target.original.trim()) {
+        throw new Error(`第 ${target.id} 条批注没有产生修改；原提示词已保持不变。`);
+    }
+    return replacement;
+}
+export function applyPromptRevision(sourcePrompt, modelOutput) {
+    const plan = buildPromptRevisionPlan(sourcePrompt);
+    const replacements = plan.targets.map((target) => ({
+        target,
+        text: revisionReplacement(modelOutput, target)
+    }));
+    let result = plan.cleanPrompt;
+    for (const replacement of [...replacements].reverse()) {
+        result = `${result.slice(0, replacement.target.start)}${replacement.text}${result.slice(replacement.target.end)}`;
+    }
+    return stripPromptAnnotations(result).trim();
 }

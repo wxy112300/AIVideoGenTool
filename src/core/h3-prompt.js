@@ -2,6 +2,7 @@ import { extractH3DialogueLocks, extractH3VisibleTextLocks, restoreH3DialogueLoc
 import { auditH3CameraIntent, extractH3CameraIntent, preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
 import { ensureH3ScalePreservationInOutput, extractH3MicroFpvIntent, extractH3ScaleIntent } from "./h3-scale-preservation.js";
 import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
+import { countPromptWords } from "./prompt-count.js";
 const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:(?:continuous|unbroken)\s+){0,2}(?:shot|take)\b|\bcontinuous\s+shot\b|\bno\s+(?:cuts?|scene\s+changes?)\b|\bwithout\s+(?:cuts?|scene\s+changes?)\b|\b(?:use\s+)?(?:only\s+)?\[?shot\s*1\]?\s+only\b|一镜到底|单镜头|一个镜头|连续镜头|不切镜|不要剪辑|无剪辑|不换镜头|不要切换镜头)/iu;
 const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
 const editorialCutInSingleShotPattern = /(?:\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b|\b(?:hard|jump|smash)\s+cuts?\s+to\b|\bcuts?\s+to\b)/iu;
@@ -26,6 +27,18 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
         lines.push("Shot default: because the user did not request multiple views, output one continuous [Shot 1] from first frame to last and obtain all reframing through physical camera or focus movement inside it.");
     }
     return lines.join("\n");
+}
+export function h3ExtensionContinuityInstruction(mode, shotPolicy) {
+    return [
+        "EXTENSION CONTINUITY CONTRACT (highest priority):",
+        mode === "R2V"
+            ? "This is an H3 video-continuation request. Treat <Video 1> as the locked source video whose final motion, audio, and visible state flow into the new segment. The extracted boundary image is only a visual inspection aid and must not become a new <Picture N> reference."
+            : "Treat <Picture 1> as both the exact last-visible source frame and the exact first frame of the new target segment. Preserve the official I2VA alignment declaration at the absolute start of the final prompt.",
+        "Carry forward only the subjects, identity cues, clothing, props, environment, lighting, spatial layout, framing, motion direction, and audio state established at that boundary, then apply the user's requested next action.",
+        shotPolicy === "allow-multiple"
+            ? "Begin continuously from that boundary; use any later editorial change only where the user explicitly requested it."
+            : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state."
+    ].join("\n");
 }
 const h3ActionPattern = /(?:\b(?:walk|run|move|turn|look|reach|grab|hold|open|close|push|pull|lift|drop|fall|jump|climb|crawl|enter|exit|dance|fight|kiss|touch|follow|approach|step|sit|stand|rise|dive|throw|catch|strike|speak|say|sing|smile|blink|breathe|react|respond|rotate|orbit|track|pan|tilt|zoom|crane|sweep)\w*\b|走|跑|移动|转身|看|抬|伸|抓|握|打开|关闭|推|拉|举|放下|跌倒|跳|爬|进入|离开|跳舞|战斗|亲吻|触碰|跟随|靠近|坐|站|起身|俯冲|投掷|接住|击打|说|唱|微笑|眨眼|呼吸|反应|回应|旋转|环绕|跟拍|摇摄|推进|拉远|升降|扫过)/iu;
 const h3InteractionPattern = /(?:\b(?:between|together|interact(?:s|ed|ing|ion|ions)?|react(?:s|ed|ing|ion|ions)?|respond(?:s|ed|ing|er|ers)?|response|affect(?:s|ed|ing)?|confront|embrace|kiss|speaks?\s+to|talks?\s+to|hand(?:s)?\s+to|passes?\s+to|hands?\s+over)\b|与[^。！？.!?\n]{0,30}(?:互动|交流|对话|回应|反应|接触|一起)|互动|交流|对话|回应|反应|相互|彼此|之间|影响|面对|拥抱|亲吻|递给|交给)/iu;
@@ -230,6 +243,25 @@ export function h3PromptExpansionTokenBudget(mode, durationSeconds = 5, preset =
     const maximum = detailed ? 3072 : 2048;
     return Math.min(maximum, Math.max(minimum, durationSlices * perSlice));
 }
+export function h3DetailedExpansionMinimumWords(mode, durationSeconds = 5, sourcePrompt = "") {
+    const durationSlices = Math.max(1, Math.ceil(h3EffectiveDurationSeconds(durationSeconds) / 5.17));
+    const durationFloor = mode === "R2V"
+        ? 350 + (durationSlices - 1) * 120
+        : 250 + (durationSlices - 1) * 100;
+    const sourceWords = countPromptWords(stripPromptAnnotations(sourcePrompt));
+    return Math.max(durationFloor, sourceWords + Math.max(40, Math.ceil(sourceWords * 0.2)));
+}
+export function h3DetailedExpansionGateInstruction(mode, durationSeconds = 5, sourcePrompt = "") {
+    const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
+    const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+    return [
+        "DETAILED CINEMATIC EXPANSION GATE (high priority): this is the most detailed expansion preset, never a rewrite, summary, caption, or compression.",
+        `The ${field} timeline must contain at least ${minimumWords} grounded words and more executable information than the source. This is a coverage floor, not a padding target.`,
+        "Preserve every concrete user instruction as its own explicit fact or event in the original order. For every user action, add at least two applicable execution details from preparation, gaze or reaction, posture or weight, contact or force, momentum or settling, affected-subject response, camera path, and causally synchronized sound.",
+        "Write an unmistakable playback timeline with explicit opening, development, interaction or transition, camera response, and final settled state. Remove invented decoration and repeated reference inventory before removing any user requirement.",
+        "The application rejects a result whose main timeline is shorter than this floor, so complete the expansion before answering."
+    ].join("\n");
+}
 export function h3ExplicitConstraintSummary(promptText) {
     const prompt = promptText.trim();
     if (!prompt)
@@ -337,10 +369,76 @@ export function h3PromptSectionSkeleton(mode, durationSeconds) {
         ...sections
     ].join("\n");
 }
-function stripLeadingH3AlignmentInstructions(promptText) {
-    let prompt = promptText
+const h3OutputFields = [
+    "subject_definitions",
+    "summary",
+    "retention_analysis",
+    "detailed_description",
+    "integrated_multimodal_description",
+    "overall_soundscape",
+    "non_diegetic_music"
+];
+function h3TextFromJson(value, mode) {
+    if (typeof value === "string")
+        return value.trim() || undefined;
+    if (Array.isArray(value)) {
+        const candidates = value.map((item) => h3TextFromJson(item, mode)).filter(Boolean);
+        return candidates.find((candidate) => /(?:integrated_multimodal_description|detailed_description)\s*:/iu.test(candidate)) ?? candidates[0];
+    }
+    if (!value || typeof value !== "object")
+        return undefined;
+    const record = value;
+    const requiredFields = mode === "R2V"
+        ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
+        : ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
+    if (requiredFields.some((field) => typeof record[field] === "string")) {
+        return requiredFields
+            .filter((field) => typeof record[field] === "string")
+            .map((field) => `${field}: ${String(record[field]).trim()}`)
+            .join("\n\n");
+    }
+    for (const key of ["prompt", "generated_prompt", "generated_text", "output", "result", "text", "content", "response"]) {
+        const candidate = h3TextFromJson(record[key], mode);
+        if (candidate)
+            return candidate;
+    }
+    for (const candidateValue of Object.values(record)) {
+        const candidate = h3TextFromJson(candidateValue, mode);
+        if (candidate && /(?:integrated_multimodal_description|detailed_description)\s*:/iu.test(candidate))
+            return candidate;
+    }
+    return undefined;
+}
+export function unwrapH3ModelOutput(promptText, mode) {
+    let output = promptText
         .replace(/<(?:think|analysis)>[\s\S]*?<\/(?:think|analysis)>/giu, "")
         .trim();
+    const fenced = /^```(?:json|markdown|md|text)?\s*([\s\S]*?)\s*```$/iu.exec(output);
+    if (fenced?.[1])
+        output = fenced[1].trim();
+    for (let pass = 0; pass < 3; pass += 1) {
+        const candidate = output.trim();
+        if (!/^[\[{]/u.test(candidate))
+            break;
+        try {
+            const extracted = h3TextFromJson(JSON.parse(candidate), mode);
+            if (!extracted || extracted === output)
+                break;
+            output = extracted;
+        }
+        catch {
+            break;
+        }
+    }
+    const fieldAlternation = h3OutputFields.join("|");
+    return output
+        .replace(/^```(?:json|markdown|md|text)?\s*$/gimu, "")
+        .replace(/^\s*```\s*$/gmu, "")
+        .replace(new RegExp(`^[ \\t]*(?:#{1,6}[ \\t]+)?(?:\\*\\*|__)?(${fieldAlternation})(?::(?:\\*\\*|__)|(?:\\*\\*|__)?[ \\t]*:)[ \\t]*`, "gimu"), (_match, field) => `${field}: `)
+        .trim();
+}
+function stripLeadingH3AlignmentInstructions(promptText) {
+    let prompt = promptText.trim();
     prompt = prompt.replace(/^```(?:text|markdown)?\s*/iu, "");
     prompt = prompt.replace(/\s*```$/u, "").trim();
     const alignmentLine = /^(?:For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.|How the reference pictures align with the target video —[^\r\n]+)\s*/iu;
@@ -432,7 +530,7 @@ function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleCo
     return repaired;
 }
 export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "") {
-    const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(promptText), mode));
+    const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)), mode));
     const body = restoreH3VisibleTextLocks(restoreH3DialogueLocks(cleanedBody, dialogueLocks), visibleTextLocks);
     const cameraSource = [sourcePrompt, scaleContext].map((value) => value.trim()).filter(Boolean).join("\n");
     const cameraSafeBody = preserveH3CameraIntentInOutput(body, cameraSource, mode);
@@ -443,4 +541,56 @@ export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialo
     if (!alignment)
         return auditedBody;
     return `${alignment}\n\n${auditedBody}`.trim();
+}
+export function assertDetailedCinematicExpansion(promptText, mode, durationSeconds, sourcePrompt) {
+    const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+    const sectionMatch = new RegExp(`^${section}\\s*:`, "imu").exec(promptText);
+    if (!sectionMatch) {
+        throw new Error(`影视细节扩写未返回 ${section} 主时间线；原提示词已保持不变。`);
+    }
+    const contentStart = sectionMatch.index + sectionMatch[0].length;
+    const remaining = promptText.slice(contentStart);
+    const nextSection = /\n\s*(?:subject_definitions|summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
+    const timeline = nextSection?.index === undefined ? remaining : remaining.slice(0, nextSection.index);
+    const actualWords = countPromptWords(timeline);
+    const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
+    if (actualWords < minimumWords) {
+        throw new Error(`影视细节扩写的主时间线只有 ${actualWords} 词，未达到本次至少 ${minimumWords} 词的细节覆盖要求；结果没有保存，原提示词已保持不变。`);
+    }
+    const stopWords = new Set([
+        "about", "after", "along", "before", "from", "into", "only", "than", "that", "their", "them", "then", "there", "these", "they", "this", "through", "toward", "with", "while", "your"
+    ]);
+    const normalizeToken = (token) => {
+        const lower = token.toLocaleLowerCase();
+        if (!/^[a-z]+$/u.test(lower) || lower.length < 5)
+            return lower;
+        return lower.replace(/(?:ing|ed|es|s)$/u, "");
+    };
+    const cleanSource = stripPromptAnnotations(sourcePrompt);
+    const outputHasCjk = /\p{Script=Han}/u.test(timeline);
+    const sourceHasCjk = /\p{Script=Han}/u.test(cleanSource);
+    const outputTokens = new Set([...new Intl.Segmenter(undefined, { granularity: "word" }).segment(timeline)]
+        .filter((segment) => segment.isWordLike)
+        .map((segment) => normalizeToken(segment.segment)));
+    const sourceTokens = [...new Intl.Segmenter(undefined, { granularity: "word" }).segment(cleanSource)]
+        .filter((segment) => segment.isWordLike)
+        .map((segment) => segment.segment)
+        .filter((token) => {
+        if (/\p{Script=Han}/u.test(token))
+            return outputHasCjk && token.length >= 2;
+        const normalized = normalizeToken(token);
+        if (/\d/u.test(normalized))
+            return true;
+        if (sourceHasCjk !== outputHasCjk)
+            return false;
+        return normalized.length >= 4 && !stopWords.has(normalized);
+    })
+        .map(normalizeToken)
+        .filter((token, index, tokens) => tokens.indexOf(token) === index);
+    if (sourceTokens.length >= 4) {
+        const missing = sourceTokens.filter((token) => !outputTokens.has(token));
+        if (missing.length / sourceTokens.length > 0.4) {
+            throw new Error(`影视细节扩写遗漏了过多原始提示词要点（例如 ${missing.slice(0, 5).join("、")}）；结果没有保存，原提示词已保持不变。`);
+        }
+    }
 }

@@ -171,6 +171,12 @@ describe("create workspace coordinator", () => {
 
   it("saves a history video as an immutable extension draft snapshot", async () => {
     const { coordinator, application, getState } = createCoordinatorHarness();
+    getState().draft.extensionPromptVersions = [{
+      id: "stale-extension-prompt",
+      label: "旧草稿",
+      text: "must be cleared",
+      createdAt: new Date(0).toISOString()
+    }];
 
     await coordinator.selectDraftVideo("history.mp4", {
       assetId: "asset-1",
@@ -181,7 +187,8 @@ describe("create workspace coordinator", () => {
       h3ContextLatentPath: "C:/history/h3-motion-context/clip_00001.safetensors",
       h3ContinuumArtifactPath: "C:/history/h3-native-av/h3av_payload.safetensors",
       resolution: 720,
-      resetSeed: true
+      resetSeed: true,
+      resetPrompt: true
     });
 
     expect(application.saveDraft).toHaveBeenCalledTimes(1);
@@ -191,6 +198,9 @@ describe("create workspace coordinator", () => {
     expect(getState().draft.h3ContextLatentPath).toBe("C:/history/h3-motion-context/clip_00001.safetensors");
     expect(getState().draft.h3ContinuumArtifactPath).toBe("C:/history/h3-native-av/h3av_payload.safetensors");
     expect(getState().draft.seed).toBeNull();
+    expect(getState().draft.extensionPromptVersions).toHaveLength(1);
+    expect(getState().draft.extensionPromptVersions?.[0]?.text).toBe("");
+    expect(getState().draft.extensionActivePromptVersion).toBe(0);
     expect(getState().videoExtensionDraft?.sourceVideoPath).toBe("history.mp4");
     expect(coordinator.getDraftDirty()).toBe(false);
   });

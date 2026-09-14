@@ -1,5 +1,7 @@
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
-import { activePromptIndexForDraft, appendPromptVersion, promptPatchForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
+import { buildPromptRevisionPlan } from "../../../core/prompt-annotations";
+import { assertDetailedCinematicExpansion } from "../../../core/h3-prompt";
+import { activePromptIndexForDraft, appendPromptVersion, promptPatchForDraft, promptVersionsForDraft, updateManualPromptVersion } from "../../../core/draft-prompts";
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
 import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -39,24 +41,8 @@ export function mountCreatePromptController(options) {
             return;
         options.invalidatePromptEditHistory();
         resizePromptInput(promptInput);
-        const versions = [...promptVersionsForDraft(draft)];
-        const activePromptVersion = activePromptIndexForDraft(draft);
-        const current = versions[activePromptVersion];
-        let nextActivePromptVersion = activePromptVersion;
-        if (current?.label === promptUi().t("manualEditVersion")) {
-            versions[activePromptVersion] = { ...current, text: promptInput.value };
-        }
-        else {
-            versions.splice(activePromptVersion + 1);
-            versions.push({
-                id: crypto.randomUUID(),
-                label: promptUi().t("manualEditVersion"),
-                text: promptInput.value,
-                createdAt: new Date().toISOString()
-            });
-            nextActivePromptVersion = versions.length - 1;
-        }
-        options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
+        const updated = updateManualPromptVersion(promptVersionsForDraft(draft), activePromptIndexForDraft(draft), promptInput.value, promptUi().t("manualEditVersion"));
+        options.patchDraft(promptPatchForDraft(draft, updated.promptVersions, updated.activePromptVersion));
         options.syncPromptEnqueueUi(promptInput.value);
         options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.videoLoras);
         updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi(), isMiniMaxH3Model(draft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset()) : undefined);
@@ -155,6 +141,10 @@ export function mountCreatePromptController(options) {
             return;
         const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
         const h3Mode = h3PromptModeForDraft(draft);
+        const selectedH3Preset = isCurrentH3
+            ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
+            : undefined;
+        const targetedRevision = selectedH3Preset === "annotation-revision";
         const currentPrompt = activePrompt(draft, options.context.getState()?.settings.uiLocale).text;
         const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
             ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
@@ -163,13 +153,22 @@ export function mountCreatePromptController(options) {
         const requestOrigin = isExtension ? "video-extension" : "image-to-video";
         const hasExtensionBoundary = isExtension && Boolean(draft.sourceVideoPath) &&
             draft.trimEndSeconds > draft.trimStartSeconds;
+        if (targetedRevision) {
+            try {
+                buildPromptRevisionPlan(currentPrompt);
+            }
+            catch (error) {
+                options.context.notify(error instanceof Error ? error.message : promptUi().t("annotationRevisionMissing"), { kind: "error" });
+                return;
+            }
+        }
         if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0 && !hasExtensionBoundary) {
             options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
             return;
         }
         const promptSettings = options.context.getState()?.settings;
         const configuredAutoPromptSeedId = promptSettings?.h3AutoPromptSeedId?.trim() || undefined;
-        const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() &&
+        const autoPromptSeed = isCurrentH3 && !targetedRevision && !currentPrompt.trim() &&
             (referenceMediaPaths.length > 0 || hasExtensionBoundary)
             ? h3AutoPromptSeedFor(h3Mode, configuredAutoPromptSeedId, configuredAutoPromptSeedId
                 ? []
@@ -204,7 +203,9 @@ export function mountCreatePromptController(options) {
                 modelId: draft.modelId,
                 origin: requestOrigin,
                 mode: requestMode,
-                promptStrategy: autoPromptSeed ? "reference-auto" : undefined,
+                promptStrategy: autoPromptSeed
+                    ? "reference-auto"
+                    : targetedRevision ? "targeted-revision" : undefined,
                 autoPromptSeedId: autoPromptSeed?.id,
                 autoPromptSeedInstruction: autoPromptSeed
                     ? promptSettings?.h3AutoPromptSeedInstructions?.[autoPromptSeed.id]
@@ -213,9 +214,7 @@ export function mountCreatePromptController(options) {
                 imagePath: draft.startImagePath || undefined,
                 imagePaths: isH3Vision ? h3ImagePaths : undefined,
                 h3PromptMode: h3Mode,
-                h3PromptPreset: isCurrentH3
-                    ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
-                    : undefined,
+                h3PromptPreset: selectedH3Preset,
                 videoLoras: draft.videoLoras.map((lora) => ({
                     ...lora,
                     compatibleModelIds: [...lora.compatibleModelIds],
@@ -236,6 +235,9 @@ export function mountCreatePromptController(options) {
                     }
                     : undefined
             });
+            if (isCurrentH3 && selectedH3Preset === "detailed-cinematic") {
+                assertDetailedCinematicExpansion(text, h3Mode, draft.duration, currentPrompt);
+            }
             options.setPromptRuntimeLoaded(true);
             options.invalidatePromptEditHistory();
             options.patchDraftForMode(requestOrigin, (nextDraft) => {

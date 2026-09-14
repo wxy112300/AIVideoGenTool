@@ -25,6 +25,8 @@ import {
 } from "../../src/core/image-prompt.js";
 import {
   h3DurationPlan,
+  h3DetailedExpansionGateInstruction,
+  h3ExtensionContinuityInstruction,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   h3ExplicitConstraintSummary,
   h3PromptControlInstruction,
@@ -42,8 +44,10 @@ import {
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
 import {
+  applyPromptRevision,
   parsePromptAnnotations,
   promptAnnotationInstruction,
+  promptRevisionInstruction,
   stripPromptAnnotations
 } from "../../src/core/prompt-annotations.js";
 
@@ -291,6 +295,9 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
+  if (request.promptStrategy === "targeted-revision") {
+    return promptRevisionInstruction(request.prompt, referenceContext, presetText);
+  }
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
@@ -313,6 +320,12 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   const scaleInstruction = h3ScalePreservationInstruction(sourcePrompt, mode, scaleContext);
   return [
     priorityInstruction,
+    request.extensionSource
+      ? h3ExtensionContinuityInstruction(mode, shotPolicy)
+      : "",
+    ...(preset === "detailed-cinematic"
+      ? [h3DetailedExpansionGateInstruction(mode, Number(duration), sourcePrompt)]
+      : []),
     controlInstruction,
     ...(annotationInstruction ? [annotationInstruction] : []),
     ...(isH3ReferenceAutoPrompt(request)
@@ -388,7 +401,12 @@ export async function buildLmStudioChatRequest(
         h3Preset
       ),
       messages: [
-        { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset) },
+        {
+          role: "system",
+          content: request.promptStrategy === "targeted-revision"
+            ? "You are a precise prompt revision engine. Return only the requested EDIT_TARGET replacement blocks and no commentary."
+            : h3VisionSystemPrompt(h3Mode, h3Preset)
+        },
         {
           role: "user",
           content: await nativeUserContent(
@@ -527,6 +545,9 @@ export async function enhancePrompt(
     .trim();
   if (mode === "image-edit") return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(normalized));
   if (mode !== "h3-vision") return stripPromptAnnotations(normalized);
+  if (request.promptStrategy === "targeted-revision") {
+    return applyPromptRevision(request.prompt, normalized);
+  }
   const h3Mode = h3PromptModeForRequest(request);
   const sourcePrompt = stripPromptAnnotations(request.prompt);
   return normalizeH3PromptOutput(

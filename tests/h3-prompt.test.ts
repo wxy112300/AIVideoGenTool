@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   auditH3PromptControlOutput,
+  assertDetailedCinematicExpansion,
   buildH3PromptControlPlan,
+  h3DetailedExpansionGateInstruction,
   h3DurationPlan,
   h3ExplicitConstraintSummary,
   h3PromptControlInstruction,
@@ -261,6 +263,61 @@ describe("MiniMax H3 prompt templates", () => {
       "T2VA",
       13.67
     )).toBe(body);
+  });
+
+  it("unwraps JSON and Markdown envelopes from H3 model output", () => {
+    const json = JSON.stringify({
+      prompt: {
+        integrated_multimodal_description: "[Shot 1] The subject continues forward.",
+        overall_soundscape: "Footsteps remain synchronized.",
+        non_diegetic_music: "N/A"
+      }
+    });
+    expect(normalizeH3PromptOutput(json, "T2VA", 5)).toBe([
+      "integrated_multimodal_description: [Shot 1] The subject continues forward.",
+      "overall_soundscape: Footsteps remain synchronized.",
+      "non_diegetic_music: N/A"
+    ].join("\n\n"));
+
+    const markdown = [
+      "```markdown",
+      "### **integrated_multimodal_description:** [Shot 1] The subject continues forward.",
+      "**overall_soundscape:** Footsteps remain synchronized.",
+      "**non_diegetic_music:** N/A",
+      "```"
+    ].join("\n");
+    const normalized = normalizeH3PromptOutput(markdown, "T2VA", 5);
+    expect(normalized).not.toContain("```");
+    expect(normalized).not.toContain("**");
+    expect(normalized).not.toContain("###");
+    expect(normalized).toContain("integrated_multimodal_description: [Shot 1]");
+  });
+
+  it("rejects a shortened detailed-cinematic result before it becomes a version", () => {
+    const source = "The giant lifts the tiny person, then carries them toward the window while the camera tracks alongside.";
+    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("at least 250 grounded words");
+    expect(() => assertDetailedCinematicExpansion(
+      "integrated_multimodal_description: [Shot 1] The giant lifts the tiny person.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
+      "I2VA",
+      5,
+      source
+    )).toThrow("原提示词已保持不变");
+
+    const detailedTimeline = `${source} ${Array.from({ length: 250 }, (_, index) => `detail${index + 1}`).join(" ")}`;
+    expect(() => assertDetailedCinematicExpansion(
+      `integrated_multimodal_description: [Shot 1] ${detailedTimeline}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`,
+      "I2VA",
+      5,
+      source
+    )).not.toThrow();
+
+    const unrelatedTimeline = Array.from({ length: 260 }, (_, index) => `unrelated${index + 1}`).join(" ");
+    expect(() => assertDetailedCinematicExpansion(
+      `integrated_multimodal_description: [Shot 1] ${unrelatedTimeline}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`,
+      "I2VA",
+      5,
+      source
+    )).toThrow("遗漏了过多原始提示词要点");
   });
 
   it("removes labeled annotation echoes from the generated H3 output", () => {

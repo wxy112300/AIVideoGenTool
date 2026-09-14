@@ -28,6 +28,7 @@ export type H3PromptUiKey =
   | "autoPrompt"
   | "autoPromptHint"
   | "autoPromptMissingMedia"
+  | "annotationRevisionMissing"
   | "snippetPicker"
   | "snippetPlaceholder"
   | "insertSnippet"

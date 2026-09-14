@@ -39,4 +39,13 @@ describe("model-facing prompt language", () => {
     expect(h3PromptPackFor("en-US").presetLabels["detailed-cinematic"]).toBe("Detailed cinematic expansion");
     expect(h3PromptPackFor("zh-CN").defaultPresets["detailed-cinematic"]).not.toMatch(cjkPattern);
   });
+
+  it("exposes annotation revision as the tenth ordinary H3 preset", () => {
+    const zh = h3PromptPackFor("zh-CN");
+    expect(zh.presetOrder.filter((id) => id !== "multi-reference")).toHaveLength(10);
+    expect(zh.presetLabels["annotation-revision"]).toBe("批注修订");
+    expect(h3PromptPackFor("zh-TW").presetLabels["annotation-revision"]).toBe("批註修訂");
+    expect(h3PromptPackFor("en-US").presetLabels["annotation-revision"]).toBe("Annotation revision");
+    expect(zh.defaultPresets["annotation-revision"]).not.toMatch(cjkPattern);
+  });
 });

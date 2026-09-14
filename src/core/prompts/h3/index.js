@@ -13,6 +13,7 @@ export const h3PromptPresetOrder = [
     "product-brand",
     "music-video",
     "narrative-animation",
+    "annotation-revision",
     "multi-reference"
 ];
 export function h3PromptPresetForMode(mode, requestedPreset = "official-storyboard") {

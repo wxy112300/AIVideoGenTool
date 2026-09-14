@@ -113,6 +113,7 @@ export interface CreateWorkspaceCoordinator {
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
       resolution?: number;
       resetSeed?: boolean;
+      resetPrompt?: boolean;
     },
     renderAfterSave?: boolean
   ): Promise<void>;
@@ -687,6 +688,7 @@ export function createCreateWorkspaceCoordinator(
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
       resolution?: number;
       resetSeed?: boolean;
+      resetPrompt?: boolean;
     },
     renderAfterSave = true
   ): Promise<void> {
@@ -749,6 +751,17 @@ export function createCreateWorkspaceCoordinator(
       h3ReferenceSlots: isMiniMaxH3R2vModel(selectedModelId)
         ? ensureMotionContextSourceSlot(preserveMotionContextDraft ? state.draft.h3ReferenceSlots : [], filename)
         : [],
+      ...(source?.resetPrompt
+        ? {
+            extensionPromptVersions: [{
+              id: crypto.randomUUID(),
+              label: state.draft.extensionPromptVersions?.[0]?.label ?? state.draft.promptVersions[0]?.label ?? "原始",
+              text: "",
+              createdAt: new Date().toISOString()
+            }],
+            extensionActivePromptVersion: 0
+          }
+        : {}),
       ...(source?.resolution != null
         ? {
             resolution: nearestSupportedVideoResolution(

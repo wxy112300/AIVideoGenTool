@@ -264,6 +264,34 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[0]?.content).not.toContain("<slot>");
     expect(body.messages[0]?.content).toContain("FL2VA task rule");
   });
+
+  it("uses replacement-only output for annotation revision", async () => {
+    const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    const settings = createDefaultSettings();
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "[Shot 1] The tiny person lifts the giant.（批注：参考图中动作主体是巨人，请修正。） Camera remains fixed.",
+        modelId: "minimax_h3_i2va",
+        mode: "h3-vision",
+        promptStrategy: "targeted-revision",
+        h3PromptMode: "I2VA",
+        h3PromptPreset: "annotation-revision",
+        imagePaths: ["first.png"]
+      },
+      settings,
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.messages[0]?.content).toContain("precise prompt revision engine");
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("<EDIT_TARGET_1>The tiny person lifts the giant.</EDIT_TARGET_1>")
+      }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
+    readFile.mockRestore();
+  });
 });
 
 describe("LM Studio GPU release", () => {

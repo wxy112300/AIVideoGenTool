@@ -16,6 +16,7 @@ export const h3PromptPresetOrder: readonly H3PromptPreset[] = [
   "product-brand",
   "music-video",
   "narrative-animation",
+  "annotation-revision",
   "multi-reference"
 ];
 

@@ -13,6 +13,7 @@ export const uiLocale: PromptUiLocale = {
   autoPrompt: "Enhance prompt",
   autoPromptHint: "The prompt is blank; create a varied motion and camera concept from the reference media.",
   autoPromptMissingMedia: "Reference-driven auto drafting needs at least one reference image or video.",
+  annotationRevisionMissing: "Annotation revision needs at least one note, for example (Note: replace this passage with ...).",
   snippetPicker: "Quick insert",
   snippetPlaceholder: "Choose a visual quality, camera, action, sound, or dialogue preset",
   insertSnippet: "Insert",
@@ -39,6 +40,7 @@ export const presetLocale: Record<H3PromptPreset, PromptPresetLocale> = {
   "product-brand": { label: "Product and brand demo", description: "Protect product identity and verified copy while emphasizing functional actions and a clear close." },
   "music-video": { label: "Music video and lyrics", description: "Design song, lyrics, performance, beat, and spatial typography as one timeline." },
   "narrative-animation": { label: "Stylized narrative animation", description: "Keep character identity, causal story, performance rhythm, and shot continuity stable." },
+  "annotation-revision": { label: "Annotation revision", description: "Treat the current Prompt as approved and revise only passages followed by a labeled note; keep everything else unchanged." },
   "multi-reference": { label: "Multi-reference orchestration", description: "Assign stable roles to R2V images, video, and audio references." }
 };
 

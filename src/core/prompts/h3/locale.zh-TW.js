@@ -10,6 +10,7 @@ export const uiLocale = {
     autoPrompt: "增強提示詞",
     autoPromptHint: "目前提示詞為空，將根據參考媒體隨機設計一版動作與鏡頭。",
     autoPromptMissingMedia: "空白 Prompt 自動起稿需要至少一份參考圖片或影片。",
+    annotationRevisionMissing: "批註修訂需要至少一條批註，例如在目標句後加入（批註：把這裡改成……）。",
     snippetPicker: "快速插入",
     snippetPlaceholder: "選擇畫質、鏡頭、動作、聲音或對白預設",
     insertSnippet: "插入",
@@ -35,6 +36,7 @@ export const presetLocale = {
     "product-brand": { label: "產品與品牌演示", description: "保護產品、介面、品牌素材和文案的真實性，強調功能動作與清晰收尾。" },
     "music-video": { label: "音樂影片與歌詞", description: "把歌曲、歌詞、節拍、表演和空間化文字作為同一條時間線設計。" },
     "narrative-animation": { label: "風格化動畫敘事", description: "強調角色鎖定、因果故事、表演節奏、風格化運動和鏡頭連續性。" },
+    "annotation-revision": { label: "批註修訂", description: "把目前 Prompt 當作已確認稿件，只按（批註：……）等標記修改對應句子，其餘內容保持不變。" },
     "multi-reference": { label: "多參考關係編排", description: "為 R2V 圖片、影片和音訊分配明確關係，並保持標籤和複用關係穩定。" }
 };
 export const referenceRoleLocale = {

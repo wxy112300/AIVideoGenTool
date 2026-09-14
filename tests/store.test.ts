@@ -694,6 +694,7 @@ describe("queue lock recovery", () => {
       "music-video": "",
       "narrative-animation": "",
       "detailed-cinematic": "",
+      "annotation-revision": "",
       "multi-reference": ""
     };
     await fs.writeFile(filename, JSON.stringify(state), "utf8");
@@ -712,6 +713,7 @@ describe("queue lock recovery", () => {
       expect(loaded.settings.h3PromptPresets["music-video"]).not.toBe("");
       expect(loaded.settings.h3PromptPresets["narrative-animation"]).not.toBe("");
       expect(loaded.settings.h3PromptPresets["detailed-cinematic"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["annotation-revision"]).not.toBe("");
       expect(loaded.settings.h3PromptPresets["multi-reference"]).not.toBe("");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
