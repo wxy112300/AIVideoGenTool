@@ -2,6 +2,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import { imageOutputCountMax } from "../../../core/image-workflow";
 import { renderCreateModelOptions, renderH3ReferenceSlotsMarkup, renderImageEditPromptInstructionOptions } from "./fragments";
+import { fieldLabelWithTip } from "../../shared/markup";
 function promptElapsedText(milliseconds) {
     const seconds = Math.max(0, Math.floor(milliseconds / 1000));
     const minutes = Math.floor(seconds / 60);
@@ -29,7 +30,7 @@ export function renderImageEditPage(viewModel, options) {
         if (maskMode) {
             buttons.push(`<button class="secondary button-with-icon" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="绘制移除区域" title="绘制或修改 Mask">${icon("brush")}<span>${picture.mask ? "修改 Mask" : "绘制 Mask"}</span></button>`);
         }
-        else if (!viewModel.promptless) {
+        else if (!viewModel.promptless && viewModel.annotationSupported) {
             buttons.push(`<button class="icon-button" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.markImage)}">${icon("pencil")}</button>`);
         }
         if (!maskMode && viewModel.maskSupported) {
@@ -65,7 +66,7 @@ export function renderImageEditPage(viewModel, options) {
               <div class="image-picture-card-body">
                 <div class="image-picture-card-title"><strong>${t(uiKeys.create.imageEdit.slotTitle, { index: picture.pictureNumber })}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? t(uiKeys.create.imageEdit.baseInput) : t(uiKeys.create.imageEdit.reference)}</span>${picture.crop ? `<span class="model-availability available">裁剪 · ${picture.crop.width} × ${picture.crop.height}</span>` : ""}${picture.mask ? `<span class="model-availability available">${icon("brush")} Mask · ${picture.mask.regionCount}</span>` : picture.markup ? `<span class="model-availability available">${icon("pencil")} ${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</div>
                 <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
-                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>`}
+                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>${viewModel.h3ReferenceNoteVisible && picture.pictureNumber !== 1 ? `<label>${t(uiKeys.create.imageEdit.h3ReferenceNote)}<input data-image-picture-note="${escapeHtml(picture.id)}" value="${escapeHtml(picture.note ?? "")}" placeholder="${t(uiKeys.create.imageEdit.h3ReferenceNotePlaceholder)}" maxlength="240"></label>` : ""}`}
               </div>
               <div class="image-picture-card-actions">${renderPictureTools(picture)}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(uiKeys.create.imageEdit.emptyTitle)}</strong><small>${t(uiKeys.create.imageEdit.emptyDescription)}</small></div>`}
@@ -97,7 +98,11 @@ export function renderImageEditPage(viewModel, options) {
           ${viewModel.promptless ? "" : `<label class="settings-field">${t(uiKeys.create.imageEdit.randomSeed)}<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${viewModel.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>`}
           ${viewModel.outputCountVisible ? `<label class="settings-field range-field"><span class="range-heading"><span>${t(uiKeys.create.imageEdit.outputCount)}</span><strong id="image-edit-count-value">${t(uiKeys.create.imageEdit.outputCountValue, { count: viewModel.count })}</strong></span><input id="image-edit-count" type="range" min="1" max="${imageOutputCountMax}" step="1" value="${viewModel.count}"></label>` : ""}
         </div></section>
-        <div class="interpolation-summary settings-summary"><div><strong>${viewModel.promptless ? escapeHtml(viewModel.promptlessSummary) : t(uiKeys.create.imageEdit.summary, { count: viewModel.count, seedMode: t(viewModel.draft.seed == null ? uiKeys.runtime.random : uiKeys.runtime.same) })}</strong><span>${viewModel.promptless ? escapeHtml(viewModel.promptlessResultDescription) : t(uiKeys.create.imageEdit.noUpscale, { capability: escapeHtml(viewModel.imageCapabilityName) })}</span></div><p>${escapeHtml(viewModel.imageProfileStatusText)}</p></div>
+        ${viewModel.h3ImageOptionsVisible ? `<section class="composer-control-group h3-image-options"><div class="composer-group-heading h3-image-options-heading"><div>${fieldLabelWithTip(t(uiKeys.create.imageEdit.h3OptionsTitle), t(uiKeys.create.imageEdit.h3OptionsDescription))}</div></div><div class="composer-control-grid image-edit-settings-grid">
+          <label class="settings-field">${t(uiKeys.create.imageEdit.h3SourceFit)}<select id="image-edit-h3-source-fit">${viewModel.h3ImageSourceFitOptionsMarkup}</select></label>
+          ${viewModel.h3ReferenceDetailVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.h3ReferenceDetail)}<select id="image-edit-h3-reference-detail">${viewModel.h3ImageReferenceDetailOptionsMarkup}</select></label>` : ""}
+          <label class="settings-field range-field"><span class="range-heading">${fieldLabelWithTip(t(uiKeys.create.imageEdit.h3SourceFidelity), t(uiKeys.create.imageEdit.h3SourceFidelityHint))}<strong id="image-edit-h3-source-fidelity-value">${t(uiKeys.create.imageEdit.h3SourceFidelityValue, { percent: Math.round(viewModel.h3ImageSourceFidelity * 100) })}</strong></span><input id="image-edit-h3-source-fidelity" type="range" min="0" max="1" step="0.01" value="${viewModel.h3ImageSourceFidelity}"></label>
+        </div></section>` : ""}
         <div class="submit-row composer-submit-row"><p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button><button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div></div>
       </section>
     </div>`;
@@ -116,6 +121,12 @@ export function renderCreatePage(viewModel, options) {
     const escapeHtml = options.escapeHtml;
     const t = options.t;
     const promptUi = viewModel.promptUi;
+    const showH3InputResolution = viewModel.isMiniMaxH3 && !viewModel.isR2V;
+    const formatInputDimensions = (width, height) => showH3InputResolution && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+        ? `${Math.trunc(width)} × ${Math.trunc(height)}`
+        : "";
+    const startInputResolution = formatInputDimensions(viewModel.draft.sourceWidth, viewModel.draft.sourceHeight);
+    const endInputResolution = formatInputDimensions(viewModel.draft.endImageWidth, viewModel.draft.endImageHeight);
     return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
@@ -162,8 +173,8 @@ export function renderCreatePage(viewModel, options) {
               </media-controller>
               ${viewModel.videoReady
                 ? viewModel.isContinuum
-                  ? ""
-                  : `<div class="trim-panel">
+                    ? ""
+                    : `<div class="trim-panel">
                     <div class="trim-heading"><strong>${t(uiKeys.create.videoMedia.trimTitle)}</strong><span><output id="trim-start-output">${formatTrimTime(viewModel.draft.trimStartSeconds)}</output> — <output id="trim-end-output">${formatTrimTime(viewModel.draft.trimEndSeconds)}</output></span></div>
                     <div class="trim-editor" id="trim-editor" style="--trim-start:${viewModel.trimStartPercent}%;--trim-end:${viewModel.trimEndPercent}%">
                       <div class="trim-filmstrip" aria-hidden="true">${Array.from({ length: 8 }, () => "<i></i>").join("")}</div>
@@ -194,7 +205,7 @@ export function renderCreatePage(viewModel, options) {
         <div class="media-slot">
           ${viewModel.draft.startImagePath
                 ? `<div class="drop-zone has-image" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.replaceStartFrame)}">
-                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
+                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}">${startInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${startInputResolution}`)}">${escapeHtml(startInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
               </div>`
                 : `<button class="drop-zone" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.addStartFrame)}">
                 <span class="drop-icon">${icon("image")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropStart)}</strong><span>${t(uiKeys.create.videoMedia.imageFormats)}</span>
@@ -203,7 +214,7 @@ export function renderCreatePage(viewModel, options) {
         </div>
         ${viewModel.draft.endImagePath
                 ? `<div class="media-slot">
-              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
+              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}">${endInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${endInputResolution}`)}">${escapeHtml(endInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
               <button class="image-remove button-with-icon" data-clear-frame="end" aria-label="${t(uiKeys.create.videoMedia.deleteEndFrame)}" title="${t(uiKeys.create.videoMedia.deleteEndFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>
             </div>`
                 : ""}
@@ -380,6 +391,7 @@ export function renderCreatePage(viewModel, options) {
       <div class="submit-row composer-submit-row">
         <p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p>
         <div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}${t(uiKeys.create.videoSettings.clearDraft)}</button>
+        ${viewModel.h3TokenEstimate == null ? "" : `<span class="composer-token-estimate" data-h3-token-estimate>${Math.trunc(viewModel.h3TokenEstimate)} tokens</span>`}
         <button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue" data-enqueue-block-reason="${escapeHtml(viewModel.enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration))}" ${viewModel.enqueueDisabled || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}" title="${escapeHtml(viewModel.enqueueBlockReason || (viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration)))}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.videoSettings.enqueueBusy) : t(uiKeys.create.videoSettings.enqueue)}</span></button></div>
       </div>
       </section>

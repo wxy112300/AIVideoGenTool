@@ -28,10 +28,12 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
     }
     return lines.join("\n");
 }
-export function h3ExtensionContinuityInstruction(mode, shotPolicy) {
+export function h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation = false) {
     return [
         "EXTENSION CONTINUITY CONTRACT (highest priority):",
-        mode === "R2V"
+        nativeStateContinuation
+            ? "This is a native-state H3 continuation. The sampler receives the previous segment's exact latent audio-video tail as continuity state. Begin with the next motion and sound after that boundary; do not invent <Picture 1>, <Video 1>, a repeated opening frame, or an image-alignment declaration."
+            : mode === "R2V"
             ? "This is an H3 video-continuation request. Treat <Video 1> as the locked source video whose final motion, audio, and visible state flow into the new segment. The extracted boundary image is only a visual inspection aid and must not become a new <Picture N> reference."
             : "Treat <Picture 1> as both the exact last-visible source frame and the exact first frame of the new target segment. Preserve the official I2VA alignment declaration at the absolute start of the final prompt.",
         "Carry forward only the subjects, identity cues, clothing, props, environment, lighting, spatial layout, framing, motion direction, and audio state established at that boundary, then apply the user's requested next action.",
@@ -178,7 +180,7 @@ export function h3PromptControlInstruction(input) {
     }
     if (plan.preset === "detailed-cinematic") {
         lines.push("Detailed source-fidelity gate: this preset is an expansion, never a concise rewrite. Silently checklist every concrete user-specified item and render each as an explicit observable fact or event in the same order. If output space is tight, shorten static reference inventory and assistant-added filler first.");
-        lines.push("Detailed-expansion coverage: substantially develop every user-written action with at least two applicable grounded execution details chosen from preparation, gaze/expression, posture/weight, contact/force, momentum/deceleration, affected-subject or object response, camera target/path/speed/settling, and causally synchronized physical sound. For an approximately five-second Base prompt, normally write roughly 180-320 grounded English words in the integrated timeline; for R2V, normally start with roughly 350-500 grounded English words in detailed_description. Scale upward with duration and complexity; treat these as coverage floors, not padding targets or hard maxima.");
+        lines.push("Detailed-expansion coverage: substantially develop every user-written action with at least two applicable grounded execution details chosen from preparation, gaze/expression, posture/weight, contact/force, momentum/deceleration, affected-subject or object response, camera target/path/speed/settling, and causally synchronized physical sound. Follow the request-specific minimum and target supplied by the detailed cinematic expansion gate; do not substitute a generic five-second word range or stop after a caption-length treatment.");
     }
     return lines.join("\n");
 }
@@ -251,12 +253,21 @@ export function h3DetailedExpansionMinimumWords(mode, durationSeconds = 5, sourc
     const sourceWords = countPromptWords(stripPromptAnnotations(sourcePrompt));
     return Math.max(durationFloor, sourceWords + Math.max(40, Math.ceil(sourceWords * 0.2)));
 }
+export function h3DetailedExpansionTargetWords(mode, durationSeconds = 5, sourcePrompt = "") {
+    const durationSlices = Math.max(1, Math.ceil(h3EffectiveDurationSeconds(durationSeconds) / 5.17));
+    const standardCoverage = mode === "R2V"
+        ? 350 + (durationSlices - 1) * 120
+        : 250 + (durationSlices - 1) * 100;
+    const sourceWords = countPromptWords(stripPromptAnnotations(sourcePrompt));
+    return Math.max(standardCoverage * 2, sourceWords + Math.max(100, Math.ceil(sourceWords * 0.5)));
+}
 export function h3DetailedExpansionGateInstruction(mode, durationSeconds = 5, sourcePrompt = "") {
     const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
+    const targetWords = h3DetailedExpansionTargetWords(mode, durationSeconds, sourcePrompt);
     const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
     return [
         "DETAILED CINEMATIC EXPANSION GATE (high priority): this is the most detailed expansion preset, never a rewrite, summary, caption, or compression.",
-        `The ${field} timeline must contain at least ${minimumWords} grounded words and more executable information than the source. This is a coverage floor, not a padding target.`,
+        `Develop the ${field} timeline toward approximately ${targetWords} grounded words—about twice the standard coverage for this mode and duration—while keeping every sentence useful. It must never contain fewer than ${minimumWords} grounded words or less executable information than the source. The lower number is only a fail-closed acceptance floor, not the writing target.`,
         "Preserve every concrete user instruction as its own explicit fact or event in the original order. For every user action, add at least two applicable execution details from preparation, gaze or reaction, posture or weight, contact or force, momentum or settling, affected-subject response, camera path, and causally synchronized sound.",
         "Write an unmistakable playback timeline with explicit opening, development, interaction or transition, camera response, and final settled state. Remove invented decoration and repeated reference inventory before removing any user requirement.",
         "The application rejects a result whose main timeline is shorter than this floor, so complete the expansion before answering."
@@ -348,8 +359,8 @@ export function h3AlignmentInstruction(mode, durationSeconds) {
     }
     return "";
 }
-export function h3PromptSectionSkeleton(mode, durationSeconds) {
-    const alignment = h3AlignmentInstruction(mode, durationSeconds);
+export function h3PromptSectionSkeleton(mode, durationSeconds, omitAlignment = false) {
+    const alignment = omitAlignment ? "" : h3AlignmentInstruction(mode, durationSeconds);
     const sections = mode === "R2V"
         ? [
             "subject_definitions:",
@@ -529,7 +540,7 @@ function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleCo
     }
     return repaired;
 }
-export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "") {
+export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "", omitAlignment = false) {
     const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)), mode));
     const body = restoreH3VisibleTextLocks(restoreH3DialogueLocks(cleanedBody, dialogueLocks), visibleTextLocks);
     const cameraSource = [sourcePrompt, scaleContext].map((value) => value.trim()).filter(Boolean).join("\n");
@@ -537,7 +548,7 @@ export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialo
     const scaleSafeBody = ensureH3ScalePreservationInOutput(cameraSafeBody, mode, sourcePrompt, scaleContext);
     const shotSafeBody = collapseUnexpectedH3Shots(scaleSafeBody, mode, sourcePrompt, scaleContext);
     const auditedBody = repairH3PromptControlViolations(shotSafeBody, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks);
-    const alignment = h3AlignmentInstruction(mode, durationSeconds);
+    const alignment = omitAlignment ? "" : h3AlignmentInstruction(mode, durationSeconds);
     if (!alignment)
         return auditedBody;
     return `${alignment}\n\n${auditedBody}`.trim();

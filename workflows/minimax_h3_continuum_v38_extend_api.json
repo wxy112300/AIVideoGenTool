@@ -49,15 +49,6 @@
       "denoise": 1
     }
   },
-  "8": {
-    "class_type": "H3ContinuumLoadVideo",
-    "inputs": {
-      "enable_video": true,
-      "file": "{{SOURCE_VIDEO}}",
-      "force_rate": 24,
-      "upload": "image"
-    }
-  },
   "9": {
     "class_type": "LocalVideoStudioH3LoadJointAV",
     "inputs": {
@@ -65,22 +56,16 @@
     }
   },
   "10": {
-    "class_type": "VAEDecode",
+    "class_type": "LocalVideoStudioH3ArtifactToContinuumState",
     "inputs": {
-      "samples": ["9", 0],
-      "vae": ["3", 0]
-    }
-  },
-  "11": {
-    "class_type": "ImageFromBatch",
-    "inputs": {
-      "image": ["10", 0],
-      "batch_index": "{{H3_AV_SOURCE_FRAME_INDEX}}",
-      "length": 1
+      "joint_av": ["9", 0],
+      "source_frame_count": 0,
+      "clip_index": 1,
+      "capacity_frames": "Auto — largest available"
     }
   },
   "12": {
-    "class_type": "H3ContinuumSamplerV38",
+    "class_type": "LocalVideoStudioH3ContinuumSamplerV38",
     "inputs": {
       "model": ["5", 0],
       "clip": ["2", 0],
@@ -118,8 +103,7 @@
       "size_source": "Manual",
       "width": "{{WIDTH}}",
       "height": "{{HEIGHT}}",
-      "first_frame": ["11", 0],
-      "reference_video_1": ["8", 0]
+      "initial_state": ["10", 0]
     }
   },
   "13": {

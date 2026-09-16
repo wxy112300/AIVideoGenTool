@@ -24,7 +24,12 @@ import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src
 import {
   managedPromptModelDefinitions
 } from "../src/core/prompt-models.js";
-import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/image-project.js";
+import {
+  normalizeH3ImageOptions,
+  normalizeH3ImageRecipe,
+  normalizeImageEditDraft,
+  normalizeImageHistory
+} from "../src/core/image-project.js";
 import { normalizeQueuePauseBoundary } from "../src/core/queue.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
@@ -273,8 +278,16 @@ function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenera
     : [];
   const taskInterrupted = task.status === "running" ||
     runs.some((run) => normalizedTaskStatus(run.status) === "running");
+  const h3ImageOptions = normalizeH3ImageOptions(task.h3ImageOptions, task.modelId);
+  const hasH3ImageRecipe = Object.prototype.hasOwnProperty.call(task, "h3ImageRecipe");
+  const h3ImageRecipe = normalizeH3ImageRecipe(task.h3ImageRecipe, task.modelId);
+  const {
+    h3ImageOptions: _storedH3ImageOptions,
+    h3ImageRecipe: _storedH3ImageRecipe,
+    ...taskWithoutH3Snapshots
+  } = task;
   return {
-    ...task,
+    ...taskWithoutH3Snapshots,
     status: taskInterrupted ? "waiting" : normalizedTaskStatus(task.status),
     outputCount: Math.min(10, Math.max(1, Math.trunc(task.outputCount))),
     runs,
@@ -290,7 +303,13 @@ function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenera
     automaticRetryAttempt: Number.isInteger(task.automaticRetryAttempt) &&
       (task.automaticRetryAttempt ?? 0) > 0
       ? task.automaticRetryAttempt
-      : undefined
+      : undefined,
+    ...(h3ImageOptions ? { h3ImageOptions } : {}),
+    ...(h3ImageRecipe
+      ? { h3ImageRecipe }
+      : hasH3ImageRecipe
+        ? { h3ImageRecipe: task.h3ImageRecipe }
+        : {})
   };
 }
 

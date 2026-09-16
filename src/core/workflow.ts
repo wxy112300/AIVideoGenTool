@@ -234,7 +234,7 @@ function applyMiniMaxH3Spectrum(
   modelAwareMode: GenerationQueueTask["spectrumModelAwareMode"] = "off"
 ): void {
   const consumers = Object.entries(workflow).filter(([, node]) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!consumers.length) {
@@ -297,7 +297,7 @@ function applyMiniMaxH3LivePreview(
 ): void {
   if (!tinyVae) return;
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   const modelInput = consumers[0]?.inputs?.model;
@@ -339,7 +339,7 @@ function applyVideoLoraStack(
     Array.isArray(node.inputs?.model)
   );
   const directConsumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   const targets = attentionNodes.length ? attentionNodes : directConsumers;
@@ -425,7 +425,7 @@ function applyMiniMaxH3SlaAttention(
   if (!enabled) return;
 
   const consumers = Object.entries(workflow).filter(([, node]) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!consumers.length) {
@@ -541,7 +541,7 @@ function applyMiniMaxH3Ref2vTurboSampling(
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
@@ -682,7 +682,7 @@ function applyMiniMaxH3PddSampling(
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
@@ -991,17 +991,15 @@ export function continuumSampledFrameCountForSeconds(
 }
 
 /**
- * Continuum V3.8 owns the continuation context internally. Its sampler still
- * uses H3's 5 + 17*n temporal grid, but the requested duration is the visible
- * output duration rather than a caller-supplied 22-frame overlap budget.
+ * Continuum V3.8 owns seam assembly, but its raw sampler latent still contains
+ * the selected 22-frame continuity prefix. H3ContinuumAssembleSeamV35 removes
+ * that prefix from the visible video; JointAV serialization happens before
+ * assembly and therefore must retain it in the sampled-frame contract.
  */
 export function continuumV38SampledFrameCountForSeconds(durationSeconds: number): number {
-  const safeDuration = Number.isFinite(durationSeconds)
-    ? Math.max(1, durationSeconds)
-    : 1;
-  return frameCountForTask(
-    { modelId: "minimax_h3_fl2va", duration: safeDuration },
-    24
+  return continuumFrameCountForSeconds(
+    durationSeconds,
+    H3_CONTINUUM_CONTEXT_FRAMES
   );
 }
 
@@ -1125,12 +1123,10 @@ export function workflowSupportsH3ContinuumExtension(source: unknown): boolean {
       return typeof classType === "string" ? [classType] : [];
     })
   );
-  if (classTypes.has("H3ContinuumSamplerV38")) {
+  if (classTypes.has("LocalVideoStudioH3ContinuumSamplerV38")) {
     return [
       "H3_AV_INPUT_ARTIFACT",
       "H3_AV_ARTIFACT_FILENAME",
-      "H3_AV_SOURCE_FRAME_INDEX",
-      "SOURCE_VIDEO",
       "PROMPT",
       "WIDTH",
       "HEIGHT",
@@ -1141,10 +1137,9 @@ export function workflowSupportsH3ContinuumExtension(source: unknown): boolean {
     ].every((placeholder) => serialized.includes(`{{${placeholder}}}`)) &&
       [
         "LocalVideoStudioH3LoadJointAV",
+        "LocalVideoStudioH3ArtifactToContinuumState",
+        "LocalVideoStudioH3ContinuumSamplerV38",
         "VAEDecode",
-        "ImageFromBatch",
-        "H3ContinuumLoadVideo",
-        "H3ContinuumSamplerV38",
         "VAEDecodeAudio",
         "H3ContinuumAssembleSeamV35",
         "CreateVideo",

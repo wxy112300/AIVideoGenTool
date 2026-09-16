@@ -23,7 +23,7 @@ import {
   h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
-import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
+import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
   extractH3DialogueLocks,
@@ -278,12 +278,14 @@ export async function enhancePromptWithH3PromptWriter(
   onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
   const root = baseUrl(settings);
-  const h3Mode = request.h3PromptMode ?? inferH3PromptMode(
+  const requestedH3Mode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || request.imagePaths?.length),
     (request.imagePaths?.length ?? 0) > 1
   );
+  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
+  const h3Mode = nativeStateContinuation ? "T2VA" : requestedH3Mode;
   const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
-  const h3PresetText = settings.h3PromptPresets[h3Preset]?.trim() || defaultH3PromptPresets[h3Preset];
+  const h3PresetText = h3PromptPresetTextForRequest(h3Preset, settings.h3PromptPresets[h3Preset]);
   const targetedRevision = request.promptStrategy === "targeted-revision";
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
@@ -298,7 +300,11 @@ export async function enhancePromptWithH3PromptWriter(
   const mediaPaths = (request.referenceMediaPaths || request.imagePaths || (request.imagePath ? [request.imagePath] : []))
     .filter(Boolean)
     .slice(0, 12);
-  const mode = promptWriterModeForRequest(request, imageEdit, mediaPaths);
+  const mode = promptWriterModeForRequest(
+    nativeStateContinuation ? { ...request, h3PromptMode: "T2VA" } : request,
+    imageEdit,
+    mediaPaths
+  );
   const usesExtensionBoundaryTransport = !imageEdit &&
     h3Mode === "T2VA" &&
     mode === "I2VA" &&
@@ -347,7 +353,7 @@ export async function enhancePromptWithH3PromptWriter(
       : [
       priorityInstruction,
       request.extensionSource
-        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy)
+        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy, nativeStateContinuation)
         : "",
       h3Preset === "detailed-cinematic"
         ? h3DetailedExpansionGateInstruction(h3Mode, request.h3DurationSeconds ?? 5, sourcePrompt)
@@ -365,7 +371,7 @@ export async function enhancePromptWithH3PromptWriter(
       contentLocks,
       scaleInstruction,
       isH3ReferenceAutoPrompt(request)
-        ? h3AutoPrompterContract(h3Mode, request.h3DurationSeconds ?? 5, request.referenceContext)
+        ? h3AutoPrompterContract(h3Mode, request.h3DurationSeconds ?? 5, request.referenceContext, h3Preset)
         : "",
       transportModeInstruction,
       h3DurationPlan(h3Mode, request.h3DurationSeconds ?? 5, h3Preset),
@@ -407,7 +413,8 @@ export async function enhancePromptWithH3PromptWriter(
       extractH3DialogueLocks(sourcePrompt),
       extractH3VisibleTextLocks(sourcePrompt),
       sourcePrompt,
-      request.prompt
+      request.prompt,
+      nativeStateContinuation
     );
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);

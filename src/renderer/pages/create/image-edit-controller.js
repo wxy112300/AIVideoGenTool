@@ -1,6 +1,7 @@
 import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
+import { defaultH3ImageOptionsFor, isH3ImageModelId } from "../../../core/image-project";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
 export function mountImageEditController(context, options) {
@@ -121,6 +122,21 @@ export function mountImageEditController(context, options) {
                     ? { ...picture, role: select.value }
                     : picture)
             });
+            options.syncEnqueueUi();
+        }, { signal });
+    });
+    root.querySelectorAll("[data-image-picture-note]").forEach((input) => {
+        input.addEventListener("input", () => {
+            const pictureId = input.dataset.imagePictureNote;
+            const draft = getDraft();
+            if (!pictureId || !draft)
+                return;
+            options.patchImageDraft({
+                pictures: draft.pictures.map((picture) => picture.id === pictureId
+                    ? { ...picture, note: input.value }
+                    : picture)
+            });
+            options.syncEnqueueUi();
         }, { signal });
     });
     const dropZone = root.querySelector("#image-picture-drop-zone");
@@ -307,6 +323,15 @@ export function mountImageEditController(context, options) {
                 return;
             const value = event.currentTarget.value;
             const modelCapability = id === "image-edit-model" ? imageModelCapabilityFor(value) : undefined;
+            const nextH3Defaults = id === "image-edit-model" ? defaultH3ImageOptionsFor(value) : undefined;
+            const nextH3Options = nextH3Defaults
+                ? {
+                    ...nextH3Defaults,
+                    ...(isH3ImageModelId(draft.modelId) && draft.modelId === value && draft.h3ImageOptions
+                        ? draft.h3ImageOptions
+                        : {})
+                }
+                : undefined;
             options.patchImageDraft(id === "image-edit-model"
                 ? {
                     modelId: value,
@@ -316,7 +341,8 @@ export function mountImageEditController(context, options) {
                     ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
                     ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" } : {}),
                     ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
-                    ...(modelCapability?.deterministic ? { outputCount: 1 } : {})
+                    ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
+                    ...(nextH3Options ? { h3ImageOptions: nextH3Options } : {})
                 }
                 : id === "image-edit-quality"
                     ? { qualityProfile: value }
@@ -324,13 +350,38 @@ export function mountImageEditController(context, options) {
                         ? { aspectRatio: normalizeImageAspectRatio(value) }
                         : id === "image-edit-resolution"
                             ? {
-                            targetResolution: normalizeImageTargetResolution(value, draft.pictures[0]?.width ?? 0, draft.pictures[0]?.height ?? 0)
+                                targetResolution: normalizeImageTargetResolution(value, draft.pictures[0]?.width ?? 0, draft.pictures[0]?.height ?? 0)
                             }
                             : { seed: value ? Number(value) : null });
             if (id !== "image-edit-seed")
                 context.requestRender();
         }, { signal });
     }
+    const patchH3Options = (patch, rerender) => {
+        const draft = getDraft();
+        if (!draft || !isH3ImageModelId(draft.modelId) || !draft.h3ImageOptions)
+            return;
+        options.patchImageDraft({
+            h3ImageOptions: { ...draft.h3ImageOptions, ...patch }
+        });
+        options.syncEnqueueUi();
+        if (rerender)
+            context.requestRender();
+    };
+    root.querySelector("#image-edit-h3-source-fit")?.addEventListener("change", (event) => {
+        patchH3Options({ sourceFit: event.currentTarget.value }, true);
+    }, { signal });
+    root.querySelector("#image-edit-h3-reference-detail")?.addEventListener("change", (event) => {
+        patchH3Options({ referenceDetail: event.currentTarget.value }, true);
+    }, { signal });
+    const h3FidelityInput = root.querySelector("#image-edit-h3-source-fidelity");
+    h3FidelityInput?.addEventListener("input", () => {
+        const sourceFidelity = Math.min(1, Math.max(0, Number(h3FidelityInput.value) || 0));
+        patchH3Options({ sourceFidelity }, false);
+        const value = root.querySelector("#image-edit-h3-source-fidelity-value");
+        if (value)
+            value.textContent = `${Math.round(sourceFidelity * 100)}%`;
+    }, { signal });
     const countInput = root.querySelector("#image-edit-count");
     countInput?.addEventListener("input", () => {
         const outputCount = Math.min(imageOutputCountMax, Math.max(1, Number(countInput.value) || 1));

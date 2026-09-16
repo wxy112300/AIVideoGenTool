@@ -1,4 +1,5 @@
 import { isComfyMultimodalPromptModel, isGemmaPromptModel, isQwenVlPeftPromptModel } from "../../core/prompt-models";
+import { modelCatalog } from "../../core/catalog";
 import { createTranslator } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 export function modelProfileEvidence(profile) {
@@ -129,7 +130,13 @@ export function promptModelStatus(settings, environmentScan, t = createTranslato
     };
 }
 export function isImageModelSelectable(profile) {
-    return Boolean(profile?.category === "image" && profile.integrated && profile.available);
+    const productGate = profile
+        ? profile.productGate ?? modelCatalog.get(profile.id)?.definition.scan?.productGate
+        : undefined;
+    return Boolean(profile?.category === "image" &&
+        profile.integrated &&
+        profile.available &&
+        productGate !== "locked");
 }
 export function imageWorkflowStatus(profile, t = createTranslator("zh-CN").t) {
     if (!profile)
@@ -138,6 +145,9 @@ export function imageWorkflowStatus(profile, t = createTranslator("zh-CN").t) {
         return t(uiKeys.status.imageIncomplete);
     if (!profile.integrated)
         return t(uiKeys.status.imagePendingIntegration);
+    const productGate = profile.productGate ?? modelCatalog.get(profile.id)?.definition.scan?.productGate;
+    if (productGate === "locked")
+        return t(uiKeys.status.imageProductGatePending);
     if (profile.missingCustomNodeNames?.length) {
         return t(uiKeys.status.imageMissingNodes, { nodes: profile.missingCustomNodeNames.join("、") });
     }

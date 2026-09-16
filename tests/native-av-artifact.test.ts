@@ -178,6 +178,35 @@ describe("NativeAvArtifactService", () => {
     }
   });
 
+  it("accepts a Continuum V3.8 JointAV latent with the protected 22-frame prefix", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-continuum-v38-"));
+    try {
+      const service = new NativeAvArtifactService({ fileSystem: nativeAvArtifactFileSystem });
+      const committed = await service.commit({
+        ...request(
+          root,
+          safetensorsPayload([1, 24, 107, 2, 2], [1, 32, 2, 603])
+        ),
+        artifactId: "continuum-v38-14s",
+        role: "extend-segment-clean-av",
+        executionModelId: "minimax_h3_continuum",
+        workflowId: "minimax_h3_continuum_v38_extend_api.json",
+        frameCount: 362,
+        contextFrames: 22
+      });
+
+      expect(committed.status, JSON.stringify(committed)).toBe("available");
+      expect(committed.artifact).toMatchObject({
+        frameCount: 362,
+        contextFrames: 22,
+        videoShape: [1, 24, 107, 2, 2],
+        audioShape: [1, 32, 2, 603]
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects produced descriptors outside the managed output subfolder", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-produced-file-"));
     try {

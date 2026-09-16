@@ -30,7 +30,6 @@ import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import {
   imageModelCapabilityFor,
-  imageOutputCountMax,
   imageReferenceInputPath,
   normalizeImageTargetResolution
 } from "../../../core/image-workflow";
@@ -819,7 +818,6 @@ export function createCreateWorkspaceCoordinator(
     const draft = state.imageDraft;
     const imageProfile = deps.getEnvironmentScan()?.modelProfiles.find((profile) => profile.id === draft.modelId);
     const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
-    const imageCapability = imageModelCapabilityFor(draft.modelId);
     const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
     if (button) {
       button.disabled = Boolean(reason) || enqueueBusy;
@@ -831,18 +829,6 @@ export function createCreateWorkspaceCoordinator(
       feedback.hidden = !reason;
       const message = feedback.querySelector<HTMLElement>("span");
       if (message) message.textContent = reason;
-    }
-    const summaryTitle = document.querySelector<HTMLElement>(".image-edit-composer .interpolation-summary strong");
-    if (summaryTitle) {
-      const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
-      summaryTitle.textContent = imageCapability.requiresPrompt === false
-        ? uiText(imageCapability.operation === "background-removal"
-          ? "create.imageEdit.promptlessBackgroundRemovalSummary"
-          : "create.imageEdit.promptlessLocalRemovalSummary", { count })
-        : uiText("create.imageEdit.summary", {
-            count,
-            seedMode: draft.seed == null ? uiText("runtime.random") : uiText("runtime.same")
-          });
     }
   }
 

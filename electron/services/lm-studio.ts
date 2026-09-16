@@ -7,7 +7,7 @@ import type {
   PromptEnhanceMode,
   Settings
 } from "../../src/types.js";
-import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
+import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
@@ -340,7 +340,7 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
     ...(contentLocks ? [contentLocks] : []),
     ...(scaleInstruction ? [scaleInstruction] : []),
     ...(isH3ReferenceAutoPrompt(request)
-      ? [h3AutoPrompterContract(mode, Number(duration), referenceContext)]
+      ? [h3AutoPrompterContract(mode, Number(duration), referenceContext, preset)]
       : []),
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     mode === "T2VA"
@@ -412,7 +412,7 @@ export async function buildLmStudioChatRequest(
           content: await nativeUserContent(
             h3VisionUserPrompt(
               request,
-              settings.h3PromptPresets[h3Preset] || defaultH3PromptPresets[h3Preset]
+              h3PromptPresetTextForRequest(h3Preset, settings.h3PromptPresets[h3Preset])
             ),
             imagePaths
           )

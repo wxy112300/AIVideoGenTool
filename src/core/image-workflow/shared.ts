@@ -18,13 +18,17 @@ import type {
 import { qwenImageEdit2511Capability } from "./capabilities.js";
 
 export function cachedImageProfileAllowsEnqueue(
-  profile: Pick<ModelScanProfile, "category" | "integrated" | "available" | "missingCustomNodeIds"> | undefined
+  profile: Pick<ModelScanProfile, "category" | "integrated" | "available" | "missingCustomNodeIds" | "productGate" | "runtimeVerified" | "runtimeReady"> | undefined
 ): boolean {
+  // This is the cached file/package gate only. Runtime node/schema validation
+  // happens immediately before the task is submitted to ComfyUI; pending or
+  // stale runtime evidence must not prevent a task from being queued.
   return Boolean(
     profile?.category === "image" &&
     profile.integrated &&
     profile.available &&
-    !(profile.missingCustomNodeIds?.length)
+    !(profile.missingCustomNodeIds?.length) &&
+    profile.productGate !== "locked"
   );
 }
 export const imageOutputCountMax = 6;
@@ -343,6 +347,24 @@ export function imageLightningComponentFound(
 ): boolean {
   return components.some((component) =>
     component.label.includes("Lightning LoRA") && component.found
+  );
+}
+
+export function imageQualityProfileRequiredComponentLabel(
+  capability: Pick<import("./contracts.js").ImageModelCapability, "qualityProfileComponentLabels">,
+  qualityProfile: string
+): string | undefined {
+  return capability.qualityProfileComponentLabels?.[qualityProfile];
+}
+
+export function imageQualityProfileComponentFound(
+  capability: Pick<import("./contracts.js").ImageModelCapability, "qualityProfileComponentLabels">,
+  qualityProfile: string,
+  components: ReadonlyArray<{ label: string; found: boolean }>
+): boolean {
+  const requiredLabel = imageQualityProfileRequiredComponentLabel(capability, qualityProfile);
+  return !requiredLabel || components.some((component) =>
+    component.label.includes(requiredLabel) && component.found
   );
 }
 

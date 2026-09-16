@@ -9,6 +9,8 @@ import {
   nextImagePictureNumber,
   normalizeImageHistory,
   normalizeImageEditDraft,
+  normalizeH3ImageOptions,
+  normalizeH3ImageRecipe,
   nextImageVersionNumber
 } from "../src/core/image-project.js";
 import type { ImageGenerationQueueTask, ImageHistoryProject } from "../src/types.js";
@@ -101,6 +103,45 @@ describe("image project pure functions", () => {
     });
     expect(draft.activePromptVersion).toBe(0);
     expect(draft.targetResolution).toBe("source");
+  });
+
+  it("normalizes H3 image options per route and rejects a cross-route recipe", () => {
+    const draft = normalizeImageEditDraft({
+      modelId: "minimax-h3-reference-edit",
+      pictures: [
+        { id: "base", pictureNumber: 1, absolutePath: "base.png", width: 1024, height: 768, role: "base" },
+        { id: "wardrobe", pictureNumber: 2, absolutePath: "wardrobe.png", width: 1024, height: 768, role: "object", note: "只参考服装颜色" }
+      ],
+      h3ImageOptions: {
+        frameProfile: "experimental-20",
+        frameSelection: "manual",
+        sourceFit: "contain-pad",
+        referenceDetail: "max-identity-2048",
+        sourceFidelity: 1.7
+      }
+    });
+
+    expect(draft.h3ImageOptions).toEqual({
+      frameProfile: "recommended-5",
+      frameSelection: "decode-recommended",
+      sourceFit: "contain-pad",
+      referenceDetail: "max-identity-2048",
+      sourceFidelity: 1
+    });
+    expect(draft.pictures[1]?.note).toBe("只参考服装颜色");
+    expect(normalizeH3ImageOptions({ sourceFidelity: -1, sourceFit: "unknown" }, "minimax-h3-image-i2i"))
+      .toMatchObject({ sourceFit: "crop-center", sourceFidelity: 0 });
+    expect(normalizeH3ImageRecipe({
+      adapter: "fl2va-turbo-8",
+      samplingProfile: "Turbo v1.0 | 8 steps",
+      sampler: "euler",
+      scheduler: "simple",
+      steps: 8,
+      shiftVideo: 12,
+      shiftAudio: 3,
+      frameProfile: "recommended-5",
+      frameSelection: "decode-recommended"
+    }, "minimax-h3-reference-edit")).toBeUndefined();
   });
 
   it("preserves a valid image markup sidecar and drops an incomplete one", () => {
@@ -246,6 +287,57 @@ describe("image project pure functions", () => {
     });
     expect(draft.pictures[0]?.absolutePath).toBe("input.png");
     expect(draft.promptVersions[0]?.text).toBe("把天空改成蓝色");
+  });
+
+  it("restores H3 reference notes and image options from a failed queue task", () => {
+    const currentDraft = normalizeImageEditDraft({});
+    const task: ImageGenerationQueueTask = {
+      id: "h3-ref-task",
+      taskType: "image-generation",
+      status: "failed",
+      createdAt: "2026-09-15T00:00:00.000Z",
+      updatedAt: "2026-09-15T00:01:00.000Z",
+      outputFilename: "H3Image-test",
+      modelId: "minimax-h3-reference-edit",
+      workflowPath: "builtin:image/minimax-h3-reference-edit",
+      projectId: "project-h3",
+      pictures: [
+        { id: "base", pictureNumber: 1, absolutePath: "base.png", width: 1280, height: 720, role: "base" },
+        { id: "style", pictureNumber: 3, absolutePath: "style.png", width: 1280, height: 720, role: "style", note: "只参考灯光" }
+      ],
+      prompt: "把背景改成夜景",
+      promptVersion: 1,
+      qualityProfile: "ref2va-turbo-8-768p",
+      outputFormat: "png",
+      outputCount: 1,
+      h3ImageOptions: {
+        frameProfile: "recommended-5",
+        frameSelection: "decode-recommended",
+        sourceFit: "stretch",
+        referenceDetail: "max-identity-2048",
+        sourceFidelity: 0.42
+      },
+      h3ImageRecipe: {
+        adapter: "ref2va-turbo-8-768p",
+        samplingProfile: "REF2VA Turbo v1.0 768p | 8 steps",
+        sampler: "euler",
+        scheduler: "simple",
+        steps: 8,
+        shiftVideo: 12,
+        shiftAudio: 3,
+        frameProfile: "recommended-5",
+        frameSelection: "decode-recommended",
+        loraFilename: "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+      },
+      runs: [
+        { id: "run-1", index: 0, seed: 7, status: "failed" }
+      ]
+    };
+
+    const draft = imageEditDraftFromQueueTask(task, currentDraft);
+    expect(draft.modelId).toBe("minimax-h3-reference-edit");
+    expect(draft.h3ImageOptions).toMatchObject({ sourceFit: "stretch", sourceFidelity: 0.42 });
+    expect(draft.pictures[1]).toMatchObject({ pictureNumber: 3, note: "只参考灯光", role: "style" });
   });
 
   it("preserves empty Slots and promotes the first Slot to the base input", () => {

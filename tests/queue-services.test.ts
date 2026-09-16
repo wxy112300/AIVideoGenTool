@@ -144,6 +144,71 @@ describe("queue command services", () => {
       .rejects.toThrow("需要开启 JointAV 输出");
   });
 
+  it("enqueues H3 image work while deferring runtime validation when no scan is cached", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-h3-image-enqueue-deferred-"));
+    try {
+      const outputRoot = path.join(root, "output");
+      const sourcePath = path.join(root, "source.png");
+      await Promise.all([
+        fs.mkdir(outputRoot, { recursive: true }),
+        fs.writeFile(sourcePath, "source")
+      ]);
+      const state = createDefaultState();
+      state.settings.outputDirectory = path.join(outputRoot, "Videos");
+      state.settings.imageOutputDirectory = path.join(outputRoot, "Images");
+      const enqueueInfo = vi.fn();
+      const enqueueLogger = {
+        debug: vi.fn(), info: enqueueInfo, warn: vi.fn(), error: vi.fn()
+      } as never;
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: enqueueLogger,
+        sendState: vi.fn(),
+        getCachedEnvironmentScanForQueue: () => undefined,
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => outputRoot,
+        imageInspection: { readDimensions: () => ({ width: 1920, height: 1080 }) }
+      });
+      const draft = {
+        ...createDefaultImageEditDraft(),
+        modelId: "minimax-h3-image-i2i",
+        qualityProfile: "base-quality-20",
+        pictures: [{
+          id: "h3-picture-1",
+          pictureNumber: 1,
+          absolutePath: sourcePath,
+          width: 1920,
+          height: 1080,
+          role: "base" as const
+        }],
+        promptVersions: [{
+          id: "h3-prompt",
+          label: "原始",
+          text: "Adjust the lighting while preserving the subject.",
+          createdAt: "2026-09-15T00:00:00.000Z"
+        }],
+        activePromptVersion: 0,
+        nextPictureNumber: 2
+      };
+
+      const next = await service.enqueueImage(draft);
+      expect(next.queue).toHaveLength(1);
+      expect(next.queue[0]).toMatchObject({
+        taskType: "image-generation",
+        modelId: "minimax-h3-image-i2i",
+        qualityProfile: "base-quality-20"
+      });
+      expect(enqueueInfo).toHaveBeenCalledWith(
+        "queue",
+        "image-enqueue-environment-preflight-deferred",
+        expect.any(String),
+        { taskType: "image-generation", modelId: "minimax-h3-image-i2i" }
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to source video when a selected Motion Context latent is missing", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-context-fallback-"));
     try {

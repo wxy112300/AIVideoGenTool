@@ -106,8 +106,8 @@ describe("ComfyUI 0.35 native H3 runtime contract", () => {
   });
 });
 
-describe("H3 Continuum V3.8 runtime contract", () => {
-  function continuumObjectInfo(fileSpec: unknown) {
+describe("H3 Continuum V3.8 native-state runtime contract", () => {
+  function continuumObjectInfo(initialStateSpec: unknown) {
     const noSchema = {};
     return {
       UNETLoader: noSchema,
@@ -116,17 +116,18 @@ describe("H3 Continuum V3.8 runtime contract", () => {
       PathchSageAttentionKJ: noSchema,
       KSamplerSelect: noSchema,
       BasicScheduler: noSchema,
-      ImageFromBatch: noSchema,
-      H3ContinuumLoadVideo: {
+      LocalVideoStudioH3ArtifactToContinuumState: {
         input: {
           required: {
-            enable_video: ["BOOLEAN", {}],
-            file: fileSpec,
-            force_rate: ["FLOAT", {}]
+            joint_av: ["LATENT", {}],
+            source_frame_count: ["INT", {}],
+            clip_index: ["INT", {}],
+            capacity_frames: [["Auto — largest available", "5", "22", "39"], {}]
           }
-        }
+        },
+        output: ["H3_CONTINUUM_STATE", "STRING"]
       },
-      H3ContinuumSamplerV38: {
+      LocalVideoStudioH3ContinuumSamplerV38: {
         input: {
           required: {
             model: ["MODEL", {}],
@@ -137,6 +138,9 @@ describe("H3 Continuum V3.8 runtime contract", () => {
             sequence_prompt: ["STRING", {}],
             chunks: ["INT", {}],
             chunk_seconds: ["FLOAT", {}]
+          },
+          optional: {
+            initial_state: initialStateSpec
           }
         }
       },
@@ -175,32 +179,20 @@ describe("H3 Continuum V3.8 runtime contract", () => {
   }
 
   const workflow = {
-    "1": { class_type: "H3ContinuumSamplerV38", inputs: {} }
+    "1": { class_type: "LocalVideoStudioH3ContinuumSamplerV38", inputs: {} }
   };
 
-  it("accepts the legacy string-valued file picker schema used by Load Video", () => {
-    const objectInfo = continuumObjectInfo([
-      ["uploaded/h3-continuum-guide.mp4"],
-      { video_upload: true }
-    ]);
+  it("accepts the restored native Continuum state socket", () => {
+    const objectInfo = continuumObjectInfo(["H3_CONTINUUM_STATE", {}]);
 
     expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toEqual([]);
   });
 
-  it("accepts the ComfyUI 0.35 V3 COMBO schema used by Load Video", () => {
-    const objectInfo = continuumObjectInfo([
-      "COMBO",
-      { options: ["uploaded/h3-continuum-guide.mp4"], video_upload: true }
-    ]);
-
-    expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toEqual([]);
-  });
-
-  it("still rejects a non-combo Load Video file socket", () => {
+  it("rejects an incompatible native-state socket", () => {
     const objectInfo = continuumObjectInfo(["INT", {}]);
 
     expect(h3ComfyWorkflowRuntimeIssues(workflow, objectInfo)).toContain(
-      "H3ContinuumLoadVideo.file schema 类型不兼容：要求 COMBO"
+      "LocalVideoStudioH3ContinuumSamplerV38.initial_state schema 类型不兼容：要求 H3_CONTINUUM_STATE"
     );
   });
 });

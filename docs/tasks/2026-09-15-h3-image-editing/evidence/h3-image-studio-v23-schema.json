@@ -1,0 +1,126 @@
+{
+  "source": {
+    "kind": "api-derived-fixture",
+    "package": "ComfyUI-MiniMax-H3-Image-Studio",
+    "version": "23.0.0",
+    "commit": "f7384aacb7bf35492dc73a3e6054ab6b427f93f6",
+    "targetRuntimeObjectInfo": "pending"
+  },
+  "nodes": {
+    "UNETLoader": {
+      "required": { "unet_name": "STRING_ENUM", "weight_dtype": ["default"] },
+      "optional": {}
+    },
+    "CLIPLoader": {
+      "required": { "clip_name": "STRING_ENUM", "type": ["minimax"], "device": ["default"] },
+      "optional": {}
+    },
+    "VAELoader": {
+      "required": { "vae_name": "STRING_ENUM" },
+      "optional": {}
+    },
+    "LoadImage": {
+      "required": { "image": "STRING_ENUM" },
+      "optional": {}
+    },
+    "H3ImageResolutionPreset": {
+      "required": {
+        "aspect_ratio": ["source image"],
+        "resolution_profile": ["native detail | 0.98 MP"],
+        "source_image": "IMAGE"
+      },
+      "optional": {}
+    },
+    "H3ImageToImagePrepare": {
+      "required": {
+        "clip": "CLIP",
+        "vae": "VAE",
+        "source_image": "IMAGE",
+        "edit_instruction": "STRING",
+        "width": "INT",
+        "height": "INT",
+        "quality_profile": ["recommended | 5 frames"],
+        "source_fidelity": "FLOAT",
+        "source_fit": ["crop_center", "contain_pad", "stretch"],
+        "optimize_for_still": true
+      },
+      "optional": {}
+    },
+    "H3ReferenceEditPrepare": {
+      "required": {
+        "clip": "CLIP",
+        "vae": "VAE",
+        "source_image": "IMAGE",
+        "edit_instruction": "STRING",
+        "width": "INT",
+        "height": "INT",
+        "quality_profile": ["recommended | 5 frames"],
+        "source_fidelity": "FLOAT",
+        "source_fit": ["crop_center", "contain_pad", "stretch"],
+        "reference_detail": ["match_generation_area", "max_identity_2048"],
+        "optimize_for_still": true
+      },
+      "optional": {
+        "reference_image_2": "IMAGE",
+        "reference_image_3": "IMAGE",
+        "reference_image_4": "IMAGE",
+        "reference_image_5": "IMAGE",
+        "reference_image_6": "IMAGE",
+        "reference_image_7": "IMAGE",
+        "reference_image_8": "IMAGE",
+        "reference_image_9": "IMAGE",
+        "reference_transport": ["native"]
+      }
+    },
+    "RandomNoise": { "required": { "noise_seed": "INT" }, "optional": {} },
+    "BasicGuider": { "required": { "model": "MODEL", "conditioning": "CONDITIONING" }, "optional": {} },
+    "H3ImageSamplingPreset": {
+      "required": {
+        "model": "MODEL",
+        "sampling_profile": [
+          "base quality | RES 20 steps",
+          "Turbo v1.0 | 8 steps",
+          "REF2VA Turbo v1.0 768p | 8 steps"
+        ]
+      },
+      "optional": {}
+    },
+    "LoraLoaderModelOnly": {
+      "required": { "model": "MODEL", "lora_name": "STRING_ENUM", "strength_model": "FLOAT" },
+      "optional": {}
+    },
+    "SamplerCustomAdvanced": {
+      "required": {
+        "noise": "NOISE",
+        "guider": "GUIDER",
+        "sampler": "SAMPLER",
+        "sigmas": "SIGMAS",
+        "latent_image": "LATENT"
+      },
+      "optional": {}
+    },
+    "H3ImageDecode": {
+      "required": { "samples": "LATENT", "vae": "VAE" },
+      "optional": {}
+    },
+    "H3ImageFrameSelector": {
+      "required": {
+        "frames": "IMAGE",
+        "strategy": ["decode_recommended"],
+        "manual_index": "INT",
+        "skip_first_frames": "INT",
+        "candidate_start": "FLOAT",
+        "candidate_end": "FLOAT",
+        "similarity_weight": "FLOAT",
+        "top_k": "INT",
+        "source_image": "IMAGE",
+        "recommended_index": "INT"
+      },
+      "optional": {}
+    },
+    "SaveImage": {
+      "required": { "images": "IMAGE", "filename_prefix": "STRING" },
+      "optional": {}
+    }
+  }
+}

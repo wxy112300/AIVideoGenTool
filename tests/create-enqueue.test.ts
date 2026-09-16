@@ -65,6 +65,38 @@ describe("create enqueue preflight checks", () => {
     expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("");
   });
 
+  it("allows H3 FL2VA and REF2VA to queue while runtime evidence is absent or pending", () => {
+    const picture: ImageReference = {
+      id: "h3-picture-1",
+      pictureNumber: 1,
+      absolutePath: "start.png",
+      width: 992,
+      height: 519,
+      role: "base"
+    };
+
+    for (const modelId of ["minimax-h3-image-i2i", "minimax-h3-reference-edit"] as const) {
+      const draft = {
+        ...createDefaultImageEditDraft(),
+        modelId,
+        qualityProfile: "base-quality-20",
+        pictures: [picture],
+        promptVersions: [{
+          ...createDefaultImageEditDraft().promptVersions[0]!,
+          text: "Preserve the subject and adjust the lighting."
+        }]
+      };
+
+      expect(imageEditEnqueueBlockReason(draft, undefined)).toBe("");
+      expect(imageEditEnqueueBlockReason(draft, {
+        ...readyImageProfile(modelId),
+        productGate: "open",
+        runtimeVerified: false,
+        runtimeReady: false
+      })).toBe("");
+    }
+  });
+
   it("allows Z-Image text-to-image enqueue without a reference picture", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "z-image-turbo";

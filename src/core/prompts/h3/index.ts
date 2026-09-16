@@ -29,6 +29,22 @@ export function h3PromptPresetForMode(
     : "official-storyboard";
 }
 
+/**
+ * Keep persisted user presets intact while removing the obsolete built-in
+ * detailed-mode range that shipped before duration-aware coverage targets.
+ */
+export function h3PromptPresetTextForRequest(
+  preset: H3PromptPreset,
+  savedText?: string
+): string {
+  const text = savedText?.trim() || defaultH3PromptPresets[preset];
+  if (preset !== "detailed-cinematic") return text;
+  return text.replace(
+    /For a simple approximately five-second Base-mode request,[^\n]*?hard maxima:\s*/u,
+    ""
+  ).trim();
+}
+
 export function h3PromptPackFor(locale: UiLocale = "zh-CN"): H3PromptPack {
   const resolvedLocale = locale === "en-US" || locale === "zh-TW" ? locale : "zh-CN";
   const presetLocale = resolvedLocale === "en-US" ? enPresetLocale : resolvedLocale === "zh-TW" ? twPresetLocale : zhPresetLocale;

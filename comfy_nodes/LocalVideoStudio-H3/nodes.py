@@ -1,10 +1,10 @@
 """Small, app-owned ComfyUI nodes for durable H3 joint AV artifacts.
 
-This package deliberately does not contain a sampler or an upscaler.  It only
+This package deliberately does not reimplement a sampler or an upscaler.  It
 bridges the ComfyUI joint NestedTensor boundary to a safe, restartable file
 artifact that the Electron application can validate and commit to History.
-The Continuum bridge below delegates temporal-grid and state construction to
-the installed ComfyUI-H3-Continuum package; it does not reimplement sampling.
+The Continuum bridge and facade below delegate state construction and sampling
+to the installed ComfyUI-H3-Continuum package.
 """
 
 from __future__ import annotations
@@ -15,13 +15,14 @@ import logging
 import os
 import re
 import uuid
+from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import folder_paths
 
 
-PACKAGE_VERSION = "0.3.0"
+PACKAGE_VERSION = "0.3.2"
 SCHEMA_VERSION = 1
 ARTIFACT_SUBDIRECTORY = "h3-native-av"
 PAYLOAD_FORMAT = "safetensors"
@@ -299,8 +300,8 @@ class LocalVideoStudioH3LoadJointAV:
         return ({"samples": joint},)
 
 
-def _continuum_state_module():
-    """Return Continuum's state module without importing its node registry twice.
+def _continuum_module(module_name: str):
+    """Return one Continuum module without importing its node registry twice.
 
     ComfyUI loads directory-based custom nodes under a path-derived module name,
     so importing ``ComfyUI-H3-Continuum`` by a normal Python identifier is not
@@ -312,16 +313,22 @@ def _continuum_state_module():
     import sys
     import types
 
+    module_parts = tuple(part.casefold() for part in module_name.split("."))
+    expected_path_tail = (
+        "comfyui-h3-continuum",
+        *module_parts[:-1],
+        f"{module_parts[-1]}.py",
+    )
     for module in tuple(sys.modules.values()):
         module_file = getattr(module, "__file__", "")
         if not isinstance(module_file, str):
             continue
         module_path = Path(module_file)
-        if (
-            module_path.name.casefold() == "state.py"
-            and module_path.parent.name.casefold() == "comfyui-h3-continuum"
-            and callable(getattr(module, "capture_state", None))
-        ):
+        actual_path_tail = tuple(
+            part.casefold()
+            for part in module_path.parts[-len(expected_path_tail):]
+        )
+        if actual_path_tail == expected_path_tail:
             return module
 
     continuum_directory = None
@@ -353,7 +360,11 @@ def _continuum_state_module():
             is_package=True,
         )
         sys.modules[package_name] = package
-    return importlib.import_module(f"{package_name}.state")
+    return importlib.import_module(f"{package_name}.{module_name}")
+
+
+def _continuum_state_module():
+    return _continuum_module("state")
 
 
 def _resolve_continuum_capacity(value: Any, source_frame_count: int) -> int:
@@ -488,6 +499,95 @@ class LocalVideoStudioH3ArtifactToContinuumState:
         return (state, report)
 
 
+@lru_cache(maxsize=1)
+def _continuum_stateful_v38_class():
+    """Build a V3.8 facade whose only change is forwarding initial_state.
+
+    Continuum 3.8 keeps initial_state in its native V3 engine, but its public
+    Production/V3.8 facade omits that one value while assembling the internal
+    advanced dictionary.  C3 linearization lets this injector sit precisely
+    between Production and H3ContinuumSamplerV3, preserving the complete V3.8
+    resolution, reference, diagnostics, transport, review, and storage paths.
+    """
+    driving = _continuum_module("v3.driving_nodes")
+    continuum_nodes = _continuum_module("v3.nodes")
+    v3_base = continuum_nodes.H3ContinuumSamplerV3
+    v38_base = driving.H3ContinuumSamplerV38
+
+    class _InitialStateInjector(v3_base):
+        def run(self, *args, **kwargs):
+            initial_state = getattr(self, "_local_video_studio_initial_state", None)
+            if initial_state is not None:
+                advanced = dict(kwargs.get("advanced") or {})
+                advanced["initial_state"] = initial_state
+                kwargs["advanced"] = advanced
+            return super().run(*args, **kwargs)
+
+    class _StatefulV38(v38_base, _InitialStateInjector):
+        pass
+
+    return _StatefulV38
+
+
+class LocalVideoStudioH3ContinuumSamplerV38:
+    """Continuum V3.8 facade with its native initial_state input restored."""
+
+    DESCRIPTION = (
+        "H3 Continuum V3.8 原生 sampler 的兼容外壳；仅恢复上游内部已支持但"
+        "公开 facade 未暴露的 initial_state 输入。"
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        sampler_class = _continuum_stateful_v38_class()
+        schema = sampler_class.INPUT_TYPES()
+        optional = dict(schema.get("optional", {}))
+        optional["initial_state"] = (
+            "H3_CONTINUUM_STATE",
+            {
+                "tooltip": (
+                    "由 LocalVideoStudioH3ArtifactToContinuumState 提供的原生 AV "
+                    "尾部状态；不要同时重复连接同一来源的 First Image 或 Video Guide。"
+                )
+            },
+        )
+        schema["optional"] = optional
+        return schema
+
+    RETURN_TYPES = (
+        "LATENT",
+        "LATENT",
+        "H3_CONTINUUM_ASSEMBLY_PLAN",
+        "STRING",
+        "AUDIO",
+        "H3_CONTINUUM_REFINE_CONTEXT",
+    )
+    RETURN_NAMES = (
+        "video_latents",
+        "audio_latents",
+        "assembly_plan",
+        "status",
+        "driving_audio",
+        "refine_context",
+    )
+    OUTPUT_IS_LIST = (True, True, False, False, False, False)
+    FUNCTION = "run"
+    CATEGORY = "Local Video Studio/H3"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return _continuum_stateful_v38_class().IS_CHANGED(**kwargs)
+
+    def run(self, initial_state=None, **kwargs):
+        if initial_state is None:
+            raise ValueError("Continuum native-state 续写缺少 initial_state")
+        continuum_state = _continuum_state_module()
+        continuum_state.validate_state(initial_state)
+        sampler = _continuum_stateful_v38_class()()
+        sampler._local_video_studio_initial_state = initial_state
+        return sampler.run(**kwargs)
+
+
 class LocalVideoStudioRequireGpuVAE:
     @classmethod
     def INPUT_TYPES(cls):
@@ -574,6 +674,7 @@ NODE_CLASS_MAPPINGS = {
     "LocalVideoStudioH3SaveJointAV": LocalVideoStudioH3SaveJointAV,
     "LocalVideoStudioH3LoadJointAV": LocalVideoStudioH3LoadJointAV,
     "LocalVideoStudioH3ArtifactToContinuumState": LocalVideoStudioH3ArtifactToContinuumState,
+    "LocalVideoStudioH3ContinuumSamplerV38": LocalVideoStudioH3ContinuumSamplerV38,
     "LocalVideoStudioRequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3RequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3AnchorConditioning": LocalVideoStudioH3AnchorConditioning,
@@ -583,6 +684,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LocalVideoStudioH3SaveJointAV": "H3 Save Joint AV (Local Video Studio)",
     "LocalVideoStudioH3LoadJointAV": "H3 Load Joint AV (Local Video Studio)",
     "LocalVideoStudioH3ArtifactToContinuumState": "H3 Joint AV → Continuum State (Local Video Studio)",
+    "LocalVideoStudioH3ContinuumSamplerV38": "H3 Continuum V3.8 Native State (Local Video Studio)",
     "LocalVideoStudioRequireGpuVAE": "Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3RequireGpuVAE": "H3 Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3AnchorConditioning": "H3 Anchor Conditioning (Local Video Studio)",

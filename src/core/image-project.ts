@@ -9,6 +9,7 @@ import type {
   ImageMarkupData,
   ImageCropData
 } from "../types.js";
+import type { H3ImageOptions, H3ImageRecipeSnapshot } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
@@ -23,6 +24,122 @@ const imageReferenceRoles: ImageReferenceRole[] = [
   "background",
   "auto"
 ];
+
+const h3ImageModelIds = new Set([
+  "minimax-h3-image-i2i",
+  "minimax-h3-reference-edit"
+]);
+const h3ImageSourceFits = new Set<H3ImageOptions["sourceFit"]>([
+  "crop-center",
+  "contain-pad",
+  "stretch"
+]);
+const h3ImageReferenceDetails = new Set<H3ImageOptions["referenceDetail"]>([
+  "match-generation-area",
+  "max-identity-2048"
+]);
+const h3ImageRecipeAdapters = new Set<H3ImageRecipeSnapshot["adapter"]>([
+  "base",
+  "fl2va-turbo-8",
+  "ref2va-turbo-8-768p"
+]);
+
+export function isH3ImageModelId(modelId: string): boolean {
+  return h3ImageModelIds.has(modelId);
+}
+
+export function defaultH3ImageOptionsFor(modelId: string): H3ImageOptions | undefined {
+  if (!isH3ImageModelId(modelId)) return undefined;
+  return {
+    frameProfile: "recommended-5",
+    frameSelection: "decode-recommended",
+    sourceFit: "crop-center",
+    referenceDetail: "match-generation-area",
+    sourceFidelity: modelId === "minimax-h3-reference-edit" ? 0.6 : 0.75
+  };
+}
+
+export function normalizeH3ImageOptions(
+  value: unknown,
+  modelId: string
+): H3ImageOptions | undefined {
+  const defaults = defaultH3ImageOptionsFor(modelId);
+  if (!defaults) return undefined;
+  const source = value && typeof value === "object"
+    ? value as Partial<H3ImageOptions>
+    : {};
+  const fidelity = typeof source.sourceFidelity === "number" && Number.isFinite(source.sourceFidelity)
+    ? Math.min(1, Math.max(0, source.sourceFidelity))
+    : defaults.sourceFidelity;
+  return {
+    frameProfile: source.frameProfile === "recommended-5" ? source.frameProfile : defaults.frameProfile,
+    frameSelection: source.frameSelection === "decode-recommended" ? source.frameSelection : defaults.frameSelection,
+    sourceFit: h3ImageSourceFits.has(source.sourceFit as H3ImageOptions["sourceFit"])
+      ? source.sourceFit as H3ImageOptions["sourceFit"]
+      : defaults.sourceFit,
+    referenceDetail: h3ImageReferenceDetails.has(source.referenceDetail as H3ImageOptions["referenceDetail"])
+      ? source.referenceDetail as H3ImageOptions["referenceDetail"]
+      : defaults.referenceDetail,
+    sourceFidelity: fidelity
+  };
+}
+
+export function normalizeH3ImageRecipe(
+  value: unknown,
+  modelId: string
+): H3ImageRecipeSnapshot | undefined {
+  if (!isH3ImageModelId(modelId) || !value || typeof value !== "object") return undefined;
+  const source = value as Partial<H3ImageRecipeSnapshot>;
+  const adapter = source.adapter as H3ImageRecipeSnapshot["adapter"];
+  if (!h3ImageRecipeAdapters.has(adapter)) return undefined;
+  const allowedAdapters = modelId === "minimax-h3-image-i2i"
+    ? new Set<H3ImageRecipeSnapshot["adapter"]>(["base", "fl2va-turbo-8"])
+    : new Set<H3ImageRecipeSnapshot["adapter"]>(["base", "ref2va-turbo-8-768p"]);
+  if (!allowedAdapters.has(adapter)) return undefined;
+  const sampler = source.sampler === "res_multistep" || source.sampler === "euler"
+    ? source.sampler
+    : undefined;
+  if (!sampler || source.scheduler !== "simple" || source.frameProfile !== "recommended-5" ||
+      source.frameSelection !== "decode-recommended" ||
+      (source.resolutionProfile !== undefined && source.resolutionProfile !== "native-detail-0.98mp")) return undefined;
+  const expected = adapter === "base"
+    ? { samplingProfile: "base quality | RES 20 steps", sampler: "res_multistep" as const, steps: 20 }
+    : adapter === "fl2va-turbo-8"
+      ? { samplingProfile: "Turbo v1.0 | 8 steps", sampler: "euler" as const, steps: 8 }
+      : { samplingProfile: "REF2VA Turbo v1.0 768p | 8 steps", sampler: "euler" as const, steps: 8 };
+  if (source.samplingProfile !== expected.samplingProfile || sampler !== expected.sampler || source.steps !== expected.steps) {
+    return undefined;
+  }
+  const loraFilename = typeof source.loraFilename === "string"
+    ? source.loraFilename.trim()
+    : "";
+  if (adapter === "base" ? source.loraFilename !== undefined : !loraFilename) {
+    return undefined;
+  }
+  const numberFields = [source.steps, source.shiftVideo, source.shiftAudio];
+  if (!numberFields.every((field) => typeof field === "number" && Number.isFinite(field) && field > 0)) {
+    return undefined;
+  }
+  if (source.shiftVideo !== 12 || source.shiftAudio !== 3) return undefined;
+  return {
+    adapter,
+    samplingProfile: expected.samplingProfile,
+    sampler,
+    scheduler: "simple",
+    steps: Math.trunc(source.steps!),
+    shiftVideo: source.shiftVideo!,
+    shiftAudio: source.shiftAudio!,
+    frameProfile: "recommended-5",
+    frameSelection: "decode-recommended",
+    resolutionProfile: "native-detail-0.98mp",
+    ...(typeof source.diffusionModelFilename === "string" && source.diffusionModelFilename.trim()
+      ? { diffusionModelFilename: source.diffusionModelFilename.trim() }
+      : {}),
+    ...(loraFilename
+      ? { loraFilename }
+      : {})
+  };
+}
 
 function cleanImagePromptText(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -123,6 +240,7 @@ function normalizeImageAssetVersion(
     ? source.kind
     : "edit";
   const generatedVersion = Boolean(source.taskId || source.runId || source.comfyPromptId || source.workflowPath);
+  const modelId = typeof source.modelId === "string" ? source.modelId : "";
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     versionNumber: normalizedInteger(source.versionNumber, 0, 0),
@@ -140,7 +258,7 @@ function normalizeImageAssetVersion(
     ...(typeof source.startedAt === "string" && Number.isFinite(Date.parse(source.startedAt))
       ? { startedAt: source.startedAt }
       : {}),
-    modelId: typeof source.modelId === "string" ? source.modelId : "",
+    modelId,
     workflowPath: typeof source.workflowPath === "string" ? source.workflowPath : "",
     prompt: typeof source.prompt === "string" ? source.prompt : "",
     promptVersion: normalizedInteger(source.promptVersion, 0, 0),
@@ -183,7 +301,13 @@ function normalizeImageAssetVersion(
       ? { comfyPromptId: source.comfyPromptId }
       : {}),
     ...(source.comfyOutputs !== undefined ? { comfyOutputs: source.comfyOutputs } : {}),
-    ...(source.performanceStats !== undefined ? { performanceStats: source.performanceStats } : {})
+    ...(source.performanceStats !== undefined ? { performanceStats: source.performanceStats } : {}),
+    ...(normalizeH3ImageOptions(source.h3ImageOptions, modelId)
+      ? { h3ImageOptions: normalizeH3ImageOptions(source.h3ImageOptions, modelId) }
+      : {}),
+    ...(normalizeH3ImageRecipe(source.h3ImageRecipe, modelId)
+      ? { h3ImageRecipe: normalizeH3ImageRecipe(source.h3ImageRecipe, modelId) }
+      : {})
   };
 }
 
@@ -299,6 +423,9 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
       : {}),
     ...(typeof source.originalPath === "string" && source.originalPath.trim()
       ? { originalPath: source.originalPath.trim() }
+      : {}),
+    ...(typeof source.note === "string" && source.note.trim()
+      ? { note: source.note.trim() }
       : {})
   };
 }
@@ -344,6 +471,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   const defaults = createDefaultImageEditDraft();
   if (!value || typeof value !== "object") return defaults;
   const source = value as Partial<ImageEditDraft>;
+  const { h3ImageOptions: _storedH3ImageOptions, ...sourceWithoutH3ImageOptions } = source;
   const pictures = normalizeImageReferences(source.pictures);
   const storedPromptVersions = Array.isArray(source.promptVersions) && source.promptVersions.length
     ? source.promptVersions
@@ -376,6 +504,9 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   const seed = typeof source.seed === "number" && Number.isFinite(source.seed)
     ? Math.trunc(source.seed)
     : null;
+  const modelId = typeof source.modelId === "string" && source.modelId.trim()
+    ? source.modelId
+    : defaults.modelId;
   const largestPictureNumber = pictures.reduce(
     (largest, picture) => Math.max(largest, picture.pictureNumber),
     0
@@ -386,7 +517,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   );
   return {
     ...defaults,
-    ...source,
+    ...sourceWithoutH3ImageOptions,
     mode: "image-edit",
     projectId: typeof source.projectId === "string" && source.projectId.trim()
       ? source.projectId
@@ -398,9 +529,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     nextPictureNumber,
     promptVersions,
     activePromptVersion,
-    modelId: typeof source.modelId === "string" && source.modelId.trim()
-      ? source.modelId
-      : defaults.modelId,
+    modelId,
     qualityProfile: typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? source.qualityProfile
       : defaults.qualityProfile,
@@ -412,7 +541,10 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     ),
     outputCount,
     outputFormat,
-    seed
+    seed,
+    ...(normalizeH3ImageOptions(source.h3ImageOptions, modelId)
+      ? { h3ImageOptions: normalizeH3ImageOptions(source.h3ImageOptions, modelId) }
+      : {})
   };
 }
 
@@ -446,7 +578,8 @@ export function imageEditDraftFromQueueTask(
       ...picture,
       ...(picture.crop ? { crop: { ...picture.crop } } : {}),
       ...(picture.markup ? { markup: { ...picture.markup } } : {}),
-      ...(picture.mask ? { mask: { ...picture.mask } } : {})
+      ...(picture.mask ? { mask: { ...picture.mask } } : {}),
+      ...(picture.note ? { note: picture.note } : {})
     })),
     promptVersions: [{
       id: crypto.randomUUID(),
@@ -461,7 +594,8 @@ export function imageEditDraftFromQueueTask(
     targetResolution: task.targetResolution ?? "source",
     outputCount: task.outputCount,
     outputFormat: "png",
-    seed: sameSeed ? seeds[0] : null
+    seed: sameSeed ? seeds[0] : null,
+    ...(task.h3ImageOptions ? { h3ImageOptions: { ...task.h3ImageOptions } } : {})
   });
 }
 
@@ -494,16 +628,19 @@ export function createImageSourceVersion(
 }
 
 export function imageEditPicturesForVersion(
-  version: Pick<ImageAssetVersion, "file" | "width" | "height" | "references" | "contentHash">
+  version: Pick<ImageAssetVersion, "file" | "width" | "height" | "references" | "contentHash"> & {
+    modelId?: string;
+  }
 ): ImageReference[] {
   const outputPath = version.file.absolutePath?.trim();
   if (!outputPath) return [];
+  const preserveH3ReferenceNumbers = version.modelId === "minimax-h3-reference-edit";
   const retainedReferences = version.references
     .filter((reference) => reference.pictureNumber > 1 && reference.absolutePath.trim())
-    .slice(0, 2)
+    .slice(0, preserveH3ReferenceNumbers ? 8 : 2)
     .map((reference, index) => ({
       ...reference,
-      pictureNumber: index + 2,
+      ...(preserveH3ReferenceNumbers ? {} : { pictureNumber: index + 2 }),
       role: reference.role === "base" ? "auto" as const : reference.role
     }));
   return [

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EnhanceRequest } from "../src/types";
 import { withPromptExtensionMedia } from "../electron/services/prompt-extension-media";
-import { promptExtensionFrameTime } from "../electron/services/extension-media";
+import {
+  extensionGeneratedTrimStart,
+  promptExtensionFrameTime
+} from "../electron/services/extension-media";
 
 const baseRequest = (): EnhanceRequest => ({
   prompt: "Continue the motion.",
@@ -19,6 +22,24 @@ const baseRequest = (): EnhanceRequest => ({
 });
 
 describe("extension prompt boundary media", () => {
+  it("does not trim Continuum V3.8 overlap twice after node-side assembly", () => {
+    expect(extensionGeneratedTrimStart({
+      modelId: "minimax_h3_continuum",
+      workflowPath: "workflows/minimax_h3_continuum_v38_extend_api.json",
+      fps: 24,
+      frameInterpolation: "off",
+      overlapFrames: 22
+    })).toBe(0);
+
+    expect(extensionGeneratedTrimStart({
+      modelId: "ltx23_22b_distilled",
+      workflowPath: "workflows/ltx23_extend_api.json",
+      fps: 24,
+      frameInterpolation: "off",
+      overlapFrames: 22
+    })).toBeCloseTo(22 / 24);
+  });
+
   it("samples one frame before the selected crop end", () => {
     expect(promptExtensionFrameTime({
       trimStartSeconds: 2,

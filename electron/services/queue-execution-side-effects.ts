@@ -21,6 +21,7 @@ import { finalizeExtensionOutput } from "./extension-media.js";
 import { cleanupNativeSeedVr2Intermediates } from "./seedvr2-upscale.js";
 import { freeMemory } from "./comfy-ui.js";
 import type { StateRepository } from "../ports/state-repository.js";
+import type { ImageInspectionPort } from "../ports/image-inspection.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { persistImageHistoryResult, persistVideoHistoryResult } from "../queue-history.js";
@@ -58,6 +59,7 @@ export interface QueueExecutionSideEffectsDependencies {
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
+  imageInspection?: ImageInspectionPort;
 }
 
 export interface ImageRunCompletion {
@@ -70,6 +72,7 @@ export interface ImageRunCompletion {
   promptId: string;
   comfyOutputs: unknown;
   performanceStats: TaskPerformanceStats;
+  actualDimensions?: { width: number; height: number };
 }
 
 export interface VideoTaskCompletion {
@@ -245,6 +248,15 @@ export class QueueExecutionSideEffects {
     const outputContentHash = completion.file.absolutePath
       ? await hashImageFile(completion.file.absolutePath).catch(() => undefined)
       : undefined;
+    let actualDimensions = completion.actualDimensions;
+    if (!actualDimensions && completion.file.absolutePath && this.deps.imageInspection) {
+      try {
+        const dimensions = this.deps.imageInspection.readDimensions(completion.file.absolutePath);
+        if (dimensions.width > 0 && dimensions.height > 0) actualDimensions = dimensions;
+      } catch {
+        actualDimensions = undefined;
+      }
+    }
     const next = await store.update((state) => {
       persistImageHistoryResult(state, {
         taskId: completion.taskId,
@@ -253,6 +265,7 @@ export class QueueExecutionSideEffects {
         completedAt: completion.completedAt,
         versionId: completion.versionId,
         file: completion.file,
+        actualDimensions,
         outputContentHash,
         promptId: completion.promptId,
         comfyOutputs: completion.comfyOutputs,

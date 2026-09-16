@@ -201,6 +201,37 @@ export type ImageReferenceRole =
   | "background"
   | "auto";
 
+export type H3ImageSourceFit = "crop-center" | "contain-pad" | "stretch";
+export type H3ImageReferenceDetail = "match-generation-area" | "max-identity-2048";
+export type H3ImageResolutionProfile = "native-detail-0.98mp";
+
+/** Immutable product-gate options for the external H3 Image Studio adapter. */
+export interface H3ImageOptions {
+  frameProfile: "recommended-5";
+  frameSelection: "decode-recommended";
+  sourceFit: H3ImageSourceFit;
+  referenceDetail: H3ImageReferenceDetail;
+  /** Prompt preservation strength, not sampler denoise. */
+  sourceFidelity: number;
+}
+
+/** Resolved recipe stored for reproducible queue/history display. */
+export interface H3ImageRecipeSnapshot {
+  adapter: "base" | "fl2va-turbo-8" | "ref2va-turbo-8-768p";
+  samplingProfile: string;
+  sampler: "res_multistep" | "euler";
+  scheduler: "simple";
+  steps: number;
+  shiftVideo: number;
+  shiftAudio: number;
+  frameProfile: "recommended-5";
+  frameSelection: "decode-recommended";
+  /** Fixed H3 Image Studio canvas recipe; absent only in legacy history records. */
+  resolutionProfile?: H3ImageResolutionProfile;
+  diffusionModelFilename?: string;
+  loraFilename?: string;
+}
+
 export interface ImageMarkupData {
   documentPath: string;
   renderedPath: string;
@@ -279,6 +310,8 @@ export interface ImageReference {
   contentHash?: string;
   managedRelativePath?: string;
   originalPath?: string;
+  /** Optional narrow responsibility note for ordered REF2VA references. */
+  note?: string;
 }
 
 export type ImageReferenceSnapshot = ImageReference;
@@ -299,6 +332,7 @@ export interface ImageEditDraft {
   outputCount: number;
   outputFormat: ImageOutputFormat;
   seed: number | null;
+  h3ImageOptions?: H3ImageOptions;
 }
 
 export interface ImageGenerationRun {
@@ -532,6 +566,8 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   qualityProfile: string;
   outputFormat: ImageOutputFormat;
   outputCount: number;
+  h3ImageOptions?: H3ImageOptions;
+  h3ImageRecipe?: H3ImageRecipeSnapshot;
   runs: ImageGenerationRun[];
 }
 
@@ -1063,6 +1099,8 @@ export interface ImageAssetVersion {
   targetResolution?: ImageTargetResolution;
   outputCount?: number;
   diffusionModelFilename?: string;
+  h3ImageOptions?: H3ImageOptions;
+  h3ImageRecipe?: H3ImageRecipeSnapshot;
   seed?: number;
   width: number;
   height: number;
@@ -1370,6 +1408,9 @@ export interface ModelScanProfile {
   vram: string;
   available: boolean;
   integrated: boolean;
+  /** Product release gate; catalogued/runtime-ready is not the same as smoke-passed. */
+  productGate?: "locked" | "open";
+  productGateReason?: string;
   requiredCustomNodeIds?: string[];
   missingCustomNodeIds?: string[];
   missingCustomNodeNames?: string[];

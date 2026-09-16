@@ -3,6 +3,7 @@ import {
   isGemmaPromptModel,
   isQwenVlPeftPromptModel
 } from "../../core/prompt-models";
+import { modelCatalog } from "../../core/catalog";
 import { createTranslator, type Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 import type {
@@ -170,13 +171,26 @@ export function promptModelStatus(
 }
 
 export function isImageModelSelectable(profile?: ModelScanProfile): boolean {
-  return Boolean(profile?.category === "image" && profile.integrated && profile.available);
+  const productGate = profile
+    ? profile.productGate ?? modelCatalog.get(profile.id)?.definition.scan?.productGate
+    : undefined;
+  // Selection only needs a complete model profile. Runtime node/schema evidence
+  // is deliberately enforced by cachedImageProfileAllowsEnqueue at queue time,
+  // so a user can choose a model while ComfyUI is offline or still being scanned.
+  return Boolean(
+    profile?.category === "image" &&
+    profile.integrated &&
+    profile.available &&
+    productGate !== "locked"
+  );
 }
 
 export function imageWorkflowStatus(profile?: ModelScanProfile, t: Translate = createTranslator("zh-CN").t): string {
   if (!profile) return t(uiKeys.status.imageWaitingScan);
   if (!profile.available) return t(uiKeys.status.imageIncomplete);
   if (!profile.integrated) return t(uiKeys.status.imagePendingIntegration);
+  const productGate = profile.productGate ?? modelCatalog.get(profile.id)?.definition.scan?.productGate;
+  if (productGate === "locked") return t(uiKeys.status.imageProductGatePending);
   if (profile.missingCustomNodeNames?.length) {
     return t(uiKeys.status.imageMissingNodes, { nodes: profile.missingCustomNodeNames.join("、") });
   }

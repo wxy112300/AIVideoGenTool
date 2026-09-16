@@ -1,4 +1,5 @@
 import type {
+  H3ImageRecipeSnapshot,
   ImageGenerationQueueTask,
   ImageGenerationRun,
   ImageOutputFormat,
@@ -38,12 +39,20 @@ export interface ImageModelCapability {
   textOnlyOutputHeight?: number;
   /** Optional model-side component needed only for reference/control inputs. */
   referenceModelComponentLabel?: string;
+  /** Optional scan component required only for a named quality profile. */
+  qualityProfileComponentLabels?: Readonly<Record<string, string>>;
 }
 
 export interface CompiledImagePrompt {
   prompt: string;
   pictures: ImageReferenceSnapshot[];
   referencedPictureNumbers: number[];
+  /** Visible Picture numbers are stable persisted labels; H3 runtime uses continuous slots. */
+  runtimePictureNumberMap?: Array<{
+    visiblePictureNumber: number;
+    runtimePictureNumber: number;
+  }>;
+  runtimeReferencedPictureNumbers?: number[];
   errors: string[];
 }
 
@@ -65,7 +74,13 @@ export interface ImageModelAdapter extends ImageModelCapability {
   validateWorkflow(
     workflow: ComfyApiWorkflow,
     qualityProfile?: string,
-    allowImagePlaceholders?: boolean
+    allowImagePlaceholders?: boolean,
+    recipe?: H3ImageRecipeSnapshot
+  ): string[];
+  /** Validate model-specific runtime sockets and enum values before uploads. */
+  validateRuntimeSchema?(
+    workflow: ComfyApiWorkflow,
+    objectInfo: Record<string, unknown>
   ): string[];
   parseOutputs(history: unknown): ImageOutputCandidate[];
 }

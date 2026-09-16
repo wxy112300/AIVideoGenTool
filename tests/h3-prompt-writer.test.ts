@@ -368,9 +368,10 @@ ${JSON.stringify({
 
       expect(uploadMode).toBe("I2VA");
       expect(generateBody.mode).toBe("I2VA");
-      expect(String(generateBody.creative_brief)).toContain("exact first frame of the new target segment");
+      expect(String(generateBody.creative_brief)).toContain("exact latent audio-video tail");
+      expect(String(generateBody.creative_brief)).toContain("target/output mode is T2VA");
       expect(result).toContain("integrated_multimodal_description:");
-      expect(result).toContain("For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.");
+      expect(result).not.toContain("For the target video, at 0.00 seconds into the target video");
       expect(result).not.toContain("```json");
       expect(result.trim().startsWith("{")).toBe(false);
     } finally {

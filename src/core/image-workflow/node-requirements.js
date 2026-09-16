@@ -139,3 +139,42 @@ export const birefnetRequiredNodeTypes = [
     "JoinImageWithAlpha",
     "SaveImage"
 ];
+/** Core ComfyUI nodes shared by the H3 Image Studio API graphs. */
+export const minimaxH3ImageCoreNodeTypes = [
+    "UNETLoader",
+    "CLIPLoader",
+    "VAELoader",
+    "LoadImage",
+    "H3ImageResolutionPreset",
+    "RandomNoise",
+    "BasicGuider",
+    "H3ImageSamplingPreset",
+    "SamplerCustomAdvanced",
+    "H3ImageDecode",
+    "H3ImageFrameSelector",
+    "SaveImage"
+];
+/** Image Studio node types used by both FL2VA and REF2VA prepare paths. */
+export const minimaxH3ImageStudioSharedNodeTypes = [
+    "H3ImageResolutionPreset",
+    "H3ImageSamplingPreset",
+    "H3ImageDecode",
+    "H3ImageFrameSelector"
+];
+export const minimaxH3ImageFl2vaNodeTypes = [
+    "H3ImageToImagePrepare"
+];
+export const minimaxH3ImageRef2vaNodeTypes = [
+    "H3ReferenceEditPrepare"
+];
+export const minimaxH3ImageTurboNodeTypes = [
+    "LoraLoaderModelOnly"
+];
+export const minimaxH3ImageI2IRequiredNodeTypes = [
+    ...minimaxH3ImageCoreNodeTypes,
+    ...minimaxH3ImageFl2vaNodeTypes
+];
+export const minimaxH3ReferenceEditRequiredNodeTypes = [
+    ...minimaxH3ImageCoreNodeTypes,
+    ...minimaxH3ImageRef2vaNodeTypes
+];

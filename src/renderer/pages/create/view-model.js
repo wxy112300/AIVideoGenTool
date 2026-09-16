@@ -5,10 +5,11 @@ import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog"
 import { SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
-import { imageModelCapabilityFor, imageLightningComponentFound, imageQualityProfileRequiresLightning, imageAspectRatioOptionsFor, imageResolutionOptionsFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
-import { normalizeImageEditDraft } from "../../../core/image-project";
+import { imageModelCapabilityFor, imageModelAdapterFor, imageLightningComponentFound, imageQualityProfileRequiresLightning, imageAspectRatioOptionsFor, imageResolutionOptionsFor, imageOutputCountMax, imageQualityProfileComponentFound, imageQualityProfileRequiredComponentLabel, normalizeImageAspectRatio, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
+import { isH3ImageModelId, normalizeImageEditDraft } from "../../../core/image-project";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts, motionContextReferenceSlotsReady } from "../../../core/h3-reference";
+import { h3TokenCountForDraft } from "../../../core/h3-token-count";
 import { generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputDimensions } from "../../../core/workflow";
 import { BUILTIN_VIDEO_LORAS, H3_SLA_TURBO_LORA_ID, H3_TURBO_LORA_ID, isH3PddLoraId, isH3SlaTurboLoraId, isH3TurboLoraId, profileProvidesVideoLora, videoLoraCompatibleWithModel, videoLoraCompatibleWithDraft } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
@@ -31,6 +32,28 @@ const h3LatentSaveModeTipKeys = {
     "motion-context": uiKeys.create.videoSettings.saveLatentMotionContextTip,
     none: uiKeys.create.videoSettings.saveLatentNoneTip
 };
+export function videoResolutionOptionsForDraft(draft, extending, jointAvSerializerInstalled) {
+    const base = isMiniMaxH3Model(draft.modelId)
+        ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
+        : [480, 540, 720];
+    const h3Create1080 = !extending && draft.modelId === "minimax_h3_fl2va" &&
+        draft.videoLoras.length === 0 &&
+        h3LatentSaveModeSavesJointAv(h3LatentSaveModeFor(draft)) &&
+        jointAvSerializerInstalled;
+    return h3Create1080 ? [...base, 1080] : base;
+}
+export function resolutionAfterJointAvPreference(resolution, saveJointAv) {
+    return !saveJointAv && resolution === 1080 ? 768 : resolution;
+}
+export function selectedVideoResolution(resolution, options) {
+    return options.includes(resolution) ? resolution : options.at(-1) ?? resolution;
+}
+export function generationSafetyForCreateDraft(draft, locale) {
+    return generationSafetyForTask({
+        ...draft,
+        resolution: draft.resolution === 1080 ? 720 : draft.resolution
+    }, locale ?? "zh-CN");
+}
 export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTranslator("zh-CN").t) {
     const imageCapability = imageModelCapabilityFor(draft.modelId);
     const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
@@ -54,37 +77,37 @@ export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTrans
                         : imageCapability.requiresMask && !draft.pictures[0]?.mask?.regionCount
                             ? "请先在原图上绘制并保存 Mask"
                             : "";
-    return referenceBlockReason || imageCapability.requiresPrompt !== false && !prompt.text.trim()
-        ? referenceBlockReason || t(uiKeys.create.validation.imagePromptMissing)
-        : imageProfile?.missingCustomNodeNames?.length
-            ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与工作流中安装。`
-            : !cachedImageProfileAllowsEnqueue(imageProfile)
-                ? !imageProfile?.available
-                    ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
-                    : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
-                : "";
-}
-export function videoResolutionOptionsForDraft(draft, extending, jointAvSerializerInstalled) {
-    const base = isMiniMaxH3Model(draft.modelId)
-        ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
-        : [480, 540, 720];
-    const h3Create1080 = !extending && draft.modelId === "minimax_h3_fl2va" &&
-        draft.videoLoras.length === 0 &&
-        h3LatentSaveModeSavesJointAv(h3LatentSaveModeFor(draft)) &&
-        jointAvSerializerInstalled;
-    return h3Create1080 ? [...base, 1080] : base;
-}
-export function resolutionAfterJointAvPreference(resolution, saveJointAv) {
-    return !saveJointAv && resolution === 1080 ? 768 : resolution;
-}
-export function selectedVideoResolution(resolution, options) {
-    return options.includes(resolution) ? resolution : options.at(-1) ?? resolution;
-}
-export function generationSafetyForCreateDraft(draft, locale) {
-    return generationSafetyForTask({
-        ...draft,
-        resolution: draft.resolution === 1080 ? 720 : draft.resolution
-    }, locale ?? "zh-CN");
+    if (referenceBlockReason)
+        return referenceBlockReason;
+    if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
+        return t(uiKeys.create.validation.imagePromptMissing);
+    }
+    if (isH3ImageModelId(draft.modelId)) {
+        const productGate = imageProfile?.productGate ?? modelCatalog.get(draft.modelId)?.definition.scan?.productGate;
+        if (productGate === "locked")
+            return t(uiKeys.status.imageProductGatePending);
+        if (!imageCapability.qualityProfiles.some((profile) => profile.id === draft.qualityProfile)) {
+            return `H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`;
+        }
+        const compiled = imageModelAdapterFor(draft.modelId)?.compilePrompt(prompt.text, draft.pictures);
+        if (compiled?.errors.length)
+            return compiled.errors[0];
+    }
+    if (imageProfile?.missingCustomNodeNames?.length) {
+        return `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
+    }
+    if (imageProfile && !cachedImageProfileAllowsEnqueue(imageProfile)) {
+        return !imageProfile?.available
+            ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
+            : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name });
+    }
+    const selectedQuality = imageCapability.qualityProfiles.find((profile) => profile.id === draft.qualityProfile);
+    const requiredQualityComponent = imageQualityProfileRequiredComponentLabel(imageCapability, draft.qualityProfile);
+    if (selectedQuality && requiredQualityComponent &&
+        !imageQualityProfileComponentFound(imageCapability, draft.qualityProfile, imageProfile?.components ?? [])) {
+        return `${selectedQuality.label} 需要 ${requiredQualityComponent}；请先在设置 → 图片模型中补齐后重新扫描。`;
+    }
+    return "";
 }
 export function videoEnqueueBlockReason(input) {
     const t = input.t ?? createTranslator("zh-CN").t;
@@ -101,15 +124,15 @@ export function videoEnqueueBlockReason(input) {
                             ? t(uiKeys.create.validation.extensionUnsafe)
                             : !input.safetySafe
                                 ? input.safetyMessage
-                                : !input.h3MotionContextReady
-                                    ? t(uiKeys.create.validation.motionContextMissing)
-                                    : input.isContinuum && !input.continuumArtifactReady
-                                        ? t(uiKeys.create.validation.continuumArtifactMissing)
+                                : input.isContinuum && !input.continuumArtifactReady
+                                    ? t(uiKeys.create.validation.continuumArtifactMissing)
+                                    : !input.h3MotionContextReady
+                                        ? t(uiKeys.create.validation.motionContextMissing)
                                         : !input.r2vSlotsReady
-                                        ? t(uiKeys.create.validation.r2vSlotMissing)
-                                        : !input.spectrumReady
-                                            ? t(uiKeys.create.validation.spectrumMissing)
-                                            : "";
+                                            ? t(uiKeys.create.validation.r2vSlotMissing)
+                                            : !input.spectrumReady
+                                                ? t(uiKeys.create.validation.spectrumMissing)
+                                                : "";
     }
     return !input.isR2V && !input.allowTextOnly && !input.startImagePath
         ? t(uiKeys.create.validation.startFrameMissing)
@@ -146,10 +169,12 @@ export function buildImageEditPageViewModel(options) {
             category: "image",
             badge: modelCatalog.localized(entry.definition.id, state.settings.uiLocale)?.badge ?? "",
             description: modelCatalog.localized(entry.definition.id, state.settings.uiLocale)?.description ?? "",
-            vram: entry.definition.scan?.vram ?? "",
-            available: false,
-            integrated: entry.definition.scan?.integrated !== false,
-            components: []
+                vram: entry.definition.scan?.vram ?? "",
+                available: false,
+                integrated: entry.definition.scan?.integrated !== false,
+                productGate: entry.definition.scan?.productGate,
+                productGateReason: entry.definition.scan?.productGateReason,
+                components: []
         }));
     const prompt = activeImagePrompt(draft, state.settings.uiLocale);
     const imageProfile = environmentScan?.modelProfiles.find((profile) => profile.id === draft.modelId);
@@ -191,6 +216,35 @@ export function buildImageEditPageViewModel(options) {
     const promptlessResultDescription = t(backgroundRemoval
         ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
         : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
+    const h3ImageOptionsVisible = isH3ImageModelId(draft.modelId);
+    const h3ReferenceDetailVisible = draft.modelId === "minimax-h3-reference-edit";
+    const h3ReferenceNoteVisible = h3ReferenceDetailVisible;
+    const h3ImageSourceFitOptionsMarkup = h3ImageOptionsVisible && draft.h3ImageOptions
+        ? [
+            ["crop-center", uiKeys.create.imageEdit.h3SourceFitCropCenter],
+            ["contain-pad", uiKeys.create.imageEdit.h3SourceFitContainPad],
+            ["stretch", uiKeys.create.imageEdit.h3SourceFitStretch]
+        ].map(([value, label]) => `<option value="${value}" ${draft.h3ImageOptions?.sourceFit === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`).join("")
+        : "";
+    const h3ImageReferenceDetailOptionsMarkup = h3ReferenceDetailVisible && draft.h3ImageOptions
+        ? [
+            ["match-generation-area", uiKeys.create.imageEdit.h3ReferenceDetailMatchGenerationArea],
+            ["max-identity-2048", uiKeys.create.imageEdit.h3ReferenceDetailMaxIdentity2048]
+        ].map(([value, label]) => `<option value="${value}" ${draft.h3ImageOptions?.referenceDetail === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`).join("")
+        : "";
+    const imageQualityOptionsMarkup = imageCapability.qualityProfiles.map((profile) => {
+        const qualityNeedsComponent = imageQualityProfileRequiredComponentLabel(imageCapability, profile.id);
+        const qualityComponentMissing = Boolean(qualityNeedsComponent && !imageQualityProfileComponentFound(imageCapability, profile.id, imageProfile?.components ?? []));
+        const lightningMissing = imageQualityProfileRequiresLightning(profile.id) &&
+            !imageLightningComponentFound(imageProfile?.components ?? []);
+        const disabled = qualityComponentMissing || lightningMissing;
+        const missingLabel = qualityComponentMissing
+            ? ` · 缺少 ${qualityNeedsComponent}`
+            : lightningMissing
+                ? ` · ${t(uiKeys.create.videoSettings.missingLora)}`
+                : "";
+        return `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${missingLabel}</option>`;
+    }).join("");
     return {
         draft,
         prompt,
@@ -199,7 +253,7 @@ export function buildImageEditPageViewModel(options) {
         imageCapabilityName: imageCapability.name,
         imageCapabilityMaxPictures: imageCapability.maxPictures,
         imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
-        imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
+        imageQualityOptionsMarkup,
         imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageEnhanceMode,
@@ -222,9 +276,11 @@ export function buildImageEditPageViewModel(options) {
         promptlessResultDescription,
         imageProfileStatusText: !imageProfile
             ? t(uiKeys.create.validation.imageRescan)
-            : !imageProfile.available
-                ? `${imageCapability.name} 模型文件不完整，当前不可选择或加入队列。`
-                : imageProfile.missingCustomNodeNames?.length
+        : !imageProfile.available
+            ? `${imageCapability.name} 模型文件不完整，当前不可选择或加入队列。`
+            : (imageProfile.productGate ?? modelCatalog.get(imageProfile.id)?.definition.scan?.productGate) === "locked"
+                ? t(uiKeys.status.imageProductGatePending)
+            : imageProfile.missingCustomNodeNames?.length
                     ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。模型可以选择，但安装节点前不能加入队列。`
                     : imageProfile.runtimeVerified && !imageProfile.runtimeReady
                         ? t(uiKeys.create.validation.imageRuntimeRecheck, { status: imageWorkflowStatus(imageProfile, t) })
@@ -233,11 +289,17 @@ export function buildImageEditPageViewModel(options) {
         promptless,
         maskRequired: imageCapability.requiresMask === true,
         sourceResolutionOnly: imageCapability.sourceResolutionOnly === true,
-        imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true,
-        imageResolutionVisible: imageCapability.sourceResolutionOnly !== true,
+        imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
+        imageResolutionVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
         supportsTextOnly: imageCapability.supportsTextOnly === true,
         maskSupported: imageCapability.supportsMask === true,
-        annotationSupported: imageCapability.supportsMarkup === true
+        annotationSupported: imageCapability.supportsMarkup === true,
+        h3ImageOptionsVisible,
+        h3ReferenceDetailVisible,
+        h3ReferenceNoteVisible,
+        h3ImageSourceFitOptionsMarkup,
+        h3ImageReferenceDetailOptionsMarkup,
+        h3ImageSourceFidelity: draft.h3ImageOptions?.sourceFidelity ?? 0
     };
 }
 export function buildVideoCreatePageViewModel(options) {
@@ -248,7 +310,8 @@ export function buildVideoCreatePageViewModel(options) {
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
     const isContinuum = isMiniMaxH3ContinuumModel(draft.modelId);
     const continuumArtifactReady = Boolean(draft.h3ContinuumArtifact?.payload.filename || draft.h3ContinuumArtifactPath?.trim());
-    const continuumArtifactFilename = draft.h3ContinuumArtifact?.payload.filename ?? draft.h3ContinuumArtifactPath?.split(/[\\/]/u).pop() ?? "";
+    const continuumArtifactFilename = draft.h3ContinuumArtifact?.payload.filename ??
+        draft.h3ContinuumArtifactPath?.split(/[\\/]/u).pop() ?? "";
     const motionContextLatentReady = Boolean(draft.h3ContextLatentPath?.trim());
     const motionContextLatentFilename = draft.h3ContextLatentPath?.split(/[\\/]/u).pop() ?? "";
     const motionContextLatentHistoryBound = Boolean(motionContextLatentReady && draft.sourceAssetId && draft.sourceVersionId);
@@ -268,8 +331,17 @@ export function buildVideoCreatePageViewModel(options) {
         draft.h3ReferenceSlots = referenceSlots;
     }
     const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
-    const extensionBoundaryAvailable = extending && Boolean(draft.sourceVideoPath) &&
-        draft.trimEndSeconds > draft.trimStartSeconds;
+    const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
+    const extensionBoundaryAvailable = extending && videoReady &&
+        draft.trimEndSeconds > draft.trimStartSeconds &&
+        draft.trimEndSeconds <= draft.sourceVideoDuration + 0.05;
+    const promptBoundaryBlockReason = extending
+        ? !videoReady
+            ? t(uiKeys.create.validation.videoMissing)
+            : !extensionBoundaryAvailable
+                ? t(uiKeys.create.validation.invalidTrim)
+                : ""
+        : "";
     const referenceAutoPromptAvailable = isMiniMaxH3 && (extensionBoundaryAvailable || (isR2V
         ? referenceSlots.some((slot) => Boolean(slot.mediaPath))
         : Boolean(draft.startImagePath || draft.endImagePath)));
@@ -281,7 +353,8 @@ export function buildVideoCreatePageViewModel(options) {
         : promptEnhanceMode === "faithful" ? "faithful" : "sulphur-native";
     const promptStatus = promptModelStatus(state.settings, environmentScan, t);
     const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
-    const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning;
+    const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning ||
+        Boolean(promptBoundaryBlockReason);
     const videoPolicy = resolveVideoGenerationPolicy({
         modelId: draft.modelId,
         inputMode: draft.inputMode,
@@ -293,7 +366,8 @@ export function buildVideoCreatePageViewModel(options) {
     });
     const turboEnabled = videoPolicy.turboEnabled;
     const h3Steps = normalizeVideoSteps(draft.steps, videoPolicy);
-    const selectedTurboLora = draft.videoLoras.find((lora) => (isH3TurboLoraId(lora.id) || isH3PddLoraId(lora.id)) && videoLoraCompatibleWithModel(lora, draft.modelId));
+    const selectedTurboLora = draft.videoLoras.find((lora) => (isH3TurboLoraId(lora.id) || isH3PddLoraId(lora.id)) &&
+        videoLoraCompatibleWithModel(lora, draft.modelId));
     const turboLoraProfile = environmentScan?.modelProfiles.find((profile) => profile.id === (selectedTurboLora?.id ?? H3_TURBO_LORA_ID));
     const compatibleLoraDefinitions = BUILTIN_VIDEO_LORAS.filter((lora) => videoLoraCompatibleWithDraft(lora, draft.modelId, draft.inputMode));
     const addableLoraDefinitions = compatibleLoraDefinitions.filter((lora) => !draft.videoLoras.some((selected) => selected.id === lora.id));
@@ -313,11 +387,27 @@ export function buildVideoCreatePageViewModel(options) {
     const jointAvSerializerInstalled = environmentScan?.customNodes.some((node) => node.id === "local-video-studio-h3-av" && node.installed) === true;
     const resolutionOptions = videoResolutionOptionsForDraft(draft, extending, jointAvSerializerInstalled);
     const selectedResolution = selectedVideoResolution(draft.resolution, resolutionOptions);
+    const resolutionOptionsMarkup = extending && !isMiniMaxH3
+        ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p</option>`
+        : resolutionOptions.map((value) => {
+            const [width, height] = outputDimensions({
+                ...draft,
+                resolution: value
+            });
+            return `<option value="${value}" ${selectedResolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
+        }).join("");
+    const latentSaveModeOptionsMarkup = H3_LATENT_SAVE_MODES.map((mode) => {
+        const tip = t(h3LatentSaveModeTipKeys[mode]);
+        return `<option value="${mode}" data-description="${escapeHtml(tip)}" title="${escapeHtml(tip)}" ${h3LatentSaveMode === mode ? "selected" : ""}>${t(h3LatentSaveModeOptionKeys[mode])}</option>`;
+    }).join("");
     const h3MotionContextNode = environmentScan?.customNodes.find((node) => node.id === "h3-motion-context");
     const h3MotionContextReady = !extending || !isR2V || Boolean(h3MotionContextNode?.installed || h3MotionContextNode?.loaded);
     const slaTurboSelected = draft.videoLoras.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId));
     const slaNode = environmentScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
     const prompt = activePrompt(draft, state.settings.uiLocale);
+    const h3TokenEstimate = isMiniMaxH3
+        ? h3TokenCountForDraft(draft, prompt.text)
+        : undefined;
     const promptVersionIndex = activePromptIndexForDraft(draft);
     const promptVersionCount = promptVersionsForDraft(draft).length;
     const interpolation = interpolationEstimate(draft);
@@ -334,7 +424,6 @@ export function buildVideoCreatePageViewModel(options) {
     const trimEndPercent = continuumEffectiveDraft.sourceVideoDuration > 0
         ? continuumEffectiveDraft.trimEndSeconds / continuumEffectiveDraft.sourceVideoDuration * 100
         : 100;
-    const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
     const r2vCounts = h3ReferenceSlotCounts(referenceSlots);
     const r2vSlotsReady = !isR2V
         ? true
@@ -396,6 +485,7 @@ export function buildVideoCreatePageViewModel(options) {
         motionContextLatentReady,
         motionContextLatentFilename,
         motionContextLatentHistoryBound,
+        h3TokenEstimate,
         h3Mode,
         enhanceMode,
         h3PromptEnhanceTitle: isMiniMaxH3
@@ -409,13 +499,15 @@ export function buildVideoCreatePageViewModel(options) {
         promptAiDisabled,
         promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
             ? t(uiKeys.create.validation.promptTaskRunning)
-            : promptAiDisabled
-                ? h3PromptPack.ui.t("optimizing")
-                : referenceAutoPromptAvailable && !prompt.text.trim()
-                    ? h3PromptPack.ui.t("autoPromptHint")
-                    : isGemmaPromptModel(state.settings.promptModelId)
-                        ? t(uiKeys.create.validation.gemmaOptimize)
-                        : t(uiKeys.create.validation.promptOptimize),
+            : promptBoundaryBlockReason
+                ? promptBoundaryBlockReason
+                : promptAiDisabled
+                    ? h3PromptPack.ui.t("optimizing")
+                    : referenceAutoPromptAvailable && !prompt.text.trim()
+                        ? h3PromptPack.ui.t("autoPromptHint")
+                        : isGemmaPromptModel(state.settings.promptModelId)
+                            ? t(uiKeys.create.validation.gemmaOptimize)
+                            : t(uiKeys.create.validation.promptOptimize),
         h3PromptPresetOptionsMarkup: isMiniMaxH3
             ? h3PromptPresetOptions(activeH3PromptPreset, isR2V, state.settings.uiLocale)
             : "",
@@ -424,20 +516,7 @@ export function buildVideoCreatePageViewModel(options) {
             ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), h3Mode, draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.duration, escapeHtml, h3PromptPack.ui, draft.videoLoras)
             : "",
         modelOptions: createModelOptionViewModels(draft, environmentScan, workflowCapabilities, bundledWorkflows, t),
-        resolutionOptionsMarkup: extending && !isMiniMaxH3
-            ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p</option>`
-            : resolutionOptions.map((value) => {
-                const [width, height] = outputDimensions({
-                    ...draft,
-                    resolution: value
-                });
-                return `<option value="${value}" ${selectedResolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
-            }).join(""),
-        latentSaveModeOptionsMarkup: H3_LATENT_SAVE_MODES.map((mode) => {
-            const tip = t(h3LatentSaveModeTipKeys[mode]);
-            return `<option value="${mode}" data-description="${escapeHtml(tip)}" title="${escapeHtml(tip)}" ${h3LatentSaveMode === mode ? "selected" : ""}>${t(h3LatentSaveModeOptionKeys[mode])}</option>`;
-        }).join(""),
-        latentSaveModeTitle: t(h3LatentSaveModeTipKeys[h3LatentSaveMode]),
+        resolutionOptionsMarkup,
         stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
             const label = turboEnabled
                 ? value === 4
@@ -477,6 +556,8 @@ export function buildVideoCreatePageViewModel(options) {
                     : t(uiKeys.create.validation.spectrumNative),
         spectrumModeDisabled: draft.spectrumMode !== "balanced" && !(spectrumEligible && spectrumLoaded),
         jointAvLabelMarkup: fieldLabelWithTip(t(uiKeys.create.videoSettings.saveLatentData), t(uiKeys.create.videoSettings.saveLatentDataDescription)),
+        latentSaveModeOptionsMarkup,
+        latentSaveModeTitle: t(h3LatentSaveModeTipKeys[h3LatentSaveMode]),
         loraLabelMarkup: fieldLabelWithTip(t(uiKeys.create.validation.loraLabel), t(uiKeys.create.validation.loraDescription)),
         installReadyLoraDefinitions,
         installReadyLoraEmptyLabel: !environmentScan

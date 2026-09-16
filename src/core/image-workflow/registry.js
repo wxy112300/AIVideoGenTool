@@ -1,4 +1,4 @@
-import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
+import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, minimaxH3ImageI2ICapability, minimaxH3ReferenceEditCapability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
 import { parseImageOutputs } from "./shared.js";
 import { compileQwenImageEditPrompt, compileQwenImageEditCropStitchPrompt, buildQwenImageEdit2511Workflow, buildQwenImageEdit2511CropStitchWorkflow, validateQwenImageEdit2511Workflow, validateQwenImageEdit2511CropStitchWorkflow } from "./qwen.js";
 import { compileFlux2Klein4bPrompt, buildFlux2Klein4bWorkflow, validateFlux2Klein4bWorkflow } from "./flux2-klein.js";
@@ -6,6 +6,7 @@ import { compileZImagePrompt, buildZImageWorkflow, validateZImageWorkflow, build
 import { compileHiDreamO1Prompt, buildHiDreamO1Workflow, validateHiDreamO1Workflow } from "./hidream-o1.js";
 import { compileOmniGen2Prompt, buildOmniGen2Workflow, validateOmniGen2Workflow } from "./omnigen2.js";
 import { compileBirefnetInput, buildBirefnetBackgroundRemovalWorkflow, validateBirefnetWorkflow, compileLamaInpaintInput, buildLamaInpaintWorkflow, validateLamaInpaintWorkflow } from "./legacy.js";
+import { buildMinimaxH3ImageI2IWorkflow, buildMinimaxH3ReferenceEditWorkflow, compileMinimaxH3ImageI2IPrompt, compileMinimaxH3ReferenceEditPrompt, validateMinimaxH3ImageI2IWorkflow, validateMinimaxH3ReferenceEditWorkflow, validateMinimaxH3ImageRuntimeSchema } from "./h3-image.js";
 const parseOutputs = parseImageOutputs;
 export const qwenImageEdit2511Adapter = {
     ...qwenImageEdit2511Capability,
@@ -70,6 +71,22 @@ export const birefnetBackgroundRemovalAdapter = {
     validateWorkflow: validateBirefnetWorkflow,
     parseOutputs
 };
+export const minimaxH3ImageI2IAdapter = {
+    ...minimaxH3ImageI2ICapability,
+    compilePrompt: compileMinimaxH3ImageI2IPrompt,
+    buildWorkflow: buildMinimaxH3ImageI2IWorkflow,
+    validateWorkflow: validateMinimaxH3ImageI2IWorkflow,
+    validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
+    parseOutputs
+};
+export const minimaxH3ReferenceEditAdapter = {
+    ...minimaxH3ReferenceEditCapability,
+    compilePrompt: compileMinimaxH3ReferenceEditPrompt,
+    buildWorkflow: buildMinimaxH3ReferenceEditWorkflow,
+    validateWorkflow: validateMinimaxH3ReferenceEditWorkflow,
+    validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
+    parseOutputs
+};
 export const imageModelAdapters = {
     [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
     [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
@@ -79,7 +96,9 @@ export const imageModelAdapters = {
     [hidreamO1Adapter.id]: hidreamO1Adapter,
     [omnigen2Adapter.id]: omnigen2Adapter,
     [lamaInpaintAdapter.id]: lamaInpaintAdapter,
-    [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter
+    [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter,
+    [minimaxH3ImageI2IAdapter.id]: minimaxH3ImageI2IAdapter,
+    [minimaxH3ReferenceEditAdapter.id]: minimaxH3ReferenceEditAdapter
 };
 export function imageModelAdapterFor(modelId) {
     return imageModelAdapters[modelId];

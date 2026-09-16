@@ -5,6 +5,8 @@ import {
   hidreamO1Capability,
   lamaInpaintCapability,
   omnigen2Capability,
+  minimaxH3ImageI2ICapability,
+  minimaxH3ReferenceEditCapability,
   qwenImageEdit2511Capability,
   qwenImageEdit2511CropStitchCapability,
   zImageCapability,
@@ -49,6 +51,15 @@ import {
   buildLamaInpaintWorkflow,
   validateLamaInpaintWorkflow
 } from "./legacy.js";
+import {
+  buildMinimaxH3ImageI2IWorkflow,
+  buildMinimaxH3ReferenceEditWorkflow,
+  compileMinimaxH3ImageI2IPrompt,
+  compileMinimaxH3ReferenceEditPrompt,
+  validateMinimaxH3ImageI2IWorkflow,
+  validateMinimaxH3ReferenceEditWorkflow,
+  validateMinimaxH3ImageRuntimeSchema
+} from "./h3-image.js";
 
 const parseOutputs = parseImageOutputs;
 
@@ -124,6 +135,24 @@ export const birefnetBackgroundRemovalAdapter: ImageModelAdapter = {
   parseOutputs
 };
 
+export const minimaxH3ImageI2IAdapter: ImageModelAdapter = {
+  ...minimaxH3ImageI2ICapability,
+  compilePrompt: compileMinimaxH3ImageI2IPrompt,
+  buildWorkflow: buildMinimaxH3ImageI2IWorkflow,
+  validateWorkflow: validateMinimaxH3ImageI2IWorkflow,
+  validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
+  parseOutputs
+};
+
+export const minimaxH3ReferenceEditAdapter: ImageModelAdapter = {
+  ...minimaxH3ReferenceEditCapability,
+  compilePrompt: compileMinimaxH3ReferenceEditPrompt,
+  buildWorkflow: buildMinimaxH3ReferenceEditWorkflow,
+  validateWorkflow: validateMinimaxH3ReferenceEditWorkflow,
+  validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
+  parseOutputs
+};
+
 export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
   [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
@@ -133,7 +162,9 @@ export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [hidreamO1Adapter.id]: hidreamO1Adapter,
   [omnigen2Adapter.id]: omnigen2Adapter,
   [lamaInpaintAdapter.id]: lamaInpaintAdapter,
-  [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter
+  [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter,
+  [minimaxH3ImageI2IAdapter.id]: minimaxH3ImageI2IAdapter,
+  [minimaxH3ReferenceEditAdapter.id]: minimaxH3ReferenceEditAdapter
 };
 
 export function imageModelAdapterFor(modelId: string): ImageModelAdapter | undefined {

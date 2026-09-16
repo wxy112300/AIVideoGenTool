@@ -11,33 +11,41 @@ export const H3_LEARNED_UPSCALER_MODEL_REVISION = "09592c6221ec95cc8e0fae67842e3
 const h3ArtifactEvidence = {
     "minimax_h3_fl2va_pruned_int8_convrot.safetensors": {
         revision: h3OfficialRevision,
-        bytes: 20970379616,
+        bytes: 20_970_379_616,
         sha256: "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a"
     },
     "minimax_h3_ref2va_pruned_int8_convrot.safetensors": {
         revision: h3OfficialRevision,
-        bytes: 20970379616,
+        bytes: 20_970_379_616,
         sha256: "9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779"
     },
     "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": {
         revision: h3OfficialRevision,
-        bytes: 15687142551,
+        bytes: 15_687_142_551,
         sha256: "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6"
     },
     "minimax_h3_video_vae_fp16.safetensors": {
         revision: h3OfficialRevision,
-        bytes: 5207808496,
+        bytes: 5_207_808_496,
         sha256: "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522"
     },
     "minimax_h3_audio_vae_fp32.safetensors": {
         revision: h3OfficialRevision,
-        bytes: 605254808,
+        bytes: 605_254_808,
         sha256: "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"
     },
     "minimax_h3_latent_upscaler_3d_bf16.safetensors": {
         revision: H3_LEARNED_UPSCALER_MODEL_REVISION,
-        bytes: 690592992,
+        bytes: 690_592_992,
         sha256: "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6"
+    },
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": {
+        revision: "main",
+        sha256: "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e"
+    },
+    "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors": {
+        revision: "main",
+        sha256: "6a56f41ab4229c9dd845b9501bbd475ee57e112d846cf2e819d534a1ae928c5a"
     }
 };
 function guide(sourceLabel, downloadUrl, targetSubdirectory, recommendedFilename, notes) {
@@ -140,4 +148,18 @@ export const h3Ref2vaInt4Model = h3Component({
     expected: "diffusion_models/minimax_h3_ref2va_pruned_int4_convrot.safetensors",
     pattern: /(?:diffusion_models|unet)\/minimax_h3_ref2va_pruned_int4_convrot\.safetensors$/i,
     installGuide: guide(h3Int4Source, `${h3Int4BaseUrl}/minimax_h3_ref2va_pruned_int4_convrot.safetensors`, "diffusion_models", "minimax_h3_ref2va_pruned_int4_convrot.safetensors", "社区 R2V INT4 ConvRot 转换；12GB 起步，4090 可作为低显存实验档。建议 32GB 以上系统内存和快速 NVMe。R2V 工作流尚未接入。")
+});
+export const h3Fl2vaTurbo8LoraComponent = h3Component({
+    label: "FL2VA Turbo 8 步 LoRA",
+    expected: "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    pattern: /loras\/minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16\.safetensors$/i,
+    optional: true,
+    installGuide: guide("Comfy-Org / MiniMax-H3", "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", "loras", "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", "仅在 FL2VA Turbo 8 步质量档使用；Base 质量档不需要此 adapter。")
+});
+export const h3Ref2vaTurbo8LoraComponent = h3Component({
+    label: "REF2VA Turbo 8 步 LoRA",
+    expected: "loras/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    pattern: /loras\/minimax_h3_ref2v_turbo_8step_v1\.0_768p_comfyui_bf16\.safetensors$/i,
+    optional: true,
+    installGuide: guide("lightx2v / Minimax-h3-Turbo", "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", "loras", "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", "仅在 REF2VA Turbo 8 步 768p 质量档使用；Base 质量档不需要此 adapter。")
 });

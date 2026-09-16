@@ -15,6 +15,8 @@ import type {
 } from "../src/types.js";
 import { createImageSourceVersion, nextImageVersionNumber } from "../src/core/image-project.js";
 import { imageModelAdapterFor } from "../src/core/image-workflow.js";
+import { h3ImageOutputDimensions } from "../src/core/image-workflow.js";
+import { isH3ImageModelId } from "../src/core/image-project.js";
 import {
   continuumVisibleFrameCountForTask,
   extensionOutputDimensions,
@@ -41,6 +43,7 @@ export interface ImageHistoryResult {
   versionId: string;
   file: HistoryFile;
   outputContentHash?: string;
+  actualDimensions?: { width: number; height: number };
   promptId: string;
   comfyOutputs: unknown;
   performanceStats: TaskPerformanceStats;
@@ -89,6 +92,19 @@ export function persistImageHistoryResult(
   const quality = imageModelAdapterFor(queued.modelId)?.qualityProfiles.find(
     (profile) => profile.id === queued.qualityProfile
   );
+  const hasActualDimensions = Number.isFinite(result.actualDimensions?.width) &&
+    Number.isFinite(result.actualDimensions?.height) &&
+    (result.actualDimensions?.width ?? 0) > 0 &&
+    (result.actualDimensions?.height ?? 0) > 0;
+  const h3Dimensions = isH3ImageModelId(queued.modelId)
+    ? h3ImageOutputDimensions(queued.pictures[0]?.width ?? 0, queued.pictures[0]?.height ?? 0)
+    : [0, 0] as [number, number];
+  const predictedWidth = isH3ImageModelId(queued.modelId)
+    ? h3Dimensions[0]
+    : queued.outputWidth ?? queued.pictures[0]?.width ?? 0;
+  const predictedHeight = isH3ImageModelId(queued.modelId)
+    ? h3Dimensions[1]
+    : queued.outputHeight ?? queued.pictures[0]?.height ?? 0;
   const version: ImageAssetVersion = {
     id: result.versionId,
     versionNumber,
@@ -109,9 +125,11 @@ export function persistImageHistoryResult(
     targetResolution: queued.targetResolution,
     outputCount: queued.outputCount,
     diffusionModelFilename: queued.diffusionModelFilename,
+    ...(queued.h3ImageOptions ? { h3ImageOptions: { ...queued.h3ImageOptions } } : {}),
+    ...(queued.h3ImageRecipe ? { h3ImageRecipe: { ...queued.h3ImageRecipe } } : {}),
     seed: result.run.seed,
-    width: queued.outputWidth ?? queued.pictures[0]?.width ?? 0,
-    height: queued.outputHeight ?? queued.pictures[0]?.height ?? 0,
+    width: hasActualDimensions ? Math.trunc(result.actualDimensions!.width) : predictedWidth,
+    height: hasActualDimensions ? Math.trunc(result.actualDimensions!.height) : predictedHeight,
     format: "png",
     ...(result.outputContentHash ? { contentHash: result.outputContentHash } : {}),
     file: result.file,

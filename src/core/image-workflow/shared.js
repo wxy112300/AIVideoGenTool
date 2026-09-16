@@ -1,10 +1,13 @@
 import { extractComfyOutputFiles, isPersistentComfyOutputFile } from "../comfy-output.js";
 import { qwenImageEdit2511Capability } from "./capabilities.js";
 export function cachedImageProfileAllowsEnqueue(profile) {
+    // Runtime node/schema validation happens immediately before the task is
+    // submitted to ComfyUI; pending runtime evidence must not prevent queuing.
     return Boolean(profile?.category === "image" &&
         profile.integrated &&
         profile.available &&
-        !(profile.missingCustomNodeIds?.length));
+        !(profile.missingCustomNodeIds?.length) &&
+        profile.productGate !== "locked");
 }
 export const imageOutputCountMax = 6;
 export const imageTargetResolutionValues = [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480];
@@ -22,7 +25,9 @@ export function normalizeImageTargetResolution(value, sourceWidth = 0, sourceHei
     return numeric;
 }
 function ratioValue(value) {
-    const [width, height] = value.split(":").map(Number);
+    const parts = value.split(":");
+    const width = Number(parts[0] ?? 0);
+    const height = Number(parts[1] ?? 0);
     return width / height;
 }
 function ratioLabelForDimensions(width, height) {
@@ -33,8 +38,9 @@ function ratioLabelForDimensions(width, height) {
     return match ?? `${width}×${height}`;
 }
 export function normalizeImageAspectRatio(value) {
-    if (value === "source" || imageAspectRatioValues.some((candidate) => candidate === value))
+    if (value === "source" || imageAspectRatioValues.some((candidate) => candidate === value)) {
         return value;
+    }
     return "source";
 }
 export function imageOutputDimensions(sourceWidth, sourceHeight, targetResolution, fallbackWidth = 0, fallbackHeight = 0, aspectRatio = "source") {
@@ -51,12 +57,18 @@ export function imageOutputDimensions(sourceWidth, sourceHeight, targetResolutio
     if (targetResolution === "source" && normalizedAspectRatio === "source") {
         return [Math.max(0, Math.trunc(width)), Math.max(0, Math.trunc(height))];
     }
-    const sourceRatio = normalizedAspectRatio === "source" ? width / height : ratioValue(normalizedAspectRatio);
+    const sourceRatio = normalizedAspectRatio === "source"
+        ? width / height
+        : ratioValue(normalizedAspectRatio);
     const shortEdge = Math.min(width, height);
     const normalizedTarget = normalizeImageTargetResolution(targetResolution);
     const outputShortEdge = normalizedTarget === "source" ? shortEdge : normalizedTarget;
-    const outputWidth = sourceRatio >= 1 ? outputShortEdge * sourceRatio : outputShortEdge;
-    const outputHeight = sourceRatio >= 1 ? outputShortEdge : outputShortEdge / sourceRatio;
+    const outputWidth = sourceRatio >= 1
+        ? outputShortEdge * sourceRatio
+        : outputShortEdge;
+    const outputHeight = sourceRatio >= 1
+        ? outputShortEdge
+        : outputShortEdge / sourceRatio;
     return [
         alignedImageDimension(outputWidth),
         alignedImageDimension(outputHeight)
@@ -88,11 +100,11 @@ export function imageResolutionOptionsFor(sourceWidth = 0, sourceHeight = 0, fal
             ? `默认 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
             : "原图 · 上传后读取";
     const options = [{
-        value: "source",
-        label: sourceLabel,
-        width: sourceOptionDimensions[0],
-        height: sourceOptionDimensions[1]
-    }];
+            value: "source",
+            label: sourceLabel,
+            width: sourceOptionDimensions[0],
+            height: sourceOptionDimensions[1]
+        }];
     for (const target of imageTargetResolutionValues) {
         const [width, height] = hasSource || hasFallback
             ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio)
@@ -237,6 +249,13 @@ export function imageQualityProfileRequiresLightning(qualityProfile) {
 export function imageLightningComponentFound(components) {
     return components.some((component) => component.label.includes("Lightning LoRA") && component.found);
 }
+export function imageQualityProfileRequiredComponentLabel(capability, qualityProfile) {
+    return capability.qualityProfileComponentLabels?.[qualityProfile];
+}
+export function imageQualityProfileComponentFound(capability, qualityProfile, components) {
+    const requiredLabel = imageQualityProfileRequiredComponentLabel(capability, qualityProfile);
+    return !requiredLabel || components.some((component) => component.label.includes(requiredLabel) && component.found);
+}
 export function imageReferenceInputs(pictures, nodePrefix) {
     return Object.fromEntries(pictures.slice(0, qwenImageEdit2511Capability.maxPictures).map((picture, index) => [
         `image${index + 1}`,
@@ -278,7 +297,8 @@ export function renderImageWorkflow(workflow, uploadedPictures, uploadedMasks = 
     return visit(workflow);
 }
 export function parseImageOutputs(history) {
-    return extractComfyOutputFiles(history).filter(isPersistentComfyOutputFile)
+    return extractComfyOutputFiles(history)
+        .filter(isPersistentComfyOutputFile)
         .map((file) => imageOutputCandidateFromValue(file))
         .filter((file) => file !== null);
 }

@@ -40,6 +40,7 @@ import {
   imageEditPromptUserContentForTarget
 } from "../../src/core/image-prompt.js";
 import { imageReferenceInputPath } from "../../src/core/image-workflow.js";
+import { isH3ImageModelId } from "../../src/core/image-project.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
   AETHERSCALE_MODEL_ID,
@@ -75,7 +76,6 @@ import {
 import {
   prepareExtensionContext,
   prepareH3BoundaryFrame,
-  prepareH3ContinuumGuide,
   prepareH3MotionContext
 } from "./extension-media.js";
 import { comfyDataDirectories, comfyOutputSubfolder } from "./environment.js";
@@ -110,7 +110,7 @@ import {
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
-import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
+import { defaultH3PromptPresets, h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import { h3AutoPrompterContract } from "../../src/core/h3-auto-prompter.js";
@@ -123,6 +123,7 @@ import {
   stripPromptAnnotations
 } from "../../src/core/prompt-annotations.js";
 import {
+  applyH3ImageVramCleanup,
   imageModelAdapterFor,
   renderImageWorkflow,
 } from "../../src/core/image-workflow.js";
@@ -224,24 +225,26 @@ export function h3PromptInstruction(
   promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets
 ): string {
   const imageCount = request.imagePaths?.length ?? 0;
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
+  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
+  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const referenceContext = request.referenceContext?.trim();
-  const presetText = promptPresets[preset]?.trim() || defaultH3PromptPresets[preset];
+  const presetText = h3PromptPresetTextForRequest(preset, promptPresets[preset]);
   if (request.promptStrategy === "targeted-revision") {
     return promptRevisionInstruction(request.prompt, referenceContext, presetText);
   }
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5);
-  const officialSchema = h3PromptSectionSkeleton(mode, duration);
+  const officialSchema = h3PromptSectionSkeleton(mode, duration, nativeStateContinuation);
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const extensionContinuityInstruction = request.extensionSource
-    ? h3ExtensionContinuityInstruction(mode, shotPolicy)
+    ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation)
     : "";
   const controlInstruction = h3PromptControlInstruction({
     rawPrompt: request.prompt,
@@ -281,7 +284,7 @@ export function h3PromptInstruction(
     ...(scaleInstruction ? [scaleInstruction] : []),
     h3SmallModelPromptContract(mode, preset),
     ...(isH3ReferenceAutoPrompt(request)
-      ? [h3AutoPrompterContract(mode, duration, referenceContext)]
+      ? [h3AutoPrompterContract(mode, duration, referenceContext, preset)]
       : []),
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,
     h3DurationPlan(mode, duration, preset),
@@ -309,10 +312,12 @@ export function buildNativePromptWorkflow(
   const modelFile = promptModelFilename(promptModelId);
   if (!modelFile) throw new Error("当前提示词模型不是受支持的 ComfyUI Qwen 模型。请在设置中选择 Qwen3.5 2B 或 4B。");
   const imageCount = request.imagePaths?.length ?? uploadedImages.length;
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
+  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
+  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
     clip: {
@@ -497,10 +502,12 @@ export async function enhancePromptWithComfyUi(
     return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(output));
   }
   const imageCount = request.imagePaths?.length ?? 0;
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
+  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
+  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
   return normalizeH3PromptOutput(
     output,
     mode,
@@ -508,7 +515,8 @@ export async function enhancePromptWithComfyUi(
     extractH3DialogueLocks(stripPromptAnnotations(request.prompt)),
     extractH3VisibleTextLocks(stripPromptAnnotations(request.prompt)),
     stripPromptAnnotations(request.prompt),
-    request.prompt
+    request.prompt,
+    nativeStateContinuation
   );
 }
 
@@ -748,7 +756,10 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
   for (const [nodeId, value] of Object.entries(graph)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const node = value as Record<string, unknown>;
-    if (node.class_type === "H3ContinuumSamplerV38") {
+    if (
+      node.class_type === "H3ContinuumSamplerV38" ||
+      node.class_type === "LocalVideoStudioH3ContinuumSamplerV38"
+    ) {
       continuumSamplerIds.push(nodeId);
       continuumNodeRoles[nodeId] = "sampler";
     } else if (node.class_type === "H3ContinuumLoadVideo") {
@@ -783,6 +794,27 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
       const sampler = graph[samplerId] as Record<string, unknown>;
       const samplerInputs = sampler.inputs;
       if (!samplerInputs || typeof samplerInputs !== "object" || Array.isArray(samplerInputs)) continue;
+      const initialState = (samplerInputs as Record<string, unknown>).initial_state;
+      const stateNodeId = Array.isArray(initialState) && typeof initialState[0] === "string"
+        ? initialState[0]
+        : undefined;
+      if (stateNodeId) continuumNodeRoles[stateNodeId] = "source-preparation";
+      const nativeSigmas = (samplerInputs as Record<string, unknown>).sigmas;
+      const nativeSchedulerId = Array.isArray(nativeSigmas) && typeof nativeSigmas[0] === "string"
+        ? nativeSigmas[0]
+        : undefined;
+      const nativeScheduler = nativeSchedulerId ? graph[nativeSchedulerId] : undefined;
+      const nativeSchedulerInputs = nativeScheduler && typeof nativeScheduler === "object" && !Array.isArray(nativeScheduler)
+        ? (nativeScheduler as Record<string, unknown>).inputs
+        : undefined;
+      const nativeSteps = nativeSchedulerInputs && typeof nativeSchedulerInputs === "object" && !Array.isArray(nativeSchedulerInputs)
+        ? (nativeSchedulerInputs as Record<string, unknown>).steps
+        : undefined;
+      if (typeof nativeSteps === "number" && Number.isSafeInteger(nativeSteps) && nativeSteps > 0) {
+        continuumSamplerSteps[samplerId] = nativeSteps;
+      } else if (schedulerSteps.size === 1) {
+        continuumSamplerSteps[samplerId] = [...schedulerSteps][0]!;
+      }
       const firstFrame = (samplerInputs as Record<string, unknown>).first_frame;
       const frameNodeId = Array.isArray(firstFrame) && typeof firstFrame[0] === "string"
         ? firstFrame[0]
@@ -937,27 +969,14 @@ export async function submitTask(
         if (!artifactReference) {
           throw new Error("Continuum 任务缺少已验证的 H3 Native AV artifact 快照。");
         }
-        const preparedGuide = await prepareH3ContinuumGuide(task, signal);
-        try {
-          const uploadedGuide = await uploadInput(
-            baseUrl,
-            preparedGuide.filePath,
-            signal,
-            "H3 Continuum Video Guide"
-          );
-          prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
-            sourceVideo: uploadedGuide,
-            h3AvInputArtifact: artifactReference,
-            h3AvSourceFrameIndex: Math.max(0, (task.h3ContinuumArtifact?.frameCount ?? 1) - 1),
-            h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
-            vramTotalBytes,
-            locale: settings.uiLocale,
-            vramAvailableBytes,
-            h3PreviewTinyVae
-          });
-        } finally {
-          await preparedGuide.cleanup();
-        }
+        prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+          h3AvInputArtifact: artifactReference,
+          h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
+          vramTotalBytes,
+          locale: settings.uiLocale,
+          vramAvailableBytes,
+          h3PreviewTinyVae
+        });
       } else {
         const prepared = h3Boundary
           ? await prepareH3BoundaryFrame(task, signal)
@@ -1224,6 +1243,9 @@ export async function submitImageTask(
   if (!adapter) {
     throw new Error(`当前没有 ${task.modelId} 的图片工作流适配器。`);
   }
+  if (isH3ImageModelId(task.modelId) && modelCatalog.get(task.modelId)?.definition.scan?.productGate === "locked") {
+    throw new Error("H3 图片路线尚未完成目标 ComfyUI /object_info、节点加载与真实 smoke 验收，当前保持关闭。 ");
+  }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const objectInfo = await jsonRequest<Record<string, unknown>>(
     `${baseUrl}/object_info`,
@@ -1232,11 +1254,18 @@ export async function submitImageTask(
   const compiled = adapter.compilePrompt(task.prompt, task.pictures);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const workflow = adapter.buildWorkflow(task, run);
-  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true);
+  if (isH3ImageModelId(task.modelId)) {
+    applyH3ImageVramCleanup(workflow, objectInfo);
+  }
+  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true, task.h3ImageRecipe);
   if (workflowErrors.length) {
     throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
   }
   assertImageWorkflowRuntimeCompatible(task.modelId, workflow, objectInfo);
+  const schemaErrors = adapter.validateRuntimeSchema?.(workflow, objectInfo) ?? [];
+  if (schemaErrors.length) {
+    throw new Error(`图片工作流运行时 schema 校验失败：${schemaErrors.join(" ")}`);
+  }
   const uploadedPictures = await Promise.all(
     compiled.pictures.map((picture, index) =>
       uploadInput(baseUrl, imageReferenceInputPath(picture), signal, `Picture ${index + 1}`)
@@ -1250,7 +1279,7 @@ export async function submitImageTask(
       )
   );
   const prompt = renderImageWorkflow(workflow, uploadedPictures, uploadedMasks);
-  const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile);
+  const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile, false, task.h3ImageRecipe);
   if (renderedWorkflowErrors.length) throw new Error(`图片工作流校验失败：${renderedWorkflowErrors.join(" ")}`);
   const clientId = `local-video-studio-image-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
@@ -1592,13 +1621,16 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
     classType === "KSamplerAdvanced" ||
     classType === "SamplerCustomAdvanced" ||
     classType === "H3ContinuumSamplerV38" ||
+    classType === "LocalVideoStudioH3ContinuumSamplerV38" ||
     classType === "LTXVExtendSampler" ||
     classType === "LTXVLoopingSampler"
   ) {
     return {
       start: 14,
       end: 80,
-      label: classType === "H3ContinuumSamplerV38" ? "Continuum 扩散采样" : "扩散采样",
+      label: classType === "H3ContinuumSamplerV38" || classType === "LocalVideoStudioH3ContinuumSamplerV38"
+        ? "Continuum 扩散采样"
+        : "扩散采样",
       tracksSteps: true
     };
   }

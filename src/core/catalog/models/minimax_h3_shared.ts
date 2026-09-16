@@ -44,6 +44,14 @@ const h3ArtifactEvidence: Record<string, Pick<CatalogInstallGuide, "revision" | 
     revision: H3_LEARNED_UPSCALER_MODEL_REVISION,
     bytes: 690_592_992,
     sha256: "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6"
+  },
+  "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": {
+    revision: "main",
+    sha256: "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e"
+  },
+  "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors": {
+    revision: "main",
+    sha256: "6a56f41ab4229c9dd845b9501bbd475ee57e112d846cf2e819d534a1ae928c5a"
   }
 };
 
@@ -250,5 +258,33 @@ export const h3Ref2vaInt4Model = h3Component({
     "diffusion_models",
     "minimax_h3_ref2va_pruned_int4_convrot.safetensors",
     "社区 R2V INT4 ConvRot 转换；12GB 起步，4090 可作为低显存实验档。建议 32GB 以上系统内存和快速 NVMe。R2V 工作流尚未接入。"
+  )
+});
+
+export const h3Fl2vaTurbo8LoraComponent = h3Component({
+  label: "FL2VA Turbo 8 步 LoRA",
+  expected: "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+  pattern: /loras\/minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16\.safetensors$/i,
+  optional: true,
+  installGuide: guide(
+    "Comfy-Org / MiniMax-H3",
+    "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "loras",
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "仅在 FL2VA Turbo 8 步质量档使用；Base 质量档不需要此 adapter。"
+  )
+});
+
+export const h3Ref2vaTurbo8LoraComponent = h3Component({
+  label: "REF2VA Turbo 8 步 LoRA",
+  expected: "loras/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+  pattern: /loras\/minimax_h3_ref2v_turbo_8step_v1\.0_768p_comfyui_bf16\.safetensors$/i,
+  optional: true,
+  installGuide: guide(
+    "lightx2v / Minimax-h3-Turbo",
+    "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "loras",
+    "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "仅在 REF2VA Turbo 8 步 768p 质量档使用；Base 质量档不需要此 adapter。"
   )
 });

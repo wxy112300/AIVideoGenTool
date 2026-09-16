@@ -747,6 +747,54 @@ body.image-markup-open {
   margin-bottom: 6px;
 }
 
+.image-edit-composer .h3-image-options-heading > div {
+  width: 100%;
+}
+
+.image-edit-composer .h3-image-options-heading .field-label-row {
+  width: max-content;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.image-edit-composer .h3-image-options-heading .field-label-row > span:first-child {
+  overflow: visible;
+  color: #dce7f7;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: .02em;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.image-edit-composer .h3-image-options-heading .field-info {
+  color: #7faef2;
+  font-size: initial;
+}
+
+.image-edit-composer .h3-image-options-heading .field-info-tip {
+  overflow: visible;
+  color: #dbe8fa;
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.5;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.image-edit-composer .h3-image-options .range-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.image-edit-composer .h3-image-options .range-heading .field-label-row {
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
 .image-edit-composer .settings-field {
   gap: 5px;
 }

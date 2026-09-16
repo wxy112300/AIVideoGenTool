@@ -9,9 +9,8 @@ const continuumRuntimeNodeTypes = [
     "PathchSageAttentionKJ",
     "KSamplerSelect",
     "BasicScheduler",
-    "ImageFromBatch",
-    "H3ContinuumLoadVideo",
-    "H3ContinuumSamplerV38",
+    "LocalVideoStudioH3ArtifactToContinuumState",
+    "LocalVideoStudioH3ContinuumSamplerV38",
     "VAEDecode",
     "VAEDecodeAudio",
     "H3ContinuumAssembleSeamV35",
@@ -38,7 +37,7 @@ export const minimaxH3Continuum = {
             resolutions: [360, 480, 540, 720, 768]
         },
         scan: {
-            vram: "pruned INT8 · Continuum V3.8 Video Guide + Boundary Frame · 阶段卸载",
+            vram: "pruned INT8 · Continuum V3.8 Native State · 阶段卸载",
             integrated: true,
             requiredCustomNodeIds: ["h3-continuum", "local-video-studio-h3-av"],
             runtimeNodeTypes: continuumRuntimeNodeTypes,

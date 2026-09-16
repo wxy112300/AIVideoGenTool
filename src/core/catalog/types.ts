@@ -35,6 +35,9 @@ export interface CatalogModelScanDefinition {
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   vram: string;
   integrated?: boolean;
+  /** Static product release gate; "open" still requires runtime evidence at enqueue. */
+  productGate?: "locked" | "open";
+  productGateReason?: string;
   /** Custom-node packages that must exist on disk before this model can be queued. */
   requiredCustomNodeIds?: readonly string[];
   runtimeNodeTypes?: readonly string[];

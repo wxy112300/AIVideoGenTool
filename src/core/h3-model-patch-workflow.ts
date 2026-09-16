@@ -29,7 +29,12 @@ export interface NormalizeMiniMaxH3ModelPatchChainOptions {
 
 type ModelLink = [string, number];
 
-const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38"]);
+const consumerClasses = new Set([
+  "BasicScheduler",
+  "BasicGuider",
+  "H3ContinuumSamplerV38",
+  "LocalVideoStudioH3ContinuumSamplerV38"
+]);
 const legacyAttentionClasses = new Set([
   "PathchSageAttentionKJ",
   "H3SLAAttention",
@@ -235,7 +240,11 @@ function assertConsumers(
   if (!consumers.length && needsModelChain) throw new Error(message("h3PatchConsumersMissing", {}, locale));
   if (needsModelChain && (
     !consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
-    !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38")
+    !consumers.some(([, node]) =>
+      node.class_type === "BasicGuider" ||
+      node.class_type === "H3ContinuumSamplerV38" ||
+      node.class_type === "LocalVideoStudioH3ContinuumSamplerV38"
+    )
   )) throw new Error(message("h3PatchConsumersMissing", {}, locale));
   return consumers;
 }

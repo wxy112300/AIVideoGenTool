@@ -14,6 +14,67 @@ export const hidreamO1DiffusionModel = "hidream_o1_image_fp8_scaled.safetensors"
 export const omnigen2DiffusionModel = "omnigen2_fp16.safetensors";
 export const omnigen2TextEncoder = "qwen_2.5_vl_fp16.safetensors";
 export const omnigen2Vae = "ae.safetensors";
+export const h3Fl2vaImageDiffusionModel = "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
+export const h3Ref2vaImageDiffusionModel = "minimax_h3_ref2va_pruned_int8_convrot.safetensors";
+export const h3ImageTextEncoder = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors";
+export const h3ImageVideoVae = "minimax_h3_video_vae_fp16.safetensors";
+export const h3Fl2vaTurbo8Lora = "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors";
+export const h3Ref2vaTurbo8Lora = "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors";
+const h3ImageBaseQuality = {
+    id: "base-quality-20",
+    label: "Base 质量",
+    steps: 20,
+    cfg: 1,
+    lightning: false
+};
+export const minimaxH3ImageI2ICapability = {
+    id: "minimax-h3-image-i2i",
+    name: "H3 · 源图 I2I（FL2VA）",
+    maxPictures: 1,
+    supportedFormats: ["png"],
+    operation: "edit",
+    requiresPrompt: true,
+    supportsSeed: true,
+    supportsMask: false,
+    supportsMarkup: false,
+    qualityProfiles: [
+        h3ImageBaseQuality,
+        {
+            id: "fl2va-turbo-8",
+            label: "FL2VA Turbo 8 步",
+            steps: 8,
+            cfg: 1,
+            lightning: false
+        }
+    ],
+    qualityProfileComponentLabels: {
+        "fl2va-turbo-8": "FL2VA Turbo 8 步 LoRA"
+    }
+};
+export const minimaxH3ReferenceEditCapability = {
+    id: "minimax-h3-reference-edit",
+    name: "H3 · 参考编辑（REF2VA）",
+    maxPictures: 9,
+    supportedFormats: ["png"],
+    operation: "edit",
+    requiresPrompt: true,
+    supportsSeed: true,
+    supportsMask: false,
+    supportsMarkup: false,
+    qualityProfiles: [
+        h3ImageBaseQuality,
+        {
+            id: "ref2va-turbo-8-768p",
+            label: "REF2VA Turbo 768p · 8 步",
+            steps: 8,
+            cfg: 1,
+            lightning: false
+        }
+    ],
+    qualityProfileComponentLabels: {
+        "ref2va-turbo-8-768p": "REF2VA Turbo 8 步 LoRA"
+    }
+};
 export const qwenImageEdit2511Capability = {
     id: "qwen-image-edit-2511",
     name: "Qwen-Image-Edit-2511",

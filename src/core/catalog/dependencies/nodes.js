@@ -1,3 +1,6 @@
+import { DLSS5_NODE_DIRECTORY, DLSS5_NODE_ID, DLSS5_NODE_REQUIRED_NODE_TYPES, DLSS5_NODE_REPOSITORY, DLSS5_NODE_REVISION, DLSS5_NODE_VERSION } from "./dlss5.js";
+import { AETHERSCALE_NODE_DIRECTORY, AETHERSCALE_NODE_ID, AETHERSCALE_NODE_REQUIRED_NODE_TYPES, AETHERSCALE_NODE_REPOSITORY, AETHERSCALE_NODE_REVISION, AETHERSCALE_NODE_VERSION, AETHERSCALE_RUNTIME_BUNDLE_ID } from "./aetherscale.js";
+import { KONOHAMARU_NODE_DIRECTORY, KONOHAMARU_NODE_ID, KONOHAMARU_NODE_REQUIRED_NODE_TYPES, KONOHAMARU_NODE_REPOSITORY, KONOHAMARU_NODE_REVISION, KONOHAMARU_NEURAL_UPSTREAM_ADDON, KONOHAMARU_NEURAL_UPSTREAM_RELEASE, KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL, KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL, KONOHAMARU_VIDEO2DLSSNR_RELEASE, KONOHAMARU_RUNTIME_BUNDLE_ID, KONOHAMARU_RUNTIME_SOURCE_URL } from "./konohamaru.js";
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
@@ -18,14 +21,50 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.3.0";
+export const H3_AV_SERIALIZER_REVISION = "0.3.2";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
-export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.0";
-export const H3_CONTINUUM_REVISION = "b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3";
-import { DLSS5_NODE_DIRECTORY, DLSS5_NODE_ID, DLSS5_NODE_REQUIRED_NODE_TYPES, DLSS5_NODE_REPOSITORY, DLSS5_NODE_REVISION, DLSS5_NODE_VERSION } from "./dlss5.js";
-import { AETHERSCALE_NODE_DIRECTORY, AETHERSCALE_NODE_ID, AETHERSCALE_NODE_REQUIRED_NODE_TYPES, AETHERSCALE_NODE_REPOSITORY, AETHERSCALE_NODE_REVISION, AETHERSCALE_NODE_VERSION, AETHERSCALE_RUNTIME_BUNDLE_ID } from "./aetherscale.js";
-import { KONOHAMARU_NODE_DIRECTORY, KONOHAMARU_NODE_ID, KONOHAMARU_NODE_REQUIRED_NODE_TYPES, KONOHAMARU_NODE_REPOSITORY, KONOHAMARU_NODE_REVISION, KONOHAMARU_NEURAL_UPSTREAM_ADDON, KONOHAMARU_NEURAL_UPSTREAM_RELEASE, KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL, KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL, KONOHAMARU_VIDEO2DLSSNR_RELEASE, KONOHAMARU_RUNTIME_BUNDLE_ID, KONOHAMARU_RUNTIME_SOURCE_URL } from "./konohamaru.js";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.2";
+export const H3_CONTINUUM_REVISION = "c38c616d54feb0310a3ca7540f2f4addc499fd1f";
+export const MINIMAX_H3_IMAGE_STUDIO_VERSION = "23.0.0";
+export const MINIMAX_H3_IMAGE_STUDIO_REVISION = "f7384aacb7bf35492dc73a3e6054ab6b427f93f6";
+export const MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI = "0.30.0";
+export const MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI = "0.35.0";
 const customNodeDefinitions = [{
+        id: "minimax-h3-image-studio",
+        priority: 135,
+        name: "MiniMax H3 Image Studio",
+        purpose: "提供 MiniMax H3 FL2VA 图像 I2I 与 REF2VA 参考编辑节点",
+        repositoryUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio.git",
+        directoryName: "ComfyUI-MiniMax-H3-Image-Studio",
+        aliases: ["comfyui-minimax-h3-image-studio", "ComfyUI-MiniMax-H3-Image-Studio"],
+        installRevision: MINIMAX_H3_IMAGE_STUDIO_REVISION,
+        releaseSource: "github-release",
+        minimumVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+        recommendedVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+        latestVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+        nodeTypes: [
+            "H3ImageResolutionPreset",
+            "H3ImageToImagePrepare",
+            "H3ReferenceEditPrepare",
+            "H3ImageSamplingPreset",
+            "H3ImageDecode",
+            "H3ImageFrameSelector"
+        ],
+        runtimeRequirement: "Python >=3.10；上游 v23.0.0 requirements.txt 无额外 Python 依赖。安装后必须重启所选 ComfyUI，并重新检查 /object_info；目录存在不等于节点已加载。",
+        compatibilityEvidence: [{
+                verifiedAt: "2026-09-15",
+                sourceUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/tree/v23.0.0",
+                note: "固定 v23.0.0 / commit f7384aac；静态核对 pyproject.toml、requirements.txt、FL2VA/REF2VA API graphs 与节点注册表。当前没有目标 ComfyUI /object_info 或本机 GPU smoke 证据。",
+                comfyUi: ">=0.30.0",
+                python: ">=3.10",
+                commit: MINIMAX_H3_IMAGE_STUDIO_REVISION,
+                workflowIds: ["minimax_h3_image_i2i_api.json", "minimax_h3_reference_edit_api.json"],
+                checks: ["static"]
+            }],
+        appInstallable: true,
+        bulkInstall: false,
+        required: false
+    }, {
         id: "inpaint-nodes",
         priority: 90,
         name: "ComfyUI Inpaint Nodes",
@@ -147,7 +186,77 @@ const customNodeDefinitions = [{
                 name: "显存调试",
                 nodeTypes: ["VRAM_Debug"],
                 description: "用于运行统计与显存调试，不是生成必需节点。"
-    }],
+            }],
+        required: false
+    }, {
+        id: "frame-interpolation",
+        priority: 130,
+        name: "ComfyUI Frame Interpolation",
+        purpose: "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS",
+        repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
+        directoryName: "ComfyUI-Frame-Interpolation",
+        aliases: ["comfyui-frame-interpolation"],
+        releaseSource: "github-release",
+        nodeTypes: ["RIFE VFI"],
+        required: false
+    }, {
+        id: KONOHAMARU_NODE_ID,
+        priority: 132,
+        name: "ComfyUI NVIDIA DLSS 5 Visual Enhancer · Temporal Neural",
+        purpose: "Konohamaru04 的 DLSS5 视频超分、时序 Neural enhancement 与 DLSSG 补帧节点",
+        repositoryUrl: KONOHAMARU_NODE_REPOSITORY,
+        directoryName: KONOHAMARU_NODE_DIRECTORY,
+        aliases: ["comfyui-dlss-frame-interpolation", "ComfyUI-DLSS-Frame-Interpolation"],
+        installRevision: KONOHAMARU_NODE_REVISION,
+        runtimeBundleId: KONOHAMARU_RUNTIME_BUNDLE_ID,
+        nodeTypes: KONOHAMARU_NODE_REQUIRED_NODE_TYPES,
+        requiresGitLfs: true,
+        bulkInstall: false,
+        appInstallable: true,
+        runtimeRequirement: `需要当前 ComfyUI Python、FFmpeg/FFprobe、NVIDIA RTX 与兼容驱动；DLSS SR/DLSSG DLL、worker、旧 image-path DLSSNR runtime 由上游 Git LFS 管理，${KONOHAMARU_NEURAL_UPSTREAM_ADDON} 由应用固定下载 ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 并校验 SHA-256。视频时序 Neural enhancement 使用应用固定下载并校验的 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 四文件 runtime，不复制其内置 FFmpeg；视频链为 LoadVideo → video2dlssnr temporal Neural enhancement/upscale → 可选 DLSS Frame Interpolation → SaveVideo。`,
+        compatibilityEvidence: [{
+                verifiedAt: "2026-09-09",
+                sourceUrl: KONOHAMARU_RUNTIME_SOURCE_URL,
+                note: "固定 upstream commit；静态复核确认三个节点使用原生 VIDEO/IMAGE 类型，README 提供 3× 视频超分与 120 FPS 补帧组合示例。上游公开样例不是本机 RTX 4090 smoke 证据。",
+                commit: KONOHAMARU_NODE_REVISION,
+                checks: ["static"]
+            }, {
+                verifiedAt: "2026-09-10",
+                sourceUrl: KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL,
+                note: `本机 RTX 4090 的 neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 结果保留为历史 image-path 证据；render resolution 的 feature 18 产生并执行成功，但视频路径未继续采用其固定 jitter carrier。`,
+                checks: ["static", "minimal-run"]
+            }, {
+                verifiedAt: "2026-09-10",
+                sourceUrl: KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
+                note: `本机 RTX 4090 使用 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 对同一段 124 帧素材实测：124/124 帧输出，约 5.9 fps，首帧后的帧差持续正常；这是时序 feature-18 minimal-run 证据，不代表所有片源的画质验收。`,
+                checks: ["static", "minimal-run"]
+            }],
+        required: false
+    }, {
+        id: DLSS5_NODE_ID,
+        retired: true,
+        priority: 135,
+        name: "ComfyUI DLSS5",
+        purpose: "HECer 原版 NVIDIA DLSS 5 Super Resolution 节点与 Depth/Optical Flow 导引节点",
+        repositoryUrl: DLSS5_NODE_REPOSITORY,
+        directoryName: DLSS5_NODE_DIRECTORY,
+        aliases: ["comfyui-dlss5", "ComfyUI-DLSS5"],
+        releaseSource: "github-release",
+        installRevision: DLSS5_NODE_REVISION,
+        nodeTypes: DLSS5_NODE_REQUIRED_NODE_TYPES,
+        minimumVersion: DLSS5_NODE_VERSION,
+        recommendedVersion: DLSS5_NODE_VERSION,
+        latestVersion: DLSS5_NODE_VERSION,
+        bulkInstall: false,
+        appInstallable: true,
+        runtimeRequirement: "HECer v0.2.2 的 requirements 必须安装到当前选中的 ComfyUI Python（Python 3.10–3.13）；SR 还需要 Windows/NVIDIA/D3D12、VapourKit Python、vsdlsssr.dll 与 nvngx_dlss.dll。本条只记录固定来源和静态要求，尚无本机运行证据。",
+        compatibilityEvidence: [{
+                verifiedAt: "2026-09-03",
+                sourceUrl: `https://github.com/HECer/ComfyUI-DLSS5/tree/${DLSS5_NODE_REVISION}`,
+                note: "固定 HECer v0.2.2 revision；首发只登记 DLSSSuperResolution、Depth Anything V2 和 Farneback Optical Flow 所需节点。",
+                commit: DLSS5_NODE_REVISION,
+                checks: ["static"]
+            }],
         required: false
     }, {
         id: AETHERSCALE_NODE_ID,
@@ -173,43 +282,6 @@ const customNodeDefinitions = [{
                 sourceUrl: `https://github.com/vizart-vj/ComfyUI-AetherScale/tree/${AETHERSCALE_NODE_REVISION}`,
                 note: "固定 AetherScale v0.5.5 commit；生产图只允许 Motion Analysis 与 carrier-backed Neural Rendering，Runtime/VFX/Diagnostics 节点不参与应用 workflow。",
                 commit: AETHERSCALE_NODE_REVISION,
-                checks: ["static"]
-            }],
-        required: false
-    }, {
-        id: "frame-interpolation",
-        priority: 130,
-        name: "ComfyUI Frame Interpolation",
-        purpose: "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS",
-        repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
-        directoryName: "ComfyUI-Frame-Interpolation",
-        aliases: ["comfyui-frame-interpolation"],
-        releaseSource: "github-release",
-        nodeTypes: ["RIFE VFI"],
-        required: false
-    }, {
-        id: DLSS5_NODE_ID,
-        retired: true,
-        priority: 135,
-        name: "ComfyUI DLSS5",
-        purpose: "HECer 原版 NVIDIA DLSS 5 Super Resolution 节点与 Depth/Optical Flow 导引节点",
-        repositoryUrl: DLSS5_NODE_REPOSITORY,
-        directoryName: DLSS5_NODE_DIRECTORY,
-        aliases: ["comfyui-dlss5", "ComfyUI-DLSS5"],
-        releaseSource: "github-release",
-        installRevision: DLSS5_NODE_REVISION,
-        nodeTypes: DLSS5_NODE_REQUIRED_NODE_TYPES,
-        minimumVersion: DLSS5_NODE_VERSION,
-        recommendedVersion: DLSS5_NODE_VERSION,
-        latestVersion: DLSS5_NODE_VERSION,
-        bulkInstall: false,
-        appInstallable: true,
-        runtimeRequirement: "HECer v0.2.2 的 requirements 必须安装到当前选中的 ComfyUI Python（Python 3.10–3.13）；SR 还需要 Windows/NVIDIA/D3D12、VapourKit Python、vsdlsssr.dll 与 nvngx_dlss.dll。本条只记录固定来源和静态要求，尚无本机运行证据。",
-        compatibilityEvidence: [{
-                verifiedAt: "2026-09-03",
-                sourceUrl: `https://github.com/HECer/ComfyUI-DLSS5/tree/${DLSS5_NODE_REVISION}`,
-                note: "固定 HECer v0.2.2 revision；首发只登记 DLSSSuperResolution、Depth Anything V2 和 Farneback Optical Flow 所需节点。",
-                commit: DLSS5_NODE_REVISION,
                 checks: ["static"]
             }],
         required: false
@@ -316,74 +388,41 @@ const customNodeDefinitions = [{
                 commit: "725a731",
                 workflowIds: ["minimax_h3_r2v"],
                 checks: ["static", "object-info"]
-    }],
-    required: false
-}, {
-        id: KONOHAMARU_NODE_ID,
-        priority: 132,
-        name: "ComfyUI NVIDIA DLSS 5 Visual Enhancer · Temporal Neural",
-        purpose: "Konohamaru04 的 DLSS5 视频超分、时序 Neural enhancement 与 DLSSG 补帧节点",
-        repositoryUrl: KONOHAMARU_NODE_REPOSITORY,
-        directoryName: KONOHAMARU_NODE_DIRECTORY,
-        aliases: ["comfyui-dlss-frame-interpolation", "ComfyUI-DLSS-Frame-Interpolation"],
-        installRevision: KONOHAMARU_NODE_REVISION,
-        runtimeBundleId: KONOHAMARU_RUNTIME_BUNDLE_ID,
-        nodeTypes: KONOHAMARU_NODE_REQUIRED_NODE_TYPES,
-        requiresGitLfs: true,
-        bulkInstall: false,
-        appInstallable: true,
-        runtimeRequirement: `需要当前 ComfyUI Python、FFmpeg/FFprobe、NVIDIA RTX 与兼容驱动；DLSS SR/DLSSG DLL、worker、旧 image-path DLSSNR runtime 由上游 Git LFS 管理，${KONOHAMARU_NEURAL_UPSTREAM_ADDON} 由应用固定下载 ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 并校验 SHA-256。视频时序 Neural enhancement 使用应用固定下载并校验的 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 四文件 runtime，不复制其内置 FFmpeg；视频链为 LoadVideo → video2dlssnr temporal Neural enhancement/upscale → 可选 DLSS Frame Interpolation → SaveVideo。`,
-        compatibilityEvidence: [{
-                verifiedAt: "2026-09-09",
-                sourceUrl: KONOHAMARU_RUNTIME_SOURCE_URL,
-                note: "固定 upstream commit；静态复核确认三个节点使用原生 VIDEO/IMAGE 类型，README 提供 3× 视频超分与 120 FPS 补帧组合示例。上游公开样例不是本机 RTX 4090 smoke 证据。",
-                commit: KONOHAMARU_NODE_REVISION,
-                checks: ["static"]
-        }, {
-                verifiedAt: "2026-09-10",
-                sourceUrl: KONOHAMARU_NEURAL_UPSTREAM_SOURCE_URL,
-                note: `本机 RTX 4090 的 neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} 结果保留为历史 image-path 证据；render resolution 的 feature 18 产生并执行成功，但视频路径未继续采用其固定 jitter carrier。`,
-                checks: ["static", "minimal-run"]
-        }, {
-                verifiedAt: "2026-09-10",
-                sourceUrl: KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
-                note: `本机 RTX 4090 使用 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} 对同一段 124 帧素材实测：124/124 帧输出，约 5.9 fps，首帧后的帧差持续正常；这是时序 feature-18 minimal-run 证据，不代表所有片源的画质验收。`,
-                checks: ["static", "minimal-run"]
-        }],
+            }],
         required: false
     }, {
-    id: "h3-continuum",
-    priority: 142,
-    name: "ComfyUI H3 Continuum",
-    purpose: "使用 H3 Continuum V3.8 的公开 sampler、Video Guide 和 Finalize 进行分块长视频与接续；History JointAV 作为边界资产保留",
-    repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
-    directoryName: "ComfyUI-H3-Continuum",
-    aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
-    releaseSource: "github-release",
-    installRevision: H3_CONTINUUM_REVISION,
-    license: "MIT",
-    nodeTypes: [
-        "H3ContinuumSamplerV38",
-        "H3ContinuumLoadVideo",
-        "H3ContinuumAssembleSeamV35"
-    ],
-    minimumVersion: H3_CONTINUUM_MINIMUM_VERSION,
-    recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
-    latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
-    bulkInstall: false,
-    appInstallable: true,
-    runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum v3.8.0。V3.8 公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
-    compatibilityEvidence: [{
-            verifiedAt: "2026-09-10",
-            sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3",
-            note: "v3.8.0 发布后的当前 main 已包含 Review/continuation 热修；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize），并提供 H3ContinuumLoadVideo 作为 Video Guide 输入；上游 README 标注 ComfyUI 0.34.2 验证。旧 Join/Finish/SaveState ID 不在当前公开节点面内。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
-            comfyUi: "0.34.2",
-            commit: H3_CONTINUUM_REVISION,
-            checks: ["static"]
-        }],
-    required: false
-}, {
-    id: "plaguekind-h3-sla",
+        id: "h3-continuum",
+        priority: 142,
+        name: "ComfyUI H3 Continuum",
+        purpose: "使用 H3 Continuum V3.8 的原生 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
+        repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
+        directoryName: "ComfyUI-H3-Continuum",
+        aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
+        releaseSource: "github-release",
+        installRevision: H3_CONTINUUM_REVISION,
+        license: "MIT",
+        nodeTypes: [
+            "H3ContinuumSamplerV38",
+            "H3ContinuumLoadVideo",
+            "H3ContinuumAssembleSeamV35"
+        ],
+        minimumVersion: H3_CONTINUUM_MINIMUM_VERSION,
+        recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
+        latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
+        bulkInstall: false,
+        appInstallable: true,
+        runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum V3.8X package 3.8.2。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
+        compatibilityEvidence: [{
+                verifiedAt: "2026-09-15",
+                sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+                note: "V3.8X package 3.8.2 保留 3.8.1 已验收的 R0-R6 runtime、七节点公开面、Sampling、Review 与 Run Storage 契约，并同步发布清单及 Spectrum v0.2.27 兼容验证；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize）。上游 Issue #13 仍未解决，升级不代表主观画质或外部 JointAV state 接续已经修复。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
+                comfyUi: "0.34.2",
+                commit: H3_CONTINUUM_REVISION,
+                checks: ["static"]
+            }],
+        required: false
+    }, {
+        id: "plaguekind-h3-sla",
         priority: 160,
         name: "ComfyUI-PlagueKind H3 SLA Attention",
         purpose: "为 MiniMax H3 Turbo-SLA LoRA 提供块稀疏注意力；选择 Turbo-SLA 后由应用自动插入。",
@@ -459,12 +498,12 @@ const customNodeDefinitions = [{
         ],
         runtimeRequirement: "仅作为 H3 二次采样的受管外部节点安装；必须固定到登记 commit，并在 ComfyUI /object_info 与真实 workflow smoke 中分别验证。",
         compatibilityEvidence: [{
-                verifiedAt: "2026-09-02",
+                verifiedAt: "2026-09-03",
                 sourceUrl: "https://github.com/rockerBOO/h3-latent-upscaler/tree/a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
                 note: "已核对 pinned commit 的四个节点 class mapping；本项目不复制第三方源码。当前只完成 catalog/static 证据，object-info、workflow 和真实 smoke 仍是后续 Gate。",
                 commit: H3_LATENT_UPSCALER_REVISION,
                 checks: ["static"]
-        }],
+            }],
         required: false
     }, {
         id: "minimax-h3-learned-upscaler",
@@ -481,49 +520,49 @@ const customNodeDefinitions = [{
         runtimeRequirement: "用户可从设置页主动将固定 commit 克隆到所选 ComfyUI；节点源码和权重不随应用分发，权重仍由用户按来源链接下载。运行前必须通过 /object_info schema 校验。",
         compatibilityEvidence: [{
                 verifiedAt: "2026-09-02",
-            sourceUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler/tree/d7c01b9011f2e8439493f6c02c29995a27df276f",
-            note: "在 ComfyUI 0.33.0、Python 3.12.11、Torch 2.10.0+cu130 和 RTX 4090 上通过 /object_info、24-channel Conv3D minimal run 及应用完整 1952x1088 二次采样 smoke；DynamicCombo API 使用扁平 mode/mode.width/mode.height。设置页只在用户主动操作时克隆该固定 commit，不随应用分发节点源码或权重。",
-            comfyUi: "0.33.0",
-            python: "3.12.11",
-            pytorch: "2.10.0+cu130",
-            cuda: "13.0",
-            commit: "d7c01b9011f2e8439493f6c02c29995a27df276f",
-            workflowIds: ["minimax_h3_fl2va_learned_3d_second_sample_av_api.json"],
-            checks: ["static", "object-info", "minimal-run"]
+                sourceUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler/tree/d7c01b9011f2e8439493f6c02c29995a27df276f",
+                note: "在 ComfyUI 0.33.0、Python 3.12.11、Torch 2.10.0+cu130 和 RTX 4090 上通过 /object_info、24-channel Conv3D minimal run 及应用完整 1952x1088 二次采样 smoke；DynamicCombo API 使用扁平 mode/mode.width/mode.height。设置页只在用户主动操作时克隆该固定 commit，不随应用分发节点源码或权重。",
+                comfyUi: "0.33.0",
+                python: "3.12.11",
+                pytorch: "2.10.0+cu130",
+                cuda: "13.0",
+                commit: "d7c01b9011f2e8439493f6c02c29995a27df276f",
+                workflowIds: ["minimax_h3_fl2va_learned_3d_second_sample_av_api.json"],
+                checks: ["static", "object-info", "minimal-run"]
             }],
         required: false
     }, {
-            id: "mmh3-ultimate-upscale",
-            priority: 148,
-            name: "MMH3 Ultimate Upscale",
-            purpose: "通过时间分块和空间 tile 逐块二次采样 H3 joint AV latent，降低 1440p 峰值显存",
-            repositoryUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
-            directoryName: "Comfyui-MMH3-UltimateUpscale",
-            aliases: ["comfyui-mmh3-ultimateupscale", "Comfyui-MMH3-UltimateUpscale"],
-            installRevision: H3_ULTIMATE_UPSCALE_REVISION,
-            license: "MIT",
-            nodeTypes: [
-                "MMH3UltimateUpscale",
-                "MMH3LatentUpscaleWithModelParams",
-                "MMH3TemporalSplitParams",
-                "MMH3SpatialSplitParams"
-            ],
-            bulkInstall: false,
-            appInstallable: true,
-            runtimeRequirement: "1440p 路径固定使用 d91be5a 并应用程序管理的首块 source-anchor 与聚合进度补丁。安装后必须重启 ComfyUI 并通过 /object_info schema；模型权重许可证独立于节点源码。",
-            compatibilityEvidence: [{
-                    verifiedAt: "2026-09-03",
-                    sourceUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
-                    note: "固定 commit 加应用补丁后完成第二次 RTX 4090 2592x1440、124 帧、20 steps 全流程：12 个空间 tile 的聚合进度单调可见，耗时 1274.815 秒，GPU 平均 94.62%、峰值 100%，VRAM 峰值约 22.67 GiB；GPU 视频/音频 VAE、MP4、JointAV 与同一 History 资产持久化通过。输出画面仍有异常，质量根因按用户要求留待后续排查，不影响本条运行与设置证据。",
-                    commit: H3_ULTIMATE_UPSCALE_REVISION,
-                    checks: ["static", "object-info", "minimal-run"]
-                }],
-            required: false
-        }, {
+        id: "mmh3-ultimate-upscale",
+        priority: 148,
+        name: "MMH3 Ultimate Upscale",
+        purpose: "通过时间分块和空间 tile 逐块二次采样 H3 joint AV latent，降低 1440p 峰值显存",
+        repositoryUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+        directoryName: "Comfyui-MMH3-UltimateUpscale",
+        aliases: ["comfyui-mmh3-ultimateupscale", "Comfyui-MMH3-UltimateUpscale"],
+        installRevision: H3_ULTIMATE_UPSCALE_REVISION,
+        license: "MIT",
+        nodeTypes: [
+            "MMH3UltimateUpscale",
+            "MMH3LatentUpscaleWithModelParams",
+            "MMH3TemporalSplitParams",
+            "MMH3SpatialSplitParams"
+        ],
+        bulkInstall: false,
+        appInstallable: true,
+        runtimeRequirement: "1440p 路径固定使用 d91be5a 并应用程序管理的首块 source-anchor 与聚合进度补丁。安装后必须重启 ComfyUI 并通过 /object_info schema；模型权重许可证独立于节点源码。",
+        compatibilityEvidence: [{
+                verifiedAt: "2026-09-02",
+                sourceUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+                note: "固定 commit 加应用补丁后完成第二次 RTX 4090 2592x1440、124 帧、20 steps 全流程：12 个空间 tile 的聚合进度单调可见，耗时 1274.815 秒，GPU 平均 94.62%、峰值 100%，VRAM 峰值约 22.67 GiB；GPU 视频/音频 VAE、MP4、JointAV 与同一 History 资产持久化通过。输出画面仍有异常，质量根因按用户要求留待后续排查，不影响本条运行与设置证据。",
+                commit: H3_ULTIMATE_UPSCALE_REVISION,
+                checks: ["static", "object-info", "minimal-run"]
+            }],
+        required: false
+    }, {
         id: "local-video-studio-h3-av",
         priority: 147,
         name: "Local Video Studio H3 AV Serializer",
-        purpose: "在 output root 下安全保存/加载 H3 joint AV safetensors artifact，并桥接到 H3 Continuum state",
+        purpose: "在 output root 下安全保存/加载 H3 JointAV artifact，桥接 Continuum state，并把该 state 注入完整 V3.8 facade",
         repositoryUrl: "builtin://LocalVideoStudio-H3",
         directoryName: "LocalVideoStudio-H3",
         aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
@@ -534,11 +573,12 @@ const customNodeDefinitions = [{
             "LocalVideoStudioH3SaveJointAV",
             "LocalVideoStudioH3LoadJointAV",
             "LocalVideoStudioH3ArtifactToContinuumState",
+            "LocalVideoStudioH3ContinuumSamplerV38",
             "LocalVideoStudioRequireGpuVAE",
             "LocalVideoStudioH3RequireGpuVAE",
             "LocalVideoStudioH3AnchorConditioning"
         ],
-        runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge 只在 ComfyUI-H3-Continuum 已加载时工作，并委托其 state contract，不复制采样逻辑。",
+        runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge/facade 只在 ComfyUI-H3-Continuum 3.8.2 已加载时工作，委托其 state 与 sampler contract，不复制采样逻辑。",
         required: false
     }, {
         id: "spectrum-minimax-h3",
@@ -560,7 +600,7 @@ const customNodeDefinitions = [{
                 commit: "a360f64",
                 workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
                 checks: ["static"]
-        }],
+            }],
         required: false
     }];
 export const LLAMA_CPP_PYTHON_DEPENDENCY_ID = "llama-cpp-python";

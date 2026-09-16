@@ -8,6 +8,13 @@
 
 ## Unreleased
 
+- 修复 Continuum V3.8 已执行 JointAV serializer、却因应用按“可见时长、不含 22 帧保护前缀”计算 artifact `frameCount` 而拒绝提交 manifest 的问题；V3.8 的采样预算、最大时长和 JointAV 元数据现在均按 sampler 原始 latent（可见新增帧 + 22 帧连续性前缀）的 H3 时间网格计算，`H3ContinuumAssembleSeamV35` 仍只负责从成片中移除前缀。14 秒真实输出对应 362 帧、video latent T=107、audio latent T=603。
+- 修复 Continuum V3.8 Extend 在节点侧 `H3ContinuumAssembleSeamV35` 已移除 22 帧保护前缀后，应用最终拼接仍按 `overlapFrames / 24` 再裁约 0.92 秒、从而删掉连续运动接缝并产生明显镜头跳变的问题；Continuum 与 Motion Context 的成片现在从节点已组装的首帧直接拼接，普通 overlap Extend 与 FL2VA 保持原裁切规则，Spectrum 路径不变。
+- 精简测试日常入口：`npm.cmd test` 现在只运行紧凑的单元测试层；History 性能基准、打包复制 smoke、依赖安装事务和 runtime 安装事务移入 `test:integration`，完整 `verify` 仍运行全部测试。
+- 将 H3 Continuum 推荐版本更新至 V3.8X package 3.8.2，并把安装 revision 固定到上游当前 `c38c616`；该版本保留 3.8.1 runtime 并同步发布完整性与 Spectrum 兼容记录，不宣称已修复上游 Issue #13 或当前外部 JointAV state 接续退化。
+- 修复 Continuum V3.8 Extend 实际未使用 JointAV bridge 的退化：新增薄兼容 facade，把官方 V3 引擎已有的 `initial_state` 重新接入完整 V3.8 Production 路径；内置图改为 `JointAV -> native state -> V3.8`，移除同源末帧与 Video Guide 的重复条件。Continuum 提示词增强也不再伪造 `<Picture 1>` 或 0 秒图片对齐声明。静态契约、Python MRO/schema probe 与单元测试已通过，真实 GPU 接缝质量仍待复检。
+- 修复 Local Video Studio H3 AV 0.3.1 在 Continuum 已预加载时仅按 `nodes.py` 文件名寻找内部模块、误把包根节点表当成 `v3.nodes`，导致 `/object_info/LocalVideoStudioH3ContinuumSamplerV38` 报错的问题；0.3.2 改为匹配 `ComfyUI-H3-Continuum/v3/nodes.py` 的完整路径尾部，并在上游包预加载场景完成 schema/MRO 探针。
+
 ## 0.61.9 — 2026-09-14
 
 - 新增 H3“批注修订”预设：允许用括号、方括号或 Markdown 加粗标注局部返工意见，仅重写被标注片段，清理批注文本并保留其余已认可 Prompt。

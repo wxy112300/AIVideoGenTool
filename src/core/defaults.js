@@ -2,7 +2,7 @@ import { createDefaultH3PromptPresets, createDefaultQwenImagePromptPresets, crea
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { H3_MEMORY_DEFAULT_CHUNK_ROWS, H3_MEMORY_DEFAULT_MODE } from "./h3-memory-policy.js";
 export const defaultPrompt = "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
-export const APP_SCHEMA_VERSION = 14;
+export const APP_SCHEMA_VERSION = 15;
 export { createDefaultImageEditDraft } from "./draft-defaults.js";
 export function createDefaultImagePromptPresets() {
     return createDefaultQwenImagePromptPresets();
@@ -14,6 +14,8 @@ export function createDefaultDraft() {
         sourceWidth: 0,
         sourceHeight: 0,
         endImagePath: "",
+        endImageWidth: 0,
+        endImageHeight: 0,
         sourceVideoPath: "",
         sourceVideoDuration: 0,
         trimStartSeconds: 0,
@@ -54,6 +56,8 @@ export function createDefaultDraft() {
         spectrumModeUserSet: false,
         h3LatentSaveMode: "all",
         h3SaveJointAv: true,
+        // Kept at the withdrawn value so pre-upgrade renderers and state files
+        // remain readable; no new workflow consumes these fields.
         h3MemoryOptimizationMode: H3_MEMORY_DEFAULT_MODE,
         h3MemoryOptimizationUserSet: false,
         h3MemoryChunkRows: H3_MEMORY_DEFAULT_CHUNK_ROWS
@@ -105,6 +109,7 @@ export function createDefaultSettings() {
         safeCancel: true,
         autoRetryFailedTasks: true,
         autoRetryCount: 2,
+        queueIsolationMode: "lora",
         uiLocale: "zh-CN",
         promptLanguage: "auto",
         promptCreativity: 0.7,

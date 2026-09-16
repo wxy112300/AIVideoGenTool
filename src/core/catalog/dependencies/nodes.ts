@@ -51,12 +51,51 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.3.0";
+export const H3_AV_SERIALIZER_REVISION = "0.3.2";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
-export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.0";
-export const H3_CONTINUUM_REVISION = "b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.2";
+export const H3_CONTINUUM_REVISION = "c38c616d54feb0310a3ca7540f2f4addc499fd1f";
+export const MINIMAX_H3_IMAGE_STUDIO_VERSION = "23.0.0";
+export const MINIMAX_H3_IMAGE_STUDIO_REVISION = "f7384aacb7bf35492dc73a3e6054ab6b427f93f6";
+export const MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI = "0.30.0";
+export const MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI = "0.35.0";
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
+  id: "minimax-h3-image-studio",
+  priority: 135,
+  name: "MiniMax H3 Image Studio",
+  purpose: "提供 MiniMax H3 FL2VA 图像 I2I 与 REF2VA 参考编辑节点",
+  repositoryUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio.git",
+  directoryName: "ComfyUI-MiniMax-H3-Image-Studio",
+  aliases: ["comfyui-minimax-h3-image-studio", "ComfyUI-MiniMax-H3-Image-Studio"],
+  installRevision: MINIMAX_H3_IMAGE_STUDIO_REVISION,
+  releaseSource: "github-release",
+  minimumVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+  recommendedVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+  latestVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
+  nodeTypes: [
+    "H3ImageResolutionPreset",
+    "H3ImageToImagePrepare",
+    "H3ReferenceEditPrepare",
+    "H3ImageSamplingPreset",
+    "H3ImageDecode",
+    "H3ImageFrameSelector"
+  ],
+  runtimeRequirement: "Python >=3.10；上游 v23.0.0 requirements.txt 无额外 Python 依赖。安装后必须重启所选 ComfyUI，并重新检查 /object_info；目录存在不等于节点已加载。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-15",
+    sourceUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/tree/v23.0.0",
+    note: "固定 v23.0.0 / commit f7384aac；静态核对 pyproject.toml、requirements.txt、FL2VA/REF2VA API graphs 与节点注册表。当前没有目标 ComfyUI /object_info 或本机 GPU smoke 证据。",
+    comfyUi: ">=0.30.0",
+    python: ">=3.10",
+    commit: MINIMAX_H3_IMAGE_STUDIO_REVISION,
+    workflowIds: ["minimax_h3_image_i2i_api.json", "minimax_h3_reference_edit_api.json"],
+    checks: ["static"]
+  }],
+  appInstallable: true,
+  bulkInstall: false,
+  required: false
+}, {
   id: "inpaint-nodes",
   priority: 90,
   name: "ComfyUI Inpaint Nodes",
@@ -386,7 +425,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "h3-continuum",
   priority: 142,
   name: "ComfyUI H3 Continuum",
-  purpose: "使用 H3 Continuum V3.8 的公开 sampler、Video Guide 和 Finalize 进行分块长视频与接续；History JointAV 作为边界资产保留",
+  purpose: "使用 H3 Continuum V3.8 的原生 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
   repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
   directoryName: "ComfyUI-H3-Continuum",
   aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
@@ -403,11 +442,11 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
   bulkInstall: false,
   appInstallable: true,
-  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum v3.8.0。V3.8 公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
+  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum V3.8X package 3.8.2。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
   compatibilityEvidence: [{
-    verifiedAt: "2026-09-10",
-    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/b10804f78ca67fdeb3eb09fa5f2ebab2f3abc3c3",
-    note: "v3.8.0 发布后的当前 main 已包含 Review/continuation 热修；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize），并提供 H3ContinuumLoadVideo 作为 Video Guide 输入；上游 README 标注 ComfyUI 0.34.2 验证。旧 Join/Finish/SaveState ID 不在当前公开节点面内。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
+    verifiedAt: "2026-09-15",
+    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+    note: "V3.8X package 3.8.2 保留 3.8.1 已验收的 R0-R6 runtime、七节点公开面、Sampling、Review 与 Run Storage 契约，并同步发布清单及 Spectrum v0.2.27 兼容验证；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize）。上游 Issue #13 仍未解决，升级不代表主观画质或外部 JointAV state 接续已经修复。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
     comfyUi: "0.34.2",
     commit: H3_CONTINUUM_REVISION,
     checks: ["static"]
@@ -554,7 +593,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "local-video-studio-h3-av",
   priority: 147,
   name: "Local Video Studio H3 AV Serializer",
-  purpose: "在 output root 下安全保存/加载 H3 joint AV safetensors artifact，并桥接到 H3 Continuum state",
+  purpose: "在 output root 下安全保存/加载 H3 JointAV artifact，桥接 Continuum state，并把该 state 注入完整 V3.8 facade",
   repositoryUrl: "builtin://LocalVideoStudio-H3",
   directoryName: "LocalVideoStudio-H3",
   aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
@@ -565,11 +604,12 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     "LocalVideoStudioH3SaveJointAV",
     "LocalVideoStudioH3LoadJointAV",
     "LocalVideoStudioH3ArtifactToContinuumState",
+    "LocalVideoStudioH3ContinuumSamplerV38",
     "LocalVideoStudioRequireGpuVAE",
     "LocalVideoStudioH3RequireGpuVAE",
     "LocalVideoStudioH3AnchorConditioning"
   ],
-  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge 只在 ComfyUI-H3-Continuum 已加载时工作，并委托其 state contract，不复制采样逻辑。",
+  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge/facade 只在 ComfyUI-H3-Continuum 3.8.2 已加载时工作，委托其 state 与 sampler contract，不复制采样逻辑。",
   required: false
 }, {
   id: "spectrum-minimax-h3",

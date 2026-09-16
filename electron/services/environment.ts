@@ -418,6 +418,8 @@ interface ModelProfileDefinition {
   description: string;
   vram: string;
   integrated?: boolean;
+  productGate?: "locked" | "open";
+  productGateReason?: string;
   requiredCustomNodeIds?: readonly string[];
   runtimeNodeTypes?: readonly string[];
   components: Array<{
@@ -1724,6 +1726,8 @@ function catalogModelProfileDefinitionsFor(
     description: locale?.description ?? "",
     vram: scan.vram,
     integrated: scan.integrated,
+    productGate: scan.productGate,
+    productGateReason: scan.productGateReason,
     requiredCustomNodeIds: scan.requiredCustomNodeIds,
     runtimeNodeTypes: scan.runtimeNodeTypes,
     components: scan.components.map((component) => ({
@@ -1803,6 +1807,8 @@ export function evaluateModelProfiles(
       vram: profile.vram,
       available: modelComponentsAvailable(components),
       integrated: profile.integrated !== false,
+      ...(profile.productGate ? { productGate: profile.productGate } : {}),
+      ...(profile.productGateReason ? { productGateReason: profile.productGateReason } : {}),
       ...(profile.requiredCustomNodeIds?.length
         ? { requiredCustomNodeIds: [...profile.requiredCustomNodeIds] }
         : {}),
@@ -4983,13 +4989,18 @@ export function refreshModelProfileRuntimeEvidence(
   ];
   const definitionsById = new Map(definitions.map((profile) => [profile.id, profile]));
   return profiles.map((profile) => {
-    const runtimeNodeTypes = definitionsById.get(profile.id)?.runtimeNodeTypes;
+    const definition = definitionsById.get(profile.id);
+    const runtimeNodeTypes = definition?.runtimeNodeTypes;
+    const productGate = profile.productGate ?? definition?.productGate;
+    const productGateReason = profile.productGateReason ?? definition?.productGateReason;
     if (!runtimeNodeTypes) return profile;
     const runtimeMissingNodes = runtimeNodeIds
       ? runtimeNodeTypes.filter((nodeType) => !runtimeNodeIds.has(nodeType))
       : [];
     return {
       ...profile,
+      ...(productGate ? { productGate } : {}),
+      ...(productGateReason ? { productGateReason } : {}),
       runtimeVerified: runtimeNodeIds !== undefined,
       runtimeReady: runtimeNodeIds !== undefined && runtimeMissingNodes.length === 0,
       runtimeMissingNodes

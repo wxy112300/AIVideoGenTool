@@ -4,6 +4,9 @@ import {
   birefnetRequiredNodeTypes,
   buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
+  applyH3ImageVramCleanup,
+  buildMinimaxH3ImageI2IWorkflow,
+  buildMinimaxH3ReferenceEditWorkflow,
   buildHiDreamO1Workflow,
   buildOmniGen2Workflow,
   buildZImageTurboWorkflow,
@@ -12,6 +15,8 @@ import {
   buildQwenImageEdit2511CropStitchWorkflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
+  compileMinimaxH3ImageI2IPrompt,
+  compileMinimaxH3ReferenceEditPrompt,
   compileHiDreamO1Prompt,
   compileOmniGen2Prompt,
   compileZImagePrompt,
@@ -21,6 +26,10 @@ import {
   flux2Klein4bRequiredNodeTypes,
   hidreamO1Capability,
   hidreamO1RequiredNodeTypes,
+  minimaxH3ImageI2ICapability,
+  minimaxH3ImageI2IRequiredNodeTypes,
+  minimaxH3ReferenceEditCapability,
+  minimaxH3ReferenceEditRequiredNodeTypes,
   omnigen2Capability,
   omnigen2RequiredNodeTypes,
   zImageCapability,
@@ -33,6 +42,8 @@ import {
   imageMarkupPromptContext,
   imageOutputCandidateFromValue,
   imageOutputDimensions,
+  h3ImageOutputDimensions,
+  h3ImageRecipeFor,
   imageResolutionOptionsFor,
   normalizeImageAspectRatio,
   imageReferenceInputPath,
@@ -46,6 +57,9 @@ import {
   qwenImageEdit2511CropStitchCapability,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
+  validateMinimaxH3ImageI2IWorkflow,
+  validateMinimaxH3ImageRuntimeSchema,
+  validateMinimaxH3ReferenceEditWorkflow,
   validateHiDreamO1Workflow,
   validateOmniGen2Workflow,
   validateZImageTurboWorkflow,
@@ -68,7 +82,7 @@ function picture(pictureNumber: number, absolutePath = `picture-${pictureNumber}
 }
 
 describe("image enqueue readiness", () => {
-  it("requires an offline scan with model files and required node directories present", () => {
+  it("requires file/package readiness while allowing pending runtime evidence", () => {
     expect(cachedImageProfileAllowsEnqueue(undefined)).toBe(false);
     expect(cachedImageProfileAllowsEnqueue({
       category: "image", integrated: true, available: true, missingCustomNodeIds: []
@@ -82,6 +96,17 @@ describe("image enqueue readiness", () => {
     expect(cachedImageProfileAllowsEnqueue({
       category: "video", integrated: true, available: true, missingCustomNodeIds: []
     })).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: true, missingCustomNodeIds: [], productGate: "locked"
+    })).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: true, missingCustomNodeIds: [], productGate: "open",
+      runtimeVerified: false, runtimeReady: false
+    })).toBe(true);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: true, missingCustomNodeIds: [], productGate: "open",
+      runtimeVerified: true, runtimeReady: true
+    })).toBe(true);
   });
 
   it("does not treat an image history source marker as a runnable model", () => {
@@ -92,6 +117,403 @@ describe("image enqueue readiness", () => {
     )).toBe("flux2-klein-4b");
     expect(firstSupportedImageModelId("source", "unknown-model")).toBe(
       "qwen-image-edit-2511"
+    );
+  });
+});
+
+describe("MiniMax H3 image workflows", () => {
+  const run = { id: "h3-image-run", index: 0, seed: 17, status: "running" as const };
+  const imageTask = (
+    modelId: "minimax-h3-image-i2i" | "minimax-h3-reference-edit",
+    qualityProfile: string,
+    pictures: ImageReference[],
+    extra: Partial<ImageGenerationQueueTask> = {}
+  ): ImageGenerationQueueTask => ({
+    id: `task-${modelId}`,
+    taskType: "image-generation",
+    status: "waiting",
+    createdAt: "2026-09-15T00:00:00.000Z",
+    updatedAt: "2026-09-15T00:00:00.000Z",
+    outputFilename: "H3Image-test",
+    projectId: "project",
+    pictures,
+    prompt: "Change the jacket color while preserving the subject.",
+    promptVersion: 1,
+    modelId,
+    workflowPath: `builtin:image/${modelId}`,
+    qualityProfile,
+    outputFormat: "png",
+    outputCount: 1,
+    runs: [],
+    ...extra
+  });
+
+  it("keeps FL2VA anchored to exactly Picture 1 and its own Turbo adapter", () => {
+    expect(minimaxH3ImageI2ICapability).toMatchObject({
+      id: "minimax-h3-image-i2i",
+      maxPictures: 1,
+      requiresPrompt: true,
+      supportsMask: false,
+      supportsMarkup: false
+    });
+    expect(minimaxH3ImageI2IRequiredNodeTypes).toEqual(
+      expect.arrayContaining(["H3ImageToImagePrepare", "H3ImageFrameSelector", "SaveImage"])
+    );
+    expect(compileMinimaxH3ImageI2IPrompt("Brighten <Picture 1>.", [picture(1)]).errors)
+      .toEqual([]);
+    expect(compileMinimaxH3ImageI2IPrompt("Brighten <Picture 2>.", [picture(1)]).errors[0])
+      .toContain("不存在的 Picture 2");
+    expect(compileMinimaxH3ImageI2IPrompt("Brighten it.", [picture(1), picture(2)]).errors[0])
+      .toContain("必须恰好包含一张 Picture 1");
+
+    const workflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "fl2va-turbo-8", [picture(1)], {
+        h3ImageOptions: {
+          frameProfile: "recommended-5",
+          frameSelection: "decode-recommended",
+          sourceFit: "crop-center",
+          referenceDetail: "match-generation-area",
+          sourceFidelity: 0.8
+        }
+      }),
+      run
+    );
+    expect(Object.values(workflow).map((node) => node.class_type)).toEqual(
+      expect.arrayContaining([...minimaxH3ImageI2IRequiredNodeTypes, "LoraLoaderModelOnly"])
+    );
+    expect(workflow.model?.inputs.unet_name).toBe("minimax_h3_fl2va_pruned_int8_convrot.safetensors");
+    expect(workflow.turbo?.inputs.lora_name).toBe("minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors");
+    expect(workflow.prepare?.class_type).toBe("H3ImageToImagePrepare");
+    expect(workflow.prepare?.inputs.source_fidelity).toBe(0.8);
+    expect(workflow.selector?.inputs.strategy).toBe("decode_recommended");
+    expect(workflow.save?.inputs.images).toEqual(["selector", 0]);
+    expect(validateMinimaxH3ImageI2IWorkflow(workflow, "fl2va-turbo-8", true)).toEqual([]);
+    expect(() => buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "unregistered-quality", [picture(1)]),
+      run
+    )).toThrow("H3 图片质量档 unregistered-quality 未登记");
+  });
+
+  it("releases the diffusion stack before H3ImageDecode when KJNodes is loaded", () => {
+    const workflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "base-quality-20", [picture(1)]),
+      run
+    );
+    expect(applyH3ImageVramCleanup(workflow, {})).toBe(false);
+    expect(workflow.decode?.inputs.samples).toEqual(["sampler", 0]);
+
+    expect(applyH3ImageVramCleanup(workflow, { VRAM_Debug: {} })).toBe(true);
+    expect(workflow.vram_cleanup).toMatchObject({
+      class_type: "VRAM_Debug",
+      inputs: {
+        empty_cache: true,
+        gc_collect: true,
+        unload_all_models: true,
+        any_input: ["sampler", 0]
+      }
+    });
+    expect(workflow.decode?.inputs.samples).toEqual(["vram_cleanup", 0]);
+    expect(applyH3ImageVramCleanup(workflow, { VRAM_Debug: {} })).toBe(false);
+  });
+
+  it("keeps REF2VA Pictures ordered through nine sockets and uses the REF2VA adapter", () => {
+    expect(minimaxH3ReferenceEditCapability).toMatchObject({
+      id: "minimax-h3-reference-edit",
+      maxPictures: 9,
+      requiresPrompt: true,
+      supportsMask: false,
+      supportsMarkup: false
+    });
+    expect(minimaxH3ReferenceEditRequiredNodeTypes).toEqual(
+      expect.arrayContaining(["H3ReferenceEditPrepare", "H3ImageFrameSelector", "SaveImage"])
+    );
+    const pictures = [
+      picture(1),
+      { ...picture(3), role: "style" as const, note: "lighting palette only" },
+      { ...picture(8), role: "person" as const, note: "identity only" }
+    ];
+    const compiled = compileMinimaxH3ReferenceEditPrompt(
+      "Use <Picture 8> for the face and <Picture 3> for lighting.",
+      pictures
+    );
+    expect(compiled.errors).toEqual([]);
+    expect(compiled.pictures.map((item) => item.pictureNumber)).toEqual([1, 3, 8]);
+    expect(compiled.prompt).toContain("<Picture 3> (UI Picture 8) = person or identity; responsibility: identity only.");
+    expect(compiled.prompt).toContain("<Picture 2> (UI Picture 3) = style or lighting; responsibility: lighting palette only.");
+    expect(compiled.prompt).toContain("Use <Picture 3> for the face and <Picture 2> for lighting.");
+    expect(compiled.runtimePictureNumberMap).toEqual([
+      { visiblePictureNumber: 1, runtimePictureNumber: 1 },
+      { visiblePictureNumber: 3, runtimePictureNumber: 2 },
+      { visiblePictureNumber: 8, runtimePictureNumber: 3 }
+    ]);
+    expect(compiled.runtimeReferencedPictureNumbers).toEqual([2, 3]);
+
+    const workflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", pictures),
+      run
+    );
+    expect(workflow.model?.inputs.unet_name).toBe("minimax_h3_ref2va_pruned_int8_convrot.safetensors");
+    expect(workflow.turbo?.inputs.lora_name).toBe("minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors");
+    expect(workflow.prepare?.class_type).toBe("H3ReferenceEditPrepare");
+    expect(workflow.prepare?.inputs.reference_image_2).toEqual(["reference_2", 0]);
+    expect(workflow.prepare?.inputs.reference_image_3).toEqual(["reference_3", 0]);
+    expect(workflow.prepare?.inputs.reference_image_8).toBeUndefined();
+    expect(workflow.prepare?.inputs.reference_detail).toBe("match_generation_area");
+    expect(validateMinimaxH3ReferenceEditWorkflow(workflow, "ref2va-turbo-8-768p", true)).toEqual([]);
+
+    const missingRole = compileMinimaxH3ReferenceEditPrompt("Edit the image.", [
+      picture(1),
+      picture(2)
+    ]);
+    expect(missingRole.errors[0]).toContain("Picture 2 缺少参考职责");
+  });
+
+  it("keeps continuous runtime Picture numbers stable and maps the nine-image boundary once", () => {
+    const pictures = Array.from({ length: 9 }, (_, index) => ({
+      ...picture(index + 1),
+      role: index === 0 ? "base" as const : "object" as const,
+      ...(index === 0 ? {} : { note: `reference ${index + 1}` })
+    }));
+    const compiled = compileMinimaxH3ReferenceEditPrompt(
+      "Use <Picture 2> and <Picture 9>.",
+      pictures
+    );
+    expect(compiled.errors).toEqual([]);
+    expect(compiled.prompt).toContain("Use <Picture 2> and <Picture 9>.");
+    expect(compiled.runtimePictureNumberMap?.at(-1)).toEqual({
+      visiblePictureNumber: 9,
+      runtimePictureNumber: 9
+    });
+    expect(compiled.runtimeReferencedPictureNumbers).toEqual([2, 9]);
+    const workflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", pictures),
+      run
+    );
+    expect(Object.keys(workflow.prepare?.inputs ?? {})
+      .filter((key) => key.startsWith("reference_image_")))
+      .toEqual(Array.from({ length: 8 }, (_, index) => `reference_image_${index + 2}`));
+    expect(validateMinimaxH3ReferenceEditWorkflow(workflow, "ref2va-turbo-8-768p", true)).toEqual([]);
+  });
+
+  it("recomputes only runtime slots after a sparse Picture is deleted and restored", () => {
+    const base = picture(1);
+    const style = { ...picture(3), role: "style" as const, note: "lighting only" };
+    const identity = { ...picture(8), role: "person" as const, note: "identity only" };
+    const initial = [base, style, identity];
+    const afterDelete = [base, identity];
+    const afterRestore = [base, style, identity];
+
+    const deletedPrompt = compileMinimaxH3ReferenceEditPrompt(
+      "Use <Picture 8> for identity.",
+      afterDelete
+    );
+    expect(deletedPrompt.errors).toEqual([]);
+    expect(deletedPrompt.runtimePictureNumberMap).toEqual([
+      { visiblePictureNumber: 1, runtimePictureNumber: 1 },
+      { visiblePictureNumber: 8, runtimePictureNumber: 2 }
+    ]);
+    expect(deletedPrompt.prompt).toContain("Use <Picture 2> for identity.");
+    const deletedWorkflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", afterDelete),
+      run
+    );
+    expect(Object.keys(deletedWorkflow.prepare?.inputs ?? {})
+      .filter((key) => key.startsWith("reference_image_")))
+      .toEqual(["reference_image_2"]);
+
+    const restoredPrompt = compileMinimaxH3ReferenceEditPrompt(
+      "Use <Picture 8> for identity and <Picture 3> for lighting.",
+      afterRestore
+    );
+    expect(restoredPrompt.errors).toEqual([]);
+    expect(restoredPrompt.runtimePictureNumberMap).toEqual([
+      { visiblePictureNumber: 1, runtimePictureNumber: 1 },
+      { visiblePictureNumber: 3, runtimePictureNumber: 2 },
+      { visiblePictureNumber: 8, runtimePictureNumber: 3 }
+    ]);
+    expect(restoredPrompt.prompt).toContain("Use <Picture 3> for identity and <Picture 2> for lighting.");
+    const restoredWorkflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", initial),
+      run
+    );
+    expect(Object.keys(restoredWorkflow.prepare?.inputs ?? {})
+      .filter((key) => key.startsWith("reference_image_")))
+      .toEqual(["reference_image_2", "reference_image_3"]);
+  });
+
+  it("rejects REF2VA runtime reference socket holes", () => {
+    const workflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", [
+        picture(1),
+        { ...picture(2), role: "style", note: "lighting" },
+        { ...picture(3), role: "pose", note: "composition" }
+      ]),
+      run
+    );
+    const prepare = workflow.prepare;
+    if (!prepare) throw new Error("test fixture did not build a REF2VA Prepare node");
+    delete prepare.inputs.reference_image_2;
+    expect(validateMinimaxH3ReferenceEditWorkflow(workflow, "ref2va-turbo-8-768p", true))
+      .toContain("H3 REF2VA runtime reference sockets 必须从 reference_image_2 起连续，不能有空洞。");
+  });
+
+  it("uses frozen Base, FL2VA Turbo, and REF2VA Turbo recipes with a tested legacy fallback", () => {
+    const baseFrozen = h3ImageRecipeFor(
+      "minimax-h3-image-i2i",
+      "base-quality-20",
+      "frozen-base-checkpoint.safetensors"
+    )!;
+    const baseWorkflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "base-quality-20", [picture(1)], {
+        diffusionModelFilename: "frozen-base-checkpoint.safetensors",
+        h3ImageRecipe: baseFrozen
+      }),
+      run
+    );
+    expect(baseWorkflow.model?.inputs.unet_name).toBe("frozen-base-checkpoint.safetensors");
+    expect(baseWorkflow.turbo).toBeUndefined();
+    expect(validateMinimaxH3ImageI2IWorkflow(
+      baseWorkflow,
+      "base-quality-20",
+      true,
+      baseFrozen
+    )).toEqual([]);
+
+    const frozen = h3ImageRecipeFor(
+      "minimax-h3-image-i2i",
+      "fl2va-turbo-8",
+      "frozen-fl2va-checkpoint.safetensors"
+    )!;
+    const workflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "fl2va-turbo-8", [picture(1)], {
+        diffusionModelFilename: "frozen-fl2va-checkpoint.safetensors",
+        h3ImageRecipe: frozen
+      }),
+      run
+    );
+    expect(workflow.model?.inputs.unet_name).toBe("frozen-fl2va-checkpoint.safetensors");
+    expect(workflow.turbo?.inputs.lora_name).toBe(frozen.loraFilename);
+    expect(workflow.sampling?.inputs.sampling_profile).toBe(frozen.samplingProfile);
+    expect(validateMinimaxH3ImageI2IWorkflow(
+      workflow,
+      "fl2va-turbo-8",
+      true,
+      frozen
+    )).toEqual([]);
+
+    const historicalRecipe = {
+      ...frozen,
+      loraFilename: "historical-fl2va-turbo-adapter.safetensors"
+    };
+    const historicalWorkflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "fl2va-turbo-8", [picture(1)], {
+        diffusionModelFilename: "frozen-fl2va-checkpoint.safetensors",
+        h3ImageRecipe: historicalRecipe
+      }),
+      run
+    );
+    expect(historicalWorkflow.turbo?.inputs.lora_name).toBe(historicalRecipe.loraFilename);
+    expect(validateMinimaxH3ImageI2IWorkflow(
+      historicalWorkflow,
+      "fl2va-turbo-8",
+      true,
+      historicalRecipe
+    )).toEqual([]);
+
+    const refFrozen = h3ImageRecipeFor(
+      "minimax-h3-reference-edit",
+      "ref2va-turbo-8-768p",
+      "frozen-ref2va-checkpoint.safetensors"
+    )!;
+    const refWorkflow = buildMinimaxH3ReferenceEditWorkflow(
+      imageTask("minimax-h3-reference-edit", "ref2va-turbo-8-768p", [
+        picture(1),
+        { ...picture(3), role: "style", note: "lighting only" }
+      ], {
+        diffusionModelFilename: "frozen-ref2va-checkpoint.safetensors",
+        h3ImageRecipe: refFrozen
+      }),
+      run
+    );
+    expect(refWorkflow.model?.inputs.unet_name).toBe("frozen-ref2va-checkpoint.safetensors");
+    expect(refWorkflow.turbo?.inputs.lora_name).toBe(refFrozen.loraFilename);
+    expect(validateMinimaxH3ReferenceEditWorkflow(
+      refWorkflow,
+      "ref2va-turbo-8-768p",
+      true,
+      refFrozen
+    )).toEqual([]);
+
+    const legacyWorkflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "base-quality-20", [picture(1)], {
+        diffusionModelFilename: "legacy-custom-checkpoint.safetensors"
+      }),
+      run
+    );
+    expect(legacyWorkflow.model?.inputs.unet_name).toBe("legacy-custom-checkpoint.safetensors");
+    expect(validateMinimaxH3ImageI2IWorkflow(legacyWorkflow, "base-quality-20", true)).toEqual([]);
+
+    const crossRoute = h3ImageRecipeFor(
+      "minimax-h3-reference-edit",
+      "ref2va-turbo-8-768p",
+      "wrong-route.safetensors"
+    )!;
+    expect(() => buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "fl2va-turbo-8", [picture(1)], {
+        diffusionModelFilename: "wrong-route.safetensors",
+        h3ImageRecipe: crossRoute
+      }),
+      run
+    )).toThrow("H3 图片冻结 recipe 校验失败");
+
+    const corrupt = { ...frozen, samplingProfile: "corrupted sampling profile" };
+    expect(() => buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "fl2va-turbo-8", [picture(1)], {
+        diffusionModelFilename: "frozen-fl2va-checkpoint.safetensors",
+        h3ImageRecipe: corrupt
+      }),
+      run
+    )).toThrow("H3 图片冻结 recipe 校验失败");
+  });
+
+  it("calculates the fixed H3 canvas from source ratio on the 32-pixel grid", () => {
+    for (const [width, height] of [[1920, 1080], [1080, 1920], [1024, 1024]] as const) {
+      const [outputWidth, outputHeight] = h3ImageOutputDimensions(width, height);
+      expect(outputWidth % 32).toBe(0);
+      expect(outputHeight % 32).toBe(0);
+      expect(outputWidth / outputHeight).toBeCloseTo(width / height, 0.1);
+      expect(outputWidth * outputHeight).toBeGreaterThan(900_000);
+      expect(outputWidth * outputHeight).toBeLessThan(1_150_000);
+    }
+  });
+
+  it("fails closed when a runtime H3 enum is absent or does not contain the used value", () => {
+    const workflow = buildMinimaxH3ImageI2IWorkflow(
+      imageTask("minimax-h3-image-i2i", "base-quality-20", [picture(1)]),
+      run
+    );
+    const objectInfo: Record<string, unknown> = {
+      UNETLoader: { input: { required: { unet_name: [["minimax_h3_fl2va_pruned_int8_convrot.safetensors"]], weight_dtype: [["default"]] } } },
+      CLIPLoader: { input: { required: { clip_name: [["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"],], type: [["minimax"]], device: [["default"]] } } },
+      VAELoader: { input: { required: { vae_name: [["minimax_h3_video_vae_fp16.safetensors"]] } } },
+      LoadImage: { input: { required: { image: "STRING" } } },
+      H3ImageResolutionPreset: { input: { required: { aspect_ratio: [["source image"]], resolution_profile: [["native detail | 0.98 MP"]], source_image: "IMAGE" } } },
+      H3ImageToImagePrepare: { input: { required: { clip: "CLIP", vae: "VAE", source_image: "IMAGE", edit_instruction: "STRING", width: "INT", height: "INT", quality_profile: [["recommended | 5 frames"]], source_fidelity: "FLOAT", source_fit: [["crop_center", "contain_pad", "stretch"]], optimize_for_still: "BOOLEAN" } } },
+      RandomNoise: { input: { required: { noise_seed: "INT" } } },
+      BasicGuider: { input: { required: { model: "MODEL", conditioning: "CONDITIONING" } } },
+      H3ImageSamplingPreset: { input: { required: { model: "MODEL", sampling_profile: [["base quality | RES 20 steps", "Turbo v1.0 | 8 steps", "REF2VA Turbo v1.0 768p | 8 steps"]] } } },
+      SamplerCustomAdvanced: { input: { required: { noise: "NOISE", guider: "GUIDER", sampler: "SAMPLER", sigmas: "SIGMAS", latent_image: "LATENT" } } },
+      H3ImageDecode: { input: { required: { samples: "LATENT", vae: "VAE" } } },
+      H3ImageFrameSelector: { input: { required: { frames: "IMAGE", strategy: [["decode_recommended"]], manual_index: "INT", skip_first_frames: "INT", candidate_start: "FLOAT", candidate_end: "FLOAT", similarity_weight: "FLOAT", top_k: "INT", source_image: "IMAGE", recommended_index: "INT" } } },
+      SaveImage: { input: { required: { images: "IMAGE", filename_prefix: "STRING" } } }
+    };
+    expect(validateMinimaxH3ImageRuntimeSchema(workflow, objectInfo)).toEqual([]);
+    const invalidSchema = {
+      ...objectInfo,
+      H3ImageSamplingPreset: { input: { required: { model: "MODEL", sampling_profile: [["legacy"]] } } }
+    };
+    expect(validateMinimaxH3ImageRuntimeSchema(workflow, invalidSchema)).toContain(
+      "H3ImageSamplingPreset.sampling_profile 不接受 base quality | RES 20 steps。"
     );
   });
 });

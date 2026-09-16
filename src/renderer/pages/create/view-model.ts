@@ -22,16 +22,19 @@ import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
 import {
   imageModelCapabilityFor,
+  imageModelAdapterFor,
   imageLightningComponentFound,
   imageQualityProfileRequiresLightning,
   imageAspectRatioOptionsFor,
   imageResolutionOptionsFor,
   imageOutputCountMax,
+  imageQualityProfileComponentFound,
+  imageQualityProfileRequiredComponentLabel,
   normalizeImageAspectRatio,
   normalizeImageTargetResolution,
   cachedImageProfileAllowsEnqueue
 } from "../../../core/image-workflow";
-import { normalizeImageEditDraft } from "../../../core/image-project";
+import { isH3ImageModelId, normalizeImageEditDraft } from "../../../core/image-project";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import {
   ensureMotionContextSourceSlot,
@@ -180,15 +183,34 @@ export function imageEditEnqueueBlockReason(
             : imageCapability.requiresMask && !draft.pictures[0]?.mask?.regionCount
               ? "请先在原图上绘制并保存 Mask"
               : "";
-  return referenceBlockReason || imageCapability.requiresPrompt !== false && !prompt.text.trim()
-    ? referenceBlockReason || t(uiKeys.create.validation.imagePromptMissing)
-    : imageProfile?.missingCustomNodeNames?.length
-      ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`
-      : !cachedImageProfileAllowsEnqueue(imageProfile)
-        ? !imageProfile?.available
-          ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
-          : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
-        : "";
+  if (referenceBlockReason) return referenceBlockReason;
+  if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
+    return t(uiKeys.create.validation.imagePromptMissing);
+  }
+  if (isH3ImageModelId(draft.modelId)) {
+    const productGate = imageProfile?.productGate ?? modelCatalog.get(draft.modelId)?.definition.scan?.productGate;
+    if (productGate === "locked") return t(uiKeys.status.imageProductGatePending);
+    if (!imageCapability.qualityProfiles.some((profile) => profile.id === draft.qualityProfile)) {
+      return `H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`;
+    }
+    const compiled = imageModelAdapterFor(draft.modelId)?.compilePrompt(prompt.text, draft.pictures);
+    if (compiled?.errors.length) return compiled.errors[0]!;
+  }
+  if (imageProfile?.missingCustomNodeNames?.length) {
+    return `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
+  }
+  if (imageProfile && !cachedImageProfileAllowsEnqueue(imageProfile)) {
+    return !imageProfile?.available
+      ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
+      : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name });
+  }
+  const selectedQuality = imageCapability.qualityProfiles.find((profile) => profile.id === draft.qualityProfile);
+  const requiredQualityComponent = imageQualityProfileRequiredComponentLabel(imageCapability, draft.qualityProfile);
+  if (selectedQuality && requiredQualityComponent &&
+      !imageQualityProfileComponentFound(imageCapability, draft.qualityProfile, imageProfile?.components ?? [])) {
+    return `${selectedQuality.label} 需要 ${requiredQualityComponent}；请先在设置 → 图片模型中补齐后重新扫描。`;
+  }
+  return "";
 }
 
 export interface VideoEnqueueBlockReasonInput {
@@ -312,6 +334,8 @@ export function buildImageEditPageViewModel(
         vram: entry.definition.scan?.vram ?? "",
         available: false,
         integrated: entry.definition.scan?.integrated !== false,
+        productGate: entry.definition.scan?.productGate,
+        productGateReason: entry.definition.scan?.productGateReason,
         components: []
       }));
   const prompt = activeImagePrompt(draft, state.settings.uiLocale);
@@ -356,6 +380,45 @@ export function buildImageEditPageViewModel(
   const promptlessResultDescription = t(backgroundRemoval
     ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
     : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
+  const h3ImageOptionsVisible = isH3ImageModelId(draft.modelId);
+  const h3ReferenceDetailVisible = draft.modelId === "minimax-h3-reference-edit";
+  const h3ReferenceNoteVisible = h3ReferenceDetailVisible;
+  const h3ImageSourceFitOptionsMarkup = h3ImageOptionsVisible && draft.h3ImageOptions
+    ? ([
+        ["crop-center", uiKeys.create.imageEdit.h3SourceFitCropCenter],
+        ["contain-pad", uiKeys.create.imageEdit.h3SourceFitContainPad],
+        ["stretch", uiKeys.create.imageEdit.h3SourceFitStretch]
+      ] as const).map(([value, label]) =>
+        `<option value="${value}" ${draft.h3ImageOptions?.sourceFit === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`
+      ).join("")
+    : "";
+  const h3ImageReferenceDetailOptionsMarkup = h3ReferenceDetailVisible && draft.h3ImageOptions
+    ? ([
+        ["match-generation-area", uiKeys.create.imageEdit.h3ReferenceDetailMatchGenerationArea],
+        ["max-identity-2048", uiKeys.create.imageEdit.h3ReferenceDetailMaxIdentity2048]
+      ] as const).map(([value, label]) =>
+        `<option value="${value}" ${draft.h3ImageOptions?.referenceDetail === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`
+      ).join("")
+    : "";
+  const imageQualityOptionsMarkup = imageCapability.qualityProfiles.map((profile) => {
+    const qualityNeedsComponent = imageQualityProfileRequiredComponentLabel(imageCapability, profile.id);
+    const qualityComponentMissing = Boolean(
+      qualityNeedsComponent && !imageQualityProfileComponentFound(
+        imageCapability,
+        profile.id,
+        imageProfile?.components ?? []
+      )
+    );
+    const lightningMissing = imageQualityProfileRequiresLightning(profile.id) &&
+      !imageLightningComponentFound(imageProfile?.components ?? []);
+    const disabled = qualityComponentMissing || lightningMissing;
+    const missingLabel = qualityComponentMissing
+      ? ` · 缺少 ${qualityNeedsComponent}`
+      : lightningMissing
+        ? ` · ${t(uiKeys.create.videoSettings.missingLora)}`
+        : "";
+    return `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${missingLabel}</option>`;
+  }).join("");
   return {
     draft,
     prompt,
@@ -364,7 +427,7 @@ export function buildImageEditPageViewModel(
     imageCapabilityName: imageCapability.name,
     imageCapabilityMaxPictures: imageCapability.maxPictures,
     imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
-    imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
+    imageQualityOptionsMarkup,
     imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageEnhanceMode,
@@ -389,6 +452,8 @@ export function buildImageEditPageViewModel(
       ? t(uiKeys.create.validation.imageRescan)
       : !imageProfile.available
         ? `${imageCapability.name} 模型文件不完整，当前不可选择或加入队列。`
+        : (imageProfile.productGate ?? modelCatalog.get(imageProfile.id)?.definition.scan?.productGate) === "locked"
+          ? t(uiKeys.status.imageProductGatePending)
         : imageProfile.missingCustomNodeNames?.length
           ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。模型可以选择，但安装节点前不能加入队列。`
         : imageProfile.runtimeVerified && !imageProfile.runtimeReady
@@ -398,11 +463,17 @@ export function buildImageEditPageViewModel(
     promptless,
     maskRequired: imageCapability.requiresMask === true,
     sourceResolutionOnly: imageCapability.sourceResolutionOnly === true,
-    imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true,
-    imageResolutionVisible: imageCapability.sourceResolutionOnly !== true,
+    imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
+    imageResolutionVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
     supportsTextOnly: imageCapability.supportsTextOnly === true,
     maskSupported: imageCapability.supportsMask === true,
-    annotationSupported: imageCapability.supportsMarkup === true
+    annotationSupported: imageCapability.supportsMarkup === true,
+    h3ImageOptionsVisible,
+    h3ReferenceDetailVisible,
+    h3ReferenceNoteVisible,
+    h3ImageSourceFitOptionsMarkup,
+    h3ImageReferenceDetailOptionsMarkup,
+    h3ImageSourceFidelity: draft.h3ImageOptions?.sourceFidelity ?? 0
   };
 }
 

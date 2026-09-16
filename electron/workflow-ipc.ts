@@ -123,7 +123,7 @@ async function bundledWorkflowFor(
       const source = await readJson(deps.fileSystem, candidate);
       return attachWorkflowMetadata({
         modelId,
-        label: "内置 · MiniMax H3 Continuum V3.8 · 边界帧 + Video Guide 接续",
+        label: "内置 · MiniMax H3 Continuum V3.8 · Native State 接续",
         path: candidate,
         supportsEndImage: false,
         supportsVideoExtension: workflowSupportsH3ContinuumExtension(source)

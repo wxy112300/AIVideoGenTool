@@ -62,7 +62,7 @@ describe("H3 native AV completion collector", () => {
     )).toMatchObject({
       role: "final-clean-av",
       producerNodeId: "LocalVideoStudioH3SaveJointAV",
-      producerNodeVersion: "0.3.0",
+      producerNodeVersion: "0.3.2",
       workflowId: "minimax_h3_i2v_api.json",
       width: 864,
       height: 480,
@@ -95,6 +95,34 @@ describe("H3 native AV completion collector", () => {
       width: 864,
       height: 480,
       frameCount: 146,
+      contextFrames: 22
+    });
+  });
+
+  it("records the Continuum V3.8 raw latent including its protected prefix", () => {
+    const task = {
+      id: "continuum-v38-001",
+      taskType: "extension",
+      modelId: "minimax_h3_continuum",
+      workflowPath: "C:/app/workflows/minimax_h3_continuum_v38_extend_api.json",
+      ratio: "source",
+      resolution: 480,
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+      duration: 14,
+      fps: 24,
+      h3VideoVaeMode: "fp16"
+    } as ExtensionQueueTask;
+
+    expect(nativeAvArtifactMetadataForTask(
+      task,
+      "C:/ComfyUI/output",
+      "2026-09-16T00:00:00.000Z"
+    )).toMatchObject({
+      role: "extend-segment-clean-av",
+      width: 864,
+      height: 480,
+      frameCount: 362,
       contextFrames: 22
     });
   });

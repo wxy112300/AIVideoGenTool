@@ -1,7 +1,7 @@
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
 import { createOutputFilename } from "./filename.js";
-import { expandImageSeeds } from "./image-project.js";
-import { imageModelAdapterFor, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { defaultH3ImageOptionsFor, expandImageSeeds, isH3ImageModelId } from "./image-project.js";
+import { imageModelAdapterFor, h3ImageRecipeFor, h3ImageOutputDimensions, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { h3NativeUpscaleDimensions, uniqueAetherScaleUpscaleFilename, uniqueKonohamaruUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { AETHERSCALE_MODEL_ID, normalizeAetherScaleTarget } from "./aetherscale.js";
 import { KONOHAMARU_MODEL_ID, KONOHAMARU_WORKFLOW_PATH, normalizeKonohamaruTarget } from "./konohamaru-dlss5.js";
@@ -137,12 +137,24 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         status: "waiting"
     }));
     const basePicture = draft.pictures[0];
-    const targetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const aspectRatio = adapter?.sourceResolutionOnly
+    const h3ImageRecipe = h3ImageRecipeFor(draft.modelId, draft.qualityProfile, diffusionModelFilename);
+    if (isH3ImageModelId(draft.modelId) && !h3ImageRecipe) {
+        throw new Error(`H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`);
+    }
+    const isH3Image = isH3ImageModelId(draft.modelId);
+    const targetResolution = normalizeImageTargetResolution(isH3Image ? "source" : draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
+    const aspectRatio = isH3Image || adapter?.sourceResolutionOnly
         ? "source"
         : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
-    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio);
+    const [outputWidth, outputHeight] = isH3Image
+        ? h3ImageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0)
+        : imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
+    const defaultH3Options = defaultH3ImageOptionsFor(draft.modelId);
+    const h3ImageOptions = defaultH3Options
+        ? { ...defaultH3Options, ...draft.h3ImageOptions }
+        : undefined;
+    const resolvedDiffusionModelFilename = h3ImageRecipe?.diffusionModelFilename ?? diffusionModelFilename;
     return {
         id,
         taskType: "image-generation",
@@ -156,7 +168,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
             ...picture,
             ...(picture.crop ? { crop: { ...picture.crop } } : {}),
             ...(picture.markup ? { markup: { ...picture.markup } } : {}),
-            ...(picture.mask ? { mask: { ...picture.mask } } : {})
+            ...(picture.mask ? { mask: { ...picture.mask } } : {}),
+            ...(picture.note ? { note: picture.note } : {})
         })),
         imageOutputRoot: outputTarget.root,
         imageOutputDirectory: outputTarget.directory,
@@ -164,8 +177,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         outputWidth,
         outputHeight,
         aspectRatio,
-        targetResolution: adapter?.sourceResolutionOnly ? "source" : targetResolution,
-        ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
+        targetResolution: isH3Image || adapter?.sourceResolutionOnly ? "source" : targetResolution,
+        ...(resolvedDiffusionModelFilename ? { diffusionModelFilename: resolvedDiffusionModelFilename } : {}),
         prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
         promptVersion: promptless ? 1 : draft.activePromptVersion + 1,
         modelId: draft.modelId,
@@ -173,6 +186,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         qualityProfile: draft.qualityProfile,
         outputFormat: "png",
         outputCount: runs.length,
+        ...(h3ImageOptions ? { h3ImageOptions } : {}),
+        ...(h3ImageRecipe ? { h3ImageRecipe } : {}),
         runs,
         progress: 0
     };

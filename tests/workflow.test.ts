@@ -2004,7 +2004,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 
-  it("renders the H3 Continuum V3.8 boundary-frame and Video Guide path", () => {
+  it("renders the H3 Continuum V3.8 native-state path without duplicate pixel guides", () => {
     const source = JSON.parse(
       readFileSync(
         new URL("../workflows/minimax_h3_continuum_v38_extend_api.json", import.meta.url),
@@ -2025,9 +2025,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       h3SaveJointAv: true
     };
     const rendered = renderWorkflow(source, continuumTask, {
-      sourceVideo: "uploaded/h3-continuum-guide.mp4",
       h3AvInputArtifact: "h3-native-av/source.safetensors",
-      h3AvSourceFrameIndex: 123,
       h3AvArtifactFilename: "h3-native-av/h3av-continuation",
       vramTotalBytes: 24 * 1024 ** 3
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
@@ -2035,21 +2033,22 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(isMiniMaxH3ContinuumV38Workflow(continuumTask.workflowPath)).toBe(true);
     expect(validateApiWorkflow(source).valid).toBe(true);
     expect(workflowSupportsExtensionForModel(source, continuumTask.modelId)).toBe(true);
-    expect(continuumV38SampledFrameCountForSeconds(5)).toBe(124);
-    expect(rendered["8"]?.inputs.file).toBe("uploaded/h3-continuum-guide.mp4");
+    expect(continuumV38SampledFrameCountForSeconds(5)).toBe(141);
+    expect(continuumV38SampledFrameCountForSeconds(14)).toBe(362);
     expect(rendered["9"]?.inputs.artifact).toBe("h3-native-av/source.safetensors");
-    expect(rendered["11"]?.inputs).toMatchObject({
-      image: ["10", 0],
-      batch_index: 123,
-      length: 1
+    expect(rendered["10"]?.inputs).toMatchObject({
+      joint_av: ["9", 0],
+      source_frame_count: 0,
+      capacity_frames: "Auto — largest available"
     });
     expect(rendered["12"]?.inputs).toMatchObject({
-      first_frame: ["11", 0],
-      reference_video_1: ["8", 0],
+      initial_state: ["10", 0],
       chunks: 1,
       chunk_seconds: 5,
       size_source: "Manual"
     });
+    expect(rendered["12"]?.inputs).not.toHaveProperty("first_frame");
+    expect(rendered["12"]?.inputs).not.toHaveProperty("reference_video_1");
     expect(rendered["15"]?.inputs).toMatchObject({
       images: ["13", 0],
       audio: ["14", 0],

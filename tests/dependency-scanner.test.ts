@@ -631,7 +631,7 @@ describe("dependency scanner", () => {
     expect(serializer).toMatchObject({
       installed: true,
       detectedRevision: "0.2.2",
-      installRevision: "0.3.0",
+      installRevision: "0.3.2",
       versionSource: "VERSION",
       compatibilityState: "error",
       updateAvailable: true

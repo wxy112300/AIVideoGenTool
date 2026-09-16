@@ -1,6 +1,39 @@
-import { birefnetRequiredNodeTypes, flux2Klein4bRequiredNodeTypes, hidreamO1RequiredNodeTypes, lamaInpaintRequiredNodeTypes, omnigen2RequiredNodeTypes, qwenImageEdit2511RequiredNodeTypes, qwenImageEdit2511CropStitchRequiredNodeTypes, zImageRequiredNodeTypes, zImageTurboRequiredNodeTypes } from "../../image-workflow/node-requirements.js";
+import { birefnetRequiredNodeTypes, flux2Klein4bRequiredNodeTypes, hidreamO1RequiredNodeTypes, lamaInpaintRequiredNodeTypes, minimaxH3ImageI2IRequiredNodeTypes, minimaxH3ReferenceEditRequiredNodeTypes, omnigen2RequiredNodeTypes, qwenImageEdit2511RequiredNodeTypes, qwenImageEdit2511CropStitchRequiredNodeTypes, zImageRequiredNodeTypes, zImageTurboRequiredNodeTypes } from "../../image-workflow/node-requirements.js";
 import { component, entry, guide } from "./catalog-helpers.js";
+import { h3Fl2vaInt8Model, h3Fl2vaTurbo8LoraComponent, h3Fl2vaVideoVae, h3Nvfp4TextEncoder, h3Ref2vaInt8Model, h3Ref2vaTurbo8LoraComponent } from "./minimax_h3_shared.js";
 export const imageModelEntries = [
+    entry({
+        id: "minimax-h3-image-i2i", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-image-i2i", order: 950, inputModes: ["image"],
+        capabilities: { maxReferenceImages: 1 },
+        scan: { managedBy: "comfyui", vram: "H3 视频 VAE · 5 帧静态包 · Base 20 步 / Turbo 8 步", integrated: true, productGate: "open", productGateReason: "已开放正式测试；仍需目标 /object_info、节点加载和所选质量档资产", requiredCustomNodeIds: ["minimax-h3-image-studio"], runtimeNodeTypes: minimaxH3ImageI2IRequiredNodeTypes, components: [
+                h3Fl2vaInt8Model,
+                h3Nvfp4TextEncoder,
+                h3Fl2vaVideoVae,
+                h3Fl2vaTurbo8LoraComponent
+            ] }
+    }, {
+        name: "H3 · 源图 I2I（FL2VA）", badge: "外部节点 · 1 Picture · 5 帧", description: "MiniMax H3 FL2VA 源图图像编辑；固定使用标准视频 VAE 的 5 帧静态包，Picture 1 是唯一源图，支持 Base 20 步与 FL2VA Turbo 8 步。"
+    }, {
+        name: "H3 · source I2I (FL2VA)", badge: "External node · 1 picture · 5 frames", description: "MiniMax H3 FL2VA anchored image editing. Uses a five-frame still packet through the standard video VAE; Picture 1 is the only source, with Base 20-step and FL2VA Turbo 8-step profiles."
+    }, {
+        name: "H3 · 源圖 I2I（FL2VA）", badge: "外部節點 · 1 Picture · 5 幀", description: "MiniMax H3 FL2VA 源圖圖片編輯；固定使用標準影片 VAE 的 5 幀靜態包，Picture 1 是唯一源圖，支援 Base 20 步與 FL2VA Turbo 8 步。"
+    }),
+    entry({
+        id: "minimax-h3-reference-edit", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-reference-edit", order: 940, inputModes: ["image"],
+        capabilities: { maxReferenceImages: 9 },
+        scan: { managedBy: "comfyui", vram: "H3 视频 VAE · 5 帧静态包 · Base 20 步 / REF2VA Turbo 8 步", integrated: true, productGate: "open", productGateReason: "已开放正式测试；仍需目标 /object_info、节点加载和所选质量档资产", requiredCustomNodeIds: ["minimax-h3-image-studio"], runtimeNodeTypes: minimaxH3ReferenceEditRequiredNodeTypes, components: [
+                h3Ref2vaInt8Model,
+                h3Nvfp4TextEncoder,
+                h3Fl2vaVideoVae,
+                h3Ref2vaTurbo8LoraComponent
+            ] }
+    }, {
+        name: "H3 · 参考编辑（REF2VA）", badge: "外部节点 · 1–9 Picture · 5 帧", description: "MiniMax H3 REF2VA 多参考图像编辑；Picture 1 为基准图，Picture 2–9 按稳定顺序作为角色、物体、姿态或风格参考，支持 Base 20 步与 REF2VA Turbo 8 步。"
+    }, {
+        name: "H3 · reference edit (REF2VA)", badge: "External node · 1–9 pictures · 5 frames", description: "MiniMax H3 REF2VA multi-reference image editing. Picture 1 is the base image; Pictures 2–9 remain in stable order for identity, object, pose, or style references, with Base 20-step and REF2VA Turbo 8-step profiles."
+    }, {
+        name: "H3 · 參考編輯（REF2VA）", badge: "外部節點 · 1–9 Picture · 5 幀", description: "MiniMax H3 REF2VA 多參考圖片編輯；Picture 1 為基準圖，Picture 2–9 按穩定順序作為角色、物體、姿態或風格參考，支援 Base 20 步與 REF2VA Turbo 8 步。"
+    }),
     entry({
         id: "omnigen2", family: "omnigen2", category: "image", adapterId: "omnigen2", order: 900, inputModes: ["image"],
         capabilities: { maxReferenceImages: 2, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },

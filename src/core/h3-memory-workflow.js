@@ -6,7 +6,7 @@ import { workflowMessage } from "./runtime/workflow-messages.js";
  * H3 Memory Optimization and its residency limiter are withdrawn. The legacy
  * memory fields are ignored and can never add a node back into a graph.
  */
-const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38"]);
+const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38", "LocalVideoStudioH3ContinuumSamplerV38"]);
 const withdrawnMemoryClasses = new Set(["H3MemoryOptimization", "H3AIMDOResidencyLimiter"]);
 const postSamplingClasses = new Set(["SpectrumApplyMiniMaxH3", "ModelPreviewOverrideKJ"]);
 const legacyChainClasses = new Set([
@@ -168,7 +168,7 @@ function appendPostSamplingWrappers(workflow, options) {
   if (!consumers.length) throw new Error(message("h3PatchConsumersMissing", {}, locale));
   if (
     !consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
-    !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38")
+    !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38")
   ) {
     throw new Error(message("h3PatchConsumersMissing", {}, locale));
   }

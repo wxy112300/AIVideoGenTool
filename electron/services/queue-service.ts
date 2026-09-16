@@ -85,7 +85,8 @@ export class QueueService {
       stopQueueRuntime: runtimeCapability.stopQueueRuntime,
       restartQueueRuntime: runtimeCapability.restartQueueRuntime,
       settingsForTask: runtimeCapability.settingsForTask,
-      errorMeta: deps.errorMeta
+      errorMeta: deps.errorMeta,
+      imageInspection: deps.imageInspection
     });
     this.executor = createQueueExecutor({
       ...deps,

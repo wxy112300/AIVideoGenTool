@@ -4,6 +4,7 @@ import {
   assertDetailedCinematicExpansion,
   buildH3PromptControlPlan,
   h3DetailedExpansionGateInstruction,
+  h3DetailedExpansionTargetWords,
   h3DurationPlan,
   h3ExplicitConstraintSummary,
   h3PromptControlInstruction,
@@ -12,6 +13,7 @@ import {
   h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
+import { h3PromptPresetTextForRequest } from "../src/core/h3-prompt-presets.js";
 import { promptSnippetFor } from "../src/core/prompts/index.js";
 
 describe("MiniMax H3 prompt templates", () => {
@@ -61,8 +63,8 @@ describe("MiniMax H3 prompt templates", () => {
     expect(instruction).toContain("Human-motion integrity module");
     expect(instruction).toContain("never a concise rewrite");
     expect(instruction).toContain("at least two applicable grounded execution details");
-    expect(instruction).toContain("180-320 grounded English words");
-    expect(instruction).toContain("350-500 grounded English words");
+    expect(instruction).toContain("request-specific minimum and target");
+    expect(instruction).not.toContain("180-320 grounded English words");
     expect(instruction.length).toBeLessThan(4000);
   });
 
@@ -192,6 +194,27 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3PromptExpansionTokenBudget("FL2VA", 15, "detailed-cinematic")).toBe(2880);
   });
 
+  it("targets about twice the standard coverage without weakening the acceptance floor", () => {
+    expect(h3DetailedExpansionTargetWords("I2VA", 5)).toBe(500);
+    expect(h3DetailedExpansionTargetWords("FL2VA", 15)).toBe(900);
+    expect(h3DetailedExpansionTargetWords("R2V", 5)).toBe(700);
+    expect(h3DetailedExpansionGateInstruction("FL2VA", 15)).toContain("approximately 900 grounded words");
+    expect(h3DetailedExpansionGateInstruction("FL2VA", 15)).toContain("fewer than 450 grounded words");
+  });
+
+  it("removes the obsolete short range from persisted copies of the old built-in preset", () => {
+    const legacy = [
+      "Keep every original action.",
+      "For a simple approximately five-second Base-mode request, normally develop the integrated timeline to roughly 180-320 grounded English words; for R2V, use roughly 350-500 grounded English words in detailed_description as the starting range. Scale upward for a longer duration. These are coverage floors and planning ranges, not padding targets or hard maxima: if the user's source is already detailed, preserve all of it."
+    ].join("\n");
+    const normalized = h3PromptPresetTextForRequest("detailed-cinematic", legacy);
+
+    expect(normalized).toContain("Keep every original action.");
+    expect(normalized).toContain("if the user's source is already detailed");
+    expect(normalized).not.toContain("180-320");
+    expect(normalized).not.toContain("350-500");
+  });
+
   it("extracts explicit audio and single-shot constraints from the user request", () => {
     const constraints = h3ExplicitConstraintSummary(
       "One shot, no cuts. A runner goes from A to B. No BGM, but keep footsteps."
@@ -244,6 +267,16 @@ describe("MiniMax H3 prompt templates", () => {
     expect(normalizeH3PromptOutput(`${i2vaInstruction}\n\n${body}`, "T2VA", 5)).toBe(body);
     expect(normalizeH3PromptOutput(`${i2vaInstruction}\n\n${body}`, "FL2VA", 5)).toBe(`${fl2vaInstruction}\n\n${body}`);
     expect(normalizeH3PromptOutput(body, "I2VA", 5)).toBe(`${i2vaInstruction}\n\n${body}`);
+    expect(normalizeH3PromptOutput(
+      `${i2vaInstruction}\n\n${body}`,
+      "I2VA",
+      5,
+      [],
+      [],
+      "",
+      "",
+      true
+    )).toBe(body);
   });
 
   it("removes tagged and untagged reasoning before the first H3 output field", () => {
@@ -295,7 +328,8 @@ describe("MiniMax H3 prompt templates", () => {
 
   it("rejects a shortened detailed-cinematic result before it becomes a version", () => {
     const source = "The giant lifts the tiny person, then carries them toward the window while the camera tracks alongside.";
-    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("at least 250 grounded words");
+    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("approximately 500 grounded words");
+    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("fewer than 250 grounded words");
     expect(() => assertDetailedCinematicExpansion(
       "integrated_multimodal_description: [Shot 1] The giant lifts the tiny person.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
       "I2VA",

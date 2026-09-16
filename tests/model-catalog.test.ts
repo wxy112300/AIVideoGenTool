@@ -53,6 +53,8 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(10);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "minimax-h3-image-i2i",
+      "minimax-h3-reference-edit",
       "omnigen2",
       "hidream-o1-image",
       "z-image",
@@ -97,6 +99,43 @@ describe("model catalog", () => {
       .toEqual(["local-video-studio-h3-av"]);
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition).toMatchObject({
+      adapterId: "minimax-h3-image-i2i",
+      capabilities: { maxReferenceImages: 1 }
+    });
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.capabilities?.resolutions).toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan).toMatchObject({
+      productGate: "open",
+      productGateReason: expect.stringContaining("正式测试")
+    });
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition).toMatchObject({
+      adapterId: "minimax-h3-reference-edit",
+      capabilities: { maxReferenceImages: 9 }
+    });
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.capabilities?.resolutions).toBeUndefined();
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.productGate).toBe("open");
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.requiredCustomNodeIds)
+      .toEqual(["minimax-h3-image-studio"]);
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.requiredCustomNodeIds)
+      .toEqual(["minimax-h3-image-studio"]);
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "vae/minimax_h3_video_vae_fp16.safetensors",
+        "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+      ]);
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "vae/minimax_h3_video_vae_fp16.safetensors",
+        "loras/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+      ]);
+    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.components.at(-1)?.optional)
+      .toBe(true);
+    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.components.at(-1)?.optional)
+      .toBe(true);
     expect(modelCatalog.get("z-image")?.definition.scan?.components.map((component) => component.expected))
       .toEqual([
         "diffusion_models/z_image_bf16.safetensors",

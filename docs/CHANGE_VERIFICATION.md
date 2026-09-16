@@ -28,6 +28,8 @@ Use the smallest tier that gives credible evidence; increase it when risk crosse
 
 `npm.cmd run verify` is the repository-wide local gate: tests, a clean typechecked production build, and the UX text-contrast check (see `package.json`).
 
+日常迭代可使用 `npm.cmd test` 跑紧凑的单元测试入口；性能基准、打包复制 smoke、依赖安装事务和 runtime 安装事务统一放在 `npm.cmd run test:integration`。需要完整回归时使用 `npm.cmd run test:all`，`verify` 已经包含这两个层级。需要逐文件诊断时保留 `npm.cmd run test:verbose`。
+
 ## UI and UX Gate
 
 For UI work, "looks better" is not an acceptance criterion. Use [UX_CONTRACT.md](UX_CONTRACT.md) and verify:

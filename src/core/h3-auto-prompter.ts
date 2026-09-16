@@ -1,4 +1,4 @@
-import type { EnhanceRequest, H3PromptMode } from "../types.js";
+import type { EnhanceRequest, H3PromptMode, H3PromptPreset } from "../types.js";
 import { h3EffectiveDurationSeconds, inferH3PromptMode } from "./h3-prompt.js";
 import { h3AutoPromptSeedFor, type H3AutoPromptSeed } from "./prompts/h3/auto-seeds.js";
 
@@ -74,7 +74,8 @@ export function h3AutoPromptInstruction(
 export function h3AutoPrompterContract(
   mode: H3PromptMode,
   durationSeconds: number,
-  referenceContext?: string
+  referenceContext?: string,
+  preset: H3PromptPreset = "official-storyboard"
 ): string {
   const duration = h3EffectiveDurationSeconds(durationSeconds);
   const referenceRule = referenceContext?.trim()
@@ -88,7 +89,9 @@ export function h3AutoPrompterContract(
       "Choose the summary prefix from the actual task relationship: [keyframe completion], [reference generation], [video editing], [video continuation], [audio reuse], and [audio reference]. Combine required types with +; the presence of a video or audio file alone does not select a type.",
       "In retention_analysis, use fully_preserved, partially_preserved, attribute_transfer, or weak_reference for visual labels; use fully_copy, partially_copy, reference, or weak_reference for audio labels. Do not treat an assistant-added action or background as a loss of reference fidelity.",
       "The detailed_description must turn those relationships into a continuous playback timeline; never dump an image caption or a list of disconnected objects.",
-      `For a simple reference-generation clip, 350-500 grounded English words in detailed_description is a useful starting range across the ${duration.toFixed(2)}-second timeline, not a ceiling. Expand naturally when dialogue, multiple shots, complex reference roles, or the longer duration requires it; never pad unsupported detail or repeat facts merely to reach a word count.`
+      preset === "detailed-cinematic"
+        ? "For detailed cinematic expansion, obey the request-specific doubled target and lower acceptance floor supplied by the detailed expansion gate; do not fall back to the ordinary R2V starting range."
+        : `For a simple reference-generation clip, 350-500 grounded English words in detailed_description is a useful starting range across the ${duration.toFixed(2)}-second timeline, not a ceiling. Expand naturally when dialogue, multiple shots, complex reference roles, or the longer duration requires it; never pad unsupported detail or repeat facts merely to reach a word count.`
       ]
     : [
         "For I2VA/FL2VA/L2VA, keep the first/last frame alignment line exact and describe the transition rather than re-describing a frame as a static poster.",

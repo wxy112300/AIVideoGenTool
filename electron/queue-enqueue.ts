@@ -14,10 +14,13 @@ import type {
 } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { activateCreationDraft } from "../src/core/creation-drafts.js";
-import { findImageProjectLineage, normalizeImageEditDraft } from "../src/core/image-project.js";
+import { findImageProjectLineage, isH3ImageModelId, normalizeImageEditDraft } from "../src/core/image-project.js";
 import {
+  cachedImageProfileAllowsEnqueue,
   imageLightningComponentFound,
   imageModelAdapterFor,
+  imageQualityProfileComponentFound,
+  imageQualityProfileRequiredComponentLabel,
   imageQualityProfileRequiresLightning
 } from "../src/core/image-workflow.js";
 import {
@@ -51,6 +54,7 @@ import {
   videoLoraConfigurationIssues
 } from "../src/core/video-loras.js";
 import {
+  modelCatalog,
   SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
   SPECTRUM_PDD_MINIMUM_VERSION,
   SPECTRUM_TURBO_MINIMUM_VERSION
@@ -260,6 +264,13 @@ async function requireImageModelAssets(
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
     throw new Error("当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。");
   }
+  const requiredQualityComponent = imageQualityProfileRequiredComponentLabel(adapter, qualityProfile);
+  if (requiredQualityComponent && !imageQualityProfileComponentFound(adapter, qualityProfile, profile.components)) {
+    throw new Error(
+      `${adapter.name} 的 ${qualityProfile} 需要 ${requiredQualityComponent}，但当前未找到匹配文件。` +
+      "请在设置 → 图片模型中按下载说明安装后重新扫描；Base 质量档不受该可选 Turbo 文件影响。"
+    );
+  }
   if (hasReference && adapter.referenceModelComponentLabel) {
     const referenceComponent = profile.components.find((component) =>
       component.label.includes(adapter.referenceModelComponentLabel!)
@@ -272,7 +283,10 @@ async function requireImageModelAssets(
     }
   }
   if (adapter.operation === "inpaint" || adapter.operation === "background-removal") return undefined;
-  const diffusionModel = profile.components.find((component) => component.label.includes("扩散模型"))
+  const diffusionModel = profile.components.find((component) =>
+    component.label.includes("扩散模型") ||
+    /(?:^|[\\/])(diffusion_models|unet)[\\/]/u.test(component.expected)
+  )
     ?.matches[0]?.split(/[\\/]/u).pop();
   if (!diffusionModel) throw new Error(`${adapter.name} 扩散模型文件未能从环境扫描结果中解析。`);
   return diffusionModel;
@@ -784,12 +798,30 @@ export class QueueEnqueueService {
       ? ""
       : normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
     if (adapter.requiresPrompt !== false && !prompt) throw new Error("图片处理提示词不能为空");
+    if (isH3ImageModelId(normalized.modelId) &&
+        !adapter.qualityProfiles.some((profile) => profile.id === normalized.qualityProfile)) {
+      throw new Error(`H3 图片质量档 ${normalized.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`);
+    }
     if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
       throw new Error("请先在原图上绘制并保存 Mask。");
+    }
+    if (adapter.id === "minimax-h3-image-i2i" || adapter.id === "minimax-h3-reference-edit") {
+      const h3InputErrors = adapter.compilePrompt(prompt, normalized.pictures).errors;
+      if (h3InputErrors.length) throw new Error(h3InputErrors.join(" "));
     }
     const cachedEnvironment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(
       enqueueSettings
     );
+    if (isH3ImageModelId(normalized.modelId)) {
+      const imageProfile = cachedEnvironment?.modelProfiles.find((profile) => profile.id === normalized.modelId);
+      const productGate = imageProfile?.productGate ?? modelCatalog.get(normalized.modelId)?.definition.scan?.productGate;
+      if (productGate === "locked") {
+        throw new Error("H3 图片路线尚未完成目标 ComfyUI /object_info、节点加载与真实 smoke 验收，当前保持关闭。 ");
+      }
+      if (productGate === "open" && cachedEnvironment && !cachedImageProfileAllowsEnqueue(imageProfile)) {
+        throw new Error("H3 图片路线需要已加载 custom node 且模型文件完整后才能入队；runtime schema 会在任务启动时校验。 ");
+      }
+    }
     if (!cachedEnvironment) {
       logger.info(
         "queue",
@@ -998,7 +1030,7 @@ export class QueueEnqueueService {
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
       : continuum
-        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 JointAV loader、边界帧、Video Guide、V3.8 sampler 或视频输出节点"]
+        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 JointAV loader、native-state bridge、V3.8 sampler 或视频输出节点"]
       : isMiniMaxH3R2vModel(draft.modelId)
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
         : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);

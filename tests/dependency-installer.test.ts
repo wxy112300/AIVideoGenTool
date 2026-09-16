@@ -916,7 +916,7 @@ describe("dependency installer", () => {
     const targetDirectory = path.join(comfyRoot, "custom_nodes", "LocalVideoStudio-H3");
     await fs.mkdir(sourceDirectory, { recursive: true });
     await fs.writeFile(path.join(sourceDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
-    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.3.0\n", "utf8");
+    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.3.2\n", "utf8");
     await fs.writeFile(path.join(sourceDirectory, "requirements.txt"), "\n", "utf8");
     await fs.mkdir(targetDirectory, { recursive: true });
     await fs.writeFile(path.join(targetDirectory, "old.txt"), "old", "utf8");

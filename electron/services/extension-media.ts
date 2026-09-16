@@ -208,44 +208,6 @@ export async function preparePromptExtensionFrame(
   }
 }
 
-export async function prepareH3ContinuumGuide(
-  task: ExtensionQueueTask,
-  signal: AbortSignal
-): Promise<{ filePath: string; cleanup(): Promise<void> }> {
-  const directory = temporaryDirectory(`${task.id}-continuum-guide`);
-  await fs.rm(directory, { recursive: true, force: true });
-  await fs.mkdir(directory, { recursive: true });
-  const filePath = path.join(directory, "h3-continuum-guide.mp4");
-  const guideDuration = Math.min(
-    5,
-    Math.max(1 / 24, task.trimEndSeconds - task.trimStartSeconds)
-  );
-  const contextStart = Math.max(
-    task.trimStartSeconds,
-    task.trimEndSeconds - guideDuration
-  );
-  const [width, height] = extensionOutputDimensions(task);
-  await run("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-y",
-    "-ss", String(contextStart),
-    "-i", task.sourceVideoPath,
-    "-t", String(guideDuration),
-    "-map", "0:v:0",
-    "-vf", scaleFilter(width, height, 24),
-    "-frames:v", String(Math.max(22, Math.round(guideDuration * 24))),
-    "-an",
-    "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    filePath
-  ], signal);
-  const stat = await fs.stat(filePath);
-  if (stat.size <= 0) throw new Error("FFmpeg 没有生成可用的 H3 Continuum Video Guide");
-  return {
-    filePath,
-    cleanup: () => fs.rm(directory, { recursive: true, force: true })
-  };
-}
-
 async function probeVideoDuration(
   filename: string,
   signal: AbortSignal
@@ -342,6 +304,18 @@ function concatEntry(filename: string): string {
   return `file '${filename.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
 }
 
+export function extensionGeneratedTrimStart(
+  task: Pick<ExtensionQueueTask, "modelId" | "workflowPath" | "fps" | "frameInterpolation" | "overlapFrames">
+): number {
+  // Both Continuum implementations finalize their own continuation prefix.
+  // V3.8's H3ContinuumAssembleSeamV35 already removes the 22 protected state
+  // frames, so trimming contextDuration here would skip almost one additional
+  // second and create a visible camera-motion jump at the application concat.
+  if (isMiniMaxH3R2vModel(task.modelId) || isMiniMaxH3ContinuumModel(task.modelId)) return 0;
+  if (isMiniMaxH3Fl2vaModel(task.modelId)) return 1 / 24;
+  return extensionContextDuration(task);
+}
+
 export async function finalizeExtensionOutput(
   task: ExtensionQueueTask,
   generatedPath: string,
@@ -355,7 +329,6 @@ export async function finalizeExtensionOutput(
   const concatPath = path.join(directory, "concat.txt");
   const finalPath = path.join(directory, "final.mp4");
   const retainedDuration = task.trimEndSeconds - task.trimStartSeconds;
-  const contextDuration = extensionContextDuration(task);
   const h3Continuum = isMiniMaxH3ContinuumModel(task.modelId);
   const h3ContinuumV38 = h3Continuum && isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
   const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
@@ -389,13 +362,7 @@ export async function finalizeExtensionOutput(
 
     const continuationArgs = [
       "-hide_banner", "-loglevel", "error", "-y",
-      "-ss", String(
-        h3MotionContext || (h3Continuum && !h3ContinuumV38)
-          ? 0
-          : isMiniMaxH3Fl2vaModel(task.modelId)
-            ? 1 / 24
-            : contextDuration
-      ),
+      "-ss", String(extensionGeneratedTrimStart(task)),
       "-i", generatedPath
     ];
     if (!generatedHasAudio) {

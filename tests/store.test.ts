@@ -405,7 +405,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
       expect(loaded.draft).toMatchObject({
         h3MemoryOptimizationMode: "off",
         h3MemoryOptimizationUserSet: false,
@@ -447,7 +447,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
       expect(loaded.draft.modelId).toBe("sulphur2");
       expect(loaded.videoExtensionDraft?.modelId).toBe("sulphur2");
       expect(loaded.imageToVideoDraft).toMatchObject({
@@ -560,6 +560,62 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("normalizes H3 options but preserves an invalid recipe for execution-time rejection", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task = {
+      id: "h3-image-legacy",
+      taskType: "image-generation",
+      status: "waiting",
+      createdAt: "2026-09-15T00:00:00.000Z",
+      updatedAt: "2026-09-15T00:00:00.000Z",
+      outputFilename: "h3-image",
+      modelId: "minimax-h3-reference-edit",
+      workflowPath: "builtin:image/minimax-h3-reference-edit",
+      projectId: "h3-project",
+      pictures: [],
+      prompt: "edit",
+      promptVersion: 1,
+      qualityProfile: "base-quality-20",
+      outputFormat: "png",
+      outputCount: 1,
+      runs: [],
+      h3ImageOptions: {
+        frameProfile: "legacy",
+        frameSelection: "legacy",
+        sourceFit: "unknown",
+        referenceDetail: "unknown",
+        sourceFidelity: 4
+      },
+      h3ImageRecipe: {
+        adapter: "fl2va-turbo-8",
+        samplingProfile: "Turbo v1.0 | 8 steps"
+      }
+    } as unknown as ImageGenerationQueueTask;
+    state.queue = [task];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      const restored = loaded.queue[0];
+      if (!restored || restored.taskType !== "image-generation") throw new Error("H3 图片任务未恢复");
+      expect(restored.h3ImageOptions).toEqual({
+        frameProfile: "recommended-5",
+        frameSelection: "decode-recommended",
+        sourceFit: "crop-center",
+        referenceDetail: "match-generation-area",
+        sourceFidelity: 1
+      });
+      expect(restored.h3ImageRecipe).toMatchObject({
+        adapter: "fl2va-turbo-8",
+        samplingProfile: "Turbo v1.0 | 8 steps"
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates legacy image reference slots to typed media slots", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -641,7 +697,7 @@ describe("queue lock recovery", () => {
     try {
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.promptModelId).toBe("community/gemma-4-12b-uncensored-q4");
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -753,7 +809,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.draft.extensionPromptVersions).toHaveLength(1);
@@ -767,13 +823,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(14);
+      expect(persisted.schemaVersion).toBe(15);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(14);
+      expect(reloaded.schemaVersion).toBe(15);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -833,7 +889,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
@@ -879,7 +935,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.schemaVersion).toBe(15);
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({

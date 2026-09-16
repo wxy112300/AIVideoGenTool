@@ -23,4 +23,11 @@ describe("H3 Auto Prompter contract", () => {
     expect(contract).toContain("<scenetrans>");
     expect(contract).toContain("T2VA has no image-alignment line");
   });
+
+  it("does not reintroduce the ordinary R2V word range for detailed expansion", () => {
+    const contract = h3AutoPrompterContract("R2V", 15, "Picture 1 = character", "detailed-cinematic");
+
+    expect(contract).toContain("request-specific doubled target");
+    expect(contract).not.toContain("350-500 grounded English words");
+  });
 });

@@ -381,6 +381,80 @@ describe("queue execution snapshots", () => {
     expect(queued.imageOutputSubfolder).toBe("Images");
   });
 
+  it("freezes the H3 REF2VA options, ordered notes, and resolved Turbo recipe", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "minimax-h3-reference-edit";
+    draft.qualityProfile = "ref2va-turbo-8-768p";
+    draft.h3ImageOptions = {
+      frameProfile: "recommended-5",
+      frameSelection: "decode-recommended",
+      sourceFit: "contain-pad",
+      referenceDetail: "max-identity-2048",
+      sourceFidelity: 0.55
+    };
+    draft.pictures = [
+      { id: "base", pictureNumber: 1, absolutePath: "base.png", width: 1024, height: 768, role: "base" },
+      { id: "pose", pictureNumber: 4, absolutePath: "pose.png", width: 1024, height: 768, role: "pose", note: "只参考姿态" }
+    ];
+    draft.promptVersions[0]!.text = "Use Picture 4 for the pose.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-h3", "project-h3", "run-h3"])
+    );
+
+    draft.h3ImageOptions.sourceFit = "stretch";
+    draft.pictures[1]!.note = "mutated after enqueue";
+    draft.qualityProfile = "base-quality-20";
+    expect(queued.h3ImageOptions).toMatchObject({ sourceFit: "contain-pad", sourceFidelity: 0.55 });
+    expect(queued.pictures[1]).toMatchObject({ pictureNumber: 4, note: "只参考姿态" });
+    expect(queued.h3ImageRecipe).toMatchObject({
+      adapter: "ref2va-turbo-8-768p",
+      samplingProfile: "REF2VA Turbo v1.0 768p | 8 steps",
+      sampler: "euler",
+      steps: 8,
+      shiftVideo: 12,
+      shiftAudio: 3,
+      resolutionProfile: "native-detail-0.98mp",
+      diffusionModelFilename: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      loraFilename: "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+    });
+  });
+
+  it("freezes H3 native-detail dimensions instead of stale generic draft resolution", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "minimax-h3-image-i2i";
+    draft.qualityProfile = "fl2va-turbo-8";
+    draft.aspectRatio = "16:9";
+    draft.targetResolution = 2160;
+    draft.pictures = [{
+      id: "base",
+      pictureNumber: 1,
+      absolutePath: "landscape.png",
+      width: 1920,
+      height: 1080,
+      role: "base"
+    }];
+    draft.promptVersions[0]!.text = "Adjust the lighting.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-h3-size", "project-h3-size", "run-h3-size"])
+    );
+
+    expect(queued.aspectRatio).toBe("source");
+    expect(queued.targetResolution).toBe("source");
+    expect(queued.outputWidth).toBe(1344);
+    expect(queued.outputHeight).toBe(768);
+    expect(queued.h3ImageRecipe).toMatchObject({
+      resolutionProfile: "native-detail-0.98mp"
+    });
+  });
+
   it("keeps a Z-Image text-only task runnable without a source picture", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "z-image-turbo";

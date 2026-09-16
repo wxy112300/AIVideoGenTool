@@ -45,6 +45,7 @@ describe("dependency catalog", () => {
       "flashvsr",
       "frame-interpolation",
       "comfyui-dlss-frame-interpolation",
+      "minimax-h3-image-studio",
       "h3-motion-context",
       "h3-continuum",
       "h3-latent-upscaler",
@@ -187,8 +188,8 @@ describe("dependency catalog", () => {
         "H3ContinuumAssembleSeamV35"
       ],
       minimumVersion: "3.8.0",
-      recommendedVersion: "3.8.0",
-      latestVersion: "3.8.0",
+      recommendedVersion: "3.8.2",
+      latestVersion: "3.8.2",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{
@@ -249,6 +250,7 @@ describe("dependency catalog", () => {
         "LocalVideoStudioH3SaveJointAV",
         "LocalVideoStudioH3LoadJointAV",
         "LocalVideoStudioH3ArtifactToContinuumState",
+        "LocalVideoStudioH3ContinuumSamplerV38",
         "LocalVideoStudioRequireGpuVAE",
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"

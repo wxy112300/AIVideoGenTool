@@ -113,7 +113,7 @@ export function isMiniMaxH3LivePreviewSupported(modelId) {
     return modelCatalog.get(modelId)?.definition.capabilities?.supportsLivePreview !== false;
 }
 function applyMiniMaxH3Spectrum(workflow, locale = "zh-CN", modelAwareMode = "off") {
-    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!consumers.length) {
         throw new Error(workflowMessage("spectrumConsumersMissing", {}, locale));
@@ -170,7 +170,7 @@ function applyMiniMaxH3Spectrum(workflow, locale = "zh-CN", modelAwareMode = "of
 function applyMiniMaxH3LivePreview(workflow, tinyVae) {
     if (!tinyVae)
         return;
-    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     const modelInput = consumers[0]?.inputs?.model;
     if (!Array.isArray(modelInput) || typeof modelInput[0] !== "string")
@@ -205,7 +205,7 @@ function applyVideoLoraStack(workflow, task, locale = "zh-CN") {
         node.class_type === "ModelAttentionBackend" ||
         node.class_type === "BlockSparseAttention") &&
         Array.isArray(node.inputs?.model));
-    const directConsumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const directConsumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     const targets = attentionNodes.length ? attentionNodes : directConsumers;
     const targetInput = targets[0]?.inputs?.model;
@@ -277,7 +277,7 @@ function applyMiniMaxH3SlaAttention(workflow, task, locale = "zh-CN") {
         task.videoLoras?.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)) === true;
     if (!enabled)
         return;
-    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const consumers = Object.entries(workflow).filter(([, node]) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!consumers.length) {
         throw new Error(workflowMessage("slaConsumersMissing", {}, locale));
@@ -373,7 +373,7 @@ function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
         return;
     const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
     const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
-    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!sampler?.inputs || !schedulers.length || !consumers.length)
         return;
@@ -493,7 +493,7 @@ function applyMiniMaxH3PddSampling(workflow, task) {
         return;
     const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
     const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
-    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38") &&
+    const consumers = Object.values(workflow).filter((node) => (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
         Array.isArray(node.inputs?.model));
     if (!sampler?.inputs || !schedulers.length || !consumers.length)
         return;
@@ -737,15 +737,13 @@ export function continuumSampledFrameCountForSeconds(durationSeconds, contextFra
     return continuumFrameCountForSeconds(durationSeconds, contextFrames);
 }
 /**
- * Continuum V3.8 owns the continuation context internally. Its sampler still
- * uses H3's 5 + 17*n temporal grid, but the requested duration is the visible
- * output duration rather than a caller-supplied 22-frame overlap budget.
+ * Continuum V3.8 owns seam assembly, but its raw sampler latent still contains
+ * the selected 22-frame continuity prefix. H3ContinuumAssembleSeamV35 removes
+ * that prefix from the visible video; JointAV serialization happens before
+ * assembly and therefore must retain it in the sampled-frame contract.
  */
 export function continuumV38SampledFrameCountForSeconds(durationSeconds) {
-    const safeDuration = Number.isFinite(durationSeconds)
-        ? Math.max(1, durationSeconds)
-        : 1;
-    return frameCountForTask({ modelId: "minimax_h3_fl2va", duration: safeDuration }, 24);
+    return continuumFrameCountForSeconds(durationSeconds, H3_CONTINUUM_CONTEXT_FRAMES);
 }
 export function continuumV38MaxDurationSeconds(maxGeneratedFrames = 362, maxDurationSeconds = 15) {
     const frameBudget = Number.isFinite(maxGeneratedFrames)
@@ -834,12 +832,10 @@ export function workflowSupportsH3ContinuumExtension(source) {
         const classType = node.class_type;
         return typeof classType === "string" ? [classType] : [];
     }));
-    if (classTypes.has("H3ContinuumSamplerV38")) {
+    if (classTypes.has("LocalVideoStudioH3ContinuumSamplerV38")) {
         return [
             "H3_AV_INPUT_ARTIFACT",
             "H3_AV_ARTIFACT_FILENAME",
-            "H3_AV_SOURCE_FRAME_INDEX",
-            "SOURCE_VIDEO",
             "PROMPT",
             "WIDTH",
             "HEIGHT",
@@ -850,10 +846,9 @@ export function workflowSupportsH3ContinuumExtension(source) {
         ].every((placeholder) => serialized.includes(`{{${placeholder}}}`)) &&
             [
                 "LocalVideoStudioH3LoadJointAV",
-                "VAEDecode",
-                "ImageFromBatch",
-                "H3ContinuumLoadVideo",
-                "H3ContinuumSamplerV38",
+            "LocalVideoStudioH3ArtifactToContinuumState",
+            "LocalVideoStudioH3ContinuumSamplerV38",
+            "VAEDecode",
                 "VAEDecodeAudio",
                 "H3ContinuumAssembleSeamV35",
                 "CreateVideo",

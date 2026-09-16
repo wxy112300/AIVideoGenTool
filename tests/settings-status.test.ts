@@ -5,6 +5,8 @@ import {
   environmentItemStatusTone,
   modelProfileEvidence,
   modelProfileStatusTone,
+  isImageModelSelectable,
+  imageWorkflowStatus,
   promptModelStatus
 } from "../src/renderer/shared/status";
 import {
@@ -124,6 +126,38 @@ describe("settings status tones", () => {
       runtime: "pending"
     });
     expect(modelProfileStatusTone(profile({ runtimeVerified: true, runtimeReady: true }))).toBe("available");
+  });
+
+  it("allows selecting file-ready H3 before runtime validation completes", () => {
+    const h3 = profile({
+      id: "minimax-h3-image-i2i",
+      productGate: "locked",
+      requiredCustomNodeIds: ["minimax-h3-image-studio"],
+      missingCustomNodeIds: [],
+      runtimeVerified: true,
+      runtimeReady: true
+    });
+    expect(isImageModelSelectable(h3)).toBe(false);
+    expect(imageWorkflowStatus(h3)).toContain("H3");
+    const { productGate: _legacyProductGate, ...legacyH3 } = h3;
+    expect(isImageModelSelectable(legacyH3)).toBe(true);
+    expect(imageWorkflowStatus(legacyH3)).toContain("工作流节点已验证");
+    expect(isImageModelSelectable({
+      ...h3,
+      productGate: "open",
+      runtimeVerified: false,
+      runtimeReady: false
+    })).toBe(true);
+    expect(isImageModelSelectable({
+      ...h3,
+      productGate: "open",
+      runtimeVerified: true,
+      runtimeReady: true
+    })).toBe(true);
+    expect(isImageModelSelectable(profile({
+      id: "qwen-image-edit-2511",
+      runtimeVerified: false
+    }))).toBe(true);
   });
 
   it("distinguishes file-only models from models that require runtime nodes", () => {

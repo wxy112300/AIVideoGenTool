@@ -12,7 +12,7 @@ import {
 
 export const defaultPrompt =
   "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
-export const APP_SCHEMA_VERSION = 14;
+export const APP_SCHEMA_VERSION = 15;
 
 export { createDefaultImageEditDraft } from "./draft-defaults.js";
 

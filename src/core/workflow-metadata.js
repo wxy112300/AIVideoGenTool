@@ -7,7 +7,7 @@
  * Electron boundary instead.  `nodePackages` contains ids from the custom
  * node catalog; the catalog remains the single source of repository URLs.
  */
-import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION } from "./catalog/dependencies/nodes.js";
+import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION, MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI, MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI } from "./catalog/dependencies/nodes.js";
 const apiSchema = {
     id: "comfyui-api",
     version: 1,
@@ -18,6 +18,10 @@ const recommendedCore = "0.35.0";
 const h3Core = {
     recommendedVersion: recommendedCore,
     minimumVersion: "0.31.0"
+};
+const h3ImageCore = {
+    recommendedVersion: MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI,
+    minimumVersion: MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI
 };
 const h3MotionContextCore = {
     recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
@@ -46,6 +50,15 @@ export const bundledWorkflowMetadata = {
     minimax_h3_fl2va_turbo_api: metadata("minimax_h3_fl2va_turbo_api.json", ["kjnodes"], {
         comfyUi: h3Core
     }),
+    minimax_h3_fl2va_first_pass_av_api: metadata("minimax_h3_fl2va_first_pass_av_api.json", ["local-video-studio-h3-av"], {
+        comfyUi: h3Core
+    }),
+    minimax_h3_fl2va_second_sample_av_api: metadata("minimax_h3_fl2va_second_sample_av_api.json", ["h3-latent-upscaler", "local-video-studio-h3-av"], {
+        comfyUi: h3Core
+    }),
+    minimax_h3_fl2va_learned_3d_second_sample_av_api: metadata("minimax_h3_fl2va_learned_3d_second_sample_av_api.json", ["h3-latent-upscaler", "minimax-h3-learned-upscaler", "local-video-studio-h3-av"], {
+        comfyUi: h3Core
+    }),
     minimax_h3_fl2va_ultimate_tiled_second_sample_av_api: metadata("minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json", ["mmh3-ultimate-upscale", "h3-latent-upscaler", "kjnodes", "local-video-studio-h3-av"], {
         comfyUi: h3Core,
         upstreamUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d"
@@ -71,11 +84,21 @@ export const bundledWorkflowMetadata = {
     }),
     minimax_h3_continuum_v38_extend_api: metadata("minimax_h3_continuum_v38_extend_api.json", ["h3-continuum", "local-video-studio-h3-av", "kjnodes"], {
         comfyUi: h3ContinuumCore,
-        upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.8.0",
-        verifiedAt: "2026-09-10"
+        upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+        verifiedAt: "2026-09-15"
     }),
     minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes"], {
         comfyUi: h3Core
+    }),
+    minimax_h3_image_i2i_api: metadata("minimax_h3_image_i2i_api.json", ["minimax-h3-image-studio"], {
+        comfyUi: h3ImageCore,
+        upstreamUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/blob/v23.0.0/examples/api/H3_I2I_API.json",
+        verifiedAt: "2026-09-15"
+    }),
+    minimax_h3_reference_edit_api: metadata("minimax_h3_reference_edit_api.json", ["minimax-h3-image-studio"], {
+        comfyUi: h3ImageCore,
+        upstreamUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/blob/v23.0.0/examples/api/H3_IMAGE_EDIT_API.json",
+        verifiedAt: "2026-09-15"
     }),
     minimax_h3_t2va_gguf_q3_api: metadata("minimax_h3_t2va_gguf_q3_api.json", ["comfyui-gguf-h3", "kjnodes"], {
         comfyUi: h3Core

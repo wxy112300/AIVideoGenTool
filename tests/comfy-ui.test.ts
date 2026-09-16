@@ -251,7 +251,7 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Final user-intent lock");
   });
 
-  it("adds a no-cut continuity contract when expanding an extension prompt", () => {
+  it("uses native-state continuity without inventing a boundary picture for Continuum", () => {
     const instruction = h3PromptInstruction({
       prompt: "人物继续向前走。",
       modelId: "minimax_h3_continuum",
@@ -264,9 +264,10 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("EXTENSION CONTINUITY CONTRACT (highest priority)");
-    expect(instruction).toContain("exact last-visible source frame");
-    expect(instruction).toContain("<Picture 1>");
-    expect(instruction).toContain("official I2VA alignment declaration");
+    expect(instruction).toContain("exact latent audio-video tail");
+    expect(instruction).not.toContain("For the target video, at 0.00 seconds");
+    expect(instruction).not.toContain("fully referenced");
+    expect(instruction).toContain("do not invent <Picture 1>");
     expect(instruction).toContain("inside the same connected take");
     expect(instruction).toContain("Carry forward only the subjects");
   });
@@ -496,11 +497,12 @@ describe("native Qwen prompt workflow", () => {
     expect(continuous).toContain("one continuous shot with no cuts");
     expect(detailed).toContain("Detailed cinematic expansion rule");
     expect(detailed).toContain("DETAILED CINEMATIC EXPANSION GATE");
-    expect(detailed).toContain("at least 250 grounded words");
+    expect(detailed).toContain("approximately 500 grounded words");
+    expect(detailed).toContain("fewer than 250 grounded words");
     expect(detailed).toContain("the most fully developed timeline, never a concise rewrite");
     expect(detailed).toContain("at least two applicable kinds of scene-grounded execution detail");
-    expect(detailed).toContain("roughly 180-320 grounded English words");
-    expect(detailed).toContain("coverage floor and planning range");
+    expect(detailed).toContain("about twice the standard timeline coverage");
+    expect(detailed).not.toContain("roughly 180-320 grounded English words");
     expect(faithful).not.toBe(continuous);
     expect(detailed).not.toBe(continuous);
   });
@@ -554,7 +556,8 @@ describe("native Qwen prompt workflow", () => {
     });
 
     expect(instruction).toContain("flexible causal timeline");
-    expect(instruction).toContain("at least 450 grounded words");
+    expect(instruction).toContain("approximately 900 grounded words");
+    expect(instruction).toContain("fewer than 450 grounded words");
     expect(instruction).toContain("a fixed beat count or equal-time grid");
     expect(instruction).not.toContain("Plan 6 sequential development beats");
   });
@@ -736,6 +739,10 @@ describe("ComfyUI task progress", () => {
       progress: 27.2,
       label: "Continuum 扩散采样 4/20"
     });
+    expect(progressForNode("LocalVideoStudioH3ContinuumSamplerV38", 4, 20, progressContext, "sampler")).toEqual({
+      progress: 27.2,
+      label: "Continuum 扩散采样 4/20"
+    });
     expect(workProgressForNode(
       "H3ContinuumSamplerV38",
       4,
@@ -749,6 +756,35 @@ describe("ComfyUI task progress", () => {
       progress: 85,
       label: "解码视频 1/2"
     });
+  });
+
+  it("tracks native-state Continuum preparation without a boundary decode", () => {
+    const progressContext = progressContextForPrompt({
+      sourceState: { class_type: "LocalVideoStudioH3LoadJointAV", inputs: {} },
+      stateBridge: {
+        class_type: "LocalVideoStudioH3ArtifactToContinuumState",
+        inputs: { joint_av: ["sourceState", 0] }
+      },
+      sampler: {
+        class_type: "LocalVideoStudioH3ContinuumSamplerV38",
+        inputs: { initial_state: ["stateBridge", 0], sigmas: ["scheduler", 0] }
+      },
+      scheduler: { class_type: "BasicScheduler", inputs: { steps: 20 } }
+    });
+
+    expect(progressContext.continuumNodeRoles).toMatchObject({
+      sourceState: "source-state",
+      stateBridge: "source-preparation",
+      sampler: "sampler"
+    });
+    expect(progressContext.continuumSamplerSteps).toEqual({ sampler: 20 });
+    expect(progressForNode(
+      "LocalVideoStudioH3ArtifactToContinuumState",
+      1,
+      1,
+      progressContext,
+      "stateBridge"
+    )).toEqual({ progress: 7, label: "准备续写状态" });
   });
 
   it("normalizes Spectrum replay progress to the rendered scheduler steps", () => {
