@@ -1,6 +1,6 @@
 # MiniMax H3 外部节点图片编辑（FL2VA I2I / REF2VA Edit）
 
-- Status: validating（P0–P3 静态实现与自动验证完成；目标实例 schema、FL2VA/R2V 真实 graph 与单帧 API 预检已观察；正式入口已按用户授权开放，运行时 schema、资产与 app smoke 仍分层校验）
+- Status: archived / closed（2026-09-16；用户确认当前测试通过，代码已随 0.62.0 发布；后续 T=1/质量优化与额外 app smoke 另立任务）
 - Updated / Owner: 2026-09-16 / Codex
 - Scope / Authority: 用户已明确接入 FL2VA 与 REF2VA 两条 H3 静态图片路线。H3 Image Studio 是外部 ComfyUI 节点依赖；应用只管理固定 revision、依赖状态、应用自有 API workflow、队列与图片项目，不复制节点源码或权重。
 - Baseline: repository HEAD `d015cfe`、应用 `0.61.9`；计划审查时工作区已有 `CHANGELOG.md`、`docs/CHANGE_VERIFICATION.md`、`docs/tasks/README.md`、`package.json` 修改及本任务目录，均须视为用户/其他任务工作，不覆盖。
@@ -164,7 +164,7 @@ interface H3ImageOptions {
 
 Luna 开工时重新用 `rg --files` 确认路径。预期独占写入范围：
 
-- `docs/tasks/2026-09-15-h3-image-editing/**`
+- `docs/archive/h3-image-editing/**`（归档后路径；实现阶段原路径为 `docs/tasks/2026-09-15-h3-image-editing/**`）
 - `workflows/` 中新增的两个 H3 image API graph
 - `src/core/image-workflow/**` 中新增 H3 adapter 及现有 registry/capability/requirements
 - `src/core/catalog/models/image.ts`、`src/core/catalog/dependencies/nodes.ts`、`src/core/workflow-metadata.ts`

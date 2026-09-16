@@ -9,7 +9,6 @@
 - [H3 高分辨率与 JointAV 收口](2026-09-07-h3-high-resolution/TASK.md)
 - [H3 Native AV、Extend 与长视频](2026-09-07-h3-long-video/TASK.md)
 - [H3 Prompt 增强框架修复](2026-09-12-h3-prompt-enhancement/TASK.md)
-- [H3 外部节点图片编辑（FL2VA I2I / REF2VA Edit）](2026-09-15-h3-image-editing/TASK.md)
 - [图片工作台剩余事项](2026-09-07-image-workspace/TASK.md)
 
 新任务按 [流程](../development/WORKFLOW.md)选择短路径或标准路径；需要跨会话交接时使用 [模板](../development/TASK_TEMPLATE.md)。
