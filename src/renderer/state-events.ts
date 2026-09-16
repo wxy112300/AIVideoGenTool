@@ -6,6 +6,7 @@ import type {
   ImageAssetLibraryProgress,
   PromptProgress,
   PromptProgressStage,
+  QueueTaskProgressUpdate,
   TaskPreview,
   WindowCloseRequest
 } from "../types";
@@ -220,10 +221,50 @@ function pruneTaskPreviews(
   }
 }
 
+function applyQueueTaskProgress(
+  update: QueueTaskProgressUpdate,
+  options: RendererEventOptions,
+  revisions: Map<string, number>
+): void {
+  const previousRevision = revisions.get(update.taskId) ?? 0;
+  if (update.revision <= previousRevision) return;
+  const state = options.getState();
+  if (!state) return;
+  const index = state.queue.findIndex((task) => task.id === update.taskId);
+  const current = state.queue[index];
+  if (!current || current.status !== "running") return;
+  revisions.set(update.taskId, update.revision);
+  const nextTask = {
+    ...current,
+    ...(update.progress !== undefined ? { progress: update.progress } : {}),
+    ...(update.stage !== undefined ? { stage: update.stage } : {}),
+    ...("workProgress" in update
+      ? { workProgress: update.workProgress ?? undefined }
+      : {}),
+    ...("seedVr2Progress" in update
+      ? { seedVr2Progress: update.seedVr2Progress ?? undefined }
+      : {}),
+    updatedAt: update.updatedAt
+  };
+  const queue = [...state.queue];
+  queue[index] = nextTask;
+  const nextState = { ...state, queue };
+  options.setState(nextState);
+  if (options.getPage() === "queue") {
+    patchQueueLiveDom(
+      nextState,
+      options.t,
+      options.getComfyRuntimeState(),
+      options.getEnvironmentScanning?.() ?? false
+    );
+  }
+}
+
 export function registerRendererEvents(
   options: RendererEventOptions
 ): RendererCleanup {
   let promptProgressTimer: number | undefined;
+  const queueProgressRevisions = new Map<string, number>();
   const stopPromptProgressTimer = () => {
     if (promptProgressTimer === undefined) return;
     window.clearInterval(promptProgressTimer);
@@ -279,6 +320,10 @@ export function registerRendererEvents(
       options.setState(preserveLocalImageDraft && previousState
         ? { ...localState, imageDraft: previousState.imageDraft }
         : localState);
+      const liveTaskIds = new Set(nextState.queue.map((task) => task.id));
+      for (const taskId of queueProgressRevisions.keys()) {
+        if (!liveTaskIds.has(taskId)) queueProgressRevisions.delete(taskId);
+      }
       pruneTaskPreviews(nextState, options);
       if (nextState.queueRunning) options.setPromptRuntimeLoaded(false);
       for (const task of completion.completedTasks) {
@@ -316,6 +361,8 @@ export function registerRendererEvents(
       ) return;
       options.requestRender();
     }),
+    options.events.onQueueTaskProgress((update) =>
+      applyQueueTaskProgress(update, options, queueProgressRevisions)),
     options.events.onComfyRuntimeStateChanged((runtime) => {
       const previous = options.getComfyRuntimeState();
       options.setComfyRuntimeState(runtime);

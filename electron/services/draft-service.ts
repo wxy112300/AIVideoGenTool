@@ -1,5 +1,4 @@
 import type {
-  AppState,
   CreationDraftSnapshots,
   Draft,
   ImageEditDraft
@@ -10,7 +9,6 @@ import type { StateRepository } from "../ports/state-repository.js";
 
 export interface DraftServiceDependencies {
   store: StateRepository;
-  sendState(state: AppState): void;
 }
 
 /**
@@ -24,8 +22,8 @@ export class DraftService {
   async saveDraft(
     draft: Draft,
     snapshots?: CreationDraftSnapshots
-  ): Promise<AppState> {
-    const next = await this.deps.store.update((state) => {
+  ): Promise<void> {
+    await this.updateWithoutSnapshot((state) => {
       activateCreationDraft(state, draft);
       if (snapshots?.imageToVideoDraft?.inputMode === "image") {
         state.imageToVideoDraft = structuredClone(snapshots.imageToVideoDraft);
@@ -34,16 +32,22 @@ export class DraftService {
         state.videoExtensionDraft = structuredClone(snapshots.videoExtensionDraft);
       }
     });
-    this.deps.sendState(next);
-    return next;
   }
 
-  async saveImageDraft(draft: ImageEditDraft): Promise<AppState> {
+  async saveImageDraft(draft: ImageEditDraft): Promise<void> {
     const normalized = normalizeImageEditDraft(draft);
-    const next = await this.deps.store.update((state) => {
+    await this.updateWithoutSnapshot((state) => {
       state.imageDraft = normalized;
     });
-    this.deps.sendState(next);
-    return next;
+  }
+
+  private async updateWithoutSnapshot(
+    mutator: Parameters<StateRepository["update"]>[0]
+  ): Promise<void> {
+    if (this.deps.store.updateWithoutSnapshot) {
+      await this.deps.store.updateWithoutSnapshot(mutator);
+      return;
+    }
+    await this.deps.store.update(mutator);
   }
 }

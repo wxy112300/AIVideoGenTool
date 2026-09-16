@@ -23,7 +23,7 @@ import type {
   RendererCleanup,
   RendererContext
 } from "../../contracts";
-import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode, preserveLocalCreationDrafts } from "../../../core/creation-drafts";
+import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode } from "../../../core/creation-drafts";
 import { clearPromptVersion, activePromptIndexForDraft, promptPatchForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { createClearedDraft, createDefaultImageEditDraft } from "../../../core/draft-defaults";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
@@ -303,16 +303,9 @@ export function createCreateWorkspaceCoordinator(
       const draftToSave = state.draft;
       draftSaveInFlight += 1;
       try {
-        const savedState = await deps.context.application.saveDraft(draftToSave, {
+        await deps.context.application.saveDraft(draftToSave, {
           imageToVideoDraft: state.imageToVideoDraft,
           videoExtensionDraft: state.videoExtensionDraft
-        });
-        const currentState = getState();
-        deps.setRendererState({
-          ...savedState,
-          draft: currentState.draft,
-          imageToVideoDraft: currentState.imageToVideoDraft,
-          videoExtensionDraft: currentState.videoExtensionDraft
         });
         if (revision === draftRevision) draftDirty = false;
       } finally {
@@ -329,12 +322,8 @@ export function createCreateWorkspaceCoordinator(
       const draftToSave = state.imageDraft;
       imageDraftSaveInFlight += 1;
       try {
-        const savedState = await deps.context.application.saveImageDraft(draftToSave);
+        await deps.context.application.saveImageDraft(draftToSave);
         if (revision === imageDraftRevision) {
-          deps.setRendererState({
-            ...preserveLocalCreationDrafts(savedState, getState()),
-            imageDraft: draftToSave
-          });
           imageDraftDirty = false;
         }
       } catch (error) {
@@ -383,14 +372,13 @@ export function createCreateWorkspaceCoordinator(
     const workflowCapabilityPromise = ensureDraftWorkflowCapability(draft);
     draftSaveInFlight += 1;
     try {
-      const [savedState] = await Promise.all([
+      await Promise.all([
         deps.context.application.saveDraft(state.draft, {
           imageToVideoDraft: state.imageToVideoDraft,
           videoExtensionDraft: state.videoExtensionDraft
         }),
         workflowCapabilityPromise
       ]);
-      deps.setRendererState(preserveLocalCreationDrafts(savedState, getState()));
       if (revision === draftRevision) draftDirty = false;
     } finally {
       draftSaveInFlight -= 1;

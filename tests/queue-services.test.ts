@@ -13,6 +13,7 @@ import { QueueWorkerController } from "../electron/queue-worker";
 import { QueueEnqueueService } from "../electron/queue-enqueue";
 import { QueueService, type QueueServiceDependencies } from "../electron/services/queue-service";
 import { QueueExecutionSideEffects } from "../electron/services/queue-execution-side-effects";
+import { QueueTaskStateService } from "../electron/services/queue-task-state";
 import type { QueueRuntimeCapability } from "../electron/ports/queue-runtime";
 import { DEFAULT_DLSS5_UPSCALE_OPTIONS } from "../src/core/dlss5";
 
@@ -25,7 +26,9 @@ function repository(initial: AppState): StateRepository {
     update: async (mutator) => {
       mutator(state);
       return structuredClone(state);
-    }
+    },
+    mutateTransient: (mutator) => mutator(state),
+    flush: async () => undefined
   };
 }
 
@@ -46,6 +49,7 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
     store: repository(state),
     logger: logger(),
     sendState: vi.fn(),
+    sendProgress: vi.fn(),
     sendPreview: vi.fn(),
     resolveTaskOutputDirectory: async () => "C:/ComfyUI/output",
     requireExistingImageOutput: async () => [],
@@ -71,6 +75,50 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
 }
 
 describe("queue command services", () => {
+  it("coalesces live progress without broadcasting full state and checkpoints it later", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createDefaultState();
+      const queued = task(state);
+      queued.status = "running";
+      state.queue = [queued];
+      const store = repository(state);
+      const flush = vi.spyOn(store, "flush");
+      const sendState = vi.fn();
+      const sendProgress = vi.fn();
+      const service = new QueueTaskStateService({
+        store,
+        logger: logger(),
+        sendState,
+        sendProgress,
+        stageStartedAt: new Map(),
+        progressEventIntervalMs: 100,
+        progressPersistIntervalMs: 1_000
+      });
+
+      await service.updateTaskProgress(queued.id, { progress: 10, stage: "sampling" });
+      await service.updateTaskProgress(queued.id, { progress: 11, stage: "sampling" });
+
+      expect(sendState).not.toHaveBeenCalled();
+      expect(sendProgress).not.toHaveBeenCalled();
+      expect(store.get().queue[0]).toMatchObject({ progress: 11, stage: "sampling" });
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(sendProgress).toHaveBeenCalledTimes(1);
+      expect(sendProgress).toHaveBeenCalledWith(expect.objectContaining({
+        taskId: queued.id,
+        progress: 11,
+        stage: "sampling"
+      }));
+      expect(flush).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(900);
+      expect(flush).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("persists the H3 live-preview preference through the queue mutation service", async () => {
     const state = createDefaultState();
     const service = new QueueMutationService({
@@ -815,5 +863,10 @@ describe("queue service facade", () => {
     expect(next.queue).toHaveLength(0);
     expect(next.history).toHaveLength(1);
     expect(next.history[0]?.comfyPromptId).toBe("prompt-service");
+    expect(deps.sendState).toHaveBeenCalledTimes(1);
+    expect(deps.sendState).toHaveBeenCalledWith(expect.objectContaining({
+      queue: [],
+      history: [expect.objectContaining({ comfyPromptId: "prompt-service" })]
+    }));
   });
 });

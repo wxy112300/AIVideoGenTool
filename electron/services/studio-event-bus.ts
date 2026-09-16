@@ -4,6 +4,7 @@ import type {
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
   PromptProgress,
+  QueueTaskProgressUpdate,
   TaskPreview
 } from "../../src/types.js";
 import type { PromptRuntimeState } from "../../src/core/prompt-runtime-state.js";
@@ -12,6 +13,7 @@ export interface StudioEventMap {
   "state:changed": AppState;
   "comfy-runtime:changed": ComfyRuntimeState;
   "prompt-runtime:changed": PromptRuntimeState;
+  "queue-task:progress": QueueTaskProgressUpdate;
   "task:preview": TaskPreview;
   "prompt:progress": PromptProgress;
   "history-migration:progress": HistoryMigrationProgress;

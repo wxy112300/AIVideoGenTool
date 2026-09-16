@@ -252,6 +252,9 @@ function createHarness(
     sendPreview: (preview) => previews.push(preview),
     setQueueLifecycle,
     updateTask,
+    updateTaskProgress: async (taskId, patch) => {
+      await updateTask(taskId, patch);
+    },
     ensureComfyUiReady: options.ensureComfyUiReady ?? (async () => undefined),
     resolveTaskOutputDirectory: async () => "C:/ComfyUI/output",
     requireExistingImageOutput: async () => [],

@@ -182,6 +182,12 @@ const api: AppApi = {
     ipcRenderer.on("comfy-runtime:changed", listener);
     return () => ipcRenderer.removeListener("comfy-runtime:changed", listener);
   },
+  onQueueTaskProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, update: unknown) =>
+      callback(update as Parameters<typeof callback>[0]);
+    ipcRenderer.on("queue-task:progress", listener);
+    return () => ipcRenderer.removeListener("queue-task:progress", listener);
+  },
   onTaskPreview: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, preview: unknown) =>
       callback(preview as Parameters<typeof callback>[0]);

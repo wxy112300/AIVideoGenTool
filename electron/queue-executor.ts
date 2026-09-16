@@ -32,6 +32,7 @@ import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-l
 import { upscaleTaskFromRequest } from "../src/core/queue-task-factory.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import type { QueueWorkerController } from "./queue-worker.js";
+import type { QueueTaskProgressPatch } from "./services/queue-task-state.js";
 import {
   QueueExecutionSideEffects,
   type QueueExecutionSideEffectsDependencies,
@@ -128,6 +129,7 @@ export interface QueueExecutorDependencies {
   sendPreview(payload: TaskPreview): void;
   setQueueLifecycle(lifecycle: QueueLifecycle, taskId?: string): Promise<AppState>;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
+  updateTaskProgress(taskId: string, patch: QueueTaskProgressPatch): Promise<void>;
   ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise<void>;
   resolveTaskOutputDirectory(): Promise<string>;
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
@@ -160,6 +162,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     sendPreview,
     setQueueLifecycle,
     updateTask,
+    updateTaskProgress,
     ensureComfyUiReady,
     resolveTaskOutputDirectory,
     requireExistingImageOutput,
@@ -246,7 +249,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               const batchProgress = ((run.index + Math.max(0, progress) / 100) / totalRuns) * 100;
               if (Math.round(batchProgress) < lastProgress + 2 && progress < 100) return;
               lastProgress = Math.round(batchProgress);
-              void updateTask(task.id, {
+              void updateTaskProgress(task.id, {
                 progress: Math.min(99, batchProgress),
                 stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`,
                 workProgress
@@ -614,6 +617,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               logger,
               signal: activeController.signal,
               updateTask: (taskId, patch) => updateTask(taskId, patch),
+              updateTaskProgress: (taskId, patch) => updateTaskProgress(taskId, patch),
               getTask: (taskId) => {
                 const current = store.get().queue.find((item) => item.id === taskId);
                 return current?.taskType === "upscale" ? current : undefined;
@@ -693,7 +697,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               const aggregateStage = h3CompositeTask
                 ? `${executionTask.taskType === "upscale" ? "1080p 二次采样" : "720p 首遍"} · ${stage}`
                 : stage;
-              void updateTask(task.id, { progress: aggregateProgress, stage: aggregateStage, workProgress });
+              void updateTaskProgress(task.id, { progress: aggregateProgress, stage: aggregateStage, workProgress });
               const roundedProgress = Math.round(aggregateProgress);
               if (
                 aggregateStage !== lastLoggedStage ||
@@ -776,7 +780,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               ),
               activeController.signal,
               (progress, stage, _determinate, workProgress) => {
-                void updateTask(task.id, {
+                void updateTaskProgress(task.id, {
                   progress: 50 + progress * 0.5,
                   stage: `1080p 二次采样 · ${stage}`,
                   workProgress

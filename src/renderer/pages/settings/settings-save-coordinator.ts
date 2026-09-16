@@ -1,4 +1,5 @@
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
+import { activateCreationDraft } from "../../../core/creation-drafts";
 import type {
   AppState,
   BundledWorkflow,
@@ -14,8 +15,8 @@ export interface SettingsSaveCoordinatorDependencies {
   getEnvironmentScan(): EnvironmentScanResult | null;
   loadLocale(locale: Settings["uiLocale"]): Promise<void>;
   saveSettings(settings: Settings, mode: SettingsSaveMode): Promise<AppState>;
-  saveImageDraft(draft: AppState["imageDraft"]): Promise<AppState>;
-  saveDraft(draft: Draft): Promise<AppState>;
+  saveImageDraft(draft: AppState["imageDraft"]): Promise<void>;
+  saveDraft(draft: Draft): Promise<void>;
   getBundledWorkflow(modelId: string, inputMode: Draft["inputMode"]): Promise<BundledWorkflow | null>;
   setState(state: AppState): void;
   clearSettingsDraft(): void;
@@ -81,11 +82,13 @@ export class SettingsSaveCoordinator {
       )
         ? savedState.imageDraft.qualityProfile
         : capability.qualityProfiles[0]?.id ?? "native";
-      savedState = await this.dependencies.saveImageDraft({
+      const nextImageDraft = {
         ...savedState.imageDraft,
         modelId: nextSettings.defaultImageModel,
         qualityProfile
-      });
+      };
+      await this.dependencies.saveImageDraft(nextImageDraft);
+      savedState = { ...savedState, imageDraft: nextImageDraft };
       this.dependencies.setState(savedState);
     }
 
@@ -99,10 +102,14 @@ export class SettingsSaveCoordinator {
         );
         if (bundled) {
           this.dependencies.cacheBundledWorkflow(bundled, savedState.draft.inputMode);
-          savedState = await this.dependencies.saveDraft({
+          const nextDraft = {
             ...savedState.draft,
             workflowPath: bundled.path
-          });
+          };
+          await this.dependencies.saveDraft(nextDraft);
+          const nextState = structuredClone(savedState);
+          activateCreationDraft(nextState, nextDraft);
+          savedState = nextState;
           this.dependencies.setState(savedState);
         }
       }

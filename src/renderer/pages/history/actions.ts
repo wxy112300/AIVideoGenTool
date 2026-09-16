@@ -262,7 +262,8 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       seed: version.seed ?? null,
       outputFormat: "png"
     });
-    options.setState(await context.application.saveImageDraft(draft));
+    await context.application.saveImageDraft(draft);
+    options.setState({ ...state, imageDraft: draft });
     options.reportUserAction("image-history-continue-edit", { projectId: project.id, versionId: version.id });
     options.navigateToCreationMode("image-edit");
   };

@@ -62,6 +62,7 @@ function eventStudio(listeners: Map<string, EventListener>): AppApi {
     onStateChanged: register("state:changed"),
     onComfyRuntimeStateChanged: register("comfy-runtime:changed"),
     onPromptRuntimeStateChanged: register("prompt-runtime:changed"),
+    onQueueTaskProgress: register("queue-task:progress"),
     onTaskPreview: register("task:preview"),
     onPromptProgress: register("prompt:progress"),
     onWindowCloseRequest: register("window:close-requested"),
@@ -323,7 +324,7 @@ describe("renderer boundary characterization", () => {
   it("registers every renderer event through the events dependency and cleans them up", () => {
     const harness = createEventHarness();
 
-    expect(harness.listeners.size).toBe(10);
+    expect(harness.listeners.size).toBe(11);
 
     harness.cleanup();
 
@@ -334,20 +335,20 @@ describe("renderer boundary characterization", () => {
     const queue = createEventHarness("queue");
     const task = configureRunningQueue(queue);
     mountQueueLiveShell(queue.root);
-    const next = clone(queue.state);
-    const nextTask = next.queue[0]!;
-    nextTask.progress = 67;
-    nextTask.stage = "渲染关键帧";
-    nextTask.workProgress = {
+    queue.emit("queue-task:progress", {
+      taskId: task.id,
+      revision: 1,
+      updatedAt: "2026-08-31T00:00:02.000Z",
+      progress: 67,
+      stage: "渲染关键帧",
+      workProgress: {
       value: 4,
       max: 20,
       unit: "step",
       startedAt: "2026-08-31T00:00:00.000Z",
       sampledAt: "2026-08-31T00:04:20.000Z"
-    };
-    nextTask.updatedAt = "2026-08-31T00:00:02.000Z";
-
-    queue.emit("state:changed", next);
+      }
+    });
 
     expect(queue.setState).toHaveBeenCalledTimes(1);
     expect(queue.requestRender).not.toHaveBeenCalled();
@@ -398,6 +399,22 @@ describe("renderer boundary characterization", () => {
     contentChanged.history[0]!.updatedAt = "2026-08-31T00:00:03.000Z";
     history.emit("state:changed", contentChanged);
 
+    expect(history.requestRender).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes visible History after a completed task adds a persisted asset", () => {
+    const history = createEventHarness("history");
+    const fixture = createHistoryPerformanceFixture(2);
+    history.state.history = [fixture.videos[0]!];
+    const completed = clone(history.state);
+    completed.history.unshift(fixture.videos[1]!);
+
+    history.emit("state:changed", completed);
+
+    expect(history.state.history.map((asset) => asset.id)).toEqual([
+      fixture.videos[1]!.id,
+      fixture.videos[0]!.id
+    ]);
     expect(history.requestRender).toHaveBeenCalledTimes(1);
   });
 

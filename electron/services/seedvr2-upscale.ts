@@ -19,6 +19,7 @@ import { isVideoOutputFilename } from "../../src/core/comfy-output.js";
 import { submitTask, waitForTask, type PreviewFrameMetadata } from "./comfy-ui.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { getComputeResourceSnapshot } from "./performance.js";
+import type { QueueTaskProgressPatch } from "./queue-task-state.js";
 
 const execFileAsync = promisify(execFile);
 const segmentMarker = ".__lvs-segment-";
@@ -133,6 +134,7 @@ export interface ExecuteNativeSeedVr2UpscaleDependencies {
   logger: AppLogger;
   signal: AbortSignal;
   updateTask(taskId: string, patch: Partial<UpscaleQueueTask>): Promise<AppState>;
+  updateTaskProgress(taskId: string, patch: QueueTaskProgressPatch): Promise<void>;
   getTask(taskId: string): UpscaleQueueTask | undefined;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
   isComputeActive(): boolean;
@@ -294,7 +296,7 @@ export async function executeNativeSeedVr2Upscale(
           (segment.startFrame + segment.frameCount * localProgress / 100) /
           plan.totalFrames
         ) * 94;
-        void deps.updateTask(task.id, {
+        void deps.updateTaskProgress(task.id, {
           seedVr2Progress: {
             phase: "segments",
             currentSegment: segment.index + 1,

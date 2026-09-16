@@ -182,6 +182,7 @@ export class ApplicationRuntime {
     if (!context) {
       return { ok: true, message: "Application runtime was not initialized" };
     }
+    await context.queue.flushProgress();
     return context.services.lifecycle.stopOwnedRuntime(context.store.get().settings);
   }
 
@@ -190,10 +191,7 @@ export class ApplicationRuntime {
   ): Promise<ApplicationRuntimeContext> {
     await this.deps.store.load();
 
-    const draftService = new DraftService({
-      store: this.deps.store,
-      sendState: this.deps.sendState
-    });
+    const draftService = new DraftService({ store: this.deps.store });
     const settingsService = new SettingsService({
       store: this.deps.store,
       logger: this.deps.logger,
@@ -277,6 +275,7 @@ export class ApplicationRuntime {
       store: this.deps.store,
       logger: this.deps.logger,
       sendState: this.deps.sendState,
+      sendProgress: (update) => this.deps.events.publish("queue-task:progress", update),
       sendPreview: (payload) => this.deps.events.publish("task:preview", payload),
       queueRuntime: this.deps.queue.runtime,
       resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory(),

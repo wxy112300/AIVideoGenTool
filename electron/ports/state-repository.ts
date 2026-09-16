@@ -12,4 +12,10 @@ export interface StateRepository {
   get(): AppState;
   getSettings(): Settings;
   update(mutator: StateMutator): Promise<AppState>;
+  /** Persist a mutation without cloning the potentially large state for a caller that needs no snapshot. */
+  updateWithoutSnapshot?(mutator: StateMutator): Promise<void>;
+  /** Apply process-local live state; the owner must arrange a later durable flush. */
+  mutateTransient?(mutator: StateMutator): void;
+  /** Persist the current in-memory state without producing a snapshot. */
+  flush?(): Promise<void>;
 }

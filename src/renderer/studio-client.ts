@@ -73,6 +73,7 @@ const eventMethodNames = [
   "onStateChanged",
   "onComfyRuntimeStateChanged",
   "onPromptRuntimeStateChanged",
+  "onQueueTaskProgress",
   "onTaskPreview",
   "onPromptProgress",
   "onAppCacheProgress",

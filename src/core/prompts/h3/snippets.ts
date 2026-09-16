@@ -24,10 +24,10 @@ export const h3SnippetDefinitions: readonly PromptSnippetDefinition[] = [
   { id: "shot-framing-progression", groupId: "framing", text: "The camera moves continuously from a close view to a full-body environmental view along one readable physical path, preserving the subject's world scale." },
   { id: "motion-turn", groupId: "subject-motion", text: "The subject turns slowly toward the camera, moves naturally, and holds the final pose." },
   { id: "motion-breeze", groupId: "subject-motion", text: "A light breeze moves the subject's hair and clothing with subtle, physically consistent motion." },
-  { id: "sound-ambience", groupId: "sound", text: "Use natural ambient sound, subtle movement sounds, and room tone grounded in the visible scene." },
+  { id: "sound-ambience", groupId: "sound", text: "overall_soundscape: Natural ambient sound, subtle movement sounds, and quiet room tone appropriate to the scene." },
   { id: "sound-synchronized-action", groupId: "sound", text: "Synchronize each diegetic sound with the visible action and environmental response that produces it." },
   { id: "sound-spatial-echo", groupId: "sound", text: "The direct sound becomes quieter as the camera moves away; delayed reflections arrive from the left and then the right, becoming progressively quieter, darker, and more diffuse." },
-  { id: "sound-no-music", groupId: "sound", text: "Use N/A for non_diegetic_music." },
+  { id: "sound-no-music", groupId: "sound", text: "non_diegetic_music: N/A" },
   { id: "dialogue-mandarin", groupId: "dialogue", text: "The speaker (S1) speaks Mandarin Chinese with a clear, natural voice and says exactly: <d>[Chinese] Write the exact original dialogue here.</d>" },
   { id: "dialogue-english", groupId: "dialogue", text: "The speaker (S1) uses a clear, natural English voice and says exactly: <d>[English] Write the exact spoken words here.</d>" },
   { id: "screen-text", groupId: "screen-text", text: "Any visible sign, subtitle, label, or neon text reads exactly \"Write the original text here\"; preserve its original punctuation without translation." }

@@ -1,4 +1,9 @@
-import type { AppState, QueueLifecycle, QueueTask } from "../../src/types.js";
+import type {
+  AppState,
+  QueueLifecycle,
+  QueueTask,
+  QueueTaskProgressUpdate
+} from "../../src/types.js";
 import {
   QueueControlService,
   type QueueControlServiceDependencies
@@ -20,11 +25,12 @@ import type { QueueRuntimeCapability } from "../ports/queue-runtime.js";
 export interface QueueServiceDependencies
   extends Omit<
       QueueExecutorDependencies,
-      "worker" | "sideEffects" | "setQueueLifecycle" | "updateTask" | keyof QueueRuntimeCapability
+      "worker" | "sideEffects" | "setQueueLifecycle" | "updateTask" | "updateTaskProgress" | keyof QueueRuntimeCapability
     >,
     Pick<QueueControlServiceDependencies, "nativePromptBusy">,
     Pick<QueueEnqueueServiceDependencies, "effectiveImageInputLibraryDirectory" | "resolveTaskOutputDirectory" | "imageInspection" | "inspectNativeAvArtifact"> {
   queueRuntime: QueueRuntimeCapability;
+  sendProgress(update: QueueTaskProgressUpdate): void;
 }
 
 export class QueueService {
@@ -63,10 +69,13 @@ export class QueueService {
       store: deps.store,
       logger: deps.logger,
       sendState: deps.sendState,
+      sendProgress: deps.sendProgress,
       stageStartedAt: deps.taskStageStartedAt
     });
     const updateTask = (taskId: string, patch: Partial<QueueTask>): Promise<AppState> =>
       this.state.updateTask(taskId, patch);
+    const updateTaskProgress: QueueExecutorDependencies["updateTaskProgress"] =
+      (taskId, patch) => this.state.updateTaskProgress(taskId, patch);
     const setQueueLifecycle = (
       lifecycle: QueueLifecycle,
       taskId?: string
@@ -94,6 +103,7 @@ export class QueueService {
       worker: this.worker,
       setQueueLifecycle,
       updateTask,
+      updateTaskProgress,
       sideEffects: this.sideEffects
     });
     this.control = new QueueControlService({
@@ -143,6 +153,10 @@ export class QueueService {
     taskId?: string
   ): Promise<AppState> {
     return this.state.setQueueLifecycle(lifecycle, taskId);
+  }
+
+  flushProgress(): Promise<void> {
+    return this.state.flushProgress();
   }
 
   get runningWorker(): Promise<void> | null {

@@ -12,6 +12,7 @@ const bridgedEventNames = [
   "state:changed",
   "comfy-runtime:changed",
   "prompt-runtime:changed",
+  "queue-task:progress",
   "task:preview",
   "prompt:progress",
   "history-migration:progress",

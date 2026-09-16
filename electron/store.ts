@@ -986,9 +986,21 @@ export class JsonStore implements StateRepository {
   }
 
   async update(mutator: (state: AppState) => void): Promise<AppState> {
+    await this.updateWithoutSnapshot(mutator);
+    return this.snapshot();
+  }
+
+  async updateWithoutSnapshot(mutator: (state: AppState) => void): Promise<void> {
     mutator(this.state);
     await this.persist();
-    return this.snapshot();
+  }
+
+  mutateTransient(mutator: (state: AppState) => void): void {
+    mutator(this.state);
+  }
+
+  flush(): Promise<void> {
+    return this.persist();
   }
 
   private snapshot(): AppState {

@@ -1985,6 +1985,19 @@ export interface CreationDraftSnapshots {
   videoExtensionDraft?: Draft;
 }
 
+/** High-frequency queue presentation state, intentionally separate from full AppState events. */
+export interface QueueTaskProgressUpdate {
+  taskId: string;
+  revision: number;
+  updatedAt: string;
+  progress?: number;
+  stage?: string;
+  /** null explicitly clears a previously displayed granular progress value. */
+  workProgress?: QueueWorkProgress | null;
+  /** null explicitly clears a previously displayed SeedVR2 progress value. */
+  seedVr2Progress?: SeedVr2UpscaleProgress | null;
+}
+
 export type HistoryCoverLookup =
   | { state: "hit"; url: string; sourceRevision: string }
   | { state: "miss"; sourceRevision: string }
@@ -2001,8 +2014,8 @@ export interface AppApi {
   getAppVersion(): Promise<string>;
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
-  saveDraft(draft: Draft, snapshots?: CreationDraftSnapshots): Promise<AppState>;
-  saveImageDraft(draft: ImageEditDraft): Promise<AppState>;
+  saveDraft(draft: Draft, snapshots?: CreationDraftSnapshots): Promise<void>;
+  saveImageDraft(draft: ImageEditDraft): Promise<void>;
   saveSettings(settings: Settings, mode?: SettingsSaveMode): Promise<AppState>;
   setQueueH3LivePreview(enabled: boolean): Promise<AppState>;
   pickImage(): Promise<string | null>;
@@ -2112,6 +2125,7 @@ export interface AppApi {
   onStateChanged(callback: (state: AppState) => void): () => void;
   onComfyRuntimeStateChanged(callback: (state: ComfyRuntimeState) => void): () => void;
   onPromptRuntimeStateChanged(callback: (state: PromptRuntimeState) => void): () => void;
+  onQueueTaskProgress(callback: (update: QueueTaskProgressUpdate) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onPromptProgress(callback: (progress: PromptProgress) => void): () => void;
   onAppCacheProgress(callback: (progress: AppCacheProgress) => void): () => void;

@@ -21,6 +21,7 @@ import type {
   PreparedVideoHistoryMigration,
   VideoHistoryMigrationPlan
 } from "../src/infrastructure/video-history-migration";
+import { createHistoryPerformanceFixture } from "./fixtures/history-performance";
 
 interface TestRepository extends StateRepository {
   snapshot(): AppState;
@@ -32,12 +33,17 @@ function createRepository(initial: AppState): TestRepository {
     load: vi.fn(async () => structuredClone(current)),
     get: () => current,
     getSettings: () => current.settings,
-    update: async (mutator) => {
+    update: vi.fn(async (mutator) => {
       const next = structuredClone(current);
       mutator(next);
       current = next;
       return current;
-    },
+    }),
+    updateWithoutSnapshot: vi.fn(async (mutator) => {
+      const next = structuredClone(current);
+      mutator(next);
+      current = next;
+    }),
     snapshot: () => current
   };
 }
@@ -118,10 +124,26 @@ function createMigrationPort(plan: VideoHistoryMigrationPlan): {
 }
 
 describe("DraftService", () => {
+  it("saves a draft without producing a full snapshot for a 920-record history", async () => {
+    const initial = createDefaultState();
+    const fixture = createHistoryPerformanceFixture(460);
+    initial.history = fixture.videos;
+    initial.imageHistory = fixture.images;
+    const repository = createRepository(initial);
+    const service = new DraftService({ store: repository });
+
+    await service.saveDraft({ ...initial.draft, seed: 920 });
+
+    expect(repository.updateWithoutSnapshot).toHaveBeenCalledTimes(1);
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(repository.snapshot().draft.seed).toBe(920);
+    expect(repository.snapshot().history).toHaveLength(460);
+    expect(repository.snapshot().imageHistory).toHaveLength(460);
+  });
+
   it("persists the active projection and independent mode snapshots as one update", async () => {
     const repository = createRepository(createDefaultState());
-    const sendState = vi.fn();
-    const service = new DraftService({ store: repository, sendState });
+    const service = new DraftService({ store: repository });
     const current = repository.snapshot();
     const imageDraft: Draft = {
       ...current.draft,
@@ -154,12 +176,12 @@ describe("DraftService", () => {
       inputMode: "video",
       sourceVideoPath: "extension.mp4"
     });
-    expect(sendState).toHaveBeenCalledTimes(1);
+    expect(repository.updateWithoutSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("normalizes image drafts before persistence while retaining the image workspace contract", async () => {
     const repository = createRepository(createDefaultState());
-    const service = new DraftService({ store: repository, sendState: vi.fn() });
+    const service = new DraftService({ store: repository });
     const incoming = {
       mode: "image-edit",
       pictures: [],

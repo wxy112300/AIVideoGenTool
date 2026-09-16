@@ -8,6 +8,11 @@
 
 ## Unreleased
 
+## 0.62.1 — 2026-09-17
+
+- 修复历史记录增大后 Draft 自动保存和生成进度通过完整 AppState IPC 引发的短时界面卡顿：草稿保存改为无全量返回的确认路径，Queue 高频进度使用合并后的窄事件与定期耐久 checkpoint；任务完成入史仍发送结构性状态更新并刷新 History。
+- 修复 H3“环境声”和“不要背景音乐”快捷插入的官方字段被改写为说明句、增强后可能丢失声音结构或重新生成 BGM 的问题；快捷项恢复 `overall_soundscape:` 与 `non_diegetic_music: N/A`，并增加精确值回归测试。
+
 ## 0.62.0 — 2026-09-16
 
 - 修复 Continuum V3.8 已执行 JointAV serializer、却因应用按“可见时长、不含 22 帧保护前缀”计算 artifact `frameCount` 而拒绝提交 manifest 的问题；V3.8 的采样预算、最大时长和 JointAV 元数据现在均按 sampler 原始 latent（可见新增帧 + 22 帧连续性前缀）的 H3 时间网格计算，`H3ContinuumAssembleSeamV35` 仍只负责从成片中移除前缀。14 秒真实输出对应 362 帧、video latent T=107、audio latent T=603。

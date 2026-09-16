@@ -254,7 +254,8 @@ export function createQueueWorkspaceCoordinator(
     try {
       if (task.taskType === "image-generation") {
         const imageDraft = imageEditDraftFromQueueTask(task, deps.getState().imageDraft);
-        deps.setState(await deps.application.saveImageDraft(imageDraft));
+        await deps.application.saveImageDraft(imageDraft);
+        deps.setState({ ...deps.getState(), imageDraft });
         deps.setState(await deps.application.removeTask(taskId));
         setActionBusy(null);
         deps.navigateToCreationMode("image-edit");

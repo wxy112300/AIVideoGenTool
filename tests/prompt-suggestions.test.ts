@@ -12,6 +12,10 @@ describe("prompt snippets", () => {
     expect(promptSnippetFor("visual-anti-cg-plastic")).toContain("photographic material behavior");
     expect(promptSnippetFor("visual-anti-cg-plastic")).not.toMatch(/CGI|toy|doll|wax|plastic/iu);
     expect(promptSnippetFor("capture-smartphone-1x")).toContain("1x");
+    expect(promptSnippetFor("sound-ambience")).toBe(
+      "overall_soundscape: Natural ambient sound, subtle movement sounds, and quiet room tone appropriate to the scene."
+    );
+    expect(promptSnippetFor("sound-no-music")).toBe("non_diegetic_music: N/A");
     expect(promptSnippetFor("dialogue-mandarin")).toContain("<d>[Chinese]");
     expect(promptSnippetFor("screen-text")).toContain("exactly");
     expect(promptSnippets.every((snippet) => !/[\u3400-\u9fff]/u.test(snippet.text))).toBe(true);

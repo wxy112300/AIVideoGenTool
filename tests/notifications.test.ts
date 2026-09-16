@@ -166,6 +166,7 @@ describe("renderer notifications", () => {
       },
       onComfyRuntimeStateChanged: subscribe,
       onPromptRuntimeStateChanged: subscribe,
+      onQueueTaskProgress: subscribe,
       onHistoryMigrationProgress: subscribe,
       onImageAssetLibraryProgress: subscribe,
       onTaskPreview: subscribe,
