@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+## 0.62.0 — 2026-09-16
+
 - 修复 Continuum V3.8 已执行 JointAV serializer、却因应用按“可见时长、不含 22 帧保护前缀”计算 artifact `frameCount` 而拒绝提交 manifest 的问题；V3.8 的采样预算、最大时长和 JointAV 元数据现在均按 sampler 原始 latent（可见新增帧 + 22 帧连续性前缀）的 H3 时间网格计算，`H3ContinuumAssembleSeamV35` 仍只负责从成片中移除前缀。14 秒真实输出对应 362 帧、video latent T=107、audio latent T=603。
 - 修复 Continuum V3.8 Extend 在节点侧 `H3ContinuumAssembleSeamV35` 已移除 22 帧保护前缀后，应用最终拼接仍按 `overlapFrames / 24` 再裁约 0.92 秒、从而删掉连续运动接缝并产生明显镜头跳变的问题；Continuum 与 Motion Context 的成片现在从节点已组装的首帧直接拼接，普通 overlap Extend 与 FL2VA 保持原裁切规则，Spectrum 路径不变。
 - 精简测试日常入口：`npm.cmd test` 现在只运行紧凑的单元测试层；History 性能基准、打包复制 smoke、依赖安装事务和 runtime 安装事务移入 `test:integration`，完整 `verify` 仍运行全部测试。
