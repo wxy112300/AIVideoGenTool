@@ -213,4 +213,4 @@ Luna 完成五步后在 TASK 更新唯一当前摘要，`evidence/upgrade-valida
 
 给执行任务的启动指令可直接使用：
 
-> 请以单个 Luna（Max）独立执行 `docs/tasks/2026-09-10-comfyui-035-h3/PLAN.md`，先读 TASK 并核对当前工作区。按五步连续完成，每步可先做定向调查，不派生 agent，不安排例行阶段审批。保持现有默认和 Spectrum 兼容条件；Motion Context 关闭 Spectrum 是已知边界，维持现状，不调查或修复。完成产品实现、必要验证、文档及证据更新；对缺失模型/内核或无法与 Spectrum 兼容的其他组合准确报告，继续完成独立可做部分。
+> 请以单个 Luna（Max）独立执行 `docs/archive/comfyui-035-h3/PLAN.md`，先读 TASK 并核对当前工作区。按五步连续完成，每步可先做定向调查，不派生 agent，不安排例行阶段审批。保持现有默认和 Spectrum 兼容条件；Motion Context 关闭 Spectrum 是已知边界，维持现状，不调查或修复。完成产品实现、必要验证、文档及证据更新；对缺失模型/内核或无法与 Spectrum 兼容的其他组合准确报告，继续完成独立可做部分。

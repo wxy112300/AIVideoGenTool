@@ -1,5 +1,5 @@
 # 环境扫描可靠性与耗时
-- Status: in progress（S0–S6 实现、verify 与运行时 benchmark 已完成，手动 UI 验收待补）
+- Status: archived / closed（2026-09-16；S0–S6 实现、verify 与运行时 benchmark 已完成；手动 UI 复核不再作为本任务继续项）
 - Updated: 2026-09-11
 - Owner: Codex（单 agent 执行；未派生子任务）
 - Route: bug

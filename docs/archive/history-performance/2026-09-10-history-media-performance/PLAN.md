@@ -20,7 +20,7 @@
 | `media-controller.ts:startPreview` | mouseenter 即设置视频 src 并 play；mouseleave 暂停 | 快速扫过多张卡片可能创建无效加载；现有离屏释放保护要保留 |
 | `media-read-service.ts:181–201` | 已支持 HEAD/Range 流式读取，无显式 HTTP 缓存校验头 | 不能声称当前每次都下载整段视频；须测 Range/取消/缓存实际行为 |
 
-已有 [C04 性能证据](../../research/history/2026.9.1-wp-c04-electron-performance-evidence.md)针对大列表、布局和返回等场景；其媒体 IPC/decode 并发未测试，部分使用软件渲染，不能当本次加载性能基线。用户此次明确要求新优化，但不借此重启所有旧架构计划。
+已有 [C04 性能证据](../../../research/history/2026.9.1-wp-c04-electron-performance-evidence.md)针对大列表、布局和返回等场景；其媒体 IPC/decode 并发未测试，部分使用软件渲染，不能当本次加载性能基线。用户此次明确要求新优化，但不借此重启所有旧架构计划。
 
 ## 2. 范围与实施次序
 

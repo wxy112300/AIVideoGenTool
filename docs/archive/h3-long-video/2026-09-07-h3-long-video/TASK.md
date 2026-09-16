@@ -1,11 +1,11 @@
 # H3 Native AV、Extend 与长视频
 
-- Status: needs-review
+- Status: archived / closed（2026-09-16；用户确认 H3 Native AV/Extend 任务完成；后续长视频质量与真实 smoke 另立任务）
 - Updated: 2026-09-16
 - Owner: unassigned
 - Route: integration / blocked-by-evidence
 - Scope: 合并 Native Masked AV、Motion Context、H3 Continuum 与长视频方案的关系；不把不同 continuation 语义合成一个 provider。
-- Authority: [Workflow Contract](../../WORKFLOW_CONTRACT.md)、[H3 high-resolution task](../2026-09-07-h3-high-resolution/TASK.md)、[current catalog](../../../src/core/catalog/dependencies/nodes.ts)
+- Authority: [Workflow Contract](../../../WORKFLOW_CONTRACT.md)、[H3 high-resolution task](../../../tasks/2026-09-07-h3-high-resolution/TASK.md)、[current catalog](../../../../src/core/catalog/dependencies/nodes.ts)
 
 ## Resume
 
@@ -29,9 +29,9 @@
 
 - [P0 baseline](evidence/H3_P0_EVIDENCE_BASELINE.md)
 - [Long-video P0 evidence](evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)
-- [H3 1080p/1440p research](../../research/h3/2026.9.2-h3-1080-1440-integration-research.md)
-- [Archived Native Masked AV plan](../../archive/h3-long-video/H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md)
-- [Archived long-video plan](../../archive/h3-long-video/LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md)
+- [H3 1080p/1440p research](../../../research/h3/2026.9.2-h3-1080-1440-integration-research.md)
+- [Archived Native Masked AV plan](../H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md)
+- [Archived long-video plan](../LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md)
 
 ## Stop conditions
 

@@ -1,7 +1,7 @@
 # MiniMax H3 Native Masked AV Extend 与长视频接入计划
 
 类型：Archive / historical plan
-状态：Native Masked AV 当时未实现且无真实生成证据；当前关系和下一步见 [H3 Native AV、Extend 与长视频 TASK](../../tasks/2026-09-07-h3-long-video/TASK.md)。
+状态：Native Masked AV 当时未实现且无真实生成证据；当前关系和下一步见 [H3 Native AV、Extend 与长视频 TASK](./2026-09-07-h3-long-video/TASK.md)。
 归档日期：2026-09-07
 
 ## 0. 计划状态、目标和首发边界
@@ -10,7 +10,7 @@
 - 当前状态：已按当前仓库实现重新规划；Native Masked AV 尚未实现，也没有真实生成证据。2026-08-24 的离线基线曾记录本机 `/object_info` 未响应，最新状态以 P0 evidence 为准。
 - 当前应用：`0.43.3`，`AppState.schemaVersion = 13`。
 - 当前开发机：RTX 4090 24 GB、NVIDIA Driver 610.88、Node 24.16.0、npm 10.2.4。
-+ 最新 P0 复核：见 [H3_LONG_VIDEO_P0_EVIDENCE](../../tasks/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)；2026-08-26 当前 ComfyUI `0.33.0` 已运行，core revision 同时包含 PR #15375 和 #15439，但 Native workflow 尚未完成真实 smoke。
++ 最新 P0 复核：见 [H3_LONG_VIDEO_P0_EVIDENCE](./2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)；2026-08-26 当前 ComfyUI `0.33.0` 已运行，core revision 同时包含 PR #15375 和 #15439，但 Native workflow 尚未完成真实 smoke。
 - 目标读者：可以执行明确、小范围任务的 Luna 级实现代理。每个工作包必须重新读取目标文件，不得用旧补丁覆盖当前 dirty worktree。
 
 ### 0.1 用户目标

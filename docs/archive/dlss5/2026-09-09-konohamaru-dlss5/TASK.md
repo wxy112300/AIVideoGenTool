@@ -1,5 +1,5 @@
 # Konohamaru DLSS5 节点接入
-- Status: needs-review
+- Status: archived / closed（2026-09-16；Konohamaru DLSS5 provider 已接入并完成静态/节点链路验收；direct Neural runtime 失败证据保留，后续另立任务）
 - Updated / Owner: 2026-09-10 / current agent
 - Scope / Authority: 接入 `Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation` 作为新的可选 DLSS5 upscale provider，复用现有 upscale 面板；支持视频超分/Neural Rendering 与 DLSSG 补帧串联。旧 HECer/AetherScale 保持归档兼容，不重新启用。
 - Baseline: `79c1d6c`；工作树已有 harness 文档和环境扫描的未提交改动，均不属于本任务；上游固定 revision `c755e274a405a7a47667bd567d489b6845066bcf`

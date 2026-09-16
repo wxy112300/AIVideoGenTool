@@ -1,6 +1,6 @@
 # ComfyUI 0.35.0 与 H3 升级
 
-- Status: implementation complete；用户已通过应用队列完成 RTX 4090 上从480p/10s到768p/15s的20步组合实测。固定驻留、Attention、SOL、VAE和长时负载已有可核对History证据；Triton 768p/15s出现一次OOM、一次成功，证明该组合处于后台显存敏感的临界区。
+- Status: archived / closed（2026-09-16；用户确认 ComfyUI 0.35.0/H3 升级任务完成；后续性能与质量复测另立任务）
 - Updated: 2026-09-11
 - Owner: 当前线程；runtime smoke 已结束，不持有 ComfyUI、Electron 或 GPU 运行资源。
 - Scope / Authority: 用户要求阅读并开始执行本任务的五步升级计划；早期 agent 运行仅授权低分辨率短测，后续480p/768p与10s/15s长测由用户在应用内执行并要求写入分析报告。本次不下载权重、不删除用户数据。

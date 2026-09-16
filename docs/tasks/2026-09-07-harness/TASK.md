@@ -44,14 +44,14 @@
 | 模块化、Settings、云端 handoff | 对应 `docs/archive/modular-architecture/`、`docs/archive/comfyui-settings/`、`docs/archive/legacy-handoff/` | 已完成/被替代/历史交接统一归档；当前架构以契约为准 |
 | 图片工作台计划与模型研究 | `docs/archive/image-workspace/`、`docs/research/image-edit/` | 混合长计划归档；独立 AI 放大保留 needs-review |
 | DLSS5 旧计划/调查 | `docs/archive/dlss5/` | HECer SR 与 AetherScale 均已淘汰；仅保留历史证据和停止条件 |
-| H3 P0 文件 | `docs/tasks/2026-09-07-h3-long-video/evidence/` | 保留静态基线，不把它升级为 Native runtime 完成证据 |
+| H3 P0 文件 | `docs/archive/h3-long-video/2026-09-07-h3-long-video/evidence/` | 保留静态基线，不把它升级为 Native runtime 完成证据 |
 
 明确收口的历史计划：7 份（H3 adoption v1、v2；H3 Memory；History performance；Renderer modularization；Headless rearchitecture；ComfyUI Settings；H3 v3 为 partially completed history，不计入 done）。
 
 尚待判断的具体入口及缺失证据：
 
 - `docs/tasks/2026-09-07-h3-high-resolution/TASK.md`：1440p learned Upscale 的质量/组合证据，以及 native 1440p 失败边界；本轮不重跑 GPU。
-- `docs/tasks/2026-09-07-h3-long-video/TASK.md`：真实 workflow/生成、取消清理和长批次媒体证据；当前只有静态/core/schema 基线。
+- `docs/archive/h3-long-video/2026-09-07-h3-long-video/TASK.md`：真实 workflow/生成、取消清理和长批次媒体证据；当前只有静态/core/schema 基线。
 - `docs/tasks/2026-09-07-image-workspace/TASK.md`：独立 AI 放大实现与真实模型 smoke；旧 CPU VAE 仅是历史事实。
 - `docs/archive/dlss5/TASK.md`：HECer wrapper 外部资产与 AetherScale carrier/feature-18 的历史阻塞记录；不再作为当前执行入口。
 

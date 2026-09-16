@@ -1,7 +1,7 @@
 # 长视频能力增强总计划
 
 类型：Archive / superseded planning draft
-状态：历史总方案；当前状态和下一步见 [H3 Native AV、Extend 与长视频 TASK](../../tasks/2026-09-07-h3-long-video/TASK.md)。
+状态：历史总方案；当前状态和下一步见 [H3 Native AV、Extend 与长视频 TASK](./2026-09-07-h3-long-video/TASK.md)。
 归档日期：2026-09-07
 
 ## 0. 计划定位
@@ -252,7 +252,7 @@ type LongVideoCapabilityState =
 
 目标：在写入新状态前，确认当前代码和 ComfyUI 实际 schema。
 
-当前调查记录见 [H3_LONG_VIDEO_P0_EVIDENCE](../../tasks/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)。本轮已完成当前 core、`/object_info`、现有 workflow 和时间规则审计；官方 Basic Masked Extension graph 的本地解析仍是 P0 的剩余动作。
+当前调查记录见 [H3_LONG_VIDEO_P0_EVIDENCE](./2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)。本轮已完成当前 core、`/object_info`、现有 workflow 和时间规则审计；官方 Basic Masked Extension graph 的本地解析仍是 P0 的剩余动作。
 
 工作项：
 
@@ -262,7 +262,7 @@ type LongVideoCapabilityState =
 4. 明确 AddGuide 是否用于首版 workflow；如果首版只采用 Basic Masked Extension，不为 AddGuide 额外建立伪造的“长视频节点”。
 5. 固定 24 FPS、32 kHz、上下文帧裁剪、A/V PTS 和输出命名规则。
 
-验收：形成 `docs/tasks/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md`；未达到 schema/runtime 证据时，只能继续做 artifact 和静态设计，不能开放 Native 长视频模型项。
+验收：形成 `docs/archive/h3-long-video/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md`；未达到 schema/runtime 证据时，只能继续做 artifact 和静态设计，不能开放 Native 长视频模型项。
 
 ### P1：H3 continuation artifact 基础设施
 

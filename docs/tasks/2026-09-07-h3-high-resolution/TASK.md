@@ -26,8 +26,8 @@
 
 ## Evidence
 
-- [H3 P0 baseline](../2026-09-07-h3-long-video/evidence/H3_P0_EVIDENCE_BASELINE.md)
-- [H3 long-video P0 evidence](../2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)
+- [H3 P0 baseline](../../archive/h3-long-video/2026-09-07-h3-long-video/evidence/H3_P0_EVIDENCE_BASELINE.md)
+- [H3 long-video P0 evidence](../../archive/h3-long-video/2026-09-07-h3-long-video/evidence/H3_LONG_VIDEO_P0_EVIDENCE.md)
 - [H3 implementation research](../../research/h3/2026.8.31-ad01-x-minimaxh3-runtime-comfyui-investigation.md)
 - [Archived V3 recovery plan](../../archive/h3-adoption/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3.md)
 - [Archived V3 handoff](../../archive/h3-adoption/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3-handoff.md)

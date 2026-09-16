@@ -17,7 +17,10 @@
 - [UI/UX 计划与阶段记录](./ux-ui/README.md)
 - [H3 adoption 与恢复计划](./h3-adoption/)
 - [H3 Native AV / 长视频历史方案](./h3-long-video/)
+- [H3 Native AV / Extend 已完成任务](./h3-long-video/2026-09-07-h3-long-video/TASK.md)
 - [H3 外部节点图片编辑（FL2VA I2I / REF2VA Edit）](./h3-image-editing/)
+- [ComfyUI 0.35.0 / H3 升级归档](./comfyui-035-h3/TASK.md)
+- [环境扫描可靠性与耗时归档](./environment-scan/TASK.md)
 - [H3 Memory 路线撤回说明](./h3-memory/)
 - [图片工作台历史计划](./image-workspace/)
 - [History 性能收口计划](./history-performance/)
@@ -25,5 +28,6 @@
 - [ComfyUI 设置重构计划](./comfyui-settings/)
 - [早期云端/交接说明](./legacy-handoff/)
 - [DLSS5 退役方案与调研](./dlss5/README.md)
+- [Konohamaru DLSS5 接入归档](./dlss5/2026-09-09-konohamaru-dlss5/TASK.md)
 
 DLSS5 历史方案已集中到 `archive/dlss5/`；H3 研究和图片模型研究仍分别位于 Research 与 Evidence。归档文件不承担当前任务状态。
