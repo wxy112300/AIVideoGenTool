@@ -1,14 +1,31 @@
 import type { EnhanceRequest, H3PromptMode, H3PromptPreset } from "../types.js";
-import { h3EffectiveDurationSeconds, inferH3PromptMode } from "./h3-prompt.js";
+import {
+  h3EffectiveDurationSeconds,
+  h3ShotPolicyForPrompt,
+  inferH3PromptMode,
+  type H3ShotPolicy
+} from "./h3-prompt.js";
 import { h3AutoPromptSeedFor, type H3AutoPromptSeed } from "./prompts/h3/auto-seeds.js";
 
+export function isH3NativeStateContinuationRequest(request: EnhanceRequest): boolean {
+  return request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
+}
+
 export function h3PromptModeForRequest(request: EnhanceRequest): H3PromptMode {
+  if (isH3NativeStateContinuationRequest(request)) return "T2VA";
   if (request.h3PromptMode) return request.h3PromptMode;
   const imageCount = request.imagePaths?.length ?? 0;
   return inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+}
+
+export function h3ShotPolicyForRequest(request: EnhanceRequest): H3ShotPolicy {
+  const policy = h3ShotPolicyForPrompt(request.prompt);
+  return isH3NativeStateContinuationRequest(request) && policy === "default-single"
+    ? "hard-single"
+    : policy;
 }
 
 export function hasH3ReferenceMedia(request: EnhanceRequest): boolean {

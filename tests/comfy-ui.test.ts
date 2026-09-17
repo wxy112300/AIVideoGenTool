@@ -269,7 +269,9 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).not.toContain("fully referenced");
     expect(instruction).toContain("do not invent <Picture 1>");
     expect(instruction).toContain("inside the same connected take");
-    expect(instruction).toContain("Carry forward only the subjects");
+    expect(instruction).toContain("Keep each established subject distinct");
+    expect(instruction).toContain("physical camera velocity");
+    expect(instruction).toContain("Single-shot lock");
   });
 
   it("keeps Motion Context as R2V video continuation without inventing a boundary picture", () => {

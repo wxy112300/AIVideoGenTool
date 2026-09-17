@@ -13,6 +13,9 @@ import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preserva
 import {
   h3AutoPrompterContract,
   h3AutoPromptInstruction,
+  h3PromptModeForRequest,
+  h3ShotPolicyForRequest,
+  isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -32,8 +35,6 @@ import {
   h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
-  h3ShotPolicyForPrompt,
-  inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
@@ -53,15 +54,6 @@ import {
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
-}
-
-function h3PromptModeForRequest(request: EnhanceRequest): H3PromptMode {
-  if (request.h3PromptMode) return request.h3PromptMode;
-  const imageCount = request.imagePaths?.length ?? 0;
-  return inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
 }
 
 interface LmStudioModelList {
@@ -300,7 +292,8 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   }
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
-  const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
+  const shotPolicy = h3ShotPolicyForRequest(request);
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const controlInstruction = h3PromptControlInstruction({
     rawPrompt: request.prompt,
@@ -321,7 +314,7 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   return [
     priorityInstruction,
     request.extensionSource
-      ? h3ExtensionContinuityInstruction(mode, shotPolicy)
+      ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation)
       : "",
     ...(preset === "detailed-cinematic"
       ? [h3DetailedExpansionGateInstruction(mode, Number(duration), sourcePrompt)]
@@ -549,6 +542,7 @@ export async function enhancePrompt(
     return applyPromptRevision(request.prompt, normalized);
   }
   const h3Mode = h3PromptModeForRequest(request);
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
   const sourcePrompt = stripPromptAnnotations(request.prompt);
   return normalizeH3PromptOutput(
     normalized,
@@ -557,6 +551,8 @@ export async function enhancePrompt(
     extractH3DialogueLocks(sourcePrompt),
     extractH3VisibleTextLocks(sourcePrompt),
     sourcePrompt,
-    request.prompt
+    request.prompt,
+    nativeStateContinuation,
+    nativeStateContinuation
   );
 }

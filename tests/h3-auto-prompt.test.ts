@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   h3AutoPromptInstruction,
+  h3PromptModeForRequest,
+  h3ShotPolicyForRequest,
   hasH3ReferenceMedia,
   validateH3ReferenceAutoPrompt
 } from "../src/core/h3-auto-prompter.js";
@@ -10,6 +12,28 @@ import {
 } from "../src/core/prompts/h3/auto-seeds.js";
 
 describe("H3 reference-driven auto prompting", () => {
+  it("routes native Continuum extension through T2VA and hard single-shot defaults", () => {
+    const request = {
+      prompt: "人物继续向前走。",
+      modelId: "minimax_h3_continuum",
+      mode: "h3-vision" as const,
+      h3PromptMode: "I2VA" as const,
+      imagePaths: ["extension-boundary.png"],
+      extensionSource: {
+        filePath: "source.mp4",
+        trimStartSeconds: 0,
+        trimEndSeconds: 10
+      }
+    };
+
+    expect(h3PromptModeForRequest(request)).toBe("T2VA");
+    expect(h3ShotPolicyForRequest(request)).toBe("hard-single");
+    expect(h3ShotPolicyForRequest({
+      ...request,
+      prompt: "Use two different shots, then cut to the doorway."
+    })).toBe("allow-multiple");
+  });
+
   it("accepts a cropped extension video as visual grounding before frame extraction", () => {
     expect(() => validateH3ReferenceAutoPrompt({
       prompt: "",

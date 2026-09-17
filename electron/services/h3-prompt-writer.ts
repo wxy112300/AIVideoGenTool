@@ -5,6 +5,9 @@ import { managedPromptModel } from "../../src/core/prompt-models.js";
 import {
   h3AutoPromptInstruction,
   h3AutoPrompterContract,
+  h3PromptModeForRequest,
+  h3ShotPolicyForRequest,
+  isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -17,10 +20,8 @@ import {
   h3DurationPlan,
   h3DetailedExpansionGateInstruction,
   h3ExtensionContinuityInstruction,
-  inferH3PromptMode,
   h3PromptControlInstruction,
   h3PromptPriorityInstruction,
-  h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
@@ -278,18 +279,14 @@ export async function enhancePromptWithH3PromptWriter(
   onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
   const root = baseUrl(settings);
-  const requestedH3Mode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || request.imagePaths?.length),
-    (request.imagePaths?.length ?? 0) > 1
-  );
-  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
-  const h3Mode = nativeStateContinuation ? "T2VA" : requestedH3Mode;
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const h3Mode = h3PromptModeForRequest(request);
   const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
   const h3PresetText = h3PromptPresetTextForRequest(h3Preset, settings.h3PromptPresets[h3Preset]);
   const targetedRevision = request.promptStrategy === "targeted-revision";
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
-  const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
+  const shotPolicy = h3ShotPolicyForRequest(request);
   const priorityInstruction = imageEdit ? "" : h3PromptPriorityInstruction(shotPolicy);
   const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const scaleContext = [
@@ -414,6 +411,7 @@ export async function enhancePromptWithH3PromptWriter(
       extractH3VisibleTextLocks(sourcePrompt),
       sourcePrompt,
       request.prompt,
+      nativeStateContinuation,
       nativeStateContinuation
     );
   } finally {

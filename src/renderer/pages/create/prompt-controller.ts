@@ -17,7 +17,11 @@ import {
   updateManualPromptVersion
 } from "../../../core/draft-prompts";
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
-import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
+import {
+  isMiniMaxH3ContinuumModel,
+  isMiniMaxH3Model,
+  isMiniMaxH3R2vModel
+} from "../../../core/workflow";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
@@ -291,7 +295,10 @@ export function mountCreatePromptController(
             .filter((slot) => slot.mediaType === "image" && slot.mediaPath)
             .map((slot) => slot.mediaPath)
         : [draft.startImagePath, draft.endImagePath].filter(Boolean);
-      const referenceContext = isMiniMaxH3R2vModel(draft.modelId)
+      const nativeStateContinuation = isExtension && isMiniMaxH3ContinuumModel(draft.modelId);
+      const referenceContext = nativeStateContinuation
+        ? ""
+        : isMiniMaxH3R2vModel(draft.modelId)
         ? draft.h3ReferenceSlots.map((slot) =>
             `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
           ).join("\n")

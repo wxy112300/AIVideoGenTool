@@ -279,6 +279,50 @@ describe("MiniMax H3 prompt templates", () => {
     )).toBe(body);
   });
 
+  it("locks native Continuum output to the running shot and repairs implicit viewpoint resets", () => {
+    const output = [
+      "integrated_multimodal_description: [Shot 1] The view suddenly shifts to a new angle. A new camera angle reveals the subject walking onward.",
+      "overall_soundscape: Footsteps continue.",
+      "non_diegetic_music: N/A"
+    ].join("\n\n");
+
+    const normalized = normalizeH3PromptOutput(
+      output,
+      "T2VA",
+      5,
+      [],
+      [],
+      "The subject walks onward.",
+      "",
+      true,
+      true
+    );
+
+    expect(normalized).toContain("[Shot 1] This is the uninterrupted continuation of the currently running shot.");
+    expect(normalized).toContain("physical velocity along the same trajectory");
+    expect(normalized).toContain("with no editorial cut");
+    expect(normalized).not.toMatch(/new (?:camera )?angle|view suddenly shifts/iu);
+    expect(normalized).not.toContain("For the target video, at 0.00 seconds");
+  });
+
+  it("keeps an explicitly requested multi-shot Continuum timeline unlocked", () => {
+    const output = "integrated_multimodal_description: [Shot 1] The subject walks. [Shot 2] Cut to the doorway.";
+    const normalized = normalizeH3PromptOutput(
+      output,
+      "T2VA",
+      5,
+      [],
+      [],
+      "Use two different shots, then cut to the doorway.",
+      "",
+      true,
+      true
+    );
+
+    expect(normalized).toContain("[Shot 2]");
+    expect(normalized).not.toContain("uninterrupted continuation of the currently running shot");
+  });
+
   it("removes tagged and untagged reasoning before the first H3 output field", () => {
     const body = [
       "integrated_multimodal_description: [Shot 1] 人物缓慢转身。",

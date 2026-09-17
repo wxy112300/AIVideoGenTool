@@ -6,10 +6,11 @@ import { promisify } from "node:util";
 import type { ConnectionResult, EnhanceRequest, Settings } from "../../src/types.js";
 import { buildComfyCandidates } from "./environment.js";
 import { buildLmStudioChatRequest } from "./lm-studio.js";
+import { normalizeH3PromptOutput } from "../../src/core/h3-prompt.js";
 import {
-  inferH3PromptMode,
-  normalizeH3PromptOutput
-} from "../../src/core/h3-prompt.js";
+  h3PromptModeForRequest,
+  isH3NativeStateContinuationRequest
+} from "../../src/core/h3-auto-prompter.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks
@@ -303,11 +304,8 @@ export async function enhancePromptWithLlamaServer(
     return applyPromptRevision(request.prompt, normalizedContent);
   }
   const sourcePrompt = stripPromptAnnotations(request.prompt);
-  const imageCount = request.imagePaths?.length ?? 0;
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const mode = h3PromptModeForRequest(request);
   return normalizeH3PromptOutput(
     normalizedContent,
     mode,
@@ -315,7 +313,9 @@ export async function enhancePromptWithLlamaServer(
     extractH3DialogueLocks(sourcePrompt),
     extractH3VisibleTextLocks(sourcePrompt),
     sourcePrompt,
-    request.prompt
+    request.prompt,
+    nativeStateContinuation,
+    nativeStateContinuation
   );
 }
 

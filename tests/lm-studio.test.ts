@@ -182,6 +182,42 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[1]?.content).toContain("For I2VA");
   });
 
+  it("uses a hard single-shot native-state contract for Continuum", async () => {
+    const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "The subject continues forward as the camera tracks beside them.",
+        modelId: "minimax_h3_continuum",
+        mode: "h3-vision",
+        h3PromptMode: "I2VA",
+        imagePaths: ["extension-boundary.png"],
+        extensionSource: {
+          filePath: "source.mp4",
+          trimStartSeconds: 0,
+          trimEndSeconds: 10
+        }
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.6-27b"
+    );
+    const content = body.messages[1]?.content;
+
+    expect(content).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("native-state H3 continuation")
+      })
+    ]));
+    expect(content).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("Single-shot lock")
+      })
+    ]));
+    expect(JSON.stringify(content)).not.toContain("For the target video, at 0.00 seconds");
+    readFile.mockRestore();
+  });
+
   it("sends an empty reference-auto request as a varied H3 visual instruction", async () => {
     const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
     const body = await buildLmStudioChatRequest(

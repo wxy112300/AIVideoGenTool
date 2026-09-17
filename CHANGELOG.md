@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+## 0.62.2 — 2026-09-17
+
+- 统一 H3 Continuum Extend 的原生状态提示协议：Qwen3.6/Qwen3.8、H3 Prompt Writer、Prompt Rewriter、LM Studio 与 llama-server 均以 T2VA 字段形态输出，把临时边界图仅用于视觉核对，不再补回 `<Picture 1>`/0 秒首帧声明；未明确要求多镜头时使用 hard-single，并在最终输出中确定性保留边界后的下一动作、既有机位/速度/轨迹和单镜头连续性，同时修复常见的隐式新角度/视角重置表达。
+
 ## 0.62.1 — 2026-09-17
 
 - 修复历史记录增大后 Draft 自动保存和生成进度通过完整 AppState IPC 引发的短时界面卡顿：草稿保存改为无全量返回的确认路径，Queue 高频进度使用合并后的窄事件与定期耐久 checkpoint；任务完成入史仍发送结构性状态更新并刷新 History。

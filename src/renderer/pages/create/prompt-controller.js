@@ -3,7 +3,7 @@ import { buildPromptRevisionPlan } from "../../../core/prompt-annotations";
 import { assertDetailedCinematicExpansion } from "../../../core/h3-prompt";
 import { activePromptIndexForDraft, appendPromptVersion, promptPatchForDraft, promptVersionsForDraft, updateManualPromptVersion } from "../../../core/draft-prompts";
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
-import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
+import { isMiniMaxH3ContinuumModel, isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
 import { activePrompt, h3PromptModeForDraft, h3ReferenceTag, insertPromptSnippet, isPromptCancellationError, resizePromptInput, updatePromptWordCounter } from "./helpers";
 export function mountCreatePromptController(options) {
@@ -189,7 +189,10 @@ export function mountCreatePromptController(options) {
                     .filter((slot) => slot.mediaType === "image" && slot.mediaPath)
                     .map((slot) => slot.mediaPath)
                 : [draft.startImagePath, draft.endImagePath].filter(Boolean);
-            const referenceContext = isMiniMaxH3R2vModel(draft.modelId)
+            const nativeStateContinuation = isExtension && isMiniMaxH3ContinuumModel(draft.modelId);
+            const referenceContext = nativeStateContinuation
+                ? ""
+                : isMiniMaxH3R2vModel(draft.modelId)
                 ? draft.h3ReferenceSlots.map((slot) => `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`).join("\n")
                 : h3Mode === "FL2VA"
                     ? "<Picture 1> = first frame; <Picture 2> = last frame"

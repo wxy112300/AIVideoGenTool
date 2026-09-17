@@ -86,7 +86,6 @@ import { scanDlss5Runtime } from "./dlss5-runtime.js";
 import { scanAetherScaleRuntime } from "./aetherscale-runtime.js";
 import { availableVramBytesForReserve } from "../../src/infrastructure/comfy-runtime-policy.js";
 import {
-  inferH3PromptMode,
   h3DurationPlan,
   h3DetailedExpansionGateInstruction,
   h3EffectiveDurationSeconds,
@@ -96,11 +95,13 @@ import {
   h3PromptControlInstruction,
   h3PromptExpansionTokenBudget,
   h3PromptSectionSkeleton,
-  h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import {
   h3AutoPromptInstruction,
+  h3PromptModeForRequest,
+  h3ShotPolicyForRequest,
+  isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -225,12 +226,8 @@ export function h3PromptInstruction(
   promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets
 ): string {
   const imageCount = request.imagePaths?.length ?? 0;
-  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
-  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
-  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const referenceContext = request.referenceContext?.trim();
   const presetText = h3PromptPresetTextForRequest(preset, promptPresets[preset]);
@@ -241,7 +238,7 @@ export function h3PromptInstruction(
   const officialSchema = h3PromptSectionSkeleton(mode, duration, nativeStateContinuation);
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
-  const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
+  const shotPolicy = h3ShotPolicyForRequest(request);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const extensionContinuityInstruction = request.extensionSource
     ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation)
@@ -311,13 +308,8 @@ export function buildNativePromptWorkflow(
 ): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
   const modelFile = promptModelFilename(promptModelId);
   if (!modelFile) throw new Error("当前提示词模型不是受支持的 ComfyUI Qwen 模型。请在设置中选择 Qwen3.5 2B 或 4B。");
-  const imageCount = request.imagePaths?.length ?? uploadedImages.length;
-  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
-  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
-  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
     clip: {
@@ -501,13 +493,8 @@ export async function enhancePromptWithComfyUi(
   if (request.mode === "image-edit") {
     return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(output));
   }
-  const imageCount = request.imagePaths?.length ?? 0;
-  const requestedMode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
-  const nativeStateContinuation = request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
-  const mode = nativeStateContinuation ? "T2VA" : requestedMode;
+  const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const mode = h3PromptModeForRequest(request);
   return normalizeH3PromptOutput(
     output,
     mode,
@@ -516,6 +503,7 @@ export async function enhancePromptWithComfyUi(
     extractH3VisibleTextLocks(stripPromptAnnotations(request.prompt)),
     stripPromptAnnotations(request.prompt),
     request.prompt,
+    nativeStateContinuation,
     nativeStateContinuation
   );
 }

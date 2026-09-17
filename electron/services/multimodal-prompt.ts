@@ -8,7 +8,6 @@ import {
   comfyMultimodalPromptModel
 } from "../../src/core/prompt-models.js";
 import {
-  inferH3PromptMode,
   h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -20,6 +19,8 @@ import {
   stripH3ContentFromSource
 } from "../../src/core/h3-dialogue.js";
 import {
+  h3PromptModeForRequest,
+  isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -265,11 +266,7 @@ export function buildMultimodalPromptWorkflow(
   if (!definition) {
     throw new Error("当前选择的不是 ComfyUI 多模态提示词模型。");
   }
-  const imageCount = request.imagePaths?.length ?? uploadedImages.length;
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || imageCount > 0),
-    imageCount > 1
-  );
+  const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const targetLanguage = warmup
     ? "en"
@@ -484,11 +481,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       return normalizeQwenImageEditPromptOutput(output);
     }
     const sourcePrompt = stripPromptAnnotations(request.prompt);
-    const imageCount = request.imagePaths?.length ?? 0;
-    const mode = request.h3PromptMode ?? inferH3PromptMode(
-      Boolean(request.imagePath || imageCount > 0),
-      imageCount > 1
-    );
+    const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+    const mode = h3PromptModeForRequest(request);
     return normalizeH3PromptOutput(
       output,
       mode,
@@ -496,7 +490,9 @@ export async function enhancePromptWithMultimodalComfyUi(
       extractH3DialogueLocks(sourcePrompt),
       extractH3VisibleTextLocks(sourcePrompt),
       sourcePrompt,
-      request.prompt
+      request.prompt,
+      nativeStateContinuation,
+      nativeStateContinuation
     );
   } finally {
     if (!retainModel) {

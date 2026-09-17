@@ -3,7 +3,6 @@ import {
   qwenVlPeftPromptModel
 } from "../../src/core/prompt-models.js";
 import {
-  inferH3PromptMode,
   h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -13,6 +12,8 @@ import {
   extractH3VisibleTextLocks
 } from "../../src/core/h3-dialogue.js";
 import {
+  h3PromptModeForRequest,
+  isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -212,10 +213,7 @@ export function buildQwenVlPeftPromptWorkflow(
   if (!definition) throw new Error("当前选择的不是 Qwen3-VL PEFT 提示词模型。");
   const baseDirectory = definition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct";
   const adapterDirectory = definition.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b";
-  const mode = request.h3PromptMode ?? inferH3PromptMode(
-    Boolean(request.imagePath || request.imagePaths?.length),
-    (request.imagePaths?.length ?? 0) > 1
-  );
+  const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const prompt = promptForRequest(request, settings, warmup);
   const images = typeof uploadedImages === "string"
@@ -319,10 +317,8 @@ export async function enhancePromptWithQwenVlPeft(
       { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
     );
     validateQwenVlRuntimeChoices(objectInfo, settings);
-    const mode = request.h3PromptMode ?? inferH3PromptMode(
-      Boolean(request.imagePath || request.imagePaths?.length),
-      (request.imagePaths?.length ?? 0) > 1
-    );
+    const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+    const mode = h3PromptModeForRequest(request);
     if (mode === "R2V") {
       throw new Error("MiniMax H3 Prompt Rewriter LoRA 不支持 R2VA。请改用 Qwen3.6/Qwen3.8 或 H3 Prompt Writer。");
     }
@@ -395,7 +391,9 @@ export async function enhancePromptWithQwenVlPeft(
       extractH3DialogueLocks(sourcePrompt),
       extractH3VisibleTextLocks(sourcePrompt),
       sourcePrompt,
-      request.prompt
+      request.prompt,
+      nativeStateContinuation,
+      nativeStateContinuation
     );
   } catch (error) {
     const reportedError = explainQwenVlRuntimeError(error);

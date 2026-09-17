@@ -90,6 +90,33 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     expect(workflow["qwenvl-caption"]?.inputs.image).toEqual(["qwenvl-image-batch-1", 0]);
   });
 
+  it("uses the native-state T2VA contract when the rewriter inspects a Continuum boundary", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = modelId;
+    const workflow = buildQwenVlPeftPromptWorkflow(
+      {
+        prompt: "The camera continues tracking the two distinct subjects.",
+        modelId: "minimax_h3_continuum",
+        mode: "h3-vision",
+        h3PromptMode: "I2VA",
+        imagePaths: ["extension-boundary.png"],
+        extensionSource: {
+          filePath: "source.mp4",
+          trimStartSeconds: 0,
+          trimEndSeconds: 10
+        }
+      },
+      ["uploaded-boundary.png"],
+      settings
+    );
+    const prompt = String(workflow["qwenvl-caption"]?.inputs.prompt);
+
+    expect(prompt).toContain("native-state H3 continuation");
+    expect(prompt).toContain("T2VA task rule");
+    expect(prompt).toContain("Single-shot lock");
+    expect(prompt).not.toContain("For the target video, at 0.00 seconds");
+  });
+
   it("sends annotation revision as replacement blocks instead of a full rewrite", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = modelId;

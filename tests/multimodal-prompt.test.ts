@@ -180,6 +180,29 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);
   });
 
+  it("uses the native-state T2VA contract for Continuum even when the boundary image is uploaded", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow({
+      prompt: "The subject continues walking while the camera tracks alongside.",
+      modelId: "minimax_h3_continuum",
+      mode: "h3-vision",
+      h3PromptMode: "I2VA",
+      imagePaths: ["extension-boundary.png"],
+      extensionSource: {
+        filePath: "source.mp4",
+        trimStartSeconds: 0,
+        trimEndSeconds: 10
+      }
+    }, ["uploaded-boundary.png"], settings);
+    const prompt = String(workflow["vision-llm"]?.inputs.prompt);
+
+    expect(prompt).toContain("native-state H3 continuation");
+    expect(prompt).toContain("T2VA task rule");
+    expect(prompt).toContain("Single-shot lock");
+    expect(prompt).not.toContain("For the target video, at 0.00 seconds");
+  });
+
   it("uses the shared targeted revision contract for Qwen3.6 and Qwen3.8", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";

@@ -108,14 +108,14 @@ describe("extension prompt boundary media", () => {
     expect(cleanup).toHaveBeenCalledOnce();
   });
 
-  it("binds a boundary/Continuum frame to Picture 1 for I2VA output", async () => {
+  it("uses a Continuum boundary frame only for native-state visual inspection", async () => {
     const request = {
       ...baseRequest(),
       modelId: "minimax_h3_continuum",
       h3PromptMode: "I2VA" as const,
       imagePaths: [],
       referenceMediaPaths: [],
-      referenceContext: "<Picture 1> = first frame"
+      referenceContext: "The boundary shows the current subject state."
     };
     const result = await withPromptExtensionMedia(
       request,
@@ -131,8 +131,12 @@ describe("extension prompt boundary media", () => {
     );
 
     expect(result.imagePaths).toEqual(["extension-boundary.png"]);
-    expect(result.referenceContext).toContain("concrete first-frame anchor, <Picture 1>");
-    expect(result.referenceContext).toContain("must begin with the exact I2VA first-frame alignment declaration");
+    expect(result.referenceContext).toContain("silent visual inspection aid for the native continuation boundary");
+    expect(result.referenceContext).toContain("preceding JointAV latent state directly");
+    expect(result.referenceContext).toContain("final prompt uses the T2VA field shape");
+    expect(result.referenceContext).toContain("start the generated timeline with the next physical increment");
+    expect(result.referenceContext).not.toContain("concrete first-frame anchor, <Picture 1>");
+    expect(result.referenceContext).not.toContain("must begin with the exact I2VA first-frame alignment declaration");
   });
 
   it("removes the temporary frame when the prompt backend fails", async () => {
