@@ -76,7 +76,11 @@ export function nextQueueWaitingTask(
   const effectiveBoundary = boundary === undefined ? undefined : Math.max(1, boundary);
   let activeIndex = 0;
   for (const task of activeQueueTasks(queue)) {
+    const policyError = task.taskType === "image-generation"
+      ? undefined
+      : task.h3AvOutputPolicyError;
     if (task.status === "waiting" &&
+      !policyError &&
       (effectiveBoundary === undefined || activeIndex < effectiveBoundary)) {
       return task;
     }
@@ -484,10 +488,13 @@ export function duplicateQueueTask(
     : source.modelId === "dlss5-sr"
       ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale!, names)
       : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
+  const h3AvOutputPolicyError = "h3AvOutputPolicyError" in source
+    ? source.h3AvOutputPolicyError
+    : undefined;
   return [...state.queue, {
     ...source,
     id: clock.id(),
-    status: "waiting",
+    status: h3AvOutputPolicyError ? "failed" : "waiting",
     createdAt: now,
     updatedAt: now,
     outputFilename,
@@ -496,7 +503,7 @@ export function duplicateQueueTask(
       : Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     comfyPromptId: undefined,
     progress: 0,
-    error: undefined,
+    error: h3AvOutputPolicyError ? source.error ?? h3AvOutputPolicyError : undefined,
     stage: undefined,
     automaticRetryAttempt: undefined,
     ...(source.taskType === "upscale" && source.modelId === "dlss5-sr" && source.dlss5
@@ -524,6 +531,7 @@ export function resetQueueTask(
     if (task.id !== taskId || (task.status !== "failed" && task.status !== "cancelled")) {
       return task;
     }
+    if ("h3AvOutputPolicyError" in task && task.h3AvOutputPolicyError) return task;
     reset = true;
     return {
       ...task,

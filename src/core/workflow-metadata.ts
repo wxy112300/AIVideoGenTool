@@ -124,6 +124,11 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
     upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
     verifiedAt: "2026-09-15"
   }),
+  minimax_h3_continuum_v38_managed_extend_api: metadata("minimax_h3_continuum_v38_managed_extend_api.json", ["h3-continuum", "kjnodes"], {
+    comfyUi: h3ContinuumCore,
+    upstreamUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+    verifiedAt: "2026-09-18"
+  }),
   minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes"], {
     comfyUi: h3Core
   }),

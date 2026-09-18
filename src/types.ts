@@ -135,6 +135,8 @@ export type H3SpectrumModelAwareMode = "off" | "schedule" | "schedule_confidence
 export type H3MemoryOptimizationMode = "off" | "preserve-native" | "auto" | "force-quant";
 /** Unified H3 auxiliary latent output preference. */
 export type H3LatentSaveMode = "all" | "joint-av" | "motion-context" | "none";
+/** Production-side contract for newly enqueued H3 AV outputs. */
+export type H3AvOutputPolicy = "shared";
 
 /** Serializable policy result captured with an immutable video queue task. */
 export interface H3MemoryExecutionPlanSnapshot {
@@ -370,6 +372,17 @@ export interface Draft {
   /** Optional H3 Native AV artifact used by the Continuum extension mode. */
   h3ContinuumArtifactPath?: string;
   h3ContinuumArtifact?: NativeAvContinuationArtifact;
+  /** Managed Continuum identity; absent means legacy/bootstrap compatibility. */
+  h3ContinuumMode?: "managed" | "bootstrap";
+  h3ContinuumSequence?: ContinuumSequence;
+  h3ContinuumReviewAction?:
+    | "Continue / Next"
+    | "Regenerate Current"
+    | "Finish Remaining";
+  h3ContinuumRerollFromChunk?: number;
+  h3ContinuumTakeGroup?: number;
+  h3ContinuumTakeRevisionId?: string;
+  h3ContinuumTakeAction?: H3ContinuumTakeAction;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
   extensionPromptVersions?: PromptVersion[];
@@ -545,6 +558,25 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   h3LatentSaveMode?: H3LatentSaveMode;
   /** Queue-time H3 JointAV output preference; legacy tasks default to enabled. */
   h3SaveJointAv?: boolean;
+  /** Present only on newly enqueued H3 tasks using the canonical AV producer. */
+  h3AvOutputPolicy?: H3AvOutputPolicy;
+  /** Persisted diagnostic that blocks execution when a future policy is unknown. */
+  h3AvOutputPolicyError?: string;
+  /** Immutable managed Continuum parent/run snapshot for one queue mutation. */
+  h3ContinuumMode?: "managed" | "bootstrap";
+  h3ContinuumSequence?: ContinuumSequence;
+  h3ContinuumTargetChunks?: number;
+  h3ContinuumReviewAction?:
+    | "Continue / Next"
+    | "Regenerate Current"
+    | "Finish Remaining";
+  h3ContinuumParentRevisionId?: string;
+  h3ContinuumParentTakeId?: string;
+  h3ContinuumParentBranchId?: string;
+  h3ContinuumRerollFromChunk?: number;
+  h3ContinuumTakeGroup?: number;
+  h3ContinuumTakeRevisionId?: string;
+  h3ContinuumTakeAction?: H3ContinuumTakeAction;
 }
 
 export interface ImageGenerationQueueTask extends QueueTaskBase {
@@ -928,6 +960,267 @@ export type NativeAvArtifactRole =
   | "final-clean-av"
   | "extend-segment-clean-av";
 
+/**
+ * Physical ownership is deliberately separate from the consumer protocol.
+ * A Motion Context slot and a Continuum Run Storage chunk may both expose
+ * video/audio tensors, but neither is allowed to be relabelled as the other.
+ */
+export type H3AvStorageKind =
+  | "app-canonical"
+  | "continuum-run-chunk"
+  | "legacy-joint-av"
+  | "legacy-motion-context";
+
+export type H3AvCapability =
+  | "native-av"
+  | "motion-context"
+  | "continuum-bootstrap"
+  | "continuum-managed-chunk";
+
+export type H3AvSampleScope =
+  | "generated-clip"
+  | "extension-segment"
+  | "continuum-chunk";
+
+/**
+ * Consumer protocols are explicit even when they point at the same physical
+ * video/audio tensor payload.  An adapter may choose an app alias, but it may
+ * not relabel a legacy file as an official Run Storage chunk.
+ */
+export type H3AvConsumerAdapter =
+  | "native-joint-av"
+  | "motion-context"
+  | "legacy-continuum"
+  | "managed-continuum";
+
+export type H3AvInventoryStatus =
+  | "valid"
+  | "duplicate-tensor"
+  | "legacy-unverified"
+  | "missing"
+  | "corrupt";
+
+export interface H3AvReferenceIndex {
+  schemaVersion: 1;
+  generatedAt: string;
+  byAssetId: Record<string, string[]>;
+  byPath: Record<string, string[]>;
+}
+
+export interface H3AvInventoryCandidate {
+  referenceId: string;
+  path: HistoryFile;
+  asset?: H3AvLatentAsset;
+  storageKind?: H3AvStorageKind;
+  present: boolean;
+  payloadBytes?: number;
+  payloadSha256?: string;
+  videoTensorSha256?: string;
+  audioTensorSha256?: string;
+  validationError?: string;
+  legacy?: boolean;
+}
+
+export interface H3AvInventoryEntry {
+  referenceId: string;
+  path: HistoryFile;
+  assetId?: string;
+  storageKind?: H3AvStorageKind;
+  status: H3AvInventoryStatus;
+  referencedBy: string[];
+  payloadBytes?: number;
+  payloadSha256?: string;
+  videoTensorSha256?: string;
+  audioTensorSha256?: string;
+  reason?: string;
+}
+
+export interface H3AvGcDecision {
+  target: "owner" | "alias";
+  assetId: string;
+  eligible: boolean;
+  reasons: string[];
+}
+
+export type H3AvAliasMode = "hardlink" | "copy-fallback";
+
+export type H3ContinuumTakeAction =
+  | "Automatic"
+  | "Use This Take"
+  | "Continue From Here";
+
+export interface H3AvProducerSnapshot {
+  workflowId: string;
+  workflowRevision: string;
+  producerNodeId: string;
+  producerNodeVersion: string;
+  executionModelId: string;
+  diffusionModelFilename: string;
+  textEncoderFilename: string;
+  videoVaeFilename: string;
+  audioVaeFilename: string;
+  loraFilenames: string[];
+  width: number;
+  height: number;
+  fps: 24;
+  frameCount: number;
+  sourceTaskId?: string;
+  sourceVersionId?: string;
+  /** Missing producer facts are explicit for old history, never guessed. */
+  legacyUnverified?: boolean;
+}
+
+export interface ContinuumChunkPointer {
+  projectId: string;
+  runName: string;
+  runStorageRoot: HistoryFile;
+  revisionId: string;
+  manifest: HistoryFile;
+  recordFilename: string;
+  logicalChunkIndex: number;
+  physicalGroupStart: number;
+  physicalGroupEnd: number;
+  takeId?: string;
+  branchId?: string;
+  accepted: boolean;
+  reused: boolean;
+}
+
+/** One physical AV payload with protocol-specific references layered on top. */
+export interface H3AvLatentAsset {
+  schemaVersion: 1;
+  assetId: string;
+  storageKind: H3AvStorageKind;
+  ownerPath: HistoryFile;
+  aliasPaths?: HistoryFile[];
+  /** How an app compatibility alias was materialized; absent means no alias. */
+  aliasMode?: H3AvAliasMode;
+  payloadBytes: number;
+  payloadSha256: string;
+  videoTensorSha256: string;
+  audioTensorSha256: string;
+  videoShape: number[];
+  videoDtype: string;
+  audioShape: number[];
+  audioDtype: string;
+  width: number;
+  height: number;
+  fps: 24;
+  frameCount: number;
+  sampleScope?: H3AvSampleScope;
+  artifactRole?: NativeAvArtifactRole;
+  contextFrames?: number;
+  producer: H3AvProducerSnapshot;
+  capabilities: H3AvCapability[];
+  continuumChunk?: ContinuumChunkPointer;
+  createdAt: string;
+}
+
+export interface ContinuumPromptChunk {
+  chunkIndex: number;
+  userPrompt: string;
+  finalPrompt: string;
+  promptHash: string;
+  createdAt: string;
+  enhancerId?: string;
+  enhancerRevision?: string;
+}
+
+export interface ContinuumSequenceChunk {
+  logicalChunkIndex: number;
+  physicalGroupStart: number;
+  physicalGroupEnd: number;
+  parentVersionId?: string;
+  prompt: ContinuumPromptChunk;
+  assetId?: string;
+  runRevisionId?: string;
+  takeId?: string;
+  branchId?: string;
+  status: "pending" | "review-ready" | "accepted" | "rejected" | "pruned";
+  reused?: boolean;
+  generated?: boolean;
+  outputVersionId?: string;
+  receipt?: H3ContinuumReceipt;
+}
+
+export interface ContinuumSequence {
+  schemaVersion: 1;
+  sequenceId: string;
+  projectId: string;
+  runName: string;
+  packageVersion: string;
+  runStorageSchemaVersion: number;
+  workflowRevision: string;
+  status: "in-progress" | "review-ready" | "complete" | "invalid";
+  chunkSeconds: number;
+  fps: 24;
+  width: number;
+  height: number;
+  baseSeed: number;
+  contractSha256?: string;
+  modelIdentity?: string;
+  diffusionModelFilename?: string;
+  textEncoderFilename?: string;
+  videoVaeFilename?: string;
+  audioVaeFilename?: string;
+  loraFilenames?: string[];
+  continuity?: string;
+  continuationBackend?: string;
+  audioContinuity?: boolean;
+  spectrumMode?: string;
+  persistentReferenceHashes?: string[];
+  firstFrameSource?: Pick<Draft, "sourceVideoPath" | "sourceVideoDuration" | "trimStartSeconds" | "trimEndSeconds" | "sourceWidth" | "sourceHeight" | "resolution">;
+  globalPromptPreamble?: string;
+  promptFormat: "Timeline";
+  targetChunks: number;
+  acceptedChunks: number;
+  canonicalHead: {
+    revisionId: string;
+    takeId?: string;
+    branchId?: string;
+    historyVersionId?: string;
+  };
+  chunks: ContinuumSequenceChunk[];
+  updatedAt: string;
+}
+
+export interface H3ContinuumReceipt {
+  schemaVersion: 1;
+  projectId: string;
+  runName: string;
+  runStorageRoot: HistoryFile;
+  revisionId: string;
+  packageVersion: string;
+  runStorageSchemaVersion: number;
+  generationMode: "Review Each Chunk";
+  reviewAction?: "Continue / Next" | "Regenerate Current" | "Finish Remaining";
+  runStorage: "Save + Auto Resume";
+  selectedSource: "run_storage";
+  freshFallback: false;
+  requestedChunks: number;
+  reusedCount: number;
+  generatedCount: number;
+  reusedChunkIndices: number[];
+  generatedChunkIndices: number[];
+  firstGeneratedChunk: number;
+  chunkRecords: Array<{
+    logicalChunkIndex: number;
+    recordFilename: string;
+    payloadPath: HistoryFile;
+    payloadSha256?: string;
+    reused: boolean;
+    generated: boolean;
+  }>;
+  actualAssemblyTotalFrames: number[];
+  actualAssemblyTrims: number[];
+  actualAssemblyNetFrames: number[];
+  actualAssemblyContextFrames: number[];
+  spectrumMode: string;
+  spectrumModelAwareMode: string;
+  continuumInteropApi?: number;
+  createdAt: string;
+}
+
 export interface NativeAvContinuationArtifact {
   schemaVersion: 1;
   artifactId: string;
@@ -982,6 +1275,8 @@ export interface NativeAvContinuationData {
   status: H3ContinuationDataStatus;
   reason?: string;
   artifact?: NativeAvContinuationArtifact;
+  /** New registry reference; legacy artifact remains readable during migration. */
+  asset?: H3AvLatentAsset;
 }
 
 /** Result of re-checking a persisted artifact pair against the active output root. */
@@ -992,6 +1287,10 @@ export interface NativeAvArtifactInspection {
   payloadPath?: string;
   manifestPath?: string;
   payloadBytes?: number;
+}
+
+export interface VideoExtensionSourceInspection extends NativeAvArtifactInspection {
+  route: "managed" | "bootstrap" | "boundary";
 }
 
 export interface AssetVersion {
@@ -1015,6 +1314,9 @@ export interface AssetVersion {
   h3VideoVaeMode?: H3VideoVaeBackend;
   h3LatentSaveMode?: H3LatentSaveMode;
   h3SaveJointAv?: boolean;
+  h3AvOutputPolicy?: H3AvOutputPolicy;
+  /** Persisted diagnostic for a History version with an unsupported policy. */
+  h3AvOutputPolicyError?: string;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
@@ -1059,6 +1361,9 @@ export interface AssetVersion {
   startedAt?: string;
   h3ContextLatentPath?: string;
   h3ContinuationData?: NativeAvContinuationData;
+  h3ContinuumSequence?: ContinuumSequence;
+  h3ContinuumReceipt?: H3ContinuumReceipt;
+  h3AvAsset?: H3AvLatentAsset;
 }
 
 export interface ImageHistoryProject {
@@ -1750,6 +2055,7 @@ export interface EnhanceRequest {
   referenceMediaPaths?: string[];
   referenceContext?: string;
   extensionSource?: PromptExtensionSource;
+  continuumPreviousChunk?: number;
   /** One-shot user consent for CPU inference after a visible VRAM warning. */
   allowCpuFallback?: boolean;
 }
@@ -2047,6 +2353,7 @@ export interface AppApi {
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
   lookupHistoryCover(key: string, sourcePath: string): Promise<HistoryCoverLookup>;
   inspectH3NativeAvArtifact(assetId: string, versionId: string): Promise<NativeAvArtifactInspection>;
+  inspectVideoExtensionSource(draft: Draft): Promise<VideoExtensionSourceInspection>;
   saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
   saveHistoryCoverIfCurrent(input: {
     key: string;

@@ -8,7 +8,7 @@ import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
-import { h3LatentSaveModeFor, normalizeH3LatentSaveMode, h3SaveJointAvForLatentSaveMode } from "../../../core/h3-latent-save";
+import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "../../../core/h3-latent-save";
 import { resolutionAfterJointAvPreference } from "./view-model";
 let creationModeTransitionRevision = 0;
 let modelSelectionRevision = 0;
@@ -21,6 +21,19 @@ export function mountCreatePageController(options) {
     const root = options.context.root;
     const getState = () => options.context.getState();
     const t = options.context.t;
+    root.querySelectorAll("[data-tooltip-toggle]").forEach((toggle) => {
+        toggle.addEventListener("click", () => {
+            const open = toggle.classList.toggle("is-open");
+            toggle.setAttribute("aria-expanded", String(open));
+        }, { signal });
+        toggle.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ")
+                return;
+            event.preventDefault();
+            const open = toggle.classList.toggle("is-open");
+            toggle.setAttribute("aria-expanded", String(open));
+        }, { signal });
+    });
     root.querySelectorAll("[data-input-mode]").forEach((button) => {
         button.addEventListener("click", async () => {
             const transitionRevision = ++creationModeTransitionRevision;
@@ -134,6 +147,13 @@ export function mountCreatePageController(options) {
                                 h3ContextLatentPath: undefined,
                                 h3ContinuumArtifactPath: undefined,
                                 h3ContinuumArtifact: undefined,
+                    h3ContinuumMode: undefined,
+                    h3ContinuumSequence: undefined,
+                    h3ContinuumReviewAction: undefined,
+                    h3ContinuumRerollFromChunk: undefined,
+                    h3ContinuumTakeGroup: undefined,
+                    h3ContinuumTakeRevisionId: undefined,
+                    h3ContinuumTakeAction: undefined,
                                 sourceWidth: 0,
                                 sourceHeight: 0
                             }),
@@ -158,6 +178,13 @@ export function mountCreatePageController(options) {
                             h3ContextLatentPath: undefined,
                             h3ContinuumArtifactPath: undefined,
                             h3ContinuumArtifact: undefined,
+                h3ContinuumMode: undefined,
+                h3ContinuumSequence: undefined,
+                h3ContinuumReviewAction: undefined,
+                h3ContinuumRerollFromChunk: undefined,
+                h3ContinuumTakeGroup: undefined,
+                h3ContinuumTakeRevisionId: undefined,
+                h3ContinuumTakeAction: undefined,
                             sourceWidth: 0,
                             sourceHeight: 0
                         }
@@ -316,7 +343,7 @@ export function mountCreatePageController(options) {
         input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
     });
     root.querySelector("#h3-latent-save-mode")?.addEventListener("change", (event) => {
-        const h3LatentSaveMode = normalizeH3LatentSaveMode(event.currentTarget.value);
+        const h3LatentSaveMode = event.currentTarget.value === "all" ? "all" : "none";
         const h3SaveJointAv = h3SaveJointAvForLatentSaveMode(h3LatentSaveMode);
         options.patchDraft({
             h3LatentSaveMode,
@@ -383,10 +410,19 @@ export function mountCreatePageController(options) {
                     videoLoras: [],
                     h3ReferenceSlots: slotsForR2V,
                     h3ContextLatentPath: previousDraft.h3ContextLatentPath,
-                    h3ContinuumArtifactPath: previousDraft.h3ContinuumArtifactPath,
-                    h3ContinuumArtifact: previousDraft.h3ContinuumArtifact
-                        ? structuredClone(previousDraft.h3ContinuumArtifact)
-                        : undefined,
+                h3ContinuumArtifactPath: previousDraft.h3ContinuumArtifactPath,
+                h3ContinuumArtifact: previousDraft.h3ContinuumArtifact
+                    ? structuredClone(previousDraft.h3ContinuumArtifact)
+                    : undefined,
+                h3ContinuumMode: previousDraft.h3ContinuumMode,
+                h3ContinuumSequence: previousDraft.h3ContinuumSequence
+                    ? structuredClone(previousDraft.h3ContinuumSequence)
+                    : undefined,
+                h3ContinuumReviewAction: previousDraft.h3ContinuumReviewAction,
+                h3ContinuumRerollFromChunk: previousDraft.h3ContinuumRerollFromChunk,
+                h3ContinuumTakeGroup: previousDraft.h3ContinuumTakeGroup,
+                h3ContinuumTakeRevisionId: previousDraft.h3ContinuumTakeRevisionId,
+                h3ContinuumTakeAction: previousDraft.h3ContinuumTakeAction,
                     startImagePath: nextIsR2V && previousDraft.inputMode !== "video" ? "" : restoredStartImage,
                     sourceWidth: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredStartImageWidth,
                     sourceHeight: nextIsR2V && previousDraft.inputMode !== "video" ? 0 : restoredStartImageHeight,

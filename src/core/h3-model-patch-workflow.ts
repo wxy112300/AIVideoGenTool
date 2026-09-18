@@ -198,13 +198,13 @@ function previewInputs(model: ModelLink, tinyVae: string): Record<string, unknow
   };
 }
 
-function sageInputs(model: ModelLink, attentionMode: string): Record<string, unknown> {
+function sageInputs(model: ModelLink, attentionMode: string, allowCompile: boolean): Record<string, unknown> {
   return {
     model,
     sage_attention: attentionMode === "sage-triton"
       ? "sageattn_qk_int8_pv_fp16_triton"
       : "sageattn_qk_int8_pv_fp16_cuda",
-    allow_compile: false
+    allow_compile: allowCompile
   };
 }
 
@@ -306,7 +306,8 @@ export function normalizeMiniMaxH3ModelPatchChain(
       : existingSageNodeId ?? allocate();
     workflow[nodeId] = policy.attentionMode === "comfy-kitchen"
       ? { class_type: "ModelAttentionBackend", inputs: { model: output, attention: "comfy kitchen attention" } }
-      : { class_type: "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode) };
+        : { class_type: "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode,
+          policy.comfyCompilerMode === "disabled" && consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
     output = [nodeId, 0];
   }
   if (policy.sparseAttentionMode !== "off") {

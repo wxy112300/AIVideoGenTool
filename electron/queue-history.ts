@@ -1,8 +1,11 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import type {
   AppState,
   AssetVersion,
   H3MemoryRuntimeEvidence,
+  H3AvLatentAsset,
+  H3ContinuumReceipt,
   H3ExecutionPolicySnapshot,
   HistoryAsset,
   HistoryFile,
@@ -22,6 +25,7 @@ import {
   extensionOutputDimensions,
   isMiniMaxH3ContinuumModel,
   isMiniMaxH3ContinuumV38Workflow,
+  isMiniMaxH3ContinuumManagedWorkflow,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   outputDimensions
@@ -34,6 +38,7 @@ import {
   h3LatentSaveModeFor,
   h3LatentSaveModeSavesJointAv
 } from "../src/core/h3-latent-save.js";
+import { sequenceAfterManagedReceipt } from "../src/core/h3-av-asset.js";
 
 export interface ImageHistoryResult {
   taskId: string;
@@ -173,21 +178,37 @@ export interface VideoHistoryResult {
   performanceStats?: TaskPerformanceStats;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   h3ContinuationData?: NativeAvContinuationData;
+  h3ContinuumReceipt?: H3ContinuumReceipt;
+  h3ContinuumAsset?: H3AvLatentAsset;
   id(): string;
+}
+
+function continuumPromptHash(prompt: string): string {
+  return createHash("sha256").update(prompt, "utf8").digest("hex");
 }
 
 function h3MotionContextPathFor(
   task: VideoQueueTask,
-  files: HistoryFile[]
+  files: HistoryFile[],
+  continuationData?: NativeAvContinuationData
 ): string | undefined {
   const expected = "h3ContextSavedPath" in task
     ? task.h3ContextSavedPath?.trim()
     : undefined;
-  if (!expected) return undefined;
-  const expectedPath = path.resolve(expected);
-  return files.find((file) =>
-    file.absolutePath && path.resolve(file.absolutePath) === expectedPath
-  )?.absolutePath;
+  const legacyPath = expected
+    ? files.find((file) =>
+        file.absolutePath && path.resolve(file.absolutePath) === path.resolve(expected)
+      )?.absolutePath
+    : undefined;
+  if (legacyPath) return legacyPath;
+  if (
+    task.taskType === "extension" &&
+    isMiniMaxH3R2vModel(task.modelId) &&
+    continuationData?.status === "available"
+  ) {
+    return continuationData.artifact?.payload.absolutePath;
+  }
+  return undefined;
 }
 
 function h3ContinuationDataFor(
@@ -195,6 +216,7 @@ function h3ContinuationDataFor(
   value: NativeAvContinuationData | undefined
 ): NativeAvContinuationData | undefined {
   if (!isMiniMaxH3Model(task.modelId)) return undefined;
+  if (task.taskType === "extension" && task.h3ContinuumMode === "managed") return undefined;
   if (!h3LatentSaveModeSavesJointAv(
     h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId))
   )) {
@@ -212,6 +234,12 @@ function h3ContinuationDataFor(
       };
     }
     return normalized;
+  }
+  if (task.h3AvOutputPolicy === "shared") {
+    return {
+      status: "missing",
+      reason: "新 shared H3 任务未返回已提交的 canonical AV artifact。"
+    };
   }
   return {
     status: "not-supported",
@@ -248,6 +276,7 @@ export function persistVideoHistoryResult(
       h3SaveJointAv: isMiniMaxH3Model(task.modelId)
         ? h3LatentSaveModeSavesJointAv(h3LatentSaveMode)
         : task.h3SaveJointAv !== false,
+      h3AvOutputPolicy: isMiniMaxH3Model(task.modelId) ? task.h3AvOutputPolicy : undefined,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
@@ -258,7 +287,8 @@ export function persistVideoHistoryResult(
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
-      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
+      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData),
+      h3AvAsset: result.h3ContinuationData?.asset
     };
     const asset: HistoryAsset = {
       mediaKind: "video", id: result.id(), taskId: task.id,
@@ -295,14 +325,41 @@ export function persistVideoHistoryResult(
   }
   if (task.taskType === "extension") {
     const [width, height] = extensionOutputDimensions(task);
+    const versionId = result.id();
+    const managedContinuum = task.h3ContinuumMode === "managed" || isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath);
     const generatedDuration = isMiniMaxH3ContinuumModel(task.modelId) &&
       !isMiniMaxH3ContinuumV38Workflow(task.workflowPath)
       ? continuumVisibleFrameCountForTask(task) / 24
       : task.duration;
-    const totalDuration = task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
-    const h3ContextLatentPath = h3MotionContextPathFor(task, result.files);
+    const managedSequence = managedContinuum && result.h3ContinuumReceipt && task.h3ContinuumSequence
+      ? sequenceAfterManagedReceipt(
+          task.h3ContinuumSequence,
+          result.h3ContinuumReceipt,
+          {
+            userPrompt: task.prompt,
+            finalPrompt: task.prompt,
+            promptHash: continuumPromptHash(task.prompt),
+            createdAt: result.completedAt
+          },
+          result.h3ContinuumAsset?.assetId,
+          versionId,
+          result.completedAt,
+          {
+            parentTakeId: task.h3ContinuumParentTakeId,
+            parentBranchId: task.h3ContinuumParentBranchId
+          }
+        )
+      : task.h3ContinuumSequence;
+    const totalDuration = managedContinuum
+      ? (result.h3ContinuumReceipt?.requestedChunks ?? task.h3ContinuumTargetChunks ?? 1) * task.duration
+      : task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
+    const h3ContextLatentPath = h3MotionContextPathFor(
+      task,
+      result.files,
+      result.h3ContinuationData
+    );
     const version: AssetVersion = {
-      id: result.id(), kind: "original", createdAt: result.completedAt,
+      id: versionId, kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
       videoLoras: normalizeHistoryVideoLoras(task.videoLoras), width, height,
       duration: totalDuration, promptVersion: task.promptVersion, steps: task.steps,
@@ -322,11 +379,15 @@ export function persistVideoHistoryResult(
       h3SaveJointAv: isMiniMaxH3Model(task.modelId)
         ? h3LatentSaveModeSavesJointAv(h3LatentSaveMode)
         : undefined,
+      h3AvOutputPolicy: isMiniMaxH3Model(task.modelId) ? task.h3AvOutputPolicy : undefined,
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
       h3ContextLatentPath,
-      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
+      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData),
+      h3ContinuumSequence: managedSequence,
+      h3ContinuumReceipt: result.h3ContinuumReceipt,
+      h3AvAsset: result.h3ContinuumAsset ?? result.h3ContinuationData?.asset
     };
     const asset: HistoryAsset = {
       mediaKind: "video", id: result.id(), taskId: task.id,

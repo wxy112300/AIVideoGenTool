@@ -8,6 +8,21 @@
 
 ## Unreleased
 
+- 旧 H3 队列保存兼容 patch：经用户授权，等待执行且原意图为全部保存的旧 generation/extension 任务，在逐项认领时自动补齐并持久化共享 AV 保存策略，无需重新入队；提交图、AV 收集和 History 使用同一快照，提示词、seed、工作流与来源参数不变。不修改不保存/部分保存、已有 checkpoint/managed sequence、未知策略或已运行任务，不补造历史 latent。需更新到包含本修复的应用，并将 H3 AV 节点更新至 `0.3.5` 后重启 ComfyUI；不代表消费流程或续写质量验收通过。
+- H3 AV 节点包版本 patch：将本地修改后的 bundled 节点明确发布为 `0.3.5`，同步 VERSION 与依赖目录，修复已安装旧 `0.3.4` 时无法发现同版本内容更新的问题；补充离线更新检测、安装版本一致性和 producer 元数据回归。需更新应用后在设置更新节点并重启 ComfyUI；仅更新节点包不会迁移队列，应用执行前补齐规则见上一条。
+- Continuum 连续续写拼接 patch：修复“Extend 的 Extend”将已拼接源片再次过 fps 滤镜时因非零起始时间戳少保留一帧的问题；拼接前归零视频时间戳，仍严格校验总帧数。真实失败产物副本已得到 698+336=1034 帧，未重跑采样或修改原任务/媒体；新增真实 FFmpeg 两轮拼接回归，不据此宣称多轮音画质量通过。
+- Continuum 预检 patch：创作页按与入队相同的来源规则选择时长预算，普通 AV bootstrap 即使保留 managed 工作流文件名也使用 14 秒上限；真正的 managed 路径仍保留 15 秒。避免页面允许 15 秒、提交时才因 379/362 帧预算拒绝，不放宽采样预算或静默修改草稿时长。
+- 修复 H3 Prompt Writer 的“影视细节扩写”仍按插件默认 2048 token 生成、首次结果不足覆盖线便直接失败的问题：详细预设现在按模式与时长请求最多 3072 token；首次正文缺字段、过短或遗漏原始要点时，复用官方 Writer session 与 `/refine` 只补写一次，再按同一覆盖标准验收。二次失败会附带安全的 token 预算与停止原因诊断，不保存不合格结果，也不降低原有细节门槛。
+- History 详情布局 patch：Continuum 的 Run、Chunk、Take、分支及专属操作移到播放器与标签下方的独立详情区，右侧保留视频概览与主要操作；长标识支持换行，续写状态不再重复显示。
+- Continuum patch 修复：旧 AV 不再因 managed 文件名被忽略或因缓存大小误报失效；创作页实查 latent/Run 前缀并精简文件行，缺失或不兼容时明确阻止而不静默回退。managed 冻结原首帧来源与旧 Chunk body，修正 History 版本身份、Retry 原文/Auto 边界，以及 Compiler 关闭时 Sage 包装导致的冷启动复用失配。真实15秒×3和重启后两次 Retry 已通过；旧 Take 分支暂时阻止，跨 revision 单份 payload 与完整质量验收仍未完成，详见 [任务记录](docs/tasks/2026-09-18-h3-continuum-extend-recovery/TASK.md)。
+- 将 Local Video Studio H3 AV 节点升级到 `0.3.4`：依赖目录现在声明 Continuum legacy diagnostics 与 managed Run Storage receipt 节点，设置页能识别旧的 bundled `0.3.3` 副本并提示更新；更新并重启 ComfyUI 后，managed Continuum workflow 才会进入官方 Run Storage 执行链路。
+- 将 Local Video Studio H3 AV 节点升级到 `0.3.3`，加固 Continuum Extend 的真实执行与成片接缝证据：诊断不再仅凭 assembly plan 的 22 帧 trim 推断 `initial_state` 已生效，而要求上游采样状态明确报告实际 Masked AV/Masked Video/Reference Context transport；同时修复最终 FFmpeg 拼接受 AAC `-shortest` 时间基影响可能少保留一帧的问题，Continuum 现在按源段与新增段的精确帧预算编码，并在覆盖成片前用 ffprobe fail closed 校验总帧数。
+
+- Spectrum MiniMax H3 推荐版本从 `v0.2.24` 更新到 `v0.2.27`：同步上游的 DynamicVRAM/Comfy Compiler 崩溃边界、provider-generic attention history/receipt 合约、预测头流式投影与 CUDA 生命周期修复，以及审查过的 Core BlockSparseAttention Mixed-Grid forecast recovery。现有内置 RES/ER-SDE 工作流、参数和最低兼容线不变；该升级主要改善兼容性与预测头显存压力，不承诺整体速度提升，也不把 SA/PECE、Sol-H3 或其他外部后端变成硬依赖。
+
+- 修复 Qwen3.6/Qwen3.8「影视细节扩写」的计算预算可超过 2048 token、但 `VisionLLMNode` 仍将输出硬截在 2048 的矛盾：普通增强继续使用 8K 上下文和不超过 2048 的输出，只有细节预设实际需要更长输出时才按需切换到 16K 上下文并开放至 3072；新增只记录字段、词数、token 用量与停止原因的安全诊断，用于区分长度截断、模型提前结束和结构字段丢失，不记录用户 Prompt 或生成正文。
+- Continuum 自动增强对齐已安装的官方 Prompt Skill：使用简短的编号接续开头、当前段 body 与明确的动作/终态，保留用户对白和显式多镜头请求；移除机械注入的长单镜头锁。应用负责 Timeline 标题及冻结旧正文；增强器不会伪造首帧标签，也不把文字约束当成运行复用或画面质量保证。
+
 ## 0.62.2 — 2026-09-17
 
 - 统一 H3 Continuum Extend 的原生状态提示协议：Qwen3.6/Qwen3.8、H3 Prompt Writer、Prompt Rewriter、LM Studio 与 llama-server 均以 T2VA 字段形态输出，把临时边界图仅用于视觉核对，不再补回 `<Picture 1>`/0 秒首帧声明；未明确要求多镜头时使用 hard-single，并在最终输出中确定性保留边界后的下一动作、既有机位/速度/轨迹和单镜头连续性，同时修复常见的隐式新角度/视角重置表达。

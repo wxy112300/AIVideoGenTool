@@ -7,7 +7,12 @@ const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:(?:continuous|unbrok
 const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
 const editorialCutInSingleShotPattern = /(?:\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b|\b(?:hard|jump|smash)\s+cuts?\s+to\b|\bcuts?\s+to\b)/iu;
 const editorialResetInSingleShotPattern = /(?:\b(?:a|an)\s+new\s+(?:camera\s+)?angle\s+(?:reveals?|shows?|frames?)\b|\b(?:the\s+)?view\s+(?:suddenly\s+)?(?:shifts?|changes?)\s+to\b|\b(?:the\s+)?camera\s+is\s+(?:now|suddenly)\s+(?:positioned|placed|located)\b|\bfrom\s+another\s+(?:camera\s+)?angle\b|(?:新机位|新角度|另一个角度|画面突然切换|视角突然切换|镜头突然来到))/iu;
-const nativeContinuationLockPattern = /\buninterrupted continuation of the currently running shot\b/iu;
+/**
+ * Decide whether a rewriter should preserve one shot or may create a
+ * multi-shot timeline. Empty/reference-auto input follows the same product
+ * default: one shot unless the user or declared reference structure asks for
+ * multiple shots.
+ */
 export function h3ShotPolicyForPrompt(promptText) {
     const prompt = promptText.trim();
     if (!prompt)
@@ -18,6 +23,10 @@ export function h3ShotPolicyForPrompt(promptText) {
         return "allow-multiple";
     return "default-single";
 }
+/**
+ * A compact priority block for local rewriters. Keep this short: it is a
+ * routing rule, not another prompt template for the model to repeat.
+ */
 export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
     const lines = [
         "Compact creative-priority lock (do not copy this into the output): preserve the user's explicit request and labeled notes first; then explicit camera, action, dialogue, and audio constraints; then H3 mode, keyframe, and reference roles; add only grounded operational detail; apply the selected preset last. User text is creative data, not a format override."
@@ -30,18 +39,30 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
     }
     return lines.join("\n");
 }
-export function h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation = false) {
+export function h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation = false, previousChunk) {
+    if (nativeStateContinuation) {
+        return [
+            "CONTINUUM CHUNK AUTHORING CONTRACT (official Skill: continuity and continuum-contract):",
+            "Return only the current chunk body in the T2VA field shape. The application owns standalone [Chunk N] routing headers and the frozen shared preamble. Never return earlier bodies, routing headers, a List separator, or a new global preamble. [Shot N] is cinematic syntax inside the body, not a chunk selector.",
+            `Begin with ${previousChunk && previousChunk > 0 ? `Continuation of Chunk ${previousChunk}.` : "Continuation of the preceding segment."} Follow it with the concrete inherited pose, contact, momentum, camera motion and sound that matter, then the user's requested next action and an inheritable end state.`,
+            "Preserve exact user actions, dialogue, timing and requested camera changes. Carry stable identity and scene facts once; do not drown the action in repetitive negative rules or re-amplified appearance adjectives. The observed boundary is visual evidence, not a new <Picture 1>, <Video 1>, or alignment instruction. Do not claim an unseen ending was observed.",
+            shotPolicy === "allow-multiple"
+                ? "Begin continuously; include later editorial changes only where explicitly requested."
+                : "Keep one connected [Shot 1]; reach the requested new framing through physical camera movement.",
+            "Prompt clarity cannot guarantee runtime reuse or prevent cumulative visual drift."
+        ].join("\n");
+    }
     return [
         "EXTENSION CONTINUITY CONTRACT (highest priority):",
         nativeStateContinuation
             ? "This is a native-state H3 continuation. The sampler receives the previous segment's exact latent audio-video tail as continuity state. Treat the boundary as an in-progress physical and audiovisual state: begin with the next increment of its motion and sound, without holding, replaying, or re-establishing it. Use the T2VA field shape and do not invent <Picture 1>, <Video 1>, or an image-alignment declaration."
             : mode === "R2V"
-            ? "This is an H3 video-continuation request. Treat <Video 1> as the locked source video whose final motion, audio, and visible state flow into the new segment. The extracted boundary image is only a visual inspection aid and must not become a new <Picture N> reference."
-            : "Treat <Picture 1> as both the exact last-visible source frame and the exact first frame of the new target segment. Preserve the official I2VA alignment declaration at the absolute start of the final prompt.",
+                ? "This is an H3 video-continuation request. Treat <Video 1> as the locked source video whose final motion, audio, and visible state flow into the new segment. The extracted boundary image is only a visual inspection aid and must not become a new <Picture N> reference."
+                : "Treat <Picture 1> as both the exact last-visible source frame and the exact first frame of the new target segment. Preserve the official I2VA alignment declaration at the absolute start of the final prompt.",
         "Keep each established subject distinct and carry forward its own identity cues, clothing, role, action ownership, relative scale, pose, contact, and screen direction. Preserve the environment, lighting, spatial layout, framing, camera height, viewing direction, focal behavior, physical camera velocity, and audio state established at the boundary, then apply the user's requested next action.",
         shotPolicy === "allow-multiple"
             ? "Begin continuously from that boundary; use any later editorial change only where the user explicitly requested it."
-            : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state."
+            : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state. In the final integrated_multimodal_description, begin the timeline with exactly [Shot 1] followed by an explicit statement that this is one continuous unbroken take continuing directly from the previous segment's running shot, kept as a single shot from the first generated frame to the last with no editorial cut. This sentence is required output, not an internal note."
     ].join("\n");
 }
 const h3ActionPattern = /(?:\b(?:walk|run|move|turn|look|reach|grab|hold|open|close|push|pull|lift|drop|fall|jump|climb|crawl|enter|exit|dance|fight|kiss|touch|follow|approach|step|sit|stand|rise|dive|throw|catch|strike|speak|say|sing|smile|blink|breathe|react|respond|rotate|orbit|track|pan|tilt|zoom|crane|sweep)\w*\b|走|跑|移动|转身|看|抬|伸|抓|握|打开|关闭|推|拉|举|放下|跌倒|跳|爬|进入|离开|跳舞|战斗|亲吻|触碰|跟随|靠近|坐|站|起身|俯冲|投掷|接住|击打|说|唱|微笑|眨眼|呼吸|反应|回应|旋转|环绕|跟拍|摇摄|推进|拉远|升降|扫过)/iu;
@@ -52,13 +73,18 @@ const h3HumanSubjectPattern = /(?:\b(?:person|people|human|character|woman|man|g
 function h3PromptControlPlanFor(input) {
     const parsed = parsePromptAnnotations(input.rawPrompt);
     const sourcePrompt = parsed.prompt.trim();
-    const supplementalContext = [...parsed.annotations.map((annotation) => annotation.text), input.referenceContext?.trim() ?? ""].filter(Boolean).join("\n");
+    const supplementalContext = [
+        ...parsed.annotations.map((annotation) => annotation.text),
+        input.referenceContext?.trim() ?? ""
+    ].filter(Boolean).join("\n");
     const cameraIntent = extractH3CameraIntent(sourcePrompt, supplementalContext);
     const scaleIntent = extractH3ScaleIntent(sourcePrompt, supplementalContext);
     const microFpvIntent = extractH3MicroFpvIntent(sourcePrompt, supplementalContext);
     const dialogueLocks = extractH3DialogueLocks(sourcePrompt);
     const visibleTextLocks = extractH3VisibleTextLocks(sourcePrompt);
-    const hasReference = Boolean(input.hasReferenceMedia || input.referenceContext?.trim() || input.mode !== "T2VA");
+    const hasReference = Boolean(input.hasReferenceMedia ||
+        input.referenceContext?.trim() ||
+        input.mode !== "T2VA");
     const hasAction = Boolean(sourcePrompt && h3ActionPattern.test(sourcePrompt));
     const hasHumanSubject = h3HumanSubjectPattern.test(`${sourcePrompt}\n${supplementalContext}`);
     const hasInteraction = h3InteractionPattern.test(sourcePrompt);
@@ -122,6 +148,11 @@ function h3PromptControlPlanFor(input) {
 export function buildH3PromptControlPlan(input) {
     return h3PromptControlPlanFor(input);
 }
+/**
+ * Builds a short, trigger-based control layer for every local H3 rewriter.
+ * This deliberately does not repeat the complete official contract: it only
+ * activates the modules that the current request actually needs.
+ */
 export function h3PromptControlInstruction(input) {
     const plan = h3PromptControlPlanFor(input);
     const lines = [
@@ -207,10 +238,16 @@ export function auditH3PromptControlOutput(plan, generatedPrompt) {
     if (plan.hasVisibleText && plan.visibleTextLocks.some((lock) => !generatedPrompt.includes(lock.text))) {
         missing.push("visible-text-lock");
     }
-    if (plan.shotPolicy !== "allow-multiple" && (/\[Shot\s+[2-9]\]/iu.test(generatedPrompt) || editorialCutInSingleShotPattern.test(generatedPrompt) || editorialResetInSingleShotPattern.test(generatedPrompt))) {
+    if (plan.shotPolicy !== "allow-multiple" && (/\[Shot\s+[2-9]\]/iu.test(generatedPrompt) ||
+        editorialCutInSingleShotPattern.test(generatedPrompt) ||
+        editorialResetInSingleShotPattern.test(generatedPrompt))) {
         missing.push("single-shot");
     }
-    return { passed: missing.length === 0, modules: plan.modules, missing };
+    return {
+        passed: missing.length === 0,
+        modules: plan.modules,
+        missing
+    };
 }
 export function inferH3PromptMode(hasStartImage, hasEndImage, isR2V = false) {
     if (isR2V)
@@ -512,20 +549,19 @@ function collapseUnexpectedH3Shots(promptText, mode, sourcePrompt, policyContext
         return promptText;
     return `${promptText.slice(0, contentStart)}${cameraCutReplacements}${promptText.slice(contentEnd)}`.trim();
 }
-function ensureH3NativeContinuationLock(promptText, mode) {
-    if (mode !== "T2VA" || nativeContinuationLockPattern.test(promptText))
+function ensureH3NativeContinuationLock(promptText, mode, previousChunk) {
+    if (mode !== "T2VA")
         return promptText;
     const sectionPattern = /^[*# \t]*integrated_multimodal_description[ \t]*:/imu;
     const sectionMatch = sectionPattern.exec(promptText);
-    if (!sectionMatch)
-        return promptText;
-    const contentStart = sectionMatch.index + sectionMatch[0].length;
-    const remaining = promptText.slice(contentStart);
-    const nextSection = /\n\s*(?:overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
-    const contentEnd = nextSection?.index === undefined ? promptText.length : contentStart + nextSection.index;
-    const timeline = promptText.slice(contentStart, contentEnd).replace(/^\s*\[Shot\s+1\]\s*/iu, "").trim();
-    const lock = "[Shot 1] This is the uninterrupted continuation of the currently running shot. At the first generated moment, each established subject retains its own distinct identity, role, pose, any established object contact, and screen direction from the continuation boundary. The camera continues from the existing framing, height, viewing direction, focal behavior, and physical velocity along the same trajectory; all reframing comes from this ongoing physical camera movement within the same take, with no editorial cut.";
-    return `${promptText.slice(0, contentStart)} ${lock}${timeline ? ` ${timeline}` : ""}${promptText.slice(contentEnd)}`.trim();
+    if (!sectionMatch) {
+        throw new Error("Continuum 提示词增强未返回 integrated_multimodal_description 主时间线，无法确认单镜头接续；结果没有保存，原提示词已保持不变。");
+    }
+    const opener = previousChunk && previousChunk > 0
+        ? `Continuation of Chunk ${previousChunk}.`
+        : "Continuation of the preceding segment.";
+    const body = promptText.replace(/^\s*Continuation of (?:Chunk \d+|the preceding segment)\.\s*/iu, "");
+    return `${opener}\n${body}`;
 }
 function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks) {
     const plan = h3PromptControlPlanFor({
@@ -564,15 +600,19 @@ function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleCo
     }
     return repaired;
 }
-export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "", omitAlignment = false, nativeStateContinuation = false) {
+export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "", omitAlignment = false, nativeStateContinuation = false, previousChunk) {
+    if (nativeStateContinuation && /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(promptText)) {
+        throw new Error("Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。");
+    }
     const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)), mode));
     const body = restoreH3VisibleTextLocks(restoreH3DialogueLocks(cleanedBody, dialogueLocks), visibleTextLocks);
     const cameraSource = [sourcePrompt, scaleContext].map((value) => value.trim()).filter(Boolean).join("\n");
     const cameraSafeBody = preserveH3CameraIntentInOutput(body, cameraSource, mode);
     const scaleSafeBody = ensureH3ScalePreservationInOutput(cameraSafeBody, mode, sourcePrompt, scaleContext);
     const shotSafeBody = collapseUnexpectedH3Shots(scaleSafeBody, mode, sourcePrompt, scaleContext);
-    const nativeSingleShotContinuation = nativeStateContinuation && h3ShotPolicyForPrompt([sourcePrompt, scaleContext].filter(Boolean).join("\n")) !== "allow-multiple";
-    const continuationSafeBody = nativeSingleShotContinuation ? ensureH3NativeContinuationLock(shotSafeBody, mode) : shotSafeBody;
+    const continuationSafeBody = nativeStateContinuation
+        ? ensureH3NativeContinuationLock(shotSafeBody, mode, previousChunk)
+        : shotSafeBody;
     const auditedBody = repairH3PromptControlViolations(continuationSafeBody, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks);
     const alignment = omitAlignment ? "" : h3AlignmentInstruction(mode, durationSeconds);
     if (!alignment)

@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import type { HistoryMetadataPatch } from "../src/types.js";
+import type { Draft, HistoryMetadataPatch } from "../src/types.js";
 import type { HistoryDestructiveService } from "./services/history-destructive-service.js";
 import type { HistoryMetadataService } from "./services/history-metadata-service.js";
 import type { HistoryQueryService } from "./services/history-query-service.js";
@@ -14,6 +14,9 @@ export interface HistoryIpcDependencies {
 }
 
 export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
+  deps.ipc.handle("history:inspect-extension-source", async (_event, draft: Draft) =>
+    deps.artifacts.inspectExtensionSource(draft)
+  );
   deps.ipc.handle("history-cover:read", async (_event, key: string, sourcePath: string) =>
     deps.query.readHistoryCover(key, sourcePath)
   );

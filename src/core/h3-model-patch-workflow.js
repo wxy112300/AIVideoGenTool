@@ -1,6 +1,11 @@
 import { resolveH3ExecutionPolicy } from "./h3-execution-policy.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
-const consumerClasses = new Set(["BasicScheduler", "BasicGuider", "H3ContinuumSamplerV38", "LocalVideoStudioH3ContinuumSamplerV38"]);
+const consumerClasses = new Set([
+    "BasicScheduler",
+    "BasicGuider",
+    "H3ContinuumSamplerV38",
+    "LocalVideoStudioH3ContinuumSamplerV38"
+]);
 const legacyAttentionClasses = new Set([
     "PathchSageAttentionKJ",
     "H3SLAAttention",
@@ -154,13 +159,13 @@ function previewInputs(model, tinyVae) {
         tiny_vae: tinyVae
     };
 }
-function sageInputs(model, attentionMode) {
+function sageInputs(model, attentionMode, allowCompile) {
     return {
         model,
         sage_attention: attentionMode === "sage-triton"
             ? "sageattn_qk_int8_pv_fp16_triton"
             : "sageattn_qk_int8_pv_fp16_cuda",
-        allow_compile: false
+        allow_compile: allowCompile
     };
 }
 function sparseInputs(model, mode) {
@@ -188,7 +193,9 @@ function assertConsumers(workflow, locale, needsModelChain) {
     if (!consumers.length && needsModelChain)
         throw new Error(message("h3PatchConsumersMissing", {}, locale));
     if (needsModelChain && (!consumers.some(([, node]) => node.class_type === "BasicScheduler") ||
-        !consumers.some(([, node]) => node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38")))
+        !consumers.some(([, node]) => node.class_type === "BasicGuider" ||
+            node.class_type === "H3ContinuumSamplerV38" ||
+            node.class_type === "LocalVideoStudioH3ContinuumSamplerV38")))
         throw new Error(message("h3PatchConsumersMissing", {}, locale));
     return consumers;
 }
@@ -247,7 +254,7 @@ export function normalizeMiniMaxH3ModelPatchChain(workflow, options) {
             : existingSageNodeId ?? allocate();
         workflow[nodeId] = policy.attentionMode === "comfy-kitchen"
             ? { class_type: "ModelAttentionBackend", inputs: { model: output, attention: "comfy kitchen attention" } }
-            : { class_type: "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode) };
+            : { class_type: "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode, policy.comfyCompilerMode === "disabled" && consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
         output = [nodeId, 0];
     }
     if (policy.sparseAttentionMode !== "off") {

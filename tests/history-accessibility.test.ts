@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { AppState, AssetVersion, HistoryAsset, ImageAssetVersion, ImageHistoryProject } from "../src/types";
 import { defaultHistoryFilter } from "../src/core/history-filter";
@@ -306,6 +307,40 @@ describe("History accessibility markup", () => {
     const videoPage = renderHistoryDetailPage(videoViewModel, detailOptions);
     const imagePage = renderImageHistoryDetailPage(imageViewModel, detailOptions);
 
+    const continuumVersion = {
+      ...videoVersion,
+      h3ContinuumSequence: {
+        runName: "fixture-run",
+        status: "review-ready",
+        acceptedChunks: 1,
+        targetChunks: 1,
+        chunkSeconds: 15,
+        chunks: [],
+        canonicalHead: { takeId: "fixture-take", branchId: "fixture-branch" }
+      }
+    } as unknown as AssetVersion;
+    const continuumRoot = document.createElement("div");
+    continuumRoot.innerHTML = renderHistoryDetailPage(videoViewModel, {
+      ...detailOptions,
+      currentHistoryVersion: () => continuumVersion
+    });
+    const continuumPanel = continuumRoot.querySelector(".history-continuum-panel")!;
+    const continuumSidebar = continuumRoot.querySelector(".history-detail-sidebar")!;
+    expect(continuumPanel.parentElement).toBe(continuumRoot);
+    expect(continuumSidebar.contains(continuumPanel)).toBe(false);
+    expect(continuumRoot.querySelector(".history-detail-hero")!.compareDocumentPosition(continuumPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(continuumPanel.compareDocumentPosition(continuumRoot.querySelector(".history-record-section")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(continuumPanel.querySelector("h2")?.id).toBe("history-continuum-title");
+    expect(continuumPanel.querySelectorAll("dl > div")).toHaveLength(4);
+    expect(continuumPanel.textContent).toContain("fixture-run");
+    expect(continuumPanel.textContent).toContain("fixture-take");
+    expect(continuumPanel.textContent).toContain("fixture-branch");
+    expect(continuumPanel.querySelector('[data-continuum-action="Regenerate Current"]')?.getAttribute("data-source-version")).toBe(videoVersion.id);
+    expect(continuumPanel.querySelector('[data-continuum-action="Continue From Here"]')?.getAttribute("data-continue-history")).toBe(videoAsset.id);
+    expect(continuumSidebar.querySelector('[data-continuum-action="Continue / Next"]')).not.toBeNull();
+    expect(continuumSidebar.querySelector('[data-continuum-action="Regenerate Current"]')).toBeNull();
+    expect(videoPage).not.toContain("history-continuum-panel");
+
     const artifactVersion = {
       ...videoVersion,
       id: "video-version-with-av",
@@ -359,6 +394,16 @@ describe("History accessibility markup", () => {
         }
       }
     } as unknown as AssetVersion;
+    artifactVersion.h3AvAsset = {
+      storageKind: "app-canonical",
+      ownerPath: artifactVersion.h3ContinuationData!.artifact!.payload,
+      aliasPaths: [{
+        filename: "h3av_alias.safetensors",
+        subfolder: "h3-native-av",
+        type: "output",
+        absolutePath: "C:\\fixtures\\h3-native-av\\h3av_alias.safetensors"
+      }]
+    } as AssetVersion["h3AvAsset"];
     const artifactAsset = {
       ...videoAsset,
       versions: [artifactVersion],
@@ -371,6 +416,36 @@ describe("History accessibility markup", () => {
       selectedHistoryVersionId: artifactVersion.id
     } as HistoryPageViewModel;
     const artifactPage = renderHistoryDetailPage(artifactViewModel, {
+      ...detailOptions,
+      formatBytes: (value) => `${value} B`,
+      preferredVersion: () => artifactVersion,
+      currentHistoryVersion: () => artifactVersion
+    });
+    const managedVersion = {
+      ...artifactVersion,
+      h3AvAsset: {
+        storageKind: "continuum-run-chunk",
+        ownerPath: artifactVersion.h3ContinuationData!.artifact!.payload,
+        aliasPaths: artifactVersion.h3AvAsset?.aliasPaths
+      }
+    } as unknown as AssetVersion;
+    const managedPage = renderHistoryDetailPage({
+      ...artifactViewModel,
+      state: { ...state, history: [{ ...artifactAsset, versions: [managedVersion] }] },
+      selectedHistoryVersionId: managedVersion.id
+    }, {
+      ...detailOptions,
+      formatBytes: (value) => `${value} B`,
+      preferredVersion: () => managedVersion,
+      currentHistoryVersion: () => managedVersion
+    });
+    const missingArtifactPage = renderHistoryDetailPage({
+      ...artifactViewModel,
+      historyArtifactInspection: {
+        status: "missing",
+        reason: "payload missing"
+      }
+    }, {
       ...detailOptions,
       formatBytes: (value) => `${value} B`,
       preferredVersion: () => artifactVersion,
@@ -405,17 +480,24 @@ describe("History accessibility markup", () => {
     expect(videoPage).not.toContain('class="history-joint-av-indicator"');
     expect(artifactPage).toContain('class="history-joint-av-indicator">JointAV</span>');
     expect(artifactPage).not.toContain('data-h3-av-artifact');
-    expect(artifactPage).not.toContain('history.page.nativeAvTitle');
+    expect(artifactPage).toContain('history.page.nativeAvTitle');
+    expect(artifactPage).toContain('data-history-av-visible-status');
     expect(artifactPage).toContain("h3av_artifact-001.safetensors");
     expect(artifactPage).toContain("h3av_artifact-001.json");
     expect(artifactPage).toContain("clip_00001.safetensors");
     expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.safetensors"');
     expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.json"');
     expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-motion-context\\task-001\\clip_00001.safetensors"');
+    expect(artifactPage).toContain("h3av_alias.safetensors");
+    expect(artifactPage).toContain("app-canonical owner");
+    expect(artifactPage).toContain("alias");
+    expect(managedPage).toContain("continuum-run-chunk owner");
+    expect(managedPage).not.toContain('data-delete-joint-av="video-asset-detail"');
+    expect(missingArtifactPage).toContain('data-history-av-status="missing"');
     expect(artifactPage).toContain('data-delete-motion-context="video-asset-detail"');
     expect(artifactPage).toContain('data-motion-context-version-id="video-version-with-av"');
     expect(artifactPage).toContain("2048 B");
-    expect(artifactPage.match(/class="output-file"/g)).toHaveLength(4);
+    expect(artifactPage.match(/class="output-file"/g)).toHaveLength(5);
     expect(videoPage).toContain('<media-controller id="history-player"');
     expect(videoPage).toContain('autohide="1"');
     expect(videoPage).toContain('fullscreenelement="history-player"');

@@ -44,6 +44,18 @@ export function h3LatentSaveModeFor(
   );
 }
 
+/** Collapse a newly enqueued task to the Phase 1 binary save contract. */
+export function h3SharedLatentSaveModeFor(
+  value: { h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
+  legacyMotionContextSaved = false,
+  forceSave = false
+): Extract<H3LatentSaveMode, "all" | "none"> {
+  if (forceSave) return "all";
+  return h3LatentSaveModeFor(value, legacyMotionContextSaved) === "none"
+    ? "none"
+    : "all";
+}
+
 export function h3LatentSaveModeSavesJointAv(mode: H3LatentSaveMode): boolean {
   return mode === "all" || mode === "joint-av";
 }

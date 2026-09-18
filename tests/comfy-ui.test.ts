@@ -256,6 +256,7 @@ describe("native Qwen prompt workflow", () => {
       prompt: "人物继续向前走。",
       modelId: "minimax_h3_continuum",
       h3PromptMode: "I2VA",
+      continuumPreviousChunk: 2,
       extensionSource: {
         filePath: "source.mp4",
         trimStartSeconds: 0,
@@ -263,14 +264,14 @@ describe("native Qwen prompt workflow", () => {
       }
     });
 
-    expect(instruction).toContain("EXTENSION CONTINUITY CONTRACT (highest priority)");
-    expect(instruction).toContain("exact latent audio-video tail");
+    expect(instruction).toContain("CONTINUUM CHUNK AUTHORING CONTRACT (official Skill");
+    expect(instruction).toContain("Continuation of Chunk 2.");
     expect(instruction).not.toContain("For the target video, at 0.00 seconds");
     expect(instruction).not.toContain("fully referenced");
-    expect(instruction).toContain("do not invent <Picture 1>");
-    expect(instruction).toContain("inside the same connected take");
-    expect(instruction).toContain("Keep each established subject distinct");
-    expect(instruction).toContain("physical camera velocity");
+    expect(instruction).toContain("not a new <Picture 1>");
+    expect(instruction).toContain("Keep one connected [Shot 1]");
+    expect(instruction).toContain("Preserve exact user actions");
+    expect(instruction).toContain("current chunk body");
     expect(instruction).toContain("Single-shot lock");
   });
 

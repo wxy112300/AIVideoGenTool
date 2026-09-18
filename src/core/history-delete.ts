@@ -23,7 +23,11 @@ export function historyVideoVersionPaths(
 }
 
 export function historyVideoVersionAuxiliaryPaths(
-  version: { files?: AssetVersion["files"]; h3ContinuationData?: AssetVersion["h3ContinuationData"] },
+  version: {
+    files?: AssetVersion["files"];
+    h3ContinuationData?: AssetVersion["h3ContinuationData"];
+    h3AvAsset?: AssetVersion["h3AvAsset"];
+  },
   outputDirectory: string
 ): string[] {
   const artifact = version.h3ContinuationData?.artifact;
@@ -59,6 +63,18 @@ export function historyVideoVersionAuxiliaryPaths(
       path.extname(candidate).toLowerCase() === ".safetensors"
     ) {
       results.add(candidate);
+    }
+  }
+  if (version.h3AvAsset?.storageKind === "app-canonical") {
+    for (const file of [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]) {
+      const candidate = path.resolve(file.absolutePath ?? path.join(root, file.subfolder, file.filename));
+      const relative = path.relative(root, candidate);
+      if (
+        relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative) &&
+        path.extname(candidate).toLowerCase() === ".safetensors"
+      ) results.add(candidate);
     }
   }
   return [...results];

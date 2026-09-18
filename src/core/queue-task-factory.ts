@@ -48,12 +48,13 @@ import { h3ExecutionPolicySnapshotFor } from "./h3-execution-policy.js";
 import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import {
-  h3LatentSaveModeFor,
+  h3SharedLatentSaveModeFor,
   h3SaveJointAvForLatentSaveMode
 } from "./h3-latent-save.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "./video-draft-normalization.js";
 import {
   h3ContinuumWorkflowPathForInput,
+  h3ContinuumManagedWorkflowPathForInput,
   h3WorkflowPathForInput,
   isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
@@ -139,7 +140,7 @@ export function queueTaskFromDraft(
     ...state.queue.map((item) => item.outputFilename),
     ...state.history.map((item) => item.outputFilename)
   ];
-  const h3LatentSaveMode = h3LatentSaveModeFor(draft);
+  const h3LatentSaveMode = h3SharedLatentSaveModeFor(draft);
   const h3DeliveryResolution = draft.modelId === "minimax_h3_fl2va" &&
     draft.videoLoras.length === 0 &&
     h3SaveJointAvForLatentSaveMode(h3LatentSaveMode) &&
@@ -203,6 +204,7 @@ export function queueTaskFromDraft(
     h3ExecutionPolicy,
     h3LatentSaveMode,
     h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
+    h3AvOutputPolicy: isMiniMaxH3Model(draft.modelId) ? "shared" : undefined,
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: "off",
     progress: 0
@@ -335,9 +337,10 @@ export function extensionTaskFromDraft(
         h3LivePreview: state.settings.h3LivePreview
       })
     : undefined;
-  const h3LatentSaveMode = h3LatentSaveModeFor(
+  const h3LatentSaveMode = h3SharedLatentSaveModeFor(
     draft,
-    isMiniMaxH3R2vModel(draft.modelId)
+    isMiniMaxH3R2vModel(draft.modelId),
+    isMiniMaxH3ContinuumModel(draft.modelId) && draft.h3ContinuumMode === "managed"
   );
   return {
     id: clock.id(),
@@ -368,13 +371,34 @@ export function extensionTaskFromDraft(
     ...(draft.h3ContinuumArtifact
       ? { h3ContinuumArtifact: structuredClone(draft.h3ContinuumArtifact) }
       : {}),
+    ...(draft.h3ContinuumMode ? { h3ContinuumMode: draft.h3ContinuumMode } : {}),
+    ...(draft.h3ContinuumSequence
+      ? { h3ContinuumSequence: structuredClone(draft.h3ContinuumSequence) }
+      : {}),
+    ...(draft.h3ContinuumReviewAction
+      ? { h3ContinuumReviewAction: draft.h3ContinuumReviewAction }
+      : {}),
+    ...(draft.h3ContinuumRerollFromChunk === undefined
+      ? {}
+      : { h3ContinuumRerollFromChunk: draft.h3ContinuumRerollFromChunk }),
+    ...(draft.h3ContinuumTakeGroup === undefined
+      ? {}
+      : { h3ContinuumTakeGroup: draft.h3ContinuumTakeGroup }),
+    ...(draft.h3ContinuumTakeRevisionId
+      ? { h3ContinuumTakeRevisionId: draft.h3ContinuumTakeRevisionId }
+      : {}),
+    ...(draft.h3ContinuumTakeAction
+      ? { h3ContinuumTakeAction: draft.h3ContinuumTakeAction }
+      : {}),
     ...(h3ReferenceSlots ? { h3ReferenceSlots } : {}),
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,
     modelId: draft.modelId,
     videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
     workflowPath: isMiniMaxH3ContinuumModel(draft.modelId)
-      ? h3ContinuumWorkflowPathForInput(draft.workflowPath)
+      ? draft.h3ContinuumMode === "managed"
+        ? h3ContinuumManagedWorkflowPathForInput(draft.workflowPath)
+        : h3ContinuumWorkflowPathForInput(draft.workflowPath)
       : draft.workflowPath,
     ratio: "source",
     resolution,
@@ -395,6 +419,7 @@ export function extensionTaskFromDraft(
     h3ExecutionPolicy,
     h3LatentSaveMode,
     h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode),
+    h3AvOutputPolicy: isH3 ? "shared" : undefined,
     spectrumMode,
     spectrumModelAwareMode: "off",
     maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,

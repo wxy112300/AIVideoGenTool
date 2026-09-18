@@ -23,6 +23,7 @@ import {
 import { readComfyGitRevision } from "./comfy-discovery.js";
 import {
   multimodalPromptRecognizesQwen38,
+  multimodalPromptSupportsAdaptiveGeneration,
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
 } from "../../src/infrastructure/dependency-node-adapters.js";
@@ -563,8 +564,15 @@ export async function scanCustomNodes(
         multimodalPromptRecognizesQwen38(visionSource);
       const projectorDiscoveryCompatible = !discoverySource ||
         discoverySource.includes("def _is_mmproj_filename(");
-      if (!qwen38Compatible || !projectorDiscoveryCompatible) {
-        const notice = "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI";
+      const adaptiveGenerationCompatible = !visionSource ||
+        (
+          multimodalPromptSupportsAdaptiveGeneration(visionSource) &&
+          visionSource.includes("/local-video-studio/multimodal-prompt/diagnostics")
+        );
+      if (!qwen38Compatible || !projectorDiscoveryCompatible || !adaptiveGenerationCompatible) {
+        const notice = !qwen38Compatible || !projectorDiscoveryCompatible
+          ? "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI"
+          : "节点尚未适配影视细节扩写的按需 16K/3072 输出预算与安全诊断；长时间线仍会被 2048 token 限制，请执行一键修复并重启 ComfyUI";
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;

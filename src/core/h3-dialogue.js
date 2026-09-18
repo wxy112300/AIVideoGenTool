@@ -359,7 +359,7 @@ export function h3ContentLockInstruction(sourcePrompt) {
     ].filter(Boolean);
     return [
         "Compiler-owned content locks: these entries are binding input data and must survive prompt rewriting.",
-        "The target output language applies only to explanatory H3 prose and field descriptions. Dialogue, lyrics, voiceover words, and visible text keep their own original language and punctuation.",
+        "The target output language applies only to explanatory H3 prose. Keep official H3 field names exactly in their required English ASCII form. Dialogue, lyrics, voiceover words, and visible text keep their own original language and punctuation.",
         ...sections
     ].join("\n\n");
 }

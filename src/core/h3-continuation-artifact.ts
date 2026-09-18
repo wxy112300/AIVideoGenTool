@@ -5,6 +5,10 @@ import type {
   NativeAvContinuationData,
   NativeAvArtifactRole
 } from "../types.js";
+import {
+  isH3AvLatentAsset,
+  validateH3AvLatentAsset
+} from "./h3-av-asset.js";
 
 export const H3_CONTINUATION_ARTIFACT_SCHEMA_VERSION = 1 as const;
 export const H3_CONTINUATION_ARTIFACT_SUBFOLDER = "h3-native-av";
@@ -176,10 +180,20 @@ export function normalizeNativeAvContinuationData(
       reason: reason ? `${reason}；${artifactError}` : artifactError
     };
   }
+  const assetError = value.asset === undefined
+    ? undefined
+    : validateH3AvLatentAsset(value.asset);
+  if (assetError) {
+    return {
+      status: "invalid",
+      reason: reason ? `${reason}；${assetError}` : assetError
+    };
+  }
   return {
     status: value.status,
     ...(reason ? { reason } : {}),
-    artifact: value.artifact as NativeAvContinuationArtifact
+    artifact: value.artifact as NativeAvContinuationArtifact,
+    ...(isH3AvLatentAsset(value.asset) ? { asset: value.asset } : {})
   };
 }
 

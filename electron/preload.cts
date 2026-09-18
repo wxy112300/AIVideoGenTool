@@ -81,6 +81,8 @@ const api: AppApi = {
     ipcRenderer.invoke("history-cover:lookup", key, sourcePath),
   inspectH3NativeAvArtifact: (assetId: string, versionId: string) =>
     ipcRenderer.invoke("history:inspect-h3-artifact", assetId, versionId),
+  inspectVideoExtensionSource: (draft: Draft) =>
+    ipcRenderer.invoke("history:inspect-extension-source", draft),
   saveHistoryCover: (key: string, sourcePath: string, data: ArrayBuffer) =>
     ipcRenderer.invoke("history-cover:save", key, sourcePath, data),
   saveHistoryCoverIfCurrent: (input: {

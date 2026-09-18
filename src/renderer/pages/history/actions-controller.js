@@ -235,8 +235,9 @@ export function mountHistoryActionsController(context, options) {
             stopAction(event);
             const assetId = button.dataset.continueHistory;
             const versionId = button.dataset.sourceVersion;
+            const action = button.dataset.continuumAction;
             if (assetId && versionId)
-                await options.continueVideoHistory(assetId, versionId);
+                await options.continueVideoHistory(assetId, versionId, action);
         }, { signal });
     });
     root.querySelectorAll("[data-show-file]").forEach((button) => {

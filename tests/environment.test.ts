@@ -1043,6 +1043,8 @@ describe("ComfyUI environment candidates", () => {
     const profiles = evaluateModelProfiles([]);
     const fl2va = profiles.find((profile) => profile.id === "minimax_h3_fl2va");
     const baseModel = fl2va?.components.find((component) => component.label.includes("FL2VA INT8 模型"));
+    const fp16Vae = fl2va?.components.find((component) => component.expected.includes("video_vae_fp16"));
+    const int8Vae = fl2va?.components.find((component) => component.expected.includes("video_vae_int8"));
     const upscaler = profiles.find((profile) => profile.id === "minimax_h3_latent_upscaler");
 
     expect(baseModel?.installGuide).toMatchObject({
@@ -1050,6 +1052,18 @@ describe("ComfyUI environment candidates", () => {
       bytes: 20_970_379_616,
       sha256: "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a",
       downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/014cd40f7e177756c6b2473c0d93b1c89a790dd2/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+    });
+    expect(fp16Vae?.installGuide).toMatchObject({
+      revision: "014cd40f7e177756c6b2473c0d93b1c89a790dd2",
+      bytes: 5_207_808_496,
+      sha256: "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522",
+      downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/014cd40f7e177756c6b2473c0d93b1c89a790dd2/vae/minimax_h3_video_vae_fp16.safetensors"
+    });
+    expect(int8Vae?.installGuide).toMatchObject({
+      revision: "7a2065e37f5ff9d3c4e605f164d4cac388eff8e8",
+      bytes: 2_811_065_184,
+      sha256: "52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e",
+      downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/7a2065e37f5ff9d3c4e605f164d4cac388eff8e8/vae/minimax_h3_video_vae_int8_convrot.safetensors"
     });
     expect(upscaler).toMatchObject({
       category: "upscale",
@@ -1087,7 +1101,7 @@ describe("ComfyUI environment candidates", () => {
       installGuide: {
         targetSubdirectory: "vae",
         recommendedFilename: "minimax_h3_video_vae_int8_convrot.safetensors",
-        downloadUrl: "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors"
+        downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/7a2065e37f5ff9d3c4e605f164d4cac388eff8e8/vae/minimax_h3_video_vae_int8_convrot.safetensors"
       }
     });
 

@@ -11,6 +11,7 @@ import {
   workflowSupportsExtensionForModel,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3ContinuumExtension,
+  workflowSupportsH3ContinuumManagedExtension,
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
 import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
@@ -116,17 +117,17 @@ async function bundledWorkflowFor(
         supportsVideoExtension: workflowSupportsH3MotionContextExtension(source)
       });
     }
-    if (isMiniMaxH3ContinuumModel(modelId)) {
-      const filename = "minimax_h3_continuum_v38_extend_api.json";
+  if (isMiniMaxH3ContinuumModel(modelId)) {
+      const filename = "minimax_h3_continuum_v38_managed_extend_api.json";
       const candidate = await findWorkflow(deps, filename);
       if (!candidate) return null;
       const source = await readJson(deps.fileSystem, candidate);
       return attachWorkflowMetadata({
         modelId,
-        label: "内置 · MiniMax H3 Continuum V3.8 · Native State 接续",
+        label: "内置 · MiniMax H3 Continuum V3.8 · Run Storage 逐段续写",
         path: candidate,
         supportsEndImage: false,
-        supportsVideoExtension: workflowSupportsH3ContinuumExtension(source)
+        supportsVideoExtension: workflowSupportsH3ContinuumManagedExtension(source)
       });
     }
     if (isMiniMaxH3Fl2vaModel(modelId)) {

@@ -270,6 +270,129 @@ describe("history actions", () => {
     expect(navigateToCreationMode).toHaveBeenCalledWith("video-extension");
   });
 
+  it("maps managed Continuum retry and selected-Take actions into the draft contract", async () => {
+    const version = {
+      id: "version-managed-actions",
+      kind: "original",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "managed.mp4",
+      modelId: "minimax_h3_continuum",
+      width: 1280,
+      height: 720,
+      duration: 5,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: [{
+        filename: "managed.mp4",
+        subfolder: "Videos",
+        type: "output",
+        absolutePath: "C:/history/managed.mp4"
+      }],
+      h3ContinuumSequence: {
+        schemaVersion: 1,
+        sequenceId: "sequence-1",
+        projectId: "project-1",
+        runName: "run-1",
+        packageVersion: "3.8.2",
+        runStorageSchemaVersion: 3,
+        workflowRevision: "managed-v38-api-v1",
+        status: "review-ready",
+        chunkSeconds: 5,
+        fps: 24,
+        width: 1280,
+        height: 720,
+        baseSeed: 42,
+        promptFormat: "Timeline",
+        targetChunks: 1,
+        acceptedChunks: 1,
+        canonicalHead: {
+          revisionId: "revision-1",
+          takeId: "take-1",
+          branchId: "branch-1"
+        },
+        chunks: [{
+          logicalChunkIndex: 1,
+          physicalGroupStart: 1,
+          physicalGroupEnd: 1,
+          prompt: {
+            chunkIndex: 1,
+            userPrompt: "walk",
+            finalPrompt: "Timeline: walk",
+            promptHash: "hash-1",
+            createdAt: "2026-09-03T00:00:00.000Z"
+          },
+          status: "accepted",
+          takeId: "take-1",
+          branchId: "branch-1"
+        }]
+      }
+    } as unknown as AssetVersion;
+    const asset = {
+      mediaKind: "video",
+      id: "asset-managed-actions",
+      title: "managed",
+      defaultVersionId: version.id,
+      versions: [version]
+    } as unknown as HistoryAsset;
+    const state = createDefaultState();
+    state.history = [asset];
+    const selectDraftVideo = vi.fn(async () => undefined);
+    const context = {
+      root: document.createElement("main"),
+      application: {},
+      events: {},
+      assets: {},
+      hostCapabilities: {},
+      enhancePrompt: vi.fn(async () => ""),
+      getState: () => state,
+      getRoute: () => ({ page: "history" as const, creationMode: "image-to-video" as const, historyKind: "video" as const }),
+      getTranslator: () => translator,
+      t: translator.t,
+      requestRender: vi.fn(),
+      navigate: vi.fn(),
+      notify: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as RendererContext;
+    const options = {
+      context,
+      setState: vi.fn(),
+      getSelectedHistoryAssetId: () => asset.id,
+      getSelectedHistoryVersionId: () => version.id,
+      setSelectedHistoryAssetId: vi.fn(),
+      setDialog: vi.fn(),
+      rememberModalFocus: vi.fn(),
+      saveDraftImmediately: vi.fn(async () => undefined),
+      selectDraftVideo,
+      navigateToCreationMode: vi.fn(),
+      requestHistoryDeletion: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as HistoryActionsOptions;
+    const actions = createHistoryActions(options);
+
+    await actions.continueVideoHistory(asset.id, version.id, "Regenerate Current");
+    expect(selectDraftVideo).toHaveBeenLastCalledWith(
+      "C:/history/managed.mp4",
+      expect.objectContaining({
+        h3ContinuumReviewAction: "Regenerate Current",
+        h3ContinuumRerollFromChunk: 0,
+        h3ContinuumTakeAction: "Automatic"
+      }),
+      false
+    );
+
+    await actions.continueVideoHistory(asset.id, version.id, "Continue From Here");
+    expect(selectDraftVideo).toHaveBeenLastCalledWith(
+      "C:/history/managed.mp4",
+      expect.objectContaining({
+        h3ContinuumReviewAction: "Continue / Next",
+        h3ContinuumTakeGroup: 1,
+        h3ContinuumTakeRevisionId: "revision-1",
+        h3ContinuumTakeAction: "Continue From Here"
+      }),
+      false
+    );
+  });
+
   it("selects R2V and preserves Motion Context when a history version has no JointAV artifact", async () => {
     const version = {
       id: "version-motion-context-only",

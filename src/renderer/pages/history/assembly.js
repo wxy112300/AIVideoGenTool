@@ -18,7 +18,8 @@ function createHistoryPageViewModel(options) {
         historyFilter: options.getHistoryFilter(),
         historyFilterPanelOpen: options.isHistoryFilterPanelOpen(),
         selectedHistoryAssetId: options.getSelectedHistoryAssetId(),
-        selectedHistoryVersionId: options.getSelectedHistoryVersionId()
+        selectedHistoryVersionId: options.getSelectedHistoryVersionId(),
+        historyArtifactInspection: options.getHistoryArtifactInspection()
     };
 }
 function createHistoryPageOptions(context) {

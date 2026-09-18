@@ -1,4 +1,12 @@
-import type { AppState, HistoryMigrationProgress, Settings } from "../src/types.js";
+import type {
+  AppState,
+  HistoryMigrationProgress,
+  ImageGenerationQueueTask,
+  NativeAvContinuationData,
+  QueueTask,
+  Settings
+} from "../src/types.js";
+import { extractH3ContinuumManagedReceipt } from "../src/core/h3-continuum-managed-receipt.js";
 import type { ImageInspectionPort } from "./ports/image-inspection.js";
 import type { HistoryFileSystemPort } from "./ports/history-file-system.js";
 import type { StateRepository } from "./ports/state-repository.js";
@@ -31,12 +39,47 @@ import {
   nativeAvArtifactMetadataForTask
 } from "./services/h3-native-av-collector.js";
 import { nativeAvArtifactFileSystem } from "./services/native-av-artifact-file-system.js";
+import { H3ContinuumAssetRegistry } from "./services/h3-continuum-asset-registry.js";
 import { scanEnvironment } from "./services/environment.js";
 import type { QueueRuntimeCapability } from "./ports/queue-runtime.js";
 import type { NativeAvArtifactFileSystemPort } from "./ports/native-av-artifact-file-system.js";
 import type { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state.js";
 import type { StudioEventBus } from "./services/studio-event-bus.js";
 import type { StudioPaths } from "./services/studio-paths.js";
+
+export async function registerSharedNativeAsset(
+  continuation: NativeAvContinuationData,
+  task: Exclude<QueueTask, ImageGenerationQueueTask>,
+  outputDirectory: string,
+  registry: Pick<H3ContinuumAssetRegistry, "registerNativeArtifact">
+): Promise<NativeAvContinuationData> {
+  if (
+    continuation.status !== "available" ||
+    !continuation.artifact ||
+    task.h3AvOutputPolicy !== "shared" ||
+    (task.taskType === "generation" && task.workflowPath.includes("first_pass"))
+  ) {
+    return continuation;
+  }
+  try {
+    const asset = await registry.registerNativeArtifact({
+      outputDirectory,
+      task,
+      artifact: continuation.artifact,
+      createdAt: continuation.artifact.createdAt
+    });
+    return { ...continuation, asset };
+  } catch (error) {
+    if (task.taskType === "upscale") throw error;
+    return {
+      ...continuation,
+      status: "save-failed",
+      reason: error instanceof Error ? error.message : String(error),
+      artifact: undefined,
+      asset: undefined
+    };
+  }
+}
 
 export interface HistoryApplicationServices {
   query: HistoryQueryService;
@@ -253,6 +296,9 @@ export class ApplicationRuntime {
       fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem
     });
     const nativeAvArtifactCollector = new H3NativeAvArtifactCollector(nativeAvArtifactService);
+    const h3ContinuumAssetRegistry = new H3ContinuumAssetRegistry({
+      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem
+    });
     const historyArtifactService = new HistoryArtifactService({
       store: this.deps.store,
       artifactService: nativeAvArtifactService,
@@ -287,7 +333,7 @@ export class ApplicationRuntime {
         comfyOutputService.findExistingH3MotionContextOutput(expectedPath),
       commitH3NativeAvOutput: async (result, serializerNodeId, task, completedAt) => {
         const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
-        return nativeAvArtifactCollector.commitCompletion(
+        const continuation = await nativeAvArtifactCollector.commitCompletion(
           result,
           serializerNodeId,
           nativeAvArtifactMetadataForTask(
@@ -296,6 +342,26 @@ export class ApplicationRuntime {
             completedAt
           )
         );
+        return registerSharedNativeAsset(
+          continuation,
+          task,
+          outputDirectory,
+          h3ContinuumAssetRegistry
+        );
+      },
+      registerH3ContinuumManagedOutput: async (result, receiptNodeId, task, completedAt) => {
+        const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
+        const receipt = extractH3ContinuumManagedReceipt(result, receiptNodeId);
+        const registered = await h3ContinuumAssetRegistry.registerManagedReceipt({
+          outputDirectory,
+          task: task as Extract<import("../src/types.js").QueueTask, { taskType: "extension" }>,
+          receipt,
+          workflowRevision: "managed-v38-api-v1",
+          producerNodeId: "12",
+          producerNodeVersion: receipt.package_version,
+          createdAt: completedAt
+        });
+        return registered;
       },
       releasePromptRuntime: (settings) => promptService.releaseRuntime(settings),
       nativePromptBusy: () => promptService.isWorkerBusy(),
@@ -304,6 +370,7 @@ export class ApplicationRuntime {
       imageInspection: this.deps.imageInspection,
       inspectNativeAvArtifact: (referencePath, outputDirectory) =>
         nativeAvArtifactService.inspectPath(referencePath, outputDirectory),
+      inspectExtensionSource: (draft) => historyArtifactService.inspectExtensionSource(draft),
       errorMeta: this.deps.errorMeta,
       taskStageStartedAt: new Map()
     });

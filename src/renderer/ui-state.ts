@@ -1,6 +1,7 @@
 import type {
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
+  NativeAvArtifactInspection,
   Settings,
   WindowCloseRequest
 } from "../types";
@@ -19,6 +20,10 @@ export interface RendererUiState {
   flashMessageTimer: number | undefined;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
+  historyArtifactInspection: {
+    key: string;
+    value: NativeAvArtifactInspection;
+  } | null;
   historyFilter: HistoryFilterState;
   historyFilterPanelOpen: boolean;
   historyForwardTarget: { assetId: string; versionId: string } | null;
@@ -54,6 +59,7 @@ export function createRendererUiState(): RendererUiState {
     flashMessageTimer: undefined,
     selectedHistoryAssetId: "",
     selectedHistoryVersionId: "",
+    historyArtifactInspection: null,
     historyFilter: { ...defaultHistoryFilter },
     historyFilterPanelOpen: false,
     historyForwardTarget: null,

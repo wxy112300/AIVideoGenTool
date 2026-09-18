@@ -27,7 +27,6 @@ const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:(?:continuous|unbrok
 const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
 const editorialCutInSingleShotPattern = /(?:\b(?:the\s+)?(?:camera|shot|scene)\s+(?:hard\s+)?(?:cuts?|switches?|transitions?|changes?|dissolves?|fades?|wipes?)(?:\s+away)?\s+to\b|\b(?:hard|jump|smash)\s+cuts?\s+to\b|\bcuts?\s+to\b)/iu;
 const editorialResetInSingleShotPattern = /(?:\b(?:a|an)\s+new\s+(?:camera\s+)?angle\s+(?:reveals?|shows?|frames?)\b|\b(?:the\s+)?view\s+(?:suddenly\s+)?(?:shifts?|changes?)\s+to\b|\b(?:the\s+)?camera\s+is\s+(?:now|suddenly)\s+(?:positioned|placed|located)\b|\bfrom\s+another\s+(?:camera\s+)?angle\b|(?:新机位|新角度|另一个角度|画面突然切换|视角突然切换|镜头突然来到))/iu;
-const nativeContinuationLockPattern = /\buninterrupted continuation of the currently running shot\b/iu;
 
 /**
  * Decide whether a rewriter should preserve one shot or may create a
@@ -64,8 +63,21 @@ export function h3PromptPriorityInstruction(
 export function h3ExtensionContinuityInstruction(
   mode: H3PromptMode,
   shotPolicy: H3ShotPolicy,
-  nativeStateContinuation = false
+  nativeStateContinuation = false,
+  previousChunk?: number
 ): string {
+  if (nativeStateContinuation) {
+    return [
+      "CONTINUUM CHUNK AUTHORING CONTRACT (official Skill: continuity and continuum-contract):",
+      "Return only the current chunk body in the T2VA field shape. The application owns standalone [Chunk N] routing headers and the frozen shared preamble. Never return earlier bodies, routing headers, a List separator, or a new global preamble. [Shot N] is cinematic syntax inside the body, not a chunk selector.",
+      `Begin with ${previousChunk && previousChunk > 0 ? `Continuation of Chunk ${previousChunk}.` : "Continuation of the preceding segment."} Follow it with the concrete inherited pose, contact, momentum, camera motion and sound that matter, then the user's requested next action and an inheritable end state.`,
+      "Preserve exact user actions, dialogue, timing and requested camera changes. Carry stable identity and scene facts once; do not drown the action in repetitive negative rules or re-amplified appearance adjectives. The observed boundary is visual evidence, not a new <Picture 1>, <Video 1>, or alignment instruction. Do not claim an unseen ending was observed.",
+      shotPolicy === "allow-multiple"
+        ? "Begin continuously; include later editorial changes only where explicitly requested."
+        : "Keep one connected [Shot 1]; reach the requested new framing through physical camera movement.",
+      "Prompt clarity cannot guarantee runtime reuse or prevent cumulative visual drift."
+    ].join("\n");
+  }
   return [
     "EXTENSION CONTINUITY CONTRACT (highest priority):",
     nativeStateContinuation
@@ -76,7 +88,7 @@ export function h3ExtensionContinuityInstruction(
     "Keep each established subject distinct and carry forward its own identity cues, clothing, role, action ownership, relative scale, pose, contact, and screen direction. Preserve the environment, lighting, spatial layout, framing, camera height, viewing direction, focal behavior, physical camera velocity, and audio state established at the boundary, then apply the user's requested next action.",
     shotPolicy === "allow-multiple"
       ? "Begin continuously from that boundary; use any later editorial change only where the user explicitly requested it."
-      : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state."
+      : "Continue from that boundary inside the same connected take, using physical action and camera movement to reach the new ending state. In the final integrated_multimodal_description, begin the timeline with exactly [Shot 1] followed by an explicit statement that this is one continuous unbroken take continuing directly from the previous segment's running shot, kept as a single shot from the first generated frame to the last with no editorial cut. This sentence is required output, not an internal note."
   ].join("\n");
 }
 
@@ -668,23 +680,18 @@ function collapseUnexpectedH3Shots(
   return `${promptText.slice(0, contentStart)}${cameraCutReplacements}${promptText.slice(contentEnd)}`.trim();
 }
 
-function ensureH3NativeContinuationLock(promptText: string, mode: H3PromptMode): string {
-  if (mode !== "T2VA" || nativeContinuationLockPattern.test(promptText)) return promptText;
+function ensureH3NativeContinuationLock(promptText: string, mode: H3PromptMode, previousChunk?: number): string {
+  if (mode !== "T2VA") return promptText;
   const sectionPattern = /^[*# \t]*integrated_multimodal_description[ \t]*:/imu;
   const sectionMatch = sectionPattern.exec(promptText);
-  if (!sectionMatch) return promptText;
-  const contentStart = sectionMatch.index + sectionMatch[0].length;
-  const remaining = promptText.slice(contentStart);
-  const nextSection = /\n\s*(?:overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
-  const contentEnd = nextSection?.index === undefined
-    ? promptText.length
-    : contentStart + nextSection.index;
-  const timeline = promptText
-    .slice(contentStart, contentEnd)
-    .replace(/^\s*\[Shot\s+1\]\s*/iu, "")
-    .trim();
-  const lock = "[Shot 1] This is the uninterrupted continuation of the currently running shot. At the first generated moment, each established subject retains its own distinct identity, role, pose, any established object contact, and screen direction from the continuation boundary. The camera continues from the existing framing, height, viewing direction, focal behavior, and physical velocity along the same trajectory; all reframing comes from this ongoing physical camera movement within the same take, with no editorial cut.";
-  return `${promptText.slice(0, contentStart)} ${lock}${timeline ? ` ${timeline}` : ""}${promptText.slice(contentEnd)}`.trim();
+  if (!sectionMatch) {
+    throw new Error("Continuum 提示词增强未返回 integrated_multimodal_description 主时间线，无法确认单镜头接续；结果没有保存，原提示词已保持不变。");
+  }
+  const opener = previousChunk && previousChunk > 0
+    ? `Continuation of Chunk ${previousChunk}.`
+    : "Continuation of the preceding segment.";
+  const body = promptText.replace(/^\s*Continuation of (?:Chunk \d+|the preceding segment)\.\s*/iu, "");
+  return `${opener}\n${body}`;
 }
 
 function repairH3PromptControlViolations(
@@ -739,8 +746,12 @@ export function normalizeH3PromptOutput(
   sourcePrompt = "",
   scaleContext = "",
   omitAlignment = false,
-  nativeStateContinuation = false
+  nativeStateContinuation = false,
+  previousChunk?: number
 ): string {
+  if (nativeStateContinuation && /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(promptText)) {
+    throw new Error("Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。");
+  }
   const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(
     stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)),
     mode
@@ -758,10 +769,8 @@ export function normalizeH3PromptOutput(
     sourcePrompt,
     scaleContext
   );
-  const nativeSingleShotContinuation = nativeStateContinuation &&
-    h3ShotPolicyForPrompt([sourcePrompt, scaleContext].filter(Boolean).join("\n")) !== "allow-multiple";
-  const continuationSafeBody = nativeSingleShotContinuation
-    ? ensureH3NativeContinuationLock(shotSafeBody, mode)
+  const continuationSafeBody = nativeStateContinuation
+    ? ensureH3NativeContinuationLock(shotSafeBody, mode, previousChunk)
     : shotSafeBody;
   const auditedBody = repairH3PromptControlViolations(
     continuationSafeBody,

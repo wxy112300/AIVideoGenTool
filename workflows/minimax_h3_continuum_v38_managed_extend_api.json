@@ -1,0 +1,219 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{H3_DIFFUSION_MODEL}}",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{H3_TEXT_ENCODER}}",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{H3_VIDEO_VAE}}"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "PathchSageAttentionKJ",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "sage_attention": "sageattn_qk_int8_pv_fp16_cuda",
+      "allow_compile": false
+    }
+  },
+  "6": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    }
+  },
+  "7": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1
+    }
+  },
+  "8": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{H3_BOUNDARY_FRAME}}"
+    }
+  },
+  "12": {
+    "class_type": "H3ContinuumSamplerV38",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "clip": [
+        "2",
+        0
+      ],
+      "video_vae": [
+        "3",
+        0
+      ],
+      "sampler": [
+        "6",
+        0
+      ],
+      "sigmas": [
+        "7",
+        0
+      ],
+      "first_frame": [
+        "8",
+        0
+      ],
+      "sequence_prompt": "{{PROMPT}}",
+      "prompt_mode": "Timeline",
+      "chunks": "{{H3_CONTINUUM_CHUNKS}}",
+      "chunk_seconds": "{{H3_CONTINUUM_CHUNK_SECONDS}}",
+      "aspect": "Auto from First Image",
+      "preset": "Draft — 0.30 MP",
+      "custom_mp": 0.3,
+      "continuity": "Balanced — 22 frames",
+      "base_seed": "{{SEED}}",
+      "control_after_generate": "fixed",
+      "audio_continuity": true,
+      "diagnostics": "Detailed Report",
+      "reroll_from_chunk": "{{H3_CONTINUUM_REROLL_FROM}}",
+      "reroll_nonce": 0,
+      "strict_compatibility": true,
+      "debug": false,
+      "show_preview": true,
+      "run_storage": "Save + Auto Resume",
+      "run_name": "{{H3_CONTINUUM_RUN_NAME}}",
+      "reference_size": "Match Output",
+      "project_id": "{{H3_CONTINUUM_PROJECT_ID}}",
+      "video_reference_size": "Efficient - 0.4 MP",
+      "continuation_backend": "Standard",
+      "generation_mode": "Review Each Chunk",
+      "review_action": "{{H3_CONTINUUM_REVIEW_ACTION}}",
+      "take_group": "{{H3_CONTINUUM_TAKE_GROUP}}",
+      "take_revision_id": "{{H3_CONTINUUM_TAKE_REVISION_ID}}",
+      "take_action": "{{H3_CONTINUUM_TAKE_ACTION}}",
+      "size_source": "Manual",
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}"
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "12",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": [
+        "12",
+        1
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "H3ContinuumAssembleSeamV35",
+    "inputs": {
+      "images": [
+        "13",
+        0
+      ],
+      "audio": [
+        "14",
+        0
+      ],
+      "assembly_plan": [
+        "12",
+        2
+      ],
+      "exact_total_duration": true,
+      "audio_seam": "Auto",
+      "video_seam": "Auto",
+      "buffer_backend": "Auto",
+      "diagnostics": "Basic"
+    }
+  },
+  "16": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "15",
+        0
+      ],
+      "audio": [
+        "15",
+        1
+      ],
+      "fps": 24,
+      "bit_depth": 8
+    }
+  },
+  "17": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "16",
+        0
+      ],
+      "filename_prefix": "{{OUTPUT_FILENAME}}",
+      "format": "mp4",
+      "codec": "h264"
+    }
+  },
+  "24": {
+    "class_type": "LocalVideoStudioH3ContinuumManagedReceipt",
+    "inputs": {
+      "status": [
+        "12",
+        3
+      ],
+      "assembly_plan": [
+        "12",
+        2
+      ],
+      "run_name": "{{H3_CONTINUUM_RUN_NAME}}",
+      "project_id": "{{H3_CONTINUUM_PROJECT_ID}}",
+      "requested_chunks": "{{H3_CONTINUUM_CHUNKS}}",
+      "generation_mode": "Review Each Chunk",
+      "review_action": "{{H3_CONTINUUM_REVIEW_ACTION}}",
+      "spectrum_mode": "{{H3_SPECTRUM_MODE}}",
+      "spectrum_model_aware_mode": "{{H3_SPECTRUM_MODEL_AWARE_MODE}}"
+    }
+  }
+}

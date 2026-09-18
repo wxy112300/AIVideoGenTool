@@ -36,7 +36,6 @@ import {
 import type { HistoryLayout } from "./layout-controller";
 
 export type { HistoryPlaybackSnapshot } from "./page-controller";
-
 export interface HistoryWorkspaceCoordinatorDependencies {
   context: RendererContext;
   ui: RendererUiState;
@@ -203,12 +202,30 @@ export function createHistoryWorkspaceCoordinator(
     isHistoryFilterPanelOpen: () => deps.ui.historyFilterPanelOpen,
     getSelectedHistoryAssetId: () => deps.ui.selectedHistoryAssetId,
     getSelectedHistoryVersionId: () => deps.ui.selectedHistoryVersionId,
+    getHistoryArtifactInspection: () => {
+      const key = `${deps.ui.selectedHistoryAssetId}:${deps.ui.selectedHistoryVersionId}`;
+      return deps.ui.historyArtifactInspection?.key === key
+        ? deps.ui.historyArtifactInspection.value
+        : undefined;
+    },
     setSelectedHistoryVersionId: (versionId) => {
       deps.ui.selectedHistoryVersionId = versionId;
     },
     setHistoryKind: deps.setHistoryKind,
     navigateToHistory: () => deps.setPage("history")
   });
+
+  function updateHistoryArtifactSummaryInPlace(): boolean {
+    const currentSummary = document.querySelector<HTMLElement>("[data-history-av-summary]");
+    if (!currentSummary) return false;
+    const nextRoot = document.createElement("div");
+    nextRoot.innerHTML = historyAssembly.renderDetail(deps.context, "video");
+    const nextSummary = nextRoot.querySelector<HTMLElement>("[data-history-av-summary]");
+    if (!nextSummary) return false;
+    currentSummary.replaceWith(nextSummary);
+    renderIcons(nextSummary);
+    return true;
+  }
 
   const historyActions = createHistoryActions({
     context: deps.context,
@@ -253,6 +270,24 @@ export function createHistoryWorkspaceCoordinator(
     void target.requestFullscreen().catch(() => undefined);
   }
 
+  function requestHistoryArtifactInspection(assetId: string, versionId: string): void {
+    const key = `${assetId}:${versionId}`;
+    deps.ui.historyArtifactInspection = null;
+    const inspectArtifact = deps.context.application.inspectH3NativeAvArtifact;
+    if (typeof inspectArtifact !== "function") return;
+    void inspectArtifact(assetId, versionId)
+      .then((value) => {
+        if (
+          deps.ui.selectedHistoryAssetId !== assetId ||
+          deps.ui.selectedHistoryVersionId !== versionId ||
+          deps.getPage() !== "history-detail"
+        ) return;
+        deps.ui.historyArtifactInspection = { key, value };
+        if (!updateHistoryArtifactSummaryInPlace()) deps.render();
+      })
+      .catch(() => undefined);
+  }
+
   const historyNavigationOptions = (): HistoryNavigationControllerOptions => ({
     setHistoryKind: (kind) => {
       deps.setHistoryKind(kind);
@@ -276,6 +311,9 @@ export function createHistoryWorkspaceCoordinator(
         deps.ui.historyForwardTarget = { assetId: deps.ui.selectedHistoryAssetId, versionId };
       }
       deps.render();
+      if (deps.ui.selectedHistoryAssetId) {
+        requestHistoryArtifactInspection(deps.ui.selectedHistoryAssetId, versionId);
+      }
     },
     selectImageHistoryVersion: (versionId) => {
       if (!deps.ui.selectedHistoryAssetId) return;
@@ -435,12 +473,15 @@ export function createHistoryWorkspaceCoordinator(
     deps.ui.historyForwardTarget = asset
       ? { assetId, versionId: deps.ui.selectedHistoryVersionId }
       : null;
+    deps.ui.historyArtifactInspection = null;
     deps.setPage("history-detail");
     if (preserveFullscreen && updateHistoryDetailInPlace()) {
+      if (asset) requestHistoryArtifactInspection(assetId, deps.ui.selectedHistoryVersionId);
       resetHistoryDetailScroll("history-detail");
       return;
     }
     deps.render();
+    if (asset) requestHistoryArtifactInspection(assetId, deps.ui.selectedHistoryVersionId);
     if (preserveFullscreen) restoreHistoryPlayerFullscreen();
     resetHistoryDetailScroll("history-detail");
   }

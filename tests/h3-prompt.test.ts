@@ -298,9 +298,9 @@ describe("MiniMax H3 prompt templates", () => {
       true
     );
 
-    expect(normalized).toContain("[Shot 1] This is the uninterrupted continuation of the currently running shot.");
-    expect(normalized).toContain("physical velocity along the same trajectory");
-    expect(normalized).toContain("with no editorial cut");
+    expect(normalized).toMatch(/^Continuation of the preceding segment\./u);
+    expect(normalized).toContain("subject walking onward");
+    expect(normalized).not.toContain("At the first generated moment, each established subject");
     expect(normalized).not.toMatch(/new (?:camera )?angle|view suddenly shifts/iu);
     expect(normalized).not.toContain("For the target video, at 0.00 seconds");
   });
@@ -320,7 +320,46 @@ describe("MiniMax H3 prompt templates", () => {
     );
 
     expect(normalized).toContain("[Shot 2]");
-    expect(normalized).not.toContain("uninterrupted continuation of the currently running shot");
+    expect(normalized).not.toContain("one continuous unbroken take continues directly");
+  });
+
+  it("adds the numbered Skill handoff without rewriting the authored body", () => {
+    const output = [
+      "integrated_multimodal_description: [Shot 1] This is the uninterrupted continuation of the currently running shot. The subject keeps walking.",
+      "overall_soundscape: Footsteps continue.",
+      "non_diegetic_music: N/A"
+    ].join("\n\n");
+
+    const normalized = normalizeH3PromptOutput(
+      output,
+      "T2VA",
+      5,
+      [],
+      [],
+      "The subject keeps walking.",
+      "",
+      true,
+      true,
+      2
+    );
+
+    expect(normalized).toBe(`Continuation of Chunk 2.\n${output}`);
+    expect(() => normalizeH3PromptOutput("[Chunk 1]\nold\n[Chunk 2]\nnew", "T2VA", 5, [], [], "", "", true, true))
+      .toThrow("当前 Chunk body");
+  });
+
+  it("rejects a native Continuum result without the official main timeline", () => {
+    expect(() => normalizeH3PromptOutput(
+      "The subject continues walking in the same scene.",
+      "T2VA",
+      5,
+      [],
+      [],
+      "The subject continues walking.",
+      "",
+      true,
+      true
+    )).toThrow("无法确认单镜头接续");
   });
 
   it("removes tagged and untagged reasoning before the first H3 output field", () => {

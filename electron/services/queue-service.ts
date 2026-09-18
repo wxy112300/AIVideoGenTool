@@ -28,7 +28,7 @@ export interface QueueServiceDependencies
       "worker" | "sideEffects" | "setQueueLifecycle" | "updateTask" | "updateTaskProgress" | keyof QueueRuntimeCapability
     >,
     Pick<QueueControlServiceDependencies, "nativePromptBusy">,
-    Pick<QueueEnqueueServiceDependencies, "effectiveImageInputLibraryDirectory" | "resolveTaskOutputDirectory" | "imageInspection" | "inspectNativeAvArtifact"> {
+    Pick<QueueEnqueueServiceDependencies, "effectiveImageInputLibraryDirectory" | "resolveTaskOutputDirectory" | "imageInspection" | "inspectNativeAvArtifact" | "inspectExtensionSource"> {
   queueRuntime: QueueRuntimeCapability;
   sendProgress(update: QueueTaskProgressUpdate): void;
 }
@@ -136,7 +136,8 @@ export class QueueService {
       effectiveImageInputLibraryDirectory: deps.effectiveImageInputLibraryDirectory,
       resolveTaskOutputDirectory: deps.resolveTaskOutputDirectory,
       imageInspection: deps.imageInspection,
-      inspectNativeAvArtifact: deps.inspectNativeAvArtifact
+      inspectNativeAvArtifact: deps.inspectNativeAvArtifact,
+      inspectExtensionSource: deps.inspectExtensionSource
     });
   }
 

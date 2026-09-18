@@ -22,8 +22,12 @@ import {
   extensionSafetyForTask,
   frameInterpolationMultiplier,
   generationFrameCountForTask,
+  h3ContinuumManagedWorkflowPathForInput,
+  h3ContinuumModeForSource,
+  h3ContinuumWorkflowPathForInput,
   isMiniMaxH3BoundaryExtensionModel,
   isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumManagedWorkflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -116,7 +120,7 @@ export function interpolationEstimate(draft: Draft): {
   return {
     multiplier: frameInterpolationMultiplier(draft),
     generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
-      ? draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
+      ? isMiniMaxH3ContinuumManagedWorkflow(draft.workflowPath) || draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
         ? continuumV38SampledFrameCountForSeconds(draft.duration)
         : continuumSampledFrameCountForSeconds(draft.duration)
       : generationFrameCountForTask(draft),
@@ -130,6 +134,11 @@ export function extensionSafetyForDraft(draft: Draft, settings: Settings) {
     isMiniMaxH3ContinuumModel(draft.modelId);
   return extensionSafetyForTask({
     ...draft,
+    workflowPath: isMiniMaxH3ContinuumModel(draft.modelId)
+      ? h3ContinuumModeForSource(draft) === "managed"
+        ? h3ContinuumManagedWorkflowPathForInput(draft.workflowPath)
+        : h3ContinuumWorkflowPathForInput(draft.workflowPath)
+      : draft.workflowPath,
     resolution: nativeH3
       ? draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution
       : settings.ltxExtensionResolution,

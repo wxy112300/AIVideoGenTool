@@ -179,7 +179,7 @@ describe("create enqueue preflight checks", () => {
     const draft = createDefaultDraft();
     expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "all" }, false, true)).toContain(1080);
     expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "joint-av" }, false, true)).toContain(1080);
-    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "motion-context" }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "motion-context" }, false, true)).toContain(1080);
     expect(videoResolutionOptionsForDraft({ ...draft, h3LatentSaveMode: "none" }, false, true)).not.toContain(1080);
   });
 
@@ -229,5 +229,14 @@ describe("create enqueue preflight checks", () => {
       isContinuum: true,
       continuumArtifactReady: true
     })).toBe("");
+  });
+
+  it("blocks Continuum before GPU work when the environment preflight is known to fail", () => {
+    expect(videoCheck({
+      extending: true,
+      isContinuum: true,
+      continuumArtifactReady: true,
+      continuumPreflightBlockReason: "Continuum receipt 节点未加载"
+    })).toBe("Continuum receipt 节点未加载");
   });
 });

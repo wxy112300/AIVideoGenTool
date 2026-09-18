@@ -47,6 +47,19 @@ export const nativeAvArtifactFileSystem: NativeAvArtifactFileSystemPort = {
     await fs.mkdir(directory, { recursive: true });
   },
 
+  async listDirectory(directory) {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      isFile: () => entry.isFile(),
+      isDirectory: () => entry.isDirectory()
+    }));
+  },
+
+  hardlink(source, target) {
+    return fs.link(source, target);
+  },
+
   copyFile(source, target) {
     return fs.copyFile(source, target);
   },

@@ -14,6 +14,7 @@ import type {
   PromptEnhanceMode,
   Settings,
   NativeAvContinuationArtifact,
+  VideoExtensionSourceInspection,
   VideoLoraSelection,
   WorkflowCapabilities
 } from "../../../types";
@@ -37,6 +38,9 @@ import { nextImagePictureNumber, normalizeImageEditDraft } from "../../../core/i
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
 import { PromptEditHistory, type PromptHistoryScope, type PromptHistorySnapshot } from "../../../core/prompt-edit-history";
 import {
+  isMiniMaxH3ContinuumModel,
+  h3ContinuumModeForSource,
+  h3ContinuumWorkflowPathForInput,
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds
 } from "../../../core/workflow";
@@ -110,6 +114,13 @@ export interface CreateWorkspaceCoordinator {
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
+      h3ContinuumMode?: Draft["h3ContinuumMode"];
+      h3ContinuumSequence?: Draft["h3ContinuumSequence"];
+      h3ContinuumReviewAction?: Draft["h3ContinuumReviewAction"];
+      h3ContinuumRerollFromChunk?: Draft["h3ContinuumRerollFromChunk"];
+      h3ContinuumTakeGroup?: Draft["h3ContinuumTakeGroup"];
+      h3ContinuumTakeRevisionId?: Draft["h3ContinuumTakeRevisionId"];
+      h3ContinuumTakeAction?: Draft["h3ContinuumTakeAction"];
       resolution?: number;
       resetSeed?: boolean;
       resetPrompt?: boolean;
@@ -155,6 +166,8 @@ export function createCreateWorkspaceCoordinator(
   let imageDraftSaveInFlight = 0;
   let imageDraftDirty = false;
   let enqueueBusy = deps.getEnqueueBusy();
+  let extensionInspectionKey = "";
+  let extensionSourceInspection: VideoExtensionSourceInspection | undefined;
 
   const getState = () => deps.getState();
   const uiText = (key: string, params?: import("../../../core/i18n").TranslationParams, fallback?: string): string =>
@@ -263,6 +276,36 @@ export function createCreateWorkspaceCoordinator(
       ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
   }
 
+  function extensionSourceKey(): string {
+    const { draft, settings } = getState();
+    if (draft.inputMode !== "video" || !isMiniMaxH3ContinuumModel(draft.modelId) || !draft.sourceVideoPath) return "";
+    return JSON.stringify([
+      draft.modelId, draft.sourceVideoPath, draft.sourceAssetId, draft.sourceVersionId,
+      draft.sourceWidth, draft.sourceHeight, draft.h3ContinuumMode, draft.workflowPath,
+      draft.h3ContinuumArtifactPath, draft.h3ContinuumArtifact, draft.h3ContinuumSequence,
+      draft.h3ContinuumTakeAction, draft.h3ContinuumTakeGroup, draft.h3ContinuumTakeRevisionId,
+      settings.outputDirectory, settings.comfyUrl
+    ]);
+  }
+
+  function refreshExtensionSource(): void {
+    const key = extensionSourceKey();
+    if (key === extensionInspectionKey) return;
+    extensionInspectionKey = key;
+    extensionSourceInspection = undefined;
+    if (!key) return;
+    const draft = structuredClone(getState().draft);
+    void deps.context.application.inspectVideoExtensionSource(draft).catch((error: unknown) => ({
+      route: h3ContinuumModeForSource(draft),
+      status: "invalid" as const,
+      reason: error instanceof Error ? error.message : String(error)
+    })).then((inspection) => {
+      if (extensionInspectionKey !== key || extensionSourceKey() !== key) return;
+      extensionSourceInspection = inspection;
+      syncVideoEnqueueUi();
+    });
+  }
+
   function createViewModelDependencies(): CreateViewModelDependencies {
     const origin = deps.getCreationMode();
     const modeUiState = activeCreationModeUiState();
@@ -283,6 +326,7 @@ export function createCreateWorkspaceCoordinator(
       promptRuntimeLoaded: deps.getPromptRuntimeLoaded(),
       promptProgress: ownsActivePrompt ? deps.getPromptProgress() : null,
       enqueueBusy,
+      extensionSourceInspection: extensionSourceKey() === extensionInspectionKey ? extensionSourceInspection : undefined,
       promptRuntimeControlTitle: deps.promptRuntimeControlTitle,
       promptRuntimeControlIcon: deps.promptRuntimeControlIcon,
       promptRuntimeView
@@ -673,6 +717,13 @@ export function createCreateWorkspaceCoordinator(
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
+      h3ContinuumMode?: Draft["h3ContinuumMode"];
+      h3ContinuumSequence?: Draft["h3ContinuumSequence"];
+      h3ContinuumReviewAction?: Draft["h3ContinuumReviewAction"];
+      h3ContinuumRerollFromChunk?: Draft["h3ContinuumRerollFromChunk"];
+      h3ContinuumTakeGroup?: Draft["h3ContinuumTakeGroup"];
+      h3ContinuumTakeRevisionId?: Draft["h3ContinuumTakeRevisionId"];
+      h3ContinuumTakeAction?: Draft["h3ContinuumTakeAction"];
       resolution?: number;
       resetSeed?: boolean;
       resetPrompt?: boolean;
@@ -684,6 +735,7 @@ export function createCreateWorkspaceCoordinator(
     // model choice in older records. Infer the model from the input contract so
     // the visible Extend panel and the eventual queue task stay aligned.
     const sourceModelId = source?.modelId ?? (
+      source?.h3ContinuumMode === "managed" || source?.h3ContinuumSequence ||
       source?.h3ContinuumArtifact || source?.h3ContinuumArtifactPath
         ? "minimax_h3_continuum"
         : source?.h3ContextLatentPath
@@ -730,6 +782,15 @@ export function createCreateWorkspaceCoordinator(
       h3ContinuumArtifact: source?.h3ContinuumArtifact
         ? structuredClone(source.h3ContinuumArtifact)
         : undefined,
+      h3ContinuumMode: source?.h3ContinuumMode,
+      h3ContinuumSequence: source?.h3ContinuumSequence
+        ? structuredClone(source.h3ContinuumSequence)
+        : undefined,
+      h3ContinuumReviewAction: source?.h3ContinuumReviewAction,
+      h3ContinuumRerollFromChunk: source?.h3ContinuumRerollFromChunk,
+      h3ContinuumTakeGroup: source?.h3ContinuumTakeGroup,
+      h3ContinuumTakeRevisionId: source?.h3ContinuumTakeRevisionId,
+      h3ContinuumTakeAction: source?.h3ContinuumTakeAction,
       sourceWidth: source?.width ?? 0,
       sourceHeight: source?.height ?? 0,
       videoLoras: sourceModelId ? [] : state.draft.videoLoras,
@@ -743,7 +804,9 @@ export function createCreateWorkspaceCoordinator(
             extensionPromptVersions: [{
               id: crypto.randomUUID(),
               label: state.draft.extensionPromptVersions?.[0]?.label ?? state.draft.promptVersions[0]?.label ?? "原始",
-              text: "",
+              text: source.h3ContinuumReviewAction === "Regenerate Current"
+                ? source.h3ContinuumSequence?.chunks.at(-1)?.prompt.finalPrompt ?? ""
+                : "",
               createdAt: new Date().toISOString()
             }],
             extensionActivePromptVersion: 0
@@ -762,6 +825,16 @@ export function createCreateWorkspaceCoordinator(
         : {}),
       ...(source?.resetSeed ? { seed: null } : {})
     };
+    if (isMiniMaxH3ContinuumModel(draft.modelId)) {
+      draft.h3ContinuumMode = h3ContinuumModeForSource(draft);
+      if (draft.h3ContinuumMode === "bootstrap") {
+        const previousPath = draft.workflowPath;
+        draft.workflowPath = h3ContinuumWorkflowPathForInput(previousPath);
+        if (deps.workflowCapabilities[previousPath]) {
+          deps.workflowCapabilities[draft.workflowPath] = deps.workflowCapabilities[previousPath]!;
+        }
+      }
+    }
     await saveDraftImmediately(draft);
     if (renderAfterSave) deps.render();
   }
@@ -784,9 +857,18 @@ export function createCreateWorkspaceCoordinator(
   }
 
   function syncVideoEnqueueUi(): void {
+    refreshExtensionSource();
     const button = document.querySelector<HTMLButtonElement>("#enqueue");
     if (!button) return;
     const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
+    const status = document.querySelector<HTMLElement>("[data-continuum-source-status]");
+    if (status) {
+      status.dataset.tone = viewModel.continuumStatusTone;
+      const label = status.querySelector("strong");
+      const detail = status.querySelector("span");
+      if (label) label.textContent = viewModel.continuumStatusLabel;
+      if (detail) detail.textContent = viewModel.continuumStatusDetail;
+    }
     const reason = viewModel.enqueueBlockReason;
     button.dataset.enqueueBlockReason = reason;
     button.disabled = Boolean(reason) || enqueueBusy;
@@ -821,6 +903,7 @@ export function createCreateWorkspaceCoordinator(
   }
 
   function bind(): void {
+    refreshExtensionSource();
     deps.addPageCleanup(mountCreateAssembly(deps.context, {
       clipboard: {
         addImagePicture,

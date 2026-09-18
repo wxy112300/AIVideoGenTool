@@ -5,7 +5,7 @@ import { icon } from "./icons";
 import { createTranslator } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 export function fieldLabelWithTip(label, tip) {
-    return `<span class="field-label-row"><span>${escapeHtml(label)}</span><span class="field-info" tabindex="0" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" role="tooltip">${escapeHtml(tip)}</span></span></span>`;
+    return `<span class="field-label-row"><span>${escapeHtml(label)}</span><span class="field-info" data-tooltip-toggle tabindex="0" aria-expanded="false" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" role="tooltip">${escapeHtml(tip)}</span></span></span>`;
 }
 export function videoLoraInfoButton(lora, t = createTranslator("zh-CN").t, locale = "zh-CN") {
     const definition = videoLoraDefinition(lora.id);

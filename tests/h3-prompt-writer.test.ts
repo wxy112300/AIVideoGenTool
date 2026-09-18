@@ -15,6 +15,15 @@ import { managedPromptModelDefinitions } from "../src/core/prompt-models.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
+function detailedWriterPrompt(wordCount: number): string {
+  const vocabulary = [
+    "subject", "prepares", "movement", "camera", "tracks", "physical", "contact", "reaction",
+    "momentum", "settles", "environment", "sound", "continues", "toward", "framing", "position"
+  ];
+  const timeline = Array.from({ length: wordCount }, (_, index) => vocabulary[index % vocabulary.length]).join(" ");
+  return `integrated_multimodal_description: [Shot 1] ${timeline}\noverall_soundscape: Natural synchronized location sound.\nnon_diegetic_music: N/A`;
+}
+
 describe("ComfyUI H3 Prompt Writer adapter", () => {
   it("turns a native 0xC000001D diagnostic into an actionable repair message", () => {
     expect(() => validateH3PromptWriterRuntime({
@@ -250,13 +259,14 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     });
   });
 
-  it("turns an empty reference-auto request into a creative brief for the writer", async () => {
+  it("uses the detailed token budget and repairs an under-length reference-auto result once", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-auto-writer-"));
     const image = path.join(directory, "reference.png");
     await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     const settings = createDefaultState().settings;
     settings.promptModelId = "google/gemma-4-12b-q5";
     let generateBody: Record<string, unknown> = {};
+    let refineBody: Record<string, unknown> = {};
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.2.0" });
@@ -271,8 +281,23 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       if (url.endsWith("/h3studio/media/upload")) return Response.json({ session_id: "session", assets: [{ id: "asset" }] }, { status: 201 });
       if (url.endsWith("/h3studio/generate")) {
         generateBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ prompt: "integrated_multimodal_description: [Shot 1] The subject moves.\noverall_soundscape: N/A\nnon_diegetic_music: N/A" });
+        return Response.json({
+          prompt: detailedWriterPrompt(372),
+          output_tokens: 1180,
+          max_output_tokens: 2880,
+          primary_finish_reason: "stop"
+        });
       }
+      if (url.endsWith("/h3studio/refine")) {
+        refineBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({
+          prompt: detailedWriterPrompt(500),
+          output_tokens: 1640,
+          max_output_tokens: 2880,
+          primary_finish_reason: "stop"
+        });
+      }
+      if (url.endsWith("/h3studio/unload")) return Response.json({ unload_requested: true });
       if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -288,7 +313,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         autoPromptVariationId: "variation-13",
         h3PromptMode: "I2VA",
         h3PromptPreset: "detailed-cinematic",
-        h3DurationSeconds: 5,
+        h3DurationSeconds: 15,
         referenceMediaPaths: [image]
       }, settings, new AbortController().signal)).resolves.toContain("integrated_multimodal_description");
 
@@ -300,6 +325,17 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       expect(String(generateBody.creative_brief)).toContain("DETAILED CINEMATIC EXPANSION GATE");
       expect(String(generateBody.system_prompt_override)).toContain("detailed cinematic prompt writer");
       expect(generateBody.mode).toBe("I2VA");
+      expect(generateBody.generation_budget).toBe(2880);
+      expect(generateBody.unload_after).toBe(false);
+      expect(refineBody).toMatchObject({
+        mode: "I2VA",
+        generation_budget: 2880,
+        unload_after: true
+      });
+      expect(String(refineBody.current_prompt)).toContain("integrated_multimodal_description:");
+      expect(String(refineBody.instruction)).toContain("never fewer than 450 words");
+      expect(String(refineBody.instruction)).toContain("approximately 900 grounded words");
+      expect(String(refineBody.system_prompt_override)).toContain("Preserve every concrete user instruction");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -368,9 +404,10 @@ ${JSON.stringify({
 
       expect(uploadMode).toBe("I2VA");
       expect(generateBody.mode).toBe("I2VA");
-      expect(String(generateBody.creative_brief)).toContain("exact latent audio-video tail");
+      expect(String(generateBody.creative_brief)).toContain("CONTINUUM CHUNK AUTHORING CONTRACT (official Skill");
       expect(String(generateBody.creative_brief)).toContain("target/output mode is T2VA");
       expect(result).toContain("integrated_multimodal_description:");
+      expect(result).toMatch(/^Continuation of the preceding segment\./u);
       expect(result).not.toContain("For the target video, at 0.00 seconds into the target video");
       expect(result).not.toContain("```json");
       expect(result.trim().startsWith("{")).toBe(false);

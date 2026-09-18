@@ -3,6 +3,11 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 
+type HistoryContinuumAction =
+  | "Continue / Next"
+  | "Regenerate Current"
+  | "Continue From Here";
+
 export interface HistoryActionsControllerOptions {
   setState(nextState: AppState): void;
   getSelectedHistoryAssetId(): string;
@@ -17,7 +22,7 @@ export interface HistoryActionsControllerOptions {
   copyHistoryFile(filename: string): Promise<void>;
   copyHistoryImage(filename: string): Promise<void>;
   editHistoryAsset(assetId: string): Promise<void>;
-  continueVideoHistory(assetId: string, versionId: string): Promise<void>;
+  continueVideoHistory(assetId: string, versionId: string, action?: HistoryContinuumAction): Promise<void>;
   continueImageEdit(projectId: string, versionId: string): Promise<void>;
   continueImageToVideo(projectId: string, versionId: string): Promise<void>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
@@ -288,7 +293,8 @@ export function mountHistoryActionsController(
       stopAction(event);
       const assetId = button.dataset.continueHistory;
       const versionId = button.dataset.sourceVersion;
-      if (assetId && versionId) await options.continueVideoHistory(assetId, versionId);
+      const action = button.dataset.continuumAction as HistoryContinuumAction | undefined;
+      if (assetId && versionId) await options.continueVideoHistory(assetId, versionId, action);
     }, { signal });
   });
 

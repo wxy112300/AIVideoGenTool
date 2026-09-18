@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import { mountVideoExtensionController } from "../src/renderer/pages/create/video-extension-controller";
-import { h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
+import { extensionSafetyForDraft, h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
 import type { Draft } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
 
@@ -75,6 +75,68 @@ function createVideoHarness(modelId: string, trimEndSeconds: number) {
 afterEach(() => {
   vi.restoreAllMocks();
   document.body.innerHTML = "";
+});
+
+describe("Continuum draft safety routing", () => {
+  it.each([
+    { h3ContinuumMode: "bootstrap" as const, h3ContinuumArtifactPath: undefined },
+    { h3ContinuumMode: undefined, h3ContinuumArtifactPath: "C:/output/h3-native-av/h3av-source.safetensors" }
+  ])("budgets ordinary AV imports as bootstrap despite a managed workflow filename: %j", (source) => {
+    const state = createDefaultState();
+    const draft: Draft = {
+      ...state.draft,
+      ...source,
+      inputMode: "video",
+      modelId: "minimax_h3_continuum",
+      workflowPath: "C:/workflows/minimax_h3_continuum_v38_managed_extend_api.json",
+      sourceVideoPath: "C:/output/source.mp4",
+      sourceVideoDuration: 362 / 24,
+      trimStartSeconds: 0,
+      trimEndSeconds: 362 / 24,
+      duration: 15,
+      resolution: 480,
+      fps: 24,
+      frameInterpolation: "off"
+    };
+    const original = structuredClone(draft);
+
+    expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({
+      safe: false,
+      generatedFrames: 379,
+      maxGeneratedFrames: 362,
+      maxDurationSeconds: 14
+    });
+    expect(extensionSafetyForDraft({ ...draft, duration: 14 }, state.settings)).toMatchObject({
+      safe: true,
+      generatedFrames: 362,
+      maxDurationSeconds: 14
+    });
+    expect(draft).toEqual(original);
+  });
+
+  it("retains the managed 15-second budget when enqueue will select the managed workflow", () => {
+    const state = createDefaultState();
+    const draft: Draft = {
+      ...state.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_continuum",
+      workflowPath: "C:/workflows/minimax_h3_continuum_v38_extend_api.json",
+      h3ContinuumMode: "managed",
+      sourceVideoPath: "C:/output/source.mp4",
+      sourceVideoDuration: 15,
+      trimStartSeconds: 0,
+      trimEndSeconds: 15,
+      duration: 15,
+      resolution: 480,
+      fps: 24,
+      frameInterpolation: "off"
+    };
+
+    expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({
+      safe: true,
+      maxDurationSeconds: 15
+    });
+  });
 });
 
 describe("Extend video boundary preview", () => {

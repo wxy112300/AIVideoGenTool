@@ -54,6 +54,11 @@ function motionContextLatentPathFor(
   return file?.absolutePath ?? version.h3ContextLatentPath ?? asset?.h3ContextLatentPath;
 }
 
+type HistoryContinuumAction =
+  | "Continue / Next"
+  | "Regenerate Current"
+  | "Continue From Here";
+
 export interface HistoryActionsOptions {
   context: RendererContext;
   setState(nextState: AppState): void;
@@ -76,6 +81,13 @@ export interface HistoryActionsOptions {
       h3ContextLatentPath?: string;
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
+      h3ContinuumMode?: Draft["h3ContinuumMode"];
+      h3ContinuumSequence?: Draft["h3ContinuumSequence"];
+      h3ContinuumReviewAction?: Draft["h3ContinuumReviewAction"];
+      h3ContinuumRerollFromChunk?: Draft["h3ContinuumRerollFromChunk"];
+      h3ContinuumTakeGroup?: Draft["h3ContinuumTakeGroup"];
+      h3ContinuumTakeRevisionId?: Draft["h3ContinuumTakeRevisionId"];
+      h3ContinuumTakeAction?: Draft["h3ContinuumTakeAction"];
       /** Resolution to restore when continuing from a history video. */
       resolution?: number;
       /** History continuation starts a fresh random seed. */
@@ -148,6 +160,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const continuationArtifact = version.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
+    const managedContinuum = Boolean(version.h3ContinuumSequence);
     const motionContextLatentPath = isExtension
       ? motionContextLatentPathFor(asset, version)
       : undefined;
@@ -191,6 +204,15 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       h3ContinuumArtifact: continuationArtifact
         ? structuredClone(continuationArtifact)
         : undefined,
+      h3ContinuumMode: managedContinuum ? "managed" : continuationArtifact ? "bootstrap" : undefined,
+      h3ContinuumSequence: managedContinuum
+        ? structuredClone(version.h3ContinuumSequence)
+        : undefined,
+      h3ContinuumReviewAction: managedContinuum ? "Continue / Next" : undefined,
+      h3ContinuumRerollFromChunk: undefined,
+      h3ContinuumTakeGroup: 0,
+      h3ContinuumTakeRevisionId: "",
+      h3ContinuumTakeAction: "Automatic",
       h3ReferenceSlots: isExtension && isMiniMaxH3R2vModel(asset.modelId)
         ? ensureMotionContextSourceSlot(
             (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
@@ -294,6 +316,8 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       h3ContextLatentPath: undefined,
       h3ContinuumArtifactPath: undefined,
       h3ContinuumArtifact: undefined,
+      h3ContinuumMode: undefined,
+      h3ContinuumSequence: undefined,
       ratio: "source",
       promptVersions: [{
         id: crypto.randomUUID(),
@@ -306,8 +330,12 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     options.reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
     options.navigateToCreationMode("image-to-video");
   };
-  const continueVideoHistory = async (assetId: string, versionId: string): Promise<void> => {
-    options.reportUserAction("history-continue", { assetId, versionId });
+  const continueVideoHistory = async (
+    assetId: string,
+    versionId: string,
+    action: HistoryContinuumAction = "Continue / Next"
+  ): Promise<void> => {
+    options.reportUserAction("history-continue", { assetId, versionId, action });
     const asset = context.getState()?.history.find((item) => item.id === assetId);
     const version = asset?.versions.find((item) => item.id === versionId);
     const videoIndex = version ? versionVideoIndex(version) : -1;
@@ -315,12 +343,18 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const continuationArtifact = version?.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
+    const managedContinuum = Boolean(version?.h3ContinuumSequence);
+    const sequence = version?.h3ContinuumSequence;
+    const currentChunk = sequence && sequence.chunks.length > 0
+      ? sequence.chunks[sequence.chunks.length - 1]
+      : undefined;
+    const reviewAction = action === "Continue From Here" ? "Continue / Next" : action;
     const motionContextLatentPath = motionContextLatentPathFor(asset, version);
     if (!asset || !version || !filename) {
       context.notify(t(uiKeys.history.actions.videoUnavailable), { renderPage: false });
       return;
     }
-    const sourceModelId = continuationArtifact
+    const sourceModelId = managedContinuum || continuationArtifact
       ? "minimax_h3_continuum"
       : isMiniMaxH3R2vModel(version.modelId)
         ? version.modelId
@@ -346,6 +380,23 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         h3ContinuumArtifact: continuationArtifact
           ? structuredClone(continuationArtifact)
           : undefined,
+        h3ContinuumMode: managedContinuum ? "managed" : continuationArtifact ? "bootstrap" : undefined,
+      h3ContinuumSequence: managedContinuum
+        ? structuredClone(version.h3ContinuumSequence)
+        : undefined,
+      h3ContinuumReviewAction: managedContinuum ? reviewAction : undefined,
+      h3ContinuumRerollFromChunk: managedContinuum && reviewAction === "Regenerate Current"
+        ? 0
+        : undefined,
+      h3ContinuumTakeGroup: managedContinuum && action === "Continue From Here"
+        ? currentChunk?.physicalGroupEnd ?? 0
+        : 0,
+      h3ContinuumTakeRevisionId: managedContinuum && action === "Continue From Here"
+        ? sequence?.canonicalHead.revisionId ?? ""
+        : "",
+      h3ContinuumTakeAction: managedContinuum && action === "Continue From Here"
+        ? "Continue From Here"
+        : "Automatic",
         resolution: Number.isFinite(asset.resolution) && asset.resolution > 0
           ? asset.resolution
           : versionShortEdge(version),

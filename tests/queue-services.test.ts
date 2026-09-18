@@ -192,6 +192,154 @@ describe("queue command services", () => {
       .rejects.toThrow("需要开启 JointAV 输出");
   });
 
+  it("keeps an empty managed Continuum seed empty in the creation draft", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-managed-seed-draft-"));
+    try {
+      const outputRoot = path.join(root, "output");
+      const sourcePath = path.join(root, "source.mp4");
+      await Promise.all([
+        fs.mkdir(outputRoot, { recursive: true }),
+        fs.writeFile(sourcePath, "video")
+      ]);
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => outputRoot,
+        imageInspection: { readDimensions: () => ({ width: 1280, height: 720 }) }
+      });
+      const workflowPath = fileURLToPath(new URL(
+        "../workflows/minimax_h3_continuum_v38_managed_extend_api.json",
+        import.meta.url
+      ));
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_continuum",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 1280,
+        sourceHeight: 720,
+        workflowPath,
+        h3ContinuumMode: "managed" as const,
+        seed: null
+      };
+
+      const next = await service.enqueueExtension(draft);
+      const queued = next.queue[0];
+
+      expect(next.draft.seed).toBeNull();
+      expect(queued?.seed).toBe(next.draft.h3ContinuumSequence?.baseSeed);
+      expect(queued?.seed).toEqual(expect.any(Number));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("validates the old AV instead of starting a managed Run from a stale managed draft", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-continuum-old-av-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      await fs.writeFile(sourcePath, "video");
+      const store = repository(createDefaultState());
+      const inspectNativeAvArtifact = vi.fn(async () => {
+        throw new Error("old AV inspected before sampling");
+      });
+      const service = new QueueEnqueueService({
+        store,
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => root,
+        resolveTaskOutputDirectory: async () => root,
+        imageInspection: { readDimensions: () => ({ width: 1280, height: 720 }) },
+        inspectNativeAvArtifact
+      });
+      const artifactPath = path.join(root, "h3-native-av", "old.safetensors");
+      await expect(service.enqueueExtension({
+        ...createDefaultDraft(),
+        inputMode: "video",
+        modelId: "minimax_h3_continuum",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 1280,
+        sourceHeight: 720,
+        workflowPath: fileURLToPath(new URL(
+          "../workflows/minimax_h3_continuum_v38_managed_extend_api.json", import.meta.url
+        )),
+        h3ContinuumMode: "managed",
+        h3ContinuumArtifactPath: artifactPath
+      })).rejects.toThrow("old AV inspected before sampling");
+      expect(inspectNativeAvArtifact).toHaveBeenCalledWith(artifactPath, root);
+      expect(store.get().queue).toHaveLength(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("starts a fresh managed Run after an unaccepted first-chunk task fails", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-managed-run-recovery-"));
+    try {
+      const outputRoot = path.join(root, "output");
+      const sourcePath = path.join(root, "source.mp4");
+      await Promise.all([
+        fs.mkdir(outputRoot, { recursive: true }),
+        fs.writeFile(sourcePath, "video")
+      ]);
+      const state = createDefaultState();
+      const store = repository(state);
+      const dependencies = {
+        store,
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => outputRoot,
+        imageInspection: { readDimensions: () => ({ width: 1280, height: 720 }) }
+      };
+      const service = new QueueEnqueueService(dependencies);
+      const workflowPath = fileURLToPath(new URL(
+        "../workflows/minimax_h3_continuum_v38_managed_extend_api.json",
+        import.meta.url
+      ));
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_continuum",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 1280,
+        sourceHeight: 720,
+        workflowPath,
+        h3ContinuumMode: "managed" as const,
+        seed: 123
+      };
+
+      const first = await service.enqueueExtension(draft);
+      const firstSequence = first.draft.h3ContinuumSequence!;
+      await store.update((current) => {
+        current.queue[0]!.status = "failed";
+        current.queue[0]!.error = "receipt rejected";
+      });
+
+      const second = await service.enqueueExtension(first.draft);
+      const secondSequence = second.draft.h3ContinuumSequence!;
+      expect(second.queue).toHaveLength(2);
+      expect(secondSequence.sequenceId).not.toBe(firstSequence.sequenceId);
+      expect(secondSequence.runName).not.toBe(firstSequence.runName);
+      expect(second.queue[0]?.h3ContinuumSequence?.sequenceId).toBe(firstSequence.sequenceId);
+      expect(second.queue[1]?.h3ContinuumSequence?.sequenceId).toBe(secondSequence.sequenceId);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("enqueues H3 image work while deferring runtime validation when no scan is cached", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-h3-image-enqueue-deferred-"));
     try {

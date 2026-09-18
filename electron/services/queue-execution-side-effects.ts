@@ -2,6 +2,8 @@ import type {
   AppState,
   ExtensionQueueTask,
   H3MemoryRuntimeEvidence,
+  H3AvLatentAsset,
+  H3ContinuumReceipt,
   H3VideoVaeBackend,
   HistoryFile,
   ImageGenerationQueueTask,
@@ -17,6 +19,8 @@ import {
   queuePauseBoundaryAfterTaskCompletion
 } from "../../src/core/queue.js";
 import { hashImageFile } from "../../src/infrastructure/image-asset-library.js";
+import { h3LatentSaveModeFor } from "../../src/core/h3-latent-save.js";
+import { isMiniMaxH3Model } from "../../src/core/workflow.js";
 import { finalizeExtensionOutput } from "./extension-media.js";
 import { cleanupNativeSeedVr2Intermediates } from "./seedvr2-upscale.js";
 import { freeMemory } from "./comfy-ui.js";
@@ -84,6 +88,8 @@ export interface VideoTaskCompletion {
   performanceStats?: TaskPerformanceStats;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   h3ContinuationData?: NativeAvContinuationData;
+  h3ContinuumReceipt?: H3ContinuumReceipt;
+  h3ContinuumAsset?: H3AvLatentAsset;
 }
 
 export interface QueueTaskClaim {
@@ -145,6 +151,7 @@ export class QueueExecutionSideEffects {
   async claimTask(taskId: string): Promise<QueueTaskClaim> {
     const { store, sendState } = this.deps;
     let claimed = false;
+    let upgradedH3AvOutput = false;
     let settingsAtClaim: Settings | undefined;
     const state = await store.update((next) => {
       const candidate = next.queue.find((item) => item.id === taskId);
@@ -153,6 +160,20 @@ export class QueueExecutionSideEffects {
         candidate?.status !== "waiting" ||
         nextQueueWaitingTask(next.queue, next.queuePauseBoundary)?.id !== taskId
       ) return;
+      if (
+        (candidate.taskType === "generation" || candidate.taskType === "extension") &&
+        isMiniMaxH3Model(candidate.modelId) &&
+        candidate.h3AvOutputPolicy === undefined &&
+        !candidate.h3AvOutputPolicyError &&
+        h3LatentSaveModeFor(candidate) === "all" &&
+        !(candidate.taskType === "generation" && candidate.h3FirstPassCheckpoint) &&
+        !candidate.h3ContinuumSequence
+      ) {
+        candidate.h3AvOutputPolicy = "shared";
+        candidate.h3LatentSaveMode = "all";
+        candidate.h3SaveJointAv = true;
+        upgradedH3AvOutput = true;
+      }
       candidate.status = "running";
       candidate.progress = 1;
       candidate.stage = "准备任务";
@@ -162,6 +183,12 @@ export class QueueExecutionSideEffects {
       settingsAtClaim = structuredClone(next.settings);
       claimed = true;
     });
+    if (upgradedH3AvOutput) {
+      this.deps.logger.info("queue", "h3-av-output-upgraded", "已为旧 H3 全部保存任务启用统一 AV 保存", {
+        taskId,
+        h3AvOutputPolicy: "shared"
+      });
+    }
     sendState(state);
     return { state, claimed, settingsAtClaim };
   }
@@ -339,6 +366,8 @@ export class QueueExecutionSideEffects {
         performanceStats: completion.performanceStats,
         h3MemoryRuntimeEvidence: completion.h3MemoryRuntimeEvidence,
         h3ContinuationData: completion.h3ContinuationData,
+        h3ContinuumReceipt: completion.h3ContinuumReceipt,
+        h3ContinuumAsset: completion.h3ContinuumAsset,
         id: () => crypto.randomUUID()
       });
       const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(

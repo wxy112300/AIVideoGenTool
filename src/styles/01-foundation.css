@@ -118,7 +118,8 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .field-info:hover { color: #a8cbff; }
 .field-info-tip { position: absolute; z-index: 40; top: calc(100% + 8px); right: -4px; width: max-content; max-width: min(300px, 72vw); padding: 9px 11px; border: 1px solid rgba(91, 117, 155, .72); border-radius: 8px; color: #dbe8fa; background: #151d28; box-shadow: 0 10px 28px rgba(0, 0, 0, .42); font-size: var(--ux-type-meta); font-weight: 450; line-height: 1.5; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .12s ease, transform .12s ease; }
 .field-info:hover .field-info-tip,
-.field-info:focus-visible .field-info-tip { opacity: 1; transform: translateY(0); }
+.field-info:focus-visible .field-info-tip,
+.field-info.is-open .field-info-tip { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .field-info:focus-visible { color: #b9d7ff; outline: 1px solid rgba(124, 184, 255, .52); outline-offset: 2px; border-radius: 3px; }
 .prompt-mode-control { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .prompt-mode-control > select { min-width: 0; }

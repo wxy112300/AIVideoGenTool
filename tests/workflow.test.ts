@@ -1475,6 +1475,10 @@ describe("generation VRAM safety", () => {
       maxGeneratedFrames: 362
     });
     expect(extensionSafetyForTask({ ...continuumExtension, duration: 15 }).safe).toBe(false);
+    const managed = { ...continuumExtension, workflowPath: "minimax_h3_continuum_v38_managed_extend_api.json", duration: 15 };
+    expect(extensionSafetyForTask(managed)).toMatchObject({ safe: true, maxDurationSeconds: 15 });
+    expect(extensionSafetyForTask({ ...managed, duration: 3 }).safe).toBe(false);
+    expect(extensionSafetyForTask({ ...managed, duration: 16 }).safe).toBe(false);
     expect(extensionSafetyForTask({ ...continuumExtension, trimEndSeconds: 8 })).toMatchObject({
       safe: false,
       message: expect.stringContaining("末尾")
@@ -1959,6 +1963,14 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       expect(generationTypes.has("LocalVideoStudioH3SaveJointAV")).toBe(mode === "all" || mode === "joint-av");
       expect(motionContextTypes.has("MiniMaxH3MotionContextSaveLatent")).toBe(mode === "all" || mode === "motion-context");
     }
+
+    const sharedMotionTypes = outputTypes(motionContextSource, {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      h3LatentSaveMode: "all",
+      h3AvOutputPolicy: "shared"
+    });
+    expect(sharedMotionTypes.has("MiniMaxH3MotionContextSaveLatent")).toBe(false);
   });
 
   it("renders the H3 Continuum Native AV bridge and trims only the overlap", () => {
@@ -2053,6 +2065,14 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       images: ["13", 0],
       audio: ["14", 0],
       assembly_plan: ["12", 2]
+    });
+    expect(rendered["24"]?.inputs).toMatchObject({
+      bridge_report: ["10", 1],
+      status: ["12", 3],
+      assembly_plan: ["12", 2],
+      assembly_report: ["15", 2],
+      spectrum_mode: "off",
+      spectrum_model_aware_mode: "off"
     });
     expect(rendered["18"]?.inputs).toEqual({
       video_latent: ["12", 0],

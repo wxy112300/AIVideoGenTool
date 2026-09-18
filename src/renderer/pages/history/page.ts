@@ -5,7 +5,8 @@ import type {
   HistoryFile,
   HistoryRating,
   ImageAssetVersion,
-  ImageHistoryProject
+  ImageHistoryProject,
+  NativeAvArtifactInspection
 } from "../../../types";
 import type { HistoryKind } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -42,6 +43,7 @@ export interface HistoryPageViewModel {
   historyFilterPanelOpen: boolean;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
+  historyArtifactInspection?: NativeAvArtifactInspection;
 }
 
 export interface ImageHistoryGenerationSummary {
@@ -50,6 +52,11 @@ export interface ImageHistoryGenerationSummary {
   qualityLabel: string;
   loraLabel: string;
 }
+
+type HistoryContinuumAction =
+  | "Continue / Next"
+  | "Regenerate Current"
+  | "Continue From Here";
 
 export interface HistoryPageOptions {
   t: import("../../../core/i18n").Translate;
@@ -545,8 +552,58 @@ export function renderHistoryDetailPage(
   const jointAvArtifact = version.h3ContinuationData?.status === "available"
     ? version.h3ContinuationData.artifact
     : undefined;
+  const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ??
+    version.h3ContinuationData?.status ?? "not-supported";
+  const nativeAvStatusLabel = artifactInspectionStatus === "available"
+    ? options.t(uiKeys.history.page.nativeAvStatusAvailable)
+    : artifactInspectionStatus === "save-failed"
+      ? options.t(uiKeys.history.page.nativeAvStatusSaveFailed)
+      : artifactInspectionStatus === "missing"
+        ? options.t(uiKeys.history.page.nativeAvStatusMissing)
+        : artifactInspectionStatus === "invalid"
+          ? options.t(uiKeys.history.page.nativeAvStatusInvalid)
+          : options.t(uiKeys.history.page.nativeAvStatusNotSupported);
+  const nativeAvStatusReason = viewModel.historyArtifactInspection?.reason ??
+    version.h3ContinuationData?.reason;
+  const nativeAvRole = version.h3AvAsset?.artifactRole ?? jointAvArtifact?.role;
+  const nativeAvScope = version.h3AvAsset?.sampleScope ??
+    (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);
+  const nativeAvContextFrames = version.h3AvAsset?.contextFrames ?? jointAvArtifact?.contextFrames;
+  const nativeAvSummaryMarkup = version.h3ContinuationData || version.h3AvAsset
+    ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
+        <div class="history-native-av-heading"><strong>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvTitle))}</strong><span class="status ${artifactInspectionStatus === "available" ? "success" : "warning"}" data-history-av-visible-status>${options.escapeHtml(nativeAvStatusLabel)}</span></div>
+        <p class="muted tiny">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvDescription))}</p>
+        <dl class="history-native-av-facts">
+          ${nativeAvRole ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvRole))}</dt><dd><code>${options.escapeHtml(nativeAvRole)}</code></dd></div>` : ""}
+          ${nativeAvScope ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvScope))}</dt><dd><code>${options.escapeHtml(nativeAvScope)}</code></dd></div>` : ""}
+          ${nativeAvContextFrames === undefined ? "" : `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvContextFrames))}</dt><dd><code>${nativeAvContextFrames}</code></dd></div>`}
+          ${version.h3AvAsset?.storageKind ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvStorage))}</dt><dd><code>${options.escapeHtml(version.h3AvAsset.storageKind)}</code></dd></div>` : ""}
+        </dl>
+        ${nativeAvStatusReason ? `<p class="history-native-av-reason" data-history-av-visible-reason>${options.escapeHtml(nativeAvStatusReason)}</p>` : ""}
+      </section>`
+    : "";
   const jointAvSummary = jointAvArtifact
     ? `<span class="history-joint-av-indicator">JointAV</span>`
+    : "";
+  const continuumSequence = version.h3ContinuumSequence;
+  const continuumCurrentChunk = continuumSequence && continuumSequence.chunks.length > 0
+    ? continuumSequence.chunks[continuumSequence.chunks.length - 1]
+    : undefined;
+  const continuumTakeId = continuumSequence?.canonicalHead.takeId
+    ?? continuumCurrentChunk?.takeId
+    ?? options.t(uiKeys.history.page.notApplicable);
+  const continuumBranchId = continuumSequence?.canonicalHead.branchId
+    ?? continuumCurrentChunk?.branchId
+    ?? options.t(uiKeys.history.page.notApplicable);
+  const continuumReadiness = continuumSequence?.status === "review-ready"
+    ? options.t(uiKeys.history.page.continuumStatusReviewReady)
+    : continuumSequence?.status === "complete"
+      ? options.t(uiKeys.history.page.continuumStatusComplete)
+      : continuumSequence?.status === "invalid"
+        ? options.t(uiKeys.history.page.continuumStatusInvalid)
+        : options.t(uiKeys.history.page.continuumStatusInProgress);
+  const continuumTotalDuration = continuumSequence
+    ? options.formatVideoDuration(Math.max(0, continuumSequence.acceptedChunks * continuumSequence.chunkSeconds))
     : "";
   const fileIdentity = (file: HistoryFile): string => file.absolutePath || `${file.subfolder}/${file.filename}`;
   const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
@@ -558,7 +615,10 @@ export function renderHistoryDetailPage(
   const outputFiles = [...version.files];
   for (const file of [
     ...(jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []),
-    ...(motionContextFile ? [motionContextFile] : [])
+    ...(motionContextFile ? [motionContextFile] : []),
+    ...(version.h3AvAsset
+      ? [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]
+      : [])
   ]) {
     const identity = fileIdentity(file);
     if (!outputFiles.some((candidate) =>
@@ -584,7 +644,19 @@ export function renderHistoryDetailPage(
     : null;
   const availableTags = options.historyFilterTagNames(viewModel.state, "video");
   const videoEditAction = (variant: "primary" | "secondary") => retiredModel ? "" : `<button class="${variant} button-with-icon" data-edit-history="${asset.id}" aria-label="${options.t(uiKeys.history.page.adjustInCreate)}" title="${options.t(uiKeys.history.page.adjustInCreate)}">${options.icon("sliders-horizontal")}${options.t(uiKeys.history.page.adjustInCreate)}</button>`;
-  const videoContinueAction = (variant: "primary" | "secondary") => !retiredModel && videoFile?.absolutePath ? `<button class="${variant} button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="${options.t(uiKeys.history.page.continueCreation)}" title="${options.t(uiKeys.history.page.continueCreation)}">${options.icon("video")}${options.t(uiKeys.history.page.continueCreation)}</button>` : "";
+  const videoContinueAction = (
+    variant: "primary" | "secondary",
+    continuumAction: HistoryContinuumAction = "Continue / Next"
+  ) => {
+    const label = continuumAction === "Regenerate Current"
+      ? options.t(uiKeys.history.page.continuumRetryChunk)
+      : continuumAction === "Continue From Here"
+        ? options.t(uiKeys.history.page.continuumContinueFromTake)
+        : options.t(uiKeys.history.page.continueCreation);
+    return !retiredModel && videoFile?.absolutePath && continuumSequence?.status !== "invalid"
+      ? `<button class="${variant} button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" data-continuum-action="${continuumAction}" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">${options.icon("video")}${options.escapeHtml(label)}</button>`
+      : "";
+  };
   const videoCopyAction = videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-copy-file="${options.escapeHtml(videoFile.absolutePath)}" aria-label="${options.t(uiKeys.history.menu.copyFile)}" title="${options.t(uiKeys.history.menu.copyFile)}">${options.icon("copy")}${options.t(uiKeys.history.menu.copyFile)}</button>` : "";
   const videoLocateAction = videoFile?.absolutePath ? `<button class="secondary button-with-icon history-file-action" data-show-file="${options.escapeHtml(videoFile.absolutePath)}" aria-label="${options.t(uiKeys.history.menu.openFolder)}" title="${options.t(uiKeys.history.page.locateFile)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.locateFile)}</button>` : "";
   const videoUpscaleAction = `<button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && options.versionShortEdge(version) < 2160 ? "" : "disabled"}>${options.icon("maximize-2")}${options.versionShortEdge(version) >= 2160 ? options.t(uiKeys.history.page.current4k) : options.t(uiKeys.history.page.improveResolution)}</button>`;
@@ -607,6 +679,18 @@ export function renderHistoryDetailPage(
   const generationParameterMarkup = version.kind === "upscale"
     ? `<dt>${options.t(uiKeys.history.page.tileMode)}</dt><dd>${options.escapeHtml(version.tileMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.faceRestore)}</dt><dd>${version.faceRestore == null ? options.t(uiKeys.history.detail.legacyNotSaved) : version.faceRestore ? options.t(uiKeys.history.page.enabled) : options.t(uiKeys.history.page.disabled)}</dd>`
     : `<dt>${options.t(uiKeys.history.page.samplingSteps)}</dt><dd>${version.steps ?? options.t(uiKeys.history.page.workflowDefault)}</dd>${videoGenerationStrategyMarkup}`;
+  const continuumSummaryMarkup = continuumSequence
+    ? `<section class="history-continuum-panel" aria-labelledby="history-continuum-title">
+      <div class="history-continuum-heading"><h2 id="history-continuum-title">${options.t(uiKeys.history.page.continuumTitle)}</h2><span class="status running">${options.escapeHtml(continuumReadiness)}</span></div>
+      <dl class="history-continuum-facts">
+        <div><dt>${options.t(uiKeys.history.page.continuumRun)}</dt><dd>${options.escapeHtml(continuumSequence.runName)}</dd></div>
+        <div><dt>${options.t(uiKeys.history.page.continuumChunks)}</dt><dd>${continuumSequence.acceptedChunks} / ${continuumSequence.targetChunks} · ${continuumTotalDuration}</dd></div>
+        <div><dt>${options.t(uiKeys.history.page.continuumTake)}</dt><dd>${options.escapeHtml(continuumTakeId)}</dd></div>
+        <div><dt>${options.t(uiKeys.history.page.continuumBranch)}</dt><dd>${options.escapeHtml(continuumBranchId)}</dd></div>
+      </dl>
+      ${continuumSequence.acceptedChunks > 0 && !retiredModel && videoFile?.absolutePath && continuumSequence.status !== "invalid" ? `<div class="history-continuum-actions" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.page.continuumTitle))}">${videoContinueAction("secondary", "Regenerate Current")} ${videoContinueAction("secondary", "Continue From Here")}</div>` : ""}
+    </section>`
+    : "";
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.back)}</button>
@@ -654,6 +738,7 @@ export function renderHistoryDetailPage(
       </aside>
     </section>
     ${renderHistoryTags(asset.id, asset.tags, availableTags, options)}
+    ${continuumSummaryMarkup}
     <section class="history-record-section" aria-labelledby="history-generation-record-title">
       <div class="history-record-section-heading"><h2 id="history-generation-record-title">${options.t(uiKeys.history.page.generationRecord)}</h2><span class="history-record-section-meta">${options.t(version.kind === "original" ? uiKeys.history.page.originalGeneration : uiKeys.history.page.upscaleVersion)} · ${options.escapeHtml(options.modelName(version.modelId))}</span></div>
       <section class="history-record-grid">
@@ -684,6 +769,7 @@ export function renderHistoryDetailPage(
       </article>
       <article class="panel history-record full">
         <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.outputFiles)}</h2><span>${options.t(uiKeys.history.card.count, { count: outputFiles.length })}</span></div>
+      ${nativeAvSummaryMarkup}
       <div class="output-files">
         ${outputFiles.length === 0
           ? `<p class="muted">${options.t(uiKeys.history.page.noRecognizedFiles)}</p>`
@@ -691,6 +777,12 @@ export function renderHistoryDetailPage(
               const identity = fileIdentity(file);
               const isJointAvPayload = identity === jointAvPayloadIdentity;
               const isMotionContextFile = Boolean(motionContextIdentity) && identity === motionContextIdentity;
+              const isUnifiedAssetOwner = version.h3AvAsset?.ownerPath
+                ? identity === fileIdentity(version.h3AvAsset.ownerPath)
+                : false;
+              const isUnifiedAssetAlias = version.h3AvAsset?.aliasPaths?.some((candidate) =>
+                identity === fileIdentity(candidate)
+              ) ?? false;
               const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
               const sizeText = sizeBytes == null
                 ? options.t(uiKeys.history.page.fileSizeUnknown)
@@ -698,12 +790,23 @@ export function renderHistoryDetailPage(
               const locateAction = file.absolutePath
                 ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(file.absolutePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.showInExplorer)}</button>`
                 : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`;
-              const deleteAction = isJointAvPayload
+              const deleteAction = isJointAvPayload && version.h3AvAsset?.storageKind !== "continuum-run-chunk"
                 ? `<button class="secondary danger button-with-icon" data-delete-joint-av="${options.escapeHtml(asset.id)}" data-joint-av-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteJointAv)}</button>`
                 : isMotionContextFile
                   ? `<button class="secondary danger button-with-icon" data-delete-motion-context="${options.escapeHtml(asset.id)}" data-motion-context-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteMotionContext)}</button>`
                   : "";
-              return `<div class="output-file"><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
+              const ownershipLabel = isUnifiedAssetOwner
+                ? ` · ${options.escapeHtml(version.h3AvAsset?.storageKind ?? "app-canonical")} owner`
+                : isUnifiedAssetAlias
+                  ? " · alias"
+                  : "";
+              const managedDeleteNote = isUnifiedAssetOwner && version.h3AvAsset?.storageKind === "continuum-run-chunk"
+                ? " · managed owner"
+                : "";
+                      const statusAttribute = isJointAvPayload || isUnifiedAssetOwner
+                        ? ` data-history-av-status="${options.escapeHtml(artifactInspectionStatus)}"`
+                        : "";
+                      return `<div class="output-file" data-history-file-identity="${options.escapeHtml(identity)}"${statusAttribute}><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}${ownershipLabel}${managedDeleteNote} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
             }).join("")}
       </div>
         <details><summary>${options.t(uiKeys.history.page.rawSnapshot)}</summary><pre>${options.escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>

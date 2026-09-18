@@ -214,6 +214,16 @@
 }
 .history-overview-facts span { color: var(--muted); font-size: 10px; letter-spacing: .03em; }
 .history-overview-facts strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e2e7ef; font-size: 12px; font-weight: 570; white-space: nowrap; }
+.history-continuum-panel { display: grid; gap: 16px; margin-block: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+.history-continuum-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.history-continuum-heading h2 { margin: 0; min-width: 0; font-size: 14px; }
+.history-continuum-heading .status { flex: 0 0 auto; }
+.history-continuum-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.history-continuum-facts > div { min-width: 0; }
+.history-continuum-facts dt { color: var(--muted); font-size: 12px; }
+.history-continuum-facts dd { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.history-continuum-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.history-continuum-actions button { max-width: 100%; min-height: 36px; padding: 8px 12px; justify-content: center; white-space: normal; }
 .history-detail-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .history-detail-quick-actions button { width: 100%; min-height: 39px; padding: 7px 9px; justify-content: center; white-space: nowrap; }
 .history-version-panel {
@@ -255,6 +265,7 @@
   .history-player { height: clamp(300px, 56vh, 560px); }
   .history-summary { padding: 18px; }
   .history-overview-facts { grid-template-columns: 1fr; }
+  .history-continuum-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-summary-footer { align-items: stretch; flex-direction: column; }
 }
 
@@ -307,6 +318,15 @@
   white-space: nowrap;
 }
 .history-record-section .history-record-grid { margin-top: 0; }
+
+.history-native-av-summary { display: grid; gap: 8px; padding-block: 12px; border-block: 1px solid var(--border); }
+.history-native-av-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.history-native-av-heading strong { min-width: 0; }
+.history-native-av-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
+.history-native-av-facts > div { min-width: 0; }
+.history-native-av-facts dt { color: var(--muted); font-size: 12px; }
+.history-native-av-facts dd { min-width: 0; margin: 3px 0 0; overflow-wrap: anywhere; font-size: 12px; }
+.history-native-av-reason { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .history-detail-hero {
     grid-template-areas: "media" "inspector";
@@ -325,6 +345,7 @@
   .image-history-quick-actions { grid-template-columns: 1fr; }
   .history-record-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .history-record-section-meta { text-align: left; }
+  .history-native-av-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* The video detail player keeps app curation and transport in one compact

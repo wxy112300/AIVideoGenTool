@@ -43,6 +43,86 @@ function queueFixtureTask(state: ReturnType<typeof createDefaultState>, id: stri
   });
 }
 
+describe("H3 shared output policy", () => {
+  it("freezes shared policy on new generation and extension snapshots", () => {
+    const state = createDefaultState();
+    const generation = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-09-19T03:35:00.000Z"),
+      id: () => "shared-generation",
+      random: () => 0.5
+    });
+    const extension = extensionTaskFromDraft({
+      ...createDefaultDraft(),
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-09-19T03:35:00.000Z"),
+      id: () => "shared-extension",
+      random: () => 0.5
+    });
+
+    expect(generation.h3AvOutputPolicy).toBe("shared");
+    expect(extension.h3AvOutputPolicy).toBe("shared");
+    expect({ ...generation, h3AvOutputPolicy: undefined }).not.toHaveProperty("h3AvOutputPolicy", "shared");
+  });
+
+  it("maps legacy partial-save drafts to the new shared all contract", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      h3LatentSaveMode: "motion-context",
+      h3SaveJointAv: false,
+      startImagePath: "C:/input/start.png",
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-09-19T03:35:00.000Z"),
+      id: () => "legacy-partial-save",
+      random: () => 0.5
+    });
+
+    expect(task.h3AvOutputPolicy).toBe("shared");
+    expect(task.h3LatentSaveMode).toBe("all");
+    expect(task.h3SaveJointAv).toBe(true);
+  });
+
+  it("freezes managed Continuum saving as required without changing the ordinary preference", () => {
+    const state = createDefaultState();
+    const ordinary = { ...createDefaultDraft(), h3LatentSaveMode: "none" as const, h3SaveJointAv: false };
+    const task = extensionTaskFromDraft({
+      ...ordinary,
+      inputMode: "video",
+      modelId: "minimax_h3_continuum",
+      h3ContinuumMode: "managed",
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      workflowPath: "minimax_h3_continuum_v38_extend_api.json"
+    }, state, {
+      now: () => new Date("2026-09-19T03:35:00.000Z"),
+      id: () => "managed-required-save",
+      random: () => 0.5
+    });
+
+    expect(task.h3LatentSaveMode).toBe("all");
+    expect(task.h3SaveJointAv).toBe(true);
+    expect(task.h3AvOutputPolicy).toBe("shared");
+  });
+});
+
 describe("queue work progress", () => {
   it("formats determinate ComfyUI progress and average throughput", () => {
     const task = {
@@ -563,6 +643,96 @@ describe("queue history persistence", () => {
         expect.objectContaining({ filename: "clip_00001.safetensors", subfolder: "h3-motion-context/motion-task" })
       ])
     });
+  });
+
+  it("projects a shared R2V canonical artifact into the existing Motion Context path", () => {
+    const state = createDefaultState();
+    const task = extensionTaskFromDraft({
+      ...createDefaultDraft(),
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 848,
+      sourceHeight: 480,
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "shared-motion-task",
+      random: () => 0.5
+    });
+    task.h3AvOutputPolicy = "shared";
+    state.queue = [task];
+
+    const artifact = {
+      schemaVersion: 1,
+      artifactId: "shared-motion-artifact",
+      role: "extend-segment-clean-av",
+      lineageId: "shared-lineage",
+      manifest: {
+        filename: "h3av_shared-motion-artifact.json",
+        subfolder: "h3-native-av",
+        type: "output" as const,
+        format: "json",
+        absolutePath: "C:/ComfyUI/output/h3-native-av/h3av_shared-motion-artifact.json"
+      },
+      payload: {
+        filename: "h3av_shared-motion-artifact.safetensors",
+        subfolder: "h3-native-av",
+        type: "output" as const,
+        format: "safetensors",
+        absolutePath: "C:/ComfyUI/output/h3-native-av/h3av_shared-motion-artifact.safetensors"
+      },
+      payloadSha256: "a".repeat(64),
+      payloadBytes: 100,
+      modelFamily: "minimax-h3" as const,
+      executionModelId: "minimax_h3_ref2va",
+      providerId: "comfyui",
+      providerRevision: "test",
+      producerNodeId: "LocalVideoStudioH3SaveJointAV",
+      producerNodeVersion: "0.3.4",
+      workflowId: "workflow.json",
+      diffusionModelFilename: "diffusion.safetensors",
+      textEncoderFilename: "text.safetensors",
+      videoVaeFilename: "video.safetensors",
+      audioVaeFilename: "audio.safetensors",
+      width: 864,
+      height: 480,
+      fps: 24 as const,
+      frameCount: 124,
+      videoShape: [1, 24, 37, 30, 54] as number[],
+      videoDtype: "F32",
+      audioSampleRate: 32000,
+      audioChannels: 2,
+      audioLatentRate: 40,
+      audioShape: [1, 32, 2, 207] as number[],
+      audioDtype: "F32",
+      contextFrames: 22,
+      workflowRevision: "workflow-1",
+      sourceTaskId: task.id,
+      createdAt: "2026-08-12T12:30:00.000Z"
+    } as const;
+
+    persistVideoHistoryResult(state, {
+      task,
+      completedAt: "2026-08-12T12:30:00.000Z",
+      promptId: "shared-motion-prompt",
+      comfyOutputs: { output: true },
+      files: [{
+        filename: task.outputFilename,
+        subfolder: "Videos",
+        type: "output",
+        absolutePath: `C:/output/Videos/${task.outputFilename}`
+      }],
+      h3ContinuationData: { status: "available", artifact },
+      id: () => "shared-motion-version"
+    });
+
+    expect(state.history[0]?.versions[0]?.h3ContextLatentPath).toBe(
+      artifact.payload.absolutePath
+    );
   });
 
   it("persists DLSS lineage and frozen provider metadata on the derived version", () => {

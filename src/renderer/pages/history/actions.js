@@ -11,7 +11,6 @@ import { modelCatalog } from "../../../core/catalog";
 import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { modelName } from "../../shared/labels";
 import { currentHistoryVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./helpers";
-
 function motionContextLatentPathFor(asset, version) {
     if (!version)
         return asset?.h3ContextLatentPath;
@@ -85,6 +84,7 @@ export function createHistoryActions(options) {
         const continuationArtifact = version.h3ContinuationData?.status === "available"
             ? version.h3ContinuationData.artifact
             : undefined;
+        const managedContinuum = Boolean(version.h3ContinuumSequence);
         const motionContextLatentPath = isExtension
             ? motionContextLatentPathFor(asset, version)
             : undefined;
@@ -107,6 +107,8 @@ export function createHistoryActions(options) {
             sourceWidth: asset.sourceWidth ?? (isExtension ? version.width : 0),
             sourceHeight: asset.sourceHeight ?? (isExtension ? version.height : 0),
             endImagePath: isExtension ? "" : asset.endImagePath ?? "",
+            endImageWidth: isExtension ? 0 : asset.endImageWidth ?? 0,
+            endImageHeight: isExtension ? 0 : asset.endImageHeight ?? 0,
             sourceVideoPath: isExtension ? asset.sourceVideoPath ?? "" : "",
             sourceVideoDuration: isExtension ? sourceVideoDuration : 0,
             trimStartSeconds: isExtension ? asset.trimStartSeconds ?? 0 : 0,
@@ -120,8 +122,21 @@ export function createHistoryActions(options) {
                     h3SaveJointAv: h3SaveJointAvForLatentSaveMode(h3LatentSaveMode)
                 }
                 : {}),
-            h3ContinuumArtifactPath: isExtension && continuationArtifact ? continuationArtifact.payload.absolutePath : undefined,
-            h3ContinuumArtifact: continuationArtifact ? structuredClone(continuationArtifact) : undefined,
+            h3ContinuumArtifactPath: isExtension && continuationArtifact
+                ? continuationArtifact.payload.absolutePath
+                : undefined,
+            h3ContinuumArtifact: continuationArtifact
+                ? structuredClone(continuationArtifact)
+                : undefined,
+            h3ContinuumMode: managedContinuum ? "managed" : continuationArtifact ? "bootstrap" : undefined,
+            h3ContinuumSequence: managedContinuum
+                ? structuredClone(version.h3ContinuumSequence)
+                : undefined,
+            h3ContinuumReviewAction: managedContinuum ? "Continue / Next" : undefined,
+            h3ContinuumRerollFromChunk: undefined,
+            h3ContinuumTakeGroup: 0,
+            h3ContinuumTakeRevisionId: "",
+            h3ContinuumTakeAction: "Automatic",
             h3ReferenceSlots: isExtension && isMiniMaxH3R2vModel(asset.modelId)
                 ? ensureMotionContextSourceSlot((asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })), asset.sourceVideoPath ?? "")
                 : isExtension
@@ -183,7 +198,8 @@ export function createHistoryActions(options) {
             seed: version.seed ?? null,
             outputFormat: "png"
         });
-        options.setState(await context.application.saveImageDraft(draft));
+        await context.application.saveImageDraft(draft);
+        options.setState({ ...state, imageDraft: draft });
         options.reportUserAction("image-history-continue-edit", { projectId: project.id, versionId: version.id });
         options.navigateToCreationMode("image-edit");
     };
@@ -205,6 +221,8 @@ export function createHistoryActions(options) {
             sourceAssetId: project.id,
             sourceVersionId: version.id,
             endImagePath: "",
+            endImageWidth: 0,
+            endImageHeight: 0,
             h3ReferenceSlots: [],
             sourceVideoPath: "",
             sourceVideoDuration: 0,
@@ -213,6 +231,8 @@ export function createHistoryActions(options) {
             h3ContextLatentPath: undefined,
             h3ContinuumArtifactPath: undefined,
             h3ContinuumArtifact: undefined,
+            h3ContinuumMode: undefined,
+            h3ContinuumSequence: undefined,
             ratio: "source",
             promptVersions: [{
                     id: crypto.randomUUID(),
@@ -225,8 +245,8 @@ export function createHistoryActions(options) {
         options.reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
         options.navigateToCreationMode("image-to-video");
     };
-    const continueVideoHistory = async (assetId, versionId) => {
-        options.reportUserAction("history-continue", { assetId, versionId });
+    const continueVideoHistory = async (assetId, versionId, action = "Continue / Next") => {
+        options.reportUserAction("history-continue", { assetId, versionId, action });
         const asset = context.getState()?.history.find((item) => item.id === assetId);
         const version = asset?.versions.find((item) => item.id === versionId);
         const videoIndex = version ? versionVideoIndex(version) : -1;
@@ -234,12 +254,18 @@ export function createHistoryActions(options) {
         const continuationArtifact = version?.h3ContinuationData?.status === "available"
             ? version.h3ContinuationData.artifact
             : undefined;
+        const managedContinuum = Boolean(version?.h3ContinuumSequence);
+        const sequence = version?.h3ContinuumSequence;
+        const currentChunk = sequence && sequence.chunks.length > 0
+            ? sequence.chunks[sequence.chunks.length - 1]
+            : undefined;
+        const reviewAction = action === "Continue From Here" ? "Continue / Next" : action;
         const motionContextLatentPath = motionContextLatentPathFor(asset, version);
         if (!asset || !version || !filename) {
             context.notify(t(uiKeys.history.actions.videoUnavailable), { renderPage: false });
             return;
         }
-        const sourceModelId = continuationArtifact
+        const sourceModelId = managedContinuum || continuationArtifact
             ? "minimax_h3_continuum"
             : isMiniMaxH3R2vModel(version.modelId)
                 ? version.modelId
@@ -262,7 +288,26 @@ export function createHistoryActions(options) {
                 h3LatentSaveMode,
                 h3ContextLatentPath: motionContextLatentPath,
                 h3ContinuumArtifactPath: continuationArtifact?.payload.absolutePath,
-                h3ContinuumArtifact: continuationArtifact ? structuredClone(continuationArtifact) : undefined,
+                h3ContinuumArtifact: continuationArtifact
+                    ? structuredClone(continuationArtifact)
+                    : undefined,
+                h3ContinuumMode: managedContinuum ? "managed" : continuationArtifact ? "bootstrap" : undefined,
+                h3ContinuumSequence: managedContinuum
+                    ? structuredClone(version.h3ContinuumSequence)
+                    : undefined,
+                h3ContinuumReviewAction: managedContinuum ? reviewAction : undefined,
+                h3ContinuumRerollFromChunk: managedContinuum && reviewAction === "Regenerate Current"
+                    ? 0
+                    : undefined,
+                h3ContinuumTakeGroup: managedContinuum && action === "Continue From Here"
+                    ? currentChunk?.physicalGroupEnd ?? 0
+                    : 0,
+                h3ContinuumTakeRevisionId: managedContinuum && action === "Continue From Here"
+                    ? sequence?.canonicalHead.revisionId ?? ""
+                    : "",
+                h3ContinuumTakeAction: managedContinuum && action === "Continue From Here"
+                    ? "Continue From Here"
+                    : "Automatic",
                 resolution: Number.isFinite(asset.resolution) && asset.resolution > 0
                     ? asset.resolution
                     : versionShortEdge(version),
@@ -287,7 +332,7 @@ export function createHistoryActions(options) {
         const configuredModelId = ["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", KONOHAMARU_MODEL_ID].includes(configuredModel)
             ? configuredModel
             : "seedvr2";
-        // Retired DLSS5 providers are no longer selectable; keep History -> Upscale
+        // Retired DLSS5 providers are no longer selectable; keep History → Upscale
         // reachable for large sources through the active Konohamaru provider.
         const selectedModelId = targetShortEdge ? configuredModelId : KONOHAMARU_MODEL_ID;
         const konohamaruSelected = selectedModelId === KONOHAMARU_MODEL_ID;

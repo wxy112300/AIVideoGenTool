@@ -172,6 +172,81 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("blocks unknown output policies instead of silently loading them as legacy tasks", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task = queueTaskFromDraft(state.draft, state) as Record<string, unknown>;
+    task.h3AvOutputPolicy = "bogus";
+    task.status = "running";
+    state.queue = [task as never];
+    state.history = [{
+      mediaKind: "video",
+      id: "unknown-policy-history",
+      taskId: "history-task",
+      title: "Unknown policy",
+      outputFilename: "unknown-policy.mp4",
+      createdAt: "2026-09-19T04:00:00.000Z",
+      updatedAt: "2026-09-19T04:00:00.000Z",
+      modelId: "minimax_h3_fl2va",
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: 1,
+      resolution: 480,
+      prompt: "fixture",
+      seed: 1,
+      files: [],
+      versions: [{
+        id: "unknown-policy-version",
+        kind: "original",
+        createdAt: "2026-09-19T04:00:00.000Z",
+        outputFilename: "unknown-policy.mp4",
+        modelId: "minimax_h3_fl2va",
+        width: 864,
+        height: 480,
+        duration: 1,
+        fps: 24,
+        seed: 1,
+        workflowPath: "workflow.json",
+        comfyPromptId: "prompt",
+        comfyOutputs: {},
+        files: [],
+        h3AvOutputPolicy: "bogus"
+      }]
+    } as never];
+    await fs.writeFile(filename, JSON.stringify({ ...state, schemaVersion: 13 }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      const loadedTask = loaded.queue[0] as Record<string, unknown>;
+      expect(loadedTask).toMatchObject({
+        id: task.id,
+        status: "failed",
+        h3AvOutputPolicyError: expect.stringContaining("bogus")
+      });
+      expect(loadedTask.h3AvOutputPolicy).toBeUndefined();
+      expect(loaded.history[0]?.versions[0]).toMatchObject({
+        id: "unknown-policy-version",
+        h3AvOutputPolicyError: expect.stringContaining("bogus")
+      });
+      expect(loaded.history[0]?.versions[0]?.h3AvOutputPolicy).toBeUndefined();
+
+      const reloaded = await new JsonStore(filename).load();
+      expect(reloaded.queue[0]).toMatchObject({
+        id: task.id,
+        status: "failed",
+        h3AvOutputPolicyError: expect.stringContaining("bogus")
+      });
+      expect(reloaded.history[0]?.versions[0]).toMatchObject({
+        id: "unknown-policy-version",
+        h3AvOutputPolicyError: expect.stringContaining("bogus")
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates retired SageAttention 2++ values without inventing missing history metadata", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -263,6 +338,11 @@ describe("queue lock recovery", () => {
       ...state.draft,
       inputMode: "video",
       sourceVideoPath: "C:\\ComfyUI\\input\\continuation.mp4",
+      sourceAssetId: "history-asset-1",
+      sourceVersionId: "history-version-2",
+      h3ContextLatentPath: "C:\\ComfyUI\\output\\h3-motion-context\\segment-2.safetensors",
+      h3ContinuumArtifactPath: "C:\\ComfyUI\\output\\h3-native-av\\segment-2.safetensors",
+      h3ContinuumMode: "bootstrap",
       h3ReferenceSlots: [{
         id: "source-slot",
         mediaType: "video",
@@ -288,6 +368,13 @@ describe("queue lock recovery", () => {
       expect(loaded.videoExtensionDraft?.h3ReferenceSlots[0]?.mediaPath).toBe(
         "C:\\ComfyUI\\input\\continuation.mp4"
       );
+      expect(loaded.videoExtensionDraft).toMatchObject({
+        sourceAssetId: "history-asset-1",
+        sourceVersionId: "history-version-2",
+        h3ContextLatentPath: "C:\\ComfyUI\\output\\h3-motion-context\\segment-2.safetensors",
+        h3ContinuumArtifactPath: "C:\\ComfyUI\\output\\h3-native-av\\segment-2.safetensors",
+        h3ContinuumMode: "bootstrap"
+      });
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

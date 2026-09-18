@@ -1,7 +1,7 @@
 import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
-import { continuumSampledFrameCountForSeconds, continuumV38SampledFrameCountForSeconds, extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCountForTask, isMiniMaxH3BoundaryExtensionModel, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputFrameCountForTask } from "../../../core/workflow";
+import { continuumSampledFrameCountForSeconds, continuumV38SampledFrameCountForSeconds, extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCountForTask, h3ContinuumManagedWorkflowPathForInput, h3ContinuumModeForSource, h3ContinuumWorkflowPathForInput, isMiniMaxH3BoundaryExtensionModel, isMiniMaxH3ContinuumModel, isMiniMaxH3ContinuumManagedWorkflow, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputFrameCountForTask } from "../../../core/workflow";
 import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -63,7 +63,7 @@ export function interpolationEstimate(draft) {
     return {
         multiplier: frameInterpolationMultiplier(draft),
         generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
-        ? draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
+        ? isMiniMaxH3ContinuumManagedWorkflow(draft.workflowPath) || draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
             ? continuumV38SampledFrameCountForSeconds(draft.duration)
             : continuumSampledFrameCountForSeconds(draft.duration)
             : generationFrameCountForTask(draft),
@@ -76,6 +76,11 @@ export function extensionSafetyForDraft(draft, settings) {
         isMiniMaxH3ContinuumModel(draft.modelId);
     return extensionSafetyForTask({
         ...draft,
+        workflowPath: isMiniMaxH3ContinuumModel(draft.modelId)
+            ? h3ContinuumModeForSource(draft) === "managed"
+                ? h3ContinuumManagedWorkflowPathForInput(draft.workflowPath)
+                : h3ContinuumWorkflowPathForInput(draft.workflowPath)
+            : draft.workflowPath,
         resolution: nativeH3
             ? draft.resolution >= 1080 ? 720 : draft.resolution
             : settings.ltxExtensionResolution,

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
+  ContinuumSequence,
   Draft,
   EnvironmentScanResult,
   ImageEditDraft,
@@ -28,23 +29,28 @@ import {
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   isMiniMaxH3ContinuumModel,
+  h3ContinuumModeForSource,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3Q3GgufModel,
   isMiniMaxH3R2vModel,
   h3WorkflowPathForInput,
   h3ContinuumWorkflowPathForInput,
+  h3ContinuumManagedWorkflowPathForInput,
+  continuumTimelinePromptForTask,
   normalizeH3Steps,
   validateApiWorkflow,
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3ContinuumExtension,
+  workflowSupportsH3ContinuumManagedExtension,
   workflowSupportsH3MotionContextExtension,
   workflowSupportsH3MotionContextReferences,
   workflowSupportsH3PddSampling,
   workflowSupportsH3TurboSampling,
   miniMaxH3ModelAssetNames
 } from "../src/core/workflow.js";
+import { validateContinuumSequence } from "../src/core/h3-av-asset.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
 import {
   isH3TurboEnabled,
@@ -87,8 +93,8 @@ import {
   h3MotionContextSavePrefixForTask
 } from "../src/core/h3-motion-context.js";
 import {
+  h3SharedLatentSaveModeFor,
   h3LatentSaveModeFor,
-  h3LatentSaveModeSavesJointAv,
   h3LatentSaveModeSavesMotionContext
 } from "../src/core/h3-latent-save.js";
 import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract.js";
@@ -113,6 +119,16 @@ import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 import { archiveImagePaths, archiveImageReferences, hashImageFile } from "../src/infrastructure/image-asset-library.js";
 import { isPathWithinDirectory } from "../src/infrastructure/video-history-migration.js";
 
+function managedSequenceNeedsFreshRun(state: AppState, sequence: ContinuumSequence): boolean {
+  if (sequence.acceptedChunks !== 0 || sequence.canonicalHead.revisionId !== "pending") return false;
+  return state.queue.some((item) =>
+    item.taskType === "extension" &&
+    item.h3ContinuumMode === "managed" &&
+    item.h3ContinuumSequence?.sequenceId === sequence.sequenceId &&
+    (item.status === "failed" || item.status === "cancelled")
+  );
+}
+
 export interface QueueEnqueueServiceDependencies {
   store: StateRepository;
   logger: AppLogger;
@@ -125,6 +141,7 @@ export interface QueueEnqueueServiceDependencies {
     referencePath: string,
     outputDirectory: string
   ) => Promise<NativeAvArtifactInspection>;
+  inspectExtensionSource?: (draft: Draft) => Promise<import("../src/types.js").VideoExtensionSourceInspection>;
 }
 
 export type QueueEnqueueDependencies = QueueEnqueueServiceDependencies & { ipc: IpcMain };
@@ -303,7 +320,7 @@ export class QueueEnqueueService {
     if (draft.modelId !== "minimax_h3_fl2va") {
       throw new Error("Create 原生 1080p 当前仅支持 MiniMax H3 FL2VA Base。");
     }
-    if (!h3LatentSaveModeSavesJointAv(h3LatentSaveModeFor(draft))) {
+    if (h3SharedLatentSaveModeFor(draft) === "none") {
       throw new Error("Create 原生 1080p 需要开启 JointAV 输出。");
     }
     if (draft.videoLoras.length) {
@@ -967,7 +984,76 @@ export class QueueEnqueueService {
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
     const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
     const preparedDraft = structuredClone(draft);
-    if (continuum) {
+    const managedContinuum = continuum && h3ContinuumModeForSource(preparedDraft) === "managed";
+    if (managedContinuum) {
+      preparedDraft.h3ContinuumMode = "managed";
+      preparedDraft.workflowPath = h3ContinuumManagedWorkflowPathForInput(preparedDraft.workflowPath);
+      let sequence = preparedDraft.h3ContinuumSequence;
+      if (sequence && managedSequenceNeedsFreshRun(store.get(), sequence)) {
+        logger.info("queue", "continuum-managed-fresh-run", "上一次首个 managed Continuum 任务未被 History 接受，创建新的 Run Storage identity", {
+          previousSequenceId: sequence.sequenceId,
+          previousRunName: sequence.runName
+        });
+        sequence = undefined;
+      }
+      if (sequence) {
+        const sequenceError = validateContinuumSequence(sequence);
+        if (sequenceError) throw new Error(`Continuum managed sequence 无效：${sequenceError}`);
+        if (sequence.fps !== 24 || sequence.chunkSeconds <= 0) {
+          throw new Error("Continuum managed sequence 的 FPS/Seconds per Chunk 已被冻结，不能在续写时修改。");
+        }
+      } else {
+        const sequenceId = randomUUID();
+        const sourceRatio = preparedDraft.sourceWidth > 0 && preparedDraft.sourceHeight > 0
+          ? preparedDraft.sourceWidth / preparedDraft.sourceHeight
+          : 16 / 9;
+        const shortEdge = preparedDraft.resolution;
+        const width = Math.max(32, Math.round((sourceRatio >= 1 ? shortEdge * sourceRatio : shortEdge) / 32) * 32);
+        const height = Math.max(32, Math.round((sourceRatio >= 1 ? shortEdge : shortEdge / sourceRatio) / 32) * 32);
+        sequence = {
+          schemaVersion: 1,
+          sequenceId,
+          projectId: `lvs-${sequenceId.slice(0, 12)}`,
+          runName: `lvs-${sequenceId.slice(0, 12)}`,
+          packageVersion: "3.8.2",
+          runStorageSchemaVersion: 3,
+          workflowRevision: "managed-v38-api-v1",
+          status: "in-progress",
+          chunkSeconds: preparedDraft.duration,
+          fps: 24,
+          width,
+          height,
+          baseSeed: preparedDraft.seed ?? Math.floor(Math.random() * 0xffffffff),
+          modelIdentity: preparedDraft.modelId,
+          firstFrameSource: {
+            sourceVideoPath: preparedDraft.sourceVideoPath,
+            sourceVideoDuration: preparedDraft.sourceVideoDuration,
+            trimStartSeconds: preparedDraft.trimStartSeconds,
+            trimEndSeconds: preparedDraft.trimEndSeconds,
+            sourceWidth: preparedDraft.sourceWidth,
+            sourceHeight: preparedDraft.sourceHeight,
+            resolution: preparedDraft.resolution
+          },
+          promptFormat: "Timeline",
+          targetChunks: 1,
+          acceptedChunks: 0,
+          canonicalHead: { revisionId: "pending" },
+          chunks: [],
+          updatedAt: new Date().toISOString()
+        } satisfies ContinuumSequence;
+      }
+      preparedDraft.h3ContinuumSequence = sequence;
+      // Keep the user's seed preference in the creation draft. The managed
+      // sequence's frozen base seed belongs to the queued execution snapshot,
+      // not to the UI field; an empty field must remain "random" after enqueue.
+      if (preparedDraft.seed !== null && preparedDraft.seed !== undefined) {
+        preparedDraft.seed = sequence.baseSeed;
+      }
+      preparedDraft.duration = sequence.chunkSeconds;
+      preparedDraft.fps = 24;
+    } else if (continuum) {
+      preparedDraft.h3ContinuumMode = "bootstrap";
+      preparedDraft.h3ContinuumSequence = undefined;
       preparedDraft.workflowPath = h3ContinuumWorkflowPathForInput(preparedDraft.workflowPath);
     }
     if (motionContext) {
@@ -983,7 +1069,7 @@ export class QueueEnqueueService {
         throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
       }
     }
-    if (continuum) {
+    if (continuum && !managedContinuum) {
       // Continuum consumes a JointAV boundary for the complete source latent;
       // never let a stale boundary-frame trim leak into its immutable task.
       preparedDraft.trimStartSeconds = 0;
@@ -1030,7 +1116,9 @@ export class QueueEnqueueService {
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
       : continuum
-        ? workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum 工作流缺少 JointAV loader、native-state bridge、V3.8 sampler 或视频输出节点"]
+        ? managedContinuum
+          ? workflowSupportsH3ContinuumManagedExtension(workflow) ? [] : ["H3 Continuum managed 工作流缺少 public V3.8 sampler、首帧、Run Storage receipt 或完整 Finalize 输出节点"]
+          : workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum legacy/bootstrap 工作流缺少 JointAV loader、native-state bridge、V3.8 sampler 或视频输出节点"]
       : isMiniMaxH3R2vModel(draft.modelId)
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
         : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);
@@ -1078,9 +1166,47 @@ export class QueueEnqueueService {
     }
     hydrateVideoInputImageDimensions(preparedDraft, deps.imageInspection);
     const current = store.get();
-    const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
+    const taskDraft = managedContinuum && preparedDraft.h3ContinuumSequence
+      ? { ...preparedDraft, seed: preparedDraft.h3ContinuumSequence.baseSeed }
+      : preparedDraft;
+    const task = extensionTaskFromDraft(taskDraft, current, undefined, { h3VideoVaeMode });
+    if (managedContinuum) {
+      const sequence = preparedDraft.h3ContinuumSequence!;
+      task.h3ContinuumMode = "managed";
+      task.h3ContinuumSequence = structuredClone(sequence);
+      const reviewAction = preparedDraft.h3ContinuumReviewAction ?? "Continue / Next";
+      if (reviewAction === "Regenerate Current" && sequence.acceptedChunks < 1) {
+        throw new Error("首个 managed Continuum Chunk 尚未存在，不能 Regenerate Current。");
+      }
+      task.h3ContinuumTargetChunks = reviewAction === "Regenerate Current"
+        ? sequence.acceptedChunks
+        : sequence.acceptedChunks + 1;
+      task.h3ContinuumReviewAction = reviewAction;
+      task.h3ContinuumParentRevisionId = sequence.canonicalHead.revisionId;
+      task.h3ContinuumParentTakeId = sequence.canonicalHead.takeId;
+      task.h3ContinuumParentBranchId = sequence.canonicalHead.branchId;
+      task.h3ContinuumRerollFromChunk = reviewAction === "Regenerate Current"
+        ? 0
+        : preparedDraft.h3ContinuumRerollFromChunk ?? 0;
+      task.h3ContinuumTakeGroup = preparedDraft.h3ContinuumTakeGroup ?? 0;
+      task.h3ContinuumTakeRevisionId = preparedDraft.h3ContinuumTakeRevisionId ?? "";
+      task.h3ContinuumTakeAction = preparedDraft.h3ContinuumTakeAction ?? "Automatic";
+      if (task.h3ContinuumTakeAction !== "Automatic" &&
+          (!(task.h3ContinuumTakeGroup > 0) || !task.h3ContinuumTakeRevisionId)) {
+        throw new Error("managed Continuum Take action 缺少已验证的 physical group/revision。");
+      }
+      continuumTimelinePromptForTask(task, sequence.chunkSeconds);
+      if (sequence.acceptedChunks > 0) {
+        if (!deps.inspectExtensionSource) throw new Error("Continuum Run 入队前检查服务不可用。");
+        const inspection = await deps.inspectExtensionSource(preparedDraft);
+        if (inspection.status !== "available") throw new Error(inspection.reason ?? "Continuum Run 前缀不可用。");
+      }
+    }
     if (isMiniMaxH3R2vModel(task.modelId)) {
-      if (h3LatentSaveModeSavesMotionContext(h3LatentSaveModeFor(task, true))) {
+      if (
+        task.h3AvOutputPolicy !== "shared" &&
+        h3LatentSaveModeSavesMotionContext(h3LatentSaveModeFor(task, true))
+      ) {
         const outputDirectory = await deps.resolveTaskOutputDirectory();
         task.h3ContextSavePrefix = h3MotionContextSavePrefixForTask(task.id);
         task.h3ContextSavedPath = outputDirectory

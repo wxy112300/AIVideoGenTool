@@ -26,6 +26,8 @@ import {
 } from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { applyPromptRevision, stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
+import { countPromptWords } from "../../src/core/prompt-count.js";
+import { estimateH3TextTokens } from "../../src/core/h3-token-count.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { getPerformanceMetrics } from "./performance.js";
@@ -47,7 +49,7 @@ export interface MultimodalRuntimeSelection {
 }
 
 const gib = 1024 ** 3;
-const visionLlmMaxOutputTokens = 2048;
+const visionLlmDesiredMaxOutputTokens = 3072;
 const minimumFreeVramForMultimodalModel: Record<string, number> = {
   "qwen/qwen3.6-27b-uncensored-q4": 20 * gib,
   "qwen/qwen3.8-27b-uncensored-q4": 20 * gib
@@ -192,6 +194,113 @@ export function multimodalPromptTargetLanguage(
   return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
 }
 
+export function multimodalRuntimeMaxOutputTokens(
+  objectInfo: Record<string, unknown>
+): number {
+  const node = objectInfo.VisionLLMNode;
+  if (!node || typeof node !== "object") return 2048;
+  const input = (node as { input?: unknown }).input;
+  if (!input || typeof input !== "object") return 2048;
+  const sections = input as { required?: unknown; optional?: unknown };
+  for (const section of [sections.required, sections.optional]) {
+    if (!section || typeof section !== "object") continue;
+    const config = (section as Record<string, unknown>).max_tokens;
+    if (!Array.isArray(config) || !config[1] || typeof config[1] !== "object") continue;
+    const maximum = Number((config[1] as { max?: unknown }).max);
+    if (Number.isFinite(maximum) && maximum >= 64) {
+      return Math.min(visionLlmDesiredMaxOutputTokens, Math.trunc(maximum));
+    }
+  }
+  return 2048;
+}
+
+interface MultimodalRuntimeDiagnostics {
+  finish_reason?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  max_tokens?: number;
+}
+
+export interface MultimodalPromptOutputDiagnostics {
+  recognizedFields: string[];
+  mainTimelineWords: number;
+  outputWords: number;
+  estimatedOutputTokens: number;
+  requestedMaxTokens: number;
+  finishReason: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  suspectedTruncation: boolean;
+}
+
+export function multimodalPromptOutputDiagnostics(
+  output: string,
+  mode: ReturnType<typeof h3PromptModeForRequest>,
+  requestedMaxTokens: number,
+  runtime: MultimodalRuntimeDiagnostics = {}
+): MultimodalPromptOutputDiagnostics {
+  const fields = [
+    "subject_definitions",
+    "summary",
+    "retention_analysis",
+    "detailed_description",
+    "integrated_multimodal_description",
+    "overall_soundscape",
+    "non_diegetic_music"
+  ];
+  const recognizedFields = fields.filter((field) =>
+    new RegExp(`^${field}\\s*:`, "imu").test(output)
+  );
+  const mainField = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+  const mainMatch = new RegExp(`^${mainField}\\s*:`, "imu").exec(output);
+  let timeline = "";
+  if (mainMatch) {
+    const remaining = output.slice(mainMatch.index + mainMatch[0].length);
+    const nextField = /\n\s*(?:subject_definitions|summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
+    timeline = nextField?.index === undefined ? remaining : remaining.slice(0, nextField.index);
+  }
+  const estimatedOutputTokens = estimateH3TextTokens(output);
+  const finishReason = typeof runtime.finish_reason === "string" ? runtime.finish_reason : "";
+  const completionTokens = Number.isFinite(runtime.completion_tokens)
+    ? Math.max(0, Math.trunc(Number(runtime.completion_tokens)))
+    : null;
+  const promptTokens = Number.isFinite(runtime.prompt_tokens)
+    ? Math.max(0, Math.trunc(Number(runtime.prompt_tokens)))
+    : null;
+  const totalTokens = Number.isFinite(runtime.total_tokens)
+    ? Math.max(0, Math.trunc(Number(runtime.total_tokens)))
+    : null;
+  return {
+    recognizedFields,
+    mainTimelineWords: countPromptWords(timeline),
+    outputWords: countPromptWords(output),
+    estimatedOutputTokens,
+    requestedMaxTokens,
+    finishReason,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    suspectedTruncation: finishReason === "length" ||
+      (completionTokens !== null && completionTokens >= requestedMaxTokens - 8) ||
+      (completionTokens === null && estimatedOutputTokens >= Math.floor(requestedMaxTokens * 0.9))
+  };
+}
+
+export function multimodalPromptFailureDiagnostic(
+  diagnostics: MultimodalPromptOutputDiagnostics
+): string {
+  const observedTokens = diagnostics.completionTokens ?? diagnostics.estimatedOutputTokens;
+  if (diagnostics.suspectedTruncation) {
+    return `诊断：输出约 ${observedTokens}/${diagnostics.requestedMaxTokens} token，停止原因 ${diagnostics.finishReason || "未知"}，疑似达到生成长度上限。`;
+  }
+  if (diagnostics.finishReason) {
+    return `诊断：节点以 ${diagnostics.finishReason} 停止，输出约 ${observedTokens}/${diagnostics.requestedMaxTokens} token，未接近长度上限；更可能是模型提前结束或未遵循字段/细节要求。`;
+  }
+  return "诊断：当前节点未返回生成停止原因；请在设置中一键修复 MultiModal Prompt Nodes 并重启 ComfyUI，以启用长度与 token 诊断。";
+}
+
 function multimodalLanguageValidatorCompatibilityInstruction(
   sourcePrompt: string
 ): string {
@@ -260,7 +369,8 @@ export function buildMultimodalPromptWorkflow(
   warmup = false,
   device: MultimodalDevice = "GPU",
   retainModel = false,
-  runtimeSelection?: MultimodalRuntimeSelection
+  runtimeSelection?: MultimodalRuntimeSelection,
+  runtimeMaxOutputTokens = 2048
 ): Record<string, PromptNode> {
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) {
@@ -288,8 +398,8 @@ export function buildMultimodalPromptWorkflow(
     : [
         basePrompt,
         targetLanguage === "zh"
-          ? "Output language override: write explanatory H3 prose and field descriptions in Chinese. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
-          : "Output language override: write explanatory H3 prose and field descriptions in English. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
+          ? "Output language override: write explanatory H3 prose in Chinese, but keep every official H3 field name exactly in its required English ASCII form, including integrated_multimodal_description, overall_soundscape, and non_diegetic_music. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
+          : "Output language override: write explanatory H3 prose in English and keep every official H3 field name exactly in its required English ASCII form. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
         contentLockInstruction,
         languageValidatorInstruction
       ].join("\n\n");
@@ -302,7 +412,7 @@ export function buildMultimodalPromptWorkflow(
     : request.mode === "image-edit"
       ? 768
       : Math.min(
-          visionLlmMaxOutputTokens,
+          runtimeMaxOutputTokens,
           h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset)
         );
   const workflow: Record<string, PromptNode> = {
@@ -398,6 +508,7 @@ export async function enhancePromptWithMultimodalComfyUi(
       objectInfo,
       settings.promptModelId
     );
+    const runtimeMaxOutputTokens = multimodalRuntimeMaxOutputTokens(objectInfo);
     const uploadedImages = await Promise.all(
       (request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))
         .filter(Boolean)
@@ -412,7 +523,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       warmup,
       device,
       retainModel,
-      runtimeSelection
+      runtimeSelection,
+      runtimeMaxOutputTokens
     );
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
@@ -464,6 +576,17 @@ export async function enhancePromptWithMultimodalComfyUi(
     );
     onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["preview", "vision-llm"]);
+    const runtimeDiagnostics = await jsonRequest<MultimodalRuntimeDiagnostics>(
+      `${baseUrl}/local-video-studio/multimodal-prompt/diagnostics`,
+      { signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]) }
+    ).catch(() => ({}));
+    const requestedMaxTokens = Number(prompt["vision-llm"]?.inputs.max_tokens ?? 0);
+    const outputDiagnostics = multimodalPromptOutputDiagnostics(
+      output,
+      h3PromptModeForRequest(request),
+      requestedMaxTokens,
+      runtimeDiagnostics
+    );
     if (retainModel) {
       retainedMultimodalDevice = { modelId: settings.promptModelId, device };
     }
@@ -471,6 +594,7 @@ export async function enhancePromptWithMultimodalComfyUi(
       operationId,
       modelId: settings.promptModelId,
       outputLength: output.length,
+      ...outputDiagnostics,
       elapsedMs: Date.now() - operationStartedAt
     });
     if (warmup) return output;
@@ -483,17 +607,29 @@ export async function enhancePromptWithMultimodalComfyUi(
     const sourcePrompt = stripPromptAnnotations(request.prompt);
     const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
     const mode = h3PromptModeForRequest(request);
-    return normalizeH3PromptOutput(
-      output,
-      mode,
-      request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(sourcePrompt),
-      extractH3VisibleTextLocks(sourcePrompt),
-      sourcePrompt,
-      request.prompt,
-      nativeStateContinuation,
-      nativeStateContinuation
-    );
+    try {
+      return normalizeH3PromptOutput(
+        output,
+        mode,
+        request.h3DurationSeconds ?? 5,
+        extractH3DialogueLocks(sourcePrompt),
+        extractH3VisibleTextLocks(sourcePrompt),
+        sourcePrompt,
+        request.prompt,
+        nativeStateContinuation,
+        nativeStateContinuation,
+        request.continuumPreviousChunk
+      );
+    } catch (error) {
+      const diagnostic = multimodalPromptFailureDiagnostic(outputDiagnostics);
+      appLogger.warn("prompt", "comfy-output-validation-failed", "Multimodal prompt output failed validation", {
+        operationId,
+        modelId: settings.promptModelId,
+        error: safeLogErrorMessage(error),
+        ...outputDiagnostics
+      });
+      throw new Error(`${safeLogErrorMessage(error)} ${diagnostic}`, { cause: error });
+    }
   } finally {
     if (!retainModel) {
       const cleanupStartedAt = Date.now();

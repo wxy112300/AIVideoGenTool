@@ -132,6 +132,15 @@ function draftFromQueueTask(
     h3ContinuumArtifact: extension && task.h3ContinuumArtifact
       ? structuredClone(task.h3ContinuumArtifact)
       : undefined,
+    h3ContinuumMode: extension ? task.h3ContinuumMode : undefined,
+    h3ContinuumSequence: extension && task.h3ContinuumSequence
+      ? structuredClone(task.h3ContinuumSequence)
+      : undefined,
+    h3ContinuumReviewAction: extension ? task.h3ContinuumReviewAction : undefined,
+    h3ContinuumRerollFromChunk: extension ? task.h3ContinuumRerollFromChunk : undefined,
+    h3ContinuumTakeGroup: extension ? task.h3ContinuumTakeGroup : undefined,
+    h3ContinuumTakeRevisionId: extension ? task.h3ContinuumTakeRevisionId : undefined,
+    h3ContinuumTakeAction: extension ? task.h3ContinuumTakeAction : undefined,
     ...(extension
       ? {
           extensionPromptVersions: [{

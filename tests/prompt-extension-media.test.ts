@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EnhanceRequest } from "../src/types";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { EnhanceRequest, ExtensionQueueTask } from "../src/types";
 import { withPromptExtensionMedia } from "../electron/services/prompt-extension-media";
 import {
+  continuumExtensionFrameBudget,
   extensionGeneratedTrimStart,
+  finalizeExtensionOutput,
   promptExtensionFrameTime
 } from "../electron/services/extension-media";
 
@@ -39,6 +45,66 @@ describe("extension prompt boundary media", () => {
       overlapFrames: 22
     })).toBeCloseTo(22 / 24);
   });
+
+  it("preserves the exact source and continuation frame budget for Continuum concat", () => {
+    expect(continuumExtensionFrameBudget({
+      fps: 24,
+      duration: 14,
+      trimStartSeconds: 0,
+      trimEndSeconds: 24.125
+    })).toEqual({
+      retainedFrames: 579,
+      continuationFrames: 336,
+      totalFrames: 915
+    });
+  });
+
+  it.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0 || spawnSync("ffprobe", ["-version"]).status !== 0)(
+    "preserves frames when extending a previously concatenated Continuum video",
+    async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "continuum-frame-regression-"));
+      const sourcePath = path.join(directory, "source.mp4");
+      const firstPath = path.join(directory, "first.mp4");
+      const secondPath = path.join(directory, "second.mp4");
+      const makeVideo = (filename: string, duration: number) => execFileSync("ffmpeg", [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=24",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=32000",
+        "-t", String(duration), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-ac", "2", filename
+      ], { windowsHide: true });
+      const frameCount = (filename: string) => Number(execFileSync("ffprobe", [
+        "-v", "error", "-select_streams", "v:0", "-count_frames",
+        "-show_entries", "stream=nb_read_frames", "-of", "default=noprint_wrappers=1:nokey=1", filename
+      ], { encoding: "utf8", windowsHide: true }).trim());
+      try {
+        makeVideo(sourcePath, 362 / 24);
+        makeVideo(firstPath, 14);
+        makeVideo(secondPath, 14);
+        const task: ExtensionQueueTask = {
+          id: path.basename(directory), taskType: "extension", modelId: "minimax_h3_continuum",
+          status: "waiting", createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z",
+          outputFilename: "continuation.mp4", prompt: "Continue the motion.", promptVersion: 0,
+          ratio: "source", motion: "natural", seed: 1, keepSeedOnCopy: false,
+          modelProfile: "q4_k_m", maxGeneratedFrames: 362, unloadBetweenStages: true,
+          workflowPath: "workflows/minimax_h3_continuum_v38_extend_api.json",
+          sourceVideoPath: sourcePath, sourceVideoDuration: 362 / 24,
+          sourceWidth: 96, sourceHeight: 64, trimStartSeconds: 0, trimEndSeconds: 362 / 24,
+          duration: 14, fps: 24, frameInterpolation: "off", resolution: 480, overlapFrames: 22
+        };
+        const signal = new AbortController().signal;
+        await finalizeExtensionOutput(task, firstPath, signal);
+        expect(frameCount(firstPath)).toBe(698);
+        await finalizeExtensionOutput({
+          ...task, sourceVideoPath: firstPath, sourceVideoDuration: 29.083333, trimEndSeconds: 29.083333
+        }, secondPath, signal);
+        expect(frameCount(secondPath)).toBe(1034);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+    30000
+  );
 
   it("samples one frame before the selected crop end", () => {
     expect(promptExtensionFrameTime({

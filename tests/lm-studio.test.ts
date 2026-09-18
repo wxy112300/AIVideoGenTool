@@ -205,7 +205,7 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(content).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "text",
-        text: expect.stringContaining("native-state H3 continuation")
+        text: expect.stringContaining("CONTINUUM CHUNK AUTHORING CONTRACT (official Skill")
       })
     ]));
     expect(content).toEqual(expect.arrayContaining([

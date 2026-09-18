@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog";
 import type { ExtensionQueueTask, GenerationQueueTask, UpscaleQueueTask } from "../src/types";
 import type { NativeAvArtifactMetadata } from "../electron/services/native-av-artifact";
 import {
@@ -52,6 +53,7 @@ describe("H3 native AV completion collector", () => {
       sourceHeight: 1080,
       duration: 5,
       fps: 24,
+      h3AvOutputPolicy: "shared",
       h3VideoVaeMode: "int8-convrot"
     } as GenerationQueueTask;
 
@@ -62,13 +64,18 @@ describe("H3 native AV completion collector", () => {
     )).toMatchObject({
       role: "final-clean-av",
       producerNodeId: "LocalVideoStudioH3SaveJointAV",
-      producerNodeVersion: "0.3.2",
+      producerNodeVersion: H3_AV_SERIALIZER_REVISION,
       workflowId: "minimax_h3_i2v_api.json",
       width: 864,
       height: 480,
       frameCount: 124,
       contextFrames: 0
     });
+    expect(nativeAvArtifactMetadataForTask(
+      task,
+      "C:/ComfyUI/output",
+      "2026-09-02T00:00:00.000Z"
+    ).sharedOutput).toBe(true);
   });
 
   it("includes Motion Context frames in extension artifact geometry", () => {

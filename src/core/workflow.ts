@@ -57,6 +57,7 @@ export interface WorkflowContext {
   h3AvSourceWidth?: number;
   h3AvSourceHeight?: number;
   h3AvScaleBy?: number;
+  h3ContinuumBoundaryFrame?: string;
   h3LearnedUpscalerModel?: string;
   h3PreviewTinyVae: string;
   locale?: UiLocale;
@@ -171,6 +172,7 @@ export function isMiniMaxH3Model(modelId: string): boolean {
 export const H3_CONTINUUM_CONTEXT_FRAMES = 22;
 export const H3_CONTINUUM_V38_MIN_DURATION_SECONDS = 4;
 export const H3_CONTINUUM_V38_WORKFLOW_FILENAME = "minimax_h3_continuum_v38_extend_api.json";
+export const H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME = "minimax_h3_continuum_v38_managed_extend_api.json";
 export const H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME = "minimax_h3_continuum_extend_api.json";
 
 function workflowBasename(workflowPath: string): string {
@@ -178,15 +180,47 @@ function workflowBasename(workflowPath: string): string {
 }
 
 export function isMiniMaxH3ContinuumV38Workflow(workflowPath?: string): boolean {
-  return workflowBasename(workflowPath ?? "") === H3_CONTINUUM_V38_WORKFLOW_FILENAME;
+  const basename = workflowBasename(workflowPath ?? "");
+  return basename === H3_CONTINUUM_V38_WORKFLOW_FILENAME ||
+    basename === H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME;
+}
+
+export function isMiniMaxH3ContinuumManagedWorkflow(workflowPath?: string): boolean {
+  return workflowBasename(workflowPath ?? "") === H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME;
+}
+
+export function h3ContinuumModeForSource(source: {
+  workflowPath?: string;
+  h3ContinuumMode?: "managed" | "bootstrap";
+  h3ContinuumSequence?: { acceptedChunks: number };
+  h3ContinuumArtifact?: unknown;
+  h3ContinuumArtifactPath?: string;
+}): "managed" | "bootstrap" {
+  if (source.h3ContinuumSequence && source.h3ContinuumSequence.acceptedChunks > 0) return "managed";
+  if (source.h3ContinuumMode === "bootstrap" || source.h3ContinuumArtifact || source.h3ContinuumArtifactPath?.trim()) {
+    return "bootstrap";
+  }
+  return source.h3ContinuumMode === "managed" || isMiniMaxH3ContinuumManagedWorkflow(source.workflowPath)
+    ? "managed"
+    : "bootstrap";
 }
 
 export function h3ContinuumWorkflowPathForInput(workflowPath: string): string {
-  if (workflowBasename(workflowPath) !== H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME) {
+  if (![H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME, H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME].includes(workflowBasename(workflowPath))) {
     return workflowPath;
   }
   const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
   return `${workflowPath.slice(0, separatorIndex + 1)}${H3_CONTINUUM_V38_WORKFLOW_FILENAME}`;
+}
+
+export function h3ContinuumManagedWorkflowPathForInput(workflowPath: string): string {
+  const basename = workflowBasename(workflowPath);
+  if (
+    basename !== H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME &&
+    basename !== H3_CONTINUUM_V38_WORKFLOW_FILENAME
+  ) return workflowPath;
+  const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
+  return `${workflowPath.slice(0, separatorIndex + 1)}${H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME}`;
 }
 
 const h3WorkflowPairs = [
@@ -714,7 +748,8 @@ export function normalizeH3Steps(
 }
 
 function generationSafetyProfileForModel(
-  modelId: string
+  modelId: string,
+  workflowPath?: string
 ): GenerationSafetyProfile {
   if (isMiniMaxH3Model(modelId)) {
     const capabilities = modelCatalog.get(modelId)?.definition.capabilities;
@@ -727,7 +762,9 @@ function generationSafetyProfileForModel(
           ? "MiniMax H3 Turbo FL2VA"
           : "MiniMax H3 FL2VA",
       maxGeneratedFrames: capabilities?.maxGeneratedFrames ?? 362,
-      maxDurationSeconds: capabilities?.maxDurationSeconds ?? 15,
+      maxDurationSeconds: isMiniMaxH3ContinuumModel(modelId) && isMiniMaxH3ContinuumManagedWorkflow(workflowPath)
+        ? 15
+        : capabilities?.maxDurationSeconds ?? 15,
       resolutions: capabilities?.resolutions
     };
   }
@@ -1132,6 +1169,8 @@ export function workflowSupportsH3ContinuumExtension(source: unknown): boolean {
       "HEIGHT",
       "H3_CONTINUUM_CHUNKS",
       "H3_CONTINUUM_CHUNK_SECONDS",
+      "H3_SPECTRUM_MODE",
+      "H3_SPECTRUM_MODEL_AWARE_MODE",
       "SEED",
       "OUTPUT_FILENAME"
     ].every((placeholder) => serialized.includes(`{{${placeholder}}}`)) &&
@@ -1142,6 +1181,7 @@ export function workflowSupportsH3ContinuumExtension(source: unknown): boolean {
         "VAEDecode",
         "VAEDecodeAudio",
         "H3ContinuumAssembleSeamV35",
+        "LocalVideoStudioH3ContinuumDiagnostics",
         "CreateVideo",
         "SaveVideo",
         "LocalVideoStudioH3SaveJointAV"
@@ -1171,6 +1211,89 @@ export function workflowSupportsH3ContinuumExtension(source: unknown): boolean {
     ].every((classType) => classTypes.has(classType));
 }
 
+/**
+ * Managed Continuum is a separate graph contract. It deliberately has no
+ * legacy JointAV/state bridge, concat node, or app-owned duplicate saver.
+ */
+export function workflowSupportsH3ContinuumManagedExtension(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const serialized = JSON.stringify(source);
+  const classTypes = new Set(
+    Object.values(source as Record<string, unknown>).flatMap((node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+      const classType = (node as Record<string, unknown>).class_type;
+      return typeof classType === "string" ? [classType] : [];
+    })
+  );
+  return [
+    "PROMPT",
+    "H3_BOUNDARY_FRAME",
+    "WIDTH",
+    "HEIGHT",
+    "H3_CONTINUUM_CHUNKS",
+    "H3_CONTINUUM_CHUNK_SECONDS",
+    "H3_CONTINUUM_RUN_NAME",
+    "H3_CONTINUUM_PROJECT_ID",
+    "H3_CONTINUUM_REVIEW_ACTION",
+    "H3_CONTINUUM_REROLL_FROM",
+    "H3_CONTINUUM_TAKE_GROUP",
+    "H3_CONTINUUM_TAKE_REVISION_ID",
+    "H3_CONTINUUM_TAKE_ACTION",
+    "H3_SPECTRUM_MODE",
+    "H3_SPECTRUM_MODEL_AWARE_MODE",
+    "SEED",
+    "OUTPUT_FILENAME"
+  ].every((placeholder) => serialized.includes(`{{${placeholder}}}`)) &&
+    [
+      "H3ContinuumSamplerV38",
+      "LoadImage",
+      "VAEDecode",
+      "VAEDecodeAudio",
+      "H3ContinuumAssembleSeamV35",
+      "LocalVideoStudioH3ContinuumManagedReceipt",
+      "CreateVideo",
+      "SaveVideo"
+    ].every((classType) => classTypes.has(classType)) &&
+    ![
+      "LocalVideoStudioH3LoadJointAV",
+      "LocalVideoStudioH3ArtifactToContinuumState",
+      "LocalVideoStudioH3SaveJointAV",
+      "LTXVConcat",
+      "H3ContinuumJoin",
+      "LocalVideoStudioH3ContinuumDiagnostics"
+    ].some((classType) => classTypes.has(classType));
+}
+
+export function continuumFirstFrameTask(task: ExtensionQueueTask): ExtensionQueueTask {
+  const source = task.h3ContinuumSequence?.firstFrameSource;
+  if (!source && task.h3ContinuumSequence?.acceptedChunks) {
+    throw new Error("Continuum Run 缺少最初的首帧来源，不能用当前末帧替换后继续。");
+  }
+  if (!source) return task;
+  if (source.resolution === 1080 || source.resolution === 1440) throw new Error("Continuum 首帧来源不支持原生高分辨率二次采样档。");
+  return { ...task, ...source, resolution: source.resolution };
+}
+
+export function continuumTimelinePromptForTask(
+  task: Pick<ExtensionQueueTask, "prompt" | "h3ContinuumSequence" | "h3ContinuumReviewAction">,
+  _chunkSeconds: number
+): string {
+  const accepted = task.h3ContinuumSequence?.chunks
+    .filter((chunk) => chunk.status === "accepted" || chunk.status === "review-ready")
+    .map((chunk) => chunk.prompt.finalPrompt) ?? [];
+  if (task.h3ContinuumReviewAction === "Regenerate Current" && task.prompt !== accepted.at(-1)) {
+    throw new Error("官方重抽本段必须保留原提示词；修改正文不属于此操作支持的重抽。");
+  }
+  const prefix = task.h3ContinuumReviewAction === "Regenerate Current" ? accepted.slice(0, -1) : accepted;
+  const prompts = [...prefix, task.prompt];
+  if (prompts.some((prompt) => !prompt.trim() || /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(prompt))) {
+    throw new Error("Continuum 每段提示词必须是非空 Chunk body，不能嵌套 Timeline 标题。");
+  }
+  const preamble = task.h3ContinuumSequence?.globalPromptPreamble;
+  const sections = prompts.map((prompt, index) => `[Chunk ${index + 1}]\n${prompt}`);
+  return [preamble, sections.join("\n\n")].filter(Boolean).join("\n\n");
+}
+
 export function workflowSupportsExtensionForModel(
   source: unknown,
   modelId: string
@@ -1179,7 +1302,8 @@ export function workflowSupportsExtensionForModel(
     return workflowSupportsH3BoundaryExtension(source);
   }
   if (isMiniMaxH3ContinuumModel(modelId)) {
-    return workflowSupportsH3ContinuumExtension(source);
+    return workflowSupportsH3ContinuumExtension(source) ||
+      workflowSupportsH3ContinuumManagedExtension(source);
   }
   if (isMiniMaxH3R2vModel(modelId)) {
     return workflowSupportsH3MotionContextExtension(source);
@@ -1227,14 +1351,14 @@ export function generationSafetyForTask(
   task: Pick<
     GenerationQueueTask,
     "modelId" | "duration" | "fps" | "frameInterpolation"
-  > & { resolution?: number },
+  > & { resolution?: number; workflowPath?: string },
   locale: UiLocale = "zh-CN"
 ): GenerationSafety {
   const message = (
     key: Parameters<typeof workflowMessage>[0],
     params: Record<string, string | number> = {}
   ) => workflowMessage(key, params, locale);
-  const profile = generationSafetyProfileForModel(task.modelId);
+  const profile = generationSafetyProfileForModel(task.modelId, task.workflowPath);
   const { maxDurationSeconds, maxGeneratedFrames } = profile;
   if (
     !Number.isFinite(task.duration) ||
@@ -1414,6 +1538,17 @@ export function extensionSafetyForTask(
     );
   }
   if (isMiniMaxH3ContinuumModel(task.modelId)) {
+    if (isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath)) {
+      const safety = generationSafetyForTask(task, locale);
+      const minimumContextSeconds = 1 / 24;
+      if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
+        return { ...safety, safe: false, minimumContextSeconds, message: message("sourceVideoMissing") };
+      }
+      if (task.duration < H3_CONTINUUM_V38_MIN_DURATION_SECONDS) {
+        return { ...safety, safe: false, minimumContextSeconds, message: message("continuumDurationMinimum", { minimum: H3_CONTINUUM_V38_MIN_DURATION_SECONDS }) };
+      }
+      return { ...safety, minimumContextSeconds };
+    }
     const continuumV38 = isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
     const contextFrames = H3_CONTINUUM_CONTEXT_FRAMES;
     const generationSafety = generationSafetyForTask(task, locale);
@@ -1845,9 +1980,13 @@ export function renderWorkflow(
     task,
     task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
   );
+  const sharedAvOutput = task.h3AvOutputPolicy === "shared";
   const continuumV38 = task.taskType === "extension" &&
     isMiniMaxH3ContinuumModel(task.modelId) &&
     isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
+  const continuumManaged = task.taskType === "extension" &&
+    isMiniMaxH3ContinuumModel(task.modelId) &&
+    isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath);
   const continuumSampledFrames = continuumV38
     ? continuumV38SampledFrameCountForSeconds(task.duration)
     : continuumSampledFrameCountForSeconds(task.duration);
@@ -1869,20 +2008,29 @@ export function renderWorkflow(
     ? 1
     : frameInterpolationMultiplier(task);
   const tokens: Record<string, string | number | boolean> = {
-    PROMPT: videoPromptForLoras(task.prompt, task.videoLoras),
+    PROMPT: videoPromptForLoras(
+      continuumManaged
+        ? continuumTimelinePromptForTask(
+            task as ExtensionQueueTask,
+            task.h3ContinuumSequence?.chunkSeconds ?? task.duration
+          )
+        : task.prompt,
+      task.videoLoras
+    ),
     NEGATIVE_PROMPT: "",
     SEED: task.seed,
     INPUT_IMAGE: context.inputImage ?? "",
     END_IMAGE: context.endImage ?? "",
     SOURCE_VIDEO: context.sourceVideo ?? "",
     H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
-    H3_CONTEXT_SAVE_PREFIX: h3LatentSaveModeSavesMotionContext(h3LatentSaveMode)
+    H3_CONTEXT_SAVE_PREFIX: !sharedAvOutput && h3LatentSaveModeSavesMotionContext(h3LatentSaveMode)
       ? context.h3ContextSavePrefix ?? h3MotionContextSavePrefixForTask(task.id)
       : "",
     H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
     H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
+    H3_BOUNDARY_FRAME: context.h3ContinuumBoundaryFrame ?? "",
     H3_AV_SOURCE_FRAME_INDEX: context.h3AvSourceFrameIndex ?? (
-      continuumV38
+      continuumV38 && !continuumManaged
         ? Math.max(0, ((task.taskType === "extension"
           ? task.h3ContinuumArtifact?.frameCount
           : undefined) ?? continuumSampledFrames) - 1)
@@ -1911,8 +2059,35 @@ export function renderWorkflow(
         ? continuumSampledFrames
         : generationFrameCountForTask(task)
       : 0,
-    H3_CONTINUUM_CHUNKS: continuumV38 ? 1 : 0,
-    H3_CONTINUUM_CHUNK_SECONDS: continuumV38 ? task.duration : 0,
+    H3_CONTINUUM_CHUNKS: continuumManaged
+      ? task.h3ContinuumTargetChunks ?? task.h3ContinuumSequence?.targetChunks ?? 1
+      : continuumV38 ? 1 : 0,
+    H3_CONTINUUM_CHUNK_SECONDS: continuumManaged
+      ? task.h3ContinuumSequence?.chunkSeconds ?? task.duration
+      : continuumV38 ? task.duration : 0,
+    H3_CONTINUUM_RUN_NAME: continuumManaged
+      ? task.h3ContinuumSequence?.runName ?? `lvs-${task.id}`
+      : "",
+    H3_CONTINUUM_PROJECT_ID: continuumManaged
+      ? task.h3ContinuumSequence?.projectId ?? "local-video-studio"
+      : "",
+    H3_CONTINUUM_REVIEW_ACTION: continuumManaged
+      ? task.h3ContinuumReviewAction ?? "Continue / Next"
+      : "",
+    H3_CONTINUUM_REROLL_FROM: continuumManaged
+      ? task.h3ContinuumRerollFromChunk ?? 0
+      : 0,
+    H3_CONTINUUM_TAKE_GROUP: continuumManaged
+      ? task.h3ContinuumTakeGroup ?? 0
+      : 0,
+    H3_CONTINUUM_TAKE_REVISION_ID: continuumManaged
+      ? task.h3ContinuumTakeRevisionId ?? ""
+      : "",
+    H3_CONTINUUM_TAKE_ACTION: continuumManaged
+      ? task.h3ContinuumTakeAction ?? "Automatic"
+      : "",
+    H3_SPECTRUM_MODE: task.spectrumMode ?? "off",
+    H3_SPECTRUM_MODEL_AWARE_MODE: task.spectrumModelAwareMode ?? "off",
     OVERLAP_FRAMES: task.taskType === "extension" ? task.overlapFrames : 0,
     UNLOAD_BETWEEN_STAGES: task.taskType === "extension"
       ? task.unloadBetweenStages
@@ -1994,7 +2169,7 @@ export function renderWorkflow(
     if (!h3LatentSaveModeSavesJointAv(h3LatentSaveMode)) {
       outputNodeTypes.add("LocalVideoStudioH3SaveJointAV");
     }
-    if (!h3LatentSaveModeSavesMotionContext(h3LatentSaveMode)) {
+    if (sharedAvOutput || !h3LatentSaveModeSavesMotionContext(h3LatentSaveMode)) {
       outputNodeTypes.add("MiniMaxH3MotionContextSaveLatent");
     }
     if (outputNodeTypes.size) {
@@ -2314,6 +2489,7 @@ export function validateApiWorkflow(
     /^H3_REF_VIDEO_\d+$/u.test(token)
   );
   const hasH3ArtifactInput = placeholders.has("H3_AV_INPUT_ARTIFACT");
+  const hasH3BoundaryFrame = placeholders.has("H3_BOUNDARY_FRAME");
   const hasTextOnlyH3Conditioning = entries.some(([, value]) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const node = value as Record<string, unknown>;
@@ -2322,7 +2498,7 @@ export function validateApiWorkflow(
     return inputs !== null && typeof inputs === "object" && !Array.isArray(inputs) &&
       !("first_frame" in inputs) && !("last_frame" in inputs);
   });
-  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning && !hasH3ArtifactInput) {
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning && !hasH3ArtifactInput && !hasH3BoundaryFrame) {
     errors.push(message("mediaPlaceholderMissing"));
   }
   if (!placeholders.has("SEED")) warnings.push(message("seedPlaceholderMissing"));

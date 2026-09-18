@@ -71,6 +71,8 @@ export interface NativeAvArtifactMetadata {
   sourceTaskId: string;
   sourceAssetId?: string;
   sourceVersionId?: string;
+  /** New shared tasks must commit the serializer's canonical owner in place. */
+  sharedOutput?: boolean;
   createdAt?: string;
 }
 
@@ -375,12 +377,14 @@ function manifestWithoutCachedPaths(artifact: NativeAvContinuationArtifact): Nat
     manifest: {
       ...artifact.manifest,
       format: artifact.manifest.format ?? "json",
-      absolutePath: undefined
+      absolutePath: undefined,
+      sizeBytes: undefined
     },
     payload: {
       ...artifact.payload,
       format: artifact.payload.format ?? "safetensors",
-      absolutePath: undefined
+      absolutePath: undefined,
+      sizeBytes: undefined
     }
   };
 }
@@ -483,10 +487,16 @@ export class NativeAvArtifactService {
         return failure("missing", "Comfy H3 AV serializer 没有产出可提交的 safetensors 文件");
       }
       const artifactId = request.artifactId ?? randomUUID();
+      if (request.sharedOutput && !request.artifactId) {
+        return failure("save-failed", "shared H3 AV serializer descriptor 不是规范 h3av_<id>.safetensors，拒绝复制 payload");
+      }
       const filenames = continuationArtifactFilenames(artifactId);
       const directory = artifactDirectory(request.outputDirectory);
       payloadPath = safeArtifactPath(request.outputDirectory, filenames.payload);
       manifestPath = safeArtifactPath(request.outputDirectory, filenames.manifest);
+      if (request.sharedOutput && sourcePath !== payloadPath) {
+        return failure("save-failed", "shared H3 AV payload 不在 canonical owner 路径，拒绝复制 payload");
+      }
       const existingManifest = await this.deps.fileSystem.stat(manifestPath);
       const existingPayload = await this.deps.fileSystem.stat(payloadPath);
       if (existingManifest || (existingPayload && sourcePath !== payloadPath)) {

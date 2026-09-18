@@ -164,5 +164,16 @@
       "joint_av": ["18", 0],
       "filename": "{{H3_AV_ARTIFACT_FILENAME}}"
     }
+  },
+  "24": {
+    "class_type": "LocalVideoStudioH3ContinuumDiagnostics",
+    "inputs": {
+      "bridge_report": ["10", 1],
+      "status": ["12", 3],
+      "assembly_plan": ["12", 2],
+      "assembly_report": ["15", 2],
+      "spectrum_mode": "{{H3_SPECTRUM_MODE}}",
+      "spectrum_model_aware_mode": "{{H3_SPECTRUM_MODEL_AWARE_MODE}}"
+    }
   }
 }

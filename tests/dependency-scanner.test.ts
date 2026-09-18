@@ -428,6 +428,56 @@ describe("dependency scanner", () => {
     expect(multimodal?.compatibilityNotice).toBe(multimodal?.updateNotice);
   });
 
+  it("marks a Qwen3.8-compatible MultiModal node without adaptive detail expansion for repair", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-budget-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const nodeDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MultiModal-Prompt-Nodes"
+    );
+    await fs.mkdir(nodeDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(
+        path.join(nodeDirectory, "pyproject.toml"),
+        '[project]\nversion = "1.0.16"\n',
+        "utf8"
+      ),
+      fs.writeFile(
+        path.join(nodeDirectory, "vision_llm_node.py"),
+        [
+          "class VisionLLMNode:",
+          "    def _infer_is_qwen35(self, model_path):",
+          "        model_name_lower = model_path.lower()",
+          "        return any(family in model_name_lower for family in (\"qwen35\", \"qwen3.5\", \"qwen36\", \"qwen3.6\", \"qwen38\", \"qwen3.8\"))"
+        ].join("\n"),
+        "utf8"
+      ),
+      fs.writeFile(
+        path.join(nodeDirectory, "local_gguf_utils.py"),
+        "def _is_mmproj_filename(file_name):\n    return file_name.startswith('mmproj')\n",
+        "utf8"
+      )
+    ]);
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const multimodal = statuses.find(
+      (status) => status.id === "comfyui-multimodal-prompt-nodes"
+    );
+
+    expect(multimodal).toMatchObject({
+      installed: true,
+      loaded: true,
+      updateAvailable: true,
+      compatibilityState: "warning"
+    });
+    expect(multimodal?.updateNotice).toContain("16K/3072");
+    expect(multimodal?.updateNotice).toContain("安全诊断");
+  });
+
   it("offers an update when the installed node is below the catalog recommendation", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-spectrum-scan-"));
     temporaryDirectories.push(comfyRoot);
@@ -454,12 +504,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.24",
+      recommendedVersion: "0.2.27",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
     });
-    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.24");
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.27");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {
@@ -609,7 +659,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("reports immutable H3 package revisions during offline scans", async () => {
+  it.each(["0.2.2", "0.3.4"])("reports outdated H3 package revision %s during offline scans", async (installedRevision) => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-revision-scan-"));
     temporaryDirectories.push(comfyRoot);
     const customNodesRoot = path.join(comfyRoot, "custom_nodes");
@@ -618,7 +668,7 @@ describe("dependency scanner", () => {
     await fs.mkdir(serializerDirectory, { recursive: true });
     await fs.mkdir(upscalerDirectory, { recursive: true });
     await fs.writeFile(path.join(serializerDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
-    await fs.writeFile(path.join(serializerDirectory, "VERSION"), "0.2.2\n", "utf8");
+    await fs.writeFile(path.join(serializerDirectory, "VERSION"), `${installedRevision}\n`, "utf8");
     await fs.writeFile(path.join(upscalerDirectory, "nodes.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
 
     const statuses = await scanCustomNodes(comfyRoot, {
@@ -630,8 +680,8 @@ describe("dependency scanner", () => {
 
     expect(serializer).toMatchObject({
       installed: true,
-      detectedRevision: "0.2.2",
-      installRevision: "0.3.2",
+      detectedRevision: installedRevision,
+      installRevision: "0.3.5",
       versionSource: "VERSION",
       compatibilityState: "error",
       updateAvailable: true

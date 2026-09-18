@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   compareDependencyIds,
   customNodeCatalog,
@@ -15,6 +16,11 @@ import {
 } from "../src/core/catalog";
 
 describe("dependency catalog", () => {
+  it("keeps the bundled H3 node VERSION aligned with its install revision", () => {
+    const version = readFileSync(new URL("../comfy_nodes/LocalVideoStudio-H3/VERSION", import.meta.url), "utf8").trim();
+    expect(version).toBe(H3_AV_SERIALIZER_REVISION);
+  });
+
   it("keeps node package identities and install targets unique", () => {
     expect(new Set(customNodeCatalog.map((item) => item.id)).size)
       .toBe(customNodeCatalog.length);
@@ -155,11 +161,11 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.24"
+      recommendedVersion: "0.2.27"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
-      comfyUi: "0.33.1",
-      commit: "a360f64",
+      comfyUi: "0.35.0",
+      commit: "120d72e",
       checks: ["static"]
     });
     expect(customNodeDefinition("h3-optimizations")).toMatchObject({
@@ -251,6 +257,8 @@ describe("dependency catalog", () => {
         "LocalVideoStudioH3LoadJointAV",
         "LocalVideoStudioH3ArtifactToContinuumState",
         "LocalVideoStudioH3ContinuumSamplerV38",
+        "LocalVideoStudioH3ContinuumDiagnostics",
+        "LocalVideoStudioH3ContinuumManagedReceipt",
         "LocalVideoStudioRequireGpuVAE",
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"

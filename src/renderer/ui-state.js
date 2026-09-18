@@ -9,6 +9,7 @@ export function createRendererUiState() {
         flashMessageTimer: undefined,
         selectedHistoryAssetId: "",
         selectedHistoryVersionId: "",
+        historyArtifactInspection: null,
         historyFilter: { ...defaultHistoryFilter },
         historyFilterPanelOpen: false,
         historyForwardTarget: null,

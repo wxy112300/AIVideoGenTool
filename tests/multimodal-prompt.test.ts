@@ -4,7 +4,10 @@ import {
   multimodalActivityTimeoutMinutes,
   multimodalDeviceFor,
   multimodalExecutionPreflight,
+  multimodalPromptFailureDiagnostic,
+  multimodalPromptOutputDiagnostics,
   multimodalPromptTargetLanguage,
+  multimodalRuntimeMaxOutputTokens,
   multimodalRuntimeSelection
 } from "../electron/services/multimodal-prompt.js";
 import { createDefaultState } from "../src/core/defaults.js";
@@ -62,6 +65,28 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       objectInfo,
       "qwen/qwen3.8-27b-uncensored-q4"
     )).toEqual({ model, mmproj });
+  });
+
+  it("reads the live VisionLLM output ceiling and keeps an old-node fallback", () => {
+    expect(multimodalRuntimeMaxOutputTokens({
+      VisionLLMNode: {
+        input: {
+          required: {
+            max_tokens: ["INT", { min: 64, max: 3072 }]
+          }
+        }
+      }
+    })).toBe(3072);
+    expect(multimodalRuntimeMaxOutputTokens({
+      VisionLLMNode: {
+        input: {
+          required: {
+            max_tokens: ["INT", { min: 64, max: 2048 }]
+          }
+        }
+      }
+    })).toBe(2048);
+    expect(multimodalRuntimeMaxOutputTokens({})).toBe(2048);
   });
 
   it("reports an actionable Qwen3.8 projector registration error before submission", () => {
@@ -197,9 +222,10 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     }, ["uploaded-boundary.png"], settings);
     const prompt = String(workflow["vision-llm"]?.inputs.prompt);
 
-    expect(prompt).toContain("native-state H3 continuation");
+    expect(prompt).toContain("CONTINUUM CHUNK AUTHORING CONTRACT (official Skill");
     expect(prompt).toContain("T2VA task rule");
     expect(prompt).toContain("Single-shot lock");
+    expect(prompt).toContain("Never return earlier bodies, routing headers");
     expect(prompt).not.toContain("For the target video, at 0.00 seconds");
   });
 
@@ -247,6 +273,88 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(2048);
   });
 
+  it("expands only a long detailed-cinematic request beyond 2048 when the runtime supports it", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "A performer crosses the room while the camera tracks beside them.",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "FL2VA",
+        h3PromptPreset: "detailed-cinematic",
+        h3DurationSeconds: 15,
+        imagePaths: ["reference.png"]
+      },
+      ["studio-input-reference.png"],
+      settings,
+      false,
+      "GPU",
+      false,
+      undefined,
+      3072
+    );
+
+    expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(2880);
+  });
+
+  it("diagnoses schema loss and token-limit truncation without retaining prompt text", () => {
+    const diagnostics = multimodalPromptOutputDiagnostics(
+      [
+        "subject_definitions: Performer A is at frame left.",
+        "integrated_multimodal_description: At 0.00 seconds, Performer A starts walking. The camera tracks beside the performer continuously.",
+        "overall_soundscape: Footsteps and room tone.",
+        "non_diegetic_music: None."
+      ].join("\n"),
+      "FL2VA",
+      2880,
+      {
+        finish_reason: "length",
+        prompt_tokens: 5340,
+        completion_tokens: 2880,
+        total_tokens: 8220,
+        max_tokens: 2880
+      }
+    );
+
+    expect(diagnostics).toMatchObject({
+      recognizedFields: [
+        "subject_definitions",
+        "integrated_multimodal_description",
+        "overall_soundscape",
+        "non_diegetic_music"
+      ],
+      requestedMaxTokens: 2880,
+      finishReason: "length",
+      promptTokens: 5340,
+      completionTokens: 2880,
+      totalTokens: 8220,
+      suspectedTruncation: true
+    });
+    expect(diagnostics.mainTimelineWords).toBeGreaterThan(10);
+    expect(diagnostics).not.toHaveProperty("output");
+    expect(diagnostics).not.toHaveProperty("prompt");
+    expect(multimodalPromptFailureDiagnostic(diagnostics)).toContain("疑似达到生成长度上限");
+  });
+
+  it("distinguishes an early model stop from token-limit truncation", () => {
+    const diagnostics = multimodalPromptOutputDiagnostics(
+      "integrated_multimodal_description: The subject takes one step.",
+      "I2VA",
+      2880,
+      {
+        finish_reason: "stop",
+        prompt_tokens: 5200,
+        completion_tokens: 342,
+        total_tokens: 5542,
+        max_tokens: 2880
+      }
+    );
+
+    expect(diagnostics.suspectedTruncation).toBe(false);
+    expect(multimodalPromptFailureDiagnostic(diagnostics)).toContain("模型提前结束或未遵循字段/细节要求");
+  });
+
   it("passes a concrete Chinese target language for automatic Chinese input", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
@@ -259,7 +367,8 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     }, ["reference.png"], settings);
 
     expect(workflow["vision-llm"]?.inputs.target_language).toBe("zh");
-    expect(workflow["vision-llm"]?.inputs.prompt).toContain("write explanatory H3 prose and field descriptions in Chinese");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("write explanatory H3 prose in Chinese");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("keep every official H3 field name exactly in its required English ASCII form");
   });
 
   it("passes an explicit dialogue ledger and protects foreign-language speech from the override", () => {

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { NativeAvArtifactFileSystemPort } from "../electron/ports/native-av-artifact-file-system.js";
 import type { NativeAvArtifactCommitRequest } from "../electron/services/native-av-artifact.js";
 import { NativeAvArtifactService } from "../electron/services/native-av-artifact.js";
@@ -69,6 +69,13 @@ describe("NativeAvArtifactService", () => {
       expect(inspected.payloadBytes).toBe(artifact.payloadBytes);
       expect(inspected.artifact?.videoShape).toEqual([1, 24, 2, 2, 2]);
       expect(inspected.artifact?.audioShape).toEqual([1, 32, 2, 8]);
+      const hydratedReference = {
+        ...artifact,
+        manifest: { ...artifact.manifest, sizeBytes: 1756 },
+        payload: { ...artifact.payload, sizeBytes: artifact.payloadBytes }
+      };
+      expect((await service.inspect(hydratedReference, root)).status).toBe("available");
+      expect((await service.inspect({ ...hydratedReference, payloadBytes: artifact.payloadBytes + 1 }, root)).status).toBe("invalid");
       await expect(fs.stat(artifact.payload.absolutePath!)).resolves.toMatchObject({ isFile: expect.any(Function) });
       await expect(fs.stat(artifact.manifest.absolutePath!)).resolves.toMatchObject({ isFile: expect.any(Function) });
     } finally {
@@ -173,6 +180,118 @@ describe("NativeAvArtifactService", () => {
       const inspection = await service.inspect(committed.artifact!, root);
       expect(inspection.status).toBe("available");
       expect(inspection.payloadBytes).toBeGreaterThan(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a non-canonical serializer filename for shared output without copying", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-shared-owner-"));
+    try {
+      const producedDirectory = path.join(root, H3_CONTINUATION_ARTIFACT_SUBFOLDER);
+      const producedFilename = "serializer-output.safetensors";
+      const producedPath = path.join(producedDirectory, producedFilename);
+      await fs.mkdir(producedDirectory, { recursive: true });
+      await fs.writeFile(producedPath, safetensorsPayload());
+      const copyFile = vi.fn(nativeAvArtifactFileSystem.copyFile);
+      const writeFile = vi.fn(nativeAvArtifactFileSystem.writeFile);
+      const fileSystem: NativeAvArtifactFileSystemPort = {
+        ...nativeAvArtifactFileSystem,
+        copyFile,
+        writeFile
+      };
+      const service = new NativeAvArtifactService({ fileSystem });
+      const { payload: _payload, ...metadata } = request(root);
+      const result = await service.commitProducedFile({
+        ...metadata,
+        providerId: "comfyui",
+        sharedOutput: true,
+        producedFile: {
+          filename: producedFilename,
+          subfolder: H3_CONTINUATION_ARTIFACT_SUBFOLDER,
+          type: "output",
+          format: "safetensors"
+        }
+      });
+      expect(result.status).toBe("save-failed");
+      expect(result.reason).toContain("canonical");
+      expect(copyFile).not.toHaveBeenCalled();
+      expect(writeFile).not.toHaveBeenCalled();
+      await expect(fs.stat(producedPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects shared payloads from a different output directory before any filesystem write", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-shared-owner-"));
+    try {
+      const producedDirectory = path.join(root, "serializer-output");
+      const producedFilename = "serializer-output.safetensors";
+      const producedPath = path.join(producedDirectory, producedFilename);
+      await fs.mkdir(producedDirectory, { recursive: true });
+      await fs.writeFile(producedPath, safetensorsPayload());
+      const copyFile = vi.fn(nativeAvArtifactFileSystem.copyFile);
+      const writeFile = vi.fn(nativeAvArtifactFileSystem.writeFile);
+      const fileSystem: NativeAvArtifactFileSystemPort = {
+        ...nativeAvArtifactFileSystem,
+        copyFile,
+        writeFile
+      };
+      const service = new NativeAvArtifactService({ fileSystem });
+      const { payload: _payload, ...metadata } = request(root);
+      const result = await service.commitProducedFile({
+        ...metadata,
+        providerId: "comfyui",
+        sharedOutput: true,
+        artifactId: "shared-owner-2",
+        producedFile: {
+          filename: producedFilename,
+          subfolder: "serializer-output",
+          type: "output",
+          format: "safetensors"
+        }
+      });
+      expect(result.status).toBe("save-failed");
+      expect(result.reason).toContain("descriptor");
+      expect(copyFile).not.toHaveBeenCalled();
+      expect(writeFile).not.toHaveBeenCalled();
+      await expect(fs.stat(producedPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("commits a canonical shared serializer in place without copying its payload", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-shared-owner-"));
+    try {
+      const producedDirectory = path.join(root, H3_CONTINUATION_ARTIFACT_SUBFOLDER);
+      const producedFilename = "h3av_shared-owner.safetensors";
+      const producedPath = path.join(producedDirectory, producedFilename);
+      await fs.mkdir(producedDirectory, { recursive: true });
+      await fs.writeFile(producedPath, safetensorsPayload());
+      const copyFile = vi.fn(nativeAvArtifactFileSystem.copyFile);
+      const fileSystem: NativeAvArtifactFileSystemPort = {
+        ...nativeAvArtifactFileSystem,
+        copyFile
+      };
+      const service = new NativeAvArtifactService({ fileSystem });
+      const { payload: _payload, ...metadata } = request(root);
+      const result = await service.commitProducedFile({
+        ...metadata,
+        providerId: "comfyui",
+        sharedOutput: true,
+        artifactId: "shared-owner",
+        producedFile: {
+          filename: producedFilename,
+          subfolder: H3_CONTINUATION_ARTIFACT_SUBFOLDER,
+          type: "output",
+          format: "safetensors"
+        }
+      });
+      expect(result.status).toBe("available");
+      expect(copyFile).not.toHaveBeenCalled();
+      expect(result.artifact?.payload.absolutePath).toBe(producedPath);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

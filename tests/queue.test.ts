@@ -191,6 +191,35 @@ describe("queue ordering", () => {
     expect(nextQueueWaitingTask(staleOrder, 2)?.id).toBe("before-running");
   });
 
+  it("does not execute a task blocked by an unknown H3 output policy", () => {
+    const blocked = task("blocked", "minimax_h3_fl2va");
+    blocked.h3AvOutputPolicyError = "unsupported policy";
+    expect(nextQueueWaitingTask([blocked], undefined)).toBeUndefined();
+
+    const reset = resetQueueTask([{
+      ...blocked,
+      status: "failed",
+      error: "unsupported policy"
+    }], blocked.id, "reset-at");
+    expect(reset.reset).toBe(false);
+    expect(reset.queue[0]).toMatchObject({
+      status: "failed",
+      error: "unsupported policy",
+      h3AvOutputPolicyError: "unsupported policy"
+    });
+    expect(nextQueueWaitingTask(reset.queue, undefined)).toBeUndefined();
+
+    const state = createDefaultState();
+    state.queue = [{ ...blocked, status: "failed" }];
+    const duplicated = duplicateQueueTask(state, blocked.id, clock(["blocked-copy"]));
+    expect(duplicated[1]).toMatchObject({
+      status: "failed",
+      error: "unsupported policy",
+      h3AvOutputPolicyError: "unsupported policy"
+    });
+    expect(nextQueueWaitingTask(duplicated, undefined)).toBeUndefined();
+  });
+
   it("keeps the divider in place when a task crosses it", () => {
     const queue = [task("first", "wan"), task("second", "wan"), task("third", "wan"), task("fourth", "wan")];
 
@@ -624,7 +653,9 @@ describe("queue execution snapshots", () => {
     const queued = extensionTaskFromDraft(draft, state, clock());
 
     expect(queued.spectrumMode).toBe("off");
-    expect(queued.h3SaveJointAv).toBe(false);
+    expect(queued.h3SaveJointAv).toBe(true);
+    expect(queued.h3LatentSaveMode).toBe("all");
+    expect(queued.h3AvOutputPolicy).toBe("shared");
     expect(queued.maxGeneratedFrames).toBe(362);
     expect(queued.fps).toBe(24);
     expect(queued.frameInterpolation).toBe("off");

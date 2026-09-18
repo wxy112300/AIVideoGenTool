@@ -107,7 +107,8 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(88);
+    expect(invokeChannels.size).toBe(89);
+    expect(registrations.get("history:inspect-extension-source")).toEqual(["history-ipc"]);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
 
@@ -148,6 +149,7 @@ describe("main/preload boundary characterization", () => {
         "history-cover:save",
         "history-cover:save-if-current",
         "history:inspect-h3-artifact",
+        "history:inspect-extension-source",
         "history:delete",
         "history:update-metadata",
         "history:delete-version",

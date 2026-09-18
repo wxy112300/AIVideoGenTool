@@ -62,6 +62,7 @@ export interface HistoryAssemblyOptions {
   isHistoryFilterPanelOpen(): boolean;
   getSelectedHistoryAssetId(): string;
   getSelectedHistoryVersionId(): string;
+  getHistoryArtifactInspection(): HistoryPageViewModel["historyArtifactInspection"];
   setSelectedHistoryVersionId(versionId: string): void;
   setHistoryKind(kind: HistoryKind): void;
   navigateToHistory(): void;
@@ -82,7 +83,8 @@ function createHistoryPageViewModel(
     historyFilter: options.getHistoryFilter(),
     historyFilterPanelOpen: options.isHistoryFilterPanelOpen(),
     selectedHistoryAssetId: options.getSelectedHistoryAssetId(),
-    selectedHistoryVersionId: options.getSelectedHistoryVersionId()
+    selectedHistoryVersionId: options.getSelectedHistoryVersionId(),
+    historyArtifactInspection: options.getHistoryArtifactInspection()
   };
 }
 

@@ -16,7 +16,7 @@ export function mountCreatePromptController(options) {
         const filename = await options.context.hostCapabilities.pickWorkflow();
         if (!filename)
             return;
-        options.setWorkflowCapability(filename, await options.context.application.inspectWorkflow(filename));
+        options.setWorkflowCapability(filename, await options.context.application.inspectWorkflow(filename, getDraft()?.modelId));
         options.patchDraft({ workflowPath: filename });
         options.context.requestRender();
     }, { signal });
@@ -45,7 +45,9 @@ export function mountCreatePromptController(options) {
         options.patchDraft(promptPatchForDraft(draft, updated.promptVersions, updated.activePromptVersion));
         options.syncPromptEnqueueUi(promptInput.value);
         options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"), draft.videoLoras);
-        updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi(), isMiniMaxH3Model(draft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset()) : undefined);
+        updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi(), isMiniMaxH3Model(draft.modelId)
+            ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset())
+            : undefined);
     }, { signal });
     if (promptInput) {
         resizePromptInput(promptInput);
@@ -80,7 +82,9 @@ export function mountCreatePromptController(options) {
         focusPromptInput();
     }, { signal });
     const initialDraft = getDraft();
-    updatePromptWordCounter(promptInput?.value ?? "", initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined, initialDraft?.duration ?? 0, promptUi(), initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(initialDraft), options.getH3PromptPreset()) : undefined);
+    updatePromptWordCounter(promptInput?.value ?? "", initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined, initialDraft?.duration ?? 0, promptUi(), initialDraft && isMiniMaxH3Model(initialDraft.modelId)
+        ? h3PromptPresetForMode(h3PromptModeForDraft(initialDraft), options.getH3PromptPreset())
+        : undefined);
     root.querySelector("#clear-prompt")?.addEventListener("click", (event) => {
         event.stopImmediatePropagation();
         const draft = getDraft();
@@ -152,7 +156,15 @@ export function mountCreatePromptController(options) {
         const isExtension = draft.inputMode === "video";
         const requestOrigin = isExtension ? "video-extension" : "image-to-video";
         const hasExtensionBoundary = isExtension && Boolean(draft.sourceVideoPath) &&
-            draft.trimEndSeconds > draft.trimStartSeconds;
+            Number.isFinite(draft.sourceVideoDuration) && draft.sourceVideoDuration > 0 &&
+            draft.trimEndSeconds > draft.trimStartSeconds &&
+            draft.trimEndSeconds <= draft.sourceVideoDuration + 0.05;
+        if (isExtension && !hasExtensionBoundary) {
+            options.context.notify(options.context.t(draft.sourceVideoPath && draft.sourceVideoDuration > 0
+                ? uiKeys.create.validation.invalidTrim
+                : uiKeys.create.validation.videoMissing), { kind: "error" });
+            return;
+        }
         if (targetedRevision) {
             try {
                 buildPromptRevisionPlan(currentPrompt);
@@ -193,14 +205,14 @@ export function mountCreatePromptController(options) {
             const referenceContext = nativeStateContinuation
                 ? ""
                 : isMiniMaxH3R2vModel(draft.modelId)
-                ? draft.h3ReferenceSlots.map((slot) => `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`).join("\n")
-                : h3Mode === "FL2VA"
-                    ? "<Picture 1> = first frame; <Picture 2> = last frame"
-                    : h3Mode === "I2VA"
-                        ? "<Picture 1> = first frame"
-                        : h3Mode === "L2VA"
-                            ? "<Picture 1> = last frame"
-                            : "";
+                    ? draft.h3ReferenceSlots.map((slot) => `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`).join("\n")
+                    : h3Mode === "FL2VA"
+                        ? "<Picture 1> = first frame; <Picture 2> = last frame"
+                        : h3Mode === "I2VA"
+                            ? "<Picture 1> = first frame"
+                            : h3Mode === "L2VA"
+                                ? "<Picture 1> = last frame"
+                                : "";
             const text = await options.context.enhancePrompt({
                 prompt: currentPrompt,
                 modelId: draft.modelId,
@@ -230,6 +242,9 @@ export function mountCreatePromptController(options) {
                     : draft.ratio,
                 referenceMediaPaths,
                 referenceContext: isH3Vision ? referenceContext : undefined,
+                continuumPreviousChunk: draft.h3ContinuumSequence?.acceptedChunks
+                    ? draft.h3ContinuumSequence.acceptedChunks - (draft.h3ContinuumReviewAction === "Regenerate Current" ? 1 : 0)
+                    : undefined,
                 extensionSource: isExtension && draft.sourceVideoPath
                     ? {
                         filePath: draft.sourceVideoPath,

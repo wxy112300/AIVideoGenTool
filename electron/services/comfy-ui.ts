@@ -18,7 +18,9 @@ import {
   attachH3JointAvSerializer,
   missingWorkflowNodeTypes,
   renderWorkflow,
+  continuumFirstFrameTask,
   isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumManagedWorkflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3LivePreviewSupported,
   isMiniMaxH3Model,
@@ -241,7 +243,7 @@ export function h3PromptInstruction(
   const shotPolicy = h3ShotPolicyForRequest(request);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const extensionContinuityInstruction = request.extensionSource
-    ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation)
+    ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk)
     : "";
   const controlInstruction = h3PromptControlInstruction({
     rawPrompt: request.prompt,
@@ -504,7 +506,8 @@ export async function enhancePromptWithComfyUi(
     stripPromptAnnotations(request.prompt),
     request.prompt,
     nativeStateContinuation,
-    nativeStateContinuation
+    nativeStateContinuation,
+    request.continuumPreviousChunk
   );
 }
 
@@ -882,6 +885,8 @@ export async function submitTask(
   h3TokenCount?: number;
   uploadedUpscaleSource?: string;
   h3AvSerializerNodeId?: string;
+  h3ContinuumDiagnosticsNodeId?: string;
+  h3ContinuumManagedReceiptNodeId?: string;
   progressContext?: ComfyProgressContext;
 }> {
   if (!task.workflowPath) {
@@ -930,6 +935,8 @@ export async function submitTask(
   let prompt: unknown;
   let uploadedUpscaleSource: string | undefined;
   let h3AvSerializerNodeId: string | undefined;
+  let h3ContinuumDiagnosticsNodeId: string | undefined;
+  let h3ContinuumManagedReceiptNodeId: string | undefined;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
       encoding: "utf8",
@@ -942,6 +949,10 @@ export async function submitTask(
     }
     if (task.taskType === "extension") {
       const h3Continuum = isMiniMaxH3ContinuumModel(task.modelId);
+      const h3ContinuumManaged = h3Continuum && (
+        task.h3ContinuumMode === "managed" ||
+        isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath)
+      );
       const h3Boundary = isMiniMaxH3Fl2vaModel(task.modelId);
       const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
       if (h3MotionContext) {
@@ -953,18 +964,34 @@ export async function submitTask(
         }
       }
       if (h3Continuum) {
-        const artifactReference = h3ContinuumArtifactReference(task);
-        if (!artifactReference) {
-          throw new Error("Continuum 任务缺少已验证的 H3 Native AV artifact 快照。");
+        if (h3ContinuumManaged) {
+          const prepared = await prepareH3BoundaryFrame(continuumFirstFrameTask(task), signal);
+          try {
+            const uploadedInput = await uploadInput(baseUrl, prepared.filePath, signal, "Continuum 首段边界帧");
+            prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+              h3ContinuumBoundaryFrame: uploadedInput,
+              vramTotalBytes,
+              locale: settings.uiLocale,
+              vramAvailableBytes,
+              h3PreviewTinyVae
+            });
+          } finally {
+            await prepared.cleanup();
+          }
+        } else {
+          const artifactReference = h3ContinuumArtifactReference(task);
+          if (!artifactReference) {
+            throw new Error("Continuum legacy/bootstrap 任务缺少已验证的 H3 Native AV artifact 快照。");
+          }
+          prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+            h3AvInputArtifact: artifactReference,
+            h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
+            vramTotalBytes,
+            locale: settings.uiLocale,
+            vramAvailableBytes,
+            h3PreviewTinyVae
+          });
         }
-        prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
-          h3AvInputArtifact: artifactReference,
-          h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
-          vramTotalBytes,
-          locale: settings.uiLocale,
-          vramAvailableBytes,
-          h3PreviewTinyVae
-        });
       } else {
         const prepared = h3Boundary
           ? await prepareH3BoundaryFrame(task, signal)
@@ -1139,8 +1166,12 @@ export async function submitTask(
   } else {
     throw new Error("图片任务必须通过 submitImageTask 提交。");
   }
+  const managedContinuumTask = task.taskType === "extension" &&
+    isMiniMaxH3ContinuumModel(task.modelId) &&
+    (task.h3ContinuumMode === "managed" || isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath));
   if (
     (task.taskType === "generation" || task.taskType === "extension") &&
+    !managedContinuumTask &&
     shouldAttachH3JointAvSerializer(
       task.modelId,
       task.h3SaveJointAv,
@@ -1161,6 +1192,29 @@ export async function submitTask(
       prompt,
       `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`
     );
+  }
+  if (task.taskType === "extension" && isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath)) {
+    const receiptIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
+      ? Object.entries(prompt as Record<string, unknown>)
+          .filter(([, value]) => value && typeof value === "object" &&
+            (value as Record<string, unknown>).class_type === "LocalVideoStudioH3ContinuumManagedReceipt")
+          .map(([id]) => id)
+      : [];
+    if (receiptIds.length !== 1) {
+      throw new Error("H3 Continuum managed workflow 缺少唯一的 Run Storage receipt 输出节点。");
+    }
+    h3ContinuumManagedReceiptNodeId = receiptIds[0];
+  } else if (task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)) {
+    const diagnosticsIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
+      ? Object.entries(prompt as Record<string, unknown>)
+          .filter(([, value]) => value && typeof value === "object" &&
+            (value as Record<string, unknown>).class_type === "LocalVideoStudioH3ContinuumDiagnostics")
+          .map(([id]) => id)
+      : [];
+    if (diagnosticsIds.length !== 1) {
+      throw new Error("H3 Continuum Extend workflow 缺少唯一的 runtime diagnostics 输出节点。");
+    }
+    h3ContinuumDiagnosticsNodeId = diagnosticsIds[0];
   }
   const h3TokenCount = (task.taskType === "generation" || task.taskType === "extension") &&
     isMiniMaxH3Model(task.modelId)
@@ -1212,6 +1266,8 @@ export async function submitTask(
     h3LivePreviewActive: Boolean(h3PreviewTinyVae),
     ...(h3TokenCount == null ? {} : { h3TokenCount }),
     ...(h3AvSerializerNodeId ? { h3AvSerializerNodeId } : {}),
+    ...(h3ContinuumDiagnosticsNodeId ? { h3ContinuumDiagnosticsNodeId } : {}),
+    ...(h3ContinuumManagedReceiptNodeId ? { h3ContinuumManagedReceiptNodeId } : {}),
     ...(Object.keys(progressContext).length === 0 ? {} : { progressContext }),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };

@@ -64,6 +64,7 @@ const applicationMethodNames = [
   "deleteHistoryJointAv",
   "deleteHistoryMotionContext",
   "inspectH3NativeAvArtifact",
+  "inspectVideoExtensionSource",
   "updateHistoryMetadata",
   "setImageHistoryCover",
   "deleteImageHistoryVersion"

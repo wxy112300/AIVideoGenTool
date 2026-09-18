@@ -1270,6 +1270,58 @@ export function patchMultimodalPromptContextSize(source: string): string {
   return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
 }
 
+export function multimodalPromptSupportsAdaptiveGeneration(source: string): boolean {
+  return /"max"\s*:\s*3072\b/u.test(source) &&
+    source.includes("n_ctx=16_384 if max_tokens > 2_048 else 8_192") &&
+    source.includes("_lvs_last_generation_diagnostics");
+}
+
+/**
+ * Keep ordinary rewrites on the existing 8K context while giving only
+ * long-form requests (>2048 output tokens) a 16K context and 3072-token
+ * schema ceiling. The diagnostic payload contains counts and stop reason
+ * only; prompt and generated text are never copied into it.
+ */
+export function patchMultimodalPromptAdaptiveGeneration(source: string): string {
+  let patched = source.replace(
+    /("max_tokens"\s*:\s*\("INT"\s*,\s*\{[\s\S]{0,400}?"max"\s*:\s*)(?:2048|3072)\b/u,
+    (_match, prefix: string) => `${prefix}3072`
+  );
+  if (!patched.includes("n_ctx=16_384 if max_tokens > 2_048 else 8_192")) {
+    patched = patched.replace(
+      /(enhanced_prompt\s*=\s*rewrite_prompt_with_gguf\([\s\S]*?^[ \t]*max_tokens=max_tokens,\r?\n)([ \t]*)(temperature=temperature,)/mu,
+      (_match, prefix: string, indent: string, temperature: string) =>
+        `${prefix}${indent}n_ctx=16_384 if max_tokens > 2_048 else 8_192,\n${indent}${temperature}`
+    );
+  }
+  if (!patched.includes("_lvs_last_generation_diagnostics")) {
+    patched = patched.replace(
+      /(def _run_chat_completion\([\s\S]*?\) -> str:\r?\n)([ \t]*)_throw_if_processing_interrupted\(\)/u,
+      "$1$2global _lvs_last_generation_diagnostics\n$2_lvs_last_generation_diagnostics = {\"max_tokens\": int(max_tokens)}\n$2_throw_if_processing_interrupted()"
+    );
+    patched = patched.replace(
+      /([ \t]*_raise_if_abort_detected\(abort_watch\.abort_requested, response\)\r?\n)([ \t]*)return response\["choices"\]\[0\]\["message"\]\["content"\]/u,
+      [
+        "$1",
+        "$2choice = (response.get(\"choices\") or [{}])[0] if isinstance(response, dict) else {}\n",
+        "$2usage = response.get(\"usage\") or {} if isinstance(response, dict) else {}\n",
+        "$2_lvs_last_generation_diagnostics = {\n",
+        "$2    \"finish_reason\": str(choice.get(\"finish_reason\") or \"\"),\n",
+        "$2    \"prompt_tokens\": int(usage.get(\"prompt_tokens\") or 0),\n",
+        "$2    \"completion_tokens\": int(usage.get(\"completion_tokens\") or 0),\n",
+        "$2    \"total_tokens\": int(usage.get(\"total_tokens\") or 0),\n",
+        "$2    \"max_tokens\": int(max_tokens),\n",
+        "$2}\n",
+        "$2return response[\"choices\"][0][\"message\"][\"content\"]"
+      ].join("")
+    );
+  }
+  if (!multimodalPromptSupportsAdaptiveGeneration(patched)) {
+    throw new Error("MultiModal Prompt Nodes 源码结构与按需扩容/诊断适配不匹配，已停止修改。");
+  }
+  return patched;
+}
+
 function multimodalQwen35Method(source: string): string {
   const methodMatch = /^([\t ]+)def _infer_is_qwen35\([^\r\n]*\)[^\r\n:]*:/mu.exec(source);
   if (!methodMatch || methodMatch.index === undefined) return "";
@@ -1391,10 +1443,33 @@ export function patchMultimodalPromptResidency(source: string): string {
     ].join("\n");
     patched = `${patched.slice(0, markerIndex)}${route}${patched.slice(markerIndex)}`;
   }
+  if (!patched.includes('/local-video-studio/multimodal-prompt/diagnostics')) {
+    const marker = "import atexit";
+    const markerIndex = patched.indexOf(marker);
+    if (markerIndex < 0) {
+      throw new Error("MultiModal Prompt Nodes 缺少退出清理注册点，无法添加安全诊断接口。");
+    }
+    const route = [
+      "try:",
+      "    from aiohttp import web as _lvs_web",
+      "    from server import PromptServer as _LvsPromptServer",
+      "",
+      "    @_LvsPromptServer.instance.routes.get(\"/local-video-studio/multimodal-prompt/diagnostics\")",
+      "    async def _lvs_multimodal_prompt_diagnostics(_request):",
+      "        payload = globals().get(\"_lvs_last_generation_diagnostics\", {})",
+      "        return _lvs_web.json_response(payload if isinstance(payload, dict) else {})",
+      "except ImportError:",
+      "    pass",
+      "",
+      ""
+    ].join("\n");
+    patched = `${patched.slice(0, markerIndex)}${route}${patched.slice(markerIndex)}`;
+  }
   if (
     !patched.includes('"keep_model_loaded": ("BOOLEAN"') ||
     !patched.includes("if not keep_model_loaded:") ||
-    !patched.includes('/local-video-studio/multimodal-prompt/unload')
+    !patched.includes('/local-video-studio/multimodal-prompt/unload') ||
+    !patched.includes('/local-video-studio/multimodal-prompt/diagnostics')
   ) {
     throw new Error("MultiModal Prompt Nodes 源码结构与模型驻留适配不匹配，已停止修改。");
   }
@@ -1564,7 +1639,9 @@ export async function prepareMultimodalPromptNodes(
   ]);
   const patched = patchMultimodalPromptResidency(
     patchMultimodalPromptQwen38Recognition(
-      patchMultimodalPromptContextSize(source)
+      patchMultimodalPromptAdaptiveGeneration(
+        patchMultimodalPromptContextSize(source)
+      )
     )
   );
   const patchedDiscovery = patchMultimodalPromptProjectorDiscovery(discoverySource);
@@ -1574,6 +1651,9 @@ export async function prepareMultimodalPromptNodes(
       "MultiModal Prompt Nodes 源码结构与 8K 上下文适配不匹配，已停止修改。"
     );
   }
+  if (!multimodalPromptSupportsAdaptiveGeneration(patched)) {
+    throw new Error("MultiModal Prompt Nodes 未完成详细扩写的按需 16K/3072 适配，已停止修改。");
+  }
   if (patched !== source || patchedDiscovery !== discoverySource) {
     await Promise.all([
       patched !== source ? fs.writeFile(filename, patched, "utf8") : Promise.resolve(),
@@ -1581,9 +1661,9 @@ export async function prepareMultimodalPromptNodes(
         ? fs.writeFile(discoveryFilename, patchedDiscovery, "utf8")
         : Promise.resolve()
     ]);
-    report("已为 MultiModal Prompt Nodes 应用 8K 上下文、模型驻留及 Qwen3.8 vision 投影兼容");
+    report("已为 MultiModal Prompt Nodes 应用普通 8K、详细扩写按需 16K/3072、安全诊断、模型驻留及 Qwen3.8 vision 投影兼容");
   } else {
-    report("MultiModal Prompt Nodes 已使用 8K 上下文并支持显式驻留/卸载与 Qwen3.8 vision 投影");
+    report("MultiModal Prompt Nodes 已使用普通 8K、详细扩写按需 16K/3072，并支持安全诊断、显式驻留/卸载与 Qwen3.8 vision 投影");
   }
 }
 

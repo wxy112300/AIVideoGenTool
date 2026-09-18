@@ -11,6 +11,8 @@ const continuumRuntimeNodeTypes = [
     "BasicScheduler",
     "LocalVideoStudioH3ArtifactToContinuumState",
     "LocalVideoStudioH3ContinuumSamplerV38",
+    "LocalVideoStudioH3ContinuumDiagnostics",
+    "LocalVideoStudioH3ContinuumManagedReceipt",
     "VAEDecode",
     "VAEDecodeAudio",
     "H3ContinuumAssembleSeamV35",

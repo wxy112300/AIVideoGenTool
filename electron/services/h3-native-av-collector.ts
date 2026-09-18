@@ -58,6 +58,8 @@ export function nativeAvArtifactMetadataForTask(
   if (task.taskType === "upscale" && !h3Upscale) {
     throw new Error("普通 Upscale 任务不能提交 H3 JointAV artifact。");
   }
+  const workflowBasename = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
+  const firstPass = workflowBasename.includes("first_pass");
   const [width, height] = task.taskType === "upscale"
     ? upscaleOutputDimensions(task)
     : outputDimensions(task);
@@ -74,7 +76,9 @@ export function nativeAvArtifactMetadataForTask(
   const workflowId = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
   return {
     outputDirectory,
-    role: task.taskType === "extension" ? "extend-segment-clean-av" : "final-clean-av",
+    role: firstPass
+      ? "first-pass-clean-av"
+      : task.taskType === "extension" ? "extend-segment-clean-av" : "final-clean-av",
     lineageId: h3Upscale?.artifact.lineageId ?? task.id,
     ...(h3Upscale ? { derivedFromArtifactId: h3Upscale.artifact.artifactId } : {}),
     executionModelId: task.modelId,
@@ -97,6 +101,7 @@ export function nativeAvArtifactMetadataForTask(
             : H3_LATENT_UPSCALER_REVISION
         }
       : {}),
+    sharedOutput: task.h3AvOutputPolicy === "shared",
     width,
     height,
     fps: 24,

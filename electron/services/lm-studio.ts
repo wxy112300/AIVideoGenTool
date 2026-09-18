@@ -314,7 +314,7 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   return [
     priorityInstruction,
     request.extensionSource
-      ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation)
+      ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk)
       : "",
     ...(preset === "detailed-cinematic"
       ? [h3DetailedExpansionGateInstruction(mode, Number(duration), sourcePrompt)]
@@ -553,6 +553,7 @@ export async function enhancePrompt(
     sourcePrompt,
     request.prompt,
     nativeStateContinuation,
-    nativeStateContinuation
+    nativeStateContinuation,
+    request.continuumPreviousChunk
   );
 }

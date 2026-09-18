@@ -28,6 +28,11 @@ export function normalizeH3LatentSaveMode(value, legacySaveJointAv, legacyMotion
 export function h3LatentSaveModeFor(value, legacyMotionContextSaved = false) {
     return normalizeH3LatentSaveMode(value.h3LatentSaveMode, value.h3SaveJointAv, legacyMotionContextSaved);
 }
+export function h3SharedLatentSaveModeFor(value, legacyMotionContextSaved = false, forceSave = false) {
+    if (forceSave)
+        return "all";
+    return h3LatentSaveModeFor(value, legacyMotionContextSaved) === "none" ? "none" : "all";
+}
 export function h3LatentSaveModeSavesJointAv(mode) {
     return mode === "all" || mode === "joint-av";
 }

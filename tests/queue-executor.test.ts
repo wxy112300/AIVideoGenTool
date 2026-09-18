@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppState, HistoryFile, NativeAvContinuationArtifact, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
+import type { AppState, ExtensionQueueTask, HistoryFile, NativeAvContinuationArtifact, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { H3_TURBO_V4_LORA } from "../src/core/video-loras";
 import { createQueueExecutor, type QueueExecutorDependencies } from "../electron/queue-executor";
 import { QueueWorkerController } from "../electron/queue-worker";
+import { QueueExecutionSideEffects } from "../electron/services/queue-execution-side-effects";
+import { attachH3JointAvSerializer, renderWorkflow } from "../src/core/workflow";
 
 const mocks = vi.hoisted(() => ({
   freeMemory: vi.fn(async () => 0),
@@ -78,19 +80,64 @@ function h3Artifact(role: NativeAvContinuationArtifact["role"]): NativeAvContinu
     artifactId: `${role}-artifact`,
     role,
     lineageId: "queue-runtime-task",
-    manifest: { filename: `${role}.json`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/${role}.json` },
-    payload: { filename: `${role}.safetensors`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/${role}.safetensors` },
-    payloadSha256: "fixture-sha256", payloadBytes: 1024, modelFamily: "minimax-h3",
+    manifest: { filename: `h3av_${role}-artifact.json`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/h3av_${role}-artifact.json` },
+    payload: { filename: `h3av_${role}-artifact.safetensors`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/h3av_${role}-artifact.safetensors` },
+    payloadSha256: "a".repeat(64), payloadBytes: 1024, modelFamily: "minimax-h3",
     executionModelId: "minimax_h3_fl2va", providerId: "comfyui", providerRevision: "fixture",
     diffusionModelFilename: "diffusion.safetensors", textEncoderFilename: "encoder.safetensors",
     videoVaeFilename: "vae.safetensors", audioVaeFilename: "audio-vae.safetensors",
     width: role === "final-clean-av" ? 1920 : 1280,
     height: role === "final-clean-av" ? 1088 : 720,
-    fps: 24, frameCount: 25, videoShape: [1], videoDtype: "bf16",
+    fps: 24, frameCount: 124,
+    videoShape: [1, 24, 37, (role === "final-clean-av" ? 1088 : 720) / 16, (role === "final-clean-av" ? 1920 : 1280) / 16],
+    videoDtype: "BF16",
     audioSampleRate: 32000, audioChannels: 2, audioLatentRate: 40,
-    audioShape: [1], audioDtype: "float32", contextFrames: 0,
+    audioShape: [1, 32, 2, 207], audioDtype: "F32", contextFrames: 0,
     workflowRevision: "fixture", sourceTaskId: "queue-runtime-task",
     createdAt: "2026-09-03T00:00:00.000Z"
+  };
+}
+
+function h3CanonicalAsset(artifact: NativeAvContinuationArtifact) {
+  return {
+    schemaVersion: 1 as const,
+    assetId: `h3av_${artifact.artifactId}`,
+    storageKind: "app-canonical" as const,
+    ownerPath: artifact.payload,
+    payloadBytes: artifact.payloadBytes,
+    payloadSha256: artifact.payloadSha256,
+    videoTensorSha256: "b".repeat(64),
+    audioTensorSha256: "c".repeat(64),
+    videoShape: [1, 24, 37, artifact.height / 16, artifact.width / 16],
+    videoDtype: "BF16",
+    audioShape: [1, 32, 2, 207],
+    audioDtype: "F32",
+    width: artifact.width,
+    height: artifact.height,
+    fps: 24 as const,
+    frameCount: artifact.frameCount,
+    sampleScope: "generated-clip" as const,
+    artifactRole: artifact.role,
+    contextFrames: artifact.contextFrames,
+    producer: {
+      workflowId: artifact.workflowId ?? "workflow.json",
+      workflowRevision: artifact.workflowRevision,
+      producerNodeId: artifact.producerNodeId ?? "LocalVideoStudioH3SaveJointAV",
+      producerNodeVersion: artifact.producerNodeVersion ?? "0.3.4",
+      executionModelId: artifact.executionModelId,
+      diffusionModelFilename: artifact.diffusionModelFilename,
+      textEncoderFilename: artifact.textEncoderFilename,
+      videoVaeFilename: artifact.videoVaeFilename,
+      audioVaeFilename: artifact.audioVaeFilename,
+      loraFilenames: [],
+      width: artifact.width,
+      height: artifact.height,
+      fps: 24 as const,
+      frameCount: artifact.frameCount,
+      sourceTaskId: artifact.sourceTaskId
+    },
+    capabilities: ["native-av" as const],
+    createdAt: artifact.createdAt
   };
 }
 
@@ -382,6 +429,208 @@ describe("queue executor runtime gate", () => {
 
     expect(harness.store.get().history[0]?.versions[0]?.performanceStats?.h3TokenCount)
       .toBe(1234);
+  });
+
+  it("persists shared AV saving before submitting a legacy save-all H3 task", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    if (task.taskType !== "generation") throw new Error("Expected a generation fixture");
+    delete task.h3AvOutputPolicy;
+    task.h3LatentSaveMode = "all";
+    task.h3SaveJointAv = true;
+    const original = structuredClone(task);
+    const originalDraft = structuredClone(state.draft);
+    state.queue = [task];
+    state.queueRunning = true;
+    mocks.submitTask.mockResolvedValueOnce({
+      promptId: "prompt-fixture", clientId: "client-fixture",
+      nodeTypes: { "31": "LocalVideoStudioH3SaveJointAV" },
+      h3LivePreviewRequested: false, h3LivePreviewActive: false,
+      h3AvSerializerNodeId: "31"
+    });
+    const artifact: NativeAvContinuationArtifact = {
+      ...h3Artifact("first-pass-clean-av"), width: 864, height: 480, frameCount: 39,
+      videoShape: [1, 24, 12, 30, 54], audioShape: [1, 32, 2, 65]
+    };
+    const asset = { ...h3CanonicalAsset(artifact), videoShape: artifact.videoShape, audioShape: artifact.audioShape };
+    const commitH3NativeAvOutput = vi.fn(async () => ({
+      status: "available" as const, artifact, asset
+    }));
+    const harness = createHarness(state, { commitH3NativeAvOutput });
+
+    await createQueueExecutor(harness.deps)();
+
+    const claimed = harness.snapshots
+      .flatMap((snapshot) => snapshot.queue)
+      .find((queued) => queued.id === task.id && queued.status === "running");
+    expect(claimed).toMatchObject({
+      ...original,
+      status: "running",
+      progress: 1,
+      stage: "准备任务",
+      startedAt: expect.any(String),
+      updatedAt: expect.any(String),
+      error: undefined,
+      h3AvOutputPolicy: "shared"
+    });
+    expect(mocks.submitTask.mock.calls[0]?.[0]).toMatchObject({
+      id: original.id,
+      prompt: original.prompt,
+      seed: original.seed,
+      workflowPath: original.workflowPath,
+      duration: original.duration,
+      resolution: original.resolution,
+      h3AvOutputPolicy: "shared",
+      h3LatentSaveMode: "all",
+      h3SaveJointAv: true
+    });
+    expect(commitH3NativeAvOutput).toHaveBeenCalledWith(
+      expect.anything(), "31", expect.objectContaining({ id: original.id, h3AvOutputPolicy: "shared" }), expect.any(String)
+    );
+    expect(harness.store.get().history[0]?.versions[0]).toMatchObject({
+      h3AvOutputPolicy: "shared",
+      h3ContinuationData: { status: "available", artifact, asset },
+      h3AvAsset: asset
+    });
+    expect(harness.store.get().draft).toEqual(originalDraft);
+    expect(harness.deps.logger.info).toHaveBeenCalledWith(
+      "queue", "h3-av-output-upgraded", expect.any(String),
+      { taskId: original.id, h3AvOutputPolicy: "shared" }
+    );
+  });
+
+  it.each([
+    ["generation", "minimax_h3_fl2va", "minimax_h3_i2v_api.json"],
+    ["generation", "minimax_h3_ref2va", "minimax_h3_r2v_api.json"],
+    ["extension", "minimax_h3_ref2va", "minimax_h3_r2v_extend_api.json"],
+    ["extension", "minimax_h3_continuum", "minimax_h3_continuum_v38_extend_api.json"]
+  ] as const)("upgrades legacy %s %s output before assembling %s", async (taskType, modelId, filename) => {
+    const state = createDefaultState();
+    const generation = fixtureTask(state);
+    if (generation.taskType !== "generation") throw new Error("Expected a generation fixture");
+    const task: typeof generation | ExtensionQueueTask = taskType === "generation" ? generation : {
+      ...generation,
+      taskType: "extension",
+      sourceVideoPath: "C:/source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      modelProfile: "q4_k_m",
+      maxGeneratedFrames: 362,
+      overlapFrames: 22,
+      unloadBetweenStages: true
+    };
+    task.modelId = modelId;
+    task.workflowPath = filename;
+    delete task.h3AvOutputPolicy;
+    delete task.h3LatentSaveMode;
+    task.h3SaveJointAv = true;
+    state.queue = [task];
+    state.queueRunning = true;
+    const harness = createHarness(state);
+    const sideEffects = new QueueExecutionSideEffects(harness.deps);
+
+    const claim = await sideEffects.claimTask(task.id);
+
+    expect(claim.claimed).toBe(true);
+    const claimed = claim.state.queue[0]!;
+    if (claimed.taskType !== "generation" && claimed.taskType !== "extension") throw new Error("Expected an H3 task");
+    expect(claimed).toMatchObject({ h3AvOutputPolicy: "shared", h3LatentSaveMode: "all", h3SaveJointAv: true });
+    const actualFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const source = JSON.parse(actualFs.readFileSync(new URL(`../workflows/${filename}`, import.meta.url), "utf8"));
+    const graph = renderWorkflow(source, claimed) as Record<string, { class_type: string }>;
+    if (!Object.values(graph).some((node) => node.class_type === "LocalVideoStudioH3SaveJointAV")) {
+      attachH3JointAvSerializer(graph, `h3-native-av/h3av_${claimed.id}`);
+    }
+    const classes = Object.values(graph).map((node) => node.class_type);
+    expect(classes.filter((classType) => classType === "LocalVideoStudioH3SaveJointAV")).toHaveLength(1);
+    expect(classes).not.toContain("MiniMaxH3MotionContextSaveLatent");
+    expect((await sideEffects.claimTask(task.id)).claimed).toBe(false);
+    expect(harness.deps.logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { name: "do not save", patch: { h3LatentSaveMode: "none", h3SaveJointAv: false } },
+    { name: "JointAV only", patch: { h3LatentSaveMode: "joint-av" } },
+    { name: "Motion only", patch: { h3LatentSaveMode: "motion-context" } },
+    { name: "legacy disabled", patch: { h3LatentSaveMode: undefined, h3SaveJointAv: false } },
+    { name: "conflicting legacy disabled", patch: { h3LatentSaveMode: "all", h3SaveJointAv: false } },
+    { name: "already shared", patch: { h3AvOutputPolicy: "shared" } },
+    { name: "unknown policy", patch: { h3AvOutputPolicy: "future", h3AvOutputPolicyError: "unsupported policy" } },
+    { name: "migrated policy error", patch: { h3AvOutputPolicyError: "unsupported policy" } },
+    { name: "another model", patch: { modelId: "ltx23_22b_distilled" } },
+    { name: "first-pass checkpoint", patch: { h3FirstPassCheckpoint: { promptId: "first-pass", outputFile, artifact: h3Artifact("first-pass-clean-av") } } },
+    { name: "managed sequence", patch: { h3ContinuumSequence: {
+      schemaVersion: 1, sequenceId: "sequence-1", projectId: "project-1", runName: "run-1",
+      packageVersion: "3.8.2", runStorageSchemaVersion: 1, workflowRevision: "fixture",
+      status: "in-progress", chunkSeconds: 15, fps: 24, width: 864, height: 480, baseSeed: 42,
+      promptFormat: "Timeline", targetChunks: 2, acceptedChunks: 1,
+      canonicalHead: { revisionId: "revision-1" }, chunks: [], updatedAt: "2026-09-19T00:00:00.000Z"
+    } } }
+  ])("does not upgrade $name when claiming a task", async ({ patch }) => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    if (task.taskType !== "generation") throw new Error("Expected a generation fixture");
+    delete task.h3AvOutputPolicy;
+    Object.assign(task, patch);
+    const original = structuredClone(task);
+    state.queue = [task];
+    state.queueRunning = true;
+    const harness = createHarness(state);
+
+    await new QueueExecutionSideEffects(harness.deps).claimTask(task.id);
+
+    const claimed = harness.store.get().queue[0]!;
+    if (claimed.taskType !== "generation") throw new Error("Expected a generation fixture");
+    expect(claimed.h3AvOutputPolicy).toBe(original.h3AvOutputPolicy);
+    expect(claimed.h3LatentSaveMode).toBe(original.h3LatentSaveMode);
+    expect(claimed.h3SaveJointAv).toBe(original.h3SaveJointAv);
+    expect(claimed.h3FirstPassCheckpoint).toEqual(original.h3FirstPassCheckpoint);
+    expect(claimed.h3ContinuumSequence).toEqual(original.h3ContinuumSequence);
+    expect(harness.deps.logger.info).not.toHaveBeenCalled();
+  });
+
+  it("upgrades only the next waiting task, including legacy implicit save-all", async () => {
+    const state = createDefaultState();
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    if (first.taskType !== "generation" || second.taskType !== "generation") throw new Error("Expected generation fixtures");
+    delete first.h3AvOutputPolicy;
+    delete first.h3LatentSaveMode;
+    delete first.h3SaveJointAv;
+    delete second.h3AvOutputPolicy;
+    second.id = "queue-runtime-task-2";
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const originalSecond = structuredClone(second);
+    const harness = createHarness(state);
+    const sideEffects = new QueueExecutionSideEffects(harness.deps);
+
+    expect((await sideEffects.claimTask(second.id)).claimed).toBe(false);
+    expect((await sideEffects.claimTask(first.id)).claimed).toBe(true);
+    expect(harness.store.get().queue[0]).toMatchObject({ h3AvOutputPolicy: "shared", h3LatentSaveMode: "all", h3SaveJointAv: true });
+    expect(harness.store.get().queue[1]).toEqual(originalSecond);
+    await harness.store.update((next) => { next.queue = next.queue.filter((task) => task.id !== first.id); });
+    expect((await sideEffects.claimTask(second.id)).claimed).toBe(true);
+    expect(harness.store.get().queue[0]).toMatchObject({ id: second.id, h3AvOutputPolicy: "shared" });
+    expect(harness.deps.logger.info).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["paused", "cancelled", "running", "failed"] as const)("does not rewrite a %s task while claiming", async (status) => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    if (task.taskType !== "generation") throw new Error("Expected a generation fixture");
+    delete task.h3AvOutputPolicy;
+    task.status = status === "paused" ? "waiting" : status;
+    state.queue = [task];
+    state.queueRunning = status !== "paused";
+    const original = structuredClone(state);
+    const harness = createHarness(state);
+
+    expect((await new QueueExecutionSideEffects(harness.deps).claimTask(task.id)).claimed).toBe(false);
+    expect(harness.store.get()).toEqual(original);
   });
 
   it("resolves the current H3 VAE setting when each task is claimed", async () => {
@@ -769,9 +1018,14 @@ describe("queue executor runtime gate", () => {
         h3LivePreviewRequested: false, h3LivePreviewActive: false,
         h3AvSerializerNodeId: "31"
       });
+    const finalArtifact = h3Artifact("final-clean-av");
     const commitH3NativeAvOutput = vi.fn()
       .mockResolvedValueOnce({ status: "available", artifact: h3Artifact("first-pass-clean-av") })
-      .mockResolvedValueOnce({ status: "available", artifact: h3Artifact("final-clean-av") });
+      .mockResolvedValueOnce({
+        status: "available",
+        artifact: finalArtifact,
+        asset: h3CanonicalAsset(finalArtifact)
+      });
     const harness = createHarness(state, { commitH3NativeAvOutput });
 
     await createQueueExecutor(harness.deps)();
@@ -783,7 +1037,8 @@ describe("queue executor runtime gate", () => {
     });
     expect(mocks.submitTask.mock.calls[1]?.[0]).toMatchObject({
       taskType: "upscale", upscaleMode: "h3-native", targetHeight: 1080,
-      h3NativeInput: { provider: "learned-3d" }
+      h3NativeInput: { provider: "learned-3d" },
+      h3AvOutputPolicy: "shared"
     });
     expect(harness.snapshots.some((snapshot) => snapshot.queue.some((queued) =>
       queued.id === task.id && queued.taskType === "generation" &&
@@ -792,7 +1047,15 @@ describe("queue executor runtime gate", () => {
     expect(harness.store.get().history).toHaveLength(1);
     expect(harness.store.get().history[0]).toMatchObject({
       taskId: task.id, resolution: 1080,
-      versions: [expect.objectContaining({ width: 1920, height: 1088, comfyPromptId: "second-pass-prompt" })]
+      versions: [expect.objectContaining({
+        width: 1920,
+        height: 1088,
+        comfyPromptId: "second-pass-prompt",
+        h3AvAsset: expect.objectContaining({
+          assetId: `h3av_${finalArtifact.artifactId}`,
+          artifactRole: "final-clean-av"
+        })
+      })]
     });
   });
 
@@ -830,9 +1093,11 @@ describe("queue executor runtime gate", () => {
       h3LivePreviewRequested: false, h3LivePreviewActive: false,
       h3AvSerializerNodeId: "31"
     });
+    const finalArtifact = h3Artifact("final-clean-av");
     const commitH3NativeAvOutput = vi.fn(async () => ({
       status: "available" as const,
-      artifact: h3Artifact("final-clean-av")
+      artifact: finalArtifact,
+      asset: h3CanonicalAsset(finalArtifact)
     }));
     const harness = createHarness(state, { commitH3NativeAvOutput });
 
@@ -854,7 +1119,16 @@ describe("queue executor runtime gate", () => {
       expect.objectContaining({
         taskId: task.id,
         resolution: 1080,
-        versions: [expect.objectContaining({ comfyPromptId: "resumed-second-pass-prompt" })]
+        versions: [expect.objectContaining({
+          comfyPromptId: "resumed-second-pass-prompt",
+          h3AvAsset: expect.objectContaining({
+            assetId: `h3av_${h3Artifact("final-clean-av").artifactId}`,
+            artifactRole: "final-clean-av",
+            ownerPath: expect.objectContaining({
+              absolutePath: "C:/ComfyUI/output/h3-native-av/h3av_final-clean-av-artifact.safetensors"
+            })
+          })
+        })]
       })
     ]);
   });

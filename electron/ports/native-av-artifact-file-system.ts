@@ -3,6 +3,12 @@ export interface NativeAvArtifactFileStat {
   isFile(): boolean;
 }
 
+export interface NativeAvArtifactDirectoryEntry {
+  readonly name: string;
+  isFile(): boolean;
+  isDirectory(): boolean;
+}
+
 /**
  * Narrow filesystem port for the H3 joint AV artifact service. It is kept
  * separate from HistoryFileSystemPort because artifact validation reads raw
@@ -16,6 +22,10 @@ export interface NativeAvArtifactFileSystemPort {
   readText(filename: string): Promise<string>;
   writeFile(filename: string, data: string | Uint8Array): Promise<void>;
   makeDirectory(directory: string): Promise<void>;
+  /** Optional read-only inventory primitive; implementations may omit it in focused tests. */
+  listDirectory?(directory: string): Promise<NativeAvArtifactDirectoryEntry[]>;
+  /** Create a same-volume alias without copying the physical latent payload. */
+  hardlink?(source: string, target: string): Promise<void>;
   copyFile(source: string, target: string): Promise<void>;
   rename(source: string, target: string): Promise<void>;
   remove(filename: string): Promise<void>;

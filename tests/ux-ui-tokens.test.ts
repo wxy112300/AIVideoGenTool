@@ -281,7 +281,9 @@ describe("UX/UI semantic token foundation", () => {
     expect(createPageSource).not.toContain('class="h3-extension-note"');
     expect(createPageSource).not.toContain("class=\"trim-help\"");
     expect(createPageSource).not.toContain("class=\"continuum-boundary-note\"");
-    expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.continuumArtifact.description))}"');
+    expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}"');
+    expect(createPageSource).toContain('class="continuum-source-row"');
+    expect(createPageSource).toContain('data-continuum-source-status');
     expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.motionContextLatent.description))}"');
     expect(createPageSource).toContain("id=\"clear-h3-continuum-av\"");
     expect(createPageSource).toContain("id=\"clear-h3-motion-context-latent\"");

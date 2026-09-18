@@ -16,10 +16,14 @@ import {
 } from "../../src/core/qwen-image-prompt.js";
 import { imageEditPromptContractForTarget } from "../../src/core/image-prompt.js";
 import {
+  assertDetailedCinematicExpansion,
   h3ExplicitConstraintSummary,
+  h3DetailedExpansionMinimumWords,
+  h3DetailedExpansionTargetWords,
   h3DurationPlan,
   h3DetailedExpansionGateInstruction,
   h3ExtensionContinuityInstruction,
+  h3PromptExpansionTokenBudget,
   h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   normalizeH3PromptOutput
@@ -57,6 +61,42 @@ interface WriterErrorBody {
     message?: string;
     details?: unknown;
   };
+}
+
+interface WriterGenerationResult {
+  prompt?: string;
+  output_tokens?: number;
+  max_output_tokens?: number;
+  primary_finish_reason?: string | null;
+  format_repair_applied?: boolean;
+}
+
+const detailedCinematicSystemPrompt = "You are the detailed cinematic prompt writer for MiniMax H3. Preserve every concrete user instruction and expand each action into a chronological, physically executable audiovisual timeline. Meet the explicit main-timeline coverage floor in the creative brief. Return only the official H3 fields for the requested mode, with no JSON, Markdown, analysis, preface, or summary outside those fields.";
+
+function detailedCinematicRepairInstruction(
+  mode: H3PromptMode,
+  durationSeconds: number,
+  sourcePrompt: string
+): string {
+  const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+  const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
+  const targetWords = h3DetailedExpansionTargetWords(mode, durationSeconds, sourcePrompt);
+  return [
+    "Coverage repair: rewrite the complete current H3 prompt because its main timeline is underdeveloped.",
+    `Expand the ${field} toward approximately ${targetWords} grounded words and never fewer than ${minimumWords} words. Do not merely append filler: develop the opening state, every original action in order, physical contacts and reactions, continuous camera path, synchronized diegetic sound, transitions between actions, and the settled ending state.`,
+    "Preserve every concrete fact and instruction from the Original Creative Brief and the current prompt. Restore any omitted source requirement; do not change action ownership, subject identity, relative scale, dialogue, chronology, shot policy, or reference mapping.",
+    "Return the complete revised official H3 prompt only. Do not return JSON, Markdown, analysis, a change list, or commentary."
+  ].join("\n");
+}
+
+function writerGenerationDiagnostic(result: WriterGenerationResult): string {
+  const details = [
+    Number.isFinite(result.output_tokens) ? `output=${result.output_tokens} tokens` : "",
+    Number.isFinite(result.max_output_tokens) ? `budget=${result.max_output_tokens} tokens` : "",
+    result.primary_finish_reason ? `finish=${result.primary_finish_reason}` : "",
+    result.format_repair_applied ? "format-repair=applied" : ""
+  ].filter(Boolean);
+  return details.length ? `（Prompt Writer：${details.join("，")}）` : "";
 }
 
 export interface H3PromptWriterRuntimeDiagnostics {
@@ -302,6 +342,11 @@ export async function enhancePromptWithH3PromptWriter(
     imageEdit,
     mediaPaths
   );
+  const durationSeconds = request.h3DurationSeconds ?? 5;
+  const detailedExpansion = !imageEdit && !targetedRevision && h3Preset === "detailed-cinematic";
+  const detailedGenerationBudget = detailedExpansion
+    ? h3PromptExpansionTokenBudget(h3Mode, durationSeconds, h3Preset)
+    : undefined;
   const usesExtensionBoundaryTransport = !imageEdit &&
     h3Mode === "T2VA" &&
     mode === "I2VA" &&
@@ -350,10 +395,10 @@ export async function enhancePromptWithH3PromptWriter(
       : [
       priorityInstruction,
       request.extensionSource
-        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy, nativeStateContinuation)
+        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk)
         : "",
       h3Preset === "detailed-cinematic"
-        ? h3DetailedExpansionGateInstruction(h3Mode, request.h3DurationSeconds ?? 5, sourcePrompt)
+        ? h3DetailedExpansionGateInstruction(h3Mode, durationSeconds, sourcePrompt)
         : "",
       controlInstruction,
       annotationInstruction,
@@ -371,11 +416,11 @@ export async function enhancePromptWithH3PromptWriter(
         ? h3AutoPrompterContract(h3Mode, request.h3DurationSeconds ?? 5, request.referenceContext, h3Preset)
         : "",
       transportModeInstruction,
-      h3DurationPlan(h3Mode, request.h3DurationSeconds ?? 5, h3Preset),
+      h3DurationPlan(h3Mode, durationSeconds, h3Preset),
       presetBrief
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);
-    const result = await writerRequest<{ prompt?: string }>(`${root}/h3studio/generate`, {
+    const result = await writerRequest<WriterGenerationResult>(`${root}/h3studio/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -388,12 +433,15 @@ export async function enhancePromptWithH3PromptWriter(
           : targetedRevision
             ? { system_prompt_override: "You are a precise prompt revision engine. Follow the creative brief and return only the requested EDIT_TARGET replacement blocks, with no complete prompt or commentary." }
             : h3Preset === "detailed-cinematic"
-              ? { system_prompt_override: "You are the detailed cinematic prompt writer for MiniMax H3. Preserve every concrete user instruction and expand each action into a chronological, physically executable audiovisual timeline. Meet the explicit main-timeline coverage floor in the creative brief. Return only the official H3 fields for the requested mode, with no JSON, Markdown, analysis, preface, or summary outside those fields." }
+              ? { system_prompt_override: detailedCinematicSystemPrompt }
               : {}),
         aspect_ratio: request.h3AspectRatio || "16:9",
-        duration_seconds: request.h3DurationSeconds || 5,
+        duration_seconds: durationSeconds,
         thinking: false,
-        unload_after: unloadAfter,
+        ...(detailedGenerationBudget ? { generation_budget: detailedGenerationBudget } : {}),
+        // Keep the model and session hot only when a bounded coverage repair
+        // may be needed. The finally block restores the caller's unload policy.
+        unload_after: detailedExpansion ? false : unloadAfter,
         context_profile: "auto",
         kv_cache: "auto"
       }),
@@ -403,20 +451,63 @@ export async function enhancePromptWithH3PromptWriter(
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
     if (imageEdit) return stripPromptAnnotations(extractImageEditPromptFromWriter(result.prompt));
     if (targetedRevision) return applyPromptRevision(request.prompt, result.prompt);
-    return normalizeH3PromptOutput(
-      result.prompt.trim(),
+    const normalizeWriterResult = (promptText: string): string => normalizeH3PromptOutput(
+      promptText.trim(),
       h3Mode,
-      request.h3DurationSeconds ?? 5,
+      durationSeconds,
       extractH3DialogueLocks(sourcePrompt),
       extractH3VisibleTextLocks(sourcePrompt),
       sourcePrompt,
       request.prompt,
       nativeStateContinuation,
-      nativeStateContinuation
+      nativeStateContinuation,
+      request.continuumPreviousChunk
     );
+    if (!detailedExpansion) return normalizeWriterResult(result.prompt);
+    let normalizedPrompt = "";
+    try {
+      normalizedPrompt = normalizeWriterResult(result.prompt);
+      assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
+      return normalizedPrompt;
+    } catch {
+      onProgress?.("generating", null);
+      const repaired = await writerRequest<WriterGenerationResult>(`${root}/h3studio/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          current_prompt: normalizedPrompt || result.prompt.trim(),
+          instruction: detailedCinematicRepairInstruction(h3Mode, durationSeconds, sourcePrompt),
+          model_id: model.id,
+          session_id: sessionId,
+          system_prompt_override: detailedCinematicSystemPrompt,
+          generation_budget: detailedGenerationBudget,
+          thinking: false,
+          unload_after: unloadAfter,
+          context_profile: "auto",
+          kv_cache: "auto"
+        }),
+        signal
+      });
+      if (!repaired.prompt?.trim()) throw new Error("H3 Prompt Writer 自动补写后仍未返回可用的提示词。");
+      normalizedPrompt = normalizeWriterResult(repaired.prompt);
+      try {
+        assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`${message} 已按详细模式自动补写 1 次但仍未通过。${writerGenerationDiagnostic(repaired) || writerGenerationDiagnostic(result)}`);
+      }
+      return normalizedPrompt;
+    }
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);
     signal.removeEventListener("abort", cancel);
+    if (detailedExpansion && unloadAfter) {
+      await fetch(`${root}/h3studio/unload`, {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000)
+      }).catch(() => undefined);
+    }
     void fetch(`${root}/h3studio/media?session_id=${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
       signal: AbortSignal.timeout(10_000)

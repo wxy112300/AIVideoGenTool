@@ -35,7 +35,7 @@ export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
 export const SPECTRUM_PDD_MINIMUM_VERSION = "0.2.21";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.24";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.27";
 export const H3_COMFY_KITCHEN_VERSION = "0.2.33";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.5";
@@ -51,7 +51,7 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.3.2";
+export const H3_AV_SERIALIZER_REVISION = "0.3.5";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
 export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.2";
 export const H3_CONTINUUM_REVISION = "c38c616d54feb0310a3ca7540f2f4addc499fd1f";
@@ -327,7 +327,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   releaseSource: "github-release",
   nodeTypes: ["VisionLLMNode"],
   minimumVersion: MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION,
-  runtimeRequirement: "可选节点：Qwen3.6/Qwen3.8 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
+  runtimeRequirement: "可选节点：Qwen3.6/Qwen3.8 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。普通增强使用 8K/≤2048，影视细节扩写按需使用 16K/≤3072，并提供不含正文的停止原因/token 诊断。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
   required: false
 }, {
   id: "comfyui-qwenvl-lora",
@@ -593,7 +593,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "local-video-studio-h3-av",
   priority: 147,
   name: "Local Video Studio H3 AV Serializer",
-  purpose: "在 output root 下安全保存/加载 H3 JointAV artifact，桥接 Continuum state，并把该 state 注入完整 V3.8 facade",
+  purpose: "保存/加载 H3 AV artifact，桥接 legacy Continuum state，并为官方 Run Storage 路径输出可审计的 managed receipt",
   repositoryUrl: "builtin://LocalVideoStudio-H3",
   directoryName: "LocalVideoStudio-H3",
   aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
@@ -605,11 +605,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     "LocalVideoStudioH3LoadJointAV",
     "LocalVideoStudioH3ArtifactToContinuumState",
     "LocalVideoStudioH3ContinuumSamplerV38",
+    "LocalVideoStudioH3ContinuumDiagnostics",
+    "LocalVideoStudioH3ContinuumManagedReceipt",
     "LocalVideoStudioRequireGpuVAE",
     "LocalVideoStudioH3RequireGpuVAE",
     "LocalVideoStudioH3AnchorConditioning"
   ],
-  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。Continuum bridge/facade 只在 ComfyUI-H3-Continuum 3.8.2 已加载时工作，委托其 state 与 sampler contract，不复制采样逻辑。",
+  runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 只在 ComfyUI-H3-Continuum 3.8.2 已加载时工作，委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
   required: false
 }, {
   id: "spectrum-minimax-h3",
@@ -624,11 +626,11 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
-    verifiedAt: "2026-09-07",
-    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.24",
-    note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast；v0.2.23 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 balanced；v0.2.24 移除已验证 few-step/progressive 流程中不必要的 actual-evaluation barriers：active PECE 的终端 Untwist 延后仅在明确的安全元数据和窄边界下生效，corrector 仍保持 actual；RES Multistep 不再隐式把 final tail 提升到 3，现有工作流传入的 tail_actual_steps 按原值生效。当前内置 H3 仍使用 RES/ER-SDE，不切换为 SA/PECE；现有模型、LoRA、Continuum、Diff-Aid、Untwisting RoPE 与工作流结构保持兼容。",
-    comfyUi: "0.33.1",
-    commit: "a360f64",
+    verifiedAt: "2026-09-18",
+    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.27",
+    note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast；v0.2.23 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 balanced；v0.2.24 移除已验证 few-step/progressive 流程中不必要的 actual-evaluation barriers，并使 RES Multistep 的 tail_actual_steps 按工作流值生效；v0.2.25 修复当前 ComfyUI DynamicVRAM/Comfy Compiler 下 Spectrum H3 solver 与 Aimdo malloc-graph 的崩溃边界，不全局关闭 DynamicVRAM 或 Compiler；v0.2.26 增加 provider-generic numerical-attention history/receipt 合约，无法证明后端连续性时安全退回 actual-only；v0.2.27 增加预测头流式投影与 CUDA target lifetime 修复，并恢复审查过的 Core BlockSparseAttention Mixed-Grid forecast recovery，主要降低预测头 CUDA 显存压力，不承诺整体速度提升。当前内置 H3 仍使用 RES/ER-SDE，不切换为 SA/PECE；现有模型、LoRA、Continuum、Diff-Aid、Untwisting RoPE 与工作流结构保持兼容，RefDelta、SEEDS 和 SA-Solver 仍不是本应用硬依赖；本条为上游发布与静态核对，目标机器仍需重启后做 /object_info 与最小 H3 smoke。",
+    comfyUi: "0.35.0",
+    commit: "120d72e",
     workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
     checks: ["static"]
   }],

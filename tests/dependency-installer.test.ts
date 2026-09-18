@@ -20,6 +20,7 @@ import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchH3PromptWriterOutputBudget,
   patchDlss5DepthAnythingSource,
+  patchMultimodalPromptAdaptiveGeneration,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
@@ -29,9 +30,63 @@ import {
   patchQwenVlCooperativeInterrupt,
   prepareDlss5DepthAnything,
   prepareH3PromptWriter,
-  prepareMultimodalPromptNodes
+  prepareMultimodalPromptNodes,
+  multimodalPromptSupportsAdaptiveGeneration
 } from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
+import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog";
+
+function multimodalVisionNodeFixture(): string {
+  return [
+    "import atexit",
+    "",
+    "def load_model(n_ctx: int = 4096):",
+    "    pass",
+    "",
+    "def _throw_if_processing_interrupted():",
+    "    pass",
+    "",
+    "def _raise_if_abort_detected(abort_requested, response):",
+    "    pass",
+    "",
+    "def _run_chat_completion(model, messages, max_tokens: int, temperature: float) -> str:",
+    "    _throw_if_processing_interrupted()",
+    "    with AbortWatch(model) as abort_watch:",
+    "        response = model.create_chat_completion(messages=messages, max_tokens=max_tokens, temperature=temperature)",
+    "        _raise_if_abort_detected(abort_watch.abort_requested, response)",
+    "    return response[\"choices\"][0][\"message\"][\"content\"]",
+    "",
+    "def rewrite_prompt_with_gguf(prompt, model_path, max_tokens, temperature, n_ctx: int = 4096, n_gpu_layers=0):",
+    "    return prompt",
+    "",
+    "class VisionLLMNode:",
+    "    @classmethod",
+    "    def INPUT_TYPES(cls):",
+    "        return {",
+    "            \"required\": {",
+    "                \"max_tokens\": (\"INT\", {\"default\": 512, \"min\": 64, \"max\": 2048, \"step\": 64}),",
+    "            },",
+    "            \"optional\": {",
+    "                \"image\": (\"IMAGE\",),",
+    "            }",
+    "        }",
+    "",
+    "    def rewrite(self, model: str, mmproj: str, prompt: str, max_tokens: int, temperature: float, device: str, image=None) -> tuple:",
+    "        try:",
+    "            enhanced_prompt = rewrite_prompt_with_gguf(",
+    "                prompt=prompt,",
+    "                model_path=model,",
+    "                max_tokens=max_tokens,",
+    "                temperature=temperature,",
+    "                n_gpu_layers=-1,",
+    "            )",
+    "            return (enhanced_prompt,)",
+    "        finally:",
+    "            cleanup()",
+    "",
+    "# ComfyUI Node Registration"
+  ].join("\n");
+}
 
 const dlss5DepthAnythingSource = [
   "from transformers import AutoImageProcessor, AutoModelForDepthEstimation",
@@ -603,31 +658,7 @@ describe("dependency installer", () => {
   it("raises the MultiModal GGUF context from 4K to 8K", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-adapter-"));
     temporaryDirectories.push(directory);
-    const source = [
-      "import atexit",
-      "",
-      "def load_model(n_ctx: int = 4096):",
-      "    pass",
-      "def rewrite_prompt(n_ctx: int = 4096):",
-      "    pass",
-      "",
-      "class VisionLLMNode:",
-      "    @classmethod",
-      "    def INPUT_TYPES(cls):",
-      "        return {",
-      "            \"optional\": {",
-      "                \"image\": (\"IMAGE\",),",
-      "            }",
-      "        }",
-      "",
-      "    def rewrite(self, model: str, mmproj: str, prompt: str, max_tokens: int, temperature: float, device: str, image=None) -> tuple:",
-      "        try:",
-      "            return (prompt,)",
-      "        finally:",
-      "            cleanup()",
-      "",
-      "# ComfyUI Node Registration"
-    ].join("\n");
+    const source = multimodalVisionNodeFixture();
     await fs.writeFile(path.join(directory, "vision_llm_node.py"), source);
     await fs.writeFile(path.join(directory, "local_gguf_utils.py"), [
       "def discover_local_gguf_models(qwen_only=False):",
@@ -650,7 +681,13 @@ describe("dependency installer", () => {
     expect(patched).toContain('"keep_model_loaded": ("BOOLEAN", {"default": False})');
     expect(patched).toContain("if not keep_model_loaded:");
     expect(patched).toContain('/local-video-studio/multimodal-prompt/unload');
+    expect(patched).toContain('/local-video-studio/multimodal-prompt/diagnostics');
+    expect(patched).toContain('"max": 3072');
+    expect(patched).toContain("n_ctx=16_384 if max_tokens > 2_048 else 8_192");
+    expect(patched).toContain("_lvs_last_generation_diagnostics");
+    expect(multimodalPromptSupportsAdaptiveGeneration(patched)).toBe(true);
     expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
+    expect(patchMultimodalPromptAdaptiveGeneration(patched)).toBe(patched);
     expect(patchMultimodalPromptResidency(patched)).toBe(patched);
     expect(patchedDiscovery).toContain("def _is_mmproj_filename");
     expect(patchedDiscovery).toContain('"-vision-" in lower');
@@ -916,7 +953,7 @@ describe("dependency installer", () => {
     const targetDirectory = path.join(comfyRoot, "custom_nodes", "LocalVideoStudio-H3");
     await fs.mkdir(sourceDirectory, { recursive: true });
     await fs.writeFile(path.join(sourceDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
-    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.3.2\n", "utf8");
+    await fs.writeFile(path.join(sourceDirectory, "VERSION"), `${H3_AV_SERIALIZER_REVISION}\n`, "utf8");
     await fs.writeFile(path.join(sourceDirectory, "requirements.txt"), "\n", "utf8");
     await fs.mkdir(targetDirectory, { recursive: true });
     await fs.writeFile(path.join(targetDirectory, "old.txt"), "old", "utf8");
@@ -945,6 +982,8 @@ describe("dependency installer", () => {
     expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
     expect(await fs.readFile(path.join(targetDirectory, "__init__.py"), "utf8"))
       .toContain("NODE_CLASS_MAPPINGS");
+    expect((await fs.readFile(path.join(targetDirectory, "VERSION"), "utf8")).trim())
+      .toBe(H3_AV_SERIALIZER_REVISION);
     expect(await exists(path.join(targetDirectory, "old.txt"))).toBe(false);
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
       name.startsWith("LocalVideoStudio-H3-"
@@ -1040,31 +1079,7 @@ describe("dependency installer", () => {
           await fs.mkdir(target, { recursive: true });
           await fs.writeFile(
             path.join(target, "vision_llm_node.py"),
-            [
-              "import atexit",
-              "",
-              "def load_model(n_ctx: int = 4096):",
-              "    pass",
-              "def rewrite_prompt(n_ctx: int = 4096):",
-              "    pass",
-              "",
-              "class VisionLLMNode:",
-              "    @classmethod",
-              "    def INPUT_TYPES(cls):",
-              "        return {",
-              "            \"optional\": {",
-              "                \"image\": (\"IMAGE\",),",
-              "            }",
-              "        }",
-              "",
-              "    def rewrite(self, model: str, mmproj: str, prompt: str, max_tokens: int, temperature: float, device: str, image=None) -> tuple:",
-              "        try:",
-              "            return (prompt,)",
-              "        finally:",
-              "            cleanup()",
-              "",
-              "# ComfyUI Node Registration"
-            ].join("\n")
+            multimodalVisionNodeFixture()
           );
           await fs.writeFile(path.join(target, "local_gguf_utils.py"), [
             "def discover_local_gguf_models(qwen_only=False):",

@@ -219,16 +219,15 @@ export function renderCreatePage(viewModel, options) {
             </div>`
                 : ""}
           </div>`}
-      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel" aria-labelledby="continuum-artifact-title">
-        <div class="section-heading">
-          <div><h2 id="continuum-artifact-title" title="${escapeHtml(t(uiKeys.create.continuumArtifact.description))}">${t(uiKeys.create.continuumArtifact.title)}</h2></div>
+      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel continuum-source-check" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.title))}">
+        ${viewModel.continuumManaged && viewModel.draft.h3ContinuumSequence?.acceptedChunks ? "" : `<div class="continuum-source-row">
+          <button class="ghost button-with-icon" type="button" id="pick-h3-continuum-av" data-drop-h3-continuum-av title="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}">${icon("folder-open")}</button>
+          <span class="continuum-source-filename" title="${escapeHtml(viewModel.continuumArtifactFilename)}">${escapeHtml(viewModel.continuumArtifactFilename || t(uiKeys.create.continuumArtifact.choose))}</span>
+          ${viewModel.continuumArtifactFilename ? `<button class="ghost icon-button" id="clear-h3-continuum-av" type="button" title="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}">${icon("x")}</button>` : ""}
+        </div>`}
+        <div class="continuum-status" data-continuum-source-status data-tone="${viewModel.continuumStatusTone}" role="status">
+          <strong>${escapeHtml(viewModel.continuumStatusLabel)}</strong><span>${escapeHtml(viewModel.continuumStatusDetail)}</span>
         </div>
-        <div class="continuum-artifact-drop ${viewModel.continuumArtifactReady ? "has-artifact" : ""}" id="pick-h3-continuum-av" data-drop-h3-continuum-av data-drop-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}" title="${escapeHtml(t(uiKeys.create.continuumArtifact.pendingValidation))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.continuumArtifactReady ? t(uiKeys.create.continuumArtifact.change) : t(uiKeys.create.continuumArtifact.choose))}">
-          <span class="drop-icon">${icon("database")}</span>
-          <strong>${t(viewModel.continuumArtifactReady ? uiKeys.create.continuumArtifact.change : uiKeys.create.continuumArtifact.choose)}</strong>
-          ${viewModel.continuumArtifactFilename ? `<span>${escapeHtml(viewModel.continuumArtifactFilename)}</span>` : ""}
-        </div>
-        ${viewModel.continuumArtifactReady ? `<div class="continuum-artifact-meta"><button class="ghost button-with-icon" id="clear-h3-continuum-av" type="button">${icon("x")}${t(uiKeys.create.continuumArtifact.clear)}</button></div>` : ""}
       </section>` : ""}
       ${viewModel.extending && viewModel.isR2V ? `<section class="continuum-artifact-panel h3-motion-context-latent-panel" aria-labelledby="motion-context-latent-title">
         <div class="section-heading">
@@ -312,7 +311,7 @@ export function renderCreatePage(viewModel, options) {
           </select>
         </label>
         <label class="settings-field settings-latent-save">${viewModel.jointAvLabelMarkup}
-          <select id="h3-latent-save-mode" title="${escapeHtml(viewModel.latentSaveModeTitle)}">
+          <select id="h3-latent-save-mode" ${viewModel.latentSaveDisabled ? "disabled" : ""} aria-label="${escapeHtml(t(uiKeys.create.videoSettings.saveLatentData))}">
             ${viewModel.latentSaveModeOptionsMarkup}
           </select>
         </label>` : ""}

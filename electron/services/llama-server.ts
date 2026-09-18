@@ -315,7 +315,8 @@ export async function enhancePromptWithLlamaServer(
     sourcePrompt,
     request.prompt,
     nativeStateContinuation,
-    nativeStateContinuation
+    nativeStateContinuation,
+    request.continuumPreviousChunk
   );
 }
 

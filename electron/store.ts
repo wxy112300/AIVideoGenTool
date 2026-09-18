@@ -4,6 +4,7 @@ import type {
   AppState,
   AssetVersion,
   Draft,
+  ExtensionQueueTask,
   GenerationQueueTask,
   HistoryAsset,
   ImageEditDraft,
@@ -12,6 +13,7 @@ import type {
   H3AttentionMode,
   H3SparseAttentionMode,
   H3LatentSaveMode,
+  H3AvOutputPolicy,
   H3VideoVaeBackend,
   QueueLifecycle,
   QueueTask,
@@ -54,6 +56,7 @@ import {
 import {
   generationSafetyForTask,
   h3ContinuumWorkflowPathForInput,
+  h3ContinuumManagedWorkflowPathForInput,
   isMiniMaxH3ContinuumModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
@@ -219,6 +222,20 @@ function migrateH3VideoVaeMode(value: unknown, modelId: string): H3VideoVaeBacke
   return isMiniMaxH3Model(modelId) ? normalizeH3VideoVaeBackend(value) : undefined;
 }
 
+function migrateH3AvOutputPolicy(value: unknown): H3AvOutputPolicy | undefined {
+  return value === "shared" ? "shared" : undefined;
+}
+
+function invalidH3AvOutputPolicyReason(value: unknown): string {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    serialized = String(value);
+  }
+  return `H3 AV 输出 policy 不受支持（${serialized}），任务已阻止执行。请重新创建任务。`;
+}
+
 function migrateH3LatentSaveFields(
   value: { h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
   modelId: string,
@@ -324,7 +341,33 @@ function migrateQueueTask(
   if (task.taskType === "image-generation") {
     return migrateImageGenerationTask({ ...task, automaticRetryAttempt });
   }
-  if (task.taskType === "upscale") return { ...task, automaticRetryAttempt };
+  const storedH3AvOutputPolicy = (task as QueueTask & { h3AvOutputPolicy?: unknown }).h3AvOutputPolicy;
+  const hasH3AvOutputPolicy = Object.prototype.hasOwnProperty.call(task, "h3AvOutputPolicy");
+  const h3AvOutputPolicy = migrateH3AvOutputPolicy(storedH3AvOutputPolicy);
+  const storedH3AvOutputPolicyError = (task as QueueTask & { h3AvOutputPolicyError?: unknown }).h3AvOutputPolicyError;
+  const h3AvOutputPolicyError = typeof storedH3AvOutputPolicyError === "string" && storedH3AvOutputPolicyError.trim()
+    ? storedH3AvOutputPolicyError
+    : hasH3AvOutputPolicy && h3AvOutputPolicy === undefined
+      ? invalidH3AvOutputPolicyReason(storedH3AvOutputPolicy)
+      : undefined;
+  if (task.taskType === "upscale") {
+    const {
+      h3AvOutputPolicy: _storedH3AvOutputPolicy,
+      ...upscaleTaskWithoutH3OutputPolicy
+    } = task as QueueTask & { h3AvOutputPolicy?: unknown };
+    return {
+      ...upscaleTaskWithoutH3OutputPolicy,
+      ...(h3AvOutputPolicy ? { h3AvOutputPolicy } : {}),
+      ...(h3AvOutputPolicyError
+        ? {
+            h3AvOutputPolicyError,
+            status: "failed" as const,
+            error: h3AvOutputPolicyError
+          }
+        : {}),
+      automaticRetryAttempt
+    } as QueueTask;
+  }
   const legacyModelId = task.modelId;
   const modelId = baseVideoModelId(legacyModelId);
   const h3VideoVaeMode = migrateH3VideoVaeMode(
@@ -340,7 +383,12 @@ function migrateQueueTask(
     modelId,
     task.taskType === "extension" && isMiniMaxH3R2vModel(modelId)
   );
+  const {
+    h3AvOutputPolicy: _storedH3AvOutputPolicy,
+    ...taskWithoutH3OutputPolicy
+  } = task as QueueTask & { h3AvOutputPolicy?: unknown };
   if (task.taskType === "extension") {
+    const extensionTask = taskWithoutH3OutputPolicy as ExtensionQueueTask;
     const memoryOptions = normalizeH3MemoryOptions(
       task as QueueTask & {
         h3MemoryOptimizationMode?: unknown;
@@ -356,7 +404,7 @@ function migrateQueueTask(
         )
       : undefined;
     return {
-      ...task,
+      ...extensionTask,
       modelId,
       videoLoras,
       modelProfile: task.modelProfile ?? "q3_k_m",
@@ -377,6 +425,14 @@ function migrateQueueTask(
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
       ...h3LatentSaveFields,
+      ...(h3AvOutputPolicy ? { h3AvOutputPolicy } : {}),
+      ...(h3AvOutputPolicyError
+        ? {
+            h3AvOutputPolicyError,
+            status: "failed" as const,
+            error: h3AvOutputPolicyError
+          }
+        : {}),
       ...memoryOptions,
       ...(normalizedSlots ? { h3ReferenceSlots: normalizedSlots } : {}),
       automaticRetryAttempt
@@ -390,8 +446,9 @@ function migrateQueueTask(
     },
     "off"
   );
+  const generationTask = taskWithoutH3OutputPolicy as GenerationQueueTask;
   return {
-    ...task,
+    ...generationTask,
     modelId,
     videoLoras,
     taskType: "generation",
@@ -417,10 +474,23 @@ function migrateQueueTask(
     spectrumMode: task.spectrumMode ?? "off",
     spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
     ...h3LatentSaveFields,
+    ...(h3AvOutputPolicy ? { h3AvOutputPolicy } : {}),
+    ...(h3AvOutputPolicyError
+      ? {
+          h3AvOutputPolicyError,
+          status: "failed" as const,
+          error: h3AvOutputPolicyError
+        }
+      : {}),
     ...memoryOptions,
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     automaticRetryAttempt,
-    ...(task.status === "running"
+    ...(h3AvOutputPolicyError
+      ? {
+          status: "failed" as const,
+          error: h3AvOutputPolicyError
+        }
+      : task.status === "running"
       ? {
           status: "waiting" as const,
           error: "应用上次退出时任务仍在运行，已恢复为等待状态。"
@@ -465,14 +535,30 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
       h3VideoVaeMode,
       ...assetMemoryOptions,
-      versions: asset.versions.map((version) => ({
-        ...version,
+      versions: asset.versions.map((version) => {
+        const storedH3AvOutputPolicy = (version as AssetVersion & { h3AvOutputPolicy?: unknown }).h3AvOutputPolicy;
+        const hasH3AvOutputPolicy = Object.prototype.hasOwnProperty.call(version, "h3AvOutputPolicy");
+        const h3AvOutputPolicy = migrateH3AvOutputPolicy(storedH3AvOutputPolicy);
+        const storedH3AvOutputPolicyError = (version as AssetVersion & { h3AvOutputPolicyError?: unknown }).h3AvOutputPolicyError;
+        const h3AvOutputPolicyError = typeof storedH3AvOutputPolicyError === "string" && storedH3AvOutputPolicyError.trim()
+          ? storedH3AvOutputPolicyError
+          : hasH3AvOutputPolicy && h3AvOutputPolicy === undefined
+            ? invalidH3AvOutputPolicyReason(storedH3AvOutputPolicy)
+            : undefined;
+        const {
+          h3AvOutputPolicy: _storedH3AvOutputPolicy,
+          ...versionWithoutH3OutputPolicy
+        } = version as AssetVersion & { h3AvOutputPolicy?: unknown };
+        return {
+        ...versionWithoutH3OutputPolicy,
         modelId: baseVideoModelId(version.modelId),
         ...migrateH3LatentSaveFields(
           version as AssetVersion & { h3LatentSaveMode?: unknown },
           baseVideoModelId(version.modelId),
           asset.inputMode === "video" && isMiniMaxH3R2vModel(baseVideoModelId(version.modelId))
         ),
+        ...(h3AvOutputPolicy ? { h3AvOutputPolicy } : {}),
+        ...(h3AvOutputPolicyError ? { h3AvOutputPolicyError } : {}),
         videoLoras: normalizeHistoryVideoLoras(version.videoLoras, version.modelId),
         attentionMode: migrateOptionalH3AttentionMode(version.attentionMode),
         h3VideoVaeMode: migrateH3VideoVaeMode(
@@ -494,7 +580,8 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
             (version as AssetVersion & { h3ContinuationData?: unknown }).h3ContinuationData
           )
         } : {})
-      }))
+        };
+      })
     };
   }
   const [width, height] = legacyDimensions(asset);
@@ -854,7 +941,15 @@ export class JsonStore implements StateRepository {
         needsPersist = true;
       }
       if (isMiniMaxH3ContinuumModel(this.state.draft.modelId)) {
-        const migratedWorkflowPath = h3ContinuumWorkflowPathForInput(this.state.draft.workflowPath);
+        if (!this.state.draft.h3ContinuumMode) {
+          this.state.draft.h3ContinuumMode = this.state.draft.h3ContinuumArtifact || this.state.draft.h3ContinuumArtifactPath
+            ? "bootstrap"
+            : "managed";
+          needsPersist = true;
+        }
+        const migratedWorkflowPath = this.state.draft.h3ContinuumMode === "managed"
+          ? h3ContinuumManagedWorkflowPathForInput(this.state.draft.workflowPath)
+          : h3ContinuumWorkflowPathForInput(this.state.draft.workflowPath);
         if (migratedWorkflowPath !== this.state.draft.workflowPath) {
           this.state.draft.workflowPath = migratedWorkflowPath;
           needsPersist = true;

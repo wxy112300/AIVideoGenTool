@@ -338,6 +338,9 @@ export function mountCreatePromptController(
           : draft.ratio,
         referenceMediaPaths,
         referenceContext: isH3Vision ? referenceContext : undefined,
+        continuumPreviousChunk: draft.h3ContinuumSequence?.acceptedChunks
+          ? draft.h3ContinuumSequence.acceptedChunks - (draft.h3ContinuumReviewAction === "Regenerate Current" ? 1 : 0)
+          : undefined,
         extensionSource: isExtension && draft.sourceVideoPath
           ? {
               filePath: draft.sourceVideoPath,

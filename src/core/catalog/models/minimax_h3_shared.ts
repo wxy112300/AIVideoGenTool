@@ -6,12 +6,12 @@ import type {
 const h3OfficialSource = "Comfy-Org / MiniMax-H3";
 const h3OfficialRevision = "014cd40f7e177756c6b2473c0d93b1c89a790dd2";
 const h3OfficialBaseUrl = `https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/${h3OfficialRevision}`;
+const h3Int8ConvRotVideoVaeRevision = "7a2065e37f5ff9d3c4e605f164d4cac388eff8e8";
+const h3Int8ConvRotVideoVaeBaseUrl = `https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/${h3Int8ConvRotVideoVaeRevision}`;
 const h3Int4Source = "Merserk / MiniMax-H3-INT4-ConvRot";
 const h3Int4BaseUrl = "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main";
 const h3Q3Source = "Unsloth / MiniMax-H3-GGUF";
 const h3Q3BaseUrl = "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main";
-const h3ExperimentalVaeSource = "Kijai / MiniMax-H3-experimental";
-const h3ExperimentalVaeBaseUrl = "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main";
 export const H3_LEARNED_UPSCALER_MODEL_REVISION = "09592c6221ec95cc8e0fae67842e34926c4e668b";
 
 const h3ArtifactEvidence: Record<string, Pick<CatalogInstallGuide, "revision" | "bytes" | "sha256">> = {
@@ -34,6 +34,11 @@ const h3ArtifactEvidence: Record<string, Pick<CatalogInstallGuide, "revision" | 
     revision: h3OfficialRevision,
     bytes: 5_207_808_496,
     sha256: "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522"
+  },
+  "minimax_h3_video_vae_int8_convrot.safetensors": {
+    revision: h3Int8ConvRotVideoVaeRevision,
+    bytes: 2_811_065_184,
+    sha256: "52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e"
   },
   "minimax_h3_audio_vae_fp32.safetensors": {
     revision: h3OfficialRevision,
@@ -123,11 +128,11 @@ export const h3Int8ConvRotVideoVae = h3Component({
   pattern: /vae\/minimax_h3_video_vae_int8_convrot\.safetensors$/i,
   alternativeGroup: "minimax-h3-video-vae",
   installGuide: guide(
-    h3ExperimentalVaeSource,
-    `${h3ExperimentalVaeBaseUrl}/minimax_h3_video_vae_int8_convrot.safetensors`,
+    h3OfficialSource,
+    `${h3Int8ConvRotVideoVaeBaseUrl}/vae/minimax_h3_video_vae_int8_convrot.safetensors`,
     "vae",
     "minimax_h3_video_vae_int8_convrot.safetensors",
-    "实验性 H3 视频 VAE 解码后端；需要 ComfyUI 0.31.0 或更高版本。未安装时工作流自动使用 FP16。"
+    "官方 H3 INT8 ConvRot 视频 VAE 解码后端；需要 ComfyUI 0.31.0 或更高版本。未安装时工作流自动使用 FP16。"
   )
 });
 

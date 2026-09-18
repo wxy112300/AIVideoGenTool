@@ -153,6 +153,19 @@ describe("H3 Continuum V3.8 native-state runtime contract", () => {
           }
         }
       },
+      LocalVideoStudioH3ContinuumDiagnostics: {
+        input: {
+          required: {
+            bridge_report: ["STRING", {}],
+            status: ["STRING", {}],
+            assembly_plan: ["H3_CONTINUUM_ASSEMBLY_PLAN", {}],
+            assembly_report: ["STRING", {}],
+            spectrum_mode: ["STRING", {}],
+            spectrum_model_aware_mode: ["STRING", {}]
+          }
+        },
+        output: ["STRING"]
+      },
       LTXVConcatAVLatent: {
         input: {
           required: {

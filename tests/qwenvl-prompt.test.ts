@@ -111,7 +111,7 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     );
     const prompt = String(workflow["qwenvl-caption"]?.inputs.prompt);
 
-    expect(prompt).toContain("native-state H3 continuation");
+    expect(prompt).toContain("CONTINUUM CHUNK AUTHORING CONTRACT (official Skill");
     expect(prompt).toContain("T2VA task rule");
     expect(prompt).toContain("Single-shot lock");
     expect(prompt).not.toContain("For the target video, at 0.00 seconds");

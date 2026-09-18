@@ -300,6 +300,27 @@ async function hasAudioStream(filename: string, signal: AbortSignal): Promise<bo
   }
 }
 
+async function requireVideoFrameCount(
+  filename: string,
+  expectedFrames: number,
+  signal: AbortSignal
+): Promise<void> {
+  const output = await run("ffprobe", [
+    "-v", "error",
+    "-select_streams", "v:0",
+    "-count_frames",
+    "-show_entries", "stream=nb_read_frames",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    filename
+  ], signal);
+  const actualFrames = Number.parseInt(output.trim().split(/\s+/u)[0] ?? "", 10);
+  if (!Number.isSafeInteger(actualFrames) || actualFrames !== expectedFrames) {
+    throw new Error(
+      `Continuum 拼接帧数校验失败：期望 ${expectedFrames} 帧，实际 ${Number.isSafeInteger(actualFrames) ? actualFrames : "无法读取"} 帧。`
+    );
+  }
+}
+
 function concatEntry(filename: string): string {
   return `file '${filename.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
 }
@@ -314,6 +335,20 @@ export function extensionGeneratedTrimStart(
   if (isMiniMaxH3R2vModel(task.modelId) || isMiniMaxH3ContinuumModel(task.modelId)) return 0;
   if (isMiniMaxH3Fl2vaModel(task.modelId)) return 1 / 24;
   return extensionContextDuration(task);
+}
+
+export function continuumExtensionFrameBudget(
+  task: Pick<ExtensionQueueTask, "fps" | "duration" | "trimStartSeconds" | "trimEndSeconds">
+): { retainedFrames: number; continuationFrames: number; totalFrames: number } {
+  const retainedFrames = Math.round(
+    Math.max(0, task.trimEndSeconds - task.trimStartSeconds) * task.fps
+  );
+  const continuationFrames = Math.round(Math.max(0, task.duration) * task.fps);
+  return {
+    retainedFrames,
+    continuationFrames,
+    totalFrames: retainedFrames + continuationFrames
+  };
 }
 
 export async function finalizeExtensionOutput(
@@ -334,9 +369,12 @@ export async function finalizeExtensionOutput(
   const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
   const audioRate = h3MotionContext || h3Continuum ? "32000" : "48000";
   const [width, height] = extensionOutputDimensions(task);
-  const filter = scaleFilter(width, height, task.fps);
+  const filter = `${h3Continuum ? "setpts=PTS-STARTPTS," : ""}${scaleFilter(width, height, task.fps)}`;
   const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
   const generatedHasAudio = await hasAudioStream(generatedPath, signal);
+  const continuumFrameBudget = h3Continuum
+    ? continuumExtensionFrameBudget(task)
+    : undefined;
 
   try {
     const retainedArgs = [
@@ -354,9 +392,13 @@ export async function finalizeExtensionOutput(
       "-map", "0:v:0",
       "-map", sourceHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
+      ...(continuumFrameBudget
+        ? ["-frames:v", String(continuumFrameBudget.retainedFrames), "-af", "apad"]
+        : []),
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-ar", audioRate, "-ac", "2",
-      "-shortest", retainedPath
+      ...(!continuumFrameBudget ? ["-shortest"] : []),
+      retainedPath
     );
     await run("ffmpeg", retainedArgs, signal);
 
@@ -381,9 +423,13 @@ export async function finalizeExtensionOutput(
     continuationArgs.push(
       "-map", "0:v:0", "-map", generatedHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
+      ...(continuumFrameBudget
+        ? ["-frames:v", String(continuumFrameBudget.continuationFrames), "-af", "apad"]
+        : []),
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-ar", audioRate, "-ac", "2",
-      "-shortest", continuationPath
+      ...(!continuumFrameBudget ? ["-shortest"] : []),
+      continuationPath
     );
     await run("ffmpeg", continuationArgs, signal);
 
@@ -397,6 +443,13 @@ export async function finalizeExtensionOutput(
       "-f", "concat", "-safe", "0", "-i", concatPath,
       "-c", "copy", "-movflags", "+faststart", finalPath
     ], signal);
+    if (continuumFrameBudget) {
+      await requireVideoFrameCount(
+        finalPath,
+        continuumFrameBudget.totalFrames,
+        signal
+      );
+    }
 
     const replacement = `${generatedPath}.${task.id}.replacement.mp4`;
     const backup = `${generatedPath}.${task.id}.generated.mp4`;

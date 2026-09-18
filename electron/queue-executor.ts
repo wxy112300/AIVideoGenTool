@@ -1,4 +1,4 @@
-import type { AppState, GenerationQueueTask, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
+import type { AppState, GenerationQueueTask, H3AvLatentAsset, H3ContinuumReceipt, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,11 +7,14 @@ import {
   nextQueueWaitingTask
 } from "../src/core/queue.js";
 import { isVideoOutputFilename } from "../src/core/comfy-output.js";
+import { extractH3ContinuumExtendDiagnostics } from "../src/core/h3-continuum-diagnostics.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
   activityTimeoutMinutesForTask,
   extensionSafetyForTask,
   generationSafetyForTask,
+  isMiniMaxH3ContinuumModel,
+  isMiniMaxH3ContinuumManagedWorkflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -40,6 +43,32 @@ import {
 } from "./services/queue-execution-side-effects.js";
 
 const performanceLogIntervalMs = 30_000;
+
+function assertManagedContinuationHead(state: AppState, task: Exclude<QueueTask, ImageGenerationQueueTask>): void {
+  if (
+    task.taskType !== "extension" ||
+    task.h3ContinuumMode !== "managed" ||
+    !task.sourceAssetId ||
+    !task.sourceVersionId ||
+    !task.h3ContinuumParentRevisionId ||
+    task.h3ContinuumParentRevisionId === "pending"
+  ) return;
+  const asset = state.history.find((candidate) => candidate.id === task.sourceAssetId);
+  const version = asset?.versions.find((candidate) => candidate.id === task.sourceVersionId);
+  const sequence = version?.h3ContinuumSequence;
+  if (!sequence) {
+    throw new Error("Continuum managed parent History 版本缺少 sequence，拒绝静默切换到最新 Run head。");
+  }
+  if (sequence.canonicalHead.revisionId !== task.h3ContinuumParentRevisionId) {
+    throw new Error(`Continuum managed parent head 已过期：任务绑定 ${task.h3ContinuumParentRevisionId}，当前为 ${sequence.canonicalHead.revisionId}。请从选中的 History Take 重新继续。`);
+  }
+  if (task.h3ContinuumParentTakeId !== undefined && sequence.canonicalHead.takeId !== task.h3ContinuumParentTakeId) {
+    throw new Error("Continuum managed parent Take 已过期，请从当前选中的 History Take 重新继续。");
+  }
+  if (task.h3ContinuumParentBranchId !== undefined && sequence.canonicalHead.branchId !== task.h3ContinuumParentBranchId) {
+    throw new Error("Continuum managed parent branch 已过期，请从当前选中的 History 分支重新继续。");
+  }
+}
 
 function h3CreateFirstPassTask(task: GenerationQueueTask): GenerationQueueTask {
   return {
@@ -106,7 +135,8 @@ function h3CreateSecondPassTask(
     ...upscale,
     outputFilename: task.outputFilename,
     targetWidth,
-    targetOutputHeight
+    targetOutputHeight,
+    h3AvOutputPolicy: task.h3AvOutputPolicy
   };
 }
 
@@ -147,6 +177,16 @@ export interface QueueExecutorDependencies {
     task: Exclude<QueueTask, ImageGenerationQueueTask>,
     completedAt: string
   ): Promise<NativeAvContinuationData>;
+  registerH3ContinuumManagedOutput?(
+    result: unknown,
+    receiptNodeId: string,
+    task: Exclude<QueueTask, ImageGenerationQueueTask>,
+    completedAt: string
+  ): Promise<{
+    receipt: H3ContinuumReceipt;
+    assets: H3AvLatentAsset[];
+    assetsByChunkIndex: Record<number, H3AvLatentAsset>;
+  }>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -631,6 +671,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let result: unknown;
       let files: HistoryFile[];
       let h3AvSerializerNodeId: string | undefined;
+      let h3ContinuumDiagnosticsNodeId: string | undefined;
+      let h3ContinuumManagedReceiptNodeId: string | undefined;
+      let h3ContinuumReceipt: H3ContinuumReceipt | undefined;
+      let h3ContinuumAsset: H3AvLatentAsset | undefined;
         let seedVr2IntermediatePaths: string[] = [];
         if (segmentedSeedVr2) {
           promptId = segmentedSeedVr2.promptId;
@@ -639,6 +683,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           seedVr2IntermediatePaths = segmentedSeedVr2.intermediatePaths;
           sideEffects.markTaskSubmitted(task, false);
         } else {
+          assertManagedContinuationHead(store.get(), executionTask);
           const submitted = await submitTask(
             executionTask,
             store.get().settings,
@@ -649,6 +694,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           const { clientId, nodeTypes } = submitted;
           h3TokenCount = submitted.h3TokenCount;
           h3AvSerializerNodeId = submitted.h3AvSerializerNodeId;
+          h3ContinuumDiagnosticsNodeId = submitted.h3ContinuumDiagnosticsNodeId;
+          h3ContinuumManagedReceiptNodeId = submitted.h3ContinuumManagedReceiptNodeId;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
           if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
           if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
@@ -721,7 +768,70 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             undefined,
               submitted.progressContext
           );
+          if (
+            h3ContinuumDiagnosticsNodeId &&
+            executionTask.taskType === "extension" &&
+            isMiniMaxH3ContinuumModel(executionTask.modelId) &&
+            !isMiniMaxH3ContinuumManagedWorkflow(executionTask.workflowPath)
+          ) {
+            const diagnostics = extractH3ContinuumExtendDiagnostics(
+              result,
+              h3ContinuumDiagnosticsNodeId
+            );
+            logger.info("queue", "h3-continuum-runtime-diagnostics", "H3 Continuum Extend runtime facts validated", {
+              taskId: task.id,
+              nodeId: h3ContinuumDiagnosticsNodeId,
+              inputArtifact: diagnostics.input_artifact,
+              sourceFrameCount: diagnostics.source_frame_count,
+              capacityFrames: diagnostics.capacity_frames,
+              selectedSource: diagnostics.selected_source,
+              requestedBackend: diagnostics.requested_backend,
+              resolvedTransport: diagnostics.resolved_transport,
+              transportVerified: diagnostics.transport_verified,
+              transportEvidence: diagnostics.transport_evidence,
+              contextFrames: diagnostics.context_frames,
+              totalFrames: diagnostics.total_frames,
+              trimFrames: diagnostics.trim_frames,
+              netFrames: diagnostics.net_frames,
+              stateClipIndex: diagnostics.state_clip_index,
+              outputClipIndex: diagnostics.output_clip_index,
+              actualAssemblyTrims: diagnostics.actual_assembly_trims,
+              spectrumMode: diagnostics.spectrum_mode,
+              spectrumModelAwareMode: diagnostics.spectrum_model_aware_mode,
+              continuumPackageVersion: diagnostics.continuum_package_version
+            });
+          }
           files = await sideEffects.trackVideoOutput(result);
+          if (
+            executionTask.taskType === "extension" &&
+            isMiniMaxH3ContinuumManagedWorkflow(executionTask.workflowPath)
+          ) {
+            if (!h3ContinuumManagedReceiptNodeId || !deps.registerH3ContinuumManagedOutput) {
+              throw new Error("H3 Continuum managed 执行缺少 Run Storage receipt 注册器。");
+            }
+            const registered = await deps.registerH3ContinuumManagedOutput(
+              result,
+              h3ContinuumManagedReceiptNodeId,
+              executionTask,
+              new Date().toISOString()
+            );
+            h3ContinuumReceipt = registered.receipt;
+            h3ContinuumAsset = registered.assetsByChunkIndex[registered.receipt.firstGeneratedChunk];
+            if (!h3ContinuumAsset) {
+              throw new Error("H3 Continuum managed receipt 没有对应 generated Chunk 的 canonical asset。");
+            }
+            logger.info("queue", "h3-continuum-managed-receipt", "H3 Continuum managed Run Storage receipt validated", {
+              taskId: task.id,
+              runName: registered.receipt.runName,
+              projectId: registered.receipt.projectId,
+              revisionId: registered.receipt.revisionId,
+              requestedChunks: registered.receipt.requestedChunks,
+              reusedCount: registered.receipt.reusedCount,
+              generatedCount: registered.receipt.generatedCount,
+              firstGeneratedChunk: registered.receipt.firstGeneratedChunk,
+              canonicalAssetId: h3ContinuumAsset.assetId
+            });
+          }
           if (h3CompositeTask && executionTask.taskType === "generation") {
             if (!h3AvSerializerNodeId) {
               throw new Error("H3 1080p 首遍工作流没有返回 JointAV serializer 节点。");
@@ -764,6 +874,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             );
             promptId = secondSubmitted.promptId;
             h3AvSerializerNodeId = secondSubmitted.h3AvSerializerNodeId;
+            h3ContinuumDiagnosticsNodeId = secondSubmitted.h3ContinuumDiagnosticsNodeId;
+            h3ContinuumManagedReceiptNodeId = secondSubmitted.h3ContinuumManagedReceiptNodeId;
             await updateTask(task.id, {
               comfyPromptId: promptId,
               progress: 50,
@@ -806,6 +918,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         if (
           completedTask.taskType === "extension" &&
           isMiniMaxH3R2vModel(completedTask.modelId) &&
+          completedTask.h3AvOutputPolicy !== "shared" &&
           completedTask.h3ContextSavedPath &&
           findExistingH3MotionContextOutput
         ) {
@@ -830,7 +943,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
         const completedAt = new Date().toISOString();
-        const h3ContinuationData = h3AvSerializerNodeId
+        const h3ContinuationData = h3AvSerializerNodeId && !h3ContinuumReceipt
           ? await commitH3NativeAvOutput(result, h3AvSerializerNodeId, artifactCommitTask, completedAt)
           : undefined;
         if (h3CompositeTask && h3FirstPassCheckpoint) {
@@ -845,21 +958,28 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             (file) => file.absolutePath && isVideoOutputFilename(file.filename)
           );
           if (!outputVideo?.absolutePath) {
-            throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");
+            throw new Error("续写工作流没有返回可供 History 保存的视频文件");
           }
-          await updateTask(task.id, {
-            progress: 99,
-            stage: isMiniMaxH3R2vModel(completedTask.modelId)
-              ? "合并 Motion Context 续写片段与 32 kHz 音轨"
-              : isMiniMaxH3Fl2vaModel(completedTask.modelId)
-                ? "裁掉重复边界帧并合并原生音轨"
-                : "去除重叠帧并拼接成片"
-          });
-          await sideEffects.finalizeExtension(
-            completedTask,
-            outputVideo.absolutePath,
-            activeController.signal
-          );
+          if (completedTask.h3ContinuumMode === "managed") {
+            await updateTask(task.id, {
+              progress: 99,
+              stage: "Run Storage 完整序列已 Finalize · 保留官方输出"
+            });
+          } else {
+            await updateTask(task.id, {
+              progress: 99,
+              stage: isMiniMaxH3R2vModel(completedTask.modelId)
+                ? "合并 Motion Context 续写片段与 32 kHz 音轨"
+                : isMiniMaxH3Fl2vaModel(completedTask.modelId)
+                  ? "裁掉重复边界帧并合并原生音轨"
+                  : "去除重叠帧并拼接成片"
+            });
+            await sideEffects.finalizeExtension(
+              completedTask,
+              outputVideo.absolutePath,
+              activeController.signal
+            );
+          }
         }
         if (seedVr2IntermediatePaths.length && completedTask.taskType === "upscale") {
           await updateTask(task.id, {
@@ -920,7 +1040,9 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           comfyOutputs: result,
           files,
           performanceStats: taskPerformanceStats,
-          h3ContinuationData
+          h3ContinuationData,
+          h3ContinuumReceipt,
+          h3ContinuumAsset
         });
         if (isMiniMaxH3Model(completedTask.modelId)) {
           const nextTask = nextQueueWaitingTask(
