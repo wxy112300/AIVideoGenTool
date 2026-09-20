@@ -37,34 +37,68 @@ export async function stageFileForWindowsClipboard(
   filename: string,
   stagingRoot: string
 ): Promise<{ stagedFilename: string; stagingDirectory: string }> {
+  const staged = await stageFilesForWindowsClipboard([filename], stagingRoot);
+  return {
+    stagedFilename: staged.stagedFilenames[0]!,
+    stagingDirectory: staged.stagingDirectory
+  };
+}
+
+export async function stageFilesForWindowsClipboard(
+  filenames: string[],
+  stagingRoot: string
+): Promise<{ stagedFilenames: string[]; stagingDirectory: string }> {
   const stagingDirectory = path.join(stagingRoot, crypto.randomUUID());
-  const stagedFilename = path.join(stagingDirectory, path.basename(filename));
+  const stagedFilenames: string[] = [];
   await fs.mkdir(stagingDirectory, { recursive: true });
   try {
-    // A hard link is instant and protects the original even if Explorer
-    // mistakenly consumes the clipboard entry as a same-volume move.
-    await fs.link(filename, stagedFilename).catch(async () => {
-      await fs.copyFile(filename, stagedFilename);
-    });
+    const usedNames = new Set<string>();
+    for (const [index, filename] of filenames.entries()) {
+      const originalName = path.basename(filename) || `history-${index + 1}`;
+      const extension = path.extname(originalName);
+      const stem = extension ? originalName.slice(0, -extension.length) : originalName;
+      let stagedName = originalName;
+      let suffix = 2;
+      while (usedNames.has(stagedName.toLowerCase())) {
+        stagedName = `${stem}-${suffix++}${extension}`;
+      }
+      usedNames.add(stagedName.toLowerCase());
+      const stagedFilename = path.join(stagingDirectory, stagedName);
+      // A hard link is instant and protects the original even if Explorer
+      // mistakenly consumes the clipboard entry as a same-volume move.
+      await fs.link(filename, stagedFilename).catch(async () => {
+        await fs.copyFile(filename, stagedFilename);
+      });
+      stagedFilenames.push(stagedFilename);
+    }
   } catch (error) {
     await fs.rm(stagingDirectory, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
-  return { stagedFilename, stagingDirectory };
+  return { stagedFilenames, stagingDirectory };
 }
 
 export async function copyFileToWindowsClipboard(
   filename: string,
   stagingRoot: string
 ): Promise<void> {
-  const { stagedFilename, stagingDirectory } =
-    await stageFileForWindowsClipboard(filename, stagingRoot);
+  await copyFilesToWindowsClipboard([filename], stagingRoot);
+}
+
+export async function copyFilesToWindowsClipboard(
+  filenames: string[],
+  stagingRoot: string
+): Promise<void> {
+  if (!filenames.length) throw new Error("No files to copy.");
+  const { stagedFilenames, stagingDirectory } =
+    await stageFilesForWindowsClipboard(filenames, stagingRoot);
   const script = [
     "$ErrorActionPreference = 'Stop'",
     // Let the Windows-owned cmdlet create CF_HDROP and Preferred DropEffect.
     // Hand-building a DataObject can make same-volume Explorer paste behave
     // like a move, removing the source video from ComfyUI's output directory.
-    "for ($attempt = 1; $attempt -le 5; $attempt++) { try { Set-Clipboard -LiteralPath $env:AIVIDEO_CLIPBOARD_FILE; break } catch { if ($attempt -eq 5) { throw }; Start-Sleep -Milliseconds 120 } }"
+    "$files = $env:AIVIDEO_CLIPBOARD_FILES_JSON | ConvertFrom-Json",
+    "for ($attempt = 1; $attempt -le 5; $attempt++) { try { Set-Clipboard -LiteralPath $files; break } catch { if ($attempt -eq 5) { throw }; Start-Sleep -Milliseconds 120 } }"
   ].join("; ");
 
   try {
@@ -75,7 +109,7 @@ export async function copyFileToWindowsClipboard(
         encoding: "utf8",
         timeout: 10_000,
         windowsHide: true,
-        env: { ...process.env, AIVIDEO_CLIPBOARD_FILE: stagedFilename }
+        env: { ...process.env, AIVIDEO_CLIPBOARD_FILES_JSON: JSON.stringify(stagedFilenames) }
       }
     );
   } catch (error) {

@@ -6,6 +6,7 @@ import { formatElapsedDuration } from "../shared/formatters";
 export type ConfirmationRequest =
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
+  | { kind: "delete-history-batch"; historyKind: "video" | "image"; assetIds: string[]; count: number }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
   | { kind: "delete-joint-av"; assetId: string; versionId: string; title: string }
@@ -46,6 +47,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
   const request = options.request;
   if (!request) return "";
   const deleting = request.kind === "delete-history";
+  const deletingBatch = request.kind === "delete-history-batch";
   const deletingImageVersion = request.kind === "delete-image-version";
   const deletingVideoVersion = request.kind === "delete-video-version";
   const deletingJointAv = request.kind === "delete-joint-av";
@@ -74,6 +76,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
     ? t(uiKeys.dialog.deleteMotionContextTitle, { title: request.title })
     : deletingVersion
     ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
+    : deletingBatch
+    ? t(uiKeys.dialog.deleteHistoryBatchTitle, { count: request.count })
     : deleting
     ? t(deletingImage ? uiKeys.dialog.deleteImageTitle : uiKeys.dialog.deleteVideoTitle, { title: request.title })
     : removingQueueTask
@@ -102,6 +106,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
     ? t(uiKeys.dialog.deleteMotionContextDescription)
     : deletingVersion
     ? t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionDescription : uiKeys.dialog.deleteVersionDescription)
+    : deletingBatch
+    ? t(uiKeys.dialog.deleteHistoryBatchDescription)
     : deleting
     ? deletingImage
       ? t(uiKeys.dialog.deleteImageDescription)
@@ -135,6 +141,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
             ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteMotionContextWarning)}</div>`
             : deletingVersion
             ? `<div class="confirm-warning">${t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionWarning : uiKeys.dialog.deleteVersionWarning)}</div>`
+            : deletingBatch
+            ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteHistoryBatchWarning)}</div>`
             : deleting
             ? `<div class="confirm-warning">${t(deletingImage ? uiKeys.dialog.deleteImageWarning : uiKeys.dialog.deleteVideoWarning)}</div>`
             : removingQueueTask || cancellingQueueTask
@@ -152,7 +160,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t(uiKeys.history.batch.delete) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

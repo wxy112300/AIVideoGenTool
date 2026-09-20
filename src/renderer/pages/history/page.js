@@ -1,10 +1,12 @@
 import { uiKeys } from "../../../core/i18n-keys";
 import { historyFilterIsActive, historySortTimestamp, historyTagKey } from "../../../core/history-filter";
+import { historyBatchCommonTags } from "../../../core/history-batch";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import { h3MotionContextHistoryFileForPath, isH3MotionContextHistoryFile } from "../../../core/h3-motion-context";
 import { isMiniMaxH3Model } from "../../../core/workflow";
-import { renderHistoryHeading, renderHistoryTimeline, renderImageMediaStatus, renderImageLightboxMarkup, renderImageReferenceSnapshotMarkup, renderH3TokenCountMarkup, renderPerformanceStatsMarkup, renderVideoInputSnapshotMarkup, renderVideoLoraSnapshotMarkup } from "./fragments";
+import { renderHistoryHeading, renderImageMediaStatus, renderImageLightboxMarkup, renderImageReferenceSnapshotMarkup, renderH3TokenCountMarkup, renderPerformanceStatsMarkup, renderHistoryTimeline, renderVideoInputSnapshotMarkup, renderVideoLoraSnapshotMarkup } from "./fragments";
 import { groupHistoryTimelineEntries, historyTimelineEntries } from "./timeline";
+import { historyTagChipMarkup } from "./tags-controller";
 function ratingOptions(options, selected, placeholder, attribute) {
     return `<select class="history-filter-select" data-history-filter-field="${attribute}" aria-label="${options.t(uiKeys.history.filter.rating)}">${[
         `<option value="">${options.t(placeholder)}</option>`,
@@ -24,6 +26,84 @@ function renderHistoryRatingControl(assetId, rating, options) {
         return `<button type="button" class="history-rating-star ${state}" data-history-rating-star="${options.escapeHtml(assetId)}" data-history-rating-value="${value}" aria-pressed="${current >= value}" aria-label="${value} ★">★</button>`;
     }).join("");
     return `<div class="history-rating-control" data-history-rating-control="${options.escapeHtml(assetId)}" data-history-rating-current="${current}" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.rating))}"><div class="history-rating-stars">${stars}</div><span class="history-rating-value" data-history-rating-value-label>${current ? `${current} / 5` : options.t(uiKeys.history.filter.ratingUnset)}</span><button type="button" class="history-rating-clear" data-history-rating-clear="${options.escapeHtml(assetId)}" ${current ? "" : "disabled"} aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.clear))}" title="${options.escapeHtml(options.t(uiKeys.history.filter.clear))}">×</button></div>`;
+}
+function historyPlayerLanguage(options) {
+    return options.uiLocale === "en-US" || options.uiLocale === "zh-TW"
+        ? options.uiLocale
+        : "zh-CN";
+}
+function renderHistoryVideoPlayer(asset, version, mediaUrl, videoFileName, detailTitle, historyIndex, historyCount, previousAsset, nextAsset, options) {
+    const positionLabel = options.t(uiKeys.history.page.position, {
+        current: historyIndex + 1,
+        total: historyCount
+    });
+    const favoriteLabel = options.t(asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite);
+    const previousLabel = options.t(uiKeys.history.page.previous);
+    const nextLabel = options.t(uiKeys.history.page.next);
+    const downloadLabel = options.t(uiKeys.history.page.download);
+    const playbackSpeedLabel = options.t(uiKeys.history.page.playbackSpeed);
+    const pictureInPictureLabel = options.t(uiKeys.history.page.pictureInPicture);
+    const previousTitle = previousAsset
+        ? `${previousLabel}：${options.escapeHtml(previousAsset.title)} · Page Up`
+        : options.t(uiKeys.history.page.firstItem);
+    const nextTitle = nextAsset
+        ? `${nextLabel}：${options.escapeHtml(nextAsset.title)} · Page Down`
+        : options.t(uiKeys.history.page.lastItem);
+    const playerMeta = [
+        options.modelName(version.modelId),
+        `${version.width} × ${version.height}`,
+        `${version.fps} FPS`,
+        version.ratio ?? options.historyResolutionLabel(asset, version)
+    ].filter((value) => Boolean(value));
+    const playerMetaLabel = playerMeta.join(" · ");
+    const playerPositionLabel = `${historyIndex + 1} / ${historyCount}`;
+    return `<media-controller id="history-player" class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}" autohide="1" lang="${historyPlayerLanguage(options)}" fullscreenelement="history-player" hotkeys="noarrowleft noarrowright" aria-label="${options.escapeHtml(detailTitle)}">
+    <video slot="media" loop playsinline preload="metadata" data-history-asset="${options.escapeHtml(asset.id)}" data-history-version="${options.escapeHtml(version.id)}" data-history-download-filename="${options.escapeHtml(videoFileName)}" src="${options.escapeHtml(mediaUrl)}"></video>
+    <media-settings-menu id="history-player-settings" hidden anchor="auto" class="history-player-settings-menu">
+      <media-chrome-menu-item data-history-player-menu-action="download">
+        <span slot="prefix">${options.icon("download")}</span>
+        ${options.escapeHtml(downloadLabel)}
+      </media-chrome-menu-item>
+      <media-settings-menu-item>
+        <span slot="prefix">${options.icon("gauge")}</span>
+        ${options.escapeHtml(playbackSpeedLabel)}
+        <media-playback-rate-menu slot="submenu" hidden rates="0.5 0.75 1 1.25 1.5 2">
+          <div slot="header">${options.escapeHtml(playbackSpeedLabel)}</div>
+        </media-playback-rate-menu>
+      </media-settings-menu-item>
+      <media-chrome-menu-item data-history-player-menu-action="pip">
+        <span slot="prefix">${options.icon("picture-in-picture-2")}</span>
+        ${options.escapeHtml(pictureInPictureLabel)}
+      </media-chrome-menu-item>
+    </media-settings-menu>
+    <div slot="top-chrome" class="history-player-info" data-history-player-info>
+      <strong class="history-player-title" title="${options.escapeHtml(detailTitle)}">${options.escapeHtml(detailTitle)}</strong>
+      <div class="history-player-meta" role="group" aria-label="${options.escapeHtml(playerMetaLabel)}">${playerMeta.map((value) => `<span>${options.escapeHtml(value)}</span>`).join("")}</div>
+    </div>
+    <media-control-bar class="history-player-control-bar">
+      <div class="history-player-app-controls" data-history-player-actions aria-label="${options.escapeHtml(options.t(uiKeys.history.page.switchHistory))}">
+        <button type="button" class="history-player-nav-button" data-history-navigation="-1" aria-keyshortcuts="PageUp" aria-label="${options.escapeHtml(previousLabel)}" ${previousAsset ? "" : "disabled"} title="${options.escapeHtml(previousTitle)}">${options.icon("arrow-left")}</button>
+        <span class="history-player-inline-position" aria-label="${options.escapeHtml(positionLabel)}">${options.escapeHtml(playerPositionLabel)}</span>
+        <button type="button" class="history-player-nav-button" data-history-navigation="1" aria-keyshortcuts="PageDown" aria-label="${options.escapeHtml(nextLabel)}" ${nextAsset ? "" : "disabled"} title="${options.escapeHtml(nextTitle)}">${options.icon("arrow-right")}</button>
+      </div>
+      <span class="history-player-control-divider history-player-transport-divider" aria-hidden="true"></span>
+      <media-play-button></media-play-button>
+      <media-time-display showduration notoggle></media-time-display>
+      <media-time-range></media-time-range>
+      <div class="history-player-volume">
+        <media-mute-button></media-mute-button>
+        <media-volume-range></media-volume-range>
+      </div>
+      <span class="history-player-control-divider history-player-utility-divider" aria-hidden="true"></span>
+      <div class="history-player-utility-group">
+        <div class="history-player-utility-controls" data-history-player-utility aria-label="${options.escapeHtml(favoriteLabel)}">
+          <button type="button" class="history-favorite-button history-player-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.escapeHtml(favoriteLabel)}" title="${options.escapeHtml(favoriteLabel)}">${options.icon("heart")}</button>
+        </div>
+        <media-fullscreen-button></media-fullscreen-button>
+        <media-settings-menu-button notooltip></media-settings-menu-button>
+      </div>
+    </media-control-bar>
+  </media-controller>`;
 }
 function historySortOptions(options, selected, includeDuration) {
     const values = [
@@ -53,6 +133,7 @@ function renderHistoryFilter(viewModel, options, totalCount, visibleCount, model
         <div class="history-filter-form">
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.sort)}</span><select data-history-filter-field="sort" aria-label="${options.t(uiKeys.history.filter.sort)}">${historySortOptions(options, filter.sort, isVideo)}</select></label>
           <label class="history-filter-switch"><span class="history-filter-switch-copy">${options.icon("heart")}<span>${options.t(uiKeys.history.filter.favoriteOnly)}</span></span><input type="checkbox" data-history-filter-field="favoriteOnly" ${filter.favoriteOnly ? "checked" : ""}><span class="history-ios-switch" aria-hidden="true"></span></label>
+          <label class="history-filter-switch history-batch-mode-switch"><span class="history-filter-switch-copy">${options.icon("check-square")}<span>${options.t(uiKeys.history.batch.mode)}</span></span><input type="checkbox" data-history-batch-toggle ${viewModel.historyBatchMode === true ? "checked" : ""} aria-checked="${viewModel.historyBatchMode === true}"><span class="history-ios-switch" aria-hidden="true"></span></label>
           <label class="history-filter-field history-filter-rating-field"><span>${options.t(uiKeys.history.filter.rating)}</span><span class="history-filter-range">${ratingOptions(options, filter.minRating, "history.filter.ratingAny", "minRating")}<span aria-hidden="true">–</span>${ratingOptions(options, filter.maxRating, "history.filter.ratingAny", "maxRating")}</span></label>
           ${isVideo ? `<label class="history-filter-field"><span>${options.t(uiKeys.history.filter.durationMin)}</span><select class="history-filter-select" data-history-filter-field="minDuration"><option value="">${options.t(uiKeys.history.filter.durationAny)}</option>${[1, 3, 5, 10, 15, 30, 60].map((value) => `<option value="${value}" ${filter.minDuration === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>` : ""}
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.model)}</span><select class="history-filter-select history-filter-model" data-history-filter-field="modelId"><option value="">${options.t(uiKeys.history.filter.all)}</option>${modelIds.map((id) => `<option value="${options.escapeHtml(id)}" ${filter.modelId === id ? "selected" : ""}>${options.escapeHtml(options.modelName(id))}</option>`).join("")}</select></label>
@@ -64,7 +145,12 @@ function renderHistoryFilter(viewModel, options, totalCount, visibleCount, model
 }
 function renderHistoryTags(assetId, tags, availableTags, options) {
     const tagMarkup = tags.length
-        ? tags.map((tag) => `<span class="history-tag-chip" data-history-tag-chip="${options.escapeHtml(tag)}"><button type="button" class="history-tag-chip-label" data-history-tag-edit="${options.escapeHtml(tag)}" title="${options.escapeHtml(options.t(uiKeys.history.tags.edit))}">${options.escapeHtml(tag)}</button><button type="button" class="history-tag-chip-remove" data-history-tag-remove="${options.escapeHtml(tag)}" aria-label="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}" title="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}">${options.icon("x")}</button></span>`).join("")
+        ? tags.map((tag) => historyTagChipMarkup(tag, {
+            escapeHtml: options.escapeHtml,
+            icon: options.icon,
+            editLabel: options.t(uiKeys.history.tags.edit),
+            removeLabel: options.t(uiKeys.history.tags.remove)
+        })).join("")
         : `<span class="history-tags-empty">${options.t(uiKeys.history.tags.empty)}</span>`;
     const suggestions = availableTags.filter((tag) => !tags.some((current) => historyTagKey(current) === historyTagKey(tag)));
     return `<section class="panel history-detail-tags" data-history-tags-root data-history-tag-asset="${options.escapeHtml(assetId)}">
@@ -179,11 +265,13 @@ export function renderImageHistoryPage(viewModel, options) {
         const sourcePath = version.file.absolutePath ?? "";
         const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
         const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
+        const selected = (viewModel.historyBatchSelectedIds ?? []).includes(project.id);
         return `
-      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(project))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel image-history-gallery-item${selected ? " history-batch-selected" : ""}" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(project))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+        ${viewModel.historyBatchMode === true ? `<label class="history-batch-checkbox-wrap"><input type="checkbox" class="history-batch-checkbox" data-history-batch-select="${options.escapeHtml(project.id)}" ${selected ? "checked" : ""} aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.cardSelect))}"><span aria-hidden="true"></span></label>` : ""}
         <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
-            ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
+            ? `<img data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
             : ""}
           ${renderImageMediaStatus(options)}
           <div class="history-media-badges">
@@ -213,11 +301,52 @@ export function renderImageHistoryPage(viewModel, options) {
     <div class="history-list-stage${timeline ? " has-history-timeline" : ""}" data-history-list-stage>
       <section id="history-panel-image" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-image">
         ${projects.length === 0
-          ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
-          : cards}
+        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
+        : cards}
       </section>
       ${timeline}
-    </div>`;
+    </div>
+    ${renderHistoryBatchTagsPanel(viewModel, options)}
+    ${renderHistoryBatchToolbar(viewModel, options, projects)}`;
+}
+function historyBatchSelectedItems(viewModel) {
+    const selected = new Set(viewModel.historyBatchSelectedIds ?? []);
+    return (viewModel.historyKind === "video" ? viewModel.state.history : viewModel.state.imageHistory)
+        .filter((item) => selected.has(item.id));
+}
+function renderHistoryBatchToolbar(viewModel, options, visibleItems) {
+    if (viewModel.historyBatchMode !== true)
+        return "";
+    const visibleIds = new Set(visibleItems.map((item) => item.id));
+    const selectedCount = (viewModel.historyBatchSelectedIds ?? []).filter((id) => visibleIds.has(id)).length;
+    const allSelected = visibleItems.length > 0 && selectedCount === visibleItems.length;
+    return `<div class="history-batch-toolbar" data-history-batch-toolbar role="toolbar" aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.mode))}">
+    <button type="button" class="ghost button-with-icon history-batch-select-all" data-history-batch-action="select-all" aria-pressed="${allSelected}" ${visibleItems.length ? "" : "disabled"}>${options.icon(allSelected ? "check-square" : "square")}${options.t(uiKeys.history.batch.selectAll)}</button>
+    <span class="history-batch-count" data-history-batch-count>${options.escapeHtml(options.t(uiKeys.history.batch.selected, { selected: selectedCount, total: visibleItems.length }))}</span>
+    <span class="history-batch-divider" aria-hidden="true"></span>
+    <button type="button" class="ghost button-with-icon" data-history-batch-action="copy" ${selectedCount ? "" : "disabled"}>${options.icon("copy")}${options.t(uiKeys.history.batch.copy)}</button>
+    <button type="button" class="ghost button-with-icon" data-history-batch-action="tags" ${selectedCount ? "" : "disabled"}>${options.icon("tag")}${options.t(uiKeys.history.batch.addTags)}</button>
+    <button type="button" class="ghost danger button-with-icon" data-history-batch-action="delete" ${selectedCount ? "" : "disabled"}>${options.icon("trash-2")}${options.t(uiKeys.history.batch.delete)}</button>
+    <button type="button" class="ghost icon-button history-batch-exit" data-history-batch-action="exit" aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.exit))}" title="${options.escapeHtml(options.t(uiKeys.history.batch.exit))}">${options.icon("x")}</button>
+  </div>`;
+}
+function renderHistoryBatchTagsPanel(viewModel, options) {
+    if (viewModel.historyBatchMode !== true)
+        return "";
+    const items = historyBatchSelectedItems(viewModel);
+    const common = historyBatchCommonTags(items);
+    const chipOptions = {
+        escapeHtml: options.escapeHtml,
+        icon: options.icon,
+        editLabel: options.t(uiKeys.history.tags.edit),
+        removeLabel: options.t(uiKeys.history.tags.remove)
+    };
+    const panelOpen = viewModel.historyBatchTagsPanelOpen === true && items.length > 0;
+    return `<section class="history-batch-tags-panel panel" data-history-batch-tags-panel data-history-batch-tags-root${panelOpen ? "" : " hidden"}>
+    <div class="history-batch-tags-heading"><h2>${options.t(uiKeys.history.batch.tagsTitle)}</h2><button type="button" class="secondary history-batch-tags-close" data-history-batch-tags-close>${options.t(uiKeys.history.batch.done)}</button></div>
+    <div class="history-batch-tag-section"><div class="history-tag-list" data-history-tag-list>${common.length ? common.map((tag) => historyTagChipMarkup(tag, chipOptions)).join("") : `<span class="history-tags-empty">${options.t(uiKeys.history.batch.noCommonTags)}</span>`}</div></div>
+    <div class="history-tag-editor" data-history-tag-editor hidden><div class="history-tag-editor-row"><input type="text" data-history-tag-input maxlength="64" placeholder="${options.escapeHtml(options.t(uiKeys.history.tags.placeholder))}" autocomplete="off"><button type="button" class="ghost history-tag-editor-cancel" data-history-tag-cancel>${options.t(uiKeys.history.tags.cancel)}</button></div><div class="history-tag-suggestions" data-history-tag-suggestions></div></div>
+  </section>`;
 }
 export function renderHistoryPage(viewModel, options) {
     const orderedAssets = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
@@ -232,8 +361,10 @@ export function renderHistoryPage(viewModel, options) {
         const coverKey = options.historyCoverCacheKey(asset, version);
         const coverSeed = options.historyCoverSeed(asset.id, version.id);
         const coverTime = options.historyInitialCoverTime(asset.duration, coverSeed);
+        const selected = (viewModel.historyBatchSelectedIds ?? []).includes(asset.id);
         return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(asset))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel${selected ? " history-batch-selected" : ""}" data-history="${options.escapeHtml(asset.id)}" data-open-history="${options.escapeHtml(asset.id)}" data-history-kind="video" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(asset))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+        ${viewModel.historyBatchMode === true ? `<label class="history-batch-checkbox-wrap"><input type="checkbox" class="history-batch-checkbox" data-history-batch-select="${options.escapeHtml(asset.id)}" ${selected ? "checked" : ""} aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.cardSelect))}"><span aria-hidden="true"></span></label>` : ""}
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${options.escapeHtml(coverKey)}" data-cover-source="${options.escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${options.escapeHtml(mediaUrl)}"></video>`
@@ -269,11 +400,13 @@ export function renderHistoryPage(viewModel, options) {
     <div class="history-list-stage${timeline ? " has-history-timeline" : ""}" data-history-list-stage>
       <section id="history-panel-video" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-video">
         ${orderedAssets.length === 0
-          ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
-          : cards}
+        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
+        : cards}
       </section>
       ${timeline}
-    </div>`;
+    </div>
+    ${renderHistoryBatchTagsPanel(viewModel, options)}
+    ${renderHistoryBatchToolbar(viewModel, options, orderedAssets)}`;
 }
 export function renderHistoryDetailPage(viewModel, options) {
     const asset = viewModel.state.history.find((item) => item.id === viewModel.selectedHistoryAssetId);
@@ -285,36 +418,39 @@ export function renderHistoryDetailPage(viewModel, options) {
     const mediaUrl = options.historyMediaUrl(asset, version);
     const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
     const jointAvArtifact = viewModel.historyArtifactInspection?.artifact ??
-      version.h3ContinuationData?.artifact;
-      const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ?? version.h3ContinuationData?.status ?? "not-supported";
-      const nativeAvStatusLabel = artifactInspectionStatus === "available"
-          ? options.t(uiKeys.history.page.nativeAvStatusAvailable)
-          : artifactInspectionStatus === "save-failed"
-              ? options.t(uiKeys.history.page.nativeAvStatusSaveFailed)
-              : artifactInspectionStatus === "missing"
-                  ? options.t(uiKeys.history.page.nativeAvStatusMissing)
-                  : artifactInspectionStatus === "invalid"
-                      ? options.t(uiKeys.history.page.nativeAvStatusInvalid)
-                      : options.t(uiKeys.history.page.nativeAvStatusNotSupported);
-      const nativeAvStatusReason = viewModel.historyArtifactInspection?.reason ?? version.h3ContinuationData?.reason;
-      const nativeAvRole = version.h3AvAsset?.artifactRole ?? jointAvArtifact?.role;
-      const nativeAvScope = version.h3AvAsset?.sampleScope ?? (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);
-      const nativeAvContextFrames = version.h3AvAsset?.contextFrames ?? jointAvArtifact?.contextFrames;
-      const nativeAvSummaryMarkup = version.h3ContinuationData || version.h3AvAsset
-          ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
-          <div class="history-native-av-heading"><strong>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvTitle))}</strong><span class="status ${artifactInspectionStatus === "available" ? "success" : "warning"}" data-history-av-visible-status>${options.escapeHtml(nativeAvStatusLabel)}</span></div>
-          <p class="muted tiny">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvDescription))}</p>
-          <dl class="history-native-av-facts">
-            ${nativeAvRole ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvRole))}</dt><dd><code>${options.escapeHtml(nativeAvRole)}</code></dd></div>` : ""}
-            ${nativeAvScope ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvScope))}</dt><dd><code>${options.escapeHtml(nativeAvScope)}</code></dd></div>` : ""}
-            ${nativeAvContextFrames === undefined ? "" : `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvContextFrames))}</dt><dd><code>${nativeAvContextFrames}</code></dd></div>`}
-            ${version.h3AvAsset?.storageKind ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvStorage))}</dt><dd><code>${options.escapeHtml(version.h3AvAsset.storageKind)}</code></dd></div>` : ""}
-          </dl>
-          ${nativeAvStatusReason ? `<p class="history-native-av-reason" data-history-av-visible-reason>${options.escapeHtml(nativeAvStatusReason)}</p>` : ""}
-        </section>`
-          : "";
+        version.h3ContinuationData?.artifact;
+    const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ??
+        version.h3ContinuationData?.status ?? "not-supported";
+    const nativeAvStatusLabel = artifactInspectionStatus === "available"
+        ? options.t(uiKeys.history.page.nativeAvStatusAvailable)
+        : artifactInspectionStatus === "save-failed"
+            ? options.t(uiKeys.history.page.nativeAvStatusSaveFailed)
+            : artifactInspectionStatus === "missing"
+                ? options.t(uiKeys.history.page.nativeAvStatusMissing)
+                : artifactInspectionStatus === "invalid"
+                    ? options.t(uiKeys.history.page.nativeAvStatusInvalid)
+                    : options.t(uiKeys.history.page.nativeAvStatusNotSupported);
+    const nativeAvStatusReason = viewModel.historyArtifactInspection?.reason ??
+        version.h3ContinuationData?.reason;
+    const nativeAvRole = version.h3AvAsset?.artifactRole ?? jointAvArtifact?.role;
+    const nativeAvScope = version.h3AvAsset?.sampleScope ??
+        (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);
+    const nativeAvContextFrames = version.h3AvAsset?.contextFrames ?? jointAvArtifact?.contextFrames;
+    const nativeAvSummaryMarkup = version.h3ContinuationData || version.h3AvAsset
+        ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
+        <div class="history-native-av-heading"><strong>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvTitle))}</strong><span class="status ${artifactInspectionStatus === "available" ? "success" : "warning"}" data-history-av-visible-status>${options.escapeHtml(nativeAvStatusLabel)}</span></div>
+        <p class="muted tiny">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvDescription))}</p>
+        <dl class="history-native-av-facts">
+          ${nativeAvRole ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvRole))}</dt><dd><code>${options.escapeHtml(nativeAvRole)}</code></dd></div>` : ""}
+          ${nativeAvScope ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvScope))}</dt><dd><code>${options.escapeHtml(nativeAvScope)}</code></dd></div>` : ""}
+          ${nativeAvContextFrames === undefined ? "" : `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvContextFrames))}</dt><dd><code>${nativeAvContextFrames}</code></dd></div>`}
+          ${version.h3AvAsset?.storageKind ? `<div><dt>${options.escapeHtml(options.t(uiKeys.history.page.nativeAvStorage))}</dt><dd><code>${options.escapeHtml(version.h3AvAsset.storageKind)}</code></dd></div>` : ""}
+        </dl>
+        ${nativeAvStatusReason ? `<p class="history-native-av-reason" data-history-av-visible-reason>${options.escapeHtml(nativeAvStatusReason)}</p>` : ""}
+      </section>`
+        : "";
     const jointAvSummary = jointAvArtifact
-      ? `<span class="history-joint-av-indicator">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvBadge))}</span>`
+        ? `<span class="history-joint-av-indicator">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvBadge))}</span>`
         : "";
     const continuumSequence = version.h3ContinuumSequence;
     const continuumCurrentChunk = continuumSequence && continuumSequence.chunks.length > 0
@@ -340,40 +476,46 @@ export function renderHistoryDetailPage(viewModel, options) {
     const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
     const continuumReceipt = version.h3ContinuumReceipt;
     const continuumStorageFiles = [
-      ...(continuumReceipt
-        ? [continuumReceipt.runStorageRoot, ...continuumReceipt.chunkRecords.map((record) => record.payloadPath)]
-        : []),
-      ...(version.h3AvAsset?.continuumChunk
-        ? [version.h3AvAsset.continuumChunk.runStorageRoot, version.h3AvAsset.continuumChunk.manifest]
-        : [])
+        ...(continuumReceipt
+            ? [
+                continuumReceipt.runStorageRoot,
+                ...continuumReceipt.chunkRecords.map((record) => record.payloadPath)
+            ]
+            : []),
+        ...(version.h3AvAsset?.continuumChunk
+            ? [version.h3AvAsset.continuumChunk.runStorageRoot, version.h3AvAsset.continuumChunk.manifest]
+            : [])
     ];
     const continuumFileRole = (file) => {
-      const identity = fileIdentity(file);
-      if (continuumReceipt?.runStorageRoot && identity === fileIdentity(continuumReceipt.runStorageRoot))
-        return options.t(uiKeys.history.page.continuumRunStorageManifest);
-      const receiptChunk = continuumReceipt?.chunkRecords.find((record) => identity === fileIdentity(record.payloadPath));
-      if (receiptChunk)
-        return options.t(uiKeys.history.page.continuumChunkPayload, { index: receiptChunk.logicalChunkIndex });
-      const pointer = version.h3AvAsset?.continuumChunk;
-      if (pointer?.manifest && identity === fileIdentity(pointer.manifest))
-        return options.t(uiKeys.history.page.continuumChunkManifest, { index: pointer.logicalChunkIndex });
-      return "";
+        const identity = fileIdentity(file);
+        if (continuumReceipt?.runStorageRoot && identity === fileIdentity(continuumReceipt.runStorageRoot)) {
+            return options.t(uiKeys.history.page.continuumRunStorageManifest);
+        }
+        const receiptChunk = continuumReceipt?.chunkRecords.find((record) => identity === fileIdentity(record.payloadPath));
+        if (receiptChunk) {
+            return options.t(uiKeys.history.page.continuumChunkPayload, { index: receiptChunk.logicalChunkIndex });
+        }
+        const pointer = version.h3AvAsset?.continuumChunk;
+        if (pointer?.manifest && identity === fileIdentity(pointer.manifest)) {
+            return options.t(uiKeys.history.page.continuumChunkManifest, { index: pointer.logicalChunkIndex });
+        }
+        return "";
     };
     const motionContextFile = h3MotionContextHistoryFileForPath(version.h3ContextLatentPath, version.files) ?? version.files.find(isH3MotionContextHistoryFile);
     const motionContextIdentity = motionContextFile ? fileIdentity(motionContextFile) : "";
     const outputFiles = [...version.files];
     for (const file of [
         ...(jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []),
-      ...(motionContextFile ? [motionContextFile] : []),
-      ...(version.h3AvAsset
-        ? [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]
-        : []),
-      ...continuumStorageFiles
+        ...(motionContextFile ? [motionContextFile] : []),
+        ...(version.h3AvAsset
+            ? [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]
+            : []),
+        ...continuumStorageFiles
     ]) {
-      const identity = fileIdentity(file);
-      if (!outputFiles.some((candidate) => fileIdentity(candidate) === identity)) {
-        outputFiles.push(file);
-      }
+        const identity = fileIdentity(file);
+        if (!outputFiles.some((candidate) => fileIdentity(candidate) === identity)) {
+            outputFiles.push(file);
+        }
     }
     const orderedHistory = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
     const historyIndex = orderedHistory.findIndex((item) => item.id === asset.id);
@@ -447,11 +589,9 @@ export function renderHistoryDetailPage(viewModel, options) {
     </div>
     <section class="history-detail-hero">
       <div class="history-player-column">
-        <div class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}">
-          ${mediaUrl
-        ? `<video controls loop playsinline preload="metadata" data-history-asset="${asset.id}" data-history-version="${version.id}" src="${mediaUrl}"></video>`
-        : `<div class="history-media-fallback"><span>${options.icon("play")}</span><strong>${options.t(uiKeys.history.page.videoUnavailable)}</strong><small>${options.t(uiKeys.history.page.checkOutputDirectory)}</small></div>`}
-        </div>
+        ${mediaUrl
+        ? renderHistoryVideoPlayer(asset, version, mediaUrl, videoFile?.filename ?? version.outputFilename, detailTitle, historyIndex, orderedHistory.length, previousAsset, nextAsset, options)
+        : `<div class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}"><div class="history-media-fallback"><span>${options.icon("play")}</span><strong>${options.t(uiKeys.history.page.videoUnavailable)}</strong><small>${options.t(uiKeys.history.page.checkOutputDirectory)}</small></div></div>`}
       </div>
       <aside class="history-detail-sidebar">
         <section class="panel history-summary">
@@ -459,7 +599,7 @@ export function renderHistoryDetailPage(viewModel, options) {
           <div class="history-title-line"><h1 class="history-detail-title" title="${options.escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${options.escapeHtml(detailTitle)}</span><span aria-hidden="true">${options.escapeHtml(detailTitle)}</span></span></h1><span class="status running">${options.t(uiKeys.history.page.completed)}</span></div>
           <code>${options.escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code>
           <div class="history-summary-badges"><span class="model-badge">${options.escapeHtml(options.modelName(version.modelId))}</span><span>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</span>${jointAvSummary}</div>
-          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("heart")}</button>${renderHistoryRatingControl(asset.id, asset.rating, options)}</div>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}" title="${options.t(asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}">${options.icon("heart")}</button>${renderHistoryRatingControl(asset.id, asset.rating, options)}</div>
           </div>
           <div class="history-overview-facts">
           <div><span>${options.t(uiKeys.history.page.completedAt)}</span><strong>${completedAt}</strong></div>
@@ -518,38 +658,38 @@ export function renderHistoryDetailPage(viewModel, options) {
         ${outputFiles.length === 0
         ? `<p class="muted">${options.t(uiKeys.history.page.noRecognizedFiles)}</p>`
         : outputFiles.map((file) => {
-          const identity = fileIdentity(file);
-          const isJointAvPayload = identity === jointAvPayloadIdentity;
-          const isMotionContextFile = Boolean(motionContextIdentity) && identity === motionContextIdentity;
-          const isUnifiedAssetOwner = version.h3AvAsset?.ownerPath
-            ? identity === fileIdentity(version.h3AvAsset.ownerPath)
-            : false;
-          const isUnifiedAssetAlias = version.h3AvAsset?.aliasPaths?.some((candidate) => identity === fileIdentity(candidate)) ?? false;
-          const continuumRole = continuumFileRole(file);
-          const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
-          const sizeText = sizeBytes == null
-            ? options.t(uiKeys.history.page.fileSizeUnknown)
-            : options.formatBytes(sizeBytes);
-          const locateAction = file.absolutePath
-            ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(file.absolutePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.showInExplorer)}</button>`
-            : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`;
-          const deleteAction = isJointAvPayload && version.h3AvAsset?.storageKind !== "continuum-run-chunk"
-            ? `<button class="secondary danger button-with-icon" data-delete-joint-av="${options.escapeHtml(asset.id)}" data-joint-av-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteJointAv)}</button>`
-            : isMotionContextFile
-              ? `<button class="secondary danger button-with-icon" data-delete-motion-context="${options.escapeHtml(asset.id)}" data-motion-context-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteMotionContext)}</button>`
-              : "";
-          const ownershipLabel = isUnifiedAssetOwner
-            ? ` · ${options.escapeHtml(version.h3AvAsset?.storageKind ?? "app-canonical")} owner`
-            : isUnifiedAssetAlias
-              ? " · alias"
-              : "";
-          const managedDeleteNote = isUnifiedAssetOwner && version.h3AvAsset?.storageKind === "continuum-run-chunk"
-            ? " · managed owner"
-            : "";
-          const statusAttribute = isJointAvPayload || isUnifiedAssetOwner
-            ? ` data-history-av-status="${options.escapeHtml(artifactInspectionStatus)}"`
-            : "";
-          return `<div class="output-file" data-history-file-identity="${options.escapeHtml(identity)}"${statusAttribute}><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}${continuumRole ? ` · ${options.escapeHtml(continuumRole)}` : ""}${ownershipLabel}${managedDeleteNote} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
+            const identity = fileIdentity(file);
+            const isJointAvPayload = identity === jointAvPayloadIdentity;
+            const isMotionContextFile = Boolean(motionContextIdentity) && identity === motionContextIdentity;
+            const isUnifiedAssetOwner = version.h3AvAsset?.ownerPath
+                ? identity === fileIdentity(version.h3AvAsset.ownerPath)
+                : false;
+            const isUnifiedAssetAlias = version.h3AvAsset?.aliasPaths?.some((candidate) => identity === fileIdentity(candidate)) ?? false;
+            const continuumRole = continuumFileRole(file);
+            const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
+            const sizeText = sizeBytes == null
+                ? options.t(uiKeys.history.page.fileSizeUnknown)
+                : options.formatBytes(sizeBytes);
+            const locateAction = file.absolutePath
+                ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(file.absolutePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.showInExplorer)}</button>`
+                : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`;
+            const deleteAction = isJointAvPayload && version.h3AvAsset?.storageKind !== "continuum-run-chunk"
+                ? `<button class="secondary danger button-with-icon" data-delete-joint-av="${options.escapeHtml(asset.id)}" data-joint-av-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteJointAv)}</button>`
+                : isMotionContextFile
+                    ? `<button class="secondary danger button-with-icon" data-delete-motion-context="${options.escapeHtml(asset.id)}" data-motion-context-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteMotionContext)}</button>`
+                    : "";
+            const ownershipLabel = isUnifiedAssetOwner
+                ? ` · ${options.escapeHtml(version.h3AvAsset?.storageKind ?? "app-canonical")} owner`
+                : isUnifiedAssetAlias
+                    ? " · alias"
+                    : "";
+            const managedDeleteNote = isUnifiedAssetOwner && version.h3AvAsset?.storageKind === "continuum-run-chunk"
+                ? " · managed owner"
+                : "";
+            const statusAttribute = isJointAvPayload || isUnifiedAssetOwner
+                ? ` data-history-av-status="${options.escapeHtml(artifactInspectionStatus)}"`
+                : "";
+            return `<div class="output-file" data-history-file-identity="${options.escapeHtml(identity)}"${statusAttribute}><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}${continuumRole ? ` · ${options.escapeHtml(continuumRole)}` : ""}${ownershipLabel}${managedDeleteNote} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
         }).join("")}
       </div>
         <details><summary>${options.t(uiKeys.history.page.rawSnapshot)}</summary><pre>${options.escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>
@@ -636,7 +776,7 @@ export function renderImageHistoryDetailPage(viewModel, options) {
         <section class="panel image-history-summary">
           <div class="status-line"><span class="badge ok">${options.t(uiKeys.history.version, { version: version.versionNumber })}${pinnedVersion?.id === version.id ? ` · ${options.t(uiKeys.history.page.currentCover)}` : ""}</span><span class="badge">PNG</span></div>
           <h2>${options.escapeHtml(title)}</h2>
-          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("heart")}</button>${renderHistoryRatingControl(project.id, project.rating, options)}</div>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(project.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}" title="${options.t(project.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}">${options.icon("heart")}</button>${renderHistoryRatingControl(project.id, project.rating, options)}</div>
           <p class="muted tiny">${options.escapeHtml(version.prompt || (version.kind === "source" ? options.t(uiKeys.history.page.imageOriginalPrompt) : options.t(uiKeys.history.page.unsavedEditPrompt)))}</p>
           <div class="image-history-facts"><div><span>${options.t(uiKeys.history.page.model)}</span><strong>${options.escapeHtml(version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.modelName(version.modelId))}</strong></div><div><span>${options.t(uiKeys.history.page.seed)}</span><strong>${version.seed ?? options.t(uiKeys.runtime.random)}</strong></div><div><span>${options.t(uiKeys.history.page.resolution)}</span><strong>${version.width} × ${version.height}</strong></div><div><span>${options.t(uiKeys.history.page.outputFormat)}</span><strong>${version.format.toUpperCase()}</strong></div><div><span>${options.t(uiKeys.history.page.generatedAt)}</span><strong>${options.escapeHtml(options.formatFullHistoryTime(version.createdAt))}</strong></div><div><span>${options.t(uiKeys.history.page.elapsed)}</span><strong>${elapsedSeconds == null ? options.t(uiKeys.history.detail.legacyNotSaved) : options.escapeHtml(options.formatElapsedDuration(elapsedSeconds))}</strong></div></div>
            <div class="history-detail-quick-actions">

@@ -4,8 +4,8 @@ export async function acceptConfirmation(context, options) {
     const t = context.t;
     if (!request || options.isBusy())
         return;
-    const preserveHistoryScrollOnReturn = request.kind === "delete-history" &&
-        (options.getPage() === "history-detail" || options.getPage() === "image-history-detail");
+    const preserveHistoryScrollOnReturn = (request.kind === "delete-history" &&
+        (options.getPage() === "history-detail" || options.getPage() === "image-history-detail"));
     if (preserveHistoryScrollOnReturn)
         options.setHistoryScrollRestorePending(true);
     options.setBusy(true);
@@ -17,6 +17,10 @@ export async function acceptConfirmation(context, options) {
     }
     if (cancelButton)
         cancelButton.disabled = true;
+    if (request.kind === "uninstall-custom-node") {
+        options.setCustomNodeLog(request.nodeId, "");
+        options.renderOverlay();
+    }
     try {
         if (request.kind === "clear-draft") {
             options.clearCreationDraft(request.mode);
@@ -96,6 +100,7 @@ export async function acceptConfirmation(context, options) {
         }
         else if (request.kind === "delete-history") {
             options.releaseHistoryVideo(request.assetId);
+            options.invalidateHistoryMediaForAsset?.(request.assetId);
             await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
             options.setState(await context.application.deleteHistoryAsset(request.assetId));
             options.setSelectedHistoryAssetId("");
@@ -107,7 +112,13 @@ export async function acceptConfirmation(context, options) {
             }
             options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
         }
+        else if (request.kind === "delete-history-batch") {
+            options.setState(await context.application.deleteHistoryAssets(request.historyKind, request.assetIds));
+            options.clearHistoryBatchSelection?.();
+            options.notify(t(uiKeys.history.batch.deleted, { count: request.count }));
+        }
         else if (request.kind === "delete-image-version") {
+            options.invalidateHistoryMediaForAsset?.(request.projectId);
             options.setState(await context.application.deleteImageHistoryVersion(request.projectId, request.versionId));
             options.clearImageHistoryThumbnailCache();
             options.setSelectedHistoryVersionId("");
@@ -122,6 +133,7 @@ export async function acceptConfirmation(context, options) {
         }
         else if (request.kind === "delete-video-version") {
             options.releaseHistoryVideo(request.assetId);
+            options.invalidateHistoryMediaForAsset?.(request.assetId);
             await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
             options.setState(await context.application.deleteHistoryVersion(request.assetId, request.versionId));
             options.setSelectedHistoryVersionId("");
@@ -144,10 +156,21 @@ export async function acceptConfirmation(context, options) {
         options.setQueueActionBusy(null);
         if (request.kind === "force-stop-comfy")
             options.setServiceForceStopping(false);
+        if (request.kind === "uninstall-llama-cpp-python") {
+            options.setLlamaCppPythonInstalling(false);
+            if (!options.getLlamaCppPythonLog()) {
+                options.setLlamaCppPythonLog(error instanceof Error ? error.message : String(error));
+            }
+        }
         if (preserveHistoryScrollOnReturn)
             options.setHistoryScrollRestorePending(false);
         options.setBusy(false);
         options.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
-        options.renderOverlay();
+        if (request.kind === "uninstall-llama-cpp-python") {
+            options.render();
+        }
+        else {
+            options.renderOverlay();
+        }
     }
 }

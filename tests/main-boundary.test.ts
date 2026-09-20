@@ -107,7 +107,7 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(89);
+    expect(invokeChannels.size).toBe(92);
     expect(registrations.get("history:inspect-extension-source")).toEqual(["history-ipc"]);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
@@ -151,6 +151,8 @@ describe("main/preload boundary characterization", () => {
         "history:inspect-h3-artifact",
         "history:inspect-extension-source",
         "history:delete",
+        "history:update-metadata-batch",
+        "history:delete-batch",
         "history:update-metadata",
         "history:delete-version",
         "history:delete-joint-av",
@@ -162,7 +164,8 @@ describe("main/preload boundary characterization", () => {
         "file:read-image",
         "file:show-in-folder",
         "file:open-system-player",
-        "file:copy"
+        "file:copy",
+        "history:copy-files"
       ],
       "image-document-ipc": [
         "image-markup:read",

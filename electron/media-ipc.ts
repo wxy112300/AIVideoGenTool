@@ -2,6 +2,7 @@ import { protocol, shell, type IpcMain } from "electron";
 import path from "node:path";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
+import type { HistoryBatchCopyKind, HistoryBatchCopyResult } from "../src/types.js";
 import { copyFileToWindowsClipboard } from "./services/windows-clipboard.js";
 import type { MediaReadService } from "./services/media-read-service.js";
 import type { StudioPaths } from "./services/studio-paths.js";
@@ -126,4 +127,34 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       };
     }
   });
+  deps.ipc.handle(
+    "history:copy-files",
+    async (_event, kind: HistoryBatchCopyKind, assetIds: string[]) => {
+      const requestedCount = Array.isArray(assetIds) ? new Set(assetIds).size : 0;
+      const failure = (message: string): HistoryBatchCopyResult => ({
+        ok: false,
+        message,
+        requestedCount,
+        copiedCount: 0,
+        missingCount: requestedCount
+      });
+      if (process.platform !== "win32") {
+        return failure("复制文件目前仅支持 Windows。");
+      }
+      try {
+        return await deps.service.copyHistoryFiles(
+          kind,
+          Array.isArray(assetIds) ? assetIds : [],
+          deps.paths.clipboardFilesDirectory
+        );
+      } catch (error) {
+        deps.logger.warn("history", "copy-files-failed", "Batch history clipboard copy failed", {
+          kind,
+          requestedCount,
+          error: safeLogErrorMessage(error)
+        });
+        return failure("剪贴板暂时被其他程序占用，请稍后再试。");
+      }
+    }
+  );
 }

@@ -7,11 +7,41 @@ import type { AppState, HistoryMetadataPatch } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { renderIcons } from "../../shared/icons";
 
-export interface HistoryTagsControllerOptions {
-  setState(nextState: AppState): void;
+export type HistoryTagEditorOperation =
+  | { kind: "add"; tag: string }
+  | { kind: "remove"; tag: string }
+  | { kind: "rename"; from: string; to: string };
+
+const historyTagEditorOpenEvent = "history-tag-editor-open";
+
+export interface HistoryTagChipMarkupOptions {
   escapeHtml(value: string): string;
   icon(name: string, className?: string): string;
-  updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
+  editLabel: string;
+  removeLabel: string;
+}
+
+export function historyTagChipMarkup(
+  tag: string,
+  options: HistoryTagChipMarkupOptions
+): string {
+  return `<span class="history-tag-chip" data-history-tag-chip="${options.escapeHtml(tag)}"><button type="button" class="history-tag-chip-label" data-history-tag-edit="${options.escapeHtml(tag)}" title="${options.escapeHtml(options.editLabel)}">${options.escapeHtml(tag)}</button><button type="button" class="history-tag-chip-remove" data-history-tag-remove="${options.escapeHtml(tag)}" aria-label="${options.escapeHtml(options.removeLabel)}" title="${options.escapeHtml(options.removeLabel)}">${options.icon("x")}</button></span>`;
+}
+
+export interface HistoryTagEditorOptions {
+  getTags(): string[];
+  getAvailableTags(): string[];
+  escapeHtml(value: string): string;
+  icon(name: string, className?: string): string;
+  editLabel: string;
+  removeLabel: string;
+  emptyText: string;
+  duplicateText: string;
+  updateFailedText: string;
+  /** Batch editors may accept a tag that exists on only some selected items. */
+  isDuplicateTag?(value: string, editingTag: string | null, currentTags: ReadonlyArray<string>): boolean;
+  applyOperation(operation: HistoryTagEditorOperation): Promise<void>;
+  onCommitted?(): void;
 }
 
 function stop(event: Event): void {
@@ -19,63 +49,46 @@ function stop(event: Event): void {
   event.stopImmediatePropagation();
 }
 
-function currentTags(context: RendererContext, assetId: string): string[] {
-  const state = context.getState();
-  return state?.history.find((item) => item.id === assetId)?.tags ??
-    state?.imageHistory.find((item) => item.id === assetId)?.tags ??
-    [];
+export function openHistoryTagEditor(tagsRoot: HTMLElement): void {
+  tagsRoot.dispatchEvent(new Event(historyTagEditorOpenEvent));
 }
 
-function isImageDetail(root: HTMLElement): boolean {
-  return root.dataset.historyKind === "image" || Boolean(root.querySelector(".image-history-detail-layout"));
-}
-
-export function mountHistoryTagsController(
+export function mountHistoryTagEditor(
   context: RendererContext,
-  options: HistoryTagsControllerOptions
+  tagsRoot: HTMLElement,
+  options: HistoryTagEditorOptions
 ): RendererCleanup {
   const events = new AbortController();
   const signal = events.signal;
-  const root = context.root;
-  const tagsRoot = root.querySelector<HTMLElement>("[data-history-tags-root]");
-  if (!tagsRoot) return () => events.abort();
-  const assetId = tagsRoot.dataset.historyTagAsset ?? "";
-  if (!assetId) return () => events.abort();
   let editingTag: string | null = null;
   let updateChain: Promise<void> = Promise.resolve();
 
-  const availableTags = (): string[] => {
-    const state = context.getState();
-    if (!state) return [];
-    return historyTagNames(state.history, state.imageHistory, isImageDetail(root) ? "image" : "video");
+  const chipOptions: HistoryTagChipMarkupOptions = {
+    escapeHtml: options.escapeHtml,
+    icon: options.icon,
+    editLabel: options.editLabel,
+    removeLabel: options.removeLabel
   };
-
-  const chipMarkup = (tag: string): string => `<span class="history-tag-chip" data-history-tag-chip="${options.escapeHtml(tag)}"><button type="button" class="history-tag-chip-label" data-history-tag-edit="${options.escapeHtml(tag)}" title="${options.escapeHtml(context.t("history.tags.edit"))}">${options.escapeHtml(tag)}</button><button type="button" class="history-tag-chip-remove" data-history-tag-remove="${options.escapeHtml(tag)}" aria-label="${options.escapeHtml(context.t("history.tags.remove"))}" title="${options.escapeHtml(context.t("history.tags.remove"))}">${options.icon("x")}</button></span>`;
-
-  const renderList = (tags: string[]): void => {
+  const renderList = (): void => {
     const list = tagsRoot.querySelector<HTMLElement>("[data-history-tag-list]");
     if (!list) return;
+    const tags = normalizeHistoryTags(options.getTags());
     list.innerHTML = tags.length
-      ? tags.map(chipMarkup).join("")
-      : `<span class="history-tags-empty">${context.t("history.tags.empty")}</span>`;
-    // Tag chips are updated in place to preserve the media/player and focus
-    // state. The normal page render converts data-lucide placeholders, so do
-    // the same for the newly inserted remove buttons here.
+      ? tags.map((tag) => historyTagChipMarkup(tag, chipOptions)).join("")
+      : `<span class="history-tags-empty">${options.emptyText}</span>`;
     renderIcons(list);
   };
-
   const renderSuggestions = (query = ""): void => {
     const suggestionsRoot = tagsRoot.querySelector<HTMLElement>("[data-history-tag-suggestions]");
     if (!suggestionsRoot) return;
-    const assigned = new Set(currentTags(context, assetId).map(historyTagKey));
+    const assigned = new Set(options.getTags().map(historyTagKey));
     const normalizedQuery = query.trim().toLowerCase();
-    const suggestions = availableTags().filter((tag) =>
+    const suggestions = options.getAvailableTags().filter((tag) =>
       !assigned.has(historyTagKey(tag)) &&
       (!normalizedQuery || tag.toLowerCase().includes(normalizedQuery))
     );
     suggestionsRoot.innerHTML = suggestions.map((tag) => `<button type="button" class="history-tag-suggestion" data-history-tag-suggestion="${options.escapeHtml(tag)}">${options.escapeHtml(tag)}</button>`).join("");
   };
-
   const editor = (): HTMLElement | null => tagsRoot.querySelector<HTMLElement>("[data-history-tag-editor]");
   const input = (): HTMLInputElement | null => tagsRoot.querySelector<HTMLInputElement>("[data-history-tag-input]");
   const closeEditor = (): void => {
@@ -95,23 +108,19 @@ export function mountHistoryTagsController(
     field.focus();
     field.select();
   };
-
-  const commitTags = (
-    buildNext: (current: string[]) => string[] | null,
+  const commitOperation = (
+    operation: HistoryTagEditorOperation,
     closeAfter = false
   ): Promise<void> => {
     updateChain = updateChain.then(async () => {
       try {
-        const current = currentTags(context, assetId);
-        const nextTags = buildNext(current);
-        if (!nextTags) return;
-        const normalized = normalizeHistoryTags(nextTags);
-        options.setState(await options.updateHistoryMetadata(assetId, { tags: normalized }));
-        renderList(normalized);
+        await options.applyOperation(operation);
+        options.onCommitted?.();
+        renderList();
         renderSuggestions(input()?.value ?? "");
         if (closeAfter) closeEditor();
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : context.t("history.tags.updateFailed"), {
+        context.notify(error instanceof Error ? error.message : options.updateFailedText, {
           renderPage: false,
           kind: "error"
         });
@@ -119,25 +128,25 @@ export function mountHistoryTagsController(
     });
     return updateChain;
   };
-
   const commitInput = async (): Promise<void> => {
     const field = input();
-    const value = field?.value ?? "";
-    const normalizedValue = normalizeHistoryTags([value])[0];
+    const normalizedValue = normalizeHistoryTags([field?.value ?? ""])[0];
     if (!normalizedValue) return;
     const editTarget = editingTag;
-    const wasEditing = editTarget !== null;
     const editKey = editTarget ? historyTagKey(editTarget) : "";
-    await commitTags((existing) => {
-      const duplicate = existing.some((tag) => historyTagKey(tag) === historyTagKey(normalizedValue) && historyTagKey(tag) !== editKey);
-      if (duplicate) {
-        context.notify(context.t("history.tags.duplicate"), { renderPage: false, kind: "warning" });
-        return null;
-      }
-      return editTarget
-        ? existing.map((tag) => historyTagKey(tag) === editKey ? normalizedValue : tag)
-        : [...existing, normalizedValue];
-    }, wasEditing);
+    const currentTags = options.getTags();
+    if (options.isDuplicateTag?.(normalizedValue, editTarget, currentTags) ??
+      currentTags.some((tag) => historyTagKey(tag) === historyTagKey(normalizedValue) && historyTagKey(tag) !== editKey)) {
+      context.notify(options.duplicateText, { renderPage: false, kind: "warning" });
+      return;
+    }
+    const wasEditing = editTarget !== null;
+    await commitOperation(
+      editTarget
+        ? { kind: "rename", from: editTarget, to: normalizedValue }
+        : { kind: "add", tag: normalizedValue },
+      wasEditing
+    );
     if (!wasEditing && field && normalizeHistoryTags([field.value])[0] === normalizedValue) {
       field.value = "";
       renderSuggestions("");
@@ -165,16 +174,14 @@ export function mountHistoryTagsController(
     if (suggestion) {
       stop(event);
       const value = suggestion.dataset.historyTagSuggestion;
-      if (!value) return;
-      void commitTags((existing) => [...existing, value]);
+      if (value) void commitOperation({ kind: "add", tag: value });
       return;
     }
     const remove = target.closest<HTMLElement>("[data-history-tag-remove]");
     if (remove) {
       stop(event);
       const value = remove.dataset.historyTagRemove;
-      if (!value) return;
-      void commitTags((existing) => existing.filter((tag) => historyTagKey(tag) !== historyTagKey(value)));
+      if (value) void commitOperation({ kind: "remove", tag: value });
       return;
     }
     const edit = target.closest<HTMLElement>("[data-history-tag-edit]");
@@ -187,7 +194,10 @@ export function mountHistoryTagsController(
       }
     }
   }, { signal });
-
+  tagsRoot.addEventListener(historyTagEditorOpenEvent, () => {
+    editingTag = null;
+    openEditor();
+  }, { signal });
   input()?.addEventListener("input", () => renderSuggestions(input()?.value ?? ""), { signal });
   input()?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -198,7 +208,59 @@ export function mountHistoryTagsController(
       closeEditor();
     }
   }, { signal });
+  renderList();
   renderSuggestions();
 
   return () => events.abort();
+}
+
+export interface HistoryTagsControllerOptions {
+  setState(nextState: AppState): void;
+  escapeHtml(value: string): string;
+  icon(name: string, className?: string): string;
+  updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
+}
+
+function currentTags(context: RendererContext, assetId: string): string[] {
+  const state = context.getState();
+  return state?.history.find((item) => item.id === assetId)?.tags ??
+    state?.imageHistory.find((item) => item.id === assetId)?.tags ??
+    [];
+}
+
+function isImageDetail(root: HTMLElement): boolean {
+  return root.dataset.historyKind === "image" || Boolean(root.querySelector(".image-history-detail-layout"));
+}
+
+export function mountHistoryTagsController(
+  context: RendererContext,
+  options: HistoryTagsControllerOptions
+): RendererCleanup {
+  const tagsRoot = context.root.querySelector<HTMLElement>("[data-history-tags-root][data-history-tag-asset]");
+  if (!tagsRoot) return () => undefined;
+  const assetId = tagsRoot.dataset.historyTagAsset ?? "";
+  if (!assetId) return () => undefined;
+  return mountHistoryTagEditor(context, tagsRoot, {
+    getTags: () => currentTags(context, assetId),
+    getAvailableTags: () => {
+      const state = context.getState();
+      return state ? historyTagNames(state.history, state.imageHistory, isImageDetail(context.root) ? "image" : "video") : [];
+    },
+    escapeHtml: options.escapeHtml,
+    icon: options.icon,
+    editLabel: context.t("history.tags.edit"),
+    removeLabel: context.t("history.tags.remove"),
+    emptyText: context.t("history.tags.empty"),
+    duplicateText: context.t("history.tags.duplicate"),
+    updateFailedText: context.t("history.tags.updateFailed"),
+    applyOperation: async (operation) => {
+      const current = currentTags(context, assetId);
+      const next = operation.kind === "add"
+        ? normalizeHistoryTags([...current, operation.tag])
+        : operation.kind === "remove"
+          ? normalizeHistoryTags(current.filter((tag) => historyTagKey(tag) !== historyTagKey(operation.tag)))
+          : normalizeHistoryTags(current.map((tag) => historyTagKey(tag) === historyTagKey(operation.from) ? operation.to : tag));
+      options.setState(await options.updateHistoryMetadata(assetId, { tags: next }));
+    }
+  });
 }

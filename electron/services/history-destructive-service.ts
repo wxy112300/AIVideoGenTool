@@ -3,6 +3,7 @@ import type {
   AppState,
   AssetVersion,
   Draft,
+  HistoryBatchCopyKind,
   HistoryAsset,
   HistoryItem,
   HistoryFile,
@@ -112,6 +113,95 @@ export class HistoryDestructiveService {
         await this.markHistoryAssetAuxiliaryFilesInvalid(assetId, error.message);
       }
       this.logFailure("delete-failed", "History asset deletion failed", assetId, startedAt, error);
+      throw error;
+    }
+  }
+
+  async deleteHistoryBatch(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<AppState> {
+    if (kind !== "video" && kind !== "image") throw new Error("历史媒体类型无效。");
+    const requestedIds = [...new Set(assetIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))];
+    if (!requestedIds.length) return this.deps.store.get();
+    const startedAt = Date.now();
+    const current = this.deps.store.get();
+    const targets = kind === "video"
+      ? current.history.filter((item) => requestedIds.includes(item.id))
+      : current.imageHistory.filter((item) => requestedIds.includes(item.id));
+    if (!targets.length) return current;
+    const coverCacheKeys = targets.flatMap((item) => this.deps.coverCacheKeysForHistoryItem(item));
+    this.deps.logger.info("history", "delete-batch-started", "History batch deletion started", {
+      kind,
+      count: targets.length
+    });
+    try {
+      await this.deps.invalidateCoverCacheKeys?.(coverCacheKeys);
+      const resolvedVideo = kind === "video"
+        ? await Promise.all((targets as HistoryAsset[]).map((asset) =>
+          this.videoHistoryFilesToDelete(asset, current.settings)
+        ))
+        : [];
+      const filesToDelete = kind === "video"
+        ? [...new Set(resolvedVideo.flatMap((files) => files.paths))]
+        : [...new Set(await Promise.all((targets as ImageHistoryProject[]).map((project) =>
+          this.imageProjectFilesToDelete(project, current.settings)
+        )).then((groups) => groups.flat()))];
+      if (kind === "video") {
+        const selectedVersions = (targets as HistoryAsset[]).flatMap((asset) => asset.versions);
+        await this.assertPathsExclusive(
+          this.deps.store.get(),
+          new Set((targets as HistoryAsset[]).flatMap((asset) =>
+            asset.versions.map((version) => `history:${asset.id}:${version.id}`)
+          )),
+          resolvedVideo.flatMap((files) => files.referencePaths),
+          "视频文件",
+          selectedVersions.flatMap(historyAuxiliaryAssetIds)
+        );
+      } else {
+        await this.assertPathsExclusive(
+          this.deps.store.get(),
+          new Set(),
+          filesToDelete,
+          "图片文件"
+        );
+      }
+      const unresolved = resolvedVideo.flatMap((files) => files.unresolved);
+      const deletedFiles = await this.unlinkFiles(
+        filesToDelete,
+        kind === "video" ? "视频文件" : "图片文件",
+        Boolean(unresolved.length)
+      );
+      if (unresolved.length) {
+        throw new PartialHistoryDeletionError(
+          "视频记录包含无法定位的文件，批量删除结果不完整。",
+          deletedFiles,
+          true
+        );
+      }
+      const targetIdSet = new Set(targets.map((item) => item.id));
+      const next = await this.deps.store.update((state) => {
+        if (kind === "video") {
+          state.history = state.history.filter((item) => !targetIdSet.has(item.id));
+        } else {
+          state.imageHistory = state.imageHistory.filter((item) => !targetIdSet.has(item.id));
+        }
+      });
+      await this.deps.removeCoverCacheKeys(coverCacheKeys);
+      this.deps.logger.info("history", "delete-batch-succeeded", "History assets deleted in batch", {
+        kind,
+        count: targets.length,
+        durationMs: Date.now() - startedAt
+      });
+      this.deps.sendState(next);
+      return next;
+    } catch (error) {
+      if (kind === "video" && error instanceof PartialHistoryDeletionError && error.integrityUncertain) {
+        await Promise.all(targets.map((item) =>
+          this.markHistoryAssetAuxiliaryFilesInvalid(item.id, error.message)
+        ));
+      }
+      this.logFailure("delete-batch-failed", "History batch deletion failed", requestedIds.join(","), startedAt, error, {
+        kind,
+        count: targets.length
+      });
       throw error;
     }
   }

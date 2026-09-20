@@ -4,6 +4,7 @@ import type {
   HistoryAsset,
   HistoryFile,
   HistoryRating,
+  HistoryItem,
   ImageAssetVersion,
   ImageHistoryProject,
   NativeAvArtifactInspection
@@ -17,6 +18,9 @@ import {
   type HistoryFilterState,
   type HistorySort
 } from "../../../core/history-filter";
+import {
+  historyBatchCommonTags
+} from "../../../core/history-batch";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import {
   h3MotionContextHistoryFileForPath,
@@ -38,6 +42,7 @@ import {
   groupHistoryTimelineEntries,
   historyTimelineEntries
 } from "./timeline";
+import { historyTagChipMarkup } from "./tags-controller";
 
 export type HistoryPageLayout = "masonry" | "album";
 
@@ -47,6 +52,9 @@ export interface HistoryPageViewModel {
   historyLayout: HistoryPageLayout;
   historyFilter: HistoryFilterState;
   historyFilterPanelOpen: boolean;
+  historyBatchMode?: boolean;
+  historyBatchSelectedIds?: ReadonlyArray<string>;
+  historyBatchTagsPanelOpen?: boolean;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
   historyArtifactInspection?: NativeAvArtifactInspection;
@@ -272,6 +280,7 @@ function renderHistoryFilter(
         <div class="history-filter-form">
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.sort)}</span><select data-history-filter-field="sort" aria-label="${options.t(uiKeys.history.filter.sort)}">${historySortOptions(options, filter.sort, isVideo)}</select></label>
           <label class="history-filter-switch"><span class="history-filter-switch-copy">${options.icon("heart")}<span>${options.t(uiKeys.history.filter.favoriteOnly)}</span></span><input type="checkbox" data-history-filter-field="favoriteOnly" ${filter.favoriteOnly ? "checked" : ""}><span class="history-ios-switch" aria-hidden="true"></span></label>
+          <label class="history-filter-switch history-batch-mode-switch"><span class="history-filter-switch-copy">${options.icon("check-square")}<span>${options.t(uiKeys.history.batch.mode)}</span></span><input type="checkbox" data-history-batch-toggle ${viewModel.historyBatchMode === true ? "checked" : ""} aria-checked="${viewModel.historyBatchMode === true}"><span class="history-ios-switch" aria-hidden="true"></span></label>
           <label class="history-filter-field history-filter-rating-field"><span>${options.t(uiKeys.history.filter.rating)}</span><span class="history-filter-range">${ratingOptions(options, filter.minRating, "history.filter.ratingAny", "minRating")}<span aria-hidden="true">–</span>${ratingOptions(options, filter.maxRating, "history.filter.ratingAny", "maxRating")}</span></label>
           ${isVideo ? `<label class="history-filter-field"><span>${options.t(uiKeys.history.filter.durationMin)}</span><select class="history-filter-select" data-history-filter-field="minDuration"><option value="">${options.t(uiKeys.history.filter.durationAny)}</option>${[1, 3, 5, 10, 15, 30, 60].map((value) => `<option value="${value}" ${filter.minDuration === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>` : ""}
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.model)}</span><select class="history-filter-select history-filter-model" data-history-filter-field="modelId"><option value="">${options.t(uiKeys.history.filter.all)}</option>${modelIds.map((id) => `<option value="${options.escapeHtml(id)}" ${filter.modelId === id ? "selected" : ""}>${options.escapeHtml(options.modelName(id))}</option>`).join("")}</select></label>
@@ -289,7 +298,12 @@ function renderHistoryTags(
   options: Pick<HistoryPageOptions, "t" | "icon" | "escapeHtml">
 ): string {
   const tagMarkup = tags.length
-    ? tags.map((tag) => `<span class="history-tag-chip" data-history-tag-chip="${options.escapeHtml(tag)}"><button type="button" class="history-tag-chip-label" data-history-tag-edit="${options.escapeHtml(tag)}" title="${options.escapeHtml(options.t(uiKeys.history.tags.edit))}">${options.escapeHtml(tag)}</button><button type="button" class="history-tag-chip-remove" data-history-tag-remove="${options.escapeHtml(tag)}" aria-label="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}" title="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}">${options.icon("x")}</button></span>`).join("")
+    ? tags.map((tag) => historyTagChipMarkup(tag, {
+      escapeHtml: options.escapeHtml,
+      icon: options.icon,
+      editLabel: options.t(uiKeys.history.tags.edit),
+      removeLabel: options.t(uiKeys.history.tags.remove)
+    })).join("")
     : `<span class="history-tags-empty">${options.t(uiKeys.history.tags.empty)}</span>`;
   const suggestions = availableTags.filter((tag) => !tags.some((current) => historyTagKey(current) === historyTagKey(tag)));
   return `<section class="panel history-detail-tags" data-history-tags-root data-history-tag-asset="${options.escapeHtml(assetId)}">
@@ -455,8 +469,10 @@ export function renderImageHistoryPage(
     const sourcePath = version.file.absolutePath ?? "";
     const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
     const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
+    const selected = (viewModel.historyBatchSelectedIds ?? []).includes(project.id);
     return `
-      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(project))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel image-history-gallery-item${selected ? " history-batch-selected" : ""}" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(project))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+        ${viewModel.historyBatchMode === true ? `<label class="history-batch-checkbox-wrap"><input type="checkbox" class="history-batch-checkbox" data-history-batch-select="${options.escapeHtml(project.id)}" ${selected ? "checked" : ""} aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.cardSelect))}"><span aria-hidden="true"></span></label>` : ""}
         <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
             ? `<img data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
@@ -493,7 +509,56 @@ export function renderImageHistoryPage(
           : cards}
       </section>
       ${timeline}
-    </div>`;
+    </div>
+    ${renderHistoryBatchTagsPanel(viewModel, options)}
+    ${renderHistoryBatchToolbar(viewModel, options, projects)}`;
+}
+
+function historyBatchSelectedItems(viewModel: HistoryPageViewModel): HistoryItem[] {
+  const selected = new Set(viewModel.historyBatchSelectedIds ?? []);
+  return (viewModel.historyKind === "video" ? viewModel.state.history : viewModel.state.imageHistory)
+    .filter((item) => selected.has(item.id));
+}
+
+function renderHistoryBatchToolbar(
+  viewModel: HistoryPageViewModel,
+  options: Pick<HistoryPageOptions, "t" | "icon" | "escapeHtml">,
+  visibleItems: ReadonlyArray<HistoryItem>
+): string {
+  if (viewModel.historyBatchMode !== true) return "";
+  const visibleIds = new Set(visibleItems.map((item) => item.id));
+  const selectedCount = (viewModel.historyBatchSelectedIds ?? []).filter((id) => visibleIds.has(id)).length;
+  const allSelected = visibleItems.length > 0 && selectedCount === visibleItems.length;
+  return `<div class="history-batch-toolbar" data-history-batch-toolbar role="toolbar" aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.mode))}">
+    <button type="button" class="ghost button-with-icon history-batch-select-all" data-history-batch-action="select-all" aria-pressed="${allSelected}" ${visibleItems.length ? "" : "disabled"}>${options.icon(allSelected ? "check-square" : "square")}${options.t(uiKeys.history.batch.selectAll)}</button>
+    <span class="history-batch-count" data-history-batch-count>${options.escapeHtml(options.t(uiKeys.history.batch.selected, { selected: selectedCount, total: visibleItems.length }))}</span>
+    <span class="history-batch-divider" aria-hidden="true"></span>
+    <button type="button" class="ghost button-with-icon" data-history-batch-action="copy" ${selectedCount ? "" : "disabled"}>${options.icon("copy")}${options.t(uiKeys.history.batch.copy)}</button>
+    <button type="button" class="ghost button-with-icon" data-history-batch-action="tags" ${selectedCount ? "" : "disabled"}>${options.icon("tag")}${options.t(uiKeys.history.batch.addTags)}</button>
+    <button type="button" class="ghost danger button-with-icon" data-history-batch-action="delete" ${selectedCount ? "" : "disabled"}>${options.icon("trash-2")}${options.t(uiKeys.history.batch.delete)}</button>
+    <button type="button" class="ghost icon-button history-batch-exit" data-history-batch-action="exit" aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.exit))}" title="${options.escapeHtml(options.t(uiKeys.history.batch.exit))}">${options.icon("x")}</button>
+  </div>`;
+}
+
+function renderHistoryBatchTagsPanel(
+  viewModel: HistoryPageViewModel,
+  options: Pick<HistoryPageOptions, "t" | "icon" | "escapeHtml">
+): string {
+  if (viewModel.historyBatchMode !== true) return "";
+  const items = historyBatchSelectedItems(viewModel);
+  const common = historyBatchCommonTags(items);
+  const chipOptions = {
+    escapeHtml: options.escapeHtml,
+    icon: options.icon,
+    editLabel: options.t(uiKeys.history.tags.edit),
+    removeLabel: options.t(uiKeys.history.tags.remove)
+  };
+  const panelOpen = viewModel.historyBatchTagsPanelOpen === true && items.length > 0;
+  return `<section class="history-batch-tags-panel panel" data-history-batch-tags-panel data-history-batch-tags-root${panelOpen ? "" : " hidden"}>
+    <div class="history-batch-tags-heading"><h2>${options.t(uiKeys.history.batch.tagsTitle)}</h2><button type="button" class="secondary history-batch-tags-close" data-history-batch-tags-close>${options.t(uiKeys.history.batch.done)}</button></div>
+    <div class="history-batch-tag-section"><div class="history-tag-list" data-history-tag-list>${common.length ? common.map((tag) => historyTagChipMarkup(tag, chipOptions)).join("") : `<span class="history-tags-empty">${options.t(uiKeys.history.batch.noCommonTags)}</span>`}</div></div>
+    <div class="history-tag-editor" data-history-tag-editor hidden><div class="history-tag-editor-row"><input type="text" data-history-tag-input maxlength="64" placeholder="${options.escapeHtml(options.t(uiKeys.history.tags.placeholder))}" autocomplete="off"><button type="button" class="ghost history-tag-editor-cancel" data-history-tag-cancel>${options.t(uiKeys.history.tags.cancel)}</button></div><div class="history-tag-suggestions" data-history-tag-suggestions></div></div>
+  </section>`;
 }
 
 export function renderHistoryPage(
@@ -516,8 +581,10 @@ export function renderHistoryPage(
     const coverKey = options.historyCoverCacheKey(asset, version);
     const coverSeed = options.historyCoverSeed(asset.id, version.id);
     const coverTime = options.historyInitialCoverTime(asset.duration, coverSeed);
+    const selected = (viewModel.historyBatchSelectedIds ?? []).includes(asset.id);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(asset))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel${selected ? " history-batch-selected" : ""}" data-history="${options.escapeHtml(asset.id)}" data-open-history="${options.escapeHtml(asset.id)}" data-history-kind="video" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(asset))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+        ${viewModel.historyBatchMode === true ? `<label class="history-batch-checkbox-wrap"><input type="checkbox" class="history-batch-checkbox" data-history-batch-select="${options.escapeHtml(asset.id)}" ${selected ? "checked" : ""} aria-label="${options.escapeHtml(options.t(uiKeys.history.batch.cardSelect))}"><span aria-hidden="true"></span></label>` : ""}
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${options.escapeHtml(coverKey)}" data-cover-source="${options.escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${options.escapeHtml(mediaUrl)}"></video>`
@@ -557,7 +624,9 @@ export function renderHistoryPage(
           : cards}
       </section>
       ${timeline}
-    </div>`;
+    </div>
+    ${renderHistoryBatchTagsPanel(viewModel, options)}
+    ${renderHistoryBatchToolbar(viewModel, options, orderedAssets)}`;
 }
 
 export function renderHistoryDetailPage(

@@ -60,6 +60,9 @@ export interface HistoryAssemblyOptions {
   getHistoryLayout(): HistoryPageLayout;
   getHistoryFilter(): HistoryFilterState;
   isHistoryFilterPanelOpen(): boolean;
+  isHistoryBatchMode(): boolean;
+  getHistoryBatchSelectedIds(): ReadonlyArray<string>;
+  isHistoryBatchTagsPanelOpen(): boolean;
   getSelectedHistoryAssetId(): string;
   getSelectedHistoryVersionId(): string;
   getHistoryArtifactInspection(): HistoryPageViewModel["historyArtifactInspection"];
@@ -82,6 +85,9 @@ function createHistoryPageViewModel(
     historyLayout: options.getHistoryLayout(),
     historyFilter: options.getHistoryFilter(),
     historyFilterPanelOpen: options.isHistoryFilterPanelOpen(),
+    historyBatchMode: options.isHistoryBatchMode(),
+    historyBatchSelectedIds: options.getHistoryBatchSelectedIds(),
+    historyBatchTagsPanelOpen: options.isHistoryBatchTagsPanelOpen(),
     selectedHistoryAssetId: options.getSelectedHistoryAssetId(),
     selectedHistoryVersionId: options.getSelectedHistoryVersionId(),
     historyArtifactInspection: options.getHistoryArtifactInspection()
@@ -145,6 +151,9 @@ export function createHistoryAssembly(
     historyLayout: HistoryPageLayout;
     historyFilterKey: string;
     historyFilterPanelOpen: boolean;
+    historyBatchMode: boolean;
+    historyBatchSelectedKey: string;
+    historyBatchTagsPanelOpen: boolean;
     uiLocale: string | undefined;
     markup: string;
   } | null = null;
@@ -153,6 +162,9 @@ export function createHistoryAssembly(
     renderList(context): string {
       const viewModel = createHistoryPageViewModel(options);
       const historyFilterKey = JSON.stringify(viewModel.historyFilter);
+      const historyBatchMode = viewModel.historyBatchMode === true;
+      const historyBatchSelectedKey = [...(viewModel.historyBatchSelectedIds ?? [])].sort().join("\u0000");
+      const historyBatchTagsPanelOpen = viewModel.historyBatchTagsPanelOpen === true;
       const uiLocale = viewModel.state.settings.uiLocale;
       if (
         cachedList?.state === viewModel.state &&
@@ -160,6 +172,9 @@ export function createHistoryAssembly(
         cachedList.historyLayout === viewModel.historyLayout &&
         cachedList.historyFilterKey === historyFilterKey &&
         cachedList.historyFilterPanelOpen === viewModel.historyFilterPanelOpen &&
+        cachedList.historyBatchMode === historyBatchMode &&
+        cachedList.historyBatchSelectedKey === historyBatchSelectedKey &&
+        cachedList.historyBatchTagsPanelOpen === historyBatchTagsPanelOpen &&
         cachedList.uiLocale === uiLocale
       ) {
         return cachedList.markup;
@@ -174,6 +189,9 @@ export function createHistoryAssembly(
         historyLayout: viewModel.historyLayout,
         historyFilterKey,
         historyFilterPanelOpen: viewModel.historyFilterPanelOpen,
+        historyBatchMode,
+        historyBatchSelectedKey,
+        historyBatchTagsPanelOpen,
         uiLocale,
         markup
       };

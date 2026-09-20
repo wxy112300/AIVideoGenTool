@@ -5,10 +5,11 @@ export function renderConfirmationDialog(options) {
     if (!request)
         return "";
     const deleting = request.kind === "delete-history";
+    const deletingBatch = request.kind === "delete-history-batch";
     const deletingImageVersion = request.kind === "delete-image-version";
-  const deletingVideoVersion = request.kind === "delete-video-version";
-  const deletingJointAv = request.kind === "delete-joint-av";
-  const deletingMotionContext = request.kind === "delete-motion-context";
+    const deletingVideoVersion = request.kind === "delete-video-version";
+    const deletingJointAv = request.kind === "delete-joint-av";
+    const deletingMotionContext = request.kind === "delete-motion-context";
     const deletingVersion = deletingImageVersion || deletingVideoVersion;
     const deletingImage = deleting && options.imageHistoryIds.has(request.assetId);
     const removingQueueTask = request.kind === "remove-queue-task";
@@ -19,29 +20,37 @@ export function renderConfirmationDialog(options) {
     const uninstallingCustomNode = request.kind === "uninstall-custom-node";
     const uninstallingLlama = request.kind === "uninstall-llama-cpp-python";
     const t = options.t;
+    const customNodeProgress = uninstallingCustomNode && options.confirmationBusy
+        ? `<div class="confirm-progress" role="status" aria-live="polite">
+        <span class="confirm-progress-label">${t(uiKeys.dialog.processing)}</span>
+        <pre data-confirmation-dependency-log="custom-node:${options.escapeHtml(request.nodeId)}">${options.escapeHtml(options.customNodeLog || t(uiKeys.dialog.processing))}</pre>
+      </div>`
+        : "";
     const title = confirmingPromptCpu
         ? t(uiKeys.dialog.promptCpuTitle)
         : deletingJointAv
             ? t(uiKeys.dialog.deleteJointAvTitle, { title: request.title })
             : deletingMotionContext
                 ? t(uiKeys.dialog.deleteMotionContextTitle, { title: request.title })
-        : deletingVersion
-        ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
-        : deleting
-            ? t(deletingImage ? uiKeys.dialog.deleteImageTitle : uiKeys.dialog.deleteVideoTitle, { title: request.title })
-            : removingQueueTask
-                ? t(uiKeys.dialog.removeTaskTitle, { title: request.title })
-                : cancellingQueueTask
-                    ? t(uiKeys.dialog.cancelTaskTitle, { title: request.title })
-                    : discardingSettings
-                        ? t(uiKeys.dialog.discardSettingsTitle)
-                        : uninstallingCustomNode
-                            ? t(uiKeys.dialog.uninstallNodeTitle, { name: request.name })
-                        : uninstallingLlama
-                            ? t(uiKeys.dialog.uninstallLlamaTitle)
-                        : forceStoppingComfy
-                            ? t(uiKeys.dialog.forceStopTitle)
-                            : t(uiKeys.dialog.clearDraftTitle);
+                : deletingVersion
+                    ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
+                    : deletingBatch
+                        ? t(uiKeys.dialog.deleteHistoryBatchTitle, { count: request.count })
+                        : deleting
+                            ? t(deletingImage ? uiKeys.dialog.deleteImageTitle : uiKeys.dialog.deleteVideoTitle, { title: request.title })
+                            : removingQueueTask
+                                ? t(uiKeys.dialog.removeTaskTitle, { title: request.title })
+                                : cancellingQueueTask
+                                    ? t(uiKeys.dialog.cancelTaskTitle, { title: request.title })
+                                    : discardingSettings
+                                        ? t(uiKeys.dialog.discardSettingsTitle)
+                                        : uninstallingCustomNode
+                                            ? t(uiKeys.dialog.uninstallNodeTitle, { name: request.name })
+                                            : uninstallingLlama
+                                                ? t(uiKeys.dialog.uninstallLlamaTitle)
+                                                : forceStoppingComfy
+                                                    ? t(uiKeys.dialog.forceStopTitle)
+                                                    : t(uiKeys.dialog.clearDraftTitle);
     const description = confirmingPromptCpu
         ? t(uiKeys.dialog.promptCpuDescription, {
             used: request.usedVram,
@@ -50,28 +59,30 @@ export function renderConfirmationDialog(options) {
             required: request.requiredVram
         })
         : deletingJointAv
-        ? t(uiKeys.dialog.deleteJointAvDescription)
-        : deletingMotionContext
-            ? t(uiKeys.dialog.deleteMotionContextDescription)
-        : deletingVersion
-        ? t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionDescription : uiKeys.dialog.deleteVersionDescription)
-        : deleting
-            ? deletingImage
-                ? t(uiKeys.dialog.deleteImageDescription)
-                : t(uiKeys.dialog.deleteVideoDescription)
-            : removingQueueTask
-                ? t(uiKeys.dialog.removeTaskDescription)
-                : cancellingQueueTask
-                    ? t(uiKeys.dialog.cancelTaskDescription)
-                : discardingSettings
-                    ? t(uiKeys.dialog.discardSettingsDescription)
-                    : uninstallingCustomNode
-                        ? t(uiKeys.dialog.uninstallNodeDescription)
-                    : uninstallingLlama
-                        ? t(uiKeys.dialog.uninstallLlamaDescription)
-                    : forceStoppingComfy
-                            ? t(uiKeys.dialog.forceStopDescription)
-                            : t(uiKeys.dialog.clearDraftDescription);
+            ? t(uiKeys.dialog.deleteJointAvDescription)
+            : deletingMotionContext
+                ? t(uiKeys.dialog.deleteMotionContextDescription)
+                : deletingVersion
+                    ? t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionDescription : uiKeys.dialog.deleteVersionDescription)
+                    : deletingBatch
+                        ? t(uiKeys.dialog.deleteHistoryBatchDescription)
+                        : deleting
+                            ? deletingImage
+                                ? t(uiKeys.dialog.deleteImageDescription)
+                                : t(uiKeys.dialog.deleteVideoDescription)
+                            : removingQueueTask
+                                ? t(uiKeys.dialog.removeTaskDescription)
+                                : cancellingQueueTask
+                                    ? t(uiKeys.dialog.cancelTaskDescription)
+                                    : discardingSettings
+                                        ? t(uiKeys.dialog.discardSettingsDescription)
+                                        : uninstallingCustomNode
+                                            ? t(uiKeys.dialog.uninstallNodeDescription)
+                                            : uninstallingLlama
+                                                ? t(uiKeys.dialog.uninstallLlamaDescription)
+                                                : forceStoppingComfy
+                                                    ? t(uiKeys.dialog.forceStopDescription)
+                                                    : t(uiKeys.dialog.clearDraftDescription);
     return `
     <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
@@ -80,31 +91,34 @@ export function renderConfirmationDialog(options) {
           <span class="eyebrow">${t(confirmingPromptCpu ? uiKeys.dialog.resourceWarning : uiKeys.dialog.irreversible)}</span>
           <h2 id="confirm-title">${options.escapeHtml(title)}</h2>
           <p id="confirm-description">${options.escapeHtml(description)}</p>
-                    ${confirmingPromptCpu
-                ? `<div class="confirm-warning">${t(uiKeys.dialog.promptCpuWarning)}</div>`
-                : deletingJointAv
-                ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteJointAvWarning)}</div>`
-                : deletingMotionContext
+          ${confirmingPromptCpu
+        ? `<div class="confirm-warning">${t(uiKeys.dialog.promptCpuWarning)}</div>`
+        : deletingJointAv
+            ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteJointAvWarning)}</div>`
+            : deletingMotionContext
                 ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteMotionContextWarning)}</div>`
                 : deletingVersion
-        ? `<div class="confirm-warning">${t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionWarning : uiKeys.dialog.deleteVersionWarning)}</div>`
-        : deleting
-            ? `<div class="confirm-warning">${t(deletingImage ? uiKeys.dialog.deleteImageWarning : uiKeys.dialog.deleteVideoWarning)}</div>`
-            : removingQueueTask || cancellingQueueTask
-                ? `<div class="confirm-warning">${t(uiKeys.dialog.removeTaskWarning)}</div>`
-                : discardingSettings
-                    ? `<div class="confirm-warning">${t(uiKeys.dialog.discardSettingsWarning)}</div>`
-                    : uninstallingCustomNode
-                        ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallNodeWarning)}</div>`
-                    : uninstallingLlama
-                        ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallLlamaWarning)}</div>`
-                    : forceStoppingComfy
-                        ? `<div class="confirm-warning danger-warning">${t(uiKeys.dialog.forceStopWarning)}</div>`
-                        : ""}
+                    ? `<div class="confirm-warning">${t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionWarning : uiKeys.dialog.deleteVersionWarning)}</div>`
+                    : deletingBatch
+                        ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteHistoryBatchWarning)}</div>`
+                        : deleting
+                            ? `<div class="confirm-warning">${t(deletingImage ? uiKeys.dialog.deleteImageWarning : uiKeys.dialog.deleteVideoWarning)}</div>`
+                            : removingQueueTask || cancellingQueueTask
+                                ? `<div class="confirm-warning">${t(uiKeys.dialog.removeTaskWarning)}</div>`
+                                : discardingSettings
+                                    ? `<div class="confirm-warning">${t(uiKeys.dialog.discardSettingsWarning)}</div>`
+                                    : uninstallingCustomNode
+                                        ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallNodeWarning)}</div>`
+                                        : uninstallingLlama
+                                            ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallLlamaWarning)}</div>`
+                                            : forceStoppingComfy
+                                                ? `<div class="confirm-warning danger-warning">${t(uiKeys.dialog.forceStopWarning)}</div>`
+                                                : ""}
+          ${customNodeProgress}
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t(uiKeys.history.batch.delete) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

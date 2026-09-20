@@ -26,6 +26,10 @@ export interface RendererUiState {
   } | null;
   historyFilter: HistoryFilterState;
   historyFilterPanelOpen: boolean;
+  historyBatchMode: boolean;
+  historyBatchSelectedIds: string[];
+  historyBatchTagsPanelOpen: boolean;
+  historyBatchBusy: boolean;
   historyForwardTarget: { assetId: string; versionId: string } | null;
   upscaleDialog: UpscaleDialogState | null;
   pendingConfirmation: ConfirmationRequest | null;
@@ -62,6 +66,10 @@ export function createRendererUiState(): RendererUiState {
     historyArtifactInspection: null,
     historyFilter: { ...defaultHistoryFilter },
     historyFilterPanelOpen: false,
+    historyBatchMode: false,
+    historyBatchSelectedIds: [],
+    historyBatchTagsPanelOpen: false,
+    historyBatchBusy: false,
     historyForwardTarget: null,
     upscaleDialog: null,
     pendingConfirmation: null,

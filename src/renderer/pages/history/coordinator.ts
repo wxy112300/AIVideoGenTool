@@ -85,6 +85,7 @@ export interface HistoryWorkspaceCoordinator {
   bindTitleMarquees(): void;
   restoreLayoutAnchor(): void;
   clearImageHistoryThumbnailCache(): void;
+  clearBatchSelection(): void;
   releaseHistoryVideo(assetId: string): void;
   openHistoryDetail(assetId: string, versionId?: string): void;
   openImageHistoryDetail(projectId: string, versionId?: string): void;
@@ -119,6 +120,30 @@ export function createHistoryWorkspaceCoordinator(
     if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(assetId);
     deps.rememberModalFocus();
     deps.ui.pendingConfirmation = { kind: "delete-history", assetId, title };
+    deps.ui.confirmationBusy = false;
+    deps.renderOverlay();
+  };
+
+  const clearBatchSelection = (): void => {
+    deps.ui.historyBatchSelectedIds = [];
+    deps.ui.historyBatchTagsPanelOpen = false;
+  };
+
+  const requestHistoryBatchDeletion = (kind: HistoryKind, assetIds: string[]): void => {
+    const selectedIds = [...new Set(assetIds)].filter((assetId) =>
+      kind === "video"
+        ? deps.getState().history.some((item) => item.id === assetId)
+        : deps.getState().imageHistory.some((item) => item.id === assetId)
+    );
+    if (!selectedIds.length) return;
+    historyLayoutController.captureHistoryScrollPosition(selectedIds[0]);
+    deps.rememberModalFocus();
+    deps.ui.pendingConfirmation = {
+      kind: "delete-history-batch",
+      historyKind: kind,
+      assetIds: selectedIds,
+      count: selectedIds.length
+    };
     deps.ui.confirmationBusy = false;
     deps.renderOverlay();
   };
@@ -201,6 +226,9 @@ export function createHistoryWorkspaceCoordinator(
     getHistoryLayout: () => historyLayoutController.getLayout(),
     getHistoryFilter: () => deps.ui.historyFilter,
     isHistoryFilterPanelOpen: () => deps.ui.historyFilterPanelOpen,
+    isHistoryBatchMode: () => deps.ui.historyBatchMode,
+    getHistoryBatchSelectedIds: () => deps.ui.historyBatchSelectedIds,
+    isHistoryBatchTagsPanelOpen: () => deps.ui.historyBatchTagsPanelOpen,
     getSelectedHistoryAssetId: () => deps.ui.selectedHistoryAssetId,
     getSelectedHistoryVersionId: () => deps.ui.selectedHistoryVersionId,
     getHistoryArtifactInspection: () => {
@@ -300,10 +328,12 @@ export function createHistoryWorkspaceCoordinator(
   const historyNavigationOptions = (): HistoryNavigationControllerOptions => ({
     setHistoryKind: (kind) => {
       deps.setHistoryKind(kind);
+      clearBatchSelection();
       if (kind === "image" && deps.ui.historyFilter.minDuration !== null) {
         deps.ui.historyFilter = normalizeHistoryFilter({ ...deps.ui.historyFilter, minDuration: null });
       }
     },
+    clearBatchSelection,
     resetHistoryScroll: () => historyLayoutController.resetScroll(),
     captureHistoryScrollPosition: (preferredAssetId, preserveForActivation) =>
       historyLayoutController.captureHistoryScrollPosition(preferredAssetId, preserveForActivation),
@@ -383,7 +413,8 @@ export function createHistoryWorkspaceCoordinator(
         getPanelOpen: () => deps.ui.historyFilterPanelOpen,
         setPanelOpen: (open) => {
           deps.ui.historyFilterPanelOpen = open;
-        }
+        },
+        clearBatchSelection
       },
       tags: {
         setState: deps.setState,
@@ -391,6 +422,31 @@ export function createHistoryWorkspaceCoordinator(
         icon,
         updateHistoryMetadata: (assetId, patch: HistoryMetadataPatch) =>
           deps.context.application.updateHistoryMetadata(assetId, patch)
+      },
+      batch: {
+        getKind: deps.getHistoryKind,
+        getFilter: () => deps.ui.historyFilter,
+        isBatchMode: () => deps.ui.historyBatchMode,
+        setBatchMode: (enabled) => {
+          deps.ui.historyBatchMode = enabled;
+        },
+        getSelectedIds: () => deps.ui.historyBatchSelectedIds,
+        setSelectedIds: (ids) => {
+          deps.ui.historyBatchSelectedIds = ids;
+        },
+        setTagsPanelOpen: (open) => {
+          deps.ui.historyBatchTagsPanelOpen = open;
+        },
+        setFilterPanelOpen: (open) => {
+          deps.ui.historyFilterPanelOpen = open;
+        },
+        setBusy: (value) => {
+          deps.ui.historyBatchBusy = value;
+        },
+        isBusy: () => deps.ui.historyBatchBusy,
+        setState: deps.setState,
+        clearSelection: clearBatchSelection,
+        requestDelete: requestHistoryBatchDeletion
       },
       historyLayout: historyLayoutController.getLayout(),
       isImageHistoryDetail: deps.getPage() === "image-history-detail",
@@ -607,6 +663,7 @@ export function createHistoryWorkspaceCoordinator(
     bindTitleMarquees: historyLayoutController.bindTitleMarquees,
     restoreLayoutAnchor: historyLayoutController.restoreLayoutAnchor,
     clearImageHistoryThumbnailCache: historyMediaRuntime.clearImageHistoryThumbnailCache,
+    clearBatchSelection,
     releaseHistoryVideo,
     openHistoryDetail,
     openImageHistoryDetail,

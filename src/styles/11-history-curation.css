@@ -443,6 +443,7 @@
 }
 
 .history-filter-switch-copy .ui-icon { width: 15px; height: 15px; color: #f06b78; fill: currentColor; }
+.history-batch-mode-switch .history-filter-switch-copy .ui-icon { color: var(--text, #e8edf5); fill: none; }
 .history-filter-switch input {
   position: absolute;
   width: 1px;
@@ -490,6 +491,101 @@
 }
 
 .history-filter-clear { min-height: 30px; margin: 0; padding: 5px 8px; }
+
+/* Batch mode stays compact: selection affordances live on cards and the
+   action bar floats over the viewport instead of reserving a new row. */
+.history-gallery-item { position: relative; }
+.history-batch-checkbox-wrap {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 8;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(7, 11, 17, .72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .28);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.history-batch-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.history-batch-checkbox-wrap + .history-media .history-media-badges { left: 40px; }
+.history-gallery.album .history-batch-checkbox-wrap + .history-media .history-media-badges { left: 36px; }
+.history-gallery-item.history-batch-selected,
+.history-gallery-item.history-batch-selected:hover,
+.history-gallery-item.history-batch-selected:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 86%, transparent), var(--ux-elevation-panel);
+}
+.history-batch-toolbar {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  min-height: 42px;
+  margin: 0 auto;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--primary));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-strong, #10151d) 94%, transparent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .34);
+  backdrop-filter: blur(18px);
+}
+.history-batch-toolbar button { min-height: 30px; padding: 5px 8px; }
+.history-batch-toolbar .ui-icon { width: 14px; height: 14px; }
+.history-batch-select-all { width: 72px; min-width: 72px; justify-content: center; }
+.history-batch-count { padding: 0 5px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.history-batch-divider { width: 1px; height: 18px; margin: 0 2px; background: var(--border); }
+.history-batch-exit { width: 30px; padding: 0 !important; }
+.history-batch-tags-panel {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 56px);
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 59;
+  display: grid;
+  gap: 12px;
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(62vh, 520px);
+  margin: 0 auto;
+  padding: 14px 16px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--primary));
+  background: color-mix(in srgb, var(--panel-strong, #10151d) 97%, transparent);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .38);
+  backdrop-filter: blur(18px);
+}
+.history-batch-tags-panel[hidden] { display: none; }
+.history-batch-tags-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.history-batch-tags-heading h2 { margin: 0; font-size: 14px; }
+.history-batch-tags-heading p { margin: 4px 0 0; }
+.history-batch-tags-close { min-height: 30px; padding: 5px 10px; }
+.history-batch-tag-section { display: grid; gap: 6px; }
+.history-batch-partial-tags .history-tag-list { align-items: center; }
+.history-batch-partial-count { margin-left: -3px; color: var(--muted); font-size: 10px; }
+.history-batch-tags-panel .history-tag-editor { max-width: none; }
+
+@media (max-width: 560px) {
+  .history-batch-toolbar { justify-content: flex-start; }
+  .history-batch-toolbar .history-batch-count { order: -1; width: 100%; padding: 1px 3px 3px; }
+  .history-batch-divider { display: none; }
+}
 
 /* Display-only metadata on cards; never competes with the media action. */
 .history-card-curation-display {

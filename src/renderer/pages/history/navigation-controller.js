@@ -6,6 +6,12 @@ function stopNavigation(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
 }
+function navigationButtonFromEvent(root, event) {
+    const path = event.composedPath();
+    if (!path.includes(root))
+        return null;
+    return path.find((target) => target instanceof HTMLElement && target.matches("[data-history-navigation]")) ?? null;
+}
 function isCardSpaceKey(event) {
     return event.key === " " || event.key === "Spacebar";
 }
@@ -28,10 +34,13 @@ export function mountHistoryNavigationController(context, options) {
             return;
         }
         context.reportUserAction("history-kind", { kind: nextKind });
+        options.clearBatchSelection?.();
         options.setHistoryKind(nextKind);
         options.resetHistoryScroll();
         context.requestRender();
         window.requestAnimationFrame(() => {
+            if (context.getRoute().page !== "history" || context.getRoute().historyKind !== nextKind)
+                return;
             window.scrollTo({ top: 0, behavior: "auto" });
             if (restoreFocus) {
                 window.requestAnimationFrame(() => {
@@ -73,21 +82,22 @@ export function mountHistoryNavigationController(context, options) {
             }
         }, { signal });
     });
-    root.querySelectorAll("[data-history-navigation]").forEach((button) => {
-        button.addEventListener("click", (event) => {
-            stopNavigation(event);
-            const direction = directionFrom(button.dataset.historyNavigation);
-            if (direction == null)
-                return;
-            const page = context.getRoute().page;
-            if (page === "image-history-detail") {
-                options.navigateImageHistoryDetail(direction);
-            }
-            else {
-                options.navigateHistoryDetail(direction);
-            }
-        }, { signal });
-    });
+    root.addEventListener("click", (event) => {
+        const button = navigationButtonFromEvent(root, event);
+        if (!button)
+            return;
+        stopNavigation(event);
+        const direction = directionFrom(button.dataset.historyNavigation);
+        if (direction == null)
+            return;
+        const page = context.getRoute().page;
+        if (page === "image-history-detail") {
+            options.navigateImageHistoryDetail(direction);
+        }
+        else {
+            options.navigateHistoryDetail(direction);
+        }
+    }, { capture: true, signal });
     root.querySelectorAll("[data-image-version-navigation]").forEach((button) => {
         button.addEventListener("click", (event) => {
             stopNavigation(event);
@@ -105,34 +115,44 @@ export function mountHistoryNavigationController(context, options) {
             options.selectImageHistoryVersion(versionId);
         }, { signal });
     });
-    root.querySelectorAll("[data-open-history]").forEach((button) => {
-        button.addEventListener("click", (event) => {
-            stopNavigation(event);
-            const assetId = button.dataset.openHistory;
-            if (assetId)
-                options.openHistoryDetail(assetId);
-        }, { signal });
-        button.addEventListener("keydown", (event) => {
-            if (event.target !== button)
-                return;
-            if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                button.click();
-            }
-            else if (isCardSpaceKey(event)) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        }, { signal });
-        button.addEventListener("keyup", (event) => {
-            if (event.target !== button || !isCardSpaceKey(event))
-                return;
+    const cardFromEvent = (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        return target?.closest("[data-open-history], [data-open-image-history]") ?? null;
+    };
+    root.addEventListener("click", (event) => {
+        const card = cardFromEvent(event);
+        if (!card || event.target instanceof Element && event.target.closest(".history-media-badges, [data-history-curation], .history-detail-curation, .history-card-more, .history-preview-progress, [data-image-media-retry], [data-image-media-locate]"))
+            return;
+        stopNavigation(event);
+        const assetId = card.dataset.openHistory;
+        const projectId = card.dataset.openImageHistory;
+        if (assetId)
+            options.openHistoryDetail(assetId);
+        else if (projectId)
+            options.openImageHistoryDetail(projectId);
+    }, { signal });
+    root.addEventListener("keydown", (event) => {
+        const card = cardFromEvent(event);
+        if (!card || event.target !== card)
+            return;
+        if (event.key === "Enter") {
             event.preventDefault();
             event.stopPropagation();
-            button.click();
-        }, { signal });
-    });
+            card.click();
+        }
+        else if (isCardSpaceKey(event)) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }, { signal });
+    root.addEventListener("keyup", (event) => {
+        const card = cardFromEvent(event);
+        if (!card || event.target !== card || !isCardSpaceKey(event))
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+        card.click();
+    }, { signal });
     root.querySelectorAll("[data-version-id]").forEach((button) => {
         button.addEventListener("click", (event) => {
             stopNavigation(event);
@@ -141,33 +161,24 @@ export function mountHistoryNavigationController(context, options) {
                 options.selectVideoHistoryVersion(versionId);
         }, { signal });
     });
-    root.querySelectorAll("[data-open-image-history]").forEach((button) => {
-        button.addEventListener("click", (event) => {
-            stopNavigation(event);
-            const projectId = button.dataset.openImageHistory;
-            if (projectId)
-                options.openImageHistoryDetail(projectId);
-        }, { signal });
-        button.addEventListener("keydown", (event) => {
-            if (event.target !== button)
-                return;
-            if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                button.click();
-            }
-            else if (isCardSpaceKey(event)) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        }, { signal });
-        button.addEventListener("keyup", (event) => {
-            if (event.target !== button || !isCardSpaceKey(event))
-                return;
-            event.preventDefault();
-            event.stopPropagation();
-            button.click();
-        }, { signal });
-    });
+    const captureCardActivation = (event) => {
+        if (context.getRoute().page !== "history")
+            return;
+        const card = cardFromEvent(event);
+        if (!card)
+            return;
+        const assetId = card.dataset.openHistory ?? card.dataset.openImageHistory;
+        if (assetId)
+            options.captureHistoryScrollPosition?.(assetId, true);
+    };
+    // Pointer focus can scroll a card before the bubbling click handler runs.
+    // Capture the anchor at the earliest activation boundary so opening a detail
+    // page cannot overwrite it with the browser-adjusted scroll position.
+    root.addEventListener("pointerdown", captureCardActivation, { capture: true, signal });
+    root.addEventListener("mousedown", captureCardActivation, { capture: true, signal });
+    root.addEventListener("click", captureCardActivation, { capture: true, signal });
+    root.addEventListener("focusin", (event) => {
+        captureCardActivation(event);
+    }, { capture: true, signal });
     return () => events.abort();
 }

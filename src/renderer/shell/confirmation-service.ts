@@ -7,6 +7,7 @@ import type { RendererApplicationApi } from "../studio-client";
 export type ConfirmationRequest =
   | { kind: "clear-draft"; mode: CreationMode }
   | { kind: "delete-history"; assetId: string; title: string }
+  | { kind: "delete-history-batch"; historyKind: "video" | "image"; assetIds: string[]; count: number }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
   | { kind: "delete-joint-av"; assetId: string; versionId: string; title: string }
@@ -33,6 +34,7 @@ export type ConfirmationApplicationApi = Pick<RendererApplicationApi,
   | "cancelTask"
   | "setSettingsDirty"
   | "deleteHistoryAsset"
+  | "deleteHistoryAssets"
   | "deleteImageHistoryVersion"
   | "deleteHistoryVersion"
   | "deleteHistoryJointAv"
@@ -67,6 +69,7 @@ export interface ConfirmationServiceOptions {
   setSelectedHistoryAssetId(assetId: string): void;
   setSelectedHistoryVersionId(versionId: string): void;
   clearImageHistoryThumbnailCache(): void;
+  clearHistoryBatchSelection?(): void;
   invalidateHistoryMediaForAsset?(assetId: string): void;
   setQueueActionBusy(value: { taskId: string; action: "remove" | "cancel" } | null): void;
   releaseHistoryVideo(assetId: string): void;
@@ -180,6 +183,10 @@ export async function acceptConfirmation(
         options.setPage("history");
       }
       options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
+    } else if (request.kind === "delete-history-batch") {
+      options.setState(await context.application.deleteHistoryAssets(request.historyKind, request.assetIds));
+      options.clearHistoryBatchSelection?.();
+      options.notify(t(uiKeys.history.batch.deleted, { count: request.count }));
     } else if (request.kind === "delete-image-version") {
       options.invalidateHistoryMediaForAsset?.(request.projectId);
       options.setState(await context.application.deleteImageHistoryVersion(request.projectId, request.versionId));

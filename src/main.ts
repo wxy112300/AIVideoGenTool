@@ -561,6 +561,7 @@ shellCoordinator = createRendererShellCoordinator({
     ui.selectedHistoryVersionId = versionId;
   },
   clearImageHistoryThumbnailCache,
+  clearHistoryBatchSelection: () => historyWorkspaceCoordinator.clearBatchSelection(),
   setQueueActionBusy: queueWorkspaceCoordinator.setActionBusy,
   releaseHistoryVideo,
   saveSettings: settingsWorkspaceCoordinator.saveSettings,

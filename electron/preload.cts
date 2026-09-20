@@ -15,6 +15,7 @@ import type {
   HistoryMigrationProgress,
   HistoryCoverLookup,
   HistoryCoverSaveResult,
+  HistoryMetadataBatchUpdate,
   HistoryMetadataPatch,
   ImageAssetLibraryProgress,
   PromptProgress,
@@ -168,6 +169,12 @@ const api: AppApi = {
     ipcRenderer.invoke("history:delete-motion-context", assetId, versionId),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
+  updateHistoryMetadataBatch: (updates: HistoryMetadataBatchUpdate[]) =>
+    ipcRenderer.invoke("history:update-metadata-batch", updates),
+  copyHistoryFiles: (kind: "video" | "image", assetIds: string[]) =>
+    ipcRenderer.invoke("history:copy-files", kind, assetIds),
+  deleteHistoryAssets: (kind: "video" | "image", assetIds: string[]) =>
+    ipcRenderer.invoke("history:delete-batch", kind, assetIds),
   setImageHistoryCover: (projectId: string, versionId?: string) =>
     ipcRenderer.invoke("image-history:set-cover", projectId, versionId),
   deleteImageHistoryVersion: (projectId: string, versionId: string) =>

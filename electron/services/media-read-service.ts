@@ -1,8 +1,11 @@
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
+import type { HistoryBatchCopyKind, HistoryBatchCopyResult } from "../../src/types.js";
+import { historyBatchImageFile, historyBatchVideoFile } from "../../src/core/history-batch.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import { resolveExistingHistoryFile } from "./windows-clipboard.js";
+import { copyFilesToWindowsClipboard } from "./windows-clipboard.js";
 import type { HistoryQueryService } from "./history-query-service.js";
 
 export interface MediaProtocolHeaders {
@@ -58,6 +61,63 @@ export class MediaReadService {
 
   resolveSourcePath(sourcePath: string): Promise<string | null> {
     return this.deps.historyQuery.resolveHistorySourcePath(sourcePath);
+  }
+
+  async copyHistoryFiles(
+    kind: HistoryBatchCopyKind,
+    assetIds: string[],
+    stagingRoot: string
+  ): Promise<HistoryBatchCopyResult> {
+    if (kind !== "video" && kind !== "image") {
+      throw new Error("历史媒体类型无效。");
+    }
+    const uniqueIds = [...new Set(assetIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))];
+    const state = this.deps.store.get();
+    const resolvedFiles: string[] = [];
+    let missingCount = 0;
+    for (const assetId of uniqueIds) {
+      const asset = kind === "video"
+        ? state.history.find((item) => item.id === assetId)
+        : state.imageHistory.find((item) => item.id === assetId);
+      const file = asset
+        ? kind === "video" && asset.mediaKind === "video"
+          ? historyBatchVideoFile(asset)
+          : kind === "image" && asset.mediaKind === "image"
+            ? historyBatchImageFile(asset)
+            : undefined
+        : undefined;
+      if (!file) {
+        missingCount += 1;
+        continue;
+      }
+      const resolved = await this.deps.historyQuery.resolveHistoryFile(file, state.settings);
+      if (!resolved) {
+        missingCount += 1;
+        continue;
+      }
+      if (!resolvedFiles.some((candidate) => candidate.toLowerCase() === resolved.toLowerCase())) {
+        resolvedFiles.push(resolved);
+      }
+    }
+    if (!resolvedFiles.length) {
+      return {
+        ok: false,
+        message: "所选历史文件均无法定位，未复制任何文件。",
+        requestedCount: uniqueIds.length,
+        copiedCount: 0,
+        missingCount
+      };
+    }
+    await copyFilesToWindowsClipboard(resolvedFiles, stagingRoot);
+    return {
+      ok: true,
+      message: missingCount
+        ? `已复制 ${resolvedFiles.length} 个文件，${missingCount} 个文件无法定位。`
+        : `已复制 ${resolvedFiles.length} 个文件，可在资源管理器中粘贴。`,
+      requestedCount: uniqueIds.length,
+      copiedCount: resolvedFiles.length,
+      missingCount
+    };
   }
 
   async handleProtocolRequest(request: MediaProtocolRequest): Promise<Response> {

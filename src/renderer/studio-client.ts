@@ -66,6 +66,9 @@ const applicationMethodNames = [
   "inspectH3NativeAvArtifact",
   "inspectVideoExtensionSource",
   "updateHistoryMetadata",
+  "updateHistoryMetadataBatch",
+  "copyHistoryFiles",
+  "deleteHistoryAssets",
   "setImageHistoryCover",
   "deleteImageHistoryVersion"
 ] as const satisfies ReadonlyArray<keyof AppApi>;

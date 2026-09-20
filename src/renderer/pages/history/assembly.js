@@ -9,7 +9,6 @@ import { modelName, videoLoraPurposeLabel } from "../../shared/labels";
 import { mountHistoryPageController } from "./page-controller";
 import { renderHistoryDetailPage, renderHistoryPage, renderImageHistoryDetailPage, renderImageHistoryPage } from "./page";
 import { currentHistoryVersion, currentImageHistoryVersion, historyAssetsByNewest, historyCoverCacheKey, historyCoverSeed, historyInitialCoverTime, historyMediaUrl, historyResolutionLabel, imageHistoryGenerationSummary, imageHistoryMediaUrl, imageHistoryThumbnailCacheKey, imageProjectsByNewest, preferredImageVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./helpers";
-
 function createHistoryPageViewModel(options) {
     return {
         state: options.getState(),
@@ -17,6 +16,9 @@ function createHistoryPageViewModel(options) {
         historyLayout: options.getHistoryLayout(),
         historyFilter: options.getHistoryFilter(),
         historyFilterPanelOpen: options.isHistoryFilterPanelOpen(),
+        historyBatchMode: options.isHistoryBatchMode(),
+        historyBatchSelectedIds: options.getHistoryBatchSelectedIds(),
+        historyBatchTagsPanelOpen: options.isHistoryBatchTagsPanelOpen(),
         selectedHistoryAssetId: options.getSelectedHistoryAssetId(),
         selectedHistoryVersionId: options.getSelectedHistoryVersionId(),
         historyArtifactInspection: options.getHistoryArtifactInspection()
@@ -25,6 +27,7 @@ function createHistoryPageViewModel(options) {
 function createHistoryPageOptions(context) {
     return {
         t: context.t,
+        uiLocale: context.getState()?.settings.uiLocale,
         icon,
         escapeHtml,
         formatBytes,
@@ -59,15 +62,44 @@ function createHistoryPageOptions(context) {
     };
 }
 export function createHistoryAssembly(options) {
-    const renderList = (context) => {
-        const viewModel = createHistoryPageViewModel(options);
-        const pageOptions = createHistoryPageOptions(context);
-        return viewModel.historyKind === "image"
-            ? renderImageHistoryPage(viewModel, pageOptions)
-            : renderHistoryPage(viewModel, pageOptions);
-    };
+    let cachedList = null;
     return {
-        renderList,
+        renderList(context) {
+            const viewModel = createHistoryPageViewModel(options);
+            const historyFilterKey = JSON.stringify(viewModel.historyFilter);
+            const historyBatchMode = viewModel.historyBatchMode === true;
+            const historyBatchSelectedKey = [...(viewModel.historyBatchSelectedIds ?? [])].sort().join("\u0000");
+            const historyBatchTagsPanelOpen = viewModel.historyBatchTagsPanelOpen === true;
+            const uiLocale = viewModel.state.settings.uiLocale;
+            if (cachedList?.state === viewModel.state &&
+                cachedList.historyKind === viewModel.historyKind &&
+                cachedList.historyLayout === viewModel.historyLayout &&
+                cachedList.historyFilterKey === historyFilterKey &&
+                cachedList.historyFilterPanelOpen === viewModel.historyFilterPanelOpen &&
+                cachedList.historyBatchMode === historyBatchMode &&
+                cachedList.historyBatchSelectedKey === historyBatchSelectedKey &&
+                cachedList.historyBatchTagsPanelOpen === historyBatchTagsPanelOpen &&
+                cachedList.uiLocale === uiLocale) {
+                return cachedList.markup;
+            }
+            const pageOptions = createHistoryPageOptions(context);
+            const markup = viewModel.historyKind === "image"
+                ? renderImageHistoryPage(viewModel, pageOptions)
+                : renderHistoryPage(viewModel, pageOptions);
+            cachedList = {
+                state: viewModel.state,
+                historyKind: viewModel.historyKind,
+                historyLayout: viewModel.historyLayout,
+                historyFilterKey,
+                historyFilterPanelOpen: viewModel.historyFilterPanelOpen,
+                historyBatchMode,
+                historyBatchSelectedKey,
+                historyBatchTagsPanelOpen,
+                uiLocale,
+                markup
+            };
+            return markup;
+        },
         renderDetail(context, kind) {
             const state = options.getState();
             const selectedAssetId = options.getSelectedHistoryAssetId();
@@ -76,7 +108,7 @@ export function createHistoryAssembly(options) {
                 const asset = state.history.find((item) => item.id === selectedAssetId);
                 if (!asset) {
                     options.navigateToHistory();
-                    return renderList(context);
+                    return this.renderList(context);
                 }
                 options.setSelectedHistoryVersionId(currentHistoryVersion(asset, selectedVersionId).id);
                 return renderHistoryDetailPage(createHistoryPageViewModel(options), createHistoryPageOptions(context));
@@ -85,7 +117,7 @@ export function createHistoryAssembly(options) {
             if (!project) {
                 options.setHistoryKind("image");
                 options.navigateToHistory();
-                return renderList(context);
+                return this.renderList(context);
             }
             options.setSelectedHistoryVersionId(currentImageHistoryVersion(project, selectedVersionId).id);
             return renderImageHistoryDetailPage(createHistoryPageViewModel(options), createHistoryPageOptions(context));

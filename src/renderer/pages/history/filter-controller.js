@@ -24,6 +24,7 @@ export function mountHistoryFilterController(context, options) {
     const root = context.root;
     const commit = (patch) => {
         options.setFilter(normalizeHistoryFilter({ ...options.getFilter(), ...patch }));
+        options.clearBatchSelection?.();
         context.reportUserAction("history-filter-change", patch);
         context.requestRender();
     };
@@ -83,6 +84,7 @@ export function mountHistoryFilterController(context, options) {
     root.querySelector("[data-history-filter-clear]")?.addEventListener("click", (event) => {
         stop(event);
         options.setFilter({ ...defaultHistoryFilter });
+        options.clearBatchSelection?.();
         context.reportUserAction("history-filter-clear");
         context.requestRender();
     }, { signal });

@@ -7,6 +7,7 @@
 - [H3 Prompt 增强框架修复](2026-09-12-h3-prompt-enhancement/TASK.md)
 - [图片工作台 AI Upscale 剩余事项](2026-09-07-image-workspace/TASK.md)
 - [Renderer 响应性与可扩展状态存储](2026-09-17-renderer-responsiveness/TASK.md)
+- [History 批量管理与标签编辑](2026-09-20-history-batch-management/TASK.md)
 - [显存压力卡死 Watchdog](2026-09-20-vram-stall-watchdog/TASK.md)
 
 新任务按 [流程](../development/WORKFLOW.md)选择短路径或标准路径；需要跨会话交接时使用 [模板](../development/TASK_TEMPLATE.md)。

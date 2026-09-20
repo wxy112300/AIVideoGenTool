@@ -96,6 +96,7 @@ export interface RendererShellCoordinatorDependencies {
   setSelectedHistoryAssetId(assetId: string): void;
   setSelectedHistoryVersionId(versionId: string): void;
   clearImageHistoryThumbnailCache(): void;
+  clearHistoryBatchSelection?(): void;
   setQueueActionBusy(value: { taskId: string; action: "remove" | "cancel" } | null): void;
   releaseHistoryVideo(assetId: string): void;
   saveSettings(settings: Settings, mode: SettingsSaveMode): Promise<void>;
@@ -754,6 +755,7 @@ export function createRendererShellCoordinator(
         setSelectedHistoryAssetId: deps.setSelectedHistoryAssetId,
         setSelectedHistoryVersionId: deps.setSelectedHistoryVersionId,
         clearImageHistoryThumbnailCache: deps.clearImageHistoryThumbnailCache,
+        clearHistoryBatchSelection: deps.clearHistoryBatchSelection,
         setQueueActionBusy: deps.setQueueActionBusy,
         releaseHistoryVideo: deps.releaseHistoryVideo,
         rememberModalFocus,

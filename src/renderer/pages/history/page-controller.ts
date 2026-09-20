@@ -24,6 +24,10 @@ import {
   mountHistoryTagsController,
   type HistoryTagsControllerOptions
 } from "./tags-controller";
+import {
+  mountHistoryBatchController,
+  type HistoryBatchControllerOptions
+} from "./batch-controller";
 import { mountHistoryTimelineController } from "./timeline-controller";
 
 export interface HistoryPlaybackSnapshot {
@@ -45,6 +49,7 @@ export interface HistoryPageControllerOptions {
   actions: HistoryActionsControllerOptions;
   filter: HistoryFilterControllerOptions;
   tags: HistoryTagsControllerOptions;
+  batch?: HistoryBatchControllerOptions;
   historyLayout: "masonry" | "album";
   isImageHistoryDetail: boolean;
   bindHistoryMasonry(): void;
@@ -229,6 +234,7 @@ export function mountHistoryPageController(
   options: HistoryPageControllerOptions
 ): RendererCleanup {
   const cleanups: RendererCleanup[] = [
+    ...(options.batch ? [mountHistoryBatchController(options.context, options.batch)] : []),
     mountHistoryNavigationController(options.context, options.navigation),
     mountHistoryFilterController(options.context, options.filter),
     mountHistoryMediaController(options.context, options.media),

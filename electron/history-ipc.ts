@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import type { Draft, HistoryMetadataPatch } from "../src/types.js";
+import type { Draft, HistoryBatchCopyKind, HistoryMetadataBatchUpdate, HistoryMetadataPatch } from "../src/types.js";
 import type { HistoryDestructiveService } from "./services/history-destructive-service.js";
 import type { HistoryMetadataService } from "./services/history-metadata-service.js";
 import type { HistoryQueryService } from "./services/history-query-service.js";
@@ -61,6 +61,16 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
     "history:update-metadata",
     async (_event, assetId: string, patch: HistoryMetadataPatch) =>
       deps.metadata.updateMetadata(assetId, patch)
+  );
+  deps.ipc.handle(
+    "history:update-metadata-batch",
+    async (_event, updates: HistoryMetadataBatchUpdate[]) =>
+      deps.metadata.updateMetadataBatch(updates)
+  );
+  deps.ipc.handle(
+    "history:delete-batch",
+    async (_event, kind: HistoryBatchCopyKind, assetIds: string[]) =>
+      deps.destructive.deleteHistoryBatch(kind, assetIds)
   );
   deps.ipc.handle("history:delete-version", async (_event, assetId: string, versionId: string) =>
     deps.destructive.deleteVideoVersion(assetId, versionId)

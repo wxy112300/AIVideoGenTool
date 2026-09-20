@@ -14,6 +14,7 @@ export interface HistoryFilterControllerOptions {
   setFilter(filter: HistoryFilterState): void;
   getPanelOpen(): boolean;
   setPanelOpen(open: boolean): void;
+  clearBatchSelection?(): void;
 }
 
 function stop(event: Event): void {
@@ -47,6 +48,7 @@ export function mountHistoryFilterController(
   const root = context.root;
   const commit = (patch: Partial<HistoryFilterState>) => {
     options.setFilter(normalizeHistoryFilter({ ...options.getFilter(), ...patch }));
+    options.clearBatchSelection?.();
     context.reportUserAction("history-filter-change", patch as Record<string, unknown>);
     context.requestRender();
   };
@@ -103,6 +105,7 @@ export function mountHistoryFilterController(
   root.querySelector<HTMLButtonElement>("[data-history-filter-clear]")?.addEventListener("click", (event) => {
     stop(event);
     options.setFilter({ ...defaultHistoryFilter });
+    options.clearBatchSelection?.();
     context.reportUserAction("history-filter-clear");
     context.requestRender();
   }, { signal });

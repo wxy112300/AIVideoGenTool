@@ -1516,6 +1516,19 @@ export interface HistoryMetadataPatch {
   tags?: string[];
 }
 
+export interface HistoryMetadataBatchUpdate {
+  assetId: string;
+  patch: HistoryMetadataPatch;
+}
+
+export type HistoryBatchCopyKind = "video" | "image";
+
+export interface HistoryBatchCopyResult extends ConnectionResult {
+  requestedCount: number;
+  copiedCount: number;
+  missingCount: number;
+}
+
 export interface AppState {
   schemaVersion: number;
   /** Currently visible video-creation draft. */
@@ -2476,6 +2489,9 @@ export interface AppApi {
   deleteHistoryJointAv(assetId: string, versionId: string): Promise<AppState>;
   deleteHistoryMotionContext(assetId: string, versionId: string): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
+  updateHistoryMetadataBatch(updates: HistoryMetadataBatchUpdate[]): Promise<AppState>;
+  copyHistoryFiles(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<HistoryBatchCopyResult>;
+  deleteHistoryAssets(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;

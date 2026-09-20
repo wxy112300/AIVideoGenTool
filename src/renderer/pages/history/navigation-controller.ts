@@ -4,6 +4,7 @@ export type HistoryLayout = "masonry" | "album";
 
 export interface HistoryNavigationControllerOptions {
   setHistoryKind(kind: HistoryKind): void;
+  clearBatchSelection?(): void;
   resetHistoryScroll(): void;
   captureHistoryScrollPosition?(preferredAssetId?: string, preserveForActivation?: boolean): void;
   switchHistoryLayout(layout: HistoryLayout): void;
@@ -60,6 +61,7 @@ export function mountHistoryNavigationController(
       return;
     }
     context.reportUserAction("history-kind", { kind: nextKind });
+    options.clearBatchSelection?.();
     options.setHistoryKind(nextKind);
     options.resetHistoryScroll();
     context.requestRender();
