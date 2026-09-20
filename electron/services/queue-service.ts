@@ -93,6 +93,7 @@ export class QueueService {
       stabilizeH3RuntimeBetweenTasks: runtimeCapability.stabilizeH3RuntimeBetweenTasks,
       stopQueueRuntime: runtimeCapability.stopQueueRuntime,
       restartQueueRuntime: runtimeCapability.restartQueueRuntime,
+      getComfyRuntimeState: deps.getComfyRuntimeState,
       settingsForTask: runtimeCapability.settingsForTask,
       errorMeta: deps.errorMeta,
       imageInspection: deps.imageInspection

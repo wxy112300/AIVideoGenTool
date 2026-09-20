@@ -92,6 +92,10 @@ export function mountSettingsFieldsController(context, options) {
         options.setSettingsDraft(options.formSettings());
         context.requestRender();
     }, { signal });
+    root.querySelector("#vram-stall-watchdog-minutes")?.addEventListener("change", () => {
+        options.setSettingsDraft(options.formSettings());
+        context.requestRender();
+    }, { signal });
     const bindChoiceDescription = (selectId, descriptionId) => {
         const select = root.querySelector(selectId);
         const descriptionElement = root.querySelector(descriptionId);

@@ -114,6 +114,14 @@ export function historyFilterIsActive(filter: HistoryFilterState): boolean {
     filter.sort !== "newest";
 }
 
+export function isHistoryTimeSort(sort: HistorySort): boolean {
+  return sort === "newest" || sort === "oldest";
+}
+
+export function historySortTimestamp(item: { updatedAt?: string; createdAt?: string }): string {
+  return item.updatedAt || item.createdAt || "";
+}
+
 function dateValue(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -133,8 +141,8 @@ function compareHistoryItems(
   right: { id: string; updatedAt: string; createdAt: string; rating?: HistoryRating | null; duration?: number },
   sort: HistorySort
 ): number {
-  const leftTime = dateValue(left.updatedAt || left.createdAt);
-  const rightTime = dateValue(right.updatedAt || right.createdAt);
+  const leftTime = dateValue(historySortTimestamp(left));
+  const rightTime = dateValue(historySortTimestamp(right));
   let result = 0;
   if (sort === "oldest") result = compareNumbers(leftTime, rightTime, 1);
   else if (sort === "rating-desc" || sort === "rating-asc") {

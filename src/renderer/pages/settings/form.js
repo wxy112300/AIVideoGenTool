@@ -72,6 +72,7 @@ export function readSettingsFromForm(base, h3PromptPreset, imagePromptPreset) {
         safeCancel: checked("safe-cancel", base.safeCancel),
         autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
         autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))),
+        vramStallWatchdogMinutes: Number(value("vram-stall-watchdog-minutes", String(base.vramStallWatchdogMinutes))),
         uiLocale: value("ui-locale", base.uiLocale ?? "zh-CN"),
         promptLanguage: value("prompt-language", base.promptLanguage),
         promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),

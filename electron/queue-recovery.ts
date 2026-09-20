@@ -12,6 +12,7 @@ import { forceStopComfyProcesses, restartLocalService } from "./services/environ
 import { freeMemory, interrupt, waitForPromptToLeaveQueue } from "./services/comfy-ui.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
+import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 
 async function waitWithTimeout(promise: Promise<unknown> | null, timeoutMs: number): Promise<boolean> {
   if (!promise) return true;
@@ -213,8 +214,17 @@ export async function recoverQueueFailure(
   const { store, logger, sendState, updateTask } = deps;
   const { task, error, aborted, stalled, performanceStats } = context;
   const recoveryDecision = classifyFailureForRecovery(error, stalled);
-  const memoryFailure = recoveryDecision.kind === "cuda-context" || recoveryDecision.kind === "gpu-memory";
-  const cudaContextFailure = recoveryDecision.forceStop;
+  const memoryFailure = recoveryDecision.kind === "cuda-context" ||
+    recoveryDecision.kind === "gpu-memory" ||
+    recoveryDecision.kind === "memory-pressure-stall";
+  const cudaContextFailure = recoveryDecision.kind === "cuda-context";
+  const memoryPressureStall = recoveryDecision.kind === "memory-pressure-stall";
+  const recoverySettings = deps.settingsForTask(task, store.get().settings);
+  const runtimeState = deps.getComfyRuntimeState?.();
+  const memoryPressureRecoveryAllowed = !memoryPressureStall || (
+    isLocalComfyUrl(recoverySettings.comfyUrl) &&
+    (runtimeState === undefined || runtimeState.ownership === "app")
+  );
   logger.error("queue", "task-failed", safeLogErrorMessage(error), {
     taskId: task.id,
     taskType: task.taskType,
@@ -234,12 +244,32 @@ export async function recoverQueueFailure(
     ...deps.errorMeta(error)
   });
 
-  if (!aborted && recoveryDecision.forceStop) {
-    logger.warn("comfy", "cuda-context-force-stop", "CUDA context is invalid; skipping HTTP cleanup and force-stopping ComfyUI", {
-      taskId: task.id, modelId: task.modelId
+  if (memoryPressureStall && !memoryPressureRecoveryAllowed) {
+    logger.error("comfy", "memory-pressure-recovery-skipped-unmanaged", "VRAM stall watchdog recovery stayed fail-open because the endpoint is not an app-managed local ComfyUI", {
+      taskId: task.id,
+      modelId: task.modelId,
+      endpoint: recoverySettings.comfyUrl,
+      runtimePhase: runtimeState?.phase ?? "unknown",
+      runtimeOwnership: runtimeState?.ownership ?? "unknown"
     });
-    const forced = await forceStopComfyProcesses(store.get().settings);
-    logger.info("comfy", forced.ok ? "cuda-context-force-stop-succeeded" : "cuda-context-force-stop-failed", forced.message, {
+  }
+
+  if (!aborted && recoveryDecision.forceStop && memoryPressureRecoveryAllowed) {
+    logger.warn(
+      "comfy",
+      memoryPressureStall ? "memory-pressure-force-stop" : "cuda-context-force-stop",
+      memoryPressureStall
+        ? "持续显存/系统内存压力下跳过 HTTP 清理，精确强制停止并重启应用管理的 ComfyUI"
+        : "CUDA context is invalid; skipping HTTP cleanup and force-stopping ComfyUI",
+      {
+        taskId: task.id,
+        modelId: task.modelId
+      }
+    );
+    const forced = await forceStopComfyProcesses(recoverySettings);
+    logger.info("comfy", forced.ok
+      ? memoryPressureStall ? "memory-pressure-force-stop-succeeded" : "cuda-context-force-stop-succeeded"
+      : memoryPressureStall ? "memory-pressure-force-stop-failed" : "cuda-context-force-stop-failed", forced.message, {
       taskId: task.id, modelId: task.modelId, forceStopOk: forced.ok
     });
   } else if (!aborted && recoveryDecision.kind === "gpu-memory") {
@@ -259,12 +289,16 @@ export async function recoverQueueFailure(
     status: aborted ? "cancelled" : "failed",
     error: aborted
       ? "任务已中止，ComfyUI 已停止当前采样。"
-      : cudaContextFailure
-        ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
-        : error instanceof Error ? error.message : String(error),
+      : memoryPressureStall
+        ? memoryPressureRecoveryAllowed
+          ? "检测到持续显存/系统内存压力且任务长期没有生产性进展，正在重启 ComfyUI。"
+          : "检测到持续显存/系统内存压力，但当前 ComfyUI 不是应用管理的本地运行时，未执行进程恢复。"
+        : cudaContextFailure
+          ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
+          : error instanceof Error ? error.message : String(error),
     performanceStats
   });
-  if (aborted || !recoveryDecision.requiresRestart) return;
+  if (aborted || !recoveryDecision.requiresRestart || !memoryPressureRecoveryAllowed) return;
 
   logger.warn("queue", "recovery-required", "Task failure requires ComfyUI recovery", {
     taskId: task.id, stalled, memoryFailure, cudaContextFailure,
@@ -349,7 +383,7 @@ export async function recoverQueueFailure(
   const retryAttempt = task.automaticRetryAttempt ?? 0;
   const retryLimit = recoveredState.settings.autoRetryCount;
   const nextAttempt = nextAutomaticRetryAttempt({
-    enabled: recoveredState.settings.autoRetryFailedTasks,
+    enabled: memoryPressureStall || recoveredState.settings.autoRetryFailedTasks,
     recoverable: recoveryDecision.recoverable,
     currentAttempt: retryAttempt,
     retryLimit
@@ -382,15 +416,18 @@ export async function recoverQueueFailure(
     });
     return;
   }
-  await updateTask(task.id, {
-    error: `${originalError} ComfyUI 已恢复就绪。${recoveredState.settings.autoRetryFailedTasks
+  const exhaustedError = memoryPressureStall
+    ? `${originalError} 显存压力卡死保护已重启 ComfyUI 并重试 ${retryAttempt} 次，仍未取得生产性进展，已跳过此任务。`
+    : `${originalError} ComfyUI 已恢复就绪。${recoveredState.settings.autoRetryFailedTasks
       ? `自动重试已达到上限（${retryLimit} 次），已跳过此任务。`
-      : "自动重试未开启，已跳过此任务。"}`
+      : "自动重试未开启，已跳过此任务。"}`;
+  await updateTask(task.id, {
+    error: exhaustedError
   });
   logger.warn("queue", "automatic-retry-skipped", "Recovered task remains failed and the queue will continue", {
     taskId: task.id, taskType: task.taskType, modelId: task.modelId,
     recoveryKind: recoveryDecision.kind, retryAttempt, retryLimit,
-    retryEnabled: recoveredState.settings.autoRetryFailedTasks,
+    retryEnabled: memoryPressureStall || recoveredState.settings.autoRetryFailedTasks,
     attentionFallback: attentionFallback ?? "none"
   });
 }

@@ -2,6 +2,10 @@ import type {
   PromptOperationOrigin,
   PromptRuntimeState
 } from "./core/prompt-runtime-state.js";
+import type {
+  VramStallEvidenceFamily,
+  VramStallWatchdogMinutes
+} from "./core/vram-stall-watchdog.js";
 
 export type TaskStatus =
   | "waiting"
@@ -485,6 +489,8 @@ export interface Settings {
   safeCancel: boolean;
   autoRetryFailedTasks: boolean;
   autoRetryCount: 1 | 2 | 3 | 4 | 5;
+  /** 0 disables the pressure-stall detector; waiting tasks freeze this at claim time. */
+  vramStallWatchdogMinutes: VramStallWatchdogMinutes;
   queueIsolationMode: "never" | "lora" | "model-change" | "always";
   uiLocale?: UiLocale;
   promptLanguage: "auto" | "zh" | "en";
@@ -517,6 +523,8 @@ interface QueueTaskBase {
   error?: string;
   performanceStats?: TaskPerformanceStats;
   automaticRetryAttempt?: number;
+  /** Applied policy snapshot for this queue execution; absent only on legacy waiting records. */
+  vramStallWatchdogMinutesApplied?: VramStallWatchdogMinutes;
 }
 
 export interface QueueWorkProgress {
@@ -2162,8 +2170,30 @@ export interface TaskPerformanceStats {
   vramPeakBytes: number | null;
   vramTotalBytes: number | null;
   sharedGpuMemoryPeakBytes?: number | null;
+  /** Optional structured evidence retained when memory-pressure recovery fires. */
+  vramStallWatchdog?: VramStallWatchdogDiagnostics;
   /** H3 text + visual conditioning token count resolved for this task. */
   h3TokenCount?: number;
+}
+
+export interface VramStallWatchdogDiagnostics {
+  triggerAt: string;
+  windowMinutes: VramStallWatchdogMinutes;
+  noProgressSeconds: number;
+  validSampleCount: number;
+  pressureSampleCount: number;
+  memoryPressureSampleCount: number;
+  pressureFamilyCounts: Partial<Record<VramStallEvidenceFamily, number>>;
+  peakSharedGpuMemoryBytes?: number;
+  minimumHostAvailableBytes?: number;
+  peakHostCommittedRatio?: number;
+  peakPageActivityPerSec?: number;
+  peakSamplerTickLatenessMs?: number;
+  peakNvidiaSmiDurationMs?: number;
+  peakCounterReadDurationMs?: number;
+  peakComfyRoundTripMs?: number;
+  telemetryMissing: string[];
+  recoveryAttempt: number;
 }
 
 export type AppLogLevel = "debug" | "info" | "warn" | "error" | "fatal";

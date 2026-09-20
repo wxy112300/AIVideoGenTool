@@ -537,7 +537,7 @@ describe("queue executor runtime gate", () => {
     expect(claim.claimed).toBe(true);
     const claimed = claim.state.queue[0]!;
     if (claimed.taskType !== "generation" && claimed.taskType !== "extension") throw new Error("Expected an H3 task");
-    expect(claimed).toMatchObject({ h3AvOutputPolicy: "shared", h3LatentSaveMode: "all", h3SaveJointAv: true });
+    expect(claimed).toMatchObject({ h3AvOutputPolicy: "shared", h3LatentSaveMode: "all", h3SaveJointAv: true, vramStallWatchdogMinutesApplied: 0 });
     const actualFs = await vi.importActual<typeof import("node:fs")>("node:fs");
     const source = JSON.parse(actualFs.readFileSync(new URL(`../workflows/${filename}`, import.meta.url), "utf8"));
     const graph = renderWorkflow(source, claimed) as Record<string, { class_type: string }>;

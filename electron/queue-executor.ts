@@ -1,4 +1,4 @@
-import type { AppState, GenerationQueueTask, H3AvLatentAsset, H3ContinuumReceipt, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
+import type { AppState, ComfyRuntimeState, GenerationQueueTask, H3AvLatentAsset, H3ContinuumReceipt, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask, VramStallWatchdogDiagnostics } from "../src/types.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ import {
 import { executeNativeSeedVr2Upscale } from "./services/seedvr2-upscale.js";
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
+import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-logger.js";
 import { upscaleTaskFromRequest } from "../src/core/queue-task-factory.js";
 import type { StateRepository } from "./ports/state-repository.js";
@@ -41,8 +42,52 @@ import {
   type QueueExecutionSideEffectsDependencies,
   type QueueIsolationReason
 } from "./services/queue-execution-side-effects.js";
+import {
+  evaluateVramStallWatchdog,
+  type VramStallProgressEvent,
+  type VramStallWatchdogPolicy,
+  type VramStallWatchdogSample,
+  type VramStallWatchdogState
+} from "../src/core/vram-stall-watchdog.js";
+import { VramPressureStallError } from "../src/core/recovery.js";
+import type { TaskResourceSample } from "./services/performance.js";
 
 const performanceLogIntervalMs = 30_000;
+
+function watchdogSampleFromResource(resource: TaskResourceSample): VramStallWatchdogSample {
+  return {
+    sampledAtMs: resource.sampledAtMs,
+    ...(resource.sharedGpuMemoryBytes == null
+      ? {}
+      : { sharedGpuMemoryBytes: resource.sharedGpuMemoryBytes }),
+    hostMemory: {
+      totalBytes: resource.memoryTotalBytes,
+      availableBytes: resource.memoryAvailableBytes,
+      committedBytes: resource.committedBytes ?? undefined,
+      commitLimitBytes: resource.commitLimitBytes ?? undefined,
+      pagesInputPerSec: resource.pagesInputPerSec ?? undefined,
+      pagesOutputPerSec: resource.pagesOutputPerSec ?? undefined,
+      hardFaultsPerSec: resource.hardFaultsPerSec ?? undefined
+    },
+    latency: {
+      samplerTickLatenessMs: resource.samplerTickLatenessMs,
+      nvidiaSmiDurationMs: resource.nvidiaSmiDurationMs,
+      counterReadDurationMs: resource.counterReadDurationMs ?? undefined
+    },
+    gpuUtilization: resource.gpuPercent ?? undefined
+  };
+}
+
+function isAppManagedLocalComfyRuntime(
+  settings: Settings,
+  runtimeState: ComfyRuntimeState | undefined
+): boolean {
+  if (!isLocalComfyUrl(settings.comfyUrl)) return false;
+  return runtimeState === undefined || (
+    runtimeState.ownership === "app" &&
+    (runtimeState.phase === "ready" || runtimeState.phase === "degraded")
+  );
+}
 
 function assertManagedContinuationHead(state: AppState, task: Exclude<QueueTask, ImageGenerationQueueTask>): void {
   if (
@@ -171,6 +216,7 @@ export interface QueueExecutorDependencies {
   stopQueueRuntime(settings: Settings): Promise<boolean>;
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
   resolveH3VideoVaeModeForTask(task: QueueTask, settings: Settings): Promise<H3VideoVaeBackend | null>;
+  getComfyRuntimeState?(): ComfyRuntimeState;
   commitH3NativeAvOutput(
     result: unknown,
     serializerNodeId: string,
@@ -232,15 +278,175 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     stopQueueRuntime,
     restartQueueRuntime,
     settingsForTask: comfyUiSettingsForQueueTask,
+    getComfyRuntimeState: deps.getComfyRuntimeState,
     errorMeta: errorLogMeta
   };
   const sideEffects = deps.sideEffects ?? new QueueExecutionSideEffects(sideEffectsDependencies);
 
   async function executeImageGenerationQueueTask(
-    task: ImageGenerationQueueTask
+    task: ImageGenerationQueueTask,
+    settingsAtClaim?: Settings
   ): Promise<void> {
     const controller = queueWorkerController.beginTask();
     const taskStartedAt = Date.now();
+    const appliedWatchdogMinutes = task.vramStallWatchdogMinutesApplied ??
+      settingsAtClaim?.vramStallWatchdogMinutes ??
+      store.get().settings.vramStallWatchdogMinutes;
+    const watchdogPolicy: VramStallWatchdogPolicy = {
+      enabledMinutes: appliedWatchdogMinutes
+    };
+    const watchdogSettings = settingsAtClaim ?? store.get().settings;
+    const watchdogConfigured = appliedWatchdogMinutes !== 0;
+    let watchdogEligible = watchdogConfigured && isLocalComfyUrl(watchdogSettings.comfyUrl);
+    let vramWatchdog: VramWatchdogMonitor | undefined;
+    let vramStallWatchdogState: VramStallWatchdogState | undefined;
+    let vramStallWatchdogDiagnostics: VramStallWatchdogDiagnostics | undefined;
+    let vramStallWatchdogError: VramPressureStallError | undefined;
+    let watchdogStageUpdate: Promise<unknown> | undefined;
+    let watchdogPerformanceStats: TaskPerformanceStats | undefined;
+    let activePerformanceMonitor: TaskPerformanceMonitor | undefined;
+    let watchdogValidSampleCount = 0;
+    let watchdogPressureSampleCount = 0;
+    let watchdogMemoryPressureSampleCount = 0;
+    const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
+    const watchdogTelemetryMissing = new Set<string>();
+    let watchdogPeakSharedGpuMemoryBytes: number | undefined;
+    let watchdogMinimumHostAvailableBytes: number | undefined;
+    let watchdogPeakHostCommittedRatio: number | undefined;
+    let watchdogPeakPageActivityPerSec: number | undefined;
+    let watchdogPeakSamplerTickLatenessMs: number | undefined;
+    let watchdogPeakNvidiaSmiDurationMs: number | undefined;
+    let watchdogPeakCounterReadDurationMs: number | undefined;
+    const resetWatchdogDiagnostics = (): void => {
+      watchdogValidSampleCount = 0;
+      watchdogPressureSampleCount = 0;
+      watchdogMemoryPressureSampleCount = 0;
+      for (const family of Object.keys(watchdogPressureFamilyCounts)) delete watchdogPressureFamilyCounts[family as keyof typeof watchdogPressureFamilyCounts];
+      watchdogTelemetryMissing.clear();
+      watchdogPeakSharedGpuMemoryBytes = undefined;
+      watchdogMinimumHostAvailableBytes = undefined;
+      watchdogPeakHostCommittedRatio = undefined;
+      watchdogPeakPageActivityPerSec = undefined;
+      watchdogPeakSamplerTickLatenessMs = undefined;
+      watchdogPeakNvidiaSmiDurationMs = undefined;
+      watchdogPeakCounterReadDurationMs = undefined;
+    };
+    const beginWatchdogObservation = (): void => {
+      if (!watchdogEligible || vramStallWatchdogError) return;
+      resetWatchdogDiagnostics();
+      vramStallWatchdogDiagnostics = undefined;
+      const started = evaluateVramStallWatchdog(
+        undefined,
+        { type: "start", atMs: Date.now() },
+        watchdogPolicy
+      );
+      vramStallWatchdogState = started.state;
+      logger.info("performance", "vram-stall-observing", "VRAM stall watchdog started for submitted local image task", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        windowMinutes: appliedWatchdogMinutes,
+        automaticRetryAttempt: task.automaticRetryAttempt ?? 0
+      });
+    };
+    const pauseWatchdogObservation = (): void => {
+      if (!vramStallWatchdogState) return;
+      vramStallWatchdogState = undefined;
+    };
+    const onProductiveProgress = (event: VramStallProgressEvent): void => {
+      if (
+        controller.signal.aborted ||
+        !vramStallWatchdogState ||
+        vramStallWatchdogError
+      ) return;
+      const evaluation = evaluateVramStallWatchdog(
+        vramStallWatchdogState,
+        event,
+        watchdogPolicy
+      );
+      vramStallWatchdogState = evaluation.state;
+    };
+    const onResourceSample = (resource: TaskResourceSample): void => {
+      activePerformanceMonitor?.recordResourceSample?.(resource);
+      if (
+        controller.signal.aborted ||
+        !watchdogEligible ||
+        !vramStallWatchdogState ||
+        vramStallWatchdogError
+      ) return;
+      const hostPages = [
+        resource.pagesInputPerSec,
+        resource.pagesOutputPerSec,
+        resource.hardFaultsPerSec
+      ].filter((value): value is number => value != null && Number.isFinite(value));
+      watchdogPeakSharedGpuMemoryBytes = resource.sharedGpuMemoryBytes == null
+        ? watchdogPeakSharedGpuMemoryBytes
+        : Math.max(watchdogPeakSharedGpuMemoryBytes ?? 0, resource.sharedGpuMemoryBytes);
+      watchdogMinimumHostAvailableBytes = watchdogMinimumHostAvailableBytes == null
+        ? resource.memoryAvailableBytes
+        : Math.min(watchdogMinimumHostAvailableBytes, resource.memoryAvailableBytes);
+      if (resource.commitLimitBytes != null && resource.committedBytes != null && resource.commitLimitBytes > 0) {
+        watchdogPeakHostCommittedRatio = Math.max(
+          watchdogPeakHostCommittedRatio ?? 0,
+          resource.committedBytes / resource.commitLimitBytes
+        );
+      }
+      if (hostPages.length) watchdogPeakPageActivityPerSec = Math.max(watchdogPeakPageActivityPerSec ?? 0, ...hostPages);
+      watchdogPeakSamplerTickLatenessMs = Math.max(watchdogPeakSamplerTickLatenessMs ?? 0, resource.samplerTickLatenessMs);
+      watchdogPeakNvidiaSmiDurationMs = Math.max(watchdogPeakNvidiaSmiDurationMs ?? 0, resource.nvidiaSmiDurationMs);
+      if (resource.counterReadDurationMs != null) {
+        watchdogPeakCounterReadDurationMs = Math.max(watchdogPeakCounterReadDurationMs ?? 0, resource.counterReadDurationMs);
+      }
+      const evaluation = evaluateVramStallWatchdog(
+        vramStallWatchdogState,
+        { type: "sample", sample: watchdogSampleFromResource(resource) },
+        watchdogPolicy
+      );
+      vramStallWatchdogState = evaluation.state;
+      for (const missing of evaluation.evidence?.missing ?? evaluation.state.lastTelemetryMissing) {
+        watchdogTelemetryMissing.add(missing);
+      }
+      if (evaluation.evidence?.valid) watchdogValidSampleCount += 1;
+      if (evaluation.evidence?.qualifies) watchdogPressureSampleCount += 1;
+      if (evaluation.evidence && evaluation.evidence.memoryFamilies.length > 0) watchdogMemoryPressureSampleCount += 1;
+      for (const family of evaluation.evidence?.families ?? []) {
+        watchdogPressureFamilyCounts[family] = (watchdogPressureFamilyCounts[family] ?? 0) + 1;
+      }
+      if (evaluation.action !== "triggered") return;
+      vramStallWatchdogDiagnostics = {
+        triggerAt: new Date(resource.sampledAtMs).toISOString(),
+        windowMinutes: appliedWatchdogMinutes,
+        noProgressSeconds: Math.max(0, Math.round((resource.sampledAtMs - (evaluation.state.lastProductiveProgressAtMs ?? resource.sampledAtMs)) / 1000)),
+        validSampleCount: watchdogValidSampleCount,
+        pressureSampleCount: watchdogPressureSampleCount,
+        memoryPressureSampleCount: watchdogMemoryPressureSampleCount,
+        pressureFamilyCounts: { ...watchdogPressureFamilyCounts },
+        ...(watchdogPeakSharedGpuMemoryBytes === undefined ? {} : { peakSharedGpuMemoryBytes: watchdogPeakSharedGpuMemoryBytes }),
+        ...(watchdogMinimumHostAvailableBytes === undefined ? {} : { minimumHostAvailableBytes: watchdogMinimumHostAvailableBytes }),
+        ...(watchdogPeakHostCommittedRatio === undefined ? {} : { peakHostCommittedRatio: watchdogPeakHostCommittedRatio }),
+        ...(watchdogPeakPageActivityPerSec === undefined ? {} : { peakPageActivityPerSec: watchdogPeakPageActivityPerSec }),
+        ...(watchdogPeakSamplerTickLatenessMs === undefined ? {} : { peakSamplerTickLatenessMs: watchdogPeakSamplerTickLatenessMs }),
+        ...(watchdogPeakNvidiaSmiDurationMs === undefined ? {} : { peakNvidiaSmiDurationMs: watchdogPeakNvidiaSmiDurationMs }),
+        ...(watchdogPeakCounterReadDurationMs === undefined ? {} : { peakCounterReadDurationMs: watchdogPeakCounterReadDurationMs }),
+        telemetryMissing: [...watchdogTelemetryMissing],
+        recoveryAttempt: task.automaticRetryAttempt ?? 0
+      };
+      vramStallWatchdogError = new VramPressureStallError(
+        "持续显存/系统内存压力下图片任务长期没有生产性进展",
+        vramStallWatchdogDiagnostics
+      );
+      logger.error("performance", "vram-stall-triggered", "VRAM stall watchdog triggered image task recovery", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        ...vramStallWatchdogDiagnostics
+      });
+      watchdogStageUpdate = updateTask(task.id, {
+        stage: "检测到持续显存/系统内存压力，正在恢复 ComfyUI"
+      }).catch(() => undefined);
+      vramWatchdog?.stop();
+      controller.abort(vramStallWatchdogError);
+    };
     logger.info("queue", "task-started", "Image batch task execution started", {
       taskId: task.id,
       taskType: task.taskType,
@@ -260,6 +466,24 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       });
       await sideEffects.prepareTaskRuntime(task, controller.signal, false);
       await ensureComfyUiReady(task.id, controller.signal);
+      const runtimeState = deps.getComfyRuntimeState?.();
+      watchdogEligible = watchdogConfigured && isAppManagedLocalComfyRuntime(watchdogSettings, runtimeState);
+      if (watchdogConfigured && !watchdogEligible) {
+        logger.info("performance", "vram-stall-disabled-runtime-ownership", "VRAM stall watchdog stayed fail-open because image task ComfyUI is not app-managed", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          runtimePhase: runtimeState?.phase ?? "unknown",
+          runtimeOwnership: runtimeState?.ownership ?? "unknown"
+        });
+      }
+      if (watchdogEligible) {
+        vramWatchdog = startAdaptiveVramWatchdog(
+          controller,
+          (_pressure, _utilization, sample) => activePerformanceMonitor?.recordGpuSample(sample),
+          { includeWindowsCounters: true, onResourceSample }
+        );
+      }
       const totalRuns = Math.max(1, task.runs.length);
       for (const plannedRun of task.runs) {
         const current = store.get().queue.find((item) => item.id === task.id);
@@ -269,6 +493,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const runStartedAt = new Date().toISOString();
         await sideEffects.beginImageRun(task.id, run.id, runStartedAt, totalRuns);
         const monitor = startTaskPerformanceMonitor();
+        activePerformanceMonitor = monitor;
         try {
           const submitted = await submitImageTask(
             current,
@@ -277,6 +502,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             controller.signal
           );
           sideEffects.markTaskSubmitted(task, false);
+          beginWatchdogObservation();
           let lastProgress = -1;
           const result = await waitForTask(
             submitted.promptId,
@@ -304,12 +530,17 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               });
             },
             () => true,
-            { taskId: task.id, modelId: task.modelId }
+            { taskId: task.id, modelId: task.modelId },
+            undefined,
+            undefined,
+            onProductiveProgress
           );
+          pauseWatchdogObservation();
           const files = await sideEffects.trackImageOutput(result, task);
           const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
           if (!file) throw new Error("图片工作流没有返回可用图片文件。");
           const performanceStats = monitor.stop();
+          activePerformanceMonitor = undefined;
           const completedAt = new Date().toISOString();
           const versionId = crypto.randomUUID();
           await sideEffects.recordImageRun({
@@ -324,25 +555,33 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             performanceStats
           });
         } catch (error) {
+          const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
           const performanceStats = monitor.stop();
+          activePerformanceMonitor = undefined;
+          const persistedPerformanceStats = vramStallWatchdogDiagnostics
+            ? { ...performanceStats, vramStallWatchdog: vramStallWatchdogDiagnostics }
+            : performanceStats;
+          if (watchdogFailure) watchdogPerformanceStats = persistedPerformanceStats;
           await sideEffects.failImageRun(
             task.id,
             run.id,
-            controller.signal.aborted,
+            controller.signal.aborted && !watchdogFailure,
             error,
-            performanceStats
+            persistedPerformanceStats
           );
           throw error;
         }
       }
       await sideEffects.completeImageTask(task, taskStartedAt);
     } catch (error) {
-      const message = controller.signal.aborted
+      const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
+      const aborted = controller.signal.aborted && !watchdogFailure;
+      const message = aborted
         ? "图片批次已取消，已保留完成的图片版本。"
         : error instanceof Error
           ? error.message
           : String(error);
-      if (!controller.signal.aborted) {
+      if (!aborted) {
         logger.error("queue", "image-task-failed", "图片任务运行失败，已标记错误并跳过", {
           taskId: task.id,
           modelId: task.modelId,
@@ -351,11 +590,18 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           ...errorLogMeta(error)
         });
       }
-      await updateTask(task.id, {
-        status: controller.signal.aborted ? "cancelled" : "failed",
-        error: message
-      });
+      if (watchdogFailure) {
+        await watchdogStageUpdate;
+        await sideEffects.recoverFailure(task, error, false, false, watchdogPerformanceStats);
+      } else {
+        await updateTask(task.id, {
+          status: aborted ? "cancelled" : "failed",
+          error: message
+        });
+      }
     } finally {
+      vramWatchdog?.stop();
+      activePerformanceMonitor = undefined;
       await sideEffects.releaseImageRuntime(store.get().settings).catch((error) => {
         logger.warn("comfy", "image-release-failed", "Failed to release image model memory after batch", {
           taskId: task.id,
@@ -390,10 +636,19 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const claimedTask = store.get().queue.find((item) => item.id === nextTask.id);
       if (!store.get().queueRunning || claimedTask?.status !== "running") continue;
       if (isImageGenerationQueueTask(claimedTask)) {
-        await executeImageGenerationQueueTask(claimedTask);
+        await executeImageGenerationQueueTask(claimedTask, settingsAtClaim);
         continue;
       }
       let task: Exclude<QueueTask, ImageGenerationQueueTask> = claimedTask;
+      const appliedWatchdogMinutes = task.vramStallWatchdogMinutesApplied ??
+        settingsAtClaim?.vramStallWatchdogMinutes ??
+        store.get().settings.vramStallWatchdogMinutes;
+      const watchdogPolicy: VramStallWatchdogPolicy = {
+        enabledMinutes: appliedWatchdogMinutes
+      };
+      const watchdogConfigured = appliedWatchdogMinutes !== 0;
+      const watchdogSettings = settingsAtClaim ?? store.get().settings;
+      let watchdogEligible = watchdogConfigured && isLocalComfyUrl(watchdogSettings.comfyUrl);
       const executionStartedAt = Date.now();
       logger.info("queue", "task-started", "Queue task execution started", {
         taskId: task.id,
@@ -417,6 +672,23 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       });
       const activeController = queueWorkerController.beginTask();
       let vramWatchdog: VramWatchdogMonitor | undefined;
+      let vramStallWatchdogState: VramStallWatchdogState | undefined;
+      let vramStallWatchdogDiagnostics: VramStallWatchdogDiagnostics | undefined;
+      let vramStallWatchdogError: VramPressureStallError | undefined;
+      let watchdogStageUpdate: Promise<unknown> | undefined;
+      let watchdogValidSampleCount = 0;
+      let watchdogPressureSampleCount = 0;
+      let watchdogMemoryPressureSampleCount = 0;
+      const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
+      const watchdogTelemetryMissing = new Set<string>();
+      let watchdogPeakSharedGpuMemoryBytes: number | undefined;
+      let watchdogMinimumHostAvailableBytes: number | undefined;
+      let watchdogPeakHostCommittedRatio: number | undefined;
+      let watchdogPeakPageActivityPerSec: number | undefined;
+      let watchdogPeakSamplerTickLatenessMs: number | undefined;
+      let watchdogPeakNvidiaSmiDurationMs: number | undefined;
+      let watchdogPeakCounterReadDurationMs: number | undefined;
+      let watchdogPeakComfyRoundTripMs: number | undefined;
       let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
       let taskPerformanceStats: TaskPerformanceStats | undefined;
       let h3TokenCount: number | undefined;
@@ -428,6 +700,47 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let h3PreviewFirstFrameDelaySeconds: number | undefined;
       let h3PreviewStartedAt = 0;
       let h3PreviewOutcomeLogged = false;
+      const onProductiveProgress = (event: VramStallProgressEvent): void => {
+        if (
+          activeController.signal.aborted ||
+          !vramStallWatchdogState ||
+          vramStallWatchdogError
+        ) return;
+        const evaluation = evaluateVramStallWatchdog(
+          vramStallWatchdogState,
+          event,
+          watchdogPolicy
+        );
+        vramStallWatchdogState = evaluation.state;
+        if (evaluation.action === "suspect-cleared") {
+          logger.info("performance", "vram-stall-suspect-cleared", "VRAM stall watchdog candidate cleared by productive progress", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            reason: evaluation.reason ?? "productive-progress"
+          });
+        }
+      };
+      const beginWatchdogObservation = (): void => {
+        if (!watchdogEligible || vramStallWatchdogError) return;
+        const started = evaluateVramStallWatchdog(
+          undefined,
+          { type: "start", atMs: Date.now() },
+          watchdogPolicy
+        );
+        vramStallWatchdogState = started.state;
+        logger.info("performance", "vram-stall-observing", "VRAM stall watchdog started for submitted local task", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          windowMinutes: appliedWatchdogMinutes,
+          automaticRetryAttempt: task.automaticRetryAttempt ?? 0
+        });
+      };
+      const pauseWatchdogObservation = (): void => {
+        if (!vramStallWatchdogState) return;
+        vramStallWatchdogState = undefined;
+      };
       const logH3PreviewOutcome = (outcome: "completed" | "failed" | "cancelled"): void => {
         if (!h3LivePreviewActive || h3PreviewOutcomeLogged) return;
         h3PreviewOutcomeLogged = true;
@@ -601,11 +914,117 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           isMiniMaxH3Model(task.modelId) && hasVideoLoras
         );
         await ensureComfyUiReady(task.id, activeController.signal);
+        const runtimeState = deps.getComfyRuntimeState?.();
+        const runtimeIsManaged = runtimeState === undefined || (
+          runtimeState.ownership === "app" &&
+          (runtimeState.phase === "ready" || runtimeState.phase === "degraded")
+        );
+        watchdogEligible = watchdogEligible && runtimeIsManaged;
+        if (watchdogConfigured && isLocalComfyUrl(watchdogSettings.comfyUrl) && !watchdogEligible) {
+          logger.info("performance", "vram-stall-disabled-runtime-ownership", "VRAM stall watchdog stayed fail-open because ComfyUI is not app-managed", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            runtimePhase: runtimeState?.phase ?? "unknown",
+            runtimeOwnership: runtimeState?.ownership ?? "unknown"
+          });
+        }
         await updateTask(task.id, {
           progress: 1,
           stage: "提交工作流"
         });
         let lastGpuComputeAt = 0;
+        const onResourceSample = (resource: TaskResourceSample): void => {
+          taskPerformanceMonitor?.recordResourceSample?.(resource);
+          if (
+            activeController.signal.aborted ||
+            !watchdogEligible ||
+            !vramStallWatchdogState ||
+            vramStallWatchdogError
+          ) return;
+          const hostPages = [
+            resource.pagesInputPerSec,
+            resource.pagesOutputPerSec,
+            resource.hardFaultsPerSec
+          ].filter((value): value is number => value != null && Number.isFinite(value));
+          watchdogPeakSharedGpuMemoryBytes = resource.sharedGpuMemoryBytes == null
+            ? watchdogPeakSharedGpuMemoryBytes
+            : Math.max(watchdogPeakSharedGpuMemoryBytes ?? 0, resource.sharedGpuMemoryBytes);
+          watchdogMinimumHostAvailableBytes = watchdogMinimumHostAvailableBytes == null
+            ? resource.memoryAvailableBytes
+            : Math.min(watchdogMinimumHostAvailableBytes, resource.memoryAvailableBytes);
+          if (resource.commitLimitBytes != null && resource.committedBytes != null && resource.commitLimitBytes > 0) {
+            const ratio = resource.committedBytes / resource.commitLimitBytes;
+            watchdogPeakHostCommittedRatio = Math.max(watchdogPeakHostCommittedRatio ?? 0, ratio);
+          }
+          if (hostPages.length) watchdogPeakPageActivityPerSec = Math.max(watchdogPeakPageActivityPerSec ?? 0, ...hostPages);
+          watchdogPeakSamplerTickLatenessMs = Math.max(watchdogPeakSamplerTickLatenessMs ?? 0, resource.samplerTickLatenessMs);
+          watchdogPeakNvidiaSmiDurationMs = Math.max(watchdogPeakNvidiaSmiDurationMs ?? 0, resource.nvidiaSmiDurationMs);
+          if (resource.counterReadDurationMs != null) {
+            watchdogPeakCounterReadDurationMs = Math.max(watchdogPeakCounterReadDurationMs ?? 0, resource.counterReadDurationMs);
+          }
+          const evaluation = evaluateVramStallWatchdog(
+            vramStallWatchdogState,
+            { type: "sample", sample: watchdogSampleFromResource(resource) },
+            watchdogPolicy
+          );
+          vramStallWatchdogState = evaluation.state;
+          for (const missing of evaluation.evidence?.missing ?? evaluation.state.lastTelemetryMissing) {
+            watchdogTelemetryMissing.add(missing);
+          }
+          if (evaluation.evidence?.valid) watchdogValidSampleCount += 1;
+          if (evaluation.evidence?.qualifies) watchdogPressureSampleCount += 1;
+          if (evaluation.evidence && evaluation.evidence.memoryFamilies.length > 0) {
+            watchdogMemoryPressureSampleCount += 1;
+          }
+          for (const family of evaluation.evidence?.families ?? []) {
+            watchdogPressureFamilyCounts[family] = (watchdogPressureFamilyCounts[family] ?? 0) + 1;
+          }
+          if (evaluation.action === "suspect-started") {
+            logger.warn("performance", "vram-stall-suspect", "VRAM stall watchdog candidate started", {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              families: evaluation.evidence?.families ?? [],
+              missing: evaluation.evidence?.missing ?? []
+            });
+          }
+          if (evaluation.action !== "triggered") return;
+          vramStallWatchdogDiagnostics = {
+            triggerAt: new Date(resource.sampledAtMs).toISOString(),
+            windowMinutes: appliedWatchdogMinutes,
+            noProgressSeconds: Math.max(0, Math.round((resource.sampledAtMs - (evaluation.state.lastProductiveProgressAtMs ?? resource.sampledAtMs)) / 1000)),
+            validSampleCount: watchdogValidSampleCount,
+            pressureSampleCount: watchdogPressureSampleCount,
+            memoryPressureSampleCount: watchdogMemoryPressureSampleCount,
+            pressureFamilyCounts: { ...watchdogPressureFamilyCounts },
+            ...(watchdogPeakSharedGpuMemoryBytes === undefined ? {} : { peakSharedGpuMemoryBytes: watchdogPeakSharedGpuMemoryBytes }),
+            ...(watchdogMinimumHostAvailableBytes === undefined ? {} : { minimumHostAvailableBytes: watchdogMinimumHostAvailableBytes }),
+            ...(watchdogPeakHostCommittedRatio === undefined ? {} : { peakHostCommittedRatio: watchdogPeakHostCommittedRatio }),
+            ...(watchdogPeakPageActivityPerSec === undefined ? {} : { peakPageActivityPerSec: watchdogPeakPageActivityPerSec }),
+            ...(watchdogPeakSamplerTickLatenessMs === undefined ? {} : { peakSamplerTickLatenessMs: watchdogPeakSamplerTickLatenessMs }),
+            ...(watchdogPeakNvidiaSmiDurationMs === undefined ? {} : { peakNvidiaSmiDurationMs: watchdogPeakNvidiaSmiDurationMs }),
+            ...(watchdogPeakCounterReadDurationMs === undefined ? {} : { peakCounterReadDurationMs: watchdogPeakCounterReadDurationMs }),
+            ...(watchdogPeakComfyRoundTripMs === undefined ? {} : { peakComfyRoundTripMs: watchdogPeakComfyRoundTripMs }),
+            telemetryMissing: [...watchdogTelemetryMissing],
+            recoveryAttempt: task.automaticRetryAttempt ?? 0
+          };
+          vramStallWatchdogError = new VramPressureStallError(
+            "持续显存/系统内存压力下任务长期没有生产性进展",
+            vramStallWatchdogDiagnostics
+          );
+          logger.error("performance", "vram-stall-triggered", "VRAM stall watchdog triggered ComfyUI recovery", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            ...vramStallWatchdogDiagnostics
+          });
+          watchdogStageUpdate = updateTask(task.id, {
+            stage: "检测到持续显存/系统内存压力，正在恢复 ComfyUI"
+          }).catch(() => undefined);
+          vramWatchdog?.stop();
+          activeController.abort(vramStallWatchdogError);
+        };
         vramWatchdog = startAdaptiveVramWatchdog(
           activeController,
           (pressure, utilization, sample) => {
@@ -623,6 +1042,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             if (utilization !== null && utilization >= 10) {
               lastGpuComputeAt = Date.now();
             }
+          },
+          {
+            includeWindowsCounters: watchdogEligible,
+            onResourceSample
           }
         );
         const previewHandler = (
@@ -664,7 +1087,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               },
               requireExistingVideoOutput,
               isComputeActive,
-              onPreview: previewHandler
+              onPreview: previewHandler,
+              onWatchdogStart: beginWatchdogObservation,
+              onProductiveProgress,
+              onWatchdogPause: pauseWatchdogObservation
             })
           : null;
       let promptId: string;
@@ -725,6 +1151,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             progress: 2,
             stage: "等待 ComfyUI"
           });
+          beginWatchdogObservation();
           let lastLoggedProgress = -5;
           let lastLoggedStage = "";
           const initialProgressOffset = h3CompositeTask && executionTask.taskType === "upscale" ? 50 : 0;
@@ -766,8 +1193,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             isComputeActive,
             { taskId: task.id, modelId: task.modelId },
             undefined,
-              submitted.progressContext
+            submitted.progressContext,
+            onProductiveProgress
           );
+          pauseWatchdogObservation();
           if (
             h3ContinuumDiagnosticsNodeId &&
             executionTask.taskType === "extension" &&
@@ -881,6 +1310,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               progress: 50,
               stage: "1080p learned 二次采样 · 等待 ComfyUI"
             });
+            beginWatchdogObservation();
             result = await waitForTask(
               promptId,
               secondSubmitted.clientId,
@@ -902,8 +1332,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               isComputeActive,
               { taskId: task.id, modelId: task.modelId },
               undefined,
-              secondSubmitted.progressContext
+              secondSubmitted.progressContext,
+              onProductiveProgress
             );
+            pauseWatchdogObservation();
             files = await sideEffects.trackVideoOutput(result);
           }
         }
@@ -1013,6 +1445,12 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           taskPerformanceStats = h3TokenCount == null
             ? measuredStats
             : { ...measuredStats, h3TokenCount };
+          if (vramStallWatchdogDiagnostics) {
+            taskPerformanceStats = {
+              ...taskPerformanceStats,
+              vramStallWatchdog: vramStallWatchdogDiagnostics
+            };
+          }
           taskPerformanceMonitor = undefined;
           logger.info("performance", "task-summary", "Task performance summary", {
             taskId: task.id,
@@ -1069,7 +1507,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
       } catch (error) {
-        const aborted = activeController.signal.aborted;
+        const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
+        const aborted = activeController.signal.aborted && !watchdogFailure;
         const stalled = error instanceof TaskStalledError;
         logH3PreviewOutcome(aborted ? "cancelled" : "failed");
         if (!taskPerformanceStats && taskPerformanceMonitor) {
@@ -1077,6 +1516,12 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           taskPerformanceStats = h3TokenCount == null
             ? measuredStats
             : { ...measuredStats, h3TokenCount };
+          if (vramStallWatchdogDiagnostics) {
+            taskPerformanceStats = {
+              ...taskPerformanceStats,
+              vramStallWatchdog: vramStallWatchdogDiagnostics
+            };
+          }
           taskPerformanceMonitor = undefined;
           logger.info("performance", "task-summary", "Failed task performance summary", {
             taskId: task.id,
@@ -1097,6 +1542,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           stalled,
           ...errorLogMeta(error)
         });
+        if (watchdogFailure) await watchdogStageUpdate;
         await sideEffects.recoverFailure(
           task,
           error,

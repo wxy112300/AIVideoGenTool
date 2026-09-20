@@ -6,15 +6,34 @@ export function nextH3AttentionModeAfterCudaFailure(current) {
     return null;
 }
 export function normalizeH3AttentionMode(value) {
-    if (value === "sage-triton" || value === "pytorch")
+    if (value === "sage-triton" || value === "pytorch" || value === "comfy-kitchen")
         return value;
     return "sage";
+}
+export class VramPressureStallError extends Error {
+    recoveryKind = "memory-pressure-stall";
+    diagnostics;
+    constructor(message = "持续显存/系统内存压力下任务长期没有生产性进展", diagnostics) {
+        super(message);
+        this.name = "VramPressureStallError";
+        this.diagnostics = diagnostics;
+    }
 }
 const cudaContextPattern = /illegal memory access|cudaErrorIllegalAddress|device-side assertion|unspecified launch failure|misaligned address|hostbuf_file_reader_read failed|cuda context.*(?:invalid|destroyed)|cublas_status_execution_failed/i;
 const gpuMemoryPattern = /out of memory|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|显存不足/i;
 const transientServicePattern = /ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|fetch failed|network error|无法连接\s*ComfyUI|ComfyUI.*(?:timed? out|timeout)|HTTP\s*(?:500|502|503|504)/i;
 export function classifyFailureForRecovery(error, stalled = false) {
     const message = error instanceof Error ? error.message : String(error ?? "");
+    if (error instanceof VramPressureStallError ||
+        (error && typeof error === "object" &&
+            error.recoveryKind === "memory-pressure-stall")) {
+        return {
+            kind: "memory-pressure-stall",
+            recoverable: true,
+            requiresRestart: true,
+            forceStop: true
+        };
+    }
     if (cudaContextPattern.test(message)) {
         return {
             kind: "cuda-context",

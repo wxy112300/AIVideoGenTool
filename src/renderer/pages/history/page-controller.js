@@ -5,6 +5,7 @@ import { mountHistoryActionsController } from "./actions-controller";
 import { mountImageHistoryLightbox } from "./lightbox-controller";
 import { mountHistoryFilterController } from "./filter-controller";
 import { mountHistoryTagsController } from "./tags-controller";
+import { mountHistoryTimelineController } from "./timeline-controller";
 function isHistoryMenuKey(event) {
     return (event.key === "F10" && event.shiftKey) ||
         event.key === "ContextMenu" ||
@@ -39,6 +40,7 @@ export function mountHistoryPageController(options) {
         options.bindImageHistoryViewer();
     options.bindHistoryTitleMarquees();
     options.restoreHistoryLayoutAnchor();
+    cleanups.push(mountHistoryTimelineController(options.context));
     const detailVideo = document.querySelector(".history-player video");
     const playbackMatches = Boolean(detailVideo &&
         options.playback &&

@@ -27,6 +27,36 @@ export interface TaskPerformanceTelemetry {
   sharedGpuMemoryBytes: number | null;
   sharedGpuMemoryPeakBytes: number | null;
   gpuTemperatureC: number | null;
+  memoryAvailableBytes: number;
+  committedBytes: number | null;
+  commitLimitBytes: number | null;
+  pagesInputPerSec: number | null;
+  pagesOutputPerSec: number | null;
+  hardFaultsPerSec: number | null;
+  samplerTickLatenessMs: number | null;
+  nvidiaSmiDurationMs: number | null;
+  counterReadDurationMs: number | null;
+  comfyRoundTripMs: number | null;
+}
+
+export interface TaskResourceSample {
+  sampledAtMs: number;
+  vram: VramSample | null;
+  gpuPercent: number | null;
+  vramUsedBytes: number | null;
+  vramTotalBytes: number | null;
+  gpuTemperatureC: number | null;
+  sharedGpuMemoryBytes: number | null;
+  memoryTotalBytes: number;
+  memoryAvailableBytes: number;
+  committedBytes: number | null;
+  commitLimitBytes: number | null;
+  pagesInputPerSec: number | null;
+  pagesOutputPerSec: number | null;
+  hardFaultsPerSec: number | null;
+  samplerTickLatenessMs: number;
+  nvidiaSmiDurationMs: number;
+  counterReadDurationMs: number | null;
 }
 
 function readCpuPercent(state: CpuSampleState): number | null {
@@ -70,12 +100,81 @@ async function readSharedGpuMemoryBytes(): Promise<number | null> {
   }
 }
 
+interface WindowsMemoryPressure {
+  sharedGpuMemoryBytes: number | null;
+  committedBytes: number | null;
+  commitLimitBytes: number | null;
+  pagesInputPerSec: number | null;
+  pagesOutputPerSec: number | null;
+  hardFaultsPerSec: number | null;
+  counterReadDurationMs: number | null;
+}
+
+function finiteCounter(value: unknown): number | null {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+async function readWindowsMemoryPressure(): Promise<WindowsMemoryPressure> {
+  if (process.platform !== "win32") {
+    return {
+      sharedGpuMemoryBytes: null,
+      committedBytes: null,
+      commitLimitBytes: null,
+      pagesInputPerSec: null,
+      pagesOutputPerSec: null,
+      hardFaultsPerSec: null,
+      counterReadDurationMs: null
+    };
+  }
+  const startedAt = Date.now();
+  // One bounded helper call batches the counters. Shared Usage is summed only
+  // when Windows exposes one adapter instance; multi-GPU attribution is left
+  // missing for the task detector until a stable adapter mapping is available.
+  const script = [
+    "$c = Get-Counter -Counter '\\GPU Adapter Memory(*)\\Shared Usage','\\Memory\\Committed Bytes','\\Memory\\Commit Limit','\\Memory\\Pages Input/sec','\\Memory\\Pages Output/sec','\\Memory\\Page Faults/sec' -ErrorAction Stop",
+    "$shared = @($c.CounterSamples | Where-Object {$_.Path -like '*GPU Adapter Memory*Shared Usage*'})",
+    "$singleShared = if ($shared.Count -eq 1) {[math]::Round($shared[0].CookedValue)} else {$null}",
+    "$find = { param($path) $c.CounterSamples | Where-Object {$_.Path -eq $path} | Select-Object -First 1 -ExpandProperty CookedValue }",
+    "[pscustomobject]@{sharedGpuMemoryBytes=$singleShared; committedBytes=&$find '\\Memory\\Committed Bytes'; commitLimitBytes=&$find '\\Memory\\Commit Limit'; pagesInputPerSec=&$find '\\Memory\\Pages Input/sec'; pagesOutputPerSec=&$find '\\Memory\\Pages Output/sec'; hardFaultsPerSec=&$find '\\Memory\\Page Faults/sec'} | ConvertTo-Json -Compress"
+  ].join("; ");
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      { encoding: "utf8", timeout: 5_000, windowsHide: true }
+    );
+    const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
+    return {
+      sharedGpuMemoryBytes: finiteCounter(parsed.sharedGpuMemoryBytes),
+      committedBytes: finiteCounter(parsed.committedBytes),
+      commitLimitBytes: finiteCounter(parsed.commitLimitBytes),
+      pagesInputPerSec: finiteCounter(parsed.pagesInputPerSec),
+      pagesOutputPerSec: finiteCounter(parsed.pagesOutputPerSec),
+      hardFaultsPerSec: finiteCounter(parsed.hardFaultsPerSec),
+      counterReadDurationMs: Date.now() - startedAt
+    };
+  } catch {
+    return {
+      sharedGpuMemoryBytes: null,
+      committedBytes: null,
+      commitLimitBytes: null,
+      pagesInputPerSec: null,
+      pagesOutputPerSec: null,
+      hardFaultsPerSec: null,
+      counterReadDurationMs: Date.now() - startedAt
+    };
+  }
+}
+
 async function nvidiaMetrics(): Promise<{
   gpuPercent: number | null;
   vramUsedBytes: number | null;
   vramTotalBytes: number | null;
   gpuTemperature: number | null;
+  durationMs: number;
 }> {
+  const startedAt = Date.now();
   try {
     const { stdout } = await execFileAsync("nvidia-smi", [
       "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
@@ -91,16 +190,72 @@ async function nvidiaMetrics(): Promise<{
       gpuPercent: values[0]!,
       vramUsedBytes: values[1]! * 1024 * 1024,
       vramTotalBytes: values[2]! * 1024 * 1024,
-      gpuTemperature: values[3]!
+      gpuTemperature: values[3]!,
+      durationMs: Date.now() - startedAt
     };
   } catch {
     return {
       gpuPercent: null,
       vramUsedBytes: null,
       vramTotalBytes: null,
-      gpuTemperature: null
+      gpuTemperature: null,
+      durationMs: Date.now() - startedAt
     };
   }
+}
+
+export async function readTaskResourceSample(
+  includeWindowsCounters = false,
+  previousSampledAtMs?: number
+): Promise<TaskResourceSample> {
+  const [gpu, windows] = await Promise.all([
+    nvidiaMetrics(),
+    includeWindowsCounters
+      ? readWindowsMemoryPressure()
+      : Promise.resolve<WindowsMemoryPressure>({
+          sharedGpuMemoryBytes: null,
+          committedBytes: null,
+          commitLimitBytes: null,
+          pagesInputPerSec: null,
+          pagesOutputPerSec: null,
+          hardFaultsPerSec: null,
+          counterReadDurationMs: null
+        })
+  ]);
+  const sampledAtMs = Date.now();
+  const memoryTotalBytes = os.totalmem();
+  const memoryAvailableBytes = os.freemem();
+  const usedMiB = gpu.vramUsedBytes == null ? null : gpu.vramUsedBytes / 1024 ** 2;
+  const totalMiB = gpu.vramTotalBytes == null ? null : gpu.vramTotalBytes / 1024 ** 2;
+  return {
+    sampledAtMs,
+    vram: usedMiB != null && totalMiB != null
+      ? {
+          usedMiB,
+          totalMiB,
+          sampledAtMs,
+          ...(gpu.gpuPercent == null ? {} : { gpuUtilization: gpu.gpuPercent }),
+          ...(gpu.gpuTemperature == null ? {} : { gpuTemperatureC: gpu.gpuTemperature })
+        }
+      : null,
+    gpuPercent: gpu.gpuPercent,
+    vramUsedBytes: gpu.vramUsedBytes,
+    vramTotalBytes: gpu.vramTotalBytes,
+    gpuTemperatureC: gpu.gpuTemperature,
+    sharedGpuMemoryBytes: windows.sharedGpuMemoryBytes,
+    memoryTotalBytes,
+    memoryAvailableBytes,
+    committedBytes: windows.committedBytes,
+    commitLimitBytes: windows.commitLimitBytes,
+    pagesInputPerSec: windows.pagesInputPerSec,
+    pagesOutputPerSec: windows.pagesOutputPerSec,
+    hardFaultsPerSec: windows.hardFaultsPerSec,
+    samplerTickLatenessMs: previousSampledAtMs == null
+      ? 0
+      : Math.max(0, sampledAtMs - previousSampledAtMs - 1_000),
+    nvidiaSmiDurationMs: gpu.durationMs,
+    counterReadDurationMs: windows.counterReadDurationMs
+  };
 }
 
 export async function getComputeResourceSnapshot(): Promise<{
@@ -144,6 +299,7 @@ export async function getPerformanceMetrics(
 
 export interface TaskPerformanceMonitor {
   recordGpuSample(sample: VramSample): void;
+  recordResourceSample?(sample: TaskResourceSample): void;
   snapshot(): Promise<TaskPerformanceTelemetry>;
   stop(): TaskPerformanceStats;
 }
@@ -173,6 +329,15 @@ export function startTaskPerformanceMonitor(
   let latestCpuPercent: number | null = null;
   let latestMemoryUsedBytes = 0;
   let latestMemoryTotalBytes = os.totalmem();
+  let latestMemoryAvailableBytes = os.freemem();
+  let latestCommittedBytes: number | null = null;
+  let latestCommitLimitBytes: number | null = null;
+  let latestPagesInputPerSec: number | null = null;
+  let latestPagesOutputPerSec: number | null = null;
+  let latestHardFaultsPerSec: number | null = null;
+  let latestSamplerTickLatenessMs: number | null = null;
+  let latestNvidiaSmiDurationMs: number | null = null;
+  let latestCounterReadDurationMs: number | null = null;
   let latestGpuPercent: number | null = null;
   let latestVramUsedBytes: number | null = null;
   let latestVramTotalBytes: number | null = null;
@@ -189,6 +354,7 @@ export function startTaskPerformanceMonitor(
     latestCpuPercent = cpu;
     latestMemoryUsedBytes = used;
     latestMemoryTotalBytes = total;
+    latestMemoryAvailableBytes = os.freemem();
     memoryTotal = total;
     memorySum += used;
     memoryPeak = Math.max(memoryPeak, used);
@@ -228,8 +394,34 @@ export function startTaskPerformanceMonitor(
           : Math.max(gpuTemperaturePeak, sample.gpuTemperatureC);
       }
     },
+    recordResourceSample(sample) {
+      if (stopped) return;
+      latestMemoryAvailableBytes = sample.memoryAvailableBytes;
+      latestMemoryTotalBytes = sample.memoryTotalBytes;
+      latestMemoryUsedBytes = Math.max(0, sample.memoryTotalBytes - sample.memoryAvailableBytes);
+      memoryTotal = sample.memoryTotalBytes;
+      latestCommittedBytes = sample.committedBytes;
+      latestCommitLimitBytes = sample.commitLimitBytes;
+      latestPagesInputPerSec = sample.pagesInputPerSec;
+      latestPagesOutputPerSec = sample.pagesOutputPerSec;
+      latestHardFaultsPerSec = sample.hardFaultsPerSec;
+      latestSamplerTickLatenessMs = sample.samplerTickLatenessMs;
+      latestNvidiaSmiDurationMs = sample.nvidiaSmiDurationMs;
+      latestCounterReadDurationMs = sample.counterReadDurationMs;
+      if (sample.sharedGpuMemoryBytes != null) {
+        latestSharedGpuMemoryBytes = sample.sharedGpuMemoryBytes;
+        sharedGpuMemoryPeakBytes = sharedGpuMemoryPeakBytes == null
+          ? sample.sharedGpuMemoryBytes
+          : Math.max(sharedGpuMemoryPeakBytes, sample.sharedGpuMemoryBytes);
+      }
+    },
     async snapshot() {
-      latestSharedGpuMemoryBytes = await readSharedGpuMemoryBytes();
+      // When the task sampler is enabled, its single-flight resource sample is
+      // already the source of truth. Retain the legacy shared-memory fallback
+      // only for tasks where the watchdog sampler is disabled.
+      if (latestSharedGpuMemoryBytes == null) {
+        latestSharedGpuMemoryBytes = await readSharedGpuMemoryBytes();
+      }
       if (latestSharedGpuMemoryBytes != null) {
         sharedGpuMemoryPeakBytes = sharedGpuMemoryPeakBytes == null
           ? latestSharedGpuMemoryBytes
@@ -240,12 +432,22 @@ export function startTaskPerformanceMonitor(
         cpuPercent: latestCpuPercent,
         memoryUsedBytes: latestMemoryUsedBytes,
         memoryTotalBytes: latestMemoryTotalBytes,
+        memoryAvailableBytes: latestMemoryAvailableBytes,
         gpuPercent: latestGpuPercent,
         vramUsedBytes: latestVramUsedBytes,
         vramTotalBytes: latestVramTotalBytes,
         sharedGpuMemoryBytes: latestSharedGpuMemoryBytes,
         sharedGpuMemoryPeakBytes,
-        gpuTemperatureC: latestGpuTemperatureC
+        gpuTemperatureC: latestGpuTemperatureC,
+        committedBytes: latestCommittedBytes,
+        commitLimitBytes: latestCommitLimitBytes,
+        pagesInputPerSec: latestPagesInputPerSec,
+        pagesOutputPerSec: latestPagesOutputPerSec,
+        hardFaultsPerSec: latestHardFaultsPerSec,
+        samplerTickLatenessMs: latestSamplerTickLatenessMs,
+        nvidiaSmiDurationMs: latestNvidiaSmiDurationMs,
+        counterReadDurationMs: latestCounterReadDurationMs,
+        comfyRoundTripMs: null
       };
     },
     stop() {

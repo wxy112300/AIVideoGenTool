@@ -1,8 +1,9 @@
-import type { H3AttentionMode } from "../types.js";
+import type { H3AttentionMode, VramStallWatchdogDiagnostics } from "../types.js";
 
 export type RecoverableFailureKind =
   | "cuda-context"
   | "gpu-memory"
+  | "memory-pressure-stall"
   | "service-stalled"
   | "service-transient"
   | "none";
@@ -23,6 +24,20 @@ export function nextH3AttentionModeAfterCudaFailure(
   return null;
 }
 
+export class VramPressureStallError extends Error {
+  readonly recoveryKind = "memory-pressure-stall" as const;
+  readonly diagnostics?: VramStallWatchdogDiagnostics;
+
+  constructor(
+    message = "持续显存/系统内存压力下任务长期没有生产性进展",
+    diagnostics?: VramStallWatchdogDiagnostics
+  ) {
+    super(message);
+    this.name = "VramPressureStallError";
+    this.diagnostics = diagnostics;
+  }
+}
+
 export function normalizeH3AttentionMode(value: unknown): H3AttentionMode {
   if (value === "sage-triton" || value === "pytorch" || value === "comfy-kitchen") return value;
   return "sage";
@@ -40,6 +55,16 @@ export function classifyFailureForRecovery(
   stalled = false
 ): FailureRecoveryDecision {
   const message = error instanceof Error ? error.message : String(error ?? "");
+  if (error instanceof VramPressureStallError ||
+      (error && typeof error === "object" &&
+        (error as { recoveryKind?: unknown }).recoveryKind === "memory-pressure-stall")) {
+    return {
+      kind: "memory-pressure-stall",
+      recoverable: true,
+      requiresRestart: true,
+      forceStop: true
+    };
+  }
   if (cudaContextPattern.test(message)) {
     return {
       kind: "cuda-context",

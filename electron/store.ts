@@ -798,6 +798,7 @@ export class JsonStore implements StateRepository {
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
         saved.settings?.h3VideoVaeMode !== this.state.settings.h3VideoVaeMode ||
+        saved.settings?.vramStallWatchdogMinutes !== this.state.settings.vramStallWatchdogMinutes ||
         saved.settings?.h3AttentionMode !== this.state.settings.h3AttentionMode ||
         saved.settings?.h3SparseAttentionMode !== this.state.settings.h3SparseAttentionMode ||
         saved.settings?.h3RuntimeMode !== this.state.settings.h3RuntimeMode ||
@@ -1014,6 +1015,10 @@ export class JsonStore implements StateRepository {
         this.state.settings.autoRetryCount > 5
       ) {
         this.state.settings.autoRetryCount = 2;
+        needsPersist = true;
+      }
+      if (![0, 5, 10, 15].includes(this.state.settings.vramStallWatchdogMinutes)) {
+        this.state.settings.vramStallWatchdogMinutes = 0;
         needsPersist = true;
       }
       if (![

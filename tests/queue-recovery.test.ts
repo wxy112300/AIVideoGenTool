@@ -3,6 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { adjustQueuePauseBoundary } from "../src/core/queue";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { recoverQueueFailure } from "../electron/queue-recovery";
+import { VramPressureStallError } from "../src/core/recovery";
 import type { AppState, QueueTask } from "../src/types";
 
 const mocks = vi.hoisted(() => ({
@@ -190,6 +191,100 @@ describe("queue recovery lifecycle", () => {
     ]);
     expect(state.queue[0]).toMatchObject({ status: "waiting" });
     expect(snapshots.at(-1)?.queuePauseBoundary).toBe(3);
+  });
+
+  it("retries a watchdog trigger even when ordinary automatic retries are disabled", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.status = "running";
+    task.vramStallWatchdogMinutesApplied = 5;
+    state.queue = [task];
+    state.settings.autoRetryFailedTasks = false;
+    state.settings.autoRetryCount = 1;
+    const store = {
+      get: () => structuredClone(state),
+      update: async (mutator: (current: AppState) => void) => {
+        mutator(state);
+        return structuredClone(state);
+      }
+    };
+    const updateTask = async (taskId: string, patch: Partial<QueueTask>): Promise<AppState> => {
+      const queued = state.queue.find((item) => item.id === taskId);
+      if (queued) Object.assign(queued, patch);
+      return structuredClone(state);
+    };
+
+    await recoverQueueFailure({
+      store: store as never,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      sendState: vi.fn(),
+      updateTask,
+      settingsForTask: (_task, settings) => settings,
+      errorMeta: () => ({})
+    }, {
+      task,
+      error: new VramPressureStallError("watchdog fixture"),
+      aborted: false,
+      stalled: false
+    });
+
+    expect(mocks.forceStopComfyProcesses).toHaveBeenCalledOnce();
+    expect(mocks.restartLocalService).toHaveBeenCalledOnce();
+    expect(state.queue[0]).toMatchObject({
+      status: "waiting",
+      automaticRetryAttempt: 1,
+      vramStallWatchdogMinutesApplied: 5
+    });
+  });
+
+  it("does not stop or restart a remote or externally managed endpoint for a watchdog error", async () => {
+    const state = createDefaultState();
+    state.settings.comfyUrl = "https://remote.example.test";
+    const task = queuedTask(state);
+    task.status = "running";
+    task.vramStallWatchdogMinutesApplied = 5;
+    state.queue = [task];
+    const store = {
+      get: () => structuredClone(state),
+      update: async (mutator: (current: AppState) => void) => {
+        mutator(state);
+        return structuredClone(state);
+      }
+    };
+    const updateTask = async (taskId: string, patch: Partial<QueueTask>): Promise<AppState> => {
+      const queued = state.queue.find((item) => item.id === taskId);
+      if (queued) Object.assign(queued, patch);
+      return structuredClone(state);
+    };
+
+    await recoverQueueFailure({
+      store: store as never,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      sendState: vi.fn(),
+      updateTask,
+      getComfyRuntimeState: () => ({
+        phase: "ready",
+        ownership: "external",
+        endpoint: state.settings.comfyUrl,
+        message: "external",
+        updatedAt: new Date().toISOString(),
+        operationId: 1
+      }),
+      settingsForTask: (_task, settings) => settings,
+      errorMeta: () => ({})
+    }, {
+      task,
+      error: new VramPressureStallError("watchdog fixture"),
+      aborted: false,
+      stalled: false
+    });
+
+    expect(mocks.forceStopComfyProcesses).not.toHaveBeenCalled();
+    expect(mocks.restartLocalService).not.toHaveBeenCalled();
+    expect(state.queue[0]).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("不是应用管理的本地运行时")
+    });
   });
 
 });

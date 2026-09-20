@@ -324,6 +324,7 @@ export class ApplicationRuntime {
       sendProgress: (update) => this.deps.events.publish("queue-task:progress", update),
       sendPreview: (payload) => this.deps.events.publish("task:preview", payload),
       queueRuntime: this.deps.queue.runtime,
+      getComfyRuntimeState: () => this.deps.runtimeState.snapshot(),
       resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory(),
       requireExistingImageOutput: (result, outputRoot, alternateRoots) =>
         comfyOutputService.requireExistingImageOutput(result, outputRoot, alternateRoots),

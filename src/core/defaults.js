@@ -2,7 +2,7 @@ import { createDefaultH3PromptPresets, createDefaultQwenImagePromptPresets, crea
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { H3_MEMORY_DEFAULT_CHUNK_ROWS, H3_MEMORY_DEFAULT_MODE } from "./h3-memory-policy.js";
 export const defaultPrompt = "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
-export const APP_SCHEMA_VERSION = 15;
+export const APP_SCHEMA_VERSION = 16;
 export { createDefaultImageEditDraft } from "./draft-defaults.js";
 export function createDefaultImagePromptPresets() {
     return createDefaultQwenImagePromptPresets();
@@ -109,6 +109,7 @@ export function createDefaultSettings() {
         safeCancel: true,
         autoRetryFailedTasks: true,
         autoRetryCount: 2,
+        vramStallWatchdogMinutes: 0,
         queueIsolationMode: "lora",
         uiLocale: "zh-CN",
         promptLanguage: "auto",

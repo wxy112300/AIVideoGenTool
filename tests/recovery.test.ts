@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailureForRecovery,
+  VramPressureStallError,
   normalizeH3AttentionMode,
   nextH3AttentionModeAfterCudaFailure,
   nextAutomaticRetryAttempt
@@ -32,6 +33,15 @@ describe("queue failure recovery classification", () => {
     expect(classifyFailureForRecovery(new Error("no progress"), true)).toMatchObject({
       kind: "service-stalled",
       recoverable: true
+    });
+  });
+
+  it("classifies a watchdog trigger as an independent force-stop recovery", () => {
+    expect(classifyFailureForRecovery(new VramPressureStallError())).toEqual({
+      kind: "memory-pressure-stall",
+      recoverable: true,
+      requiresRestart: true,
+      forceStop: true
     });
   });
 

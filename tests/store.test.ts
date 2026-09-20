@@ -492,7 +492,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
       expect(loaded.draft).toMatchObject({
         h3MemoryOptimizationMode: "off",
         h3MemoryOptimizationUserSet: false,
@@ -534,7 +534,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
       expect(loaded.draft.modelId).toBe("sulphur2");
       expect(loaded.videoExtensionDraft?.modelId).toBe("sulphur2");
       expect(loaded.imageToVideoDraft).toMatchObject({
@@ -784,7 +784,7 @@ describe("queue lock recovery", () => {
     try {
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.promptModelId).toBe("community/gemma-4-12b-uncensored-q4");
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -896,7 +896,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.draft.extensionPromptVersions).toHaveLength(1);
@@ -910,13 +910,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(15);
+      expect(persisted.schemaVersion).toBe(16);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(15);
+      expect(reloaded.schemaVersion).toBe(16);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -976,7 +976,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
@@ -1022,7 +1022,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(15);
+      expect(loaded.schemaVersion).toBe(16);
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({
@@ -1141,6 +1141,29 @@ describe("queue lock recovery", () => {
         settings: { uiLocale?: string };
       };
       expect(persisted.settings.uiLocale).toBe("zh-CN");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates an absent or invalid VRAM stall watchdog setting to the safe off value", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const { vramStallWatchdogMinutes: _watchdog, ...legacySettings } = state.settings;
+    await fs.writeFile(filename, JSON.stringify({
+      ...state,
+      schemaVersion: 16,
+      settings: { ...legacySettings, vramStallWatchdogMinutes: 7 }
+    }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.vramStallWatchdogMinutes).toBe(0);
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        settings: { vramStallWatchdogMinutes?: number };
+      };
+      expect(persisted.settings.vramStallWatchdogMinutes).toBe(0);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

@@ -85,6 +85,12 @@ export function historyFilterIsActive(filter) {
         filter.tags.length > 0 ||
         filter.sort !== "newest";
 }
+export function isHistoryTimeSort(sort) {
+    return sort === "newest" || sort === "oldest";
+}
+export function historySortTimestamp(item) {
+    return item.updatedAt || item.createdAt || "";
+}
 function dateValue(value) {
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -98,8 +104,8 @@ function compareNumbers(left, right, direction) {
     return left > right ? direction : -direction;
 }
 function compareHistoryItems(left, right, sort) {
-    const leftTime = dateValue(left.updatedAt || left.createdAt);
-    const rightTime = dateValue(right.updatedAt || right.createdAt);
+    const leftTime = dateValue(historySortTimestamp(left));
+    const rightTime = dateValue(historySortTimestamp(right));
     let result = 0;
     if (sort === "oldest")
         result = compareNumbers(leftTime, rightTime, 1);

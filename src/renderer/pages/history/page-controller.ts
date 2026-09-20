@@ -24,6 +24,7 @@ import {
   mountHistoryTagsController,
   type HistoryTagsControllerOptions
 } from "./tags-controller";
+import { mountHistoryTimelineController } from "./timeline-controller";
 
 export interface HistoryPlaybackSnapshot {
   assetId: string;
@@ -249,6 +250,7 @@ export function mountHistoryPageController(
   if (options.isImageHistoryDetail) options.bindImageHistoryViewer();
   options.bindHistoryTitleMarquees();
   options.restoreHistoryLayoutAnchor();
+  cleanups.push(mountHistoryTimelineController(options.context));
 
   const detailVideo = document.querySelector<HTMLVideoElement>(".history-player video");
   const detailPlayer = detailVideo?.closest<HTMLElement>(".history-player");

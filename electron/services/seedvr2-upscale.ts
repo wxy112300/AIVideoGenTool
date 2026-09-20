@@ -16,6 +16,7 @@ import {
   type NativeSeedVr2SegmentPlan
 } from "../../src/core/upscale.js";
 import { isVideoOutputFilename } from "../../src/core/comfy-output.js";
+import type { VramStallProgressEvent } from "../../src/core/vram-stall-watchdog.js";
 import { submitTask, waitForTask, type PreviewFrameMetadata } from "./comfy-ui.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { getComputeResourceSnapshot } from "./performance.js";
@@ -139,6 +140,9 @@ export interface ExecuteNativeSeedVr2UpscaleDependencies {
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
   isComputeActive(): boolean;
   onPreview(dataUrl: string, source?: "h3-tae" | "comfy", metadata?: PreviewFrameMetadata): void;
+  onWatchdogStart?(): void;
+  onProductiveProgress?(event: VramStallProgressEvent): void;
+  onWatchdogPause?(): void;
 }
 
 export interface NativeSeedVr2UpscaleResult {
@@ -283,6 +287,7 @@ export async function executeNativeSeedVr2Upscale(
       startFrame: segment.startFrame,
       frameCount: segment.frameCount
     });
+    deps.onWatchdogStart?.();
     const result = await waitForTask(
       submitted.promptId,
       submitted.clientId,
@@ -310,8 +315,12 @@ export async function executeNativeSeedVr2Upscale(
       },
       deps.onPreview,
       deps.isComputeActive,
-      { taskId: task.id, modelId: task.modelId }
+      { taskId: task.id, modelId: task.modelId },
+      undefined,
+      undefined,
+      deps.onProductiveProgress
     );
+    deps.onWatchdogPause?.();
     const files = await deps.requireExistingVideoOutput(result, [deps.settings.outputDirectory]);
     const file = files.find((candidate) => candidate.absolutePath && isVideoOutputFilename(candidate.filename));
     if (!file || !await usableFile(file)) {

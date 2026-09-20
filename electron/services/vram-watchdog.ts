@@ -1,17 +1,26 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import {
   evaluateVramPressure,
   type VramPressure,
   type VramWatchdogState
 } from "../../src/core/vram-watchdog.js";
 import type { VramSample } from "../../src/core/vram-watchdog.js";
-
-const execFileAsync = promisify(execFile);
+import {
+  readTaskResourceSample,
+  type TaskResourceSample
+} from "./performance.js";
 
 export interface VramWatchdogMonitor {
   stop(): void;
   peakUsedMiB(): number;
+}
+
+export interface AdaptiveVramWatchdogOptions {
+  /** Enables the bounded Windows shared/commit/page counter batch. */
+  includeWindowsCounters?: boolean;
+  /** Counter batch cadence; the sampler itself remains at roughly one second. */
+  windowsCounterIntervalMs?: number;
+  /** Receives the same single-flight sample used by the VRAM telemetry path. */
+  onResourceSample?(sample: TaskResourceSample): void;
 }
 
 export function startAdaptiveVramWatchdog(
@@ -20,53 +29,60 @@ export function startAdaptiveVramWatchdog(
     pressure: VramPressure,
     utilization: number | null,
     sample: VramSample
-  ) => void
+  ) => void,
+  options: AdaptiveVramWatchdogOptions = {}
 ): VramWatchdogMonitor {
   let checking = false;
   let stopped = false;
   let peakUsed = 0;
   let state: VramWatchdogState = {};
+  let lastSampledAtMs: number | undefined;
+  let nextWindowsCounterReadAtMs = 0;
+  let cachedWindowsCounters: Pick<
+    TaskResourceSample,
+    | "sharedGpuMemoryBytes"
+    | "committedBytes"
+    | "commitLimitBytes"
+    | "pagesInputPerSec"
+    | "pagesOutputPerSec"
+    | "hardFaultsPerSec"
+  > | undefined;
 
   const check = async () => {
     if (checking || stopped || controller.signal.aborted) return;
     checking = true;
     try {
-      const { stdout } = await execFileAsync(
-        "nvidia-smi",
-        [
-          "--query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu",
-          "--format=csv,noheader,nounits"
-        ],
-        { encoding: "utf8", windowsHide: true }
-      );
-      const values = stdout
-        .trim()
-        .split(/\r?\n/, 1)[0]
-        ?.split(",")
-        .map((value) => Number(value.trim()));
-      if (!values || values.length < 2 || values.slice(0, 2).some(Number.isNaN)) {
-        return;
+      const now = Date.now();
+      const shouldReadWindowsCounters = options.includeWindowsCounters === true &&
+        now >= nextWindowsCounterReadAtMs;
+      if (shouldReadWindowsCounters) {
+        nextWindowsCounterReadAtMs = now + (options.windowsCounterIntervalMs ?? 5_000);
       }
-      const [usedMiB, totalMiB, utilization, temperature] = values;
-      const sample: VramSample = {
-        usedMiB: usedMiB!,
-        totalMiB: totalMiB!,
-        sampledAtMs: Date.now(),
-        ...(Number.isFinite(utilization) ? { gpuUtilization: utilization } : {}),
-        ...(Number.isFinite(temperature) ? { gpuTemperatureC: temperature } : {})
-      };
-      peakUsed = Math.max(peakUsed, usedMiB!);
-      const pressure = evaluateVramPressure(state, {
-        ...sample
-      });
-      state = pressure.state;
-      onSample?.(
-        pressure,
-        utilization !== undefined && Number.isFinite(utilization)
-          ? utilization
-          : null,
-        sample
+      const rawResource = await readTaskResourceSample(
+        shouldReadWindowsCounters,
+        lastSampledAtMs
       );
+      const resource = !shouldReadWindowsCounters && cachedWindowsCounters
+        ? { ...rawResource, ...cachedWindowsCounters, counterReadDurationMs: null }
+        : rawResource;
+      if (shouldReadWindowsCounters) {
+        cachedWindowsCounters = {
+          sharedGpuMemoryBytes: resource.sharedGpuMemoryBytes,
+          committedBytes: resource.committedBytes,
+          commitLimitBytes: resource.commitLimitBytes,
+          pagesInputPerSec: resource.pagesInputPerSec,
+          pagesOutputPerSec: resource.pagesOutputPerSec,
+          hardFaultsPerSec: resource.hardFaultsPerSec
+        };
+      }
+      lastSampledAtMs = resource.sampledAtMs;
+      options.onResourceSample?.(resource);
+      const sample = resource.vram;
+      if (!sample) return;
+      peakUsed = Math.max(peakUsed, sample.usedMiB);
+      const pressure = evaluateVramPressure(state, { ...sample });
+      state = pressure.state;
+      onSample?.(pressure, resource.gpuPercent, sample);
     } catch {
       // Monitoring is best-effort on systems without nvidia-smi.
     } finally {

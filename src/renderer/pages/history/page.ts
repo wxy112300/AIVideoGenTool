@@ -12,6 +12,7 @@ import type { HistoryKind } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   historyFilterIsActive,
+  historySortTimestamp,
   historyTagKey,
   type HistoryFilterState,
   type HistorySort
@@ -29,9 +30,14 @@ import {
   renderImageReferenceSnapshotMarkup,
   renderH3TokenCountMarkup,
   renderPerformanceStatsMarkup,
+  renderHistoryTimeline,
   renderVideoInputSnapshotMarkup,
   renderVideoLoraSnapshotMarkup
 } from "./fragments";
+import {
+  groupHistoryTimelineEntries,
+  historyTimelineEntries
+} from "./timeline";
 
 export type HistoryPageLayout = "masonry" | "album";
 
@@ -438,6 +444,11 @@ export function renderImageHistoryPage(
   const projects = options.imageProjectsByNewest(viewModel.state.imageHistory, viewModel.historyFilter);
   const modelIds = options.historyFilterModelIds(viewModel.state, "image");
   const tagNames = options.historyFilterTagNames(viewModel.state, "image");
+  const timeline = renderHistoryTimeline(
+    groupHistoryTimelineEntries(historyTimelineEntries(projects, viewModel.historyFilter.sort, options.uiLocale)),
+    options,
+    options.uiLocale
+  );
   const cards = projects.map((project, historyOrder) => {
     const version = options.preferredImageVersion(project);
     const mediaUrl = options.imageHistoryMediaUrl(project, version);
@@ -445,7 +456,7 @@ export function renderImageHistoryPage(
     const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
     const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
     return `
-      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(project))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
         <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
             ? `<img data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
@@ -475,11 +486,14 @@ export function renderImageHistoryPage(
       description: options.t(uiKeys.history.imageDescription),
       historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.imageHistory.length, projects.length, modelIds, tagNames)
     }, options)}
-    <section id="history-panel-image" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-image">
-      ${projects.length === 0
-        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
-        : cards}
-    </section>`;
+    <div class="history-list-stage${timeline ? " has-history-timeline" : ""}" data-history-list-stage>
+      <section id="history-panel-image" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-image">
+        ${projects.length === 0
+          ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
+          : cards}
+      </section>
+      ${timeline}
+    </div>`;
 }
 
 export function renderHistoryPage(
@@ -489,6 +503,11 @@ export function renderHistoryPage(
   const orderedAssets = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
   const modelIds = options.historyFilterModelIds(viewModel.state, "video");
   const tagNames = options.historyFilterTagNames(viewModel.state, "video");
+  const timeline = renderHistoryTimeline(
+    groupHistoryTimelineEntries(historyTimelineEntries(orderedAssets, viewModel.historyFilter.sort, options.uiLocale)),
+    options,
+    options.uiLocale
+  );
   const cards = orderedAssets.map((asset, historyOrder) => {
     const version = options.preferredVersion(asset);
     const historyTitle = asset.title.trim() || asset.prompt.trim() || options.t(uiKeys.history.card.untitledVideo);
@@ -498,7 +517,7 @@ export function renderHistoryPage(
     const coverSeed = options.historyCoverSeed(asset.id, version.id);
     const coverTime = options.historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" data-history-timestamp="${options.escapeHtml(historySortTimestamp(asset))}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${options.escapeHtml(coverKey)}" data-cover-source="${options.escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${options.escapeHtml(mediaUrl)}"></video>`
@@ -531,11 +550,14 @@ export function renderHistoryPage(
       description: options.t(uiKeys.history.videoDescription),
       historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.history.length, orderedAssets.length, modelIds, tagNames)
     }, options)}
-    <section id="history-panel-video" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-video">
-      ${orderedAssets.length === 0
-        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
-        : cards}
-    </section>`;
+    <div class="history-list-stage${timeline ? " has-history-timeline" : ""}" data-history-list-stage>
+      <section id="history-panel-video" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-video">
+        ${orderedAssets.length === 0
+          ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
+          : cards}
+      </section>
+      ${timeline}
+    </div>`;
 }
 
 export function renderHistoryDetailPage(

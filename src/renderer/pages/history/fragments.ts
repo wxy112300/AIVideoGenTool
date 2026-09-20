@@ -7,6 +7,7 @@ import type {
 import type { HistoryKind } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import type { HistoryTimelineGroup } from "./timeline";
 
 export interface HistoryFragmentRenderOptions {
   t: Translate;
@@ -41,6 +42,26 @@ export function renderHistoryHeading(
         <div class="button-row" role="group" aria-label="${options.t(uiKeys.history.layoutMasonry)} / ${options.t(uiKeys.history.layoutAlbum)}"><button type="button" class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "masonry"}" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button type="button" class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "album"}" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
       </div>
     </section>`;
+}
+
+export function renderHistoryTimeline(
+  groups: ReadonlyArray<HistoryTimelineGroup>,
+  options: Pick<HistoryFragmentRenderOptions, "t" | "escapeHtml">,
+  locale?: string
+): string {
+  if (!groups.length) return "";
+  const historyLabel = options.t(uiKeys.history.title);
+  const markers = groups.map((group) => `
+        <button type="button" class="history-timeline-marker" data-history-timeline-marker data-history-timeline-target="${options.escapeHtml(group.targetId)}" data-history-timeline-date-key="${options.escapeHtml(group.dateKey)}" data-history-timeline-label="${options.escapeHtml(group.label)}" style="--history-timeline-position:0" aria-label="${options.escapeHtml(group.label)}" title="${options.escapeHtml(group.label)}">${options.escapeHtml(group.label)}</button>`).join("");
+  return `
+    <aside class="history-timeline" data-history-timeline data-history-timeline-locale="${options.escapeHtml(locale ?? "")}" aria-label="${options.escapeHtml(historyLabel)}">
+      <div class="history-timeline-track" data-history-timeline-track>
+        <span class="history-timeline-line" aria-hidden="true"><span class="history-timeline-line-fill" data-history-timeline-line-fill></span></span>
+        <span class="history-timeline-current" data-history-timeline-current aria-live="polite"></span>
+        <button type="button" class="history-timeline-thumb" data-history-timeline-thumb role="slider" tabindex="0" aria-orientation="vertical" aria-label="${options.escapeHtml(historyLabel)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0%"></button>
+        ${markers}
+      </div>
+    </aside>`;
 }
 
 export function renderImageMediaStatus(

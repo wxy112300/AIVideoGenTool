@@ -127,6 +127,11 @@ export function mountSettingsFieldsController(
     context.requestRender();
   }, { signal });
 
+  root.querySelector<HTMLSelectElement>("#vram-stall-watchdog-minutes")?.addEventListener("change", () => {
+    options.setSettingsDraft(options.formSettings());
+    context.requestRender();
+  }, { signal });
+
   const bindChoiceDescription = (selectId: string, descriptionId: string): void => {
     const select = root.querySelector<HTMLSelectElement>(selectId);
     const descriptionElement = root.querySelector<HTMLElement>(descriptionId);

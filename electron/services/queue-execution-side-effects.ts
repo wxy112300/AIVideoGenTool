@@ -61,6 +61,7 @@ export interface QueueExecutionSideEffectsDependencies {
   ): Promise<boolean>;
   stopQueueRuntime(settings: Settings): Promise<boolean>;
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
+  getComfyRuntimeState?(): import("../../src/types.js").ComfyRuntimeState;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   imageInspection?: ImageInspectionPort;
@@ -179,6 +180,7 @@ export class QueueExecutionSideEffects {
       candidate.stage = "准备任务";
       candidate.startedAt = new Date().toISOString();
       candidate.error = undefined;
+      candidate.vramStallWatchdogMinutesApplied = next.settings.vramStallWatchdogMinutes;
       candidate.updatedAt = new Date().toISOString();
       settingsAtClaim = structuredClone(next.settings);
       claimed = true;
@@ -386,7 +388,7 @@ export class QueueExecutionSideEffects {
   }
 
   async recoverFailure(
-    task: VideoQueueTask,
+    task: QueueTask,
     error: unknown,
     aborted: boolean,
     stalled: boolean,
@@ -399,6 +401,7 @@ export class QueueExecutionSideEffects {
       sendState,
       updateTask,
       settingsForTask: this.deps.settingsForTask,
+      getComfyRuntimeState: this.deps.getComfyRuntimeState,
       restartComfyUi: (_kind, settings) => this.deps.restartQueueRuntime(settings),
       onRuntimeRestarted: () => this.resetRuntime(),
       errorMeta: this.deps.errorMeta

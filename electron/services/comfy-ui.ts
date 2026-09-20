@@ -43,6 +43,7 @@ import {
 } from "../../src/core/image-prompt.js";
 import { imageReferenceInputPath } from "../../src/core/image-workflow.js";
 import { isH3ImageModelId } from "../../src/core/image-project.js";
+import type { VramStallProgressEvent } from "../../src/core/vram-stall-watchdog.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
   AETHERSCALE_MODEL_ID,
@@ -1940,7 +1941,8 @@ export async function waitForTask(
   isComputeActive: () => boolean = () => false,
   logContext: ComfyLogBridgeContext = {},
   onComfyLogLine?: (line: string) => void,
-  progressContext: ComfyProgressContext = {}
+  progressContext: ComfyProgressContext = {},
+  onProductiveProgress?: (event: VramStallProgressEvent) => void
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const logger = getApplicationLogger();
@@ -2042,7 +2044,13 @@ export async function waitForTask(
           const preview = await previewDataUrl(event.data);
           if (preview) {
             lastActivityAt = Date.now();
-            onPreview(preview, "comfy", { sequence: ++previewSequence });
+            const sequence = ++previewSequence;
+            onPreview(preview, "comfy", { sequence });
+            onProductiveProgress?.({
+              type: "productive-progress",
+              atMs: Date.now(),
+              previewSequence: sequence
+            });
           }
           return;
         }
@@ -2073,6 +2081,11 @@ export async function waitForTask(
             totalSteps: h3Preview.totalSteps,
             sequence: ++previewSequence
           });
+          onProductiveProgress?.({
+            type: "productive-progress",
+            atMs: Date.now(),
+            previewSequence
+          });
           return;
         }
         if (
@@ -2085,8 +2098,17 @@ export async function waitForTask(
           lastActivityAt = Date.now();
         }
         if (message.type === "executing" && typeof message.data?.node === "string") {
-          activeNodeId = message.data.node;
+          const nextNodeId = message.data.node;
+          const activeNodeChanged = activeNodeId !== nextNodeId;
+          activeNodeId = nextNodeId;
           activeNodeStartedAt = Date.now();
+          if (activeNodeChanged) {
+            onProductiveProgress?.({
+              type: "active-node",
+              atMs: activeNodeStartedAt,
+              nodeId: activeNodeId
+            });
+          }
           const plannedSteps = progressContext.continuumSamplerSteps?.[activeNodeId];
           const stage = progressForNode(
             nodeTypes[activeNodeId],
@@ -2129,6 +2151,16 @@ export async function waitForTask(
             ? message.data.node
             : activeNodeId;
           if (nodeId) {
+            onProductiveProgress?.({
+              type: "progress",
+              atMs: Date.now(),
+              nodeId,
+              value: message.data.value,
+              max: message.data.max,
+              unit: progressStageForNode(nodeTypes[nodeId], nodeId, progressContext).tracksSteps
+                ? "step"
+                : undefined
+            });
             const rounded = Math.floor((message.data.value / message.data.max) * 10);
             if (loggedProgress.get(nodeId) !== rounded) {
               loggedProgress.set(nodeId, rounded);
@@ -2184,6 +2216,11 @@ export async function waitForTask(
         }
         if (message.type === "executed") {
           if (typeof message.data?.node === "string") {
+            onProductiveProgress?.({
+              type: "executed",
+              atMs: Date.now(),
+              nodeId: message.data.node
+            });
             logger.info("comfy", "node-finished", "ComfyUI finished node", {
               promptId,
               nodeId: message.data.node,
@@ -2220,7 +2257,15 @@ export async function waitForTask(
             baseUrl,
             message.data
           );
-          if (preview) onPreview(preview, "comfy", { sequence: ++previewSequence });
+          if (preview) {
+            const sequence = ++previewSequence;
+            onPreview(preview, "comfy", { sequence });
+            onProductiveProgress?.({
+              type: "productive-progress",
+              atMs: Date.now(),
+              previewSequence: sequence
+            });
+          }
         }
       } catch {
         // Unknown extension messages are ignored.

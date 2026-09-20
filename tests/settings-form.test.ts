@@ -92,6 +92,28 @@ describe("settings form", () => {
     }
   });
 
+  it("reads the selected VRAM stall watchdog window", () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: vi.fn((selector: string) =>
+        selector === "#vram-stall-watchdog-minutes"
+          ? { value: "10" }
+          : null
+      )
+    } as unknown as Document;
+
+    try {
+      const settings = readSettingsFromForm(
+        createDefaultSettings(),
+        "official-storyboard",
+        "faithful"
+      );
+      expect(settings.vramStallWatchdogMinutes).toBe(10);
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  });
+
   it("reads the selected H3 video VAE backend", () => {
     const previousDocument = globalThis.document;
     globalThis.document = {
