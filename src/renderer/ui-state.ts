@@ -9,7 +9,7 @@ import type { Page } from "./contracts";
 import type { ConfirmationRequest } from "./shell/confirmation-service";
 import type { UpscaleDialogState, ImageAssetLibraryDialogState } from "./shell/secondary-dialogs";
 import type { AppNotification } from "./notifications";
-import { defaultHistoryFilter, type HistoryFilterState } from "../core/history-filter";
+import { defaultHistoryFilter, type HistoryFilterState, type HistoryFilterTagMode } from "../core/history-filter";
 
 export interface RendererUiState {
   appVersion: string;
@@ -26,6 +26,7 @@ export interface RendererUiState {
   } | null;
   historyFilter: HistoryFilterState;
   historyFilterPanelOpen: boolean;
+  historyFilterTagMode: HistoryFilterTagMode;
   historyBatchMode: boolean;
   historyBatchSelectedIds: string[];
   historyBatchTagsPanelOpen: boolean;
@@ -66,6 +67,7 @@ export function createRendererUiState(): RendererUiState {
     historyArtifactInspection: null,
     historyFilter: { ...defaultHistoryFilter },
     historyFilterPanelOpen: false,
+    historyFilterTagMode: "include",
     historyBatchMode: false,
     historyBatchSelectedIds: [],
     historyBatchTagsPanelOpen: false,

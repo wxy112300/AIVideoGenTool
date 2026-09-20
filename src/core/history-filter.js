@@ -5,6 +5,7 @@ export const defaultHistoryFilter = {
     minDuration: null,
     modelId: "",
     tags: [],
+    excludedTags: [],
     sort: "newest"
 };
 const sortValues = [
@@ -61,20 +62,26 @@ export function normalizeHistoryFilter(value) {
     if (minRating !== null && maxRating !== null && minRating > maxRating) {
         [minRating, maxRating] = [maxRating, minRating];
     }
+    const tags = normalizeHistoryTags(value?.tags);
+    const includedTagKeys = new Set(tags.map(historyTagKey));
+    const excludedTags = normalizeHistoryTags(value?.excludedTags)
+        .filter((tag) => !includedTagKeys.has(historyTagKey(tag)));
     return {
         favoriteOnly: value?.favoriteOnly === true,
         minRating,
         maxRating,
         minDuration: normalizedNumber(value?.minDuration),
         modelId: typeof value?.modelId === "string" ? value.modelId.trim() : "",
-        tags: normalizeHistoryTags(value?.tags),
+        tags,
+        excludedTags,
         sort: validSort(value?.sort) ? value.sort : "newest"
     };
 }
 export function historyFilterSignature(value) {
     const filter = normalizeHistoryFilter(value);
     const tags = filter.tags.map((tag) => historyTagKey(tag)).sort();
-    return JSON.stringify({ ...filter, tags });
+    const excludedTags = filter.excludedTags.map((tag) => historyTagKey(tag)).sort();
+    return JSON.stringify({ ...filter, tags, excludedTags });
 }
 export function historyFilterIsActive(filter) {
     return filter.favoriteOnly ||
@@ -83,6 +90,7 @@ export function historyFilterIsActive(filter) {
         filter.minDuration !== null ||
         Boolean(filter.modelId) ||
         filter.tags.length > 0 ||
+        filter.excludedTags.length > 0 ||
         filter.sort !== "newest";
 }
 export function isHistoryTimeSort(sort) {
@@ -138,9 +146,11 @@ function matchesCommon(item, filter) {
         return false;
     if (filter.modelId && item.modelId !== filter.modelId)
         return false;
-    if (filter.tags.length > 0) {
+    if (filter.tags.length > 0 || filter.excludedTags.length > 0) {
         const itemTags = new Set(normalizeHistoryTags(item.tags).map(historyTagKey));
-        if (!filter.tags.every((tag) => itemTags.has(historyTagKey(tag))))
+        if (filter.tags.length > 0 && !filter.tags.every((tag) => itemTags.has(historyTagKey(tag))))
+            return false;
+        if (filter.excludedTags.some((tag) => itemTags.has(historyTagKey(tag))))
             return false;
     }
     return true;

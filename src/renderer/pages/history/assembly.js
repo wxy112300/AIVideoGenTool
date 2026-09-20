@@ -16,6 +16,7 @@ function createHistoryPageViewModel(options) {
         historyLayout: options.getHistoryLayout(),
         historyFilter: options.getHistoryFilter(),
         historyFilterPanelOpen: options.isHistoryFilterPanelOpen(),
+        historyFilterTagMode: options.getHistoryFilterTagMode(),
         historyBatchMode: options.isHistoryBatchMode(),
         historyBatchSelectedIds: options.getHistoryBatchSelectedIds(),
         historyBatchTagsPanelOpen: options.isHistoryBatchTagsPanelOpen(),
@@ -70,12 +71,14 @@ export function createHistoryAssembly(options) {
             const historyBatchMode = viewModel.historyBatchMode === true;
             const historyBatchSelectedKey = [...(viewModel.historyBatchSelectedIds ?? [])].sort().join("\u0000");
             const historyBatchTagsPanelOpen = viewModel.historyBatchTagsPanelOpen === true;
+            const historyFilterTagMode = viewModel.historyFilterTagMode ?? "include";
             const uiLocale = viewModel.state.settings.uiLocale;
             if (cachedList?.state === viewModel.state &&
                 cachedList.historyKind === viewModel.historyKind &&
                 cachedList.historyLayout === viewModel.historyLayout &&
                 cachedList.historyFilterKey === historyFilterKey &&
                 cachedList.historyFilterPanelOpen === viewModel.historyFilterPanelOpen &&
+                cachedList.historyFilterTagMode === historyFilterTagMode &&
                 cachedList.historyBatchMode === historyBatchMode &&
                 cachedList.historyBatchSelectedKey === historyBatchSelectedKey &&
                 cachedList.historyBatchTagsPanelOpen === historyBatchTagsPanelOpen &&
@@ -92,6 +95,7 @@ export function createHistoryAssembly(options) {
                 historyLayout: viewModel.historyLayout,
                 historyFilterKey,
                 historyFilterPanelOpen: viewModel.historyFilterPanelOpen,
+                historyFilterTagMode,
                 historyBatchMode,
                 historyBatchSelectedKey,
                 historyBatchTagsPanelOpen,

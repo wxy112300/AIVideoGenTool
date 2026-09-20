@@ -226,6 +226,7 @@ export function createHistoryWorkspaceCoordinator(
     getHistoryLayout: () => historyLayoutController.getLayout(),
     getHistoryFilter: () => deps.ui.historyFilter,
     isHistoryFilterPanelOpen: () => deps.ui.historyFilterPanelOpen,
+    getHistoryFilterTagMode: () => deps.ui.historyFilterTagMode,
     isHistoryBatchMode: () => deps.ui.historyBatchMode,
     getHistoryBatchSelectedIds: () => deps.ui.historyBatchSelectedIds,
     isHistoryBatchTagsPanelOpen: () => deps.ui.historyBatchTagsPanelOpen,
@@ -413,6 +414,10 @@ export function createHistoryWorkspaceCoordinator(
         getPanelOpen: () => deps.ui.historyFilterPanelOpen,
         setPanelOpen: (open) => {
           deps.ui.historyFilterPanelOpen = open;
+        },
+        getTagMode: () => deps.ui.historyFilterTagMode,
+        setTagMode: (mode) => {
+          deps.ui.historyFilterTagMode = mode;
         },
         clearBatchSelection
       },

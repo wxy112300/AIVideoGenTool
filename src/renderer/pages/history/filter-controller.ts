@@ -4,6 +4,7 @@ import {
   normalizeHistoryFilter,
   normalizeHistoryTags,
   type HistoryFilterState,
+  type HistoryFilterTagMode,
   type HistorySort
 } from "../../../core/history-filter";
 import type { HistoryRating } from "../../../types";
@@ -14,6 +15,8 @@ export interface HistoryFilterControllerOptions {
   setFilter(filter: HistoryFilterState): void;
   getPanelOpen(): boolean;
   setPanelOpen(open: boolean): void;
+  getTagMode(): HistoryFilterTagMode;
+  setTagMode(mode: HistoryFilterTagMode): void;
   clearBatchSelection?(): void;
 }
 
@@ -37,6 +40,14 @@ function syncPanelDom(root: ParentNode, open: boolean): void {
     panel.classList.toggle("is-open", open);
   }
   toggle?.setAttribute("aria-expanded", String(open));
+}
+
+function syncTagModeDom(root: ParentNode, mode: HistoryFilterTagMode): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-history-filter-tag-mode]").forEach((button) => {
+    const selected = button.dataset.historyFilterTagMode === mode;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 }
 
 export function mountHistoryFilterController(
@@ -88,22 +99,43 @@ export function mountHistoryFilterController(
     }, { signal });
   });
 
+  root.querySelectorAll<HTMLButtonElement>("[data-history-filter-tag-mode]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      stop(event);
+      const mode = button.dataset.historyFilterTagMode;
+      if (mode !== "include" && mode !== "exclude") return;
+      options.setTagMode(mode);
+      syncTagModeDom(root, mode);
+    }, { signal });
+  });
+
   root.querySelectorAll<HTMLButtonElement>("[data-history-filter-tag]").forEach((button) => {
     button.addEventListener("click", (event) => {
       stop(event);
       const value = button.dataset.historyFilterTag;
       if (!value) return;
-      const current = normalizeHistoryTags(options.getFilter().tags);
+      const mode = options.getTagMode();
+      const current = normalizeHistoryFilter(options.getFilter());
+      const included = normalizeHistoryTags(current.tags);
+      const excluded = normalizeHistoryTags(current.excludedTags);
       const key = historyTagKey(value);
-      const next = current.some((tag) => historyTagKey(tag) === key)
-        ? current.filter((tag) => historyTagKey(tag) !== key)
-        : [...current, value];
-      commit({ tags: next });
+      if (mode === "exclude") {
+        const nextExcluded = excluded.some((tag) => historyTagKey(tag) === key)
+          ? excluded.filter((tag) => historyTagKey(tag) !== key)
+          : [...excluded, value];
+        commit({ tags: included.filter((tag) => historyTagKey(tag) !== key), excludedTags: nextExcluded });
+        return;
+      }
+      const nextIncluded = included.some((tag) => historyTagKey(tag) === key)
+        ? included.filter((tag) => historyTagKey(tag) !== key)
+        : [...included, value];
+      commit({ tags: nextIncluded, excludedTags: excluded.filter((tag) => historyTagKey(tag) !== key) });
     }, { signal });
   });
 
   root.querySelector<HTMLButtonElement>("[data-history-filter-clear]")?.addEventListener("click", (event) => {
     stop(event);
+    options.setTagMode("include");
     options.setFilter({ ...defaultHistoryFilter });
     options.clearBatchSelection?.();
     context.reportUserAction("history-filter-clear");

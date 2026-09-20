@@ -16,6 +16,7 @@ import {
   historySortTimestamp,
   historyTagKey,
   type HistoryFilterState,
+  type HistoryFilterTagMode,
   type HistorySort
 } from "../../../core/history-filter";
 import {
@@ -52,6 +53,7 @@ export interface HistoryPageViewModel {
   historyLayout: HistoryPageLayout;
   historyFilter: HistoryFilterState;
   historyFilterPanelOpen: boolean;
+  historyFilterTagMode?: HistoryFilterTagMode;
   historyBatchMode?: boolean;
   historyBatchSelectedIds?: ReadonlyArray<string>;
   historyBatchTagsPanelOpen?: boolean;
@@ -269,6 +271,20 @@ function renderHistoryFilter(
   const active = historyFilterIsActive(filter);
   const isVideo = viewModel.historyKind === "video";
   const selectedTags = new Set(filter.tags.map(historyTagKey));
+  const excludedTags = new Set(filter.excludedTags.map(historyTagKey));
+  const tagMode: HistoryFilterTagMode = viewModel.historyFilterTagMode === "exclude" ? "exclude" : "include";
+  const tagMarkup = tagNames.map((tag) => {
+    const key = historyTagKey(tag);
+    const included = selectedTags.has(key);
+    const excluded = excludedTags.has(key);
+    const stateLabel = included
+      ? options.t(uiKeys.history.filter.tagInclude)
+      : excluded
+        ? options.t(uiKeys.history.filter.tagExclude)
+        : "";
+    const ariaLabel = stateLabel ? `${tag} · ${stateLabel}` : tag;
+    return `<button type="button" class="history-filter-tag${included ? " is-selected" : ""}${excluded ? " is-excluded" : ""}" data-history-filter-tag="${options.escapeHtml(tag)}" aria-pressed="${included || excluded}" aria-label="${options.escapeHtml(ariaLabel)}">${options.escapeHtml(tag)}</button>`;
+  }).join("");
   return `
     <div class="history-filter-anchor" data-history-filter-anchor>
       <div class="history-filter-bar">
@@ -284,7 +300,7 @@ function renderHistoryFilter(
           <label class="history-filter-field history-filter-rating-field"><span>${options.t(uiKeys.history.filter.rating)}</span><span class="history-filter-range">${ratingOptions(options, filter.minRating, "history.filter.ratingAny", "minRating")}<span aria-hidden="true">–</span>${ratingOptions(options, filter.maxRating, "history.filter.ratingAny", "maxRating")}</span></label>
           ${isVideo ? `<label class="history-filter-field"><span>${options.t(uiKeys.history.filter.durationMin)}</span><select class="history-filter-select" data-history-filter-field="minDuration"><option value="">${options.t(uiKeys.history.filter.durationAny)}</option>${[1, 3, 5, 10, 15, 30, 60].map((value) => `<option value="${value}" ${filter.minDuration === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>` : ""}
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.model)}</span><select class="history-filter-select history-filter-model" data-history-filter-field="modelId"><option value="">${options.t(uiKeys.history.filter.all)}</option>${modelIds.map((id) => `<option value="${options.escapeHtml(id)}" ${filter.modelId === id ? "selected" : ""}>${options.escapeHtml(options.modelName(id))}</option>`).join("")}</select></label>
-          ${tagNames.length ? `<div class="history-filter-field history-filter-tags-field"><span>${options.t(uiKeys.history.filter.tags)}</span><div class="history-filter-tags" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.tags))}">${tagNames.map((tag) => `<button type="button" class="history-filter-tag ${selectedTags.has(historyTagKey(tag)) ? "is-selected" : ""}" data-history-filter-tag="${options.escapeHtml(tag)}" aria-pressed="${selectedTags.has(historyTagKey(tag))}">${options.escapeHtml(tag)}</button>`).join("")}</div></div>` : ""}
+          ${tagNames.length ? `<div class="history-filter-field history-filter-tags-field"><span>${options.t(uiKeys.history.filter.tags)}</span><div class="history-filter-tags-control"><div class="history-filter-tag-mode" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.tagMode))}"><button type="button" class="history-filter-tag-mode-button${tagMode === "include" ? " is-selected" : ""}" data-history-filter-tag-mode="include" aria-pressed="${tagMode === "include"}">${options.escapeHtml(options.t(uiKeys.history.filter.tagInclude))}</button><button type="button" class="history-filter-tag-mode-button${tagMode === "exclude" ? " is-selected" : ""}" data-history-filter-tag-mode="exclude" aria-pressed="${tagMode === "exclude"}">${options.escapeHtml(options.t(uiKeys.history.filter.tagExclude))}</button></div><div class="history-filter-tags" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.tags))}">${tagMarkup}</div></div></div>` : ""}
         </div>
         <div class="history-filter-panel-footer"><button type="button" class="ghost history-filter-clear" data-history-filter-clear ${active ? "" : "disabled"}>${options.icon("x")}${options.t(uiKeys.history.filter.clear)}</button></div>
       </div>

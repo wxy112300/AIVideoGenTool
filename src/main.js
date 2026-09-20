@@ -976,6 +976,7 @@ const historyAssembly = createHistoryAssembly({
     getHistoryLayout: () => historyLayoutController.getLayout(),
     getHistoryFilter: () => ui.historyFilter,
     isHistoryFilterPanelOpen: () => ui.historyFilterPanelOpen,
+    getHistoryFilterTagMode: () => ui.historyFilterTagMode,
     getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
     getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
     setSelectedHistoryVersionId: (versionId) => {
@@ -2348,6 +2349,10 @@ function bindHistory(playback = null) {
             getPanelOpen: () => ui.historyFilterPanelOpen,
             setPanelOpen: (open) => {
                 ui.historyFilterPanelOpen = open;
+            },
+            getTagMode: () => ui.historyFilterTagMode,
+            setTagMode: (mode) => {
+                ui.historyFilterTagMode = mode;
             }
         },
         tags: {

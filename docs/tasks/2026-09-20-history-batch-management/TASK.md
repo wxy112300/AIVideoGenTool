@@ -1,14 +1,14 @@
 # History 批量管理与标签编辑
 
-- Status: implementation
+- Status: complete
 - Updated / Owner: 2026-09-20 / 当前 agent
 - Scope / Authority: 用户提出的 History 批量模式、批量文件复制、批量标签编辑与批量删除需求；以当前 renderer、`docs/UX_CONTRACT.md`、`docs/ARCHITECTURE_CONTRACT.md` 和 `docs/CHANGE_VERIFICATION.md` 为约束
-- Baseline: `main` @ `ca817d0`；当前工作区包含本任务实现与计划文档，未提交
+- Baseline: `main` @ `40412ee`；本任务实现已提交，后续排除 Tag 筛选扩展随本次 patch 收口
 - Execution: direct
 - Tree ledger: cap=0 created=0 depth=0 concurrency=0
 - User override: none
 
-> `TASK.md` 是本功能的唯一计划和 Resume 入口。功能代码已实现并通过自动化校验，仍缺少当前桌面环境下的 Electron 手动验收。
+> `TASK.md` 是本功能的唯一计划和 Resume 入口。本任务已收口；自动化校验已通过，当前桌面环境无法暴露可控的原生 Electron 窗口，因此系统剪贴板与真实窗口交互仍未标记为手测通过。
 
 ## Resume
 
@@ -23,13 +23,13 @@
   - 按最新验收反馈，批量标签面板不再显示“部分项目已有”区域，避免编辑面板过于拥挤。
   - 批量删除使用应用内确认弹窗，并由主进程提供批量预检查/删除服务，成功后一次性刷新历史状态，避免在 renderer 中循环单项删除。
   - 删除、批量标签更新和多文件复制都必须保留现有路径校验、共享文件保护、错误提示和历史 ID 兼容性。
-- 已完成 / 下一步：
+- 已完成 / 关闭说明：
   - 已完成批量模式、选择集合、极简固定工具条、批量复制、共享标签编辑面板和批量删除确认流程。
   - 已完成 typed preload/IPC、主进程批量 metadata 更新、Windows 多文件剪贴板 staging、最高版本选择和批量删除文件引用保护。
   - 标签操作提交后保留当前批量选择，便于连续添加/删除多个标签；关闭批量模式或筛选/tab 改变时清空选择。
   - 标签面板在批量模式进入时以隐藏 DOM 预先挂载；点击“编辑标签”只局部展开并自动聚焦输入框，不触发整页重绘。
   - 已补齐 `check-square`、`minus`、`tag` 的 Lucide registry，确保全选状态和编辑标签按钮图标可见。
-  - 自动化校验已完成；下一步仅需在可控的 Electron 窗口中做真实鼠标/键盘/系统剪贴板验收。
+  - 自动化校验已完成；无剩余实现步骤。原生 Electron 手动验收受当前运行环境限制，保留在证据中说明。
 - 阻塞 / 解锁条件 / 不要重复：
   - 自动化校验无阻塞；手动验收受当前 `computer-use` 运行时未暴露原生 Electron app 控制接口影响。
   - 不要把选择集合持久化，不要让 batch click 改写详情导航协议，不要破坏 hover media controller、滚动恢复和时间轴固定布局。
@@ -206,7 +206,8 @@
 
 - 关键结论及来源：用户当前批量模式与批量标签需求；现有 History 筛选、详情标签编辑、导航、文件复制、删除服务；`docs/UX_CONTRACT.md`、`docs/ARCHITECTURE_CONTRACT.md`、`docs/CHANGE_VERIFICATION.md`。
 - 实际命令、结果：`npm.cmd run typecheck` 通过；聚焦测试通过（批量/筛选/History service 共 46 个，兼容回归 24 个）；`npm.cmd run verify` 通过（unit 182 个、integration 81 个、生产构建、UI 对比度检查）。
+- 后续排除 Tag 筛选扩展：`excludedTags` 已接入 History 过滤、包含/排除模式 UI、独立滚动 Tag 列表和三种语言；`npm.cmd run typecheck`、History focused tests、`npm.cmd run verify` 均通过。
 - 当前验证：自动化验证完成；测试期间仅输出既有 jsdom `window.scrollTo` not implemented 提示，没有失败测试。
 - 手动验收：已尝试启动隔离 Electron 实例并检查桌面控制面，但当前 `computer-use` runtime 只暴露浏览器接口，没有原生 app 控制入口；启动的测试进程已清理，不能把系统剪贴板和真实窗口交互标记为已验证。
-- 下一次接续：在可控 Electron 窗口可用后，按 P3 验收视频/图片 tab、筛选、hover、键盘、复制、标签和删除；完成后将 Status 更新为 done。
+- 下一次接续：无。本任务已关闭；若后续提供可控 Electron 窗口，可补做视频/图片 tab、筛选、hover、键盘、复制、标签和删除的真实手测记录。
 - 版本影响 / Unreleased：计划本身不改变版本；功能完成后再按仓库 release owner 规则记录 `CHANGELOG.md`。

@@ -12,6 +12,7 @@ export function createRendererUiState() {
         historyArtifactInspection: null,
         historyFilter: { ...defaultHistoryFilter },
         historyFilterPanelOpen: false,
+        historyFilterTagMode: "include",
         historyBatchMode: false,
         historyBatchSelectedIds: [],
         historyBatchTagsPanelOpen: false,

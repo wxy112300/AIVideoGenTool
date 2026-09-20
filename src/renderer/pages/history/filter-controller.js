@@ -18,6 +18,13 @@ function syncPanelDom(root, open) {
     }
     toggle?.setAttribute("aria-expanded", String(open));
 }
+function syncTagModeDom(root, mode) {
+    root.querySelectorAll("[data-history-filter-tag-mode]").forEach((button) => {
+        const selected = button.dataset.historyFilterTagMode === mode;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
+}
 export function mountHistoryFilterController(context, options) {
     const events = new AbortController();
     const signal = events.signal;
@@ -67,22 +74,43 @@ export function mountHistoryFilterController(context, options) {
             }
         }, { signal });
     });
+    root.querySelectorAll("[data-history-filter-tag-mode]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            stop(event);
+            const mode = button.dataset.historyFilterTagMode;
+            if (mode !== "include" && mode !== "exclude")
+                return;
+            options.setTagMode(mode);
+            syncTagModeDom(root, mode);
+        }, { signal });
+    });
     root.querySelectorAll("[data-history-filter-tag]").forEach((button) => {
         button.addEventListener("click", (event) => {
             stop(event);
             const value = button.dataset.historyFilterTag;
             if (!value)
                 return;
-            const current = normalizeHistoryTags(options.getFilter().tags);
+            const mode = options.getTagMode();
+            const current = normalizeHistoryFilter(options.getFilter());
+            const included = normalizeHistoryTags(current.tags);
+            const excluded = normalizeHistoryTags(current.excludedTags);
             const key = historyTagKey(value);
-            const next = current.some((tag) => historyTagKey(tag) === key)
-                ? current.filter((tag) => historyTagKey(tag) !== key)
-                : [...current, value];
-            commit({ tags: next });
+            if (mode === "exclude") {
+                const nextExcluded = excluded.some((tag) => historyTagKey(tag) === key)
+                    ? excluded.filter((tag) => historyTagKey(tag) !== key)
+                    : [...excluded, value];
+                commit({ tags: included.filter((tag) => historyTagKey(tag) !== key), excludedTags: nextExcluded });
+                return;
+            }
+            const nextIncluded = included.some((tag) => historyTagKey(tag) === key)
+                ? included.filter((tag) => historyTagKey(tag) !== key)
+                : [...included, value];
+            commit({ tags: nextIncluded, excludedTags: excluded.filter((tag) => historyTagKey(tag) !== key) });
         }, { signal });
     });
     root.querySelector("[data-history-filter-clear]")?.addEventListener("click", (event) => {
         stop(event);
+        options.setTagMode("include");
         options.setFilter({ ...defaultHistoryFilter });
         options.clearBatchSelection?.();
         context.reportUserAction("history-filter-clear");

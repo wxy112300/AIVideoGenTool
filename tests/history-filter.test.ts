@@ -95,6 +95,15 @@ describe("history curation filters", () => {
     expect(filterHistoryAssets(records, { tags: ["h3", "favorite"] }).map((item) => item.id)).toEqual(["a"]);
   });
 
+  it("excludes any item containing a selected excluded tag", () => {
+    const records = [
+      video("safe", { tags: ["精选"] }),
+      video("nsfw", { tags: ["NSFW", "精选"] }),
+      video("other", { tags: ["其他"] })
+    ];
+    expect(filterHistoryAssets(records, { excludedTags: ["nsfw"] }).map((item) => item.id)).toEqual(["other", "safe"]);
+  });
+
   it("normalizes duplicate tags while preserving the first display spelling", () => {
     expect(normalizeHistoryTags([" H3 ", "h3", "  test   shot ", ""])).toEqual(["H3", "test shot"]);
   });
@@ -102,6 +111,8 @@ describe("history curation filters", () => {
   it("uses a stable signature when selected tag order changes", () => {
     expect(historyFilterSignature({ tags: ["Favorite", "H3"] }))
       .toBe(historyFilterSignature({ tags: ["h3", "favorite"] }));
+    expect(historyFilterSignature({ excludedTags: ["NSFW", "Draft"] }))
+      .toBe(historyFilterSignature({ excludedTags: ["draft", "nsfw"] }));
   });
 
   it("builds case-insensitive tag suggestions for the active history kind", () => {
@@ -114,7 +125,7 @@ describe("history curation filters", () => {
 
   it("normalizes invalid persisted filter values", () => {
     expect(normalizeHistoryFilter({ minRating: 9 as never, sort: "unknown" as never })).toEqual({
-      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelId: "", tags: [], sort: "newest"
+      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelId: "", tags: [], excludedTags: [], sort: "newest"
     });
   });
 });
