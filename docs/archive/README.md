@@ -30,5 +30,6 @@
 - [早期云端/交接说明](./legacy-handoff/)
 - [DLSS5 退役方案与调研](./dlss5/README.md)
 - [Konohamaru DLSS5 接入归档](./dlss5/2026-09-09-konohamaru-dlss5/TASK.md)
+- [开发 harness 与文档治理](./harness/TASK.md)
 
 DLSS5 历史方案已集中到 `archive/dlss5/`；H3 研究和图片模型研究仍分别位于 Research 与 Evidence。归档文件不承担当前任务状态。

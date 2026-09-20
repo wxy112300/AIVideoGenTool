@@ -1,15 +1,15 @@
 # H3 高分辨率与 JointAV 收口
 
-- Status: needs-review
-- Updated: 2026-09-07
+- Status: active / upscale-only
+- Updated: 2026-09-20
 - Owner: unassigned
 - Route: integration / evidence
-- Scope: 取代旧 H3 adoption V1/V2/V3 的当前状态入口；区分已经接入的 JointAV、1080p Create、H3 learned 1440p Upscale 与尚未完成的质量/产品 Gate。
+- Scope: 仅保留 H3 learned/native 1440p Upscale 的质量与产品 Gate；JointAV serializer/loader、History、Queue、Continuum bridge 和 Motion/Continuum 消费链已由归档的 [Continuum Phase 3/4 任务](../../archive/h3-continuum-extend-recovery/TASK.md) 覆盖。
 - Authority: [Workflow Contract](../../WORKFLOW_CONTRACT.md)、[Dependencies and setup](../../DEPENDENCIES_AND_SETUP.md)、[当前发布记录](../../../CHANGELOG.md)、[H3 1080p/1440p research](../../research/h3/2026.9.2-h3-1080-1440-integration-research.md)
 
 ## Resume
 
-旧计划已完整保留在 [H3 adoption archive](../../archive/h3-adoption/)。不要从 archive 的工作包状态接着执行；本卡才是当前状态入口。
+旧计划已完整保留在 [H3 adoption archive](../../archive/h3-adoption/)。JointAV/消费链的现行完成记录见 [Continuum Phase 3/4 归档任务](../../archive/h3-continuum-extend-recovery/TASK.md)；本卡只作为 Upscale Gate 的当前入口，不要从旧 archive 工作包恢复整套 JointAV 计划。
 
 ### 已确认到的层级
 
