@@ -32,6 +32,10 @@ function createControllerHarness(routeMode: "image-to-video" | "video-extension"
   const bundledWorkflow = new Promise<null>((resolve) => {
     resolveBundled = resolve;
   });
+  const application = {
+    getBundledWorkflow: vi.fn(() => bundledWorkflow),
+    inspectWorkflow: vi.fn(async () => ({ supportsEndImage: false, supportsVideoExtension: false }))
+  };
   const patchDraftForMode = vi.fn((mode: "video-extension", update: (draft: Draft) => Partial<Draft>) => {
     expect(mode).toBe("video-extension");
     const next = normalizeVideoDraft({ ...state.videoExtensionDraft!, ...update(state.videoExtensionDraft!) });
@@ -47,9 +51,7 @@ function createControllerHarness(routeMode: "image-to-video" | "video-extension"
       requestRender: vi.fn(),
       notify: vi.fn(),
       reportUserAction: vi.fn(),
-      application: {
-        getBundledWorkflow: vi.fn(() => bundledWorkflow)
-      },
+      application,
       hostCapabilities: {}
     },
     setCreationMode: vi.fn(),
@@ -197,6 +199,84 @@ describe("creation model switching", () => {
 
     expect(state.draft.modelId).toBe("minimax_h3_fl2va");
     expect(state.videoExtensionDraft?.modelId).toBe("minimax_h3_fl2va");
+    cleanup();
+  });
+
+  it("repairs an old bundled generation workflow when restoring a stored extension draft", async () => {
+    await loadPromptPacks();
+    const { state, root, options } = createControllerHarness();
+    const bundledPath = "C:/app/workflows/minimax_h3_r2v_extend_api.json";
+    const storedDraft = normalizeVideoDraft({
+      ...state.videoExtensionDraft!,
+      workflowPath: "C:/app/workflows/minimax_h3_i2v_api.json"
+    });
+    state.draft = structuredClone(storedDraft);
+    state.videoExtensionDraft = structuredClone(storedDraft);
+    root.insertAdjacentHTML("beforeend", `<button data-input-mode="video"></button>`);
+    const application = (options.context as unknown as { application: {
+      getBundledWorkflow: ReturnType<typeof vi.fn>;
+      inspectWorkflow: ReturnType<typeof vi.fn>;
+    } }).application;
+    application.getBundledWorkflow.mockResolvedValue({
+      modelId: "minimax_h3_ref2va",
+      label: "Motion Extend",
+      path: bundledPath,
+      supportsEndImage: false,
+      supportsVideoExtension: true
+    });
+    application.inspectWorkflow.mockResolvedValue({
+      supportsEndImage: false,
+      supportsVideoExtension: false,
+      isBundled: true
+    });
+    const cleanup: RendererCleanup = mountCreatePageController(options);
+
+    root.querySelector<HTMLButtonElement>("[data-input-mode=video]")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.draft.workflowPath).toBe(bundledPath);
+    expect(state.videoExtensionDraft?.workflowPath).toBe(bundledPath);
+    expect(application.inspectWorkflow).toHaveBeenCalledWith(
+      "C:/app/workflows/minimax_h3_i2v_api.json",
+      "minimax_h3_ref2va"
+    );
+    cleanup();
+  });
+
+  it("preserves an explicit custom extension workflow when restoring a stored draft", async () => {
+    await loadPromptPacks();
+    const { state, root, options } = createControllerHarness();
+    const customPath = "C:/custom/workflows/extend.json";
+    const storedDraft = normalizeVideoDraft({
+      ...state.videoExtensionDraft!,
+      workflowPath: customPath
+    });
+    state.draft = structuredClone(storedDraft);
+    state.videoExtensionDraft = structuredClone(storedDraft);
+    root.insertAdjacentHTML("beforeend", `<button data-input-mode="video"></button>`);
+    const application = (options.context as unknown as { application: {
+      getBundledWorkflow: ReturnType<typeof vi.fn>;
+      inspectWorkflow: ReturnType<typeof vi.fn>;
+    } }).application;
+    application.getBundledWorkflow.mockResolvedValue({
+      modelId: "minimax_h3_ref2va",
+      label: "Motion Extend",
+      path: "C:/app/workflows/minimax_h3_r2v_extend_api.json",
+      supportsEndImage: false,
+      supportsVideoExtension: true
+    });
+    application.inspectWorkflow.mockResolvedValue({
+      supportsEndImage: false,
+      supportsVideoExtension: true
+    });
+    const cleanup: RendererCleanup = mountCreatePageController(options);
+
+    root.querySelector<HTMLButtonElement>("[data-input-mode=video]")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.draft.workflowPath).toBe(customPath);
     cleanup();
   });
 });

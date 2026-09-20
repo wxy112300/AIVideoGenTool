@@ -74,6 +74,21 @@ export const H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME = "minimax_h3_continuum_exten
 function workflowBasename(workflowPath) {
     return workflowPath.replaceAll("\\", "/").split("/").pop() ?? workflowPath;
 }
+const knownBundledH3WorkflowFilenames = new Set([
+    "minimax_h3_t2va_api.json",
+    "minimax_h3_t2va_gguf_q3_api.json",
+    "minimax_h3_t2va_turbo_api.json",
+    "minimax_h3_i2v_api.json",
+    "minimax_h3_i2v_gguf_q3_api.json",
+    "minimax_h3_r2v_api.json",
+    "minimax_h3_r2v_extend_api.json",
+    "minimax_h3_continuum_extend_api.json",
+    "minimax_h3_continuum_v38_extend_api.json",
+    "minimax_h3_continuum_v38_managed_extend_api.json"
+]);
+export function isKnownBundledH3WorkflowPath(workflowPath) {
+    return knownBundledH3WorkflowFilenames.has(workflowBasename(workflowPath ?? ""));
+}
 export function isMiniMaxH3ContinuumV38Workflow(workflowPath) {
     const basename = workflowBasename(workflowPath ?? "");
     return basename === H3_CONTINUUM_V38_WORKFLOW_FILENAME ||

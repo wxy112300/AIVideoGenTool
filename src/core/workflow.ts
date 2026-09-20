@@ -179,6 +179,23 @@ function workflowBasename(workflowPath: string): string {
   return workflowPath.replaceAll("\\", "/").split("/").pop() ?? workflowPath;
 }
 
+const knownBundledH3WorkflowFilenames = new Set([
+  "minimax_h3_t2va_api.json",
+  "minimax_h3_t2va_gguf_q3_api.json",
+  "minimax_h3_t2va_turbo_api.json",
+  "minimax_h3_i2v_api.json",
+  "minimax_h3_i2v_gguf_q3_api.json",
+  "minimax_h3_r2v_api.json",
+  "minimax_h3_r2v_extend_api.json",
+  "minimax_h3_continuum_extend_api.json",
+  "minimax_h3_continuum_v38_extend_api.json",
+  "minimax_h3_continuum_v38_managed_extend_api.json"
+]);
+
+export function isKnownBundledH3WorkflowPath(workflowPath?: string): boolean {
+  return knownBundledH3WorkflowFilenames.has(workflowBasename(workflowPath ?? ""));
+}
+
 export function isMiniMaxH3ContinuumV38Workflow(workflowPath?: string): boolean {
   const basename = workflowBasename(workflowPath ?? "");
   return basename === H3_CONTINUUM_V38_WORKFLOW_FILENAME ||

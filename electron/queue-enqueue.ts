@@ -28,6 +28,7 @@ import {
   extensionSafetyForTask,
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
+  isKnownBundledH3WorkflowPath,
   isMiniMaxH3ContinuumModel,
   h3ContinuumModeForSource,
   isMiniMaxH3Fl2vaModel,
@@ -50,6 +51,7 @@ import {
   workflowSupportsH3TurboSampling,
   miniMaxH3ModelAssetNames
 } from "../src/core/workflow.js";
+import { adaptH3AvAsset } from "../src/core/h3-av-adapters.js";
 import { validateContinuumSequence } from "../src/core/h3-av-asset.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
 import {
@@ -155,6 +157,43 @@ async function readWorkflow(filename: string, label: string): Promise<unknown> {
   } catch (error) {
     throw new Error(`无法读取${label} JSON：${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function defaultExtensionWorkflowPathForDraft(draft: Draft): string | undefined {
+  let filename: string | undefined;
+  if (isMiniMaxH3R2vModel(draft.modelId)) {
+    filename = "minimax_h3_r2v_extend_api.json";
+  } else if (isMiniMaxH3ContinuumModel(draft.modelId)) {
+    filename = h3ContinuumModeForSource(draft) === "managed"
+      ? "minimax_h3_continuum_v38_managed_extend_api.json"
+      : "minimax_h3_continuum_v38_extend_api.json";
+  } else if (isMiniMaxH3Fl2vaModel(draft.modelId)) {
+    filename = "minimax_h3_i2v_api.json";
+  }
+  return filename
+    ? fileURLToPath(new URL(`../workflows/${filename}`, import.meta.url))
+    : undefined;
+}
+
+async function extensionWorkflowPathForDraft(draft: Draft): Promise<string | undefined> {
+  const current = draft.workflowPath.trim();
+  if (current) {
+    if (
+      !isKnownBundledH3WorkflowPath(current) ||
+      !(isMiniMaxH3R2vModel(draft.modelId) ||
+        isMiniMaxH3ContinuumModel(draft.modelId) ||
+        isMiniMaxH3Fl2vaModel(draft.modelId))
+    ) return current;
+    const currentBundledPath = fileURLToPath(new URL(
+      `../workflows/${current.replaceAll("\\", "/").split("/").pop() ?? current}`,
+      import.meta.url
+    ));
+    if (path.resolve(current) === path.resolve(currentBundledPath)) {
+      return defaultExtensionWorkflowPathForDraft(draft);
+    }
+    if ((await fs.stat(current).catch(() => null))?.isFile()) return current;
+  }
+  return defaultExtensionWorkflowPathForDraft(draft);
 }
 
 async function resolveImageProjectLineage(
@@ -960,7 +999,8 @@ export class QueueEnqueueService {
       throw new Error(`H3 执行策略不可用：${initialH3ExecutionPolicy.reasons.join("、")}`);
     }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
-    if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
+    const extensionWorkflowPath = await extensionWorkflowPathForDraft(draft);
+    if (!extensionWorkflowPath) throw new Error("当前模型没有可用的视频续写 API 工作流，请在设置中检查工作流。");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
     const dependencyScanRequired = isMiniMaxH3Model(draft.modelId);
     const dependencyScan = dependencyScanRequired
@@ -983,7 +1023,29 @@ export class QueueEnqueueService {
     }
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
     const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
-    const preparedDraft = structuredClone(draft);
+    const preparedDraft = structuredClone({
+      ...draft,
+      workflowPath: extensionWorkflowPath
+    });
+    if (motionContext && preparedDraft.h3MotionContextAsset) {
+      const adapted = adaptH3AvAsset(preparedDraft.h3MotionContextAsset, "motion-context");
+      const ownerPath = adapted.payloadPath.absolutePath ??
+        path.resolve(enqueueSettings.outputDirectory, adapted.payloadPath.subfolder, adapted.payloadPath.filename);
+      const selectedPath = preparedDraft.h3ContextLatentPath?.trim();
+      const assetPaths = [
+        ownerPath,
+        ...(preparedDraft.h3MotionContextAsset.aliasPaths ?? [])
+          .map((candidate) => candidate.absolutePath)
+          .filter((candidate): candidate is string => Boolean(candidate))
+      ].map((candidate) => path.resolve(candidate).toLowerCase());
+      if (selectedPath && assetPaths.includes(path.resolve(selectedPath).toLowerCase())) {
+        preparedDraft.h3ContextLatentPath = ownerPath;
+      } else {
+        // A cleared or manually selected path is authoritative. Never let a
+        // stale typed asset silently resurrect or replace that user choice.
+        preparedDraft.h3MotionContextAsset = undefined;
+      }
+    }
     const managedContinuum = continuum && h3ContinuumModeForSource(preparedDraft) === "managed";
     if (managedContinuum) {
       preparedDraft.h3ContinuumMode = "managed";
@@ -1217,14 +1279,30 @@ export class QueueEnqueueService {
       const contextFile = contextPath
         ? await fs.stat(contextPath).catch(() => undefined)
         : undefined;
+      if (
+        contextPath &&
+        contextFile?.isFile() &&
+        Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) >= 0.05
+      ) {
+        throw new Error("当前 Motion Context latent 只对应源视频末端；请调整裁剪末端，或清除 latent 改用视频上下文。");
+      }
       if (contextPath && !contextFile?.isFile()) {
-        // A History entry can outlive its auxiliary latent file. Keep the
-        // extension task usable by removing the stale path; renderWorkflow
-        // will then remove the optional loader and read the source video.
-        preparedDraft.h3ContextLatentPath = undefined;
-        logger.info("queue", "h3-motion-context-latent-fallback", "Motion Context latent 不可用，回退到从源视频读取", {
-          path: contextPath
-        });
+        throw new Error("所选 Motion Context latent 已不存在；请清除该 latent 后明确改用视频上下文，或恢复文件后重试。");
+      }
+      if (contextPath && contextFile?.isFile()) {
+        const latestContextFile = await fs.stat(contextPath).catch(() => undefined);
+        if (!latestContextFile?.isFile() ||
+            latestContextFile.size !== contextFile.size ||
+            latestContextFile.mtimeMs !== contextFile.mtimeMs) {
+          throw new Error("所选 Motion Context latent 在提交前发生变化，请重新检查后重试。");
+        }
+        if (!deps.inspectExtensionSource) {
+          throw new Error("当前运行时没有可用的 Motion Context latent 校验服务，请重启应用后重试。");
+        }
+        const motionInspection = await deps.inspectExtensionSource(preparedDraft);
+        if (motionInspection.route !== "motion-context" || motionInspection.status !== "available") {
+          throw new Error(motionInspection.reason ?? "所选 Motion Context latent 未通过提交前校验。");
+        }
       }
       task.h3ContextLatentPath = contextPath &&
         contextFile?.isFile() &&

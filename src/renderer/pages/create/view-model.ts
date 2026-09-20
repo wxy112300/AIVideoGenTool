@@ -3,6 +3,7 @@ import type {
   BundledWorkflow,
   Draft,
   EnvironmentScanResult,
+  HistoryFile,
   H3PromptPreset,
   ImageEditDraft,
   ImagePromptPreset,
@@ -86,7 +87,11 @@ import {
   interpolationEstimate,
   promptSnippetOptions
 } from "./helpers";
-import type { ImageEditPageViewModel, VideoCreatePageViewModel } from "./page";
+import type {
+  ContinuumDependencyFileViewModel,
+  ImageEditPageViewModel,
+  VideoCreatePageViewModel
+} from "./page";
 import type { PromptRuntimeViewProjection } from "../../../core/prompt-runtime-view";
 
 const h3LatentSaveModeTipKeys = {
@@ -222,6 +227,8 @@ export interface VideoEnqueueBlockReasonInput {
   safetySafe: boolean;
   safetyMessage: string;
   h3MotionContextReady: boolean;
+  motionContextLatentTrimValid?: boolean;
+  motionContextPreflightBlockReason?: string;
   spectrumReady: boolean;
   r2vSlotsReady: boolean;
   startImagePath: string;
@@ -252,6 +259,10 @@ export function videoEnqueueBlockReason(
                   ? input.continuumPreflightBlockReason
                 : input.isContinuum && !input.continuumArtifactReady
                   ? t(uiKeys.create.validation.continuumArtifactMissing)
+                : input.motionContextLatentTrimValid === false
+                  ? t(uiKeys.create.validation.motionContextTrimUnsupported)
+                : input.motionContextPreflightBlockReason
+                  ? input.motionContextPreflightBlockReason
                 : !input.h3MotionContextReady
                   ? t(uiKeys.create.validation.motionContextMissing)
                   : !input.r2vSlotsReady
@@ -519,6 +530,95 @@ interface ContinuumStatusProjection {
   detail: string;
 }
 
+function continuumFileNameFor(path: string | undefined): string {
+  return path?.split(/[\\/]/u).pop() ?? "";
+}
+
+function continuumFileLocationFor(file: HistoryFile | undefined, path: string | undefined): string {
+  return file?.absolutePath ?? path ?? (file ? [file.subfolder, file.filename].filter(Boolean).join("/") : "");
+}
+
+function continuumDependencyStatusFor(
+  inspection: VideoExtensionSourceInspection | undefined,
+  hasReference: boolean
+): ContinuumDependencyFileViewModel["status"] {
+  if (inspection?.status === "available") return hasReference ? "available" : "missing";
+  if (inspection) return "missing";
+  return hasReference ? "checking" : "missing";
+}
+
+export function continuumDependencyFilesFor(
+  t: Translate,
+  draft: Draft,
+  managed: boolean,
+  inspection?: VideoExtensionSourceInspection
+): ReadonlyArray<ContinuumDependencyFileViewModel> {
+  const files: ContinuumDependencyFileViewModel[] = [];
+  const identities = new Set<string>();
+  const addFile = (
+    kind: ContinuumDependencyFileViewModel["kind"],
+    file: HistoryFile | undefined,
+    path: string | undefined,
+    status: ContinuumDependencyFileViewModel["status"],
+    chunkIndex?: number
+  ): void => {
+    const filename = file?.filename ?? continuumFileNameFor(path);
+    const location = continuumFileLocationFor(file, path);
+    const identity = location || `${kind}:${chunkIndex ?? ""}`;
+    if (identities.has(identity)) return;
+    identities.add(identity);
+    files.push({
+      kind,
+      filename: filename || t(status === "not-created"
+        ? uiKeys.create.continuumArtifact.dependencyNotCreated
+        : uiKeys.create.continuumArtifact.dependencyNoReference),
+      location,
+      status,
+      ...(chunkIndex === undefined ? {} : { chunkIndex })
+    });
+  };
+
+  if (!managed) {
+    const artifact = inspection?.artifact ?? draft.h3ContinuumArtifact;
+    const hasPayloadReference = Boolean(artifact?.payload || inspection?.payloadPath || draft.h3ContinuumArtifactPath);
+    const hasManifestReference = Boolean(artifact?.manifest || inspection?.manifestPath);
+    if (!hasPayloadReference && !hasManifestReference) return files;
+    const artifactStatus = continuumDependencyStatusFor(
+      inspection,
+      hasPayloadReference
+    );
+    addFile(
+      "payload",
+      artifact?.payload,
+      inspection?.payloadPath ?? draft.h3ContinuumArtifactPath,
+      artifactStatus
+    );
+    addFile(
+      "manifest",
+      artifact?.manifest,
+      inspection?.manifestPath,
+      continuumDependencyStatusFor(inspection, hasManifestReference)
+    );
+    return files;
+  }
+
+  const receipts = (draft.h3ContinuumSequence?.chunks ?? [])
+    .map((chunk) => chunk.receipt)
+    .filter((receipt): receipt is NonNullable<typeof receipt> => Boolean(receipt));
+  if (receipts.length === 0) {
+    addFile("run-storage", undefined, undefined, "not-created");
+    return files;
+  }
+  for (const receipt of receipts) {
+    const receiptStatus = continuumDependencyStatusFor(inspection, true);
+    addFile("run-storage", receipt.runStorageRoot, undefined, receiptStatus);
+    for (const record of receipt.chunkRecords) {
+      addFile("chunk-payload", record.payloadPath, undefined, receiptStatus, record.logicalChunkIndex);
+    }
+  }
+  return files;
+}
+
 function continuumStatusFor(
   t: Translate,
   state: AppState,
@@ -767,6 +867,34 @@ export function buildVideoCreatePageViewModel(
   const h3MotionContextReady = !extending || !isR2V || Boolean(
     h3MotionContextNode?.installed || h3MotionContextNode?.loaded
   );
+  const motionContextLatentTrimValid = !isR2V || !motionContextLatentReady ||
+    Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05;
+  const motionInspection = isR2V && extending &&
+    options.extensionSourceInspection?.route === "motion-context"
+    ? options.extensionSourceInspection
+    : undefined;
+  const motionContextPreflightBlockReason = isR2V && extending && motionContextLatentReady
+    ? motionInspection?.status === "available"
+      ? ""
+      : motionInspection?.reason || t(uiKeys.create.motionContextLatent.pendingValidation)
+    : "";
+  const motionContextStatusTone = !motionContextLatentReady
+    ? "info" as const
+    : motionInspection?.status === "available"
+      ? "success" as const
+      : motionInspection?.status === "invalid" || motionInspection?.status === "missing"
+        ? "error" as const
+        : "warning" as const;
+  const motionContextStatusLabel = !motionContextLatentReady
+    ? t(uiKeys.create.motionContextLatent.statusVideoContext)
+    : motionInspection?.status === "available"
+      ? t(uiKeys.create.motionContextLatent.statusReady)
+      : motionInspection
+        ? t(uiKeys.create.motionContextLatent.statusBlocked)
+        : t(uiKeys.create.motionContextLatent.statusChecking);
+  const motionContextStatusDetail = !motionContextLatentReady
+    ? motionInspection?.reason || t(uiKeys.create.motionContextLatent.statusVideoContext)
+    : motionInspection?.reason || t(uiKeys.create.motionContextLatent.pendingValidation);
   const slaTurboSelected = draft.videoLoras.some((lora) =>
     isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
   );
@@ -854,6 +982,8 @@ export function buildVideoCreatePageViewModel(
     safetySafe: safety.safe,
     safetyMessage: safety.message,
     h3MotionContextReady,
+    motionContextLatentTrimValid,
+    motionContextPreflightBlockReason,
     spectrumReady,
     r2vSlotsReady,
     startImagePath: draft.startImagePath,
@@ -871,6 +1001,23 @@ export function buildVideoCreatePageViewModel(
     enqueueBlockReason,
     continuumDependencyBlockReason,
     continuumRuntimeUnverified,
+    options.extensionSourceInspection
+  );
+  const continuumDependencyRoute = t(isManagedContinuum
+    ? uiKeys.create.continuumArtifact.managedRoute
+    : uiKeys.create.continuumArtifact.bootstrapRoute);
+  const continuumDependencyProgress = !isManagedContinuum
+    ? t(uiKeys.create.continuumArtifact.dependencyProgressBootstrap)
+    : draft.h3ContinuumSequence && draft.h3ContinuumSequence.acceptedChunks > 0
+      ? t(uiKeys.create.continuumArtifact.dependencyProgressChunks, {
+          count: draft.h3ContinuumSequence.acceptedChunks,
+          target: draft.h3ContinuumSequence.targetChunks
+        })
+      : t(uiKeys.create.continuumArtifact.dependencyProgressFirst);
+  const continuumDependencyFiles = continuumDependencyFilesFor(
+    t,
+    draft,
+    isManagedContinuum,
     options.extensionSourceInspection
   );
   return {
@@ -892,9 +1039,15 @@ export function buildVideoCreatePageViewModel(
     continuumArtifactReady,
     continuumArtifactFilename,
     continuumArtifactHistoryBound: Boolean(draft.h3ContinuumArtifact),
+    continuumDependencyRoute,
+    continuumDependencyProgress,
+    continuumDependencyFiles,
     motionContextLatentReady,
     motionContextLatentFilename,
     motionContextLatentHistoryBound,
+    motionContextStatusTone,
+    motionContextStatusLabel,
+    motionContextStatusDetail,
     h3TokenEstimate,
     h3Mode,
     enhanceMode,

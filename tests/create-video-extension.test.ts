@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import { mountVideoExtensionController } from "../src/renderer/pages/create/video-extension-controller";
+import { continuumDependencyFilesFor } from "../src/renderer/pages/create/view-model";
 import { extensionSafetyForDraft, h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
 import type { Draft } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
@@ -24,6 +25,9 @@ function createVideoHarness(modelId: string, trimEndSeconds: number) {
   const root = document.createElement("div");
   root.innerHTML = `<div class="video-editor">
     <div id="extend-video-player"><video id="source-video" src="studio-media://draft/video?source=clip.mp4"></video></div>
+    <button data-drop-h3-motion-context-latent type="button">select latent</button>
+    <button id="clear-h3-motion-context-latent" type="button">clear latent</button>
+    <button id="clear-h3-continuum-av" data-clear-h3-continuum-av type="button">clear AV</button>
     <button id="preview-extension-boundary" type="button">preview</button>
     <div id="trim-editor"><input id="trim-start" value="0"><input id="trim-end" value="${trimEndSeconds}"></div>
     <output id="trim-start-output"></output><output id="trim-end-output"></output>
@@ -61,7 +65,9 @@ function createVideoHarness(modelId: string, trimEndSeconds: number) {
     t: translator.t,
     requestRender: vi.fn(),
     notify: vi.fn(),
-    hostCapabilities: {}
+    hostCapabilities: {
+      pickH3NativeAv: vi.fn(async () => "C:/input/manually-selected.safetensors")
+    }
   } as unknown as RendererContext;
   const cleanup = mountVideoExtensionController(context, {
     selectDraftVideo: vi.fn(async () => undefined),
@@ -69,7 +75,7 @@ function createVideoHarness(modelId: string, trimEndSeconds: number) {
     syncEnqueueUi: vi.fn(),
     formatTrimTime: (seconds: number) => String(seconds)
   });
-  return { cleanup, video, player, requestFullscreen, getCurrentTime: () => currentTime };
+  return { cleanup, root, state, patchDraft, video, player, requestFullscreen, getCurrentTime: () => currentTime };
 }
 
 afterEach(() => {
@@ -139,7 +145,121 @@ describe("Continuum draft safety routing", () => {
   });
 });
 
+describe("Continuum dependency file projection", () => {
+  it("returns no dependency rows after the AV selection is cleared", () => {
+    const draft = {
+      ...createDefaultState().draft,
+      inputMode: "video" as const,
+      modelId: "minimax_h3_continuum"
+    };
+
+    expect(continuumDependencyFilesFor(translator.t, draft, false)).toEqual([]);
+  });
+
+  it("keeps bootstrap AV payload and manifest as separate facts", () => {
+    const draft = {
+      ...createDefaultState().draft,
+      inputMode: "video" as const,
+      modelId: "minimax_h3_continuum",
+      h3ContinuumArtifactPath: "C:/output/h3-native-av/source.safetensors"
+    };
+    const files = continuumDependencyFilesFor(translator.t, draft, false, {
+      route: "bootstrap",
+      status: "available",
+      payloadPath: "C:/output/h3-native-av/source.safetensors",
+      manifestPath: "C:/output/h3-native-av/source.json"
+    });
+
+    expect(files.map((file) => [file.kind, file.filename, file.status])).toEqual([
+      ["payload", "source.safetensors", "available"],
+      ["manifest", "source.json", "available"]
+    ]);
+  });
+
+  it("expands managed Run Storage receipts and exposes first-run state", () => {
+    const draft = {
+      ...createDefaultState().draft,
+      inputMode: "video" as const,
+      modelId: "minimax_h3_continuum",
+      h3ContinuumSequence: {
+        sequenceId: "sequence-1",
+        chunks: [{
+          logicalChunkIndex: 1,
+          prompt: { chunkIndex: 1, userPrompt: "", finalPrompt: "", promptHash: "hash", createdAt: "now" },
+          status: "accepted" as const,
+          receipt: {
+            runStorageRoot: { filename: "manifest.json", subfolder: "run-1", type: "output" },
+            chunkRecords: [
+              { logicalChunkIndex: 1, recordFilename: "chunk-1.safetensors", payloadPath: { filename: "chunk-1.safetensors", subfolder: "run-1", type: "output" }, reused: false, generated: true },
+              { logicalChunkIndex: 2, recordFilename: "chunk-2.safetensors", payloadPath: { filename: "chunk-2.safetensors", subfolder: "run-1", type: "output" }, reused: false, generated: true }
+            ]
+          }
+        }]
+      } as never
+    };
+    const files = continuumDependencyFilesFor(translator.t, draft, true, {
+      route: "managed",
+      status: "available"
+    });
+
+    expect(files.map((file) => [file.kind, file.filename, file.chunkIndex])).toEqual([
+      ["run-storage", "manifest.json", undefined],
+      ["chunk-payload", "chunk-1.safetensors", 1],
+      ["chunk-payload", "chunk-2.safetensors", 2]
+    ]);
+
+    expect(continuumDependencyFilesFor(translator.t, draft, true).every((file) => file.status === "checking")).toBe(true);
+
+    const firstRunFiles = continuumDependencyFilesFor(translator.t, createDefaultState().draft, true);
+    expect(firstRunFiles).toEqual([
+      expect.objectContaining({ kind: "run-storage", status: "not-created" })
+    ]);
+  });
+});
+
+describe("Continuum artifact controls", () => {
+  it("clears both the AV path and bound manifest artifact", () => {
+    const harness = createVideoHarness("minimax_h3_continuum", 10);
+    harness.state.draft.h3ContinuumArtifactPath = "C:/history/source.safetensors";
+    harness.state.draft.h3ContinuumArtifact = { payload: { filename: "source.safetensors" } } as never;
+
+    harness.root.querySelector<HTMLElement>("[data-clear-h3-continuum-av]")?.click();
+
+    expect(harness.patchDraft).toHaveBeenLastCalledWith({
+      h3ContinuumArtifactPath: undefined,
+      h3ContinuumArtifact: undefined
+    });
+    expect(harness.state.draft.h3ContinuumArtifactPath).toBeUndefined();
+    expect(harness.state.draft.h3ContinuumArtifact).toBeUndefined();
+    harness.cleanup();
+  });
+});
+
 describe("Extend video boundary preview", () => {
+  it("clears the typed Motion asset when a latent is manually selected or removed", async () => {
+    const harness = createVideoHarness("minimax_h3_ref2va", 10);
+    harness.state.draft.h3ContextLatentPath = "C:/history/canonical-owner.safetensors";
+    harness.state.draft.h3MotionContextAsset = { assetId: "stale-canonical-owner" } as never;
+
+    harness.root.querySelector<HTMLElement>("[data-drop-h3-motion-context-latent]")?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(harness.patchDraft).toHaveBeenLastCalledWith({
+      h3ContextLatentPath: "C:/input/manually-selected.safetensors",
+      h3MotionContextAsset: undefined
+    });
+
+    harness.state.draft.h3MotionContextAsset = { assetId: "stale-after-select" } as never;
+    harness.root.querySelector<HTMLButtonElement>("#clear-h3-motion-context-latent")?.click();
+
+    expect(harness.patchDraft).toHaveBeenLastCalledWith({
+      h3ContextLatentPath: undefined,
+      h3MotionContextAsset: undefined
+    });
+    harness.cleanup();
+  });
+
   it("uses the execution-time reference contract for each H3 extension family", () => {
     const draft = createDefaultState().draft;
     expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_fl2va", startImagePath: "" })).toBe("I2VA");

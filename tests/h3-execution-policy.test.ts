@@ -99,4 +99,19 @@ describe("native H3 0.35 execution policy", () => {
     expect(policy.spectrumEnabled).toBe(false);
     expect(policy.reasons).toContain("motion-context-spectrum-conflict");
   });
+
+  it("normalizes the global sparse setting when switching to Motion Context", () => {
+    const policy = resolveH3ExecutionPolicy({
+      modelId: "minimax_h3_ref2va",
+      inputMode: "video",
+      sparseAttentionMode: "sol-attn"
+    });
+
+    expect(policy).toMatchObject({
+      sparseAttentionMode: "off",
+      allowed: true,
+      normalizedFrom: ["sparse:sol-attn->off"]
+    });
+    expect(policy.reasons).not.toContain("motion-context-sparse-not-supported");
+  });
 });

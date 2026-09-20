@@ -9,10 +9,12 @@ import type {
 import { loadUiLocale } from "../core/i18n";
 import type { PromptRuntimeState } from "../core/prompt-runtime-state";
 import type { RendererApplicationApi } from "./studio-client";
+import type { CreationMode } from "./contracts";
 
 export interface RendererBootstrapOptions {
   application: RendererApplicationApi;
   setState(nextState: AppState): void;
+  setCreationMode(mode: Exclude<CreationMode, "image-edit">): void;
   setComfyRuntimeState(state: ComfyRuntimeState): void;
   setPromptRuntimeState(state: PromptRuntimeState): void;
   getState(): AppState;
@@ -88,6 +90,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
     .then(async (initialState) => {
       await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
       options.setState(initialState);
+      options.setCreationMode(initialState.draft.inputMode === "video" ? "video-extension" : "image-to-video");
 
       // The persisted state is the only first-render prerequisite. Runtime
       // snapshots and version metadata hydrate independently after the shell

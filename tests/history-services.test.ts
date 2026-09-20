@@ -30,6 +30,24 @@ async function temporaryRoot(): Promise<string> {
   return root;
 }
 
+function motionContextPayload(
+  options: { format?: string; audioTime?: number } = {}
+): Buffer {
+  const videoShape = [1, 24, 2, 30, 54];
+  const audioShape = [1, 32, 2, options.audioTime ?? 8];
+  const videoBytes = videoShape.reduce((total, value) => total * value, 1) * 2;
+  const audioBytes = audioShape.reduce((total, value) => total * value, 1) * 2;
+  const header = Buffer.from(JSON.stringify({
+    __metadata__: { format: options.format ?? "h3_motion_context_av_v1" },
+    audio: { dtype: "BF16", shape: audioShape, data_offsets: [videoBytes, videoBytes + audioBytes] },
+    video: { dtype: "F16", shape: videoShape, data_offsets: [0, videoBytes] }
+  }), "utf8");
+  const payload = Buffer.alloc(8 + header.byteLength + videoBytes + audioBytes);
+  payload.writeBigUInt64LE(BigInt(header.byteLength), 0);
+  header.copy(payload, 8);
+  return payload;
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryRoots.splice(0).map((root) =>
@@ -224,6 +242,76 @@ describe("History application services", () => {
     expect(await service.inspectExtensionSource({
       ...state.draft, modelId: "minimax_h3_continuum", sourceVideoPath, h3ContinuumMode: "managed"
     })).toMatchObject({ route: "managed", status: "missing" });
+  });
+
+  it("preflights a Motion Context latent through its real v1 video/audio schema", async () => {
+    const root = await temporaryRoot();
+    const sourceVideoPath = path.join(root, "source.mp4");
+    const latentPath = path.join(root, "h3-motion-context", "clip_00001.safetensors");
+    await fs.mkdir(path.dirname(latentPath), { recursive: true });
+    await fs.writeFile(sourceVideoPath, "video");
+    await fs.writeFile(latentPath, motionContextPayload());
+    const state = createDefaultState();
+    const service = new HistoryArtifactService({
+      store: repository(state),
+      artifactService: {} as NativeAvArtifactService,
+      resolveVideoOutputDirectory: async () => root
+    });
+
+    const result = await service.inspectExtensionSource({
+      ...state.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath,
+      sourceVideoDuration: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      resolution: 480,
+      h3ContextLatentPath: latentPath
+    });
+
+    expect(result).toMatchObject({
+      route: "motion-context",
+      status: "available",
+      payloadPath: latentPath,
+      motionContext: {
+        format: "h3_motion_context_av_v1",
+        videoShape: [1, 24, 2, 30, 54],
+        audioShape: [1, 32, 2, 8],
+        frameCount: 5,
+        contextFrames: 22
+      }
+    });
+  });
+
+  it("rejects a Motion Context latent with an invalid audio/video contract", async () => {
+    const root = await temporaryRoot();
+    const sourceVideoPath = path.join(root, "source.mp4");
+    const latentPath = path.join(root, "h3-motion-context", "invalid.safetensors");
+    await fs.mkdir(path.dirname(latentPath), { recursive: true });
+    await fs.writeFile(sourceVideoPath, "video");
+    await fs.writeFile(latentPath, motionContextPayload({ audioTime: 9 }));
+    const state = createDefaultState();
+    const service = new HistoryArtifactService({
+      store: repository(state),
+      artifactService: {} as NativeAvArtifactService,
+      resolveVideoOutputDirectory: async () => root
+    });
+
+    const result = await service.inspectExtensionSource({
+      ...state.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath,
+      sourceVideoDuration: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      resolution: 480,
+      h3ContextLatentPath: latentPath
+    });
+
+    expect(result).toMatchObject({ route: "motion-context", status: "invalid" });
+    expect(result.reason).toContain("audio shape");
   });
 
   it("restores recorded output paths through the query service", async () => {
@@ -481,6 +569,50 @@ describe("History application services", () => {
     await expect(fs.stat(payloadPath)).rejects.toThrow();
   });
 
+  it("uses the resolver for whole History auxiliary files outside the configured output root", async () => {
+    const root = await temporaryRoot();
+    const configuredOutput = path.join(root, "configured-output");
+    const resolvedOutput = path.join(root, "resolved-output");
+    const videoPath = path.join(resolvedOutput, "result.mp4");
+    const artifactDirectory = path.join(resolvedOutput, "h3-native-av");
+    const manifestPath = path.join(artifactDirectory, "resolved.json");
+    const payloadPath = path.join(artifactDirectory, "resolved.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(manifestPath, "manifest"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const version = videoVersion("original", [{
+      filename: "result.mp4",
+      subfolder: "",
+      type: "output"
+    }]);
+    version.h3ContinuationData = {
+      status: "available",
+      artifact: {
+        manifest: { filename: "resolved.json", subfolder: "h3-native-av", type: "output" },
+        payload: { filename: "resolved.safetensors", subfolder: "h3-native-av", type: "output" }
+      }
+    } as AssetVersion["h3ContinuationData"];
+    const state = createDefaultState();
+    state.settings.outputDirectory = configuredOutput;
+    state.history = [videoAsset("asset-resolver-delete", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+    vi.spyOn(query, "resolveHistoryFile").mockImplementation(async (file) => {
+      const candidate = path.join(resolvedOutput, file.subfolder, file.filename);
+      return (await fs.stat(candidate).catch(() => undefined))?.isFile() ? candidate : null;
+    });
+
+    await destructiveFor(store, query).deleteHistory("asset-resolver-delete");
+
+    expect(store.get().history).toEqual([]);
+    await expect(fs.stat(videoPath)).rejects.toThrow();
+    await expect(fs.stat(manifestPath)).rejects.toThrow();
+    await expect(fs.stat(payloadPath)).rejects.toThrow();
+  });
+
   it("deletes only the selected video version's committed JointAV pair", async () => {
     const root = await temporaryRoot();
     const artifactDirectory = path.join(root, "h3-native-av");
@@ -654,6 +786,243 @@ describe("History application services", () => {
     expect(store.get().history[0]?.versions[0]?.h3ContinuationData).toMatchObject({
       status: "missing"
     });
+  });
+
+  it("downgrades availability when JointAV deletion removes only part of the pair", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const videoPath = path.join(root, "original.mp4");
+    const manifestPath = path.join(artifactDirectory, "h3av-partial.json");
+    const payloadPath = path.join(artifactDirectory, "h3av-partial.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(manifestPath, "manifest"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const version = videoVersion("original", [{
+      filename: "original.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: videoPath
+    }]);
+    version.h3ContinuationData = {
+      status: "available",
+      artifact: {
+        manifest: { filename: "h3av-partial.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+        payload: { filename: "h3av-partial.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+      }
+    } as AssetVersion["h3ContinuationData"];
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-partial", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+    let unlinkCount = 0;
+    const partialFileSystem: HistoryFileSystemPort = {
+      ...nativeHistoryFileSystem,
+      async unlink(filename) {
+        unlinkCount += 1;
+        if (unlinkCount === 2) {
+          throw Object.assign(new Error("access denied"), { code: "EACCES" });
+        }
+        await nativeHistoryFileSystem.unlink(filename);
+      }
+    };
+
+    await expect(destructiveFor(store, query, partialFileSystem).deleteJointAv("asset-partial", "original"))
+      .rejects.toThrow("无法删除JointAV 文件");
+    expect(store.get().history[0]?.versions[0]?.h3ContinuationData).toMatchObject({
+      status: "invalid",
+      reason: expect.stringContaining("删除不完整")
+    });
+    expect(store.get().history[0]?.versions[0]?.h3AvAsset).toBeUndefined();
+    await expect(fs.readFile(videoPath, "utf8")).resolves.toBe("video");
+    await expect(fs.stat(payloadPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
+  });
+
+  it("downgrades availability when a missing manifest is followed by a blocked payload", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const videoPath = path.join(root, "original.mp4");
+    const payloadPath = path.join(artifactDirectory, "h3av-missing-manifest.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const version = videoVersion("original", [{
+      filename: "original.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: videoPath
+    }]);
+    version.h3ContinuationData = {
+      status: "available",
+      artifact: {
+        manifest: { filename: "h3av-missing-manifest.json", subfolder: "h3-native-av", type: "output", absolutePath: path.join(artifactDirectory, "h3av-missing-manifest.json") },
+        payload: { filename: "h3av-missing-manifest.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+      }
+    } as AssetVersion["h3ContinuationData"];
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-missing-manifest", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+    const failingFileSystem: HistoryFileSystemPort = {
+      ...nativeHistoryFileSystem,
+      async unlink(filename) {
+        if (filename === payloadPath) {
+          throw Object.assign(new Error("access denied"), { code: "EACCES" });
+        }
+        await nativeHistoryFileSystem.unlink(filename);
+      }
+    };
+
+    await expect(destructiveFor(store, query, failingFileSystem).deleteJointAv("asset-missing-manifest", "original"))
+      .rejects.toThrow("无法删除JointAV 文件");
+    expect(store.get().history[0]?.versions[0]?.h3ContinuationData).toMatchObject({
+      status: "invalid",
+      reason: expect.stringContaining("删除不完整")
+    });
+    await expect(fs.readFile(videoPath, "utf8")).resolves.toBe("video");
+    await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
+  });
+
+  it("keeps artifact and asset identity when both JointAV files are missing", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const manifestPath = path.join(artifactDirectory, "h3av-both-missing.json");
+    const payloadPath = path.join(artifactDirectory, "h3av-both-missing.safetensors");
+    const version = videoVersion("original", []);
+    const artifact = {
+      manifest: { filename: "h3av-both-missing.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+      payload: { filename: "h3av-both-missing.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+    } as NonNullable<AssetVersion["h3ContinuationData"]>["artifact"];
+    version.h3ContinuationData = { status: "available", artifact };
+    version.h3AvAsset = { assetId: "missing-joint-av-asset", ownerPath: artifact.payload } as never;
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-both-missing", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+
+    await expect(destructiveFor(store, query).deleteJointAv("asset-both-missing", "original"))
+      .rejects.toThrow("无法完成安全删除");
+    const retainedVersion = store.get().history[0]?.versions[0];
+    expect(retainedVersion?.h3ContinuationData).toMatchObject({
+      status: "invalid",
+      artifact: { payload: { absolutePath: payloadPath } }
+    });
+    expect(retainedVersion?.h3AvAsset?.assetId).toBe("missing-joint-av-asset");
+  });
+
+  it("keeps a whole History record invalid and inspectable after unresolved auxiliary deletion", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const videoPath = path.join(root, "original.mp4");
+    const payloadPath = path.join(artifactDirectory, "h3av-history-partial.safetensors");
+    const manifestPath = path.join(artifactDirectory, "h3av-history-partial.json");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const version = videoVersion("original", [{
+      filename: "original.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: videoPath
+    }]);
+    const artifact = {
+      manifest: { filename: "h3av-history-partial.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+      payload: { filename: "h3av-history-partial.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+    } as NonNullable<AssetVersion["h3ContinuationData"]>["artifact"];
+    version.h3ContinuationData = { status: "available", artifact };
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-history-partial", [version])];
+    const store = repository(state);
+    const failingFileSystem: HistoryFileSystemPort = {
+      ...nativeHistoryFileSystem,
+      async unlink(filename) {
+        if (filename === payloadPath) {
+          throw Object.assign(new Error("access denied"), { code: "EACCES" });
+        }
+        await nativeHistoryFileSystem.unlink(filename);
+      }
+    };
+    const query = queryFor(store, root);
+
+    await expect(destructiveFor(store, query, failingFileSystem).deleteHistory("asset-history-partial"))
+      .rejects.toThrow("无法删除视频文件");
+    const retainedVersion = store.get().history[0]?.versions[0];
+    expect(retainedVersion?.h3ContinuationData).toMatchObject({
+      status: "invalid",
+      artifact: { payload: { absolutePath: payloadPath } }
+    });
+    await expect(fs.stat(videoPath)).rejects.toThrow();
+    await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
+  });
+
+  it("keeps a selected video version invalid and inspectable after partial auxiliary deletion", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const videoPath = path.join(root, "original.mp4");
+    const otherVideoPath = path.join(root, "other.mp4");
+    const payloadPath = path.join(artifactDirectory, "h3av-version-partial.safetensors");
+    const manifestPath = path.join(artifactDirectory, "h3av-version-partial.json");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(otherVideoPath, "other"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const target = videoVersion("original", [{
+      filename: "original.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: videoPath
+    }]);
+    const artifact = {
+      manifest: { filename: "h3av-version-partial.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+      payload: { filename: "h3av-version-partial.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+    } as NonNullable<AssetVersion["h3ContinuationData"]>["artifact"];
+    target.h3ContinuationData = { status: "available", artifact };
+    const other = videoVersion("other", [{
+      filename: "other.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: otherVideoPath
+    }], "upscale");
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-version-partial", [target, other])];
+    const store = repository(state);
+    const failingFileSystem: HistoryFileSystemPort = {
+      ...nativeHistoryFileSystem,
+      async unlink(filename) {
+        if (filename === payloadPath) {
+          throw Object.assign(new Error("access denied"), { code: "EACCES" });
+        }
+        await nativeHistoryFileSystem.unlink(filename);
+      }
+    };
+    const query = queryFor(store, root);
+
+    await expect(destructiveFor(store, query, failingFileSystem).deleteVideoVersion(
+      "asset-version-partial",
+      "original"
+    )).rejects.toThrow("无法删除视频文件");
+    const retainedTarget = store.get().history[0]?.versions.find((version) => version.id === "original");
+    expect(retainedTarget?.h3ContinuationData).toMatchObject({
+      status: "invalid",
+      artifact: { payload: { absolutePath: payloadPath } }
+    });
+    expect(store.get().history[0]?.versions).toHaveLength(2);
+    await expect(fs.stat(videoPath)).rejects.toThrow();
+    await expect(fs.readFile(otherVideoPath, "utf8")).resolves.toBe("other");
+    await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
   });
 
   it("refuses JointAV deletion when another History version references the same pair", async () => {
@@ -853,6 +1222,48 @@ describe("History application services", () => {
     await expect(fs.stat(payloadPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
   });
 
+  it("protects sequence-only queue and draft asset references without file paths", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const manifestPath = path.join(artifactDirectory, "h3av-sequence-only.json");
+    const payloadPath = path.join(artifactDirectory, "h3av-sequence-only.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(manifestPath, "manifest"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const assetId = "sequence-only-asset";
+    const artifact = {
+      manifest: { filename: "h3av-sequence-only.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+      payload: { filename: "h3av-sequence-only.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+    } as unknown as NonNullable<AssetVersion["h3ContinuationData"]>["artifact"];
+    const version = videoVersion("original", []);
+    version.h3ContinuationData = { status: "available", artifact };
+    version.h3AvAsset = { assetId, storageKind: "app-canonical", ownerPath: artifact.payload } as never;
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-sequence-only", [version])];
+    state.queue = [{
+      id: "sequence-only-queue",
+      taskType: "generation",
+      status: "waiting",
+      h3ContinuumSequence: { chunks: [{ assetId }] }
+    } as never];
+    state.videoExtensionDraft = {
+      ...state.draft,
+      inputMode: "video",
+      h3ContinuumSequence: { chunks: [{ assetId }] }
+    };
+    const store = repository(state);
+    const query = queryFor(store, root);
+    const unlink = vi.spyOn(nativeHistoryFileSystem, "unlink");
+
+    await expect(destructiveFor(store, query).deleteJointAv("asset-sequence-only", "original"))
+      .rejects.toThrow("仍被其他版本、队列或草稿引用");
+    expect(unlink).not.toHaveBeenCalled();
+    unlink.mockRestore();
+  });
+
   it("never exposes a managed Run owner to ordinary JointAV deletion", async () => {
     const root = await temporaryRoot();
     const artifactDirectory = path.join(root, "h3-native-av");
@@ -919,6 +1330,48 @@ describe("History application services", () => {
     await expect(fs.stat(payloadPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
   });
 
+  it("keeps a managed Run artifact read-only when deleting the whole History record", async () => {
+    const root = await temporaryRoot();
+    const artifactDirectory = path.join(root, "h3-native-av");
+    const videoPath = path.join(root, "managed.mp4");
+    const manifestPath = path.join(artifactDirectory, "h3av-managed-history.json");
+    const payloadPath = path.join(artifactDirectory, "h3av-managed-history.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(manifestPath, "manifest"),
+      fs.writeFile(payloadPath, "payload")
+    ]);
+    const version = videoVersion("managed", [{
+      filename: "managed.mp4",
+      subfolder: "",
+      type: "output",
+      absolutePath: videoPath
+    }]);
+    const artifact = {
+      manifest: { filename: "h3av-managed-history.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath },
+      payload: { filename: "h3av-managed-history.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath }
+    } as NonNullable<AssetVersion["h3ContinuationData"]>["artifact"];
+    version.h3ContinuationData = { status: "available", artifact };
+    version.h3AvAsset = {
+      assetId: "managed-history-asset",
+      storageKind: "continuum-run-chunk",
+      ownerPath: artifact.payload
+    } as never;
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("asset-managed-history", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+
+    await destructiveFor(store, query).deleteHistory("asset-managed-history");
+
+    expect(store.get().history).toEqual([]);
+    await expect(fs.stat(videoPath)).rejects.toThrow();
+    await expect(fs.readFile(manifestPath, "utf8")).resolves.toBe("manifest");
+    await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
+  });
+
   it("deletes Motion Context latent without deleting the version video", async () => {
     const root = await temporaryRoot();
     const contextDirectory = path.join(root, "h3-motion-context", "task-1");
@@ -955,6 +1408,44 @@ describe("History application services", () => {
     expect(store.get().history[0]?.versions[0]?.files).toEqual([
       { filename: "original.mp4", subfolder: "", type: "output", absolutePath: videoPath }
     ]);
+  });
+
+  it("deletes Motion Context latent at the resolver's actual output root", async () => {
+    const root = await temporaryRoot();
+    const configuredOutput = path.join(root, "configured-output");
+    const actualOutput = path.join(root, "actual-output");
+    const contextPath = path.join(actualOutput, "h3-motion-context", "task-2", "clip_00001.safetensors");
+    const videoPath = path.join(root, "original-external.mp4");
+    await fs.mkdir(path.dirname(contextPath), { recursive: true });
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(contextPath, "latent")
+    ]);
+    const contextFile = {
+      filename: "clip_00001.safetensors",
+      subfolder: "h3-motion-context/task-2",
+      type: "output",
+      format: "safetensors"
+    };
+    const version = videoVersion("external", [
+      { filename: "original-external.mp4", subfolder: "", type: "output", absolutePath: videoPath },
+      { ...contextFile, absolutePath: contextPath }
+    ]);
+    version.h3ContextLatentPath = contextPath;
+    const state = createDefaultState();
+    state.settings.outputDirectory = configuredOutput;
+    state.history = [videoAsset("asset-external-motion", [version])];
+    const store = repository(state);
+    const query = queryFor(store, root);
+    const resolveHistoryFile = query.resolveHistoryFile.bind(query);
+    vi.spyOn(query, "resolveHistoryFile").mockImplementation(async (file) =>
+      file.filename === contextFile.filename ? contextPath : resolveHistoryFile(file, state.settings)
+    );
+
+    await destructiveFor(store, query).deleteMotionContext("asset-external-motion", "external");
+
+    await expect(fs.stat(contextPath)).rejects.toThrow();
+    expect(store.get().history[0]?.versions[0]?.h3ContextLatentPath).toBeUndefined();
   });
 
   it("keeps history metadata when a partial file deletion fails", async () => {

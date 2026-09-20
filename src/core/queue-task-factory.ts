@@ -365,6 +365,9 @@ export function extensionTaskFromDraft(
     ...(isMiniMaxH3R2vModel(draft.modelId) && draft.h3ContextLatentPath
       ? { h3ContextLatentPath: draft.h3ContextLatentPath }
       : {}),
+    ...(isMiniMaxH3R2vModel(draft.modelId) && draft.h3MotionContextAsset
+      ? { h3MotionContextAsset: structuredClone(draft.h3MotionContextAsset) }
+      : {}),
     ...(draft.h3ContinuumArtifactPath
       ? { h3ContinuumArtifactPath: draft.h3ContinuumArtifactPath }
       : {}),
@@ -413,7 +416,7 @@ export function extensionTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
-    h3SparseAttentionMode: isH3 ? state.settings.h3SparseAttentionMode : undefined,
+    h3SparseAttentionMode: isH3 ? h3ExecutionPolicy?.sparseAttentionMode : undefined,
     h3RuntimeMode: isH3 ? state.settings.h3RuntimeMode : undefined,
     h3ComfyCompilerMode: isH3 ? state.settings.h3ComfyCompilerMode : undefined,
     h3ExecutionPolicy,

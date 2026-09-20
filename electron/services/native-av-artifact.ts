@@ -281,6 +281,14 @@ function validateJointPayloadGeometry(
   }
 }
 
+function frameCountFromJointPayload(payload: ParsedJointAvPayload): number {
+  const temporal = payload.video.shape[2];
+  if (!Number.isSafeInteger(temporal) || temporal < 2 || (temporal - 2) % 5 !== 0) {
+    throw new Error("video tensor 的时间 shape 不符合 H3 时间网格");
+  }
+  return 5 + ((temporal - 2) / 5) * 17;
+}
+
 function buildArtifactManifest(
   request: NativeAvArtifactMetadata,
   artifactId: string,
@@ -464,9 +472,6 @@ export class NativeAvArtifactService {
       if (request.fps !== undefined && request.fps !== 24) {
         return failure("save-failed", "H3 AV artifact 只接受 24 FPS");
       }
-      if (!Number.isSafeInteger(request.frameCount) || request.frameCount <= 0 || (request.frameCount - 5) % 17 !== 0) {
-        return failure("save-failed", "frameCount 不符合 H3 时间网格");
-      }
       if (!Number.isSafeInteger(request.contextFrames) || request.contextFrames < 0) {
         return failure("save-failed", "contextFrames 无效");
       }
@@ -508,7 +513,15 @@ export class NativeAvArtifactService {
         8 + MAX_SAFETENSORS_HEADER_BYTES
       ));
       validateSafetensorsPayloadLayout(header, sourceStat.size);
-      validateJointPayloadGeometry(header, request);
+      // Comfy nodes may quantize a requested pixel-frame length to the H3 VAE
+      // grid. The serialized tensor is the authoritative artifact timeline;
+      // derive its frame count from the validated header instead of persisting
+      // a pre-render estimate that can be off-grid (notably Motion Context).
+      const committedRequest = {
+        ...request,
+        frameCount: frameCountFromJointPayload(header)
+      };
+      validateJointPayloadGeometry(header, committedRequest);
       const digest = await hashFileStream(this.deps.fileSystem, sourcePath);
       const afterStat = await this.deps.fileSystem.stat(sourcePath);
       if (digest.bytes !== sourceStat.size || !afterStat?.isFile() || afterStat.size !== digest.bytes) {
@@ -516,7 +529,7 @@ export class NativeAvArtifactService {
       }
 
       const baseArtifact = buildArtifactManifest(
-        request,
+        committedRequest,
         artifactId,
         filenames,
         header,

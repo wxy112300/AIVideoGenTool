@@ -2671,6 +2671,7 @@ registerRendererEvents({
 bootstrapRenderer({
     studio: window.studio,
     setState: setRendererState,
+    setCreationMode,
     setComfyRuntimeState: (runtime) => {
         comfyRuntime = runtime;
     },

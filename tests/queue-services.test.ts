@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDefaultDraft, createDefaultImageEditDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
-import type { AppState, QueueTask } from "../src/types";
+import type { AppState, Draft, QueueTask } from "../src/types";
 import type { StateRepository } from "../electron/ports/state-repository";
 import { QueueControlService } from "../electron/queue-control-service";
 import { QueueMutationService } from "../electron/queue-mutation-service";
@@ -240,6 +240,384 @@ describe("queue command services", () => {
     }
   });
 
+  it("selects the bundled Motion Extend workflow when an old draft has no workflow", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-workflow-fallback-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      await fs.writeFile(sourcePath, "video");
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_ref2va",
+        workflowPath: "",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      };
+
+      const next = await service.enqueueExtension(draft);
+      expect(next.queue[0]).toMatchObject({
+        modelId: "minimax_h3_ref2va",
+        workflowPath: expect.stringContaining("minimax_h3_r2v_extend_api.json")
+      });
+      expect(next.draft.workflowPath).toContain("minimax_h3_r2v_extend_api.json");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes a stale global sparse setting in the Motion queue snapshot", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-sparse-settings-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      await fs.writeFile(sourcePath, "video");
+      const state = createDefaultState();
+      state.settings.h3SparseAttentionMode = "sol-attn";
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+
+      const next = await service.enqueueExtension({
+        ...createDefaultDraft(),
+        inputMode: "video",
+        modelId: "minimax_h3_ref2va",
+        workflowPath: "",
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      });
+      const queued = next.queue[0];
+
+      expect(queued).toMatchObject({
+        h3SparseAttentionMode: "off",
+        h3ExecutionPolicy: expect.objectContaining({
+          sparseAttentionMode: "off",
+          allowed: true
+        })
+      });
+      expect(next.settings.h3SparseAttentionMode).toBe("sol-attn");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an existing custom workflow even when its filename matches a bundled generation workflow", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-custom-same-name-workflow-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      const customWorkflowPath = path.join(root, "custom", "minimax_h3_i2v_api.json");
+      await fs.mkdir(path.dirname(customWorkflowPath), { recursive: true });
+      await fs.writeFile(sourcePath, "video");
+      await fs.copyFile(
+        fileURLToPath(new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url)),
+        customWorkflowPath
+      );
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+
+      const next = await service.enqueueExtension({
+        ...createDefaultDraft(),
+        inputMode: "video",
+        modelId: "minimax_h3_ref2va",
+        workflowPath: customWorkflowPath,
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      });
+
+      expect(next.queue[0]?.workflowPath).toBe(customWorkflowPath);
+      expect(next.draft.workflowPath).toBe(customWorkflowPath);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a Motion latent when the selected trim does not end at the source video", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-trim-contract-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      const latentPath = path.join(root, "clip.safetensors");
+      await fs.writeFile(sourcePath, "video");
+      await fs.writeFile(latentPath, "latent");
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_ref2va",
+        workflowPath: fileURLToPath(new URL(
+          "../workflows/minimax_h3_r2v_extend_api.json",
+          import.meta.url
+        )),
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 4,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ContextLatentPath: latentPath,
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      };
+
+      await expect(service.enqueueExtension(draft)).rejects.toThrow("只对应源视频末端");
+      expect(state.queue).toHaveLength(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not silently fall back to video when a selected Motion latent is missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-missing-contract-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      await fs.writeFile(sourcePath, "video");
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+      await expect(service.enqueueExtension({
+        ...createDefaultDraft(),
+        inputMode: "video",
+        modelId: "minimax_h3_ref2va",
+        workflowPath: fileURLToPath(new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url)),
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ContextLatentPath: path.join(root, "missing.safetensors"),
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      })).rejects.toThrow("所选 Motion Context latent 已不存在");
+      expect(state.queue).toHaveLength(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not let a stale canonical Motion asset replace a manually selected latent", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-stale-asset-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      const selectedLatentPath = path.join(root, "selected.safetensors");
+      const staleOwnerPath = path.join(root, "stale-owner.safetensors");
+      await Promise.all([
+        fs.writeFile(sourcePath, "video"),
+        fs.writeFile(selectedLatentPath, "selected latent"),
+        fs.writeFile(staleOwnerPath, "stale latent")
+      ]);
+      const inspectedDrafts: Draft[] = [];
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        inspectExtensionSource: vi.fn(async (draft: Draft) => {
+          inspectedDrafts.push(structuredClone(draft));
+          return { route: "motion-context" as const, status: "available" as const };
+        }),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+      const draft = {
+        ...createDefaultDraft(),
+        inputMode: "video" as const,
+        modelId: "minimax_h3_ref2va",
+        workflowPath: fileURLToPath(new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url)),
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ContextLatentPath: selectedLatentPath,
+        h3MotionContextAsset: {
+          schemaVersion: 1,
+          assetId: "stale-canonical-owner",
+          storageKind: "app-canonical" as const,
+          ownerPath: {
+            filename: path.basename(staleOwnerPath),
+            subfolder: "h3-native-av",
+            type: "output" as const,
+            absolutePath: staleOwnerPath
+          },
+          payloadBytes: 12,
+          payloadSha256: "a".repeat(64),
+          videoTensorSha256: "b".repeat(64),
+          audioTensorSha256: "c".repeat(64),
+          videoShape: [1, 24, 2, 30, 54],
+          videoDtype: "F16" as const,
+          audioShape: [1, 32, 2, 8],
+          audioDtype: "BF16" as const,
+          width: 864,
+          height: 480,
+          fps: 24,
+          frameCount: 5,
+          producer: {
+            workflowId: "minimax-h3",
+            workflowRevision: "test-v1",
+            producerNodeId: "LocalVideoStudioH3SaveJointAV",
+            producerNodeVersion: "0.3.5",
+            executionModelId: "minimax_h3_fl2va",
+            diffusionModelFilename: "model.safetensors",
+            textEncoderFilename: "text.safetensors",
+            videoVaeFilename: "video-vae.safetensors",
+            audioVaeFilename: "audio-vae.safetensors",
+            loraFilenames: [],
+            width: 864,
+            height: 480,
+            fps: 24,
+            frameCount: 5
+          },
+          capabilities: ["native-av" as const],
+          createdAt: "2026-09-19T00:00:00.000Z"
+        },
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      };
+
+      const next = await service.enqueueExtension(draft);
+
+      expect(inspectedDrafts.at(-1)).toMatchObject({
+        h3ContextLatentPath: selectedLatentPath,
+        h3MotionContextAsset: undefined
+      });
+      expect(next.queue[0]).toMatchObject({ h3ContextLatentPath: selectedLatentPath });
+      expect(next.queue[0]).not.toHaveProperty("h3MotionContextAsset");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rechecks the Motion consumer contract at the final enqueue boundary", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-final-preflight-"));
+    try {
+      const sourcePath = path.join(root, "source.mp4");
+      const latentPath = path.join(root, "clip.safetensors");
+      await fs.writeFile(sourcePath, "video");
+      await fs.writeFile(latentPath, "latent");
+      const state = createDefaultState();
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        inspectExtensionSource: vi.fn(async () => ({
+          route: "motion-context" as const,
+          status: "invalid" as const,
+          reason: "Motion Context latent 的 schema 不匹配"
+        })),
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => path.join(root, "output"),
+        imageInspection: { readDimensions: () => ({ width: 864, height: 480 }) }
+      });
+
+      await expect(service.enqueueExtension({
+        ...createDefaultDraft(),
+        inputMode: "video",
+        modelId: "minimax_h3_ref2va",
+        workflowPath: fileURLToPath(new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url)),
+        sourceVideoPath: sourcePath,
+        sourceVideoDuration: 5,
+        trimStartSeconds: 0,
+        trimEndSeconds: 5,
+        sourceWidth: 864,
+        sourceHeight: 480,
+        h3ContextLatentPath: latentPath,
+        h3ReferenceSlots: [{
+          id: "source-slot",
+          mediaType: "video" as const,
+          mediaPath: sourcePath,
+          role: "motion" as const,
+          note: ""
+        }]
+      })).rejects.toThrow("schema 不匹配");
+      expect(state.queue).toHaveLength(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("validates the old AV instead of starting a managed Run from a stale managed draft", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-continuum-old-av-"));
     try {
@@ -405,8 +783,8 @@ describe("queue command services", () => {
     }
   });
 
-  it("falls back to source video when a selected Motion Context latent is missing", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-context-fallback-"));
+  it("rejects a selected Motion Context latent when it is missing", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-motion-context-missing-"));
     try {
       const sourcePath = path.join(root, "source.mp4");
       const missingLatentPath = path.join(root, "missing-context.safetensors");
@@ -416,9 +794,8 @@ describe("queue command services", () => {
         fs.writeFile(sourcePath, "video")
       ]);
       const state = createDefaultState();
-      const enqueueInfo = vi.fn();
       const enqueueLogger = {
-        debug: vi.fn(), info: enqueueInfo, warn: vi.fn(), error: vi.fn()
+        debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()
       } as never;
       const service = new QueueEnqueueService({
         store: repository(state),
@@ -440,21 +817,9 @@ describe("queue command services", () => {
         h3ContextLatentPath: missingLatentPath
       };
 
-      const next = await service.enqueueExtension(draft);
-
-      expect(next.queue[0]).toMatchObject({
-        taskType: "extension",
-        modelId: "minimax_h3_ref2va",
-        sourceVideoPath: sourcePath
-      });
-      expect(next.queue[0]?.h3ContextLatentPath).toBeUndefined();
-      expect(next.draft.h3ContextLatentPath).toBeUndefined();
-      expect(enqueueInfo).toHaveBeenCalledWith(
-        "queue",
-        "h3-motion-context-latent-fallback",
-        expect.any(String),
-        { path: missingLatentPath }
-      );
+      await expect(service.enqueueExtension(draft))
+        .rejects.toThrow("所选 Motion Context latent 已不存在");
+      expect(state.queue).toHaveLength(0);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

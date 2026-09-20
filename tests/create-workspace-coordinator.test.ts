@@ -7,6 +7,7 @@ import { createPromptRuntimeState } from "../src/core/prompt-runtime-state";
 import { createTranslator } from "../src/core/i18n";
 import {
   createCreateWorkspaceCoordinator,
+  videoExtensionSourceInspectionKey,
   type CreateWorkspaceCoordinatorDependencies
 } from "../src/renderer/pages/create/coordinator";
 import type { AppState, ComfyRuntimeState } from "../src/types";
@@ -109,6 +110,24 @@ afterEach(() => {
 });
 
 describe("create workspace coordinator", () => {
+  it("invalidates extension source inspection when output geometry changes", () => {
+    const state = createDefaultState();
+    const draft = {
+      ...state.draft,
+      inputMode: "video" as const,
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "C:/history/source.mp4",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      resolution: 480 as const,
+      ratio: "source" as const
+    };
+    const initial = videoExtensionSourceInspectionKey(draft, state.settings);
+
+    expect(videoExtensionSourceInspectionKey({ ...draft, resolution: 720 }, state.settings)).not.toBe(initial);
+    expect(videoExtensionSourceInspectionKey({ ...draft, ratio: "9:16" }, state.settings)).not.toBe(initial);
+  });
+
   it("keeps draft mutations local until the debounced owner persists them", async () => {
     const { coordinator, application, getState } = createCoordinatorHarness();
 
@@ -203,6 +222,59 @@ describe("create workspace coordinator", () => {
     expect(getState().draft.extensionActivePromptVersion).toBe(0);
     expect(getState().videoExtensionDraft?.sourceVideoPath).toBe("history.mp4");
     expect(coordinator.getDraftDirty()).toBe(false);
+  });
+
+  it("hydrates a missing History extension workflow from the bundled model workflow", async () => {
+    const { coordinator, application, getState } = createCoordinatorHarness();
+    application.getBundledWorkflow.mockResolvedValue({
+      modelId: "minimax_h3_ref2va",
+      label: "Motion Extend",
+      path: "C:/app/workflows/minimax_h3_r2v_extend_api.json",
+      supportsEndImage: false,
+      supportsVideoExtension: true
+    });
+
+    await coordinator.selectDraftVideo("history.mp4", {
+      assetId: "asset-workflow-fallback",
+      versionId: "version-workflow-fallback",
+      duration: 8,
+      width: 1280,
+      height: 720,
+      modelId: "minimax_h3_ref2va",
+      h3ContextLatentPath: "C:/history/h3-motion-context/clip_00001.safetensors"
+    });
+
+    expect(getState().draft.workflowPath).toBe(
+      "C:/app/workflows/minimax_h3_r2v_extend_api.json"
+    );
+    expect(application.saveDraft.mock.calls[0]?.[0]?.workflowPath).toBe(
+      "C:/app/workflows/minimax_h3_r2v_extend_api.json"
+    );
+  });
+
+  it("hydrates an empty extension workflow before persisting a restored draft", async () => {
+    const { coordinator, application, getState } = createCoordinatorHarness();
+    application.getBundledWorkflow.mockResolvedValue({
+      modelId: "minimax_h3_ref2va",
+      label: "Motion Extend",
+      path: "C:/app/workflows/minimax_h3_r2v_extend_api.json",
+      supportsEndImage: false,
+      supportsVideoExtension: true
+    });
+
+    await coordinator.saveDraftImmediately({
+      ...getState().draft,
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      workflowPath: ""
+    });
+
+    expect(getState().draft.workflowPath).toBe(
+      "C:/app/workflows/minimax_h3_r2v_extend_api.json"
+    );
+    expect(application.saveDraft.mock.calls.at(-1)?.[0]?.workflowPath).toBe(
+      "C:/app/workflows/minimax_h3_r2v_extend_api.json"
+    );
   });
 
   it("infers the R2V Extend model when history only provides a Motion Context latent", async () => {

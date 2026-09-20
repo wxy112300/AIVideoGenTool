@@ -369,6 +369,8 @@ export interface Draft {
   sourceAssetId?: string;
   sourceVersionId?: string;
   h3ContextLatentPath?: string;
+  /** Canonical AV owner explicitly adapted for Motion Context consumption. */
+  h3MotionContextAsset?: H3AvLatentAsset;
   /** Optional H3 Native AV artifact used by the Continuum extension mode. */
   h3ContinuumArtifactPath?: string;
   h3ContinuumArtifact?: NativeAvContinuationArtifact;
@@ -881,6 +883,8 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   sourceAssetId?: string;
   sourceVersionId?: string;
   h3ContextLatentPath?: string;
+  /** Canonical AV owner explicitly adapted for Motion Context consumption. */
+  h3MotionContextAsset?: H3AvLatentAsset;
   /** Optional H3 Native AV artifact selected for Continuum extension. */
   h3ContinuumArtifactPath?: string;
   h3ContinuumArtifact?: NativeAvContinuationArtifact;
@@ -1289,8 +1293,19 @@ export interface NativeAvArtifactInspection {
   payloadBytes?: number;
 }
 
+export interface MotionContextLatentInspection {
+  format: "h3_motion_context_av_v1" | "h3_native_av_wrapper";
+  videoShape: number[];
+  videoDtype: string;
+  audioShape: number[];
+  audioDtype: string;
+  frameCount: number;
+  contextFrames: 22;
+}
+
 export interface VideoExtensionSourceInspection extends NativeAvArtifactInspection {
-  route: "managed" | "bootstrap" | "boundary";
+  route: "managed" | "bootstrap" | "motion-context" | "boundary";
+  motionContext?: MotionContextLatentInspection;
 }
 
 export interface AssetVersion {
@@ -1360,6 +1375,8 @@ export interface AssetVersion {
   upscaleRuntimeBundleId?: string;
   startedAt?: string;
   h3ContextLatentPath?: string;
+  /** Canonical AV source consumed by the Motion Context loader. */
+  h3MotionContextSourceAsset?: H3AvLatentAsset;
   h3ContinuationData?: NativeAvContinuationData;
   h3ContinuumSequence?: ContinuumSequence;
   h3ContinuumReceipt?: H3ContinuumReceipt;
@@ -2112,6 +2129,8 @@ export interface BundledWorkflow {
 export interface WorkflowCapabilities {
   supportsEndImage: boolean;
   supportsVideoExtension: boolean;
+  /** True only when the inspected path belongs to an app-provided workflow root. */
+  isBundled?: boolean;
 }
 
 export interface PerformanceMetrics {

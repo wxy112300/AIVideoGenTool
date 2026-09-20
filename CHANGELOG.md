@@ -6,15 +6,18 @@
 
 > 历史条目描述的是对应时间点已经落地的能力。后来被替换、隐藏或淘汰的模型与运行方案仍会保留在记录中，但不代表当前版本继续推荐使用。
 
-## Unreleased
+## 0.63.1 — 2026-09-20
 
+- Continuum 创建页与 History 收尾：依赖面板完整展示 AV/manifest、Run Storage 与 chunk 文件，清空 AV 会同步清除 manifest 绑定和旧 inspection 状态；刷新后恢复视频续写模式，文件选择/清空入口和空状态布局保持一致。技术门禁已通过，主观音频听检仍由人工确认。
+
+- H3 Phase 3/4 收尾 patch：清除、手选或替换 Motion latent 时同步清除旧 typed asset，提交边界不再让 stale owner 覆盖显式路径；History“在创建页调整”恢复已保存的输入 AV 身份，而“继续创作”对 R2V 输出保持 Motion 路由；分辨率或比例变化会重新执行 source preflight。Comfy 实际 JointAV 时间网格现在以通过严格 header/shape/hash 校验的序列化 tensor 为准，避免 Motion 请求帧估算不在 H3 网格上时拒绝有效产物。隔离应用已完成两次连续 GPU 续写，第二轮从第一轮 History 输出 AV 入队并发布新 AV；主观音频仍需人工听检。
 - 旧 H3 队列保存兼容 patch：经用户授权，等待执行且原意图为全部保存的旧 generation/extension 任务，在逐项认领时自动补齐并持久化共享 AV 保存策略，无需重新入队；提交图、AV 收集和 History 使用同一快照，提示词、seed、工作流与来源参数不变。不修改不保存/部分保存、已有 checkpoint/managed sequence、未知策略或已运行任务，不补造历史 latent。需更新到包含本修复的应用，并将 H3 AV 节点更新至 `0.3.5` 后重启 ComfyUI；不代表消费流程或续写质量验收通过。
 - H3 AV 节点包版本 patch：将本地修改后的 bundled 节点明确发布为 `0.3.5`，同步 VERSION 与依赖目录，修复已安装旧 `0.3.4` 时无法发现同版本内容更新的问题；补充离线更新检测、安装版本一致性和 producer 元数据回归。需更新应用后在设置更新节点并重启 ComfyUI；仅更新节点包不会迁移队列，应用执行前补齐规则见上一条。
 - Continuum 连续续写拼接 patch：修复“Extend 的 Extend”将已拼接源片再次过 fps 滤镜时因非零起始时间戳少保留一帧的问题；拼接前归零视频时间戳，仍严格校验总帧数。真实失败产物副本已得到 698+336=1034 帧，未重跑采样或修改原任务/媒体；新增真实 FFmpeg 两轮拼接回归，不据此宣称多轮音画质量通过。
 - Continuum 预检 patch：创作页按与入队相同的来源规则选择时长预算，普通 AV bootstrap 即使保留 managed 工作流文件名也使用 14 秒上限；真正的 managed 路径仍保留 15 秒。避免页面允许 15 秒、提交时才因 379/362 帧预算拒绝，不放宽采样预算或静默修改草稿时长。
-- 修复 H3 Prompt Writer 的“影视细节扩写”仍按插件默认 2048 token 生成、首次结果不足覆盖线便直接失败的问题：详细预设现在按模式与时长请求最多 3072 token；首次正文缺字段、过短或遗漏原始要点时，复用官方 Writer session 与 `/refine` 只补写一次，再按同一覆盖标准验收。二次失败会附带安全的 token 预算与停止原因诊断，不保存不合格结果，也不降低原有细节门槛。
+- 修复 H3 Prompt Writer 的“影视细节扩写”仍按插件默认 2048 token 生成、首次结果不足覆盖线便直接失败的问题：详细预设现在按模式与时长请求最多 3072 token；首次正文缺字段、过短或遗漏原始要点时，复用官方 Writer session 与 `/refine` 最多分阶段补写两次。第二轮依据当前主时间线的实际词数要求在原有内容上净增可执行细节，不再重复笼统重写；最终失败会附带安全的 token 预算与停止原因诊断，不保存不合格结果，也不降低原有细节门槛。
 - History 详情布局 patch：Continuum 的 Run、Chunk、Take、分支及专属操作移到播放器与标签下方的独立详情区，右侧保留视频概览与主要操作；长标识支持换行，续写状态不再重复显示。
-- Continuum patch 修复：旧 AV 不再因 managed 文件名被忽略或因缓存大小误报失效；创作页实查 latent/Run 前缀并精简文件行，缺失或不兼容时明确阻止而不静默回退。managed 冻结原首帧来源与旧 Chunk body，修正 History 版本身份、Retry 原文/Auto 边界，以及 Compiler 关闭时 Sage 包装导致的冷启动复用失配。真实15秒×3和重启后两次 Retry 已通过；旧 Take 分支暂时阻止，跨 revision 单份 payload 与完整质量验收仍未完成，详见 [任务记录](docs/tasks/2026-09-18-h3-continuum-extend-recovery/TASK.md)。
+- Continuum patch 修复：旧 AV 不再因 managed 文件名被忽略或因缓存大小误报失效；创作页实查 latent/Run 前缀并精简文件行，缺失或不兼容时明确阻止而不静默回退。managed 冻结原首帧来源与旧 Chunk body，修正 History 版本身份、Retry 原文/Auto 边界，以及 Compiler 关闭时 Sage 包装导致的冷启动复用失配。真实15秒×3和重启后两次 Retry 已通过；旧 Take 分支暂时阻止，跨 revision 单份 payload 与完整质量验收仍未完成，详见 [归档任务记录](docs/archive/h3-continuum-extend-recovery/TASK.md)。
 - 将 Local Video Studio H3 AV 节点升级到 `0.3.4`：依赖目录现在声明 Continuum legacy diagnostics 与 managed Run Storage receipt 节点，设置页能识别旧的 bundled `0.3.3` 副本并提示更新；更新并重启 ComfyUI 后，managed Continuum workflow 才会进入官方 Run Storage 执行链路。
 - 将 Local Video Studio H3 AV 节点升级到 `0.3.3`，加固 Continuum Extend 的真实执行与成片接缝证据：诊断不再仅凭 assembly plan 的 22 帧 trim 推断 `initial_state` 已生效，而要求上游采样状态明确报告实际 Masked AV/Masked Video/Reference Context transport；同时修复最终 FFmpeg 拼接受 AAC `-shortest` 时间基影响可能少保留一帧的问题，Continuum 现在按源段与新增段的精确帧预算编码，并在覆盖成片前用 ffprobe fail closed 校验总帧数。
 

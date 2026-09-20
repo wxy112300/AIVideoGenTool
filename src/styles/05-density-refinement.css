@@ -223,8 +223,29 @@ main { padding-top: 0; }
 .continuum-status span { color: inherit; opacity: .86; }
 
 .continuum-source-check { gap: 8px; }
+.continuum-dependency-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.continuum-dependency-heading h3 { margin: 0; color: var(--text); font-size: 12px; line-height: 1.35; }
+.continuum-dependency-summary { justify-content: space-between; flex-wrap: nowrap; padding: 7px 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); }
+.continuum-dependency-summary strong { color: var(--text); font-size: 12px; white-space: nowrap; }
+.continuum-dependency-summary span { font-size: 11px; white-space: nowrap; }
+.continuum-dependency-files { display: grid; gap: 1px; border-top: 1px solid rgba(56, 65, 78, .42); border-bottom: 1px solid rgba(56, 65, 78, .42); }
+.continuum-dependency-file { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-width: 0; padding: 8px 0; }
+.continuum-dependency-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #f0b45b; box-shadow: 0 0 0 3px rgba(240, 180, 91, .1); }
+.continuum-dependency-file[data-continuum-file-status="available"] .continuum-dependency-status-dot { background: #55d99b; box-shadow: 0 0 0 3px rgba(85, 217, 155, .1); }
+.continuum-dependency-file[data-continuum-file-status="missing"] .continuum-dependency-status-dot { background: #e97878; box-shadow: 0 0 0 3px rgba(233, 120, 120, .1); }
+.continuum-dependency-file-copy { display: grid; min-width: 0; gap: 2px; }
+.continuum-dependency-file-copy strong { overflow-wrap: anywhere; color: var(--text); font-size: 11px; line-height: 1.35; }
+.continuum-dependency-file-copy span,
+.continuum-dependency-file-copy small { min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.continuum-dependency-file-copy small { opacity: .72; }
+.continuum-dependency-file-status { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.continuum-dependency-file-ownership { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.continuum-dependency-actions { flex: 0 0 auto; gap: 4px; }
+.continuum-dependency-actions button { width: 28px; height: 28px; padding: 5px; }
+.continuum-dependency-empty { justify-content: flex-start; padding-top: 10px; }
 .continuum-source-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.continuum-source-row button { flex: 0 0 32px; width: 32px; height: 32px; padding: 6px; }
+.continuum-source-row > button.icon-button { flex: 0 0 32px; width: 32px; height: 32px; padding: 6px; }
+.continuum-source-row > button.button-with-icon { flex: 0 0 auto; width: auto; min-width: 0; height: 32px; padding: 6px 10px; white-space: nowrap; }
 .continuum-source-filename { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
 .continuum-source-check .continuum-status { padding: 0; border: 0; border-radius: 0; background: transparent; overflow-wrap: anywhere; }
 

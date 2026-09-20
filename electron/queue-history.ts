@@ -384,6 +384,9 @@ export function persistVideoHistoryResult(
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
       h3ContextLatentPath,
+      h3MotionContextSourceAsset: task.h3MotionContextAsset
+        ? structuredClone(task.h3MotionContextAsset)
+        : undefined,
       h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData),
       h3ContinuumSequence: managedSequence,
       h3ContinuumReceipt: result.h3ContinuumReceipt,

@@ -79,6 +79,7 @@ export interface HistoryActionsOptions {
       modelId?: string;
       h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
+      h3MotionContextAsset?: AssetVersion["h3AvAsset"];
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
       h3ContinuumMode?: Draft["h3ContinuumMode"];
@@ -164,6 +165,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const motionContextLatentPath = isExtension
       ? motionContextLatentPathFor(asset, version)
       : undefined;
+    const motionContextAsset = isExtension && isMiniMaxH3R2vModel(asset.modelId)
+      ? version.h3MotionContextSourceAsset
+      : undefined;
     const h3LatentSaveMode = isExtension && isMiniMaxH3Model(asset.modelId)
       ? h3LatentSaveModeFor(version, isMiniMaxH3R2vModel(asset.modelId))
       : undefined;
@@ -191,7 +195,10 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
       sourceAssetId: asset.sourceAssetId,
       sourceVersionId: asset.sourceVersionId,
-      ...(isExtension ? { h3ContextLatentPath: motionContextLatentPath } : { h3ContextLatentPath: undefined }),
+      ...(isExtension ? {
+        h3ContextLatentPath: motionContextAsset?.ownerPath.absolutePath ?? motionContextLatentPath,
+        h3MotionContextAsset: motionContextAsset ? structuredClone(motionContextAsset) : undefined
+      } : { h3ContextLatentPath: undefined, h3MotionContextAsset: undefined }),
       ...(h3LatentSaveMode
         ? {
             h3LatentSaveMode,
@@ -314,6 +321,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       trimStartSeconds: 0,
       trimEndSeconds: 0,
       h3ContextLatentPath: undefined,
+      h3MotionContextAsset: undefined,
       h3ContinuumArtifactPath: undefined,
       h3ContinuumArtifact: undefined,
       h3ContinuumMode: undefined,
@@ -340,7 +348,14 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const version = asset?.versions.find((item) => item.id === versionId);
     const videoIndex = version ? versionVideoIndex(version) : -1;
     const filename = videoIndex >= 0 ? version?.files[videoIndex]?.absolutePath : undefined;
-    const continuationArtifact = version?.h3ContinuationData?.status === "available"
+    const motionContextAsset = version?.h3AvAsset?.storageKind === "app-canonical" &&
+      version.h3AvAsset.capabilities.includes("native-av")
+      ? version.h3AvAsset
+      : undefined;
+    const r2vNativeOutput = Boolean(
+      motionContextAsset && isMiniMaxH3R2vModel(version?.modelId ?? asset?.modelId ?? "")
+    );
+    const continuationArtifact = !r2vNativeOutput && version?.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
     const managedContinuum = Boolean(version?.h3ContinuumSequence);
@@ -356,7 +371,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     }
     const sourceModelId = managedContinuum || continuationArtifact
       ? "minimax_h3_continuum"
-      : isMiniMaxH3R2vModel(version.modelId)
+      : motionContextAsset
+        ? "minimax_h3_ref2va"
+        : isMiniMaxH3R2vModel(version.modelId)
         ? version.modelId
         : isMiniMaxH3R2vModel(asset.modelId)
           ? asset.modelId
@@ -375,7 +392,10 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         height: version.height,
         modelId: sourceModelId,
         h3LatentSaveMode,
-        h3ContextLatentPath: motionContextLatentPath,
+        h3ContextLatentPath: motionContextAsset?.ownerPath.absolutePath ?? motionContextLatentPath,
+        h3MotionContextAsset: motionContextAsset
+          ? structuredClone(motionContextAsset)
+          : undefined,
         h3ContinuumArtifactPath: continuationArtifact?.payload.absolutePath,
         h3ContinuumArtifact: continuationArtifact
           ? structuredClone(continuationArtifact)

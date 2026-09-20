@@ -168,6 +168,110 @@ describe("history actions", () => {
     expect(draft?.promptVersions).toEqual([expect.objectContaining({ text: "a person walking" })]);
   });
 
+  it("restores the consumed Motion source asset instead of the version output asset for editing", async () => {
+    const sourceAsset = {
+      schemaVersion: 1,
+      assetId: "h3av-input",
+      storageKind: "app-canonical",
+      ownerPath: {
+        filename: "h3av-input.safetensors",
+        subfolder: "h3-native-av",
+        type: "output",
+        absolutePath: "C:/history/h3-native-av/h3av-input.safetensors"
+      },
+      capabilities: ["native-av"]
+    } as never;
+    const outputAsset = {
+      ...sourceAsset,
+      assetId: "h3av-output",
+      ownerPath: {
+        filename: "h3av-output.safetensors",
+        subfolder: "h3-native-av",
+        type: "output",
+        absolutePath: "C:/history/h3-native-av/h3av-output.safetensors"
+      }
+    } as never;
+    const version = {
+      id: "motion-output-version",
+      kind: "generated",
+      createdAt: "2026-09-19T00:00:00.000Z",
+      outputFilename: "motion-output.mp4",
+      modelId: "minimax_h3_ref2va",
+      width: 864,
+      height: 480,
+      duration: 10,
+      fps: 24,
+      workflowPath: "motion-workflow.json",
+      files: [{
+        filename: "motion-output.mp4",
+        subfolder: "Videos",
+        type: "output",
+        absolutePath: "C:/history/motion-output.mp4"
+      }],
+      h3MotionContextSourceAsset: sourceAsset,
+      h3AvAsset: outputAsset
+    } as unknown as AssetVersion;
+    const asset = {
+      mediaKind: "video",
+      id: "motion-history",
+      title: "Motion output",
+      modelId: "minimax_h3_ref2va",
+      inputMode: "video",
+      prompt: "continue movement",
+      sourceVideoPath: "C:/history/original-source.mp4",
+      sourceVideoDuration: 5,
+      trimStartSeconds: 0,
+      trimEndSeconds: 5,
+      sourceWidth: 864,
+      sourceHeight: 480,
+      defaultVersionId: version.id,
+      versions: [version]
+    } as unknown as HistoryAsset;
+    const state = createDefaultState();
+    state.history = [asset];
+    const saveDraftImmediately = vi.fn(async () => undefined);
+    const context = {
+      root: document.createElement("main"),
+      application: {},
+      events: {},
+      assets: {},
+      hostCapabilities: {},
+      getState: () => state,
+      getRoute: () => ({ page: "history" as const, creationMode: "image-to-video" as const, historyKind: "video" as const }),
+      getTranslator: () => translator,
+      t: translator.t,
+      requestRender: vi.fn(),
+      navigate: vi.fn(),
+      notify: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as RendererContext;
+    const options = {
+      context,
+      setState: vi.fn(),
+      getSelectedHistoryAssetId: () => asset.id,
+      getSelectedHistoryVersionId: () => version.id,
+      setSelectedHistoryAssetId: vi.fn(),
+      setDialog: vi.fn(),
+      rememberModalFocus: vi.fn(),
+      saveDraftImmediately,
+      selectDraftVideo: vi.fn(async () => undefined),
+      navigateToCreationMode: vi.fn(),
+      requestHistoryDeletion: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as HistoryActionsOptions;
+
+    await createHistoryActions(options).editHistoryAsset(asset.id);
+
+    expect(saveDraftImmediately).toHaveBeenCalledWith(expect.objectContaining({
+      sourceVideoPath: "C:/history/original-source.mp4",
+      h3ContextLatentPath: "C:/history/h3-native-av/h3av-input.safetensors",
+      h3MotionContextAsset: sourceAsset
+    }));
+    expect(saveDraftImmediately.mock.calls[0]?.[0]).not.toMatchObject({
+      h3MotionContextAsset: outputAsset
+    });
+  });
+
   it("carries the recorded Motion Context file alongside a Continuum artifact", async () => {
     const version = {
       id: "version-with-latents",
@@ -478,6 +582,126 @@ describe("history actions", () => {
         h3ContinuumArtifactPath: undefined,
         h3ContinuumArtifact: undefined,
         resetPrompt: true
+      }),
+      false
+    );
+  });
+
+  it("routes a canonical app AV owner into the Motion Context Continue draft", async () => {
+    const version = {
+      id: "version-canonical-motion",
+      kind: "original",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      outputFilename: "source.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 864,
+      height: 480,
+      duration: 5,
+      fps: 24,
+      workflowPath: "workflow.json",
+      files: [{ filename: "source.mp4", subfolder: "", type: "output", absolutePath: "C:/history/source.mp4" }],
+      h3AvAsset: {
+        schemaVersion: 1,
+        assetId: "h3av_canonical_motion",
+        storageKind: "app-canonical",
+        ownerPath: {
+          filename: "h3av_canonical_motion.safetensors",
+          subfolder: "h3-native-av",
+          type: "output",
+          absolutePath: "C:/history/h3-native-av/h3av_canonical_motion.safetensors"
+        },
+        payloadBytes: 1,
+        payloadSha256: "a".repeat(64),
+        videoTensorSha256: "b".repeat(64),
+        audioTensorSha256: "c".repeat(64),
+        videoShape: [1, 24, 2, 30, 54],
+        videoDtype: "F16",
+        audioShape: [1, 32, 2, 8],
+        audioDtype: "BF16",
+        width: 864,
+        height: 480,
+        fps: 24,
+        frameCount: 5,
+        producer: {},
+        capabilities: ["native-av"],
+        createdAt: "2026-09-03T00:00:00.000Z"
+      }
+    } as unknown as AssetVersion;
+    const asset = {
+      mediaKind: "video",
+      id: "asset-canonical-motion",
+      title: "canonical source",
+      modelId: "minimax_h3_fl2va",
+      inputMode: "video",
+      sourceVideoPath: "C:/history/source.mp4",
+      defaultVersionId: version.id,
+      versions: [version]
+    } as unknown as HistoryAsset;
+    const state = createDefaultState();
+    state.history = [asset];
+    const selectDraftVideo = vi.fn(async () => undefined);
+    const context = {
+      root: document.createElement("main"),
+      application: {},
+      events: {},
+      assets: {},
+      hostCapabilities: {},
+      getState: () => state,
+      getRoute: () => ({ page: "history" as const, creationMode: "image-to-video" as const, historyKind: "video" as const }),
+      getTranslator: () => translator,
+      t: translator.t,
+      requestRender: vi.fn(),
+      navigate: vi.fn(),
+      notify: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as RendererContext;
+    const options = {
+      context,
+      setState: vi.fn(),
+      getSelectedHistoryAssetId: () => asset.id,
+      getSelectedHistoryVersionId: () => version.id,
+      setSelectedHistoryAssetId: vi.fn(),
+      setDialog: vi.fn(),
+      rememberModalFocus: vi.fn(),
+      saveDraftImmediately: vi.fn(async () => undefined),
+      selectDraftVideo,
+      navigateToCreationMode: vi.fn(),
+      requestHistoryDeletion: vi.fn(),
+      reportUserAction: vi.fn()
+    } as unknown as HistoryActionsOptions;
+
+    await createHistoryActions(options).continueVideoHistory(asset.id, version.id);
+
+    expect(selectDraftVideo).toHaveBeenCalledWith(
+      "C:/history/source.mp4",
+      expect.objectContaining({
+        modelId: "minimax_h3_ref2va",
+        h3ContextLatentPath: "C:/history/h3-native-av/h3av_canonical_motion.safetensors",
+        h3MotionContextAsset: version.h3AvAsset,
+        h3ContinuumArtifact: undefined
+      }),
+      false
+    );
+
+    version.modelId = "minimax_h3_ref2va";
+    asset.modelId = "minimax_h3_ref2va";
+    version.h3ContinuationData = {
+      status: "available",
+      artifact: {
+        payload: { absolutePath: "C:/history/h3-native-av/should-not-route-continuum.safetensors" }
+      }
+    } as AssetVersion["h3ContinuationData"];
+    selectDraftVideo.mockClear();
+
+    await createHistoryActions(options).continueVideoHistory(asset.id, version.id);
+
+    expect(selectDraftVideo).toHaveBeenCalledWith(
+      "C:/history/source.mp4",
+      expect.objectContaining({
+        modelId: "minimax_h3_ref2va",
+        h3MotionContextAsset: version.h3AvAsset,
+        h3ContinuumArtifactPath: undefined,
+        h3ContinuumArtifact: undefined
       }),
       false
     );

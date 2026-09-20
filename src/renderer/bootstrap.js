@@ -3,6 +3,7 @@ export function bootstrapRenderer(options) {
     void options.application.getState().then(async (initialState) => {
         await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
         options.setState(initialState);
+        options.setCreationMode?.(initialState.draft.inputMode === "video" ? "video-extension" : "image-to-video");
         const [appVersion, runtime, promptRuntime] = await Promise.all([
             options.application.getAppVersion(),
             options.application.getComfyRuntimeState(),

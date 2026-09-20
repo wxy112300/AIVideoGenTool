@@ -18,6 +18,7 @@
 - [H3 adoption 与恢复计划](./h3-adoption/)
 - [H3 Native AV / 长视频历史方案](./h3-long-video/)
 - [H3 Native AV / Extend 已完成任务](./h3-long-video/2026-09-07-h3-long-video/TASK.md)
+- [H3 Continuum Extend recovery 与 Phase 3/4 消费收尾](./h3-continuum-extend-recovery/TASK.md)
 - [H3 外部节点图片编辑（FL2VA I2I / REF2VA Edit）](./h3-image-editing/)
 - [ComfyUI 0.35.0 / H3 升级归档](./comfyui-035-h3/TASK.md)
 - [环境扫描可靠性与耗时归档](./environment-scan/TASK.md)

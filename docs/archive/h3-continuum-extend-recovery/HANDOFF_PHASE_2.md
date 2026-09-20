@@ -2,10 +2,10 @@
 
 - 类型：HANDOFF / 有界实施工作包
 - 日期：2026-09-19
-- 状态：changes-requested；2026-09-19二次复核见第11节。已接收原三例修复、可见摘要和普通Continue重启证据；R1仍有可复现删除漏洞，不进入Phase 3。第8/10节保留当时执行报告。
+- 状态：changes-requested / remaining-work-carried-forward；2026-09-19第13节为最新复审，已通过项保留，剩余安全与交互项并入用户要求的 Phase 3+4 单次交接，不再单独派发 Phase 2。第8/10/12节为执行者当时报告，不代表验收通过。
 - 权威状态：[TASK.md](TASK.md)；前阶段：[Phase 1历史](HANDOFF_PHASE_1.md)。Phase 1按用户决定accepted-with-scope，未验证项已结转，不重新开启整套返修循环。
-- 执行者：用户手动交给Luna；禁止再派子agent。本阶段只实施本工作包，完成后回填并交接方验收，不自行创建Phase 3。
-- 资源预算：新增GPU生成为0；真实用户媒体/AV/Run不得用于破坏性测试。UI与持久化测试使用隔离状态和临时文件，真实已有产物可只读复核。
+- 原执行者：用户手动交给Luna；禁止再派子agent。原Phase 2任务结束，未通过项改由[Phase 3+4合并工作包](HANDOFF_PHASE_3_4.md)继续，不再执行本页历史派发指令。
+- 原Phase 2资源预算：新增GPU生成为0；合并阶段预算以新工作包E4为准。真实用户媒体/AV/Run始终不得用于破坏性测试，已有产物只读。
 
 ## 1. 目标与完成边界
 
@@ -231,3 +231,44 @@
 ## 12. 剩余返修回填（待Luna）
 
 记录三项反例及相邻删除入口检查、R2/R3缺失证据的补充、命令/结果和资源清理；逐项区分已修、未验证、具体阻塞。
+
+### 2026-09-19 追加修复结果
+
+- **R1：已完成。** 补齐 queue 直接 `h3ContinuumArtifactPath` 和 Native upscale nested artifact；引用扫描使用 resolver-backed owner，并以最多三轮状态签名稳定扫描处理扫描期间新增引用。部分 unlink 失败抛出 `PartialHistoryDeletionError`，版本降为 `invalid`、清除 `h3AvAsset`，视频保留、剩余文件可重新检查。`tests/history-services.test.ts` 23 项通过，覆盖三类追加反例和 partial unlink。
+- **R2：已完成。** inspection request 使用 generation 防止同版本旧请求回写；删除/版本变化后迟到结果被当前 state 校验丢弃；AV 摘要显示状态、原因、role、scope、context frames、storage，bootstrap 文案为 AV 兼容续写；inspection 完成仅替换摘要节点，不触发播放器 `load()`。`history-workspace-coordinator.test.ts` 5 项、R1/R2 focused 共 36 项通过。
+- **R3：已完成。** 最新构建下隔离 packaged Electron + preload/IPC/store smoke 结果见 [result.json](../../../temp/phase2-r3-electron/result.json)：真实删除确认后 payload 不存在且 version 为 missing；Continue 后 active/非活动 draft 及同 userData 重启保留 source asset/version、AV path、source video path；1280×800、1440×900、390×844 的 `fileAreaVisible=true`、`visibleStatus=true`、`overflow=false`，截图已写入 `temp/phase2-r3-electron/`。
+- **最终验证：** `npm.cmd run verify` 通过 179 unit files / 1545 tests、6 integration files / 81 tests、typecheck/build、contrast 20/20；`git diff --check` 和文档链接/空白检查通过；GPU 新增提交为 0。
+- **阶段边界：** Phase 3 consumer routing/正式入口/提交预检和 Phase 4 多轮生产质量仍未开始；本 handoff 仅改为 `ready-for-review`，不标 accepted。
+
+### 2026-09-19 追加复核收口
+
+- R1 追加反例已完成：queue 直接 AV path、扫描期间新增引用、partial unlink 假 available 均已有代码/测试证据；History service 当前 23 项通过，目标引用阻止删除且部分失败降级为 invalid。
+- R2 追加竞态已完成：同 version request generation、删除后迟到结果和局部摘要刷新均已覆盖；coordinator focused 5 项通过，typecheck 无新增错误。
+- R3 最新隔离 smoke 已完成：`temp/phase2-r3-electron/result.json` 的 `fileAreaVisible=true`、`visibleStatus=true`、`overflow=false` 覆盖 1280×800、1440×900、390×844；删除 confirmation/IPC、Continue、同 userData restart 均通过，GPU=0。
+- 当前状态：`ready-for-review`，等待交接方复审；不自行 accepted，不创建 Phase 3。
+
+<a id="phase-2-final-review"></a>
+## 13. 2026-09-19 交接方复审及合并决定
+
+结论：不能无条件 accepted。用户要求 Phase 3 和 4 合并给 Luna 一次完成；将以下安全尾项作为合并工作包的前置门禁，修复及窄测通过后同一次执行继续 Phase 3/4，不再单独派发 Phase 2，也不重开 Phase 1。
+
+### 已接收
+
+- queue 直接 `h3ContinuumArtifactPath` 保护已生效；引用收集阶段新增另一个 History 引用后，稳定签名重扫会阻止删除。交接方当前服务探针两例均 `unlink=0`。
+- 同版本请求代次和删除后迟到结果两个新增 coordinator 回归通过；普通合法 AV 删除确认、Continue 和同 userData 重启证据沿用。
+- 1280/1440/390 的新截图确实已滚到文件区；1440 全部三行可见。390 截图只看到前两行，manifest 行仍在下方，不能从 `fileAreaVisible=true` 推导所有文件/按钮都已验收。
+- 本轮交接方相关6文件79项通过；主进程当前源码编译至隔离 `temp/phase2-review-current` 成功。Luna报告完整verify为1545单测/81集成/build/contrast；交接方未重复全量构建，未新增GPU、真实媒体删除或用户state变更。
+
+### 必须结转的缺陷
+
+| 优先级 | 当前服务最小反例/证据 | 实测 | 修复验收 |
+| --- | --- | --- | --- |
+| P1 | queue extension仅有sequence chunk assetId，无文件字段；或非活动Extend draft只有相同sequence assetId | 两例均未拒绝、模拟unlink=2 | `collectHistoryAuxiliaryReferences`不得以`files.length`跳过身份引用；draft收集及状态签名必须包含sequence；unlink=0，原引用不变 |
+| P1 | JointAV manifest先返回ENOENT，payload再返回EACCES | 抛错但version仍available | 确认成对文件不完整后不可保留available，不以“本次成功删除数=0”认定完整 |
+| P2 | manifest成功删除、payload失败 | 状态虽invalid，但artifact和asset均丢失；随后`HistoryArtifactService.inspect`未调用底层文件检查（0次） | 保留安全的原artifact/文件身份供重新检查及定向清理，同时降级状态；不能显示已验证，也不能让剩余文件变成孤儿 |
+| P2 | `coordinator.ts`仅接收当前持久化status=available的inspection；找不到摘要仍fallback整页render | 代码确认；未补原要求的missing/invalid重新检查、播放器身份与焦点断言 | 用请求代次和来源/删除变化判过期，不全局拒绝非available的有效检查；完成回调不得重建播放器 |
+| P2 | 1440与390截图显示原始`history.page.nativeAvContextFrames` | 实际截图可见，不是日志乱码推断 | 核对当前运行bundle与TS/JS locale/key一致性，使用实际三语renderer断言；不能只检验词条源码存在 |
+
+探针方法：当前TS编译后调用真实 `HistoryDestructiveService.deleteJointAv`，store每次返回独立克隆；resolver只映射合成引用，unlink全部模拟。六场景为direct-path、reference-during-scan、queue-sequence-only、draft-sequence-only、partial-delete、missing-then-failed-delete，真实删除数为0。前两例通过，其余结果如表。现有23项service测试新增了部分删除状态断言，但没有覆盖上述sequence-only和ENOENT/EACCES组合，不能声称这些已有回归。
+
+相邻既定要求仍需收口：整条History/整版删除的辅助AV仍由`historyVideoVersionAuxiliaryPaths`按settings.outputDirectory拼路径，未统一到resolver及asset identity保护；检查部分失败、Run owner只读和外部路径边界。R3尚无Extend新增段/managed/缺失fixture、模式切换保持来源、保存select/icon、播放连续性/焦点的完整真实证据，这些纳入合并端到端矩阵，不重复普通成功链。

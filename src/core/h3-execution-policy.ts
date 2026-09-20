@@ -139,7 +139,7 @@ export function h3AccelerationTaskPatchForSettings(
 
   return {
     attentionMode: policy.attentionMode,
-    h3SparseAttentionMode: normalizeH3SparseAttentionMode(settings.h3SparseAttentionMode),
+    h3SparseAttentionMode: policy.sparseAttentionMode,
     h3RuntimeMode: normalizeH3RuntimeMode(settings.h3RuntimeMode),
     h3ComfyCompilerMode: normalizeH3ComfyCompilerMode(settings.h3ComfyCompilerMode),
     h3ExecutionPolicy: {
@@ -256,7 +256,11 @@ export function resolveH3ExecutionPolicy(
   const attentionOwner = h3AttentionOwnerFor(attentionMode, normalizedFrom);
   const sparseRequested = normalizeH3SparseAttentionMode(input.sparseAttentionMode);
   const turboProfile = h3TurboProfileFor(input);
-  const sparseAttentionMode = effectiveSparseMode(sparseRequested, turboProfile, isR2v);
+  const motionContextSparseNormalized = motionContext && sparseRequested === "sol-attn";
+  if (motionContextSparseNormalized) normalizedFrom.push("sparse:sol-attn->off");
+  const sparseAttentionMode = motionContextSparseNormalized
+    ? "off"
+    : effectiveSparseMode(sparseRequested, turboProfile, isR2v);
   const runtimeMode = normalizeH3RuntimeMode(input.runtimeMode);
   const comfyCompilerMode = normalizeH3ComfyCompilerMode(input.comfyCompilerMode);
   const spectrumRequested = input.spectrumMode === "balanced";
@@ -276,7 +280,7 @@ export function resolveH3ExecutionPolicy(
   }
   if (sparseAttentionMode !== "off") {
     if (!isH3) reasons.push("not-minimax-h3");
-    if (motionContext) reasons.push("motion-context-sparse-not-supported");
+    if (motionContext && !motionContextSparseNormalized) reasons.push("motion-context-sparse-not-supported");
     if (sparseAttentionMode === "native-sla" && turboProfile !== "h3-turbo-sla") {
       reasons.push("native-sla-requires-turbo-sla");
     }

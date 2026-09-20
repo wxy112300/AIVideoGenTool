@@ -152,7 +152,20 @@ export function mountCreatePageController(
         }
         if (transitionRevision !== creationModeTransitionRevision) return;
         options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
-        options.patchDraft(storedDraft);
+        const storedWorkflowCapability = storedDraft.workflowPath
+          ? options.workflowCapabilities[storedDraft.workflowPath]
+          : undefined;
+        options.patchDraft({
+          ...storedDraft,
+          workflowPath: bundled?.path && (
+            !storedDraft.workflowPath ||
+            storedDraft.workflowPath === bundled.path ||
+            (storedWorkflowCapability?.isBundled === true &&
+              storedWorkflowCapability?.supportsVideoExtension !== true)
+          )
+            ? bundled.path
+            : storedDraft.workflowPath
+        });
         options.context.requestRender();
         return;
       }
@@ -241,6 +254,7 @@ export function mountCreatePageController(
                     sourceAssetId: undefined,
                     sourceVersionId: undefined,
                     h3ContextLatentPath: undefined,
+                    h3MotionContextAsset: undefined,
                     h3ContinuumArtifactPath: undefined,
                     h3ContinuumArtifact: undefined,
                     h3ContinuumMode: undefined,
@@ -274,6 +288,7 @@ export function mountCreatePageController(
                 sourceAssetId: undefined,
                 sourceVersionId: undefined,
                 h3ContextLatentPath: undefined,
+                h3MotionContextAsset: undefined,
                 h3ContinuumArtifactPath: undefined,
                 h3ContinuumArtifact: undefined,
                 h3ContinuumMode: undefined,

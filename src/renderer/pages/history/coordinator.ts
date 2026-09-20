@@ -98,6 +98,7 @@ export function createHistoryWorkspaceCoordinator(
   deps: HistoryWorkspaceCoordinatorDependencies
 ): HistoryWorkspaceCoordinator {
   let activeHistoryCleanup: RendererCleanup | null = null;
+  let historyArtifactInspectionRequestId = 0;
 
   const historyMediaRuntime = createHistoryMediaRuntime(
     deps.context,
@@ -272,6 +273,7 @@ export function createHistoryWorkspaceCoordinator(
 
   function requestHistoryArtifactInspection(assetId: string, versionId: string): void {
     const key = `${assetId}:${versionId}`;
+    const requestId = ++historyArtifactInspectionRequestId;
     deps.ui.historyArtifactInspection = null;
     const inspectArtifact = deps.context.application.inspectH3NativeAvArtifact;
     if (typeof inspectArtifact !== "function") return;
@@ -280,10 +282,17 @@ export function createHistoryWorkspaceCoordinator(
         if (
           deps.ui.selectedHistoryAssetId !== assetId ||
           deps.ui.selectedHistoryVersionId !== versionId ||
-          deps.getPage() !== "history-detail"
+          deps.getPage() !== "history-detail" ||
+          requestId !== historyArtifactInspectionRequestId
         ) return;
+        const currentVersion = deps.getState().history
+          .find((item) => item.id === assetId)
+          ?.versions.find((item) => item.id === versionId);
+        if (!currentVersion?.h3ContinuationData ||
+            (currentVersion.h3ContinuationData.status === "missing" &&
+              !currentVersion.h3ContinuationData.artifact)) return;
         deps.ui.historyArtifactInspection = { key, value };
-        if (!updateHistoryArtifactSummaryInPlace()) deps.render();
+        updateHistoryArtifactSummaryInPlace();
       })
       .catch(() => undefined);
   }

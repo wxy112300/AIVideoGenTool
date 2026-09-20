@@ -654,6 +654,7 @@ registerRendererEvents({
 bootstrapRenderer({
   application: rendererApplication,
   setState: setRendererState,
+  setCreationMode,
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },

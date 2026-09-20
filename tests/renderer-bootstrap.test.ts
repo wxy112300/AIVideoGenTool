@@ -46,6 +46,7 @@ function optionsFor(
   return {
     application,
     setState: vi.fn(),
+    setCreationMode: vi.fn(),
     setComfyRuntimeState: vi.fn(),
     setPromptRuntimeState: vi.fn(),
     getState: () => state,
@@ -83,6 +84,7 @@ describe("renderer bootstrap startup sequencing", () => {
     bootstrapRenderer(bootstrapOptions);
     await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
     expect(bootstrapOptions.setState).toHaveBeenCalledWith(state);
+    expect(bootstrapOptions.setCreationMode).toHaveBeenCalledWith("image-to-video");
     expect(application.getAppVersion).toHaveBeenCalledOnce();
     expect(application.getComfyRuntimeState).toHaveBeenCalledOnce();
     expect(application.getPromptRuntimeState).toHaveBeenCalledOnce();
@@ -94,6 +96,24 @@ describe("renderer bootstrap startup sequencing", () => {
     bundledWorkflow.resolve(null);
     await vi.waitFor(() => expect(render.mock.calls.length).toBeGreaterThan(1));
     expect(application.reportRendererError).not.toHaveBeenCalled();
+  });
+
+  it("restores video extension mode from the persisted draft on refresh", async () => {
+    const state = createDefaultState();
+    state.draft.inputMode = "video";
+    const application = {
+      getState: vi.fn(async () => state),
+      getAppVersion: vi.fn(async () => "0.63.0"),
+      getComfyRuntimeState: vi.fn(async () => comfyRuntime()),
+      getPromptRuntimeState: vi.fn(async () => createPromptRuntimeState()),
+      getBundledWorkflow: vi.fn(async () => null),
+      reportRendererError: vi.fn(async () => undefined)
+    } as unknown as AppApi;
+    const bootstrapOptions = optionsFor(application);
+
+    bootstrapRenderer(bootstrapOptions);
+
+    await vi.waitFor(() => expect(bootstrapOptions.setCreationMode).toHaveBeenCalledWith("video-extension"));
   });
 
   it("keeps initial-state failures visible and reported", async () => {

@@ -127,6 +127,52 @@ export function renderCreatePage(viewModel, options) {
         : "";
     const startInputResolution = formatInputDimensions(viewModel.draft.sourceWidth, viewModel.draft.sourceHeight);
     const endInputResolution = formatInputDimensions(viewModel.draft.endImageWidth, viewModel.draft.endImageHeight);
+    const continuumDependencyLabelFor = (file) => {
+      if (file.kind === "payload")
+        return t(uiKeys.create.continuumArtifact.dependencyPayload);
+      if (file.kind === "manifest")
+        return t(uiKeys.create.continuumArtifact.dependencyManifest);
+      if (file.kind === "run-storage")
+        return t(uiKeys.create.continuumArtifact.dependencyRunStorage);
+      return t(uiKeys.create.continuumArtifact.dependencyChunkPayload, { index: file.chunkIndex ?? 0 });
+    };
+    const continuumDependencyStatusLabelFor = (status) => {
+      if (status === "available")
+        return t(uiKeys.create.continuumArtifact.dependencyAvailable);
+      if (status === "checking")
+        return t(uiKeys.create.continuumArtifact.dependencyChecking);
+      if (status === "not-created")
+        return t(uiKeys.create.continuumArtifact.dependencyNotCreated);
+      return t(uiKeys.create.continuumArtifact.dependencyMissing);
+    };
+    const continuumDependencyActionsFor = (file) => {
+        if (viewModel.continuumManaged) {
+            return `<span class="continuum-dependency-file-ownership">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyManaged))}</span>`;
+        }
+        if (file.kind === "manifest") {
+            return `<span class="continuum-dependency-file-ownership">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyPaired))}</span>`;
+        }
+        if (file.kind !== "payload")
+            return "";
+        const chooseLabel = viewModel.continuumArtifactFilename
+            ? t(uiKeys.create.continuumArtifact.change)
+            : t(uiKeys.create.continuumArtifact.choose);
+        return `<div class="continuum-source-row continuum-dependency-actions">
+      <button class="ghost icon-button" type="button" id="pick-h3-continuum-av" data-drop-h3-continuum-av title="${escapeHtml(chooseLabel)}" aria-label="${escapeHtml(chooseLabel)}">${icon("folder-open")}</button>
+      ${viewModel.continuumArtifactFilename ? `<button class="ghost icon-button danger" id="clear-h3-continuum-av" data-clear-h3-continuum-av type="button" title="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}">${icon("x")}</button>` : ""}
+    </div>`;
+    };
+    const continuumDependencyFilesMarkup = viewModel.continuumDependencyFiles.map((file) => `<div class="continuum-dependency-file" data-continuum-dependency-file="${file.kind}:${file.chunkIndex ?? ""}" data-continuum-file-status="${file.status}">
+      <span class="continuum-dependency-status-dot" aria-hidden="true"></span>
+      <div class="continuum-dependency-file-copy"><strong>${escapeHtml(continuumDependencyLabelFor(file))}</strong><span data-continuum-file-name title="${escapeHtml(file.location || file.filename)}">${escapeHtml(file.filename)}</span><small data-continuum-file-location title="${escapeHtml(file.location)}"${file.location ? "" : " hidden"}>${escapeHtml(file.location)}</small></div>
+      <span class="continuum-dependency-file-status" data-continuum-file-status-label>${escapeHtml(continuumDependencyStatusLabelFor(file.status))}</span>
+      ${continuumDependencyActionsFor(file)}
+    </div>`).join("");
+    const continuumDependencyEmptyMarkup = !viewModel.continuumManaged && viewModel.continuumDependencyFiles.length === 0
+        ? `<div class="continuum-source-row continuum-dependency-empty">
+        <button class="secondary button-with-icon" type="button" id="pick-h3-continuum-av" data-drop-h3-continuum-av title="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}">${icon("folder-open")}${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}</button>
+      </div>`
+        : "";
     return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
@@ -142,7 +188,7 @@ export function renderCreatePage(viewModel, options) {
     <div class="create-workspace ${viewModel.isR2V ? "r2v-workspace" : ""} ${viewModel.isContinuum ? "continuum-workspace" : ""}">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? viewModel.isContinuum ? t(uiKeys.create.continuumArtifact.fullSourceBoundary) : t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
+        <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? viewModel.isContinuum ? "" : t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
         ${viewModel.extending
         ? `<div class="section-heading-actions">
               ${viewModel.isR2V && viewModel.draft.sourceVideoPath && viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""}
@@ -219,15 +265,11 @@ export function renderCreatePage(viewModel, options) {
             </div>`
                 : ""}
           </div>`}
-      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel continuum-source-check" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.title))}">
-        ${viewModel.continuumManaged && viewModel.draft.h3ContinuumSequence?.acceptedChunks ? "" : `<div class="continuum-source-row">
-          <button class="ghost button-with-icon" type="button" id="pick-h3-continuum-av" data-drop-h3-continuum-av title="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}">${icon("folder-open")}</button>
-          <span class="continuum-source-filename" title="${escapeHtml(viewModel.continuumArtifactFilename)}">${escapeHtml(viewModel.continuumArtifactFilename || t(uiKeys.create.continuumArtifact.choose))}</span>
-          ${viewModel.continuumArtifactFilename ? `<button class="ghost icon-button" id="clear-h3-continuum-av" type="button" title="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.clear))}">${icon("x")}</button>` : ""}
-        </div>`}
-        <div class="continuum-status" data-continuum-source-status data-tone="${viewModel.continuumStatusTone}" role="status">
-          <strong>${escapeHtml(viewModel.continuumStatusLabel)}</strong><span>${escapeHtml(viewModel.continuumStatusDetail)}</span>
-        </div>
+      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel continuum-source-check" aria-labelledby="continuum-dependency-title">
+        <div class="continuum-dependency-heading"><h3 id="continuum-dependency-title">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}</h3></div>
+        <div class="continuum-status continuum-dependency-summary" data-continuum-source-status data-tone="info" role="status"><strong>${escapeHtml(viewModel.continuumDependencyRoute)}</strong><span>${escapeHtml(viewModel.continuumDependencyProgress)}</span></div>
+        ${viewModel.continuumDependencyFiles.length > 0 ? `<div class="continuum-dependency-files" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}">${continuumDependencyFilesMarkup}</div>` : ""}
+        ${continuumDependencyEmptyMarkup}
       </section>` : ""}
       ${viewModel.extending && viewModel.isR2V ? `<section class="continuum-artifact-panel h3-motion-context-latent-panel" aria-labelledby="motion-context-latent-title">
         <div class="section-heading">
@@ -239,6 +281,9 @@ export function renderCreatePage(viewModel, options) {
           ${viewModel.motionContextLatentFilename ? `<span>${escapeHtml(viewModel.motionContextLatentFilename)}</span>` : ""}
         </div>
         ${viewModel.motionContextLatentReady ? `<div class="continuum-artifact-meta"><button class="ghost button-with-icon" id="clear-h3-motion-context-latent" type="button">${icon("x")}${t(uiKeys.create.motionContextLatent.clear)}</button></div>` : ""}
+        <div class="continuum-status" data-motion-context-status data-tone="${viewModel.motionContextStatusTone}" role="status">
+          <strong>${escapeHtml(viewModel.motionContextStatusLabel)}</strong><span>${escapeHtml(viewModel.motionContextStatusDetail)}</span>
+        </div>
       </section>` : ""}
       ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
         <div class="section-heading">

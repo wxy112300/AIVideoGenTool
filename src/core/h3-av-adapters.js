@@ -23,7 +23,10 @@ export function adaptH3AvAsset(asset, adapter) {
     if (!isH3AvLatentAsset(asset))
         throw new Error("H3 AV asset 未通过 canonical 校验");
     const capability = requiredCapability(adapter);
-    if (!asset.capabilities.includes(capability)) {
+    const canonicalMotionCompatibility = adapter === "motion-context" &&
+        asset.storageKind === "app-canonical" &&
+        asset.capabilities.includes("native-av");
+    if (!asset.capabilities.includes(capability) && !canonicalMotionCompatibility) {
         throw new Error(`H3 AV asset ${asset.assetId} 不具备 ${adapter} adapter 所需的 ${capability} capability`);
     }
     if (adapter === "managed-continuum" && asset.storageKind !== "continuum-run-chunk") {
@@ -38,7 +41,9 @@ export function adaptH3AvAsset(asset, adapter) {
     }
     validatePath(asset.ownerPath, "H3 AV ownerPath");
     const alias = asset.aliasPaths?.find((candidate) => safeH3OutputRelativePath(candidate));
-    const payloadPath = adapter === "managed-continuum" ? asset.ownerPath : (alias ?? asset.ownerPath);
+    const payloadPath = adapter === "managed-continuum" || adapter === "motion-context"
+        ? asset.ownerPath
+        : (alias ?? asset.ownerPath);
     validatePath(payloadPath, "H3 AV adapter payloadPath");
     const physicalPayloadCount = asset.aliasMode === "copy-fallback" ? 2 : 1;
     return {

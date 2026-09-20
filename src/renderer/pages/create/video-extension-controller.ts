@@ -38,6 +38,7 @@ export function mountVideoExtensionController(
       sourceAssetId: undefined,
       sourceVersionId: undefined,
       h3ContextLatentPath: undefined,
+      h3MotionContextAsset: undefined,
       h3ContinuumArtifactPath: undefined,
       h3ContinuumArtifact: undefined,
       h3ContinuumMode: undefined,
@@ -144,14 +145,15 @@ export function mountVideoExtensionController(
       setContinuumArtifact(filename);
     }, { signal });
   }
-  root.querySelector("#clear-h3-continuum-av")?.addEventListener("click", (event) => {
+  root.querySelectorAll<HTMLElement>("[data-clear-h3-continuum-av]").forEach((clearButton) => clearButton.addEventListener("click", (event) => {
+    event.preventDefault();
     event.stopImmediatePropagation();
     options.patchDraft({
       h3ContinuumArtifactPath: undefined,
       h3ContinuumArtifact: undefined
     });
     context.requestRender();
-  }, { signal });
+  }, { signal }));
 
   const motionContextLatentZone = root.querySelector<HTMLElement>("[data-drop-h3-motion-context-latent]");
   const setMotionContextLatent = (filename: string) => {
@@ -159,7 +161,10 @@ export function mountVideoExtensionController(
       context.notify(t(uiKeys.create.validation.motionContextLatentMissing), { kind: "error" });
       return;
     }
-    options.patchDraft({ h3ContextLatentPath: filename });
+    options.patchDraft({
+      h3ContextLatentPath: filename,
+      h3MotionContextAsset: undefined
+    });
     context.requestRender();
   };
   const pickMotionContextLatent = async () => {
@@ -206,7 +211,10 @@ export function mountVideoExtensionController(
   }
   root.querySelector("#clear-h3-motion-context-latent")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
-    options.patchDraft({ h3ContextLatentPath: undefined });
+    options.patchDraft({
+      h3ContextLatentPath: undefined,
+      h3MotionContextAsset: undefined
+    });
     context.requestRender();
   }, { signal });
 

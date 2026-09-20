@@ -259,14 +259,14 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     });
   });
 
-  it("uses the detailed token budget and repairs an under-length reference-auto result once", async () => {
+  it("uses the detailed token budget and repairs an under-length reference-auto result in bounded stages", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-auto-writer-"));
     const image = path.join(directory, "reference.png");
     await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     const settings = createDefaultState().settings;
     settings.promptModelId = "google/gemma-4-12b-q5";
     let generateBody: Record<string, unknown> = {};
-    let refineBody: Record<string, unknown> = {};
+    const refineBodies: Record<string, unknown>[] = [];
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.2.0" });
@@ -289,10 +289,10 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         });
       }
       if (url.endsWith("/h3studio/refine")) {
-        refineBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        refineBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return Response.json({
-          prompt: detailedWriterPrompt(500),
-          output_tokens: 1640,
+          prompt: detailedWriterPrompt(refineBodies.length === 1 ? 435 : 500),
+          output_tokens: refineBodies.length === 1 ? 642 : 760,
           max_output_tokens: 2880,
           primary_finish_reason: "stop"
         });
@@ -327,15 +327,19 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       expect(generateBody.mode).toBe("I2VA");
       expect(generateBody.generation_budget).toBe(2880);
       expect(generateBody.unload_after).toBe(false);
-      expect(refineBody).toMatchObject({
+      expect(refineBodies).toHaveLength(2);
+      expect(refineBodies[0]).toMatchObject({
         mode: "I2VA",
         generation_budget: 2880,
-        unload_after: true
+        unload_after: false
       });
-      expect(String(refineBody.current_prompt)).toContain("integrated_multimodal_description:");
-      expect(String(refineBody.instruction)).toContain("never fewer than 450 words");
-      expect(String(refineBody.instruction)).toContain("approximately 900 grounded words");
-      expect(String(refineBody.system_prompt_override)).toContain("Preserve every concrete user instruction");
+      expect(String(refineBodies[0].current_prompt)).toContain("integrated_multimodal_description:");
+      expect(String(refineBodies[0].instruction)).toContain("must contain at least 450 grounded words");
+      expect(String(refineBodies[0].instruction)).toContain("broader detailed-mode target remains approximately 900 words");
+      expect(String(refineBodies[0].system_prompt_override)).toContain("Preserve every concrete user instruction");
+      expect(String(refineBodies[1].instruction)).toContain("Final coverage repair pass");
+      expect(String(refineBodies[1].instruction)).toContain("Add no fewer than 120 useful words");
+      expect(String(refineBodies[1].current_prompt)).toContain(detailedWriterPrompt(435).split("\n")[0]);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

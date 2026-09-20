@@ -11,8 +11,6 @@ import type {
   Settings
 } from "../../src/types.js";
 import {
-  historyVideoPaths,
-  historyVideoVersionAuxiliaryPaths,
   removeHistoryVideoVersion
 } from "../../src/core/history-delete.js";
 import {
@@ -20,10 +18,22 @@ import {
   isH3MotionContextHistoryFile,
   H3_MOTION_CONTEXT_SUBFOLDER
 } from "../../src/core/h3-motion-context.js";
+import { historyFileCandidates } from "../../src/core/history-media.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
+
+class PartialHistoryDeletionError extends Error {
+  constructor(
+    message: string,
+    readonly deletedFiles: string[],
+    readonly integrityUncertain: boolean
+  ) {
+    super(message);
+    this.name = "PartialHistoryDeletionError";
+  }
+}
 
 export interface HistoryDestructiveServiceDependencies {
   store: StateRepository;
@@ -55,20 +65,34 @@ export class HistoryDestructiveService {
     ];
     try {
       await this.deps.invalidateCoverCacheKeys?.(coverCacheKeys);
-      const filesToDelete = asset
-        ? historyVideoPaths(asset, current.settings.outputDirectory)
-        : await this.imageProjectFilesToDelete(imageProject!, current.settings);
+      const resolvedVideoFiles = asset
+        ? await this.videoHistoryFilesToDelete(asset, current.settings)
+        : undefined;
+      const filesToDelete = resolvedVideoFiles?.paths ??
+        await this.imageProjectFilesToDelete(imageProject!, current.settings);
       if (asset) {
         await this.assertPathsExclusive(
           this.deps.store.get(),
           new Set(asset.versions.map((version) => `history:${asset.id}:${version.id}`)),
-          filesToDelete,
-          "视频文件"
+          resolvedVideoFiles?.referencePaths ?? filesToDelete,
+          "视频文件",
+          asset.versions.flatMap(version => historyAuxiliaryAssetIds(version))
         );
       }
       // Keep the existing user-facing wording for this legacy whole-record
       // command; version-specific commands use their precise media kind.
-      await this.unlinkFiles(filesToDelete, "视频文件");
+      const deletedFiles = await this.unlinkFiles(
+        filesToDelete,
+        "视频文件",
+        Boolean(resolvedVideoFiles?.unresolved.length)
+      );
+      if (resolvedVideoFiles?.unresolved.length) {
+        throw new PartialHistoryDeletionError(
+          "视频记录包含无法定位的文件，删除结果不完整。",
+          deletedFiles,
+          true
+        );
+      }
       const next = await this.deps.store.update((state) => {
         if (asset) state.history = state.history.filter((item) => item.id !== assetId);
         if (imageProject) {
@@ -84,6 +108,9 @@ export class HistoryDestructiveService {
       this.deps.sendState(next);
       return next;
     } catch (error) {
+      if (asset && error instanceof PartialHistoryDeletionError && error.integrityUncertain) {
+        await this.markHistoryAssetAuxiliaryFilesInvalid(assetId, error.message);
+      }
       this.logFailure("delete-failed", "History asset deletion failed", assetId, startedAt, error);
       throw error;
     }
@@ -99,22 +126,23 @@ export class HistoryDestructiveService {
       throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
     }
     const coverCacheKey = this.deps.coverCacheKeyForVideoVersion(asset, version);
-    const versionPaths = await this.videoVersionPaths(version, current.settings);
+    const resolvedVersionFiles = await this.videoVersionFilesToDelete(version, current.settings);
     const otherVersions = asset.versions.filter((item) => item.id !== versionId);
     const resolvedOtherVersionPaths = await Promise.all(
-      otherVersions.map((item) => this.videoVersionPaths(item, current.settings))
+      otherVersions.map((item) => this.videoVersionFilesToDelete(item, current.settings))
     );
     const otherVersionPaths = new Set(
-      resolvedOtherVersionPaths.flat().map(normalizedHistoryPath)
+      resolvedOtherVersionPaths.flatMap((files) => files.referencePaths).map(normalizedHistoryPath)
     );
-    const filesToDelete = versionPaths.filter((filename) =>
+    const filesToDelete = resolvedVersionFiles.paths.filter((filename) =>
       !otherVersionPaths.has(normalizedHistoryPath(filename))
     );
     await this.assertPathsExclusive(
       this.deps.store.get(),
       new Set([`history:${assetId}:${versionId}`]),
-      filesToDelete,
-      "视频文件"
+      resolvedVersionFiles.referencePaths,
+      "视频文件",
+      historyAuxiliaryAssetIds(version)
     );
     this.deps.logger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
       assetId,
@@ -123,7 +151,18 @@ export class HistoryDestructiveService {
     });
     try {
       await this.deps.invalidateCoverCacheKeys?.([coverCacheKey]);
-      await this.unlinkFiles(filesToDelete, "视频文件");
+      const deletedFiles = await this.unlinkFiles(
+        filesToDelete,
+        "视频文件",
+        Boolean(resolvedVersionFiles.unresolved.length)
+      );
+      if (resolvedVersionFiles.unresolved.length) {
+        throw new PartialHistoryDeletionError(
+          "视频版本包含无法定位的文件，删除结果不完整。",
+          deletedFiles,
+          true
+        );
+      }
       const next = await this.deps.store.update((state) => {
         const target = state.history.find((item) => item.id === assetId);
         if (!target) throw new Error("视频记录不存在。");
@@ -138,6 +177,9 @@ export class HistoryDestructiveService {
       this.deps.sendState(next);
       return next;
     } catch (error) {
+      if (error instanceof PartialHistoryDeletionError && error.integrityUncertain) {
+        await this.markHistoryVersionAuxiliaryFilesInvalid(assetId, versionId, error.message);
+      }
       this.logFailure(
         "video-version-delete-failed",
         "Video history version deletion failed",
@@ -150,19 +192,47 @@ export class HistoryDestructiveService {
     }
   }
 
-  private async videoVersionPaths(
+  private async videoHistoryFilesToDelete(
+    asset: HistoryAsset,
+    settings: Settings
+  ): Promise<ResolvedHistoryDeletionFiles> {
+    return this.resolveDeletionFiles(
+      asset.versions.flatMap((version) => historyVideoFilesForDeletion(version)),
+      settings
+    );
+  }
+
+  private async videoVersionFilesToDelete(
     version: AssetVersion,
     settings: Settings
-  ): Promise<string[]> {
-    const resolvedVideos = await Promise.all(
-      version.files
-        .filter((file) => /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename))
-        .map((file) => this.deps.resolveHistoryFile(file, settings))
-    );
-    return [...new Set([
-      ...resolvedVideos.filter((filename): filename is string => Boolean(filename)),
-      ...historyVideoVersionAuxiliaryPaths(version, settings.outputDirectory)
-    ].map((filename) => path.resolve(filename)))];
+  ): Promise<ResolvedHistoryDeletionFiles> {
+    return this.resolveDeletionFiles(historyVideoFilesForDeletion(version), settings);
+  }
+
+  private async resolveDeletionFiles(
+    files: readonly HistoryFile[],
+    settings: Settings
+  ): Promise<ResolvedHistoryDeletionFiles> {
+    const uniqueFiles = uniqueHistoryFiles(files);
+    const resolved = await Promise.all(uniqueFiles.map(async (file) => ({
+      file,
+      filename: await this.deps.resolveHistoryFile(file, settings)
+    })));
+    return {
+      paths: [...new Set(resolved
+        .map((entry) => entry.filename)
+        .filter((filename): filename is string => Boolean(filename))
+        .map((filename) => path.resolve(filename)))],
+      referencePaths: [...new Set([
+        ...uniqueFiles.flatMap((file) => historyFileCandidates(file, settings)),
+        ...resolved
+          .map((entry) => entry.filename)
+          .filter((filename): filename is string => Boolean(filename))
+      ].map(normalizedHistoryPath))],
+      unresolved: resolved
+        .filter((entry) => !entry.filename)
+        .map((entry) => entry.file)
+    };
   }
 
   async deleteJointAv(assetId: string, versionId: string): Promise<AppState> {
@@ -186,15 +256,44 @@ export class HistoryDestructiveService {
     const resolved = await Promise.all([
       ...targetFiles.map((file) => this.deps.resolveHistoryFile(file, current.settings))
     ]);
+    const unresolvedTargetFile = resolved.some((filename) => !filename);
+    if (unresolvedTargetFile && resolved.every((filename) => !filename)) {
+      const degraded = await this.deps.store.update((state) => {
+        const target = state.history.find((item) => item.id === assetId)
+          ?.versions.find((item) => item.id === versionId);
+        if (!target) return;
+        target.h3ContinuationData = {
+          ...target.h3ContinuationData,
+          status: "invalid",
+          reason: "JointAV manifest 或 payload 已缺失，无法完成安全删除。"
+        };
+      });
+      this.deps.sendState(degraded);
+      throw new Error("JointAV manifest 或 payload 已缺失，无法完成安全删除。");
+    }
     await this.assertPathsExclusive(
       this.deps.store.get(),
       new Set([`history:${assetId}:${versionId}`]),
-      resolved.filter((filename): filename is string => Boolean(filename)),
+      [
+        ...resolved.filter((filename): filename is string => Boolean(filename)),
+        ...targetFiles.flatMap((file) => historyFileCandidates(file, current.settings))
+      ],
       "JointAV 文件",
       unifiedAsset ? [unifiedAsset.assetId] : []
     );
     try {
-      await this.unlinkFiles(resolved.filter((filename): filename is string => Boolean(filename)), "JointAV 文件");
+      const deletedJointAvFiles = await this.unlinkFiles(
+        resolved.filter((filename): filename is string => Boolean(filename)),
+        "JointAV 文件",
+        unresolvedTargetFile
+      );
+      if (unresolvedTargetFile) {
+        throw new PartialHistoryDeletionError(
+          "JointAV manifest 或 payload 已缺失，删除结果不完整。",
+          deletedJointAvFiles,
+          true
+        );
+      }
       const next = await this.deps.store.update((state) => {
         const target = state.history.find((item) => item.id === assetId)
           ?.versions.find((item) => item.id === versionId);
@@ -220,6 +319,19 @@ export class HistoryDestructiveService {
       this.deps.sendState(next);
       return next;
     } catch (error) {
+      if (error instanceof PartialHistoryDeletionError && error.integrityUncertain) {
+        const degraded = await this.deps.store.update((state) => {
+          const target = state.history.find((item) => item.id === assetId)
+            ?.versions.find((item) => item.id === versionId);
+          if (!target) return;
+          target.h3ContinuationData = {
+            ...target.h3ContinuationData,
+            status: "invalid",
+            reason: "JointAV 文件删除不完整，剩余文件需要重新检查。"
+          };
+        });
+        this.deps.sendState(degraded);
+      }
       this.logFailure("joint-av-delete-failed", "JointAV deletion failed", assetId, startedAt, error, { versionId });
       throw error;
     }
@@ -238,8 +350,8 @@ export class HistoryDestructiveService {
       throw new Error("当前版本没有可删除的 Motion Context latent 文件。");
     }
     const resolved = await this.deps.resolveHistoryFile(contextFile, current.settings);
-    const filename = resolved
-      ? managedMotionContextPath(resolved, current.settings.outputDirectory)
+    const filename = resolved && path.extname(resolved).toLowerCase() === ".safetensors"
+      ? path.resolve(resolved)
       : null;
     if (!filename) {
       throw new Error("当前版本没有可定位的 Motion Context latent 文件。");
@@ -358,20 +470,67 @@ export class HistoryDestructiveService {
 
   private async unlinkFiles(
     filenames: readonly string[],
-    mediaLabel: string
-  ): Promise<void> {
+    mediaLabel: string,
+    integrityUncertain = false
+  ): Promise<string[]> {
+    const deletedFiles: string[] = [];
+    let missingFileSeen = false;
     for (const filename of [...new Set(filenames)]) {
       try {
         await this.deps.fileSystem.unlink(filename);
+        deletedFiles.push(filename);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        throw new Error(
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          missingFileSeen = true;
+          continue;
+        }
+        throw new PartialHistoryDeletionError(
           `无法删除${mediaLabel} ${path.basename(filename)}：${
             error instanceof Error ? error.message : String(error)
-          }`
+          }`,
+          deletedFiles,
+          integrityUncertain || missingFileSeen || deletedFiles.length > 0
         );
       }
     }
+    return deletedFiles;
+  }
+
+  private async markHistoryAssetAuxiliaryFilesInvalid(
+    assetId: string,
+    reason: string
+  ): Promise<void> {
+    const next = await this.deps.store.update((state) => {
+      const asset = state.history.find((item) => item.id === assetId);
+      for (const version of asset?.versions ?? []) {
+        if (version.h3ContinuationData?.status === "available" || version.h3AvAsset) {
+          version.h3ContinuationData = {
+            ...version.h3ContinuationData,
+            status: "invalid",
+            reason: `辅助文件删除不完整，需重新检查：${reason}`
+          };
+        }
+      }
+    });
+    this.deps.sendState(next);
+  }
+
+  private async markHistoryVersionAuxiliaryFilesInvalid(
+    assetId: string,
+    versionId: string,
+    reason: string
+  ): Promise<void> {
+    const next = await this.deps.store.update((state) => {
+      const version = state.history.find((item) => item.id === assetId)
+        ?.versions.find((item) => item.id === versionId);
+      if (!version) return;
+      version.h3ContinuationData = {
+        ...version.h3ContinuationData,
+        status: "invalid",
+        reason: `辅助文件删除不完整，需重新检查：${reason}`
+      };
+    });
+    this.deps.sendState(next);
   }
 
   private async assertAuxiliaryFilesExclusive(
@@ -399,20 +558,33 @@ export class HistoryDestructiveService {
     targetAssetIds: readonly string[] = []
   ): Promise<void> {
     const targetKeys = new Set(targetPaths.map(normalizedHistoryPath));
-    const blockers = (await collectHistoryAuxiliaryReferences(
-      state,
-      this.deps.resolveHistoryFile,
-      state.settings
-    ))
-      .filter((reference) => !allowedReferenceIds.has(reference.referenceId))
-      .filter((reference) =>
-        reference.assetIds.some((assetId) => targetAssetIds.includes(assetId)) ||
-        reference.paths.some((file) => targetKeys.has(file))
-      )
-      .map((reference) => reference.referenceId);
-    if (blockers.length) {
-      throw new Error(`${mediaLabel}仍被其他版本、队列或草稿引用，拒绝物理删除：${blockers.join("、")}`);
+    let scanState = state;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const beforeSignature = auxiliaryReferenceStateSignature(scanState);
+      const references = await collectHistoryAuxiliaryReferences(
+        scanState,
+        this.deps.resolveHistoryFile,
+        scanState.settings
+      );
+      const latestState = this.deps.store.get();
+      const afterSignature = auxiliaryReferenceStateSignature(latestState);
+      if (beforeSignature !== afterSignature) {
+        scanState = latestState;
+        continue;
+      }
+      const blockers = references
+        .filter((reference) => !allowedReferenceIds.has(reference.referenceId))
+        .filter((reference) =>
+          reference.assetIds.some((assetId) => targetAssetIds.includes(assetId)) ||
+          reference.paths.some((file) => targetKeys.has(file))
+        )
+        .map((reference) => reference.referenceId);
+      if (blockers.length) {
+        throw new Error(`${mediaLabel}仍被其他版本、队列或草稿引用，拒绝物理删除：${blockers.join("、")}`);
+      }
+      return;
     }
+    throw new Error(`${mediaLabel}引用状态在检查期间持续变化，拒绝物理删除，请重试。`);
   }
 
   private logFailure(
@@ -437,6 +609,55 @@ interface HistoryAuxiliaryReference {
   referenceId: string;
   paths: string[];
   assetIds: string[];
+}
+
+interface ResolvedHistoryDeletionFiles {
+  paths: string[];
+  referencePaths: string[];
+  unresolved: HistoryFile[];
+}
+
+function historyVideoFilesForDeletion(version: AssetVersion): HistoryFile[] {
+  const files = version.files.filter((file) => /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename));
+  const hasManagedRunOwner = version.h3AvAsset?.storageKind === "continuum-run-chunk" ||
+    version.h3ContinuationData?.asset?.storageKind === "continuum-run-chunk";
+  if (version.h3ContinuationData?.artifact && !hasManagedRunOwner) {
+    files.push(
+      version.h3ContinuationData.artifact.manifest,
+      version.h3ContinuationData.artifact.payload
+    );
+  }
+  const motionContextFile = h3MotionContextHistoryFileForPath(
+    version.h3ContextLatentPath,
+    version.files
+  ) ?? version.files.find(isH3MotionContextHistoryFile);
+  if (motionContextFile) files.push(motionContextFile);
+  for (const asset of [version.h3AvAsset, version.h3ContinuationData?.asset]) {
+    if (!asset || asset.storageKind === "continuum-run-chunk") continue;
+    files.push(asset.ownerPath, ...(asset.aliasPaths ?? []));
+  }
+  return uniqueHistoryFiles(files);
+}
+
+function historyAuxiliaryAssetIds(version: AssetVersion): string[] {
+  return [...new Set([
+    version.h3AvAsset?.assetId,
+    version.h3ContinuationData?.asset?.assetId,
+    version.h3MotionContextSourceAsset?.assetId,
+    ...(version.h3ContinuumSequence?.chunks ?? []).map((chunk) => chunk.assetId)
+  ].filter((assetId): assetId is string => Boolean(assetId)))];
+}
+
+function uniqueHistoryFiles(files: readonly HistoryFile[]): HistoryFile[] {
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const key = file.absolutePath
+      ? `absolute:${normalizedHistoryPath(file.absolutePath)}`
+      : `logical:${file.type}\u0000${file.subfolder}\u0000${file.filename}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function historyReferencePath(file: HistoryFile, outputDirectory: string): string {
@@ -477,6 +698,12 @@ function draftAuxiliaryFiles(draft: Draft): HistoryFile[] {
       absolutePath: draft.h3ContinuumArtifactPath
     });
   }
+  if (draft.h3MotionContextAsset) {
+    files.push(
+      draft.h3MotionContextAsset.ownerPath,
+      ...(draft.h3MotionContextAsset.aliasPaths ?? [])
+    );
+  }
   return files;
 }
 
@@ -488,9 +715,10 @@ async function collectHistoryAuxiliaryReferences(
   const references: HistoryAuxiliaryReference[] = [];
   const resolvePaths = async (files: readonly HistoryFile[]): Promise<string[]> => {
     const resolved = await Promise.all(files.map((file) => resolveHistoryFile(file, settings)));
-    return resolved
-      .filter((filename): filename is string => Boolean(filename))
-      .map(normalizedHistoryPath);
+    return [...new Set([
+      ...files.flatMap((file) => historyFileCandidates(file, settings)),
+      ...resolved.filter((filename): filename is string => Boolean(filename))
+    ].map(normalizedHistoryPath))];
   };
   for (const asset of state.history) {
     for (const version of asset.versions) {
@@ -501,6 +729,18 @@ async function collectHistoryAuxiliaryReferences(
           : []),
         ...(version.h3AvAsset
           ? [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]
+          : []),
+        ...(version.h3ContinuationData?.asset
+          ? [
+              version.h3ContinuationData.asset.ownerPath,
+              ...(version.h3ContinuationData.asset.aliasPaths ?? [])
+            ]
+          : []),
+        ...(version.h3MotionContextSourceAsset
+          ? [
+              version.h3MotionContextSourceAsset.ownerPath,
+              ...(version.h3MotionContextSourceAsset.aliasPaths ?? [])
+            ]
           : []),
         ...(version.h3ContextLatentPath
           ? [{
@@ -516,6 +756,8 @@ async function collectHistoryAuxiliaryReferences(
         paths: await resolvePaths(files),
         assetIds: [
           ...(version.h3AvAsset ? [version.h3AvAsset.assetId] : []),
+          ...(version.h3ContinuationData?.asset ? [version.h3ContinuationData.asset.assetId] : []),
+          ...(version.h3MotionContextSourceAsset ? [version.h3MotionContextSourceAsset.assetId] : []),
           ...(version.h3ContinuumSequence?.chunks ?? [])
             .map((chunk) => chunk.assetId)
             .filter((assetId): assetId is string => Boolean(assetId))
@@ -560,6 +802,20 @@ async function collectHistoryAuxiliaryReferences(
     if ("h3ContinuumArtifact" in task && task.h3ContinuumArtifact) {
       files.push(task.h3ContinuumArtifact.manifest, task.h3ContinuumArtifact.payload);
     }
+    if ("h3ContinuumArtifactPath" in task && task.h3ContinuumArtifactPath) {
+      files.push({
+        filename: path.basename(task.h3ContinuumArtifactPath),
+        subfolder: path.dirname(task.h3ContinuumArtifactPath),
+        type: "output",
+        absolutePath: task.h3ContinuumArtifactPath
+      });
+    }
+    if ("h3MotionContextAsset" in task && task.h3MotionContextAsset) {
+      files.push(
+        task.h3MotionContextAsset.ownerPath,
+        ...(task.h3MotionContextAsset.aliasPaths ?? [])
+      );
+    }
     if (task.taskType === "upscale" && task.h3NativeInput?.artifact) {
       files.push(
         task.h3NativeInput.artifact.manifest,
@@ -573,15 +829,19 @@ async function collectHistoryAuxiliaryReferences(
         task.h3FirstPassCheckpoint.artifact.payload
       );
     }
-    if (files.length) {
+    const queueAssetIds = "h3ContinuumSequence" in task
+      ? (task.h3ContinuumSequence?.chunks ?? [])
+          .map((chunk) => chunk.assetId)
+          .filter((assetId): assetId is string => Boolean(assetId))
+      : [];
+    if ("h3MotionContextAsset" in task && task.h3MotionContextAsset?.assetId) {
+      queueAssetIds.push(task.h3MotionContextAsset.assetId);
+    }
+    if (files.length || queueAssetIds.length) {
       references.push({
         referenceId: `queue:${task.id}`,
         paths: await resolvePaths(files),
-        assetIds: task.taskType === "extension"
-          ? (task.h3ContinuumSequence?.chunks ?? [])
-              .map((chunk) => chunk.assetId)
-              .filter((assetId): assetId is string => Boolean(assetId))
-          : []
+        assetIds: queueAssetIds
       });
     }
   }
@@ -592,38 +852,75 @@ async function collectHistoryAuxiliaryReferences(
   ] as const) {
     if (!draft) continue;
     const files = draftAuxiliaryFiles(draft);
-    if (files.length) {
+    const draftAssetIds = (draft.h3ContinuumSequence?.chunks ?? [])
+      .map((chunk) => chunk.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId));
+    if (files.length || draftAssetIds.length) {
       references.push({
         referenceId: `draft:${name}`,
         paths: await resolvePaths(files),
-        assetIds: []
+        assetIds: draftAssetIds
       });
     }
   }
   return references;
 }
 
+function auxiliaryReferenceStateSignature(state: AppState): string {
+  return JSON.stringify({
+    settings: {
+      outputDirectory: state.settings.outputDirectory,
+      imageOutputDirectory: state.settings.imageOutputDirectory,
+      modelDirectory: state.settings.modelDirectory,
+      comfyInstallDirectory: state.settings.comfyInstallDirectory
+    },
+    history: state.history.map((asset) => ({
+      id: asset.id,
+      versions: asset.versions.map((version) => ({
+        id: version.id,
+        files: version.files,
+        h3ContextLatentPath: version.h3ContextLatentPath,
+        artifact: version.h3ContinuationData?.artifact,
+        h3AvAsset: version.h3AvAsset,
+        continuationAsset: version.h3ContinuationData?.asset,
+        motionContextSourceAsset: version.h3MotionContextSourceAsset,
+        sequence: version.h3ContinuumSequence?.chunks.map((chunk) => chunk.assetId)
+      }))
+    })),
+    queue: state.queue.map((task) => ({
+      id: task.id,
+      taskType: task.taskType,
+      sourceVideoPath: "sourceVideoPath" in task ? task.sourceVideoPath : undefined,
+      sourceFilePath: "sourceFilePath" in task ? task.sourceFilePath : undefined,
+      h3ContextLatentPath: "h3ContextLatentPath" in task ? task.h3ContextLatentPath : undefined,
+      h3ContextSavedPath: "h3ContextSavedPath" in task ? task.h3ContextSavedPath : undefined,
+      h3ContinuumArtifactPath: "h3ContinuumArtifactPath" in task ? task.h3ContinuumArtifactPath : undefined,
+      h3ContinuumArtifact: "h3ContinuumArtifact" in task ? task.h3ContinuumArtifact : undefined,
+      h3MotionContextAsset: "h3MotionContextAsset" in task ? task.h3MotionContextAsset : undefined,
+      h3NativeInput: task.taskType === "upscale" ? task.h3NativeInput?.artifact : undefined,
+      checkpoint: task.taskType === "generation" ? task.h3FirstPassCheckpoint : undefined,
+      sequence: "h3ContinuumSequence" in task
+        ? task.h3ContinuumSequence?.chunks.map((chunk) => chunk.assetId)
+        : undefined
+    })),
+    drafts: [state.draft, state.imageToVideoDraft, state.videoExtensionDraft].map((draft) => draft
+      ? {
+          sourceVideoPath: draft.sourceVideoPath,
+          h3ContextLatentPath: draft.h3ContextLatentPath,
+          h3ContinuumArtifactPath: draft.h3ContinuumArtifactPath,
+          h3ContinuumArtifact: draft.h3ContinuumArtifact,
+          h3MotionContextAsset: draft.h3MotionContextAsset,
+          sequence: draft.h3ContinuumSequence?.chunks.map((chunk) => chunk.assetId),
+          sourceAssetId: draft.sourceAssetId,
+          sourceVersionId: draft.sourceVersionId
+        }
+      : null)
+  });
+}
+
 function normalizedHistoryPath(filename: string): string {
   const resolved = path.resolve(filename);
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
-
-function managedMotionContextPath(filename: string, outputDirectory: string): string | null {
-  if (!outputDirectory.trim()) return null;
-  const root = path.resolve(outputDirectory);
-  const candidate = path.resolve(filename);
-  const relative = path.relative(root, candidate);
-  const firstSegment = relative.split(path.sep)[0]?.toLowerCase();
-  const managedRoots = new Set([H3_MOTION_CONTEXT_SUBFOLDER, "h3_context"]);
-  if (
-    !firstSegment ||
-    !managedRoots.has(firstSegment) ||
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative) ||
-    path.extname(candidate).toLowerCase() !== ".safetensors"
-  ) return null;
-  return candidate;
 }
 
 function sameMotionContextFile(

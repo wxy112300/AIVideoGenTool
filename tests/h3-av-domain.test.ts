@@ -86,6 +86,24 @@ describe("H3 AV adapters and inventory", () => {
     expect(() => adaptH3AvAsset(asset, "legacy-continuum")).toThrow("continuum-bootstrap");
   });
 
+  it("adapts an app-canonical Native AV owner into the Motion Context loader route", () => {
+    const asset: H3AvLatentAsset = {
+      ...managedAsset("h3av_canonical_motion"),
+      storageKind: "app-canonical",
+      ownerPath: outputFile("h3-native-av", "h3av_canonical_motion.safetensors"),
+      aliasPaths: undefined,
+      aliasMode: undefined,
+      capabilities: ["native-av"],
+      continuumChunk: undefined
+    };
+
+    const adapted = adaptH3AvAsset(asset, "motion-context");
+
+    expect(adapted.payloadPath).toEqual(asset.ownerPath);
+    expect(adapted.transport).toBe("plain-video-audio-wrapper");
+    expect(adapted.officialRunStorage).toBe(false);
+  });
+
   it("builds reverse references and classifies legacy/duplicate/missing/corrupt files", () => {
     const first = managedAsset();
     const second = managedAsset("h3av_ijklmnop", first.payloadSha256);

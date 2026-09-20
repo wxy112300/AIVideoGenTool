@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultImageEditDraft } from "../src/core/defaults";
+import { createTranslator } from "../src/core/i18n";
 import type { ImageReference, ModelScanProfile } from "../src/types";
 import {
   generationSafetyForCreateDraft,
@@ -25,6 +26,7 @@ function videoCheck(overrides: Partial<Parameters<typeof videoEnqueueBlockReason
     safetySafe: true,
     safetyMessage: "unsafe",
     h3MotionContextReady: true,
+    motionContextLatentTrimValid: true,
     spectrumReady: true,
     r2vSlotsReady: true,
     startImagePath: "start.png",
@@ -36,6 +38,7 @@ function videoCheck(overrides: Partial<Parameters<typeof videoEnqueueBlockReason
 }
 
 describe("create enqueue preflight checks", () => {
+  const translate = createTranslator("zh-CN");
   const readyImageProfile = (id: string): ModelScanProfile => ({
     id, name: id, category: "image", badge: "", description: "", vram: "",
     available: true, integrated: true, missingCustomNodeIds: [],
@@ -95,6 +98,36 @@ describe("create enqueue preflight checks", () => {
         runtimeReady: false
       })).toBe("");
     }
+  });
+
+  it("blocks a selected Motion latent when trim no longer reaches the source end", () => {
+    expect(videoCheck({
+      t: translate.t,
+      extending: true,
+      isR2V: true,
+      motionContextLatentTrimValid: false,
+      workflowPath: "motion-workflow.json"
+    })).toContain("只对应源视频末端");
+  });
+
+  it("blocks a selected Motion latent until source inspection proves the consumer contract", () => {
+    expect(videoCheck({
+      t: translate.t,
+      extending: true,
+      isR2V: true,
+      motionContextPreflightBlockReason: "Motion Context latent 的 audio shape 不匹配",
+      workflowPath: "motion-workflow.json"
+    })).toContain("audio shape");
+  });
+
+  it("keeps the explicit video-context route available when no latent is selected", () => {
+    expect(videoCheck({
+      t: translate.t,
+      extending: true,
+      isR2V: true,
+      workflowPath: "motion-workflow.json",
+      motionContextPreflightBlockReason: ""
+    })).toBe("");
   });
 
   it("allows Z-Image text-to-image enqueue without a reference picture", () => {

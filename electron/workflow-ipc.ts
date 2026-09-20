@@ -64,14 +64,19 @@ async function inspectWorkflow(
   deps: WorkflowIpcDependencies,
   workflowPath: string,
   modelId?: string
-): Promise<{ supportsEndImage: boolean; supportsVideoExtension: boolean }> {
+): Promise<{ supportsEndImage: boolean; supportsVideoExtension: boolean; isBundled: boolean }> {
   const startedAt = Date.now();
   const source = await readJson(deps.fileSystem, workflowPath);
+  const resolvedWorkflowPath = path.resolve(workflowPath);
+  const isBundled = deps.workflowRoots.some((root) =>
+    resolvedWorkflowPath === path.resolve(root, path.basename(workflowPath))
+  );
   const result = {
     supportsEndImage: workflowSupportsEndImage(source),
     supportsVideoExtension: modelId
       ? workflowSupportsExtensionForModel(source, modelId)
-      : extensionWorkflowSafetyErrors(source).length === 0
+      : extensionWorkflowSafetyErrors(source).length === 0,
+    isBundled
   };
   deps.logger.info("workflow", "inspected", "Workflow inspected", {
     durationMs: Date.now() - startedAt,

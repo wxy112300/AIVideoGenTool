@@ -107,7 +107,8 @@ function createCoordinatorHarness() {
   let currentHistoryKind: HistoryKind = "video";
   const root = document.createElement("main");
   const application = {
-    updateHistoryMetadata: vi.fn(async () => structuredClone(currentState))
+    updateHistoryMetadata: vi.fn(async () => structuredClone(currentState)),
+    inspectH3NativeAvArtifact: vi.fn(async () => ({ status: "not-supported" as const }))
   };
   const context = {
     root,
@@ -139,6 +140,7 @@ function createCoordinatorHarness() {
       flashMessageTimer: undefined,
       selectedHistoryAssetId: "",
       selectedHistoryVersionId: "",
+      historyArtifactInspection: null,
       historyFilter: {
         query: "",
         modelIds: [],
@@ -234,6 +236,68 @@ describe("history workspace coordinator", () => {
     expect(harness.dependencies.ui.selectedHistoryAssetId).toBe("older");
     expect(harness.dependencies.ui.selectedHistoryVersionId).toBe("older-version");
     expect(harness.dependencies.render).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the latest same-version inspection result", async () => {
+    const harness = createCoordinatorHarness();
+    const asset = videoAsset("inspection", "2026-08-31T10:00:00.000Z");
+    asset.versions[0]!.h3ContinuationData = {
+      status: "invalid",
+      reason: "partial deletion",
+      artifact: {
+        manifest: { filename: "h3av-late.json", subfolder: "h3-native-av", type: "output" },
+        payload: { filename: "h3av-late.safetensors", subfolder: "h3-native-av", type: "output" }
+      } as never
+    };
+    harness.getState().history = [asset];
+    let resolveFirst!: (value: { status: "missing"; reason: string }) => void;
+    let resolveSecond!: (value: { status: "available" }) => void;
+    harness.dependencies.context.application.inspectH3NativeAvArtifact
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+    harness.coordinator.openHistoryDetail("inspection", asset.versions[0]!.id);
+    harness.coordinator.openHistoryDetail("inspection", asset.versions[0]!.id);
+    resolveSecond({ status: "available" });
+    await Promise.resolve();
+    resolveFirst({ status: "missing", reason: "late" });
+    await Promise.resolve();
+
+    expect(harness.dependencies.ui.historyArtifactInspection?.value).toMatchObject({ status: "available" });
+  });
+
+  it("ignores an inspection result that arrives after the selected version was deleted", async () => {
+    const harness = createCoordinatorHarness();
+    const asset = videoAsset("deleted-late", "2026-08-31T10:00:00.000Z");
+    asset.versions[0]!.h3ContinuationData = { status: "available" };
+    harness.getState().history = [asset];
+    let resolveInspection!: (value: { status: "available" }) => void;
+    harness.dependencies.context.application.inspectH3NativeAvArtifact.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveInspection = resolve; })
+    );
+
+    harness.coordinator.openHistoryDetail("deleted-late", asset.versions[0]!.id);
+    asset.versions[0]!.h3ContinuationData = { status: "missing", reason: "deleted" };
+    resolveInspection({ status: "available" });
+    await Promise.resolve();
+
+    expect(harness.dependencies.ui.historyArtifactInspection).toBeNull();
+  });
+
+  it("does not rebuild the detail page when the artifact summary is absent", async () => {
+    const harness = createCoordinatorHarness();
+    const asset = videoAsset("inspection-no-summary", "2026-08-31T10:00:00.000Z");
+    asset.versions[0]!.h3ContinuationData = { status: "available" };
+    harness.getState().history = [asset];
+    harness.dependencies.context.application.inspectH3NativeAvArtifact.mockResolvedValueOnce({
+      status: "available"
+    });
+
+    harness.coordinator.openHistoryDetail("inspection-no-summary", asset.versions[0]!.id);
+    await Promise.resolve();
+
+    expect(harness.dependencies.ui.historyArtifactInspection?.value).toMatchObject({ status: "available" });
+    expect(harness.dependencies.render).toHaveBeenCalledTimes(1);
   });
 
   it("switches to image detail and restores the last image target from history", () => {

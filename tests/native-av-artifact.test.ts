@@ -297,6 +297,46 @@ describe("NativeAvArtifactService", () => {
     }
   });
 
+  it("uses the validated Comfy payload timeline when the requested Motion frame estimate is off-grid", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-produced-timeline-"));
+    try {
+      const producedDirectory = path.join(root, H3_CONTINUATION_ARTIFACT_SUBFOLDER);
+      const producedFilename = "h3av_motion-timeline.safetensors";
+      await fs.mkdir(producedDirectory, { recursive: true });
+      await fs.writeFile(
+        path.join(producedDirectory, producedFilename),
+        safetensorsPayload([1, 24, 47, 2, 2], [1, 32, 2, 263])
+      );
+      const { payload: _payload, ...metadata } = request(root);
+      const service = new NativeAvArtifactService({ fileSystem: nativeAvArtifactFileSystem });
+      const committed = await service.commitProducedFile({
+        ...metadata,
+        providerId: "comfyui",
+        sharedOutput: true,
+        artifactId: "motion-timeline",
+        role: "extend-segment-clean-av",
+        frameCount: 146,
+        contextFrames: 22,
+        producedFile: {
+          filename: producedFilename,
+          subfolder: H3_CONTINUATION_ARTIFACT_SUBFOLDER,
+          type: "output",
+          format: "safetensors"
+        }
+      });
+
+      expect(committed.status, JSON.stringify(committed)).toBe("available");
+      expect(committed.artifact).toMatchObject({
+        frameCount: 158,
+        contextFrames: 22,
+        videoShape: [1, 24, 47, 2, 2],
+        audioShape: [1, 32, 2, 263]
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a Continuum V3.8 JointAV latent with the protected 22-frame prefix", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-continuum-v38-"));
     try {

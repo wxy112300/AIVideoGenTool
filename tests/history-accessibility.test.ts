@@ -317,6 +317,13 @@ describe("History accessibility markup", () => {
         chunkSeconds: 15,
         chunks: [],
         canonicalHead: { takeId: "fixture-take", branchId: "fixture-branch" }
+      },
+      h3ContinuumReceipt: {
+        runStorageRoot: { filename: "manifest.json", subfolder: "h3-continuum/runs/fixture", type: "output" },
+        chunkRecords: [
+          { logicalChunkIndex: 1, recordFilename: "chunk-1.safetensors", payloadPath: { filename: "chunk-1.safetensors", subfolder: "h3-continuum/runs/fixture/chunks", type: "output" }, reused: false, generated: true },
+          { logicalChunkIndex: 2, recordFilename: "chunk-2.safetensors", payloadPath: { filename: "chunk-2.safetensors", subfolder: "h3-continuum/runs/fixture/chunks", type: "output" }, reused: false, generated: true }
+        ]
       }
     } as unknown as AssetVersion;
     const continuumRoot = document.createElement("div");
@@ -337,6 +344,9 @@ describe("History accessibility markup", () => {
     expect(continuumPanel.textContent).toContain("fixture-branch");
     expect(continuumPanel.querySelector('[data-continuum-action="Regenerate Current"]')?.getAttribute("data-source-version")).toBe(videoVersion.id);
     expect(continuumPanel.querySelector('[data-continuum-action="Continue From Here"]')?.getAttribute("data-continue-history")).toBe(videoAsset.id);
+    expect(continuumRoot.textContent).toContain("manifest.json");
+    expect(continuumRoot.textContent).toContain("chunk-1.safetensors");
+    expect(continuumRoot.textContent).toContain("chunk-2.safetensors");
     expect(continuumSidebar.querySelector('[data-continuum-action="Continue / Next"]')).not.toBeNull();
     expect(continuumSidebar.querySelector('[data-continuum-action="Regenerate Current"]')).toBeNull();
     expect(videoPage).not.toContain("history-continuum-panel");
@@ -478,7 +488,7 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain("sol-attn");
     expect(videoPage).not.toContain('<dt>history.page.motion</dt>');
     expect(videoPage).not.toContain('class="history-joint-av-indicator"');
-    expect(artifactPage).toContain('class="history-joint-av-indicator">JointAV</span>');
+    expect(artifactPage).toContain('class="history-joint-av-indicator">history.page.nativeAvBadge</span>');
     expect(artifactPage).not.toContain('data-h3-av-artifact');
     expect(artifactPage).toContain('history.page.nativeAvTitle');
     expect(artifactPage).toContain('data-history-av-visible-status');

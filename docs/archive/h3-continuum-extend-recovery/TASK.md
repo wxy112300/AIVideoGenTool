@@ -1,18 +1,49 @@
 # MiniMax H3 Continuum Extend recovery
 
 类型：TASK
-状态：active / phase-2-changes-requested
+状态：completed / phase-3-4-technical-gates-passed（2026-09-20；音频听感仍保留人工确认项）
 日期：2026-09-18
 范围：legacy/managed Continuum workflow、AV artifact、queue/History、Create preflight 和 prompt Skill。
 权威代码：当前工作树；上游运行时证据：本机 `ComfyUI-H3-Continuum` 3.8.2。
 
 ## 当前交接入口
 
-按用户要求，后续采用手动串行交接：交接方写当前阶段工作包，用户另开 Luna session 实施并回填结果，交接方验收通过后才创建下一阶段。不自动派子 agent，不把旧“Phase 0–6”当作新四阶段的完成证明。
+按用户要求采用手动交接：交接方写工作包，用户另开 Luna session 实施并回填，交接方最终验收。2026-09-19最新要求将Phase 3+4合并一次执行，先关安全尾项后连续实施和验证，中途不另等批准。不自动派子agent，不把旧“Phase 0–6”当作新四阶段完成证明。
 
 - 前置[latent可行性核查](HANDOFF_LATENT_FEASIBILITY.md)：accepted-with-scope。补交已验收，认可共享原始AV、分消费者合同；已校正证据编号和FL2VA Extend预检断言，不代表实际消费或所有变体已通过。
 - 新[Phase 1](HANDOFF_PHASE_1.md)：accepted-with-scope，按2026-09-19用户明确决定结束返修交接并进入Phase 2。T1/T3已关闭，T2有界证据已接收；不是全部运行门禁通过，未验证项见下方结转表，不再反复派发已完成修复。
-- **当前唯一可执行交接：[Phase 2第11节](HANDOFF_PHASE_2.md#phase-2-review-followup)，changes-requested**。原三例修复和普通删除/Continue重启证据已接收，但queue直接AV路径、引用索引扫描期间新增引用、部分unlink失败后假available仍可复现。只收口剩余安全与既定交互证据，不重复成功路径；GPU预算0，Phase 3未创建。
+- **当前执行记录：[Phase 3+4 合并工作包](HANDOFF_PHASE_3_4.md)，completed / technical gates passed。** 三项复审缺陷及真实运行新增暴露的 R2V History 路由、Comfy JointAV 时间网格登记问题均已修复；连续两轮 Motion、managed UI 可入队证据及创建页依赖状态收尾均已完成。技术门禁通过，只有无法由当前自动化代替的音频听感保留人工确认，不宣称主观音画质量已通过。本任务随 `0.63.1` patch 发布归档。
+
+### 2026-09-19 Phase 3+4 复审返修
+
+- 已修代码：手选、清除或更换源视频时同时清除 `h3MotionContextAsset`；入队边界只有显式路径仍属于 owner/alias 时才保留 typed asset，否则以用户路径为准并移除 stale asset。
+- 已修代码：History“在创建页调整”恢复 `h3MotionContextSourceAsset`，不再把当前版本新输出的 `h3AvAsset` 接到原任务输入视频。
+- 已修代码：extension source inspection key 纳入 `resolution` 与 `ratio`，几何变化会重新预检，旧异步结果仍受 key/generation 保护。
+- 已修运行时发现项：R2V History 输出即使带兼容 Continuum inspection 数据仍保持 Motion Continue；Comfy 实际写出的 JointAV tensor 时间网格经严格 header/shape/hash 校验后作为 canonical manifest 的权威 frameCount，避免请求估算 146 与实际 H3 网格 158 不一致而拒绝有效产物。
+- 新连续闭环见 `temp/phase3-motion-chain/evidence.json`：隔离应用、History 正式入口、2 次真实 GPU 提交；第一轮输出 `h3av_b87be434-...`，History 选中及第二轮输入/source identity 均为同一 asset，第二轮另发布 `h3av_c4b4eac1-...`。两份 payload 均为 7,377,128 bytes、登记 SHA-256 匹配、video/audio shape=`1x24x47x30x54`/`1x32x2x263`；MP4 为 864×480、24fps、H.264/AAC。
+- `temp/phase3-managed-ui/result.json` 已在 H3 AV node 0.3.5 下重新记录：节点不兼容提示消失，补 prompt 后可入队，并生成 managed waiting task；该 smoke 有意不启动 GPU，既有 managed receipt/Continue/Retry 运行证据仍负责执行层。
+- 画面抽检：第二轮 9.8s/10.2s 接缝保持主体、机位和构图，没有黑帧、回首帧或瞬时跳切；后段保持稳定机位并出现新横向运动，但对象语义命中度一般。音轨存在且为 32kHz 双声道 AAC；当前执行者没有实际听音能力，听感、突变及同步仍须人工播放确认，不能写成主观音画全通过。
+- 最终 `npm.cmd run verify`：179 个 unit files / 1575 tests、6 个 integration files / 81 tests、typecheck、clean build、contrast 20/20 全通过。应用拥有的 ComfyUI、Electron/CDP 及 8188/9335 监听均已清理。
+
+### 2026-09-19 Phase 2 历史复审（后续已修复）
+
+- 本轮6文件79项窄测及当前主进程隔离编译通过。真实service/模拟unlink确认直接路径和扫描期间新增引用两例已修；queue/draft sequence-only均仍unlink=2，部分删除丢artifact导致后续文件inspection调用0次，ENOENT后EACCES仍available。真实媒体删除/GPU/用户state修改均为0。
+- 文件区截图已补，普通删除/Continue重启证据保留；截图原始翻译key及新增段/managed/缺失、切模式、播放/焦点、select/icon证据未收口。完整Luna回填保留在下方和Phase 2第12节，不作为全项通过记录。
+- 这些 changes-requested 项已由上方 Phase 3+4 最终收口覆盖；本节仅保留当时复现记录，不再代表当前状态。
+
+### 2026-09-19 Luna Phase 2 追加修复报告（历史，已由上方复审限定）
+
+- R1：resolver-backed stable reference scan 补齐直接 AV path、Native upscale artifact、sequence asset ID；partial unlink 后状态降级为 invalid，23 项 History service tests 通过。
+- R2：inspection request generation、删除后迟到结果保护、可见原因/范围/存储摘要和三语 AV 兼容续写文案完成；coordinator focused 5 项通过。
+- R3：隔离 Electron 实际点击删除确认、Continue、同 userData 重启；1280×800、1440×900、390×844 文件区截图均可见且无溢出，结果在 `temp/phase2-r3-electron/result.json`。
+- Phase 3/4 仍未开始，无 GPU 提交；Phase 2 状态为 ready-for-review，尚未 accepted。
+
+### 2026-09-19 Luna Phase 2 追加复核报告（历史，已由上方复审限定）
+
+- R1：queue 直接 AV path、稳定引用扫描和 partial unlink 状态降级已完成，History service 23 项通过。
+- R2：同 version inspection generation、删除后迟到结果保护和摘要局部刷新已完成，coordinator focused 5 项通过。
+- R3：最新隔离 Electron 结果覆盖删除 confirmation/IPC、Continue、同 userData restart 及三 viewport 文件区；结果在 `temp/phase2-r3-electron/result.json`。
+- 当前 Phase 2 为 `ready-for-review`，未 accepted；Phase 3/4 未开始，GPU 提交为 0。
 
 ### 2026-09-19 用户授权旧队列执行前补齐
 

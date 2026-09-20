@@ -275,9 +275,8 @@ export function renderHistoryDetailPage(viewModel, options) {
     const videoIndex = options.versionVideoIndex(version);
     const mediaUrl = options.historyMediaUrl(asset, version);
     const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
-    const jointAvArtifact = version.h3ContinuationData?.status === "available"
-        ? version.h3ContinuationData.artifact
-        : undefined;
+    const jointAvArtifact = viewModel.historyArtifactInspection?.artifact ??
+      version.h3ContinuationData?.artifact;
       const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ?? version.h3ContinuationData?.status ?? "not-supported";
       const nativeAvStatusLabel = artifactInspectionStatus === "available"
           ? options.t(uiKeys.history.page.nativeAvStatusAvailable)
@@ -306,7 +305,7 @@ export function renderHistoryDetailPage(viewModel, options) {
         </section>`
           : "";
     const jointAvSummary = jointAvArtifact
-        ? `<span class="history-joint-av-indicator">JointAV</span>`
+      ? `<span class="history-joint-av-indicator">${options.escapeHtml(options.t(uiKeys.history.page.nativeAvBadge))}</span>`
         : "";
     const continuumSequence = version.h3ContinuumSequence;
     const continuumCurrentChunk = continuumSequence && continuumSequence.chunks.length > 0
@@ -330,6 +329,27 @@ export function renderHistoryDetailPage(viewModel, options) {
         : "";
     const fileIdentity = (file) => file.absolutePath || `${file.subfolder}/${file.filename}`;
     const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
+    const continuumReceipt = version.h3ContinuumReceipt;
+    const continuumStorageFiles = [
+      ...(continuumReceipt
+        ? [continuumReceipt.runStorageRoot, ...continuumReceipt.chunkRecords.map((record) => record.payloadPath)]
+        : []),
+      ...(version.h3AvAsset?.continuumChunk
+        ? [version.h3AvAsset.continuumChunk.runStorageRoot, version.h3AvAsset.continuumChunk.manifest]
+        : [])
+    ];
+    const continuumFileRole = (file) => {
+      const identity = fileIdentity(file);
+      if (continuumReceipt?.runStorageRoot && identity === fileIdentity(continuumReceipt.runStorageRoot))
+        return options.t(uiKeys.history.page.continuumRunStorageManifest);
+      const receiptChunk = continuumReceipt?.chunkRecords.find((record) => identity === fileIdentity(record.payloadPath));
+      if (receiptChunk)
+        return options.t(uiKeys.history.page.continuumChunkPayload, { index: receiptChunk.logicalChunkIndex });
+      const pointer = version.h3AvAsset?.continuumChunk;
+      if (pointer?.manifest && identity === fileIdentity(pointer.manifest))
+        return options.t(uiKeys.history.page.continuumChunkManifest, { index: pointer.logicalChunkIndex });
+      return "";
+    };
     const motionContextFile = h3MotionContextHistoryFileForPath(version.h3ContextLatentPath, version.files) ?? version.files.find(isH3MotionContextHistoryFile);
     const motionContextIdentity = motionContextFile ? fileIdentity(motionContextFile) : "";
     const outputFiles = [...version.files];
@@ -338,7 +358,8 @@ export function renderHistoryDetailPage(viewModel, options) {
       ...(motionContextFile ? [motionContextFile] : []),
       ...(version.h3AvAsset
         ? [version.h3AvAsset.ownerPath, ...(version.h3AvAsset.aliasPaths ?? [])]
-        : [])
+        : []),
+      ...continuumStorageFiles
     ]) {
       const identity = fileIdentity(file);
       if (!outputFiles.some((candidate) => fileIdentity(candidate) === identity)) {
@@ -495,6 +516,7 @@ export function renderHistoryDetailPage(viewModel, options) {
             ? identity === fileIdentity(version.h3AvAsset.ownerPath)
             : false;
           const isUnifiedAssetAlias = version.h3AvAsset?.aliasPaths?.some((candidate) => identity === fileIdentity(candidate)) ?? false;
+          const continuumRole = continuumFileRole(file);
           const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
           const sizeText = sizeBytes == null
             ? options.t(uiKeys.history.page.fileSizeUnknown)
@@ -518,7 +540,7 @@ export function renderHistoryDetailPage(viewModel, options) {
           const statusAttribute = isJointAvPayload || isUnifiedAssetOwner
             ? ` data-history-av-status="${options.escapeHtml(artifactInspectionStatus)}"`
             : "";
-          return `<div class="output-file" data-history-file-identity="${options.escapeHtml(identity)}"${statusAttribute}><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}${ownershipLabel}${managedDeleteNote} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
+          return `<div class="output-file" data-history-file-identity="${options.escapeHtml(identity)}"${statusAttribute}><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}${continuumRole ? ` · ${options.escapeHtml(continuumRole)}` : ""}${ownershipLabel}${managedDeleteNote} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
         }).join("")}
       </div>
         <details><summary>${options.t(uiKeys.history.page.rawSnapshot)}</summary><pre>${options.escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>

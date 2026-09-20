@@ -112,6 +112,7 @@ export interface CreateWorkspaceCoordinator {
       modelId?: string;
       h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
+      h3MotionContextAsset?: Draft["h3MotionContextAsset"];
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
       h3ContinuumMode?: Draft["h3ContinuumMode"];
@@ -137,6 +138,21 @@ export interface CreateWorkspaceCoordinator {
 interface CreationModeUiState {
   promptEnhanceMode: PromptEnhanceMode;
   h3PromptPreset: H3PromptPreset;
+}
+
+export function videoExtensionSourceInspectionKey(draft: Draft, settings: Settings): string {
+  if (draft.inputMode !== "video" ||
+      (!isMiniMaxH3ContinuumModel(draft.modelId) && !isMiniMaxH3R2vModel(draft.modelId)) ||
+      !draft.sourceVideoPath) return "";
+  return JSON.stringify([
+    draft.modelId, draft.sourceVideoPath, draft.sourceAssetId, draft.sourceVersionId,
+    draft.sourceWidth, draft.sourceHeight, draft.resolution, draft.ratio,
+    draft.h3ContinuumMode, draft.workflowPath,
+    draft.h3ContextLatentPath, draft.h3MotionContextAsset,
+    draft.h3ContinuumArtifactPath, draft.h3ContinuumArtifact, draft.h3ContinuumSequence,
+    draft.h3ContinuumTakeAction, draft.h3ContinuumTakeGroup, draft.h3ContinuumTakeRevisionId,
+    settings.outputDirectory, settings.comfyUrl
+  ]);
 }
 
 export function createCreateWorkspaceCoordinator(
@@ -278,14 +294,7 @@ export function createCreateWorkspaceCoordinator(
 
   function extensionSourceKey(): string {
     const { draft, settings } = getState();
-    if (draft.inputMode !== "video" || !isMiniMaxH3ContinuumModel(draft.modelId) || !draft.sourceVideoPath) return "";
-    return JSON.stringify([
-      draft.modelId, draft.sourceVideoPath, draft.sourceAssetId, draft.sourceVersionId,
-      draft.sourceWidth, draft.sourceHeight, draft.h3ContinuumMode, draft.workflowPath,
-      draft.h3ContinuumArtifactPath, draft.h3ContinuumArtifact, draft.h3ContinuumSequence,
-      draft.h3ContinuumTakeAction, draft.h3ContinuumTakeGroup, draft.h3ContinuumTakeRevisionId,
-      settings.outputDirectory, settings.comfyUrl
-    ]);
+    return videoExtensionSourceInspectionKey(draft, settings);
   }
 
   function refreshExtensionSource(): void {
@@ -296,7 +305,7 @@ export function createCreateWorkspaceCoordinator(
     if (!key) return;
     const draft = structuredClone(getState().draft);
     void deps.context.application.inspectVideoExtensionSource(draft).catch((error: unknown) => ({
-      route: h3ContinuumModeForSource(draft),
+      route: isMiniMaxH3R2vModel(draft.modelId) ? "motion-context" as const : h3ContinuumModeForSource(draft),
       status: "invalid" as const,
       reason: error instanceof Error ? error.message : String(error)
     })).then((inspection) => {
@@ -386,6 +395,7 @@ export function createCreateWorkspaceCoordinator(
         await deps.context.application.getBundledWorkflow(workflowModelId, draft.inputMode);
       if (bundled) {
         deps.bundledWorkflows[key] = bundled;
+        if (!draft.workflowPath) draft.workflowPath = bundled.path;
         deps.workflowCapabilities[bundled.path] = {
           supportsEndImage: bundled.supportsEndImage,
           supportsVideoExtension: bundled.supportsVideoExtension
@@ -393,6 +403,9 @@ export function createCreateWorkspaceCoordinator(
       }
       if (draft.workflowPath && draft.workflowPath !== bundled?.path) {
         const capability = await deps.context.application.inspectWorkflow(draft.workflowPath, draft.modelId);
+        if (bundled && capability.isBundled === true && !capability.supportsVideoExtension) {
+          draft.workflowPath = bundled.path;
+        }
         const currentState = getState();
         if (currentState.draft.workflowPath === draft.workflowPath && currentState.draft.modelId === draft.modelId) {
           deps.workflowCapabilities[draft.workflowPath] = capability;
@@ -411,18 +424,17 @@ export function createCreateWorkspaceCoordinator(
     draftRevision += 1;
     const revision = draftRevision;
     draftDirty = false;
-    const state = getState();
-    activateCreationDraft(state, draft);
-    const workflowCapabilityPromise = ensureDraftWorkflowCapability(draft);
+    const preparedDraft = structuredClone(draft);
     draftSaveInFlight += 1;
     try {
-      await Promise.all([
-        deps.context.application.saveDraft(state.draft, {
-          imageToVideoDraft: state.imageToVideoDraft,
-          videoExtensionDraft: state.videoExtensionDraft
-        }),
-        workflowCapabilityPromise
-      ]);
+      await ensureDraftWorkflowCapability(preparedDraft);
+      if (revision !== draftRevision) return;
+      const state = getState();
+      activateCreationDraft(state, preparedDraft);
+      await deps.context.application.saveDraft(state.draft, {
+        imageToVideoDraft: state.imageToVideoDraft,
+        videoExtensionDraft: state.videoExtensionDraft
+      });
       if (revision === draftRevision) draftDirty = false;
     } finally {
       draftSaveInFlight -= 1;
@@ -431,6 +443,10 @@ export function createCreateWorkspaceCoordinator(
 
   function patchDraft(patch: Partial<Draft>): void {
     const state = getState();
+    if ("h3ContinuumArtifactPath" in patch || "h3ContinuumArtifact" in patch) {
+      extensionInspectionKey = "";
+      extensionSourceInspection = undefined;
+    }
     activateCreationDraft(state, normalizeVideoDraft({ ...state.draft, ...patch }));
     draftRevision += 1;
     draftDirty = true;
@@ -715,6 +731,7 @@ export function createCreateWorkspaceCoordinator(
       modelId?: string;
       h3LatentSaveMode?: H3LatentSaveMode;
       h3ContextLatentPath?: string;
+      h3MotionContextAsset?: Draft["h3MotionContextAsset"];
       h3ContinuumArtifactPath?: string;
       h3ContinuumArtifact?: NativeAvContinuationArtifact;
       h3ContinuumMode?: Draft["h3ContinuumMode"];
@@ -739,6 +756,7 @@ export function createCreateWorkspaceCoordinator(
       source?.h3ContinuumArtifact || source?.h3ContinuumArtifactPath
         ? "minimax_h3_continuum"
         : source?.h3ContextLatentPath
+          || source?.h3MotionContextAsset
           ? "minimax_h3_ref2va"
           : undefined
     );
@@ -778,6 +796,9 @@ export function createCreateWorkspaceCoordinator(
       sourceVersionId: source?.versionId,
       h3LatentSaveMode: source?.h3LatentSaveMode,
       h3ContextLatentPath: source?.h3ContextLatentPath,
+      h3MotionContextAsset: source?.h3MotionContextAsset
+        ? structuredClone(source.h3MotionContextAsset)
+        : undefined,
       h3ContinuumArtifactPath: source?.h3ContinuumArtifactPath,
       h3ContinuumArtifact: source?.h3ContinuumArtifact
         ? structuredClone(source.h3ContinuumArtifact)
@@ -863,11 +884,45 @@ export function createCreateWorkspaceCoordinator(
     const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
     const status = document.querySelector<HTMLElement>("[data-continuum-source-status]");
     if (status) {
-      status.dataset.tone = viewModel.continuumStatusTone;
+      status.dataset.tone = "info";
       const label = status.querySelector("strong");
       const detail = status.querySelector("span");
-      if (label) label.textContent = viewModel.continuumStatusLabel;
-      if (detail) detail.textContent = viewModel.continuumStatusDetail;
+      if (label) label.textContent = viewModel.continuumDependencyRoute;
+      if (detail) detail.textContent = viewModel.continuumDependencyProgress;
+    }
+    const dependencyStatusLabel = (statusValue: typeof viewModel.continuumDependencyFiles[number]["status"]): string => {
+      if (statusValue === "available") return uiText("create.continuumArtifact.dependencyAvailable");
+      if (statusValue === "checking") return uiText("create.continuumArtifact.dependencyChecking");
+      if (statusValue === "not-created") return uiText("create.continuumArtifact.dependencyNotCreated");
+      return uiText("create.continuumArtifact.dependencyMissing");
+    };
+    for (const file of viewModel.continuumDependencyFiles) {
+      const key = `${file.kind}:${file.chunkIndex ?? ""}`;
+      const row = Array.from(document.querySelectorAll<HTMLElement>("[data-continuum-dependency-file]"))
+        .find((candidate) => candidate.dataset.continuumDependencyFile === key);
+      if (!row) continue;
+      row.dataset.continuumFileStatus = file.status;
+      const filename = row.querySelector<HTMLElement>("[data-continuum-file-name]");
+      if (filename) {
+        filename.textContent = file.filename;
+        filename.title = file.location || file.filename;
+      }
+      const location = row.querySelector<HTMLElement>("[data-continuum-file-location]");
+      if (location) {
+        location.textContent = file.location;
+        location.title = file.location;
+        location.hidden = !file.location;
+      }
+      const fileStatus = row.querySelector<HTMLElement>("[data-continuum-file-status-label]");
+      if (fileStatus) fileStatus.textContent = dependencyStatusLabel(file.status);
+    }
+    const motionStatus = document.querySelector<HTMLElement>("[data-motion-context-status]");
+    if (motionStatus) {
+      motionStatus.dataset.tone = viewModel.motionContextStatusTone;
+      const label = motionStatus.querySelector("strong");
+      const detail = motionStatus.querySelector("span");
+      if (label) label.textContent = viewModel.motionContextStatusLabel;
+      if (detail) detail.textContent = viewModel.motionContextStatusDetail;
     }
     const reason = viewModel.enqueueBlockReason;
     button.dataset.enqueueBlockReason = reason;

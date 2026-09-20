@@ -29,6 +29,7 @@ import {
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
+import { countPromptWords } from "../../src/core/prompt-count.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
   extractH3DialogueLocks,
@@ -76,17 +77,34 @@ const detailedCinematicSystemPrompt = "You are the detailed cinematic prompt wri
 function detailedCinematicRepairInstruction(
   mode: H3PromptMode,
   durationSeconds: number,
-  sourcePrompt: string
+  sourcePrompt: string,
+  currentTimelineWords: number,
+  repairAttempt: number
 ): string {
   const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
   const targetWords = h3DetailedExpansionTargetWords(mode, durationSeconds, sourcePrompt);
+  const checkpointWords = Math.min(targetWords, Math.max(minimumWords + 100, currentTimelineWords + 120));
+  const additionalWords = Math.max(80, checkpointWords - currentTimelineWords);
   return [
-    "Coverage repair: rewrite the complete current H3 prompt because its main timeline is underdeveloped.",
-    `Expand the ${field} toward approximately ${targetWords} grounded words and never fewer than ${minimumWords} words. Do not merely append filler: develop the opening state, every original action in order, physical contacts and reactions, continuous camera path, synchronized diegetic sound, transitions between actions, and the settled ending state.`,
+    repairAttempt === 1
+      ? "Coverage repair pass 1: expand the complete current H3 prompt because its main timeline is underdeveloped."
+      : "Final coverage repair pass: the previous expansion still stopped too early. Preserve the current timeline's existing information instead of summarizing or replacing it, and insert additional executable detail inside the main timeline field.",
+    `The current ${field} contains approximately ${currentTimelineWords} words. It must contain at least ${minimumWords} grounded words; for this pass, continue writing until it reaches at least ${checkpointWords} words. Add no fewer than ${additionalWords} useful words inside that field before the sound sections. The broader detailed-mode target remains approximately ${targetWords} words.`,
+    "Distribute the added material across the chronological playback: opening pose and spatial state, preparation and gaze, posture and weight transfer, hand or object contact, force and momentum, the affected subject's reaction, continuous physical camera path, synchronized diegetic sound, transitions between actions, and the settled ending state. Add only details that are compatible with the brief and references; never add padding or repeated negative rules.",
     "Preserve every concrete fact and instruction from the Original Creative Brief and the current prompt. Restore any omitted source requirement; do not change action ownership, subject identity, relative scale, dialogue, chronology, shot policy, or reference mapping.",
     "Return the complete revised official H3 prompt only. Do not return JSON, Markdown, analysis, a change list, or commentary."
   ].join("\n");
+}
+
+function detailedTimelineWordCount(promptText: string, mode: H3PromptMode): number {
+  const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+  const sectionMatch = new RegExp(`^${section}\\s*:`, "imu").exec(promptText);
+  if (!sectionMatch) return 0;
+  const contentStart = sectionMatch.index + sectionMatch[0].length;
+  const remaining = promptText.slice(contentStart);
+  const nextSection = /\n\s*(?:subject_definitions|summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
+  return countPromptWords(nextSection?.index === undefined ? remaining : remaining.slice(0, nextSection.index));
 }
 
 function writerGenerationDiagnostic(result: WriterGenerationResult): string {
@@ -464,41 +482,53 @@ export async function enhancePromptWithH3PromptWriter(
       request.continuumPreviousChunk
     );
     if (!detailedExpansion) return normalizeWriterResult(result.prompt);
+    let currentResult = result;
+    let currentPrompt = result.prompt;
     let normalizedPrompt = "";
-    try {
-      normalizedPrompt = normalizeWriterResult(result.prompt);
-      assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
-      return normalizedPrompt;
-    } catch {
+    let validationError: unknown;
+    for (let repairAttempt = 0; repairAttempt <= 2; repairAttempt += 1) {
+      try {
+        normalizedPrompt = normalizeWriterResult(currentPrompt);
+        assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
+        return normalizedPrompt;
+      } catch (error) {
+        validationError = error;
+      }
+      if (repairAttempt === 2) break;
       onProgress?.("generating", null);
+      const repairNumber = repairAttempt + 1;
+      const repairSource = normalizedPrompt || currentPrompt.trim();
+      const currentTimelineWords = detailedTimelineWordCount(repairSource, h3Mode);
       const repaired = await writerRequest<WriterGenerationResult>(`${root}/h3studio/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          current_prompt: normalizedPrompt || result.prompt.trim(),
-          instruction: detailedCinematicRepairInstruction(h3Mode, durationSeconds, sourcePrompt),
+          current_prompt: repairSource,
+          instruction: detailedCinematicRepairInstruction(
+            h3Mode,
+            durationSeconds,
+            sourcePrompt,
+            currentTimelineWords,
+            repairNumber
+          ),
           model_id: model.id,
           session_id: sessionId,
           system_prompt_override: detailedCinematicSystemPrompt,
           generation_budget: detailedGenerationBudget,
           thinking: false,
-          unload_after: unloadAfter,
+          unload_after: false,
           context_profile: "auto",
           kv_cache: "auto"
         }),
         signal
       });
       if (!repaired.prompt?.trim()) throw new Error("H3 Prompt Writer 自动补写后仍未返回可用的提示词。");
-      normalizedPrompt = normalizeWriterResult(repaired.prompt);
-      try {
-        assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`${message} 已按详细模式自动补写 1 次但仍未通过。${writerGenerationDiagnostic(repaired) || writerGenerationDiagnostic(result)}`);
-      }
-      return normalizedPrompt;
+      currentResult = repaired;
+      currentPrompt = repaired.prompt;
     }
+    const message = validationError instanceof Error ? validationError.message : String(validationError);
+    throw new Error(`${message} 已按实际词数分阶段自动补写 2 次但仍未通过。${writerGenerationDiagnostic(currentResult) || writerGenerationDiagnostic(result)}`);
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);
     signal.removeEventListener("abort", cancel);

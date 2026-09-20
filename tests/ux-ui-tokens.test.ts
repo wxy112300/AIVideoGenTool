@@ -282,8 +282,15 @@ describe("UX/UI semantic token foundation", () => {
     expect(createPageSource).not.toContain("class=\"trim-help\"");
     expect(createPageSource).not.toContain("class=\"continuum-boundary-note\"");
     expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.continuumArtifact.choose))}"');
-    expect(createPageSource).toContain('class="continuum-source-row"');
+    expect(createPageSource).toContain('class="continuum-source-row continuum-');
+    expect(createPageSource).toContain("continuum-dependency-actions");
+    expect(createPageSource).toContain("data-drop-h3-continuum-av");
+    expect(createPageSource).toContain("data-clear-h3-continuum-av");
     expect(createPageSource).toContain('data-continuum-source-status');
+    expect(createPageSource).toContain('class="continuum-dependency-files"');
+    expect(createPageSource).toContain("continuumDependencyProgress");
+    expect(createPageSource).not.toContain("viewModel.continuumStatusLabel");
+    expect(createPageSource).not.toContain("viewModel.continuumStatusDetail");
     expect(createPageSource).toContain('title="${escapeHtml(t(uiKeys.create.motionContextLatent.description))}"');
     expect(createPageSource).toContain("id=\"clear-h3-continuum-av\"");
     expect(createPageSource).toContain("id=\"clear-h3-motion-context-latent\"");
