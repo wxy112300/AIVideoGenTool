@@ -7,6 +7,7 @@ import {
   imageEditDraftFromQueueTask,
   imageProjectCoverVersion,
   nextImagePictureNumber,
+  renumberImageReferences,
   normalizeImageHistory,
   normalizeImageEditDraft,
   normalizeH3ImageOptions,
@@ -366,6 +367,23 @@ describe("image project pure functions", () => {
     expect(draft.pictures.map((picture) => picture.pictureNumber)).toEqual([1, 3]);
     expect(nextImagePictureNumber(draft)).toBe(2);
     expect(nextImagePictureNumber({ ...draft, nextPictureNumber: 2 })).toBe(2);
+  });
+
+  it("renumbers remaining editable slots after a slot is removed", () => {
+    const draft = normalizeImageEditDraft({
+      pictures: [
+        { id: "picture-1", pictureNumber: 1, absolutePath: "base.png", width: 1, height: 1 },
+        { id: "picture-2", pictureNumber: 2, absolutePath: "person.png", width: 1, height: 1, role: "person" },
+        { id: "picture-3", pictureNumber: 3, absolutePath: "style.png", width: 1, height: 1, role: "style" }
+      ]
+    });
+
+    const pictures = renumberImageReferences(draft.pictures.filter((picture) => picture.id !== "picture-2"));
+
+    expect(pictures).toMatchObject([
+      { id: "picture-1", pictureNumber: 1, role: "base" },
+      { id: "picture-3", pictureNumber: 2, role: "style" }
+    ]);
   });
 
   it("clears prompt text contaminated by the image page template", () => {

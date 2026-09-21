@@ -891,6 +891,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.history.lightboxEarliest]: "Already at the earliest version",
 	[uiKeys.history.lightboxLatest]: "Already at the latest version",
 	[uiKeys.history.lightboxVersionLabel]: "Version {current} / {total}",
+	[uiKeys.history.lightboxZoom]: "Zoom {percent}",
 	[uiKeys.history.version]: "Version {version}",
 	[uiKeys.history.menu.shortcutActions]: "Quick actions",
 	[uiKeys.history.menu.detail]: "View details",

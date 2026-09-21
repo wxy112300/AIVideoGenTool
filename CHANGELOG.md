@@ -8,6 +8,11 @@
 
 ## Unreleased
 
+## 0.64.1 — 2026-09-21
+
+- 修复图片历史原图查看器对竖图的“适合屏幕”计算、放大后的平移边界和窗口重排；移除底部操作提示，将版本切换移入顶部标题栏，并显示相对原图的实时缩放比例，最大缩放提高到 12 倍。
+- 修复图片编辑中删除旧 Slot 后，后续 Slot 编号未连续重排、Prompt 引用未同步更新的问题。
+
 ## 0.64.0 — 2026-09-21
 
 - 新增独立的 Qwen Image 2.1 图片编辑模型：内置官方 ComfyUI API workflow、Qwen3-VL 8B/新 RGBA VAE/`QwenImage21Cache` 依赖扫描、最多 10 个参考槽位、独立 `<imageN>` Prompt Pack 和 Paint 标注视觉 guide。首期 UI 以 RTX 4090 INT8 + BF16 VAE 的约 1 MP 路径为目标；2K、透明输出和 mask-conditioned inpaint 仍需真实运行验证，2511 保持原 ID 与执行路径不变。

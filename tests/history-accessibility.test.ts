@@ -11,6 +11,12 @@ import {
   type HistoryPageOptions,
   type HistoryPageViewModel
 } from "../src/renderer/pages/history/page";
+import {
+  clampImageLightboxOffset,
+  imageLightboxFitSize,
+  imageLightboxPanLimits,
+  imageLightboxZoomPercent
+} from "../src/renderer/pages/history/lightbox-controller";
 import { formatVideoDuration } from "../src/renderer/shared/formatters";
 
 const translate: HistoryPageOptions["t"] = (key) => key;
@@ -148,6 +154,37 @@ describe("History accessibility markup", () => {
     expect(lightbox).toContain('role="dialog" aria-modal="true"');
     expect(lightbox).toContain('tabindex="-1"');
     expect(lightbox).toContain('data-image-lightbox-close');
+    expect(lightbox).toContain('data-image-lightbox-version-controls');
+    expect(lightbox).toContain('data-image-lightbox-zoom');
+    expect(lightbox).not.toContain('image-lightbox-hint');
+  });
+
+  it("fits portrait and landscape lightbox images against both stage dimensions", () => {
+    const portrait = imageLightboxFitSize(1024, 2048, 1200, 700);
+    expect(portrait.width).toBeCloseTo(350);
+    expect(portrait.height).toBeCloseTo(700);
+
+    const landscape = imageLightboxFitSize(2048, 1024, 1200, 700);
+    expect(landscape.width).toBeCloseTo(1200);
+    expect(landscape.height).toBeCloseTo(600);
+
+    const portraitPanLimits = imageLightboxPanLimits(
+      portrait.width,
+      portrait.height,
+      1200,
+      700,
+      3
+    );
+    expect(portraitPanLimits.x).toBeCloseTo(0);
+    expect(portraitPanLimits.y).toBeCloseTo(700);
+    const positiveClamped = clampImageLightboxOffset(100, 999, portraitPanLimits);
+    expect(positiveClamped.x).toBeCloseTo(0);
+    expect(positiveClamped.y).toBeCloseTo(700);
+    const negativeClamped = clampImageLightboxOffset(-100, -999, portraitPanLimits);
+    expect(negativeClamped.x).toBeCloseTo(0);
+    expect(negativeClamped.y).toBeCloseTo(-700);
+    expect(imageLightboxZoomPercent(2048, landscape.width, 1)).toBe(59);
+    expect(imageLightboxZoomPercent(2048, landscape.width, 4)).toBe(234);
   });
 
   it("keeps detail actions visible without changing their existing selectors", () => {

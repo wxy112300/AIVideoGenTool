@@ -891,6 +891,7 @@ export const zhCNCatalog = {
     [uiKeys.history.lightboxEarliest]: "已经是最早版本",
     [uiKeys.history.lightboxLatest]: "已经是最新版本",
     [uiKeys.history.lightboxVersionLabel]: "版本 {current} / {total}",
+    [uiKeys.history.lightboxZoom]: "缩放 {percent}",
     [uiKeys.history.version]: "版本 {version}",
     [uiKeys.history.menu.shortcutActions]: "快捷操作",
     [uiKeys.history.menu.detail]: "查看详情",

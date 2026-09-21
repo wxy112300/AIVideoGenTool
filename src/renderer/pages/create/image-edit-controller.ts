@@ -1,7 +1,7 @@
-import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
+import { imageMarkupPromptContext, imageReferenceInputPath, pictureReferencePattern } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
-import { defaultH3ImageOptionsFor, isH3ImageModelId } from "../../../core/image-project";
+import { defaultH3ImageOptionsFor, isH3ImageModelId, renumberImageReferences } from "../../../core/image-project";
 import type { AppState, H3ImageOptions, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
@@ -34,6 +34,19 @@ export interface ImageEditControllerOptions {
   requestClearDraftConfirmation(): void;
   imageReferenceRoleLabel(role: ImageReferenceRole): string;
   imageReferenceRolePromptLabel(role: ImageReferenceRole): string;
+}
+
+function remapPromptPictureReferences(
+  text: string,
+  pictureNumberMap: ReadonlyMap<number, number>,
+  removedPictureNumbers: ReadonlySet<number>
+): string {
+  return text.replace(pictureReferencePattern, (match, numberText: string) => {
+    const oldNumber = Number(numberText);
+    const nextNumber = pictureNumberMap.get(oldNumber);
+    if (nextNumber !== undefined) return match.replace(numberText, String(nextNumber));
+    return removedPictureNumbers.has(oldNumber) ? "the removed image reference" : match;
+  });
 }
 
 export function mountImageEditController(
@@ -110,21 +123,38 @@ export function mountImageEditController(
       const draft = getDraft();
       const picture = draft?.pictures.find((item) => item.id === pictureId);
       if (!draft || !pictureId || !picture) return;
-      const pictures = picture.pictureNumber === 1
+      const deletingBaseSlot = picture.pictureNumber === 1;
+      const remainingPictures = draft.pictures.filter((item) => item.id !== pictureId);
+      const pictures = deletingBaseSlot
         ? draft.pictures.map((item) =>
             item.id === pictureId
               ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, crop: undefined, markup: undefined, mask: undefined }
               : item
           )
-        : draft.pictures.filter((item) => item.id !== pictureId);
-      // Keep existing Picture numbers stable so prompt references do not change
-      // silently. The next slot will reuse the lowest missing number.
+        : renumberImageReferences(remainingPictures);
+      const pictureNumberMap = new Map<number, number>();
+      if (!deletingBaseSlot) {
+        const nextPictureNumberById = new Map(pictures.map((item) => [item.id, item.pictureNumber]));
+        for (const item of remainingPictures) {
+          const nextPictureNumber = nextPictureNumberById.get(item.id);
+          if (nextPictureNumber !== undefined) pictureNumberMap.set(item.pictureNumber, nextPictureNumber);
+        }
+      }
+      const promptVersions = deletingBaseSlot
+        ? draft.promptVersions
+        : draft.promptVersions.map((version) => ({
+            ...version,
+            text: remapPromptPictureReferences(
+              version.text,
+              pictureNumberMap,
+              new Set([picture.pictureNumber])
+            )
+          }));
+      if (!deletingBaseSlot) options.invalidatePromptEditHistory();
       options.patchImageDraft({
         pictures,
-        nextPictureNumber: Math.max(
-          1,
-          pictures.reduce((largest, item) => Math.max(largest, item.pictureNumber), 0) + 1
-        )
+        nextPictureNumber: Math.max(1, pictures.length + 1),
+        promptVersions
       });
       context.requestRender();
     }, { signal });

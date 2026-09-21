@@ -23,6 +23,34 @@ function inertLightboxBackground(dialog, root) {
             element.inert = wasInert;
     };
 }
+export function imageLightboxFitSize(naturalWidth, naturalHeight, stageWidth, stageHeight) {
+    if (![naturalWidth, naturalHeight, stageWidth, stageHeight].every((value) => Number.isFinite(value) && value > 0)) {
+        return { width: 0, height: 0 };
+    }
+    const fitScale = Math.min(stageWidth / naturalWidth, stageHeight / naturalHeight);
+    return {
+        width: naturalWidth * fitScale,
+        height: naturalHeight * fitScale
+    };
+}
+export function imageLightboxPanLimits(fittedWidth, fittedHeight, stageWidth, stageHeight, scale) {
+    return {
+        x: Math.max(0, (fittedWidth * scale - stageWidth) / 2),
+        y: Math.max(0, (fittedHeight * scale - stageHeight) / 2)
+    };
+}
+export function clampImageLightboxOffset(offsetX, offsetY, limits) {
+    return {
+        x: Math.min(limits.x, Math.max(-limits.x, offsetX)),
+        y: Math.min(limits.y, Math.max(-limits.y, offsetY))
+    };
+}
+export function imageLightboxZoomPercent(naturalWidth, fittedWidth, scale) {
+    if (![naturalWidth, fittedWidth, scale].every((value) => Number.isFinite(value) && value > 0)) {
+        return 100;
+    }
+    return Math.max(1, Math.round((fittedWidth * scale / naturalWidth) * 100));
+}
 export function mountImageHistoryLightbox(context, options) {
     const events = new AbortController();
     const signal = events.signal;
@@ -35,32 +63,87 @@ export function mountImageHistoryLightbox(context, options) {
     const image = lightbox?.querySelector("[data-image-lightbox-image]");
     if (!lightbox || !openButton || !dialog || !stage || !image)
         return () => events.abort();
-    lightbox.querySelector("[data-image-lightbox-version-controls]")?.remove();
-    const versionFooter = document.createElement("footer");
-    versionFooter.className = "image-lightbox-footer";
-    versionFooter.setAttribute("data-image-lightbox-version-controls", "");
-    versionFooter.innerHTML = `<div class="image-lightbox-version-controls" aria-label="${context.t(uiKeys.history.lightboxVersionSwitch)}"><button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}${context.t(uiKeys.history.lightboxPrevious)}</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">${context.t(uiKeys.history.lightboxNext)}${icon("arrow-right")}</button></div>`;
-    renderIcons(versionFooter);
-    lightbox.querySelector(".image-lightbox-hint")?.before(versionFooter);
+    const versionControls = lightbox.querySelector("[data-image-lightbox-version-controls]");
+    if (!versionControls)
+        return () => events.abort();
+    versionControls.innerHTML = `<button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}${context.t(uiKeys.history.lightboxPrevious)}</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">${context.t(uiKeys.history.lightboxNext)}${icon("arrow-right")}</button>`;
+    renderIcons(versionControls);
     const versionMeta = lightbox.querySelector(".image-lightbox-toolbar > div:first-child > span");
+    const zoomIndicator = lightbox.querySelector("[data-image-lightbox-zoom]");
     let scale = 1;
     let offsetX = 0;
     let offsetY = 0;
+    let fittedImageWidth = 0;
+    let fittedImageHeight = 0;
     let activePointerId = null;
     let lastPointerX = 0;
     let lastPointerY = 0;
     let lightboxVersionChanged = false;
     let releaseBackgroundInert = null;
-    const clampScale = (value) => Math.min(5, Math.max(1, value));
+    let resizeObserver = null;
+    const clampScale = (value) => Math.min(12, Math.max(1, value));
+    const stageSize = () => {
+        const bounds = stage.getBoundingClientRect();
+        return {
+            width: stage.clientWidth || bounds.width,
+            height: stage.clientHeight || bounds.height
+        };
+    };
     const updateTransform = () => {
+        const size = stageSize();
+        const limits = imageLightboxPanLimits(fittedImageWidth, fittedImageHeight, size.width, size.height, scale);
+        const clampedOffset = clampImageLightboxOffset(offsetX, offsetY, limits);
+        offsetX = clampedOffset.x;
+        offsetY = clampedOffset.y;
         image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
         stage.classList.toggle("is-zoomed", scale > 1);
+        if (zoomIndicator) {
+            const percent = imageLightboxZoomPercent(image.naturalWidth, fittedImageWidth, scale);
+            const label = context.t(uiKeys.history.lightboxZoom, { percent: `${percent}%` });
+            zoomIndicator.textContent = `${percent}%`;
+            zoomIndicator.title = label;
+            zoomIndicator.setAttribute("aria-label", label);
+        }
+    };
+    const clearImageFitSizing = () => {
+        fittedImageWidth = 0;
+        fittedImageHeight = 0;
+        image.style.removeProperty("width");
+        image.style.removeProperty("height");
+        image.style.removeProperty("max-width");
+        image.style.removeProperty("max-height");
+    };
+    const fitImageToStage = (preserveZoom = false) => {
+        const size = stageSize();
+        const fittedSize = imageLightboxFitSize(image.naturalWidth, image.naturalHeight, size.width, size.height);
+        if (!fittedSize.width || !fittedSize.height) {
+            clearImageFitSizing();
+            if (!preserveZoom) {
+                scale = 1;
+                offsetX = 0;
+                offsetY = 0;
+            }
+            updateTransform();
+            return;
+        }
+        fittedImageWidth = fittedSize.width;
+        fittedImageHeight = fittedSize.height;
+        image.style.width = `${fittedSize.width}px`;
+        image.style.height = `${fittedSize.height}px`;
+        image.style.maxWidth = "none";
+        image.style.maxHeight = "none";
+        if (!preserveZoom) {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+        }
+        else {
+            scale = clampScale(scale);
+        }
+        updateTransform();
     };
     const reset = () => {
-        scale = 1;
-        offsetX = 0;
-        offsetY = 0;
-        updateTransform();
+        fitImageToStage();
     };
     const syncVersionNavigation = () => {
         const state = context.getState();
@@ -71,7 +154,7 @@ export function mountImageHistoryLightbox(context, options) {
         const nextVersion = currentIndex >= 0 ? project?.versions[currentIndex - 1] : undefined;
         const entries = [[-1, previousVersion], [1, nextVersion]];
         entries.forEach(([direction, targetVersion]) => {
-            const button = versionFooter.querySelector(`[data-image-lightbox-version-navigation="${direction}"]`);
+            const button = versionControls.querySelector(`[data-image-lightbox-version-navigation="${direction}"]`);
             if (!button)
                 return;
             const available = Boolean(project && targetVersion && imageHistoryMediaUrl(project, targetVersion));
@@ -80,7 +163,7 @@ export function mountImageHistoryLightbox(context, options) {
                 ? `${direction === -1 ? context.t(uiKeys.history.lightboxPrevious) : context.t(uiKeys.history.lightboxNext)} · ${context.t(uiKeys.history.version, { version: targetVersion.versionNumber })}`
                 : direction === -1 ? context.t(uiKeys.history.lightboxEarliest) : context.t(uiKeys.history.lightboxLatest);
         });
-        const label = versionFooter.querySelector("[data-image-lightbox-version-label]");
+        const label = versionControls.querySelector("[data-image-lightbox-version-label]");
         if (label)
             label.textContent = project && current ? context.t(uiKeys.history.lightboxVersionLabel, { current: current.versionNumber, total: project.versions.length }) : "";
         if (versionMeta && project && current) {
@@ -109,6 +192,7 @@ export function mountImageHistoryLightbox(context, options) {
         });
         const mediaSurface = image.closest("[data-image-media]");
         mediaSurface?.setAttribute("data-image-media-source", targetVersion.file.absolutePath ?? "");
+        clearImageFitSizing();
         image.dataset.imageMediaUrl = mediaUrl;
         image.dispatchEvent(new Event("image-media-source-change"));
         image.src = mediaUrl;
@@ -117,8 +201,8 @@ export function mountImageHistoryLightbox(context, options) {
         const wasVersionNavigationFocused = document.activeElement instanceof HTMLElement && document.activeElement.matches("[data-image-lightbox-version-navigation]");
         syncVersionNavigation();
         if (wasVersionNavigationFocused) {
-            const focused = versionFooter.querySelector(":focus");
-            const fallback = [...versionFooter.querySelectorAll("[data-image-lightbox-version-navigation]")]
+            const focused = versionControls.querySelector(":focus");
+            const fallback = [...versionControls.querySelectorAll("[data-image-lightbox-version-navigation]")]
                 .find((button) => !button.disabled);
             (focused && !focused.disabled ? focused : fallback)?.focus();
         }
@@ -155,7 +239,7 @@ export function mountImageHistoryLightbox(context, options) {
     };
     options.bindModalFocus(dialog, close, "button[data-image-lightbox-close]", false);
     openButton.addEventListener("click", open, { signal });
-    versionFooter.querySelectorAll("[data-image-lightbox-version-navigation]").forEach((button) => {
+    versionControls.querySelectorAll("[data-image-lightbox-version-navigation]").forEach((button) => {
         button.addEventListener("click", () => {
             const direction = Number(button.dataset.imageLightboxVersionNavigation);
             if (direction === -1 || direction === 1)
@@ -166,6 +250,21 @@ export function mountImageHistoryLightbox(context, options) {
         button.addEventListener("click", close, { signal });
     });
     lightbox.querySelector("[data-image-lightbox-reset]")?.addEventListener("click", reset, { signal });
+    image.addEventListener("load", () => {
+        if (!lightbox.hidden)
+            fitImageToStage(scale > 1);
+    }, { signal });
+    const handleStageResize = () => {
+        if (!lightbox.hidden)
+            fitImageToStage(scale > 1);
+    };
+    if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(handleStageResize);
+        resizeObserver.observe(stage);
+    }
+    else {
+        window.addEventListener("resize", handleStageResize, { signal });
+    }
     stage.addEventListener("wheel", (event) => {
         if (lightbox.hidden)
             return;
@@ -234,6 +333,8 @@ export function mountImageHistoryLightbox(context, options) {
     }, { signal });
     return () => {
         events.abort();
+        resizeObserver?.disconnect();
+        resizeObserver = null;
         releaseBackgroundInert?.();
         releaseBackgroundInert = null;
         lightbox.hidden = true;

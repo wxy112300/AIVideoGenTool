@@ -460,6 +460,28 @@ export function normalizeImageReferences(values: unknown): ImageReference[] {
   });
 }
 
+/**
+ * Reindex the editable image slots after a slot is removed. Queue/history
+ * snapshots may intentionally preserve their visible Picture numbers, so
+ * this is kept separate from draft normalization and is only used for the
+ * live editor's delete/reflow action.
+ */
+export function renumberImageReferences(
+  values: readonly ImageReference[]
+): ImageReference[] {
+  return [...values]
+    .sort((left, right) => left.pictureNumber - right.pictureNumber)
+    .map((picture, index) => ({
+      ...picture,
+      pictureNumber: index + 1,
+      role: index === 0
+        ? "base" as const
+        : picture.role === "base"
+          ? "auto" as const
+          : picture.role ?? "auto"
+    }));
+}
+
 export function normalizeImageHistory(value: unknown): ImageHistoryProject[] {
   if (!Array.isArray(value)) return [];
   return value

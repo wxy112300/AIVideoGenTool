@@ -913,6 +913,7 @@ export const uiKeys = {
         lightboxEarliest: "history.lightbox.earliest",
         lightboxLatest: "history.lightbox.latest",
         lightboxVersionLabel: "history.lightbox.versionLabel",
+        lightboxZoom: "history.lightbox.zoom",
         version: "history.version",
         menu: {
             shortcutActions: "history.menu.shortcutActions",

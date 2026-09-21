@@ -91,13 +91,13 @@ export function renderImageLightboxMarkup(
       <section class="image-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="image-lightbox-title" tabindex="-1">
         <header class="image-lightbox-toolbar">
           <div><strong id="image-lightbox-title">${options.escapeHtml(viewModel.title)}</strong><span>${options.t(uiKeys.history.version, { version: viewModel.versionNumber })} · ${viewModel.width} × ${viewModel.height}</span></div>
-          <div class="button-row"><button class="secondary button-with-icon" data-image-lightbox-reset>${options.icon("rotate-ccw")}${options.t(uiKeys.history.lightboxReset)}</button><button class="icon-button" data-image-lightbox-close aria-label="${options.t(uiKeys.history.lightboxClose)}" title="${options.t(uiKeys.history.lightboxClose)}">${options.icon("x")}</button></div>
+          <div class="image-lightbox-version-controls" data-image-lightbox-version-controls aria-label="${options.t(uiKeys.history.lightboxVersionSwitch)}"></div>
+          <div class="button-row"><span class="image-lightbox-zoom" data-image-lightbox-zoom aria-live="polite" title="${options.t(uiKeys.history.lightboxZoom, { percent: "100%" })}">100%</span><button class="secondary button-with-icon" data-image-lightbox-reset>${options.icon("rotate-ccw")}${options.t(uiKeys.history.lightboxReset)}</button><button class="icon-button" data-image-lightbox-close aria-label="${options.t(uiKeys.history.lightboxClose)}" title="${options.t(uiKeys.history.lightboxClose)}">${options.icon("x")}</button></div>
         </header>
         <div class="image-lightbox-stage" data-image-lightbox-stage data-image-media data-image-media-surface="lightbox" data-image-media-source="${options.escapeHtml(viewModel.sourcePath ?? "")}">
           <img src="${options.escapeHtml(viewModel.mediaUrl)}" data-image-media-url="${options.escapeHtml(viewModel.mediaUrl)}" alt="${options.escapeHtml(viewModel.title)} · ${options.t(uiKeys.history.version, { version: viewModel.versionNumber })}" data-image-lightbox-image data-image-media-image draggable="false">
           ${renderImageMediaStatus(options)}
         </div>
-        <p class="image-lightbox-hint">${options.t(uiKeys.history.lightboxHint)}</p>
       </section>
     </div>`;
 }
