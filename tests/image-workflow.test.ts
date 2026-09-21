@@ -13,6 +13,8 @@ import {
   buildZImageWorkflow,
   buildQwenImageEdit2511Workflow,
   buildQwenImageEdit2511CropStitchWorkflow,
+  buildQwenImage21Workflow,
+  buildQwenImage21GgufWorkflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
   compileMinimaxH3ImageI2IPrompt,
@@ -22,6 +24,7 @@ import {
   compileZImagePrompt,
   compileQwenImageEditPrompt,
   compileQwenImageEditCropStitchPrompt,
+  compileQwenImage21Prompt,
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
   hidreamO1Capability,
@@ -55,6 +58,12 @@ import {
   qwenImageEdit2511CropStitchRequiredNodeTypes,
   qwenImageEdit2511Capability,
   qwenImageEdit2511CropStitchCapability,
+  qwenImage21Capability,
+  qwenImage21UncensoredGgufCapability,
+  qwenImage21GgufRequiredNodeTypes,
+  qwenImage21GgufTextToImageRequiredNodeTypes,
+  qwenImage21RequiredNodeTypes,
+  qwenImage21TextToImageRequiredNodeTypes,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
   validateMinimaxH3ImageI2IWorkflow,
@@ -67,6 +76,10 @@ import {
   validateLamaInpaintWorkflow,
   validateQwenImageEdit2511Workflow,
   validateQwenImageEdit2511CropStitchWorkflow,
+  validateQwenImage21RuntimeSchema,
+  validateQwenImage21Workflow,
+  validateQwenImage21GgufRuntimeSchema,
+  validateQwenImage21GgufWorkflow,
   validateBirefnetWorkflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
@@ -1369,6 +1382,291 @@ describe("Qwen image edit workflow contract", () => {
 
     expect(rendered.load?.inputs.image).toBe("studio-input-a.png");
     expect(rendered.save?.inputs.filename_prefix).toBe("Qwen");
+  });
+});
+
+describe("Qwen Image 2.1 official image-edit workflow contract", () => {
+  const run = { id: "qwen-21-run", index: 0, seed: 42, status: "running" as const };
+  const imageTask = (
+    pictures: ImageReference[],
+    extra: Partial<ImageGenerationQueueTask> = {}
+  ): ImageGenerationQueueTask => ({
+    id: "task-qwen-21",
+    taskType: "image-generation",
+    status: "waiting",
+    createdAt: "2026-09-20T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
+    outputFilename: "QwenImage21-test",
+    projectId: "project-qwen-21",
+    pictures,
+    imageOutputSubfolder: "Images",
+    outputWidth: 1024,
+    outputHeight: 1024,
+    prompt: "把 Picture 2 的衣服放到 Picture 1 的人物上，保留 Picture 1 的脸和姿势。",
+    promptVersion: 1,
+    modelId: "qwen-image-2-1",
+    workflowPath: "builtin:image/qwen-image-2-1",
+    qualityProfile: "preview-25",
+    outputFormat: "png",
+    outputCount: 1,
+    runs: [],
+    ...extra
+  });
+
+  it("registers the official native capability separately from Qwen 2511", () => {
+    expect(qwenImage21Capability).toMatchObject({
+      id: "qwen-image-2-1",
+      maxPictures: 10,
+      operation: "edit",
+      requiresPrompt: true,
+      supportsTextOnly: true,
+      supportsMask: false,
+      supportsMarkup: true,
+      supportsMarkupReferenceGuide: true,
+      textOnlyOutputWidth: 1024,
+      textOnlyOutputHeight: 1024,
+      sourceResolutionOnly: true,
+      supportsCustomOutputSize: true,
+      customOutputMultiple: 32
+    });
+    expect(qwenImage21Capability.qualityProfiles.map((profile) => [profile.id, profile.steps, profile.cfg])).toEqual([
+      ["preview-25", 25, 1],
+      ["native", 40, 1]
+    ]);
+    expect(qwenImage21RequiredNodeTypes).toEqual(expect.arrayContaining([
+      "TextEncodeQwenImage21",
+      "QwenImage21Cache",
+      "ComfySwitchNode",
+      "SaveImageAdvanced"
+    ]));
+    expect(qwenImage21TextToImageRequiredNodeTypes).toEqual(expect.arrayContaining([
+      "TextEncodeQwenImage21",
+      "EmptyLatentImage",
+      "KSampler",
+      "SaveImageAdvanced"
+    ]));
+  });
+
+  it("registers the independent Uncensored GGUF capability and loader contract", () => {
+    expect(qwenImage21UncensoredGgufCapability).toMatchObject({
+      id: "qwen-image-2-1-uncensored-gguf",
+      maxPictures: 10,
+      supportsTextOnly: true,
+      supportsCustomOutputSize: true,
+      customOutputMultiple: 32
+    });
+    expect(qwenImage21GgufRequiredNodeTypes).toEqual(expect.arrayContaining([
+      "UnetLoaderGGUF",
+      "TextEncodeQwenImage21",
+      "QwenImage21Cache",
+      "SaveImageAdvanced"
+    ]));
+    expect(qwenImage21GgufTextToImageRequiredNodeTypes).toEqual(expect.arrayContaining([
+      "UnetLoaderGGUF",
+      "EmptyLatentImage",
+      "KSampler",
+      "SaveImageAdvanced"
+    ]));
+  });
+
+  it("compiles stable Picture references to official image tokens", () => {
+    const result = compileQwenImage21Prompt(
+      "把 Picture 3 的人物放到 Picture 1 的场景中，并参考 Picture 3 的姿态。",
+      [picture(1), picture(3)]
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.prompt).toContain("<image2>");
+    expect(result.prompt).toContain("<image1>");
+    expect(result.prompt).not.toContain("Picture 3 的人物");
+    expect(result.referencedPictureNumbers).toEqual([1, 3]);
+  });
+
+  it("keeps Paint annotation guides as extra visual references, not masks", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "只修改红框内的标牌文字",
+        revision: 1,
+        objectCount: 1,
+        updatedAt: "2026-09-20T00:00:00.000Z"
+      }
+    };
+    const result = compileQwenImage21Prompt("编辑 Picture 1。", [marked]);
+
+    expect(result.errors).toEqual([]);
+    expect(result.pictures.map(imageReferenceInputPath)).toEqual(["original.png", "guide.png"]);
+    expect(result.prompt).toContain("<image1> is the clean source");
+    expect(result.prompt).toContain("<image2> is only its temporary annotation guide");
+  });
+
+  it("builds the official API graph with autogrow image sockets and cfg 1", () => {
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1), picture(3)], {
+      prompt: "把 Picture 3 的衣服放到 Picture 1 的人物上，保留 Picture 1 的脸和姿势。"
+    }), run);
+
+    expect(workflow["image-picture-1"]?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow["image-picture-3"]?.inputs.image).toBe("{{IMAGE_1}}");
+    expect(workflow.positive?.class_type).toBe("TextEncodeQwenImage21");
+    expect(workflow.positive?.inputs["images.image_1"]).toEqual(["image-picture-1", 0]);
+    expect(workflow.positive?.inputs["images.image_2"]).toEqual(["image-picture-3", 0]);
+    expect(workflow.positive?.inputs.negative_prompt).toBe("");
+    expect(workflow.positive?.inputs.resolution).toBe(0);
+    expect(workflow.cache).toMatchObject({
+      class_type: "QwenImage21Cache",
+      inputs: { device: "auto", dtype: "default" }
+    });
+    expect(workflow.sampler).toMatchObject({
+      class_type: "KSampler",
+      inputs: { cfg: 1, steps: 25, sampler_name: "euler", scheduler: "simple", denoise: 1 }
+    });
+    expect(workflow.sizeSwitch?.inputs.on_false).toEqual(["positive", 2]);
+    expect(workflow.save).toMatchObject({
+      class_type: "SaveImageAdvanced",
+      inputs: { format: "png", "format.bit_depth": "8-bit", "format.input_color_space": "sRGB" }
+    });
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+    expect(validateQwenImage21Workflow(renderImageWorkflow(workflow, ["target.png", "reference.png"]))).toEqual([]);
+  });
+
+  it("switches the official edit graph to a custom canvas when size is selected", () => {
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1)], {
+      prompt: "Keep Picture 1 unchanged except for the requested lighting.",
+      aspectRatio: "16:9",
+      targetResolution: 720,
+      outputWidth: 1280,
+      outputHeight: 736
+    }), run);
+
+    expect(workflow.positive?.inputs.resolution).toBe(960);
+    expect(workflow.sizeSwitch?.inputs).toMatchObject({
+      on_true: ["empty", 0],
+      switch: true
+    });
+    expect(workflow.empty?.inputs).toMatchObject({ width: 1280, height: 736, batch_size: 1 });
+    expect(workflow.sampler?.inputs.latent_image).toEqual(["sizeSwitch", 0]);
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+  });
+
+  it("uses the official T2I graph when no reference image is supplied", () => {
+    const workflow = buildQwenImage21Workflow(imageTask([], {
+      prompt: "A quiet mountain lake at sunrise, cinematic landscape photography."
+    }), run);
+
+    expect(Object.values(workflow).filter((node) => node.class_type === "LoadImage")).toHaveLength(0);
+    expect(workflow.positive?.inputs).toMatchObject({
+      negative_prompt: "",
+      resolution: 1024
+    });
+    expect(workflow.positive?.inputs.vae).toBeUndefined();
+    expect(Object.keys(workflow.positive?.inputs ?? {}).some((key) => key.startsWith("images."))).toBe(false);
+    expect(workflow).not.toHaveProperty("sizeSwitch");
+    expect(workflow).not.toHaveProperty("cache");
+    expect(workflow.sampler?.inputs.model).toEqual(["model", 0]);
+    expect(workflow.sampler?.inputs.latent_image).toEqual(["empty", 0]);
+    expect(workflow.empty?.inputs).toMatchObject({ width: 1024, height: 1024, batch_size: 1 });
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+  });
+
+  it("uses the GGUF T2I graph without requiring a reference image", () => {
+    const workflow = buildQwenImage21GgufWorkflow(imageTask([], {
+      modelId: "qwen-image-2-1-uncensored-gguf",
+      workflowPath: "builtin:image/qwen-image-2-1-uncensored-gguf",
+      prompt: "A quiet mountain lake at sunrise, cinematic landscape photography."
+    }), run);
+
+    expect(workflow.model).toMatchObject({
+      class_type: "UnetLoaderGGUF",
+      inputs: { unet_name: "qwen-image-2.1-Q4_K_M.gguf" }
+    });
+    expect(Object.values(workflow).filter((node) => node.class_type === "LoadImage")).toHaveLength(0);
+    expect(workflow.sampler?.inputs.model).toEqual(["model", 0]);
+    expect(validateQwenImage21GgufWorkflow(workflow, "preview-25", true)).toEqual([]);
+    expect(validateQwenImage21GgufRuntimeSchema(
+      { model: workflow.model! },
+      { UnetLoaderGGUF: { input: { required: { unet_name: [["qwen-image-2.1-Q4_K_M.gguf"]] } } } }
+    )).toEqual([]);
+  });
+
+  it("keeps the GGUF reference path compatible with the official multi-image graph", () => {
+    const workflow = buildQwenImage21GgufWorkflow(imageTask([picture(1), picture(2)], {
+      modelId: "qwen-image-2-1-uncensored-gguf",
+      workflowPath: "builtin:image/qwen-image-2-1-uncensored-gguf"
+    }), run);
+
+    expect(workflow.model?.class_type).toBe("UnetLoaderGGUF");
+    expect(workflow.cache?.class_type).toBe("QwenImage21Cache");
+    expect(workflow.positive?.inputs["images.image_2"]).toEqual(["image-picture-2", 0]);
+    expect(workflow.sizeSwitch?.inputs.on_false).toEqual(["positive", 2]);
+    expect(validateQwenImage21GgufWorkflow(workflow, "preview-25", true)).toEqual([]);
+  });
+
+  it("uses the queued T2I canvas dimensions selected by the user", () => {
+    const workflow = buildQwenImage21Workflow(imageTask([], {
+      prompt: "A quiet mountain lake at sunrise, cinematic landscape photography.",
+      outputWidth: 1280,
+      outputHeight: 720
+    }), run);
+
+    expect(workflow.empty?.inputs).toMatchObject({ width: 1280, height: 720, batch_size: 1 });
+    expect(workflow.sampler?.inputs.latent_image).toEqual(["empty", 0]);
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+  });
+
+  it("opens the official ten-input edit capacity, including the tenth image socket", () => {
+    const pictures = Array.from({ length: 10 }, (_, index) => picture(index + 1));
+    const workflow = buildQwenImage21Workflow(imageTask(pictures, {
+      prompt: "Combine the supplied images while preserving the requested subject relationships."
+    }), run);
+
+    expect(Object.values(workflow).filter((node) => node.class_type === "LoadImage")).toHaveLength(10);
+    expect(workflow.positive?.inputs["images.image_10"]).toEqual(["image-picture-10", 0]);
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+  });
+
+  it("accepts ComfyUI's dotted autogrow keys against the images input group", () => {
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1)], { prompt: "编辑 Picture 1。" }), run);
+    const enumInputs = new Set([
+      "UNETLoader.unet_name", "UNETLoader.weight_dtype",
+      "CLIPLoader.clip_name", "CLIPLoader.type", "CLIPLoader.device",
+      "VAELoader.vae_name", "QwenImage21Cache.device", "QwenImage21Cache.dtype",
+      "KSampler.sampler_name", "KSampler.scheduler",
+      "SaveImageAdvanced.format", "SaveImageAdvanced.format.bit_depth", "SaveImageAdvanced.format.input_color_space"
+    ]);
+    const objectInfo = Object.fromEntries(Object.values(workflow).map((node) => {
+      if (node.class_type === "SaveImageAdvanced") {
+        return [node.class_type, {
+          input: {
+            required: {
+              images: ["IMAGE", {}],
+              filename_prefix: ["STRING", {}],
+              format: ["COMFY_DYNAMICCOMBO_V3", {
+                options: [{
+                  key: "png",
+                  inputs: {
+                    required: {
+                      bit_depth: ["COMBO", { options: ["8-bit", "16-bit"] }],
+                      input_color_space: ["COMBO", { options: ["sRGB"] }]
+                    }
+                  }
+                }]
+              }]
+            }
+          }
+        }];
+      }
+      const required: Record<string, unknown> = {};
+      for (const [inputName, inputValue] of Object.entries(node.inputs)) {
+        const baseName = inputName.split(".", 1)[0]!;
+        const key = `${node.class_type}.${baseName}`;
+        required[baseName] = enumInputs.has(key) ? [[String(inputValue)]] : ["ANY"];
+      }
+      return [node.class_type, { input: { required } }];
+    }));
+
+    expect(validateQwenImage21RuntimeSchema(workflow, objectInfo)).toEqual([]);
   });
 });
 

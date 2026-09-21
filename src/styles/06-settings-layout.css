@@ -340,6 +340,11 @@
 .settings-content .custom-node-copy p { font-size: 11px; line-height: 1.5; }
 .custom-node-copy code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .custom-node-copy > .muted code { display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.node-version-line { display: flex; min-width: 0; align-items: center; gap: 7px; margin: 8px 0 0; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: nowrap; }
+.node-version-item { display: inline-flex; min-width: 0; align-items: baseline; gap: 4px; }
+.node-version-label { flex: 0 0 auto; color: var(--muted); }
+.node-version-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 650; color: var(--text); }
+.node-version-separator { flex: 0 0 auto; color: var(--muted); }
 .custom-node-actions { flex: 0 0 auto; display: grid; justify-items: end; gap: 9px; }
 .node-action-split { position: relative; display: flex; min-width: 134px; height: 38px; align-items: stretch; }
 .node-action-split .node-action-main { height: 38px; min-height: 38px; padding-block: 8px; border-radius: 8px 0 0 8px; white-space: nowrap; }

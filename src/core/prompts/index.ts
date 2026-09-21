@@ -18,5 +18,13 @@ export {
   qwenImageEditPromptUserContent,
   qwenImagePromptPackFor
 } from "./qwen-image-edit/index.js";
+export {
+  createDefaultQwenImage21PromptPresets,
+  normalizeQwenImage21PromptOutput,
+  normalizeQwenImage21PromptPresets,
+  qwenImage21PromptContract,
+  qwenImage21PromptUserContent,
+  qwenImage21PromptPackFor
+} from "./qwen-image-2-1/index.js";
 export type { H3PromptPack, ImagePromptPack, LocalizedPromptSnippet, PromptPresetLocale, PromptSnippetDefinition, PromptSnippetLocale } from "./types.js";
 export type { H3LoraPromptProfile } from "./h3/index.js";

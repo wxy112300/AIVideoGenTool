@@ -26,6 +26,12 @@ export function qwenImagePromptPackFor(locale: UiLocale = "zh-CN") {
   return loadedPromptPacks().qwenImagePromptPackFor(locale);
 }
 
+export function imagePromptPackForTarget(locale: UiLocale = "zh-CN", modelId?: string) {
+  return modelId === "qwen-image-2-1" || modelId === "qwen-image-2-1-uncensored-gguf"
+    ? loadedPromptPacks().qwenImage21PromptPackFor(locale)
+    : loadedPromptPacks().qwenImagePromptPackFor(locale);
+}
+
 export function h3PromptPresetForMode(
   mode: H3PromptMode,
   requestedPreset: H3PromptPreset = "official-storyboard"

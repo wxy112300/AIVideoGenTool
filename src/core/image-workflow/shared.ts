@@ -47,8 +47,11 @@ export interface ImageAspectRatioOption {
   label: string;
 }
 
-function alignedImageDimension(value: number): number {
-  return Math.max(8, Math.round(value / 8) * 8);
+function alignedImageDimension(value: number, multiple = 8): number {
+  const normalizedMultiple = Number.isFinite(multiple) && multiple > 0
+    ? Math.max(1, Math.trunc(multiple))
+    : 8;
+  return Math.max(normalizedMultiple, Math.round(value / normalizedMultiple) * normalizedMultiple);
 }
 
 export function normalizeImageTargetResolution(
@@ -90,7 +93,8 @@ export function imageOutputDimensions(
   targetResolution: ImageTargetResolution,
   fallbackWidth = 0,
   fallbackHeight = 0,
-  aspectRatio: ImageAspectRatio = "source"
+  aspectRatio: ImageAspectRatio = "source",
+  alignmentMultiple = 8
 ): [number, number] {
   const hasSource = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) &&
     sourceWidth > 0 && sourceHeight > 0;
@@ -118,8 +122,8 @@ export function imageOutputDimensions(
     ? outputShortEdge
     : outputShortEdge / sourceRatio;
   return [
-    alignedImageDimension(outputWidth),
-    alignedImageDimension(outputHeight)
+    alignedImageDimension(outputWidth, alignmentMultiple),
+    alignedImageDimension(outputHeight, alignmentMultiple)
   ];
 }
 
@@ -150,7 +154,8 @@ export function imageResolutionOptionsFor(
   sourceHeight = 0,
   fallbackWidth = 0,
   fallbackHeight = 0,
-  aspectRatio: ImageAspectRatio = "source"
+  aspectRatio: ImageAspectRatio = "source",
+  alignmentMultiple = 8
 ): ImageResolutionOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
@@ -160,7 +165,8 @@ export function imageResolutionOptionsFor(
     "source",
     fallbackWidth,
     fallbackHeight,
-    aspectRatio
+    aspectRatio,
+    alignmentMultiple
   );
   const sourceLabel = hasSource
     ? `原图 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
@@ -175,7 +181,7 @@ export function imageResolutionOptionsFor(
   }];
   for (const target of imageTargetResolutionValues) {
     const [width, height] = hasSource || hasFallback
-      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio)
+      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio, alignmentMultiple)
       : [0, 0];
     options.push({
       value: target,
@@ -191,6 +197,21 @@ export const pictureReferencePattern = /(?:<\s*)?(?:picture|image|图片)\s*([1-
 
 export function orderedPictures(pictures: ImageReferenceSnapshot[]): ImageReferenceSnapshot[] {
   return [...pictures].sort((left, right) => left.pictureNumber - right.pictureNumber);
+}
+
+/**
+ * An unfilled slot is a UI affordance, not a reference image. Text-only-capable
+ * models may therefore submit a draft with one or more empty slots as T2I.
+ * Mixed drafts still retain their empty slots so normal validation can explain
+ * which reference is incomplete.
+ */
+export function imagePicturesForModelInput(
+  pictures: ImageReferenceSnapshot[],
+  supportsTextOnly: boolean
+): ImageReferenceSnapshot[] {
+  return supportsTextOnly && !pictures.some((picture) => picture.absolutePath.trim())
+    ? []
+    : pictures;
 }
 
 export function imageReferenceInputPath(
@@ -370,10 +391,11 @@ export function imageQualityProfileComponentFound(
 
 export function imageReferenceInputs(
   pictures: ImageReferenceSnapshot[],
-  nodePrefix: string
+  nodePrefix: string,
+  maxPictures = qwenImageEdit2511Capability.maxPictures
 ): Record<string, unknown> {
   return Object.fromEntries(
-    pictures.slice(0, qwenImageEdit2511Capability.maxPictures).map((picture, index) => [
+    pictures.slice(0, maxPictures).map((picture, index) => [
       `image${index + 1}`,
       [`${nodePrefix}-${picture.id}`, 0]
     ])

@@ -1,7 +1,7 @@
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
 import { createOutputFilename } from "./filename.js";
 import { defaultH3ImageOptionsFor, expandImageSeeds, isH3ImageModelId } from "./image-project.js";
-import { imageModelAdapterFor, h3ImageRecipeFor, h3ImageOutputDimensions, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { imageModelAdapterFor, h3ImageRecipeFor, h3ImageOutputDimensions, imagePicturesForModelInput, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { h3NativeUpscaleDimensions, uniqueAetherScaleUpscaleFilename, uniqueKonohamaruUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { AETHERSCALE_MODEL_ID, normalizeAetherScaleTarget } from "./aetherscale.js";
 import { KONOHAMARU_MODEL_ID, KONOHAMARU_WORKFLOW_PATH, normalizeKonohamaruTarget } from "./konohamaru-dlss5.js";
@@ -129,6 +129,7 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
     const id = clock.id();
     const projectId = draft.projectId ?? clock.id();
     const adapter = imageModelAdapterFor(draft.modelId);
+    const pictures = imagePicturesForModelInput(draft.pictures, adapter?.supportsTextOnly === true);
     const outputCount = adapter?.deterministic ? 1 : draft.outputCount;
     const runs = expandImageSeeds(draft.seed, outputCount)
         .map((seed, index) => ({
@@ -137,19 +138,26 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         seed,
         status: "waiting"
     }));
-    const basePicture = draft.pictures[0];
+    const basePicture = pictures[0];
     const h3ImageRecipe = h3ImageRecipeFor(draft.modelId, draft.qualityProfile, diffusionModelFilename);
     if (isH3ImageModelId(draft.modelId) && !h3ImageRecipe) {
         throw new Error(`H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`);
     }
     const isH3Image = isH3ImageModelId(draft.modelId);
     const targetResolution = normalizeImageTargetResolution(isH3Image ? "source" : draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const aspectRatio = isH3Image || adapter?.sourceResolutionOnly
+    // Source-following is the default reference-image policy. Qwen Image 2.1
+    // opts into its official custom canvas path while still using source size
+    // when both selectors remain at "source".
+    const sourceResolutionOnly = Boolean(adapter?.sourceResolutionOnly && adapter?.supportsCustomOutputSize !== true && basePicture);
+    const outputAlignmentMultiple = basePicture && adapter?.supportsCustomOutputSize === true
+        ? adapter.customOutputMultiple
+        : 8;
+    const aspectRatio = isH3Image || sourceResolutionOnly
         ? "source"
         : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
     const [outputWidth, outputHeight] = isH3Image
         ? h3ImageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0)
-        : imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio);
+        : imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio, outputAlignmentMultiple);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
     const defaultH3Options = defaultH3ImageOptionsFor(draft.modelId);
     const h3ImageOptions = defaultH3Options
@@ -165,7 +173,7 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         outputFilename: `${draft.modelId === "lama-inpaint" ? "LaMa" : draft.modelId === "birefnet-background-removal" ? "BiRefNet" : "ImageEdit"}-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
         projectId,
         parentVersionId: draft.parentVersionId,
-        pictures: draft.pictures.map((picture) => ({
+        pictures: pictures.map((picture) => ({
             ...picture,
             ...(picture.crop ? { crop: { ...picture.crop } } : {}),
             ...(picture.markup ? { markup: { ...picture.markup } } : {}),
@@ -178,7 +186,7 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         outputWidth,
         outputHeight,
         aspectRatio,
-        targetResolution: isH3Image || adapter?.sourceResolutionOnly ? "source" : targetResolution,
+        targetResolution: isH3Image || sourceResolutionOnly ? "source" : targetResolution,
         ...(resolvedDiffusionModelFilename ? { diffusionModelFilename: resolvedDiffusionModelFilename } : {}),
         prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
         promptVersion: promptless ? 1 : draft.activePromptVersion + 1,

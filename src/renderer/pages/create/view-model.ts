@@ -21,11 +21,12 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
 import { SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
-import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
+import { h3PromptPackFor, h3PromptPresetForMode, imagePromptPackForTarget } from "../../prompt-packs";
 import {
   imageModelCapabilityFor,
   imageModelAdapterFor,
   imageLightningComponentFound,
+  imagePicturesForModelInput,
   imageQualityProfileRequiresLightning,
   imageAspectRatioOptionsFor,
   imageResolutionOptionsFor,
@@ -161,25 +162,26 @@ export function imageEditEnqueueBlockReason(
   t: Translate = createTranslator("zh-CN").t
 ): string {
   const imageCapability = imageModelCapabilityFor(draft.modelId);
-  const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
-  const markupGuideCount = draft.modelId === "qwen-image-edit-2511"
-    ? draft.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
+  const inputPictures = imagePicturesForModelInput(draft.pictures, imageCapability.supportsTextOnly === true);
+  const incompletePicture = inputPictures.find((picture) => !picture.absolutePath);
+  const markupGuideCount = imageCapability.supportsMarkupReferenceGuide === true
+    ? inputPictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
     : 0;
-  const imageModelInputCount = draft.pictures.length + markupGuideCount;
+  const imageModelInputCount = inputPictures.length + markupGuideCount;
   const prompt = activeImagePrompt(draft);
-  const referenceBlockReason = !draft.pictures.length
+  const referenceBlockReason = !inputPictures.length
     ? imageCapability.supportsTextOnly
       ? ""
       : t(uiKeys.create.validation.imageAddSlot)
-    : !draft.pictures[0]?.absolutePath
+    : !inputPictures[0]?.absolutePath
       ? t(uiKeys.create.validation.imageBaseMissing)
       : incompletePicture
         ? t(uiKeys.create.validation.imagePictureMissing, { slot: incompletePicture.pictureNumber })
-        : draft.pictures.length > imageCapability.maxPictures
+        : inputPictures.length > imageCapability.maxPictures
           ? t(uiKeys.create.validation.imageTooMany, { name: imageCapability.name, count: imageCapability.maxPictures })
           : imageModelInputCount > imageCapability.maxPictures
             ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
-            : imageCapability.requiresMask && !draft.pictures[0]?.mask?.regionCount
+            : imageCapability.requiresMask && !inputPictures[0]?.mask?.regionCount
               ? "请先在原图上绘制并保存 Mask"
               : "";
   if (referenceBlockReason) return referenceBlockReason;
@@ -324,7 +326,8 @@ export function buildImageEditPageViewModel(
     basePicture?.height ?? 0,
     imageCapability.textOnlyOutputWidth ?? 0,
     imageCapability.textOnlyOutputHeight ?? 0,
-    selectedAspectRatio
+    selectedAspectRatio,
+    basePicture ? imageCapability.customOutputMultiple ?? 8 : 8
   );
   const imageModelProfiles = sortProfilesByCatalogOrder(
     environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [],
@@ -358,7 +361,7 @@ export function buildImageEditPageViewModel(
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
     : "detail-enhance";
-  const imagePromptPack = qwenImagePromptPackFor(state.settings.uiLocale);
+  const imagePromptPack = imagePromptPackForTarget(state.settings.uiLocale, draft.modelId);
   const imagePromptOptimizeTitle = state.queueRunning
     ? t(uiKeys.create.validation.promptTaskRunning)
     : !imagePromptModelSupportsImageEdit
@@ -368,11 +371,12 @@ export function buildImageEditPageViewModel(
         : isGemmaPromptModel(state.settings.promptModelId)
           ? t(uiKeys.create.validation.gemmaOptimize)
           : t(uiKeys.create.validation.promptOptimize);
-  const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
-  const markupGuideCount = draft.modelId === "qwen-image-edit-2511"
-    ? draft.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
+  const inputPictures = imagePicturesForModelInput(draft.pictures, imageCapability.supportsTextOnly === true);
+  const incompletePicture = inputPictures.find((picture) => !picture.absolutePath);
+  const markupGuideCount = imageCapability.supportsMarkupReferenceGuide === true
+    ? inputPictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
     : 0;
-  const imageModelInputCount = draft.pictures.length + markupGuideCount;
+  const imageModelInputCount = inputPictures.length + markupGuideCount;
   const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile, t);
   const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
   const backgroundRemoval = imageCapability.operation === "background-removal";
@@ -389,6 +393,13 @@ export function buildImageEditPageViewModel(
     ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
     : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
   const h3ImageOptionsVisible = isH3ImageModelId(draft.modelId);
+  const textOnlySizeControlsVisible = imageCapability.supportsTextOnly === true &&
+    imagePicturesForModelInput(draft.pictures, true).length === 0;
+  const imageSizeControlsVisible = !h3ImageOptionsVisible && (
+    imageCapability.sourceResolutionOnly !== true ||
+    imageCapability.supportsCustomOutputSize === true ||
+    textOnlySizeControlsVisible
+  );
   const h3ReferenceDetailVisible = draft.modelId === "minimax-h3-reference-edit";
   const h3ReferenceNoteVisible = h3ReferenceDetailVisible;
   const h3ImageSourceFitOptionsMarkup = h3ImageOptionsVisible && draft.h3ImageOptions
@@ -471,8 +482,8 @@ export function buildImageEditPageViewModel(
     promptless,
     maskRequired: imageCapability.requiresMask === true,
     sourceResolutionOnly: imageCapability.sourceResolutionOnly === true,
-    imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
-    imageResolutionVisible: imageCapability.sourceResolutionOnly !== true && !h3ImageOptionsVisible,
+    imageAspectRatioVisible: imageSizeControlsVisible,
+    imageResolutionVisible: imageSizeControlsVisible,
     supportsTextOnly: imageCapability.supportsTextOnly === true,
     maskSupported: imageCapability.supportsMask === true,
     annotationSupported: imageCapability.supportsMarkup === true,

@@ -20,7 +20,7 @@ import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
 } from "../../src/infrastructure/dependency-compatibility.js";
-import { readComfyGitRevision } from "./comfy-discovery.js";
+import { readComfyGitCommitDate, readComfyGitRevision } from "./comfy-discovery.js";
 import {
   multimodalPromptRecognizesQwen38,
   multimodalPromptSupportsAdaptiveGeneration,
@@ -471,6 +471,15 @@ export async function scanCustomNodes(
     revisionCache.set(directory, pending);
     return pending;
   };
+  const revisionDateCache = new Map<string, Promise<string>>();
+  const readRevisionDate = (directory: string): Promise<string> => {
+    if (!directory) return Promise.resolve("");
+    const cached = revisionDateCache.get(directory);
+    if (cached) return cached;
+    const pending = readComfyGitCommitDate(directory);
+    revisionDateCache.set(directory, pending);
+    return pending;
+  };
   return Promise.all(customNodeCatalog.map(async (definition) => {
     const matchedName = definition.aliases.find((alias) =>
       installedDirectories.has(alias.toLowerCase())
@@ -580,15 +589,29 @@ export async function scanCustomNodes(
     }
     const localVersion = await readLocalNodeVersion(directory);
     const version = localVersion.version;
+    // Semantic releases, rolling repositories, and fixed revisions use
+    // different update rules. Keep that distinction in the scanner so the
+    // renderer can present one consistent version model without exposing the
+    // underlying detection source.
+    const versionMode = definition.versionMode ?? "release";
+    const revisionDate = versionMode === "rolling"
+      ? await readRevisionDate(directory)
+      : "";
+    // Git-backed packages report their exact commit. Bundled app-owned nodes
+    // have no .git directory, so their VERSION is the immutable package
+    // revision used by the same compatibility gate.
+    const detectedRevision = definition.source === "bundled"
+      ? version
+      : await readRevision(directory);
     const belowRecommendedVersion = Boolean(
-      directory && version && definition.recommendedVersion &&
+      versionMode === "release" && directory && version && definition.recommendedVersion &&
       compareReleaseVersions(version, definition.recommendedVersion) < 0
     );
     if (belowRecommendedVersion) {
-      updateNotice = [
+      updateNotice = joinUniqueNotices(
         updateNotice,
         `发现项目推荐版本更新：当前 v${version}，推荐 v${definition.recommendedVersion}`
-      ].filter(Boolean).join("；");
+      );
     }
     const belowMinimumVersion = Boolean(
       directory && definition.minimumVersion &&
@@ -610,15 +633,9 @@ export async function scanCustomNodes(
         : definition.id === "h3-motion-context"
           ? latestMotionContextVersion
           : "") || definition.latestVersion || "";
-    const latestVersion = /^v?\d+(?:[.-]\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u.test(remoteVersion)
+    const latestVersion = versionMode === "release" && /^v?\d+(?:[.-]\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u.test(remoteVersion)
       ? normalizeReleaseVersion(remoteVersion)
-      : "";
-    // Git-backed packages report their exact commit. Bundled app-owned nodes
-    // have no .git directory, so their VERSION is the immutable package
-    // revision used by the same compatibility gate.
-    const detectedRevision = definition.source === "bundled"
-      ? version
-      : await readRevision(directory);
+      : versionMode === "release" ? definition.latestVersion ?? "" : "";
     if (directory && definition.installRevision &&
         detectedRevision.toLowerCase() !== definition.installRevision.toLowerCase()) {
       const detectedLabel = detectedRevision || "未读取到";
@@ -663,7 +680,7 @@ export async function scanCustomNodes(
       pendingRestartError;
     const updateAvailable = Boolean(
       compatibilityError || optionalUpdateRecommended ||
-      (definition.recommendedVersion && !version) || belowRecommendedVersion
+      belowRecommendedVersion
     );
     const compatibility = compatibilityForNode(
       definition,
@@ -698,6 +715,8 @@ export async function scanCustomNodes(
       directory,
       required: definition.required,
       version,
+      versionMode,
+      revisionDate,
       versionSource: localVersion.source || (detectedRevision ? ".git/HEAD" : ""),
       minimumVersion: definition.minimumVersion ?? "",
       recommendedVersion: definition.recommendedVersion ?? "",

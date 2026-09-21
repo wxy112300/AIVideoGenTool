@@ -37,6 +37,7 @@ import {
 } from "../../src/core/prompt-models.js";
 import {
   flux2Klein4bRequiredNodeTypes,
+  qwenImage21RequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../../src/core/image-workflow.js";
 import {
@@ -677,6 +678,27 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
     notes: "仅使用 Qwen Lightning 4 步质量档时需要；原生 20/40 步不依赖此 LoRA。"
   },
+  "qwen-image-2-1:Qwen Image 2.1 扩散模型": {
+    sourceLabel: "Comfy-Org / Qwen-Image-2.1",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "qwen_image_2.1_int8_convrot.safetensors",
+    notes: "官方 Qwen Image 2.1 INT8 ConvRot 变体；4090 优先使用此文件，BF16 变体可作为可选精度路线。"
+  },
+  "qwen-image-2-1:Qwen3-VL 8B 文本编码器": {
+    sourceLabel: "Comfy-Org / Qwen-Image-2.1",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_8b_int8_convrot.safetensors",
+    notes: "官方 Qwen3-VL 8B INT8 ConvRot 文本编码器，与 Qwen Image 2.1 配套。"
+  },
+  "qwen-image-2-1:Qwen Image 2.1 VAE": {
+    sourceLabel: "Comfy-Org / Qwen-Image-2.1",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "qwen_image_2.1_vae_bf16.safetensors",
+    notes: "官方 Qwen Image 2.1 BF16 RGBA VAE。"
+  },
   "flux2-klein-4b:FLUX.2 Klein 4B FP8 扩散模型": {
     sourceLabel: "Black Forest Labs / FLUX.2 Klein 4B FP8",
     downloadUrl: "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors",
@@ -1196,6 +1218,37 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         expected: "loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
         patterns: [/loras\/Qwen-Image-Edit-2511-Lightning-4steps-V1\.0-bf16\.safetensors$/i],
         optional: true
+      }
+    ]
+  },
+  {
+    id: "qwen-image-2-1",
+    name: "Qwen Image 2.1 · 官方文生图/图片编辑",
+    category: "image",
+    managedBy: "comfyui",
+    badge: "原生 · T2I + 最多 10 Picture · 25/40 步",
+    description: "官方 ComfyUI Qwen Image 2.1 统一路径：无参考图走原生 T2I，有参考图走最多 10 个输入的编辑；标注图可作为额外视觉引导。",
+    vram: "INT8 ConvRot + BF16 VAE · RTX 4090 24GB 目标 · 首期 1 MP，2K 待 smoke",
+    integrated: true,
+    runtimeNodeTypes: qwenImage21RequiredNodeTypes,
+    components: [
+      {
+        label: "Qwen Image 2.1 扩散模型",
+        expected: "diffusion_models/qwen_image_2.1_{bf16|int8_convrot}.safetensors",
+        patterns: [/diffusion_models\/qwen_image_2\.1_(?:bf16|int8_convrot)\.safetensors$/i],
+        installGuide: installGuides["qwen-image-2-1:Qwen Image 2.1 扩散模型"]
+      },
+      {
+        label: "Qwen3-VL 8B 文本编码器",
+        expected: "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
+        patterns: [/text_encoders\/qwen3vl_8b_(?:bf16|int8_convrot)\.safetensors$/i],
+        installGuide: installGuides["qwen-image-2-1:Qwen3-VL 8B 文本编码器"]
+      },
+      {
+        label: "Qwen Image 2.1 VAE",
+        expected: "vae/qwen_image_2.1_vae_bf16.safetensors",
+        patterns: [/vae\/qwen_image_2\.1_vae_bf16\.safetensors$/i],
+        installGuide: installGuides["qwen-image-2-1:Qwen Image 2.1 VAE"]
       }
     ]
   },

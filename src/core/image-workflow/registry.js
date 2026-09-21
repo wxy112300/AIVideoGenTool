@@ -1,6 +1,7 @@
-import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, minimaxH3ImageI2ICapability, minimaxH3ReferenceEditCapability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
+import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, minimaxH3ImageI2ICapability, minimaxH3ReferenceEditCapability, qwenImage21Capability, qwenImage21UncensoredGgufCapability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
 import { parseImageOutputs } from "./shared.js";
 import { compileQwenImageEditPrompt, compileQwenImageEditCropStitchPrompt, buildQwenImageEdit2511Workflow, buildQwenImageEdit2511CropStitchWorkflow, validateQwenImageEdit2511Workflow, validateQwenImageEdit2511CropStitchWorkflow } from "./qwen.js";
+import { compileQwenImage21Prompt, buildQwenImage21Workflow, buildQwenImage21GgufWorkflow, validateQwenImage21RuntimeSchema, validateQwenImage21GgufRuntimeSchema, validateQwenImage21Workflow, validateQwenImage21GgufWorkflow } from "./qwen-image-2-1.js";
 import { compileFlux2Klein4bPrompt, buildFlux2Klein4bWorkflow, validateFlux2Klein4bWorkflow } from "./flux2-klein.js";
 import { compileZImagePrompt, buildZImageWorkflow, validateZImageWorkflow, buildZImageTurboWorkflow, validateZImageTurboWorkflow } from "./z-image.js";
 import { compileHiDreamO1Prompt, buildHiDreamO1Workflow, validateHiDreamO1Workflow } from "./hidream-o1.js";
@@ -13,6 +14,22 @@ export const qwenImageEdit2511Adapter = {
     compilePrompt: compileQwenImageEditPrompt,
     buildWorkflow: buildQwenImageEdit2511Workflow,
     validateWorkflow: validateQwenImageEdit2511Workflow,
+    parseOutputs
+};
+export const qwenImage21Adapter = {
+    ...qwenImage21Capability,
+    compilePrompt: compileQwenImage21Prompt,
+    buildWorkflow: buildQwenImage21Workflow,
+    validateWorkflow: validateQwenImage21Workflow,
+    validateRuntimeSchema: validateQwenImage21RuntimeSchema,
+    parseOutputs
+};
+export const qwenImage21UncensoredGgufAdapter = {
+    ...qwenImage21UncensoredGgufCapability,
+    compilePrompt: compileQwenImage21Prompt,
+    buildWorkflow: buildQwenImage21GgufWorkflow,
+    validateWorkflow: validateQwenImage21GgufWorkflow,
+    validateRuntimeSchema: validateQwenImage21GgufRuntimeSchema,
     parseOutputs
 };
 export const flux2Klein4bAdapter = {
@@ -89,6 +106,8 @@ export const minimaxH3ReferenceEditAdapter = {
 };
 export const imageModelAdapters = {
     [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
+    [qwenImage21Adapter.id]: qwenImage21Adapter,
+    [qwenImage21UncensoredGgufAdapter.id]: qwenImage21UncensoredGgufAdapter,
     [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
     [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,
     [zImageAdapter.id]: zImageAdapter,

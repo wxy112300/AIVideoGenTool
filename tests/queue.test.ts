@@ -504,6 +504,82 @@ describe("queue execution snapshots", () => {
     expect(queued.workflowPath).toBe("builtin:image/z-image-turbo");
   });
 
+  it("keeps Qwen Image 2.1 text-only canvas controls active without a reference", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "qwen-image-2-1";
+    draft.qualityProfile = "preview-25";
+    draft.aspectRatio = "16:9";
+    draft.targetResolution = 720;
+    draft.pictures = [];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "qwen-image-2-1.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-qwen-21-t2i-size", "project-qwen-21-t2i-size", "run-qwen-21-t2i-size"])
+    );
+
+    expect(queued.aspectRatio).toBe("16:9");
+    expect(queued.targetResolution).toBe(720);
+    expect(queued.outputWidth).toBe(1280);
+    expect(queued.outputHeight).toBe(720);
+  });
+
+  it("drops an unfilled Qwen Image 2.1 slot before building a T2I queue snapshot", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "qwen-image-2-1";
+    draft.qualityProfile = "preview-25";
+    draft.pictures = [{
+      id: "picture-slot-1",
+      pictureNumber: 1,
+      absolutePath: "",
+      width: 0,
+      height: 0,
+      role: "base"
+    }];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "qwen-image-2-1.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-qwen-21-empty-slot", "project-qwen-21-empty-slot", "run-qwen-21-empty-slot"])
+    );
+
+    expect(queued.pictures).toEqual([]);
+    expect(queued.outputWidth).toBe(1024);
+    expect(queued.outputHeight).toBe(1024);
+  });
+
+  it("enables Qwen Image 2.1 custom canvas mode for a reference upscale", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "qwen-image-2-1";
+    draft.qualityProfile = "preview-25";
+    draft.aspectRatio = "16:9";
+    draft.targetResolution = 720;
+    draft.pictures = [{
+      id: "picture-1",
+      pictureNumber: 1,
+      absolutePath: "input.png",
+      width: 1024,
+      height: 768
+    }];
+    draft.promptVersions[0]!.text = "Keep Picture 1, change the lighting.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "qwen-image-2-1.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-qwen-21-ref-size", "project-qwen-21-ref-size", "run-qwen-21-ref-size"])
+    );
+
+    expect(queued.aspectRatio).toBe("16:9");
+    expect(queued.targetResolution).toBe(720);
+    expect(queued.outputWidth).toBe(1280);
+    expect(queued.outputHeight).toBe(736);
+  });
+
   it("snapshots an independent ratio and short-edge resolution for text-only generation", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "z-image-turbo";

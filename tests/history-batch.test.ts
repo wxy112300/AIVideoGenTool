@@ -7,6 +7,7 @@ import {
   historyBatchTagSummaries,
   historyBatchVideoFile,
   selectHistoryBatchIds,
+  selectHistoryBatchRange,
   toggleHistoryBatchSelection
 } from "../src/core/history-batch.ts";
 
@@ -93,5 +94,14 @@ describe("history batch helpers", () => {
     expect(toggleHistoryBatchSelection([], "a")).toEqual(["a"]);
     expect(selectHistoryBatchIds(["outside"], ["a", "b"])).toEqual(["outside", "a", "b"]);
     expect(selectHistoryBatchIds(["outside", "a", "b"], ["a", "b"])).toEqual(["outside"]);
+  });
+
+  it("adds the full visible range without removing existing selections", () => {
+    expect(selectHistoryBatchRange(["already"], ["a", "b", "c", "d"], "a", "d"))
+      .toEqual(["already", "a", "b", "c", "d"]);
+    expect(selectHistoryBatchRange(["c"], ["a", "b", "c", "d"], "d", "b"))
+      .toEqual(["c", "b", "d"]);
+    expect(selectHistoryBatchRange([], ["a", "b"], "missing", "b"))
+      .toEqual(["b"]);
   });
 });

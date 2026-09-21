@@ -36,6 +36,31 @@ describe("dependency catalog", () => {
     }
   });
 
+  it("gives every active node one complete user-facing version policy", () => {
+    for (const definition of customNodeCatalog) {
+      expect(["release", "rolling", "pinned"]).toContain(definition.versionMode);
+      if (definition.versionMode === "release") {
+        expect(definition.recommendedVersion).toBeTruthy();
+        expect(definition.latestVersion).toBeTruthy();
+      }
+    }
+    expect(customNodeDefinition("ltx-video")).toMatchObject({
+      versionMode: "rolling",
+      recommendedVersion: "",
+      latestVersion: ""
+    });
+    expect(customNodeDefinition("comfyui-dlss-frame-interpolation")).toMatchObject({
+      versionMode: "pinned",
+      recommendedVersion: "",
+      latestVersion: ""
+    });
+    expect(customNodeDefinition("mmh3-ultimate-upscale")).toMatchObject({
+      versionMode: "pinned",
+      recommendedVersion: "",
+      latestVersion: ""
+    });
+  });
+
   it("orders dependencies by stable product priority and keeps unknown entries last", () => {
     expect(customNodeCatalog.map((item) => item.id)).toEqual([
       "video-helper-suite",
@@ -112,9 +137,10 @@ describe("dependency catalog", () => {
       required: false
     });
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({
-      repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
+      repositoryUrl: "https://github.com/leejet/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF",
       releaseSource: "github-release",
+      nodeTypes: ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
       required: true
     });
     expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
@@ -195,7 +221,7 @@ describe("dependency catalog", () => {
       ],
       minimumVersion: "3.8.0",
       recommendedVersion: "3.8.2",
-      latestVersion: "3.8.2",
+      latestVersion: "3.8.3",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{

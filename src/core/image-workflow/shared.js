@@ -12,8 +12,11 @@ export function cachedImageProfileAllowsEnqueue(profile) {
 export const imageOutputCountMax = 6;
 export const imageTargetResolutionValues = [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480];
 export const imageAspectRatioValues = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"];
-function alignedImageDimension(value) {
-    return Math.max(8, Math.round(value / 8) * 8);
+function alignedImageDimension(value, multiple = 8) {
+    const normalizedMultiple = Number.isFinite(multiple) && multiple > 0
+        ? Math.max(1, Math.trunc(multiple))
+        : 8;
+    return Math.max(normalizedMultiple, Math.round(value / normalizedMultiple) * normalizedMultiple);
 }
 export function normalizeImageTargetResolution(value, sourceWidth = 0, sourceHeight = 0) {
     if (value === "source")
@@ -43,7 +46,7 @@ export function normalizeImageAspectRatio(value) {
     }
     return "source";
 }
-export function imageOutputDimensions(sourceWidth, sourceHeight, targetResolution, fallbackWidth = 0, fallbackHeight = 0, aspectRatio = "source") {
+export function imageOutputDimensions(sourceWidth, sourceHeight, targetResolution, fallbackWidth = 0, fallbackHeight = 0, aspectRatio = "source", alignmentMultiple = 8) {
     const hasSource = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) &&
         sourceWidth > 0 && sourceHeight > 0;
     const hasFallback = Number.isFinite(fallbackWidth) && Number.isFinite(fallbackHeight) &&
@@ -70,8 +73,8 @@ export function imageOutputDimensions(sourceWidth, sourceHeight, targetResolutio
         ? outputShortEdge
         : outputShortEdge / sourceRatio;
     return [
-        alignedImageDimension(outputWidth),
-        alignedImageDimension(outputHeight)
+        alignedImageDimension(outputWidth, alignmentMultiple),
+        alignedImageDimension(outputHeight, alignmentMultiple)
     ];
 }
 export function imageAspectRatioOptionsFor(sourceWidth = 0, sourceHeight = 0, fallbackWidth = 0, fallbackHeight = 0) {
@@ -90,10 +93,10 @@ export function imageAspectRatioOptionsFor(sourceWidth = 0, sourceHeight = 0, fa
         }))
     ];
 }
-export function imageResolutionOptionsFor(sourceWidth = 0, sourceHeight = 0, fallbackWidth = 0, fallbackHeight = 0, aspectRatio = "source") {
+export function imageResolutionOptionsFor(sourceWidth = 0, sourceHeight = 0, fallbackWidth = 0, fallbackHeight = 0, aspectRatio = "source", alignmentMultiple = 8) {
     const hasSource = sourceWidth > 0 && sourceHeight > 0;
     const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
-    const sourceOptionDimensions = imageOutputDimensions(sourceWidth, sourceHeight, "source", fallbackWidth, fallbackHeight, aspectRatio);
+    const sourceOptionDimensions = imageOutputDimensions(sourceWidth, sourceHeight, "source", fallbackWidth, fallbackHeight, aspectRatio, alignmentMultiple);
     const sourceLabel = hasSource
         ? `原图 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
         : hasFallback
@@ -107,7 +110,7 @@ export function imageResolutionOptionsFor(sourceWidth = 0, sourceHeight = 0, fal
         }];
     for (const target of imageTargetResolutionValues) {
         const [width, height] = hasSource || hasFallback
-            ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio)
+            ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio, alignmentMultiple)
             : [0, 0];
         options.push({
             value: target,
@@ -121,6 +124,17 @@ export function imageResolutionOptionsFor(sourceWidth = 0, sourceHeight = 0, fal
 export const pictureReferencePattern = /(?:<\s*)?(?:picture|image|图片)\s*([1-9]\d*)(?:\s*>)?/giu;
 export function orderedPictures(pictures) {
     return [...pictures].sort((left, right) => left.pictureNumber - right.pictureNumber);
+}
+/**
+ * An unfilled slot is a UI affordance, not a reference image. Text-only-capable
+ * models may therefore submit a draft with one or more empty slots as T2I.
+ * Mixed drafts still retain their empty slots so normal validation can explain
+ * which reference is incomplete.
+ */
+export function imagePicturesForModelInput(pictures, supportsTextOnly) {
+    return supportsTextOnly && !pictures.some((picture) => picture.absolutePath.trim())
+        ? []
+        : pictures;
 }
 export function imageReferenceInputPath(picture) {
     return picture.crop?.croppedPath.trim() || picture.absolutePath.trim();
@@ -256,8 +270,8 @@ export function imageQualityProfileComponentFound(capability, qualityProfile, co
     const requiredLabel = imageQualityProfileRequiredComponentLabel(capability, qualityProfile);
     return !requiredLabel || components.some((component) => component.label.includes(requiredLabel) && component.found);
 }
-export function imageReferenceInputs(pictures, nodePrefix) {
-    return Object.fromEntries(pictures.slice(0, qwenImageEdit2511Capability.maxPictures).map((picture, index) => [
+export function imageReferenceInputs(pictures, nodePrefix, maxPictures = qwenImageEdit2511Capability.maxPictures) {
+    return Object.fromEntries(pictures.slice(0, maxPictures).map((picture, index) => [
         `image${index + 1}`,
         [`${nodePrefix}-${picture.id}`, 0]
     ]));

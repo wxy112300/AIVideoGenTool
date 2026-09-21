@@ -28,7 +28,36 @@ export const H3_CONTINUUM_REVISION = "c38c616d54feb0310a3ca7540f2f4addc499fd1f";
 export const MINIMAX_H3_IMAGE_STUDIO_VERSION = "23.0.0";
 export const MINIMAX_H3_IMAGE_STUDIO_REVISION = "f7384aacb7bf35492dc73a3e6054ab6b427f93f6";
 export const MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI = "0.30.0";
-export const MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI = "0.35.0";
+export const MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI = "0.37.0";
+/** User-facing versions; install revisions remain internal acquisition data. */
+const nodeVersionDefaults = {
+    "video-helper-suite": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.7.9", latestVersion: "1.7.9" },
+    "comfyui-gguf": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.0.0", latestVersion: "2.0.0" },
+    kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.2", latestVersion: "1.5.2" },
+    "ltx-video": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
+    "minimax-h3-prompt-writer": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.4.5", latestVersion: "0.4.6" },
+    "comfyui-multimodal-prompt-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.15", latestVersion: "1.0.16" },
+    "comfyui-qwenvl-lora": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
+    "inpaint-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.4.3", latestVersion: "1.4.3" },
+    "inpaint-cropandstitch": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "3.0.16", latestVersion: "3.0.16" },
+    seedvr2: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.5.24", latestVersion: "2.5.24" },
+    flashvsr: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.1.1", latestVersion: "1.1.1" },
+    "frame-interpolation": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.11", latestVersion: "1.0.11" },
+    "comfyui-dlss-frame-interpolation": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
+    "minimax-h3-image-studio": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "23.0.0", latestVersion: "23.0.0" },
+    "h3-motion-context": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.6.2", latestVersion: "0.6.2" },
+    "h3-continuum": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "3.8.2", latestVersion: "3.8.3" },
+    "h3-latent-upscaler": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.1.0", latestVersion: "0.1.0" },
+    "minimax-h3-learned-upscaler": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
+    "local-video-studio-h3-av": { versionMode: "release", recommendedVersion: "0.3.5", latestVersion: "0.3.5" },
+    "mmh3-ultimate-upscale": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
+    "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.27", latestVersion: "0.2.28" },
+    "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.3.8", latestVersion: "1.5.3" },
+    "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.09.04", latestVersion: "26.09.04" },
+    "comfyui-dlss5": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.2", latestVersion: "0.2.2" },
+    "comfyui-aetherscale": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.5.5", latestVersion: "0.5.5" },
+    "h3-optimizations": { versionMode: "release", recommendedVersion: "0.2.20", latestVersion: "0.2.20" }
+};
 const customNodeDefinitions = [{
         id: "minimax-h3-image-studio",
         priority: 135,
@@ -90,12 +119,13 @@ const customNodeDefinitions = [{
         id: "comfyui-gguf",
         priority: 20,
         name: "ComfyUI-GGUF",
-        purpose: "加载 Remix、SmoothMix、Wan 和 Sulphur 等历史 GGUF 视频模型",
-        repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
+        purpose: "加载原生 ComfyUI GGUF 扩散模型，包括 Qwen Image 2.1 和历史视频模型",
+        repositoryUrl: "https://github.com/leejet/ComfyUI-GGUF.git",
         directoryName: "ComfyUI-GGUF",
         aliases: ["comfyui-gguf"],
         releaseSource: "github-release",
-        nodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
+        nodeTypes: ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
+        runtimeRequirement: "维护版 fork；当前 requirements.txt 需要 gguf>=0.13.0、sentencepiece、protobuf，并要求较新的 ComfyUI custom ops 支持。Qwen Image 2.1 GGUF 首选 Q4_K_M/Q5_K_M/Q6_K；模型卡当前不建议 Q8_0。",
         required: true
     }, {
         id: "comfyui-gguf-h3",
@@ -463,7 +493,7 @@ const customNodeDefinitions = [{
         latestVersion: H3_MEMORY_LATEST_VERSION,
         bulkInstall: false,
         appInstallable: false,
-        runtimeRequirement: "已撤回：不再参与应用工作流、依赖扫描或安装；仅保留定义供旧状态读取和拒绝误安装。请使用 ComfyUI 0.35.0 原生 ModelAttentionBackend / BlockSparseAttention。",
+        runtimeRequirement: "已撤回：不再参与应用工作流、依赖扫描或安装；仅保留定义供旧状态读取和拒绝误安装。请使用 ComfyUI 0.37.0 原生 ModelAttentionBackend / BlockSparseAttention。",
         features: [{
                 id: "h3-memory-optimization",
                 name: "H3 Memory Optimization",
@@ -604,7 +634,12 @@ const customNodeDefinitions = [{
                 checks: ["static"]
             }],
         required: false
-    }];
+}];
+for (const definition of customNodeDefinitions) {
+    const defaults = nodeVersionDefaults[definition.id];
+    if (defaults)
+        Object.assign(definition, defaults);
+}
 export const LLAMA_CPP_PYTHON_DEPENDENCY_ID = "llama-cpp-python";
 export const LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY = 60;
 /** Synthetic capability card for the H3 runtime package set managed together. */

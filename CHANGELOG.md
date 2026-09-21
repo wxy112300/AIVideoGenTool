@@ -8,6 +8,13 @@
 
 ## Unreleased
 
+## 0.64.0 — 2026-09-21
+
+- 新增独立的 Qwen Image 2.1 图片编辑模型：内置官方 ComfyUI API workflow、Qwen3-VL 8B/新 RGBA VAE/`QwenImage21Cache` 依赖扫描、最多 10 个参考槽位、独立 `<imageN>` Prompt Pack 和 Paint 标注视觉 guide。首期 UI 以 RTX 4090 INT8 + BF16 VAE 的约 1 MP 路径为目标；2K、透明输出和 mask-conditioned inpaint 仍需真实运行验证，2511 保持原 ID 与执行路径不变。
+- 新增独立的 Qwen Image 2.1 Uncensored GGUF 变体：默认 Q4_K_M，支持 Q4_0/Q5_K_M/Q6_K，使用内置 `UnetLoaderGGUF` workflow，T2I、最多 10 个参考槽位、比例/分辨率选择和 Paint guide 与官方 2.1 路径一致；共用维护版 `ComfyUI-GGUF` 节点依赖，Q8_0 暂不登记，实际 4090 smoke 待完成。
+- 图片模型排序统一由 catalog capability order 驱动；Qwen Image 2.1 作为当前最强图片编辑路线置于 Create 选择器和 Settings 管理列表首位。
+- 将当前 ComfyUI 推荐基线从 `0.35.0` 调整为 `0.37.0`；最低兼容版本、旧任务/工作流迁移规则和历史验证记录保持不变。`0.37.0` 是推荐更新提示，不作为所有路径的硬性入队下限。
+- 统一节点设置页的版本策略与紧凑展示；MMH3 Ultimate Upscale 改为 catalog 固定 revision 管理，已应用兼容补丁且固定提交未变化时不再重复触发更新或克隆。
 - 新增默认关闭的显存压力卡死 Watchdog：在 claim 时冻结 0/5/10/15 分钟策略，仅对应用管理的本地 ComfyUI 队列任务组合生产性进展、共享显存/主机内存压力与遥测质量判定；触发后复用现有 task ID、执行快照和 `automaticRetryAttempt` 精确重启并有界重试，远程或外部运行时 fail open。
 
 ## 0.63.2 — 2026-09-20

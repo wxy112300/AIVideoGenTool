@@ -3,6 +3,7 @@ export * from "./image-workflow/node-requirements.js";
 export * from "./image-workflow/capabilities.js";
 export * from "./image-workflow/shared.js";
 export * from "./image-workflow/qwen.js";
+export * from "./image-workflow/qwen-image-2-1.js";
 export * from "./image-workflow/flux2-klein.js";
 export * from "./image-workflow/z-image.js";
 export * from "./image-workflow/hidream-o1.js";

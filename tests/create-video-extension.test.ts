@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { createClearedDraft } from "../src/core/draft-defaults";
 import { createTranslator } from "../src/core/i18n";
 import { mountVideoExtensionController } from "../src/renderer/pages/create/video-extension-controller";
 import { continuumDependencyFilesFor } from "../src/renderer/pages/create/view-model";
@@ -218,6 +219,40 @@ describe("Continuum dependency file projection", () => {
 });
 
 describe("Continuum artifact controls", () => {
+  it("clears all AV and Continuum references from the Extend draft", () => {
+    const current = {
+      ...createDefaultState().draft,
+      inputMode: "video" as const,
+      h3ContextLatentPath: "C:/history/motion.safetensors",
+      h3MotionContextAsset: { assetId: "motion-owner" },
+      h3ContinuumArtifactPath: "C:/history/native-av.safetensors",
+      h3ContinuumArtifact: { artifactId: "native-av" },
+      h3ContinuumMode: "managed" as const,
+      h3ContinuumSequence: { sequenceId: "sequence-1" },
+      h3ContinuumReviewAction: "Continue / Next" as const,
+      h3ContinuumRerollFromChunk: 2,
+      h3ContinuumTakeGroup: 1,
+      h3ContinuumTakeRevisionId: "revision-1",
+      h3ContinuumTakeAction: "Use This Take" as const
+    } as never;
+
+    const cleared = createClearedDraft(current);
+
+    expect(cleared).toMatchObject({
+      h3ContextLatentPath: undefined,
+      h3MotionContextAsset: undefined,
+      h3ContinuumArtifactPath: undefined,
+      h3ContinuumArtifact: undefined,
+      h3ContinuumMode: undefined,
+      h3ContinuumSequence: undefined,
+      h3ContinuumReviewAction: undefined,
+      h3ContinuumRerollFromChunk: undefined,
+      h3ContinuumTakeGroup: undefined,
+      h3ContinuumTakeRevisionId: undefined,
+      h3ContinuumTakeAction: undefined
+    });
+  });
+
   it("clears both the AV path and bound manifest artifact", () => {
     const harness = createVideoHarness("minimax_h3_continuum", 10);
     harness.state.draft.h3ContinuumArtifactPath = "C:/history/source.safetensors";

@@ -142,6 +142,36 @@ export async function readComfyGitRevision(
   }
 }
 
+/** Return the committer date for the checked-out package head when Git is available. */
+export async function readComfyGitCommitDate(sourceDirectory: string): Promise<string> {
+  if (!sourceDirectory || !(await exists(path.join(sourceDirectory, ".git")))) {
+    return "";
+  }
+  try {
+    const git = await findExecutable("git.exe");
+    if (!git) return "";
+    const safeDirectory = path.resolve(sourceDirectory).replaceAll("\\", "/");
+    const { stdout } = await execFileAsync(
+      git,
+      [
+        "-c",
+        `safe.directory=${safeDirectory}`,
+        "-C",
+        sourceDirectory,
+        "log",
+        "-1",
+        "--format=%cs",
+        "HEAD"
+      ],
+      { encoding: "utf8", timeout: 5000, windowsHide: true }
+    );
+    const date = stdout.trim();
+    return /^\d{4}-\d{2}-\d{2}$/u.test(date) ? date : "";
+  } catch {
+    return "";
+  }
+}
+
 async function isComfyRoot(directory: string): Promise<boolean> {
   if (!(await exists(directory))) return false;
   return (

@@ -40,6 +40,17 @@ export function createClearedDraft(current: Draft): Draft {
     trimEndSeconds: 0,
     sourceAssetId: undefined,
     sourceVersionId: undefined,
+    h3ContextLatentPath: undefined,
+    h3MotionContextAsset: undefined,
+    h3ContinuumArtifactPath: undefined,
+    h3ContinuumArtifact: undefined,
+    h3ContinuumMode: undefined,
+    h3ContinuumSequence: undefined,
+    h3ContinuumReviewAction: undefined,
+    h3ContinuumRerollFromChunk: undefined,
+    h3ContinuumTakeGroup: undefined,
+    h3ContinuumTakeRevisionId: undefined,
+    h3ContinuumTakeAction: undefined,
     promptVersions: [
       {
         id: crypto.randomUUID(),

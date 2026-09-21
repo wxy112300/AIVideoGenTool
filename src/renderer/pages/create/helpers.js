@@ -2,7 +2,7 @@ import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { continuumSampledFrameCountForSeconds, continuumV38SampledFrameCountForSeconds, extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCountForTask, h3ContinuumManagedWorkflowPathForInput, h3ContinuumModeForSource, h3ContinuumWorkflowPathForInput, isMiniMaxH3BoundaryExtensionModel, isMiniMaxH3ContinuumModel, isMiniMaxH3ContinuumManagedWorkflow, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputFrameCountForTask } from "../../../core/workflow";
-import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
+import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { uiKeys } from "../../../core/i18n-keys";
 import { countPromptWords, h3PromptWordRange } from "../../../core/prompt-count";
@@ -47,7 +47,7 @@ export function activeImagePrompt(draft, locale = "zh-CN") {
     return draft.promptVersions[draft.activePromptVersion] ??
         draft.promptVersions.at(-1) ?? {
         id: "image-prompt-fallback",
-        label: qwenImagePromptPackFor(locale).ui.t("originalVersion"),
+        label: imagePromptPackForTarget(locale, draft.modelId).ui.t("originalVersion"),
         text: "",
         createdAt: new Date().toISOString()
     };

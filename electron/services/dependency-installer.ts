@@ -642,9 +642,7 @@ async function installCustomNodePackageUnlocked(
                 commandEnvironment
               );
             if (appPatchOnly) {
-              const upstreamUnchanged = definition.id === DLSS5_NODE_ID ||
-                definition.id === AETHERSCALE_NODE_ID ||
-                definition.id === KONOHAMARU_NODE_ID
+              const upstreamUnchanged = definition.installRevision
                 ? pinnedRevisionMatches
                 : await h3PromptWriterUpstreamUnchanged(
                     targetDirectory,
@@ -655,12 +653,22 @@ async function installCustomNodePackageUnlocked(
               if (upstreamUnchanged === true) {
                 reuseAppPatchedRepository = true;
                 report(
-                  "检测到的修改仅是本程序兼容层，且上游没有新提交；保留当前目录，不重复克隆"
+                  definition.installRevision
+                    ? "检测到的修改仅是本程序兼容层，且 catalog 固定 revision 仍匹配；保留当前目录，不重复克隆"
+                    : "检测到的修改仅是本程序兼容层，且上游没有新提交；保留当前目录，不重复克隆"
                 );
               } else if (upstreamUnchanged === false) {
-                report("检测到 H3 Prompt Writer 上游有新提交，将备份旧目录并安装新副本");
+                report(
+                  definition.installRevision
+                    ? "检测到节点 revision 已偏离 catalog pin，将备份旧目录并安装固定版本"
+                    : "检测到 H3 Prompt Writer 上游有新提交，将备份旧目录并安装新副本"
+                );
               } else {
-                report("无法确认 H3 Prompt Writer 上游提交；为安全起见，将备份旧目录后更新");
+                report(
+                  definition.installRevision
+                    ? "无法确认节点 catalog pin；为安全起见，将备份旧目录后安装固定版本"
+                    : "无法确认 H3 Prompt Writer 上游提交；为安全起见，将备份旧目录后更新"
+                );
               }
             } else {
               report(
@@ -786,8 +794,9 @@ async function installCustomNodePackageUnlocked(
         );
       } else if (reuseAppPatchedRepository) {
         // The directory already contains the exact app-managed compatibility
-        // patch and the remote HEAD is unchanged. Continue with the normal
-        // dependency/runtime checks below without creating another backup.
+        // patch and either matches its catalog pin or has an unchanged remote
+        // HEAD. Continue with the normal dependency/runtime checks below
+        // without creating another backup.
       } else if (
         definition.installRevision &&
         isGitDirectory &&

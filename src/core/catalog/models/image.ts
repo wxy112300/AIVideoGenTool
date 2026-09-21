@@ -6,6 +6,8 @@ import {
   minimaxH3ImageI2IRequiredNodeTypes,
   minimaxH3ReferenceEditRequiredNodeTypes,
   omnigen2RequiredNodeTypes,
+  qwenImage21GgufRequiredNodeTypes,
+  qwenImage21RequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511CropStitchRequiredNodeTypes,
   zImageRequiredNodeTypes,
@@ -177,6 +179,24 @@ export const imageModelEntries: CatalogModelEntry[] = [
       component("Z-Image AE VAE", "vae/ae.safetensors", /vae[\\/]ae\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors", "vae", "ae.safetensors"))
     ] }
   }, { name: "Z-Image · 原生生成/图生图", badge: "30–40 步 · T2I + img2img", description: "Z-Image 原生高质量路径；没有参考图时文生图，有参考图时按单图 img2img，带 Mask 时走原生 VAE Inpaint。" }, { name: "Z-Image · native generation/img2img", badge: "30–40 steps · T2I + img2img", description: "Native high-quality Z-Image path. Text-only prompts use T2I; one reference uses img2img, with optional native VAE inpainting." }, { name: "Z-Image · 原生生成／圖生圖", badge: "30–40 步 · T2I + img2img", description: "Z-Image 原生高品質路徑；沒有參考圖時文生圖，有參考圖時按單圖 img2img，帶 Mask 時走原生 VAE Inpaint。" }),
+  entry({
+    id: "qwen-image-2-1", family: "qwen-image", category: "image", adapterId: "qwen-image-2-1", promptPackId: "qwen-image-2-1", order: 1000, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 10 },
+    scan: { managedBy: "comfyui", vram: "INT8 ConvRot + BF16 VAE · RTX 4090 24GB 目标 · 首期 1 MP，2K 待 smoke", integrated: true, runtimeNodeTypes: qwenImage21RequiredNodeTypes, components: [
+      component("Qwen Image 2.1 扩散模型", "diffusion_models/qwen_image_2.1_{bf16|int8_convrot}.safetensors", /diffusion_models[\\/]qwen_image_2\.1_(?:bf16|int8_convrot)\.safetensors$/i, guide("Comfy-Org / Qwen-Image-2.1", "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors", "diffusion_models", "qwen_image_2.1_int8_convrot.safetensors", "4090 优先使用官方 INT8 ConvRot；BF16 变体保留为可选精度路线。")),
+      component("Qwen3-VL 8B 文本编码器", "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors", /text_encoders[\\/]qwen3vl_8b_(?:bf16|int8_convrot)\.safetensors$/i, guide("Comfy-Org / Qwen-Image-2.1", "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors", "text_encoders", "qwen3vl_8b_int8_convrot.safetensors", "与 2.1 扩散模型配套的 Qwen3-VL 8B；4090 优先使用 INT8 ConvRot。")),
+      component("Qwen Image 2.1 VAE", "vae/qwen_image_2.1_vae_bf16.safetensors", /vae[\\/]qwen_image_2\.1_vae_bf16\.safetensors$/i, guide("Comfy-Org / Qwen-Image-2.1", "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors", "vae", "qwen_image_2.1_vae_bf16.safetensors"))
+    ] }
+  }, { name: "Qwen Image 2.1 · 官方文生图/图片编辑", badge: "原生 · T2I + 最多 10 图 · 25/40 步", description: "Qwen Image 2.1 官方 ComfyUI 统一路径：无参考图时走原生 T2I，有参考图时走最多 10 个图像输入的编辑路径；Paint 标注作为额外视觉引导，不是 Mask-conditioned inpaint。" }, { name: "Qwen Image 2.1 · official T2I/editing", badge: "Native · T2I + up to 10 images · 25/40 steps", description: "Unified official ComfyUI path for Qwen Image 2.1: text-only prompts use native T2I, while supplied images use the edit path with up to 10 image inputs. Paint annotations are visual guides, not mask-conditioned inpainting." }, { name: "Qwen Image 2.1 · 官方文生圖/圖片編輯", badge: "原生 · T2I + 最多 10 圖 · 25/40 步", description: "Qwen Image 2.1 官方 ComfyUI 統一路徑：無參考圖時走原生 T2I，有參考圖時走最多 10 個圖像輸入的編輯路徑；Paint 標註是額外視覺引導，不是 Mask-conditioned inpaint。" }),
+  entry({
+    id: "qwen-image-2-1-uncensored-gguf", family: "qwen-image", category: "image", adapterId: "qwen-image-2-1-uncensored-gguf", promptPackId: "qwen-image-2-1", order: 995, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 10 },
+    scan: { managedBy: "comfyui", vram: "Q4_K_M/Q5_K_M/Q6_K GGUF + Qwen3-VL 8B · RTX 4090 24GB 目标 · Q4_K_M 默认", integrated: true, requiredCustomNodeIds: ["comfyui-gguf"], runtimeNodeTypes: qwenImage21GgufRequiredNodeTypes, components: [
+      component("Qwen Image 2.1 Uncensored GGUF 扩散模型", "unet/qwen-image-2.1-{Q4_0|Q4_K_M|Q5_K_M|Q6_K}.gguf", /(?:^|[\\/])unet[\\/]qwen-image-2\.1-(?:Q4_0|Q4_K_M|Q5_K_M|Q6_K)\.gguf$/i, guide("abenzerps / Qwen-Image-2.1-Uncensored-GGUF", "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF/resolve/main/qwen-image-2.1-Q4_K_M.gguf?download=true", "unet", "qwen-image-2.1-Q4_K_M.gguf", "4090 优先使用 Q4_K_M；Q5_K_M/Q6_K 可按显存和质量取舍。当前不登记 Q8_0：模型卡注明现阶段在 ComfyUI 采样存在 tensor shape mismatch。")),
+      component("Qwen3-VL 8B 文本编码器", "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors", /text_encoders[\\/]qwen3vl_8b_(?:bf16|int8_convrot)\.safetensors$/i, guide("abenzerps / Qwen-Image-2.1-Uncensored-GGUF", "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors?download=true", "text_encoders", "qwen3vl_8b_int8_convrot.safetensors", "与官方 Qwen Image 2.1 相同的 Qwen3-VL 8B 文本编码器；INT8 ConvRot 更适合 4090 的系统内存/显存平衡。")),
+      component("Qwen Image 2.1 VAE", "vae/qwen_image_2.1_vae_bf16.safetensors", /vae[\\/]qwen_image_2\.1_vae_bf16\.safetensors$/i, guide("abenzerps / Qwen-Image-2.1-Uncensored-GGUF", "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors?download=true", "vae", "qwen_image_2.1_vae_bf16.safetensors"))
+    ] }
+  }, { name: "Qwen Image 2.1 · Uncensored GGUF", badge: "GGUF · Q4_K_M 默认 · T2I + 最多 10 图", description: "Qwen Image 2.1 的独立 GGUF 量化路径：无参考图走 T2I，有参考图复用官方多图编辑与 Paint 引导；需要维护版 ComfyUI-GGUF，模型卡当前不建议 Q8_0。" }, { name: "Qwen Image 2.1 · Uncensored GGUF", badge: "GGUF · Q4_K_M default · T2I + up to 10 images", description: "Independent GGUF quantized path for Qwen Image 2.1: text-only prompts use T2I, while references reuse the official multi-image edit and Paint guidance path. Requires the maintained ComfyUI-GGUF package; Q8_0 is currently excluded per the model card." }, { name: "Qwen Image 2.1 · Uncensored GGUF", badge: "GGUF · Q4_K_M 預設 · T2I + 最多 10 圖", description: "Qwen Image 2.1 的獨立 GGUF 量化路徑：無參考圖走 T2I，有參考圖復用官方多圖編輯與 Paint 引導；需要維護版 ComfyUI-GGUF，模型卡目前不建議 Q8_0。" }),
   entry({
     id: "qwen-image-edit-2511", family: "qwen-image-edit", category: "image", adapterId: "qwen-image-edit-2511", promptPackId: "qwen-image-edit", order: 500, inputModes: ["image"],
     capabilities: { maxReferenceImages: 3, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },

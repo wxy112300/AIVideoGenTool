@@ -48,7 +48,7 @@ import { modelCatalog } from "../../../core/catalog";
 import { shouldEnableSpectrumByDefault } from "../../../core/video-policy";
 import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { bundledWorkflowModelId } from "../../../core/video-loras";
-import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
+import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
 import { videoLoraInfoButton } from "../../shared/markup";
@@ -198,7 +198,7 @@ export function createCreateWorkspaceCoordinator(
       return h3PromptPackFor(getState().settings.uiLocale).referenceRoleLabels;
     },
     get imageReferenceRoleLabels() {
-      return qwenImagePromptPackFor(getState().settings.uiLocale).referenceRoleLabels;
+      return imagePromptPackForTarget(getState().settings.uiLocale, getState().imageDraft.modelId).referenceRoleLabels;
     },
     videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText, getState().settings.uiLocale),
     videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText)
@@ -984,7 +984,7 @@ export function createCreateWorkspaceCoordinator(
         addImagePicture,
         editImagePictureMarkup,
         imageFileIsSupported,
-        imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(getState().settings.uiLocale).referenceRoleLabels[role],
+        imageReferenceRoleLabel: (role) => imagePromptPackForTarget(getState().settings.uiLocale, getState().imageDraft.modelId).referenceRoleLabels[role],
         imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
         resizePromptInput,
         updateImagePromptWordCounter,

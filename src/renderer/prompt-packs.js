@@ -18,6 +18,11 @@ export function h3PromptPackFor(locale = "zh-CN") {
 export function qwenImagePromptPackFor(locale = "zh-CN") {
     return loadedPromptPacks().qwenImagePromptPackFor(locale);
 }
+export function imagePromptPackForTarget(locale = "zh-CN", modelId) {
+    return modelId === "qwen-image-2-1" || modelId === "qwen-image-2-1-uncensored-gguf"
+        ? loadedPromptPacks().qwenImage21PromptPackFor(locale)
+        : loadedPromptPacks().qwenImagePromptPackFor(locale);
+}
 export function h3PromptPresetForMode(mode, requestedPreset = "official-storyboard") {
     return loadedPromptPacks().h3PromptPresetForMode(mode, requestedPreset);
 }

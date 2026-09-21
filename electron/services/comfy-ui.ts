@@ -1382,7 +1382,14 @@ export function assertImageWorkflowRuntimeCompatible(
   for (const node of Object.values(workflow)) {
     const supported = objectInfoInputNames(objectInfo[node.class_type]);
     if (!supported) continue;
-    const unknownInputs = Object.keys(node.inputs).filter((name) => !supported.has(name));
+    const unknownInputs = Object.keys(node.inputs).filter((name) => {
+      if (supported.has(name)) return false;
+      // ComfyUI's autogrow inputs are submitted as dotted API keys such as
+      // `images.image_1`, while /object_info exposes the dynamic input group
+      // under its base name (`images`).
+      const separator = name.indexOf(".");
+      return separator < 0 || !supported.has(name.slice(0, separator));
+    });
     if (unknownInputs.length) incompatibleInputs.push(`${node.class_type} 缺少输入 ${unknownInputs.join("/")}`);
   }
   if (incompatibleInputs.length) {

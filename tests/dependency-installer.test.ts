@@ -34,7 +34,10 @@ import {
   multimodalPromptSupportsAdaptiveGeneration
 } from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
-import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog";
+import {
+  H3_AV_SERIALIZER_REVISION,
+  H3_ULTIMATE_UPSCALE_REVISION
+} from "../src/core/catalog";
 
 function multimodalVisionNodeFixture(): string {
   return [
@@ -929,6 +932,78 @@ describe("dependency installer", () => {
     expect(result.log).toContain(`节点 revision 已校验：${pinnedRevision}`);
   });
 
+  it("reuses a patched MMH3 checkout when its catalog pin still matches", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-mmh3-patched-current-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "Comfyui-MMH3-UltimateUpscale"
+    );
+    const baseline = `def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
+    callback = latent_preview.prepare_callback(guider.model_patcher, sigmas.shape[-1] - 1, x0_output)
+    samples = guider.sample(
+        noise.generate_noise(latent), latent_image, sampler, sigmas,
+    )
+    samples = samples.to(comfy.model_management.intermediate_device())
+
+def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=None, inpaint=None):
+                out = sample_piece(piece, cond_tile, model, noise, sampler, sigmas, negative, cfg)
+
+        segments_debug = []
+        tiles_debug = []
+
+                    fun_control=fun_control, inpaint=inpaint_param,
+                )
+                out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
+
+            # 3. pin frame-0 keyframe to the previous chunk's re-sampled frame
+            if i > 0 and acc_v is not None:
+                cond_i = anchor_conditioning(cond_i, acc_v, f0, anchor_strength)`;
+    await fs.mkdir(path.join(targetDirectory, ".git"), { recursive: true });
+    await fs.mkdir(path.join(targetDirectory, "nodes"), { recursive: true });
+    await fs.writeFile(
+      path.join(targetDirectory, "nodes", "nodes.py"),
+      patchMmh3UltimateUpscaleSource(baseline),
+      "utf8"
+    );
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args.includes("remote")) {
+          return "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git";
+        }
+        if (args.includes("rev-parse")) return H3_ULTIMATE_UPSCALE_REVISION;
+        if (args.includes("status")) return " M nodes/nodes.py\n";
+        if (args.includes("show")) return baseline;
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "mmh3-ultimate-upscale",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
+    expect(processCalls.some((args) => args[0] === "clone")).toBe(false);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
+    expect(processCalls.some((args) => args.includes("ls-remote"))).toBe(false);
+    expect(result.log).toContain("catalog 固定 revision 仍匹配；保留当前目录");
+    expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
+  });
+
   it.each([
     ["comfyui-dlss5", "ComfyUI DLSS5"],
     ["comfyui-aetherscale", "ComfyUI AetherScale"]
@@ -1506,7 +1581,7 @@ describe("dependency installer", () => {
       .toContain("H3UnetLoaderGGUFAdvanced");
   });
 
-  it("restores the shared city96 GGUF package after an older H3 migration", async () => {
+  it("restores the shared maintained GGUF package after an older H3 migration", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-restore-"));
     temporaryDirectories.push(comfyRoot);
     const targetDirectory = path.join(comfyRoot, "custom_nodes", "ComfyUI-GGUF");
@@ -1538,7 +1613,7 @@ describe("dependency installer", () => {
 
     expect(result.ok).toBe(true);
     expect(processCalls.some((args) =>
-      args[0] === "clone" && args.includes("https://github.com/city96/ComfyUI-GGUF.git")
+      args[0] === "clone" && args.includes("https://github.com/leejet/ComfyUI-GGUF.git")
     )).toBe(true);
     expect(await exists(path.join(targetDirectory, "old-molbal.txt"))).toBe(false);
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>

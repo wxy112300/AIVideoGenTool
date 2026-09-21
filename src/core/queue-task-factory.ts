@@ -17,6 +17,7 @@ import {
   imageModelAdapterFor,
   h3ImageRecipeFor,
   h3ImageOutputDimensions,
+  imagePicturesForModelInput,
   imageOutputDimensions,
   normalizeImageAspectRatio,
   normalizeImageTargetResolution
@@ -222,6 +223,7 @@ export function imageTaskFromDraft(
   const id = clock.id();
   const projectId = draft.projectId ?? clock.id();
   const adapter = imageModelAdapterFor(draft.modelId);
+  const pictures = imagePicturesForModelInput(draft.pictures, adapter?.supportsTextOnly === true);
   const outputCount = adapter?.deterministic ? 1 : draft.outputCount;
   const runs: ImageGenerationRun[] = expandImageSeeds(draft.seed, outputCount)
     .map((seed, index) => ({
@@ -230,7 +232,7 @@ export function imageTaskFromDraft(
       seed,
       status: "waiting"
     }));
-  const basePicture = draft.pictures[0];
+  const basePicture = pictures[0];
   const h3ImageRecipe = h3ImageRecipeFor(
     draft.modelId,
     draft.qualityProfile,
@@ -245,7 +247,18 @@ export function imageTaskFromDraft(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0
   );
-  const aspectRatio = isH3Image || adapter?.sourceResolutionOnly
+  // Source-following is the default reference-image policy. Qwen Image 2.1
+  // opts into its official custom canvas path while still using source size
+  // when both selectors remain at "source".
+  const sourceResolutionOnly = Boolean(
+    adapter?.sourceResolutionOnly &&
+    adapter?.supportsCustomOutputSize !== true &&
+    basePicture
+  );
+  const outputAlignmentMultiple = basePicture && adapter?.supportsCustomOutputSize === true
+    ? adapter.customOutputMultiple
+    : 8;
+  const aspectRatio = isH3Image || sourceResolutionOnly
     ? "source" as const
     : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
   const [outputWidth, outputHeight] = isH3Image
@@ -253,10 +266,11 @@ export function imageTaskFromDraft(
     : imageOutputDimensions(
         basePicture?.width ?? 0,
         basePicture?.height ?? 0,
-        adapter?.sourceResolutionOnly ? "source" : targetResolution,
+        sourceResolutionOnly ? "source" : targetResolution,
         adapter?.textOnlyOutputWidth,
         adapter?.textOnlyOutputHeight,
-        aspectRatio
+        aspectRatio,
+        outputAlignmentMultiple
       );
   const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   const defaultH3Options = defaultH3ImageOptionsFor(draft.modelId);
@@ -273,7 +287,7 @@ export function imageTaskFromDraft(
     outputFilename: `${draft.modelId === "lama-inpaint" ? "LaMa" : draft.modelId === "birefnet-background-removal" ? "BiRefNet" : "ImageEdit"}-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
     projectId,
     parentVersionId: draft.parentVersionId,
-    pictures: draft.pictures.map((picture) => ({
+    pictures: pictures.map((picture) => ({
       ...picture,
       ...(picture.crop ? { crop: { ...picture.crop } } : {}),
       ...(picture.markup ? { markup: { ...picture.markup } } : {}),
@@ -286,7 +300,7 @@ export function imageTaskFromDraft(
     outputWidth,
     outputHeight,
     aspectRatio,
-    targetResolution: isH3Image || adapter?.sourceResolutionOnly ? "source" : targetResolution,
+    targetResolution: isH3Image || sourceResolutionOnly ? "source" : targetResolution,
     ...(resolvedDiffusionModelFilename ? { diffusionModelFilename: resolvedDiffusionModelFilename } : {}),
     prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
     promptVersion: promptless ? 1 : draft.activePromptVersion + 1,

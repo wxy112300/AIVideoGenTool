@@ -1,2 +1,3 @@
 export { createDefaultH3PromptPresets, createDefaultH3AutoPromptSeedInstructions, defaultH3PromptPresets, h3LoraPromptInstruction, h3LoraPromptLibrary, h3LoraPromptProfileFor, h3PromptPackFor, h3PromptPresetForMode, h3PromptPresetOrder, promptSnippetFor } from "./h3/index.js";
 export { createDefaultQwenImagePromptPresets, normalizeQwenImageEditPromptOutput, normalizeQwenImagePromptPresets, qwenImageEditPromptContract, qwenImageEditPromptUserContent, qwenImagePromptPackFor } from "./qwen-image-edit/index.js";
+export { createDefaultQwenImage21PromptPresets, normalizeQwenImage21PromptOutput, normalizeQwenImage21PromptPresets, qwenImage21PromptContract, qwenImage21PromptUserContent, qwenImage21PromptPackFor } from "./qwen-image-2-1/index.js";

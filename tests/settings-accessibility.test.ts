@@ -582,7 +582,7 @@ describe("Settings accessibility markup", () => {
     expect(markup).not.toContain('<span class="button-count">1</span>');
   });
 
-  it("renders MMH3 runtime validation evidence in node settings", () => {
+  it("renders unified node versions without internal scan evidence", () => {
     const environmentScan = {
       scannedAt: "2026-09-03T00:00:00.000Z",
       userHome: "C:\\Users\\Test",
@@ -601,6 +601,9 @@ describe("Settings accessibility markup", () => {
         directory: "C:\\ComfyUI\\custom_nodes\\Comfyui-MMH3-UltimateUpscale",
         required: false,
         version: "",
+        versionMode: "pinned",
+        recommendedVersion: "",
+        latestVersion: "",
         detectedRevision: "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
         updateAvailable: false,
         appInstallable: true,
@@ -615,10 +618,75 @@ describe("Settings accessibility markup", () => {
     } as unknown as EnvironmentScanResult;
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+    const versionMarkup = markup.match(/<p class="node-version-line"[\s\S]*?<\/p>/u)?.[0] ?? "";
 
-    expect(markup).toContain("验证依据 · 2026-09-03");
-    expect(markup).toContain("1274.815 seconds");
-    expect(markup).toContain("检查级别：static · object-info · minimal-run");
+    expect(versionMarkup).toContain('class="node-version-line"');
+    expect(versionMarkup).toContain("固定版");
+    expect(versionMarkup).not.toContain("本机");
+    expect(versionMarkup).not.toContain("推荐");
+    expect(versionMarkup).not.toContain("最新");
+    expect(versionMarkup).not.toContain("0.0.6");
+    expect(markup).not.toContain("验证依据");
+    expect(markup).not.toContain("扫描来源");
+    expect(markup).not.toContain("检查级别");
+    expect(markup).not.toContain("d91be5ac41797a3789b4765cdb6eb6d9129a4a4d");
+    expect(markup).not.toContain("1274.815 seconds");
+  });
+
+  it("keeps rolling and pinned node versions compact", () => {
+    const environmentScan = {
+      scannedAt: "2026-09-20T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [{
+        id: "ltx-video",
+        name: "ComfyUI LTXVideo",
+        purpose: "LTX video nodes",
+        repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
+        installed: true,
+        loaded: true,
+        runtimeVerified: true,
+        loadError: "",
+        directory: "C:\\ComfyUI\\custom_nodes\\ComfyUI-LTXVideo",
+        required: false,
+        version: "",
+        versionMode: "rolling",
+        revisionDate: "2026-09-19",
+        recommendedVersion: "",
+        latestVersion: "",
+        updateAvailable: false,
+        appInstallable: true,
+        bulkInstall: true
+      }, {
+        id: "comfyui-dlss-frame-interpolation",
+        name: "ComfyUI DLSS5 Visual Enhancer",
+        purpose: "Pinned DLSS nodes",
+        repositoryUrl: "https://github.com/Konohamaru04/ComfyUI-DLSS-Frame-Interpolation.git",
+        installed: true,
+        loaded: true,
+        runtimeVerified: true,
+        loadError: "",
+        directory: "C:\\ComfyUI\\custom_nodes\\ComfyUI-DLSS-Frame-Interpolation",
+        required: false,
+        version: "",
+        versionMode: "pinned",
+        recommendedVersion: "",
+        latestVersion: "",
+        updateAvailable: false,
+        appInstallable: true,
+        bulkInstall: false
+      }]
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup.match(/class="node-version-line"/g)).toHaveLength(2);
+    expect(markup).toContain("滚动版");
+    expect(markup).toContain("提交日期");
+    expect(markup).toContain("2026-09-19");
+    expect(markup).toContain("固定版");
   });
 
   it("orders node and runtime dependency cards by product priority", () => {

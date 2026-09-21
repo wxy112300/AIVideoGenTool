@@ -1,4 +1,4 @@
-import { applyHistoryBatchTagOperation, historyBatchCommonTags, pruneHistoryBatchSelection, selectHistoryBatchIds, toggleHistoryBatchSelection } from "../../../core/history-batch";
+import { applyHistoryBatchTagOperation, historyBatchCommonTags, pruneHistoryBatchSelection, selectHistoryBatchIds, selectHistoryBatchRange, toggleHistoryBatchSelection } from "../../../core/history-batch";
 import { historyTagNames } from "../../../core/history-filter";
 import { historyAssetsByNewest, imageProjectsByNewest } from "./helpers";
 import { historyTagChipMarkup, mountHistoryTagEditor, openHistoryTagEditor } from "./tags-controller";
@@ -93,19 +93,29 @@ export function mountHistoryBatchController(context, options) {
     const events = new AbortController();
     const signal = events.signal;
     const root = context.root;
+    let selectionAnchorId = null;
+    let pendingCheckboxClick = null;
     const setMode = (enabled) => {
         if (enabled === options.isBatchMode())
             return;
         options.setBatchMode(enabled);
         options.setTagsPanelOpen(false);
         options.setFilterPanelOpen(false);
+        selectionAnchorId = null;
+        pendingCheckboxClick = null;
         if (!enabled)
             options.clearSelection();
         context.reportUserAction("history-batch-mode", { enabled });
         context.requestRender();
     };
-    const toggleSelection = (assetId) => {
-        options.setSelectedIds(toggleHistoryBatchSelection(options.getSelectedIds(), assetId));
+    const selectSelection = (assetId, shiftKey = false) => {
+        const visibleIds = visibleItems(context, options).map((item) => item.id);
+        const nextIds = shiftKey && selectionAnchorId !== null &&
+            visibleIds.includes(selectionAnchorId) && visibleIds.includes(assetId)
+            ? selectHistoryBatchRange(options.getSelectedIds(), visibleIds, selectionAnchorId, assetId)
+            : toggleHistoryBatchSelection(options.getSelectedIds(), assetId);
+        options.setSelectedIds(nextIds);
+        selectionAnchorId = assetId;
         syncSelectionDom(context, options);
     };
     const handleBatchAction = (action) => {
@@ -116,6 +126,8 @@ export function mountHistoryBatchController(context, options) {
         if (action === "select-all") {
             const visible = visibleItems(context, options).map((item) => item.id);
             options.setSelectedIds(selectHistoryBatchIds(options.getSelectedIds(), visible));
+            selectionAnchorId = null;
+            pendingCheckboxClick = null;
             syncSelectionDom(context, options);
             return;
         }
@@ -192,12 +204,16 @@ export function mountHistoryBatchController(context, options) {
         }
         const checkbox = target?.closest("[data-history-batch-select]");
         if (checkbox) {
-            // Let the native checkbox update first; the change handler below owns
-            // the selection state and stops the navigation controller.
+            const assetId = checkbox.dataset.historyBatchSelect;
+            pendingCheckboxClick = assetId ? { assetId, shiftKey: event.shiftKey } : null;
             event.stopImmediatePropagation();
             return;
         }
-        if (target?.closest(".history-batch-checkbox-wrap")) {
+        const checkboxWrap = target?.closest(".history-batch-checkbox-wrap");
+        if (checkboxWrap) {
+            const input = checkboxWrap.querySelector("[data-history-batch-select]");
+            const assetId = input?.dataset.historyBatchSelect;
+            pendingCheckboxClick = assetId ? { assetId, shiftKey: event.shiftKey } : null;
             event.stopImmediatePropagation();
             return;
         }
@@ -208,7 +224,7 @@ export function mountHistoryBatchController(context, options) {
         if (!assetId)
             return;
         stop(event);
-        toggleSelection(assetId);
+        selectSelection(assetId, event.shiftKey);
     }, { capture: true, signal });
     root.addEventListener("change", (event) => {
         if (!options.isBatchMode())
@@ -222,12 +238,19 @@ export function mountHistoryBatchController(context, options) {
         const id = target.dataset.historyBatchSelect;
         if (!id)
             return;
+        const pending = pendingCheckboxClick?.assetId === id ? pendingCheckboxClick : null;
+        pendingCheckboxClick = null;
+        if (pending?.shiftKey) {
+            selectSelection(id, true);
+            return;
+        }
         const selected = new Set(options.getSelectedIds());
         if (target.checked)
             selected.add(id);
         else
             selected.delete(id);
         options.setSelectedIds([...selected]);
+        selectionAnchorId = id;
         syncSelectionDom(context, options);
     }, { capture: true, signal });
     root.addEventListener("keydown", (event) => {
@@ -241,7 +264,7 @@ export function mountHistoryBatchController(context, options) {
             stop(event);
             const assetId = card.dataset.openHistory ?? card.dataset.openImageHistory;
             if (assetId)
-                toggleSelection(assetId);
+                selectSelection(assetId, event.shiftKey);
         }
         else if (event.key === " " || event.key === "Spacebar") {
             event.preventDefault();
@@ -258,7 +281,7 @@ export function mountHistoryBatchController(context, options) {
         stop(event);
         const assetId = card.dataset.openHistory ?? card.dataset.openImageHistory;
         if (assetId)
-            toggleSelection(assetId);
+            selectSelection(assetId, event.shiftKey);
     }, { capture: true, signal });
     const tagsRoot = root.querySelector("[data-history-batch-tags-root]");
     const closeTagsPanel = () => {

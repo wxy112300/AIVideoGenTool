@@ -11,6 +11,11 @@ import {
   imageEditPromptUserContentForTarget,
   qwenImageEditEnhancerContract
 } from "../src/core/image-prompt.js";
+import {
+  createDefaultQwenImage21PromptPresets,
+  qwenImage21PromptContract,
+  qwenImage21PromptUserContent
+} from "../src/core/prompts/qwen-image-2-1/index.js";
 
 describe("Qwen Image Edit prompt contract", () => {
   it("provides English faithful and detail-enhance rules", () => {
@@ -59,6 +64,50 @@ describe("Qwen Image Edit prompt contract", () => {
     expect(qwenImageEditEnhancerContract("faithful", "CUSTOM RULE")).toBe(
       qwenImageEditPromptContract("faithful", "CUSTOM RULE")
     );
+  });
+
+  it("uses a separate Qwen Image 2.1 prompt contract with official image tokens", () => {
+    const presets = createDefaultQwenImage21PromptPresets();
+    const contract = qwenImage21PromptContract("detail-enhance", presets["detail-enhance"]);
+    const content = qwenImage21PromptUserContent({
+      prompt: "把 Picture 2 的衣服放到 Picture 1 的人物上。",
+      modelId: "qwen-image-2-1",
+      imageTargetModelId: "qwen-image-2-1",
+      mode: "image-edit",
+      referenceContext: "Picture 1 = person\nPicture 2 = clothing"
+    });
+
+    expect(contract).toContain("Qwen Image 2.1");
+    expect(contract).toContain("<image1>");
+    expect(contract).toContain("Paint annotation image as location-only guidance");
+    expect(contract).not.toContain("negative_prompt:");
+    expect(content).toContain("Qwen Image 2.1 edit contract");
+    expect(content).toContain("<image1>");
+    expect(imageEditPromptContractForTarget("qwen-image-2-1", "faithful")).toContain("Qwen Image 2.1");
+    expect(imageEditPromptContractForTarget("qwen-image-2-1-uncensored-gguf", "faithful")).toContain("Qwen Image 2.1");
+    expect(imageEditPromptUserContentForTarget({
+      prompt: "把 Picture 1 的天空改成傍晚。",
+      modelId: "qwen2.5-vl",
+      imageTargetModelId: "qwen-image-2-1",
+      mode: "image-edit",
+      imagePaths: ["source.png"],
+      referenceContext: "Picture 1 = source image"
+    })).toContain("Qwen Image 2.1 edit contract");
+  });
+
+  it("keeps the Qwen Image 2.1 prompt enhancer in T2I mode without references", () => {
+    const content = qwenImage21PromptUserContent({
+      prompt: "一只戴红色围巾的橘猫坐在窗边。",
+      modelId: "qwen-image-2-1",
+      imageTargetModelId: "qwen-image-2-1",
+      mode: "image-edit"
+    });
+
+    expect(content).toContain("Qwen Image 2.1 T2I contract");
+    expect(content).toContain("No reference image is supplied");
+    expect(content).toContain("Do not add <image1>");
+    expect(content).not.toContain("Reference map:");
+    expect(content).toContain("final English image-generation prompt");
   });
 
   it("selects a Z-Image-specific contract without changing the Qwen default", () => {

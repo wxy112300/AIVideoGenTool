@@ -7,6 +7,8 @@ import {
   omnigen2Capability,
   minimaxH3ImageI2ICapability,
   minimaxH3ReferenceEditCapability,
+  qwenImage21Capability,
+  qwenImage21UncensoredGgufCapability,
   qwenImageEdit2511Capability,
   qwenImageEdit2511CropStitchCapability,
   zImageCapability,
@@ -21,6 +23,15 @@ import {
   validateQwenImageEdit2511Workflow,
   validateQwenImageEdit2511CropStitchWorkflow
 } from "./qwen.js";
+import {
+  buildQwenImage21Workflow,
+  buildQwenImage21GgufWorkflow,
+  compileQwenImage21Prompt,
+  validateQwenImage21GgufRuntimeSchema,
+  validateQwenImage21GgufWorkflow,
+  validateQwenImage21RuntimeSchema,
+  validateQwenImage21Workflow
+} from "./qwen-image-2-1.js";
 import {
   compileFlux2Klein4bPrompt,
   buildFlux2Klein4bWorkflow,
@@ -68,6 +79,24 @@ export const qwenImageEdit2511Adapter: ImageModelAdapter = {
   compilePrompt: compileQwenImageEditPrompt,
   buildWorkflow: buildQwenImageEdit2511Workflow,
   validateWorkflow: validateQwenImageEdit2511Workflow,
+  parseOutputs
+};
+
+export const qwenImage21Adapter: ImageModelAdapter = {
+  ...qwenImage21Capability,
+  compilePrompt: compileQwenImage21Prompt,
+  buildWorkflow: buildQwenImage21Workflow,
+  validateWorkflow: validateQwenImage21Workflow,
+  validateRuntimeSchema: validateQwenImage21RuntimeSchema,
+  parseOutputs
+};
+
+export const qwenImage21UncensoredGgufAdapter: ImageModelAdapter = {
+  ...qwenImage21UncensoredGgufCapability,
+  compilePrompt: compileQwenImage21Prompt,
+  buildWorkflow: buildQwenImage21GgufWorkflow,
+  validateWorkflow: validateQwenImage21GgufWorkflow,
+  validateRuntimeSchema: validateQwenImage21GgufRuntimeSchema,
   parseOutputs
 };
 
@@ -155,6 +184,8 @@ export const minimaxH3ReferenceEditAdapter: ImageModelAdapter = {
 
 export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
+  [qwenImage21Adapter.id]: qwenImage21Adapter,
+  [qwenImage21UncensoredGgufAdapter.id]: qwenImage21UncensoredGgufAdapter,
   [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
   [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,
   [zImageAdapter.id]: zImageAdapter,

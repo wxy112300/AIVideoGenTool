@@ -29,6 +29,7 @@ describe("model catalog", () => {
       .toBe("MiniMax H3 FL2VA · start / end frame");
     expect(modelCatalog.get("minimax_h3_fl2va")?.definition.promptPackId).toBe("h3");
     expect(modelCatalog.get("qwen-image-edit-2511")?.definition.promptPackId).toBe("qwen-image-edit");
+    expect(modelCatalog.get("qwen-image-2-1")?.definition.promptPackId).toBe("qwen-image-2-1");
   });
 
   it("removes severely outdated LoRA IDs from the active catalog", () => {
@@ -53,6 +54,8 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(10);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "qwen-image-2-1",
+      "qwen-image-2-1-uncensored-gguf",
       "minimax-h3-image-i2i",
       "minimax-h3-reference-edit",
       "omnigen2",
@@ -97,6 +100,45 @@ describe("model catalog", () => {
       .toEqual(["local-video-studio-h3-av", "inpaint-cropandstitch"]);
     expect(modelCatalog.get("qwen-image-edit-2511")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["local-video-studio-h3-av"]);
+    expect(modelCatalog.get("qwen-image-2-1")?.definition).toMatchObject({
+      adapterId: "qwen-image-2-1",
+      capabilities: { maxReferenceImages: 10 }
+    });
+    expect(modelCatalog.get("qwen-image-2-1")?.definition.scan).toMatchObject({
+      runtimeNodeTypes: expect.arrayContaining([
+        "TextEncodeQwenImage21",
+        "QwenImage21Cache",
+        "ComfySwitchNode"
+      ])
+    });
+    expect(modelCatalog.get("qwen-image-2-1")?.definition.scan?.requiredCustomNodeIds)
+      .toBeUndefined();
+    expect(modelCatalog.get("qwen-image-2-1")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/qwen_image_2.1_{bf16|int8_convrot}.safetensors",
+        "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
+        "vae/qwen_image_2.1_vae_bf16.safetensors"
+      ]);
+    expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf")?.definition).toMatchObject({
+      adapterId: "qwen-image-2-1-uncensored-gguf",
+      promptPackId: "qwen-image-2-1",
+      capabilities: { maxReferenceImages: 10 }
+    });
+    expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf")?.definition.scan).toMatchObject({
+      requiredCustomNodeIds: ["comfyui-gguf"],
+      runtimeNodeTypes: expect.arrayContaining([
+        "UnetLoaderGGUF",
+        "TextEncodeQwenImage21",
+        "QwenImage21Cache",
+        "ComfySwitchNode"
+      ])
+    });
+    expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "unet/qwen-image-2.1-{Q4_0|Q4_K_M|Q5_K_M|Q6_K}.gguf",
+        "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
+        "vae/qwen_image_2.1_vae_bf16.safetensors"
+      ]);
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
     expect(modelCatalog.get("minimax-h3-image-i2i")?.definition).toMatchObject({
@@ -162,6 +204,21 @@ describe("model catalog", () => {
       .toEqual(expect.arrayContaining(["ReferenceLatent", "DualCFGGuider", "SamplerCustomAdvanced"]));
     expect(modelCatalog.get("omnigen2")?.definition.scan?.components[0]?.installGuide?.downloadUrl)
       .toContain("Omnigen2_ComfyUI_repackaged");
+  });
+
+  it("keeps the strongest image model first for catalog consumers", () => {
+    expect(modelCatalog.list("image")[0]?.definition.id).toBe("qwen-image-2-1");
+    expect(sortProfilesByCatalogOrder([
+      { id: "qwen-image-edit-2511" },
+      { id: "minimax-h3-image-i2i" },
+      { id: "qwen-image-2-1-uncensored-gguf" },
+      { id: "qwen-image-2-1" }
+    ], modelCatalog, "image").map((profile) => profile.id)).toEqual([
+      "qwen-image-2-1",
+      "qwen-image-2-1-uncensored-gguf",
+      "minimax-h3-image-i2i",
+      "qwen-image-edit-2511"
+    ]);
   });
 
   it("sorts scanned image profiles by catalog capability order", () => {

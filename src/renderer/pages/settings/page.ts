@@ -815,13 +815,36 @@ export function renderSettingsPage(
     const installBlocked = cardState.installBlocked;
     const primaryOperation = cardState.primaryOperation;
     const manualOnly = node.appInstallable === false;
-    const localVersion = node.version
-      ? `v${escape(node.version)}`
-      : node.detectedRevision
-        ? `commit ${escape(node.detectedRevision)}`
-        : node.installed
-          ? s("nodes.versionUnread")
-          : s("nodes.notInstalled");
+    const versionMode = node.versionMode ?? "release";
+    const versionFallback = versionMode === "rolling"
+      ? s("nodes.rollingVersion")
+      : versionMode === "pinned"
+        ? s("nodes.pinnedVersion")
+        : s("nodes.versionUnavailable");
+    const renderVersion = (value: string, fallback: string) =>
+      value ? `v${escape(value)}` : escape(fallback);
+    const localVersion = renderVersion(
+      node.version,
+      node.installed
+        ? versionMode === "release" ? s("nodes.versionUnread") : versionFallback
+        : s("nodes.notInstalled")
+    );
+    const versionSummaryMarkup = versionMode === "release"
+      ? (() => {
+          const recommendedVersion = renderVersion(node.recommendedVersion, versionFallback);
+          const latestVersion = renderVersion(node.latestVersion, versionFallback);
+          return `<p class="node-version-line" aria-label="${escape(s("nodes.versionSummary"))}">
+            <span class="node-version-item"><span class="node-version-label">${s("nodes.localVersion")}</span><strong class="node-version-value">${localVersion}</strong></span>
+            <span class="node-version-separator" aria-hidden="true">·</span>
+            <span class="node-version-item"><span class="node-version-label">${s("nodes.recommendedVersion")}</span><strong class="node-version-value">${recommendedVersion}</strong></span>
+            <span class="node-version-separator" aria-hidden="true">·</span>
+            <span class="node-version-item"><span class="node-version-label">${s("nodes.latestVersion")}</span><strong class="node-version-value">${latestVersion}</strong></span>
+          </p>`;
+        })()
+      : `<p class="node-version-line" aria-label="${escape(s("nodes.versionSummary"))}">
+          <span class="node-version-item"><span class="node-version-label">${s("nodes.versionLabel")}</span><strong class="node-version-value">${versionFallback}</strong></span>
+          ${versionMode === "rolling" && node.revisionDate ? `<span class="node-version-separator" aria-hidden="true">·</span><span class="node-version-item"><span class="node-version-label">${s("nodes.commitDate")}</span><strong class="node-version-value">${escape(node.revisionDate)}</strong></span>` : ""}
+        </p>`;
     const installStatus = cardState.phase === "processing"
       ? s("nodes.processing")
       : cardState.phase === "queued"
@@ -829,13 +852,6 @@ export function renderSettingsPage(
         : cardState.phase === "finalizing"
           ? s("nodes.finalizing")
           : "";
-        const validationEvidence = node.compatibilityEvidence?.[0];
-        const validationEvidenceMarkup = validationEvidence ? `
-                <details class="node-validation-evidence">
-                  <summary>${s("nodes.validationEvidence")} · ${escape(validationEvidence.verifiedAt)}</summary>
-                  <p>${escape(validationEvidence.note)}</p>
-                  ${validationEvidence.checks?.length ? `<small>${escape(s("nodes.validationChecks", { checks: validationEvidence.checks.join(" · ") }))}</small>` : ""}
-                </details>` : "";
     const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
       ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
       : cardState.status === "compatibility-error"
@@ -864,8 +880,8 @@ export function renderSettingsPage(
             ${manualOnly ? `<p class="muted">${s("nodes.manualInstallHint")}</p>` : ""}
             ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
             ${providerRuntimeDetail}
-            ${validationEvidenceMarkup}
-            <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
+            ${versionSummaryMarkup}
+            ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.runtimeMemory")}</p>` : ""}
             ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
             ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
             ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}

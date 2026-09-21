@@ -907,6 +907,60 @@ describe("queue command services", () => {
     );
   });
 
+  it("enqueues Qwen Image 2.1 T2I when the draft retains an empty reference slot", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-qwen-21-t2i-empty-slot-"));
+    try {
+      const outputRoot = path.join(root, "output");
+      await fs.mkdir(outputRoot, { recursive: true });
+      const state = createDefaultState();
+      state.settings.outputDirectory = path.join(outputRoot, "Videos");
+      state.settings.imageOutputDirectory = path.join(outputRoot, "Images");
+      const service = new QueueEnqueueService({
+        store: repository(state),
+        logger: logger(),
+        sendState: vi.fn(),
+        getCachedEnvironmentScanForQueue: () => undefined,
+        effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+        resolveTaskOutputDirectory: async () => outputRoot,
+        imageInspection: { readDimensions: () => ({ width: 1024, height: 1024 }) }
+      });
+      const draft = {
+        ...createDefaultImageEditDraft(),
+        modelId: "qwen-image-2-1",
+        qualityProfile: "preview-25",
+        pictures: [{
+          id: "picture-slot-1",
+          pictureNumber: 1,
+          absolutePath: "",
+          width: 0,
+          height: 0,
+          role: "base" as const
+        }],
+        promptVersions: [{
+          id: "qwen-21-t2i-prompt",
+          label: "原始",
+          text: "A quiet mountain village at dawn.",
+          createdAt: "2026-09-21T00:00:00.000Z"
+        }],
+        activePromptVersion: 0,
+        nextPictureNumber: 2
+      };
+
+      const next = await service.enqueueImage(draft);
+
+      expect(next.queue).toHaveLength(1);
+      expect(next.queue[0]).toMatchObject({
+        taskType: "image-generation",
+        modelId: "qwen-image-2-1",
+        pictures: [],
+        outputWidth: 1024,
+        outputHeight: 1024
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("enqueues a DLSS task from a successful History version with a frozen snapshot", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-dlss-upscale-enqueue-"));
     const videoPath = path.join(root, "source.mp4");

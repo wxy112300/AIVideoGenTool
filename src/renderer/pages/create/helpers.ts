@@ -33,7 +33,7 @@ import {
   isMiniMaxH3R2vModel,
   outputFrameCountForTask
 } from "../../../core/workflow";
-import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
+import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
 import type { Translate } from "../../../core/i18n";
@@ -86,7 +86,7 @@ export function activeImagePrompt(draft: ImageEditDraft, locale: UiLocale = "zh-
   return draft.promptVersions[draft.activePromptVersion] ??
     draft.promptVersions.at(-1) ?? {
       id: "image-prompt-fallback",
-      label: qwenImagePromptPackFor(locale).ui.t("originalVersion"),
+      label: imagePromptPackForTarget(locale, draft.modelId).ui.t("originalVersion"),
       text: "",
       createdAt: new Date().toISOString()
     };

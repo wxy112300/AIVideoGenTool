@@ -23,6 +23,8 @@ export interface CatalogCustomNodeDefinition {
   recommendedVersion?: string;
   /** Optional release-aware version used to surface an update without making it a hard requirement. */
   latestVersion?: string;
+  /** How the package exposes its user-facing version. */
+  versionMode?: "release" | "rolling" | "pinned";
   /** Python-side runtime requirement when the node package's own version is not the constraint. */
   runtimeRequirement?: string;
   /** App-managed, feature-scoped native/runtime bundle captured with the node. */

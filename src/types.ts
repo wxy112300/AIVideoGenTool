@@ -1785,6 +1785,10 @@ export interface CustomNodeStatus {
   directory: string;
   required: boolean;
   version: string;
+  /** User-facing package version mode; commit/revision details remain internal. */
+  versionMode?: "release" | "rolling" | "pinned";
+  /** Local Git commit date shown only for rolling packages when available. */
+  revisionDate?: string;
   /** Local package file used to detect version, or .git/HEAD for unversioned repositories. */
   versionSource?: string;
   minimumVersion: string;

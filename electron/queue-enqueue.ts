@@ -20,6 +20,7 @@ import {
   cachedImageProfileAllowsEnqueue,
   imageLightningComponentFound,
   imageModelAdapterFor,
+  imagePicturesForModelInput,
   imageQualityProfileComponentFound,
   imageQualityProfileRequiredComponentLabel,
   imageQualityProfileRequiresLightning
@@ -838,7 +839,8 @@ export class QueueEnqueueService {
     const adapter = imageModelAdapterFor(requested.modelId);
     const normalized = normalizeImageEditDraft({
       ...requested,
-      ...(adapter?.deterministic ? { outputCount: 1 } : {})
+      ...(adapter?.deterministic ? { outputCount: 1 } : {}),
+      pictures: imagePicturesForModelInput(requested.pictures, adapter?.supportsTextOnly === true)
     });
     if (!adapter) throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
     const hasReference = normalized.pictures.length > 0;

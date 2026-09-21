@@ -132,6 +132,45 @@ describe("image workflow runtime preflight", () => {
       }
     )).toThrow(/节点版本不兼容.*blur_type/);
   });
+
+  it("accepts ComfyUI 0.37 DynamicCombo nested output inputs", () => {
+    expect(() => assertImageWorkflowRuntimeCompatible(
+      "qwen-image-2-1",
+      {
+        save: {
+          class_type: "SaveImageAdvanced",
+          inputs: {
+            images: ["decoded", 0],
+            filename_prefix: "QwenImage21_output",
+            format: "png",
+            "format.bit_depth": "8-bit",
+            "format.input_color_space": "sRGB"
+          }
+        }
+      },
+      {
+        SaveImageAdvanced: {
+          input: {
+            required: {
+              images: ["IMAGE"],
+              filename_prefix: ["STRING"],
+              format: ["COMFY_DYNAMICCOMBO_V3", {
+                options: [{
+                  key: "png",
+                  inputs: {
+                    required: {
+                      bit_depth: ["COMBO", { options: ["8-bit"] }],
+                      input_color_space: ["COMBO", { options: ["sRGB"] }]
+                    }
+                  }
+                }]
+              }]
+            }
+          }
+        }
+      }
+    )).not.toThrow();
+  });
 });
 
 describe("native Qwen prompt workflow", () => {

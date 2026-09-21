@@ -28,12 +28,18 @@ export interface ImageModelCapability {
   requiresMask?: boolean;
   supportsSeed?: boolean;
   sourceResolutionOnly?: boolean;
+  /** Allows a reference-image workflow to opt into the official custom canvas path. */
+  supportsCustomOutputSize?: boolean;
+  /** Alignment multiple for that custom reference-image canvas. */
+  customOutputMultiple?: number;
   /** Allows the image page to submit a prompt without a reference Picture. */
   supportsTextOnly?: boolean;
   /** The model can consume a saved binary mask when a reference Picture exists. */
   supportsMask?: boolean;
   /** The model can use the annotation canvas as visual guidance. */
   supportsMarkup?: boolean;
+  /** The annotation canvas is sent as paired visual reference images. */
+  supportsMarkupReferenceGuide?: boolean;
   /** Fallback canvas used before a text-only task has a source image. */
   textOnlyOutputWidth?: number;
   textOnlyOutputHeight?: number;

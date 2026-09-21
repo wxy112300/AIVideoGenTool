@@ -2,6 +2,10 @@ export const qwenImageDiffusionModel = "qwen_image_edit_2511_int8_convrot.safete
 export const qwenImageTextEncoder = "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 export const qwenImageVae = "qwen_image_vae.safetensors";
 export const qwenImageLightningLora = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors";
+export const qwenImage21DiffusionModel = "qwen_image_2.1_int8_convrot.safetensors";
+export const qwenImage21TextEncoder = "qwen3vl_8b_int8_convrot.safetensors";
+export const qwenImage21Vae = "qwen_image_2.1_vae_bf16.safetensors";
+export const qwenImage21UncensoredGgufDiffusionModel = "qwen-image-2.1-Q4_K_M.gguf";
 export const flux2Klein4bDiffusionModel = "flux-2-klein-base-4b-fp8.safetensors";
 export const flux2Klein4bTextEncoder = "qwen_3_4b.safetensors";
 export const flux2Klein4bVae = "flux2-vae.safetensors";
@@ -80,6 +84,12 @@ export const qwenImageEdit2511Capability = {
     name: "Qwen-Image-Edit-2511",
     maxPictures: 3,
     supportedFormats: ["png"],
+    operation: "edit",
+    requiresPrompt: true,
+    supportsSeed: true,
+    supportsMask: false,
+    supportsMarkup: true,
+    supportsMarkupReferenceGuide: true,
     qualityProfiles: [
         {
             id: "balanced-20",
@@ -103,6 +113,47 @@ export const qwenImageEdit2511Capability = {
             lightning: true
         }
     ]
+};
+/** Official ComfyUI Qwen Image 2.1 T2I/edit path. */
+export const qwenImage21Capability = {
+    id: "qwen-image-2-1",
+    name: "Qwen Image 2.1",
+    maxPictures: 10,
+    supportedFormats: ["png"],
+    operation: "edit",
+    requiresPrompt: true,
+    supportsSeed: true,
+    supportsTextOnly: true,
+    supportsMask: false,
+    supportsMarkup: true,
+    supportsMarkupReferenceGuide: true,
+    textOnlyOutputWidth: 1024,
+    textOnlyOutputHeight: 1024,
+    sourceResolutionOnly: true,
+    supportsCustomOutputSize: true,
+    customOutputMultiple: 32,
+    qualityProfiles: [
+        {
+            id: "preview-25",
+            label: "官方预览质量",
+            steps: 25,
+            cfg: 1,
+            lightning: false
+        },
+        {
+            id: "native",
+            label: "官方原生质量",
+            steps: 40,
+            cfg: 1,
+            lightning: false
+        }
+    ]
+};
+/** Community GGUF quantization of the same Qwen Image 2.1 model family. */
+export const qwenImage21UncensoredGgufCapability = {
+    ...qwenImage21Capability,
+    id: "qwen-image-2-1-uncensored-gguf",
+    name: "Qwen Image 2.1 · Uncensored GGUF"
 };
 export const qwenImageEdit2511CropStitchCapability = {
     id: "qwen-image-edit-2511-crop-stitch",

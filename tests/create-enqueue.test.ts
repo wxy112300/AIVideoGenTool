@@ -150,6 +150,25 @@ describe("create enqueue preflight checks", () => {
     expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("");
   });
 
+  it("treats an unfilled Qwen Image 2.1 slot as text-to-image input for both variants", () => {
+    for (const modelId of ["qwen-image-2-1", "qwen-image-2-1-uncensored-gguf"] as const) {
+      const draft = createDefaultImageEditDraft();
+      draft.modelId = modelId;
+      draft.qualityProfile = "preview-25";
+      draft.pictures = [{
+        id: "picture-slot-1",
+        pictureNumber: 1,
+        absolutePath: "",
+        width: 0,
+        height: 0,
+        role: "base"
+      }];
+      draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+      expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("");
+    }
+  });
+
   it("allows LaMa without a prompt only after a mask is saved", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "lama-inpaint";

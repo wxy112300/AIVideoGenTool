@@ -26,11 +26,13 @@ describe("bundled workflow provenance", () => {
       });
       expect(metadata?.source.relativePath).toBe(`workflows/${filename}`);
       expect(metadata?.comfyUi.recommendedVersion).toBe(
-        filename === "minimax_h3_r2v_extend_api.json"
+        filename.startsWith("qwen_image_2_1")
+          ? "master (PR #16400+)"
+          : filename === "minimax_h3_r2v_extend_api.json"
           ? "0.34.0"
           : filename.startsWith("minimax_h3_continuum")
             ? "0.34.2"
-            : "0.35.0"
+            : "0.37.0"
       );
     }
   });

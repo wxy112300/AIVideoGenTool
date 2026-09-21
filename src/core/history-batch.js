@@ -92,6 +92,17 @@ export function selectHistoryBatchIds(selectedIds, visibleIds) {
         return [...current].filter((id) => !visible.has(id));
     return [...new Set([...current, ...visible])];
 }
+/** Add every visible item between the anchor and target, preserving existing selections. */
+export function selectHistoryBatchRange(selectedIds, visibleIds, anchorId, targetId) {
+    const anchorIndex = visibleIds.indexOf(anchorId);
+    const targetIndex = visibleIds.indexOf(targetId);
+    if (anchorIndex < 0 || targetIndex < 0) {
+        return [...new Set([...selectedIds, targetId])];
+    }
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    return [...new Set([...selectedIds, ...visibleIds.slice(start, end + 1)])];
+}
 export function pruneHistoryBatchSelection(selectedIds, visibleIds) {
     const visible = new Set(visibleIds);
     return [...new Set(selectedIds)].filter((id) => visible.has(id));

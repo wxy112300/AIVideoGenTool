@@ -544,7 +544,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("ignores non-version GitHub release names", async () => {
+  it("ignores non-version GitHub release names and keeps the catalog fallback", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-release-name-scan-"));
     temporaryDirectories.push(comfyRoot);
     await fs.mkdir(path.join(comfyRoot, "custom_nodes", "ComfyUI-Frame-Interpolation"), {
@@ -560,10 +560,10 @@ describe("dependency scanner", () => {
       { "frame-interpolation": "models" }
     );
 
-    expect(statuses.find((status) => status.id === "frame-interpolation")?.latestVersion).toBe("");
+    expect(statuses.find((status) => status.id === "frame-interpolation")?.latestVersion).toBe("1.0.11");
   });
 
-  it("keeps an installed node with an unreadable version in a warning state", async () => {
+  it("keeps an installed node with an unreadable version in a warning state without a false update", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-version-warning-"));
     temporaryDirectories.push(comfyRoot);
     const spectrumDirectory = path.join(
@@ -584,7 +584,7 @@ describe("dependency scanner", () => {
       loadError: "",
       compatibilityState: "warning",
       compatibilityNotice: expect.stringContaining("未读取到版本号"),
-      updateAvailable: true
+      updateAvailable: false
     });
   });
 

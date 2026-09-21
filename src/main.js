@@ -32,7 +32,7 @@ import { mountCreateAssembly } from "./renderer/pages/create/assembly";
 import { mountH3ReferencesController } from "./renderer/pages/create/references-controller";
 import { buildImageEditPageViewModel, buildVideoCreatePageViewModel, imageEditEnqueueBlockReason } from "./renderer/pages/create/view-model";
 import { h3PromptPresetOptions, imageFileIsSupported, h3ReferenceRolePromptLabels, imageReferenceRolePromptLabels, loadImagePreview, orderVideoProfiles, resizePromptInput, updateImagePromptWordCounter } from "./renderer/pages/create/helpers";
-import { h3PromptPackFor, loadPromptPacks, qwenImagePromptPackFor } from "./renderer/prompt-packs";
+import { h3PromptPackFor, imagePromptPackForTarget, loadPromptPacks, qwenImagePromptPackFor } from "./renderer/prompt-packs";
 import { h3AutoPromptSeeds } from "./core/prompts/h3/auto-seeds";
 import { activePromptIndexForDraft, clearPromptVersion, promptPatchForDraft, promptVersionsForDraft } from "./core/draft-prompts";
 import { PromptEditHistory } from "./core/prompt-edit-history";
@@ -564,7 +564,7 @@ const createPageOptions = {
         return h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels;
     },
     get imageReferenceRoleLabels() {
-        return qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels;
+        return imagePromptPackForTarget(state.settings.uiLocale, state.imageDraft.modelId).referenceRoleLabels;
     },
     videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText, state.settings.uiLocale),
     videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText)
@@ -2166,7 +2166,7 @@ function bindCreate() {
             addImagePicture,
             editImagePictureMarkup,
             imageFileIsSupported,
-            imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
+            imageReferenceRoleLabel: (role) => imagePromptPackForTarget(state.settings.uiLocale, state.imageDraft.modelId).referenceRoleLabels[role],
             imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
             resizePromptInput,
             updateImagePromptWordCounter,

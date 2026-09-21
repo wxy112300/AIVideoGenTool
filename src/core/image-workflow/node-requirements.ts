@@ -19,6 +19,60 @@ export const qwenImageEdit2511LightningNodeTypes = [
   "LoraLoaderModelOnly"
 ] as const;
 
+/** Native ComfyUI nodes used by the official Qwen Image 2.1 text-to-image template. */
+export const qwenImage21TextToImageRequiredNodeTypes = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "KSampler",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
+/** Native ComfyUI nodes used by the official Qwen Image 2.1 edit template. */
+export const qwenImage21RequiredNodeTypes = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "LoadImage",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "ComfySwitchNode",
+  "QwenImage21Cache",
+  "KSampler",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
+/** Qwen Image 2.1 GGUF path: only the diffusion loader comes from ComfyUI-GGUF. */
+export const qwenImage21GgufTextToImageRequiredNodeTypes = [
+  "UnetLoaderGGUF",
+  "CLIPLoader",
+  "VAELoader",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "KSampler",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
+/** Qwen Image 2.1 GGUF edit path with the native multi-image encoder/cache. */
+export const qwenImage21GgufRequiredNodeTypes = [
+  "UnetLoaderGGUF",
+  "CLIPLoader",
+  "VAELoader",
+  "LoadImage",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "ComfySwitchNode",
+  "QwenImage21Cache",
+  "KSampler",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
 /** Qwen 2511 graph with local Crop/Stitch fusion repair. */
 export const qwenImageEdit2511CropStitchRequiredNodeTypes = [
   ...qwenImageEdit2511RequiredNodeTypes,

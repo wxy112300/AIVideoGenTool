@@ -167,14 +167,16 @@ type SettingsCopyKey =
   | "nodes.manualInstallHint"
   | "nodes.openSource"
   | "nodes.prerequisite"
-  | "nodes.validationEvidence"
-  | "nodes.validationChecks"
+  | "nodes.versionSummary"
+  | "nodes.versionLabel"
+  | "nodes.commitDate"
   | "nodes.localVersion"
-  | "nodes.versionSource"
-  | "nodes.revision"
   | "nodes.versionUnread"
-  | "nodes.latestRelease"
   | "nodes.recommendedVersion"
+  | "nodes.latestVersion"
+  | "nodes.versionUnavailable"
+  | "nodes.rollingVersion"
+  | "nodes.pinnedVersion"
   | "nodes.rescanOnline"
   | "nodes.runtimeMemory"
   | "nodes.needsUpdate"
@@ -484,14 +486,16 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "此节点由用户手动安装；应用不会自动下载、更新或卸载它。",
   "nodes.openSource": "打开上游仓库",
   "nodes.prerequisite": "运行/安装说明：",
-  "nodes.validationEvidence": "验证依据",
-  "nodes.validationChecks": "检查级别：{checks}",
-  "nodes.localVersion": "本机版本：",
-  "nodes.versionSource": "扫描来源：",
-  "nodes.revision": "提交：",
-  "nodes.versionUnread": "未读取到版本号",
-  "nodes.latestRelease": "最新发布：",
-  "nodes.recommendedVersion": "推荐版本：",
+  "nodes.versionSummary": "节点版本信息",
+  "nodes.versionLabel": "版本",
+  "nodes.commitDate": "提交日期",
+  "nodes.localVersion": "本机",
+  "nodes.versionUnread": "未读取",
+  "nodes.recommendedVersion": "推荐",
+  "nodes.latestVersion": "最新",
+  "nodes.versionUnavailable": "未标注",
+  "nodes.rollingVersion": "滚动版",
+  "nodes.pinnedVersion": "固定版",
   "nodes.rescanOnline": "联网后重新扫描",
   "nodes.runtimeMemory": "运行时固定使用系统内存，不额外下载模型。",
   "nodes.needsUpdate": "需要更新",
@@ -777,14 +781,16 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "此節點由使用者手動安裝；應用程式不會自動下載、更新或解除安裝。",
   "nodes.openSource": "開啟上游儲存庫",
   "nodes.prerequisite": "執行/安裝說明：",
-  "nodes.validationEvidence": "驗證依據",
-  "nodes.validationChecks": "檢查層級：{checks}",
-  "nodes.localVersion": "本機版本：",
-  "nodes.versionSource": "掃描來源：",
-  "nodes.revision": "提交：",
-  "nodes.versionUnread": "未讀取到版本號",
-  "nodes.latestRelease": "最新發布：",
-  "nodes.recommendedVersion": "建議版本：",
+  "nodes.versionSummary": "節點版本資訊",
+  "nodes.versionLabel": "版本",
+  "nodes.commitDate": "提交日期",
+  "nodes.localVersion": "本機",
+  "nodes.versionUnread": "未讀取",
+  "nodes.recommendedVersion": "建議",
+  "nodes.latestVersion": "最新",
+  "nodes.versionUnavailable": "未標註",
+  "nodes.rollingVersion": "滾動版",
+  "nodes.pinnedVersion": "固定版",
   "nodes.rescanOnline": "連線後重新掃描",
   "nodes.runtimeMemory": "執行時固定使用系統記憶體，不額外下載模型。",
   "nodes.needsUpdate": "需要更新",
@@ -1091,14 +1097,16 @@ const enUS: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "Install this node manually; the app does not download, update, or uninstall it.",
   "nodes.openSource": "Open upstream repository",
   "nodes.prerequisite": "Runtime/install note: ",
-  "nodes.validationEvidence": "Validation evidence",
-  "nodes.validationChecks": "Checks: {checks}",
-  "nodes.localVersion": "Local version: ",
-  "nodes.versionSource": "Scan source: ",
-  "nodes.revision": "Commit: ",
-  "nodes.versionUnread": "Version not read",
-  "nodes.latestRelease": "Latest release: ",
-  "nodes.recommendedVersion": "Recommended: ",
+  "nodes.versionSummary": "Node versions",
+  "nodes.versionLabel": "Version",
+  "nodes.commitDate": "Commit date",
+  "nodes.localVersion": "Local",
+  "nodes.versionUnread": "Not detected",
+  "nodes.recommendedVersion": "Recommended",
+  "nodes.latestVersion": "Latest",
+  "nodes.versionUnavailable": "Not published",
+  "nodes.rollingVersion": "Rolling",
+  "nodes.pinnedVersion": "Pinned",
   "nodes.rescanOnline": "Rescan after connecting",
   "nodes.runtimeMemory": "Uses system memory at runtime and does not download extra models.",
   "nodes.needsUpdate": "Needs update",
@@ -1315,6 +1323,8 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
+    "qwen-image-2-1": "RTX 4090 24GB 推荐 · INT8 ConvRot + BF16 VAE · 首期 1 MP，2K 待验证",
+    "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB 推荐 · Q4_K_M GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
     omnigen2: "RTX 4090 24GB 推荐 · FP16 · 20–50 步 · 最多 2 图",
     "hidream-o1-image": "RTX 4090 24GB 推荐 · FP8 scaled · Full 50 步",
@@ -1350,6 +1360,8 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系統 RAM 16GB 以上",
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系統 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
+    "qwen-image-2-1": "RTX 4090 24GB 推薦 · INT8 ConvRot + BF16 VAE · 首期 1 MP，2K 待驗證",
+    "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB 推薦 · Q4_K_M GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
     omnigen2: "RTX 4090 24GB 推薦 · FP16 · 20–50 步 · 最多 2 圖",
     "hidream-o1-image": "RTX 4090 24GB 推薦 · FP8 scaled · Full 50 步",
@@ -1385,6 +1397,8 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-4b": "RTX 3060 12GB or higher · System RAM 16GB or higher",
     "qwen/qwen3.5-2b": "RTX 2060 6GB or higher · System RAM 16GB or higher",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB or higher · CPU/offload",
+    "qwen-image-2-1": "RTX 4090 24GB recommended · INT8 ConvRot + BF16 VAE · 1 MP first; 2K pending validation",
+    "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB recommended · Q4_K_M GGUF + INT8 Qwen3-VL · requires ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB or higher",
     omnigen2: "RTX 4090 24GB recommended · FP16 · 20–50 steps · up to 2 images",
     "hidream-o1-image": "RTX 4090 24GB recommended · FP8 scaled · Full 50 steps",

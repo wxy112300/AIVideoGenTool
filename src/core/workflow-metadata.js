@@ -14,7 +14,7 @@ const apiSchema = {
     endpoint: "/prompt",
     sourceUrl: "https://docs.comfy.org/development/core-concepts/workflow"
 };
-const recommendedCore = "0.35.0";
+const recommendedCore = "0.37.0";
 const h3Core = {
     recommendedVersion: recommendedCore,
     minimumVersion: "0.31.0"
@@ -30,6 +30,10 @@ const h3MotionContextCore = {
 const h3ContinuumCore = {
     recommendedVersion: "0.34.2",
     minimumVersion: "0.34.0"
+};
+const qwenImage21Core = {
+    recommendedVersion: "master (PR #16400+)",
+    minimumVersion: "master (PR #16400+)"
 };
 function metadata(filename, nodePackages, options = {}) {
     return {
@@ -110,6 +114,16 @@ export const bundledWorkflowMetadata = {
     }),
     minimax_h3_t2va_turbo_api: metadata("minimax_h3_t2va_turbo_api.json", ["kjnodes"], {
         comfyUi: h3Core
+    }),
+    qwen_image_2_1_image_edit_api: metadata("qwen_image_2_1_image_edit_api.json", [], {
+        comfyUi: qwenImage21Core,
+        upstreamUrl: "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_image_edit.json",
+        verifiedAt: "2026-09-21"
+    }),
+    qwen_image_2_1_uncensored_gguf_image_edit_api: metadata("qwen_image_2_1_uncensored_gguf_image_edit_api.json", ["comfyui-gguf"], {
+        comfyUi: qwenImage21Core,
+        upstreamUrl: "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+        verifiedAt: "2026-09-21"
     }),
     qwen36_h3_prompt_enhancer_api: metadata("qwen36_h3_prompt_enhancer_api.json", ["comfyui-multimodal-prompt-nodes"], {
         upstreamUrl: "https://raw.githubusercontent.com/wxy112300/AIVideoGenTool/main/workflows/qwen36_h3_prompt_enhancer_api.json"

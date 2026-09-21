@@ -48,7 +48,7 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 - [ComfyUI Desktop for Windows 安装说明](https://docs.comfy.org/installation/desktop/windows)。
 - [ComfyUI Portable for Windows 安装说明](https://docs.comfy.org/installation/comfyui_portable_windows)：适合需要便携目录的用户。
 
-MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前推荐基线为 `0.33.1`。Desktop 用户可在实例的 **Update** 页面选择核心更新频道并检查更新；应用设置页也会显示所选实例的版本、兼容状态和更新入口。
+MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前推荐基线为 `0.37.0`。Desktop 用户可在实例的 **Update** 页面选择核心更新频道并检查更新；应用设置页也会显示所选实例的版本、兼容状态和更新入口。
 
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
 
@@ -135,7 +135,7 @@ start-ui-proxy.bat http://127.0.0.1:7890
 
 以下流程以 24GB 级 NVIDIA GPU 和 **MiniMax H3 FL2VA · INT8** 为推荐起点：
 
-1. 在 **设置 → 系统与路径** 选择 ComfyUI `0.31.0+` 实例并完成扫描；建议使用当前推荐基线 `0.33.1`。
+1. 在 **设置 → 系统与路径** 选择 ComfyUI `0.31.0+` 实例并完成扫描；建议使用当前推荐基线 `0.37.0`。
 2. 在 **设置 → 性能与加速** 检查 H3 运行时。Desktop 用户优先在 Desktop 中选择 `PyTorch 2.10.0+cu130`，再返回应用重新扫描；随后执行 H3 环境修复以补齐匹配的 Triton、SageAttention 和 H3 CUDA 内核。
 3. 打开 **设置 → 视频模型**，找到 **MiniMax H3 FL2VA · INT8**。对每个缺失的必需组件点击 **i**：
 	- 下载 FL2VA INT8 扩散模型并放入卡片显示的 `models/diffusion_models` 目录；
