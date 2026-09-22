@@ -1017,7 +1017,7 @@ export class JsonStore implements StateRepository {
         this.state.settings.autoRetryCount = 2;
         needsPersist = true;
       }
-      if (![0, 5, 10, 15].includes(this.state.settings.vramStallWatchdogMinutes)) {
+      if (![0, 1, 5, 10, 15].includes(this.state.settings.vramStallWatchdogMinutes)) {
         this.state.settings.vramStallWatchdogMinutes = 0;
         needsPersist = true;
       }

@@ -674,7 +674,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.settings.system.retryCount]: "Recovery retry count",
 	[uiKeys.settings.system.retryCountValue]: "{count} {suffix}",
 	[uiKeys.settings.system.vramStallWatchdog]: "VRAM stall protection",
-	[uiKeys.settings.system.vramStallWatchdogDescription]: "Recover only when a locally managed ComfyUI task has made no productive progress and independent VRAM/host-memory pressure evidence persists; normal slow work and near-full VRAM do not trigger it.",
+	[uiKeys.settings.system.vramStallWatchdogDescription]: "Recover only when a locally managed ComfyUI task has made no productive progress; warn below 1 GiB of VRAM headroom, monitor continuously below 800 MiB, and clear the warning after headroom recovers.",
 	[uiKeys.settings.system.vramStallWatchdogOff]: "Off · Default",
 	[uiKeys.settings.system.vramStallWatchdogMinutes]: "Protect after {minutes} minutes without progress",
 	[uiKeys.settings.system.localManagedOnly]: "Only applies to locally managed ComfyUI",

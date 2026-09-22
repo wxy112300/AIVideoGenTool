@@ -1,7 +1,7 @@
 # 显存压力卡死 Watchdog 实施计划
 
 - Type: implementation plan
-- Status: proposed; ready for implementation
+- Status: implemented; amended 2026-09-22 after runtime failure report
 - Date: 2026-09-20
 - Scope: Windows + NVIDIA/WDDM 下，应用管理的本地 ComfyUI 队列任务发生显存超额、共享内存/分页抖动且长期没有生产性进展时，自动恢复并有界重试。
 - Authority: 当前摘要以 [TASK](TASK.md) 为准；Queue、进程、Settings 与远程服务边界以 [Architecture Contract](../../ARCHITECTURE_CONTRACT.md) 为准；GPU/runtime 策略以 [Workflow Contract](../../WORKFLOW_CONTRACT.md) 为准。
@@ -236,3 +236,12 @@ watchdog 触发时：
 - 不新建第二套 retry counter、第二套 Comfy process manager 或另一个 Queue worker。
 - 不在压力触发后静默修改任务参数以“试着跑过”；重试必须复用原快照。
 - 不为了验证而终止用户其他 ComfyUI/Python 进程或覆盖真实 state/history/media。
+
+## 11. 2026-09-22 用户反馈修订
+
+本节 supersede 与最新用户反馈冲突的阈值和选项描述，具体当前状态以 [TASK](TASK.md) 为准：
+
+- 设置选项为 `0 | 1 | 5 | 10 | 15` 分钟；`0` 仍为关闭，`1` 分钟用于通常不会自行恢复的爆显存卡死。
+- `nvidia-smi` 专用显存余量低于 `1 GiB` 时记录一次预警；低于 `800 MiB` 时把 `dedicated-vram` 作为直接内存压力证据，进入持续无进展窗口监测；余量恢复到 `>= 1 GiB` 时清除低余量状态。
+- 本修订允许直接专用显存压力跳过共享/主机 counter 的复合 quorum，但仍要求任务无生产性进展，并保留用户选择的 watchdog 时间窗口，避免瞬时分配峰值立即重启。
+- 修复 Windows `Get-Counter` 计算机名前缀导致的精确路径匹配失败，并将 `nvidia-smi` 调用限制在 5 秒内（PowerShell counter 采样保持 5 秒超时）；缺失遥测仍按 fail-open 处理。

@@ -6,7 +6,7 @@
  * renderer dependencies. The Electron sampler owns I/O and feeds timestamped
  * events into this state machine.
  */
-export const VRAM_STALL_WATCHDOG_MINUTES = [0, 5, 10, 15];
+export const VRAM_STALL_WATCHDOG_MINUTES = [0, 1, 5, 10, 15];
 /** Named constants are intentionally not user settings. */
 export const VRAM_STALL_WATCHDOG_TUNING = {
     baselineWarmupMs: 30_000,
@@ -14,6 +14,8 @@ export const VRAM_STALL_WATCHDOG_TUNING = {
     maxClockJumpMs: 120_000,
     pressureSampleQuorum: 0.75,
     minimumPressureSamples: 3,
+    dedicatedVramWarningMiB: 1_024,
+    dedicatedVramMonitoringMiB: 800,
     sharedRelativeIncrease: 0.35,
     sharedMadMultiplier: 4,
     sharedHostRatio: 0.01,
@@ -29,6 +31,7 @@ export const VRAM_STALL_WATCHDOG_TUNING = {
 };
 const MEMORY_FAMILIES = [
     "wddm-memory",
+    "dedicated-vram",
     "shared-gpu-memory",
     "host-memory"
 ];
@@ -104,6 +107,16 @@ function pageActivity(sample) {
     ].map(finiteNonNegative).filter((value) => value !== undefined);
     return values.length ? Math.max(...values) : undefined;
 }
+function dedicatedVramRemainingMiB(sample) {
+    const explicitRemaining = finiteNonNegative(sample.vram?.remainingMiB);
+    if (explicitRemaining !== undefined)
+        return explicitRemaining;
+    const used = finiteNonNegative(sample.vram?.usedMiB);
+    const total = finiteNonNegative(sample.vram?.totalMiB);
+    return used !== undefined && total !== undefined && total >= used
+        ? total - used
+        : undefined;
+}
 function baselineHasSamples(baseline) {
     return baseline.sampleCount >= 3 && baseline.ready;
 }
@@ -120,6 +133,15 @@ function deriveEvidence(sample, baseline) {
     const families = [];
     const memoryFamilies = [];
     const missing = [];
+    const dedicatedRemainingMiB = dedicatedVramRemainingMiB(sample);
+    if (dedicatedRemainingMiB !== undefined &&
+        dedicatedRemainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB) {
+        families.push("dedicated-vram");
+        memoryFamilies.push("dedicated-vram");
+    }
+    else if (dedicatedRemainingMiB === undefined) {
+        missing.push("dedicated-vram");
+    }
     const wddmCurrent = finiteNonNegative(sample.wddm?.currentUsageMiB);
     const wddmBudget = finiteNonNegative(sample.wddm?.budgetMiB);
     if (wddmCurrent !== undefined && wddmBudget !== undefined && wddmBudget > 0) {
@@ -202,7 +224,10 @@ function deriveEvidence(sample, baseline) {
         memoryFamilies: uniqueMemoryFamilies,
         missing,
         valid: uniqueFamilies.length > 0 || missing.length < 6,
-        qualifies: uniqueMemoryFamilies.length > 0 && uniqueFamilies.length >= 2
+        // Direct dedicated-VRAM headroom is a sufficient memory-pressure
+        // signal; shared/host families retain the composite quorum rule.
+        qualifies: uniqueMemoryFamilies.length > 0 &&
+            (uniqueMemoryFamilies.includes("dedicated-vram") || uniqueFamilies.length >= 2)
     };
 }
 function addBaselineSample(baseline, sample, atMs, warmupMs, observationStartedAtMs) {
@@ -455,7 +480,8 @@ export function evaluateVramStallWatchdog(inputState, event, policy) {
         return telemetryGap(state, missing, sample.sampledAtMs);
     const noProgress = state.lastProductiveProgressAtMs !== undefined &&
         sample.sampledAtMs >= state.lastProductiveProgressAtMs;
-    if (!baselineHasSamples(state.baseline) || !noProgress) {
+    const directDedicatedPressure = evidence.memoryFamilies.includes("dedicated-vram");
+    if ((!baselineHasSamples(state.baseline) && !directDedicatedPressure) || !noProgress) {
         return { state: { ...state, lastTelemetryMissing: missing }, action: "none", evidence };
     }
     const pressureRecord = {

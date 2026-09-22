@@ -674,7 +674,7 @@ export const zhCNCatalog = {
     [uiKeys.settings.system.retryCount]: "恢复重试次数",
     [uiKeys.settings.system.retryCountValue]: "{count} 次{suffix}",
     [uiKeys.settings.system.vramStallWatchdog]: "显存卡死保护",
-    [uiKeys.settings.system.vramStallWatchdogDescription]: "仅在本地、由应用管理的 ComfyUI 任务持续无生产性进展且同时出现复合显存/系统内存压力证据时恢复；不会因显存接近容量或普通慢任务触发。",
+    [uiKeys.settings.system.vramStallWatchdogDescription]: "仅在本地、由应用管理的 ComfyUI 任务持续无生产性进展时恢复；显存余量低于 1 GiB 预警，低于 800 MiB 开始持续监测，恢复到安全余量后解除。",
     [uiKeys.settings.system.vramStallWatchdogOff]: "关闭 · 默认",
     [uiKeys.settings.system.vramStallWatchdogMinutes]: "{minutes} 分钟无进展后保护",
     [uiKeys.settings.system.localManagedOnly]: "仅适用于本地、由应用管理的 ComfyUI",

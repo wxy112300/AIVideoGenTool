@@ -43,6 +43,7 @@ import {
   type QueueIsolationReason
 } from "./services/queue-execution-side-effects.js";
 import {
+  VRAM_STALL_WATCHDOG_TUNING,
   evaluateVramStallWatchdog,
   type VramStallProgressEvent,
   type VramStallWatchdogPolicy,
@@ -57,6 +58,15 @@ const performanceLogIntervalMs = 30_000;
 function watchdogSampleFromResource(resource: TaskResourceSample): VramStallWatchdogSample {
   return {
     sampledAtMs: resource.sampledAtMs,
+    ...(resource.vram == null
+      ? {}
+      : {
+          vram: {
+            usedMiB: resource.vram.usedMiB,
+            totalMiB: resource.vram.totalMiB,
+            remainingMiB: Math.max(0, resource.vram.totalMiB - resource.vram.usedMiB)
+          }
+        }),
     ...(resource.sharedGpuMemoryBytes == null
       ? {}
       : { sharedGpuMemoryBytes: resource.sharedGpuMemoryBytes }),
@@ -76,6 +86,14 @@ function watchdogSampleFromResource(resource: TaskResourceSample): VramStallWatc
     },
     gpuUtilization: resource.gpuPercent ?? undefined
   };
+}
+
+function remainingVramMiB(resource: TaskResourceSample): number | undefined {
+  if (resource.vramUsedBytes == null || resource.vramTotalBytes == null || resource.vramTotalBytes < resource.vramUsedBytes) {
+    return undefined;
+  }
+  const remaining = (resource.vramTotalBytes - resource.vramUsedBytes) / 1024 ** 2;
+  return Number.isFinite(remaining) && remaining >= 0 ? remaining : undefined;
 }
 
 function isAppManagedLocalComfyRuntime(
@@ -308,7 +326,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     let watchdogValidSampleCount = 0;
     let watchdogPressureSampleCount = 0;
     let watchdogMemoryPressureSampleCount = 0;
-    const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
+    const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "dedicated-vram" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
     const watchdogTelemetryMissing = new Set<string>();
     let watchdogPeakSharedGpuMemoryBytes: number | undefined;
     let watchdogMinimumHostAvailableBytes: number | undefined;
@@ -317,6 +335,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     let watchdogPeakSamplerTickLatenessMs: number | undefined;
     let watchdogPeakNvidiaSmiDurationMs: number | undefined;
     let watchdogPeakCounterReadDurationMs: number | undefined;
+    let lowVramWarningActive = false;
+    let lowVramMonitoringActive = false;
     const resetWatchdogDiagnostics = (): void => {
       watchdogValidSampleCount = 0;
       watchdogPressureSampleCount = 0;
@@ -330,6 +350,50 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       watchdogPeakSamplerTickLatenessMs = undefined;
       watchdogPeakNvidiaSmiDurationMs = undefined;
       watchdogPeakCounterReadDurationMs = undefined;
+    };
+    const queueWatchdogStage = (stage: string): void => {
+      const previous = watchdogStageUpdate ?? Promise.resolve();
+      watchdogStageUpdate = previous
+        .then(() => updateTask(task.id, { stage }))
+        .catch(() => undefined);
+    };
+    const observeVramHeadroom = (resource: TaskResourceSample): void => {
+      if (!watchdogEligible) return;
+      const remainingMiB = remainingVramMiB(resource);
+      if (remainingMiB === undefined) return;
+      if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB && !lowVramWarningActive) {
+        lowVramWarningActive = true;
+        logger.warn("performance", "vram-headroom-warning", "Dedicated GPU memory headroom is below 1 GiB", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          remainingVramMiB: Math.round(remainingMiB),
+          vramTotalMiB: resource.vramTotalBytes == null ? null : Math.round(resource.vramTotalBytes / 1024 ** 2)
+        });
+        queueWatchdogStage("显存余量低于 1 GiB，已进入预警");
+      }
+      if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB && !lowVramMonitoringActive) {
+        lowVramMonitoringActive = true;
+        logger.warn("performance", "vram-headroom-monitoring", "Dedicated GPU memory headroom is below 800 MiB; continuous stall monitoring started", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          remainingVramMiB: Math.round(remainingMiB),
+          watchdogWindowMinutes: appliedWatchdogMinutes
+        });
+        queueWatchdogStage("显存余量低于 800 MiB，正在持续监测卡死");
+      }
+      if ((lowVramMonitoringActive || lowVramWarningActive) && remainingMiB >= VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB) {
+        lowVramMonitoringActive = false;
+        lowVramWarningActive = false;
+        logger.info("performance", "vram-headroom-recovered", "Dedicated GPU memory headroom recovered; low-headroom monitoring cleared", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          remainingVramMiB: Math.round(remainingMiB)
+        });
+        queueWatchdogStage("显存压力已缓解，恢复正常监测");
+      }
     };
     const beginWatchdogObservation = (): void => {
       if (!watchdogEligible || vramStallWatchdogError) return;
@@ -371,9 +435,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       if (
         controller.signal.aborted ||
         !watchdogEligible ||
-        !vramStallWatchdogState ||
         vramStallWatchdogError
       ) return;
+      observeVramHeadroom(resource);
+      if (!vramStallWatchdogState) return;
       const hostPages = [
         resource.pagesInputPerSec,
         resource.pagesOutputPerSec,
@@ -441,9 +506,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         modelId: task.modelId,
         ...vramStallWatchdogDiagnostics
       });
-      watchdogStageUpdate = updateTask(task.id, {
-        stage: "检测到持续显存/系统内存压力，正在恢复 ComfyUI"
-      }).catch(() => undefined);
+      queueWatchdogStage("检测到持续显存/系统内存压力，正在恢复 ComfyUI");
       vramWatchdog?.stop();
       controller.abort(vramStallWatchdogError);
     };
@@ -679,7 +742,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let watchdogValidSampleCount = 0;
       let watchdogPressureSampleCount = 0;
       let watchdogMemoryPressureSampleCount = 0;
-      const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
+      const watchdogPressureFamilyCounts: Partial<Record<"wddm-memory" | "dedicated-vram" | "shared-gpu-memory" | "host-memory" | "latency" | "gpu-activity", number>> = {};
       const watchdogTelemetryMissing = new Set<string>();
       let watchdogPeakSharedGpuMemoryBytes: number | undefined;
       let watchdogMinimumHostAvailableBytes: number | undefined;
@@ -689,6 +752,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let watchdogPeakNvidiaSmiDurationMs: number | undefined;
       let watchdogPeakCounterReadDurationMs: number | undefined;
       let watchdogPeakComfyRoundTripMs: number | undefined;
+      let lowVramWarningActive = false;
+      let lowVramMonitoringActive = false;
       let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
       let taskPerformanceStats: TaskPerformanceStats | undefined;
       let h3TokenCount: number | undefined;
@@ -700,6 +765,50 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let h3PreviewFirstFrameDelaySeconds: number | undefined;
       let h3PreviewStartedAt = 0;
       let h3PreviewOutcomeLogged = false;
+      const queueWatchdogStage = (stage: string): void => {
+        const previous = watchdogStageUpdate ?? Promise.resolve();
+        watchdogStageUpdate = previous
+          .then(() => updateTask(task.id, { stage }))
+          .catch(() => undefined);
+      };
+      const observeVramHeadroom = (resource: TaskResourceSample): void => {
+        if (!watchdogEligible) return;
+        const remainingMiB = remainingVramMiB(resource);
+        if (remainingMiB === undefined) return;
+        if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB && !lowVramWarningActive) {
+          lowVramWarningActive = true;
+          logger.warn("performance", "vram-headroom-warning", "Dedicated GPU memory headroom is below 1 GiB", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            remainingVramMiB: Math.round(remainingMiB),
+            vramTotalMiB: resource.vramTotalBytes == null ? null : Math.round(resource.vramTotalBytes / 1024 ** 2)
+          });
+          queueWatchdogStage("显存余量低于 1 GiB，已进入预警");
+        }
+        if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB && !lowVramMonitoringActive) {
+          lowVramMonitoringActive = true;
+          logger.warn("performance", "vram-headroom-monitoring", "Dedicated GPU memory headroom is below 800 MiB; continuous stall monitoring started", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            remainingVramMiB: Math.round(remainingMiB),
+            watchdogWindowMinutes: appliedWatchdogMinutes
+          });
+          queueWatchdogStage("显存余量低于 800 MiB，正在持续监测卡死");
+        }
+        if ((lowVramMonitoringActive || lowVramWarningActive) && remainingMiB >= VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB) {
+          lowVramMonitoringActive = false;
+          lowVramWarningActive = false;
+          logger.info("performance", "vram-headroom-recovered", "Dedicated GPU memory headroom recovered; low-headroom monitoring cleared", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            remainingVramMiB: Math.round(remainingMiB)
+          });
+          queueWatchdogStage("显存压力已缓解，恢复正常监测");
+        }
+      };
       const onProductiveProgress = (event: VramStallProgressEvent): void => {
         if (
           activeController.signal.aborted ||
@@ -939,9 +1048,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           if (
             activeController.signal.aborted ||
             !watchdogEligible ||
-            !vramStallWatchdogState ||
             vramStallWatchdogError
           ) return;
+          observeVramHeadroom(resource);
+          if (!vramStallWatchdogState) return;
           const hostPages = [
             resource.pagesInputPerSec,
             resource.pagesOutputPerSec,
@@ -1019,9 +1129,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             modelId: task.modelId,
             ...vramStallWatchdogDiagnostics
           });
-          watchdogStageUpdate = updateTask(task.id, {
-            stage: "检测到持续显存/系统内存压力，正在恢复 ComfyUI"
-          }).catch(() => undefined);
+          queueWatchdogStage("检测到持续显存/系统内存压力，正在恢复 ComfyUI");
           vramWatchdog?.stop();
           activeController.abort(vramStallWatchdogError);
         };

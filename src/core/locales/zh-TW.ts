@@ -674,7 +674,7 @@ export const zhTWCatalog = {
     [uiKeys.settings.system.retryCount]: "恢復重試次數",
     [uiKeys.settings.system.retryCountValue]: "{count} 次{suffix}",
     [uiKeys.settings.system.vramStallWatchdog]: "視訊記憶體卡死保護",
-    [uiKeys.settings.system.vramStallWatchdogDescription]: "只在本機、由應用程式管理的 ComfyUI 任務持續沒有生產性進展，並同時出現複合視訊記憶體／系統記憶體壓力證據時恢復；不會因視訊記憶體接近容量或一般慢任務觸發。",
+    [uiKeys.settings.system.vramStallWatchdogDescription]: "只在本機、由應用程式管理的 ComfyUI 任務持續沒有生產性進展時恢復；視訊記憶體餘量低於 1 GiB 預警，低於 800 MiB 開始持續監測，恢復到安全餘量後解除。",
     [uiKeys.settings.system.vramStallWatchdogOff]: "關閉 · 預設",
     [uiKeys.settings.system.vramStallWatchdogMinutes]: "{minutes} 分鐘沒有進展後保護",
     [uiKeys.settings.system.localManagedOnly]: "只適用於本機、由應用程式管理的 ComfyUI",

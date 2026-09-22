@@ -135,7 +135,7 @@ async function readWindowsMemoryPressure(): Promise<WindowsMemoryPressure> {
     "$c = Get-Counter -Counter '\\GPU Adapter Memory(*)\\Shared Usage','\\Memory\\Committed Bytes','\\Memory\\Commit Limit','\\Memory\\Pages Input/sec','\\Memory\\Pages Output/sec','\\Memory\\Page Faults/sec' -ErrorAction Stop",
     "$shared = @($c.CounterSamples | Where-Object {$_.Path -like '*GPU Adapter Memory*Shared Usage*'})",
     "$singleShared = if ($shared.Count -eq 1) {[math]::Round($shared[0].CookedValue)} else {$null}",
-    "$find = { param($path) $c.CounterSamples | Where-Object {$_.Path -eq $path} | Select-Object -First 1 -ExpandProperty CookedValue }",
+    "$find = { param($suffix) $c.CounterSamples | Where-Object {$_.Path -like ('*' + $suffix)} | Select-Object -First 1 -ExpandProperty CookedValue }",
     "[pscustomobject]@{sharedGpuMemoryBytes=$singleShared; committedBytes=&$find '\\Memory\\Committed Bytes'; commitLimitBytes=&$find '\\Memory\\Commit Limit'; pagesInputPerSec=&$find '\\Memory\\Pages Input/sec'; pagesOutputPerSec=&$find '\\Memory\\Pages Output/sec'; hardFaultsPerSec=&$find '\\Memory\\Page Faults/sec'} | ConvertTo-Json -Compress"
   ].join("; ");
   try {
@@ -179,7 +179,7 @@ async function nvidiaMetrics(): Promise<{
     const { stdout } = await execFileAsync("nvidia-smi", [
       "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
       "--format=csv,noheader,nounits"
-    ]);
+    ], { encoding: "utf8", timeout: 5_000, windowsHide: true });
     const values = stdout
       .trim()
       .split(/\r?\n/, 1)[0]

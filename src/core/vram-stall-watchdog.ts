@@ -7,7 +7,7 @@
  * events into this state machine.
  */
 
-export const VRAM_STALL_WATCHDOG_MINUTES = [0, 5, 10, 15] as const;
+export const VRAM_STALL_WATCHDOG_MINUTES = [0, 1, 5, 10, 15] as const;
 export type VramStallWatchdogMinutes = (typeof VRAM_STALL_WATCHDOG_MINUTES)[number];
 
 export type VramStallWatchdogStatus =
@@ -20,6 +20,7 @@ export type VramStallWatchdogStatus =
 
 export type VramStallEvidenceFamily =
   | "wddm-memory"
+  | "dedicated-vram"
   | "shared-gpu-memory"
   | "host-memory"
   | "latency"
@@ -33,6 +34,12 @@ export interface VramStallWatchdogSample {
   wddm?: {
     currentUsageMiB?: number;
     budgetMiB?: number;
+  };
+  /** Dedicated adapter memory reported by the task GPU telemetry. */
+  vram?: {
+    usedMiB?: number;
+    totalMiB?: number;
+    remainingMiB?: number;
   };
   /** Windows GPU Adapter Memory(*)\\Shared Usage for the selected adapter. */
   sharedGpuMemoryBytes?: number;
@@ -195,6 +202,8 @@ export const VRAM_STALL_WATCHDOG_TUNING = {
   maxClockJumpMs: 120_000,
   pressureSampleQuorum: 0.75,
   minimumPressureSamples: 3,
+  dedicatedVramWarningMiB: 1_024,
+  dedicatedVramMonitoringMiB: 800,
   sharedRelativeIncrease: 0.35,
   sharedMadMultiplier: 4,
   sharedHostRatio: 0.01,
@@ -211,6 +220,7 @@ export const VRAM_STALL_WATCHDOG_TUNING = {
 
 const MEMORY_FAMILIES: readonly VramStallEvidenceFamily[] = [
   "wddm-memory",
+  "dedicated-vram",
   "shared-gpu-memory",
   "host-memory"
 ];
@@ -300,6 +310,16 @@ function pageActivity(sample: VramStallWatchdogSample): number | undefined {
   return values.length ? Math.max(...values) : undefined;
 }
 
+function dedicatedVramRemainingMiB(sample: VramStallWatchdogSample): number | undefined {
+  const explicitRemaining = finiteNonNegative(sample.vram?.remainingMiB);
+  if (explicitRemaining !== undefined) return explicitRemaining;
+  const used = finiteNonNegative(sample.vram?.usedMiB);
+  const total = finiteNonNegative(sample.vram?.totalMiB);
+  return used !== undefined && total !== undefined && total >= used
+    ? total - used
+    : undefined;
+}
+
 function baselineHasSamples(baseline: VramStallWatchdogBaseline): boolean {
   return baseline.sampleCount >= 3 && baseline.ready;
 }
@@ -337,6 +357,14 @@ function deriveEvidence(
   const families: VramStallEvidenceFamily[] = [];
   const memoryFamilies: VramStallEvidenceFamily[] = [];
   const missing: string[] = [];
+  const dedicatedRemainingMiB = dedicatedVramRemainingMiB(sample);
+  if (dedicatedRemainingMiB !== undefined &&
+      dedicatedRemainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB) {
+    families.push("dedicated-vram");
+    memoryFamilies.push("dedicated-vram");
+  } else if (dedicatedRemainingMiB === undefined) {
+    missing.push("dedicated-vram");
+  }
   const wddmCurrent = finiteNonNegative(sample.wddm?.currentUsageMiB);
   const wddmBudget = finiteNonNegative(sample.wddm?.budgetMiB);
   if (wddmCurrent !== undefined && wddmBudget !== undefined && wddmBudget > 0) {
@@ -431,7 +459,13 @@ function deriveEvidence(
     memoryFamilies: uniqueMemoryFamilies,
     missing,
     valid: uniqueFamilies.length > 0 || missing.length < 6,
-    qualifies: uniqueMemoryFamilies.length > 0 && uniqueFamilies.length >= 2
+    // A dedicated adapter with less than the user-visible 800 MiB emergency
+    // headroom is already a direct memory-pressure signal. It does not need
+    // a second family, while the more ambiguous shared/host families retain
+    // the composite quorum requirement.
+    qualifies: uniqueMemoryFamilies.length > 0 && (
+      uniqueMemoryFamilies.includes("dedicated-vram") || uniqueFamilies.length >= 2
+    )
   };
 }
 
@@ -738,7 +772,8 @@ export function evaluateVramStallWatchdog(
 
   const noProgress = state.lastProductiveProgressAtMs !== undefined &&
     sample.sampledAtMs >= state.lastProductiveProgressAtMs;
-  if (!baselineHasSamples(state.baseline) || !noProgress) {
+  const directDedicatedPressure = evidence.memoryFamilies.includes("dedicated-vram");
+  if ((!baselineHasSamples(state.baseline) && !directDedicatedPressure) || !noProgress) {
     return { state: { ...state, lastTelemetryMissing: missing }, action: "none", evidence };
   }
 

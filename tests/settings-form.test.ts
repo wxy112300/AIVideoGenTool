@@ -97,7 +97,7 @@ describe("settings form", () => {
     globalThis.document = {
       querySelector: vi.fn((selector: string) =>
         selector === "#vram-stall-watchdog-minutes"
-          ? { value: "10" }
+          ? { value: "1" }
           : null
       )
     } as unknown as Document;
@@ -108,7 +108,7 @@ describe("settings form", () => {
         "official-storyboard",
         "faithful"
       );
-      expect(settings.vramStallWatchdogMinutes).toBe(10);
+      expect(settings.vramStallWatchdogMinutes).toBe(1);
     } finally {
       globalThis.document = previousDocument;
     }

@@ -79,6 +79,17 @@ function pressureSample(sampledAtMs: number): VramStallWatchdogSample {
   });
 }
 
+function dedicatedVramPressureSample(sampledAtMs: number): VramStallWatchdogSample {
+  return sample(sampledAtMs, {
+    vram: {
+      usedMiB: 23_800,
+      totalMiB: 24_564,
+      remainingMiB: 764
+    },
+    gpuUtilization: 100
+  });
+}
+
 describe("VRAM stall watchdog state machine", () => {
   it("does not kill a healthy near-full GPU while productive progress continues", () => {
     const events: VramStallWatchdogEvent[] = [
@@ -126,6 +137,36 @@ describe("VRAM stall watchdog state machine", () => {
     expect(trigger?.evidence?.memoryFamilies).toEqual(
       expect.arrayContaining(["shared-gpu-memory", "host-memory"])
     );
+  });
+
+  it("triggers on dedicated VRAM headroom below 800 MiB without waiting for a host counter", () => {
+    const events: VramStallWatchdogEvent[] = [
+      ...baselineEvents(),
+      { type: "sample", sample: dedicatedVramPressureSample(400) },
+      { type: "sample", sample: dedicatedVramPressureSample(800) },
+      { type: "sample", sample: dedicatedVramPressureSample(1_200) },
+      { type: "sample", sample: dedicatedVramPressureSample(1_400) }
+    ];
+    const result = replayVramStallWatchdogTrace(events, policy);
+    const trigger = result.evaluations.at(-1);
+
+    expect(result.triggerCount).toBe(1);
+    expect(result.state.status).toBe("triggered");
+    expect(trigger?.evidence?.memoryFamilies).toContain("dedicated-vram");
+  });
+
+  it("does not treat 800 MiB or more of dedicated VRAM headroom as emergency pressure", () => {
+    const events: VramStallWatchdogEvent[] = [
+      ...baselineEvents(),
+      { type: "sample", sample: sample(400, { vram: { usedMiB: 23_700, totalMiB: 24_564, remainingMiB: 864 }, gpuUtilization: 100 }) },
+      { type: "sample", sample: sample(800, { vram: { usedMiB: 23_700, totalMiB: 24_564, remainingMiB: 864 }, gpuUtilization: 100 }) },
+      { type: "sample", sample: sample(1_200, { vram: { usedMiB: 23_700, totalMiB: 24_564, remainingMiB: 864 }, gpuUtilization: 100 }) },
+      { type: "sample", sample: sample(1_400, { vram: { usedMiB: 23_700, totalMiB: 24_564, remainingMiB: 864 }, gpuUtilization: 100 }) }
+    ];
+    const result = replayVramStallWatchdogTrace(events, policy);
+
+    expect(result.triggerCount).toBe(0);
+    expect(result.state.status).toBe("observing");
   });
 
   it("clears a candidate after a transient pressure spike recovers", () => {
