@@ -1,4 +1,4 @@
-import { qwenImage21Capability, qwenImage21DiffusionModel, qwenImage21TextEncoder, qwenImage21Vae, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufDiffusionModel } from "./capabilities.js";
+import { qwenImage21Capability, qwenImage21DiffusionModel, qwenImage21TextEncoder, qwenImage21Vae, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufDiffusionModel, qwenImage21UncensoredGgufQ6Capability, qwenImage21UncensoredGgufQ6DiffusionModel } from "./capabilities.js";
 import { qwenImage21GgufRequiredNodeTypes, qwenImage21GgufTextToImageRequiredNodeTypes, qwenImage21RequiredNodeTypes, qwenImage21TextToImageRequiredNodeTypes } from "./node-requirements.js";
 import { compileImagePromptWithLimit, exactImageDimension } from "./shared.js";
 const qwenImage21PromptReferencePattern = /\bPicture\s+([1-9]\d*)\b/gu;
@@ -37,9 +37,16 @@ const officialQwenImage21WorkflowOptions = {
     editRequiredNodeTypes: qwenImage21RequiredNodeTypes
 };
 const ggufQwenImage21WorkflowOptions = {
-    modelLoaderClassType: "UnetLoaderGGUF",
-    diffusionModel: qwenImage21UncensoredGgufDiffusionModel,
+  modelLoaderClassType: "UnetLoaderGGUF",
+  diffusionModel: qwenImage21UncensoredGgufDiffusionModel,
     capability: qwenImage21UncensoredGgufCapability,
+    textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
+  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
+};
+const ggufQ6QwenImage21WorkflowOptions = {
+    modelLoaderClassType: "UnetLoaderGGUF",
+    diffusionModel: qwenImage21UncensoredGgufQ6DiffusionModel,
+    capability: qwenImage21UncensoredGgufQ6Capability,
     textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
     editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
 };
@@ -68,6 +75,9 @@ export function validateQwenImage21Workflow(workflow, qualityProfile = "preview-
 }
 export function validateQwenImage21GgufWorkflow(workflow, qualityProfile = "preview-25", allowImagePlaceholders = false) {
     return validateQwenImage21WorkflowForOptions(workflow, qualityProfile, allowImagePlaceholders, ggufQwenImage21WorkflowOptions);
+}
+export function validateQwenImage21GgufQ6Workflow(workflow, qualityProfile = "preview-25", allowImagePlaceholders = false) {
+    return validateQwenImage21WorkflowForOptions(workflow, qualityProfile, allowImagePlaceholders, ggufQ6QwenImage21WorkflowOptions);
 }
 function runtimeInputGroups(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
@@ -325,4 +335,7 @@ export function buildQwenImage21Workflow(task, run) {
 }
 export function buildQwenImage21GgufWorkflow(task, run) {
     return buildQwenImage21WorkflowForOptions(task, run, ggufQwenImage21WorkflowOptions);
+}
+export function buildQwenImage21GgufQ6Workflow(task, run) {
+    return buildQwenImage21WorkflowForOptions(task, run, ggufQ6QwenImage21WorkflowOptions);
 }

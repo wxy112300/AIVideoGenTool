@@ -7,7 +7,9 @@ export const qwenImageLightningLora = "Qwen-Image-Edit-2511-Lightning-4steps-V1.
 export const qwenImage21DiffusionModel = "qwen_image_2.1_int8_convrot.safetensors";
 export const qwenImage21TextEncoder = "qwen3vl_8b_int8_convrot.safetensors";
 export const qwenImage21Vae = "qwen_image_2.1_vae_bf16.safetensors";
-export const qwenImage21UncensoredGgufDiffusionModel = "qwen-image-2.1-Q4_K_M.gguf";
+/** The 4090-first GGUF route keeps the highest currently compatible quantization as default. */
+export const qwenImage21UncensoredGgufDiffusionModel = "qwen-image-2.1-Q8_0.gguf";
+export const qwenImage21UncensoredGgufQ6DiffusionModel = "qwen-image-2.1-Q6_K.gguf";
 export const flux2Klein4bDiffusionModel = "flux-2-klein-base-4b-fp8.safetensors";
 export const flux2Klein4bTextEncoder = "qwen_3_4b.safetensors";
 export const flux2Klein4bVae = "flux2-vae.safetensors";
@@ -161,7 +163,13 @@ export const qwenImage21Capability: ImageModelCapability = {
 export const qwenImage21UncensoredGgufCapability: ImageModelCapability = {
   ...qwenImage21Capability,
   id: "qwen-image-2-1-uncensored-gguf",
-  name: "Qwen Image 2.1 · Uncensored GGUF"
+  name: "Qwen Image 2.1 · Uncensored GGUF Q8_0"
+};
+
+export const qwenImage21UncensoredGgufQ6Capability: ImageModelCapability = {
+  ...qwenImage21Capability,
+  id: "qwen-image-2-1-uncensored-gguf-q6",
+  name: "Qwen Image 2.1 · Uncensored GGUF Q6_K"
 };
 export const qwenImageEdit2511CropStitchCapability: ImageModelCapability = {
   id: "qwen-image-edit-2511-crop-stitch",

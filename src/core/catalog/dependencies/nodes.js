@@ -125,7 +125,7 @@ const customNodeDefinitions = [{
         aliases: ["comfyui-gguf"],
         releaseSource: "github-release",
         nodeTypes: ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
-        runtimeRequirement: "维护版 fork；当前 requirements.txt 需要 gguf>=0.13.0、sentencepiece、protobuf，并要求较新的 ComfyUI custom ops 支持。Qwen Image 2.1 GGUF 首选 Q4_K_M/Q5_K_M/Q6_K；模型卡当前不建议 Q8_0。",
+    runtimeRequirement: "维护版 fork；当前 requirements.txt 需要 gguf>=0.13.0、sentencepiece、protobuf，并要求较新的 ComfyUI custom ops 支持。Qwen Image 2.1 GGUF 默认使用 Q8_0，Q6_K 作为 4090 显存余量档；Q4/Q5 不再作为应用默认路径。",
         required: true
     }, {
         id: "comfyui-gguf-h3",

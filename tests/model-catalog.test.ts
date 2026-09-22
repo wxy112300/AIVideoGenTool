@@ -56,6 +56,7 @@ describe("model catalog", () => {
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "qwen-image-2-1",
       "qwen-image-2-1-uncensored-gguf",
+      "qwen-image-2-1-uncensored-gguf-q6",
       "minimax-h3-image-i2i",
       "minimax-h3-reference-edit",
       "omnigen2",
@@ -135,10 +136,18 @@ describe("model catalog", () => {
     });
     expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf")?.definition.scan?.components.map((component) => component.expected))
       .toEqual([
-        "unet/qwen-image-2.1-{Q4_0|Q4_K_M|Q5_K_M|Q6_K}.gguf",
+        "unet/qwen-image-2.1-Q8_0.gguf",
         "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
         "vae/qwen_image_2.1_vae_bf16.safetensors"
       ]);
+    expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf-q6")?.definition).toMatchObject({
+      adapterId: "qwen-image-2-1-uncensored-gguf-q6",
+      promptPackId: "qwen-image-2-1",
+      order: 994,
+      capabilities: { maxReferenceImages: 10 }
+    });
+    expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf-q6")?.definition.scan?.components[0]?.expected)
+      .toBe("unet/qwen-image-2.1-Q6_K.gguf");
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
     expect(modelCatalog.get("minimax-h3-image-i2i")?.definition).toMatchObject({
@@ -212,10 +221,12 @@ describe("model catalog", () => {
       { id: "qwen-image-edit-2511" },
       { id: "minimax-h3-image-i2i" },
       { id: "qwen-image-2-1-uncensored-gguf" },
+      { id: "qwen-image-2-1-uncensored-gguf-q6" },
       { id: "qwen-image-2-1" }
     ], modelCatalog, "image").map((profile) => profile.id)).toEqual([
       "qwen-image-2-1",
       "qwen-image-2-1-uncensored-gguf",
+      "qwen-image-2-1-uncensored-gguf-q6",
       "minimax-h3-image-i2i",
       "qwen-image-edit-2511"
     ]);

@@ -85,6 +85,7 @@ describe("Qwen Image Edit prompt contract", () => {
     expect(content).toContain("<image1>");
     expect(imageEditPromptContractForTarget("qwen-image-2-1", "faithful")).toContain("Qwen Image 2.1");
     expect(imageEditPromptContractForTarget("qwen-image-2-1-uncensored-gguf", "faithful")).toContain("Qwen Image 2.1");
+    expect(imageEditPromptContractForTarget("qwen-image-2-1-uncensored-gguf-q6", "faithful")).toContain("Qwen Image 2.1");
     expect(imageEditPromptUserContentForTarget({
       prompt: "把 Picture 1 的天空改成傍晚。",
       modelId: "qwen2.5-vl",

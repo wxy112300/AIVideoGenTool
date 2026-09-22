@@ -15,6 +15,7 @@ import {
   buildQwenImageEdit2511CropStitchWorkflow,
   buildQwenImage21Workflow,
   buildQwenImage21GgufWorkflow,
+  buildQwenImage21GgufQ6Workflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
   compileMinimaxH3ImageI2IPrompt,
@@ -60,6 +61,7 @@ import {
   qwenImageEdit2511CropStitchCapability,
   qwenImage21Capability,
   qwenImage21UncensoredGgufCapability,
+  qwenImage21UncensoredGgufQ6Capability,
   qwenImage21GgufRequiredNodeTypes,
   qwenImage21GgufTextToImageRequiredNodeTypes,
   qwenImage21RequiredNodeTypes,
@@ -80,6 +82,7 @@ import {
   validateQwenImage21Workflow,
   validateQwenImage21GgufRuntimeSchema,
   validateQwenImage21GgufWorkflow,
+  validateQwenImage21GgufQ6Workflow,
   validateBirefnetWorkflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
@@ -1450,6 +1453,7 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
   it("registers the independent Uncensored GGUF capability and loader contract", () => {
     expect(qwenImage21UncensoredGgufCapability).toMatchObject({
       id: "qwen-image-2-1-uncensored-gguf",
+      name: "Qwen Image 2.1 · Uncensored GGUF Q8_0",
       maxPictures: 10,
       supportsTextOnly: true,
       supportsCustomOutputSize: true,
@@ -1467,6 +1471,10 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
       "KSampler",
       "SaveImageAdvanced"
     ]));
+    expect(qwenImage21UncensoredGgufQ6Capability).toMatchObject({
+      id: "qwen-image-2-1-uncensored-gguf-q6",
+      name: "Qwen Image 2.1 · Uncensored GGUF Q6_K"
+    });
   });
 
   it("compiles stable Picture references to official image tokens", () => {
@@ -1579,14 +1587,32 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
 
     expect(workflow.model).toMatchObject({
       class_type: "UnetLoaderGGUF",
-      inputs: { unet_name: "qwen-image-2.1-Q4_K_M.gguf" }
+      inputs: { unet_name: "qwen-image-2.1-Q8_0.gguf" }
     });
     expect(Object.values(workflow).filter((node) => node.class_type === "LoadImage")).toHaveLength(0);
     expect(workflow.sampler?.inputs.model).toEqual(["model", 0]);
     expect(validateQwenImage21GgufWorkflow(workflow, "preview-25", true)).toEqual([]);
     expect(validateQwenImage21GgufRuntimeSchema(
       { model: workflow.model! },
-      { UnetLoaderGGUF: { input: { required: { unet_name: [["qwen-image-2.1-Q4_K_M.gguf"]] } } } }
+      { UnetLoaderGGUF: { input: { required: { unet_name: [["qwen-image-2.1-Q8_0.gguf"]] } } } }
+    )).toEqual([]);
+  });
+
+  it("keeps Q6_K as an explicit lower-memory GGUF profile", () => {
+    const workflow = buildQwenImage21GgufQ6Workflow(imageTask([], {
+      modelId: "qwen-image-2-1-uncensored-gguf-q6",
+      workflowPath: "builtin:image/qwen-image-2-1-uncensored-gguf-q6",
+      prompt: "A quiet mountain lake at sunrise, cinematic landscape photography."
+    }), run);
+
+    expect(workflow.model).toMatchObject({
+      class_type: "UnetLoaderGGUF",
+      inputs: { unet_name: "qwen-image-2.1-Q6_K.gguf" }
+    });
+    expect(validateQwenImage21GgufQ6Workflow(workflow, "preview-25", true)).toEqual([]);
+    expect(validateQwenImage21GgufRuntimeSchema(
+      { model: workflow.model! },
+      { UnetLoaderGGUF: { input: { required: { unet_name: [["qwen-image-2.1-Q6_K.gguf"]] } } } }
     )).toEqual([]);
   });
 

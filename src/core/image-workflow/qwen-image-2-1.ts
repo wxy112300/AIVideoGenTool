@@ -10,7 +10,9 @@ import {
   qwenImage21TextEncoder,
   qwenImage21Vae,
   qwenImage21UncensoredGgufCapability,
-  qwenImage21UncensoredGgufDiffusionModel
+  qwenImage21UncensoredGgufDiffusionModel,
+  qwenImage21UncensoredGgufQ6Capability,
+  qwenImage21UncensoredGgufQ6DiffusionModel
 } from "./capabilities.js";
 import {
   qwenImage21GgufRequiredNodeTypes,
@@ -93,6 +95,14 @@ const ggufQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
   editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
 };
 
+const ggufQ6QwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
+  modelLoaderClassType: "UnetLoaderGGUF",
+  diffusionModel: qwenImage21UncensoredGgufQ6DiffusionModel,
+  capability: qwenImage21UncensoredGgufQ6Capability,
+  textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
+  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
+};
+
 function validateQwenImage21WorkflowForOptions(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "preview-25",
@@ -148,6 +158,19 @@ export function validateQwenImage21GgufWorkflow(
     qualityProfile,
     allowImagePlaceholders,
     ggufQwenImage21WorkflowOptions
+  );
+}
+
+export function validateQwenImage21GgufQ6Workflow(
+  workflow: ComfyApiWorkflow,
+  qualityProfile = "preview-25",
+  allowImagePlaceholders = false
+): string[] {
+  return validateQwenImage21WorkflowForOptions(
+    workflow,
+    qualityProfile,
+    allowImagePlaceholders,
+    ggufQ6QwenImage21WorkflowOptions
   );
 }
 
@@ -528,4 +551,11 @@ export function buildQwenImage21GgufWorkflow(
   run: ImageGenerationRun
 ): ComfyApiWorkflow {
   return buildQwenImage21WorkflowForOptions(task, run, ggufQwenImage21WorkflowOptions);
+}
+
+export function buildQwenImage21GgufQ6Workflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  return buildQwenImage21WorkflowForOptions(task, run, ggufQ6QwenImage21WorkflowOptions);
 }

@@ -15,7 +15,9 @@ export function isOmniGen2TargetModel(modelId) {
     return modelId === "omnigen2";
 }
 export function isQwenImage21TargetModel(modelId) {
-    return modelId === "qwen-image-2-1" || modelId === "qwen-image-2-1-uncensored-gguf";
+    return modelId === "qwen-image-2-1" ||
+        modelId === "qwen-image-2-1-uncensored-gguf" ||
+        modelId === "qwen-image-2-1-uncensored-gguf-q6";
 }
 export function imageEditPromptContractForTarget(modelId, preset, presetText = "", outputMode = "plain") {
     if (isOmniGen2TargetModel(modelId)) {
