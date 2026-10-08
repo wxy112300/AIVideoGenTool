@@ -29,6 +29,7 @@ import type { ImageInspectionPort } from "../ports/image-inspection.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { persistImageHistoryResult, persistVideoHistoryResult } from "../queue-history.js";
+import { probeVideoOutputDuration } from "./video-output-duration.js";
 import { recoverQueueFailure } from "../queue-recovery.js";
 
 export type QueueIsolationReason = "lora" | "model-change" | "always";
@@ -65,6 +66,7 @@ export interface QueueExecutionSideEffectsDependencies {
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   imageInspection?: ImageInspectionPort;
+  videoOutputDuration?(files: HistoryFile[]): Promise<number | null>;
 }
 
 export interface ImageRunCompletion {
@@ -357,6 +359,13 @@ export class QueueExecutionSideEffects {
 
   async completeVideoTask(completion: VideoTaskCompletion): Promise<AppState> {
     const { store, sendState } = this.deps;
+    const actualDuration = completion.task.taskType === "upscale" ? null
+      : await (this.deps.videoOutputDuration ?? probeVideoOutputDuration)(completion.files);
+    if (actualDuration === null && completion.task.taskType !== "upscale") {
+      this.deps.logger.warn("queue", "video-duration-unavailable", "Output video duration could not be inspected; preserving estimated History duration", {
+        taskId: completion.task.id
+      });
+    }
     const next = await store.update((state) => {
       const previousQueue = state.queue.map((item) => ({ ...item }));
       persistVideoHistoryResult(state, {
@@ -365,6 +374,7 @@ export class QueueExecutionSideEffects {
         promptId: completion.promptId,
         comfyOutputs: completion.comfyOutputs,
         files: completion.files,
+        actualDuration: actualDuration ?? undefined,
         performanceStats: completion.performanceStats,
         h3MemoryRuntimeEvidence: completion.h3MemoryRuntimeEvidence,
         h3ContinuationData: completion.h3ContinuationData,

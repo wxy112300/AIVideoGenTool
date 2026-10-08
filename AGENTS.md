@@ -6,6 +6,7 @@ Local Video Studio is a Windows Electron image/video studio backed by ComfyUI. T
 
 - Inspect `git status --short`, target diffs and current files before editing. Preserve unrelated work.
 - Use [docs/README.md](docs/README.md) to select one task route; [AGENT_START_HERE](docs/AGENT_START_HERE.md) maps code. Read affected contract sections, not every linked plan.
+- For product changes/tests, use the repository [Skill](.agents/skills/local-video-studio/SKILL.md) and `npm.cmd run harness:app -- guide <journey>`; [user journeys](docs/runbooks/PRODUCT_JOURNEYS.md) connect UI gates, AppApi, runtime and History. Verify missing input → recovery → actual button click → task ID; API-only submission cannot prove UI reachability. Runtime checks start ComfyUI through the app when offline and within the task's resource ownership.
 - Cross-session or multi-stage work uses one `docs/tasks/<date>-<topic>/TASK.md`; resume its summary before searching old plans. Small local fixes need no formal document.
 - Within repository requirements: latest user instruction → accepted working behavior → architecture/UX/workflow contracts → current code and evidence → historical plans/prototypes. Current disk is the editing baseline, not proof of correctness.
 

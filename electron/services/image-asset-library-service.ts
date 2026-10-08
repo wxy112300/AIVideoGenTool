@@ -156,7 +156,8 @@ export class ImageAssetLibraryService {
           snapshot,
           library,
           paths,
-          (progress) => this.report(progress)
+          (progress) => this.report(progress),
+          () => this.deps.store.get()
         );
         this.report({
           phase: "completed",
@@ -202,6 +203,14 @@ export class ImageAssetLibraryService {
     state.draft.startImagePath = prepared.draft.startImagePath;
     state.draft.endImagePath = prepared.draft.endImagePath;
     state.draft.h3ReferenceSlots = prepared.draft.h3ReferenceSlots.map((slot) => ({ ...slot }));
+    for (const key of ["imageToVideoDraft", "videoExtensionDraft"] as const) {
+      const target = state[key];
+      const source = prepared[key];
+      if (!target || !source) continue;
+      target.startImagePath = source.startImagePath;
+      target.endImagePath = source.endImagePath;
+      target.h3ReferenceSlots = source.h3ReferenceSlots.map((slot) => ({ ...slot }));
+    }
     const preparedTasks = new Map(prepared.queue.map((task) => [task.id, task]));
     for (const task of state.queue) {
       const preparedTask = preparedTasks.get(task.id);

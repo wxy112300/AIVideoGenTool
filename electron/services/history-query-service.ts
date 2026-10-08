@@ -25,10 +25,8 @@ import {
 import { syncQueueVideoInputPaths } from "../../src/core/queue.js";
 import { createHistoryCoverCacheKey } from "../../src/core/history-cover.js";
 import { historyFileCandidates } from "../../src/core/history-media.js";
-import {
-  H3_CONTINUATION_ARTIFACT_SUBFOLDER,
-  validateNativeAvContinuationArtifact
-} from "../../src/core/h3-continuation-artifact.js";
+import { validateNativeAvContinuationArtifact } from "../../src/core/h3-continuation-artifact.js";
+import { resolveNativeAvArtifactFilePath } from "../../src/core/native-av-artifact-paths.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
@@ -108,18 +106,8 @@ function restoredNativeAvArtifact(
   outputDirectory: string
 ): NativeAvContinuationArtifact | undefined {
   if (!artifact || !outputDirectory.trim() || validateNativeAvContinuationArtifact(artifact)) return artifact;
-  const root = path.resolve(outputDirectory);
-  const resolve = (file: HistoryFile): string | undefined => {
-    if (file.subfolder !== H3_CONTINUATION_ARTIFACT_SUBFOLDER || path.basename(file.filename) !== file.filename) {
-      return undefined;
-    }
-    const candidate = path.resolve(root, file.subfolder, file.filename);
-    const relative = path.relative(root, candidate);
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
-    return candidate;
-  };
-  const manifestPath = resolve(artifact.manifest);
-  const payloadPath = resolve(artifact.payload);
+  const manifestPath = resolveNativeAvArtifactFilePath(outputDirectory, artifact.manifest);
+  const payloadPath = resolveNativeAvArtifactFilePath(outputDirectory, artifact.payload);
   if (!manifestPath || !payloadPath) return artifact;
   return {
     ...artifact,

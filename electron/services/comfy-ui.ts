@@ -1205,6 +1205,8 @@ export async function submitTask(
       throw new Error("H3 Continuum managed workflow 缺少唯一的 Run Storage receipt 输出节点。");
     }
     h3ContinuumManagedReceiptNodeId = receiptIds[0];
+    const receipt = (prompt as Record<string, { inputs: Record<string, unknown> }>)[receiptIds[0]];
+    bindManagedContinuumPrefixExpectation(receipt.inputs, task, objectInfo);
   } else if (task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)) {
     const diagnosticsIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
       ? Object.entries(prompt as Record<string, unknown>)
@@ -1338,6 +1340,21 @@ export async function submitImageTask(
     Object.entries(prompt).map(([id, value]) => [id, value.class_type])
   );
   return { promptId: result.prompt_id, clientId, nodeTypes };
+}
+
+export function bindManagedContinuumPrefixExpectation(
+  receiptInputs: Record<string, unknown>,
+  task: ExtensionQueueTask,
+  objectInfo: Record<string, unknown>
+): void {
+  const supported = objectInfoInputNames(objectInfo.LocalVideoStudioH3ContinuumManagedReceipt);
+  if (!supported?.has("expected_parent_revision_id") || !supported.has("expected_prefix_chunks")) {
+    throw new Error("Continuum managed 缺少执行前前缀保护：请在设置中更新 Local Video Studio H3 节点并重启 ComfyUI。");
+  }
+  receiptInputs.expected_prefix_chunks = task.h3ContinuumSequence?.acceptedChunks ?? 0;
+  receiptInputs.expected_parent_revision_id = task.h3ContinuumSequence?.acceptedChunks
+    ? task.h3ContinuumParentRevisionId ?? task.h3ContinuumSequence.canonicalHead.revisionId
+    : "";
 }
 
 function objectInfoInputNames(value: unknown): Set<string> | null {

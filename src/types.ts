@@ -338,7 +338,21 @@ export interface ImageEditDraft {
   outputCount: number;
   outputFormat: ImageOutputFormat;
   seed: number | null;
+  imageLoras: ImageLoraSelection[];
   h3ImageOptions?: H3ImageOptions;
+}
+
+export interface ImageLoraSelection {
+  id: string;
+  name: string;
+  filename: string;
+  strength: number;
+  modelFamily: string;
+  compatibleModelIds: string[];
+  compatibleInputModes: Array<"image">;
+  promptPrefixes?: string[];
+  /** Optional adapter profile that changes the base workflow settings. */
+  workflowProfile?: "qwen-image-2-1-fix";
 }
 
 export interface ImageGenerationRun {
@@ -608,6 +622,7 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   qualityProfile: string;
   outputFormat: ImageOutputFormat;
   outputCount: number;
+  imageLoras?: ImageLoraSelection[];
   h3ImageOptions?: H3ImageOptions;
   h3ImageRecipe?: H3ImageRecipeSnapshot;
   runs: ImageGenerationRun[];
@@ -1428,6 +1443,7 @@ export interface ImageAssetVersion {
   aspectRatio?: ImageAspectRatio;
   targetResolution?: ImageTargetResolution;
   outputCount?: number;
+  imageLoras?: ImageLoraSelection[];
   diffusionModelFilename?: string;
   h3ImageOptions?: H3ImageOptions;
   h3ImageRecipe?: H3ImageRecipeSnapshot;

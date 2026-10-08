@@ -54,11 +54,14 @@ describe("history batch helpers", () => {
       { ...video("b", []), tags: ["精选", "Other"] }
     ];
     expect(historyBatchCommonTags(records)).toEqual(["精选"]);
-    expect(historyBatchTagSummaries(records)).toEqual([
+    const summaries = historyBatchTagSummaries(records);
+    expect(summaries).toHaveLength(3);
+    // Tag counts are independent of the host locale's display ordering.
+    expect(summaries).toEqual(expect.arrayContaining([
       { tag: "精选", count: 2 },
       { tag: "Keep", count: 1 },
       { tag: "Other", count: 1 }
-    ]);
+    ]));
   });
 
   it("selects the highest-resolution video and newest image version", () => {

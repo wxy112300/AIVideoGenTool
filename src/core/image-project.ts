@@ -12,6 +12,7 @@ import type {
 import type { H3ImageOptions, H3ImageRecipeSnapshot } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { normalizeImageLoras } from "./image-loras.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 
 const imageOutputFormats: ImageOutputFormat[] = ["png", "jpeg", "webp"];
@@ -241,6 +242,7 @@ function normalizeImageAssetVersion(
     : "edit";
   const generatedVersion = Boolean(source.taskId || source.runId || source.comfyPromptId || source.workflowPath);
   const modelId = typeof source.modelId === "string" ? source.modelId : "";
+  const imageLoras = normalizeImageLoras(source.imageLoras, modelId);
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     versionNumber: normalizedInteger(source.versionNumber, 0, 0),
@@ -263,6 +265,7 @@ function normalizeImageAssetVersion(
     prompt: typeof source.prompt === "string" ? source.prompt : "",
     promptVersion: normalizedInteger(source.promptVersion, 0, 0),
     references: normalizeImageReferences(source.references),
+    ...(imageLoras.length ? { imageLoras } : {}),
     ...(typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? { qualityProfile: source.qualityProfile.trim() }
       : {}),
@@ -529,6 +532,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   const modelId = typeof source.modelId === "string" && source.modelId.trim()
     ? source.modelId
     : defaults.modelId;
+  const imageLoras = normalizeImageLoras(source.imageLoras, modelId);
   const largestPictureNumber = pictures.reduce(
     (largest, picture) => Math.max(largest, picture.pictureNumber),
     0
@@ -564,6 +568,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     outputCount,
     outputFormat,
     seed,
+    imageLoras,
     ...(normalizeH3ImageOptions(source.h3ImageOptions, modelId)
       ? { h3ImageOptions: normalizeH3ImageOptions(source.h3ImageOptions, modelId) }
       : {})
@@ -617,6 +622,7 @@ export function imageEditDraftFromQueueTask(
     outputCount: task.outputCount,
     outputFormat: "png",
     seed: sameSeed ? seeds[0] : null,
+    imageLoras: normalizeImageLoras(task.imageLoras, task.modelId),
     ...(task.h3ImageOptions ? { h3ImageOptions: { ...task.h3ImageOptions } } : {})
   });
 }

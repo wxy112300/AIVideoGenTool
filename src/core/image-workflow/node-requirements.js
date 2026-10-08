@@ -29,6 +29,11 @@ export const qwenImage21TextToImageRequiredNodeTypes = [
     "VAEDecode",
     "SaveImageAdvanced"
 ];
+/** Native ComfyUI guidance nodes used by the Qwen Image 2.1 Fix adapter. */
+export const qwenImage21FixRequiredNodeTypes = [
+    "APG",
+    "FreSca"
+];
 /** Native ComfyUI nodes used by the official Qwen Image 2.1 edit template. */
 export const qwenImage21RequiredNodeTypes = [
     "UNETLoader",

@@ -174,4 +174,63 @@ describe("image asset library", () => {
     await expect(fs.readFile(outside, "utf8")).resolves.toBe("outside");
     expect(isPathInsideImageLibrary(library, outside)).toBe(false);
   });
+
+  it("protects and organizes images referenced only by saved creation drafts", async () => {
+    const root = await temporaryRoot();
+    const library = path.join(root, "library");
+    await fs.mkdir(library);
+    const imageSource = path.join(library, "saved-image.png");
+    const extensionSource = path.join(library, "saved-extension.png");
+    const orphan = path.join(library, "unused.png");
+    for (const filename of [imageSource, extensionSource, orphan]) await fs.writeFile(filename, path.basename(filename));
+    const state = createDefaultState();
+    state.imageToVideoDraft = { ...structuredClone(state.draft), startImagePath: imageSource };
+    state.videoExtensionDraft = { ...structuredClone(state.draft), endImagePath: extensionSource };
+
+    const scan = await scanImageAssetLibrary(state, library);
+    expect(scan.orphanFiles.map(file => file.absolutePath)).toEqual([orphan]);
+    const cleaned = await cleanupImageAssetLibrary(state, library, [imageSource, extensionSource, orphan]);
+    expect(cleaned.cleanedFiles).toBe(1);
+    await expect(fs.readFile(imageSource, "utf8")).resolves.toBe("saved-image.png");
+    await expect(fs.readFile(extensionSource, "utf8")).resolves.toBe("saved-extension.png");
+
+    const organized = await organizeImageAssetLibrary(state, library);
+    expect(organized.state.imageToVideoDraft!.startImagePath).not.toBe(imageSource);
+    expect(organized.state.videoExtensionDraft!.endImagePath).not.toBe(extensionSource);
+    await expect(fs.readFile(organized.state.imageToVideoDraft!.startImagePath, "utf8")).resolves.toBe("saved-image.png");
+    await expect(fs.readFile(organized.state.videoExtensionDraft!.endImagePath, "utf8")).resolves.toBe("saved-extension.png");
+    expect(organized.state.draft.startImagePath).toBe(state.draft.startImagePath);
+    expect(organized.state.draft.endImagePath).toBe(state.draft.endImagePath);
+  });
+
+  it("preserves an orphan that gains a draft reference after the scan", async () => {
+    const root = await temporaryRoot();
+    const library = path.join(root, "input", "LocalVideoStudio");
+    const newlyReferenced = path.join(library, "sources", "aa", "still-used.png");
+    const orphan = path.join(library, "sources", "bb", "orphan.png");
+    await fs.mkdir(path.dirname(newlyReferenced), { recursive: true });
+    await fs.mkdir(path.dirname(orphan), { recursive: true });
+    await fs.writeFile(newlyReferenced, "now referenced");
+    await fs.writeFile(orphan, "still orphaned");
+    const state = createDefaultState();
+
+    const staleScan = await scanImageAssetLibrary(state, library);
+    expect(staleScan.orphanFiles.map((file) => file.absolutePath)).toEqual(
+      expect.arrayContaining([newlyReferenced, orphan])
+    );
+
+    state.imageDraft.pictures = [{
+      id: "new-library-reference",
+      pictureNumber: 1,
+      absolutePath: newlyReferenced,
+      width: 64,
+      height: 64
+    }];
+    const result = await cleanupImageAssetLibrary(state, library, [newlyReferenced, orphan]);
+
+    expect(result.cleanedFiles).toBe(1);
+    await expect(fs.readFile(newlyReferenced, "utf8")).resolves.toBe("now referenced");
+    await expect(fs.stat(orphan)).rejects.toThrow();
+    expect(result.scan.orphanFiles.map((file) => file.absolutePath)).not.toContain(newlyReferenced);
+  });
 });

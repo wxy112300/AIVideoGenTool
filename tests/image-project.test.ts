@@ -15,6 +15,7 @@ import {
   nextImageVersionNumber
 } from "../src/core/image-project.js";
 import type { ImageGenerationQueueTask, ImageHistoryProject } from "../src/types.js";
+import { imageLoraDefinition, imageLoraSelection } from "../src/core/image-loras.js";
 
 function project(): ImageHistoryProject {
   return {
@@ -185,6 +186,27 @@ describe("image project pure functions", () => {
     });
 
     expect(draft.targetResolution).toBe(2160);
+  });
+
+  it("normalizes and restores the Qwen Image 2.1 AnyAngle selection", () => {
+    const definition = imageLoraDefinition("qwen-image-2-1-anyangle");
+    const draft = normalizeImageEditDraft({
+      modelId: "qwen-image-2-1",
+      imageLoras: [imageLoraSelection(definition!)]
+    });
+
+    expect(draft.imageLoras).toMatchObject([{
+      id: "qwen-image-2-1-anyangle",
+      filename: "QI2.1_AnyAngle.safetensors",
+      strength: 1
+    }]);
+    expect(normalizeImageEditDraft({
+      modelId: "qwen-image-edit-2511",
+      imageLoras: draft.imageLoras
+    }).imageLoras).toMatchObject([{
+      id: "qwen-image-2-1-anyangle",
+      strength: 1
+    }]);
   });
 
   it("uses the viewed generated file as Picture 1 when continuing an edit", () => {

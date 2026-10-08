@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, promises as fs } from "node:fs";
+import { createReadStream, promises as fs, unlinkSync } from "node:fs";
 import path from "node:path";
+import { setImmediate as yieldToStateUpdates } from "node:timers/promises";
 import type {
   AppState,
   ImageAssetLibraryProgress,
@@ -110,6 +111,8 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
 
   state.imageDraft.pictures.forEach(addReference);
   addVideoInputReferences(state.draft);
+  if (state.imageToVideoDraft) addVideoInputReferences(state.imageToVideoDraft);
+  if (state.videoExtensionDraft) addVideoInputReferences(state.videoExtensionDraft);
   for (const task of state.queue) {
     if (task.taskType === "image-generation") task.pictures.forEach(addReference);
     else if (task.taskType === "generation" || task.taskType === "extension") addVideoInputReferences(task);
@@ -371,9 +374,10 @@ export async function cleanupImageAssetLibrary(
   state: AppState,
   libraryDirectory: string,
   requestedPaths: string[],
-  report?: ProgressReporter
+  report?: ProgressReporter,
+  getCurrentState: () => AppState = () => state
 ): Promise<ImageAssetLibraryResult> {
-  const before = await scanImageAssetLibrary(state, libraryDirectory);
+  const before = await scanImageAssetLibrary(getCurrentState(), libraryDirectory, report);
   const validOrphans = new Map(before.orphanFiles.map((file) => [normalizedPath(file.absolutePath), file]));
   let cleanedFiles = 0;
   let cleanedBytes = 0;
@@ -383,11 +387,23 @@ export async function cleanupImageAssetLibrary(
     report?.({ phase: "cleaning", current, total: requestedPaths.length, message: `正在清理 ${path.basename(requested)}` });
     const orphan = validOrphans.get(normalizedPath(requested));
     if (!orphan || !isPathInsideImageLibrary(libraryDirectory, orphan.absolutePath)) continue;
-    await fs.rm(orphan.absolutePath, { force: true });
+    // Let pending IPC/state updates run between files, then make the final
+    // reference check and unlink one synchronous application-local operation.
+    // An awaited unlink here would reopen a check/delete race with saveDraft.
+    await yieldToStateUpdates();
+    const currentState = getCurrentState();
+    if (currentState.queueRunning) throw new Error("队列已开始运行，已停止清理图片素材库。");
+    if (referenceHandles(currentState).some(handle => normalizedPath(handle.path) === normalizedPath(orphan.absolutePath))) continue;
+    try {
+      unlinkSync(orphan.absolutePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
     cleanedFiles += 1;
     cleanedBytes += orphan.size;
   }
   const cleanedDirectories = await removeEmptySourceDirectories(libraryDirectory);
-  const scan = await scanImageAssetLibrary(state, libraryDirectory);
+  const scan = await scanImageAssetLibrary(getCurrentState(), libraryDirectory);
   return { scan, archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles, cleanedDirectories, cleanedBytes };
 }

@@ -4,6 +4,10 @@
 
 ## 请求 → 契约 → 代码
 
+产品修改先读 [用户旅程总图](runbooks/PRODUCT_JOURNEYS.md) 和本次章节。`npm.cmd run harness:app -- list` / `guide <id>` 给出入口与相邻测试；仓库 [local-video-studio Skill](../.agents/skills/local-video-studio/SKILL.md) 将这些步骤接到 Agent 自动发现入口。
+
+真实 Electron 可经 loopback CDP 调用 `window.studio`。`harness:app -- inspect` 查看按钮阻塞原因，`start-comfy` 启动应用管理的服务，`enqueue-ui` 点击真实按钮并验证新 task。隔离与操作见 [runbook](AGENT_ELECTRON_API_RUNBOOK.md)。服务扫描或直接 `/prompt` 不证明 UI 闭环。
+
 | 请求 | 必要契约/参考 | 实现入口 |
 | --- | --- | --- |
 | Queue、历史、持久化、路径、IPC | [Architecture](ARCHITECTURE_CONTRACT.md) | `src/core/queue*.ts`、`electron/queue-*.ts`、`electron/store.ts`、`src/types.ts` |

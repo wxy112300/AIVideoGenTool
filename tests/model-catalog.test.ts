@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../src/core/catalog";
-import { VIDEO_LORA_DEFINITIONS } from "../src/core/catalog/loras/definitions";
+import {
+  IMAGE_LORA_DEFINITIONS,
+  VIDEO_LORA_DEFINITIONS
+} from "../src/core/catalog/loras/definitions";
 import { BUILTIN_VIDEO_LORAS } from "../src/core/video-loras";
 
 describe("model catalog", () => {
@@ -79,6 +82,9 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "qwen-image-2-1-fix",
+      "qwen-image-2-1-anyangle",
+      "qwen-image-2-1-lighting-blend",
       "h3-pdd-fl2va-8step",
       "h3-pdd-ref2va-8step",
       "minimax-h3-turbo-v4-step600-ema-pruned",
@@ -86,6 +92,7 @@ describe("model catalog", () => {
       "minimax-h3-lightx2v-turbo-4step-768p-v1.2",
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
+      "minimax-h3-360-orbit",
       "minimax-h3-cinematic-realism",
       "minimax-h3-better-human-motion",
       "minimax-h3-camera-motion-v1",
@@ -114,6 +121,82 @@ describe("model catalog", () => {
     });
     expect(modelCatalog.get("qwen-image-2-1")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
+    expect(IMAGE_LORA_DEFINITIONS.find((lora) => lora.id === "qwen-image-2-1-fix")).toMatchObject({
+      filename: "qwen-image-2.1-fix-1.0-comfy.safetensors",
+      catalogOrder: 151,
+      workflowProfile: "qwen-image-2-1-fix",
+      compatibleModelIds: [
+        "qwen-image-2-1",
+        "qwen-image-2-1-uncensored-gguf",
+        "qwen-image-2-1-uncensored-gguf-q6"
+      ]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-fix")?.definition).toMatchObject({
+      adapterId: "image-lora",
+      order: 151,
+      inputModes: ["image"]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-fix")?.definition.scan).toMatchObject({
+      runtimeNodeTypes: ["LoraLoaderModelOnly", "APG", "FreSca"],
+      components: [{
+        installGuide: {
+          sourceLabel: "e-n-v-y / Qwen-Image-2.1-Fix",
+          recommendedFilename: "qwen-image-2.1-fix-1.0-comfy.safetensors",
+          bytes: 111612000,
+          sha256: "e4a369158b957aee3a8316d94dbe00c98f7d648ef3d1926ccf7283915b6db60c"
+        }
+      }]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-anyangle")?.definition).toMatchObject({
+      adapterId: "image-lora",
+      order: 150,
+      inputModes: ["image"]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-anyangle")?.definition.scan).toMatchObject({
+      runtimeNodeTypes: ["LoraLoaderModelOnly"],
+      components: [{
+        installGuide: {
+          sourceLabel: "lilylilith / QI_2.1_AnyAngle",
+          recommendedFilename: "QI2.1_AnyAngle.safetensors",
+          license: "Apache-2.0"
+        }
+      }]
+    });
+    expect(IMAGE_LORA_DEFINITIONS.find((lora) => lora.id === "qwen-image-2-1-lighting-blend")).toMatchObject({
+      filename: "Qwenimag21_c2-st2000.safetensors",
+      catalogOrder: 149,
+      promptPrefixes: ["pengyu"],
+      compatibleModelIds: [
+        "qwen-image-2-1",
+        "qwen-image-2-1-uncensored-gguf",
+        "qwen-image-2-1-uncensored-gguf-q6"
+      ]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-lighting-blend")?.definition).toMatchObject({
+      adapterId: "image-lora",
+      order: 149,
+      inputModes: ["image"]
+    });
+    expect(modelCatalog.get("qwen-image-2-1-lighting-blend")?.definition.scan).toMatchObject({
+      runtimeNodeTypes: ["LoraLoaderModelOnly"],
+      components: [{
+        installGuide: {
+          sourceLabel: "RunningHubAI / rh-qwen-image-2.1-lora-2104918997757157378",
+          recommendedFilename: "Qwenimag21_c2-st2000.safetensors"
+        }
+      }]
+    });
+    expect(modelCatalog.get("minimax-h3-360-orbit")?.definition).toMatchObject({
+      family: "minimax-h3",
+      variant: "fl2va",
+      inputModes: ["image"]
+    });
+    expect(modelCatalog.get("minimax-h3-360-orbit")?.definition.scan?.components[0]?.installGuide)
+      .toMatchObject({
+        sourceLabel: "pablodawson / MiniMax-H3-360-Orbit-LoRA",
+        recommendedFilename: "minimax_h3_flf2v_lora_v1.safetensors",
+        revision: "5ddbc2d"
+      });
     expect(modelCatalog.get("qwen-image-2-1")?.definition.scan?.components.map((component) => component.expected))
       .toEqual([
         "diffusion_models/qwen_image_2.1_{bf16|int8_convrot}.safetensors",
@@ -273,7 +356,7 @@ describe("model catalog", () => {
 
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
-      .toEqual([...VIDEO_LORA_DEFINITIONS]
+      .toEqual([...VIDEO_LORA_DEFINITIONS, ...IMAGE_LORA_DEFINITIONS]
         .filter((lora) => lora.retired !== true)
         .sort((left, right) => right.catalogOrder - left.catalogOrder)
         .map((lora) => lora.id));

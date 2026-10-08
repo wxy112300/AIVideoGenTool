@@ -38,6 +38,12 @@ import {
   cachedImageProfileAllowsEnqueue
 } from "../../../core/image-workflow";
 import { isH3ImageModelId, normalizeImageEditDraft } from "../../../core/image-project";
+import {
+  BUILTIN_IMAGE_LORAS,
+  imageLoraCompatibleWithModel,
+  imageLoraConfigurationError,
+  profileProvidesImageLora
+} from "../../../core/image-loras";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import {
   ensureMotionContextSourceSlot,
@@ -68,7 +74,7 @@ import {
   videoLoraCompatibleWithDraft
 } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
-import { loraRuleText } from "../../../core/catalog/loras/locales";
+import { loraLocaleFor, loraRuleText } from "../../../core/catalog/loras/locales";
 import {
   h3SharedLatentSaveModeFor,
   h3LatentSaveModeSavesJointAv
@@ -184,6 +190,12 @@ export function imageEditEnqueueBlockReason(
             : imageCapability.requiresMask && !inputPictures[0]?.mask?.regionCount
               ? "请先在原图上绘制并保存 Mask"
               : "";
+  const imageLoraBlockReason = imageLoraConfigurationError(
+    draft.imageLoras,
+    draft.modelId,
+    inputPictures.length
+  );
+  if (imageLoraBlockReason) return imageLoraBlockReason;
   if (referenceBlockReason) return referenceBlockReason;
   if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
     return t(uiKeys.create.validation.imagePromptMissing);
@@ -353,6 +365,38 @@ export function buildImageEditPageViewModel(
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
+  const imageLoraOptions = BUILTIN_IMAGE_LORAS.filter((lora) =>
+    imageLoraCompatibleWithModel(lora, draft.modelId)
+  );
+  const imageLoraVisible = imageLoraOptions.length > 0;
+  const imageLoraOptionsMarkup = imageLoraOptions.map((lora) => {
+    const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+    const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
+    const available = profileProvidesImageLora(profile, lora.filename);
+    const selected = draft.imageLoras.some((candidate) => candidate.id === lora.id);
+    const guideLocale = loraLocaleFor(lora.id, state.settings.uiLocale)?.guide;
+    const guide = guideLocale
+      ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
+      : "";
+    const status = !environmentScan
+      ? "等待环境扫描……"
+      : !profile
+        ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
+        : available
+          ? "文件已就绪。"
+          : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
+    const triggerText = lora.promptPrefixes?.length
+      ? "触发词：" + lora.promptPrefixes.join(", ")
+      : "";
+    return "<label class=\"settings-field image-lora-toggle\">" +
+      "<span><input data-image-lora-id=\"" + escapeHtml(lora.id) + "\" type=\"checkbox\"" +
+      (selected ? " checked" : "") +
+      (available ? "" : " disabled") +
+      "> " + escapeHtml(localized?.name ?? lora.name) +
+      " · strength " + escapeHtml(String(lora.strength)) + "</span>" +
+      "<small>" + escapeHtml([guide, triggerText].filter(Boolean).join(" ")) + "</small>" +
+      "<small>" + escapeHtml(status) + "</small></label>";
+  }).join("");
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -449,6 +493,8 @@ export function buildImageEditPageViewModel(
     imageQualityOptionsMarkup,
     imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
+    imageLoraVisible,
+    imageLoraOptionsMarkup,
     imageEnhanceMode,
     imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
     imageFaithfulEnhanceTitle: imagePromptPack.presetDescriptions.faithful,

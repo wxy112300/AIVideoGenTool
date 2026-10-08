@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, H3ContinuumReceipt, HistoryFile } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import { bindManagedContinuumPrefixExpectation } from "../electron/services/comfy-ui.js";
 import { persistVideoHistoryResult } from "../electron/queue-history.js";
 import {
   isH3ContinuumReceipt,
@@ -131,6 +132,22 @@ function emptySequence() {
 }
 
 describe("managed Continuum contracts", () => {
+  it("refuses an unguarded runtime and binds the queued prefix only to the downstream receipt", () => {
+    const task = { h3ContinuumSequence: { ...emptySequence(), acceptedChunks: 3 }, h3ContinuumParentRevisionId: "queued-head" } as ExtensionQueueTask;
+    const snapshot = structuredClone(task);
+    const receipt = { status: ["12", 3], run_name: "original-run" };
+    expect(() => bindManagedContinuumPrefixExpectation(receipt, task, {})).toThrow("执行前前缀保护");
+    expect(receipt).toEqual({ status: ["12", 3], run_name: "original-run" });
+    const schema = { LocalVideoStudioH3ContinuumManagedReceipt: { input: { optional: {
+      expected_parent_revision_id: ["STRING"], expected_prefix_chunks: ["INT"]
+    } } } };
+    bindManagedContinuumPrefixExpectation(receipt, task, schema);
+    expect(receipt).toMatchObject({ expected_parent_revision_id: "queued-head", expected_prefix_chunks: 3 });
+    expect(task).toEqual(snapshot);
+    const pending: Record<string, unknown> = {};
+    bindManagedContinuumPrefixExpectation(pending, { ...task, h3ContinuumSequence: emptySequence() }, schema);
+    expect(pending).toEqual({ expected_parent_revision_id: "", expected_prefix_chunks: 0 });
+  });
   it("registers a normal Native artifact as one app-canonical owner", async () => {
     const root = await mkdtemp(path.join(process.cwd(), "tmp-h3-canonical-asset-"));
     try {
@@ -232,6 +249,10 @@ describe("managed Continuum contracts", () => {
         sourceVideoPath, sourceAssetId: state.history[0]!.id, sourceVersionId: version.id,
         h3ContinuumSequence: sequence };
       const before = structuredClone(state);
+      for (const h3ContinuumSequence of [undefined, emptySequence()]) {
+        expect(await inspector.inspectExtensionSource({ ...draft, h3ContinuumMode: "managed", h3ContinuumSequence }))
+          .toMatchObject({ route: "managed", status: "missing", reason: expect.stringContaining("已接受的 Continuum Run 前缀") });
+      }
       expect(await inspector.inspectExtensionSource(draft)).toMatchObject({ route: "managed", status: "available" });
       expect(await inspector.inspectExtensionSource({ ...draft, h3ContinuumTakeAction: "Continue From Here" }))
         .toMatchObject({ status: "invalid", reason: expect.stringContaining("group revision") });
@@ -477,10 +498,10 @@ describe("managed Continuum contracts", () => {
     })).toContain("producer");
   });
 
-  it("registers one Run Storage owner and creates a verified hardlink alias", async () => {
+  it.each(["h3-continuum", "h3_continuum"])("registers one Run Storage owner and creates a verified hardlink alias (%s)", async (runDirectory) => {
     const outputDirectory = await mkdtemp(path.join(process.cwd(), "tmp-h3-managed-"));
     try {
-      const chunkDirectory = path.join(outputDirectory, "h3-continuum", "runs", "run-1", "revisions", "rev-1", "chunks");
+      const chunkDirectory = path.join(outputDirectory, runDirectory, "runs", "run-1", "revisions", "rev-1", "chunks");
       await mkdir(chunkDirectory, { recursive: true });
       const frameCount = 345;
       const videoBytes = 1 * 24 * 102 * 30 * 52 * 2;
@@ -529,7 +550,7 @@ describe("managed Continuum contracts", () => {
         schema_version: 1,
         project_id: "project-1",
         run_name: "run-1",
-        run_storage_path: path.join(outputDirectory, "h3-continuum", "runs", "run-1", "revisions", "rev-1"),
+        run_storage_path: path.join(outputDirectory, runDirectory, "runs", "run-1", "revisions", "rev-1"),
         revision_id: "rev-1",
         package_version: "3.8.2",
         run_storage_schema_version: 3,

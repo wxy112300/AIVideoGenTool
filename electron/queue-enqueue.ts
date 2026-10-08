@@ -15,6 +15,7 @@ import type {
 } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { activateCreationDraft } from "../src/core/creation-drafts.js";
+import { imageLoraConfigurationError } from "../src/core/image-loras.js";
 import { findImageProjectLineage, isH3ImageModelId, normalizeImageEditDraft } from "../src/core/image-project.js";
 import {
   cachedImageProfileAllowsEnqueue,
@@ -843,6 +844,12 @@ export class QueueEnqueueService {
       pictures: imagePicturesForModelInput(requested.pictures, adapter?.supportsTextOnly === true)
     });
     if (!adapter) throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
+    const imageLoraError = imageLoraConfigurationError(
+      normalized.imageLoras,
+      normalized.modelId,
+      normalized.pictures.length
+    );
+    if (imageLoraError) throw new Error(imageLoraError);
     const hasReference = normalized.pictures.length > 0;
     if (!hasReference && !adapter.supportsTextOnly) {
       throw new Error("请先添加至少一张 Picture 作为基础图片。");

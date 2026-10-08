@@ -129,6 +129,15 @@ export function persistImageHistoryResult(
     aspectRatio: queued.aspectRatio,
     targetResolution: queued.targetResolution,
     outputCount: queued.outputCount,
+    ...(queued.imageLoras?.length
+      ? {
+          imageLoras: queued.imageLoras.map((lora) => ({
+            ...lora,
+            compatibleModelIds: [...lora.compatibleModelIds],
+            compatibleInputModes: [...lora.compatibleInputModes]
+          }))
+        }
+      : {}),
     diffusionModelFilename: queued.diffusionModelFilename,
     ...(queued.h3ImageOptions ? { h3ImageOptions: { ...queued.h3ImageOptions } } : {}),
     ...(queued.h3ImageRecipe ? { h3ImageRecipe: { ...queued.h3ImageRecipe } } : {}),
@@ -175,6 +184,7 @@ export interface VideoHistoryResult {
   promptId: string;
   comfyOutputs: unknown;
   files: HistoryFile[];
+  actualDuration?: number;
   performanceStats?: TaskPerformanceStats;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   h3ContinuationData?: NativeAvContinuationData;
@@ -252,6 +262,8 @@ export function persistVideoHistoryResult(
   result: VideoHistoryResult
 ): void {
   const task = result.task;
+  const actualDuration = Number.isFinite(result.actualDuration) && result.actualDuration! > 0
+    ? result.actualDuration : undefined;
   const h3LatentSaveMode = h3LatentSaveModeFor(
     task,
     task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
@@ -266,7 +278,7 @@ export function persistVideoHistoryResult(
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
       videoLoras: normalizeHistoryVideoLoras(task.videoLoras), width, height,
-      duration: task.duration, promptVersion: task.promptVersion, steps: task.steps,
+      duration: actualDuration ?? task.duration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
       h3SparseAttentionMode: task.h3SparseAttentionMode,
       h3RuntimeMode: task.h3RuntimeMode,
@@ -297,7 +309,7 @@ export function persistVideoHistoryResult(
       updatedAt: result.completedAt, modelId: task.modelId,
       favorite: false, rating: null,
       tags: [],
-      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), duration: task.duration,
+      videoLoras: normalizeHistoryVideoLoras(task.videoLoras), duration: actualDuration ?? task.duration,
       resolution: task.h3DeliveryResolution ?? task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
@@ -350,9 +362,9 @@ export function persistVideoHistoryResult(
           }
         )
       : task.h3ContinuumSequence;
-    const totalDuration = managedContinuum
+    const totalDuration = actualDuration ?? (managedContinuum
       ? (result.h3ContinuumReceipt?.requestedChunks ?? task.h3ContinuumTargetChunks ?? 1) * task.duration
-      : task.trimEndSeconds - task.trimStartSeconds + generatedDuration;
+      : task.trimEndSeconds - task.trimStartSeconds + generatedDuration);
     const h3ContextLatentPath = h3MotionContextPathFor(
       task,
       result.files,

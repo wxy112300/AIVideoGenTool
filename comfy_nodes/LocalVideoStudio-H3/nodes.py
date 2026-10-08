@@ -987,7 +987,22 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # object_info is requested after custom-node loading. Guard every loaded
+        # official namespace, including the lazy bridge namespace, without
+        # changing the public sampler's class or graph identity.
+        import nodes as runtime_nodes
+        from .managed_prefix_guard import install_registered_managed_prefix_guard
+        guarded = False
+        try:
+            install_registered_managed_prefix_guard(runtime_nodes.NODE_CLASS_MAPPINGS)
+            guarded = True
+        except Exception as exc:
+            logging.warning("Local Video Studio managed prefix guard unavailable: %s", exc)
         return {
+            "optional": {
+                "expected_parent_revision_id": ("STRING", {"default": ""}),
+                "expected_prefix_chunks": ("INT", {"default": 0, "min": 0, "max": 16}),
+            } if guarded else {},
             "required": {
                 "status": ("STRING", {"default": ""}),
                 "assembly_plan": ("H3_CONTINUUM_ASSEMBLY_PLAN",),
@@ -1101,6 +1116,8 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
         review_action: Any = "Continue / Next",
         spectrum_mode: Any = "off",
         spectrum_model_aware_mode: Any = "off",
+        expected_parent_revision_id: Any = "",
+        expected_prefix_chunks: Any = 0,
     ):
         if str(generation_mode) != "Review Each Chunk":
             raise ValueError("managed receipt 只接受 Review Each Chunk")

@@ -309,6 +309,11 @@ export function imageTaskFromDraft(
     qualityProfile: draft.qualityProfile,
     outputFormat: "png",
     outputCount: runs.length,
+    imageLoras: (draft.imageLoras ?? []).map((lora) => ({
+      ...lora,
+      compatibleModelIds: [...lora.compatibleModelIds],
+      compatibleInputModes: [...lora.compatibleInputModes]
+    })),
     ...(h3ImageOptions ? { h3ImageOptions } : {}),
     ...(h3ImageRecipe ? { h3ImageRecipe } : {}),
     runs,

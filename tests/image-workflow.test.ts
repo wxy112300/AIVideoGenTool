@@ -64,6 +64,7 @@ import {
   qwenImage21UncensoredGgufQ6Capability,
   qwenImage21GgufRequiredNodeTypes,
   qwenImage21GgufTextToImageRequiredNodeTypes,
+  qwenImage21FixRequiredNodeTypes,
   qwenImage21RequiredNodeTypes,
   qwenImage21TextToImageRequiredNodeTypes,
   renderImageWorkflow,
@@ -86,6 +87,11 @@ import {
   validateBirefnetWorkflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
+import {
+  imageLoraDefinition,
+  imageLoraSelection,
+  imagePromptForLoras
+} from "../src/core/image-loras.js";
 
 function picture(pictureNumber: number, absolutePath = `picture-${pictureNumber}.png`): ImageReference {
   return {
@@ -1448,6 +1454,7 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
       "KSampler",
       "SaveImageAdvanced"
     ]));
+    expect(qwenImage21FixRequiredNodeTypes).toEqual(["APG", "FreSca"]);
   });
 
   it("registers the independent Uncensored GGUF capability and loader contract", () => {
@@ -1537,6 +1544,121 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
     });
     expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
     expect(validateQwenImage21Workflow(renderImageWorkflow(workflow, ["target.png", "reference.png"]))).toEqual([]);
+  });
+
+  it("chains the official AnyAngle LoRA and enforces its two-picture contract", () => {
+    const definition = imageLoraDefinition("qwen-image-2-1-anyangle");
+    expect(definition).toBeDefined();
+    const anyAngle = imageLoraSelection(definition!);
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1), picture(2)], {
+      prompt: "Change the camera angle from <image2> to <image1>.",
+      imageLoras: [anyAngle]
+    }), run);
+
+    expect(workflow.imageLora).toMatchObject({
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: ["model", 0],
+        lora_name: "QI2.1_AnyAngle.safetensors",
+        strength_model: 1
+      }
+    });
+    expect(workflow.cache?.inputs.model).toEqual(["imageLora", 0]);
+    expect(workflow.sampler?.inputs.model).toEqual(["cache", 0]);
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+    expect(() => buildQwenImage21Workflow(imageTask([picture(1)], {
+      prompt: "Change the camera angle.",
+      imageLoras: [anyAngle]
+    }), run)).toThrow("需要正好 2 张 Picture");
+    expect(() => buildQwenImage21Workflow(imageTask([], {
+      prompt: "Change the camera angle.",
+      imageLoras: [anyAngle]
+    }), run)).toThrow("需要正好 2 张 Picture");
+  });
+
+  it("chains the Lighting Blend LoRA and injects pengyu exactly once", () => {
+    const definition = imageLoraDefinition("qwen-image-2-1-lighting-blend");
+    expect(definition).toBeDefined();
+    const lightingBlend = imageLoraSelection(definition!);
+    expect(imagePromptForLoras("Blend the product into the scene.", [lightingBlend]))
+      .toBe("pengyu, Blend the product into the scene.");
+    expect(imagePromptForLoras("pengyu, Blend the product into the scene.", [lightingBlend]))
+      .toBe("pengyu, Blend the product into the scene.");
+
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1)], {
+      prompt: "Blend the product into the scene.",
+      imageLoras: [lightingBlend]
+    }), run);
+    expect(workflow.imageLora).toMatchObject({
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: ["model", 0],
+        lora_name: "Qwenimag21_c2-st2000.safetensors",
+        strength_model: 1
+      }
+    });
+    expect(workflow.positive?.inputs.prompt).toContain("pengyu,");
+    expect(workflow.cache?.inputs.model).toEqual(["imageLora", 0]);
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+
+    const textOnlyWorkflow = buildQwenImage21Workflow(imageTask([], {
+      prompt: "A studio product photograph.",
+      imageLoras: [lightingBlend]
+    }), run);
+    expect(textOnlyWorkflow.positive?.inputs.prompt).toBe("pengyu, A studio product photograph.");
+    expect(textOnlyWorkflow.sampler?.inputs.model).toEqual(["imageLora", 0]);
+  });
+
+  it("chains the Qwen Image 2.1 Fix adapter with its guidance and sampling profile", () => {
+    const definition = imageLoraDefinition("qwen-image-2-1-fix");
+    expect(definition).toBeDefined();
+    const fix = imageLoraSelection(definition!);
+    expect(fix.workflowProfile).toBe("qwen-image-2-1-fix");
+
+    const workflow = buildQwenImage21Workflow(imageTask([picture(1)], {
+      prompt: "Repair the product integration and keep the subject identity unchanged.",
+      imageLoras: [fix]
+    }), run);
+    expect(workflow.imageLora).toMatchObject({
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: ["model", 0],
+        lora_name: "qwen-image-2.1-fix-1.0-comfy.safetensors",
+        strength_model: 1
+      }
+    });
+    expect(workflow.apg).toMatchObject({
+      class_type: "APG",
+      inputs: { model: ["imageLora", 0], eta: 1, norm_threshold: 10, momentum: 0.3 }
+    });
+    expect(workflow.fresca).toMatchObject({
+      class_type: "FreSca",
+      inputs: { model: ["apg", 0], scale_low: 1, scale_high: 2, freq_cutoff: 8 }
+    });
+    expect(workflow.positive?.inputs.negative_prompt)
+      .toBe("artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers");
+    expect(workflow.cache?.inputs.model).toEqual(["fresca", 0]);
+    expect(workflow.sampler).toMatchObject({
+      inputs: {
+        model: ["cache", 0],
+        steps: 20,
+        cfg: 3,
+        sampler_name: "seeds_2",
+        scheduler: "sgm_uniform",
+        denoise: 1
+      }
+    });
+    expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
+
+    const textOnlyWorkflow = buildQwenImage21Workflow(imageTask([], {
+      prompt: "A clean studio product photograph.",
+      imageLoras: [fix]
+    }), run);
+    expect(textOnlyWorkflow.sampler?.inputs.model).toEqual(["fresca", 0]);
+    expect(textOnlyWorkflow).not.toHaveProperty("cache");
+    expect(textOnlyWorkflow.positive?.inputs.negative_prompt)
+      .toBe(workflow.positive?.inputs.negative_prompt);
+    expect(validateQwenImage21Workflow(textOnlyWorkflow, "preview-25", true)).toEqual([]);
   });
 
   it("switches the official edit graph to a custom canvas when size is selected", () => {

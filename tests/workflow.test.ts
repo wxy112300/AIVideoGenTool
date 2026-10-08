@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, QueueTask } from "../src/types";
 import {
   H3_CAMERA_MOTION_LORA,
+  H3_ORBIT_360_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_EQUI360_LORA,
   H3_VR180_SBS_LORA,
@@ -142,6 +143,36 @@ describe("renderWorkflow", () => {
       lora_name: "camera_motion_h3_lora_v1_3000_pruned.safetensors"
     });
     expect(rendered["6"]?.inputs.prompt).toBe("camera motion, 人物自然转身");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      scheduler: "simple",
+      steps: 20
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
+  });
+
+  it("renders 360 Orbit as a standard FL2VA LoRA without enabling Turbo sampling", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_ORBIT_360_LORA],
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const orbitLoader = Object.values(rendered).find((node) =>
+      node.class_type === "LoraLoaderModelOnly" &&
+      node.inputs.lora_name === "minimax_h3_flf2v_lora_v1.safetensors"
+    );
+
+    expect(orbitLoader?.inputs).toMatchObject({
+      strength_model: 1,
+      lora_name: "minimax_h3_flf2v_lora_v1.safetensors"
+    });
+    expect(rendered["6"]?.inputs.prompt).toBe("人物自然转身");
     expect(rendered["8"]?.inputs).toMatchObject({
       scheduler: "simple",
       steps: 20

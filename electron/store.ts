@@ -22,6 +22,7 @@ import type {
 import { APP_SCHEMA_VERSION, createDefaultState } from "../src/core/defaults.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
 import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
+import { normalizeImageLoras } from "../src/core/image-loras.js";
 import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import {
   managedPromptModelDefinitions
@@ -298,9 +299,11 @@ function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenera
   const h3ImageOptions = normalizeH3ImageOptions(task.h3ImageOptions, task.modelId);
   const hasH3ImageRecipe = Object.prototype.hasOwnProperty.call(task, "h3ImageRecipe");
   const h3ImageRecipe = normalizeH3ImageRecipe(task.h3ImageRecipe, task.modelId);
+  const imageLoras = normalizeImageLoras(task.imageLoras, task.modelId);
   const {
     h3ImageOptions: _storedH3ImageOptions,
     h3ImageRecipe: _storedH3ImageRecipe,
+    imageLoras: _storedImageLoras,
     ...taskWithoutH3Snapshots
   } = task;
   return {
@@ -326,7 +329,8 @@ function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenera
       ? { h3ImageRecipe }
       : hasH3ImageRecipe
         ? { h3ImageRecipe: task.h3ImageRecipe }
-        : {})
+        : {}),
+    ...(imageLoras.length ? { imageLoras } : {})
   };
 }
 

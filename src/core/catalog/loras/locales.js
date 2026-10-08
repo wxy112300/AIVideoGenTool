@@ -77,6 +77,23 @@ const zhCN = {
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；运镜 LoRA 建议先单独验证，再与性能或人物 LoRA 组合。"
         }
     },
+    "minimax-h3-360-orbit": {
+        guide: {
+            summary: "MiniMax H3 360° Orbit FL2VA 运镜 LoRA，让静止场景中的相机绕主体连续旋转 360° 并回到起始视角；首尾帧应使用同一张图片。",
+            recommendedStrength: "固定 1.0；模型卡基准为 768×768、73 帧、28 步，不使用 CFG 或负面提示词。",
+            effects: "只让相机移动，保持人物和物体的世界位置、姿态与形状稳定，利用视差呈现完整环绕并回到起始帧。",
+            stacking: "建议单独使用并保留同 Prompt/Seed 的无 LoRA 对照；不要先与 Turbo、Camera Motion 或 360/VR180 空间布局 LoRA 叠加。",
+            compatibility: "仅 MiniMax H3 FL2VA pruned INT8 ConvRot 图生视频；模型卡训练集是 768 方形、73 帧的人体 Gaussian splat 场景，其他主体、比例和时长尚未验证。",
+            source: "pablodawson / MiniMax-H3-360-Orbit-LoRA · 5ddbc2d"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      orbitTurbo: "模型卡建议 28 步；当前应用的 H3 FL2VA 策略使用受支持的 20/16/12 步档。与 Turbo 叠加尚未验证，建议先分别做同 Seed 对照。",
+            orbitCameraMotion: "360° Orbit 与 Camera Motion 都会改变镜头轨迹；组合尚未验证，先单独确认完整回环和主体稳定性。",
+            orbitSpatialLayout: "360° Orbit 与 Equirectangular/VR180 空间布局 LoRA 的几何先验不同；请先分别生成，避免同时叠加。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；先加载性能 LoRA，再加载运镜或空间布局适配器。"
+        }
+    },
     "minimax-h3-cinematic-realism": {
         guide: {
             summary: "社区 MiniMax H3 Cinematic Realism 电影质感 LoRA，降低 H3 默认对比度，提供更柔和、更容易后期调色的电影基调；应用会自动把触发词 DY 放到执行 Prompt 开头。",
@@ -236,6 +253,48 @@ const zhCN = {
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，人物和质量 LoRA 后加载。"
         }
     },
+    "qwen-image-2-1-anyangle": {
+        guide: {
+            summary: "Qwen Image 2.1 AnyAngle 视角控制 LoRA；Picture 1 是目标视角粗 3D/高斯渲染，Picture 2 是原图。",
+            recommendedStrength: "固定 1.0；官方建议至少 20 步，先用 CFG 3.0 做基准。",
+            effects: "根据目标视角粗渲染改变相机角度，同时尽量保持主体身份、材质和场景结构。",
+            stacking: "这是 Qwen Image 2.1 的单 LoRA 相机控制路径；不要与其他图片 LoRA 叠加。",
+            compatibility: "仅 Qwen Image 2.1 官方、Q8_0 GGUF 和 Q6_K GGUF 图片工作流；必须正好两张 Picture。Prompt：Change the camera angle from <image2> to <image1>。",
+            source: "lilylilith / QI_2.1_AnyAngle · Apache-2.0"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前图片模型或输入模式。",
+            orderSuggestion: "建议先加载 AnyAngle，再由 Prompt 指定目标视角；不要叠加其他图片 LoRA。"
+        }
+    },
+    "qwen-image-2-1-fix": {
+        guide: {
+            summary: "社区 Qwen Image 2.1 Fix 适配器，配合官方 ComfyUI 专用权重改善颜色、细节纹理、手部稳定性和整体出图质量。",
+            recommendedStrength: "固定 1.0；工作流会自动使用 20 步、CFG 3、seeds_2、sgm_uniform，以及 APG 和 FreSca 的推荐参数。",
+            effects: "减少褪色、粗糙纹理、模糊细节和手部/手指错误；同时让 T2I 与参考图编辑使用同一套质量修复路径。",
+            stacking: "这是 Qwen Image 2.1 的单适配器质量路径；不要与 AnyAngle、Lighting Blend 或其他图片 LoRA 叠加，先做同 Prompt/Seed 的无适配器对照。",
+            compatibility: "仅适用于当前 Qwen Image 2.1 官方、Q8_0 GGUF 和 Q6_K GGUF 工作流；需要 ComfyUI 0.37 中内置的 APG 与 FreSca 节点。它是社区适配器，不是新的基础模型。",
+            source: "e-n-v-y / Qwen-Image-2.1-Fix · qwen-image-2.1-fix-1.0-comfy.safetensors"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前图片模型或输入模式。",
+            orderSuggestion: "先单独使用 Fix 做同 Prompt/Seed 对照；不要和其他 Qwen Image 2.1 图片 LoRA 同时加载。"
+        }
+    },
+    "qwen-image-2-1-lighting-blend": {
+        guide: {
+            summary: "RunningHub 的 Qwen Image 2.1 光影溶图 LoRA，面向产品或物体与背景的自然融合。",
+            recommendedStrength: "模型卡未声明固定强度；应用默认 1.0，执行 Prompt 会自动把触发词 pengyu 放在最前。",
+            effects: "改善统一光照、反射高光、前后景空间关系和自然接触阴影，减少主体像后贴入背景的感觉。",
+            stacking: "这是单图片 LoRA 路径；不要与 AnyAngle 或其他图片 LoRA 叠加，先用同一 Prompt/Seed 做无 LoRA 对照。",
+            compatibility: "适用于当前已接入的 Qwen Image 2.1 官方、Q8_0 GGUF 和 Q6_K GGUF 图片工作流；可用于 T2I，也可在有参考图的 P 图路径中使用。",
+            source: "RunningHubAI / rh-qwen-image-2.1-lora-2104918997757157378 · 触发词 pengyu"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前图片模型或输入模式。",
+            orderSuggestion: "先单独加载光影溶图 LoRA，再与无 LoRA 基线比较；不要和 AnyAngle 同时使用。"
+        }
+    },
 };
 const enUS = {
     "h3-pdd-fl2va-8step": {
@@ -313,6 +372,23 @@ const enUS = {
         rules: {
             incompatible: "{name} is incompatible with the current base model or input mode.",
             orderSuggestion: "Place {current} before {previous}; validate the camera-motion LoRA alone before combining it with performance or people LoRAs."
+        }
+    },
+    "minimax-h3-360-orbit": {
+        guide: {
+            summary: "A MiniMax H3 360° Orbit FL2VA camera-motion LoRA for a continuous frozen-time orbit that returns to the starting view; use the same image as both endpoints.",
+            recommendedStrength: "Keep 1.0; the model-card baseline is 768×768, 73 frames, and 28 steps with no CFG or negative prompt.",
+            effects: "Moves only the camera while keeping people and objects in the same world position, pose, and shape, using parallax for a complete orbit that closes on the starting frame.",
+            stacking: "Use it alone first with a same Prompt/Seed no-LoRA baseline; do not initially combine it with Turbo, Camera Motion, or 360/VR180 spatial-layout adapters.",
+            compatibility: "MiniMax H3 pruned INT8 ConvRot FL2VA image-to-video only. The training set covers 768-square, 73-frame human Gaussian-splat scenes; other subjects, aspect ratios, and durations remain unvalidated.",
+            source: "pablodawson / MiniMax-H3-360-Orbit-LoRA · 5ddbc2d"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+      orbitTurbo: "The model card recommends 28 steps; the app's current H3 FL2VA policy uses the supported 20/16/12-step tiers. Turbo stacking is unvalidated, so compare them separately with the same Seed.",
+            orbitCameraMotion: "360° Orbit and Camera Motion both alter the camera trajectory; the combination is unvalidated, so confirm the closed loop and subject stability separately first.",
+            orbitSpatialLayout: "360° Orbit and Equirectangular/VR180 spatial-layout adapters use different geometry priors; generate them separately instead of stacking them.",
+            orderSuggestion: "Place {current} before {previous}; load performance LoRAs first, then camera-motion or spatial-layout adapters."
         }
     },
     "minimax-h3-cinematic-realism": {
@@ -472,6 +548,48 @@ const enUS = {
             facialRealismTurbo: "Facial Realism CloseUp can technically stack with Turbo, but low-step sampling and this experimental facial adapter need a same-Seed comparison; place Turbo first.",
             facialRealismPeople: "Facial Realism CloseUp and Realism People both alter people-realism detail. This stack is not fully validated; use them separately first and inspect artifacts, skin tone, and identity consistency.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before people and quality LoRAs."
+        }
+    },
+    "qwen-image-2-1-anyangle": {
+        guide: {
+            summary: "Qwen Image 2.1 AnyAngle camera-view LoRA; Picture 1 is a coarse 3D/Gaussian render of the target view and Picture 2 is the original image.",
+            recommendedStrength: "Keep strength at 1.0; the official baseline recommends at least 20 steps and CFG 3.0.",
+            effects: "Changes the camera angle toward the coarse target-view render while preserving subject identity, materials, and scene structure as much as possible.",
+            stacking: "This is a single-LoRA Qwen Image 2.1 camera-control path; do not stack other image LoRAs.",
+            compatibility: "Enabled only for the official Qwen Image 2.1, Q8_0 GGUF, and Q6_K GGUF image workflows; exactly two Pictures are required. Prompt: Change the camera angle from <image2> to <image1>.",
+            source: "lilylilith / QI_2.1_AnyAngle · Apache-2.0"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current image model or input mode.",
+            orderSuggestion: "Load AnyAngle first and use the prompt to describe the target view; do not stack another image LoRA."
+        }
+    },
+    "qwen-image-2-1-fix": {
+        guide: {
+            summary: "A community Qwen Image 2.1 Fix adapter using the ComfyUI-specific weight to improve color, fine texture, hand stability, and overall output quality.",
+            recommendedStrength: "Keep strength at 1.0; the workflow fixes 20 steps, CFG 3, seeds_2, sgm_uniform, and the recommended APG and FreSca parameters.",
+            effects: "Reduces washed-out color, rough or blurry detail, and hand/finger errors while applying the same quality-repair path to T2I and reference-image editing.",
+            stacking: "Use this as the single Qwen Image 2.1 quality adapter; do not stack it with AnyAngle, Lighting Blend, or another image LoRA. Keep a no-adapter same Prompt/Seed baseline.",
+            compatibility: "Enabled only for the current official Qwen Image 2.1, Q8_0 GGUF, and Q6_K GGUF workflows; it requires the APG and FreSca nodes built into ComfyUI 0.37. This is a community adapter, not a new base model.",
+            source: "e-n-v-y / Qwen-Image-2.1-Fix · qwen-image-2.1-fix-1.0-comfy.safetensors"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current image model or input mode.",
+            orderSuggestion: "Use Fix alone for a same Prompt/Seed comparison first; do not load another Qwen Image 2.1 image LoRA with it."
+        }
+    },
+    "qwen-image-2-1-lighting-blend": {
+        guide: {
+            summary: "A RunningHub Qwen Image 2.1 lighting-blend LoRA for naturally merging a product or object into its background.",
+            recommendedStrength: "The model card publishes no fixed strength; the app defaults to 1.0 and automatically prefixes the execution prompt with the pengyu trigger.",
+            effects: "Improves consistent lighting, specular highlights, front-to-back spatial depth, and natural contact shadows so the subject feels integrated rather than pasted in.",
+            stacking: "Use this as a single image-LoRA path; do not stack it with AnyAngle or another image LoRA. Keep a no-LoRA same Prompt/Seed baseline.",
+            compatibility: "Enabled for the current official Qwen Image 2.1, Q8_0 GGUF, and Q6_K GGUF image workflows; it can run in T2I and reference-image editing paths.",
+            source: "RunningHubAI / rh-qwen-image-2.1-lora-2104918997757157378 · trigger pengyu"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current image model or input mode.",
+            orderSuggestion: "Load the lighting-blend adapter alone first and compare it with a no-LoRA baseline; do not combine it with AnyAngle."
         }
     },
 };

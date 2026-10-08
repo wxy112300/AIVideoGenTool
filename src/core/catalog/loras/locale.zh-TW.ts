@@ -82,6 +82,23 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；運鏡 LoRA 建議先單獨驗證，再與效能或人物 LoRA 組合。"
     }
   },
+  "minimax-h3-360-orbit": {
+    guide: {
+      summary: "MiniMax H3 360° Orbit FL2VA 運鏡 LoRA，讓靜止場景中的相機連續繞主體旋轉 360° 並回到起始視角；首尾幀應使用同一張圖片。",
+      recommendedStrength: "固定 1.0；模型卡基準為 768×768、73 幀、28 步，不使用 CFG 或負面提示詞。",
+      effects: "只讓相機移動，保持人物和物體的世界位置、姿態與形狀穩定，利用視差完成環繞並回到起始幀。",
+      stacking: "建議單獨使用並保留同 Prompt/Seed 的無 LoRA 對照；不要先與 Turbo、Camera Motion 或 360/VR180 空間布局 LoRA 疊加。",
+      compatibility: "僅 MiniMax H3 FL2VA pruned INT8 ConvRot 圖生影片；模型卡訓練集是 768 方形、73 幀的人體 Gaussian splat 場景，其他主體、比例和時長尚未驗證。",
+      source: "pablodawson / MiniMax-H3-360-Orbit-LoRA · 5ddbc2d"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      orbitTurbo: "模型卡建議 28 步；目前應用的 H3 FL2VA 策略使用支援的 20/16/12 步檔。與 Turbo 疊加尚未驗證，建議先分別做同 Seed 對照。",
+      orbitCameraMotion: "360° Orbit 與 Camera Motion 都會改變鏡頭軌跡；組合尚未驗證，先單獨確認完整回環和主體穩定性。",
+      orbitSpatialLayout: "360° Orbit 與 Equirectangular/VR180 空間布局 LoRA 的幾何先驗不同；請先分別生成，避免同時疊加。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；先載入效能 LoRA，再載入運鏡或空間布局適配器。"
+    }
+  },
   "minimax-h3-cinematic-realism": {
     guide: {
       summary: "社群 MiniMax H3 Cinematic Realism 電影質感 LoRA，降低 H3 預設對比度，提供更柔和、更容易後期調色的電影基調；應用會自動把觸發詞 DY 放到執行 Prompt 開頭。",

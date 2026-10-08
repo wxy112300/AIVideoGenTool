@@ -21,7 +21,8 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
     targetResolution: "source",
     outputCount: 1,
     outputFormat: "png",
-    seed: null
+    seed: null,
+    imageLoras: []
   };
 }
 

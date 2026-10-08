@@ -512,11 +512,12 @@ export class H3ContinuumAssetRegistry {
     if (!this.deps.fileSystem.listDirectory) {
       throw new Error("当前文件系统适配器不支持 H3 AV inventory 扫描");
     }
+    const managedRunDirectories = ["h3-continuum/runs", "h3_continuum/runs"];
     const scannedDirectories = [
       "h3-native-av",
       "h3-motion-context",
       "h3_context",
-      "h3-continuum/runs"
+      ...managedRunDirectories
     ];
     const manifestDirectory = safeOutputPath(root, path.join(root, "h3-continuum-assets"));
     const manifestEntries = await this.deps.fileSystem.listDirectory(manifestDirectory).catch(() => []);
@@ -585,7 +586,7 @@ export class H3ContinuumAssetRegistry {
           audioTensorSha256: inspected.audioTensorSha256
         } : {}),
         ...(validationError ? { validationError } : {}),
-        ...(asset ? {} : { legacy: !normalized.startsWith("h3-continuum/runs/") })
+        ...(asset ? {} : { legacy: !managedRunDirectories.some((directory) => normalized.startsWith(`${directory}/`)) })
       });
     }
     for (const asset of manifests.values()) {

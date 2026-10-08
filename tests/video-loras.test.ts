@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
   H3_CAMERA_MOTION_LORA,
+  H3_ORBIT_360_LORA,
   H3_CINEMATIC_REALISM_LORA,
   H3_BETTER_HUMAN_MOTION_LORA,
   H3_EQUI360_LORA,
@@ -37,6 +38,7 @@ describe("video LoRA catalog", () => {
       H3_TURBO_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
+      H3_ORBIT_360_LORA.id,
       H3_CINEMATIC_REALISM_LORA.id,
       H3_BETTER_HUMAN_MOTION_LORA.id,
       H3_CAMERA_MOTION_LORA.id,
@@ -85,6 +87,14 @@ describe("video LoRA catalog", () => {
       promptPrefixes: ["camera motion"],
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
+    });
+    expect(H3_ORBIT_360_LORA).toMatchObject({
+      strength: 1,
+      purpose: "motion",
+      promptPrefixes: [],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"],
+      filename: "minimax_h3_flf2v_lora_v1.safetensors"
     });
     expect(H3_CINEMATIC_REALISM_LORA).toMatchObject({
       strength: 0.5,
@@ -137,6 +147,14 @@ describe("video LoRA catalog", () => {
       expect(Array.isArray(lora.rules.settingConflicts)).toBe(true);
       expect(Array.isArray(lora.rules.combinations)).toBe(true);
     }
+  });
+
+  it("keeps Orbit as a standard FL2VA adapter and gives the prompt enhancer its endpoint guidance", () => {
+    expect(videoPromptForLoras("a frozen subject", [H3_ORBIT_360_LORA]))
+      .toBe("a frozen subject");
+    const instruction = h3LoraPromptInstruction([H3_ORBIT_360_LORA]);
+    expect(instruction).toContain("same image as both FL2VA endpoints");
+    expect(instruction).toContain("only the camera moves");
   });
 
   it("adds a missing Realism People trigger without relocating an existing one", () => {

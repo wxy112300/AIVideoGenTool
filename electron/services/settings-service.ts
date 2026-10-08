@@ -16,6 +16,7 @@ import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import {
   cleanupVideoHistoryMigration,
+  remapVideoMigrationConsumers,
   isPathWithinDirectory,
   markVideoHistoryMigrationCommitted,
   planVideoHistoryMigration,
@@ -300,6 +301,7 @@ export class SettingsService {
     state: AppState,
     plan: VideoHistoryMigrationPlan
   ): void {
+    remapVideoMigrationConsumers(state, plan);
     for (const entry of plan.entries) {
       for (const reference of entry.references) {
         if (reference.kind === "queue") {

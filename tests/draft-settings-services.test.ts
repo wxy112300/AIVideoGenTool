@@ -216,6 +216,51 @@ describe("DraftService", () => {
 });
 
 describe("SettingsService", () => {
+  it("preserves edited video drafts when default models change", async () => {
+    const initial = createDefaultState();
+    initial.settings.imageInputLibraryDirectory = path.join(process.cwd(), "input-library");
+    initial.draft.prompt = "active draft stays edited";
+    initial.imageToVideoDraft = {
+      ...initial.draft,
+      inputMode: "image",
+      prompt: "image-to-video stays edited",
+      startImagePath: "edited-source.png",
+      modelId: "edited-i2v-model"
+    };
+    initial.videoExtensionDraft = {
+      ...initial.draft,
+      inputMode: "video",
+      prompt: "video extension stays edited",
+      sourceVideoPath: "edited-extension.mp4",
+      modelId: "edited-extension-model"
+    };
+    const repository = createRepository(initial);
+    const service = createSettingsService(repository);
+
+    await service.save({
+      ...initial.settings,
+      defaultVideoModel: "new-video-default",
+      promptModelId: "new-prompt-default"
+    });
+
+    const saved = repository.snapshot();
+    expect(saved.draft.prompt).toBe("active draft stays edited");
+    expect(saved.imageToVideoDraft).toMatchObject({
+      prompt: "image-to-video stays edited",
+      startImagePath: "edited-source.png",
+      modelId: "edited-i2v-model"
+    });
+    expect(saved.videoExtensionDraft).toMatchObject({
+      prompt: "video extension stays edited",
+      sourceVideoPath: "edited-extension.mp4",
+      modelId: "edited-extension-model"
+    });
+    expect(saved.settings).toMatchObject({
+      defaultVideoModel: "new-video-default",
+      promptModelId: "new-prompt-default"
+    });
+  });
+
   it("applies saved H3 acceleration settings to waiting tasks without changing running or terminal tasks", async () => {
     const initial = createDefaultState();
     initial.settings.imageInputLibraryDirectory = path.join(process.cwd(), "input-library");
@@ -455,6 +500,13 @@ describe("SettingsService", () => {
     const queuedArtifact = structuredClone(
       initial.history[0]!.versions[0]!.h3ContinuationData!.artifact!
     );
+    const owner = { ownerPath: structuredClone(queuedArtifact.payload), aliasPaths: [structuredClone(queuedArtifact.payload)] };
+    const version = initial.history[0]!.versions[0]!;
+    version.h3AvAsset = owner as unknown as NonNullable<typeof version.h3AvAsset>;
+    version.h3ContinuationData!.asset = structuredClone(version.h3AvAsset);
+    initial.videoExtensionDraft = structuredClone(initial.draft);
+    initial.videoExtensionDraft.h3ContextLatentPath = queuedArtifact.payload.absolutePath;
+    initial.videoExtensionDraft.h3ContinuumArtifactPath = queuedArtifact.manifest.absolutePath;
     initial.queue = [{
       id: "upscale-1",
       taskType: "upscale",
@@ -522,6 +574,13 @@ describe("SettingsService", () => {
       .toBe(plan.entries[0]?.targetPath);
     expect(queued?.taskType === "upscale" ? queued.h3NativeInput?.artifact.payload.absolutePath : "")
       .toBe(plan.entries[1]?.targetPath);
+    const saved = repository.snapshot();
+    const savedVersion = saved.history[0]!.versions[0]!;
+    expect(savedVersion.h3AvAsset?.ownerPath.absolutePath).toBe(plan.entries[1]?.targetPath);
+    expect(savedVersion.h3AvAsset?.aliasPaths[0]?.absolutePath).toBe(plan.entries[1]?.targetPath);
+    expect(savedVersion.h3ContinuationData?.asset?.ownerPath.absolutePath).toBe(plan.entries[1]?.targetPath);
+    expect(saved.videoExtensionDraft.h3ContextLatentPath).toBe(plan.entries[1]?.targetPath);
+    expect(saved.videoExtensionDraft.h3ContinuumArtifactPath).toBe(plan.entries[0]?.targetPath);
   });
 
   it("rejects an output directory outside the selected ComfyUI output root", async () => {

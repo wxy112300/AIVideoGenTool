@@ -1,4 +1,4 @@
-import type { VideoLoraSelection } from "../../../types.js";
+import type { ImageLoraSelection, VideoLoraSelection } from "../../../types.js";
 import type { CatalogModelScanDefinition, CatalogModelVariant } from "../types.js";
 
 export type VideoLoraSettingKey = "spectrumMode" | "attentionMode";
@@ -33,6 +33,12 @@ export interface CatalogVideoLoraDefinition extends VideoLoraSelection {
   scan: CatalogModelScanDefinition;
 }
 
+export interface CatalogImageLoraDefinition extends ImageLoraSelection {
+  catalogOrder: number;
+  requiredPictureCount?: number;
+  scan: CatalogModelScanDefinition;
+}
+
 /** The current default FL2VA Turbo adapter. */
 export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.2";
 export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
@@ -46,6 +52,9 @@ export const H3_SLA_TURBO_LORA_FILENAME =
 export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
 export const H3_CAMERA_MOTION_LORA_FILENAME =
   "camera_motion_h3_lora_v1_3000_pruned.safetensors";
+export const H3_ORBIT_360_LORA_ID = "minimax-h3-360-orbit";
+export const H3_ORBIT_360_LORA_FILENAME = "minimax_h3_flf2v_lora_v1.safetensors";
+export const H3_ORBIT_360_LORA_REVISION = "5ddbc2d";
 export const H3_CINEMATIC_REALISM_LORA_ID = "minimax-h3-cinematic-realism";
 export const H3_CINEMATIC_REALISM_LORA_FILENAME =
   "Minimax H3真实电影质感V0.1.safetensors";
@@ -96,6 +105,15 @@ export const H3_REALISM_PEOPLE_LORA_FILENAME =
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_ID = "minimax-h3-facial-realism-closeup";
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME =
   "minimax-h3-facial-realism-closeup-cp2000.safetensors";
+export const QWEN_IMAGE_21_ANYANGLE_LORA_ID = "qwen-image-2-1-anyangle";
+export const QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME = "QI2.1_AnyAngle.safetensors";
+export const QWEN_IMAGE_21_LIGHTING_BLEND_LORA_ID = "qwen-image-2-1-lighting-blend";
+export const QWEN_IMAGE_21_LIGHTING_BLEND_LORA_FILENAME = "Qwenimag21_c2-st2000.safetensors";
+export const QWEN_IMAGE_21_FIX_LORA_ID = "qwen-image-2-1-fix";
+export const QWEN_IMAGE_21_FIX_LORA_FILENAME = "qwen-image-2.1-fix-1.0-comfy.safetensors";
+export const QWEN_IMAGE_21_FIX_LORA_BYTES = 111612000;
+export const QWEN_IMAGE_21_FIX_LORA_SHA256 =
+  "e4a369158b957aee3a8316d94dbe00c98f7d648ef3d1926ccf7283915b6db60c";
 
 const h3PddTurboCombinationRules = (): VideoLoraCombinationRule[] =>
   H3_TURBO_LORA_IDS.map((loraId) => ({
@@ -103,6 +121,31 @@ const h3PddTurboCombinationRules = (): VideoLoraCombinationRule[] =>
     severity: "error",
     localeKey: "pddTurbo"
   }));
+
+const h3OrbitCombinationRules = (): VideoLoraCombinationRule[] => [
+  ...H3_TURBO_LORA_IDS
+    .filter((loraId) => loraId !== H3_REF2V_TURBO_LORA_ID)
+    .map((loraId) => ({
+      loraId,
+      severity: "warning" as const,
+      localeKey: "orbitTurbo"
+    })),
+  {
+    loraId: H3_CAMERA_MOTION_LORA_ID,
+    severity: "warning",
+    localeKey: "orbitCameraMotion"
+  },
+  {
+    loraId: H3_EQUI360_LORA_ID,
+    severity: "warning",
+    localeKey: "orbitSpatialLayout"
+  },
+  {
+    loraId: H3_VR180_SBS_LORA_ID,
+    severity: "warning",
+    localeKey: "orbitSpatialLayout"
+  }
+];
 
 export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   id: H3_PDD_FL2VA_LORA_ID,
@@ -294,6 +337,41 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_V4_LORA_FILENAME,
         notes: "社区 v4 step600 EMA pruned 转换。建议 8 步（可选 6–8 步），固定 Euler + Beta、video shift 12、audio shift 6；作者给出 audio shift 4–6。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频，不与其他 Turbo 变体叠加。"
+      }
+    }]
+  }
+}, {
+  id: H3_ORBIT_360_LORA_ID,
+  name: "MiniMax H3 360° Orbit",
+  filename: H3_ORBIT_360_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "motion",
+  promptPrefixes: [],
+  catalogOrder: 102,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 20,
+    settingConflicts: [],
+    combinations: h3OrbitCombinationRules()
+  },
+  scan: {
+    vram: "LoRA · frozen-time 360° orbit · rank 16 · 73 frames · 28 steps · strength 1.0",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 360° Orbit FL2VA LoRA v1",
+      expected: "loras/" + H3_ORBIT_360_LORA_FILENAME,
+      patterns: [/loras\/minimax_h3_flf2v_lora_v1\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "pablodawson / MiniMax-H3-360-Orbit-LoRA",
+        downloadUrl: "https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA/resolve/" + H3_ORBIT_360_LORA_REVISION + "/" + H3_ORBIT_360_LORA_FILENAME + "?download=true",
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_ORBIT_360_LORA_FILENAME,
+        revision: H3_ORBIT_360_LORA_REVISION,
+        license: "minimax-h3-community-license-agreement",
+        notes: "模型卡针对 MiniMax H3 FL2VA pruned 基座训练与测试；同一张图片作为首帧和末帧，建议 768×768、73 帧、28 步、LoRA strength 1.0，不使用 CFG 或负面提示词。当前仅开放 H3 FL2VA 图生视频，不把它当作通用 360° 等距柱状或 R2V LoRA。"
       }
     }]
   }
@@ -688,6 +766,107 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         targetSubdirectory: "loras",
         recommendedFilename: H3_REALISM_PEOPLE_LORA_FILENAME,
         notes: "MiniMax H3 人物写实 LoRA。执行 Prompt 会自动加入触发词 r34l1sm；应用默认强度 0.85，作者 intended strength 为 1.0。"
+      }
+    }]
+  }
+}];
+
+export const IMAGE_LORA_DEFINITIONS: readonly CatalogImageLoraDefinition[] = [{
+  id: QWEN_IMAGE_21_ANYANGLE_LORA_ID,
+  name: "Qwen Image 2.1 · AnyAngle",
+  filename: QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "qwen-image",
+  compatibleModelIds: [
+    "qwen-image-2-1",
+    "qwen-image-2-1-uncensored-gguf",
+    "qwen-image-2-1-uncensored-gguf-q6"
+  ],
+  compatibleInputModes: ["image"],
+  catalogOrder: 150,
+  requiredPictureCount: 2,
+  scan: {
+    managedBy: "comfyui",
+    vram: "LoRA · rank 24 · BF16 · 约 120 MB · strength 1.0",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly"],
+    components: [{
+      label: "Qwen Image 2.1 AnyAngle LoRA",
+      expected: `loras/${QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME}`,
+      patterns: [/loras[\\/]QI2\.1_AnyAngle\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "lilylilith / QI_2.1_AnyAngle",
+        downloadUrl: `https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/${QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME,
+        license: "Apache-2.0",
+        notes: "官方工作流使用 LoraLoaderModelOnly，强度固定 1.0；Picture 1 放目标视角的粗 3D/高斯渲染，Picture 2 放原图，Prompt 使用：Change the camera angle from <image2> to <image1>。"
+      }
+    }]
+  }
+}, {
+  id: QWEN_IMAGE_21_FIX_LORA_ID,
+  name: "Qwen Image 2.1 · Fix",
+  filename: QWEN_IMAGE_21_FIX_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "qwen-image",
+  compatibleModelIds: [
+    "qwen-image-2-1",
+    "qwen-image-2-1-uncensored-gguf",
+    "qwen-image-2-1-uncensored-gguf-q6"
+  ],
+  compatibleInputModes: ["image"],
+  workflowProfile: "qwen-image-2-1-fix",
+  catalogOrder: 151,
+  scan: {
+    managedBy: "comfyui",
+    vram: "LoRA/DoRA · 约 112 MB · 质量修复 · strength 1.0",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly", "APG", "FreSca"],
+    components: [{
+      label: "Qwen Image 2.1 Fix LoRA/DoRA",
+      expected: "loras/" + QWEN_IMAGE_21_FIX_LORA_FILENAME,
+      patterns: [/loras[\\/]qwen-image-2\.1-fix-1\.0-comfy\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "e-n-v-y / Qwen-Image-2.1-Fix",
+        downloadUrl: "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/qwen-image-2.1-fix-1.0-comfy.safetensors?download=true",
+        targetSubdirectory: "loras",
+        recommendedFilename: QWEN_IMAGE_21_FIX_LORA_FILENAME,
+        bytes: QWEN_IMAGE_21_FIX_LORA_BYTES,
+        sha256: QWEN_IMAGE_21_FIX_LORA_SHA256,
+        notes: "社区 Qwen Image 2.1 Fix 适配器；当前文件是作者提供的 ComfyUI 专用权重。需要与 APG、FreSca 核心节点和固定的 20 步 / CFG 3 / seeds_2 + sgm_uniform 参数一起使用；应用不会把它当作新的基础模型。"
+      }
+    }]
+  }
+}, {
+  id: QWEN_IMAGE_21_LIGHTING_BLEND_LORA_ID,
+  name: "Qwen Image 2.1 · Lighting Blend",
+  filename: QWEN_IMAGE_21_LIGHTING_BLEND_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "qwen-image",
+  compatibleModelIds: [
+    "qwen-image-2-1",
+    "qwen-image-2-1-uncensored-gguf",
+    "qwen-image-2-1-uncensored-gguf-q6"
+  ],
+  compatibleInputModes: ["image"],
+  promptPrefixes: ["pengyu"],
+  catalogOrder: 149,
+  scan: {
+    managedBy: "comfyui",
+    vram: "LoRA · 约 160 MiB · 光影融合 · trigger pengyu",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly"],
+    components: [{
+      label: "Qwen Image 2.1 Lighting Blend LoRA",
+      expected: "loras/" + QWEN_IMAGE_21_LIGHTING_BLEND_LORA_FILENAME,
+      patterns: [/loras[\\/]Qwenimag21_c2-st2000\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "RunningHubAI / rh-qwen-image-2.1-lora-2104918997757157378",
+        downloadUrl: "https://huggingface.co/RunningHubAI/rh-qwen-image-2.1-lora-2104918997757157378/resolve/main/Qwenimag21_c2-st2000.safetensors?download=true",
+        targetSubdirectory: "loras",
+        recommendedFilename: QWEN_IMAGE_21_LIGHTING_BLEND_LORA_FILENAME,
+        notes: "RunningHub 模型卡标注为 Qwen Image 2.1 光影溶图 LoRA；执行 Prompt 会把触发词 pengyu 放在最前。适合描述产品或物体的统一光照、反射高光、前后景空间关系、自然接触阴影和与背景的无缝融合。模型卡未声明固定强度或独立许可证，应用默认 strength 1.0。"
       }
     }]
   }

@@ -2505,6 +2505,20 @@ export function comfyKitchenConvRotCudaOptimized(cudaVersion: string): boolean {
   );
 }
 
+/**
+ * The H3 VAE's official ConvRot path is only considered optimized when the
+ * selected ComfyUI environment exposes the CUDA backend from the pinned
+ * comfy-kitchen release. A CUDA version alone is not proof that the matching
+ * kernel is installed.
+ */
+export function h3ComfyKitchenCudaBackendReady(
+  probe: Pick<AttentionPythonProbe, "cudaVersion" | "comfyKitchenVersion" | "comfyKitchenBackends">
+): boolean {
+  return probe.comfyKitchenVersion === H3_COMFY_KITCHEN_VERSION &&
+    comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
+    (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
+}
+
 export function kjNodesAttentionSourceCompatible(source: string): boolean {
   return source.includes("PathchSageAttentionKJ") &&
     source.includes("optimized_attention_override") &&
@@ -2563,8 +2577,7 @@ async function inspectAttentionAcceleration(
   const tritonReady = Boolean(probe.tritonVersion);
   const gpuArchitecture = Number.parseFloat(probe.gpuArchitecture ?? "");
   const gpuSupported = Number.isFinite(gpuArchitecture) && gpuArchitecture >= 8;
-  const convRotCudaOptimized = comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
-    (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
+  const convRotCudaOptimized = h3ComfyKitchenCudaBackendReady(probe);
   const torchRuntimeReady = h3TorchRuntimeReady(probe);
   const ready = Boolean(
     !probeFailed && pythonPath && wheel && gpuSupported && torchRuntimeReady && sageReady && sageNativeReady &&
@@ -2584,7 +2597,7 @@ async function inspectAttentionAcceleration(
     !tritonReady ? "Triton" : "",
     !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : "",
     !convRotCudaOptimized
-      ? `H3 INT8 ConvRot CUDA 内核（当前 comfy-kitchen ${probe.comfyKitchenVersion || "未安装"} / ` +
+      ? `H3 INT8 ConvRot CUDA 内核（需要 comfy-kitchen ${H3_COMFY_KITCHEN_VERSION}；当前 ${probe.comfyKitchenVersion || "未安装"} / ` +
         `${(probe.comfyKitchenBackends ?? []).join(", ") || "无可用 backend"}）`
       : ""
   ].filter(Boolean);

@@ -8,8 +8,53 @@
 
 ## Unreleased
 
+## 0.64.3 — 2026-10-08
+
+- 用户验收并归档用户旅程、Harness和Agent Skill计划；补齐正常系统关闭请求进入Electron退出链、自有ComfyUI清理及129份History/草稿保护的证据和复验入口。
+- 纳入Qwen Image 2.1的AnyAngle、Fix与Lighting Blend图片LoRA选择、输入门槛、队列快照及工作流；Fix按专属APG/FreSca和采样配置运行，保留无LoRA路径。本条说明代码集成，不代表这些组合已完成真实推理或画质验收。
+- 纳入H3 360° Orbit LoRA目录、说明与兼容配置；保留已有视频LoRA与旧任务路径，新增组合不扩大既有GPU验收范围。
+
+- 补齐 Extend Harness 导航中的 managed 前置保护源码、TS/Python 检查入口；清理交接摘要中的过期待办与历史验证标记，避免后续 Agent 重复已完成调查。
+
+- 修复旧 Continuum Run 采样契约不兼容时仍写入磁盘 head 的风险：内置节点在官方 Run 锁内、写 manifest 前检查任务绑定的 head 和完整可复用前缀；旧运行节点缺保护时阻止提交并提示更新。保持官方采样身份/校验，真实拒绝保护及兼容2→3的12秒成片/History通过；不承诺任意后续错误的自动回滚。
+
+- 修复 managed AV 库存漏扫公共 `h3_continuum/runs` 的 owner，保留旧连字符布局；新增双布局回归和真实 managed History/receipt/owner/alias/registry 播放、重启审计。记录复用段重新封装与旧采样契约失败后的 head 风险，未放宽资格保护。
+
+- 扩展设置旅程 Harness：已驻留 Prompt 模型切换、单作品 MP4/AV 保护，以及真实运行中保存 H3 Attention 后的成片/播放/重启审计。记录旧模型在保存后保留、下一请求才切换的时机；修正审计的输出字段、空队列收尾及明确恢复归一化，未修改生产设置契约。
+
+- 收口设置旅程的证据分层与复用入口：默认草稿、waiting 策略、Prompt 下一次请求/重启和隔离清理各有明确边界；补齐 guide 的 Settings/Prompt 服务入口，避免把服务测试、单一模型或 API 清理推广成全流程通过。
+
+- 增加 Prompt 设置的真实用户闭环 Harness：保存切换后端、空输入阻塞与补文本恢复、真实 ComfyUI 增强、新版本/等待任务保护及重启审计；明确旧 provider 字段不参与当前路由。修正 CDP 关闭前必须清理本次应用拥有运行时的操作指令，不把 JS window.close 当作原生退出验收。
+
+- 增加 H3 等待任务的设置联动 Harness：真实入队后修改 Attention，验证策略即时更新、任务内容/草稿保留及重启；纠正文档中“仅 claim 生效”的描述，运行中保护单独标注为服务测试证据。
+
+- 补充默认设置保存不覆盖已编辑视频草稿的服务回归与真实 Settings Harness；即时保存及重启保护通过。修正测试续写草稿继承不适用 Spectrum 值的问题，保留严格比较，未修改生产设置逻辑。
+
+- 增加视频 Upscale 的真实用户旅程 Harness：模型控件切换、缺源文件拒绝与恢复、原生 INT8 最小生成、同作品派生版本、原视频/AV 保护、播放及重启审计。补充操作配方和流程图；本次未修改生产放大逻辑。
+
+- 修复图片素材库清理可能误删新引用及非活动创作草稿图片的问题：删除前逐文件检查最新已提交引用，队列启动则停止后续清理；扫描、归档和路径提交同时覆盖保存的两种视频草稿。新增并发/模式切换与真实 UI 重启验收，不改持久化结构。
+
+- 增加图片素材库真实 UI Harness 与扫描后新增引用回归：归档保留外部原图，清理旧扫描候选时保护新引用，只移除真正孤儿；重启后草稿与文件检查通过。明确库内文件仍可能待规范归档，生产逻辑未改。
+
+- 补充 Continuum managed 的真实来源门槛 Harness 与 UI 回归：无已接受 Run 前缀时保持阻塞，切回 Motion Context 后实际按钮入队恢复；流程图明确区分路由、来源资格与运行证据，避免把空 sequence 或 bootstrap AV 误报为 managed 可运行。生产保护保持不变。
+
+- 增加隔离多版本删除 Harness：实际验证等待队列引用阻塞、移除任务后删除默认版本及重启播放；共用 MP4 的版本相互保护并跨重启保留。复用稳定鼠标操作 helper，新增两种物理夹具与聚焦测试；生产删除逻辑未改，合成版本不作为 Upscale 生成证据。
+
+- 隔离资产删除 Harness 增加 `--whole-asset`：实跑共享草稿阻塞、解除引用后删除整个作品及重启空列表检查；原 AV-only 模式回归仍保留视频。此证据限单版本/canonical AV/空队列，未扩称多版本或 queue 共享保护已验证。
+
+- 完成隔离 AV 删除 Harness：通过真实鼠标/确认控件验证草稿共享引用阻塞→清空草稿→删除 AV→重启；保留主视频和身份，清除 AV owner/嵌套引用，History 播放/返回通过。修正错误通知选择器为实际的 app-flash，避免将正确的删除保护误报为超时；生产删除逻辑未改。
+
+- 修复视频目录迁移后 AV owner、嵌套引用及活动/非活动草稿残留旧路径的问题；History 启动恢复与 AV 检查共用安全路径解析，保留输出根内已迁移的地址。真实 Settings 迁移→重启→原草稿来源检查→History 播放/返回通过；新增物理隔离迁移 Harness，managed run、独立 registry 和删除操作另行验收。
+
+- 修复新 Create/Extend 视频的 History 时长直接沿用请求值的问题：优先读取最终成片的视频轨时长，探测失败保留估算并告警；任务快照与旧历史不改写。新增真实 History→Continue 时长/裁剪验收，以及不依赖主机 locale 的标签统计断言。
+
+- 增加 Continuum bootstrap 小步 harness：真实缺 AV 阻塞、检查恢复及按钮入队；支持恢复隔离实例并沿用任务 ID，已实跑 bootstrap 和 History/资产验收，明确区分片段 AV 与成片元数据、fixture 输入设置和未验证的原生文件选择器。
+
+- 新增项目 Agent Skill、用户旅程/资产生命周期图与按场景查询的测试导航；增加真实 Electron AppApi harness、隔离 Create/Motion Context smoke、History 播放/返回、媒体元数据及单任务资产清单校验。合成端口与真实 IPC/GPU 证据分别报告；已实跑 H3 T2V 和无 latent 的 Motion Context，明确保留 History 时长错误与新 AV 迁移覆盖风险，尚未宣称全产品验收。
+
 - 修复显存压力卡死 Watchdog 未把 `nvidia-smi` 专用显存余量接入判定、以及 Windows counter 计算机名前缀导致系统压力证据丢失的问题；新增 1 分钟保护选项，显存余量低于 1 GiB 预警、低于 800 MiB 持续监测，恢复到安全余量后解除，并为采样调用增加超时。
 - 将 Qwen Image 2.1 GGUF 的默认扩散模型从 Q4_K_M 提升为 Q8_0，并新增独立 Q6_K 质量/显存档；Qwen3-VL INT8 文本编码器与 BF16 VAE 路径保持不变，Q4/Q5 不再作为应用默认入口。
+- 将 H3 官方 ConvRot CUDA 运行时从 `comfy-kitchen==0.2.33` 对齐到 `0.2.35`；环境探针现在只有在目标版本、CUDA 13+ 和 `cuda` backend 同时满足时才报告 INT8 ConvRot 优化已就绪，保留现有 INT8 优先与 FP16 回退。
 
 ## 0.64.1 — 2026-09-21
 

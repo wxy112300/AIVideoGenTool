@@ -2,6 +2,7 @@ import { imageMarkupPromptContext, imageReferenceInputPath, pictureReferencePatt
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
 import { defaultH3ImageOptionsFor, isH3ImageModelId, renumberImageReferences } from "../../../core/image-project";
+import { imageLoraCompatibleWithModel, imageLoraDefinition, imageLoraSelection } from "../../../core/image-loras";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
 function remapPromptPictureReferences(text, pictureNumberMap, removedPictureNumbers) {
@@ -343,6 +344,23 @@ export function mountImageEditController(context, options) {
             context.requestRender();
         }
     }, { signal });
+    root.querySelectorAll("[data-image-lora-id]").forEach((input) => {
+        input.addEventListener("change", (event) => {
+            const draft = getDraft();
+            const loraId = event.currentTarget.dataset.imageLoraId;
+            const definition = loraId ? imageLoraDefinition(loraId) : undefined;
+            if (!draft || !definition)
+                return;
+            const enabled = event.currentTarget.checked;
+            options.patchImageDraft({
+                imageLoras: enabled
+                    ? [imageLoraSelection(definition)]
+                    : draft.imageLoras.filter((lora) => lora.id !== definition.id)
+            });
+            options.syncEnqueueUi();
+            context.requestRender();
+        }, { signal });
+    });
     for (const id of ["image-edit-model", "image-edit-quality", "image-edit-aspect-ratio", "image-edit-resolution", "image-edit-seed"]) {
         root.querySelector(`#${id}`)?.addEventListener("change", (event) => {
             const draft = getDraft();
@@ -367,9 +385,10 @@ export function mountImageEditController(context, options) {
                         : modelCapability?.qualityProfiles[0]?.id ?? "native",
                     ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
                     ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" } : {}),
-                    ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
-                    ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
-                    ...(nextH3Options ? { h3ImageOptions: nextH3Options } : {})
+                ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
+                ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
+                imageLoras: draft.imageLoras.filter((lora) => imageLoraCompatibleWithModel(lora, value)),
+                ...(nextH3Options ? { h3ImageOptions: nextH3Options } : {})
                 }
                 : id === "image-edit-quality"
                     ? { qualityProfile: value }

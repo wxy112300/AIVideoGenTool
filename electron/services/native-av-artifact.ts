@@ -17,6 +17,7 @@ import {
   validateNativeAvContinuationArtifact
 } from "../../src/core/h3-continuation-artifact.js";
 import type { NativeAvArtifactFileSystemPort } from "../ports/native-av-artifact-file-system.js";
+import { resolveNativeAvArtifactFilePath } from "../../src/core/native-av-artifact-paths.js";
 
 const MAX_SAFETENSORS_HEADER_BYTES = 16 * 1024 * 1024;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -663,8 +664,9 @@ export class NativeAvArtifactService {
     let manifestPath = "";
     let payloadPath = "";
     try {
-      manifestPath = safeArtifactPath(outputDirectory, reference.manifest.filename);
-      payloadPath = safeArtifactPath(outputDirectory, reference.payload.filename);
+      manifestPath = resolveNativeAvArtifactFilePath(outputDirectory, reference.manifest) ?? "";
+      payloadPath = resolveNativeAvArtifactFilePath(outputDirectory, reference.payload) ?? "";
+      if (!manifestPath || !payloadPath) throw new Error("H3 AV artifact 路径无效");
     } catch (error) {
       return failure("invalid", error instanceof Error ? error.message : String(error));
     }
@@ -685,7 +687,12 @@ export class NativeAvArtifactService {
       if (!isNativeAvContinuationArtifact(manifest)) {
         return failure("invalid", `manifest 无效：${validateNativeAvContinuationArtifact(manifest) ?? "未知错误"}`);
       }
-      const manifestArtifact = artifactWithAbsolutePaths(manifest, outputDirectory);
+      // Hydrate from the files actually inspected, never from cached paths inside the manifest.
+      const manifestArtifact = {
+        ...manifest,
+        manifest: { ...manifest.manifest, absolutePath: manifestPath },
+        payload: { ...manifest.payload, absolutePath: payloadPath }
+      };
       if (!sameArtifactReference(reference, manifestArtifact)) {
         return failure("invalid", "持久化引用与 manifest 不匹配");
       }

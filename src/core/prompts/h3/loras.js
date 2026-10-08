@@ -17,6 +17,11 @@ export const h3LoraPromptLibrary = {
         instruction: "When the user asks for a cinematic camera move, clarify one coherent optical camera path and preserve the requested subject, action, framing, timing, and reference identity. When it fits the shot, retain natural optical depth of field, lens falloff, and restrained handheld micro-shake; do not force camera movement, shallow focus, or shake onto a static shot.",
         usage: "This is a camera/motion adapter, not a subject or action adapter. Keep explicit push-in, pull-out, orbit, tracking, aerial, static-camera, timing, and framing constraints authoritative. When combined with Realism People, keep the camera path restrained and avoid contradictory moves."
     },
+    "minimax-h3-360-orbit": {
+        id: "minimax-h3-360-orbit",
+        instruction: "When the user asks for a frozen-time 360-degree orbit, describe one continuous camera orbit around an unchanged subject or scene: only the camera moves, every person and object stays in the same world position, and the shot returns to the starting view. Preserve the user's subject, action, framing, timing, audio, and reference identity; do not invent subject motion, cuts, zooms, morphing, or added objects.",
+        usage: "Use the model-card orbit wording when it fits and provide the same image as both FL2VA endpoints. Keep the model-card baseline of 768×768, 73 frames, 28 steps, strength 1.0, and no CFG or negative prompt. This is a camera-orbit adapter, not a generic equirectangular 360 or VR180 stereo layout."
+    },
     "minimax-h3-cinematic-realism": {
         id: "minimax-h3-cinematic-realism",
         triggerWord: "DY",

@@ -2,6 +2,7 @@ import { imageMarkupPromptContext, imageReferenceInputPath, pictureReferencePatt
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
 import { defaultH3ImageOptionsFor, isH3ImageModelId, renumberImageReferences } from "../../../core/image-project";
+import { imageLoraCompatibleWithModel, imageLoraDefinition, imageLoraSelection } from "../../../core/image-loras";
 import type { AppState, H3ImageOptions, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
@@ -384,6 +385,23 @@ export function mountImageEditController(
     }
   }, { signal });
 
+  root.querySelectorAll<HTMLInputElement>("[data-image-lora-id]").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const draft = getDraft();
+      const loraId = (event.currentTarget as HTMLInputElement).dataset.imageLoraId;
+      const definition = loraId ? imageLoraDefinition(loraId) : undefined;
+      if (!draft || !definition) return;
+      const enabled = (event.currentTarget as HTMLInputElement).checked;
+      options.patchImageDraft({
+        imageLoras: enabled
+          ? [imageLoraSelection(definition)]
+          : draft.imageLoras.filter((lora) => lora.id !== definition.id)
+      });
+      options.syncEnqueueUi();
+      context.requestRender();
+    }, { signal });
+  });
+
   for (const id of ["image-edit-model", "image-edit-quality", "image-edit-aspect-ratio", "image-edit-resolution", "image-edit-seed"]) {
     root.querySelector(`#${id}`)?.addEventListener("change", (event) => {
       const draft = getDraft();
@@ -410,6 +428,7 @@ export function mountImageEditController(
               ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" as const } : {}),
               ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" as const } : {}),
               ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
+              imageLoras: draft.imageLoras.filter((lora) => imageLoraCompatibleWithModel(lora, value)),
               ...(nextH3Options ? { h3ImageOptions: nextH3Options } : {})
             }
             : id === "image-edit-quality"

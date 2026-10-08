@@ -6,6 +6,11 @@ import type { NativeAvArtifactFileSystemPort } from "../electron/ports/native-av
 import type { NativeAvArtifactCommitRequest } from "../electron/services/native-av-artifact.js";
 import { NativeAvArtifactService } from "../electron/services/native-av-artifact.js";
 import { nativeAvArtifactFileSystem } from "../electron/services/native-av-artifact-file-system.js";
+import { HistoryQueryService } from "../electron/services/history-query-service.js";
+import { nativeHistoryFileSystem } from "../electron/services/native-history-file-system.js";
+import { createDefaultState } from "../src/core/defaults.js";
+import type { StateRepository } from "../electron/ports/state-repository.js";
+import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import {
   H3_CONTINUATION_ARTIFACT_SUBFOLDER,
   continuationArtifactFilenames,
@@ -55,6 +60,45 @@ function request(outputDirectory: string, payload = safetensorsPayload()): Nativ
 }
 
 describe("NativeAvArtifactService", () => {
+  it("keeps a migrated AV pair available after history restoration under a shared output root", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-migration-"));
+    try {
+      const service = new NativeAvArtifactService({ fileSystem: nativeAvArtifactFileSystem });
+      const committed = await service.commit(request(root));
+      expect(committed.status).toBe("available");
+      const artifact = committed.artifact!;
+      const migrated = path.join(root, "migrated", H3_CONTINUATION_ARTIFACT_SUBFOLDER);
+      await fs.mkdir(path.dirname(migrated), { recursive: true });
+      await fs.rename(path.join(root, H3_CONTINUATION_ARTIFACT_SUBFOLDER), migrated);
+      for (const file of [artifact.manifest, artifact.payload]) {
+        file.absolutePath = path.join(migrated, file.filename);
+      }
+      const state = createDefaultState();
+      // Only the History persistence fields consumed by startup restoration are needed here.
+      state.history = [{ files: [], versions: [{ files: [], h3ContinuationData: {
+        status: "available", artifact: JSON.parse(JSON.stringify(artifact))
+      } }] }] as typeof state.history;
+      const store: StateRepository = {
+        get: () => state, load: async () => state, getSettings: () => state.settings,
+        update: async (mutate) => { mutate(state); return state; }
+      };
+      const query = new HistoryQueryService({
+        store, fileSystem: nativeHistoryFileSystem,
+        logger: { info: vi.fn() } as unknown as AppLogger,
+        paths: { historyCoverDirectory: path.join(root, "covers") },
+        resolveTaskOutputDirectory: async () => root
+      });
+      await query.restoreHistoryOutputPaths();
+      const restored = state.history[0]!.versions[0]!.h3ContinuationData!.artifact!;
+      expect(restored).toEqual(artifact);
+      const inspected = await service.inspect(restored, root);
+      expect(inspected).toMatchObject({ status: "available", artifact,
+        manifestPath: artifact.manifest.absolutePath, payloadPath: artifact.payload.absolutePath });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("commits a fixed-key safetensors pair and round-trips its manifest", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-artifact-"));
     try {

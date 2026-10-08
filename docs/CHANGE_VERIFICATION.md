@@ -32,6 +32,12 @@ Use the smallest tier that gives credible evidence; increase it when risk crosse
 
 ## UI and UX Gate
 
+先用 `npm.cmd run harness:app -- guide <journey>` 选择 [用户流程图](runbooks/PRODUCT_JOURNEYS.md) 和相邻检查。`npm.cmd run test:journeys` 使用生产 Create DOM/coordinator/controller 和合成外部端口；可证明输入变化、disabled 按钮恢复、点击与任务快照，不能证明 Electron IPC、文件预检或 GPU。
+
+影响提交的修改都检查：缺失输入 → 可见阻塞原因 → 补齐 → 按钮启用 → 点击 → 新 task ID。不要只调 handler、清除 disabled 或直接 `AppApi.enqueue` 作为 UI 可用证据。真实 app 用 `harness:app -- inspect` / `enqueue-ui`；执行后按 task/version ID 核对 History，成功任务可能已离开活动 queue。
+
+新测试应能指出其捕获的用户可见回归。优先断言操作后的状态、资格、来源身份和输出；保留协议/迁移/资产完整性所需的快照/hash，但不以测试数量替代旅程证据。Focused/verify 绿灯不自动覆盖运行层。
+
 For UI work, "looks better" is not an acceptance criterion. Use [UX_CONTRACT.md](UX_CONTRACT.md) and verify:
 
 - hierarchy, alignment, density, and primary-action priority;

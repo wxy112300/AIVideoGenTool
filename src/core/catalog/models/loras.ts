@@ -1,5 +1,8 @@
 import type { CatalogModelEntry } from "../types.js";
-import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
+import {
+  IMAGE_LORA_DEFINITIONS,
+  VIDEO_LORA_DEFINITIONS
+} from "../loras/definitions.js";
 
 const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
   "h3-pdd-fl2va-8step": {
@@ -26,6 +29,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动；可配合提示词表达光学景深、镜头衰减和克制的手持微抖。" },
     "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動；可配合提示詞表達光學景深、鏡頭衰減與克制的手持微抖。" },
     "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement, with prompt guidance for optical depth of field, lens falloff, and restrained handheld micro-shake." }
+  },
+  "minimax-h3-360-orbit": {
+    "zh-CN": { name: "MiniMax H3 360° Orbit", badge: "H3 专属 · 360° 运镜", description: "让相机绕静止主体连续旋转 360° 并回到起始帧；FL2VA 首尾使用同一张图，建议 768×768、73 帧、28 步、强度 1.0。" },
+    "zh-TW": { name: "MiniMax H3 360° Orbit", badge: "H3 專屬 · 360° 運鏡", description: "讓相機繞靜止主體連續旋轉 360° 並回到起始幀；FL2VA 首尾使用同一張圖，建議 768×768、73 幀、28 步、強度 1.0。" },
+    "en-US": { name: "MiniMax H3 360° Orbit", badge: "H3 only · 360° orbit", description: "Creates a continuous frozen-time 360° camera orbit that returns to the starting frame; use the same image for both FL2VA endpoints at 768×768, 73 frames, 28 steps, and strength 1.0." }
   },
   "minimax-h3-cinematic-realism": {
     "zh-CN": { name: "MiniMax H3 Cinematic Realism", badge: "H3 专属 · 电影质感", description: "降低 H3 默认对比度，提供更柔和、便于调色的电影基调；触发词：DY。" },
@@ -77,9 +85,24 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-TW": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 專屬 · 人臉特寫", description: "增強人臉特寫的皮膚紋理、眼神與微表情；觸發詞：Facial Realism。" },
     "en-US": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 only · facial close-up", description: "Enhances close-up facial realism, skin texture, eyes, and micro-expressions; trigger: Facial Realism." }
   },
+  "qwen-image-2-1-fix": {
+    "zh-CN": { name: "Qwen Image 2.1 · Fix", badge: "Qwen 2.1 · 质量修复", description: "Qwen Image 2.1 的社区 Fix 适配器；优先改善颜色、细节纹理和手部稳定性，并自动启用 APG、FreSca 与官方推荐采样设置。" },
+    "zh-TW": { name: "Qwen Image 2.1 · Fix", badge: "Qwen 2.1 · 品質修復", description: "Qwen Image 2.1 的社群 Fix 適配器；優先改善色彩、細節紋理與手部穩定性，並自動啟用 APG、FreSca 與官方建議取樣設定。" },
+    "en-US": { name: "Qwen Image 2.1 · Fix", badge: "Qwen 2.1 · quality fix", description: "A community Fix adapter for Qwen Image 2.1 that targets washed-out color, fine texture, and hand stability while enabling the recommended APG, FreSca, and sampling settings." }
+  },
+  "qwen-image-2-1-anyangle": {
+    "zh-CN": { name: "Qwen Image 2.1 · AnyAngle", badge: "Qwen 2.1 · 任意视角", description: "Qwen Image 2.1 的官方 AnyAngle 视角控制 LoRA。Picture 1 放目标视角粗渲染，Picture 2 放原图；固定强度 1.0，使用官方两图相机角度 Prompt。" },
+    "zh-TW": { name: "Qwen Image 2.1 · AnyAngle", badge: "Qwen 2.1 · 任意視角", description: "Qwen Image 2.1 的官方 AnyAngle 視角控制 LoRA。Picture 1 放目標視角粗渲染，Picture 2 放原圖；固定強度 1.0，使用官方兩圖相機角度 Prompt。" },
+    "en-US": { name: "Qwen Image 2.1 · AnyAngle", badge: "Qwen 2.1 · arbitrary view", description: "Official AnyAngle camera-view LoRA for Qwen Image 2.1. Put the target-view coarse render in Picture 1 and the original image in Picture 2; use strength 1.0 and the official two-image camera-angle prompt." }
+  },
+  "qwen-image-2-1-lighting-blend": {
+    "zh-CN": { name: "Qwen Image 2.1 · 光影溶图", badge: "Qwen 2.1 · 光影融合", description: "RunningHub 的 Qwen Image 2.1 光影融合 LoRA，触发词 pengyu；改善产品或物体与背景之间的光照、反射高光和接触阴影。" },
+    "zh-TW": { name: "Qwen Image 2.1 · 光影溶圖", badge: "Qwen 2.1 · 光影融合", description: "RunningHub 的 Qwen Image 2.1 光影融合 LoRA，觸發詞 pengyu；改善產品或物體與背景之間的光照、反射高光與接觸陰影。" },
+    "en-US": { name: "Qwen Image 2.1 · Lighting Blend", badge: "Qwen 2.1 · lighting blend", description: "RunningHub's Qwen Image 2.1 lighting-blend LoRA. It uses the pengyu trigger to improve lighting, specular highlights, spatial depth, and contact shadows when merging a product or object into a background." }
+  },
 };
 
-export const loraModelEntries: CatalogModelEntry[] = VIDEO_LORA_DEFINITIONS.map((lora) => ({
+const videoLoraModelEntries: CatalogModelEntry[] = VIDEO_LORA_DEFINITIONS.map((lora) => ({
   definition: {
     id: lora.id,
     family: lora.modelFamily,
@@ -97,3 +120,25 @@ export const loraModelEntries: CatalogModelEntry[] = VIDEO_LORA_DEFINITIONS.map(
     "en-US": { name: lora.name }
   }
 }));
+
+const imageLoraModelEntries: CatalogModelEntry[] = IMAGE_LORA_DEFINITIONS.map((lora) => ({
+  definition: {
+    id: lora.id,
+    family: lora.modelFamily,
+    category: "lora",
+    adapterId: "image-lora",
+    order: lora.catalogOrder,
+    inputModes: lora.compatibleInputModes,
+    scan: lora.scan
+  },
+  locales: catalogLocales[lora.id] ?? {
+    "zh-CN": { name: lora.name },
+    "zh-TW": { name: lora.name },
+    "en-US": { name: lora.name }
+  }
+}));
+
+export const loraModelEntries: CatalogModelEntry[] = [
+  ...videoLoraModelEntries,
+  ...imageLoraModelEntries
+];

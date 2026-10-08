@@ -181,9 +181,11 @@ export function imageHistoryGenerationSummary(
     steps: version.steps ?? imageQuality?.steps,
     cfg: version.cfg ?? imageQuality?.cfg,
     qualityLabel: imageQuality?.label ?? version.qualityProfile ?? t(uiKeys.history.detail.qualityNotSaved),
-    loraLabel: imageQuality?.lightning
-      ? t(uiKeys.history.detail.imageLoraAutoLoaded)
-      : t(uiKeys.history.detail.noImageLora)
+    loraLabel: version.imageLoras?.length
+      ? version.imageLoras.map((lora) => lora.name).join("、")
+      : imageQuality?.lightning
+        ? t(uiKeys.history.detail.imageLoraAutoLoaded)
+        : t(uiKeys.history.detail.noImageLora)
   };
 }
 

@@ -1,7 +1,9 @@
 import { qwenImage21Capability, qwenImage21DiffusionModel, qwenImage21TextEncoder, qwenImage21Vae, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufDiffusionModel, qwenImage21UncensoredGgufQ6Capability, qwenImage21UncensoredGgufQ6DiffusionModel } from "./capabilities.js";
-import { qwenImage21GgufRequiredNodeTypes, qwenImage21GgufTextToImageRequiredNodeTypes, qwenImage21RequiredNodeTypes, qwenImage21TextToImageRequiredNodeTypes } from "./node-requirements.js";
+import { qwenImage21FixRequiredNodeTypes, qwenImage21GgufRequiredNodeTypes, qwenImage21GgufTextToImageRequiredNodeTypes, qwenImage21RequiredNodeTypes, qwenImage21TextToImageRequiredNodeTypes } from "./node-requirements.js";
 import { compileImagePromptWithLimit, exactImageDimension } from "./shared.js";
+import { imageLoraConfigurationError, imageLoraUsesQwenImage21Fix, imagePromptForLoras } from "../image-loras.js";
 const qwenImage21PromptReferencePattern = /\bPicture\s+([1-9]\d*)\b/gu;
+const qwenImage21FixNegativePrompt = "artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers";
 function officialQwenImage21Prompt(prompt) {
     return prompt.replace(qwenImage21PromptReferencePattern, (_match, numberText) => `<image${Number(numberText)}>`);
 }
@@ -50,11 +52,14 @@ const ggufQ6QwenImage21WorkflowOptions = {
     textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
     editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
 };
-function validateQwenImage21WorkflowForOptions(workflow, _qualityProfile = "preview-25", allowImagePlaceholders = false, options) {
+function validateQwenImage21WorkflowForOptions(workflow, _qualityProfile = "preview-25", allowImagePlaceholders = false, options, additionalRequiredNodeTypes = []) {
     const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
     const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
     const hasPictures = inputNodes.length > 0;
-    const requiredNodeTypes = hasPictures ? options.editRequiredNodeTypes : options.textToImageRequiredNodeTypes;
+    const requiredNodeTypes = [
+        ...(hasPictures ? options.editRequiredNodeTypes : options.textToImageRequiredNodeTypes),
+        ...additionalRequiredNodeTypes
+    ];
     const errors = requiredNodeTypes
         .filter((nodeType) => !nodeTypes.has(nodeType))
         .map((nodeType) => `Qwen Image 2.1 工作流缺少节点 ${nodeType}。`);
@@ -132,6 +137,9 @@ const qwenImage21RequiredSockets = {
     EmptyLatentImage: ["width", "height", "batch_size"],
     ComfySwitchNode: ["on_false", "on_true", "switch"],
     QwenImage21Cache: ["model", "device", "dtype"],
+    LoraLoaderModelOnly: ["model", "lora_name", "strength_model"],
+    APG: ["model", "eta", "norm_threshold", "momentum"],
+    FreSca: ["model", "scale_low", "scale_high", "freq_cutoff"],
     KSampler: ["model", "positive", "negative", "latent_image", "seed", "steps", "cfg", "sampler_name", "scheduler", "denoise"],
     VAEDecode: ["samples", "vae"],
     SaveImageAdvanced: ["images", "filename_prefix", "format", "format.bit_depth", "format.input_color_space"]
@@ -147,6 +155,7 @@ const qwenImage21EnumInputs = new Set([
     "CLIPLoader.type",
     "CLIPLoader.device",
     "VAELoader.vae_name",
+    "LoraLoaderModelOnly.lora_name",
     "QwenImage21Cache.device",
     "QwenImage21Cache.dtype",
     "KSampler.sampler_name",
@@ -249,13 +258,23 @@ export function validateQwenImage21GgufRuntimeSchema(workflow, objectInfo) {
     return validateQwenImage21RuntimeSchemaForOptions(workflow, objectInfo, ggufQwenImage21WorkflowOptions);
 }
 function buildQwenImage21WorkflowForOptions(task, run, options) {
-    const compiled = compileQwenImage21Prompt(task.prompt, task.pictures);
+    const compiled = compileQwenImage21Prompt(imagePromptForLoras(task.prompt, task.imageLoras), task.pictures);
     if (compiled.errors.length)
         throw new Error(compiled.errors.join(" "));
     const hasPictures = compiled.pictures.length > 0;
     if (!hasPictures && !options.capability.supportsTextOnly)
         throw new Error("Qwen Image 2.1 当前配置不支持无参考图的文生图路径。");
+    const imageLoraError = imageLoraConfigurationError(task.imageLoras, task.modelId, compiled.pictures.length);
+    if (imageLoraError)
+        throw new Error(imageLoraError);
+    const selectedImageLora = task.imageLoras?.[0];
+    const usesFix = imageLoraUsesQwenImage21Fix(selectedImageLora);
+    const baseModelOutput = selectedImageLora ? ["imageLora", 0] : ["model", 0];
+    const modelOutput = usesFix ? ["fresca", 0] : baseModelOutput;
     const quality = options.capability.qualityProfiles.find((profile) => profile.id === task.qualityProfile) ?? options.capability.qualityProfiles[0];
+    const sampling = usesFix
+        ? { steps: 20, cfg: 3, sampler_name: "seeds_2", scheduler: "sgm_uniform" }
+        : { steps: quality.steps, cfg: quality.cfg, sampler_name: "euler", scheduler: "simple" };
     const pictureNodes = Object.fromEntries(compiled.pictures.map((picture, index) => [
         `image-${picture.id}`,
         { class_type: "LoadImage", inputs: { image: `{{IMAGE_${index}}}` } }
@@ -278,7 +297,7 @@ function buildQwenImage21WorkflowForOptions(task, run, options) {
     const positiveInputs = {
         clip: ["clip", 0],
         prompt: compiled.prompt,
-        negative_prompt: "",
+        negative_prompt: usesFix ? qwenImage21FixNegativePrompt : "",
         resolution: hasPictures ? customSize ? qwenImage21ReferenceResolution(outputWidth, outputHeight) : 0 : textOnlyWidth
     };
     if (hasPictures) {
@@ -295,6 +314,22 @@ function buildQwenImage21WorkflowForOptions(task, run, options) {
                 ? { unet_name: task.diffusionModelFilename || options.diffusionModel }
                 : { unet_name: task.diffusionModelFilename || options.diffusionModel, weight_dtype: "default" }
         },
+        ...(selectedImageLora ? {
+            imageLora: {
+                class_type: "LoraLoaderModelOnly",
+                inputs: { model: ["model", 0], lora_name: selectedImageLora.filename, strength_model: selectedImageLora.strength }
+            }
+        } : {}),
+        ...(usesFix ? {
+            apg: {
+                class_type: "APG",
+                inputs: { model: ["imageLora", 0], eta: 1, norm_threshold: 10, momentum: 0.3 }
+            },
+            fresca: {
+                class_type: "FreSca",
+                inputs: { model: ["apg", 0], scale_low: 1, scale_high: 2, freq_cutoff: 8 }
+            }
+        } : {}),
         clip: {
             class_type: "CLIPLoader",
             inputs: { clip_name: qwenImage21TextEncoder, type: "qwen_image", device: "default" }
@@ -312,12 +347,12 @@ function buildQwenImage21WorkflowForOptions(task, run, options) {
             },
             cache: {
                 class_type: "QwenImage21Cache",
-                inputs: { model: ["model", 0], device: "auto", dtype: "default" }
+                inputs: { model: modelOutput, device: "auto", dtype: "default" }
             }
         } : {}),
         sampler: {
             class_type: "KSampler",
-            inputs: { model: hasPictures ? ["cache", 0] : ["model", 0], positive: ["positive", 0], negative: ["positive", 1], latent_image: hasPictures ? ["sizeSwitch", 0] : ["empty", 0], seed: run.seed, steps: quality.steps, cfg: quality.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 }
+            inputs: { model: hasPictures ? ["cache", 0] : modelOutput, positive: ["positive", 0], negative: ["positive", 1], latent_image: hasPictures ? ["sizeSwitch", 0] : ["empty", 0], seed: run.seed, steps: sampling.steps, cfg: sampling.cfg, sampler_name: sampling.sampler_name, scheduler: sampling.scheduler, denoise: 1 }
         },
         decoded: { class_type: "VAEDecode", inputs: { samples: ["sampler", 0], vae: ["vae", 0] } },
         save: {
@@ -325,7 +360,7 @@ function buildQwenImage21WorkflowForOptions(task, run, options) {
             inputs: { images: ["decoded", 0], filename_prefix: outputPrefix, format: "png", "format.bit_depth": "8-bit", "format.input_color_space": "sRGB" }
         }
     };
-    const validationErrors = validateQwenImage21WorkflowForOptions(workflow, quality.id, true, options);
+    const validationErrors = validateQwenImage21WorkflowForOptions(workflow, quality.id, true, options, usesFix ? qwenImage21FixRequiredNodeTypes : []);
     if (validationErrors.length)
         throw new Error(validationErrors.join(" "));
     return workflow;

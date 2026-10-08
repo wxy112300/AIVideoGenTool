@@ -52,6 +52,8 @@ export interface ImageEditPageViewModel {
   imageQualityOptionsMarkup: string;
   imageAspectRatioOptionsMarkup: string;
   imageResolutionOptionsMarkup: string;
+  imageLoraVisible: boolean;
+  imageLoraOptionsMarkup: string;
   imageEnhanceMode: ImagePromptPreset;
   imageDetailEnhanceTitle: string;
   imageFaithfulEnhanceTitle: string;
@@ -284,6 +286,11 @@ export function renderImageEditPage(
           ${viewModel.promptless ? "" : `<label class="settings-field">${t(uiKeys.create.imageEdit.randomSeed)}<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${viewModel.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>`}
           ${viewModel.outputCountVisible ? `<label class="settings-field range-field"><span class="range-heading"><span>${t(uiKeys.create.imageEdit.outputCount)}</span><strong id="image-edit-count-value">${t(uiKeys.create.imageEdit.outputCountValue, { count: viewModel.count })}</strong></span><input id="image-edit-count" type="range" min="1" max="${imageOutputCountMax}" step="1" value="${viewModel.count}"></label>` : ""}
         </div></section>
+        ${viewModel.imageLoraVisible
+          ? "<section class=\"composer-control-group image-lora-options\"><div class=\"composer-group-heading\"><div><strong>图片 LoRA</strong><span>Qwen Image 2.1 · 单选</span></div></div>" +
+            viewModel.imageLoraOptionsMarkup +
+            "</section>"
+          : ""}
         ${viewModel.h3ImageOptionsVisible ? `<section class="composer-control-group h3-image-options"><div class="composer-group-heading h3-image-options-heading"><div>${fieldLabelWithTip(t(uiKeys.create.imageEdit.h3OptionsTitle), t(uiKeys.create.imageEdit.h3OptionsDescription))}</div></div><div class="composer-control-grid image-edit-settings-grid">
           <label class="settings-field">${t(uiKeys.create.imageEdit.h3SourceFit)}<select id="image-edit-h3-source-fit">${viewModel.h3ImageSourceFitOptionsMarkup}</select></label>
           ${viewModel.h3ReferenceDetailVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.h3ReferenceDetail)}<select id="image-edit-h3-reference-detail">${viewModel.h3ImageReferenceDetailOptionsMarkup}</select></label>` : ""}

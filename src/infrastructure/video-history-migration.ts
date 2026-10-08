@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import type {
+  AppState,
   AssetVersion,
   HistoryAsset,
   HistoryFile,
@@ -83,6 +84,38 @@ function safeOutputPath(
 
 function fileIsVideo(file: HistoryFile): boolean {
   return videoExtensions.has(path.extname(file.filename).toLowerCase());
+}
+
+/** Update every persisted consumer of a moved file, including inactive drafts and AV owners.
+ * Only exact planned source paths are replaced; prompts, IDs and unrelated paths stay intact.
+ */
+export function remapVideoMigrationConsumers(state: AppState, plan: VideoHistoryMigrationPlan): void {
+  const paths = new Map(plan.entries.map(entry => [path.resolve(entry.sourcePath).toLowerCase(), entry.targetPath]));
+  const visited = new WeakSet<object>();
+  let changes = 0;
+  function visit(value: unknown, key = ""): unknown {
+    if (typeof value === "string" && /paths?$/iu.test(key) && path.isAbsolute(value)) {
+      const target = paths.get(path.resolve(value).toLowerCase());
+      if (target && target !== value) { changes += 1; return target; }
+      return value;
+    }
+    if (!value || typeof value !== "object" || visited.has(value)) return value;
+    visited.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => { value[index] = visit(item, key); });
+    } else {
+      const record = value as Record<string, unknown>;
+      for (const [name, item] of Object.entries(record)) record[name] = visit(item, name);
+    }
+    return value;
+  }
+  for (const task of state.queue) {
+    const before = changes;
+    visit(task);
+    if (changes !== before) task.updatedAt = new Date().toISOString();
+  }
+  for (const consumer of [state.history, state.imageHistory, state.draft, state.imageToVideoDraft,
+    state.videoExtensionDraft, state.imageDraft]) visit(consumer);
 }
 
 function fileIsH3Artifact(file: HistoryFile): boolean {

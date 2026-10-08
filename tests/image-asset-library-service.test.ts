@@ -1,4 +1,7 @@
 import type { IpcMain } from "electron";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultState, createDefaultSettings } from "../src/core/defaults";
 import type {
@@ -94,6 +97,84 @@ function serviceFixture(
 }
 
 describe("image asset library application boundary", () => {
+  it.each(["directory", "cleaning", "queue-start"] as const)("rechecks latest references when state changes during %s", async (timing) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "image-library-cleanup-race-"));
+    const library = path.join(root, "library");
+    const sourceDirectory = path.join(library, "sources", "fixture");
+    const newlyReferenced = path.join(sourceDirectory, "new-reference.png");
+    const genuineOrphan = path.join(sourceDirectory, "genuine-orphan.png");
+    await fs.mkdir(sourceDirectory, { recursive: true });
+    await fs.writeFile(newlyReferenced, "new reference");
+    await fs.writeFile(genuineOrphan, "orphan");
+
+    let state = createDefaultState();
+    let releaseDirectoryResolution!: () => void;
+    let notifyDirectoryResolution!: () => void;
+    const directoryResolutionStarted = new Promise<void>((resolve) => {
+      notifyDirectoryResolution = resolve;
+    });
+    const continueDirectoryResolution = new Promise<void>((resolve) => {
+      releaseDirectoryResolution = resolve;
+    });
+    const unrelatedMarker = "changed while cleanup was waiting";
+    const addReference = () => {
+      state = structuredClone(state);
+      state.imageDraft.pictures.push({ id: "newly-referenced", pictureNumber: 1,
+        absolutePath: newlyReferenced, width: 1, height: 1 });
+      state.settings.outputDirectory = unrelatedMarker;
+    };
+    const store: StateRepository = {
+      load: async () => state,
+      get: () => state,
+      getSettings: () => state.settings,
+      update: async (mutator) => {
+        mutator(state);
+        return state;
+      }
+    };
+    const service = new ImageAssetLibraryService({
+      store,
+      logger: { info: vi.fn(), error: vi.fn() },
+      events: { publish: vi.fn((_event: string, progress: ImageAssetLibraryProgress) => {
+        if (timing !== "directory" && progress.phase === "cleaning" && progress.current === 2) {
+          addReference();
+          if (timing === "queue-start") state.queueRunning = true;
+        }
+      }) } as never,
+      resolveLibraryDirectory: async () => {
+        notifyDirectoryResolution();
+        await continueDirectoryResolution;
+        return library;
+      },
+      sendState: vi.fn()
+    });
+
+    try {
+      const cleanup = service.cleanup([genuineOrphan, newlyReferenced]);
+      await directoryResolutionStarted;
+      if (timing === "directory") addReference();
+      releaseDirectoryResolution();
+      if (timing === "queue-start") {
+        await expect(cleanup).rejects.toThrow("队列已开始运行");
+        await expect(fs.stat(genuineOrphan)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(fs.stat(newlyReferenced)).resolves.toBeDefined();
+        expect(store.get().queueRunning).toBe(true);
+        return;
+      }
+      const result = await cleanup;
+
+      await expect(fs.stat(genuineOrphan)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(fs.stat(newlyReferenced)).resolves.toBeDefined();
+      expect(store.get().settings.outputDirectory).toBe(unrelatedMarker);
+      expect(result.cleanedFiles).toBe(1);
+      expect(result.scan.missingReferences).toEqual([]);
+      expect(result.scan.orphanFiles).toEqual([]);
+    } finally {
+      releaseDirectoryResolution();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("publishes scan progress and keeps filesystem work behind an injected port", async () => {
     const state = createDefaultState();
     const library = "C:\\ComfyUI\\input\\LocalVideoStudio";
@@ -133,8 +214,13 @@ describe("image asset library application boundary", () => {
   it("commits only prepared reference fields and publishes the normal state/progress effects", async () => {
     const state = createDefaultState();
     state.draft.startImagePath = "old-start.png";
+    state.imageToVideoDraft = { ...structuredClone(state.draft), seed: 11 };
+    state.videoExtensionDraft = { ...structuredClone(state.draft), endImagePath: "old-end.png", seed: 22 };
     const preparedState = structuredClone(state);
     preparedState.draft.startImagePath = "managed-start.png";
+    preparedState.imageToVideoDraft!.startImagePath = "managed-start.png";
+    preparedState.videoExtensionDraft!.endImagePath = "managed-end.png";
+    preparedState.videoExtensionDraft!.seed = 999; // Unrelated draft fields are never copied from prepared state.
     const preparedResult = resultFixture("C:\\library");
     const organize = vi.fn(async () => ({ state: preparedState, result: preparedResult }));
     const fileSystem = {
@@ -147,6 +233,8 @@ describe("image asset library application boundary", () => {
     const result = await current.service.organize();
     expect(result).toMatchObject({ ...preparedResult, operationId: expect.any(String) });
     expect(state.draft.startImagePath).toBe("managed-start.png");
+    expect(state.imageToVideoDraft).toMatchObject({ startImagePath: "managed-start.png", seed: 11 });
+    expect(state.videoExtensionDraft).toMatchObject({ endImagePath: "managed-end.png", seed: 22 });
     expect(current.sendState).toHaveBeenCalledWith(state);
     expect(current.publish).toHaveBeenCalledWith("image-assets:progress", {
       phase: "completed",

@@ -29,6 +29,8 @@ export interface ImageAssetLibraryFileSystemPort {
     state: AppState,
     libraryDirectory: string,
     requestedPaths: string[],
-    report?: ImageAssetLibraryProgressReporter
+    report?: ImageAssetLibraryProgressReporter,
+    /** Read fresh committed references immediately before each deletion. */
+    getCurrentState?: () => AppState
   ): Promise<ImageAssetLibraryResult>;
 }
