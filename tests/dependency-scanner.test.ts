@@ -6,6 +6,7 @@ import {
   readLocalNodeVersion,
   scanCustomNodes
 } from "../electron/services/dependency-scanner";
+import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog/dependencies/nodes.js";
 import { createDefaultState } from "../src/core/defaults";
 
 const temporaryDirectories: string[] = [];
@@ -20,6 +21,34 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("rejects same-version GGUF forks and restores readiness only for the maintained source and pin", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-source-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "ComfyUI-GGUF");
+    await fs.mkdir(path.join(directory, ".git"), { recursive: true });
+    await fs.mkdir(path.join(directory, ".git", "objects"));
+    await fs.mkdir(path.join(directory, ".git", "refs"));
+    await fs.writeFile(path.join(directory, "pyproject.toml"), '[project]\nversion = "2.0.0"\n');
+    const pin = "373048b8403a7820620065210a691263d4da0a61";
+    await fs.writeFile(path.join(directory, ".git", "HEAD"), `${pin}\n`);
+    const settings = { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" };
+    const scan = async () => (await scanCustomNodes(root, settings))
+      .find((node) => node.id === "comfyui-gguf")!;
+    const config = path.join(directory, ".git", "config");
+    await fs.writeFile(config, '[remote "origin"]\n url = https://github.com/city96/ComfyUI-GGUF.git\n');
+    expect(await scan()).toMatchObject({
+      version: "2.0.0", loaded: false, updateAvailable: true,
+      compatibilityState: "error", loadError: expect.stringContaining("来源不匹配")
+    });
+    await fs.writeFile(config, "");
+    expect((await scan()).loadError).toContain("来源未确认");
+    await fs.writeFile(config, '[remote "origin"]\n url = https://github.com/leejet/ComfyUI-GGUF.git\n');
+    expect(await scan()).toMatchObject({ loaded: true, updateAvailable: false, detectedRevision: pin });
+    await fs.writeFile(path.join(directory, ".git", "HEAD"), `${"a".repeat(40)}\n`);
+    expect(await scan()).toMatchObject({ loaded: false, updateAvailable: true,
+      loadError: expect.stringContaining("revision 不匹配") });
+  });
+
   it("reads local node versions from package-owned metadata in priority order", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-version-"));
     temporaryDirectories.push(root);
@@ -82,11 +111,12 @@ describe("dependency scanner", () => {
       runtimeVerified: true,
       loaded: true,
       loadError: "",
-      updateNotice: expect.stringContaining("推荐 v0.4.5"),
+      updateAvailable: true,
+      updateNotice: expect.stringContaining("推荐 v0.4.7"),
       compatibilityState: "warning",
       runtimeNotice: expect.stringContaining("发现 1 个模型")
     });
-    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.5");
+    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.7");
   });
 
   it("uses Prompt Writer runtime endpoints when object_info is temporarily unavailable", async () => {
@@ -504,12 +534,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.27",
+      recommendedVersion: "0.2.29",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
     });
-    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.27");
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.29");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {
@@ -523,7 +553,7 @@ describe("dependency scanner", () => {
     await fs.mkdir(multimodalDirectory, { recursive: true });
     await fs.writeFile(
       path.join(multimodalDirectory, "pyproject.toml"),
-      '[project]\nversion = "1.0.15"\n',
+      '[project]\nversion = "1.0.16"\n',
       "utf8"
     );
 
@@ -533,13 +563,13 @@ describe("dependency scanner", () => {
       "",
       "",
       "",
-      { "comfyui-multimodal-prompt-nodes": "1.0.16" }
+      { "comfyui-multimodal-prompt-nodes": "1.0.17" }
     );
     const multimodal = statuses.find((status) => status.id === "comfyui-multimodal-prompt-nodes");
 
     expect(multimodal).toMatchObject({
-      version: "1.0.15",
-      latestVersion: "1.0.16",
+      version: "1.0.16",
+      latestVersion: "1.0.17",
       updateAvailable: false
     });
   });
@@ -681,7 +711,7 @@ describe("dependency scanner", () => {
     expect(serializer).toMatchObject({
       installed: true,
       detectedRevision: installedRevision,
-      installRevision: "0.3.5",
+      installRevision: H3_AV_SERIALIZER_REVISION,
       versionSource: "VERSION",
       compatibilityState: "error",
       updateAvailable: true

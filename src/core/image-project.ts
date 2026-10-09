@@ -11,7 +11,7 @@ import type {
 } from "../types.js";
 import type { H3ImageOptions, H3ImageRecipeSnapshot } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
-import { imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { isRetiredImageModelId, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { normalizeImageLoras } from "./image-loras.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 
@@ -49,6 +49,16 @@ export function isH3ImageModelId(modelId: string): boolean {
   return h3ImageModelIds.has(modelId);
 }
 
+/** Read-only geometry fallback for old results lacking a frozen output size. */
+export function legacyH3ImageOutputDimensions(width: number, height: number): [number, number] {
+  if (!(Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0)) return [0, 0];
+  const ratio = width / height;
+  const area = 0.98 * 1024 * 1024;
+  const align = (value: number) => Math.max(32, Math.round(value / 32) * 32);
+  return [align(Math.sqrt(area * ratio)), align(Math.sqrt(area / ratio))];
+}
+
+// Legacy option/recipe normalization is retained solely for queue/history records.
 export function defaultH3ImageOptionsFor(modelId: string): H3ImageOptions | undefined {
   if (!isH3ImageModelId(modelId)) return undefined;
   return {
@@ -529,9 +539,12 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   const seed = typeof source.seed === "number" && Number.isFinite(source.seed)
     ? Math.trunc(source.seed)
     : null;
-  const modelId = typeof source.modelId === "string" && source.modelId.trim()
+  const storedModelId = typeof source.modelId === "string" && source.modelId.trim()
     ? source.modelId
     : defaults.modelId;
+  // Only editable drafts migrate; queued and historical model identities stay intact.
+  const retiredImage = isRetiredImageModelId(storedModelId);
+  const modelId = retiredImage ? "qwen-image-2-1" : storedModelId;
   const imageLoras = normalizeImageLoras(source.imageLoras, modelId);
   const largestPictureNumber = pictures.reduce(
     (largest, picture) => Math.max(largest, picture.pictureNumber),
@@ -556,7 +569,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     promptVersions,
     activePromptVersion,
     modelId,
-    qualityProfile: typeof source.qualityProfile === "string" && source.qualityProfile.trim()
+    qualityProfile: retiredImage ? "preview-25" : typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? source.qualityProfile
       : defaults.qualityProfile,
     aspectRatio: normalizeImageAspectRatio(source.aspectRatio ?? defaults.aspectRatio),
@@ -568,10 +581,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     outputCount,
     outputFormat,
     seed,
-    imageLoras,
-    ...(normalizeH3ImageOptions(source.h3ImageOptions, modelId)
-      ? { h3ImageOptions: normalizeH3ImageOptions(source.h3ImageOptions, modelId) }
-      : {})
+    imageLoras
   };
 }
 

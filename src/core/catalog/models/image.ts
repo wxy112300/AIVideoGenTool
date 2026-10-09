@@ -3,60 +3,26 @@ import {
   flux2Klein4bRequiredNodeTypes,
   hidreamO1RequiredNodeTypes,
   lamaInpaintRequiredNodeTypes,
-  minimaxH3ImageI2IRequiredNodeTypes,
-  minimaxH3ReferenceEditRequiredNodeTypes,
   omnigen2RequiredNodeTypes,
   qwenImage21GgufRequiredNodeTypes,
   qwenImage21RequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes,
-  qwenImageEdit2511CropStitchRequiredNodeTypes,
   zImageRequiredNodeTypes,
   zImageTurboRequiredNodeTypes
 } from "../../image-workflow/node-requirements.js";
 import { component, entry, guide } from "./catalog-helpers.js";
-import {
-  h3Fl2vaInt8Model,
-  h3Fl2vaTurbo8LoraComponent,
-  h3Fl2vaVideoVae,
-  h3Nvfp4TextEncoder,
-  h3Ref2vaInt8Model,
-  h3Ref2vaTurbo8LoraComponent
-} from "./minimax_h3_shared.js";
 import type { CatalogModelEntry } from "../types.js";
 
 export const imageModelEntries: CatalogModelEntry[] = [
-  entry({
-    id: "minimax-h3-image-i2i", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-image-i2i", order: 950, inputModes: ["image"],
-    capabilities: { maxReferenceImages: 1 },
-    scan: { managedBy: "comfyui", vram: "H3 视频 VAE · 5 帧静态包 · Base 20 步 / Turbo 8 步", integrated: true, productGate: "open", productGateReason: "已开放正式测试；仍需目标 /object_info、节点加载和所选质量档资产", requiredCustomNodeIds: ["minimax-h3-image-studio"], runtimeNodeTypes: minimaxH3ImageI2IRequiredNodeTypes, components: [
-      h3Fl2vaInt8Model,
-      h3Nvfp4TextEncoder,
-      h3Fl2vaVideoVae,
-      h3Fl2vaTurbo8LoraComponent
-    ] }
-  }, {
-    name: "H3 · 源图 I2I（FL2VA）", badge: "外部节点 · 1 Picture · 5 帧", description: "MiniMax H3 FL2VA 源图图像编辑；固定使用标准视频 VAE 的 5 帧静态包，Picture 1 是唯一源图，支持 Base 20 步与 FL2VA Turbo 8 步。"
-  }, {
-    name: "H3 · source I2I (FL2VA)", badge: "External node · 1 picture · 5 frames", description: "MiniMax H3 FL2VA anchored image editing. Uses a five-frame still packet through the standard video VAE; Picture 1 is the only source, with Base 20-step and FL2VA Turbo 8-step profiles."
-  }, {
-    name: "H3 · 源圖 I2I（FL2VA）", badge: "外部節點 · 1 Picture · 5 幀", description: "MiniMax H3 FL2VA 源圖圖片編輯；固定使用標準影片 VAE 的 5 幀靜態包，Picture 1 是唯一源圖，支援 Base 20 步與 FL2VA Turbo 8 步。"
-  }),
-  entry({
-    id: "minimax-h3-reference-edit", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-reference-edit", order: 940, inputModes: ["image"],
-    capabilities: { maxReferenceImages: 9 },
-    scan: { managedBy: "comfyui", vram: "H3 视频 VAE · 5 帧静态包 · Base 20 步 / REF2VA Turbo 8 步", integrated: true, productGate: "open", productGateReason: "已开放正式测试；仍需目标 /object_info、节点加载和所选质量档资产", requiredCustomNodeIds: ["minimax-h3-image-studio"], runtimeNodeTypes: minimaxH3ReferenceEditRequiredNodeTypes, components: [
-      h3Ref2vaInt8Model,
-      h3Nvfp4TextEncoder,
-      h3Fl2vaVideoVae,
-      h3Ref2vaTurbo8LoraComponent
-    ] }
-  }, {
-    name: "H3 · 参考编辑（REF2VA）", badge: "外部节点 · 1–9 Picture · 5 帧", description: "MiniMax H3 REF2VA 多参考图像编辑；Picture 1 为基准图，Picture 2–9 按稳定顺序作为角色、物体、姿态或风格参考，支持 Base 20 步与 REF2VA Turbo 8 步。"
-  }, {
-    name: "H3 · reference edit (REF2VA)", badge: "External node · 1–9 pictures · 5 frames", description: "MiniMax H3 REF2VA multi-reference image editing. Picture 1 is the base image; Pictures 2–9 remain in stable order for identity, object, pose, or style references, with Base 20-step and REF2VA Turbo 8-step profiles."
-  }, {
-    name: "H3 · 參考編輯（REF2VA）", badge: "外部節點 · 1–9 Picture · 5 幀", description: "MiniMax H3 REF2VA 多參考圖片編輯；Picture 1 為基準圖，Picture 2–9 按穩定順序作為角色、物體、姿態或風格參考，支援 Base 20 步與 REF2VA Turbo 8 步。"
-  }),
+  // Read-only identities for existing queue/history; no assets or executable adapters.
+  entry({ id: "minimax-h3-image-i2i", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-image-i2i", retired: true, order: 950, inputModes: ["image"] },
+    { name: "H3 · 源图 I2I（FL2VA）", description: "已移除；保留历史模型名称。" },
+    { name: "H3 · source I2I (FL2VA)", description: "Removed; historical model identity only." },
+    { name: "H3 · 源圖 I2I（FL2VA）", description: "已移除；保留歷史模型名稱。" }),
+  entry({ id: "minimax-h3-reference-edit", family: "minimax-h3-image", category: "image", adapterId: "minimax-h3-reference-edit", retired: true, order: 940, inputModes: ["image"] },
+    { name: "H3 · 参考编辑（REF2VA）", description: "已移除；保留历史模型名称。" },
+    { name: "H3 · reference edit (REF2VA)", description: "Removed; historical model identity only." },
+    { name: "H3 · 參考編輯（REF2VA）", description: "已移除；保留歷史模型名稱。" }),
   entry({
     id: "omnigen2", family: "omnigen2", category: "image", adapterId: "omnigen2", order: 900, inputModes: ["image"],
     capabilities: { maxReferenceImages: 2, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
@@ -216,15 +182,10 @@ export const imageModelEntries: CatalogModelEntry[] = [
       component("Qwen Image Edit 2511 Lightning LoRA（可选）", "loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", /loras\/Qwen-Image-Edit-2511-Lightning-4steps-V1\.0-bf16\.safetensors$/i, guide("lightx2v / Qwen-Image-Edit-2511-Lightning", "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors?download=true", "loras", "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", "仅使用 Qwen Lightning 4 步质量档时需要。"), true)
     ] }
   }, { name: "Qwen-Image-Edit-2511 · 图片处理", badge: "最多 3 Picture · 原生质量", description: "Qwen 2511 多图编辑模型；文本编码器可卸载，VAE 固定使用 GPU，不自动回退到 CPU。" }, { name: "Qwen-Image-Edit-2511 · image editing", badge: "Up to 3 pictures · native", description: "Qwen 2511 multi-image editing with model memory controls and GPU-only VAE execution." }, { name: "Qwen-Image-Edit-2511 · 圖片處理", badge: "最多 3 Picture · 原生品質", description: "Qwen 2511 多圖編輯模型；文字編碼器可卸載，VAE 固定使用 GPU，不自動回退到 CPU。" }),
-  entry({
-    id: "qwen-image-edit-2511-crop-stitch", family: "qwen-image-edit", category: "image", adapterId: "qwen-image-edit-2511-crop-stitch", promptPackId: "qwen-image-edit", order: 300, inputModes: ["image"],
-    capabilities: { maxReferenceImages: 1, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
-    scan: { managedBy: "comfyui", vram: "Qwen 局部采样 · GPU VAE · Crop/Stitch", integrated: true, requiredCustomNodeIds: ["local-video-studio-h3-av", "inpaint-cropandstitch"], runtimeNodeTypes: qwenImageEdit2511CropStitchRequiredNodeTypes, components: [
-      component("Qwen Image Edit 2511 扩散模型", "diffusion_models/qwen_image_edit_2511_{bf16|int8_convrot|fp8mixed}.safetensors", /diffusion_models\/qwen_image_edit_2511_(?:bf16|int8_convrot|fp8mixed)\.safetensors$/i, guide("Comfy-Org / Qwen-Image-Edit_ComfyUI", "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors", "diffusion_models", "qwen_image_edit_2511_int8_convrot.safetensors")),
-      component("Qwen 2.5 VL 7B 文本编码器", "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors", /text_encoders\/qwen_2\.5_vl_7b_fp8_scaled\.safetensors$/i, guide("Comfy-Org / Qwen-Image_ComfyUI", "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors", "text_encoders", "qwen_2.5_vl_7b_fp8_scaled.safetensors")),
-      component("Qwen Image VAE", "vae/qwen_image_vae.safetensors", /vae\/qwen_image_vae\.safetensors$/i, guide("Comfy-Org / Qwen-Image_ComfyUI", "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors", "vae", "qwen_image_vae.safetensors"))
-    ] }
-  }, { name: "Qwen · 局部融合修复", badge: "单图 + Mask · Crop/Stitch", description: "只对 Mask 区域及其必要的边缘上下文进行局部重绘，再无缝拼回原图；未标记内容保持不变。需要安装 ComfyUI Inpaint Crop & Stitch 节点。" }, { name: "Qwen · Local fusion repair", badge: "One image + mask · Crop/Stitch", description: "Repaints only the masked area and the minimum context needed for natural blending, then stitches it back into the source image. Requires ComfyUI Inpaint Crop & Stitch." }, { name: "Qwen · 局部融合修復", badge: "單圖 + Mask · Crop/Stitch", description: "只對 Mask 區域及必要的邊緣上下文局部重繪，再無縫拼回原圖；未標記內容保持不變。需要安裝 ComfyUI Inpaint Crop & Stitch 節點。" }),
+  entry({ id: "qwen-image-edit-2511-crop-stitch", family: "qwen-image-edit", category: "image", adapterId: "qwen-image-edit-2511-crop-stitch", retired: true, order: 300, inputModes: ["image"] },
+    { name: "Qwen · 局部融合修复", description: "已移除；保留历史模型名称。" },
+    { name: "Qwen · Local fusion repair", description: "Removed; historical model identity only." },
+    { name: "Qwen · 局部融合修復", description: "已移除；保留歷史模型名稱。" }),
   entry({
         id: "flux2-klein-4b", family: "flux2-klein", category: "image", adapterId: "flux2-klein-4b", order: 600, inputModes: ["image"], capabilities: { maxReferenceImages: 1, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
     scan: { managedBy: "comfyui", vram: "FP8 · 单图编辑", integrated: true, runtimeNodeTypes: flux2Klein4bRequiredNodeTypes, components: [

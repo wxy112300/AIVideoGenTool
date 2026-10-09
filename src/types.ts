@@ -1185,6 +1185,9 @@ export interface ContinuumSequence {
   height: number;
   baseSeed: number;
   contractSha256?: string;
+  /** Actual manifest evidence; absent in legacy History. */
+  samplingContractVersion?: number;
+  resumeSafe?: boolean;
   modelIdentity?: string;
   diffusionModelFilename?: string;
   textEncoderFilename?: string;
@@ -1219,6 +1222,10 @@ export interface H3ContinuumReceipt {
   revisionId: string;
   packageVersion: string;
   runStorageSchemaVersion: number;
+  /** Actual manifest evidence; absent in legacy receipts. */
+  samplingContractVersion?: number;
+  contractSha256?: string;
+  resumeSafe?: boolean;
   generationMode: "Review Each Chunk";
   reviewAction?: "Continue / Next" | "Regenerate Current" | "Finish Remaining";
   runStorage: "Save + Auto Resume";

@@ -52,6 +52,18 @@ function unwrapCandidate(value) {
         return parsed;
     return isRecord(parsed.receipt) ? parsed.receipt : parsed;
 }
+/** Missing evidence is preserved for old History, never inferred from a release label. */
+export function validateContinuumSamplingEvidence(value) {
+    if (value.samplingContractVersion === undefined && value.resumeSafe === undefined)
+        return null;
+    if (value.samplingContractVersion !== 5 && value.samplingContractVersion !== 6)
+        return "managed sampling contract 版本不受支持";
+    if (typeof value.contractSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(value.contractSha256))
+        return "managed sampling contract hash 无效";
+    if (typeof value.resumeSafe !== "boolean")
+        return "managed resumeSafe 缺失或无效";
+    return null;
+}
 export function validateH3ContinuumManagedReceipt(value) {
     if (!isRecord(value))
         return "managed receipt 不是对象";
@@ -67,6 +79,21 @@ export function validateH3ContinuumManagedReceipt(value) {
         return "managed receipt 不是 Run Storage source 或检测到 fresh fallback";
     if (value.review_action !== "Continue / Next" && value.review_action !== "Regenerate Current" && value.review_action !== "Finish Remaining")
         return "managed receipt.review_action 无效";
+    const evidenceError = validateContinuumSamplingEvidence({
+        samplingContractVersion: value.sampling_contract_version,
+        contractSha256: value.contract_sha256,
+        resumeSafe: value.resume_safe
+    });
+    if (evidenceError)
+        return evidenceError;
+    // New node executions must prove their format; old persisted camel-case
+    // receipts remain readable through the domain validator.
+    if (/^3\.(?:9|[1-9]\d)\./u.test(String(value.package_version))) {
+        if (value.sampling_contract_version === undefined)
+            return "新版 managed receipt 缺少真实采样契约；请更新 Local Video Studio H3 节点";
+        if (value.sampling_contract_version !== 6 || value.run_storage_schema_version !== 3)
+            return "新版 managed 输出必须证明 Run Storage v3 / sampling contract v6";
+    }
     const requestedChunks = value.requested_chunks;
     const reusedCount = value.reused_count;
     const generatedCount = value.generated_count;

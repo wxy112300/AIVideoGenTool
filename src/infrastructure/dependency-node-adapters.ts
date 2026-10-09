@@ -1252,13 +1252,25 @@ export function patchH3PromptWriterBatchSize(source: string): string {
   );
 }
 
+export function patchH3PromptWriterModelRoots(source: string): string {
+  return source.replace(
+    /    for category in \("LLM", "llm"\):\r?\n        for value in folder_paths\.get_folder_paths\(category\):/u,
+    (matched) => [
+      '    for category in ("LLM", "llm"):',
+      '        if category not in folder_paths.folder_names_and_paths:',
+      '            continue',
+      '        for value in folder_paths.get_folder_paths(category):'
+    ].join(matched.includes("\r\n") ? "\r\n" : "\n")
+  );
+}
+
 export function patchH3PromptWriterSource(source: string): string {
   return patchH3PromptWriterAutomaticContextLadder(
     patchH3PromptWriterOutputBudget(
       patchH3PromptWriterBatchSize(
         patchH3PromptWriterBriefLimit(
           patchH3PromptWriterGemmaChatHandler(
-            patchH3PromptWriterLlamaCppCompatibility(source)
+            patchH3PromptWriterLlamaCppCompatibility(patchH3PromptWriterModelRoots(source))
           )
         )
       )

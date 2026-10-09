@@ -42,7 +42,6 @@ import {
   imageEditPromptUserContentForTarget
 } from "../../src/core/image-prompt.js";
 import { imageReferenceInputPath } from "../../src/core/image-workflow.js";
-import { isH3ImageModelId } from "../../src/core/image-project.js";
 import type { VramStallProgressEvent } from "../../src/core/vram-stall-watchdog.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
@@ -127,7 +126,7 @@ import {
   stripPromptAnnotations
 } from "../../src/core/prompt-annotations.js";
 import {
-  applyH3ImageVramCleanup,
+  imageModelUnavailableReason,
   imageModelAdapterFor,
   renderImageWorkflow,
 } from "../../src/core/image-workflow.js";
@@ -1288,10 +1287,7 @@ export async function submitImageTask(
 }> {
   const adapter = imageModelAdapterFor(task.modelId);
   if (!adapter) {
-    throw new Error(`当前没有 ${task.modelId} 的图片工作流适配器。`);
-  }
-  if (isH3ImageModelId(task.modelId) && modelCatalog.get(task.modelId)?.definition.scan?.productGate === "locked") {
-    throw new Error("H3 图片路线尚未完成目标 ComfyUI /object_info、节点加载与真实 smoke 验收，当前保持关闭。 ");
+    throw new Error(imageModelUnavailableReason(task.modelId));
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const objectInfo = await jsonRequest<Record<string, unknown>>(
@@ -1301,10 +1297,7 @@ export async function submitImageTask(
   const compiled = adapter.compilePrompt(task.prompt, task.pictures);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const workflow = adapter.buildWorkflow(task, run);
-  if (isH3ImageModelId(task.modelId)) {
-    applyH3ImageVramCleanup(workflow, objectInfo);
-  }
-  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true, task.h3ImageRecipe);
+  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true);
   if (workflowErrors.length) {
     throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
   }
@@ -1348,9 +1341,10 @@ export function bindManagedContinuumPrefixExpectation(
   objectInfo: Record<string, unknown>
 ): void {
   const supported = objectInfoInputNames(objectInfo.LocalVideoStudioH3ContinuumManagedReceipt);
-  if (!supported?.has("expected_parent_revision_id") || !supported.has("expected_prefix_chunks")) {
+  if (!supported?.has("expected_parent_revision_id") || !supported.has("expected_prefix_chunks") || !supported.has("sampling_evidence_version")) {
     throw new Error("Continuum managed 缺少执行前前缀保护：请在设置中更新 Local Video Studio H3 节点并重启 ComfyUI。");
   }
+  receiptInputs.sampling_evidence_version = 2;
   receiptInputs.expected_prefix_chunks = task.h3ContinuumSequence?.acceptedChunks ?? 0;
   receiptInputs.expected_parent_revision_id = task.h3ContinuumSequence?.acceptedChunks
     ? task.h3ContinuumParentRevisionId ?? task.h3ContinuumSequence.canonicalHead.revisionId

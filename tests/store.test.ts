@@ -681,12 +681,25 @@ describe("queue lock recovery", () => {
       }
     } as unknown as ImageGenerationQueueTask;
     state.queue = [task];
+    state.settings.defaultImageModel = task.modelId;
+    state.settings.defaultImageQualityProfile = task.qualityProfile;
+    state.imageDraft.modelId = task.modelId;
+    state.imageDraft.qualityProfile = task.qualityProfile;
+    state.imageDraft.promptVersions[0]!.text = "保留草稿提示词";
     await fs.writeFile(filename, JSON.stringify(state), "utf8");
 
     try {
       const loaded = await new JsonStore(filename).load();
-      const restored = loaded.queue[0];
+      expect(loaded.settings.defaultImageModel).toBe("qwen-image-2-1");
+      expect(loaded.settings.defaultImageQualityProfile).toBe("preview-25");
+      expect(loaded.imageDraft.modelId).toBe("qwen-image-2-1");
+      expect(loaded.imageDraft.promptVersions[0]!.text).toBe("保留草稿提示词");
+      const restarted = await new JsonStore(filename).load();
+      expect(restarted.settings.defaultImageQualityProfile).toBe("preview-25");
+      const restored = restarted.queue[0];
       if (!restored || restored.taskType !== "image-generation") throw new Error("H3 图片任务未恢复");
+      expect(restored.modelId).toBe(task.modelId);
+      expect(restored.workflowPath).toBe(task.workflowPath);
       expect(restored.h3ImageOptions).toEqual({
         frameProfile: "recommended-5",
         frameSelection: "decode-recommended",

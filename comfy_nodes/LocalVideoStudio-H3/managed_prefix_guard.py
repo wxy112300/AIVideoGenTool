@@ -8,6 +8,7 @@ The controller calls this hook under its own Run lock, before manifest writes.
 import importlib
 import json
 import logging
+import re
 import sys
 from functools import wraps
 from pathlib import Path
@@ -88,3 +89,16 @@ def install_managed_prefix_guard(module):
 
     guarded._local_video_studio_prefix_guard = True
     controller_type._load_validated_review_prefix = guarded
+
+
+def read_sampling_evidence(revision_root, revision_id):
+    """Read actual writer facts. Keep v5 readable, without making it reusable."""
+    manifest = json.loads((Path(revision_root) / "manifest.json").read_text(encoding="utf-8"))
+    version = manifest.get("sampling_contract_version")
+    digest = manifest.get("contract_sha256")
+    safe = manifest.get("resume_safe")
+    if type(version) is not int or version not in (5, 6) or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest) or type(safe) is not bool:
+        raise ValueError("managed receipt manifest sampling evidence invalid")
+    if manifest.get("revision_id") != revision_id:
+        raise ValueError("managed receipt manifest revision changed")
+    return {"sampling_contract_version": version, "contract_sha256": digest, "resume_safe": safe}

@@ -13,6 +13,8 @@ export interface CatalogCustomNodeDefinition {
   source?: "github" | "bundled";
   /** Full immutable commit or app-owned package revision used for installation. */
   installRevision?: string;
+  /** Recommended pins guide installation without rejecting supported older runtimes. */
+  installRevisionPolicy?: "required" | "recommended";
   /** Code license recorded separately from any model/checkpoint license. */
   license?: string;
   /** Optional remote source used for a cached, non-blocking update check. */

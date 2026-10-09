@@ -11,6 +11,8 @@ import type {
   NativeAvArtifactRole
 } from "../types.js";
 
+import { validateContinuumSamplingEvidence } from "./h3-continuum-managed-receipt.js";
+
 export const H3_AV_LATENT_ASSET_SCHEMA_VERSION = 1 as const;
 export const H3_CONTINUUM_SEQUENCE_SCHEMA_VERSION = 1 as const;
 export const H3_CONTINUUM_RECEIPT_SCHEMA_VERSION = 1 as const;
@@ -240,6 +242,8 @@ export function validateH3ContinuumReceipt(value: unknown): string | null {
   for (const field of ["runStorageSchemaVersion", "requestedChunks", "reusedCount", "generatedCount", "firstGeneratedChunk"]) {
     if (!isNonNegativeInteger(value[field])) return `receipt.${field} 无效`;
   }
+  const samplingError = validateContinuumSamplingEvidence(value);
+  if (samplingError) return samplingError;
   const requestedChunks = value.requestedChunks;
   const reusedCount = value.reusedCount;
   const generatedCount = value.generatedCount;
@@ -291,6 +295,8 @@ export function validateContinuumSequence(value: unknown): string | null {
     if (!isNonNegativeInteger(value[field])) return `sequence.${field} 无效`;
   }
   if (!isPositiveNumber(value.chunkSeconds) || value.fps !== 24 || !isPositiveInteger(value.width) || !isPositiveInteger(value.height) || !isNonNegativeInteger(value.baseSeed)) return "sequence 固定采样契约无效";
+  const samplingError = validateContinuumSamplingEvidence(value);
+  if (samplingError) return samplingError;
   const targetChunks = value.targetChunks;
   const acceptedChunks = value.acceptedChunks;
   if (!isNonNegativeInteger(targetChunks) || !isNonNegativeInteger(acceptedChunks)) return "sequence target/accepted 无效";
@@ -403,6 +409,13 @@ export function sequenceAfterManagedReceipt(
   const next: ContinuumSequence = {
     ...previous,
     status: "review-ready",
+    packageVersion: receipt.packageVersion,
+    runStorageSchemaVersion: receipt.runStorageSchemaVersion,
+    ...(receipt.samplingContractVersion === undefined ? {} : {
+      samplingContractVersion: receipt.samplingContractVersion,
+      contractSha256: receipt.contractSha256,
+      resumeSafe: receipt.resumeSafe
+    }),
     targetChunks,
     acceptedChunks: nextChunks.length,
     canonicalHead: {

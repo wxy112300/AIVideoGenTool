@@ -8,6 +8,7 @@ const consumerClasses = new Set([
 ]);
 const legacyAttentionClasses = new Set([
     "PathchSageAttentionKJ",
+    "LocalVideoStudioH3ManagedSageAttention",
     "H3SLAAttention",
     "H3SparseAttention",
     "H3SparseAttentionAdvanced"
@@ -47,7 +48,7 @@ function requiredModelLink(value, locale) {
     throw new Error(message("h3PatchChainUnknown", {}, locale));
 }
 function attentionOwnerForNode(node) {
-    if (node.class_type === "PathchSageAttentionKJ")
+    if (node.class_type === "PathchSageAttentionKJ" || node.class_type === "LocalVideoStudioH3ManagedSageAttention")
         return "sage";
     if (node.class_type === "H3SLAAttention")
         return "sla";
@@ -225,7 +226,7 @@ export function normalizeMiniMaxH3ModelPatchChain(workflow, options) {
     const previewIds = existingNodeIds(workflow, "ModelPreviewOverrideKJ", locale);
     const backendIds = existingNodeIds(workflow, "ModelAttentionBackend", locale);
     const sparseIds = existingNodeIds(workflow, "BlockSparseAttention", locale);
-    const existingSageNodeId = attentionIds.find((id) => workflow[id]?.class_type === "PathchSageAttentionKJ");
+    const existingSageNodeId = attentionIds.find((id) => ["PathchSageAttentionKJ", "LocalVideoStudioH3ManagedSageAttention"].includes(workflow[id]?.class_type ?? ""));
     const existingBackendNodeId = backendIds[0];
     const managedIds = new Set([...attentionIds, ...spectrumIds, ...previewIds, ...backendIds, ...sparseIds]);
     const consumers = assertConsumers(workflow, locale, managedIds.size > 0 || isH3ChainPolicyActive(policy));
@@ -254,7 +255,8 @@ export function normalizeMiniMaxH3ModelPatchChain(workflow, options) {
             : existingSageNodeId ?? allocate();
         workflow[nodeId] = policy.attentionMode === "comfy-kitchen"
             ? { class_type: "ModelAttentionBackend", inputs: { model: output, attention: "comfy kitchen attention" } }
-            : { class_type: "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode, policy.comfyCompilerMode === "disabled" && consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
+            : { class_type: consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")
+                    ? "LocalVideoStudioH3ManagedSageAttention" : "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode, policy.comfyCompilerMode === "disabled" && consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
         output = [nodeId, 0];
     }
     if (policy.sparseAttentionMode !== "off") {

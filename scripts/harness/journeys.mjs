@@ -26,7 +26,7 @@ export const journeys = [
     section: "extend",
     paths: ["src/renderer/pages/create/video-extension-controller.ts", "src/renderer/pages/create/coordinator.ts", "electron/services/history-artifact-service.ts", "electron/services/extension-media.ts", "electron/services/h3-continuum-asset-registry.ts", "electron/services/comfy-ui.ts", "comfy_nodes/LocalVideoStudio-H3/managed_prefix_guard.py", "electron/queue-enqueue.ts", "src/core/h3-av-asset.ts"],
     tests: ["tests/user-journeys.test.ts", "tests/create-video-extension.test.ts", "tests/h3-continuum-managed.test.ts", "tests/comfy-ui.test.ts", "tests/h3-av-domain.test.ts"],
-    checks: ["Motion Context 锁定源 Slot 1；无 latent 可走视频上下文；有 latent 校验文件与尾边界", "Continuum bootstrap 配对 AV；managed 必须已有 accepted Run 前缀，显式 mode/空 sequence 不能解除 UI 门槛", "managed 任务冻结 head/accepted；旧节点缺保护 schema 时阻止提交；官方 Run 锁内拒绝过期或不兼容前缀后才允许写 manifest。改此前置保护还须运行 python -B tests/python/test_h3_managed_prefix_guard.py；与真实生成分层报告", "checking/missing/available 可恢复；无前缀改用 Motion Context 后真实按钮入队", "prompt、duration、AV 保存与 Spectrum 控件按实际分支变化；A→B→C 保持父版本身份"]
+    checks: ["Motion Context 锁定源 Slot 1；无 latent 可走视频上下文；有 latent 校验文件与尾边界", "Continuum bootstrap 配对 AV；managed 必须已有 accepted Run 前缀，显式 mode/空 sequence 不能解除 UI 门槛", "managed 读取真实 v6 manifest/hash/resume_safe，v5只读且不改写；任务冻结 head/accepted；旧节点缺保护或 sampling evidence schema 时阻止提交；官方 Run 锁内拒绝过期或不兼容前缀后才允许写 manifest。改此前置保护还须运行 python -B tests/python/test_h3_managed_prefix_guard.py；managed Sage 适配另运行 python -B tests/python/test_h3_managed_attention.py；与真实生成分层报告", "checking/missing/available 可恢复；无前缀改用 Motion Context 后真实按钮入队", "prompt、duration、AV 保存与 Spectrum 控件按实际分支变化；A→B→C 保持父版本身份"]
   },
   {
     id: "history", title: "结果详情 → 重新编辑 / Extend / Continuum 分支",
@@ -53,8 +53,8 @@ export const journeys = [
     id: "image", title: "图片模型 → Picture / Paint / Mask → 入队 → 项目版本",
     section: "image",
     paths: ["src/renderer/pages/create/image-edit-controller.ts", "src/core/image-workflow", "src/core/image-project.ts", "electron/queue-enqueue.ts"],
-    tests: ["tests/create-enqueue.test.ts", "tests/image-workflow.test.ts", "tests/image-project.test.ts", "tests/queue-services.test.ts"],
-    checks: ["按 capability 检查文生图/参考图数/无提示词/Mask；缺失输入补齐后可提交", "Paint 与二值 Mask 分离；异步 prompt 回写来源草稿；模型切换不污染视频 draft", "version.taskId 关联真实输出，重编辑保留 lineage"]
+    tests: ["tests/create-enqueue.test.ts", "tests/image-workflow.test.ts", "tests/image-project.test.ts", "tests/queue-services.test.ts", "tests/h3-image-retirement.test.ts", "tests/qwen-fusion-retirement.test.ts"],
+    checks: ["按 capability 检查文生图/参考图数/无提示词/Mask；缺失输入补齐后可提交", "Paint 与二值 Mask 分离；异步 prompt 回写来源草稿；模型切换不污染视频 draft", "version.taskId 关联真实输出，重编辑保留 lineage", "退休模型从活动选项/节点排除；旧草稿和默认转Qwen2.1，旧queue/history保持身份"]
   }
 ];
 

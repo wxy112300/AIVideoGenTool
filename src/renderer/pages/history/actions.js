@@ -118,12 +118,10 @@ export function createHistoryActions(options) {
             trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
             sourceAssetId: asset.sourceAssetId,
             sourceVersionId: asset.sourceVersionId,
-            ...(isExtension
-                ? {
-                    h3ContextLatentPath: motionContextAsset?.ownerPath.absolutePath ?? motionContextLatentPath,
-                    h3MotionContextAsset: motionContextAsset ? structuredClone(motionContextAsset) : undefined
-                }
-                : { h3ContextLatentPath: undefined, h3MotionContextAsset: undefined }),
+            ...(isExtension ? {
+                h3ContextLatentPath: motionContextAsset?.ownerPath.absolutePath ?? motionContextLatentPath,
+                h3MotionContextAsset: motionContextAsset ? structuredClone(motionContextAsset) : undefined
+            } : { h3ContextLatentPath: undefined, h3MotionContextAsset: undefined }),
             ...(h3LatentSaveMode
                 ? {
                     h3LatentSaveMode,
@@ -182,7 +180,7 @@ export function createHistoryActions(options) {
         const state = context.getState();
         if (!state)
             return;
-        const modelId = firstSupportedImageModelId(version.kind === "source" ? undefined : version.modelId, state.imageDraft.modelId, state.settings.defaultImageModel);
+        const modelId = firstSupportedImageModelId(modelCatalog.get(version.modelId)?.definition.retired ? "qwen-image-2-1" : version.kind === "source" ? undefined : version.modelId, state.imageDraft.modelId, state.settings.defaultImageModel);
         const capability = imageModelCapabilityFor(modelId);
         const qualityProfile = capability.qualityProfiles.some((profile) => profile.id === state.imageDraft.qualityProfile)
             ? state.imageDraft.qualityProfile
@@ -284,12 +282,12 @@ export function createHistoryActions(options) {
             : motionContextAsset
                 ? "minimax_h3_ref2va"
                 : isMiniMaxH3R2vModel(version.modelId)
-                ? version.modelId
-                : isMiniMaxH3R2vModel(asset.modelId)
-                    ? asset.modelId
-                    : motionContextLatentPath
-                        ? "minimax_h3_ref2va"
-                        : undefined;
+                    ? version.modelId
+                    : isMiniMaxH3R2vModel(asset.modelId)
+                        ? asset.modelId
+                        : motionContextLatentPath
+                            ? "minimax_h3_ref2va"
+                            : undefined;
         const h3LatentSaveMode = sourceModelId && isMiniMaxH3Model(sourceModelId)
             ? h3LatentSaveModeFor(version, isMiniMaxH3R2vModel(sourceModelId))
             : undefined;

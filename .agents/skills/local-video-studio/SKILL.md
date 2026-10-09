@@ -13,6 +13,8 @@ description: 在 Local Video Studio 仓库修改或测试 Create、Prompt、Exte
 2. `npm.cmd run harness:app -- list`，选受影响旅程，再运行 `npm.cmd run harness:app -- guide <id>`，获取源码入口、focused 命令和邻接验收项。
 3. 读 [流程图](../../../docs/runbooks/PRODUCT_JOURNEYS.md) 的总图和本次章节。串起“用户入口 → 输入/模式 → 按钮门槛 → AppApi → queue snapshot → runtime → History/回流”，只读这条路径必要源码。模型版本/文件以 catalog 为准。
 
+评估 ComfyUI、模型、节点或 LoRA 的上游更新时，先用 [升级评估 Skill](../comfy-upgrade-assessment/SKILL.md) 固定实际身份、候选与收益条件，再回到本 Skill 执行已授权的产品验证。
+
 ## 操作入口
 
 - 服务诊断：`npm.cmd run harness:comfy -- probe-prompt-writer` / `scan`，不穿 renderer/IPC。
@@ -48,7 +50,7 @@ npm.cmd run harness:app -- enqueue-ui --port 9333
 - 增强：媒体+空文本、明确指令、全空、Extend 边界、异步切页回写、取消/占用；请求正确与文本质量分开验。
 - Extend/AV：Motion Context 无/有 latent；Continuum bootstrap/managed；checking→missing→available；History 继续/重生成/从这里继续。
 
-- Managed 正向：先有真实accepted/receipt再从History实际Continue、缺prompt恢复、鼠标入队；`managed-history-audit.mjs`只审计真实完成/播放及owner/alias/registry，可重启复用。API真实首段仅作夹具、不算UI入口，bootstrap不可代替。官方真实根为 `h3_continuum/runs`，旧 `h3-continuum/runs` 仍兼容；Videos不是Run根。复用段可重新封装，检查receipt实际payload登记和tensor hash，不仅看旧assetId。`comfy-ui.ts`确认保护schema并传冻结head/accepted到下游receipt，`managed_prefix_guard.py`定位实际注册的官方sampler命名空间，在官方Run锁内拒绝过期head或不完整/不兼容前缀，再允许写manifest；不能仅挂到bridge模块，不能改采样身份/hash。真实旧Run前置拒绝与兼容2→3通过，不推广为任意后续失败/崩溃回滚。默认物理隔离，实库必须有用户明确授权、备份及影响核对。
+- Managed 正向：先有真实accepted/receipt再从History实际Continue、缺prompt恢复、鼠标入队；`managed-history-audit.mjs`只审计真实完成/播放及owner/alias/registry，可重启复用。API真实首段仅作夹具、不算UI入口，bootstrap不可代替。官方真实根为 `h3_continuum/runs`，旧 `h3-continuum/runs` 仍兼容；Videos不是Run根。复用段可重新封装，检查receipt实际payload登记和tensor hash，不仅看旧assetId。`comfy-ui.ts`确认保护schema并传冻结head/accepted到下游receipt，`managed_prefix_guard.py`定位实际注册的官方sampler命名空间，在官方Run锁内拒绝过期head或不完整/不兼容前缀，再允许写manifest；不能仅挂到bridge模块，不能改采样身份/hash。新版从实际manifest读取v6/hash/resume_safe，不按package label补旧数据；v5只读，不可复用为v6。managed Sage委托KJ同一raw函数，普通H3/bootstrap仍用原节点；改该适配须跑python -B tests/python/test_h3_managed_attention.py。真实旧Run前置拒绝与兼容2→3通过，不推广为任意后续失败/崩溃回滚。默认物理隔离，实库必须有用户明确授权、备份及影响核对。
 - 设置/加速：新草稿默认；四项 H3 加速设置保存立即更新 waiting，claim 解析、running 冻结；缺节点恢复与 AV/Spectrum/LoRA 快照。
 - Prompt 设置：`settings-prompt-smoke.mjs` 复用真实 Settings/增强按钮和重启审计；`--resident` 先真实加载旧模型，`--history` 保护单作品物理副本，两者分开执行。当前 provider 固定 ComfyUI、旧 LM Studio 字段忽略；保存模型不立即卸载旧租约，下一请求从保存设置比较/切换。`EnhanceRequest.modelId` 是生成模型，日志 `promptModelId`/`promptBackend` 才能证明路由。空输入可点击但通知阻塞；API 只准备草稿，真实推理、版本写回与质量分别报告。
 - 设置证据选择：先看 [探针表](../../../docs/AGENT_ELECTRON_API_RUNBOOK.md#settings-probes)，只执行本次改变影响的边。`settings-running-smoke.mjs` 必须真实 Queue 开始并在保存前后仍为 running；禁止工厂伪造状态。Attention 的 UI/GPU 与其他三项/failed 的服务测试分开；重启仅应用明确旧内存归一化和实际 stat 大小，其余字段严格比较。旧报告仅对应原文件状态，覆盖/待办只由 TASK 维护。

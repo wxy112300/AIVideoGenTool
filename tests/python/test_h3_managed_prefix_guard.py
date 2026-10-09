@@ -105,5 +105,28 @@ class ManagedPrefixGuardTests(unittest.TestCase):
             guard.install_registered_managed_prefix_guard({"H3ContinuumSamplerV38": type("UnknownSampler", (), {})})
 
 
+class SamplingEvidenceTests(unittest.TestCase):
+    def test_reads_actual_v6_and_keeps_v5_read_only_without_rewriting(self):
+        with TemporaryDirectory() as root:
+            filename = Path(root) / "manifest.json"
+            for version in (5, 6):
+                for safe in (False, True):
+                    text = json.dumps({"revision_id": "head", "sampling_contract_version": version, "contract_sha256": "a" * 64, "resume_safe": safe})
+                    filename.write_text(text, encoding="utf-8")
+                    self.assertEqual(guard.read_sampling_evidence(root, "head"), {"sampling_contract_version": version, "contract_sha256": "a" * 64, "resume_safe": safe})
+                    self.assertEqual(filename.read_text(encoding="utf-8"), text)
+
+    def test_rejects_missing_unknown_and_mismatched_manifest_facts(self):
+        with TemporaryDirectory() as root:
+            filename = Path(root) / "manifest.json"
+            base = {"revision_id": "head", "sampling_contract_version": 6, "contract_sha256": "a" * 64, "resume_safe": True}
+            for patch in ({"sampling_contract_version": 7}, {"sampling_contract_version": None}, {"contract_sha256": "guess"}, {"resume_safe": None}, {"revision_id": "other"}):
+                filename.write_text(json.dumps({**base, **patch}), encoding="utf-8")
+                before = filename.read_bytes()
+                with self.assertRaises(ValueError):
+                    guard.read_sampling_evidence(root, "head")
+                self.assertEqual(filename.read_bytes(), before)
+
+
 if __name__ == "__main__":
     unittest.main()

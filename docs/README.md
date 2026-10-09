@@ -9,7 +9,7 @@
 | 修 bug | [代码地图](AGENT_START_HERE.md) → 受影响模块/测试 | [短路径](development/WORKFLOW.md#bug-fix) |
 | 产品流程 / 交互回归 / Agent 操作 | [用户旅程与架构图](runbooks/PRODUCT_JOURNEYS.md) → `harness:app -- guide <id>` | [项目 Skill](../.agents/skills/local-video-studio/SKILL.md) + [真实应用操作](AGENT_ELECTRON_API_RUNBOOK.md) |
 | 调查/接入新节点、图像编辑模型 | [工作流契约](WORKFLOW_CONTRACT.md) | [接入](development/WORKFLOW.md#integration) |
-| 升级已有节点、插件、工作流 | catalog 当前 revision + [环境约定](DEPENDENCIES_AND_SETUP.md) | [升级](development/WORKFLOW.md#upgrade) |
+| 评估/升级 ComfyUI、节点、模型、LoRA | catalog 与实际安装身份 + [环境约定](DEPENDENCIES_AND_SETUP.md) | [升级评估 Skill](../.agents/skills/comfy-upgrade-assessment/SKILL.md) + [升级](development/WORKFLOW.md#upgrade) |
 | 研究 prompt 增强 | [Prompt Pack 边界](PROMPT_PACK_DESIGN.md) | [对照实验](development/WORKFLOW.md#prompt) |
 | Extend、长视频 | [当前 Extend 分支图](runbooks/PRODUCT_JOURNEYS.md#extend) + 工作流契约；历史实验按需追溯 | [探索方案](development/WORKFLOW.md#extension) |
 | 资产库检查、路径、转移、删除 | [资产生命周期图](runbooks/ASSET_LIFECYCLE.md) → `harness:app -- guide assets` | 区分记录/媒体/辅助 owner，使用隔离资产验收 |

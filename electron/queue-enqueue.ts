@@ -13,12 +13,13 @@ import type {
   Settings,
   UpscaleRequest
 } from "../src/types.js";
+import { H3_CONTINUUM_RECOMMENDED_VERSION } from "../src/core/catalog/dependencies/nodes.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { activateCreationDraft } from "../src/core/creation-drafts.js";
 import { imageLoraConfigurationError } from "../src/core/image-loras.js";
-import { findImageProjectLineage, isH3ImageModelId, normalizeImageEditDraft } from "../src/core/image-project.js";
+import { findImageProjectLineage, normalizeImageEditDraft } from "../src/core/image-project.js";
 import {
-  cachedImageProfileAllowsEnqueue,
+  imageModelUnavailableReason,
   imageLightningComponentFound,
   imageModelAdapterFor,
   imagePicturesForModelInput,
@@ -836,6 +837,7 @@ export class QueueEnqueueService {
     const deps = this.deps;
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
+    if (modelCatalog.get(draft.modelId)?.definition.retired) throw new Error(imageModelUnavailableReason(draft.modelId));
     const requested = normalizeImageEditDraft(draft);
     const adapter = imageModelAdapterFor(requested.modelId);
     const normalized = normalizeImageEditDraft({
@@ -843,7 +845,7 @@ export class QueueEnqueueService {
       ...(adapter?.deterministic ? { outputCount: 1 } : {}),
       pictures: imagePicturesForModelInput(requested.pictures, adapter?.supportsTextOnly === true)
     });
-    if (!adapter) throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
+    if (!adapter) throw new Error(imageModelUnavailableReason(normalized.modelId));
     const imageLoraError = imageLoraConfigurationError(
       normalized.imageLoras,
       normalized.modelId,
@@ -863,30 +865,12 @@ export class QueueEnqueueService {
       ? ""
       : normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
     if (adapter.requiresPrompt !== false && !prompt) throw new Error("图片处理提示词不能为空");
-    if (isH3ImageModelId(normalized.modelId) &&
-        !adapter.qualityProfiles.some((profile) => profile.id === normalized.qualityProfile)) {
-      throw new Error(`H3 图片质量档 ${normalized.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`);
-    }
     if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
       throw new Error("请先在原图上绘制并保存 Mask。");
-    }
-    if (adapter.id === "minimax-h3-image-i2i" || adapter.id === "minimax-h3-reference-edit") {
-      const h3InputErrors = adapter.compilePrompt(prompt, normalized.pictures).errors;
-      if (h3InputErrors.length) throw new Error(h3InputErrors.join(" "));
     }
     const cachedEnvironment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(
       enqueueSettings
     );
-    if (isH3ImageModelId(normalized.modelId)) {
-      const imageProfile = cachedEnvironment?.modelProfiles.find((profile) => profile.id === normalized.modelId);
-      const productGate = imageProfile?.productGate ?? modelCatalog.get(normalized.modelId)?.definition.scan?.productGate;
-      if (productGate === "locked") {
-        throw new Error("H3 图片路线尚未完成目标 ComfyUI /object_info、节点加载与真实 smoke 验收，当前保持关闭。 ");
-      }
-      if (productGate === "open" && cachedEnvironment && !cachedImageProfileAllowsEnqueue(imageProfile)) {
-        throw new Error("H3 图片路线需要已加载 custom node 且模型文件完整后才能入队；runtime schema 会在任务启动时校验。 ");
-      }
-    }
     if (!cachedEnvironment) {
       logger.info(
         "queue",
@@ -1086,7 +1070,7 @@ export class QueueEnqueueService {
           sequenceId,
           projectId: `lvs-${sequenceId.slice(0, 12)}`,
           runName: `lvs-${sequenceId.slice(0, 12)}`,
-          packageVersion: "3.8.2",
+          packageVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
           runStorageSchemaVersion: 3,
           workflowRevision: "managed-v38-api-v1",
           status: "in-progress",

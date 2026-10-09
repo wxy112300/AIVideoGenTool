@@ -340,6 +340,11 @@ function normalizeReceipt(
     revisionId: raw.revision_id,
     packageVersion: raw.package_version,
     runStorageSchemaVersion: raw.run_storage_schema_version,
+    ...(raw.sampling_contract_version === undefined ? {} : {
+      samplingContractVersion: raw.sampling_contract_version,
+      contractSha256: raw.contract_sha256,
+      resumeSafe: raw.resume_safe
+    }),
     generationMode: "Review Each Chunk",
     reviewAction: raw.review_action,
     runStorage: "Save + Auto Resume",

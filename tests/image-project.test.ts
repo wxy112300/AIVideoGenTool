@@ -107,7 +107,7 @@ describe("image project pure functions", () => {
     expect(draft.targetResolution).toBe("source");
   });
 
-  it("normalizes H3 image options per route and rejects a cross-route recipe", () => {
+  it("migrates an editable H3 draft while retaining legacy record normalizers", () => {
     const draft = normalizeImageEditDraft({
       modelId: "minimax-h3-reference-edit",
       pictures: [
@@ -123,13 +123,9 @@ describe("image project pure functions", () => {
       }
     });
 
-    expect(draft.h3ImageOptions).toEqual({
-      frameProfile: "recommended-5",
-      frameSelection: "decode-recommended",
-      sourceFit: "contain-pad",
-      referenceDetail: "max-identity-2048",
-      sourceFidelity: 1
-    });
+    expect(draft.modelId).toBe("qwen-image-2-1");
+    expect(draft.qualityProfile).toBe("preview-25");
+    expect(draft.h3ImageOptions).toBeUndefined();
     expect(draft.pictures[1]?.note).toBe("只参考服装颜色");
     expect(normalizeH3ImageOptions({ sourceFidelity: -1, sourceFit: "unknown" }, "minimax-h3-image-i2i"))
       .toMatchObject({ sourceFit: "crop-center", sourceFidelity: 0 });
@@ -358,8 +354,11 @@ describe("image project pure functions", () => {
     };
 
     const draft = imageEditDraftFromQueueTask(task, currentDraft);
-    expect(draft.modelId).toBe("minimax-h3-reference-edit");
-    expect(draft.h3ImageOptions).toMatchObject({ sourceFit: "stretch", sourceFidelity: 0.42 });
+    expect(draft.modelId).toBe("qwen-image-2-1");
+    expect(draft.qualityProfile).toBe("preview-25");
+    expect(draft.h3ImageOptions).toBeUndefined();
+    expect(task.modelId).toBe("minimax-h3-reference-edit");
+    expect(task.h3ImageOptions?.sourceFidelity).toBe(0.42);
     expect(draft.pictures[1]).toMatchObject({ pictureNumber: 3, note: "只参考灯光", role: "style" });
   });
 

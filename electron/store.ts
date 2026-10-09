@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { isRetiredImageModelId } from "../src/core/image-workflow.js";
 import type {
   AppState,
   AssetVersion,
@@ -901,11 +902,17 @@ export class JsonStore implements StateRepository {
         this.state.settings.defaultExtensionModel = "minimax_h3_ref2va";
         needsPersist = true;
       }
+      if (isRetiredImageModelId(this.state.settings.defaultImageModel)) {
+        this.state.settings.defaultImageModel = "qwen-image-2-1";
+        this.state.settings.defaultImageQualityProfile = "preview-25";
+        needsPersist = true;
+      }
       if (typeof this.state.settings.defaultImageModel !== "string" || !this.state.settings.defaultImageModel.trim()) {
         this.state.settings.defaultImageModel = "qwen-image-edit-2511";
         needsPersist = true;
       }
       if (![
+        "preview-25",
         "balanced-20",
         "native",
         "high-quality",

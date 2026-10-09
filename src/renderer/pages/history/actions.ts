@@ -264,7 +264,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const state = context.getState();
     if (!state) return;
     const modelId = firstSupportedImageModelId(
-      version.kind === "source" ? undefined : version.modelId,
+      modelCatalog.get(version.modelId)?.definition.retired ? "qwen-image-2-1" : version.kind === "source" ? undefined : version.modelId,
       state.imageDraft.modelId,
       state.settings.defaultImageModel
     );

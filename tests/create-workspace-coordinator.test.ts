@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createPromptRuntimeState } from "../src/core/prompt-runtime-state";
 import { createTranslator } from "../src/core/i18n";
+import { loadPromptPacks } from "../src/renderer/prompt-packs";
 import {
   createCreateWorkspaceCoordinator,
   videoExtensionSourceInspectionKey,
@@ -110,6 +111,22 @@ afterEach(() => {
 });
 
 describe("create workspace coordinator", () => {
+  it("keeps the image submit controls outside the empty LoRA select", async () => {
+    await loadPromptPacks();
+    const { coordinator, dependencies, getState } = createCoordinatorHarness();
+    const context = dependencies.context;
+    getState().imageDraft.modelId = "qwen-image-2-1";
+    dependencies.setCreationMode("image-edit");
+    context.root.innerHTML = coordinator.renderPage();
+    const select = context.root.querySelector<HTMLSelectElement>("#image-lora-to-add")!;
+    expect(select.options[0]?.value).toBe("");
+    expect(select.options[0]?.text).toBe("等待环境扫描……");
+    const submit = context.root.querySelector<HTMLButtonElement>("#enqueue-image-edit")!;
+    expect(submit).not.toBeNull();
+    expect(submit.closest("select, option")).toBeNull();
+    expect(submit.closest(".composer-submit-row")).not.toBeNull();
+  });
+
   it("invalidates extension source inspection when output geometry changes", () => {
     const state = createDefaultState();
     const draft = {

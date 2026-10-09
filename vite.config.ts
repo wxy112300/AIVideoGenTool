@@ -1,7 +1,20 @@
 import { defineConfig } from "vite";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 export default defineConfig({
   base: "./",
+  plugins: [{
+    name: "typescript-source-imports",
+    enforce: "pre",
+    resolveId(source, importer) {
+      // NodeNext source imports use .js; prefer the maintained TS sibling over
+      // old checked-in generated JS in both the renderer and Vitest.
+      if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return;
+      const candidate = path.resolve(path.dirname(importer), `${source.slice(0, -3)}.ts`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }],
   resolve: {
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".json"]
   },

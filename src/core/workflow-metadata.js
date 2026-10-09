@@ -7,32 +7,29 @@
  * Electron boundary instead.  `nodePackages` contains ids from the custom
  * node catalog; the catalog remains the single source of repository URLs.
  */
-import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION, MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI, MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI } from "./catalog/dependencies/nodes.js";
+import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION } from "./catalog/dependencies/nodes.js";
+import { COMFYUI_RECOMMENDED_VERSION } from "./catalog/dependencies/comfy-core.js";
 const apiSchema = {
     id: "comfyui-api",
     version: 1,
     endpoint: "/prompt",
     sourceUrl: "https://docs.comfy.org/development/core-concepts/workflow"
 };
-const recommendedCore = "0.37.0";
+const recommendedCore = COMFYUI_RECOMMENDED_VERSION;
 const h3Core = {
     recommendedVersion: recommendedCore,
     minimumVersion: "0.31.0"
-};
-const h3ImageCore = {
-    recommendedVersion: MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI,
-    minimumVersion: MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI
 };
 const h3MotionContextCore = {
     recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
     minimumVersion: "0.32.0"
 };
 const h3ContinuumCore = {
-    recommendedVersion: "0.34.2",
+    recommendedVersion: recommendedCore,
     minimumVersion: "0.34.0"
 };
 const qwenImage21Core = {
-    recommendedVersion: "master (PR #16400+)",
+    recommendedVersion: recommendedCore,
     minimumVersion: "master (PR #16400+)"
 };
 function metadata(filename, nodePackages, options = {}) {
@@ -98,16 +95,6 @@ export const bundledWorkflowMetadata = {
     }),
     minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes"], {
         comfyUi: h3Core
-    }),
-    minimax_h3_image_i2i_api: metadata("minimax_h3_image_i2i_api.json", ["minimax-h3-image-studio"], {
-        comfyUi: h3ImageCore,
-        upstreamUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/blob/v23.0.0/examples/api/H3_I2I_API.json",
-        verifiedAt: "2026-09-15"
-    }),
-    minimax_h3_reference_edit_api: metadata("minimax_h3_reference_edit_api.json", ["minimax-h3-image-studio"], {
-        comfyUi: h3ImageCore,
-        upstreamUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/blob/v23.0.0/examples/api/H3_IMAGE_EDIT_API.json",
-        verifiedAt: "2026-09-15"
     }),
     minimax_h3_t2va_gguf_q3_api: metadata("minimax_h3_t2va_gguf_q3_api.json", ["comfyui-gguf-h3", "kjnodes"], {
         comfyUi: h3Core

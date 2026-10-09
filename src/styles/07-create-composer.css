@@ -161,6 +161,10 @@
 .video-lora-identity span { color: #7f8da0; font-size: 9px; }
 .video-lora-name-line { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .video-lora-name-line > strong { min-width: 0; }
+.image-lora-status { min-width: 0; display: grid; gap: 2px; overflow: hidden; line-height: 1.25; }
+.image-lora-status > strong { color: #a9caff; font-size: 9px; }
+.image-lora-status > span,
+.image-lora-status > small { overflow: hidden; color: #77869a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .video-lora-name-line > .video-lora-info { z-index: 8; width: 16px; height: 16px; flex-basis: 16px; color: #8fbbff; }
 .video-lora-info-tip { right: auto; left: -34px; width: min(390px, 72vw); display: grid; gap: 8px; padding: 12px 13px; text-align: left; white-space: normal; }
 .video-lora-info-tip > strong { color: #edf5ff; font-size: 12px; white-space: normal; }

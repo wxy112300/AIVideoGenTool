@@ -60,15 +60,12 @@ describe("model catalog", () => {
       "qwen-image-2-1",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
-      "minimax-h3-image-i2i",
-      "minimax-h3-reference-edit",
       "omnigen2",
       "hidream-o1-image",
       "z-image",
       "flux2-klein-4b",
       "qwen-image-edit-2511",
       "z-image-turbo",
-      "qwen-image-edit-2511-crop-stitch",
       "birefnet-background-removal",
       "lama-inpaint"
     ]);
@@ -104,8 +101,8 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["inpaint-nodes"]);
-    expect(modelCatalog.get("qwen-image-edit-2511-crop-stitch")?.definition.scan?.requiredCustomNodeIds)
-      .toEqual(["local-video-studio-h3-av", "inpaint-cropandstitch"]);
+    expect(modelCatalog.get("qwen-image-edit-2511-crop-stitch")?.definition).toMatchObject({ retired: true });
+    expect(modelCatalog.get("qwen-image-edit-2511-crop-stitch")?.definition.scan).toBeUndefined();
     expect(modelCatalog.get("qwen-image-edit-2511")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["local-video-studio-h3-av"]);
     expect(modelCatalog.get("qwen-image-2-1")?.definition).toMatchObject({
@@ -233,43 +230,6 @@ describe("model catalog", () => {
       .toBe("unet/qwen-image-2.1-Q6_K.gguf");
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition).toMatchObject({
-      adapterId: "minimax-h3-image-i2i",
-      capabilities: { maxReferenceImages: 1 }
-    });
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.capabilities?.resolutions).toBeUndefined();
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan).toMatchObject({
-      productGate: "open",
-      productGateReason: expect.stringContaining("正式测试")
-    });
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition).toMatchObject({
-      adapterId: "minimax-h3-reference-edit",
-      capabilities: { maxReferenceImages: 9 }
-    });
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.capabilities?.resolutions).toBeUndefined();
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.productGate).toBe("open");
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.requiredCustomNodeIds)
-      .toEqual(["minimax-h3-image-studio"]);
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.requiredCustomNodeIds)
-      .toEqual(["minimax-h3-image-studio"]);
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.components.map((component) => component.expected))
-      .toEqual([
-        "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-        "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-        "vae/minimax_h3_video_vae_fp16.safetensors",
-        "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
-      ]);
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.components.map((component) => component.expected))
-      .toEqual([
-        "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
-        "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-        "vae/minimax_h3_video_vae_fp16.safetensors",
-        "loras/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
-      ]);
-    expect(modelCatalog.get("minimax-h3-image-i2i")?.definition.scan?.components.at(-1)?.optional)
-      .toBe(true);
-    expect(modelCatalog.get("minimax-h3-reference-edit")?.definition.scan?.components.at(-1)?.optional)
-      .toBe(true);
     expect(modelCatalog.get("z-image")?.definition.scan?.components.map((component) => component.expected))
       .toEqual([
         "diffusion_models/z_image_bf16.safetensors",
@@ -302,7 +262,6 @@ describe("model catalog", () => {
     expect(modelCatalog.list("image")[0]?.definition.id).toBe("qwen-image-2-1");
     expect(sortProfilesByCatalogOrder([
       { id: "qwen-image-edit-2511" },
-      { id: "minimax-h3-image-i2i" },
       { id: "qwen-image-2-1-uncensored-gguf" },
       { id: "qwen-image-2-1-uncensored-gguf-q6" },
       { id: "qwen-image-2-1" }
@@ -310,7 +269,6 @@ describe("model catalog", () => {
       "qwen-image-2-1",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
-      "minimax-h3-image-i2i",
       "qwen-image-edit-2511"
     ]);
   });

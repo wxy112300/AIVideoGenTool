@@ -37,7 +37,7 @@ import {
   normalizeImageTargetResolution,
   cachedImageProfileAllowsEnqueue
 } from "../../../core/image-workflow";
-import { isH3ImageModelId, normalizeImageEditDraft } from "../../../core/image-project";
+import { normalizeImageEditDraft } from "../../../core/image-project";
 import {
   BUILTIN_IMAGE_LORAS,
   imageLoraCompatibleWithModel,
@@ -167,6 +167,7 @@ export function imageEditEnqueueBlockReason(
   imageProfile: EnvironmentScanResult["modelProfiles"][number] | undefined,
   t: Translate = createTranslator("zh-CN").t
 ): string {
+  if (!imageModelAdapterFor(draft.modelId)) return "当前图片模型已移除或不受支持，请重新选择模型。";
   const imageCapability = imageModelCapabilityFor(draft.modelId);
   const inputPictures = imagePicturesForModelInput(draft.pictures, imageCapability.supportsTextOnly === true);
   const incompletePicture = inputPictures.find((picture) => !picture.absolutePath);
@@ -199,15 +200,6 @@ export function imageEditEnqueueBlockReason(
   if (referenceBlockReason) return referenceBlockReason;
   if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
     return t(uiKeys.create.validation.imagePromptMissing);
-  }
-  if (isH3ImageModelId(draft.modelId)) {
-    const productGate = imageProfile?.productGate ?? modelCatalog.get(draft.modelId)?.definition.scan?.productGate;
-    if (productGate === "locked") return t(uiKeys.status.imageProductGatePending);
-    if (!imageCapability.qualityProfiles.some((profile) => profile.id === draft.qualityProfile)) {
-      return `H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`;
-    }
-    const compiled = imageModelAdapterFor(draft.modelId)?.compilePrompt(prompt.text, draft.pictures);
-    if (compiled?.errors.length) return compiled.errors[0]!;
   }
   if (imageProfile?.missingCustomNodeNames?.length) {
     return `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
@@ -342,7 +334,7 @@ export function buildImageEditPageViewModel(
     basePicture ? imageCapability.customOutputMultiple ?? 8 : 8
   );
   const imageModelProfiles = sortProfilesByCatalogOrder(
-    environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [],
+    environmentScan?.modelProfiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired) ?? [],
     modelCatalog,
     "image"
   );
@@ -369,34 +361,92 @@ export function buildImageEditPageViewModel(
     imageLoraCompatibleWithModel(lora, draft.modelId)
   );
   const imageLoraVisible = imageLoraOptions.length > 0;
-  const imageLoraOptionsMarkup = imageLoraOptions.map((lora) => {
-    const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+  const selectedImageLoras = imageLoraOptions.filter((lora) =>
+    draft.imageLoras.some((candidate) => candidate.id === lora.id)
+  );
+  const imageLoraAddableOptions = imageLoraOptions.filter((lora) => {
     const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
-    const available = profileProvidesImageLora(profile, lora.filename);
-    const selected = draft.imageLoras.some((candidate) => candidate.id === lora.id);
-    const guideLocale = loraLocaleFor(lora.id, state.settings.uiLocale)?.guide;
-    const guide = guideLocale
-      ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
-      : "";
-    const status = !environmentScan
-      ? "等待环境扫描……"
-      : !profile
-        ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
-        : available
-          ? "文件已就绪。"
-          : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
-    const triggerText = lora.promptPrefixes?.length
-      ? "触发词：" + lora.promptPrefixes.join(", ")
-      : "";
-    return "<label class=\"settings-field image-lora-toggle\">" +
-      "<span><input data-image-lora-id=\"" + escapeHtml(lora.id) + "\" type=\"checkbox\"" +
-      (selected ? " checked" : "") +
-      (available ? "" : " disabled") +
-      "> " + escapeHtml(localized?.name ?? lora.name) +
-      " · strength " + escapeHtml(String(lora.strength)) + "</span>" +
-      "<small>" + escapeHtml([guide, triggerText].filter(Boolean).join(" ")) + "</small>" +
-      "<small>" + escapeHtml(status) + "</small></label>";
-  }).join("");
+    return !draft.imageLoras.some((candidate) => candidate.id === lora.id) &&
+      profileProvidesImageLora(profile, lora.filename);
+  });
+  const imageLoraAddDisabled = imageLoraAddableOptions.length === 0;
+  const imageLoraAddOptionsMarkup = imageLoraAddableOptions.length
+    ? imageLoraAddableOptions.map((lora) => {
+      const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+      return "<option value=\"" + escapeHtml(lora.id) + "\">" +
+        escapeHtml(localized?.name ?? lora.name) +
+        "</option>";
+    }).join("")
+    : "<option value=\"\">" +
+      escapeHtml(!environmentScan
+        ? "等待环境扫描……"
+        : draft.imageLoras.length
+          ? "已添加兼容的图片 LoRA"
+          : "没有可添加的图片 LoRA") +
+      "</option>";
+  const imageLoraOptionsMarkup = selectedImageLoras.length
+    ? "<div class=\"video-lora-list\">" +
+      selectedImageLoras.map((lora, index) => {
+        const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+        const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
+        const available = profileProvidesImageLora(profile, lora.filename);
+        const guideLocale = loraLocaleFor(lora.id, state.settings.uiLocale)?.guide;
+        const guide = guideLocale
+          ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
+          : "";
+        const status = !environmentScan
+          ? "等待环境扫描……"
+          : !profile
+            ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
+            : available
+              ? "文件已就绪。"
+              : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
+        const triggerText = lora.promptPrefixes?.length
+          ? "触发词：" + lora.promptPrefixes.join(", ")
+          : "";
+        const guideText = [guide, triggerText].filter(Boolean).join(" ");
+        const localizedName = localized?.name ?? lora.name;
+        return "<article class=\"video-lora-row image-lora-row\" data-image-lora-id=\"" +
+          escapeHtml(lora.id) + "\">" +
+          "<div class=\"video-lora-identity\"><span class=\"video-lora-order\">" +
+          String(index + 1) +
+          "</span><div><span class=\"video-lora-name-line\"><strong>" +
+          escapeHtml(localizedName) +
+          "</strong></span><span>" +
+          escapeHtml(lora.modelFamily) +
+          (triggerText ? " · " + escapeHtml(triggerText) : "") +
+          "</span><span class=\"image-lora-status\"><strong>" +
+          escapeHtml(available ? "文件已就绪" : "文件待处理") +
+          "</strong><span>" +
+          escapeHtml(guideText || status) +
+          "</span>" +
+          (guideText ? "<small>" + escapeHtml(status) + "</small>" : "") +
+          "</span></div></div>" +
+          "<label class=\"video-lora-strength\"><span>" +
+          escapeHtml(t(uiKeys.create.videoSettings.strength)) +
+          "</span><input type=\"range\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
+          escapeHtml(String(lora.strength)) +
+          "\" data-image-lora-strength=\"" +
+          escapeHtml(lora.id) +
+          "\" aria-label=\"" +
+          escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
+          "\"><input type=\"number\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
+          escapeHtml(String(lora.strength)) +
+          "\" data-image-lora-strength-number=\"" +
+          escapeHtml(lora.id) +
+          "\" aria-label=\"" +
+          escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
+          "\"></label>" +
+          "<div class=\"video-lora-actions\"><button class=\"icon-button\" type=\"button\" data-remove-image-lora=\"" +
+          escapeHtml(lora.id) +
+          "\" aria-label=\"" +
+          escapeHtml(t(uiKeys.create.videoSettings.remove) + " " + localizedName) +
+          "\" title=\"" +
+          escapeHtml(t(uiKeys.create.videoSettings.remove) + " LoRA") +
+          "\"><span aria-hidden=\"true\">×</span></button></div></article>";
+      }).join("") +
+      "</div>"
+    : "<div class=\"video-lora-empty\">尚未添加图片 LoRA</div>";
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -436,33 +486,13 @@ export function buildImageEditPageViewModel(
   const promptlessResultDescription = t(backgroundRemoval
     ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
     : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
-  const h3ImageOptionsVisible = isH3ImageModelId(draft.modelId);
   const textOnlySizeControlsVisible = imageCapability.supportsTextOnly === true &&
     imagePicturesForModelInput(draft.pictures, true).length === 0;
-  const imageSizeControlsVisible = !h3ImageOptionsVisible && (
+  const imageSizeControlsVisible = (
     imageCapability.sourceResolutionOnly !== true ||
     imageCapability.supportsCustomOutputSize === true ||
     textOnlySizeControlsVisible
   );
-  const h3ReferenceDetailVisible = draft.modelId === "minimax-h3-reference-edit";
-  const h3ReferenceNoteVisible = h3ReferenceDetailVisible;
-  const h3ImageSourceFitOptionsMarkup = h3ImageOptionsVisible && draft.h3ImageOptions
-    ? ([
-        ["crop-center", uiKeys.create.imageEdit.h3SourceFitCropCenter],
-        ["contain-pad", uiKeys.create.imageEdit.h3SourceFitContainPad],
-        ["stretch", uiKeys.create.imageEdit.h3SourceFitStretch]
-      ] as const).map(([value, label]) =>
-        `<option value="${value}" ${draft.h3ImageOptions?.sourceFit === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`
-      ).join("")
-    : "";
-  const h3ImageReferenceDetailOptionsMarkup = h3ReferenceDetailVisible && draft.h3ImageOptions
-    ? ([
-        ["match-generation-area", uiKeys.create.imageEdit.h3ReferenceDetailMatchGenerationArea],
-        ["max-identity-2048", uiKeys.create.imageEdit.h3ReferenceDetailMaxIdentity2048]
-      ] as const).map(([value, label]) =>
-        `<option value="${value}" ${draft.h3ImageOptions?.referenceDetail === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`
-      ).join("")
-    : "";
   const imageQualityOptionsMarkup = imageCapability.qualityProfiles.map((profile) => {
     const qualityNeedsComponent = imageQualityProfileRequiredComponentLabel(imageCapability, profile.id);
     const qualityComponentMissing = Boolean(
@@ -494,6 +524,8 @@ export function buildImageEditPageViewModel(
     imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageLoraVisible,
+    imageLoraAddOptionsMarkup,
+    imageLoraAddDisabled,
     imageLoraOptionsMarkup,
     imageEnhanceMode,
     imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
@@ -532,13 +564,7 @@ export function buildImageEditPageViewModel(
     imageResolutionVisible: imageSizeControlsVisible,
     supportsTextOnly: imageCapability.supportsTextOnly === true,
     maskSupported: imageCapability.supportsMask === true,
-    annotationSupported: imageCapability.supportsMarkup === true,
-    h3ImageOptionsVisible,
-    h3ReferenceDetailVisible,
-    h3ReferenceNoteVisible,
-    h3ImageSourceFitOptionsMarkup,
-    h3ImageReferenceDetailOptionsMarkup,
-    h3ImageSourceFidelity: draft.h3ImageOptions?.sourceFidelity ?? 0
+    annotationSupported: imageCapability.supportsMarkup === true
   };
 }
 

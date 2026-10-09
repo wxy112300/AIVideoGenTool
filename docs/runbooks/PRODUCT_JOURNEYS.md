@@ -157,7 +157,7 @@ flowchart TD
 
 **路由不等于入队资格**。`history-artifact-service.ts` 的 `inspectExtensionSource` 会阻止无 sequence 或 acceptedChunks=0 的 managed 输入。不能因任务工厂/旧队列分支能构造空 sequence，就宣称普通用户能新建 managed Run；不要添加模式开关或绕过门槛来让测试变绿。bootstrap 输出的 canonical AV 不会自动变成 accepted managed prefix。已有合成 receipt 的单测也不代表真实 run 已生成。
 
-真实边界探针：从新的 `--asset-source-state` 隔离副本运行 `probe-managed-entry-smoke.mjs <fixture-dir> --port <port> --output <report.json>`。AppApi 仅准备无前缀的 managed 输入；缺视频→补视频仍因无前缀阻止→真实键盘改选 Motion Context→真实鼠标入队。报告的 task 是 **Motion Context**，没有 managed/GPU 成功结论。完整 managed 验收需要真实 accepted sequence、receipt、run 文件及原始来源的完整物理副本。
+真实边界探针：从新的 `--asset-source-state` 隔离副本运行 `probe-managed-entry-smoke.mjs <fixture-dir> --port <port> --output <report.json>`。AppApi 仅准备无前缀的 managed 输入；缺视频→补视频仍因无前缀阻止→真实键盘改选 Motion Context→真实鼠标入队。报告的 task 是 **Motion Context**，没有 managed/GPU 成功结论。完整 managed 验收需要真实 accepted sequence、receipt、run 文件及原始来源的完整物理副本。新版检查实际 manifest v6/hash/resume_safe 与所选 head，旧 v5 Run 保留只读、不能直接作为 v6 前缀。独立 Native AV 仍走兼容模式。
 
 2026-10-08当前环境正向证据：真实managed首段API夹具提供accepted=1，随后History实际Continue/空prompt恢复/鼠标入队与Queue Start完成1→2；8秒成片播放/重启、owner/alias/registry保护核对通过。该首段不是UI入口证明。新增前置保护后，真实按钮2→3产生12秒成片，receipt reused2/generated1/freshFallback=false；旧3段Run的Sol-Attn/Core VAE契约不兼容在写manifest前被拒绝，原head和文件不变。`comfy-ui.ts`把冻结前缀/head附在下游receipt；`managed_prefix_guard.py`定位实际注册的官方sampler命名空间，在其Run锁内拦截只读前缀检查，不改变采样节点/身份或放宽hash。保护只覆盖该前置拒绝，不承诺任意后续失败/崩溃自动回滚。正向审计见 `managed-history-audit.mjs` 和同一TASK最新增量。
 
@@ -273,6 +273,8 @@ Prompt 最小设置闭环见 [操作配方](../AGENT_ELECTRON_API_RUNBOOK.md#set
 ## 图片编辑也经过同一闭环
 
 独立 `imageDraft` → 模型 capability → Picture Slots / prompt / quality / 尺寸 → `enqueueImageEdit` → image task/runs → `imageHistory` project/version。文生图模型可无图；LaMa 必须 clean image + mask 且无 prompt；BiRefNet 无 prompt、透明 PNG；Paint guide 不能当二值 mask。不要把这些条件泛化到所有图片模型。
+
+H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑草稿转Qwen2.1，旧队列/历史保持身份，重新编辑保留父版本。融合使用现有Qwen2.1 LoRA入口；旧Mask sidecar保留，不自动作为Paint输入。
 
 现有 `guide image` 定位 capability/adapter 与校验；用户旅程应覆盖增删图、Paint/Mask 保存、切模型、prompt 完成回流、实际按钮、结果重编辑及版本 lineage。
 

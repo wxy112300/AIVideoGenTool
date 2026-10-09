@@ -1,0 +1,1943 @@
+{
+  "kind": "immutable-assessment-evidence",
+  "observedAt": "2026-10-08T11:21:04.504Z",
+  "application": {
+    "version": "0.64.3",
+    "sha": "3c33056606815af2e9b1c079c3b507e8c0d5a7bb",
+    "initialWorkingTree": "clean"
+  },
+  "limits": [
+    "Source/version inspection only; no runtime schema or GPU generation.",
+    "Null origin/SHA/dirty means unknown for non-Git directories, not clean.",
+    "Stable release and HEAD are distinct; sourceVersion is not a release guarantee.",
+    "No local weight hash audit; model evidence and gaps are in upgrade.md.",
+    "Workflow type list covers saved templates; dynamic builder nodes also inspected separately."
+  ],
+  "core": {
+    "installed": {
+      "version": "0.37.0",
+      "sha": "c194dd00cd42aa18d9dbf27d977bf6b85d9ea565",
+      "dirty": false
+    },
+    "upstream": {
+      "repository": "https://github.com/Comfy-Org/ComfyUI",
+      "head": {
+        "sha": "d91ed5f5b7fa60fa18464c2ad7c80254da2f0f29",
+        "sourceVersion": "0.39.0"
+      },
+      "stable": {
+        "tag": "v0.39.0",
+        "sha": "b0b743566f65daafc423b4fea8a2fbda94b3384a",
+        "publishedAt": "2026-10-05T22:49:43Z",
+        "url": "https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.39.0"
+      },
+      "compare": {
+        "base": "c194dd00cd42aa18d9dbf27d977bf6b85d9ea565",
+        "target": "b0b743566f65daafc423b4fea8a2fbda94b3384a",
+        "url": "https://github.com/Comfy-Org/ComfyUI/compare/c194dd00cd42aa18d9dbf27d977bf6b85d9ea565...b0b743566f65daafc423b4fea8a2fbda94b3384a",
+        "status": "ahead",
+        "ahead": 94,
+        "behind": 0,
+        "totalCommits": 94,
+        "returnedCommits": 94,
+        "truncated": false
+      }
+    },
+    "stableToHead": {
+      "base": "b0b743566f65daafc423b4fea8a2fbda94b3384a",
+      "target": "d91ed5f5b7fa60fa18464c2ad7c80254da2f0f29",
+      "totalCommits": 26,
+      "returnedCommits": 26,
+      "commits": [
+        {
+          "sha": "7ddf9a4f8aef66bca2eda1be2b936965be12b3b0",
+          "message": "[Server.py] Update CSP to allow blob: (#15565)"
+        },
+        {
+          "sha": "dddb41aad74eb9fdfe948f1bdf6fffd784fa079d",
+          "message": " Add comfy_attention and AttentionTensorContainer support to rest of models (#16806)"
+        },
+        {
+          "sha": "ccda0377cbb5204efc6daf7233e0cfb03cd4d0ab",
+          "message": "Implement the asset export API locally (CORE-454) (#16578)"
+        },
+        {
+          "sha": "43e33a1341e173248c84c0d6922aec1aa06d32af",
+          "message": "Report 3D models from every 3D node as a standard 3d output item (#16200)"
+        },
+        {
+          "sha": "181fc83e1ff08c50e8bf201831a3ab874670c3e1",
+          "message": "feat(camera-info): CreateCameraInfo node + CameraInfoState widget input (#14964)"
+        },
+        {
+          "sha": "73c4868d3032fdc002f514911a26520d18681297",
+          "message": "feat(assets): extract video metadata into system_metadata on ingest and scan (#15180)"
+        },
+        {
+          "sha": "6806341a5876b87f1ebef480972726912e01963b",
+          "message": "Add a way to attach metadata to the websocket messages of a prompt. (#16763)"
+        },
+        {
+          "sha": "7c8fbc698b3c3dce0f525f6b5044b93d9395c5c9",
+          "message": "Fix dynamic input validation and lazy scheduling (#16377)"
+        },
+        {
+          "sha": "d49e888586dd8ae012c0667b33466b815fee07f7",
+          "message": "refactor: keep DynamicGroup internal while stabilizing (#16811)"
+        },
+        {
+          "sha": "7a5dad695fe1cae25efcb2550530fb20ef68da3d",
+          "message": "feat: add CameraAngle node with camera_info and shot prompt outputs (#16251)"
+        },
+        {
+          "sha": "0b5b009dd4496529b08efa9301f97e0a5fefa2f9",
+          "message": "[Partner Nodes] feat(Google): add Nano Banana 2.1 to the Nano Banana 2 node (#16822)"
+        },
+        {
+          "sha": "f4d76984586901b53b424205eb666d5a4563deb2",
+          "message": "chore: update workflow templates to v0.11.77 (#16823)"
+        },
+        {
+          "sha": "6a8dcf514bc02a29d1b20257cb0fc9bfed3223e1",
+          "message": "Improve low VRAM performance of qwen 3.5 LLM (#16820)"
+        },
+        {
+          "sha": "7d9e5a045c13c563a5dcd18c617a985efa6332da",
+          "message": "Make k/v contiguous before SDPA on gfx1151 when they don't fit in L2. (#16726)"
+        },
+        {
+          "sha": "0752bcb28cd32e606b7c4ed35979997054d42d5c",
+          "message": "Consolidate Linear forward API with prologue/epilogue fusion paths (#16816)"
+        },
+        {
+          "sha": "84164fc04bc5912cb2a68c31b289a5808cd0c0dc",
+          "message": "Also attach the metadata to a prompt's preview image frames. (#16809)"
+        },
+        {
+          "sha": "3d9b2d551788d4fe80ede5743417077d1795cbd2",
+          "message": "Add governance enforcement for custom nodes (#16167)"
+        },
+        {
+          "sha": "b26625f23a888367b92153b28d93e159e83e677b",
+          "message": "comfy_attention configs in model files can now use kitchen sol attention. (#16831)"
+        },
+        {
+          "sha": "c9d8a6e69c4b5ab7fa0f789e7b988c172cd31fc9",
+          "message": "Bump comfyui-frontend-package to 1.55.14 (#16736)"
+        },
+        {
+          "sha": "b00c6e95279053474955540ba4f551646722b9aa",
+          "message": "[Partner Nodes] feat(Quiver): add V2 SVG nodes with per-model inputs and deprecate the originals (#16775)"
+        },
+        {
+          "sha": "af89add63f71a487fde45efc7fba744f3455ae73",
+          "message": "[Partner Nodes] feat(Vidu): add Vidu Q4 image-to-video and reference-to-video nodes (#16849)"
+        },
+        {
+          "sha": "87c32827017c50c6a629da941439015b4ad656e6",
+          "message": "[Partner Nodes] feat(ClarityAI): add Crystal Upscaler node (#16817)"
+        },
+        {
+          "sha": "f856877ed17ba10ef8ef69cee48262b626fc2de4",
+          "message": "[Partner Nodes] feat(Kling): add Kling Virtual Try-On node (#16844)"
+        },
+        {
+          "sha": "52f98af2e2e42c421070a3e147c161c47cdeaf22",
+          "message": "chore: update workflow templates to v0.11.78 (#16851)"
+        },
+        {
+          "sha": "62c49c4d4fe5e9e0095f6687374cec9da1dec7fa",
+          "message": "Change model code to use function wrappers for Linear calls (#16861)"
+        },
+        {
+          "sha": "d91ed5f5b7fa60fa18464c2ad7c80254da2f0f29",
+          "message": "Fix issue with bypass loras and fused paths. (#16862)"
+        }
+      ]
+    },
+    "alreadyInstalledFixes": [
+      {
+        "pr": 16429,
+        "sha": "2f7c6d47a8415115f6c42503917c947c30db6aff",
+        "evidence": "git log HEAD --grep #16429"
+      },
+      {
+        "pr": 16430,
+        "sha": "1d61dcc35c35541388c0001bacc7703db14e8bea",
+        "evidence": "git log HEAD --grep #16430"
+      }
+    ]
+  },
+  "catalogNodes": [
+    {
+      "id": "video-helper-suite",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+        "recommendedVersion": "1.7.9",
+        "latestVersion": "1.7.9",
+        "installRevision": null,
+        "nodeTypes": [
+          "VHS_LoadVideo",
+          "VHS_LoadVideoFFmpeg",
+          "VHS_VideoCombine",
+          "VHS_VideoInfoSource",
+          "VHS_BatchManager"
+        ]
+      },
+      "installed": {
+        "directory": "comfyui-videohelpersuite",
+        "version": "1.7.9",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
+        "head": {
+          "sha": "4d907bee61e92c2e65af3bd6383a4e4d356126d1",
+          "sourceVersion": "1.7.9"
+        },
+        "stable": null
+      }
+    },
+    {
+      "id": "comfyui-gguf",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/leejet/ComfyUI-GGUF.git",
+        "recommendedVersion": "2.0.0",
+        "latestVersion": "2.0.0",
+        "installRevision": null,
+        "nodeTypes": [
+          "UnetLoaderGGUF",
+          "UnetLoaderGGUFAdvanced",
+          "CLIPLoaderGGUF"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-GGUF",
+        "version": "2.0.0",
+        "origin": "https://github.com/city96/ComfyUI-GGUF.git",
+        "sha": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/leejet/ComfyUI-GGUF",
+        "head": {
+          "sha": "373048b8403a7820620065210a691263d4da0a61",
+          "sourceVersion": "2.0.0"
+        },
+        "stable": null,
+        "compare": {
+          "base": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a",
+          "target": "373048b8403a7820620065210a691263d4da0a61",
+          "url": "https://github.com/leejet/ComfyUI-GGUF/compare/6ea2651e7df66d7585f6ffee804b20e92fb38b8a...373048b8403a7820620065210a691263d4da0a61",
+          "status": "ahead",
+          "ahead": 7,
+          "behind": 0,
+          "totalCommits": 7,
+          "returnedCommits": 7,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "kjnodes",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/kijai/ComfyUI-KJNodes.git",
+        "recommendedVersion": "1.5.2",
+        "latestVersion": "1.5.2",
+        "installRevision": null,
+        "nodeTypes": [
+          "VRAM_Debug",
+          "PathchSageAttentionKJ"
+        ]
+      },
+      "installed": {
+        "directory": "comfyui-kjnodes",
+        "version": "1.5.2",
+        "origin": "https://github.com/kijai/ComfyUI-KJNodes.git",
+        "sha": "d3cfe21625e5170126ce06fbfcfe1d88108688c3",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/kijai/ComfyUI-KJNodes",
+        "head": {
+          "sha": "d3cfe21625e5170126ce06fbfcfe1d88108688c3",
+          "sourceVersion": "1.5.2"
+        },
+        "stable": null
+      }
+    },
+    {
+      "id": "ltx-video",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
+        "recommendedVersion": null,
+        "latestVersion": null,
+        "installRevision": null,
+        "nodeTypes": [
+          "LTXVExtendSampler",
+          "LTXVSpatioTemporalTiledVAEDecode"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-LTXVideo",
+        "version": null,
+        "origin": "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
+        "sha": "ac4d99839020b983e956a8ab67ec38aec1b6e65a",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/Lightricks/ComfyUI-LTXVideo",
+        "head": {
+          "sha": "3bf3ca62595f1764c47d01c35c8e5dfe47e1a88f",
+          "sourceVersion": null
+        },
+        "stable": null,
+        "compare": {
+          "base": "ac4d99839020b983e956a8ab67ec38aec1b6e65a",
+          "target": "3bf3ca62595f1764c47d01c35c8e5dfe47e1a88f",
+          "url": "https://github.com/Lightricks/ComfyUI-LTXVideo/compare/ac4d99839020b983e956a8ab67ec38aec1b6e65a...3bf3ca62595f1764c47d01c35c8e5dfe47e1a88f",
+          "status": "ahead",
+          "ahead": 16,
+          "behind": 0,
+          "totalCommits": 16,
+          "returnedCommits": 16,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "minimax-h3-prompt-writer",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
+        "recommendedVersion": "0.4.5",
+        "latestVersion": "0.4.6",
+        "installRevision": null,
+        "nodeTypes": []
+      },
+      "installed": {
+        "directory": "ComfyUI-MiniMaxH3-Prompt-Writer",
+        "version": "0.4.5",
+        "origin": "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
+        "sha": "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer",
+        "head": {
+          "sha": "ca79015f1df28f5c49d34871c26fecc7e47bf7e9",
+          "sourceVersion": "0.4.7"
+        },
+        "stable": {
+          "tag": "v0.4.7",
+          "sha": "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e",
+          "publishedAt": "2026-09-26T01:39:10Z",
+          "url": "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.7"
+        },
+        "compare": {
+          "base": "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+          "target": "ca79015f1df28f5c49d34871c26fecc7e47bf7e9",
+          "url": "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/compare/862ae053ae649acf1db8106bdfbcbf911ab89b4e...ca79015f1df28f5c49d34871c26fecc7e47bf7e9",
+          "status": "ahead",
+          "ahead": 27,
+          "behind": 0,
+          "totalCommits": 27,
+          "returnedCommits": 27,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "comfyui-multimodal-prompt-nodes",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
+        "recommendedVersion": "1.0.15",
+        "latestVersion": "1.0.16",
+        "installRevision": null,
+        "nodeTypes": [
+          "VisionLLMNode"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-MultiModal-Prompt-Nodes",
+        "version": "1.0.16",
+        "origin": "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
+        "sha": "b305642e711b84fefdf5d27db6860c086b1f3015",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes",
+        "head": {
+          "sha": "b305642e711b84fefdf5d27db6860c086b1f3015",
+          "sourceVersion": "1.0.16"
+        },
+        "stable": {
+          "tag": "v1.0.16",
+          "sha": "b305642e711b84fefdf5d27db6860c086b1f3015",
+          "publishedAt": "2026-08-22T05:30:59Z",
+          "url": "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes/releases/tag/v1.0.16"
+        }
+      }
+    },
+    {
+      "id": "comfyui-qwenvl-lora",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Dangocan/comfyui_qwenvl_lora.git",
+        "recommendedVersion": null,
+        "latestVersion": null,
+        "installRevision": null,
+        "nodeTypes": [
+          "QwenVLModelLoader",
+          "QwenVLLoRALoader",
+          "QwenVLCaption"
+        ]
+      },
+      "installed": {
+        "directory": "comfyui_qwenvl_lora",
+        "version": null,
+        "origin": "https://github.com/Dangocan/comfyui_qwenvl_lora.git",
+        "sha": "fcb018d3fa71afd1b8050914f1f9358106f95c77",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/Dangocan/comfyui_qwenvl_lora",
+        "head": {
+          "sha": "fcb018d3fa71afd1b8050914f1f9358106f95c77",
+          "sourceVersion": null
+        },
+        "stable": null
+      }
+    },
+    {
+      "id": "inpaint-nodes",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Acly/comfyui-inpaint-nodes.git",
+        "recommendedVersion": "1.4.3",
+        "latestVersion": "1.4.3",
+        "installRevision": null,
+        "nodeTypes": [
+          "INPAINT_LoadInpaintModel",
+          "INPAINT_ExpandMask",
+          "INPAINT_InpaintWithModel"
+        ]
+      },
+      "installed": {
+        "directory": "comfyui-inpaint-nodes",
+        "version": "1.4.3",
+        "origin": "https://github.com/Acly/comfyui-inpaint-nodes.git",
+        "sha": "d4a318f00fffbd269418057f869e9bc912832229",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/Acly/comfyui-inpaint-nodes",
+        "head": {
+          "sha": "5b7681746fe19e563113d27366ba85236bc1ba5b",
+          "sourceVersion": "1.4.4"
+        },
+        "stable": null,
+        "compare": {
+          "base": "d4a318f00fffbd269418057f869e9bc912832229",
+          "target": "5b7681746fe19e563113d27366ba85236bc1ba5b",
+          "url": "https://github.com/Acly/comfyui-inpaint-nodes/compare/d4a318f00fffbd269418057f869e9bc912832229...5b7681746fe19e563113d27366ba85236bc1ba5b",
+          "status": "ahead",
+          "ahead": 2,
+          "behind": 0,
+          "totalCommits": 2,
+          "returnedCommits": 2,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "inpaint-cropandstitch",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
+        "recommendedVersion": "3.0.16",
+        "latestVersion": "3.0.16",
+        "installRevision": null,
+        "nodeTypes": [
+          "InpaintCropImproved",
+          "InpaintStitchImproved"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-Inpaint-CropAndStitch",
+        "version": "3.0.16",
+        "origin": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
+        "sha": "bc4b1184b56c0ee25302ca755e43e264d0868998",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
+        "head": {
+          "sha": "8584b08d851762965df898b421a39075fc5357ae",
+          "sourceVersion": "3.0.17"
+        },
+        "stable": null,
+        "compare": {
+          "base": "bc4b1184b56c0ee25302ca755e43e264d0868998",
+          "target": "8584b08d851762965df898b421a39075fc5357ae",
+          "url": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch/compare/bc4b1184b56c0ee25302ca755e43e264d0868998...8584b08d851762965df898b421a39075fc5357ae",
+          "status": "ahead",
+          "ahead": 1,
+          "behind": 0,
+          "totalCommits": 1,
+          "returnedCommits": 1,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "seedvr2",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
+        "recommendedVersion": "2.5.24",
+        "latestVersion": "2.5.24",
+        "installRevision": null,
+        "nodeTypes": [
+          "SeedVR2LoadDiTModel",
+          "SeedVR2LoadVAEModel",
+          "SeedVR2VideoUpscaler"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-SeedVR2_VideoUpscaler",
+        "version": "2.5.24",
+        "origin": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
+        "sha": "4490bd1f482e026674543386bb2a4d176da245b9",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler",
+        "head": {
+          "sha": "4490bd1f482e026674543386bb2a4d176da245b9",
+          "sourceVersion": "2.5.24"
+        },
+        "stable": {
+          "tag": "v2.5.23",
+          "sha": "5a4bf428f3735cc72ac760d40f372f94dec28422",
+          "publishedAt": "2025-12-24T02:16:24Z",
+          "url": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler/releases/tag/v2.5.23"
+        }
+      }
+    },
+    {
+      "id": "flashvsr",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/1038lab/ComfyUI-FlashVSR.git",
+        "recommendedVersion": "1.1.1",
+        "latestVersion": "1.1.1",
+        "installRevision": null,
+        "nodeTypes": [
+          "AILab_FlashVSR"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-FlashVSR",
+        "version": "1.1.1",
+        "origin": "https://github.com/1038lab/ComfyUI-FlashVSR.git",
+        "sha": "8877fdd593ea93b27353956dc69edf423c561fee",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/1038lab/ComfyUI-FlashVSR",
+        "head": {
+          "sha": "8877fdd593ea93b27353956dc69edf423c561fee",
+          "sourceVersion": "1.1.1"
+        },
+        "stable": null
+      }
+    },
+    {
+      "id": "frame-interpolation",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
+        "recommendedVersion": "1.0.11",
+        "latestVersion": "1.0.11",
+        "installRevision": null,
+        "nodeTypes": [
+          "RIFE VFI"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-Frame-Interpolation",
+        "version": "1.0.11",
+        "origin": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
+        "sha": "26545cc2dd95bc3d27f056016300673bdeee78f5",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation",
+        "head": {
+          "sha": "26545cc2dd95bc3d27f056016300673bdeee78f5",
+          "sourceVersion": "1.0.11"
+        },
+        "stable": null,
+        "assetRelease": {
+          "tag": "models",
+          "url": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation/releases/tag/models"
+        }
+      }
+    },
+    {
+      "id": "comfyui-dlss-frame-interpolation",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation.git",
+        "recommendedVersion": null,
+        "latestVersion": null,
+        "installRevision": "c755e274a405a7a47667bd567d489b6845066bcf",
+        "nodeTypes": [
+          "NvidiaDLSSVideoUpscale",
+          "NvidiaDLSSFrameInterpolation",
+          "NvidiaDLSSImageUpscale"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-DLSS-Frame-Interpolation",
+        "version": null,
+        "origin": "https://github.com/Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation.git",
+        "sha": "c755e274a405a7a47667bd567d489b6845066bcf",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation",
+        "head": {
+          "sha": "7765f01b85bdb9342c8048b321650174856a2328",
+          "sourceVersion": null
+        },
+        "stable": null,
+        "compare": {
+          "base": "c755e274a405a7a47667bd567d489b6845066bcf",
+          "target": "7765f01b85bdb9342c8048b321650174856a2328",
+          "url": "https://github.com/Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation/compare/c755e274a405a7a47667bd567d489b6845066bcf...7765f01b85bdb9342c8048b321650174856a2328",
+          "status": "ahead",
+          "ahead": 1,
+          "behind": 0,
+          "totalCommits": 1,
+          "returnedCommits": 1,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "minimax-h3-image-studio",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio.git",
+        "recommendedVersion": "23.0.0",
+        "latestVersion": "23.0.0",
+        "installRevision": "f7384aacb7bf35492dc73a3e6054ab6b427f93f6",
+        "nodeTypes": [
+          "H3ImageResolutionPreset",
+          "H3ImageToImagePrepare",
+          "H3ReferenceEditPrepare",
+          "H3ImageSamplingPreset",
+          "H3ImageDecode",
+          "H3ImageFrameSelector"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-MiniMax-H3-Image-Studio",
+        "version": "23.0.0",
+        "origin": "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio.git",
+        "sha": "f7384aacb7bf35492dc73a3e6054ab6b427f93f6",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio",
+        "head": {
+          "sha": "9834e55976cd1d0572b55a3453de0e1b3c5d3dad",
+          "sourceVersion": "24.1.0"
+        },
+        "stable": {
+          "tag": "v24.1.0",
+          "sha": "9834e55976cd1d0572b55a3453de0e1b3c5d3dad",
+          "publishedAt": "2026-09-30T10:01:40Z",
+          "url": "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/releases/tag/v24.1.0"
+        },
+        "compare": {
+          "base": "f7384aacb7bf35492dc73a3e6054ab6b427f93f6",
+          "target": "9834e55976cd1d0572b55a3453de0e1b3c5d3dad",
+          "url": "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/compare/f7384aacb7bf35492dc73a3e6054ab6b427f93f6...9834e55976cd1d0572b55a3453de0e1b3c5d3dad",
+          "status": "ahead",
+          "ahead": 5,
+          "behind": 0,
+          "totalCommits": 5,
+          "returnedCommits": 5,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "h3-motion-context",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
+        "recommendedVersion": "0.6.2",
+        "latestVersion": "0.6.2",
+        "installRevision": null,
+        "nodeTypes": [
+          "MiniMaxH3MotionContext",
+          "MiniMaxH3MotionContextTrim",
+          "MiniMaxH3MotionContextSaveLatent",
+          "MiniMaxH3MotionContextLoadLatent"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-H3-Motion-Context",
+        "version": "0.6.2",
+        "origin": "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
+        "sha": "5335715abe54c1a9bfbe3494da29aae3e8635ce3",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context",
+        "head": {
+          "sha": "5335715abe54c1a9bfbe3494da29aae3e8635ce3",
+          "sourceVersion": "0.6.2"
+        },
+        "stable": {
+          "tag": "v0.6.2",
+          "sha": "5335715abe54c1a9bfbe3494da29aae3e8635ce3",
+          "publishedAt": "2026-09-06T18:38:25Z",
+          "url": "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.6.2"
+        }
+      }
+    },
+    {
+      "id": "h3-continuum",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
+        "recommendedVersion": "3.8.2",
+        "latestVersion": "3.8.3",
+        "installRevision": "c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+        "nodeTypes": [
+          "H3ContinuumSamplerV38",
+          "H3ContinuumLoadVideo",
+          "H3ContinuumAssembleSeamV35"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-H3-Continuum",
+        "version": "3.8.2",
+        "origin": "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
+        "sha": "c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum",
+        "head": {
+          "sha": "120ca6c9ea8923e33e0bdb335205c2dc23de5d6a",
+          "sourceVersion": "3.9.1"
+        },
+        "stable": {
+          "tag": "v3.9.1",
+          "sha": "94eaf70d674a58244e1cb139f021290d63fb2e6c",
+          "publishedAt": "2026-10-04T10:41:03Z",
+          "url": "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.9.1"
+        },
+        "compare": {
+          "base": "c38c616d54feb0310a3ca7540f2f4addc499fd1f",
+          "target": "120ca6c9ea8923e33e0bdb335205c2dc23de5d6a",
+          "url": "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/compare/c38c616d54feb0310a3ca7540f2f4addc499fd1f...120ca6c9ea8923e33e0bdb335205c2dc23de5d6a",
+          "status": "ahead",
+          "ahead": 20,
+          "behind": 0,
+          "totalCommits": 20,
+          "returnedCommits": 20,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "h3-latent-upscaler",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/rockerBOO/h3-latent-upscaler.git",
+        "recommendedVersion": "0.1.0",
+        "latestVersion": "0.1.0",
+        "installRevision": "a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
+        "nodeTypes": [
+          "MiniMaxH3LatentUpscale",
+          "MiniMaxH3ConditioningUpscale",
+          "MiniMaxH3AddNoise",
+          "MiniMaxH3ShiftSigmas"
+        ]
+      },
+      "installed": {
+        "directory": "h3-latent-upscaler",
+        "version": "0.1.0",
+        "origin": "https://github.com/rockerBOO/h3-latent-upscaler.git",
+        "sha": "a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/rockerBOO/h3-latent-upscaler",
+        "head": {
+          "sha": "a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
+          "sourceVersion": "0.1.0"
+        },
+        "stable": null
+      }
+    },
+    {
+      "id": "minimax-h3-learned-upscaler",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+        "recommendedVersion": null,
+        "latestVersion": null,
+        "installRevision": "d7c01b9011f2e8439493f6c02c29995a27df276f",
+        "nodeTypes": [
+          "MinimaxH3LatentUpscaler3D"
+        ]
+      },
+      "installed": {
+        "directory": "Comfyui_Minimax_h3_latent_Upscaler",
+        "version": null,
+        "origin": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+        "sha": "d7c01b9011f2e8439493f6c02c29995a27df276f",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+        "head": {
+          "sha": "40316cf008b2fd8663263270669eb4da23f89d2c",
+          "sourceVersion": null
+        },
+        "stable": null,
+        "compare": {
+          "base": "d7c01b9011f2e8439493f6c02c29995a27df276f",
+          "target": "40316cf008b2fd8663263270669eb4da23f89d2c",
+          "url": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler/compare/d7c01b9011f2e8439493f6c02c29995a27df276f...40316cf008b2fd8663263270669eb4da23f89d2c",
+          "status": "ahead",
+          "ahead": 1,
+          "behind": 0,
+          "totalCommits": 1,
+          "returnedCommits": 1,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "local-video-studio-h3-av",
+      "retired": false,
+      "catalog": {
+        "repository": "builtin://LocalVideoStudio-H3",
+        "recommendedVersion": "0.3.5",
+        "latestVersion": "0.3.5",
+        "installRevision": "0.3.5",
+        "nodeTypes": [
+          "LocalVideoStudioH3SaveJointAV",
+          "LocalVideoStudioH3LoadJointAV",
+          "LocalVideoStudioH3ArtifactToContinuumState",
+          "LocalVideoStudioH3ContinuumSamplerV38",
+          "LocalVideoStudioH3ContinuumDiagnostics",
+          "LocalVideoStudioH3ContinuumManagedReceipt",
+          "LocalVideoStudioRequireGpuVAE",
+          "LocalVideoStudioH3RequireGpuVAE",
+          "LocalVideoStudioH3AnchorConditioning"
+        ]
+      },
+      "installed": {
+        "directory": "LocalVideoStudio-H3",
+        "version": null,
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "kind": "repository-bundled",
+        "note": "No independent upstream release; normalized installed file comparison recorded in upgrade.md."
+      }
+    },
+    {
+      "id": "mmh3-ultimate-upscale",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+        "recommendedVersion": null,
+        "latestVersion": null,
+        "installRevision": "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+        "nodeTypes": [
+          "MMH3UltimateUpscale",
+          "MMH3LatentUpscaleWithModelParams",
+          "MMH3TemporalSplitParams",
+          "MMH3SpatialSplitParams"
+        ]
+      },
+      "installed": {
+        "directory": "Comfyui-MMH3-UltimateUpscale",
+        "version": "0.0.5",
+        "origin": "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+        "sha": "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "head": {
+          "sha": "0a8d5ee3914e8fe8bd842885412ec397d7ca1629",
+          "sourceVersion": "0.0.7"
+        },
+        "stable": null,
+        "compare": {
+          "base": "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+          "target": "0a8d5ee3914e8fe8bd842885412ec397d7ca1629",
+          "url": "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/compare/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d...0a8d5ee3914e8fe8bd842885412ec397d7ca1629",
+          "status": "ahead",
+          "ahead": 20,
+          "behind": 0,
+          "totalCommits": 20,
+          "returnedCommits": 20,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "spectrum-minimax-h3",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
+        "recommendedVersion": "0.2.27",
+        "latestVersion": "0.2.28",
+        "installRevision": null,
+        "nodeTypes": [
+          "SpectrumApplyMiniMaxH3"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-Spectrum-MiniMax-H3",
+        "version": "0.2.27",
+        "origin": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
+        "sha": "120d72e2f48b781235b34149e39bbdf0f1317d82",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3",
+        "head": {
+          "sha": "5161f0457bc8c52535212d6783eee73f439e1537",
+          "sourceVersion": "0.2.28"
+        },
+        "stable": {
+          "tag": "v0.2.28",
+          "sha": "5161f0457bc8c52535212d6783eee73f439e1537",
+          "publishedAt": "2026-09-18T12:58:21Z",
+          "url": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.28"
+        },
+        "compare": {
+          "base": "120d72e2f48b781235b34149e39bbdf0f1317d82",
+          "target": "5161f0457bc8c52535212d6783eee73f439e1537",
+          "url": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/compare/120d72e2f48b781235b34149e39bbdf0f1317d82...5161f0457bc8c52535212d6783eee73f439e1537",
+          "status": "ahead",
+          "ahead": 1,
+          "behind": 0,
+          "totalCommits": 1,
+          "returnedCommits": 1,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "plaguekind-h3-sla",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git",
+        "recommendedVersion": "1.3.8",
+        "latestVersion": "1.5.3",
+        "installRevision": null,
+        "nodeTypes": [
+          "H3SLAAttention"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-PlagueKind-Nodes",
+        "version": "1.3.8",
+        "origin": "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git",
+        "sha": "a05db58981fec697bd3644229b215ee04c126ea7",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes",
+        "head": {
+          "sha": "d58d006a4ea32c25c06499f2ff104f0852a045a6",
+          "sourceVersion": "1.5.6"
+        },
+        "stable": null,
+        "compare": {
+          "base": "a05db58981fec697bd3644229b215ee04c126ea7",
+          "target": "d58d006a4ea32c25c06499f2ff104f0852a045a6",
+          "url": "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/compare/a05db58981fec697bd3644229b215ee04c126ea7...d58d006a4ea32c25c06499f2ff104f0852a045a6",
+          "status": "ahead",
+          "ahead": 20,
+          "behind": 0,
+          "totalCommits": 20,
+          "returnedCommits": 20,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "comfyui-gguf-h3",
+      "retired": false,
+      "catalog": {
+        "repository": "https://github.com/molbal/ComfyUI-GGUF.git",
+        "recommendedVersion": "26.09.04",
+        "latestVersion": "26.09.04",
+        "installRevision": null,
+        "nodeTypes": [
+          "H3UnetLoaderGGUFAdvanced",
+          "H3CLIPLoaderGGUF"
+        ]
+      },
+      "installed": {
+        "directory": "ComfyUI-GGUF-H3",
+        "version": "26.09.04",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/molbal/ComfyUI-GGUF",
+        "head": {
+          "sha": "5a0a3ffa0e3eae5c6af8b0b981b660a24d5fbc04",
+          "sourceVersion": "26.10.05"
+        },
+        "stable": {
+          "tag": "v26-09-04",
+          "sha": "a553b8a2972f799d8ea37d548ca6ff4d926dd4eb",
+          "publishedAt": "2026-09-04T09:43:45Z",
+          "url": "https://github.com/molbal/ComfyUI-GGUF/releases/tag/v26-09-04"
+        },
+        "releaseToHead": {
+          "base": "a553b8a2972f799d8ea37d548ca6ff4d926dd4eb",
+          "target": "5a0a3ffa0e3eae5c6af8b0b981b660a24d5fbc04",
+          "totalCommits": 10,
+          "status": "ahead",
+          "url": "https://github.com/molbal/ComfyUI-GGUF/compare/a553b8a2972f799d8ea37d548ca6ff4d926dd4eb...5a0a3ffa0e3eae5c6af8b0b981b660a24d5fbc04"
+        }
+      }
+    },
+    {
+      "id": "comfyui-dlss5",
+      "retired": true,
+      "catalog": {
+        "repository": "https://github.com/HECer/ComfyUI-DLSS5.git",
+        "recommendedVersion": "0.2.2",
+        "latestVersion": "0.2.2",
+        "installRevision": "310524aa283602832cbdd827ce4e35565c859a7e",
+        "nodeTypes": [
+          "DLSSSuperResolution",
+          "DLSS5DepthAnythingV2",
+          "DLSS5OpticalFlow"
+        ]
+      },
+      "installed": null,
+      "upstream": {
+        "repository": "https://github.com/HECer/ComfyUI-DLSS5",
+        "head": {
+          "sha": "f4f59cd1fe39e785a3b600ca20b5e09194a9e38d",
+          "sourceVersion": "0.4.0"
+        },
+        "stable": {
+          "tag": "v0.4.0",
+          "sha": "9d1c34b0ca533e54034371230d4363a1fb6ec483",
+          "publishedAt": "2026-09-10T22:39:44Z",
+          "url": "https://github.com/HECer/ComfyUI-DLSS5/releases/tag/v0.4.0"
+        }
+      }
+    },
+    {
+      "id": "comfyui-aetherscale",
+      "retired": true,
+      "catalog": {
+        "repository": "https://github.com/vizart-vj/ComfyUI-AetherScale.git",
+        "recommendedVersion": "0.5.5",
+        "latestVersion": "0.5.5",
+        "installRevision": "b825f783f31b7cce45e0be02ba87c8ed5b20f9d5",
+        "nodeTypes": [
+          "AetherScaleMotionAnalysis",
+          "AetherScaleNeuralRendering"
+        ]
+      },
+      "installed": null,
+      "upstream": {
+        "repository": "https://github.com/vizart-vj/ComfyUI-AetherScale",
+        "head": {
+          "sha": "828cf8de48b763217fbc3f3b8254c0c33b90e082",
+          "sourceVersion": "0.9.2"
+        },
+        "stable": {
+          "tag": "v0.9.2",
+          "sha": "828cf8de48b763217fbc3f3b8254c0c33b90e082",
+          "publishedAt": "2026-09-18T20:39:53Z",
+          "url": "https://github.com/vizart-vj/ComfyUI-AetherScale/releases/tag/v0.9.2"
+        }
+      }
+    }
+  ],
+  "extraInstalled": [
+    {
+      "installed": {
+        "directory": "cocotools_io",
+        "version": "0.4.2",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/Conor-Collins/ComfyUI-CoCoTools_IO",
+        "head": {
+          "sha": "f456539a0dc4323cae3cf62b16723e23802b75a9",
+          "sourceVersion": "0.4.2"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "comfyui-advanced-controlnet",
+        "version": "1.5.6",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet",
+        "head": {
+          "sha": "27a67fee80cf46c198b10588a5651f23d67d1e95",
+          "sourceVersion": "1.6.0"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "ComfyUI-GGUF-FantasyTalking",
+        "version": "2.0.0",
+        "origin": "https://github.com/kael558/ComfyUI-GGUF-FantasyTalking",
+        "sha": "48dd427c5cf28cc849467dc97e54515286df0aa0",
+        "dirty": true
+      },
+      "upstream": {
+        "repository": "https://github.com/kael558/ComfyUI-GGUF-FantasyTalking",
+        "head": {
+          "sha": "48dd427c5cf28cc849467dc97e54515286df0aa0",
+          "sourceVersion": "2.0.0"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "comfyui-impact-pack",
+        "version": "8.25.1",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/ltdrdata/ComfyUI-Impact-Pack",
+        "head": {
+          "sha": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+          "sourceVersion": "8.28.3"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "ComfyUI-Manager",
+        "version": "3.37",
+        "origin": "https://github.com/Comfy-Org/ComfyUI-Manager",
+        "sha": "c792f9277cdab9f754ca02f35eabf9304af2b89b",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/Comfy-Org/ComfyUI-Manager",
+        "head": {
+          "sha": "69bd94e7414eff53ed905cd7befe85262a941a07",
+          "sourceVersion": "3.42"
+        },
+        "stable": null,
+        "compare": {
+          "base": "c792f9277cdab9f754ca02f35eabf9304af2b89b",
+          "target": "69bd94e7414eff53ed905cd7befe85262a941a07",
+          "url": "https://github.com/Comfy-Org/ComfyUI-Manager/compare/c792f9277cdab9f754ca02f35eabf9304af2b89b...69bd94e7414eff53ed905cd7befe85262a941a07",
+          "status": "ahead",
+          "ahead": 1254,
+          "behind": 0,
+          "totalCommits": 1254,
+          "returnedCommits": 250,
+          "truncated": true
+        }
+      }
+    },
+    {
+      "installed": {
+        "directory": "comfyui_controlnet_aux",
+        "version": "1.1.4",
+        "origin": "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
+        "sha": "95a13e2e5d8f8ae57583fbebb0be1f670889858b",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/Fannovel16/comfyui_controlnet_aux",
+        "head": {
+          "sha": "0cd290477128d42cdc3e76a826a402d866e8c684",
+          "sourceVersion": "1.1.6"
+        },
+        "stable": null,
+        "compare": {
+          "base": "95a13e2e5d8f8ae57583fbebb0be1f670889858b",
+          "target": "0cd290477128d42cdc3e76a826a402d866e8c684",
+          "url": "https://github.com/Fannovel16/comfyui_controlnet_aux/compare/95a13e2e5d8f8ae57583fbebb0be1f670889858b...0cd290477128d42cdc3e76a826a402d866e8c684",
+          "status": "ahead",
+          "ahead": 21,
+          "behind": 0,
+          "totalCommits": 21,
+          "returnedCommits": 21,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "installed": {
+        "directory": "comfyui_essentials",
+        "version": "1.1.0",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/cubiq/ComfyUI_essentials",
+        "head": {
+          "sha": "9d9f4bedfc9f0321c19faf71855e228c93bd0dc9",
+          "sourceVersion": "1.1.0"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "comfyui_ipadapter_plus_v2",
+        "version": "1.0.12",
+        "origin": "https://github.com/chflame163/ComfyUI_IPAdapter_plus_V2",
+        "sha": "24bda419546b0229fe290957411f74ab664fe52f",
+        "dirty": false
+      },
+      "upstream": {
+        "repository": "https://github.com/chflame163/ComfyUI_IPAdapter_plus_V2",
+        "head": {
+          "sha": "24bda419546b0229fe290957411f74ab664fe52f",
+          "sourceVersion": "1.0.12"
+        },
+        "stable": null
+      }
+    },
+    {
+      "installed": {
+        "directory": "rgthree-comfy",
+        "version": "1.0.2510052058",
+        "origin": null,
+        "sha": null,
+        "dirty": null
+      },
+      "upstream": {
+        "repository": "https://github.com/rgthree/rgthree-comfy",
+        "head": {
+          "sha": "d7297b42f0fa78bec1c0411478f887423c249502",
+          "sourceVersion": "1.0.2610050029"
+        },
+        "stable": null
+      }
+    }
+  ],
+  "templateNodeTypes": [
+    {
+      "file": "hunyuan15_i2v_api.json",
+      "types": [
+        "UNETLoader",
+        "DualCLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "CLIPVisionLoader",
+        "CLIPVisionEncode",
+        "CLIPTextEncode",
+        "HunyuanVideo15ImageToVideo",
+        "ModelSamplingSD3",
+        "BasicScheduler",
+        "RandomNoise",
+        "KSamplerSelect",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "VAEDecodeTiled",
+        "CreateVideo",
+        "SaveVideo",
+        "VRAM_Debug"
+      ]
+    },
+    {
+      "file": "hunyuan15_sr_i2v_api.json",
+      "types": [
+        "UNETLoader",
+        "DualCLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "CLIPVisionLoader",
+        "CLIPVisionEncode",
+        "CLIPTextEncode",
+        "HunyuanVideo15ImageToVideo",
+        "ModelSamplingSD3",
+        "BasicScheduler",
+        "RandomNoise",
+        "KSamplerSelect",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "LatentUpscaleModelLoader",
+        "HunyuanVideo15LatentUpscaleWithModel",
+        "HunyuanVideo15SuperResolution",
+        "SplitSigmas",
+        "DisableNoise",
+        "VAEDecodeTiled",
+        "CreateVideo",
+        "SaveVideo"
+      ]
+    },
+    {
+      "file": "minimax_h3_continuum_extend_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LocalVideoStudioH3LoadJointAV",
+        "LocalVideoStudioH3ArtifactToContinuumState",
+        "MiniMaxH3ImageToVideo",
+        "PathchSageAttentionKJ",
+        "H3ContinuumJoin",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "H3ContinuumFinish",
+        "CreateVideo",
+        "SaveVideo",
+        "LocalVideoStudioH3SaveJointAV"
+      ]
+    },
+    {
+      "file": "minimax_h3_continuum_v38_extend_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "PathchSageAttentionKJ",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "LocalVideoStudioH3LoadJointAV",
+        "LocalVideoStudioH3ArtifactToContinuumState",
+        "LocalVideoStudioH3ContinuumSamplerV38",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "H3ContinuumAssembleSeamV35",
+        "CreateVideo",
+        "SaveVideo",
+        "LTXVConcatAVLatent",
+        "LocalVideoStudioH3SaveJointAV",
+        "LocalVideoStudioH3ContinuumDiagnostics"
+      ]
+    },
+    {
+      "file": "minimax_h3_continuum_v38_managed_extend_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "PathchSageAttentionKJ",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "LoadImage",
+        "H3ContinuumSamplerV38",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "H3ContinuumAssembleSeamV35",
+        "CreateVideo",
+        "SaveVideo",
+        "LocalVideoStudioH3ContinuumManagedReceipt"
+      ]
+    },
+    {
+      "file": "minimax_h3_fl2va_first_pass_av_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ",
+        "LocalVideoStudioH3SaveJointAV"
+      ]
+    },
+    {
+      "file": "minimax_h3_fl2va_learned_3d_second_sample_av_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "LocalVideoStudioH3LoadJointAV",
+        "LTXVSeparateAVLatent",
+        "MinimaxH3LatentUpscaler3D",
+        "LTXVConcatAVLatent",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "MiniMaxH3ShiftSigmas",
+        "RandomNoise",
+        "MiniMaxH3AddNoise",
+        "PathchSageAttentionKJ",
+        "MiniMaxH3ConditioningUpscale",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "DisableNoise",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "LocalVideoStudioH3SaveJointAV",
+        "LocalVideoStudioH3AnchorConditioning"
+      ]
+    },
+    {
+      "file": "minimax_h3_fl2va_second_sample_av_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "LocalVideoStudioH3LoadJointAV",
+        "LTXVSeparateAVLatent",
+        "MiniMaxH3LatentUpscale",
+        "LTXVConcatAVLatent",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "MiniMaxH3ShiftSigmas",
+        "RandomNoise",
+        "MiniMaxH3AddNoise",
+        "PathchSageAttentionKJ",
+        "MiniMaxH3ConditioningUpscale",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "DisableNoise",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "LocalVideoStudioH3SaveJointAV"
+      ]
+    },
+    {
+      "file": "minimax_h3_fl2va_turbo_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ",
+        "LoraLoaderModelOnly",
+        "MiniMaxH3SigmaShift"
+      ]
+    },
+    {
+      "file": "minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "LocalVideoStudioH3LoadJointAV",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "PathchSageAttentionKJ",
+        "MiniMaxH3ConditioningUpscale",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "LocalVideoStudioH3SaveJointAV",
+        "MMH3LatentUpscaleWithModelParams",
+        "MMH3TemporalSplitParams",
+        "MMH3SpatialSplitParams",
+        "MMH3UltimateUpscale",
+        "LocalVideoStudioH3RequireGpuVAE"
+      ]
+    },
+    {
+      "file": "minimax_h3_i2v_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ"
+      ]
+    },
+    {
+      "file": "minimax_h3_i2v_gguf_q3_api.json",
+      "types": [
+        "H3UnetLoaderGGUFAdvanced",
+        "H3CLIPLoaderGGUF",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ"
+      ]
+    },
+    {
+      "file": "minimax_h3_image_i2i_api.json",
+      "types": [
+        "LoadImage",
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "H3ImageResolutionPreset",
+        "H3ImageToImagePrepare",
+        "RandomNoise",
+        "BasicGuider",
+        "H3ImageSamplingPreset",
+        "SamplerCustomAdvanced",
+        "H3ImageDecode",
+        "H3ImageFrameSelector",
+        "SaveImage"
+      ]
+    },
+    {
+      "file": "minimax_h3_r2v_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "MiniMaxH3ReferenceToVideo",
+        "KSamplerSelect",
+        "PathchSageAttentionKJ",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "VHS_LoadVideoFFmpeg"
+      ]
+    },
+    {
+      "file": "minimax_h3_r2v_extend_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "VHS_LoadVideoFFmpeg",
+        "MiniMaxH3ReferenceToVideo",
+        "MiniMaxH3MotionContextLoadLatent",
+        "MiniMaxH3MotionContext",
+        "KSamplerSelect",
+        "PathchSageAttentionKJ",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "MiniMaxH3MotionContextSaveLatent",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "MiniMaxH3MotionContextTrim",
+        "CreateVideo",
+        "SaveVideo",
+        "LoadImage"
+      ]
+    },
+    {
+      "file": "minimax_h3_reference_edit_api.json",
+      "types": [
+        "LoadImage",
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "H3ImageResolutionPreset",
+        "H3ReferenceEditPrepare",
+        "RandomNoise",
+        "BasicGuider",
+        "H3ImageSamplingPreset",
+        "SamplerCustomAdvanced",
+        "H3ImageDecode",
+        "H3ImageFrameSelector",
+        "SaveImage"
+      ]
+    },
+    {
+      "file": "minimax_h3_t2va_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ"
+      ]
+    },
+    {
+      "file": "minimax_h3_t2va_gguf_q3_api.json",
+      "types": [
+        "H3UnetLoaderGGUFAdvanced",
+        "H3CLIPLoaderGGUF",
+        "VAELoader",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ"
+      ]
+    },
+    {
+      "file": "minimax_h3_t2va_turbo_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "MiniMaxH3ImageToVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "RandomNoise",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VRAM_Debug",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "PathchSageAttentionKJ",
+        "LoraLoaderModelOnly",
+        "MiniMaxH3SigmaShift"
+      ]
+    },
+    {
+      "file": "qwen36_h3_prompt_enhancer_api.json",
+      "types": [
+        "LoadImage",
+        "VisionLLMNode",
+        "PreviewAny"
+      ]
+    },
+    {
+      "file": "qwen_image_2_1_image_edit_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "TextEncodeQwenImage21",
+        "EmptyLatentImage",
+        "ComfySwitchNode",
+        "QwenImage21Cache",
+        "KSampler",
+        "VAEDecode",
+        "SaveImageAdvanced"
+      ]
+    },
+    {
+      "file": "qwen_image_2_1_uncensored_gguf_image_edit_api.json",
+      "types": [
+        "UnetLoaderGGUF",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "TextEncodeQwenImage21",
+        "EmptyLatentImage",
+        "ComfySwitchNode",
+        "QwenImage21Cache",
+        "KSampler",
+        "VAEDecode",
+        "SaveImageAdvanced"
+      ]
+    },
+    {
+      "file": "sulphur2_ltx23_extend_gguf_dev_api.json",
+      "types": [
+        "VHS_LoadVideoFFmpeg",
+        "VAEEncodeTiled",
+        "DualCLIPLoader",
+        "CLIPTextEncode",
+        "LTXVConditioning",
+        "UnetLoaderGGUFAdvanced",
+        "LoraLoaderModelOnly",
+        "CFGGuider",
+        "RandomNoise",
+        "KSamplerSelect",
+        "LTXVScheduler",
+        "VRAM_Debug",
+        "LTXVExtendSampler",
+        "LTXVSpatioTemporalTiledVAEDecode",
+        "CreateVideo",
+        "VAELoader",
+        "SaveVideo"
+      ]
+    },
+    {
+      "file": "sulphur2_ltx23_extend_gguf_q2_api.json",
+      "types": [
+        "VHS_LoadVideoFFmpeg",
+        "VAEEncodeTiled",
+        "DualCLIPLoader",
+        "CLIPTextEncode",
+        "LTXVConditioning",
+        "UnetLoaderGGUFAdvanced",
+        "CFGGuider",
+        "RandomNoise",
+        "KSamplerSelect",
+        "LTXVScheduler",
+        "VRAM_Debug",
+        "LTXVExtendSampler",
+        "LTXVSpatioTemporalTiledVAEDecode",
+        "CreateVideo",
+        "VAELoader",
+        "SaveVideo"
+      ]
+    },
+    {
+      "file": "sulphur2_ltx23_i2v_api.json",
+      "types": [
+        "RandomNoise",
+        "LTXVConcatAVLatent",
+        "LTXVAudioVAELoader",
+        "LTXAVTextEncoderLoader",
+        "KSamplerSelect",
+        "ManualSigmas",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "LTXVCropGuides",
+        "LTXVLatentUpsampler",
+        "LTXVImgToVideoInplace",
+        "LTXVPreprocess",
+        "EmptyLTXVLatentVideo",
+        "LTXVAudioVAEDecode",
+        "CLIPTextEncode",
+        "LTXVConditioning",
+        "LTXVEmptyLatentAudio",
+        "LTXVSeparateAVLatent",
+        "CreateVideo",
+        "LatentUpscaleModelLoader",
+        "CheckpointLoaderSimple",
+        "SaveVideo",
+        "LTXVScheduler",
+        "LoraLoaderModelOnly",
+        "LoadImage",
+        "ImageScale",
+        "VAEDecode",
+        "VRAM_Debug"
+      ]
+    },
+    {
+      "file": "sulphur2_ltx23_i2v_gguf_dev_api.json",
+      "types": [
+        "RandomNoise",
+        "LTXVConcatAVLatent",
+        "LowVRAMAudioVAELoader",
+        "DualCLIPLoader",
+        "KSamplerSelect",
+        "ManualSigmas",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "LTXVCropGuides",
+        "LTXVLatentUpsampler",
+        "LTXVImgToVideoInplace",
+        "LTXVPreprocess",
+        "EmptyLTXVLatentVideo",
+        "LTXVAudioVAEDecode",
+        "CLIPTextEncode",
+        "LTXVConditioning",
+        "LTXVEmptyLatentAudio",
+        "LTXVSeparateAVLatent",
+        "CreateVideo",
+        "LatentUpscaleModelLoader",
+        "UnetLoaderGGUFAdvanced",
+        "SaveVideo",
+        "LTXVScheduler",
+        "LoraLoaderModelOnly",
+        "LoadImage",
+        "ImageScale",
+        "VAEDecode",
+        "VRAM_Debug",
+        "VAELoader"
+      ]
+    },
+    {
+      "file": "sulphur2_ltx23_i2v_gguf_q2_api.json",
+      "types": [
+        "RandomNoise",
+        "LTXVConcatAVLatent",
+        "LowVRAMAudioVAELoader",
+        "DualCLIPLoader",
+        "KSamplerSelect",
+        "ManualSigmas",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "LTXVCropGuides",
+        "LTXVLatentUpsampler",
+        "LTXVImgToVideoInplace",
+        "LTXVPreprocess",
+        "EmptyLTXVLatentVideo",
+        "LTXVAudioVAEDecode",
+        "CLIPTextEncode",
+        "LTXVConditioning",
+        "LTXVEmptyLatentAudio",
+        "LTXVSeparateAVLatent",
+        "CreateVideo",
+        "LatentUpscaleModelLoader",
+        "UnetLoaderGGUFAdvanced",
+        "SaveVideo",
+        "LTXVScheduler",
+        "LoadImage",
+        "ImageScale",
+        "VAEDecode",
+        "VRAM_Debug",
+        "VAELoader"
+      ]
+    },
+    {
+      "file": "wan22_14b_gguf_i2v_api.json",
+      "types": [
+        "UnetLoaderGGUFAdvanced",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "CLIPTextEncode",
+        "WanImageToVideo",
+        "ModelSamplingSD3",
+        "KSamplerAdvanced",
+        "VRAM_Debug",
+        "VAEDecodeTiled",
+        "CreateVideo",
+        "SaveVideo"
+      ]
+    },
+    {
+      "file": "wan22_14b_i2v_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "CLIPTextEncode",
+        "WanImageToVideo",
+        "ModelSamplingSD3",
+        "KSamplerAdvanced",
+        "VRAM_Debug",
+        "VAEDecodeTiled",
+        "CreateVideo",
+        "SaveVideo"
+      ]
+    },
+    {
+      "file": "wan22_5b_i2v_api.json",
+      "types": [
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "Wan22ImageToVideoLatent",
+        "CLIPTextEncode",
+        "ModelSamplingSD3",
+        "KSampler",
+        "VAEDecodeTiled",
+        "CreateVideo",
+        "SaveVideo",
+        "VRAM_Debug"
+      ]
+    }
+  ]
+}

@@ -51,6 +51,12 @@ A model or workflow is product integrated only when applicable items are complet
 - `detailed-cinematic` is the highest-coverage preset: it preserves all concrete source actions and their order, then adds grounded mechanics, reactions, camera path, timing, continuity, and causal sound. When output space is constrained, repeated reference inventory and assistant-added filler are removed before any user instruction. Coverage ranges are planning floors, not reasons to pad or compress the source.
 - Video-extension prompt enhancement extracts the exact boundary image at the selected source trim end and guarantees that every multimodal prompt backend receives it. Single-image backends receive it as their primary image; reference-mapped backends append the named boundary image after user media so existing R2V `<Picture N>` labels remain stable. The instruction identifies it as continuation grounding rather than a user reference. Extraction is main-process-owned, cancellable, and temporary media is removed after success, failure, or cancellation.
 
+## Continuum managed storage compatibility
+
+Native AV wrapper schema 1 remains readable, including older producer versions; it is not an official Run chunk. Managed output uses the installed official writer. Continuum 3.9.1 writes Run Storage schema 3 / sampling contract 6. The app receipt and History retain actual manifest sampling version, contract SHA256 and resume-safe status; absent evidence in old History is not inferred from a version label or rewritten. Before continuation, inspect the real manifest and selected head. v5 Runs remain readable/playable but cannot be reused as v6 prefixes; keep files and identities intact. An independently verified Native AV may still use AV compatibility mode. Invalid, non-resumable or mismatched manifests block managed continuation before enqueue; the official Run-lock guard remains authoritative before writes.
+
+Managed Sage uses an app node that delegates to KJ's exact raw attention target. KJ already invokes that target through __wrapped__; capturing it directly avoids observing an unused self-referencing decorator. Ordinary H3 and bootstrap retain KJ's existing node. Compiler combinations or unknown wrappers still fail closed; never change official sampling identity or hashes to force reuse. Install app H3 nodes 0.3.6+ together with this code.
+
 ## Runtime Profiles and Isolation
 
 Each workflow family owns its runtime profile, including where applicable:
@@ -110,6 +116,8 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 
 - Model-native generation FPS and delivery/target FPS are separate. Frame interpolation is an optional post-process and must expose its multiplier/target without changing model generation semantics.
 - Upscaling belongs to a result-driven post-process. The user selects a successful image/video version first, then submits an upscale task.
+- H3 I2I / REF2VA image generation is retired. Active model/node catalogs, Create, Settings and new enqueue requests exclude it. Editable legacy drafts and defaults migrate to Qwen Image 2.1 / preview-25; persisted queue/history retain original model identity and media. Re-editing a historical H3 image starts a Qwen draft with the same project and parent version. Old H3 tasks fail with recovery instructions rather than executing a different model. H3 video and its shared assets remain supported.
+- Qwen 2511 Crop & Stitch fusion repair is retired together with its dedicated node dependency. Editable drafts/defaults migrate to Qwen Image 2.1, preserving references and saved Mask sidecars; legacy queue/history keep their model identity. Re-editing uses the existing Qwen 2.1 LoRA controls, without automatically selecting/downloading a LoRA or routing a binary mask into visual guidance. Ordinary Qwen 2511 remains available.
 - Image projects group iterative edits and generated variants; each version retains model, prompt, seed, format, dimensions, source-version lineage, generation time, and output path.
 - Image format is explicit (`PNG`, `JPEG`, or another supported encoder) and not inferred from a decorative canvas option.
 - Visual annotations are non-destructive sidecars: retain the original Picture path, store editable canvas JSON plus a flattened PNG under application user data, and attach both to that Picture snapshot.

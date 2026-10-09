@@ -139,14 +139,14 @@ describe("managed Continuum contracts", () => {
     expect(() => bindManagedContinuumPrefixExpectation(receipt, task, {})).toThrow("执行前前缀保护");
     expect(receipt).toEqual({ status: ["12", 3], run_name: "original-run" });
     const schema = { LocalVideoStudioH3ContinuumManagedReceipt: { input: { optional: {
-      expected_parent_revision_id: ["STRING"], expected_prefix_chunks: ["INT"]
+      expected_parent_revision_id: ["STRING"], expected_prefix_chunks: ["INT"], sampling_evidence_version: ["INT"]
     } } } };
     bindManagedContinuumPrefixExpectation(receipt, task, schema);
     expect(receipt).toMatchObject({ expected_parent_revision_id: "queued-head", expected_prefix_chunks: 3 });
     expect(task).toEqual(snapshot);
     const pending: Record<string, unknown> = {};
     bindManagedContinuumPrefixExpectation(pending, { ...task, h3ContinuumSequence: emptySequence() }, schema);
-    expect(pending).toEqual({ expected_parent_revision_id: "", expected_prefix_chunks: 0 });
+    expect(pending).toEqual({ expected_parent_revision_id: "", expected_prefix_chunks: 0, sampling_evidence_version: 2 });
   });
   it("registers a normal Native artifact as one app-canonical owner", async () => {
     const root = await mkdtemp(path.join(process.cwd(), "tmp-h3-canonical-asset-"));
@@ -238,6 +238,9 @@ describe("managed Continuum contracts", () => {
         await mkdir(path.dirname(filename), { recursive: true });
         await writeFile(filename, "fixture");
       }
+      const manifestPath = path.join(root, receipt.runStorageRoot.subfolder, receipt.runStorageRoot.filename);
+      const manifest = { revision_id: receipt.revisionId, sampling_contract_version: 6, contract_sha256: "a".repeat(64), resume_safe: true };
+      await writeFile(manifestPath, JSON.stringify(manifest));
       const projectPath = path.join(root, "h3_continuum/runs/run-1/project.json");
       await writeFile(projectPath, JSON.stringify({ canonical_storage_revision_id: receipt.revisionId }));
       const inspector = new HistoryArtifactService({
@@ -259,6 +262,13 @@ describe("managed Continuum contracts", () => {
       await writeFile(projectPath, JSON.stringify({ canonical_storage_revision_id: "other-take" }));
       expect(await inspector.inspectExtensionSource(draft))
         .toMatchObject({ status: "invalid", reason: expect.stringContaining("当前 head") });
+      await writeFile(projectPath, JSON.stringify({ canonical_storage_revision_id: receipt.revisionId }));
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, sampling_contract_version: 5 }));
+      expect(await inspector.inspectExtensionSource(draft)).toMatchObject({ status: "invalid", reason: expect.stringContaining("旧版 v5") });
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, resume_safe: false }));
+      expect(await inspector.inspectExtensionSource(draft)).toMatchObject({ status: "invalid", reason: expect.stringContaining("安全恢复") });
+      await writeFile(manifestPath, JSON.stringify({ ...manifest, revision_id: "different" }));
+      expect(await inspector.inspectExtensionSource(draft)).toMatchObject({ status: "invalid", reason: expect.stringContaining("revision") });
       expect(state).toEqual(before);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -393,11 +403,27 @@ describe("managed Continuum contracts", () => {
     ].includes(node.class_type ?? ""))).toBe(false);
     expect(JSON.stringify(rendered)).not.toContain("{{");
     const policyTask = { ...task, attentionMode: "sage", h3ComfyCompilerMode: "disabled" } as ExtensionQueueTask;
-    const stable = renderWorkflow(workflow, policyTask) as typeof rendered;
-    expect(Object.values(stable).find((node) => node.class_type === "PathchSageAttentionKJ")?.inputs?.allow_compile).toBe(true);
+    const stable = renderWorkflow(workflow, { ...policyTask, h3RuntimeMode: "standard" }) as typeof rendered;
+    expect(Object.values(stable).find((node) => node.class_type === "LocalVideoStudioH3ManagedSageAttention")?.inputs?.allow_compile).toBe(true);
     const legacyWorkflow = JSON.parse(readFileSync(path.resolve(process.cwd(), "workflows/minimax_h3_continuum_v38_extend_api.json"), "utf8"));
     const legacy = renderWorkflow(legacyWorkflow, { ...policyTask, h3ContinuumMode: "bootstrap", workflowPath: "minimax_h3_continuum_v38_extend_api.json" }) as typeof rendered;
     expect(Object.values(legacy).find((node) => node.class_type === "PathchSageAttentionKJ")?.inputs?.allow_compile).toBe(false);
+  });
+
+  it("preserves old receipts and carries actual v6 manifest facts into new History", () => {
+    const old = validReceipt();
+    expect(validateH3ContinuumReceipt(old)).toBeNull();
+    const receipt = { ...old, packageVersion: "3.9.1", samplingContractVersion: 6, contractSha256: "a".repeat(64), resumeSafe: true };
+    expect(validateH3ContinuumReceipt(receipt)).toBeNull();
+    expect(validateH3ContinuumReceipt({ ...receipt, samplingContractVersion: 7 })).toContain("版本");
+    expect(validateH3ContinuumReceipt({ ...receipt, resumeSafe: undefined })).toContain("resumeSafe");
+    const sequence = emptySequence();
+    const frozen = structuredClone(sequence);
+    const next = sequenceAfterManagedReceipt(sequence, receipt, {
+      chunkIndex: 1, userPrompt: "Prompt", finalPrompt: "Prompt", promptHash: "a".repeat(64), createdAt: "now"
+    }, "asset-one", "version-one", "now");
+    expect(next).toMatchObject({ packageVersion: "3.9.1", samplingContractVersion: 6, contractSha256: receipt.contractSha256, resumeSafe: true });
+    expect(sequence).toEqual(frozen);
   });
 
   it("parses a Run Storage receipt and rejects fresh or multi-generated claims", () => {
@@ -440,6 +466,11 @@ describe("managed Continuum contracts", () => {
       created_at: "2026-09-18T00:00:00.000Z"
     };
     expect(validateH3ContinuumManagedReceipt(raw)).toBeNull();
+    expect(validateH3ContinuumManagedReceipt({ ...raw, package_version: "3.9.1" })).toContain("缺少真实采样契约");
+    const modern = { ...raw, package_version: "3.9.1", sampling_contract_version: 6, contract_sha256: "a".repeat(64), resume_safe: true };
+    expect(validateH3ContinuumManagedReceipt(modern)).toBeNull();
+    expect(validateH3ContinuumManagedReceipt({ ...modern, sampling_contract_version: 5 })).toContain("v6");
+    expect(validateH3ContinuumManagedReceipt({ ...modern, resume_safe: undefined })).toContain("resumeSafe");
     expect(extractH3ContinuumManagedReceipt({ outputs: { "24": { result: [JSON.stringify(raw)] } } }, "24")).toMatchObject({
       selected_source: "run_storage",
       generated_count: 1

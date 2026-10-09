@@ -8,6 +8,24 @@
 
 ## Unreleased
 
+## 0.65.0 — 2026-10-10
+
+- 补齐 Continuum 3.9.1 managed 的 v6 采样契约证据：新 receipt/History 保存实际 manifest 的版本、hash 和可恢复状态；旧 Native AV 继续按兼容模式读取，旧 v5 Run 保持只读，续写前说明限制。应用 H3 节点推荐 0.3.6。
+- managed 的 Sage 路径委托 KJ 同一实际执行函数，移除未执行 decorator 的递归闭包，使官方严格契约能观察真实参数；不改普通 H3/AV 兼容路径、不放宽官方 identity/hash 检查。
+
+- 将 Prompt Writer、PlagueKind SLA 和 Continuum 实际安装与推荐线对齐到固定的 0.4.7、1.5.6、3.9.1；保留旧目录备份、共享 Python 后端和最低支持线。安装目标与运行兼容要求分开，支持旧版的 Writer/SLA 不因推荐提交不同而被阻断。
+- 修复 Prompt Writer 0.4.7 在当前 ComfyUI 查询未注册 llm 分类时模型列表返回 500，兼容 Windows CRLF 源码；真实 Gemma 增强通过。现用 Turbo-SLA 保留核心 BlockSparseAttention，未切换 PlagueKind 新实验内核。Continuum 旧 Native AV 续写、新 managed 4→8→12秒接续、History 与重启恢复通过；v5 Run 保持只读，不能直接复用为 v6 前缀。未做速度/画质 A/B。
+
+- 将图片主流程集中到 Qwen Image 2.1，移除 H3 I2I / REF2VA 和 Qwen 2511「局部融合修复」的选项、专属参数、工作流及节点推荐/安装入口。旧默认与可编辑草稿转到 Qwen 2.1；旧队列、历史模型身份、Mask、媒体和关联保留，退休任务执行提供恢复提示。H3 视频与共享权重保留，专属节点目录可恢复备份。
+
+- 融合沿用现有 Qwen 2.1 Lighting Blend / Fix LoRA 入口，不自动启用或下载适配器；修复图片 LoRA 空选项标签未闭合导致提交按钮被吞入下拉框的问题。Lighting Blend 的真实 UI 入队、480×480 输出、History 和重启通过；Fix、其他 LoRA 组合及画质/速度 A/B 不在本轮新增实测范围。
+
+- 升级 Spectrum 推荐线至 0.2.29、Inpaint Nodes 至 1.4.4，MultiModal 推荐同步已安装的 1.0.16；保留最低版本和现有工作流/补丁。节点兼容提示合并时去重，避免修复说明与推荐更新说明重复显示。Crop & Stitch 在后续图片精简中退休，不作为当前推荐节点。
+
+- 对齐 ComfyUI 0.39.2 推荐线与 comfy-kitchen 0.2.37 的 H3 ConvRot 探针/安装目标；通用 GGUF 固定 leejet 维护版提交，识别同版本 fork 来源漂移并通过备份替换迁移。保留工作流最低线、H3 专用 GGUF 和旧队列/History；Vite/Vitest 优先解析维护中的 TypeScript，避免旧同目录 JS 遮蔽最新 catalog。核心沿用用户选中实例，推荐线变化不代表更换其提交。
+
+- 新增 Harness 升级评估 Skill，按实际安装与上游身份评估 ComfyUI、节点、模型和 LoRA，区分源码、接口、UI、真实输出与收益证据；完成全部现用节点盘点，并按授权实施上述升级。候选项只做评估，不据上游版本号自动覆盖运行环境。
+
 ## 0.64.3 — 2026-10-08
 
 - 用户验收并归档用户旅程、Harness和Agent Skill计划；补齐正常系统关闭请求进入Electron退出链、自有ComfyUI清理及129份History/草稿保护的证据和复验入口。

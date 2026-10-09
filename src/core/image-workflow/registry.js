@@ -1,13 +1,13 @@
-import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, minimaxH3ImageI2ICapability, minimaxH3ReferenceEditCapability, qwenImage21Capability, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufQ6Capability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
+import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, qwenImage21Capability, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufQ6Capability, qwenImageEdit2511Capability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
 import { parseImageOutputs } from "./shared.js";
-import { compileQwenImageEditPrompt, compileQwenImageEditCropStitchPrompt, buildQwenImageEdit2511Workflow, buildQwenImageEdit2511CropStitchWorkflow, validateQwenImageEdit2511Workflow, validateQwenImageEdit2511CropStitchWorkflow } from "./qwen.js";
-import { compileQwenImage21Prompt, buildQwenImage21Workflow, buildQwenImage21GgufWorkflow, buildQwenImage21GgufQ6Workflow, validateQwenImage21RuntimeSchema, validateQwenImage21GgufRuntimeSchema, validateQwenImage21Workflow, validateQwenImage21GgufWorkflow, validateQwenImage21GgufQ6Workflow } from "./qwen-image-2-1.js";
+import { compileQwenImageEditPrompt, buildQwenImageEdit2511Workflow, validateQwenImageEdit2511Workflow } from "./qwen.js";
+import { buildQwenImage21Workflow, buildQwenImage21GgufWorkflow, buildQwenImage21GgufQ6Workflow, compileQwenImage21Prompt, validateQwenImage21GgufRuntimeSchema, validateQwenImage21GgufWorkflow, validateQwenImage21GgufQ6Workflow, validateQwenImage21RuntimeSchema, validateQwenImage21Workflow } from "./qwen-image-2-1.js";
 import { compileFlux2Klein4bPrompt, buildFlux2Klein4bWorkflow, validateFlux2Klein4bWorkflow } from "./flux2-klein.js";
 import { compileZImagePrompt, buildZImageWorkflow, validateZImageWorkflow, buildZImageTurboWorkflow, validateZImageTurboWorkflow } from "./z-image.js";
 import { compileHiDreamO1Prompt, buildHiDreamO1Workflow, validateHiDreamO1Workflow } from "./hidream-o1.js";
 import { compileOmniGen2Prompt, buildOmniGen2Workflow, validateOmniGen2Workflow } from "./omnigen2.js";
 import { compileBirefnetInput, buildBirefnetBackgroundRemovalWorkflow, validateBirefnetWorkflow, compileLamaInpaintInput, buildLamaInpaintWorkflow, validateLamaInpaintWorkflow } from "./legacy.js";
-import { buildMinimaxH3ImageI2IWorkflow, buildMinimaxH3ReferenceEditWorkflow, compileMinimaxH3ImageI2IPrompt, compileMinimaxH3ReferenceEditPrompt, validateMinimaxH3ImageI2IWorkflow, validateMinimaxH3ReferenceEditWorkflow, validateMinimaxH3ImageRuntimeSchema } from "./h3-image.js";
+import { modelCatalog } from "../catalog/index.js";
 const parseOutputs = parseImageOutputs;
 export const qwenImageEdit2511Adapter = {
     ...qwenImageEdit2511Capability,
@@ -82,13 +82,6 @@ export const lamaInpaintAdapter = {
     validateWorkflow: validateLamaInpaintWorkflow,
     parseOutputs
 };
-export const qwenImageEdit2511CropStitchAdapter = {
-    ...qwenImageEdit2511CropStitchCapability,
-    compilePrompt: compileQwenImageEditCropStitchPrompt,
-    buildWorkflow: buildQwenImageEdit2511CropStitchWorkflow,
-    validateWorkflow: validateQwenImageEdit2511CropStitchWorkflow,
-    parseOutputs
-};
 export const birefnetBackgroundRemovalAdapter = {
     ...birefnetBackgroundRemovalCapability,
     compilePrompt: compileBirefnetInput,
@@ -96,40 +89,34 @@ export const birefnetBackgroundRemovalAdapter = {
     validateWorkflow: validateBirefnetWorkflow,
     parseOutputs
 };
-export const minimaxH3ImageI2IAdapter = {
-    ...minimaxH3ImageI2ICapability,
-    compilePrompt: compileMinimaxH3ImageI2IPrompt,
-    buildWorkflow: buildMinimaxH3ImageI2IWorkflow,
-    validateWorkflow: validateMinimaxH3ImageI2IWorkflow,
-    validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
-    parseOutputs
-};
-export const minimaxH3ReferenceEditAdapter = {
-    ...minimaxH3ReferenceEditCapability,
-    compilePrompt: compileMinimaxH3ReferenceEditPrompt,
-    buildWorkflow: buildMinimaxH3ReferenceEditWorkflow,
-    validateWorkflow: validateMinimaxH3ReferenceEditWorkflow,
-    validateRuntimeSchema: validateMinimaxH3ImageRuntimeSchema,
-    parseOutputs
-};
 export const imageModelAdapters = {
     [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
     [qwenImage21Adapter.id]: qwenImage21Adapter,
     [qwenImage21UncensoredGgufAdapter.id]: qwenImage21UncensoredGgufAdapter,
     [qwenImage21UncensoredGgufQ6Adapter.id]: qwenImage21UncensoredGgufQ6Adapter,
-    [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
     [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,
     [zImageAdapter.id]: zImageAdapter,
     [zImageTurboAdapter.id]: zImageTurboAdapter,
     [hidreamO1Adapter.id]: hidreamO1Adapter,
     [omnigen2Adapter.id]: omnigen2Adapter,
     [lamaInpaintAdapter.id]: lamaInpaintAdapter,
-    [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter,
-    [minimaxH3ImageI2IAdapter.id]: minimaxH3ImageI2IAdapter,
-    [minimaxH3ReferenceEditAdapter.id]: minimaxH3ReferenceEditAdapter
+    [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter
 };
 export function imageModelAdapterFor(modelId) {
     return imageModelAdapters[modelId];
+}
+export function isRetiredImageModelId(modelId) {
+    const definition = modelCatalog.get(modelId)?.definition;
+    return definition?.category === "image" && definition.retired === true;
+}
+export function imageModelUnavailableReason(modelId) {
+    if (isRetiredImageModelId(modelId)) {
+        const name = modelCatalog.get(modelId)?.definition.family === "minimax-h3-image"
+            ? "H3 图片"
+            : modelCatalog.localized(modelId)?.name ?? modelId;
+        return name + "功能已移除，请调整任务并选择 Qwen Image 2.1；旧任务和历史记录仍保留。";
+    }
+    return `当前没有 ${modelId} 的图片工作流适配器。`;
 }
 export function firstSupportedImageModelId(...candidates) {
     return candidates.find((candidate) => candidate && imageModelAdapterFor(candidate)) ??

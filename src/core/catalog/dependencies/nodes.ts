@@ -1,4 +1,5 @@
 import type { CatalogCustomNodeDefinition } from "./types.js";
+import { COMFYUI_RECOMMENDED_VERSION } from "./comfy-core.js";
 import {
   DLSS5_NODE_DIRECTORY,
   DLSS5_NODE_ID,
@@ -35,30 +36,29 @@ export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
 export const SPECTRUM_PDD_MINIMUM_VERSION = "0.2.21";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.27";
-export const H3_COMFY_KITCHEN_VERSION = "0.2.35";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.29";
+export const H3_COMFY_KITCHEN_VERSION = "0.2.37";
+export const COMFYUI_GGUF_REVISION = "373048b8403a7820620065210a691263d4da0a61";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
-export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.5";
+export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.7";
+export const MINIMAX_H3_PROMPT_WRITER_REVISION = "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.6.2";
-export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = "0.34.0";
+export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = COMFYUI_RECOMMENDED_VERSION;
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
-export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
+export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.5.6";
+export const H3_SLA_ATTENTION_REVISION = "d58d006a4ea32c25c06499f2ff104f0852a045a6";
 export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
 export const H3_MEMORY_RECOMMENDED_VERSION = "0.2.20";
 export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.3.5";
+export const H3_AV_SERIALIZER_REVISION = "0.3.6";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
-export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.8.2";
-export const H3_CONTINUUM_REVISION = "c38c616d54feb0310a3ca7540f2f4addc499fd1f";
-export const MINIMAX_H3_IMAGE_STUDIO_VERSION = "23.0.0";
-export const MINIMAX_H3_IMAGE_STUDIO_REVISION = "f7384aacb7bf35492dc73a3e6054ab6b427f93f6";
-export const MINIMAX_H3_IMAGE_STUDIO_MINIMUM_COMFYUI = "0.30.0";
-export const MINIMAX_H3_IMAGE_STUDIO_RECOMMENDED_COMFYUI = "0.37.0";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.9.1";
+export const H3_CONTINUUM_REVISION = "94eaf70d674a58244e1cb139f021290d63fb2e6c";
 
 type NodeVersionDefaults = Pick<
   CatalogCustomNodeDefinition,
@@ -77,24 +77,22 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "comfyui-gguf": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.0.0", latestVersion: "2.0.0" },
   kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.2", latestVersion: "1.5.2" },
   "ltx-video": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
-  "minimax-h3-prompt-writer": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.4.5", latestVersion: "0.4.6" },
-  "comfyui-multimodal-prompt-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.15", latestVersion: "1.0.16" },
+  "minimax-h3-prompt-writer": { versionMode: "release", releaseSource: "github-release", recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION, latestVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION },
+  "comfyui-multimodal-prompt-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.16", latestVersion: "1.0.16" },
   "comfyui-qwenvl-lora": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
-  "inpaint-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.4.3", latestVersion: "1.4.3" },
-  "inpaint-cropandstitch": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "3.0.16", latestVersion: "3.0.16" },
+  "inpaint-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.4.4", latestVersion: "1.4.4" },
   seedvr2: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.5.24", latestVersion: "2.5.24" },
   flashvsr: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.1.1", latestVersion: "1.1.1" },
   "frame-interpolation": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.11", latestVersion: "1.0.11" },
   "comfyui-dlss-frame-interpolation": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
-  "minimax-h3-image-studio": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "23.0.0", latestVersion: "23.0.0" },
   "h3-motion-context": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.6.2", latestVersion: "0.6.2" },
-  "h3-continuum": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "3.8.2", latestVersion: "3.8.3" },
+  "h3-continuum": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION, latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION },
   "h3-latent-upscaler": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.1.0", latestVersion: "0.1.0" },
   "minimax-h3-learned-upscaler": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
-  "local-video-studio-h3-av": { versionMode: "release", recommendedVersion: "0.3.5", latestVersion: "0.3.5" },
+  "local-video-studio-h3-av": { versionMode: "release", recommendedVersion: H3_AV_SERIALIZER_REVISION, latestVersion: H3_AV_SERIALIZER_REVISION },
   "mmh3-ultimate-upscale": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
-  "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.27", latestVersion: "0.2.28" },
-  "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.3.8", latestVersion: "1.5.3" },
+  "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: SPECTRUM_RECOMMENDED_VERSION, latestVersion: SPECTRUM_RECOMMENDED_VERSION },
+  "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION, latestVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION },
   "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.09.04", latestVersion: "26.09.04" },
   "comfyui-dlss5": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.2", latestVersion: "0.2.2" },
   "comfyui-aetherscale": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.5.5", latestVersion: "0.5.5" },
@@ -102,37 +100,16 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
 };
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
+  // Tombstone retains explicit uninstall lookup; no scan, readiness or install route.
   id: "minimax-h3-image-studio",
+  retired: true,
   priority: 135,
   name: "MiniMax H3 Image Studio",
-  purpose: "提供 MiniMax H3 FL2VA 图像 I2I 与 REF2VA 参考编辑节点",
+  purpose: "已移除的 H3 图片功能；仅保留节点卸载身份",
   repositoryUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio.git",
   directoryName: "ComfyUI-MiniMax-H3-Image-Studio",
   aliases: ["comfyui-minimax-h3-image-studio", "ComfyUI-MiniMax-H3-Image-Studio"],
-  installRevision: MINIMAX_H3_IMAGE_STUDIO_REVISION,
-  releaseSource: "github-release",
-  minimumVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
-  recommendedVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
-  latestVersion: MINIMAX_H3_IMAGE_STUDIO_VERSION,
-  nodeTypes: [
-    "H3ImageResolutionPreset",
-    "H3ImageToImagePrepare",
-    "H3ReferenceEditPrepare",
-    "H3ImageSamplingPreset",
-    "H3ImageDecode",
-    "H3ImageFrameSelector"
-  ],
-  runtimeRequirement: "Python >=3.10；上游 v23.0.0 requirements.txt 无额外 Python 依赖。安装后必须重启所选 ComfyUI，并重新检查 /object_info；目录存在不等于节点已加载。",
-  compatibilityEvidence: [{
-    verifiedAt: "2026-09-15",
-    sourceUrl: "https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio/tree/v23.0.0",
-    note: "固定 v23.0.0 / commit f7384aac；静态核对 pyproject.toml、requirements.txt、FL2VA/REF2VA API graphs 与节点注册表。当前没有目标 ComfyUI /object_info 或本机 GPU smoke 证据。",
-    comfyUi: ">=0.30.0",
-    python: ">=3.10",
-    commit: MINIMAX_H3_IMAGE_STUDIO_REVISION,
-    workflowIds: ["minimax_h3_image_i2i_api.json", "minimax_h3_reference_edit_api.json"],
-    checks: ["static"]
-  }],
+  nodeTypes: [],
   appInstallable: true,
   bulkInstall: false,
   required: false
@@ -149,14 +126,15 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "inpaint-cropandstitch",
+  retired: true,
   priority: 100,
   name: "ComfyUI Inpaint Crop & Stitch",
-  purpose: "按 Mask 裁剪局部上下文，供 Qwen 重绘后无缝拼回原图",
+  purpose: "已移除的 Qwen 局部融合修复；仅保留节点卸载身份",
   repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
   directoryName: "ComfyUI-Inpaint-CropAndStitch",
   aliases: ["comfyui-inpaint-cropandstitch", "ComfyUI-Inpaint-CropAndStitch", "comfyui-crop-and-stitch"],
-  releaseSource: "github-release",
-  nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
+  appInstallable: true,
+  nodeTypes: [],
   required: false
 }, {
   id: "comfyui-gguf",
@@ -166,6 +144,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/leejet/ComfyUI-GGUF.git",
   directoryName: "ComfyUI-GGUF",
   aliases: ["comfyui-gguf"],
+  installRevision: COMFYUI_GGUF_REVISION,
   releaseSource: "github-release",
   nodeTypes: ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
   runtimeRequirement: "维护版 fork；当前 requirements.txt 需要 gguf>=0.13.0、sentencepiece、protobuf，并要求较新的 ComfyUI custom ops 支持。Qwen Image 2.1 GGUF 默认使用 Q8_0，Q6_K 作为 4090 显存余量档；Q4/Q5 不再作为应用默认路径。",
@@ -399,13 +378,15 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   aliases: ["comfyui-minimaxh3-prompt-writer"],
   releaseSource: "github-release",
   runtimeEndpoint: "/h3studio/status",
+  installRevision: MINIMAX_H3_PROMPT_WRITER_REVISION,
+  installRevisionPolicy: "recommended",
   minimumVersion: MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION,
   recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
-    verifiedAt: "2026-09-07",
-    sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.5",
-    note: "0.4.5 保留应用依赖的 /h3studio/status、/models、/runtime/gguf/diagnostics、/media/upload、/media、/generate、/cancel 和 /unload 接口；新增 Auto VRAM、媒体编辑/拼贴、浮动媒体面板、主题/界面尺寸和外部 llama.cpp 路由器能力。应用兼容补丁已对 v0.4.5 后端源码回放并通过 Python 语法检查；尚未把这项静态证据当作本机真实 Prompt Writer generation smoke。",
-    commit: "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+    verifiedAt: "2026-10-09",
+    sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.7",
+    note: "固定 stable0.4.7，保留应用 /h3studio 接口；移除上游brief硬上限、校验丢失参考标签，并将projector加入驻留身份。Gemma模板、n_batch=256与共享llama后端兼容层回放/幂等通过；Sequence与第三方UI不代表本应用已接入。",
+    commit: MINIMAX_H3_PROMPT_WRITER_REVISION,
     checks: ["static"]
   }],
   runtimeRequirement: "上游 0.4.x 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端。旧版 0.3.x 可通过应用修复流程回补输出预算与卸载兼容层。更新节点不会覆盖已通过自检的后端；请在设置 → 节点与依赖中安装或重装/修复，不要重复安装第二个版本。",
@@ -433,7 +414,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     verifiedAt: "2026-09-10",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.6.2",
     note: "v0.6.2 要求 ComfyUI 0.34.0+，修复旧 Chain 画布中空字符串 segments 无法通过 INT 校验的问题，并更新官方示例为 segments=0；v0.6.1 还为槽位检查/清理接口增加同源保护并限制 latent 路径在 output 目录内，v0.6.0 增加 Chain 自动串联、segments 和 Clear latents。上游变更主要影响手工画布串联；本应用 API workflow 仍不引入 Chain。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
-    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    comfyUi: "0.34.0",
     commit: "5335715",
     workflowIds: ["minimax_h3_r2v_extend_api"],
     checks: ["static"]
@@ -441,7 +422,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     verifiedAt: "2026-09-03",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.5.1",
     note: "v0.5.1 是 v0.5.0 核心升级后的补充发布，更新官方 example workflow；仍要求 ComfyUI 0.34.0+。本应用 API workflow 不依赖上游示例图，因此不改变现有四个基础节点、显式正数 slot 或 Chain 不参与应用执行的判断。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
-    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    comfyUi: "0.34.0",
     commit: "429e952",
     workflowIds: ["minimax_h3_r2v_extend_api"],
     checks: ["static"]
@@ -449,7 +430,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     verifiedAt: "2026-09-03",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.5.0",
     note: "v0.5.0 要求 ComfyUI 0.34.0+，改用原生 H3 keyframe layout contract，不再修改 ComfyUI 的 layout/payload；Load 0 表示首个 clip 的无 context，新增 Chain 用于画布中的 Load/Save 槽位顺序。本应用 API workflow 仍使用四个基础节点和显式正数 slot，不依赖 Chain。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
-    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    comfyUi: "0.34.0",
     commit: "6a8267e",
     workflowIds: ["minimax_h3_r2v_extend_api"],
     checks: ["static"]
@@ -467,7 +448,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "h3-continuum",
   priority: 142,
   name: "ComfyUI H3 Continuum",
-  purpose: "使用 H3 Continuum V3.8 的原生 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
+  purpose: "使用 H3 Continuum 3.9.1 的 V3.8 兼容 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
   repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
   directoryName: "ComfyUI-H3-Continuum",
   aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
@@ -484,12 +465,12 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
   bulkInstall: false,
   appInstallable: true,
-  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum V3.8X package 3.8.2。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
+  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum package 3.9.1，保留 V3.8 兼容节点。旧 v5 Take 可读，但不能复用为新 v6 接续前缀；需要新 Run 或恢复兼容运行环境。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
   compatibilityEvidence: [{
-    verifiedAt: "2026-09-15",
-    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/commit/c38c616d54feb0310a3ca7540f2f4addc499fd1f",
-    note: "V3.8X package 3.8.2 保留 3.8.1 已验收的 R0-R6 runtime、七节点公开面、Sampling、Review 与 Run Storage 契约，并同步发布清单及 Spectrum v0.2.27 兼容验证；本应用安装 pin 到该提交。公开主路径仍为 H3ContinuumSamplerV38 → Core Video/Audio VAE Decode → H3ContinuumAssembleSeamV35（Finalize）。上游 Issue #13 仍未解决，升级不代表主观画质或外部 JointAV state 接续已经修复。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
-    comfyUi: "0.34.2",
+    verifiedAt: "2026-10-09",
+    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.9.1",
+    note: "固定stable3.9.1，保留应用的SamplerV38兼容面与Finalize；Sampling Contract v6/Graph v4强化CFG/wrapper/closure复用资格，旧v5 Take仅可读，不复用为新v6前缀。应用managed保护仍挂到官方Run锁内前缀验证，不能将上游CPU/GPU证据当成本机全部组合通过。",
+    comfyUi: "0.34.0",
     commit: H3_CONTINUUM_REVISION,
     checks: ["static"]
   }],
@@ -498,11 +479,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "plaguekind-h3-sla",
   priority: 160,
   name: "ComfyUI-PlagueKind H3 SLA Attention",
-  purpose: "为 MiniMax H3 Turbo-SLA LoRA 提供块稀疏注意力；选择 Turbo-SLA 后由应用自动插入。",
+  purpose: "提供 H3 SLA 旧工作流兼容节点；应用当前 Turbo-SLA 使用 ComfyUI 核心 BlockSparseAttention。",
   repositoryUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git",
   directoryName: "ComfyUI-PlagueKind-Nodes",
   aliases: ["comfyui-plaguekind-nodes", "ComfyUI-PlagueKind-Nodes"],
   releaseSource: "github-release",
+  installRevision: H3_SLA_ATTENTION_REVISION,
+  installRevisionPolicy: "recommended",
   nodeTypes: ["H3SLAAttention"],
   minimumVersion: H3_SLA_ATTENTION_MINIMUM_VERSION,
   recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION,
@@ -511,15 +494,16 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     id: "h3-sla-attention",
     name: "H3 SLA Attention",
     nodeTypes: ["H3SLAAttention"],
-    description: "仅在创建页选择 MiniMax H3 Turbo-SLA 时使用；应用会自动插入，不提供独立开关。"
+    description: "提供 H3SLAAttention 兼容 schema；现用 Turbo-SLA 的原生稀疏节点由应用自动配置。"
   }],
   compatibilityEvidence: [{
-    verifiedAt: "2026-08-26",
-    sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes",
-    note: "H3SLAAttention 来自 ComfyUI-H3-SLA-Attention；节点通过 comfy_api.latest 注册，导入或运行环境不兼容时会安全回退到 dense。",
+    verifiedAt: "2026-10-09",
+    sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/d58d006a4ea32c25c06499f2ff104f0852a045a6",
+    note: "固定HEAD源码1.5.6，H3SLAAttention保留旧输入并新增engine/INT8 QK/参考保护选项；实际schema通过。现用Turbo-SLA执行图采用核心BlockSparseAttention，并非本包的新内核；本包新后端性能与画质尚未实测。",
+    commit: H3_SLA_ATTENTION_REVISION,
     checks: ["static"]
   }],
-  runtimeRequirement: "需要支持 comfy_api.latest 的 ComfyUI。当前应用为 H3 Turbo-SLA 固定 block_size 64、sparsity 0.85、保护音频，并在 Triton、显卡或接口不兼容时允许 dense 回退；回退时不会获得稀疏加速。",
+  runtimeRequirement: "需要支持 comfy_api.latest 的 ComfyUI。现用 H3 Turbo-SLA 由核心 BlockSparseAttention 采用 SLA 选择及 exact_kv_and_rows 音频/条件保护；本包 H3SLAAttention 保留旧工作流兼容，不自动切换其新实验内核。",
   required: false
 }, {
   id: "h3-optimizations",
@@ -649,11 +633,12 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     "LocalVideoStudioH3ContinuumSamplerV38",
     "LocalVideoStudioH3ContinuumDiagnostics",
     "LocalVideoStudioH3ContinuumManagedReceipt",
+    "LocalVideoStudioH3ManagedSageAttention",
     "LocalVideoStudioRequireGpuVAE",
     "LocalVideoStudioH3RequireGpuVAE",
     "LocalVideoStudioH3AnchorConditioning"
   ],
-  runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 只在 ComfyUI-H3-Continuum 3.8.2 已加载时工作，委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
+  runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 3.9.1，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
   required: false
 }, {
   id: "spectrum-minimax-h3",
@@ -668,6 +653,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
+    verifiedAt: "2026-10-09",
+    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.29",
+    note: "v0.2.28 规范化 Windows CRLF source audit；v0.2.29 按实际 Core BSA/Flow/Untwist 的运行结构、route/layout/conditioning 与 actual-call receipt 判断兼容，不再仅凭整文件 hash 拒绝普通 forecast，并强化 cold-to-primed 校准所有权与历史身份。当前应用的 Spectrum 节点接口和 RES/ER-SDE 图参数不变；未知 wrapper、无效 receipt 或校准证明失败仍安全执行 actual。本条为发布及源码核对；本机生成、forecast 计数和适用边界另见本次升级任务证据，不推广为所有 backend/旧 Run 已验或性能/画质提升。",
+    commit: "806fe498d574a726fecb8818917f00a4b993fd77",
+    workflowIds: ["minimax_h3_t2va_api.json", "minimax_h3_r2v_api.json"],
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-09-18",
     sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.27",
     note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast；v0.2.23 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 balanced；v0.2.24 移除已验证 few-step/progressive 流程中不必要的 actual-evaluation barriers，并使 RES Multistep 的 tail_actual_steps 按工作流值生效；v0.2.25 修复当前 ComfyUI DynamicVRAM/Comfy Compiler 下 Spectrum H3 solver 与 Aimdo malloc-graph 的崩溃边界，不全局关闭 DynamicVRAM 或 Compiler；v0.2.26 增加 provider-generic numerical-attention history/receipt 合约，无法证明后端连续性时安全退回 actual-only；v0.2.27 增加预测头流式投影与 CUDA target lifetime 修复，并恢复审查过的 Core BlockSparseAttention Mixed-Grid forecast recovery，主要降低预测头 CUDA 显存压力，不承诺整体速度提升。当前内置 H3 仍使用 RES/ER-SDE，不切换为 SA/PECE；现有模型、LoRA、Continuum、Diff-Aid、Untwisting RoPE 与工作流结构保持兼容，RefDelta、SEEDS 和 SA-Solver 仍不是本应用硬依赖；本条为上游发布与静态核对，目标机器仍需重启后做 /object_info 与最小 H3 smoke。",

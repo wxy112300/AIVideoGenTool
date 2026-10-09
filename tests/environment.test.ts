@@ -245,10 +245,13 @@ describe("SageAttention environment selection", () => {
   it("requires the pinned comfy-kitchen CUDA backend for the official H3 ConvRot path", () => {
     const probe = {
       cudaVersion: "13.0",
-      comfyKitchenVersion: "0.2.35",
+      comfyKitchenVersion: "0.2.37",
       comfyKitchenBackends: ["cuda"]
     };
     expect(h3ComfyKitchenCudaBackendReady(probe)).toBe(true);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.35" })).toBe(false);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.38" })).toBe(false);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, cudaVersion: "12.9" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.33" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenBackends: ["cpu"] })).toBe(false);
   });

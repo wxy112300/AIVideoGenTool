@@ -221,7 +221,7 @@ function compatibilityForNode(
 }
 
 function joinUniqueNotices(...notices: string[]): string {
-  return [...new Set(notices.filter(Boolean))].join("；");
+  return [...new Set(notices.flatMap((notice) => notice.split("；")).map((notice) => notice.trim()).filter(Boolean))].join("；");
 }
 
 export function availableComfyNodeIds(objectInfo: unknown): Set<string> {
@@ -603,6 +603,16 @@ export async function scanCustomNodes(
     const detectedRevision = definition.source === "bundled"
       ? version
       : await readRevision(directory);
+    const sourceRemote = definition.id === "comfyui-gguf" && directory
+      ? await gitRemoteUrl(directory)
+      : "";
+    if (definition.id === "comfyui-gguf" && directory &&
+        normalizedRepositoryUrl(sourceRemote) !== normalizedRepositoryUrl(definition.repositoryUrl)) {
+      compatibilityError = sourceRemote
+        ? "GGUF 来源不匹配：当前不是项目推荐的 leejet 维护版，不能以相同版本号确认 Qwen Image 2.1 支持。"
+        : "GGUF 来源未确认：无法读取 Git origin，不能以版本号确认 Qwen Image 2.1 支持。";
+      updateNotice = "请安装/更新通用 GGUF；应用会备份旧目录并安装固定维护版，保留 H3 专用 GGUF。";
+    }
     const belowRecommendedVersion = Boolean(
       versionMode === "release" && directory && version && definition.recommendedVersion &&
       compareReleaseVersions(version, definition.recommendedVersion) < 0
@@ -639,8 +649,14 @@ export async function scanCustomNodes(
     if (directory && definition.installRevision &&
         detectedRevision.toLowerCase() !== definition.installRevision.toLowerCase()) {
       const detectedLabel = detectedRevision || "未读取到";
-      compatibilityError = compatibilityError ||
-        `节点 revision 不匹配：当前 ${detectedLabel}，要求 ${definition.installRevision}`;
+      if (definition.installRevisionPolicy === "recommended") {
+        optionalUpdateRecommended = true;
+        updateNotice = joinUniqueNotices(updateNotice,
+          `发现项目推荐 revision 更新：当前 ${detectedLabel}，推荐 ${definition.installRevision}`);
+      } else {
+        compatibilityError = compatibilityError ||
+          `节点 revision 不匹配：当前 ${detectedLabel}，要求 ${definition.installRevision}`;
+      }
     }
     const requiredNodeTypes = definition.nodeTypes;
     // Prompt Writer exposes a more specific runtime contract than
@@ -723,7 +739,7 @@ export async function scanCustomNodes(
       latestVersion,
       detectedRevision,
       installRevision: definition.installRevision ?? "",
-      sourceRemote: "",
+      sourceRemote,
       revisionDirtyState: undefined,
       compatibilityState: compatibility.compatibilityState,
       compatibilityNotice: compatibility.compatibilityNotice,

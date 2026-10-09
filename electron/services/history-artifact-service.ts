@@ -231,6 +231,22 @@ export class HistoryArtifactService {
         }
       }
       const manifestPath = path.resolve(root, safeH3OutputRelativePath(receipt.runStorageRoot)!);
+      const manifest = await fs.readFile(manifestPath, "utf8")
+        .then((text) => JSON.parse(text) as Record<string, unknown>).catch(() => null);
+      if (!manifest || manifest.revision_id !== receipt.revisionId) {
+        return { route, status: "invalid", reason: "Run Storage manifest 无效或 revision 与历史记录不一致；原文件保留。" };
+      }
+      if (manifest.sampling_contract_version === 5) {
+        return { route, status: "invalid", reason: "这是旧版 v5 managed Run，新版 v6 不允许直接复用。原视频和 AV 文件保留；可用原运行环境继续，或选择独立 Native AV 走 AV 兼容模式。" };
+      }
+      if (manifest.sampling_contract_version !== 6 || manifest.resume_safe !== true) {
+        return { route, status: "invalid", reason: "该 Run 没有可安全恢复的新版采样契约；原视频和 AV 文件保留。" };
+      }
+      if (typeof manifest.contract_sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(manifest.contract_sha256) ||
+          (receipt.contractSha256 !== undefined && receipt.contractSha256 !== manifest.contract_sha256) ||
+          (receipt.samplingContractVersion !== undefined && receipt.samplingContractVersion !== manifest.sampling_contract_version)) {
+        return { route, status: "invalid", reason: "Run 采样契约与历史 receipt 不一致，请重新选择正确的历史版本。" };
+      }
       const projectPath = path.join(path.dirname(path.dirname(path.dirname(manifestPath))), "project.json");
       const project = await fs.readFile(projectPath, "utf8").then((text) => JSON.parse(text) as { canonical_storage_revision_id?: string }).catch(() => null);
       if (project?.canonical_storage_revision_id !== sequence.canonicalHead.revisionId) {

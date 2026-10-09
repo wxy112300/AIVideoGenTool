@@ -6,7 +6,7 @@ import { SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "..
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, imagePromptPackForTarget } from "../../prompt-packs";
 import { imageModelCapabilityFor, imageModelAdapterFor, imageLightningComponentFound, imagePicturesForModelInput, imageQualityProfileRequiresLightning, imageAspectRatioOptionsFor, imageResolutionOptionsFor, imageOutputCountMax, imageQualityProfileComponentFound, imageQualityProfileRequiredComponentLabel, normalizeImageAspectRatio, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
-import { isH3ImageModelId, normalizeImageEditDraft } from "../../../core/image-project";
+import { normalizeImageEditDraft } from "../../../core/image-project";
 import { BUILTIN_IMAGE_LORAS, imageLoraCompatibleWithModel, imageLoraConfigurationError, profileProvidesImageLora } from "../../../core/image-loras";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts, motionContextReferenceSlotsReady } from "../../../core/h3-reference";
@@ -48,6 +48,8 @@ export function generationSafetyForCreateDraft(draft, locale) {
     }, locale ?? "zh-CN");
 }
 export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTranslator("zh-CN").t) {
+    if (!imageModelAdapterFor(draft.modelId))
+        return "当前图片模型已移除或不受支持，请重新选择模型。";
     const imageCapability = imageModelCapabilityFor(draft.modelId);
     const inputPictures = imagePicturesForModelInput(draft.pictures, imageCapability.supportsTextOnly === true);
     const incompletePicture = inputPictures.find((picture) => !picture.absolutePath);
@@ -64,7 +66,7 @@ export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTrans
             ? t(uiKeys.create.validation.imageBaseMissing)
             : incompletePicture
                 ? t(uiKeys.create.validation.imagePictureMissing, { slot: incompletePicture.pictureNumber })
-                    : inputPictures.length > imageCapability.maxPictures
+                : inputPictures.length > imageCapability.maxPictures
                     ? t(uiKeys.create.validation.imageTooMany, { name: imageCapability.name, count: imageCapability.maxPictures })
                     : imageModelInputCount > imageCapability.maxPictures
                         ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
@@ -78,17 +80,6 @@ export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTrans
         return referenceBlockReason;
     if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
         return t(uiKeys.create.validation.imagePromptMissing);
-    }
-    if (isH3ImageModelId(draft.modelId)) {
-        const productGate = imageProfile?.productGate ?? modelCatalog.get(draft.modelId)?.definition.scan?.productGate;
-        if (productGate === "locked")
-            return t(uiKeys.status.imageProductGatePending);
-        if (!imageCapability.qualityProfiles.some((profile) => profile.id === draft.qualityProfile)) {
-            return `H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`;
-        }
-        const compiled = imageModelAdapterFor(draft.modelId)?.compilePrompt(prompt.text, draft.pictures);
-        if (compiled?.errors.length)
-            return compiled.errors[0];
     }
     if (imageProfile?.missingCustomNodeNames?.length) {
         return `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
@@ -127,15 +118,15 @@ export function videoEnqueueBlockReason(input) {
                                         ? t(uiKeys.create.validation.continuumArtifactMissing)
                                         : input.motionContextLatentTrimValid === false
                                             ? t(uiKeys.create.validation.motionContextTrimUnsupported)
-                                        : input.motionContextPreflightBlockReason
-                                            ? input.motionContextPreflightBlockReason
-                                        : !input.h3MotionContextReady
-                                            ? t(uiKeys.create.validation.motionContextMissing)
-                                            : !input.r2vSlotsReady
-                                                ? t(uiKeys.create.validation.r2vSlotMissing)
-                                                : !input.spectrumReady
-                                                    ? t(uiKeys.create.validation.spectrumMissing)
-                                                    : "";
+                                            : input.motionContextPreflightBlockReason
+                                                ? input.motionContextPreflightBlockReason
+                                                : !input.h3MotionContextReady
+                                                    ? t(uiKeys.create.validation.motionContextMissing)
+                                                    : !input.r2vSlotsReady
+                                                        ? t(uiKeys.create.validation.r2vSlotMissing)
+                                                        : !input.spectrumReady
+                                                            ? t(uiKeys.create.validation.spectrumMissing)
+                                                            : "";
     }
     return !input.isR2V && !input.allowTextOnly && !input.startImagePath
         ? t(uiKeys.create.validation.startFrameMissing)
@@ -163,7 +154,7 @@ export function buildImageEditPageViewModel(options) {
     const selectedTargetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
     const imageAspectRatioOptions = imageAspectRatioOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0);
     const imageResolutionOptions = imageResolutionOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0, selectedAspectRatio, basePicture ? imageCapability.customOutputMultiple ?? 8 : 8);
-    const imageModelProfiles = sortProfilesByCatalogOrder(environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [], modelCatalog, "image");
+    const imageModelProfiles = sortProfilesByCatalogOrder(environmentScan?.modelProfiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired) ?? [], modelCatalog, "image");
     const imageModelOptions = imageModelProfiles.length
         ? imageModelProfiles
         : modelCatalog.list("image").map((entry) => ({
@@ -183,34 +174,90 @@ export function buildImageEditPageViewModel(options) {
     const imageProfile = environmentScan?.modelProfiles.find((profile) => profile.id === draft.modelId);
     const imageLoraOptions = BUILTIN_IMAGE_LORAS.filter((lora) => imageLoraCompatibleWithModel(lora, draft.modelId));
     const imageLoraVisible = imageLoraOptions.length > 0;
-    const imageLoraOptionsMarkup = imageLoraOptions.map((lora) => {
-        const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+    const selectedImageLoras = imageLoraOptions.filter((lora) => draft.imageLoras.some((candidate) => candidate.id === lora.id));
+    const imageLoraAddableOptions = imageLoraOptions.filter((lora) => {
         const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
-        const available = profileProvidesImageLora(profile, lora.filename);
-        const selected = draft.imageLoras.some((candidate) => candidate.id === lora.id);
-        const guideLocale = loraLocaleFor(lora.id, state.settings.uiLocale)?.guide;
-        const guide = guideLocale
-            ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
-            : "";
-        const status = !environmentScan
-            ? "等待环境扫描……"
-            : !profile
-                ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
-                : available
-                    ? "文件已就绪。"
-                    : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
-        const triggerText = lora.promptPrefixes?.length
-            ? "触发词：" + lora.promptPrefixes.join(", ")
-            : "";
-        return "<label class=\"settings-field image-lora-toggle\">" +
-            "<span><input data-image-lora-id=\"" + escapeHtml(lora.id) + "\" type=\"checkbox\"" +
-            (selected ? " checked" : "") +
-            (available ? "" : " disabled") +
-            "> " + escapeHtml(localized?.name ?? lora.name) +
-            " · strength " + escapeHtml(String(lora.strength)) + "</span>" +
-            "<small>" + escapeHtml([guide, triggerText].filter(Boolean).join(" ")) + "</small>" +
-            "<small>" + escapeHtml(status) + "</small></label>";
-    }).join("");
+        return !draft.imageLoras.some((candidate) => candidate.id === lora.id) &&
+            profileProvidesImageLora(profile, lora.filename);
+    });
+    const imageLoraAddDisabled = imageLoraAddableOptions.length === 0;
+    const imageLoraAddOptionsMarkup = imageLoraAddableOptions.length
+        ? imageLoraAddableOptions.map((lora) => {
+            const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+            return "<option value=\"" + escapeHtml(lora.id) + "\">" +
+                escapeHtml(localized?.name ?? lora.name) +
+                "</option>";
+        }).join("")
+        : "<option value=\"\">" +
+            escapeHtml(!environmentScan
+                ? "等待环境扫描……"
+                : draft.imageLoras.length
+                    ? "已添加兼容的图片 LoRA"
+                    : "没有可添加的图片 LoRA") +
+            "</option>";
+    const imageLoraOptionsMarkup = selectedImageLoras.length
+        ? "<div class=\"video-lora-list\">" +
+            selectedImageLoras.map((lora, index) => {
+                const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
+                const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
+                const available = profileProvidesImageLora(profile, lora.filename);
+                const guideLocale = loraLocaleFor(lora.id, state.settings.uiLocale)?.guide;
+                const guide = guideLocale
+                    ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
+                    : "";
+                const status = !environmentScan
+                    ? "等待环境扫描……"
+                    : !profile
+                        ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
+                        : available
+                            ? "文件已就绪。"
+                            : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
+                const triggerText = lora.promptPrefixes?.length
+                    ? "触发词：" + lora.promptPrefixes.join(", ")
+                    : "";
+                const guideText = [guide, triggerText].filter(Boolean).join(" ");
+                const localizedName = localized?.name ?? lora.name;
+                return "<article class=\"video-lora-row image-lora-row\" data-image-lora-id=\"" +
+                    escapeHtml(lora.id) + "\">" +
+                    "<div class=\"video-lora-identity\"><span class=\"video-lora-order\">" +
+                    String(index + 1) +
+                    "</span><div><span class=\"video-lora-name-line\"><strong>" +
+                    escapeHtml(localizedName) +
+                    "</strong></span><span>" +
+                    escapeHtml(lora.modelFamily) +
+                    (triggerText ? " · " + escapeHtml(triggerText) : "") +
+                    "</span><span class=\"image-lora-status\"><strong>" +
+                    escapeHtml(available ? "文件已就绪" : "文件待处理") +
+                    "</strong><span>" +
+                    escapeHtml(guideText || status) +
+                    "</span>" +
+                    (guideText ? "<small>" + escapeHtml(status) + "</small>" : "") +
+                    "</span></div></div>" +
+                    "<label class=\"video-lora-strength\"><span>" +
+                    escapeHtml(t(uiKeys.create.videoSettings.strength)) +
+                    "</span><input type=\"range\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
+                    escapeHtml(String(lora.strength)) +
+                    "\" data-image-lora-strength=\"" +
+                    escapeHtml(lora.id) +
+                    "\" aria-label=\"" +
+                    escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
+                    "\"><input type=\"number\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
+                    escapeHtml(String(lora.strength)) +
+                    "\" data-image-lora-strength-number=\"" +
+                    escapeHtml(lora.id) +
+                    "\" aria-label=\"" +
+                    escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
+                    "\"></label>" +
+                    "<div class=\"video-lora-actions\"><button class=\"icon-button\" type=\"button\" data-remove-image-lora=\"" +
+                    escapeHtml(lora.id) +
+                    "\" aria-label=\"" +
+                    escapeHtml(t(uiKeys.create.videoSettings.remove) + " " + localizedName) +
+                    "\" title=\"" +
+                    escapeHtml(t(uiKeys.create.videoSettings.remove) + " LoRA") +
+                    "\"><span aria-hidden=\"true\">×</span></button></div></article>";
+            }).join("") +
+            "</div>"
+        : "<div class=\"video-lora-empty\">尚未添加图片 LoRA</div>";
     const promptStatus = promptModelStatus(state.settings, environmentScan, t);
     const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
     const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -250,24 +297,11 @@ export function buildImageEditPageViewModel(options) {
     const promptlessResultDescription = t(backgroundRemoval
         ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
         : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
-    const h3ImageOptionsVisible = isH3ImageModelId(draft.modelId);
-    const textOnlySizeControlsVisible = imageCapability.supportsTextOnly === true && imagePicturesForModelInput(draft.pictures, true).length === 0;
-    const imageSizeControlsVisible = !h3ImageOptionsVisible && (imageCapability.sourceResolutionOnly !== true || imageCapability.supportsCustomOutputSize === true || textOnlySizeControlsVisible);
-    const h3ReferenceDetailVisible = draft.modelId === "minimax-h3-reference-edit";
-    const h3ReferenceNoteVisible = h3ReferenceDetailVisible;
-    const h3ImageSourceFitOptionsMarkup = h3ImageOptionsVisible && draft.h3ImageOptions
-        ? [
-            ["crop-center", uiKeys.create.imageEdit.h3SourceFitCropCenter],
-            ["contain-pad", uiKeys.create.imageEdit.h3SourceFitContainPad],
-            ["stretch", uiKeys.create.imageEdit.h3SourceFitStretch]
-        ].map(([value, label]) => `<option value="${value}" ${draft.h3ImageOptions?.sourceFit === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`).join("")
-        : "";
-    const h3ImageReferenceDetailOptionsMarkup = h3ReferenceDetailVisible && draft.h3ImageOptions
-        ? [
-            ["match-generation-area", uiKeys.create.imageEdit.h3ReferenceDetailMatchGenerationArea],
-            ["max-identity-2048", uiKeys.create.imageEdit.h3ReferenceDetailMaxIdentity2048]
-        ].map(([value, label]) => `<option value="${value}" ${draft.h3ImageOptions?.referenceDetail === value ? "selected" : ""}>${escapeHtml(t(label))}</option>`).join("")
-        : "";
+    const textOnlySizeControlsVisible = imageCapability.supportsTextOnly === true &&
+        imagePicturesForModelInput(draft.pictures, true).length === 0;
+    const imageSizeControlsVisible = (imageCapability.sourceResolutionOnly !== true ||
+        imageCapability.supportsCustomOutputSize === true ||
+        textOnlySizeControlsVisible);
     const imageQualityOptionsMarkup = imageCapability.qualityProfiles.map((profile) => {
         const qualityNeedsComponent = imageQualityProfileRequiredComponentLabel(imageCapability, profile.id);
         const qualityComponentMissing = Boolean(qualityNeedsComponent && !imageQualityProfileComponentFound(imageCapability, profile.id, imageProfile?.components ?? []));
@@ -293,6 +327,8 @@ export function buildImageEditPageViewModel(options) {
         imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageLoraVisible,
+        imageLoraAddOptionsMarkup,
+        imageLoraAddDisabled,
         imageLoraOptionsMarkup,
         imageEnhanceMode,
         imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
@@ -331,13 +367,7 @@ export function buildImageEditPageViewModel(options) {
         imageResolutionVisible: imageSizeControlsVisible,
         supportsTextOnly: imageCapability.supportsTextOnly === true,
         maskSupported: imageCapability.supportsMask === true,
-        annotationSupported: imageCapability.supportsMarkup === true,
-        h3ImageOptionsVisible,
-        h3ReferenceDetailVisible,
-        h3ReferenceNoteVisible,
-        h3ImageSourceFitOptionsMarkup,
-        h3ImageReferenceDetailOptionsMarkup,
-        h3ImageSourceFidelity: draft.h3ImageOptions?.sourceFidelity ?? 0
+        annotationSupported: imageCapability.supportsMarkup === true
     };
 }
 export function continuumDependencyBlockReasonFor(environmentScan, modelId, managed) {
@@ -375,6 +405,66 @@ export function continuumDependencyBlockReasonFor(environmentScan, modelId, mana
         }
     }
     return "";
+}
+function continuumFileNameFor(path) {
+    return path?.split(/[\\/]/u).pop() ?? "";
+}
+function continuumFileLocationFor(file, path) {
+    return file?.absolutePath ?? path ?? (file ? [file.subfolder, file.filename].filter(Boolean).join("/") : "");
+}
+function continuumDependencyStatusFor(inspection, hasReference) {
+    if (inspection?.status === "available")
+        return hasReference ? "available" : "missing";
+    if (inspection)
+        return "missing";
+    return hasReference ? "checking" : "missing";
+}
+export function continuumDependencyFilesFor(t, draft, managed, inspection) {
+    const files = [];
+    const identities = new Set();
+    const addFile = (kind, file, path, status, chunkIndex) => {
+        const filename = file?.filename ?? continuumFileNameFor(path);
+        const location = continuumFileLocationFor(file, path);
+        const identity = location || `${kind}:${chunkIndex ?? ""}`;
+        if (identities.has(identity))
+            return;
+        identities.add(identity);
+        files.push({
+            kind,
+            filename: filename || t(status === "not-created"
+                ? uiKeys.create.continuumArtifact.dependencyNotCreated
+                : uiKeys.create.continuumArtifact.dependencyNoReference),
+            location,
+            status,
+            ...(chunkIndex === undefined ? {} : { chunkIndex })
+        });
+    };
+    if (!managed) {
+        const artifact = inspection?.artifact ?? draft.h3ContinuumArtifact;
+        const hasPayloadReference = Boolean(artifact?.payload || inspection?.payloadPath || draft.h3ContinuumArtifactPath);
+        const hasManifestReference = Boolean(artifact?.manifest || inspection?.manifestPath);
+        if (!hasPayloadReference && !hasManifestReference)
+            return files;
+        const artifactStatus = continuumDependencyStatusFor(inspection, hasPayloadReference);
+        addFile("payload", artifact?.payload, inspection?.payloadPath ?? draft.h3ContinuumArtifactPath, artifactStatus);
+        addFile("manifest", artifact?.manifest, inspection?.manifestPath, continuumDependencyStatusFor(inspection, hasManifestReference));
+        return files;
+    }
+    const receipts = (draft.h3ContinuumSequence?.chunks ?? [])
+        .map((chunk) => chunk.receipt)
+        .filter((receipt) => Boolean(receipt));
+    if (receipts.length === 0) {
+        addFile("run-storage", undefined, undefined, "not-created");
+        return files;
+    }
+    for (const receipt of receipts) {
+        const receiptStatus = continuumDependencyStatusFor(inspection, true);
+        addFile("run-storage", receipt.runStorageRoot, undefined, receiptStatus);
+        for (const record of receipt.chunkRecords) {
+            addFile("chunk-payload", record.payloadPath, undefined, receiptStatus, record.logicalChunkIndex);
+        }
+    }
+    return files;
 }
 function continuumStatusFor(t, state, draft, managed, artifactReady, enqueueBlockReason, dependencyBlockReason, runtimeUnverified, inspection) {
     const route = t(managed
@@ -447,66 +537,6 @@ function continuumStatusFor(t, state, draft, managed, artifactReady, enqueueBloc
         label: t(uiKeys.create.continuumArtifact.statusReadyFirst),
         detail: runDetail
     };
-}
-function continuumFileNameFor(path) {
-    return path?.split(/[\\/]/u).pop() ?? "";
-}
-function continuumFileLocationFor(file, path) {
-    return file?.absolutePath ?? path ?? (file ? [file.subfolder, file.filename].filter(Boolean).join("/") : "");
-}
-function continuumDependencyStatusFor(inspection, hasReference) {
-    if (inspection?.status === "available")
-        return hasReference ? "available" : "missing";
-    if (inspection)
-        return "missing";
-    return hasReference ? "checking" : "missing";
-}
-export function continuumDependencyFilesFor(t, draft, managed, inspection) {
-    const files = [];
-    const identities = new Set();
-    const addFile = (kind, file, path, status, chunkIndex) => {
-        const filename = file?.filename ?? continuumFileNameFor(path);
-        const location = continuumFileLocationFor(file, path);
-        const identity = location || `${kind}:${chunkIndex ?? ""}`;
-        if (identities.has(identity))
-            return;
-        identities.add(identity);
-        files.push({
-            kind,
-            filename: filename || t(status === "not-created"
-                ? uiKeys.create.continuumArtifact.dependencyNotCreated
-                : uiKeys.create.continuumArtifact.dependencyNoReference),
-            location,
-            status,
-            ...(chunkIndex === undefined ? {} : { chunkIndex })
-        });
-    };
-    if (!managed) {
-        const artifact = inspection?.artifact ?? draft.h3ContinuumArtifact;
-        const hasPayloadReference = Boolean(artifact?.payload || inspection?.payloadPath || draft.h3ContinuumArtifactPath);
-        const hasManifestReference = Boolean(artifact?.manifest || inspection?.manifestPath);
-        if (!hasPayloadReference && !hasManifestReference)
-            return files;
-        const artifactStatus = continuumDependencyStatusFor(inspection, hasPayloadReference);
-        addFile("payload", artifact?.payload, inspection?.payloadPath ?? draft.h3ContinuumArtifactPath, artifactStatus);
-        addFile("manifest", artifact?.manifest, inspection?.manifestPath, continuumDependencyStatusFor(inspection, hasManifestReference));
-        return files;
-    }
-    const receipts = (draft.h3ContinuumSequence?.chunks ?? [])
-        .map((chunk) => chunk.receipt)
-        .filter((receipt) => Boolean(receipt));
-    if (receipts.length === 0) {
-        addFile("run-storage", undefined, undefined, "not-created");
-        return files;
-    }
-    for (const receipt of receipts) {
-        const receiptStatus = continuumDependencyStatusFor(inspection, true);
-        addFile("run-storage", receipt.runStorageRoot, undefined, receiptStatus);
-        for (const record of receipt.chunkRecords) {
-            addFile("chunk-payload", record.payloadPath, undefined, receiptStatus, record.logicalChunkIndex);
-        }
-    }
-    return files;
 }
 export function buildVideoCreatePageViewModel(options) {
     const { t, state, environmentScan, performanceMetrics, workflowCapabilities, bundledWorkflows, promptEnhanceMode, h3PromptPreset, promptEnhancing, promptStarting, promptReleasing, promptRuntimeLoaded, promptProgress, promptRuntimeView, enqueueBusy } = options;
@@ -604,11 +634,16 @@ export function buildVideoCreatePageViewModel(options) {
             return `<option value="${value}" ${selectedResolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
         }).join("");
     const latentSaveDisabled = isManagedContinuum && extending;
-    const latentSaveModeOptionsMarkup = `<option value="all" data-description="${escapeHtml(t(h3LatentSaveModeTipKeys.all))}" title="${escapeHtml(t(h3LatentSaveModeTipKeys.all))}" ${h3LatentSaveMode === "all" ? "selected" : ""}>${escapeHtml(t(uiKeys.create.videoSettings.saveLatentEnabled))}</option><option value="none" data-description="${escapeHtml(t(h3LatentSaveModeTipKeys.none))}" title="${escapeHtml(t(h3LatentSaveModeTipKeys.none))}" ${h3LatentSaveMode === "none" ? "selected" : ""}>${escapeHtml(t(uiKeys.create.videoSettings.saveLatentDisabled))}</option>`;
+    const latentSaveModeOptionsMarkup = [
+        ["all", uiKeys.create.videoSettings.saveLatentEnabled],
+        ["none", uiKeys.create.videoSettings.saveLatentDisabled]
+    ].map(([mode, key]) => `<option value="${mode}" data-description="${escapeHtml(t(h3LatentSaveModeTipKeys[mode]))}" title="${escapeHtml(t(h3LatentSaveModeTipKeys[mode]))}" ${h3LatentSaveMode === mode ? "selected" : ""}>${escapeHtml(t(key))}</option>`).join("");
     const h3MotionContextNode = environmentScan?.customNodes.find((node) => node.id === "h3-motion-context");
     const h3MotionContextReady = !extending || !isR2V || Boolean(h3MotionContextNode?.installed || h3MotionContextNode?.loaded);
-    const motionContextLatentTrimValid = !isR2V || !motionContextLatentReady || Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05;
-    const motionInspection = isR2V && extending && options.extensionSourceInspection?.route === "motion-context"
+    const motionContextLatentTrimValid = !isR2V || !motionContextLatentReady ||
+        Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05;
+    const motionInspection = isR2V && extending &&
+        options.extensionSourceInspection?.route === "motion-context"
         ? options.extensionSourceInspection
         : undefined;
     const motionContextPreflightBlockReason = isR2V && extending && motionContextLatentReady

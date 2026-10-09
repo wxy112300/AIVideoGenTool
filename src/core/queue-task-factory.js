@@ -1,7 +1,7 @@
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
 import { createOutputFilename } from "./filename.js";
-import { defaultH3ImageOptionsFor, expandImageSeeds, isH3ImageModelId } from "./image-project.js";
-import { imageModelAdapterFor, h3ImageRecipeFor, h3ImageOutputDimensions, imagePicturesForModelInput, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { expandImageSeeds } from "./image-project.js";
+import { imageModelAdapterFor, imageModelUnavailableReason, imagePicturesForModelInput, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { h3NativeUpscaleDimensions, uniqueAetherScaleUpscaleFilename, uniqueKonohamaruUpscaleFilename, uniqueDlss5UpscaleFilename, uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { AETHERSCALE_MODEL_ID, normalizeAetherScaleTarget } from "./aetherscale.js";
 import { KONOHAMARU_MODEL_ID, KONOHAMARU_WORKFLOW_PATH, normalizeKonohamaruTarget } from "./konohamaru-dlss5.js";
@@ -129,6 +129,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
     const id = clock.id();
     const projectId = draft.projectId ?? clock.id();
     const adapter = imageModelAdapterFor(draft.modelId);
+    if (!adapter)
+        throw new Error(imageModelUnavailableReason(draft.modelId));
     const pictures = imagePicturesForModelInput(draft.pictures, adapter?.supportsTextOnly === true);
     const outputCount = adapter?.deterministic ? 1 : draft.outputCount;
     const runs = expandImageSeeds(draft.seed, outputCount)
@@ -139,31 +141,21 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         status: "waiting"
     }));
     const basePicture = pictures[0];
-    const h3ImageRecipe = h3ImageRecipeFor(draft.modelId, draft.qualityProfile, diffusionModelFilename);
-    if (isH3ImageModelId(draft.modelId) && !h3ImageRecipe) {
-        throw new Error(`H3 图片质量档 ${draft.qualityProfile} 未登记，请重新选择 Base 或该路线的 Turbo 质量档。`);
-    }
-    const isH3Image = isH3ImageModelId(draft.modelId);
-    const targetResolution = normalizeImageTargetResolution(isH3Image ? "source" : draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
+    const targetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
     // Source-following is the default reference-image policy. Qwen Image 2.1
     // opts into its official custom canvas path while still using source size
     // when both selectors remain at "source".
-    const sourceResolutionOnly = Boolean(adapter?.sourceResolutionOnly && adapter?.supportsCustomOutputSize !== true && basePicture);
+    const sourceResolutionOnly = Boolean(adapter?.sourceResolutionOnly &&
+        adapter?.supportsCustomOutputSize !== true &&
+        basePicture);
     const outputAlignmentMultiple = basePicture && adapter?.supportsCustomOutputSize === true
         ? adapter.customOutputMultiple
         : 8;
-    const aspectRatio = isH3Image || sourceResolutionOnly
+    const aspectRatio = sourceResolutionOnly
         ? "source"
         : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
-    const [outputWidth, outputHeight] = isH3Image
-        ? h3ImageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0)
-        : imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio, outputAlignmentMultiple);
+    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, sourceResolutionOnly ? "source" : targetResolution, adapter.textOnlyOutputWidth, adapter.textOnlyOutputHeight, aspectRatio, outputAlignmentMultiple);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
-    const defaultH3Options = defaultH3ImageOptionsFor(draft.modelId);
-    const h3ImageOptions = defaultH3Options
-        ? { ...defaultH3Options, ...draft.h3ImageOptions }
-        : undefined;
-    const resolvedDiffusionModelFilename = h3ImageRecipe?.diffusionModelFilename ?? diffusionModelFilename;
     return {
         id,
         taskType: "image-generation",
@@ -186,8 +178,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         outputWidth,
         outputHeight,
         aspectRatio,
-        targetResolution: isH3Image || sourceResolutionOnly ? "source" : targetResolution,
-        ...(resolvedDiffusionModelFilename ? { diffusionModelFilename: resolvedDiffusionModelFilename } : {}),
+        targetResolution: sourceResolutionOnly ? "source" : targetResolution,
+        ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
         prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
         promptVersion: promptless ? 1 : draft.activePromptVersion + 1,
         modelId: draft.modelId,
@@ -200,8 +192,6 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
             compatibleModelIds: [...lora.compatibleModelIds],
             compatibleInputModes: [...lora.compatibleInputModes]
         })),
-        ...(h3ImageOptions ? { h3ImageOptions } : {}),
-        ...(h3ImageRecipe ? { h3ImageRecipe } : {}),
         runs,
         progress: 0
     };

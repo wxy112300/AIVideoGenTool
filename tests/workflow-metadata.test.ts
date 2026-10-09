@@ -26,13 +26,7 @@ describe("bundled workflow provenance", () => {
       });
       expect(metadata?.source.relativePath).toBe(`workflows/${filename}`);
       expect(metadata?.comfyUi.recommendedVersion).toBe(
-        filename.startsWith("qwen_image_2_1")
-          ? "master (PR #16400+)"
-          : filename === "minimax_h3_r2v_extend_api.json"
-          ? "0.34.0"
-          : filename.startsWith("minimax_h3_continuum")
-            ? "0.34.2"
-            : "0.37.0"
+        "0.39.2"
       );
     }
   });
@@ -48,7 +42,7 @@ describe("bundled workflow provenance", () => {
 
   it("records the higher-risk H3 and LTX provenance separately", () => {
     expect(workflowMetadataForFilename("minimax_h3_r2v_extend_api.json")).toMatchObject({
-      comfyUi: { minimumVersion: "0.32.0", recommendedVersion: "0.34.0" },
+      comfyUi: { minimumVersion: "0.32.0", recommendedVersion: "0.39.2" },
       verifiedAt: "2026-09-03",
       nodePackages: ["video-helper-suite", "h3-motion-context", "kjnodes"]
     });

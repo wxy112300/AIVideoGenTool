@@ -718,7 +718,7 @@ describe("queue command services", () => {
     }
   });
 
-  it("enqueues H3 image work while deferring runtime validation when no scan is cached", async () => {
+  it.each(["minimax-h3-image-i2i", "qwen-image-edit-2511-crop-stitch"])("rejects removed image %s before archiving inputs or enqueueing", async (modelId) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-h3-image-enqueue-deferred-"));
     try {
       const outputRoot = path.join(root, "output");
@@ -745,7 +745,7 @@ describe("queue command services", () => {
       });
       const draft = {
         ...createDefaultImageEditDraft(),
-        modelId: "minimax-h3-image-i2i",
+        modelId,
         qualityProfile: "base-quality-20",
         pictures: [{
           id: "h3-picture-1",
@@ -765,19 +765,10 @@ describe("queue command services", () => {
         nextPictureNumber: 2
       };
 
-      const next = await service.enqueueImage(draft);
-      expect(next.queue).toHaveLength(1);
-      expect(next.queue[0]).toMatchObject({
-        taskType: "image-generation",
-        modelId: "minimax-h3-image-i2i",
-        qualityProfile: "base-quality-20"
-      });
-      expect(enqueueInfo).toHaveBeenCalledWith(
-        "queue",
-        "image-enqueue-environment-preflight-deferred",
-        expect.any(String),
-        { taskType: "image-generation", modelId: "minimax-h3-image-i2i" }
-      );
+      await expect(service.enqueueImage(draft)).rejects.toThrow("功能已移除");
+      expect(state.queue).toEqual([]);
+      expect(state.imageHistory).toEqual([]);
+      await expect(fs.stat(path.join(root, "library"))).rejects.toThrow();
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ComfyUI 升级评估"
+  short_description: "用 Harness 核对模型、节点、ComfyUI 与 LoRA 升级兼容性和实际收益"
+  default_prompt: "使用 $comfy-upgrade-assessment 评估当前项目依赖的上游更新，给出兼容性、收益和 Harness 验证优先级。"

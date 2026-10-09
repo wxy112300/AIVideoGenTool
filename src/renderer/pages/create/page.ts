@@ -53,6 +53,8 @@ export interface ImageEditPageViewModel {
   imageAspectRatioOptionsMarkup: string;
   imageResolutionOptionsMarkup: string;
   imageLoraVisible: boolean;
+  imageLoraAddOptionsMarkup: string;
+  imageLoraAddDisabled: boolean;
   imageLoraOptionsMarkup: string;
   imageEnhanceMode: ImagePromptPreset;
   imageDetailEnhanceTitle: string;
@@ -82,12 +84,6 @@ export interface ImageEditPageViewModel {
   supportsTextOnly: boolean;
   maskSupported: boolean;
   annotationSupported: boolean;
-  h3ImageOptionsVisible: boolean;
-  h3ReferenceDetailVisible: boolean;
-  h3ReferenceNoteVisible: boolean;
-  h3ImageSourceFitOptionsMarkup: string;
-  h3ImageReferenceDetailOptionsMarkup: string;
-  h3ImageSourceFidelity: number;
 }
 
 export interface VideoCreatePageViewModel {
@@ -254,7 +250,7 @@ export function renderImageEditPage(
               <div class="image-picture-card-body">
                 <div class="image-picture-card-title"><strong>${t(uiKeys.create.imageEdit.slotTitle, { index: picture.pictureNumber })}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? t(uiKeys.create.imageEdit.baseInput) : t(uiKeys.create.imageEdit.reference)}</span>${picture.crop ? `<span class="model-availability available">裁剪 · ${picture.crop.width} × ${picture.crop.height}</span>` : ""}${picture.mask ? `<span class="model-availability available">${icon("brush")} Mask · ${picture.mask.regionCount}</span>` : picture.markup ? `<span class="model-availability available">${icon("pencil")} ${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</div>
                 <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
-                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>${viewModel.h3ReferenceNoteVisible && picture.pictureNumber !== 1 ? `<label>${t(uiKeys.create.imageEdit.h3ReferenceNote)}<input data-image-picture-note="${escapeHtml(picture.id)}" value="${escapeHtml(picture.note ?? "")}" placeholder="${t(uiKeys.create.imageEdit.h3ReferenceNotePlaceholder)}" maxlength="240"></label>` : ""}`}
+                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>`}
               </div>
               <div class="image-picture-card-actions">${renderPictureTools(picture)}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(uiKeys.create.imageEdit.emptyTitle)}</strong><small>${t(uiKeys.create.imageEdit.emptyDescription)}</small></div>`}
@@ -287,15 +283,25 @@ export function renderImageEditPage(
           ${viewModel.outputCountVisible ? `<label class="settings-field range-field"><span class="range-heading"><span>${t(uiKeys.create.imageEdit.outputCount)}</span><strong id="image-edit-count-value">${t(uiKeys.create.imageEdit.outputCountValue, { count: viewModel.count })}</strong></span><input id="image-edit-count" type="range" min="1" max="${imageOutputCountMax}" step="1" value="${viewModel.count}"></label>` : ""}
         </div></section>
         ${viewModel.imageLoraVisible
-          ? "<section class=\"composer-control-group image-lora-options\"><div class=\"composer-group-heading\"><div><strong>图片 LoRA</strong><span>Qwen Image 2.1 · 单选</span></div></div>" +
+          ? '<section class="composer-control-group image-lora-options"><div class="video-lora-stack"><div class="video-lora-stack-heading"><div><strong>图片 LoRA</strong><span>' +
+            (viewModel.draft.imageLoras.length
+              ? t(uiKeys.create.videoSettings.loraEnabled, { count: viewModel.draft.imageLoras.length })
+              : t(uiKeys.create.videoSettings.loraOptional)) +
+            '</span></div><div class="video-lora-add"><select id="image-lora-to-add" aria-label="' +
+            t(uiKeys.create.videoSettings.chooseLora) +
+            '" ' +
+            (viewModel.imageLoraAddDisabled ? 'disabled' : '') +
+            '>' +
+            viewModel.imageLoraAddOptionsMarkup +
+            '</select><button class="secondary button-with-icon" id="add-image-lora" type="button" ' +
+            (viewModel.imageLoraAddDisabled ? 'disabled' : '') +
+            '>' +
+            icon('plus') +
+            t(uiKeys.create.videoSettings.add) +
+            '</button></div></div>' +
             viewModel.imageLoraOptionsMarkup +
-            "</section>"
+            '</div></section>'
           : ""}
-        ${viewModel.h3ImageOptionsVisible ? `<section class="composer-control-group h3-image-options"><div class="composer-group-heading h3-image-options-heading"><div>${fieldLabelWithTip(t(uiKeys.create.imageEdit.h3OptionsTitle), t(uiKeys.create.imageEdit.h3OptionsDescription))}</div></div><div class="composer-control-grid image-edit-settings-grid">
-          <label class="settings-field">${t(uiKeys.create.imageEdit.h3SourceFit)}<select id="image-edit-h3-source-fit">${viewModel.h3ImageSourceFitOptionsMarkup}</select></label>
-          ${viewModel.h3ReferenceDetailVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.h3ReferenceDetail)}<select id="image-edit-h3-reference-detail">${viewModel.h3ImageReferenceDetailOptionsMarkup}</select></label>` : ""}
-          <label class="settings-field range-field"><span class="range-heading">${fieldLabelWithTip(t(uiKeys.create.imageEdit.h3SourceFidelity), t(uiKeys.create.imageEdit.h3SourceFidelityHint))}<strong id="image-edit-h3-source-fidelity-value">${t(uiKeys.create.imageEdit.h3SourceFidelityValue, { percent: Math.round(viewModel.h3ImageSourceFidelity * 100) })}</strong></span><input id="image-edit-h3-source-fidelity" type="range" min="0" max="1" step="0.01" value="${viewModel.h3ImageSourceFidelity}"></label>
-        </div></section>` : ""}
         <div class="submit-row composer-submit-row"><p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button><button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div></div>
       </section>
     </div>`;

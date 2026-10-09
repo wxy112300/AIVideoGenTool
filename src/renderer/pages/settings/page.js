@@ -65,7 +65,7 @@ export function renderSettingsPage(viewModel, options) {
         }));
     const extensionProfiles = videoSelectorProfiles.filter((profile) => modelCatalog.get(profile.id)?.definition.capabilities?.supportsVideoExtension === true);
     const loraProfiles = profiles.filter((profile) => profile.category === "lora");
-    const imageProfiles = sortProfilesByCatalogOrder(profiles.filter((profile) => profile.category === "image"), modelCatalog, "image");
+    const imageProfiles = sortProfilesByCatalogOrder(profiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired), modelCatalog, "image");
     const imageQualityProfiles = options.getImageQualityProfiles(settings.defaultImageModel);
     const promptProfiles = profiles
         .filter((profile) => profile.category === "prompt")

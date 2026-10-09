@@ -15,6 +15,7 @@ import {
   dlss5DepthAnythingPatchFiles,
   patchAetherScaleCarrierSource,
   patchH3PromptWriterGemmaChatHandler,
+  patchH3PromptWriterModelRoots,
   patchH3PromptWriterAutomaticContextLadder,
   patchH3PromptWriterBriefLimit,
   patchH3PromptWriterLlamaCppCompatibility,
@@ -33,6 +34,7 @@ import {
   prepareMultimodalPromptNodes,
   multimodalPromptSupportsAdaptiveGeneration
 } from "../src/infrastructure/dependency-node-adapters";
+import { MINIMAX_H3_PROMPT_WRITER_REVISION } from "../src/core/catalog/dependencies/nodes";
 import { createDefaultState } from "../src/core/defaults";
 import {
   H3_AV_SERIALIZER_REVISION,
@@ -182,6 +184,19 @@ const aetherScaleCarrierSource = [
   "            pass",
   "        raise",
 ].join("\n");
+
+describe("Prompt Writer model root compatibility", () => {
+  it("skips only unregistered root categories without masking model discovery failures", () => {
+    const source = 'def _model_roots():\n    for category in ("LLM", "llm"):\n        for value in folder_paths.get_folder_paths(category):\n            roots.append(value)\n';
+    const patched = patchH3PromptWriterModelRoots(source);
+    expect(patched).toContain('if category not in folder_paths.folder_names_and_paths:\n            continue');
+    expect(patched).toContain('for value in folder_paths.get_folder_paths(category):');
+    expect(patched).not.toContain('except');
+    expect(patchH3PromptWriterModelRoots(source.replaceAll("\n", "\r\n"))).toBe(patched.replaceAll("\n", "\r\n"));
+    expect(patchH3PromptWriterModelRoots(patched)).toBe(patched);
+    expect(patchH3PromptWriterModelRoots('unrelated source')).toBe('unrelated source');
+  });
+});
 
 describe("MMH3 Ultimate Upscale adapter", () => {
   const pinnedSource = `def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
@@ -1006,8 +1021,10 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
 
   it.each([
     ["comfyui-dlss5", "ComfyUI DLSS5"],
-    ["comfyui-aetherscale", "ComfyUI AetherScale"]
-  ] as const)("rejects installation of retired DLSS5 node %s", async (nodeId, nodeName) => {
+    ["comfyui-aetherscale", "ComfyUI AetherScale"],
+    ["minimax-h3-image-studio", "MiniMax H3 Image Studio"],
+    ["inpaint-cropandstitch", "ComfyUI Inpaint Crop & Stitch"],
+  ] as const)("rejects installation of retired node %s", async (nodeId, nodeName) => {
     const result = await installCustomNodePackage(
       nodeId,
       { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
@@ -1216,6 +1233,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args, options) => {
         processCalls.push(args);
+        if (args.includes("rev-parse")) return MINIMAX_H3_PROMPT_WRITER_REVISION;
         if (args[0] === "clone") {
           const target = args.at(-1)!;
           await fs.mkdir(path.join(target, "backend", "models"), { recursive: true });
@@ -1282,6 +1300,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
+        if (args.includes("rev-parse")) return args.includes(targetDirectory) && args.includes("HEAD") ? "off-pin" : MINIMAX_H3_PROMPT_WRITER_REVISION;
         if (args.includes("remote")) {
           return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
         }
@@ -1334,7 +1353,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     ))).toBe(true);
   });
 
-  it("reuses the app-patched H3 checkout when the upstream HEAD did not change", async () => {
+  it("reuses the app-patched H3 checkout when its fixed revision still matches", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-patched-current-"));
     temporaryDirectories.push(comfyRoot);
     const targetDirectory = path.join(
@@ -1361,6 +1380,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
+        if (args.includes("rev-parse")) return MINIMAX_H3_PROMPT_WRITER_REVISION;
         if (args.includes("remote")) {
           return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
         }
@@ -1368,7 +1388,6 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
           return " M backend/models/gguf_backend.py\n";
         }
         if (args.includes("show")) return baseline;
-        if (args.includes("rev-parse")) return "abc1234";
         if (args.includes("ls-remote")) return "abc1234\tHEAD\n";
         if (args[0] === "-c") {
           return JSON.stringify({
@@ -1394,11 +1413,11 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(result.ok).toBe(true);
     expect(processCalls.some((args) => args[0] === "clone")).toBe(false);
     expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
-    expect(result.log).toContain("上游没有新提交；保留当前目录，不重复克隆");
+    expect(result.log).toContain("catalog 固定 revision 仍匹配；保留当前目录，不重复克隆");
     expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
   });
 
-  it("backs up and cleanly replaces a diverged H3 Prompt Writer checkout", async () => {
+  it("backs up and replaces an H3 Prompt Writer checkout that differs from the fixed revision", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-diverged-update-"));
     temporaryDirectories.push(comfyRoot);
     const targetDirectory = path.join(
@@ -1420,6 +1439,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
+        if (args.includes("rev-parse")) return args.includes(targetDirectory) && args.includes("HEAD") ? "off-pin" : MINIMAX_H3_PROMPT_WRITER_REVISION;
         if (args.includes("remote")) {
           return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
         }
@@ -1460,9 +1480,9 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     );
 
     expect(result.ok).toBe(true);
-    expect(processCalls.some((args) => args.includes("pull"))).toBe(true);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
     expect(processCalls.some((args) => args[0] === "clone")).toBe(true);
-    expect(result.log).toContain("本地分支与上游已分叉");
+    expect(result.log).toContain("revision 与 catalog pin 不符");
     expect(result.log).toContain("正在校验 H3 Prompt Writer 的 Python 源码语法");
     const backupRoot = path.join(comfyRoot, "node-backups");
     const backupName = (await fs.readdir(backupRoot)).find((name) =>
@@ -1494,6 +1514,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       retryableRenameError: () => false,
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args) => {
+        if (args.includes("rev-parse")) return args.includes(targetDirectory) ? "off-pin" : MINIMAX_H3_PROMPT_WRITER_REVISION;
         if (args.includes("remote")) {
           return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
         }
@@ -1581,7 +1602,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       .toContain("H3UnetLoaderGGUFAdvanced");
   });
 
-  it("restores the shared maintained GGUF package after an older H3 migration", async () => {
+  it.each(["molbal", "city96"])("backs up the %s GGUF fork and installs the pinned maintained package", async (owner) => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-restore-"));
     temporaryDirectories.push(comfyRoot);
     const targetDirectory = path.join(comfyRoot, "custom_nodes", "ComfyUI-GGUF");
@@ -1599,7 +1620,8 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
-        if (args[0] === "remote") return "https://github.com/molbal/ComfyUI-GGUF.git";
+        if (args.includes("remote")) return `https://github.com/${owner}/ComfyUI-GGUF.git`;
+        if (args.includes("rev-parse")) return "373048b8403a7820620065210a691263d4da0a61";
         if (args[0] === "clone") await fs.mkdir(args.at(-1)!, { recursive: true });
         return "";
       }
@@ -1615,6 +1637,9 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(processCalls.some((args) =>
       args[0] === "clone" && args.includes("https://github.com/leejet/ComfyUI-GGUF.git")
     )).toBe(true);
+    expect(processCalls.some((args) => args.includes("checkout") &&
+      args.includes("373048b8403a7820620065210a691263d4da0a61"))).toBe(true);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
     expect(await exists(path.join(targetDirectory, "old-molbal.txt"))).toBe(false);
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
       name.startsWith("ComfyUI-GGUF-")

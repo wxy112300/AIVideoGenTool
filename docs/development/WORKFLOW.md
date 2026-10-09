@@ -62,6 +62,8 @@
 <a id="upgrade"></a>
 ### 已有节点 / 插件 / 工作流升级
 
+ComfyUI、节点、模型或 LoRA 的上游盘点与收益评估使用 [comfy-upgrade-assessment Skill](../../.agents/skills/comfy-upgrade-assessment/SKILL.md)，从实际安装身份比较 stable/HEAD，再按 Harness 分层验证；评估不自动实施升级。
+
 固定当前与目标 revision；比较源码/schema、requirements、资产 hash 和兼容补丁；保持参数/ID，定义备份/回退与重启窗口。验证旧队列/历史及适用 smoke，不顺带启用新增功能。必要证据写本 TASK 的 evidence/upgrade.md；未实际验证回退时写明，不能声称可回退。
 
 <a id="prompt"></a>

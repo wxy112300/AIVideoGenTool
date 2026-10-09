@@ -1,3 +1,4 @@
+import { legacyH3ImageOutputDimensions, isH3ImageModelId } from "../src/core/image-project.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -18,8 +19,6 @@ import type {
 } from "../src/types.js";
 import { createImageSourceVersion, nextImageVersionNumber } from "../src/core/image-project.js";
 import { imageModelAdapterFor } from "../src/core/image-workflow.js";
-import { h3ImageOutputDimensions } from "../src/core/image-workflow.js";
-import { isH3ImageModelId } from "../src/core/image-project.js";
 import {
   continuumVisibleFrameCountForTask,
   extensionOutputDimensions,
@@ -97,19 +96,19 @@ export function persistImageHistoryResult(
   const quality = imageModelAdapterFor(queued.modelId)?.qualityProfiles.find(
     (profile) => profile.id === queued.qualityProfile
   );
+  const legacyQuality = isH3ImageModelId(queued.modelId) && queued.h3ImageRecipe
+    ? { steps: queued.h3ImageRecipe.steps, cfg: 1 }
+    : undefined;
+  const recordedQuality = quality ?? legacyQuality;
   const hasActualDimensions = Number.isFinite(result.actualDimensions?.width) &&
     Number.isFinite(result.actualDimensions?.height) &&
     (result.actualDimensions?.width ?? 0) > 0 &&
     (result.actualDimensions?.height ?? 0) > 0;
-  const h3Dimensions = isH3ImageModelId(queued.modelId)
-    ? h3ImageOutputDimensions(queued.pictures[0]?.width ?? 0, queued.pictures[0]?.height ?? 0)
-    : [0, 0] as [number, number];
-  const predictedWidth = isH3ImageModelId(queued.modelId)
-    ? h3Dimensions[0]
-    : queued.outputWidth ?? queued.pictures[0]?.width ?? 0;
-  const predictedHeight = isH3ImageModelId(queued.modelId)
-    ? h3Dimensions[1]
-    : queued.outputHeight ?? queued.pictures[0]?.height ?? 0;
+  const legacyDimensions = isH3ImageModelId(queued.modelId)
+    ? legacyH3ImageOutputDimensions(queued.pictures[0]?.width ?? 0, queued.pictures[0]?.height ?? 0)
+    : undefined;
+  const predictedWidth = legacyDimensions?.[0] ?? queued.outputWidth ?? queued.pictures[0]?.width ?? 0;
+  const predictedHeight = legacyDimensions?.[1] ?? queued.outputHeight ?? queued.pictures[0]?.height ?? 0;
   const version: ImageAssetVersion = {
     id: result.versionId,
     versionNumber,
@@ -125,7 +124,7 @@ export function persistImageHistoryResult(
     promptVersion: queued.promptVersion,
     references: queued.pictures.map((picture) => ({ ...picture })),
     qualityProfile: queued.qualityProfile,
-    ...(quality && quality.steps > 0 ? { steps: quality.steps, cfg: quality.cfg } : {}),
+    ...(recordedQuality && recordedQuality.steps > 0 ? { steps: recordedQuality.steps, cfg: recordedQuality.cfg } : {}),
     aspectRatio: queued.aspectRatio,
     targetResolution: queued.targetResolution,
     outputCount: queued.outputCount,

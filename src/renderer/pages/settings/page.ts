@@ -214,7 +214,7 @@ export function renderSettingsPage(
   );
   const loraProfiles = profiles.filter((profile) => profile.category === "lora");
   const imageProfiles = sortProfilesByCatalogOrder(
-    profiles.filter((profile) => profile.category === "image"),
+    profiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired),
     modelCatalog,
     "image"
   );

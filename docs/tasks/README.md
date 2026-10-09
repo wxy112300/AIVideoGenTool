@@ -10,6 +10,8 @@
 - [History 批量管理与标签编辑](2026-09-20-history-batch-management/TASK.md)
 - [Qwen Image 2.1 图片编辑模型接入评估](2026-09-20-qwen-image-2-1-integration/TASK.md)
 - [显存压力卡死 Watchdog](2026-09-20-vram-stall-watchdog/TASK.md)
+- [图片功能精简：H3 与 Qwen 局部融合修复](2026-10-09-h3-image-retirement/TASK.md)
+- [ComfyUI / H3 / Qwen 2.1 上游评估与升级 Skill](2026-10-08-upstream-upgrade-assessment/TASK.md)
 
 新任务按 [流程](../development/WORKFLOW.md)选择短路径或标准路径；需要跨会话交接时使用 [模板](../development/TASK_TEMPLATE.md)。
 相同主题先找已有 TASK，避免不断创建日期更新但内容重复的计划。老 `Plan/active` 未经核对不会自动导入成正在实施的任务。

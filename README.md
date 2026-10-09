@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.64.3**。本 patch release 完善用户旅程、真实 Electron Harness 与 Agent Skill，修复成片时长、资产迁移/清理和 Continuum Run 前置保护，并纳入图片/视频 LoRA 配置；已验收范围与未覆盖组合分别记录，版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.65.0**。本 minor 版本对齐 ComfyUI/GGUF 与节点推荐线，接入 Continuum 3.9.1 managed 新规范并兼容旧 Native AV，补齐 Harness 升级评估 Skill；图片主流程集中到 Qwen Image 2.1，移除 H3 图片和旧 Qwen 局部融合入口。旧队列、作品历史与共享权重保留。已验收范围与未覆盖组合分别记录，版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -23,7 +23,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 类别 | 当前主要支持 |
 | --- | --- |
 | 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、MiniMax H3 Continuum（Extend，依赖 Native AV）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
-| 图片处理 | HiDream-O1-Image、Z-Image / Z-Image-Turbo、Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
+| 图片处理 | Qwen Image 2.1（原生/GGUF、图片 LoRA）、Qwen-Image-Edit-2511、OmniGen2、HiDream-O1-Image、Z-Image / Z-Image-Turbo、FLUX.2 Klein Base 4B；另保留抠图与 LaMa 局部移除 |
 | 视频增强 | H3 committed JointAV 原生二次采样（720p/768p bilinear；runtime-ready 时 1080p/1440p learned 3D）、SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.2（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Cinema、Better Human Motion、Camera Motion、Equirectangular 360°、VR180 SBS、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF |
@@ -48,7 +48,7 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 - [ComfyUI Desktop for Windows 安装说明](https://docs.comfy.org/installation/desktop/windows)。
 - [ComfyUI Portable for Windows 安装说明](https://docs.comfy.org/installation/comfyui_portable_windows)：适合需要便携目录的用户。
 
-MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前推荐基线为 `0.37.0`。Desktop 用户可在实例的 **Update** 页面选择核心更新频道并检查更新；应用设置页也会显示所选实例的版本、兼容状态和更新入口。
+MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前推荐基线为 `0.39.2`。Desktop 用户可在实例的 **Update** 页面选择核心更新频道并检查更新；应用设置页也会显示所选实例的版本、兼容状态和更新入口。
 
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
 
@@ -62,7 +62,7 @@ H3 的 CUDA 扩展要求 PyTorch、CUDA runtime 和扩展 wheel 的 ABI 相互�
 - `torch 2.10.0+cu130`
 - `torchvision 0.25.0+cu130`
 - `torchaudio 2.10.0+cu130`
-- `comfy-kitchen 0.2.31`，运行时探针能够识别 `cuda` backend
+- `comfy-kitchen 0.2.37`，运行时探针能够识别 `cuda` backend
 - 启用 SageAttention 时，使用与 Torch 2.10/cu130 匹配的 Triton 和 SageAttention wheel，并通过原生 `_fused` 扩展导入检查
 
 已知 `torch 2.8.0+cu129` 不满足当前 comfy-kitchen H3 INT8 ConvRot CUDA 内核的 CUDA 13.0 要求；`torch 2.9.1+cu130` 虽可加载 CUDA backend，但本项目的 4090 H3 768p/15s 实测出现更高显存峰值，因此不再作为当前 H3 ready 基线。设置页同时检查 Torch 三件套、comfy-kitchen backend、Triton、SageAttention wheel 和 `_fused` 原生扩展，不以包名或版本号存在作为 CUDA 内核就绪的依据。

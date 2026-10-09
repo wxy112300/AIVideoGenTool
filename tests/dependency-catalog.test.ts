@@ -71,12 +71,10 @@ describe("dependency catalog", () => {
       "comfyui-multimodal-prompt-nodes",
       "comfyui-qwenvl-lora",
       "inpaint-nodes",
-      "inpaint-cropandstitch",
       "seedvr2",
       "flashvsr",
       "frame-interpolation",
       "comfyui-dlss-frame-interpolation",
-      "minimax-h3-image-studio",
       "h3-motion-context",
       "h3-continuum",
       "h3-latent-upscaler",
@@ -118,9 +116,9 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.4.5",
+      recommendedVersion: "0.4.7",
       compatibilityEvidence: [{
-        commit: "862ae053ae649acf1db8106bdfbcbf911ab89b4e",
+        commit: "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e",
         checks: ["static"]
       }],
       required: false
@@ -128,6 +126,7 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
       nodeTypes: ["VisionLLMNode"],
       minimumVersion: "1.0.15",
+      recommendedVersion: "1.0.16",
       runtimeRequirement: expect.stringContaining("Python 3.10–3.14"),
       required: false
     });
@@ -138,6 +137,7 @@ describe("dependency catalog", () => {
     });
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({
       repositoryUrl: "https://github.com/leejet/ComfyUI-GGUF.git",
+      installRevision: "373048b8403a7820620065210a691263d4da0a61",
       directoryName: "ComfyUI-GGUF",
       releaseSource: "github-release",
       nodeTypes: ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
@@ -172,12 +172,13 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("plaguekind-h3-sla")).toMatchObject({
       nodeTypes: ["H3SLAAttention"],
       minimumVersion: "1.3.8",
-      recommendedVersion: "1.3.8",
+      recommendedVersion: "1.5.6",
       required: false
     });
     expect(customNodeDefinition("inpaint-cropandstitch")).toMatchObject({
       directoryName: "ComfyUI-Inpaint-CropAndStitch",
-      nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
+      retired: true,
+      nodeTypes: [],
       repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
       required: false
     });
@@ -187,13 +188,13 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.27"
+      recommendedVersion: "0.2.29"
     });
-    expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
+    expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence).toEqual(expect.arrayContaining([expect.objectContaining({
       comfyUi: "0.35.0",
       commit: "120d72e",
       checks: ["static"]
-    });
+    })]));
     expect(customNodeDefinition("h3-optimizations")).toMatchObject({
       retired: true,
       repositoryUrl: "https://github.com/Zironic/H3-Optimizations.git",
@@ -220,8 +221,8 @@ describe("dependency catalog", () => {
         "H3ContinuumAssembleSeamV35"
       ],
       minimumVersion: "3.8.0",
-      recommendedVersion: "3.8.2",
-      latestVersion: "3.8.3",
+      recommendedVersion: "3.9.1",
+      latestVersion: "3.9.1",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{
@@ -285,6 +286,7 @@ describe("dependency catalog", () => {
         "LocalVideoStudioH3ContinuumSamplerV38",
         "LocalVideoStudioH3ContinuumDiagnostics",
         "LocalVideoStudioH3ContinuumManagedReceipt",
+        "LocalVideoStudioH3ManagedSageAttention",
         "LocalVideoStudioRequireGpuVAE",
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"

@@ -970,6 +970,31 @@ class LocalVideoStudioH3ContinuumDiagnostics:
         }
 
 
+class LocalVideoStudioH3ManagedSageAttention:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "model": ("MODEL",),
+            "sage_attention": (["sageattn_qk_int8_pv_fp16_cuda", "sageattn_qk_int8_pv_fp16_triton"],),
+            "allow_compile": ("BOOLEAN", {"default": True}),
+        }}
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "patch"
+    CATEGORY = "Local Video Studio/H3"
+
+    def patch(self, model, sage_attention, allow_compile=True):
+        import nodes as runtime_nodes
+        from .managed_attention import observable_sage_override
+        if not allow_compile:
+            raise ValueError("managed Sage requires observable raw kernel; disable Compiler for a resumable Run")
+        klass = runtime_nodes.NODE_CLASS_MAPPINGS["PathchSageAttentionKJ"]
+        cloned = klass().patch(model, sage_attention, allow_compile=True)[0]
+        options = cloned.model_options["transformer_options"]
+        options["optimized_attention_override"] = observable_sage_override(options["optimized_attention_override"])
+        return (cloned,)
+
+
 class LocalVideoStudioH3ContinuumManagedReceipt:
     """Emit a fail-closed receipt for the public V3.8 Run Storage path.
 
@@ -1002,6 +1027,7 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
             "optional": {
                 "expected_parent_revision_id": ("STRING", {"default": ""}),
                 "expected_prefix_chunks": ("INT", {"default": 0, "min": 0, "max": 16}),
+                "sampling_evidence_version": ("INT", {"default": 2, "min": 2, "max": 2}),
             } if guarded else {},
             "required": {
                 "status": ("STRING", {"default": ""}),
@@ -1118,6 +1144,7 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
         spectrum_model_aware_mode: Any = "off",
         expected_parent_revision_id: Any = "",
         expected_prefix_chunks: Any = 0,
+        sampling_evidence_version: Any = 2,
     ):
         if str(generation_mode) != "Review Each Chunk":
             raise ValueError("managed receipt 只接受 Review Each Chunk")
@@ -1136,6 +1163,11 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
             storage_schema_version = int(getattr(schema_module, "RUN_STORAGE_SCHEMA_VERSION"))
         except Exception as exc:
             raise ValueError(f"无法读取 Continuum Run Storage schema version：{exc}") from exc
+        if sampling_evidence_version != 2:
+            raise ValueError("managed receipt sampling evidence version unsupported")
+        # Read what the official writer committed, never guess from package version.
+        from .managed_prefix_guard import read_sampling_evidence
+        sampling_evidence = read_sampling_evidence(storage["run_storage_path"], storage["revision_id"])
         receipt = {
             "schema_version": 1,
             "project_id": str(project_id).strip(),
@@ -1144,6 +1176,7 @@ class LocalVideoStudioH3ContinuumManagedReceipt:
             "revision_id": storage["revision_id"],
             "package_version": _continuum_package_version(),
             "run_storage_schema_version": storage_schema_version,
+            **sampling_evidence,
             "generation_mode": "Review Each Chunk",
             "review_action": str(review_action),
             "run_storage": "Save + Auto Resume",
@@ -1269,6 +1302,7 @@ NODE_CLASS_MAPPINGS = {
     "LocalVideoStudioH3ContinuumSamplerV38": LocalVideoStudioH3ContinuumSamplerV38,
     "LocalVideoStudioH3ContinuumDiagnostics": LocalVideoStudioH3ContinuumDiagnostics,
     "LocalVideoStudioH3ContinuumManagedReceipt": LocalVideoStudioH3ContinuumManagedReceipt,
+    "LocalVideoStudioH3ManagedSageAttention": LocalVideoStudioH3ManagedSageAttention,
     "LocalVideoStudioRequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3RequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3AnchorConditioning": LocalVideoStudioH3AnchorConditioning,
@@ -1281,6 +1315,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LocalVideoStudioH3ContinuumSamplerV38": "H3 Continuum V3.8 Native State (Local Video Studio)",
     "LocalVideoStudioH3ContinuumDiagnostics": "H3 Continuum Extend Diagnostics (Local Video Studio)",
     "LocalVideoStudioH3ContinuumManagedReceipt": "H3 Continuum Managed Run Receipt (Local Video Studio)",
+    "LocalVideoStudioH3ManagedSageAttention": "H3 Managed Observable Sage (Local Video Studio)",
     "LocalVideoStudioRequireGpuVAE": "Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3RequireGpuVAE": "H3 Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3AnchorConditioning": "H3 Anchor Conditioning (Local Video Studio)",

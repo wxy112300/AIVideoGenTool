@@ -1,7 +1,7 @@
 import { imageMarkupPromptContext, imageReferenceInputPath, pictureReferencePattern } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion, updateManualPromptVersion } from "../../../core/draft-prompts";
-import { defaultH3ImageOptionsFor, isH3ImageModelId, renumberImageReferences } from "../../../core/image-project";
+import { renumberImageReferences } from "../../../core/image-project";
 import { imageLoraCompatibleWithModel, imageLoraDefinition, imageLoraSelection } from "../../../core/image-loras";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -344,22 +344,50 @@ export function mountImageEditController(context, options) {
             context.requestRender();
         }
     }, { signal });
-    root.querySelectorAll("[data-image-lora-id]").forEach((input) => {
-        input.addEventListener("change", (event) => {
+    root.querySelector("#add-image-lora")?.addEventListener("click", () => {
+        const draft = getDraft();
+        const id = root.querySelector("#image-lora-to-add")?.value ?? "";
+        const definition = id ? imageLoraDefinition(id) : undefined;
+        if (!draft || !definition || draft.imageLoras.length > 0 ||
+            !imageLoraCompatibleWithModel(definition, draft.modelId))
+            return;
+        options.patchImageDraft({ imageLoras: [imageLoraSelection(definition)] });
+        options.syncEnqueueUi();
+        context.requestRender();
+    }, { signal });
+    root.querySelectorAll("[data-remove-image-lora]").forEach((button) => {
+        button.addEventListener("click", () => {
             const draft = getDraft();
-            const loraId = event.currentTarget.dataset.imageLoraId;
-            const definition = loraId ? imageLoraDefinition(loraId) : undefined;
-            if (!draft || !definition)
+            const id = button.dataset.removeImageLora;
+            if (!draft || !id)
                 return;
-            const enabled = event.currentTarget.checked;
             options.patchImageDraft({
-                imageLoras: enabled
-                    ? [imageLoraSelection(definition)]
-                    : draft.imageLoras.filter((lora) => lora.id !== definition.id)
+                imageLoras: draft.imageLoras.filter((lora) => lora.id !== id)
             });
             options.syncEnqueueUi();
             context.requestRender();
         }, { signal });
+    });
+    const updateImageLoraStrength = (id, rawValue) => {
+        const draft = getDraft();
+        if (!draft || !id)
+            return;
+        const strength = Math.max(0, Math.min(2, Number(rawValue) || 0));
+        options.patchImageDraft({
+            imageLoras: draft.imageLoras.map((lora) => lora.id === id ? { ...lora, strength } : lora)
+        });
+        const range = root.querySelector("[data-image-lora-strength=\"" + CSS.escape(id) + "\"]");
+        const number = root.querySelector("[data-image-lora-strength-number=\"" + CSS.escape(id) + "\"]");
+        if (range)
+            range.value = String(strength);
+        if (number)
+            number.value = String(strength);
+    };
+    root.querySelectorAll("[data-image-lora-strength]").forEach((input) => {
+        input.addEventListener("input", () => updateImageLoraStrength(input.dataset.imageLoraStrength ?? "", input.value), { signal });
+    });
+    root.querySelectorAll("[data-image-lora-strength-number]").forEach((input) => {
+        input.addEventListener("change", () => updateImageLoraStrength(input.dataset.imageLoraStrengthNumber ?? "", input.value), { signal });
     });
     for (const id of ["image-edit-model", "image-edit-quality", "image-edit-aspect-ratio", "image-edit-resolution", "image-edit-seed"]) {
         root.querySelector(`#${id}`)?.addEventListener("change", (event) => {
@@ -368,15 +396,6 @@ export function mountImageEditController(context, options) {
                 return;
             const value = event.currentTarget.value;
             const modelCapability = id === "image-edit-model" ? imageModelCapabilityFor(value) : undefined;
-            const nextH3Defaults = id === "image-edit-model" ? defaultH3ImageOptionsFor(value) : undefined;
-            const nextH3Options = nextH3Defaults
-                ? {
-                    ...nextH3Defaults,
-                    ...(isH3ImageModelId(draft.modelId) && draft.modelId === value && draft.h3ImageOptions
-                        ? draft.h3ImageOptions
-                        : {})
-                }
-                : undefined;
             options.patchImageDraft(id === "image-edit-model"
                 ? {
                     modelId: value,
@@ -385,10 +404,9 @@ export function mountImageEditController(context, options) {
                         : modelCapability?.qualityProfiles[0]?.id ?? "native",
                     ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
                     ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" } : {}),
-                ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
-                ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
-                imageLoras: draft.imageLoras.filter((lora) => imageLoraCompatibleWithModel(lora, value)),
-                ...(nextH3Options ? { h3ImageOptions: nextH3Options } : {})
+                    ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
+                    ...(modelCapability?.deterministic ? { outputCount: 1 } : {}),
+                    imageLoras: draft.imageLoras.filter((lora) => imageLoraCompatibleWithModel(lora, value))
                 }
                 : id === "image-edit-quality"
                     ? { qualityProfile: value }
@@ -403,31 +421,6 @@ export function mountImageEditController(context, options) {
                 context.requestRender();
         }, { signal });
     }
-    const patchH3Options = (patch, rerender) => {
-        const draft = getDraft();
-        if (!draft || !isH3ImageModelId(draft.modelId) || !draft.h3ImageOptions)
-            return;
-        options.patchImageDraft({
-            h3ImageOptions: { ...draft.h3ImageOptions, ...patch }
-        });
-        options.syncEnqueueUi();
-        if (rerender)
-            context.requestRender();
-    };
-    root.querySelector("#image-edit-h3-source-fit")?.addEventListener("change", (event) => {
-        patchH3Options({ sourceFit: event.currentTarget.value }, true);
-    }, { signal });
-    root.querySelector("#image-edit-h3-reference-detail")?.addEventListener("change", (event) => {
-        patchH3Options({ referenceDetail: event.currentTarget.value }, true);
-    }, { signal });
-    const h3FidelityInput = root.querySelector("#image-edit-h3-source-fidelity");
-    h3FidelityInput?.addEventListener("input", () => {
-        const sourceFidelity = Math.min(1, Math.max(0, Number(h3FidelityInput.value) || 0));
-        patchH3Options({ sourceFidelity }, false);
-        const value = root.querySelector("#image-edit-h3-source-fidelity-value");
-        if (value)
-            value.textContent = `${Math.round(sourceFidelity * 100)}%`;
-    }, { signal });
     const countInput = root.querySelector("#image-edit-count");
     countInput?.addEventListener("input", () => {
         const outputCount = Math.min(imageOutputCountMax, Math.max(1, Number(countInput.value) || 1));
