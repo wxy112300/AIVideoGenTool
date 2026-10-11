@@ -128,6 +128,9 @@ const api: AppApi = {
     ipcRenderer.invoke("custom-node:uninstall", nodeId, settings),
   installLlamaCppPython: (settings) =>
     ipcRenderer.invoke("llama-cpp-python:install", settings),
+  installStrata: (settings) => ipcRenderer.invoke("strata:install", settings),
+  uninstallStrata: (settings) => ipcRenderer.invoke("strata:uninstall", settings),
+  cancelDependencyInstall: (id) => ipcRenderer.invoke("dependency-install:cancel", id),
   uninstallLlamaCppPython: (settings) =>
     ipcRenderer.invoke("llama-cpp-python:uninstall", settings),
   installAttentionAcceleration: (settings) =>

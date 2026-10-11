@@ -3,6 +3,15 @@ import { readSettingsFromForm } from "../src/renderer/pages/settings/form";
 import { createDefaultSettings } from "../src/core/defaults";
 
 describe("settings form", () => {
+  it("keeps preparation fields across tabs and reads visible Strata inputs", () => {
+    const previousDocument = globalThis.document;
+    const base = { ...createDefaultSettings(), strataModelDirectory: "D:\\Models", strataPort: 43129 };
+    globalThis.document = { querySelector: vi.fn((selector: string) => selector === "#strata-install-directory" ? { value: " D:\\Strata " } : null) } as unknown as Document;
+    try {
+      const settings = readSettingsFromForm(base, "official-storyboard", "faithful");
+      expect(settings).toMatchObject({ strataInstallDirectory: "D:\\Strata", strataModelDirectory: "D:\\Models", strataPort: 43129, promptModelId: base.promptModelId });
+    } finally { globalThis.document = previousDocument; }
+  });
   it("reads the selected UI locale instead of retaining the old locale", () => {
     const previousDocument = globalThis.document;
     globalThis.document = {

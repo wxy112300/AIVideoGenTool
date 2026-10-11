@@ -8,6 +8,8 @@ import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import type { EnvironmentRefreshReason } from "../../environment-refresh-coordinator";
 import { customNodeIdsForBulkAction } from "./node-install-queue";
+import { settingsText } from "./copy";
+import { strataPreparationMatchesSettings } from "../../../core/strata-preparation";
 
 export interface SettingsNodeDependencyControllerOptions {
   formSettings(): Settings;
@@ -27,6 +29,12 @@ export interface SettingsNodeDependencyControllerOptions {
   getLlamaCppPythonLog(): string;
   setLlamaCppPythonLog(log: string): void;
   requestLlamaCppPythonUninstall(): void;
+  requestStrataUninstall?(directory: string): void;
+  setStrataInstalling?(value: boolean): void;
+  getStrataLog?(): string;
+  setStrataLog?(log: string): void;
+  cancelCustomNodeInstall?(nodeId: string): Promise<import("../../../types").ConnectionResult>;
+  setDependencyInstallCancelling?(id: string, value: boolean): void;
 }
 
 export function mountSettingsNodeDependencyController(
@@ -59,6 +67,44 @@ export function mountSettingsNodeDependencyController(
       closeNodeActionMenus();
     }
   }, { signal });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-cancel-dependency-install]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopImmediatePropagation();
+      const id = button.dataset.cancelDependencyInstall;
+      if (!id || button.disabled) return;
+      closeNodeActionMenus();
+      button.disabled = true;
+      options.setDependencyInstallCancelling?.(id, true);
+      requestSettingsRender();
+      try {
+        const result = id.startsWith("custom-node:") && options.cancelCustomNodeInstall
+          ? await options.cancelCustomNodeInstall(id.slice("custom-node:".length))
+          : await context.application.cancelDependencyInstall(id);
+        context.notify(result.message, { kind: result.ok ? "info" : "warning", renderPage: false });
+      } catch (error) {
+        context.notify(error instanceof Error ? error.message : String(error), { kind: "error", renderPage: false });
+      } finally {
+        options.setDependencyInstallCancelling?.(id, false);
+        requestSettingsRender();
+      }
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-open-node-location]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopImmediatePropagation();
+      closeNodeActionMenus();
+      const location = button.dataset.openNodeLocation?.trim();
+      if (!location || button.disabled) return;
+      try {
+        if (await context.hostCapabilities.showItemInFolder(location)) return;
+      } catch {
+        // Missing paths and host failures use the same actionable recovery message.
+      }
+      context.notify(settingsText(options.formSettings().uiLocale, "nodes.openLocationFailed"), { kind: "error", renderPage: false });
+    }, { signal });
+  });
 
   root.querySelectorAll<HTMLButtonElement>("[data-install-node]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -117,7 +163,7 @@ export function mountSettingsNodeDependencyController(
       const result = await context.application.installLlamaCppPython(settings);
       options.setLlamaCppPythonLog(result.log || result.message);
       const scan = await options.refreshEnvironment(settings, "dependency-change");
-      if (scan) context.notify(result.message, { kind: result.ok ? "info" : "error" });
+      if (scan && !result.cancelled) context.notify(result.message, { kind: result.ok ? "info" : "error" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setLlamaCppPythonLog(
@@ -128,6 +174,45 @@ export function mountSettingsNodeDependencyController(
       options.setLlamaCppPythonInstalling(false);
       requestSettingsRender();
     }
+  }, { signal });
+
+  root.querySelector<HTMLButtonElement>("#install-strata")?.addEventListener("click", async (event) => {
+    event.stopImmediatePropagation();
+    closeNodeActionMenus();
+    if (context.getState()?.queue.some((task) => task.status === "running")) {
+      context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+      return;
+    }
+    const settings = options.formSettings();
+    options.setSettingsDraft(settings);
+    options.setStrataInstalling?.(true);
+    options.setStrataLog?.("");
+    context.requestRender();
+    try {
+      const result = await context.application.installStrata(settings);
+      options.setStrataLog?.(result.log || result.message);
+      await options.refreshEnvironment(settings, "dependency-change");
+      if (!result.cancelled) context.notify(result.message, { kind: result.ok ? "info" : "error" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      options.setStrataLog?.([options.getStrataLog?.(), message].filter(Boolean).join("\n"));
+      context.notify(message, { kind: "error" });
+    } finally { options.setStrataInstalling?.(false); requestSettingsRender(); }
+  }, { signal });
+
+  root.querySelector<HTMLButtonElement>("[data-uninstall-strata]")?.addEventListener("click", (event) => {
+    event.stopImmediatePropagation();
+    const button = event.currentTarget as HTMLButtonElement;
+    if (button.disabled) return;
+    closeNodeActionMenus();
+    if (context.getState()?.queue.some((task) => task.status === "running")) {
+      context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+      return;
+    }
+    const settings = options.formSettings(), status = options.getEnvironmentScan()?.strataPreparation;
+    if (!strataPreparationMatchesSettings(settings, status) || !status?.managedUninstallable) return;
+    options.setSettingsDraft(settings);
+    options.requestStrataUninstall?.(status.installDirectory);
   }, { signal });
 
   root.querySelector<HTMLButtonElement>("[data-uninstall-llama-cpp-python]")?.addEventListener("click", (event) => {
@@ -157,6 +242,7 @@ export function mountSettingsNodeDependencyController(
   root.querySelectorAll<HTMLButtonElement>("[data-open-node-source]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopImmediatePropagation();
+      closeNodeActionMenus();
       const sourceUrl = button.dataset.openNodeSource?.trim();
       if (!sourceUrl) return;
       const opened = await context.hostCapabilities.openExternal(sourceUrl);

@@ -23,7 +23,8 @@ export type ConfirmationRequest =
       requiredVram: string;
     }
   | { kind: "uninstall-custom-node"; nodeId: string; name: string }
-  | { kind: "uninstall-llama-cpp-python" };
+  | { kind: "uninstall-llama-cpp-python" }
+  | { kind: "uninstall-strata"; directory: string };
 
 export interface ConfirmationDialogOptions {
   request: ConfirmationRequest | null;
@@ -61,6 +62,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
   const confirmingPromptCpu = request.kind === "prompt-cpu-fallback";
   const uninstallingCustomNode = request.kind === "uninstall-custom-node";
   const uninstallingLlama = request.kind === "uninstall-llama-cpp-python";
+  const uninstallingStrata = request.kind === "uninstall-strata";
   const t = options.t;
   const customNodeProgress = uninstallingCustomNode && options.confirmationBusy
     ? `<div class="confirm-progress" role="status" aria-live="polite">
@@ -90,6 +92,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
             ? t(uiKeys.dialog.uninstallNodeTitle, { name: request.name })
           : uninstallingLlama
             ? t(uiKeys.dialog.uninstallLlamaTitle)
+          : uninstallingStrata
+            ? t(uiKeys.dialog.uninstallStrataTitle)
           : forceStoppingComfy
             ? t(uiKeys.dialog.forceStopTitle)
             : t(uiKeys.dialog.clearDraftTitle);
@@ -122,6 +126,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
             ? t(uiKeys.dialog.uninstallNodeDescription)
           : uninstallingLlama
             ? t(uiKeys.dialog.uninstallLlamaDescription)
+          : uninstallingStrata
+            ? t(uiKeys.dialog.uninstallStrataDescription, { directory: request.directory })
           : forceStoppingComfy
             ? t(uiKeys.dialog.forceStopDescription)
             : t(uiKeys.dialog.clearDraftDescription);
@@ -153,6 +159,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
                   ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallNodeWarning)}</div>`
                 : uninstallingLlama
                   ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallLlamaWarning)}</div>`
+                : uninstallingStrata
+                  ? `<div class="confirm-warning">${t(uiKeys.dialog.uninstallStrataWarning)}</div>`
                 : forceStoppingComfy
                   ? `<div class="confirm-warning danger-warning">${t(uiKeys.dialog.forceStopWarning)}</div>`
                   : ""}
@@ -160,7 +168,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t(uiKeys.history.batch.delete) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingStrata ? t(uiKeys.dialog.uninstallStrata) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t(uiKeys.history.batch.delete) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

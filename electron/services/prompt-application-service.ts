@@ -69,6 +69,8 @@ import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { PromptRuntimeManager } from "./prompt-runtime-manager.js";
+import { enhancePromptWithStrata, strataPromptPolicy } from "./strata-prompt.js";
+import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 
 type PromptBackend = Exclude<ReturnType<typeof promptModelBackend>, null>;
 type PromptWorker = Promise<unknown>;
@@ -82,6 +84,12 @@ export interface PromptApplicationServiceDependencies {
   isQueueBusy(): boolean;
   sendProgress(progress: PromptProgress): void;
   errorMeta(error: unknown): Record<string, unknown>;
+  externalRuntime?: {
+    readonly runningWorker: Promise<unknown> | null;
+    isBusy(): boolean;
+    stop(): Promise<unknown>;
+  };
+  strata?: Pick<StrataRuntimeOwner, "ensurePromptReady" | "chat" | "stop" | "snapshot">;
 }
 
 /**
@@ -96,6 +104,7 @@ export class PromptApplicationService {
   private nativePromptController: AbortController | null = null;
   private nativePromptWorker: PromptWorker | null = null;
   private promptCancellationWorker: Promise<PromptCancellation> | null = null;
+  private activeBackend: PromptBackend | null = null;
   private retainedPromptRuntime: {
     backend: ReturnType<typeof promptModelBackend>;
     modelId: string;
@@ -108,21 +117,21 @@ export class PromptApplicationService {
   }
 
   get runningWorker(): PromptWorker | null {
-    return this.nativePromptWorker;
+    return this.nativePromptWorker ?? this.deps.externalRuntime?.runningWorker ?? null;
   }
 
   get cancellationWorker(): Promise<PromptCancellation> | null {
     return this.promptCancellationWorker;
   }
 
-  /** Matches the old queue gate: only an actively running prompt worker blocks queue start. */
+  /** Active work/cleanup blocks queue start; idle residency is released by the queue handoff. */
   isWorkerBusy(): boolean {
-    return Boolean(this.nativePromptWorker);
+    return Boolean(this.nativePromptWorker || this.nativePromptController || this.deps.externalRuntime?.isBusy());
   }
 
   /** Includes cancellation cleanup for settings/runtime admin operations. */
   isPromptBusy(): boolean {
-    return Boolean(this.nativePromptWorker || this.promptCancellationWorker);
+    return this.isWorkerBusy() || Boolean(this.promptCancellationWorker);
   }
 
   abort(reason: Error): void {
@@ -130,6 +139,7 @@ export class PromptApplicationService {
   }
 
   handleComfyRuntimeFailure(message: string): void {
+    if (this.activeBackend === "strata" || this.retainedPromptRuntime?.backend === "strata") return;
     this.retainedPromptRuntime = null;
     this.nativePromptController?.abort(new Error(message));
   }
@@ -177,14 +187,20 @@ export class PromptApplicationService {
     if (this.retainedPromptRuntime !== null) {
       await this.releaseRuntime(settings);
     }
-    const controller = new AbortController();
+    this.activeBackend = promptBackend;
+    this.deps.promptRuntimeManager.selectBackend(runtime, settings.strataPort);
+    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, "正在准备 Strata");
+    const startup = promptBackend === "strata" ? this.deps.promptRuntimeManager.beginOperation("image-to-video", true) : null;
+    const controller = startup?.controller ?? new AbortController();
+    const progress = startup ? this.createPromptProgressController(settings.promptModelId, startedAt, startup.operationId, "image-to-video") : null;
     this.nativePromptController = controller;
     this.deps.promptRuntimeManager.setModel("warming", settings.promptModelId);
     const worker = this.warmSelectedPromptRuntime(
       settings,
       promptBackend,
       controller.signal,
-      allowCpuFallback === true
+      allowCpuFallback === true,
+      progress?.update
     );
     this.nativePromptWorker = worker;
     try {
@@ -194,13 +210,17 @@ export class PromptApplicationService {
         modelId: settings.promptModelId
       };
       this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId);
+      if (startup) this.deps.promptRuntimeManager.finishOperation(startup.operationId, "completed");
+      progress?.finish("completed", "loading-model");
       this.deps.logger.info("prompt", "service-ready", "Prompt service ready", {
         runtime,
         durationMs: Date.now() - startedAt
       });
       return {
         ok: true,
-        message: promptBackend === "h3-prompt-writer"
+        message: promptBackend === "strata"
+          ? "Strata 提示词模型已加载；退出模型或开始队列时释放。"
+          : promptBackend === "h3-prompt-writer"
           ? "ComfyUI H3 Prompt Writer 已加载并保持驻留；手动退出或开始队列时释放。"
           : promptBackend === "comfyui-multimodal"
             ? "ComfyUI 多模态提示词模型已加载并保持驻留；手动退出或开始队列时释放。"
@@ -210,6 +230,13 @@ export class PromptApplicationService {
       };
     } catch (error) {
       this.retainedPromptRuntime = null;
+      if (promptBackend === "strata") {
+        const stopped = await this.deps.strata?.stop().then(() => true, () => false);
+        this.publishStrataState(settings, Boolean(stopped), startup?.operationId);
+        if (startup && !stopped) this.deps.promptRuntimeManager.finishOperation(startup.operationId, "failed", "Strata cleanup unconfirmed");
+        progress?.finish(controller.signal.aborted && stopped ? "cancelled" : "failed", "loading-model", error instanceof Error ? error.message : String(error));
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
       this.deps.promptRuntimeManager.setModel("unloaded");
       if (promptBackend === "h3-prompt-writer") {
         await releaseH3PromptWriter(settings).catch(() => undefined);
@@ -236,6 +263,7 @@ export class PromptApplicationService {
     } finally {
       if (this.nativePromptWorker === worker) this.nativePromptWorker = null;
       if (this.nativePromptController === controller) this.nativePromptController = null;
+      this.activeBackend = null;
     }
   }
 
@@ -264,10 +292,13 @@ export class PromptApplicationService {
     if (!promptBackend) {
       throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
+    this.deps.promptRuntimeManager.selectBackend(runtime, settings.strataPort);
+    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, "正在准备 Strata");
     const operation = this.deps.promptRuntimeManager.beginOperation(promptOrigin, true);
     const operationId = operation.operationId;
     const controller = operation.controller;
     this.nativePromptController = controller;
+    this.activeBackend = promptBackend;
     const promptLogContext = {
       operationId,
       runtime,
@@ -308,6 +339,7 @@ export class PromptApplicationService {
     this.nativePromptWorker = worker;
     try {
       const result = await worker;
+      controller.signal.throwIfAborted();
       this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
       this.deps.promptRuntimeManager.finishOperation(operationId, "completed");
       promptProgress.finish(
@@ -323,6 +355,16 @@ export class PromptApplicationService {
       });
       return result;
     } catch (error) {
+      if (promptBackend === "strata") {
+        const stopped = await this.deps.strata?.stop().then(() => true, () => false);
+        this.retainedPromptRuntime = null;
+        this.publishStrataState(settings, Boolean(stopped), operationId);
+        if (!stopped) {
+          this.deps.promptRuntimeManager.finishOperation(operationId, "failed", "Strata cleanup unconfirmed");
+          promptProgress.finish("failed", "unloading", "Strata 清理未完成，请重试释放。");
+          throw new Error("Strata 清理未完成，请重试释放。");
+        }
+      }
       if (controller.signal.aborted) {
         promptProgress.update("validating", null, "正在取消提示词任务");
         if (await this.waitForPromptCancellation()) {
@@ -345,8 +387,8 @@ export class PromptApplicationService {
         "failed",
         error instanceof Error ? error.message : String(error)
       );
-      if (!leaseAlreadyRetained) await this.releaseRuntime(settings);
-      await captureComfyUiLogFailure(
+      if (!leaseAlreadyRetained && promptBackend !== "strata") await this.releaseRuntime(settings);
+      if (promptBackend !== "strata") await captureComfyUiLogFailure(
         this.deps.logger,
         settings,
         "prompt_enhance_failed",
@@ -361,16 +403,25 @@ export class PromptApplicationService {
     } finally {
       if (this.nativePromptWorker === worker) this.nativePromptWorker = null;
       if (this.nativePromptController === controller) this.nativePromptController = null;
+      this.activeBackend = null;
     }
   }
 
   async cancel(): Promise<ConnectionResult> {
     const settings = this.deps.store.get().settings;
     try {
+      const strata = this.activeBackend === "strata";
+      if (strata && ["idle", "terminal"].includes(this.deps.promptRuntimeManager.snapshot().operation.phase) && this.nativePromptWorker) {
+        this.nativePromptController?.abort(new Error("提示词模型启动已取消。"));
+        await this.deps.strata?.stop();
+        await this.nativePromptWorker.catch(() => undefined);
+        return { ok: true, message: "Strata 准备或加载已取消，自有服务已停止。" };
+      }
       const result = await this.cancelActivePromptRuntime(settings);
       return {
         ok: true,
-        message: result.settled
+        message: strata && result.settled ? "提示词任务已取消，Strata 服务已停止。"
+          : result.settled
           ? "提示词任务已取消，模型保持运行。"
           : "已请求取消提示词任务；模型会在任务确认中止后保持运行。"
       };
@@ -384,10 +435,17 @@ export class PromptApplicationService {
 
   async releaseForUser(): Promise<ConnectionResult> {
     const settings = this.deps.store.get().settings;
+    if (this.deps.externalRuntime?.isBusy() && !this.nativePromptWorker) {
+      return { ok: false, message: "Strata 操作正在进行，请先完成或通过对应操作的取消按钮中止。" };
+    }
     if (this.deps.isQueueBusy()) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
     }
-    if (this.nativePromptWorker || this.promptCancellationWorker) {
+    if (this.nativePromptWorker && this.activeBackend === "strata" &&
+      ["idle", "terminal"].includes(this.deps.promptRuntimeManager.snapshot().operation.phase)) {
+      const cancelled = await this.cancel();
+      if (!cancelled.ok) return cancelled;
+    } else if (this.nativePromptWorker || this.promptCancellationWorker) {
       const cancellation = await this.cancelActivePromptRuntime(settings);
       if (!cancellation.settled) {
         return { ok: false, message: "提示词任务仍在中止中；确认停止后才能卸载模型。" };
@@ -401,16 +459,35 @@ export class PromptApplicationService {
           ? "已停止提示词模型并释放显存。"
           : "当前没有已加载的提示词模型。"
       };
-    } catch {
+    } catch (error) {
+      if (this.deps.externalRuntime) {
+        return { ok: false, message: error instanceof Error ? error.message : "提示词运行组件释放失败，请重试停止。" };
+      }
       this.deps.promptRuntimeManager.setModel("unloaded");
       return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
     }
   }
 
   async releaseRuntime(settings: Settings): Promise<number> {
+    if (this.retainedPromptRuntime?.backend === "strata" || (!this.retainedPromptRuntime && this.deps.promptRuntimeManager.snapshot().service.backend === "strata")) {
+      const occupied = this.deps.strata ? this.deps.strata.snapshot().pid !== null : false;
+      try { await this.deps.externalRuntime?.stop(); }
+      catch (error) { this.publishStrataState(settings, false); throw error; }
+      this.retainedPromptRuntime = null;
+      this.deps.promptRuntimeManager.setModel("unloaded");
+      this.deps.promptRuntimeManager.strataService("stopped", settings.strataPort, "Strata 服务已停止。");
+      return occupied ? 1 : 0;
+    }
+    await this.deps.externalRuntime?.stop();
+    return this.releaseComfyRuntime(settings);
+  }
+
+  /** Internal resource handoff: does not stop the external owner currently acquiring the lease. */
+  async releaseComfyRuntime(settings: Settings): Promise<number> {
     const retained = this.retainedPromptRuntime;
     const backend = retained?.backend ?? promptModelBackend(settings.promptModelId);
     const modelId = retained?.modelId ?? settings.promptModelId;
+    if (backend === "strata") return 0;
     this.retainedPromptRuntime = null;
     return this.deps.promptRuntimeManager.releaseModel(modelId, async () => {
       if (backend === "h3-prompt-writer") {
@@ -656,8 +733,15 @@ export class PromptApplicationService {
     settings: Settings,
     promptBackend: ReturnType<typeof promptModelBackend>,
     signal: AbortSignal,
-    allowCpuFallback = false
+    allowCpuFallback = false,
+    onProgress?: PromptProgressReporter
   ): Promise<void> {
+    if (promptBackend === "strata") {
+      await this.ensureStrataReady(settings, signal, onProgress);
+      return;
+    }
+    await this.deps.externalRuntime?.stop();
+    signal.throwIfAborted();
     const prepareRuntime = async (): Promise<void> => {
       await this.ensureComfyUiReadyForPrompt(settings, signal);
       // Re-publish warming after service startup so the renderer does not
@@ -696,6 +780,20 @@ export class PromptApplicationService {
     operationId: string,
     onProgress: PromptProgressReporter
   ): Promise<{ result: string; leaseAlreadyRetained: boolean }> {
+    if (promptBackend === "strata") {
+      const leaseAlreadyRetained = this.promptRuntimeLeaseMatches(promptBackend, settings.promptModelId);
+      if (this.retainedPromptRuntime && !leaseAlreadyRetained) await this.releaseRuntime(settings);
+      this.deps.promptRuntimeManager.setOperationPhase(operationId, "warming-model");
+      await this.ensureStrataReady(settings, controller.signal, onProgress);
+      this.retainedPromptRuntime = { backend: promptBackend, modelId: settings.promptModelId };
+      this.deps.promptRuntimeManager.setOperationPhase(operationId, "submitting");
+      // Strata has no ComfyUI prompt ID. Keep it null, with running feedback in PromptProgress.
+      const result = await withPromptExtensionMedia(request, operationId, controller.signal, (prepared) =>
+        enhancePromptWithStrata(prepared, settings, this.deps.strata!, controller.signal, onProgress));
+      return { result, leaseAlreadyRetained };
+    }
+    await this.deps.externalRuntime?.stop();
+    controller.signal.throwIfAborted();
     const leaseAlreadyRetained = await this.beginPromptRuntimeLease(
       settings,
       promptBackend,
@@ -811,9 +909,16 @@ export class PromptApplicationService {
     if (this.promptCancellationWorker) return this.promptCancellationWorker;
     const worker = this.nativePromptWorker;
     if (!worker) throw new Error("当前没有正在运行的提示词任务。");
-    const promptBackend = promptModelBackend(settings.promptModelId);
+    const promptBackend = this.activeBackend ?? promptModelBackend(settings.promptModelId);
     const cancellation = this.deps.promptRuntimeManager.requestCancellation();
     this.promptCancellationWorker = (async () => {
+      if (promptBackend === "strata") {
+        // Do not wait on the outer Prompt promise: it is awaiting this cancellation acknowledgement.
+        await this.deps.strata?.stop();
+        this.retainedPromptRuntime = null;
+        this.deps.promptRuntimeManager.setModel("unloaded");
+        return { recovered: false, settled: true };
+      }
       if (promptBackend === "h3-prompt-writer" || !cancellation.promptId) {
         const settled = await this.waitForWorkerToStop(worker, 10_000);
         return { recovered: false, settled };
@@ -869,6 +974,33 @@ export class PromptApplicationService {
     } catch {
       return false;
     }
+  }
+
+  private async ensureStrataReady(settings: Settings, signal: AbortSignal, onProgress?: PromptProgressReporter): Promise<void> {
+    if (!this.deps.strata) throw new Error("Strata 运行组件未接入。");
+    const scan = await scanEnvironment(settings, "runtime");
+    signal.throwIfAborted();
+    if (!scan.strataPreparation?.managedInstalled) throw new Error("Strata 尚未安装完整；请在设置 → 节点与依赖中安装或修复。");
+    if (scan.gpus?.length && !scan.gpus.some((gpu) =>
+      Number.parseInt(gpu.driverVersion, 10) >= 580 && gpu.vramTotalBytes >= 22 * 1024 ** 3)) {
+      throw new Error("当前 Strata 配置需要约 24GB NVIDIA 显存和 580+ 驱动；不会自动切换 CPU。");
+    }
+    await this.deps.strata.ensurePromptReady(settings, strataPromptPolicy(settings), {
+      resolvedModelDirectory: scan.modelDirectory, signal,
+      onLog: (message) => onProgress?.("loading-model", null, message)
+    });
+    signal.throwIfAborted();
+    this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, "Strata 模型已加载。");
+    this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId);
+  }
+
+  private publishStrataState(settings: Settings, stopped: boolean, operationId?: string): void {
+    if (operationId && stopped) this.deps.promptRuntimeManager.finishOperation(operationId,
+      this.nativePromptController?.signal.aborted ? "cancelled" : "failed", "Strata request stopped");
+    // degraded preserves unknown GPU occupancy; stopped is published only with confirmed cleanup.
+    this.deps.promptRuntimeManager.strataService(stopped ? "stopped" : "degraded", settings.strataPort,
+      stopped ? "Strata 已停止。" : "Strata 进程清理未完成，请重试释放。");
+    this.deps.promptRuntimeManager.setModel(stopped ? "unloaded" : "unknown", settings.promptModelId, operationId);
   }
 }
 

@@ -1,4 +1,7 @@
+import { strataModelEntries } from "./catalog/models/strata.js";
+
 export type PromptModelBackend =
+  | "strata"
   | "h3-prompt-writer"
   | "native-text-generate"
   | "comfyui-multimodal"
@@ -233,6 +236,7 @@ export function qwenVlPeftPromptModel(
 }
 
 export function promptModelBackend(modelId: string): PromptModelBackend | null {
+  if (isStrataPromptModel(modelId)) return "strata";
   if (modelId in nativePromptModelFiles) return "native-text-generate";
   const managed = managedPromptModel(modelId);
   if (managed) return managed.backend ?? "h3-prompt-writer";
@@ -247,12 +251,16 @@ export function isUnconcernedPromptModel(modelId: string): boolean {
   return modelId === unconcernedPromptModelId;
 }
 
+export function isStrataPromptModel(modelId: string): boolean {
+  return strataModelEntries.some((entry) => entry.definition.id === modelId);
+}
+
 export function promptRuntimeForSettings(settings: {
   promptModelId: string;
   promptRuntime?: "comfyui" | "lmstudio" | "llama-server";
   promptUseLmStudio?: boolean;
-}): "comfyui" {
-  // Legacy settings are intentionally ignored. Every supported prompt backend now
-  // runs inside the selected ComfyUI instance.
-  return "comfyui";
+}): "comfyui" | "strata" {
+  // Legacy provider settings are ignored. Strata owns a separate managed local service;
+  // the existing backends still run inside the selected ComfyUI instance.
+  return isStrataPromptModel(settings.promptModelId) ? "strata" : "comfyui";
 }

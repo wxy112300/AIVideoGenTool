@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { normalizeStrataSettings } from "../src/core/strata-preparation.js";
 import { isRetiredImageModelId } from "../src/core/image-workflow.js";
 import type {
   AppState,
@@ -26,7 +27,7 @@ import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.j
 import { normalizeImageLoras } from "../src/core/image-loras.js";
 import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import {
-  managedPromptModelDefinitions
+  promptModelBackend
 } from "../src/core/prompt-models.js";
 import {
   normalizeH3ImageOptions,
@@ -762,6 +763,7 @@ export class JsonStore implements StateRepository {
         settings: {
           ...defaultState.settings,
           ...savedSettings,
+          ...normalizeStrataSettings(savedSettings as Settings),
           h3AttentionMode: normalizeH3AttentionMode(savedH3AttentionMode),
           h3SparseAttentionMode: normalizeH3GlobalSparseAttentionMode(savedSettings.h3SparseAttentionMode),
           h3RuntimeMode: normalizeH3RuntimeMode(savedSettings.h3RuntimeMode),
@@ -792,6 +794,9 @@ export class JsonStore implements StateRepository {
       const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
       this.state.settings.uiLocale = normalizedUiLocale;
       let needsPersist = saved.queueRunning === true ||
+        savedSettings.strataInstallDirectory !== this.state.settings.strataInstallDirectory ||
+        savedSettings.strataModelDirectory !== this.state.settings.strataModelDirectory ||
+        savedSettings.strataPort !== this.state.settings.strataPort ||
         savedQueueLifecycle !== "idle" ||
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycleStartedAt?: unknown }).queueLifecycleStartedAt === "string" ||
@@ -972,12 +977,7 @@ export class JsonStore implements StateRepository {
         this.state.settings.promptModelId = retiredPromptModelFallback;
         needsPersist = true;
       }
-      const supportedPromptModels = new Set([
-        "qwen/qwen3.5-4b",
-        "qwen/qwen3.5-2b",
-        ...managedPromptModelDefinitions.map((model) => model.id)
-      ]);
-      if (!supportedPromptModels.has(this.state.settings.promptModelId)) {
+      if (promptModelBackend(this.state.settings.promptModelId) === null) {
         this.state.settings.promptModelId = "qwen/qwen3.5-4b";
         needsPersist = true;
       }

@@ -19,6 +19,7 @@ import {
   type PromptRuntimeState
 } from "../../core/prompt-runtime-state";
 import { projectPromptRuntimeView, type PromptRuntimeViewProjection } from "../../core/prompt-runtime-view";
+import { isStrataPromptModel } from "../../core/prompt-models";
 import { uiKeys } from "../../core/i18n-keys";
 import type { Translate, TranslationParams } from "../../core/i18n";
 import { createNotification, notificationAlreadyPending, notificationShouldPreserveError } from "../notifications";
@@ -51,6 +52,7 @@ type ShellApplicationApi = Pick<RendererApplicationApi,
   | "enhancePrompt"
   | "startPromptModel"
   | "releasePromptModel"
+  | "cancelPrompt"
   | "readAppLogs"
 > & ConfirmationApplicationApi;
 
@@ -615,6 +617,9 @@ export function createRendererShellCoordinator(
   }
 
   function promptRuntimeControlIcon(): string {
+    if (promptRuntime.operation.phase === "cancel-requested") return "refresh-cw";
+    if (promptStarting && !promptReleasing && promptRuntime.service.backend === "strata") return "square";
+    if (!promptReleasing && promptRuntime.service.backend === "strata" && promptRuntime.model.phase === "unknown") return "square";
     return promptStarting || promptReleasing
       ? "refresh-cw"
       : promptRuntimeLoaded || promptEnhancing
@@ -623,6 +628,8 @@ export function createRendererShellCoordinator(
   }
 
   function promptRuntimeControlTitle(settings = deps.getSettings()): string {
+    if (promptStarting && promptRuntime.service.backend === "strata") return deps.t(uiKeys.runtime.releasePrompt);
+    if (!promptReleasing && promptRuntime.service.backend === "strata" && promptRuntime.model.phase === "unknown") return deps.t(uiKeys.runtime.releasePrompt);
     return promptStarting
       ? deps.t(uiKeys.runtime.promptStarting)
       : promptEnhancing
@@ -709,7 +716,19 @@ export function createRendererShellCoordinator(
   }
 
   async function togglePromptModel(): Promise<void> {
-    if (promptRuntime.model.phase === "resident" || promptOperationIsActive(promptRuntime)) {
+    if (promptRuntime.operation.phase === "cancel-requested") return;
+    if (promptStarting && promptRuntime.service.backend === "strata") {
+      promptReleasing = true;
+      deps.render();
+      try {
+        const result = await deps.application.cancelPrompt();
+        if (!result.ok) throw new Error(result.message);
+        showMessage(result.message);
+      } catch (error) { showMessage(error instanceof Error ? error.message : String(error), { kind: "error" }); }
+      finally { promptReleasing = false; deps.render(); }
+      return;
+    }
+    if (promptRuntime.model.phase === "resident" || (promptRuntime.service.backend === "strata" && promptRuntime.model.phase === "unknown") || promptOperationIsActive(promptRuntime)) {
       await releasePromptModelFromUi();
     } else {
       await startPromptModelFromUi();
@@ -888,7 +907,8 @@ export function createRendererShellCoordinator(
   }
 
   function promptRuntimeView(origin: CreationMode): PromptRuntimeViewProjection {
-    return projectPromptRuntimeView(promptRuntime, origin);
+    return projectPromptRuntimeView(promptRuntime, origin,
+      isStrataPromptModel(deps.getSettings().promptModelId) ? "strata" : "comfyui");
   }
 
   function clearAppLogScreen(): void {

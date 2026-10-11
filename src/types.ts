@@ -467,6 +467,11 @@ export interface Settings {
   h3AutoPromptSeedId: string;
   h3AutoPromptSeedInstructions: Record<string, string>;
   promptModelDirectory: string;
+  /** Independently managed Strata software; model files use the shared ComfyUI root. */
+  strataInstallDirectory: string;
+  /** Legacy download location retained for compatibility; no separate settings control. */
+  strataModelDirectory: string;
+  strataPort: number;
   promptLlamaServerPath: string;
   promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;
@@ -1589,6 +1594,7 @@ export type LocalServiceKind = "comfy";
 export interface ConnectionResult {
   ok: boolean;
   message: string;
+  cancelled?: boolean;
   /** The requested file operation succeeded, but an externally managed service must be restarted by the user. */
   manualRestartRequired?: boolean;
   log?: string;
@@ -1606,6 +1612,8 @@ export interface LlamaServerStatus {
 export interface LlamaCppPythonStatus {
   packageName: "llama-cpp-python";
   pythonPath: string;
+  /** Actual package directory discovered in the selected Python; absent in old scans. */
+  packageDirectory?: string;
   pythonVersion: string;
   packageVersion: string;
   torchVersion: string;
@@ -1768,7 +1776,7 @@ export interface ModelScanProfile {
   category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
   /** Absent on legacy profiles and equivalent to `generation`. */
   role?: "generation" | "guide";
-  managedBy?: "comfyui" | "lmstudio" | "llama-server";
+  managedBy?: "comfyui" | "lmstudio" | "llama-server" | "strata";
   badge: string;
   description: string;
   vram: string;
@@ -1998,6 +2006,8 @@ export interface EnvironmentIssue {
 }
 
 export interface EnvironmentScanResult {
+  /** Offline preparation evidence, never inference readiness. */
+  strataPreparation?: StrataPreparationStatus;
   scannedAt: string;
   userHome: string;
   comfyRoot: string;
@@ -2030,6 +2040,20 @@ export interface EnvironmentScanResult {
   environmentSummary?: ComfyUiEnvironmentSummary;
   /** Additive process-local scan timing/evidence; absent on legacy snapshots. */
   scanTelemetry?: EnvironmentScanTelemetry;
+}
+
+export interface StrataPreparationStatus {
+  managedInstalled?: boolean;
+  managedUninstallable?: boolean;
+  configuredInstallDirectory?: string;
+  configuredModelDirectory?: string;
+  configuredComfyInstallDirectory?: string;
+  installDirectory: string;
+  modelDirectory: string;
+  files: { relativePath: string; present: boolean }[];
+  sourcePresent: boolean;
+  enginePresent: boolean;
+  scannedAt: string;
 }
 
 export interface PythonRuntimeCandidate {
@@ -2490,6 +2514,9 @@ export interface AppApi {
     settings: Settings
   ): Promise<ConnectionResult>;
   installLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
+  installStrata(settings: Settings): Promise<ConnectionResult>;
+  uninstallStrata(settings: Settings): Promise<ConnectionResult>;
+  cancelDependencyInstall(id: string): Promise<ConnectionResult>;
   uninstallLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
   installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
   installDepthAnything(settings: Settings): Promise<ConnectionResult>;
@@ -2551,6 +2578,15 @@ export interface DependencyInstallProgress {
   kind: "custom-node" | "python-runtime" | "model-assets";
   id: string;
   message: string;
+  progress?: StrataInstallProgress;
+}
+
+export interface StrataInstallProgress {
+  stage: "prepare" | "source" | "download" | "verify" | "extract" | "python" | "packages" | "check" | "complete" | "recovery";
+  /** Percentage of the current transfer only, not of the entire installation. */
+  percent?: number;
+  receivedBytes?: number;
+  totalBytes?: number;
 }
 
 declare global {

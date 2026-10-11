@@ -24,11 +24,13 @@ export type ConfirmationRequest =
       requiredVram: string;
     }
   | { kind: "uninstall-custom-node"; nodeId: string; name: string }
-  | { kind: "uninstall-llama-cpp-python" };
+  | { kind: "uninstall-llama-cpp-python" }
+  | { kind: "uninstall-strata"; directory: string };
 
 export type ConfirmationApplicationApi = Pick<RendererApplicationApi,
   | "forceStopComfyProcesses"
   | "uninstallLlamaCppPython"
+  | "uninstallStrata"
   | "uninstallCustomNode"
   | "removeTask"
   | "cancelTask"
@@ -132,6 +134,17 @@ export async function acceptConfirmation(
       if (!result.ok) throw new Error(result.message);
       await options.scanEnvironment(settings);
       options.setLlamaCppPythonInstalling(false);
+      options.setRequest(null);
+      options.setBusy(false);
+      options.notify(result.message);
+      options.render();
+      options.restoreModalFocus();
+      return;
+    } else if (request.kind === "uninstall-strata") {
+      const settings = options.getFormSettings();
+      const result = await context.application.uninstallStrata(settings);
+      await options.scanEnvironment(settings);
+      if (!result.ok) throw new Error(result.message);
       options.setRequest(null);
       options.setBusy(false);
       options.notify(result.message);

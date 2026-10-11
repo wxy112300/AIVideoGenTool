@@ -354,8 +354,11 @@
 .node-action-menu > summary::-webkit-details-marker { display: none; }
 .node-action-menu > summary:hover { background: #272e3a; }
 .node-action-menu > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.node-action-menu-popover { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 132px; padding: 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); box-shadow: 0 12px 30px rgba(0,0,0,.35); }
-.node-action-menu-popover button { width: 100%; justify-content: flex-start; border: 0; background: transparent; }
+.node-action-menu-popover { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 132px; width: max-content; padding: 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--ux-surface-raised); box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.node-action-menu:not([open]) > .node-action-menu-popover { display: none; }
+.node-action-menu[open] > .node-action-menu-popover { display: grid; }
+.node-action-menu-popover button { display: flex; width: 100%; min-height: 38px; padding: 8px 13px; align-items: center; justify-content: flex-start; border: 0; border-radius: var(--ux-radius-control); color: var(--ux-action-secondary-text); background: transparent; box-shadow: none; white-space: nowrap; }
+.node-action-menu-popover button:not(:disabled):hover { background: var(--ux-action-secondary-hover-surface); }
 .node-action-menu-popover .destructive-menu-action { color: var(--danger); }
 .node-action-menu-popover .destructive-menu-action:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .node-error { display: block; margin-top: 7px; color: var(--danger); font-size: 11px; }
@@ -364,11 +367,11 @@
 .node-log { margin-top: 10px; }
 .node-log summary { font-size: 12px; }
 .node-log pre { max-height: 220px; margin: 7px 0 0; padding: 10px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.attention-install-progress { display: grid; gap: 7px; margin-top: 12px; }
-.attention-install-progress[hidden] { display: none; }
-.attention-install-progress .progress { margin: 0; }
-.attention-install-progress .progress.indeterminate span { width: 34%; animation: attention-progress-slide 1.2s ease-in-out infinite; }
-.attention-install-progress strong { color: var(--muted); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.attention-install-progress, .dependency-install-progress { display: grid; gap: 7px; margin-top: 12px; }
+.attention-install-progress[hidden], .dependency-install-progress[hidden] { display: none; }
+.attention-install-progress .progress, .dependency-install-progress .progress { margin: 0; }
+.attention-install-progress .progress.indeterminate span, .dependency-install-progress .progress.indeterminate span { width: 34%; animation: attention-progress-slide 1.2s ease-in-out infinite; }
+.attention-install-progress strong, .dependency-install-progress strong { color: var(--muted); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
 @keyframes attention-progress-slide { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
 
 .issue-list { display: grid; gap: 10px; }

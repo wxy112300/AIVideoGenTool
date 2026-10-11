@@ -6,7 +6,8 @@ import type {
   H3PromptPreset,
   ImagePromptPreset,
   LocalServiceKind,
-  Settings
+  Settings,
+  StrataInstallProgress
 } from "../../../types";
 import type { SettingsTab } from "../../contracts";
 import { promptModelStatus } from "../../shared/status";
@@ -45,6 +46,10 @@ export interface SettingsViewModelDependencies {
   attentionAccelerationLog: string;
   llamaCppPythonInstalling: boolean;
   llamaCppPythonLog: string;
+  strataInstalling?: boolean;
+  dependencyInstallCancelling?: string[];
+  strataLog?: string;
+  strataInstallProgress?: StrataInstallProgress;
   selectedInstallGuide: SettingsPageViewModel["selectedInstallGuide"];
   appLogs: AppLogSnapshot | null;
   appLogsLoading: boolean;
@@ -101,6 +106,10 @@ export function buildSettingsPageViewModel(
     attentionAccelerationLog: options.attentionAccelerationLog,
     llamaCppPythonInstalling: options.llamaCppPythonInstalling,
     llamaCppPythonLog: options.llamaCppPythonLog,
+    strataInstalling: options.strataInstalling,
+    dependencyInstallCancelling: options.dependencyInstallCancelling,
+    strataLog: options.strataLog,
+    strataInstallProgress: options.strataInstallProgress,
     selectedInstallGuide: options.selectedInstallGuide,
     installGuideModelDirectory:
       options.environmentScan?.modelDirectory ||

@@ -216,6 +216,29 @@ describe("DraftService", () => {
 });
 
 describe("SettingsService", () => {
+  it("saves the opt-in Strata backend without changing drafts or the legacy runtime fields", async () => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial);
+    await createSettingsService(repository).save({ ...initial.settings, promptModelId: "strata/qwen3.8-flash-next-iq3_xxs" });
+    expect(repository.snapshot().settings.promptModelId).toBe("strata/qwen3.8-flash-next-iq3_xxs");
+    expect(repository.snapshot().draft).toEqual(initial.draft);
+    expect(repository.snapshot().settings.promptRuntime).toBe(initial.settings.promptRuntime);
+  });
+  it("saves independent Strata preparation without changing prompt selection or drafts", async () => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial);
+    await createSettingsService(repository).save({ ...initial.settings, strataInstallDirectory: " D:\\Strata ", strataModelDirectory: "D:\\Strata-models", strataPort: 43129 });
+    expect(repository.snapshot().settings).toMatchObject({ strataInstallDirectory: "D:\\Strata", strataModelDirectory: "D:\\Strata-models", strataPort: 43129, promptModelId: initial.settings.promptModelId, promptRuntime: initial.settings.promptRuntime });
+    expect(repository.snapshot().draft).toEqual(initial.draft);
+    expect(repository.snapshot().queue).toEqual(initial.queue);
+  });
+
+  it.each([8080, 80, NaN, 65536, 43127.5])("rejects invalid Strata port %s before persistence", async (strataPort) => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial);
+    await expect(createSettingsService(repository).save({ ...initial.settings, strataPort })).rejects.toThrow("Strata");
+    expect(repository.snapshot()).toEqual(initial);
+  });
   it("preserves edited video drafts when default models change", async () => {
     const initial = createDefaultState();
     initial.settings.imageInputLibraryDirectory = path.join(process.cwd(), "input-library");

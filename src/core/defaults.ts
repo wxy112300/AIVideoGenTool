@@ -1,4 +1,5 @@
 import type { AppState, Draft, Settings } from "../types.js";
+import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
 import {
   createDefaultH3PromptPresets,
   createDefaultQwenImagePromptPresets,
@@ -93,6 +94,9 @@ export function createDefaultSettings(): Settings {
     h3AutoPromptSeedId: "",
     h3AutoPromptSeedInstructions: createDefaultH3AutoPromptSeedInstructions(),
     promptModelDirectory: "",
+    strataInstallDirectory: "",
+    strataModelDirectory: "",
+    strataPort: STRATA_DEFAULT_PORT,
     promptLlamaServerPath: "",
     promptLlamaPort: 8091,
     h3PromptPresets: createDefaultH3PromptPresets(),

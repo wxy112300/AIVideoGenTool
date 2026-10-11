@@ -32,6 +32,8 @@ export interface CustomNodeInstallQueueDependencies {
     settings: Settings,
     mode: CustomNodeInstallMode
   ): Promise<ConnectionResult>;
+  cancelInstall?(nodeId: string): Promise<ConnectionResult>;
+  removedMessage?: string;
   restart(settings: Settings): Promise<ConnectionResult>;
   scan(settings: Settings): Promise<EnvironmentScanResult | null>;
   nodeName(nodeId: string): string;
@@ -125,6 +127,22 @@ export class CustomNodeInstallQueue {
     await this.worker;
   }
 
+  async cancel(nodeId: string): Promise<ConnectionResult> {
+    const index = this.queuedItems.findIndex((item) => item.nodeId === nodeId);
+    if (index >= 0) {
+      this.queuedItems.splice(index, 1);
+      this.batchNodeIds.splice(this.batchNodeIds.indexOf(nodeId), 1);
+      const message = this.dependencies.removedMessage ?? "已移出安装队列。";
+      this.appendLog(nodeId, message);
+      this.emit();
+      return { ok: true, cancelled: true, message };
+    }
+    if (this.phase === "installing" && this.activeNodeId === nodeId && this.dependencies.cancelInstall) {
+      return this.dependencies.cancelInstall(nodeId);
+    }
+    return { ok: false, message: "该安装已结束或尚未开始。" };
+  }
+
   private appendLog(nodeId: string, message: string): void {
     this.dependencies.setLog(
       nodeId,
@@ -139,6 +157,7 @@ export class CustomNodeInstallQueue {
   private async run(): Promise<void> {
     const successfulNodeIds: string[] = [];
     const failedNodeIds = new Set<string>();
+    let cancelled = false;
     const settings = this.batchSettings!;
     this.phase = "installing";
     this.emit();
@@ -152,6 +171,7 @@ export class CustomNodeInstallQueue {
       try {
         const result = await this.dependencies.install(nodeId, settings, mode);
         this.appendLog(nodeId, result.log || result.message);
+        if (result.cancelled) { cancelled = true; continue; }
         if (!result.ok) throw new Error(result.message);
         successfulNodeIds.push(nodeId);
       } catch (error) {
@@ -219,7 +239,12 @@ export class CustomNodeInstallQueue {
 
     const successCount = successfulNodeIds.filter((nodeId) => !failedNodeIds.has(nodeId)).length;
     const failureCount = failedNodeIds.size;
-    this.dependencies.notify(
+    if (cancelled && !successfulNodeIds.length) {
+      this.phase = "scanning";
+      this.emit();
+      await this.dependencies.scan(settings).catch(() => null);
+    }
+    if (successCount || failureCount) this.dependencies.notify(
       this.dependencies.messages.completed(successCount, failureCount),
       failureCount ? "warning" : "info"
     );

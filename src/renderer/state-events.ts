@@ -31,6 +31,7 @@ import {
   promptOperationIsActive
 } from "../core/prompt-runtime-state";
 import { preserveLocalCreationDrafts } from "../core/creation-drafts";
+import { updateStrataInstallProgress } from "./pages/settings/strata-preparation";
 import type {
   RendererApplicationApi,
   RendererEventsApi
@@ -456,6 +457,9 @@ export function registerRendererEvents(
     }),
     options.events.onDependencyInstallLog((progress) => {
       const log = options.appendDependencyInstallLog(progress);
+      if (progress.kind === "python-runtime" && progress.id === "strata" && progress.progress) {
+        updateStrataInstallProgress(progress.progress, options.getState()?.settings.uiLocale ?? "zh-CN");
+      }
       const logElement = document.querySelector<HTMLElement>(
         `[data-dependency-install-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`
       );

@@ -3,6 +3,7 @@ export const qwenImageTextEncoder = "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 export const qwenImageVae = "qwen_image_vae.safetensors";
 export const qwenImageLightningLora = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors";
 export const qwenImage21DiffusionModel = "qwen_image_2.1_int8_convrot.safetensors";
+export const qwenImage21TurboDiffusionModel = "qwen_image_2.1_turbo_int8_convrot.safetensors";
 export const qwenImage21TextEncoder = "qwen3vl_8b_int8_convrot.safetensors";
 export const qwenImage21Vae = "qwen_image_2.1_vae_bf16.safetensors";
 /** The 4090-first GGUF route keeps the highest currently compatible quantization as default. */
@@ -85,6 +86,21 @@ export const qwenImage21Capability = {
             id: "native",
             label: "官方原生质量",
             steps: 40,
+            cfg: 1,
+            lightning: false
+        }
+    ]
+};
+/** Official Qwen Image 2.1 Turbo checkpoint: the same 7B family with the saved 8-step schedule. */
+export const qwenImage21TurboCapability = {
+    ...qwenImage21Capability,
+    id: "qwen-image-2-1-turbo",
+    name: "Qwen Image 2.1 Turbo",
+    qualityProfiles: [
+        {
+            id: "turbo-8",
+            label: "官方 Turbo 质量",
+            steps: 8,
             cfg: 1,
             lightning: false
         }

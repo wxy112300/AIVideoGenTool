@@ -1,7 +1,7 @@
-import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, qwenImage21Capability, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufQ6Capability, qwenImageEdit2511Capability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
+import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, qwenImage21Capability, qwenImage21TurboCapability, qwenImage21UncensoredGgufCapability, qwenImage21UncensoredGgufQ6Capability, qwenImageEdit2511Capability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
 import { parseImageOutputs } from "./shared.js";
 import { compileQwenImageEditPrompt, buildQwenImageEdit2511Workflow, validateQwenImageEdit2511Workflow } from "./qwen.js";
-import { buildQwenImage21Workflow, buildQwenImage21GgufWorkflow, buildQwenImage21GgufQ6Workflow, compileQwenImage21Prompt, validateQwenImage21GgufRuntimeSchema, validateQwenImage21GgufWorkflow, validateQwenImage21GgufQ6Workflow, validateQwenImage21RuntimeSchema, validateQwenImage21Workflow } from "./qwen-image-2-1.js";
+import { buildQwenImage21Workflow, buildQwenImage21TurboWorkflow, buildQwenImage21GgufWorkflow, buildQwenImage21GgufQ6Workflow, compileQwenImage21Prompt, validateQwenImage21GgufRuntimeSchema, validateQwenImage21GgufWorkflow, validateQwenImage21GgufQ6Workflow, validateQwenImage21RuntimeSchema, validateQwenImage21TurboRuntimeSchema, validateQwenImage21TurboWorkflow, validateQwenImage21Workflow } from "./qwen-image-2-1.js";
 import { compileFlux2Klein4bPrompt, buildFlux2Klein4bWorkflow, validateFlux2Klein4bWorkflow } from "./flux2-klein.js";
 import { compileZImagePrompt, buildZImageWorkflow, validateZImageWorkflow, buildZImageTurboWorkflow, validateZImageTurboWorkflow } from "./z-image.js";
 import { compileHiDreamO1Prompt, buildHiDreamO1Workflow, validateHiDreamO1Workflow } from "./hidream-o1.js";
@@ -22,6 +22,14 @@ export const qwenImage21Adapter = {
     buildWorkflow: buildQwenImage21Workflow,
     validateWorkflow: validateQwenImage21Workflow,
     validateRuntimeSchema: validateQwenImage21RuntimeSchema,
+    parseOutputs
+};
+export const qwenImage21TurboAdapter = {
+    ...qwenImage21TurboCapability,
+    compilePrompt: compileQwenImage21Prompt,
+    buildWorkflow: buildQwenImage21TurboWorkflow,
+    validateWorkflow: validateQwenImage21TurboWorkflow,
+    validateRuntimeSchema: validateQwenImage21TurboRuntimeSchema,
     parseOutputs
 };
 export const qwenImage21UncensoredGgufAdapter = {
@@ -92,6 +100,7 @@ export const birefnetBackgroundRemovalAdapter = {
 export const imageModelAdapters = {
     [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
     [qwenImage21Adapter.id]: qwenImage21Adapter,
+    [qwenImage21TurboAdapter.id]: qwenImage21TurboAdapter,
     [qwenImage21UncensoredGgufAdapter.id]: qwenImage21UncensoredGgufAdapter,
     [qwenImage21UncensoredGgufQ6Adapter.id]: qwenImage21UncensoredGgufQ6Adapter,
     [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,

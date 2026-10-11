@@ -26,6 +26,8 @@ export type PromptRuntimeServiceOwnership = "unknown" | "none" | "app" | "extern
  * directly to `service-updated`.
  */
 export interface PromptRuntimeServiceFacts {
+  /** Absent in old snapshots means ComfyUI. Strata never adopts ComfyUI lifecycle facts. */
+  readonly backend?: "comfyui" | "strata";
   readonly phase: PromptRuntimeServicePhase;
   readonly ownership: PromptRuntimeServiceOwnership;
   readonly endpoint: string;
@@ -299,7 +301,8 @@ function replaceService(
   state: PromptRuntimeState,
   service: PromptRuntimeServiceFacts
 ): PromptRuntimeState {
-  if (service.operationId < state.service.operationId) return state;
+  if ((service.backend ?? "comfyui") === (state.service.backend ?? "comfyui")
+    && service.operationId < state.service.operationId) return state;
 
   const operation = serviceFailed(service.phase) && isActiveOperation(state.operation)
     ? terminalFromServiceFailure(state.operation, service.phase)

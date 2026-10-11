@@ -55,9 +55,15 @@ describe("model catalog", () => {
   });
 
   it("covers every model category used by environment scanning", () => {
-    expect(modelCatalog.list("prompt")).toHaveLength(10);
+    const promptEntries = modelCatalog.list("prompt");
+    expect(promptEntries.filter((entry) => entry.definition.scan?.managedBy !== "strata")).toHaveLength(10);
+    expect(promptEntries.filter((entry) => entry.definition.scan?.managedBy === "strata").map((entry) => ({ id: entry.definition.id, integrated: entry.definition.scan?.integrated }))).toEqual([
+      { id: "strata/qwen3.8-flash-next-iq3_xxs", integrated: true },
+      { id: "strata/qwen3.8-flash-next-iq2_xs", integrated: true }
+    ]);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "qwen-image-2-1",
+      "qwen-image-2-1-turbo",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
       "omnigen2",
@@ -118,6 +124,24 @@ describe("model catalog", () => {
     });
     expect(modelCatalog.get("qwen-image-2-1")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
+    expect(modelCatalog.get("qwen-image-2-1-turbo")?.definition).toMatchObject({
+      adapterId: "qwen-image-2-1-turbo",
+      variant: "turbo",
+      promptPackId: "qwen-image-2-1",
+      order: 999,
+      capabilities: { maxReferenceImages: 10 }
+    });
+    expect(modelCatalog.get("qwen-image-2-1-turbo")?.definition.scan?.requiredCustomNodeIds)
+      .toBeUndefined();
+    expect(modelCatalog.get("qwen-image-2-1-turbo")?.definition.scan).toMatchObject({
+      runtimeNodeTypes: expect.arrayContaining([
+        "TextEncodeQwenImage21",
+        "QwenImage21Cache",
+        "ComfySwitchNode",
+        "ManualSigmas",
+        "SamplerCustomAdvanced"
+      ])
+    });
     expect(IMAGE_LORA_DEFINITIONS.find((lora) => lora.id === "qwen-image-2-1-fix")).toMatchObject({
       filename: "qwen-image-2.1-fix-1.0-comfy.safetensors",
       catalogOrder: 151,
@@ -200,6 +224,12 @@ describe("model catalog", () => {
         "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
         "vae/qwen_image_2.1_vae_bf16.safetensors"
       ]);
+    expect(modelCatalog.get("qwen-image-2-1-turbo")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/qwen_image_2.1_turbo_{bf16|int8_convrot}.safetensors",
+        "text_encoders/qwen3vl_8b_{bf16|int8_convrot}.safetensors",
+        "vae/qwen_image_2.1_vae_bf16.safetensors"
+      ]);
     expect(modelCatalog.get("qwen-image-2-1-uncensored-gguf")?.definition).toMatchObject({
       adapterId: "qwen-image-2-1-uncensored-gguf",
       promptPackId: "qwen-image-2-1",
@@ -264,9 +294,11 @@ describe("model catalog", () => {
       { id: "qwen-image-edit-2511" },
       { id: "qwen-image-2-1-uncensored-gguf" },
       { id: "qwen-image-2-1-uncensored-gguf-q6" },
+      { id: "qwen-image-2-1-turbo" },
       { id: "qwen-image-2-1" }
     ], modelCatalog, "image").map((profile) => profile.id)).toEqual([
       "qwen-image-2-1",
+      "qwen-image-2-1-turbo",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
       "qwen-image-edit-2511"

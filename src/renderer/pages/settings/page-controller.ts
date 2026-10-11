@@ -8,6 +8,7 @@ import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
+import { strataModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 
 export interface SettingsPageControllerOptions {
   context: RendererContext;
@@ -67,16 +68,36 @@ export function mountSettingsPageController(
   }, { signal });
 
   root.querySelectorAll<HTMLButtonElement>("[data-install-profile]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       options.rememberModalFocus();
       options.setSettingsDraft(options.formSettings());
-      const profile = options.getEnvironmentScan()?.modelProfiles.find(
+      const settings = options.formSettings();
+      const profile = [...(options.getEnvironmentScan()?.modelProfiles ?? []), ...strataPreparationProfiles(settings.uiLocale)].find(
         (item) => item.id === button.dataset.installProfile
       );
       const component = profile?.components[Number(button.dataset.installComponent)];
       if (!profile || !component) return;
-      options.setInstallGuide({ profileName: profile.name, component });
+      const status = options.getEnvironmentScan()?.strataPreparation;
+      const targetRoot = strataPreparationMatchesSettings(settings, status)
+        ? status!.modelDirectory
+        : settings.modelDirectory.trim() ? strataModelRoot(settings) : "";
+      const selection: SettingsInstallGuideSelection = {
+        profileName: profile.name, component,
+        ...(profile.managedBy === "strata" ? { targetRoot } : {})
+      };
+      options.setInstallGuide(selection);
       (options.requestOverlayRender ?? options.context.requestRender)();
+      if (profile.managedBy === "strata" && !targetRoot) {
+        try {
+          const scanned = (await options.runEnvironmentScan(settings))?.strataPreparation;
+          if (options.getInstallGuide() === selection && strataPreparationMatchesSettings(options.formSettings(), scanned)) {
+            options.setInstallGuide({ ...selection, targetRoot: scanned!.modelDirectory });
+            (options.requestOverlayRender ?? options.context.requestRender)();
+          }
+        } catch (error) {
+          options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+        }
+      }
     }, { signal });
   });
 
@@ -273,6 +294,21 @@ export function mountSettingsPageController(
       if (result === "saved") {
         options.context.notify(options.context.t(uiKeys.settings.actions.lmStudioSaved));
       }
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-pick-strata-directory]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.pickStrataDirectory;
+      if (id !== "strata-install-directory") return;
+      const input = root.querySelector<HTMLInputElement>("#" + id);
+      const directory = await options.context.hostCapabilities.pickDirectory(input?.value);
+      if (!directory || !input) return;
+      input.value = directory;
+      const settings = options.formSettings();
+      options.setSettingsDraft(settings);
+      options.syncSettingsDirtyUi();
+      void options.runEnvironmentScan(settings);
     }, { signal });
   });
 

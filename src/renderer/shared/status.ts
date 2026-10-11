@@ -1,7 +1,8 @@
 import {
   isComfyMultimodalPromptModel,
   isGemmaPromptModel,
-  isQwenVlPeftPromptModel
+  isQwenVlPeftPromptModel,
+  isStrataPromptModel
 } from "../../core/prompt-models";
 import { modelCatalog } from "../../core/catalog";
 import { createTranslator, type Translate } from "../../core/i18n";
@@ -142,6 +143,9 @@ export function promptModelStatus(
       detail: `${t(uiKeys.status.promptIncomplete, { missing: missing ? `：${t(uiKeys.status.promptMissing, { missing })}` : "" })}`
     };
   }
+  if (isStrataPromptModel(settings.promptModelId) && !environmentScan.strataPreparation?.managedInstalled) {
+    return { ready: false, detail: t(uiKeys.status.promptStrataMissingSoftware) };
+  }
   const evidence = modelProfileEvidence(profile);
   if (evidence.nodePackage === "missing") {
     const nodes = profile.missingCustomNodeNames?.join("、") ||
@@ -160,7 +164,9 @@ export function promptModelStatus(
   }
   return {
     ready: true,
-    detail: isQwenVlPeftPromptModel(settings.promptModelId)
+    detail: isStrataPromptModel(settings.promptModelId)
+      ? t(uiKeys.status.promptStrata)
+      : isQwenVlPeftPromptModel(settings.promptModelId)
       ? t(uiKeys.status.promptQwenVlPeft)
       : isComfyMultimodalPromptModel(settings.promptModelId)
         ? t(uiKeys.status.promptQwenMultimodal)

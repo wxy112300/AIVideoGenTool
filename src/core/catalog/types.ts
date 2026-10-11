@@ -32,7 +32,7 @@ export interface CatalogModelComponent {
 }
 
 export interface CatalogModelScanDefinition {
-  managedBy?: "comfyui" | "lmstudio" | "llama-server";
+  managedBy?: "comfyui" | "lmstudio" | "llama-server" | "strata";
   vram: string;
   integrated?: boolean;
   /** Static product release gate; "open" still requires runtime evidence at enqueue. */

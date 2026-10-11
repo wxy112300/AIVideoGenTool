@@ -16,6 +16,7 @@ export function isOmniGen2TargetModel(modelId) {
 }
 export function isQwenImage21TargetModel(modelId) {
     return modelId === "qwen-image-2-1" ||
+        modelId === "qwen-image-2-1-turbo" ||
         modelId === "qwen-image-2-1-uncensored-gguf" ||
         modelId === "qwen-image-2-1-uncensored-gguf-q6";
 }

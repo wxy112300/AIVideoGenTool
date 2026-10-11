@@ -19,6 +19,7 @@ import {
   type SettingsStatusTone
 } from "../../shared/status";
 import type { CustomNodeInstallPhase } from "./node-install-queue";
+import { isStrataPromptModel } from "../../../core/prompt-models";
 
 export interface SettingsEnvironmentItemState extends EnvironmentItem {
   tone: SettingsStatusTone;
@@ -50,7 +51,7 @@ export function deriveEnvironmentOverviewItems(
 export type PromptRuntimeLabel = "waiting" | "ready" | "cpu" | "unknown" | "missing";
 
 export interface PromptRuntimeState {
-  kind: "llama-cpp" | "qwen-vl" | "native-comfy";
+  kind: "llama-cpp" | "qwen-vl" | "native-comfy" | "strata";
   tone: SettingsStatusTone;
   label: PromptRuntimeLabel;
   llamaCppPython?: LlamaCppPythonStatus;
@@ -70,6 +71,10 @@ export function derivePromptRuntimeState(
   }
 ): PromptRuntimeState {
   const selectedProfile = promptProfiles.find((profile) => profile.id === settings.promptModelId);
+  if (isStrataPromptModel(settings.promptModelId)) {
+    const ready = environmentScan?.strataPreparation?.managedInstalled && selectedProfile?.available;
+    return { kind: "strata", tone: ready ? "available" : "warning", label: ready ? "ready" : environmentScan ? "missing" : "waiting" };
+  }
   const usesQwenVl = classifiers.isQwenVlPeftPromptModel(settings.promptModelId);
   const usesLlamaCpp = classifiers.isGemmaPromptModel(settings.promptModelId) ||
     classifiers.isComfyMultimodalPromptModel(settings.promptModelId);

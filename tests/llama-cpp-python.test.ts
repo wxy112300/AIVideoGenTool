@@ -12,6 +12,14 @@ import {
 } from "../electron/services/llama-cpp-python";
 
 describe("llama-cpp-python runtime", () => {
+  it("preserves the discovered package directory even when native import fails, without guessing from Python", () => {
+    const pythonPath = "C:\\Selected\\Scripts\\python.exe";
+    expect(statusFromLlamaCppProbe(pythonPath, {
+      packageVersion: "0.3.46", packageDirectory: " D:\\Packages\\llama_cpp ", importable: false, importError: "DLL missing"
+    })).toMatchObject({ installed: true, ready: false, pythonPath, packageDirectory: "D:\\Packages\\llama_cpp" });
+    expect(statusFromLlamaCppProbe(pythonPath, { packageVersion: "0.3.46" }).packageDirectory).toBeUndefined();
+    expect(LLAMA_CPP_PYTHON_PROBE_SCRIPT.indexOf("distribution.locate_file(entry)")).toBeLessThan(LLAMA_CPP_PYTHON_PROBE_SCRIPT.indexOf("import torch"));
+  });
   it("requires an explicit supported CUDA wheel index on Windows", () => {
     expect(llamaCppWheelIndexForCuda("13.0", "win32")).toContain("/cu130");
     expect(llamaCppWheelIndexForCuda("12.6", "win32")).toContain("/cu125");

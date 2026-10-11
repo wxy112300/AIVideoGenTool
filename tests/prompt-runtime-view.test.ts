@@ -80,6 +80,18 @@ function terminalOperation(origin: PromptOperationOrigin): PromptRuntimeState["o
 }
 
 describe("projectPromptRuntimeView", () => {
+  it("keeps a selected idle Strata reachable without rewriting failed ComfyUI facts", () => {
+    const state = snapshot("error", "unloaded");
+    expect(projectPromptRuntimeView(state, "image-edit", "strata").right).toMatchObject({ disabled: false, action: "enhance" });
+    expect(projectPromptRuntimeView(state, "image-edit", "comfyui").right.disabled).toBe(true);
+    expect(state.service.phase).toBe("error");
+  });
+  it("allows retrying Strata release, but not enhancing, while occupancy is unknown", () => {
+    const state = snapshot("degraded", "unknown");
+    const view = projectPromptRuntimeView({ ...state, service: { ...state.service, backend: "strata" } }, "image-edit");
+    expect(view.left).toMatchObject({ icon: "square", disabled: false, intent: "stop" });
+    expect(view.right).toMatchObject({ disabled: true, action: "none" });
+  });
   it.each([
     ["stopped", "unloaded"],
     ["stopped", "unknown"],

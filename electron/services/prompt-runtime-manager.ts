@@ -39,8 +39,12 @@ export class PromptRuntimeManager {
   private state: PromptRuntimeState;
   private readonly listeners = new Set<PromptRuntimeListener>();
   private activeController: AbortController | null = null;
+  private comfyService: PromptRuntimeServiceFacts;
+  private backend: "comfyui" | "strata" = "comfyui";
+  private strataRevision = 0;
 
   constructor(service: PromptRuntimeServiceFacts) {
+    this.comfyService = service;
     this.state = createPromptRuntimeState(service);
   }
 
@@ -54,6 +58,8 @@ export class PromptRuntimeManager {
   }
 
   observeService(service: PromptRuntimeServiceFacts): void {
+    this.comfyService = service;
+    if (this.backend === "strata") return;
     this.transition({ type: "service-updated", service });
     if ((service.phase === "stopped" || service.phase === "error") && this.activeController) {
       this.activeController.abort(new Error(service.phase === "stopped"
@@ -61,6 +67,21 @@ export class PromptRuntimeManager {
         : "ComfyUI 运行状态异常。"));
       this.activeController = null;
     }
+  }
+
+  selectBackend(backend: "comfyui" | "strata", port?: number): void {
+    if (this.backend === backend) return;
+    this.backend = backend;
+    if (backend === "comfyui") this.transition({ type: "service-updated", service: this.comfyService });
+    else this.strataService("starting", port ?? 43127, "正在准备 Strata");
+  }
+
+  strataService(phase: PromptRuntimeServiceFacts["phase"], port: number, message: string): void {
+    this.transition({ type: "service-updated", service: {
+      backend: "strata", phase, ownership: phase === "stopped" ? "none" : "app",
+      endpoint: `http://127.0.0.1:${port}`, message, updatedAt: new Date().toISOString(),
+      operationId: ++this.strataRevision
+    } });
   }
 
   beginOperation(

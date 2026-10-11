@@ -1,6 +1,33 @@
 import type { ModelScanProfile, UiLocale } from "../../../types";
+import { modelCatalog } from "../../../core/catalog";
 
 type SettingsCopyKey =
+  | "strata.title"
+  | "strata.install.prepare"
+  | "strata.install.source"
+  | "strata.install.download"
+  | "strata.install.verify"
+  | "strata.install.extract"
+  | "strata.install.python"
+  | "strata.install.packages"
+  | "strata.install.check"
+  | "strata.install.complete"
+  | "strata.install.recovery"
+  | "strata.details"
+  | "strata.installed"
+  | "strata.stage"
+  | "strata.note"
+  | "strata.root"
+  | "strata.port"
+  | "strata.portNote"
+  | "strata.source"
+  | "strata.engine"
+  | "strata.choose"
+  | "strata.chooseRoot"
+  | "strata.notScanned"
+  | "strata.present"
+  | "strata.missing"
+  | "strata.evidence"
   | "video.title"
   | "model.meta.llamaReady"
   | "model.meta.multimodalReady"
@@ -159,6 +186,9 @@ type SettingsCopyKey =
   | "nodes.installed"
   | "nodes.notInstalled"
   | "nodes.installing"
+  | "nodes.cancelInstall"
+  | "nodes.removeQueued"
+  | "nodes.cancelling"
   | "nodes.reinstall"
   | "nodes.oneClickInstall"
   | "nodes.projectRequired"
@@ -199,6 +229,8 @@ type SettingsCopyKey =
   | "nodes.update"
   | "nodes.uninstall"
   | "nodes.moreActions"
+  | "nodes.openLocation"
+  | "nodes.openLocationFailed"
   | "nodes.duplicateCopies"
   | "nodes.empty"
   | "accel.title"
@@ -320,6 +352,32 @@ type Params = Record<string, string | number>;
 type SettingsCopyCatalog = Record<SettingsCopyKey, string>;
 
 const zhCN: SettingsCopyCatalog = {
+  "strata.title": "Strata · 独立提示词运行组件",
+  "strata.install.prepare": "检查安装环境",
+  "strata.install.source": "获取源码",
+  "strata.install.download": "下载引擎",
+  "strata.install.verify": "校验引擎",
+  "strata.install.extract": "解压引擎",
+  "strata.install.python": "创建 Python 环境",
+  "strata.install.packages": "安装 Python 依赖",
+  "strata.install.check": "检查运行组件",
+  "strata.install.complete": "安装完成",
+  "strata.install.recovery": "恢复安装状态",
+  "strata.details": "高级设置与安装详情",
+  "strata.installed": "运行组件已安装",
+  "strata.stage": "独立提示词运行组件",
+  "strata.note": "一键安装独立运行组件；模型在提示词模型卡中下载。不会启动模型或修改 ComfyUI 的 Python 包。",
+  "strata.root": "自定义运行目录（留空由应用管理）",
+  "strata.port": "预留本机端口",
+  "strata.portNote": "默认 43127；禁止 8080。此阶段只保存配置，不监听端口；启动接入时还会检查占用。",
+  "strata.source": "下载源码 ZIP",
+  "strata.engine": "下载 NVIDIA 引擎 ZIP",
+  "strata.choose": "选择目录",
+  "strata.chooseRoot": "模型路径暂不可用，请重新扫描环境",
+  "strata.notScanned": "尚未扫描此目录",
+  "strata.present": "文件存在（未验证可运行）",
+  "strata.missing": "缺少文件",
+  "strata.evidence": "安装校验固定源码、引擎 SHA-256 和独立 Python 包。模型采用 GSQ-RCO GGUF 与视觉投影；首次加载会校验并生成 pack/tokenizer，随后复用缓存。CUDA 13，NVIDIA 驱动 580+。",
   "video.title": "视频模型",
   "model.meta.llamaReady": "GGUF + mmproj 文件完整；由应用自管理 llama-server",
   "model.meta.multimodalReady": "LLM GGUF + mmproj 文件完整；通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词",
@@ -385,8 +443,8 @@ const zhCN: SettingsCopyCatalog = {
   "image.countUnit": "张",
   "image.empty": "尚无图片模型扫描结果；请先确认模型目录后重新扫描。",
   "prompt.title": "本地提示词模型",
-  "prompt.description": "统一由当前 ComfyUI 运行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 扩展。",
-  "prompt.badge": "仅依赖 ComfyUI",
+  "prompt.description": "按所选模型运行：现有模型使用 ComfyUI，Qwen3.8-Flash-Next 使用独立 Strata。",
+  "prompt.badge": "本地运行",
   "prompt.defaultModel": "默认提示词模型",
   "prompt.missingComponent": " · 缺组件",
   "prompt.videoImage": " · 视频/图片",
@@ -478,6 +536,9 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.installed": "已安装",
   "nodes.notInstalled": "未安装",
   "nodes.installing": "安装中…",
+  "nodes.cancelInstall": "取消安装",
+  "nodes.removeQueued": "移出队列",
+  "nodes.cancelling": "正在取消…",
   "nodes.reinstall": "重新安装",
   "nodes.oneClickInstall": "一键安装",
   "nodes.projectRequired": "项目必需",
@@ -518,6 +579,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.update": "更新",
   "nodes.uninstall": "卸载",
   "nodes.moreActions": "更多节点操作",
+  "nodes.openLocation": "打开位置",
+  "nodes.openLocationFailed": "无法打开所在位置，文件或目录可能已移动或删除，请重新扫描。",
   "nodes.duplicateCopies": "发现多个 H3 Motion Context 副本：{paths}。请只保留一个目录，再重启 ComfyUI。",
   "nodes.empty": "等待环境扫描结果",
   "accel.title": "性能与加速",
@@ -637,6 +700,32 @@ const zhCN: SettingsCopyCatalog = {
 
 const zhTW: SettingsCopyCatalog = {
   ...zhCN,
+  "strata.title": "Strata · 獨立提示詞執行元件",
+  "strata.install.prepare": "檢查安裝環境",
+  "strata.install.source": "取得原始碼",
+  "strata.install.download": "下載引擎",
+  "strata.install.verify": "驗證引擎",
+  "strata.install.extract": "解壓引擎",
+  "strata.install.python": "建立 Python 環境",
+  "strata.install.packages": "安裝 Python 相依套件",
+  "strata.install.check": "檢查執行元件",
+  "strata.install.complete": "安裝完成",
+  "strata.install.recovery": "恢復安裝狀態",
+  "strata.details": "進階設定與安裝詳情",
+  "strata.installed": "執行元件已安裝",
+  "strata.stage": "獨立提示詞執行元件",
+  "strata.note": "一鍵安裝獨立執行元件；模型在提示詞模型卡下載。不啟動模型或修改 ComfyUI 的 Python 套件。",
+  "strata.root": "自訂執行目錄（留空由應用管理）",
+  "strata.port": "預留本機連接埠",
+  "strata.portNote": "預設 43127；禁止 8080。此階段只儲存設定，不監聽連接埠；啟動接入時會再檢查占用。",
+  "strata.source": "下載原始碼 ZIP",
+  "strata.engine": "下載 NVIDIA 引擎 ZIP",
+  "strata.choose": "選擇目錄",
+  "strata.chooseRoot": "模型路徑暫不可用，請重新掃描環境",
+  "strata.notScanned": "尚未掃描此目錄",
+  "strata.present": "檔案存在（未驗證可執行）",
+  "strata.missing": "缺少檔案",
+  "strata.evidence": "安裝校驗固定原始碼、引擎 SHA-256 與獨立 Python 套件。模型使用 GSQ-RCO GGUF 與視覺投影；首次載入會校驗並產生 pack/tokenizer，之後重用快取。CUDA 13，NVIDIA 驅動 580+。",
   "video.title": "影片模型",
   "model.meta.llamaReady": "GGUF + mmproj 檔案完整；由應用程式自主管理 llama-server",
   "model.meta.multimodalReady": "LLM GGUF + mmproj 檔案完整；透過 ComfyUI MultiModal Prompt Nodes 處理 H3 提示詞",
@@ -697,8 +786,8 @@ const zhTW: SettingsCopyCatalog = {
   "image.countUnit": "張",
   "image.empty": "尚無圖片模型掃描結果；請先確認模型目錄後重新掃描。",
   "prompt.title": "本機提示詞模型",
-  "prompt.description": "統一由目前的 ComfyUI 執行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 擴充。",
-  "prompt.badge": "僅依賴 ComfyUI",
+  "prompt.description": "依所選模型執行：現有模型使用 ComfyUI，Qwen3.8-Flash-Next 使用獨立 Strata。",
+  "prompt.badge": "本機執行",
   "prompt.defaultModel": "預設提示詞模型",
   "prompt.missingComponent": " · 缺少元件",
   "prompt.videoImage": " · 影片/圖片",
@@ -773,6 +862,9 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.installed": "已安裝",
   "nodes.notInstalled": "未安裝",
   "nodes.installing": "安裝中…",
+  "nodes.cancelInstall": "取消安裝",
+  "nodes.removeQueued": "移出佇列",
+  "nodes.cancelling": "正在取消…",
   "nodes.reinstall": "重新安裝",
   "nodes.oneClickInstall": "一鍵安裝",
   "nodes.projectRequired": "專案必要",
@@ -813,6 +905,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.update": "更新",
   "nodes.uninstall": "解除安裝",
   "nodes.moreActions": "更多節點操作",
+  "nodes.openLocation": "開啟位置",
+  "nodes.openLocationFailed": "無法開啟所在位置，檔案或目錄可能已移動或刪除，請重新掃描。",
   "nodes.duplicateCopies": "發現多個 H3 Motion Context 副本：{paths}。請只保留一個資料夾，再重新啟動 ComfyUI。",
   "nodes.empty": "等待環境掃描結果",
   "accel.title": "效能與加速",
@@ -931,6 +1025,32 @@ const zhTW: SettingsCopyCatalog = {
 };
 
 const enUS: SettingsCopyCatalog = {
+  "strata.title": "Strata · Independent prompt runtime",
+  "strata.install.prepare": "Checking environment",
+  "strata.install.source": "Fetching source",
+  "strata.install.download": "Downloading engine",
+  "strata.install.verify": "Verifying engine",
+  "strata.install.extract": "Extracting engine",
+  "strata.install.python": "Creating Python environment",
+  "strata.install.packages": "Installing Python packages",
+  "strata.install.check": "Checking runtime files",
+  "strata.install.complete": "Installation complete",
+  "strata.install.recovery": "Recovering installation",
+  "strata.details": "Advanced settings and installation details",
+  "strata.installed": "Runtime components installed",
+  "strata.stage": "Independent prompt runtime",
+  "strata.note": "Install the independent runtime in one click; download weights from prompt model cards. No model startup or changes to ComfyUI Python packages.",
+  "strata.root": "Custom runtime directory (leave empty for app management)",
+  "strata.port": "Reserved local port",
+  "strata.portNote": "Default 43127; 8080 is forbidden. This stage only saves configuration, with no listener. Actual startup will also check port availability.",
+  "strata.source": "Download source ZIP",
+  "strata.engine": "Download NVIDIA engine ZIP",
+  "strata.choose": "Choose directory",
+  "strata.chooseRoot": "Model path unavailable; rescan the environment",
+  "strata.notScanned": "This directory has not been scanned",
+  "strata.present": "File present (execution not verified)",
+  "strata.missing": "File missing",
+  "strata.evidence": "Installation checks the pinned source, engine SHA-256 and isolated Python packages. GSQ-RCO GGUF shards and a vision projector are verified and packed on first load; later loads reuse the cache. CUDA 13 and NVIDIA driver 580+.",
   "video.title": "Video models",
   "model.meta.llamaReady": "GGUF + mmproj files complete; llama-server is managed by the app",
   "model.meta.multimodalReady": "LLM GGUF + mmproj files complete; H3 prompts use ComfyUI MultiModal Prompt Nodes",
@@ -996,8 +1116,8 @@ const enUS: SettingsCopyCatalog = {
   "image.countUnit": "images",
   "image.empty": "No image model scan results; confirm the model directory and rescan.",
   "prompt.title": "Local prompt models",
-  "prompt.description": "Runs through the current ComfyUI: Qwen uses native TextGenerate, while Gemma 4 uses the H3 Prompt Writer extension.",
-  "prompt.badge": "ComfyUI only",
+  "prompt.description": "Runs with the selected model: existing models use ComfyUI; Qwen3.8-Flash-Next uses independent Strata.",
+  "prompt.badge": "Local runtime",
   "prompt.defaultModel": "Default prompt model",
   "prompt.missingComponent": " · missing component",
   "prompt.videoImage": " · video/image",
@@ -1089,6 +1209,9 @@ const enUS: SettingsCopyCatalog = {
   "nodes.installed": "Installed",
   "nodes.notInstalled": "Not installed",
   "nodes.installing": "Installing…",
+  "nodes.cancelInstall": "Cancel install",
+  "nodes.removeQueued": "Remove queued",
+  "nodes.cancelling": "Cancelling…",
   "nodes.reinstall": "Reinstall",
   "nodes.oneClickInstall": "Install with one click",
   "nodes.projectRequired": "Project required",
@@ -1129,6 +1252,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.update": "Update",
   "nodes.uninstall": "Uninstall",
   "nodes.moreActions": "More node actions",
+  "nodes.openLocation": "Open location",
+  "nodes.openLocationFailed": "Could not open the location. The file or folder may have moved or been deleted; scan again.",
   "nodes.duplicateCopies": "Multiple H3 Motion Context copies detected: {paths}. Keep only one directory, then restart ComfyUI.",
   "nodes.empty": "Waiting for environment scan",
   "accel.title": "Performance & acceleration",
@@ -1324,6 +1449,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
     "qwen-image-2-1": "RTX 4090 24GB 推荐 · INT8 ConvRot + BF16 VAE · 首期 1 MP，2K 待验证",
+    "qwen-image-2-1-turbo": "RTX 4090 24GB 推荐 · Turbo INT8 ConvRot + BF16 VAE · 官方 8 步",
     "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB 推荐 · Q8_0 GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "qwen-image-2-1-uncensored-gguf-q6": "RTX 4090 24GB 推荐 · Q6_K GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
@@ -1362,6 +1488,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系統 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
     "qwen-image-2-1": "RTX 4090 24GB 推薦 · INT8 ConvRot + BF16 VAE · 首期 1 MP，2K 待驗證",
+    "qwen-image-2-1-turbo": "RTX 4090 24GB 推薦 · Turbo INT8 ConvRot + BF16 VAE · 官方 8 步",
     "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB 推薦 · Q8_0 GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "qwen-image-2-1-uncensored-gguf-q6": "RTX 4090 24GB 推薦 · Q6_K GGUF + Qwen3-VL INT8 · 需要 ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
@@ -1400,6 +1527,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB or higher · System RAM 16GB or higher",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB or higher · CPU/offload",
     "qwen-image-2-1": "RTX 4090 24GB recommended · INT8 ConvRot + BF16 VAE · 1 MP first; 2K pending validation",
+    "qwen-image-2-1-turbo": "RTX 4090 24GB recommended · Turbo INT8 ConvRot + BF16 VAE · official 8 steps",
     "qwen-image-2-1-uncensored-gguf": "RTX 4090 24GB recommended · Q8_0 GGUF + INT8 Qwen3-VL · requires ComfyUI-GGUF",
     "qwen-image-2-1-uncensored-gguf-q6": "RTX 4090 24GB recommended · Q6_K GGUF + INT8 Qwen3-VL · requires ComfyUI-GGUF",
     "flux2-klein-4b": "RTX 4080/4090 16GB or higher",
@@ -1461,6 +1589,8 @@ export function settingsModelHardwareRecommendation(
   profile: Pick<ModelScanProfile, "id" | "category">
 ): string {
   const activeLocale = locale ?? "zh-CN";
+  const scan = modelCatalog.get(profile.id)?.definition.scan;
+  if (scan?.managedBy === "strata") return scan.vram;
   const recommendations = modelHardwareRecommendations[activeLocale];
   const defaults = modelHardwareDefaults[activeLocale];
   return recommendations[profile.id] ?? defaults[profile.category] ?? defaults.default ?? "";

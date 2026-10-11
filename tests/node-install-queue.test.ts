@@ -86,6 +86,51 @@ function scanWithNodeRuntimeFailure(nodeId: string, detail: string): Environment
 }
 
 describe("CustomNodeInstallQueue", () => {
+  it("removes waiting installs without executing them and waits for active cancellation before starting the next", async () => {
+    const settings = createDefaultState().settings;
+    let finish!: (result: import("../src/types").ConnectionResult) => void;
+    const calls: string[] = [], logs: Record<string, string> = {};
+    const notify = vi.fn(), restart = vi.fn(async () => ({ ok: true, message: "restart" }));
+    const cancelInstall = vi.fn(async () => ({ ok: true, message: "cancel requested" }));
+    const queue = new CustomNodeInstallQueue({
+      install: async (id) => { calls.push(id); if (id === "active") return new Promise((done) => { finish = done; }); return { ok: true, message: "installed" }; },
+      cancelInstall, restart, scan: async () => scanWithLoadedNodes("next"), nodeName: (id) => id,
+      getLog: (id) => logs[id] || "", setLog: (id, log) => { logs[id] = log; }, notify, onSnapshot: vi.fn(), messages: messages()
+    });
+    queue.enqueue("active", settings); queue.enqueue("removed", settings); queue.enqueue("next", settings);
+    expect(await queue.cancel("removed")).toMatchObject({ ok: true, cancelled: true });
+    expect(queue.snapshot().queuedNodeIds).toEqual(["next"]);
+    expect(queue.snapshot().batchNodeIds).not.toContain("removed");
+    expect(logs.removed).toContain("移出");
+    await queue.cancel("active");
+    expect(cancelInstall).toHaveBeenCalledWith("active");
+    expect(calls).toEqual(["active"]);
+    expect(queue.snapshot().activeNodeId).toBe("active");
+    finish({ ok: false, cancelled: true, message: "cancelled" });
+    await queue.waitForIdle();
+    expect(calls).toEqual(["active", "next"]);
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining("failed active"), "error");
+    expect(notify).toHaveBeenLastCalledWith("completed 1/0", "info");
+  });
+
+  it("rescans partial files after cancellation without starting ComfyUI, and permits removed nodes to be queued again", async () => {
+    const settings = createDefaultState().settings;
+    let finish!: (result: import("../src/types").ConnectionResult) => void;
+    const restart = vi.fn(async () => ({ ok: true, message: "restart" })), scan = vi.fn(async () => null), notify = vi.fn();
+    const queue = new CustomNodeInstallQueue({
+      install: () => new Promise((done) => { finish = done; }), restart, scan, nodeName: (id) => id,
+      getLog: () => "", setLog: vi.fn(), notify, onSnapshot: vi.fn(), messages: messages()
+    });
+    queue.enqueue("active", settings); queue.enqueue("waiting", settings);
+    await queue.cancel("waiting");
+    expect(queue.enqueue("waiting", settings).accepted).toBe(true);
+    await queue.cancel("waiting");
+    finish({ ok: false, cancelled: true, message: "cancelled" });
+    await queue.waitForIdle();
+    expect(scan).toHaveBeenCalledTimes(1); expect(restart).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
+    expect(queue.snapshot().phase).toBe("idle");
+  });
   it("bulk-selects missing, catalog-outdated, or fully unregistered nodes", () => {
     const nodes = [
       nodeStatus("healthy"),

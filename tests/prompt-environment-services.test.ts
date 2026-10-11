@@ -16,6 +16,7 @@ import {
   type RuntimeAdminServiceDependencies
 } from "../electron/services/runtime-admin-service";
 import { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state";
+import { installationSignal } from "../electron/services/installation-cancellation";
 
 interface TestRepository extends StateRepository {
   snapshot(): AppState;
@@ -194,6 +195,33 @@ describe("EnvironmentQueryService", () => {
 });
 
 describe("RuntimeAdminService", () => {
+  it.each(["custom-node:example", "python-runtime:llama-cpp-python", "python-runtime:strata", "attention-acceleration"])("propagates cancellation to the actual installer for %s and frees the slot afterward", async (id) => {
+    const repository = createRepository();
+    const install = vi.fn(async () => {
+      const signal = installationSignal()!;
+      await new Promise<void>((done) => signal.addEventListener("abort", () => done(), { once: true }));
+      return { ok: false, message: "cancelled", log: "retained progress" };
+    });
+    const service = createAdmin(repository, { installCustomNode: install, installLlamaCppPython: install, installStrata: install, installAttentionAcceleration: install });
+    const settings = repository.getSettings();
+    const pending = id.startsWith("custom-node:") ? service.installCustomNode("example", settings, "repair")
+      : id.endsWith("llama-cpp-python") ? service.installLlamaCppPython(settings)
+      : id.endsWith("strata") ? service.installStrata(settings) : service.installAttentionAcceleration(settings);
+    await Promise.resolve();
+    expect(await service.cancelDependencyInstall(id)).toMatchObject({ ok: true, cancelled: true });
+    expect(await pending).toMatchObject({ ok: false, cancelled: true, log: "retained progress" });
+    expect((await service.cancelDependencyInstall(id)).ok).toBe(false);
+  });
+  it.each(["generation", "prompt", "idle"])("blocks Strata uninstall during active work and forwards progress when idle (%s)", async (work) => {
+    const repository = createRepository(), progress = vi.fn();
+    const uninstallStrata = vi.fn<NonNullable<RuntimeAdminServiceDependencies["uninstallStrata"]>>(async (_settings, onProgress) => { onProgress?.("fixture removed"); return {ok:true,message:"removed"}; });
+    const service = createAdmin(repository,{isGenerationBusy:()=>work === "generation",isPromptBusy:()=>work === "prompt",uninstallStrata});
+    const result=await service.uninstallStrata(repository.getSettings(),progress);
+    expect(result.ok).toBe(work === "idle");
+    if(work === "idle") expect(progress).toHaveBeenCalledWith("fixture removed");
+    else expect(uninstallStrata).not.toHaveBeenCalled();
+  });
+
   it("rejects attention installation while generation or prompt work is active", async () => {
     const repository = createRepository();
     const installAttentionAcceleration = vi.fn(async () => ({

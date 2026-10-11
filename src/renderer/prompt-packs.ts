@@ -28,6 +28,7 @@ export function qwenImagePromptPackFor(locale: UiLocale = "zh-CN") {
 
 export function imagePromptPackForTarget(locale: UiLocale = "zh-CN", modelId?: string) {
   return modelId === "qwen-image-2-1" ||
+    modelId === "qwen-image-2-1-turbo" ||
     modelId === "qwen-image-2-1-uncensored-gguf" ||
     modelId === "qwen-image-2-1-uncensored-gguf-q6"
     ? loadedPromptPacks().qwenImage21PromptPackFor(locale)

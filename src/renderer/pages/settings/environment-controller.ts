@@ -45,7 +45,7 @@ export function mountSettingsEnvironmentController(
         result.log || options.getAttentionAccelerationLog() || result.message
       );
       const scan = await options.refreshEnvironment(settings, "dependency-change");
-      if (scan) context.notify(result.message, { kind: result.ok ? "info" : "error" });
+      if (scan && !result.cancelled) context.notify(result.message, { kind: result.ok ? "info" : "error" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setAttentionAccelerationLog(

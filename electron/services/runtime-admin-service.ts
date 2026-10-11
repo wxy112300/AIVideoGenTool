@@ -4,7 +4,8 @@ import type {
   CustomNodeInstallMode,
   EnvironmentIssue,
   LocalServiceKind,
-  Settings
+  Settings,
+  StrataInstallProgress
 } from "../../src/types.js";
 import {
   forceStopComfyProcesses,
@@ -12,6 +13,8 @@ import {
   installAttentionAcceleration,
   installCustomNode,
   installLlamaCppPython,
+  installStrata,
+  uninstallStrata,
   repairEnvironmentIssue,
   repairOperationForIssue,
   restartLocalService,
@@ -23,6 +26,8 @@ import {
 import { AppLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { ComfyRuntimeStateController } from "../../src/infrastructure/comfy-runtime-state.js";
 import type { StateRepository } from "../ports/state-repository.js";
+import { InstallationCancellation } from "./installation-cancellation.js";
+import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 
 type ProgressListener = (message: string) => void;
 
@@ -49,12 +54,20 @@ export interface RuntimeAdminServiceDependencies {
   installCustomNode?: typeof installCustomNode;
   uninstallCustomNode?: typeof uninstallCustomNode;
   installLlamaCppPython?: typeof installLlamaCppPython;
+  installStrata?: typeof installStrata;
+  uninstallStrata?: typeof uninstallStrata;
+  strataRuntime?: Pick<StrataRuntimeOwner, "withSoftwareChange">;
   uninstallLlamaCppPython?: typeof uninstallLlamaCppPython;
   installAttentionAcceleration?: typeof installAttentionAcceleration;
   installDepthAnything?: typeof installDepthAnything;
 }
 
 export class RuntimeAdminService {
+  private readonly installations = new InstallationCancellation();
+
+  cancelDependencyInstall(id: string): Promise<ConnectionResult> {
+    return this.installations.cancel(id);
+  }
   private readonly store: StateRepository;
   private readonly logger: AppLogger;
   private readonly runtimeState: ComfyRuntimeStateController;
@@ -198,7 +211,7 @@ export class RuntimeAdminService {
       "environment",
       "custom-node-install",
       "Custom node installation started",
-      () => this.installNode(
+      () => this.installations.run(`custom-node:${nodeId}`, () => this.installNode(
         nodeId,
         settings,
         (message) => {
@@ -211,7 +224,7 @@ export class RuntimeAdminService {
           onProgress?.(message);
         },
         resolvedMode
-      ),
+      )),
       { nodeId, mode: resolvedMode }
     );
   }
@@ -246,15 +259,35 @@ export class RuntimeAdminService {
       "environment",
       "llama-cpp-python-install",
       "llama-cpp-python installation started",
-      () => this.installLlama(settings, (message) => {
+      () => this.installations.run("python-runtime:llama-cpp-python", () => this.installLlama(settings, (message) => {
         this.logger.info(
           "environment",
           "llama-cpp-python-install-progress",
           message
         );
         onProgress?.(message);
-      })
+      }))
     );
+  }
+
+  installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
+    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: "当前有生成或提示词任务，请完成或取消后再安装 Strata。" });
+    return this.loggedOperation("environment", "strata-install", "Strata installation started", () => this.withStrataSoftwareChange((signal) => this.installations.run("python-runtime:strata", () => (this.deps.installStrata ?? installStrata)(settings, (message, progress) => {
+      if (message) this.logger.info("environment", "strata-install-progress", message);
+      onProgress?.(message, progress);
+    }), signal)));
+  }
+
+  uninstallStrata(settings: Settings, onProgress?: ProgressListener): Promise<ConnectionResult> {
+    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: "当前有生成或提示词任务，请完成或取消后再卸载 Strata。" });
+    return this.loggedOperation("environment", "strata-uninstall", "Strata uninstallation started", () => this.withStrataSoftwareChange(() => (this.deps.uninstallStrata ?? uninstallStrata)(settings, (message) => {
+      this.logger.info("environment", "strata-uninstall-progress", message);
+      onProgress?.(message);
+    })));
+  }
+
+  private withStrataSoftwareChange<T>(change: (signal?: AbortSignal) => Promise<T>): Promise<T> {
+    return this.deps.strataRuntime ? this.deps.strataRuntime.withSoftwareChange(change) : change();
   }
 
   uninstallLlamaCppPython(
@@ -290,9 +323,9 @@ export class RuntimeAdminService {
       "environment",
       "attention-install",
       "Attention acceleration installation started",
-      () => this.installAttention(settings, (message) => {
+      () => this.installations.run("attention-acceleration", () => this.installAttention(settings, (message) => {
         onProgress?.(message);
-      })
+      }))
     );
   }
 
@@ -310,14 +343,14 @@ export class RuntimeAdminService {
       "environment",
       "depth-anything-install",
       "Depth Anything installation started",
-      () => this.installDepth(settings, (message) => {
+      () => this.installations.run("model-assets:depth-anything-v2", () => this.installDepth(settings, (message) => {
         this.logger.info(
           "environment",
           "depth-anything-install-progress",
           message
         );
         onProgress?.(message);
-      })
+      }))
     );
   }
 
@@ -334,7 +367,7 @@ export class RuntimeAdminService {
       const result = await operation();
       this.logger.info(
         scope,
-        result.ok ? `${event}-succeeded` : `${event}-failed`,
+        result.cancelled ? `${event}-cancelled` : result.ok ? `${event}-succeeded` : `${event}-failed`,
         result.message,
         { ...meta, ok: result.ok, durationMs: Date.now() - startedAt }
       );

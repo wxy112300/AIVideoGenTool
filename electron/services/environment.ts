@@ -2,6 +2,14 @@ import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { renameWithRetry, retryableRenameError } from "./filesystem-retry.js";
+export { renameWithRetry } from "./filesystem-retry.js";
+import { scanStrataPreparation } from "./strata-preparation.js";
+import { installStrataRuntime, uninstallStrataRuntime } from "./strata-installation.js";
+import { withDownloadFileProgress } from "./download-file-progress.js";
+import { STRATA_ENGINE_BYTES } from "../../src/core/catalog/dependencies/strata.js";
+import type { StrataInstallProgress } from "../../src/types.js";
+import { installationSignal, checkInstallationCancelled } from "./installation-cancellation.js";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type {
@@ -414,7 +422,7 @@ interface ModelProfileDefinition {
   name: string;
   category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
   role?: "generation" | "guide";
-  managedBy?: "comfyui" | "lmstudio" | "llama-server";
+  managedBy?: "comfyui" | "lmstudio" | "llama-server" | "strata";
   badge: string;
   description: string;
   vram: string;
@@ -1767,7 +1775,7 @@ function catalogModelProfileDefinitionsFor(
     .sort((left, right) => right.definition.order - left.definition.order)
     .flatMap((entry) => {
   const scan = entry.definition.scanVariants?.[ltxModelProfile] ?? entry.definition.scan;
-  if (!scan) return [];
+  if (!scan || scan.managedBy === "strata") return [];
   const locale = modelCatalog.localized(entry.definition.id, "zh-CN");
   return [{
     id: entry.definition.id,
@@ -1881,45 +1889,6 @@ async function exists(filename: string): Promise<boolean> {
   return Boolean(await fs.stat(filename).catch(() => null));
 }
 
-const RETRYABLE_RENAME_ERRORS = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
-
-interface RenameRetryOptions {
-  attempts?: number;
-  retryDelayMs?: number;
-  rename?: (source: string, destination: string) => Promise<void>;
-  wait?: (milliseconds: number) => Promise<void>;
-}
-
-function retryableRenameError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    RETRYABLE_RENAME_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")
-  );
-}
-
-export async function renameWithRetry(
-  source: string,
-  destination: string,
-  options: RenameRetryOptions = {}
-): Promise<void> {
-  const attempts = Math.max(1, options.attempts ?? 8);
-  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 150);
-  const rename = options.rename ?? fs.rename;
-  const wait =
-    options.wait ??
-    ((milliseconds: number) =>
-      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      await rename(source, destination);
-      return;
-    } catch (error) {
-      if (!retryableRenameError(error) || attempt === attempts) throw error;
-      await wait(retryDelayMs * attempt);
-    }
-  }
-}
-
 async function listModelFiles(modelDirectory: string): Promise<string[]> {
   if (!modelDirectory || !(await exists(modelDirectory))) return [];
   const files: string[] = [];
@@ -2020,23 +1989,49 @@ export async function scanLlamaServer(
   return fromPath ? llamaServerStatus(fromPath, "path") : llamaServerStatus("", "");
 }
 
+export async function uninstallStrata(settings: Settings, onProgress?: (message: string) => void): Promise<ConnectionResult> {
+  const comfyRoot = await findComfyRoot(settings);
+  const modelDirectory = comfyRoot ? comfyDataDirectories(settings, comfyRoot).modelDirectory : settings.modelDirectory;
+  return uninstallStrataRuntime(settings, onProgress, { protectedDirectories: [modelDirectory] });
+}
+
+export function installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
+  return installStrataRuntime(settings, {
+    download: (url, destination, requested, report) => downloadFileWithCurl(url, destination, requested, report ? { totalBytes: STRATA_ENGINE_BYTES, onProgress: report } : undefined),
+    findPython: async (requested) => {
+      const candidates = await discoverPythonRuntimes(requested);
+      for (const candidate of candidates) {
+        if (candidate.path.toLowerCase().includes("python_embeded")) continue;
+        try {
+          await runLoggedProcess(candidate.path, ["-c", "import sys,venv; assert sys.version_info >= (3,10)"], { timeoutMs: 15_000 });
+          return candidate.path;
+        } catch { checkInstallationCancelled(); /* Try an existing standard Python, never install into ComfyUI. */ }
+      }
+      return "";
+    },
+    environment: downloadEnvironment, run: runLoggedProcess
+  }, onProgress);
+}
+
 export async function downloadFileWithCurl(
   url: string,
   destination: string,
-  settings: Settings
+  settings: Settings,
+  progress?: { totalBytes: number; onProgress(receivedBytes: number): void }
 ): Promise<void> {
+  checkInstallationCancelled();
   const curl = await findExecutable("curl.exe");
   if (!curl) throw new Error("没有找到 curl，无法自动下载资源。请安装 Windows 10/11 自带 curl，或检查网络后重试。" );
   const args = ["-fL", "--retry", "2", "--connect-timeout", "20", url, "--output", destination];
   if (settings.proxyEnabled) {
     args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl));
   }
-  await execFileAsync(curl, args, {
-    encoding: "utf8",
-    timeout: 600_000,
-    windowsHide: true,
+  const download = () => runLoggedProcess(curl, args, {
+    timeoutMs: 600_000,
     env: downloadEnvironment(settings)
   });
+  if (progress) await withDownloadFileProgress(destination, progress.totalBytes, progress.onProgress, download);
+  else await download();
 }
 
 async function expandZipArchive(archive: string, destination: string): Promise<void> {
@@ -4621,6 +4616,10 @@ export async function runLoggedProcess(
     onLog?: (message: string) => void;
   }
 ): Promise<string> {
+  const installationAbort = installationSignal();
+  const signal = options.signal && installationAbort
+    ? AbortSignal.any([options.signal, installationAbort]) : options.signal ?? installationAbort;
+  signal?.throwIfAborted();
   return new Promise<string>((resolve, reject) => {
     const output: string[] = [];
     let settled = false;
@@ -4639,18 +4638,24 @@ export async function runLoggedProcess(
       }
     };
     const removeAbortListener = () => {
-      if (options.signal && abortListener) {
-        options.signal.removeEventListener("abort", abortListener);
+      if (signal && abortListener) {
+        signal.removeEventListener("abort", abortListener);
       }
     };
-    const terminateChild = () => {
-      child.kill();
+    let terminationError: Error | undefined;
+    let termination: Promise<void> | undefined;
+    const terminateChild = (error: Error) => {
+      if (terminationError || settled) return;
+      terminationError = error;
       if (process.platform === "win32" && child.pid) {
         const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
           windowsHide: true,
           stdio: "ignore"
         });
-        killer.unref();
+        termination = new Promise<void>((done) => {
+          killer.once("error", () => { child.kill(); done(); });
+          killer.once("close", () => done());
+        });
       } else {
         child.kill("SIGTERM");
       }
@@ -4674,23 +4679,26 @@ export async function runLoggedProcess(
     const abortListener = () => {
       if (settled) return;
       options.onLog?.("命令已取消，正在终止子进程……");
-      terminateChild();
-      finishReject(new Error("命令已取消"));
+      terminateChild(new Error("命令已取消"));
     };
     timeout = setTimeout(() => {
       options.onLog?.("命令超过等待上限，正在终止子进程……");
-      terminateChild();
-      finishReject(new Error(`命令运行超过 ${Math.round((options.timeoutMs ?? 900_000) / 60_000)} 分钟，已停止`));
+      terminateChild(new Error(`命令运行超过 ${Math.round((options.timeoutMs ?? 900_000) / 60_000)} 分钟，已停止`));
     }, options.timeoutMs ?? 900_000);
-    if (options.signal) {
-      if (options.signal.aborted) abortListener();
-      else options.signal.addEventListener("abort", abortListener, { once: true });
+    if (signal) {
+      if (signal.aborted) abortListener();
+      else signal.addEventListener("abort", abortListener, { once: true });
     }
     child.once("error", (error) => {
       finishReject(error);
     });
-    child.once("close", (code) => {
+    child.once("close", async (code) => {
       if (settled) return;
+      if (terminationError) {
+        await termination;
+        finishReject(terminationError);
+        return;
+      }
       const text = output.join("").trim();
       if (code === 0) finishResolve(text);
       else finishReject(Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: text }));
@@ -5315,14 +5323,15 @@ async function scanFullEnvironment(
   const outputDirectory = directories.outputDirectory;
   const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
   const desktopComfyBaseUrl = "http://127.0.0.1:8000";
-  const [modelFiles, { dlss5Runtime, depthAnything, aetherScaleRuntime }, runtimeEvidence, pythonRuntimes] = await Promise.all([
+  const [modelFiles, { dlss5Runtime, depthAnything, aetherScaleRuntime }, runtimeEvidence, pythonRuntimes, strata] = await Promise.all([
     environmentModelFiles(settings, comfyRoot, modelDirectory),
     scanManagedGuideAssets(settings, comfyRoot),
     collectEnvironmentRuntimeEvidence([
       configuredComfyBaseUrl,
       ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
     ]),
-    discoverPythonRuntimes(settings, comfyRoot, comfyInstallation)
+    discoverPythonRuntimes(settings, comfyRoot, comfyInstallation),
+    scanStrataPreparation(settings, undefined, modelDirectory)
   ]);
   const runtimeComfyBaseUrl = runtimeEvidence.baseUrl;
   const runtimeNodeIds = runtimeEvidence.objectInfo
@@ -5486,7 +5495,8 @@ async function scanFullEnvironment(
     comfyCompatibility,
     attentionAcceleration,
     items,
-    modelProfiles,
+    modelProfiles: [...modelProfiles, ...strata.profiles],
+    strataPreparation: strata.status,
     customNodes: runtimeValidatedCustomNodes,
     dlss5Runtime,
     depthAnything,
@@ -5527,6 +5537,8 @@ function environmentScanCacheKey(settings: Settings): string {
     comfyUrl: settings.comfyUrl,
     modelDirectory: settings.modelDirectory,
     promptModelDirectory: settings.promptModelDirectory,
+    strataInstallDirectory: settings.strataInstallDirectory,
+    strataModelDirectory: settings.strataModelDirectory,
     outputDirectory: settings.outputDirectory,
     ltxExtensionModelProfile: settings.ltxExtensionModelProfile,
     proxyEnabled: settings.proxyEnabled,
@@ -5625,6 +5637,7 @@ async function scanEnvironmentDependencies(
     : await discoverPythonRuntimes(settings, comfyRoot, comfyInstallation);
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ?? pythonRuntimes[0];
   const managedGuideAssets = await scanManagedGuideAssets(settings, comfyRoot);
+  const strata = await scanStrataPreparation(settings, undefined, previous.modelDirectory);
   const latestNodeVersionsPromise = runtimeOnly
     ? Promise.resolve(Object.fromEntries(
         previous.customNodes
@@ -5679,7 +5692,7 @@ async function scanEnvironmentDependencies(
   );
   const runtimeProfiles = runtimeOnly
     ? refreshModelProfileRuntimeEvidence(
-        previous.modelProfiles,
+        previous.modelProfiles.filter((profile) => profile.managedBy !== "strata"),
         settings,
         runtimeNodeIds
       )
@@ -5771,7 +5784,8 @@ async function scanEnvironmentDependencies(
     comfyCompatibility,
     attentionAcceleration,
     items,
-    modelProfiles,
+    modelProfiles: [...modelProfiles, ...strata.profiles],
+    strataPreparation: strata.status,
     customNodes: runtimeValidatedCustomNodes,
     dlss5Runtime: managedGuideAssets.dlss5Runtime,
     depthAnything: managedGuideAssets.depthAnything,

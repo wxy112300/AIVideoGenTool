@@ -322,6 +322,29 @@ function multimodalLanguageValidatorCompatibilityInstruction(
   ].join("\n");
 }
 
+/** Shared Pack semantics; only VisionLLM needs its intermediate language-validator wrapper. */
+export function multimodalPromptInstruction(request: EnhanceRequest, settings: Settings, visionLlm = false): string {
+  const language = multimodalPromptTargetLanguage(request, settings);
+  return [
+    request.mode === "image-edit" ? imageEditPromptInstruction(request) : h3PromptInstruction(request, settings.h3PromptPresets),
+    request.mode === "image-edit" ? "" : language === "zh"
+      ? "Write explanatory H3 prose in Chinese; keep official H3 field names in English ASCII. Preserve user dialogue, lyrics and visible text verbatim in their original language. Return only the final prompt, without reasoning or a preface."
+      : "Write explanatory H3 prose in English; keep official H3 field names in English ASCII. Preserve user dialogue, lyrics and visible text verbatim in their original language. Return only the final prompt, without reasoning or a preface.",
+    request.mode === "image-edit" ? "" : h3ContentLockInstruction(stripPromptAnnotations(request.prompt)),
+    visionLlm && request.mode !== "image-edit" ? multimodalLanguageValidatorCompatibilityInstruction(stripPromptAnnotations(request.prompt)) : ""
+  ].filter(Boolean).join("\n\n");
+}
+
+export function normalizeMultimodalPromptOutput(output: string, request: EnhanceRequest): string {
+  if (request.promptStrategy === "targeted-revision") return applyPromptRevision(request.prompt, output);
+  if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
+  const source = stripPromptAnnotations(request.prompt);
+  const continuation = isH3NativeStateContinuationRequest(request);
+  return normalizeH3PromptOutput(output, h3PromptModeForRequest(request), request.h3DurationSeconds ?? 5,
+    extractH3DialogueLocks(source), extractH3VisibleTextLocks(source), source, request.prompt,
+    continuation, continuation, request.continuumPreviousChunk);
+}
+
 function appendImageNodes(
   workflow: Record<string, PromptNode>,
   uploadedImages: readonly string[],
@@ -604,22 +627,8 @@ export async function enhancePromptWithMultimodalComfyUi(
     if (request.mode === "image-edit") {
       return normalizeQwenImageEditPromptOutput(output);
     }
-    const sourcePrompt = stripPromptAnnotations(request.prompt);
-    const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
-    const mode = h3PromptModeForRequest(request);
     try {
-      return normalizeH3PromptOutput(
-        output,
-        mode,
-        request.h3DurationSeconds ?? 5,
-        extractH3DialogueLocks(sourcePrompt),
-        extractH3VisibleTextLocks(sourcePrompt),
-        sourcePrompt,
-        request.prompt,
-        nativeStateContinuation,
-        nativeStateContinuation,
-        request.continuumPreviousChunk
-      );
+      return normalizeMultimodalPromptOutput(output, request);
     } catch (error) {
       const diagnostic = multimodalPromptFailureDiagnostic(outputDiagnostics);
       appLogger.warn("prompt", "comfy-output-validation-failed", "Multimodal prompt output failed validation", {

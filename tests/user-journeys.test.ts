@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
 import { h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
+import { strataPreparationProfiles } from "../src/core/strata-preparation";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => {
@@ -13,6 +14,28 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("Strata files missing blocks Enhance; recovery enables the actual button and saves only a complete result", async () => {
+    const h = journey = await createJourney();
+    h.state().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+    const profile = strataPreparationProfiles()[0]!;
+    h.scan.modelProfiles.push(profile);
+    h.scan.strataPreparation = { managedInstalled: true } as typeof h.scan.strataPreparation;
+    h.render(); h.input("#prompt-input", "A red balloon rises.");
+    expect(h.element("#enhance-prompt").disabled).toBe(true);
+    h.element("#enhance-prompt").click(); expect(h.enhancePrompt).not.toHaveBeenCalled();
+    profile.available = true; profile.components.forEach((component) => component.found = true);
+    h.render();
+    expect(h.element("#enhance-prompt").disabled).toBe(false);
+    const before = structuredClone(h.state().draft.promptVersions);
+    h.enhancePrompt.mockRejectedValueOnce(new Error("Strata output truncated"));
+    h.element("#enhance-prompt").click(); await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    await settle();
+    expect(h.state().draft.promptVersions).toEqual(before);
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.state().draft.promptVersions.length).toBe(before.length + 1));
+    expect(h.state().draft.promptVersions.at(-1)?.text).toBe("The subject slowly turns toward the camera, with natural motion and steady framing.");
+    expect(h.state().draft.promptVersions.at(-1)?.id).toBeTruthy();
+  });
   it("empty prompt blocks the actual button; typing restores enqueue and later draft edits do not mutate the task", async () => {
     const h = journey = await createJourney();
     h.element("#clear-prompt").click(); await settle();

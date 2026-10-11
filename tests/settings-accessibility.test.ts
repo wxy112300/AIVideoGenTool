@@ -84,6 +84,41 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 }
 
 describe("Settings accessibility markup", () => {
+  it("retains the stop/retry button when files become unavailable during Strata occupancy", () => {
+    const markup = renderSettingsPage(viewModel({ settingsTab: "prompt", promptRuntimeControlIconName: "square",
+      promptRuntimeBusy: true, promptStatus: { ready: false, detail: "missing" } }), renderOptions);
+    expect(markup.match(/<button[^>]*id="release-prompt-model"[^>]*>/)?.[0]).not.toContain("disabled");
+  });
+  it("offers Strata downloads and unavailable opt-in models before scanning, with no extra root field", () => {
+    const nodes = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
+    expect(nodes).toContain('data-strata-preparation="runtime"');
+    expect(nodes).toContain('id="strata-port"');
+    expect(nodes).toContain('class="primary button-with-icon node-action-main" id="install-strata"');
+    expect(nodes).not.toContain('class="node-action-menu"');
+    expect(nodes).not.toContain('data-open-node-location=');
+    expect(nodes).not.toContain('data-install-custom-node="strata"');
+    const prompt = renderSettingsPage(viewModel({ settingsTab: "prompt" }), renderOptions);
+    expect(prompt).not.toContain('data-strata-preparation="models"');
+    expect(prompt).not.toContain('id="strata-model-directory"');
+    expect(prompt).toContain("512 个专家");
+    expect(prompt).not.toMatch(/量化任选一种|下载后扫描/);
+    expect(prompt).toContain('data-install-profile="strata/qwen3.8-flash-next-iq3_xxs"');
+    expect(prompt.indexOf('data-install-profile="strata/qwen3.8-flash-next-iq3_xxs"')).toBeLessThan(prompt.indexOf('data-install-profile="strata/qwen3.8-flash-next-iq2_xs"'));
+    expect(prompt).toMatch(/<option[^>]*value="strata\/qwen3.8-flash-next-iq3_xxs"[^>]*disabled/);
+    expect(prompt).toContain(`value="${state.settings.promptModelId}" selected`);
+  });
+  it("enables the existing Strata model selector only when scanned files match the selected roots", () => {
+    const settings = { ...state.settings, promptModelId: "strata/qwen3.8-flash-next-iq3_xxs", modelDirectory: "shared" };
+    const profile = { id: settings.promptModelId, name: "Strata", category: "prompt", managedBy: "strata", badge: "", description: "", vram: "",
+      available: true, integrated: true, components: [] } as ModelScanProfile;
+    const scan = { modelProfiles: [profile], customNodes: [], gpus: [], items: [], issues: [], comfyCompatibility: {},
+      strataPreparation: { configuredInstallDirectory: settings.strataInstallDirectory, configuredModelDirectory: settings.modelDirectory,
+        configuredComfyInstallDirectory: settings.comfyInstallDirectory, managedInstalled: true } } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({ settingsTab: "prompt", settings, environmentScan: scan }), renderOptions);
+    expect(markup.match(/<option[^>]*value="strata\/qwen3.8-flash-next-iq3_xxs"[^>]*>/)?.[0]).not.toContain("disabled");
+    const changed = renderSettingsPage(viewModel({ settingsTab: "prompt", settings: { ...settings, modelDirectory: "other" }, environmentScan: scan }), renderOptions);
+    expect(changed.match(/<option[^>]*value="strata\/qwen3.8-flash-next-iq3_xxs"[^>]*>/)?.[0]).toContain("disabled");
+  });
   it("exposes a roving tablist and keeps the scan action reachable from the page header", () => {
     const markup = renderSettingsPage(viewModel(), renderOptions);
     const nodesMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
@@ -308,6 +343,7 @@ describe("Settings accessibility markup", () => {
       llamaCppPython: {
         packageName: "llama-cpp-python",
         pythonPath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+        packageDirectory: "D:\\Selected environment\\Lib\\site-packages\\llama_cpp",
         pythonVersion: "3.12.11",
         packageVersion: "0.3.46+cu128",
         torchVersion: "2.8.0+cu129",
@@ -334,8 +370,27 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="install-llama-cpp-python"');
     expect(markup).toContain("重新安装");
     expect(markup).toContain("data-uninstall-llama-cpp-python");
+    expect(markup).toContain('data-open-node-location="D:\\Selected environment\\Lib\\site-packages\\llama_cpp"');
+    expect(markup).not.toContain('data-open-node-location="C:\\ComfyUI\\.venv\\Scripts\\python.exe"');
     expect(markup).toContain('data-dependency-install-log="python-runtime:llama-cpp-python"');
     expect(markup).toContain("目标环境：");
+    delete environmentScan.llamaCppPython.packageDirectory;
+    const oldMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+    expect(oldMarkup).not.toContain("data-open-node-location");
+    expect(oldMarkup).toContain("data-uninstall-llama-cpp-python");
+  });
+
+  it("does not offer a triangle merely because an uninstalled Python dependency has an interpreter path", () => {
+    const environmentScan = {
+      comfyRoot: "C:\\ComfyUI", items: [], modelProfiles: [], customNodes: [], issues: [],
+      llamaCppPython: { installed: false, pythonPath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe" },
+      attentionAcceleration: { ready: false, pythonPath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe" }
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+    expect(markup).toContain('id="install-llama-cpp-python"');
+    expect(markup).toContain('id="install-attention-acceleration"');
+    expect(markup).not.toContain('class="node-action-menu"');
+    expect(markup).not.toContain('data-open-node-location=');
   });
 
   it("exposes descriptions for no-prompt drafting directions", () => {
@@ -433,7 +488,8 @@ describe("Settings accessibility markup", () => {
     expect(installingMarkup).toContain('role="progressbar" aria-label="H3 环境升级进度"');
     expect(installingMarkup).toContain('id="attention-install-stage">正在升级 PyTorch</strong>');
     expect(installingMarkup).toContain('id="attention-install-log-details" open');
-    expect(installingMarkup).toContain('id="install-attention-acceleration"');
+    expect(installingMarkup).toContain('data-cancel-dependency-install="attention-acceleration"');
+    expect(installingMarkup).not.toContain('id="install-attention-acceleration"');
     expect(accelerationMarkup).toContain('id="h3-attention-mode"');
     expect(accelerationMarkup).not.toContain('id="install-attention-acceleration"');
     expect(installingMarkup).toContain('id="settings-tab-acceleration"');
@@ -475,7 +531,21 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('data-install-node="minimax-h3-prompt-writer" data-node-operation="repair"');
     expect(markup).toContain('class="node-action-menu"');
     expect(markup).toContain('data-uninstall-node="minimax-h3-prompt-writer"');
+    expect(markup).toContain('data-open-node-location="C:\\ComfyUI\\custom_nodes\\PromptWriter"');
     expect(markup).not.toContain('data-rescan-node="minimax-h3-prompt-writer"');
+    const missing = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan: {
+      ...environmentScan, customNodes: environmentScan.customNodes.map((node) => ({ ...node, installed: false }))
+    } }), renderOptions);
+    expect(missing).not.toContain('data-open-node-location="C:\\ComfyUI\\custom_nodes\\PromptWriter"');
+    expect(missing).not.toContain('class="node-action-menu"');
+    expect(missing).not.toContain('data-uninstall-node="minimax-h3-prompt-writer"');
+    const manual = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan: {
+      ...environmentScan, customNodes: environmentScan.customNodes.map((node) => ({ ...node, appInstallable: false }))
+    } }), renderOptions);
+    expect(manual).toContain('data-open-node-location="C:\\ComfyUI\\custom_nodes\\PromptWriter"');
+    expect(manual).toContain('data-open-node-source="https://example.invalid/prompt-writer.git"');
+    expect(manual).not.toContain('data-install-node="minimax-h3-prompt-writer"');
+    expect(manual).not.toContain('data-uninstall-node="minimax-h3-prompt-writer"');
   });
 
   it("shows DLSS5 runtime failure instead of treating the node source check as readiness", () => {

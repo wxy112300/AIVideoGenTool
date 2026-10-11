@@ -31,6 +31,7 @@ export interface LifecycleCoordinatorDependencies {
   runtimeState: ComfyRuntimeStateController;
   getQueue(): LifecycleQueuePort;
   prompt: LifecyclePromptPort;
+  strata?: { abort(reason: Error): void; shutdown(): Promise<unknown> };
   sendState(state: AppState): void;
   interruptComfy(settings: Settings): Promise<unknown>;
   freeMemory(settings: Settings): Promise<unknown>;
@@ -122,6 +123,7 @@ export class LifecycleCoordinator {
     this.deps.sendState(next);
     this.deps.getQueue().abort(new Error("应用退出，任务已中止"));
     this.deps.prompt.abort(new Error("应用退出，提示词扩写已中止"));
+    this.deps.strata?.abort(new Error("应用退出，Strata 操作已中止"));
 
     const interruptPromise = this.deps.interruptComfy(settings).then(
       async () => {
@@ -165,7 +167,10 @@ export class LifecycleCoordinator {
 
   async stopOwnedRuntime(settings: Settings): Promise<{ ok: boolean; message: string }> {
     if (this.ownedRuntimeStopPromise) return this.ownedRuntimeStopPromise;
-    const operation = this.stopOwnedRuntimeImpl(settings);
+    const operation = this.stopOwnedRuntimeImpl(settings).then((result) => {
+      if (!result.ok && this.ownedRuntimeStopPromise === operation) this.ownedRuntimeStopPromise = null;
+      return result;
+    });
     this.ownedRuntimeStopPromise = operation;
     return operation;
   }
@@ -221,6 +226,10 @@ export class LifecycleCoordinator {
   private async stopOwnedRuntimeImpl(
     settings: Settings
   ): Promise<{ ok: boolean; message: string }> {
+    const strataStopped = this.deps.strata?.shutdown().then(
+      () => ({ ok: true, message: "Strata 自有服务已停止。" }),
+      () => ({ ok: false, message: "Strata 清理未完成，请重试停止；自有进程仍可能占用资源。" })
+    );
     try {
       await this.deps.prompt.releaseRuntime(settings);
     } catch (error) {
@@ -240,7 +249,9 @@ export class LifecycleCoordinator {
       stopped.ok ? "owned-comfy-stopped" : "owned-comfy-stop-skipped",
       stopped.message
     );
-    return stopped;
+    const strata = await strataStopped;
+    if (strata) this.deps.logger.info("app", strata.ok ? "owned-strata-stopped" : "owned-strata-stop-failed", strata.message);
+    return strata && !strata.ok ? { ok: false, message: `${stopped.message} ${strata.message}` } : stopped;
   }
 
   private async stopOwnedComfyProcesses(

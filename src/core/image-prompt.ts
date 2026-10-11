@@ -42,6 +42,7 @@ export function isOmniGen2TargetModel(modelId: string | undefined): boolean {
 
 export function isQwenImage21TargetModel(modelId: string | undefined): boolean {
   return modelId === "qwen-image-2-1" ||
+    modelId === "qwen-image-2-1-turbo" ||
     modelId === "qwen-image-2-1-uncensored-gguf" ||
     modelId === "qwen-image-2-1-uncensored-gguf-q6";
 }

@@ -80,6 +80,7 @@ function cudaVersionLabelFromWheelKey(key: string): string {
 interface LlamaCppPythonProbe {
   pythonVersion?: string;
   packageVersion?: string;
+  packageDirectory?: string;
   importable?: boolean;
   gpuOffload?: boolean | null;
   torchVersion?: string;
@@ -111,9 +112,16 @@ export interface LlamaCppPythonRuntime {
 }
 
 const probeScript = [
-  "import importlib.metadata as metadata, json, platform",
+  "import importlib.metadata as metadata, json, platform, pathlib",
   "result = {'pythonVersion': platform.python_version(), 'packageVersion': '', 'importable': False, 'gpuOffload': None, 'torchVersion': '', 'cudaVersion': '', 'importError': '', 'dynamicBackend': None, 'backendError': ''}",
-  "try: result['packageVersion'] = metadata.version('llama-cpp-python')",
+  "try:",
+  "    distribution = metadata.distribution('llama-cpp-python')",
+  "    result['packageVersion'] = distribution.version",
+  "    for entry in distribution.files or []:",
+  "        if entry.as_posix() == 'llama_cpp/__init__.py':",
+  "            module_file = pathlib.Path(distribution.locate_file(entry)).resolve()",
+  "            if module_file.is_file(): result['packageDirectory'] = str(module_file.parent)",
+  "            break",
   "except Exception: pass",
   // On Windows the CUDA wheel's llama.dll depends on the CUDA DLLs that
   // PyTorch registers while it is imported. Importing llama_cpp first can
@@ -127,6 +135,8 @@ const probeScript = [
   "try:",
   "    import llama_cpp",
   "    result['importable'] = True",
+  "    module_file = pathlib.Path(llama_cpp.__file__).resolve()",
+  "    if module_file.is_file(): result['packageDirectory'] = str(module_file.parent)",
   // JamePeng 0.3.39+ wheels ship CUDA and CPU implementations as dynamic
   // backend DLLs. Merely importing llama_cpp leaves those DLLs unregistered,
   // which made the old probe incorrectly report a working CUDA wheel as CPU
@@ -255,6 +265,7 @@ export function statusFromLlamaCppProbe(
     pythonPath,
     pythonVersion: probe.pythonVersion?.trim() ?? "",
     packageVersion,
+    packageDirectory: probe.packageDirectory?.trim() || undefined,
     torchVersion: probe.torchVersion?.trim() ?? "",
     cudaVersion: probe.cudaVersion?.trim() ?? "",
     installed,

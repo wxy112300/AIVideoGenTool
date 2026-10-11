@@ -107,7 +107,7 @@ flowchart TD
 - “有图片没文字”和“有用户指令”要分别抓取实际请求；前者 `promptStrategy=reference-auto`，后者不会静默替换成自动随机创意。请求正确不能证明生成文本忠实，真实样例另做语义检查。
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。
-- Prompt 模型选择与生成模型选择独立。当前 `promptModelId` 选择本地后端，`promptRuntimeForSettings` 固定为 ComfyUI；旧 LM Studio/runtime 字段不参与路由，不是独立 provider 选择器。27B 的显存确认/CPU 单次回退按现有契约，不在 harness 自动确认。
+- Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
 - 异步回写使用请求的 `origin`；切换到图片编辑或 Extend 后，旧请求只能更新原草稿。失败不破坏原 prompt，取消不是错误成功。
 
 入口：`prompt-controller.ts` / `helpers.ts` → `src/core/prompts/` → `electron/services/prompt-application-service.ts` / `prompt-runtime-manager.ts` / `prompt-extension-media.ts`。不要只改 Pack 文本而漏掉请求字段或 runtime。
@@ -232,6 +232,16 @@ H3 native 需要对应 AV/模型/尺寸资格；SeedVR2 的原生 INT8 分段路
 
 <a id="settings-runtime"></a>
 ## Settings：哪个时刻影响哪一层
+
+Strata 卸载分支：应用管理安装 → 既有三角菜单“卸载” → 默认聚焦取消的应用确认弹窗 → typed `uninstallStrata` → 后台核对当前管理路径/安装记录/模型根隔离/操作忙碌 → 删除当前软件目录 → 日志/离线复扫 → 无三角的未安装卡片。取消不调用卸载；文件归属改变时拒绝并保留错误及复扫后的状态，用户可取消或恢复后重试。共享模型、独立数据与旧备份保留，不修改设置、queue/History、ComfyUI Python，不启动或重启 ComfyUI。手动目录仅保留原有打开位置功能，不授予删除权限。
+
+安装取消分支：排队节点 → 主按钮“移出队列” → renderer 安装队列移除，验证该项没有安装 started 记录；执行中的节点/软件 → “取消安装” → typed `cancelDependencyInstall` → 当前安装事务信号 → 自有子进程树退出 → 恢复/日志 → 离线复扫/解除占用。等待项和生成队列不变；取消当前节点后下一项仍可继续，已成功项保留批次末尾重启。检查“正在取消…”禁用重复点击、不把取消显示为错误，取消后可重试。用隔离节点/软件目录验证，禁止中止用户或其他任务的进程；共享 Python 包的部分更改与目录事务恢复分开报告。
+
+Strata 安装进度分支：实际点击安装 → 卡片内立即显示进度条 → typed 依赖日志事件携带当前阶段/实际下载字节 → 局部更新进度区域。下载显示百分比与大小，其余阶段动态条；百分比仅为下载，不估算整个安装。收起日志仍可见，切换页签保留步骤，不重挂输入/移动焦点；取消反馈优先，取消/失败收尾后隐藏。实际 UI 与本地真实 curl 字节采样分别验证，不冒充完整安装或推理证据。
+
+节点/依赖（含 Strata）共用安装主按钮与三角菜单；未安装项不显示三角或位置操作。已安装项的“打开位置” → 既有 `showItemInFolder` → 只读核对实际目录/文件 → Explorer 定位。下拉菜单使用实色背景、单行短标签，收起时整体隐藏；未知位置不显示位置操作。自定义节点与 Strata 定位安装目录，llama-cpp-python 定位所选 Python 实际扫描出的 `llama_cpp` 包目录（不是解释器）；H3 加速依赖仍定位共享解释器环境。普通导入失败但包文件存在时仍可定位，旧扫描/未知包目录不回退 python.exe，卸载保留；已移动/删除或打开失败提示重新扫描。此动作不安装、不创建目录、不改 queue/History，不受 GPU 运行门槛影响；卸载仅保留原有可卸载项。
+
+Strata 准备分支：节点与依赖 → 一键安装/重装 → typed `installStrata` → 固定软件/独立 venv → 安装日志 → 离线复扫。失败保留日志并恢复按钮，手动目录拒绝覆盖；模型卡 → 用户下载 → 大小/头检查。此分支不经过 Prompt lease、queue 或 GPU，不把软件安装当成推理可用。参数折叠，模型与所选 ComfyUI 共用模型根目录下的 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，软件安装目录独立。同一共享根下旧 `LLM/strata` 文件仍原地兼容扫描，新目录优先，下载指引始终指向新目录。更换模型根/所选 ComfyUI 后旧扫描证据失效；首次未配置根时，下载指引可经现有扫描取得发现的共享路径。旧下载记录只在共享根未知时回退，不新增目录设置、不搬文件。模型卡客观描述模型与量化，状态单独显示。
 
 ```mermaid
 flowchart LR

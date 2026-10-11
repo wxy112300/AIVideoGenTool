@@ -25,6 +25,7 @@ function sendIfAlive(
 }
 
 export function registerEnvironmentIpc(deps: EnvironmentIpcDependencies): void {
+  deps.ipc.handle("dependency-install:cancel", (_event, id: string) => deps.admin.cancelDependencyInstall(id));
   deps.ipc.handle(
     "connection:test",
     (_event, kind: ConnectionKind, settings: Settings) =>
@@ -96,6 +97,12 @@ export function registerEnvironmentIpc(deps: EnvironmentIpcDependencies): void {
           message
         })
       )
+  );
+  deps.ipc.handle("strata:install", (event, settings: Settings) =>
+    deps.admin.installStrata(settings, (message, progress) => sendIfAlive(event, "dependency-install:log", { kind: "python-runtime", id: "strata", message, ...(progress ? { progress } : {}) }))
+  );
+  deps.ipc.handle("strata:uninstall", (event, settings: Settings) =>
+    deps.admin.uninstallStrata(settings, (message) => sendIfAlive(event, "dependency-install:log", { kind: "python-runtime", id: "strata", message }))
   );
   deps.ipc.handle(
     "llama-cpp-python:uninstall",

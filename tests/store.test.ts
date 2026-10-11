@@ -68,6 +68,18 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("preserves opted-in Strata model identity on restart without a new provider setting", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-strata-store-"));
+    try {
+      const filename = path.join(directory, "studio-state.json"), state = createDefaultState();
+      state.settings.promptModelId = "strata/qwen3.8-flash-next-iq2_xs";
+      await fs.writeFile(filename, JSON.stringify(state));
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.promptModelId).toBe(state.settings.promptModelId);
+      expect(loaded.settings.promptRuntime).toBe("comfyui");
+      expect(loaded.draft.prompt).toBe(state.draft.prompt);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   it("aligns waiting H3 tasks with saved acceleration settings during load", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

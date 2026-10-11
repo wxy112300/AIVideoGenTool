@@ -126,9 +126,16 @@ function transitionPromptButton(): PromptRuntimePromptButtonProjection {
  */
 export function projectPromptRuntimeView(
   snapshot: PromptRuntimeState,
-  currentOrigin: PromptOperationOrigin
+  currentOrigin: PromptOperationOrigin,
+  selectedBackend: "comfyui" | "strata" = snapshot.service.backend ?? "comfyui"
 ): PromptRuntimeViewProjection {
-  const servicePhase = snapshot.service.phase;
+  // An idle ComfyUI failure is not a failure of the independently selected Strata service.
+  // This only scopes button availability; it never changes the published runtime facts.
+  const inactiveOtherService = selectedBackend === "strata" && snapshot.service.backend !== "strata" &&
+    snapshot.model.phase === "unloaded" &&
+    (snapshot.operation.phase === "idle" || snapshot.operation.phase === "terminal") &&
+    !serviceUsable(snapshot.service.phase) && !serviceTransitioning(snapshot.service.phase);
+  const servicePhase = inactiveOtherService ? "stopped" : snapshot.service.phase;
   const modelPhase = snapshot.model.phase;
   const operation = activeOperation(snapshot.operation, servicePhase);
 
@@ -190,6 +197,10 @@ export function projectPromptRuntimeView(
   }
 
   if (serviceTransitioning(servicePhase) || modelTransitioning(modelPhase)) {
+    if (snapshot.service.backend === "strata") {
+      return { left: { icon: "square", disabled: false, busy: false, title: "prompt-runtime.cancel", intent: "stop" },
+        right: transitionPromptButton() };
+    }
     return {
       left: transitionModelButton(),
       right: transitionPromptButton()
@@ -216,6 +227,14 @@ export function projectPromptRuntimeView(
         action: "enhance",
         showElapsed: false
       }
+    };
+  }
+
+  if (snapshot.service.backend === "strata" && modelPhase === "unknown") {
+    return {
+      left: { icon: "square", disabled: false, busy: false, title: "prompt-runtime.stop", intent: "stop" },
+      right: { icon: "sparkles", disabled: true, busy: false, title: "prompt-runtime.unavailable",
+        action: "none", showElapsed: false }
     };
   }
 

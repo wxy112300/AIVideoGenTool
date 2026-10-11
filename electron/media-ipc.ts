@@ -1,5 +1,6 @@
 import { protocol, shell, type IpcMain } from "electron";
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
 import type { HistoryBatchCopyKind, HistoryBatchCopyResult } from "../src/types.js";
@@ -31,6 +32,16 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
   );
   deps.ipc.handle("file:show-in-folder", async (_event, filename: string) => {
     const requestedFilename = typeof filename === "string" ? filename : "";
+    // Dependency cards reveal existing directories; unlike open-directory, this
+    // action must never create a missing installation folder. Keep History's
+    // file repair behavior below unchanged.
+    const directory = requestedFilename.trim() ? await fs.stat(requestedFilename).catch(() => null) : null;
+    if (directory?.isDirectory()) {
+      const resolvedDirectory = path.resolve(requestedFilename);
+      shell.showItemInFolder(resolvedDirectory);
+      deps.logger.info("settings", "show-directory-succeeded", "Dependency directory revealed in Explorer", { directory: resolvedDirectory });
+      return true;
+    }
     const resolved = await deps.service.resolveSourcePath(requestedFilename);
     if (!resolved) {
       deps.logger.warn("history", "show-file-missing", "History file could not be found in its recorded location", {

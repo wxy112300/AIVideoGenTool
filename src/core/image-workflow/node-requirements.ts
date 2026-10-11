@@ -52,6 +52,41 @@ export const qwenImage21RequiredNodeTypes = [
   "SaveImageAdvanced"
 ] as const;
 
+/** Native ComfyUI nodes used by Qwen Image 2.1 Turbo with its saved 8-step sigma schedule. */
+export const qwenImage21TurboTextToImageRequiredNodeTypes = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "RandomNoise",
+  "CFGGuider",
+  "KSamplerSelect",
+  "ManualSigmas",
+  "SamplerCustomAdvanced",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
+/** Turbo edit path with the native multi-image encoder/cache and explicit sigma schedule. */
+export const qwenImage21TurboRequiredNodeTypes = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "LoadImage",
+  "TextEncodeQwenImage21",
+  "EmptyLatentImage",
+  "ComfySwitchNode",
+  "QwenImage21Cache",
+  "RandomNoise",
+  "CFGGuider",
+  "KSamplerSelect",
+  "ManualSigmas",
+  "SamplerCustomAdvanced",
+  "VAEDecode",
+  "SaveImageAdvanced"
+] as const;
+
 /** Qwen Image 2.1 GGUF path: only the diffusion loader comes from ComfyUI-GGUF. */
 export const qwenImage21GgufTextToImageRequiredNodeTypes = [
   "UnetLoaderGGUF",

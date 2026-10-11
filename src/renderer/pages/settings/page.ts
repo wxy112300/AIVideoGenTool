@@ -23,6 +23,9 @@ import {
   sortProfilesByCatalogOrder
 } from "../../../core/catalog";
 import { promptModelCapabilityOrderValue } from "../../../core/prompt-models";
+import { strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
+import { renderStrataPreparationPanel } from "./strata-preparation";
+import { renderDependencyActionSplit } from "./dependency-actions";
 import { compareReleaseVersions } from "../../../core/release-version";
 import {
   renderSettingsComfyCompatibilityPanel,
@@ -97,6 +100,10 @@ export interface SettingsPageViewModel {
   attentionAccelerationLog: string;
   llamaCppPythonInstalling: boolean;
   llamaCppPythonLog: string;
+  strataInstalling?: boolean;
+  dependencyInstallCancelling?: string[];
+  strataLog?: string;
+  strataInstallProgress?: import("../../../types").StrataInstallProgress;
   selectedInstallGuide: SettingsInstallGuideSelection | null;
   installGuideModelDirectory: string;
   appLogs: AppLogSnapshot | null;
@@ -197,7 +204,14 @@ export function renderSettingsPage(
       imageWorkflowStatus: options.imageWorkflowStatus
     }
   );
-  const profiles = environmentScan?.modelProfiles ?? [];
+  const scannedProfiles = environmentScan?.modelProfiles ?? [];
+  const strataProfiles = strataPreparationMatchesSettings(settings, environmentScan?.strataPreparation)
+    ? scannedProfiles.filter((profile) => profile.managedBy === "strata")
+    : [];
+  const profiles = [
+    ...scannedProfiles.filter((profile) => profile.managedBy !== "strata"),
+    ...(strataProfiles.length ? strataProfiles : strataPreparationProfiles(settings.uiLocale))
+  ];
   const videoProfiles = options.orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
   );
@@ -222,10 +236,23 @@ export function renderSettingsPage(
   const promptProfiles = profiles
     .filter((profile) => profile.category === "prompt")
     .sort((left, right) => {
+      const leftPreparation = left.managedBy === "strata";
+      const rightPreparation = right.managedBy === "strata";
+      if (leftPreparation !== rightPreparation) return leftPreparation ? -1 : 1;
+      if (leftPreparation) return (modelCatalog.get(right.id)?.definition.order ?? 0) -
+        (modelCatalog.get(left.id)?.definition.order ?? 0);
       const orderDifference = promptModelCapabilityOrderValue(right.id) -
         promptModelCapabilityOrderValue(left.id);
       return orderDifference || left.name.localeCompare(right.name);
     });
+  const selectablePromptProfiles = [...promptProfiles];
+  // Before the first scan, retain the saved model rather than saving an empty select.
+  if (!selectablePromptProfiles.some((profile) => profile.id === settings.promptModelId)) selectablePromptProfiles.push({
+    id: settings.promptModelId,
+    name: modelCatalog.localized(settings.promptModelId, settings.uiLocale)?.name ?? settings.promptModelId,
+    category: "prompt", badge: "", description: "", vram: "",
+    available: false, integrated: true, components: []
+  });
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const defaultPromptPresets = options.defaultH3PromptPresets;
   const selectedH3PresetText = settings.h3PromptPresets[viewModel.settingsH3PromptPreset] ??
@@ -280,7 +307,7 @@ export function renderSettingsPage(
   const upscaleAvailable = upscaleProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
-  const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
+  const promptAvailable = promptProfiles.filter((profile) => profile.available && profile.integrated).length;
   const dependencyActionState = deriveSettingsDependencyActionState({
     environmentScan,
     customNodeInstallPhase: viewModel.customNodeInstallPhase,
@@ -290,8 +317,9 @@ export function renderSettingsPage(
   const {
     nodeUpdatesAvailable,
     customNodeInstallFinalizing,
-    customNodeInstallGloballyBlocked
+    customNodeInstallGloballyBlocked: dependencyInstallBlocked
   } = dependencyActionState;
+  const customNodeInstallGloballyBlocked = dependencyInstallBlocked || Boolean(viewModel.strataInstalling);
   const gpuState = deriveSettingsGpuState(settings, environmentScan);
   const gpu = gpuState.item;
   const gpuDevices = gpuState.devices;
@@ -364,6 +392,7 @@ export function renderSettingsPage(
   const runtimeVerificationBlocked = viewModel.environmentScanning ||
     viewModel.attentionAccelerationInstalling ||
     viewModel.llamaCppPythonInstalling ||
+    viewModel.strataInstalling ||
     !environmentScan?.comfyRoot;
   const h3VideoVaeState = deriveH3VideoVaeState(settings, environmentScan);
   const h3VideoVaeTone = h3VideoVaeState.tone;
@@ -636,8 +665,8 @@ export function renderSettingsPage(
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeControlIconName === "refresh-cw"}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
-        <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("prompt.missingComponent") : ""} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
+        <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model" ${(viewModel.promptRuntimeBusy && viewModel.promptRuntimeControlIconName !== "square") || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready && viewModel.promptRuntimeControlIconName !== "square") ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeControlIconName === "refresh-cw"}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
+        <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${selectablePromptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("prompt.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
         <div class="settings-grid two">
           <label>${s("prompt.language")}<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>${s("prompt.followInput")}</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>${s("prompt.chinese")}</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>${s("prompt.english")}</option></select></label>
           <label>${s("prompt.creativity")}<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>${s("prompt.restrained")} · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>${s("prompt.balanced")} · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>${s("prompt.rich")} · 1.0</option></select></label>
@@ -745,10 +774,12 @@ export function renderSettingsPage(
       </div>
       <div class="custom-node-actions">
         <span class="model-availability ${llamaPythonTone}" role="status" aria-live="polite">${icon(llamaPythonStatusIcon)} ${llamaPythonStatus}</span>
-        <div class="node-action-split">
-          <button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
-          ${llamaCppPython?.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-llama-cpp-python ${llamaPythonActionBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
-        </div>
+        ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>`, {
+          locale: settings.uiLocale, escapeHtml: escape, icon,
+          location: llamaCppPython?.packageDirectory || "", locationAvailable: Boolean(llamaCppPython?.installed && llamaCppPython.packageDirectory),
+          cancellation: viewModel.llamaCppPythonInstalling ? { id: "python-runtime:llama-cpp-python", pending: viewModel.dependencyInstallCancelling?.includes("python-runtime:llama-cpp-python") } : undefined,
+          menuActions: llamaCppPython?.installed ? `<button class="destructive-menu-action button-with-icon" data-uninstall-llama-cpp-python ${llamaPythonActionBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button>` : ""
+        })}
       </div>
     </article>`;
   const h3AccelerationCard = `
@@ -777,7 +808,11 @@ export function renderSettingsPage(
        <div class="custom-node-actions">
          <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : attentionProbeFailed ? s("accel.probeFailed") : s("accel.pending")}</span>
          <button class="secondary button-with-icon" id="verify-python-runtime" ${runtimeVerificationBlocked ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${s("accel.verifyRuntime")}</button>
-         <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>
+         ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>`, {
+           locale: settings.uiLocale, escapeHtml: escape, icon,
+           location: attention?.pythonPath || "", locationAvailable: Boolean(attention?.pythonPath && (attention.ready || attention.sageAttentionVersion || attention.tritonVersion || attention.comfyKitchenVersion)),
+           cancellation: viewModel.attentionAccelerationInstalling ? { id: "attention-acceleration", pending: viewModel.dependencyInstallCancelling?.includes("attention-acceleration") } : undefined
+         })}
       </div>
     </article>`;
   const customNodeCards = customNodes.map((node) => {
@@ -892,12 +927,17 @@ export function renderSettingsPage(
           <div class="custom-node-actions">
             <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
             ${manualOnly ? `<div class="node-manual-actions">
-              <button class="secondary button-with-icon" data-open-node-source="${escape(node.repositoryUrl)}">${icon("external-link")}${s("nodes.openSource")}</button>
+              ${renderDependencyActionSplit(`<button class="secondary button-with-icon node-action-main" data-open-node-source="${escape(node.repositoryUrl)}">${icon("external-link")}${s("nodes.openSource")}</button>`, {
+                locale: settings.uiLocale, escapeHtml: escape, icon,
+                location: node.directory || "", locationAvailable: node.installed
+              })}
               <button class="secondary button-with-icon" data-rescan-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("scan-search")}${t(uiKeys.settings.rescan)}</button>
-            </div>` : `<div class="node-action-split">
-              <button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>
-              ${node.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
-            </div>`}
+            </div>` : renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>`, {
+              locale: settings.uiLocale, escapeHtml: escape, icon,
+              location: node.directory || "", locationAvailable: node.installed,
+              menuActions: node.installed ? `<button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button>` : "",
+              cancellation: viewModel.customNodeInstallPhase === "installing" && (active || queued) ? { id: `custom-node:${node.id}`, queued, pending: viewModel.dependencyInstallCancelling?.includes(`custom-node:${node.id}`) } : undefined
+            })}
           </div>
         </article>`
     };
@@ -916,6 +956,7 @@ export function renderSettingsPage(
         <div class="scan-result" role="status" aria-live="polite">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
+        ${renderStrataPreparationPanel(settings, environmentScan?.strataPreparation, options.escapeHtml, { icon, installing: viewModel.strataInstalling, cancelling: viewModel.dependencyInstallCancelling?.includes("python-runtime:strata"), progress: viewModel.strataInstallProgress, log: viewModel.strataLog, blocked: customNodeInstallGloballyBlocked || viewModel.llamaCppPythonInstalling || viewModel.attentionAccelerationInstalling || viewModel.environmentScanning })}
         ${nodeDependencyCards || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
       </div>
     </section>`;

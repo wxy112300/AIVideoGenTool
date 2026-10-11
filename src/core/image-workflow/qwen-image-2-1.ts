@@ -7,6 +7,8 @@ import type { ComfyApiWorkflow, CompiledImagePrompt, ImageModelCapability } from
 import {
   qwenImage21Capability,
   qwenImage21DiffusionModel,
+  qwenImage21TurboCapability,
+  qwenImage21TurboDiffusionModel,
   qwenImage21TextEncoder,
   qwenImage21Vae,
   qwenImage21UncensoredGgufCapability,
@@ -19,7 +21,9 @@ import {
   qwenImage21GgufTextToImageRequiredNodeTypes,
   qwenImage21FixRequiredNodeTypes,
   qwenImage21RequiredNodeTypes,
-  qwenImage21TextToImageRequiredNodeTypes
+  qwenImage21TextToImageRequiredNodeTypes,
+  qwenImage21TurboRequiredNodeTypes,
+  qwenImage21TurboTextToImageRequiredNodeTypes
 } from "./node-requirements.js";
 import {
   compileImagePromptWithLimit,
@@ -34,6 +38,9 @@ import {
 const qwenImage21PromptReferencePattern = /\bPicture\s+([1-9]\d*)\b/gu;
 const qwenImage21FixNegativePrompt =
   "artifacts, gpt-image, washed-out colors, low quality, low resolution, AI slop, deviantart, sloppy lines, rough sketch, blurry, indistinct, missing fingers, badly drawn hands, wrong number of fingers";
+/** The sample_sigmas persisted in Qwen/Qwen-Image-2.1-Turbo's pipeline config, plus the terminal zero required by ComfyUI. */
+export const qwenImage21TurboSigmaSchedule =
+  "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0";
 
 function officialQwenImage21Prompt(prompt: string): string {
   // The official template uses <image1> … <image10>. The shared compiler
@@ -85,6 +92,7 @@ type QwenImage21WorkflowOptions = Readonly<{
   capability: ImageModelCapability;
   textToImageRequiredNodeTypes: readonly string[];
   editRequiredNodeTypes: readonly string[];
+  samplingMode: "standard" | "turbo";
 }>;
 
 const officialQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
@@ -92,7 +100,17 @@ const officialQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
   diffusionModel: qwenImage21DiffusionModel,
   capability: qwenImage21Capability,
   textToImageRequiredNodeTypes: qwenImage21TextToImageRequiredNodeTypes,
-  editRequiredNodeTypes: qwenImage21RequiredNodeTypes
+  editRequiredNodeTypes: qwenImage21RequiredNodeTypes,
+  samplingMode: "standard"
+};
+
+const turboQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
+  modelLoaderClassType: "UNETLoader",
+  diffusionModel: qwenImage21TurboDiffusionModel,
+  capability: qwenImage21TurboCapability,
+  textToImageRequiredNodeTypes: qwenImage21TurboTextToImageRequiredNodeTypes,
+  editRequiredNodeTypes: qwenImage21TurboRequiredNodeTypes,
+  samplingMode: "turbo"
 };
 
 const ggufQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
@@ -100,7 +118,8 @@ const ggufQwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
   diffusionModel: qwenImage21UncensoredGgufDiffusionModel,
   capability: qwenImage21UncensoredGgufCapability,
   textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
-  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
+  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes,
+  samplingMode: "standard"
 };
 
 const ggufQ6QwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
@@ -108,7 +127,8 @@ const ggufQ6QwenImage21WorkflowOptions: QwenImage21WorkflowOptions = {
   diffusionModel: qwenImage21UncensoredGgufQ6DiffusionModel,
   capability: qwenImage21UncensoredGgufQ6Capability,
   textToImageRequiredNodeTypes: qwenImage21GgufTextToImageRequiredNodeTypes,
-  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes
+  editRequiredNodeTypes: qwenImage21GgufRequiredNodeTypes,
+  samplingMode: "standard"
 };
 
 function validateQwenImage21WorkflowForOptions(
@@ -155,6 +175,19 @@ export function validateQwenImage21Workflow(
     qualityProfile,
     allowImagePlaceholders,
     officialQwenImage21WorkflowOptions
+  );
+}
+
+export function validateQwenImage21TurboWorkflow(
+  workflow: ComfyApiWorkflow,
+  qualityProfile = "turbo-8",
+  allowImagePlaceholders = false
+): string[] {
+  return validateQwenImage21WorkflowForOptions(
+    workflow,
+    qualityProfile,
+    allowImagePlaceholders,
+    turboQwenImage21WorkflowOptions
   );
 }
 
@@ -266,6 +299,17 @@ const qwenImage21GgufRequiredSockets: Readonly<Record<string, readonly string[]>
   UnetLoaderGGUF: ["unet_name"]
 };
 
+const qwenImage21TurboRequiredSockets: Readonly<Record<string, readonly string[]>> = {
+  ...Object.fromEntries(
+    Object.entries(qwenImage21RequiredSockets).filter(([nodeType]) => nodeType !== "KSampler")
+  ),
+  RandomNoise: ["noise_seed"],
+  CFGGuider: ["model", "positive", "negative", "cfg"],
+  KSamplerSelect: ["sampler_name"],
+  ManualSigmas: ["sigmas"],
+  SamplerCustomAdvanced: ["noise", "guider", "sampler", "sigmas", "latent_image"]
+};
+
 const qwenImage21EnumInputs = new Set([
   "UNETLoader.unet_name",
   "UNETLoader.weight_dtype",
@@ -286,6 +330,11 @@ const qwenImage21EnumInputs = new Set([
 const qwenImage21GgufEnumInputs = new Set([
   ...qwenImage21EnumInputs,
   "UnetLoaderGGUF.unet_name"
+]);
+
+const qwenImage21TurboEnumInputs = new Set([
+  ...[...qwenImage21EnumInputs].filter((inputName) => !inputName.startsWith("KSampler.")),
+  "KSamplerSelect.sampler_name"
 ]);
 
 function runtimeEnumValues(value: unknown): string[] | undefined {
@@ -337,12 +386,16 @@ function validateQwenImage21RuntimeSchemaForOptions(
   options: QwenImage21WorkflowOptions
 ): string[] {
   const errors: string[] = [];
-  const requiredSockets = options.modelLoaderClassType === "UnetLoaderGGUF"
-    ? qwenImage21GgufRequiredSockets
-    : qwenImage21RequiredSockets;
-  const enumInputs = options.modelLoaderClassType === "UnetLoaderGGUF"
-    ? qwenImage21GgufEnumInputs
-    : qwenImage21EnumInputs;
+  const requiredSockets = options.samplingMode === "turbo"
+    ? qwenImage21TurboRequiredSockets
+    : options.modelLoaderClassType === "UnetLoaderGGUF"
+      ? qwenImage21GgufRequiredSockets
+      : qwenImage21RequiredSockets;
+  const enumInputs = options.samplingMode === "turbo"
+    ? qwenImage21TurboEnumInputs
+    : options.modelLoaderClassType === "UnetLoaderGGUF"
+      ? qwenImage21GgufEnumInputs
+      : qwenImage21EnumInputs;
   for (const node of Object.values(workflow)) {
     const groups = runtimeInputGroups(objectInfo[node.class_type]);
     if (!groups) {
@@ -384,6 +437,17 @@ export function validateQwenImage21RuntimeSchema(
     workflow,
     objectInfo,
     officialQwenImage21WorkflowOptions
+  );
+}
+
+export function validateQwenImage21TurboRuntimeSchema(
+  workflow: ComfyApiWorkflow,
+  objectInfo: Record<string, unknown>
+): string[] {
+  return validateQwenImage21RuntimeSchemaForOptions(
+    workflow,
+    objectInfo,
+    turboQwenImage21WorkflowOptions
   );
 }
 
@@ -477,6 +541,34 @@ function buildQwenImage21WorkflowForOptions(
     });
   }
 
+  const samplerModel: [string, number] = hasPictures ? ["cache", 0] : modelOutput;
+  const samplerNode = options.samplingMode === "turbo"
+    ? {
+        class_type: "SamplerCustomAdvanced",
+        inputs: {
+          noise: ["noise", 0],
+          guider: ["guider", 0],
+          sampler: ["samplerSelect", 0],
+          sigmas: ["sigmas", 0],
+          latent_image: hasPictures ? ["sizeSwitch", 0] : ["empty", 0]
+        }
+      }
+    : {
+        class_type: "KSampler",
+        inputs: {
+          model: samplerModel,
+          positive: ["positive", 0],
+          negative: ["positive", 1],
+          latent_image: hasPictures ? ["sizeSwitch", 0] : ["empty", 0],
+          seed: run.seed,
+          steps: sampling.steps,
+          cfg: sampling.cfg,
+          sampler_name: sampling.sampler_name,
+          scheduler: sampling.scheduler,
+          denoise: 1
+        }
+      };
+
   const workflow: ComfyApiWorkflow = {
     ...pictureNodes,
     model: {
@@ -560,21 +652,30 @@ function buildQwenImage21WorkflowForOptions(
         }
       }
     } : {}),
-    sampler: {
-      class_type: "KSampler",
-      inputs: {
-        model: hasPictures ? ["cache", 0] : modelOutput,
-        positive: ["positive", 0],
-        negative: ["positive", 1],
-        latent_image: hasPictures ? ["sizeSwitch", 0] : ["empty", 0],
-        seed: run.seed,
-        steps: sampling.steps,
-        cfg: sampling.cfg,
-        sampler_name: sampling.sampler_name,
-        scheduler: sampling.scheduler,
-        denoise: 1
+    ...(options.samplingMode === "turbo" ? {
+      noise: {
+        class_type: "RandomNoise",
+        inputs: { noise_seed: run.seed }
+      },
+      guider: {
+        class_type: "CFGGuider",
+        inputs: {
+          model: samplerModel,
+          positive: ["positive", 0],
+          negative: ["positive", 1],
+          cfg: sampling.cfg
+        }
+      },
+      samplerSelect: {
+        class_type: "KSamplerSelect",
+        inputs: { sampler_name: sampling.sampler_name }
+      },
+      sigmas: {
+        class_type: "ManualSigmas",
+        inputs: { sigmas: qwenImage21TurboSigmaSchedule }
       }
-    },
+    } : {}),
+    sampler: samplerNode,
     decoded: {
       class_type: "VAEDecode",
       inputs: {
@@ -610,6 +711,13 @@ export function buildQwenImage21Workflow(
   run: ImageGenerationRun
 ): ComfyApiWorkflow {
   return buildQwenImage21WorkflowForOptions(task, run, officialQwenImage21WorkflowOptions);
+}
+
+export function buildQwenImage21TurboWorkflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  return buildQwenImage21WorkflowForOptions(task, run, turboQwenImage21WorkflowOptions);
 }
 
 export function buildQwenImage21GgufWorkflow(

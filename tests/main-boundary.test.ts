@@ -107,7 +107,10 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(92);
+    expect(invokeChannels.size).toBe(95);
+    expect(registrations.get("dependency-install:cancel")).toEqual(["environment-ipc"]);
+    expect(registrations.get("strata:install")).toEqual(["environment-ipc"]);
+    expect(registrations.get("strata:uninstall")).toEqual(["environment-ipc"]);
     expect(registrations.get("history:inspect-extension-source")).toEqual(["history-ipc"]);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
@@ -198,6 +201,9 @@ describe("main/preload boundary characterization", () => {
         "custom-node:install",
         "custom-node:uninstall",
         "llama-cpp-python:install",
+        "strata:install",
+        "strata:uninstall",
+        "dependency-install:cancel",
         "llama-cpp-python:uninstall",
         "attention-acceleration:install",
         "depth-anything:install"

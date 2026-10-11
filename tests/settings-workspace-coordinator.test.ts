@@ -42,7 +42,7 @@ function createCoordinatorHarness() {
   const context = {
     root: document.createElement("main"),
     application,
-    events: {},
+    events: { onAppCacheProgress: vi.fn(() => () => undefined) },
     assets: {},
     hostCapabilities: {},
     getState: () => currentState,
@@ -100,6 +100,7 @@ function createCoordinatorHarness() {
   const coordinator = createSettingsWorkspaceCoordinator(dependencies);
   return {
     coordinator,
+    root: context.root,
     dependencies,
     application,
     getState: () => currentState,
@@ -164,5 +165,14 @@ describe("settings workspace coordinator", () => {
       message: "python step"
     })).toBe("python step");
     expect(harness.coordinator.getLlamaCppPythonLog()).toBe("python step");
+    harness.application.scanEnvironment.mockResolvedValue({ modelProfiles: [], customNodes: [], gpus: [], items: [], issues: [], comfyInstallations: [], pythonRuntimes: [] } as unknown as EnvironmentScanResult);
+    await harness.coordinator.runEnvironmentScan(harness.getState().settings);
+    harness.root.innerHTML = '<button data-settings-tab="nodes">节点</button>';
+    harness.coordinator.bind();
+    harness.root.querySelector<HTMLButtonElement>("[data-settings-tab=nodes]")!.click();
+    harness.coordinator.appendDependencyInstallLog({ kind: "python-runtime", id: "strata", message: "", progress: { stage: "download", percent: 42 } });
+    expect(harness.coordinator.renderPage()).toContain("下载引擎 · 42%");
+    harness.coordinator.appendDependencyInstallLog({ kind: "python-runtime", id: "strata", message: "pip output" });
+    expect(harness.coordinator.renderPage()).toContain("下载引擎 · 42%");
   });
 });

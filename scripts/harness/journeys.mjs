@@ -17,9 +17,9 @@ export const journeys = [
   {
     id: "prompt", title: "有图无说明自动扩写 / 有说明忠于指令 / 模式切换",
     section: "prompt",
-    paths: ["src/renderer/pages/create/prompt-controller.ts", "src/renderer/pages/create/helpers.ts", "src/core/prompts", "electron/services/prompt-application-service.ts"],
-    tests: ["tests/user-journeys.test.ts", "tests/h3-auto-prompt.test.ts", "tests/h3-prompt.test.ts", "tests/prompt-runtime-manager.test.ts"],
-    checks: ["媒体 + 空文本为 reference-auto；有文本保留原指令；无媒体无文本不提交", "Extend 带 extensionSource 边界；Continuum 不伪造 R2V 标签", "异步返回写回来源草稿；取消/模型未就绪/GPU 占用可见；质量需真实输出评估"]
+      paths: ["src/renderer/pages/create/prompt-controller.ts", "src/renderer/pages/create/helpers.ts", "src/core/prompts", "electron/services/prompt-application-service.ts", "electron/services/strata-prompt.ts", "electron/services/strata-reference-media.ts", "electron/services/strata-runtime-owner.ts"],
+      tests: ["tests/user-journeys.test.ts", "tests/h3-auto-prompt.test.ts", "tests/h3-prompt.test.ts", "tests/prompt-runtime-manager.test.ts", "tests/strata-prompt.test.ts", "tests/strata-reference-media.test.ts", "tests/strata-runtime-owner.test.ts"],
+      checks: ["媒体 + 空文本为 reference-auto；有文本保留原指令；无媒体无文本不提交", "Extend 带 extensionSource 边界；Continuum 不伪造 R2V 标签", "异步返回写回来源草稿；取消/模型未就绪/GPU 占用可见；质量需真实输出评估", "Strata：缺文件阻塞与补齐恢复；实际增强按钮成功才新增版本；首次准备/缓存/取消/上下文预算与独立服务状态分层验证"]
   },
   {
     id: "extend", title: "视频 → Motion Context / Continuum / 边界帧续接",
@@ -46,7 +46,7 @@ export const journeys = [
     id: "settings-runtime", title: "保存设置 → 离线扫描 → 启动 ComfyUI → 在线验证 → 执行",
     section: "settings-runtime",
     paths: ["src/renderer/pages/settings", "electron/services/settings-service.ts", "electron/services/environment.ts", "src/renderer/pages/queue/controller.ts", "electron/services/queue-runtime-service.ts", "src/core/h3-execution-policy.ts", "electron/services/prompt-application-service.ts", "src/core/prompt-models.ts", "electron/services/prompt-runtime-manager.ts", "electron/services/history-query-service.ts"],
-    tests: ["tests/draft-settings-services.test.ts", "tests/h3-execution-policy.test.ts", "tests/queue-runtime-service.test.ts", "tests/prompt-models.test.ts", "tests/prompt-environment-services.test.ts", "tests/prompt-runtime-manager.test.ts", "tests/environment.test.ts"],
+    tests: ["tests/draft-settings-services.test.ts", "tests/h3-execution-policy.test.ts", "tests/queue-runtime-service.test.ts", "tests/prompt-models.test.ts", "tests/prompt-environment-services.test.ts", "tests/prompt-runtime-manager.test.ts", "tests/environment.test.ts", "tests/llama-cpp-python.test.ts", "tests/llama-cpp-python-package-path.test.ts", "tests/strata-installation.test.ts", "tests/strata-uninstallation.test.ts", "tests/renderer-shell-coordinator.test.ts", "tests/strata-install-progress.test.ts", "tests/strata-settings-controller.test.ts", "tests/strata-preparation.test.ts", "tests/settings-node-actions.test.ts", "tests/media-reveal-ipc.test.ts", "tests/installation-cancellation.test.ts", "tests/settings-install-cancellation.test.ts", "tests/node-install-queue.test.ts"],
     checks: ["选中 core/data/Python，files/node schema/graph/output 分层报告", "通过真实 AppApi startLocalService 启动；本地 app ownership / remote connection-only", "默认模型影响新草稿；四项 H3 加速设置保存立即更新 waiting，claim 解析、running 冻结；settings-running-smoke.mjs 以真实运行和成片验证 Attention", "Prompt provider 固定 ComfyUI；保存 promptModelId → 下一次增强比较驻留租约 → 日志 promptModelId/promptBackend → 新版本/重启；settings-prompt-smoke.mjs 的 --resident 与 --history 分别验证旧模型驻留和单作品保护"]
   },
   {

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { promises as fs } from "node:fs";
@@ -293,7 +294,7 @@ async function assertNoLinks(root: string): Promise<void> {
 
 async function sha256File(filename: string): Promise<string> {
   const digest = crypto.createHash("sha256");
-  for await (const chunk of createReadStream(filename)) digest.update(chunk);
+  for await (const chunk of createReadStream(filename)) { checkInstallationCancelled(); digest.update(chunk); }
   return digest.digest("hex");
 }
 
@@ -676,6 +677,7 @@ function carrierManifest(
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
+  checkInstallationCancelled();
   if (signal?.aborted) throw new Error("AetherScale carrier 安装已取消。");
 }
 

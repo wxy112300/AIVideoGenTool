@@ -71,6 +71,8 @@ export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOpti
 export interface SettingsInstallGuideSelection {
   profileName: string;
   component: ModelComponentStatus;
+  /** Explicit independent root. Empty means unconfigured, not the ComfyUI root. */
+  targetRoot?: string;
 }
 
 export interface SettingsInstallGuideDialogViewModel {
@@ -277,7 +279,7 @@ export function renderSettingsModelScanCard(
             ? options.t(uiKeys.settings.system.scanCardStaticReady)
           : options.t(uiKeys.settings.system.scanCardFileComplete);
   const descriptionIncludes = (text: string) => profile.description.toLocaleLowerCase().includes(text.toLocaleLowerCase());
-  const promptDependencyDescription = isPromptProfile
+  const promptDependencyDescription = isPromptProfile && profile.managedBy !== "strata"
     ? isLlamaProfile && !descriptionIncludes("llama-server")
       ? settingsText(options.locale, "model.meta.llamaDependency")
       : isMultimodalProfile && !descriptionIncludes("MultiModal Prompt Nodes")
@@ -403,7 +405,10 @@ export function renderSettingsInstallGuideDialog(
         </section>
       </div>`;
   }
-  const targetDirectory = `${viewModel.configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory.replaceAll("/", "\\")}`;
+  const targetRoot = viewModel.selectedInstallGuide.targetRoot ?? viewModel.configuredModelDirectory;
+  const targetDirectory = targetRoot.trim()
+    ? [targetRoot.replace(/[\\/]+$/, ""), guide.targetSubdirectory.replaceAll("/", "\\")].filter(Boolean).join("\\")
+    : "";
   const sourceRevision = guide.version
     ? `v${guide.version}`
     : guide.revision || "—";
@@ -421,12 +426,12 @@ export function renderSettingsInstallGuideDialog(
           ${guide.bytes ? `<div><span>${escape(settingsText(options.locale, "model.component.fileSize"))}</span><code>${escape(formatGuideBytes(guide.bytes))}</code></div>` : ""}
           ${guide.sha256 ? `<div><span>${escape(settingsText(options.locale, "model.component.sha256"))}</span><code>${escape(guide.sha256)}</code></div>` : ""}
           <div><span>${t(uiKeys.settings.system.installGuideRecommendedFile)}</span><code>${escape(guide.recommendedFilename)}</code></div>
-          <div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory)}</code></div>
+          <div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory || settingsText(options.locale, "strata.chooseRoot"))}</code></div>
         </div>
         ${guide.notes ? `<div class="install-note"><strong>${t(uiKeys.settings.system.installGuideNote)}</strong><p>${escape(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">
           <button class="secondary" id="dismiss-install-guide">${t(uiKeys.settings.system.installGuideClose)}</button>
-          <button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}">${icon("folder-open")}${t(uiKeys.settings.system.installGuideOpenDirectory)}</button>
+          <button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" ${targetDirectory ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.system.installGuideOpenDirectory)}</button>
           <button class="primary button-with-icon" id="open-install-download">${t(uiKeys.settings.system.installGuideOpenDownload)}${icon("external-link")}</button>
         </div>
       </section>

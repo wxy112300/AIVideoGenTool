@@ -6,6 +6,7 @@ import type {
   BundledWorkflow,
   ComfyRuntimeState,
   DependencyInstallProgress,
+  StrataInstallProgress,
   EnvironmentIssue,
   EnvironmentScanResult,
   H3PromptPreset,
@@ -180,6 +181,10 @@ export function createSettingsWorkspaceCoordinator(
   let attentionAccelerationLog = "";
   let llamaCppPythonInstalling = false;
   let llamaCppPythonLog = "";
+  let strataInstalling = false;
+  const dependencyInstallCancelling = new Set<string>();
+  let strataLog = "";
+  let strataInstallProgress: StrataInstallProgress | undefined;
   let settingsDraft: Settings | null = null;
   let settingsTab: SettingsTab = "comfyui";
   let selectedInstallGuide: SettingsInstallGuideSelection | null = null;
@@ -259,6 +264,7 @@ export function createSettingsWorkspaceCoordinator(
   ): Promise<EnvironmentScanResult | null> => environmentRefreshCoordinator.refresh(settings, reason);
 
   const customNodeInstallManager = new CustomNodeInstallQueue({
+    cancelInstall: (id) => deps.context.application.cancelDependencyInstall(`custom-node:${id}`),
     install: (nodeId, settings, mode) => deps.context.application.installCustomNode(nodeId, settings, mode),
     restart: (settings) => deps.context.application.restartLocalService("comfy", settings),
     scan: (settings) => runEnvironmentScan(settings, "dependency-change"),
@@ -428,6 +434,10 @@ export function createSettingsWorkspaceCoordinator(
         attentionAccelerationLog,
         llamaCppPythonInstalling,
         llamaCppPythonLog,
+        strataInstalling,
+        dependencyInstallCancelling: [...dependencyInstallCancelling],
+        strataLog,
+        strataInstallProgress,
         selectedInstallGuide,
         appLogs: deps.getAppLogs(),
         appLogsLoading: deps.getAppLogsLoading(),
@@ -616,10 +626,20 @@ export function createSettingsWorkspaceCoordinator(
         },
         enqueueCustomNodeInstall: (nodeId, settings, mode) =>
           customNodeInstallManager.enqueue(nodeId, settings, mode),
+        cancelCustomNodeInstall: (nodeId) => customNodeInstallManager.cancel(nodeId),
+        setDependencyInstallCancelling: (id, value) => {
+          if (value) dependencyInstallCancelling.add(id);
+          else dependencyInstallCancelling.delete(id);
+        },
         requestCustomNodeUninstall: (nodeId, name) =>
           deps.requestConfirmation({ kind: "uninstall-custom-node", nodeId, name }),
         requestLlamaCppPythonUninstall: () =>
           deps.requestConfirmation({ kind: "uninstall-llama-cpp-python" }),
+        requestStrataUninstall: (directory) =>
+          deps.requestConfirmation({ kind: "uninstall-strata", directory }),
+        setStrataInstalling: (value) => { strataInstalling = value; if (value) strataInstallProgress = { stage: "prepare" }; },
+        getStrataLog: () => strataLog,
+        setStrataLog: (log) => { strataLog = log; },
         requestForceStopConfirmation: () =>
           deps.requestConfirmation({ kind: "force-stop-comfy" }),
         rememberModalFocus: deps.rememberModalFocus
@@ -715,13 +735,16 @@ export function createSettingsWorkspaceCoordinator(
     appendDependencyInstallLog: (progress) => {
       const current = progress.kind === "custom-node"
         ? customNodeLogs[progress.id] ?? ""
-        : llamaCppPythonLog;
+        : progress.id === "strata" ? strataLog : llamaCppPythonLog;
       const next = [current, progress.message]
         .filter(Boolean)
         .join("\n")
         .slice(-60_000);
       if (progress.kind === "custom-node") {
         customNodeLogs = { ...customNodeLogs, [progress.id]: next };
+      } else if (progress.id === "strata") {
+        strataLog = next;
+        if (progress.progress) strataInstallProgress = { ...progress.progress };
       } else {
         llamaCppPythonLog = next;
       }

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { Settings } from "../../src/types.js";
@@ -112,6 +113,7 @@ function isAllowedDownloadUrl(value: string): boolean {
 async function sha256File(filename: string): Promise<string> {
   const digest = crypto.createHash("sha256");
   digest.update(await fs.readFile(filename));
+  checkInstallationCancelled();
   return digest.digest("hex");
 }
 
@@ -356,6 +358,7 @@ export async function installKonohamaruNeuralUpstreamRuntime(
       throw new Error("neural-upstream addon 下载结果为空，已拒绝安装。");
     }
 
+    checkInstallationCancelled();
     if (await lstatIsPresent(addon)) {
       previousAddon = `${addon}.previous-${Date.now()}`;
       await deps.renameWithRetry(addon, previousAddon);
@@ -366,6 +369,7 @@ export async function installKonohamaruNeuralUpstreamRuntime(
       await deps.renameWithRetry(legacy, disabledLegacy);
       onLog?.(`已将旧 RenoDX addon 隔离为：${path.basename(disabledLegacy)}`);
     }
+    checkInstallationCancelled();
     await deps.renameWithRetry(partial, addon);
     installedAddon = true;
     const finalProblems = await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory);
@@ -604,12 +608,14 @@ export async function installKonohamaruVideo2dlssnrRuntime(
       "utf8"
     );
 
+    checkInstallationCancelled();
     if (await lstatIsPresent(runtimeDirectory)) {
       await fs.mkdir(backupDirectory, { recursive: true });
       await deps.renameWithRetry(runtimeDirectory, backup);
       movedExisting = true;
       report(`已保留旧 video2dlssnr runtime 备份：${path.basename(backup)}`);
     }
+    checkInstallationCancelled();
     await deps.renameWithRetry(stagedRuntime, runtimeDirectory);
     promoted = true;
     const finalProblems = await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory);

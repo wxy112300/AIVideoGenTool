@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
@@ -473,6 +474,7 @@ async function installBundledNodePackage(
     });
     await fs.mkdir(backupRoot, { recursive: true });
     targetExists = await runtime.exists(targetDirectory);
+    checkInstallationCancelled();
     if (targetExists) {
       await runtime.renameWithRetry(targetDirectory, backupDirectory);
       targetMovedToBackup = true;
@@ -677,6 +679,7 @@ async function installCustomNodePackageUnlocked(
             }
           }
         } catch {
+          checkInstallationCancelled();
           // A status probe failure must never turn into an in-place pull. The
           // replacement path below is copy/backup based and is recoverable.
           report(
@@ -754,6 +757,7 @@ async function installCustomNodePackageUnlocked(
             aetherScalePrepared = true;
           }
           await fs.mkdir(backupRoot, { recursive: true });
+          checkInstallationCancelled();
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
           try {
             try {

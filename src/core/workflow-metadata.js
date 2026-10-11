@@ -107,6 +107,11 @@ export const bundledWorkflowMetadata = {
         upstreamUrl: "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/image_qwen_image_2_1_image_edit.json",
         verifiedAt: "2026-09-21"
     }),
+    qwen_image_2_1_turbo_image_edit_api: metadata("qwen_image_2_1_turbo_image_edit_api.json", [], {
+        comfyUi: qwenImage21Core,
+        upstreamUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-2.1",
+        verifiedAt: "2026-10-10"
+    }),
     qwen_image_2_1_uncensored_gguf_image_edit_api: metadata("qwen_image_2_1_uncensored_gguf_image_edit_api.json", ["comfyui-gguf"], {
         comfyUi: qwenImage21Core,
         upstreamUrl: "https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF",

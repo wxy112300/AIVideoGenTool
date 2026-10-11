@@ -8,6 +8,7 @@ import { minimaxH3Ref2vaInt4 } from "./models/minimax_h3_ref2va_int4/definition.
 import { minimaxH3Continuum } from "./models/minimax_h3_continuum/definition.js";
 import { sulphur2 } from "./models/sulphur2/definition.js";
 import { promptModelEntries } from "./models/prompt.js";
+import { strataModelEntries } from "./models/strata.js";
 import { imageModelEntries } from "./models/image.js";
 import { legacyVideoModelEntries } from "./models/legacy-video.js";
 import { postProcessModelEntries } from "./models/post-process.js";
@@ -24,6 +25,7 @@ export const modelCatalog = createModelCatalog([
   minimaxH3Continuum,
   sulphur2,
   ...promptModelEntries,
+  ...strataModelEntries,
   ...imageModelEntries,
   ...legacyVideoModelEntries,
   ...postProcessModelEntries,

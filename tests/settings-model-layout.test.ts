@@ -32,6 +32,11 @@ const component = (label = "Model file", found = true) => ({
 });
 
 describe("Settings model card layout", () => {
+  it("does not attach ComfyUI TextGenerate dependencies to Strata preparation", () => {
+    const markup = renderSettingsModelScanCard({ id: "strata/example", name: "Strata", category: "prompt", managedBy: "strata", badge: "Preparation", description: "Independent runtime", vram: "24GB", available: true, integrated: false, components: [component()] }, options);
+    expect(markup).not.toContain("TextGenerate");
+    expect(markup).toContain("settings.system.scanCardIntegrationPending");
+  });
   it("keeps only useful resource metadata beside the top-right availability status", () => {
     const profile: ModelScanProfile = {
       id: "video-model",

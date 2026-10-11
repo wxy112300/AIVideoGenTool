@@ -13,6 +13,7 @@ import type { AppLogger } from "../src/infrastructure/app-logger";
 import { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state";
 import { PromptRuntimeManager } from "../electron/services/prompt-runtime-manager";
 import type { StudioPaths } from "../electron/services/studio-paths";
+import { StrataRuntimeOwner } from "../electron/services/strata-runtime-owner";
 
 function repository(initial: AppState, steps: string[]): StateRepository {
   let state = structuredClone(initial);
@@ -140,6 +141,86 @@ function runtimeFixture() {
 }
 
 describe("ApplicationRuntime", () => {
+  it("aborts the actual admin Strata install context on exit and awaits installer recovery", async () => {
+    const current = runtimeFixture();
+    const runtime = new ApplicationRuntime(current.dependencies);
+    const context = await runtime.start();
+    // Use the real admin owner boundary and cancellation registry; only the software mutation is synthetic.
+    const owner = context.services.strata;
+    const { RuntimeAdminService } = await import("../electron/services/runtime-admin-service");
+    const { installationSignal } = await import("../electron/services/installation-cancellation");
+    let began!: () => void, recover!: () => void;
+    const ready = new Promise<void>((done) => { began = done; });
+    const recovery = new Promise<void>((done) => { recover = done; });
+    const admin = new RuntimeAdminService({
+      store: current.dependencies.store, logger: current.dependencies.logger, runtimeState: current.dependencies.runtimeState,
+      isGenerationBusy: () => false, isQueueWorkerRunning: () => false, isPromptControllerActive: () => false,
+      isPromptBusy: () => context.services.prompt.isPromptBusy(), getQueueWorker: () => null,
+      abortQueue: vi.fn(), abortPrompt: vi.fn(), interruptComfy: async () => undefined,
+      sendState: vi.fn(), waitForWorker: async () => true, errorMeta: () => ({}), strataRuntime: owner,
+      installStrata: async () => {
+        const signal = installationSignal()!; began();
+        await new Promise<void>((done) => signal.addEventListener("abort", () => done(), { once: true }));
+        await recovery; signal.throwIfAborted(); return { ok: true, message: "unreachable" };
+      }
+    });
+    const install = admin.installStrata(current.settings);
+    await ready;
+    const stop = runtime.stop(); let stopped = false; void stop.then(() => { stopped = true; });
+    await Promise.resolve(); expect(stopped).toBe(false);
+    expect(await admin.uninstallStrata(current.settings)).toMatchObject({ ok: false });
+    recover(); expect(await install).toMatchObject({ ok: false, cancelled: true });
+    await stop; expect(owner.snapshot().pid).toBeNull();
+  });
+  it("uses the same Strata owner for Prompt occupancy, software changes, release and exit", async () => {
+    const current = runtimeFixture();
+    const owner = new StrataRuntimeOwner({ run: vi.fn(), isResourcesBusy: () => false });
+    const runtime = new ApplicationRuntime({ ...current.dependencies, strataRuntime: owner });
+    const context = await runtime.start();
+    const before = structuredClone(current.dependencies.store.get());
+    expect(context.services.strata).toBe(owner);
+    let finish!: () => void;
+    const gate = new Promise<void>((done) => { finish = done; });
+    const maintenance = owner.withSoftwareChange(async () => { await gate; return "done"; });
+    expect(context.services.prompt.isWorkerBusy()).toBe(true);
+    expect(context.services.prompt.runningWorker).not.toBeNull();
+    expect(await context.services.prompt.releaseForUser()).toMatchObject({ ok: false, message: expect.stringContaining("Strata 操作") });
+    expect(owner.isBusy()).toBe(true);
+    expect(await context.services.environment.admin.uninstallStrata(before.settings)).toMatchObject({ ok: false });
+    finish(); await maintenance;
+    const software = vi.spyOn(owner, "withSoftwareChange").mockRejectedValueOnce(new Error("owned runtime busy"));
+    await expect(context.services.environment.admin.installStrata(before.settings)).rejects.toThrow("owned runtime busy");
+    expect(software).toHaveBeenCalledOnce();
+    const stop = vi.spyOn(owner, "stop");
+    await context.services.prompt.releaseRuntime(before.settings);
+    expect(stop).toHaveBeenCalledOnce();
+    const shutdown = vi.spyOn(owner, "shutdown");
+    await runtime.stop(); expect(shutdown).toHaveBeenCalledOnce();
+    expect(current.dependencies.store.get()).toEqual(before);
+  });
+
+  it("stops its Strata owner even for remote ComfyUI, without terminating remote processes", async () => {
+    const current = runtimeFixture();
+    await current.dependencies.store.update((state) => { state.settings.comfyUrl = "https://remote.invalid"; });
+    const owner = new StrataRuntimeOwner({ run: vi.fn(), isResourcesBusy: () => false });
+    const shutdown = vi.spyOn(owner, "shutdown");
+    const runtime = new ApplicationRuntime({ ...current.dependencies, strataRuntime: owner });
+    await runtime.start(); await runtime.stop();
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(current.forceStopComfyProcesses).not.toHaveBeenCalled();
+  });
+
+  it("continues ComfyUI cleanup on Strata stop failure, reports failure and permits cleanup retry", async () => {
+    const current = runtimeFixture();
+    const owner = new StrataRuntimeOwner({ run: vi.fn(), isResourcesBusy: () => false });
+    const shutdown = vi.spyOn(owner, "shutdown").mockRejectedValueOnce(new Error("still alive"));
+    const runtime = new ApplicationRuntime({ ...current.dependencies, strataRuntime: owner });
+    await runtime.start();
+    expect(await runtime.stop()).toMatchObject({ ok: false, message: expect.stringContaining("Strata 清理未完成") });
+    expect(current.forceStopComfyProcesses).toHaveBeenCalledOnce();
+    await runtime.stop(); expect(shutdown).toHaveBeenCalledTimes(2);
+  });
+
   it("starts without Electron and preserves adapter-before-alignment ordering", async () => {
     const current = runtimeFixture();
     const runtime = new ApplicationRuntime({

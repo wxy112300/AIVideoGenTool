@@ -208,7 +208,7 @@ export async function preparePromptExtensionFrame(
   }
 }
 
-async function probeVideoDuration(
+export async function probeVideoDuration(
   filename: string,
   signal: AbortSignal
 ): Promise<number | null> {

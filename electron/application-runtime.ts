@@ -27,6 +27,7 @@ import { DraftService } from "./services/draft-service.js";
 import { SettingsService, type SettingsServiceDependencies } from "./services/settings-service.js";
 import { EnvironmentQueryService } from "./services/environment-query-service.js";
 import { PromptApplicationService } from "./services/prompt-application-service.js";
+import { StrataRuntimeOwner } from "./services/strata-runtime-owner.js";
 import { RuntimeAdminService } from "./services/runtime-admin-service.js";
 import { QueueService } from "./services/queue-service.js";
 import { ComfyOutputService } from "./services/comfy-output-service.js";
@@ -40,7 +41,8 @@ import {
 } from "./services/h3-native-av-collector.js";
 import { nativeAvArtifactFileSystem } from "./services/native-av-artifact-file-system.js";
 import { H3ContinuumAssetRegistry } from "./services/h3-continuum-asset-registry.js";
-import { scanEnvironment } from "./services/environment.js";
+import { runLoggedProcess, scanEnvironment } from "./services/environment.js";
+import { isLocalPortInUse } from "./services/local-service-process.js";
 import type { QueueRuntimeCapability } from "./ports/queue-runtime.js";
 import type { NativeAvArtifactFileSystemPort } from "./ports/native-av-artifact-file-system.js";
 import type { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state.js";
@@ -95,6 +97,7 @@ export interface ApplicationServices {
   imageDocument: ImageDocumentService;
   imageAssets: ImageAssetLibraryService;
   prompt: PromptApplicationService;
+  strata: StrataRuntimeOwner;
   lifecycle: LifecycleCoordinator;
   environment: {
     query: EnvironmentQueryService;
@@ -130,6 +133,7 @@ export interface ApplicationRuntimeDependencies {
   logger: AppLogger;
   runtimeState: ComfyRuntimeStateController;
   promptRuntimeManager: PromptRuntimeManager;
+  strataRuntime?: StrataRuntimeOwner;
   historyFileSystem: HistoryFileSystemPort;
   nativeAvArtifactFileSystem?: NativeAvArtifactFileSystemPort;
   imageInspection: ImageInspectionPort;
@@ -267,10 +271,34 @@ export class ApplicationRuntime {
       if (!queueService) throw new Error("Queue service is not initialized");
       return queueService;
     };
+    const strataRuntime = this.deps.strataRuntime ?? new StrataRuntimeOwner({
+      run: runLoggedProcess,
+      beforeInference: async () => {
+        const settings = this.deps.store.get().settings;
+        await promptService.releaseComfyRuntime(settings);
+        // An HTTP failure is not proof that a retained ComfyUI model released its GPU resources.
+        try { await this.deps.lifecycle.freeMemory(settings); }
+        catch (error) {
+          const facts = this.deps.runtimeState.snapshot();
+          const endpoint = new URL(settings.comfyUrl);
+          // A genuinely absent local listener with no app-owned process is safe offline.
+          // A failed request to a running/owned/remote service is not proof of GPU release.
+          if (!this.deps.lifecycle.isLocalComfyUrl(settings.comfyUrl) || facts.ownership === "app"
+            || await isLocalPortInUse(Number(endpoint.port || (endpoint.protocol === "https:" ? 443 : 80)))) throw error;
+        }
+      },
+      isResourcesBusy: (signal) => Boolean(
+        this.deps.store.get().queueRunning || activeQueueService().activeController ||
+        activeQueueService().runningWorker ||
+        (promptService.isPromptBusy() && (!signal || signal !== promptService.activeController?.signal))
+      )
+    });
     const promptService = new PromptApplicationService({
       store: this.deps.store,
       logger: this.deps.logger,
       promptRuntimeManager: this.deps.promptRuntimeManager,
+      externalRuntime: strataRuntime,
+      strata: strataRuntime,
       isQueueBusy: () => Boolean(
         this.deps.store.get().queueRunning ||
         activeQueueService().activeController ||
@@ -376,6 +404,7 @@ export class ApplicationRuntime {
       taskStageStartedAt: new Map()
     });
     const runtimeAdmin = new RuntimeAdminService({
+      strataRuntime,
       store: this.deps.store,
       logger: this.deps.logger,
       runtimeState: this.deps.runtimeState,
@@ -401,6 +430,7 @@ export class ApplicationRuntime {
       runtimeState: this.deps.runtimeState,
       getQueue: () => activeQueueService(),
       prompt: promptService,
+      strata: strataRuntime,
       sendState: this.deps.sendState,
       ...this.deps.lifecycle
     });
@@ -431,6 +461,7 @@ export class ApplicationRuntime {
       imageDocument: imageDocumentService,
       imageAssets: imageAssetLibraryService,
       prompt: promptService,
+      strata: strataRuntime,
       lifecycle: lifecycleService,
       environment: {
         query: environmentQuery,

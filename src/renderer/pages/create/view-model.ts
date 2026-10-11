@@ -44,7 +44,7 @@ import {
   imageLoraConfigurationError,
   profileProvidesImageLora
 } from "../../../core/image-loras";
-import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
+import { promptModelSupportsImageEdit, isGemmaPromptModel, isStrataPromptModel } from "../../../core/prompt-models";
 import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts,
@@ -450,7 +450,8 @@ export function buildImageEditPageViewModel(
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
-  const imagePromptEnhanceBlocked = promptStarting || promptRuntimeView.right.disabled || state.queueRunning || !imagePromptModelSupportsImageEdit;
+  const imagePromptEnhanceBlocked = promptStarting || promptRuntimeView.right.disabled || state.queueRunning || !imagePromptModelSupportsImageEdit ||
+    (isStrataPromptModel(state.settings.promptModelId) && !promptStatus.ready && promptRuntimeView.right.action !== "cancel");
   const imagePromptAiDisabled = imagePromptEnhanceBlocked || !prompt.text.trim();
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
@@ -535,7 +536,7 @@ export function buildImageEditPageViewModel(
     imagePromptAiDisabled,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: promptRuntimeView.left.icon,
-    releasePromptControlDisabled: promptStarting || promptRuntimeView.left.disabled || state.queueRunning,
+    releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     markupGuideCount,
     imageModelInputCount,
     enqueueBlockReason,
@@ -869,7 +870,8 @@ export function buildVideoCreatePageViewModel(
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning ||
-    Boolean(promptBoundaryBlockReason);
+    Boolean(promptBoundaryBlockReason) ||
+    (isStrataPromptModel(state.settings.promptModelId) && !promptStatus.ready && promptRuntimeView.right.action !== "cancel");
   const videoPolicy = resolveVideoGenerationPolicy({
     modelId: draft.modelId,
     inputMode: draft.inputMode,
@@ -1141,7 +1143,7 @@ export function buildVideoCreatePageViewModel(
     promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: promptRuntimeView.left.icon,
-    releasePromptControlDisabled: promptStarting || promptRuntimeView.left.disabled || state.queueRunning,
+    releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     promptAiDisabled,
     promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)

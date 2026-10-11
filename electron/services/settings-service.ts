@@ -1,4 +1,5 @@
 import path from "node:path";
+import { normalizeStrataSettings, validStrataPort } from "../../src/core/strata-preparation.js";
 import type {
   AppState,
   HistoryAsset,
@@ -123,7 +124,14 @@ export class SettingsService {
       throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
     }
 
-    let settings = input;
+    if (input.strataPort !== undefined && !validStrataPort(input.strataPort)) {
+      throw new Error(input.uiLocale === "en-US"
+        ? "Strata port must be an integer from 1024 to 65535, excluding 8080."
+        : input.uiLocale === "zh-TW"
+          ? "Strata 連接埠須為 1024–65535 的整數，不能使用 8080。"
+          : "Strata 端口须为 1024–65535 的整数，不能使用 8080。");
+    }
+    let settings = { ...input, ...normalizeStrataSettings(input) };
     if (!settings.imageInputLibraryDirectory.trim()) {
       settings = {
         ...settings,

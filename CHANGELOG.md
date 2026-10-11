@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+## 0.65.1 — 2026-10-12
+
+- 接入 Qwen Image 2.1 Turbo 独立扩散模型，保留原 2.1、GGUF Q6/Q8 与旧队列/History；新增模型扫描、下载指引和固定官方 8 步 sigma 工作流，支持文生图、多图编辑及 Paint 视觉引导，不叠加旧 Lightning LoRA。
+- 完成 Strata v0.1.41 + Qwen3.8-Flash-Next IQ3_XXS/IQ2_XS 可选提示词后端：沿用模型选择、启动/增强/取消/释放和版本管理，首次校验/CPU pack/tokenizer、完成缓存复用、受认证 loopback 服务、应用退出及队列 GPU 交接。支持参考图、R2V 静音关键帧、Extend/Continuum 边界、Prompt Pack 与批注/对白/可见文字锁；完整结果通过后才写回版本。
+- Strata 软件使用独立 Python 环境，一键安装/重装失败恢复，三角菜单提供卸载；模型共享 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 原地兼容，不自动搬移或下载。默认端口 43127，拒绝 8080 和占用端点接管；32K 上下文、视频 8K/图片编辑 4K 输出预算，超限/截断不保存，不隐式回退 CPU 或下载 MTP。原默认模型不变。
+- 节点及软件安装支持取消：排队项移出队列，运行项中止自有安装进程并等待恢复；卡片直接显示 Strata 阶段和实际下载进度。安装/更新复用分体按钮，“打开位置”收进实色、单行三角菜单，未安装项隐藏菜单；llama-cpp-python 定位实际 `llama_cpp` 包，不误打开解释器。Strata 重装/恢复复用有界 Windows 目录重命名重试，成功备份后才登记备份，失败日志报告实际保留位置。
+- 验证边界：代码、协议/文件事务与模拟 DOM 旅程已覆盖；完整单元/集成测试、类型检查、生产构建及对比度门禁通过。Strata 完整模型与 Qwen Turbo 的真实 GPU 生成、视觉质量和速度仍待验收，不以静态/mock 成功宣称硬件收益。本次按用户要求以 patch 版本发布。
+
 ## 0.65.0 — 2026-10-10
 
 - 补齐 Continuum 3.9.1 managed 的 v6 采样契约证据：新 receipt/History 保存实际 manifest 的版本、hash 和可恢复状态；旧 Native AV 继续按兼容模式读取，旧 v5 Run 保持只读，续写前说明限制。应用 H3 节点推荐 0.3.6。

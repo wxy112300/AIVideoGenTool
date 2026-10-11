@@ -123,12 +123,13 @@ describe("create enqueue preflight checks", () => {
   it("treats an unfilled Qwen Image 2.1 slot as text-to-image input for both variants", () => {
     for (const modelId of [
       "qwen-image-2-1",
+      "qwen-image-2-1-turbo",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6"
     ] as const) {
       const draft = createDefaultImageEditDraft();
       draft.modelId = modelId;
-      draft.qualityProfile = "preview-25";
+      draft.qualityProfile = modelId === "qwen-image-2-1-turbo" ? "turbo-8" : "preview-25";
       draft.pictures = [{
         id: "picture-slot-1",
         pictureNumber: 1,

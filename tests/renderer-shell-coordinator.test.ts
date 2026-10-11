@@ -43,9 +43,11 @@ function createCoordinatorHarness() {
     enhancePrompt: vi.fn(async () => "enhanced"),
     startPromptModel: vi.fn(async () => ({ ok: true, message: "started" })),
     releasePromptModel: vi.fn(async () => ({ ok: true, message: "released" })),
+    cancelPrompt: vi.fn(async () => ({ ok: true, message: "cancelled" })),
     readAppLogs: vi.fn(async () => ({ text: "log", records: [] })),
     forceStopComfyProcesses: vi.fn(async () => ({ ok: true, message: "stopped" })),
     uninstallLlamaCppPython: vi.fn(async () => ({ ok: true, message: "uninstalled" })),
+    uninstallStrata: vi.fn(async () => ({ ok: true, message: "Strata uninstalled" })),
     uninstallCustomNode: vi.fn(async () => ({ ok: true, message: "uninstalled" })),
     removeTask: vi.fn(async () => undefined),
     cancelTask: vi.fn(async () => undefined),
@@ -123,12 +125,65 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 
+describe("Strata uninstall confirmation", () => {
+  it("cancels without an API call and confirms through the existing dialog before rescanning", async () => {
+    const {coordinator,application,dependencies,modalRoot,ui} = createCoordinatorHarness();
+    coordinator.requestConfirmation({kind:"uninstall-strata",directory:"D:\\managed\\Strata"});
+    expect(modalRoot.textContent).toContain("共享模型");
+    expect(modalRoot.textContent).toContain("D:\\managed\\Strata");
+    expect(document.activeElement?.id).toBe("cancel-confirmation");
+    modalRoot.querySelector<HTMLButtonElement>("#cancel-confirmation")!.click();
+    expect(application.uninstallStrata).not.toHaveBeenCalled();
+    coordinator.requestConfirmation({kind:"uninstall-strata",directory:"D:\\managed\\Strata"});
+    modalRoot.querySelector<HTMLButtonElement>("#accept-confirmation")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(application.uninstallStrata).toHaveBeenCalledWith(dependencies.getFormSettings());
+    expect(dependencies.scanEnvironment).toHaveBeenCalledWith(dependencies.getFormSettings());
+    expect(ui.pendingConfirmation).toBeNull();
+    expect(ui.confirmationBusy).toBe(false);
+    expect(application.uninstallLlamaCppPython).not.toHaveBeenCalled();
+  });
+  it("keeps a failed confirmation retryable after the rescan", async () => {
+    const {coordinator,application,dependencies,modalRoot,ui} = createCoordinatorHarness();
+    vi.mocked(application.uninstallStrata).mockResolvedValue({ok:false,message:"fixture ownership changed"});
+    coordinator.requestConfirmation({kind:"uninstall-strata",directory:"D:\\managed\\Strata"});
+    modalRoot.querySelector<HTMLButtonElement>("#accept-confirmation")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dependencies.scanEnvironment).toHaveBeenCalled();
+    expect(ui.pendingConfirmation?.kind).toBe("uninstall-strata");
+    expect(ui.confirmationBusy).toBe(false);
+    expect(modalRoot.querySelector<HTMLButtonElement>("#accept-confirmation")!.disabled).toBe(false);
+  });
+});
+
 afterEach(() => {
   vi.useRealTimers();
   document.body.innerHTML = "";
 });
 
 describe("renderer shell coordinator", () => {
+  it("reuses the stop control to cancel Strata startup and retains retry release for unknown occupancy", async () => {
+    const { coordinator, application } = createCoordinatorHarness();
+    const warming = createPromptRuntimeState({ ...runtime, backend: "strata" });
+    const state = reducePromptRuntime(warming, { type: "model-updated", modelPhase: "warming", modelId: "strata/qwen3.8-flash-next-iq3_xxs" });
+    coordinator.setPromptRuntimeState(state);
+    expect(coordinator.promptRuntimeControlIcon()).toBe("square");
+    expect(coordinator.promptRuntimeView("image-to-video").left.disabled).toBe(false);
+    await coordinator.togglePromptModel();
+    expect(application.cancelPrompt).toHaveBeenCalledOnce();
+    coordinator.setPromptRuntimeState(reducePromptRuntime(state, { type: "model-updated", modelPhase: "unknown" }));
+      expect(coordinator.promptRuntimeControlIcon()).toBe("square");
+      expect(coordinator.promptRuntimeControlTitle()).toBe("释放提示词模型并回收显存");
+    await coordinator.togglePromptModel();
+    expect(application.releasePromptModel).toHaveBeenCalledOnce();
+  });
+  it("scopes idle failed ComfyUI controls away from a selected Strata model", () => {
+    const { coordinator, dependencies } = createCoordinatorHarness();
+    dependencies.getState().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+    coordinator.setPromptRuntimeState(createPromptRuntimeState({ ...runtime, phase: "error" }));
+    expect(coordinator.promptRuntimeView("image-edit").right).toMatchObject({ disabled: false, action: "enhance" });
+    expect(coordinator.getPromptRuntimeState().service.phase).toBe("error");
+  });
   it("keeps a visible error ahead of transient notices and drains queued completion", () => {
     const { coordinator, application, ui } = createCoordinatorHarness();
 

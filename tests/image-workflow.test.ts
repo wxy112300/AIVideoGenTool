@@ -10,6 +10,7 @@ import {
   buildZImageWorkflow,
   buildQwenImageEdit2511Workflow,
   buildQwenImage21Workflow,
+  buildQwenImage21TurboWorkflow,
   buildQwenImage21GgufWorkflow,
   buildQwenImage21GgufQ6Workflow,
   cachedImageProfileAllowsEnqueue,
@@ -45,6 +46,7 @@ import {
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511Capability,
   qwenImage21Capability,
+  qwenImage21TurboCapability,
   qwenImage21UncensoredGgufCapability,
   qwenImage21UncensoredGgufQ6Capability,
   qwenImage21GgufRequiredNodeTypes,
@@ -52,6 +54,9 @@ import {
   qwenImage21FixRequiredNodeTypes,
   qwenImage21RequiredNodeTypes,
   qwenImage21TextToImageRequiredNodeTypes,
+  qwenImage21TurboRequiredNodeTypes,
+  qwenImage21TurboSigmaSchedule,
+  qwenImage21TurboTextToImageRequiredNodeTypes,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
   validateHiDreamO1Workflow,
@@ -61,6 +66,8 @@ import {
   validateLamaInpaintWorkflow,
   validateQwenImageEdit2511Workflow,
   validateQwenImage21RuntimeSchema,
+  validateQwenImage21TurboRuntimeSchema,
+  validateQwenImage21TurboWorkflow,
   validateQwenImage21Workflow,
   validateQwenImage21GgufRuntimeSchema,
   validateQwenImage21GgufWorkflow,
@@ -958,6 +965,17 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
       ["preview-25", 25, 1],
       ["native", 40, 1]
     ]);
+    expect(qwenImage21TurboCapability).toMatchObject({
+      id: "qwen-image-2-1-turbo",
+      name: "Qwen Image 2.1 Turbo",
+      maxPictures: 10,
+      supportsTextOnly: true,
+      supportsCustomOutputSize: true,
+      customOutputMultiple: 32
+    });
+    expect(qwenImage21TurboCapability.qualityProfiles.map((profile) => [profile.id, profile.steps, profile.cfg])).toEqual([
+      ["turbo-8", 8, 1]
+    ]);
     expect(qwenImage21RequiredNodeTypes).toEqual(expect.arrayContaining([
       "TextEncodeQwenImage21",
       "QwenImage21Cache",
@@ -969,6 +987,21 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
       "EmptyLatentImage",
       "KSampler",
       "SaveImageAdvanced"
+    ]));
+    expect(qwenImage21TurboTextToImageRequiredNodeTypes).toEqual(expect.arrayContaining([
+      "TextEncodeQwenImage21",
+      "RandomNoise",
+      "CFGGuider",
+      "KSamplerSelect",
+      "ManualSigmas",
+      "SamplerCustomAdvanced",
+      "SaveImageAdvanced"
+    ]));
+    expect(qwenImage21TurboRequiredNodeTypes).toEqual(expect.arrayContaining([
+      "LoadImage",
+      "QwenImage21Cache",
+      "ManualSigmas",
+      "SamplerCustomAdvanced"
     ]));
     expect(qwenImage21FixRequiredNodeTypes).toEqual(["APG", "FreSca"]);
   });
@@ -1060,6 +1093,66 @@ describe("Qwen Image 2.1 official image-edit workflow contract", () => {
     });
     expect(validateQwenImage21Workflow(workflow, "preview-25", true)).toEqual([]);
     expect(validateQwenImage21Workflow(renderImageWorkflow(workflow, ["target.png", "reference.png"]))).toEqual([]);
+  });
+
+  it("builds the official Turbo checkpoint for both text-only and reference editing", () => {
+    const textOnlyWorkflow = buildQwenImage21TurboWorkflow(imageTask([], {
+      modelId: "qwen-image-2-1-turbo",
+      workflowPath: "builtin:image/qwen-image-2-1-turbo",
+      qualityProfile: "turbo-8",
+      prompt: "A quiet mountain lake at sunrise, cinematic landscape photography."
+    }), run);
+
+    expect(textOnlyWorkflow.model).toMatchObject({
+      class_type: "UNETLoader",
+      inputs: {
+        unet_name: "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        weight_dtype: "default"
+      }
+    });
+    expect(textOnlyWorkflow.sampler).toMatchObject({
+      class_type: "SamplerCustomAdvanced",
+      inputs: {
+        noise: ["noise", 0],
+        guider: ["guider", 0],
+        sampler: ["samplerSelect", 0],
+        sigmas: ["sigmas", 0]
+      }
+    });
+    expect(textOnlyWorkflow.sigmas).toMatchObject({
+      class_type: "ManualSigmas",
+      inputs: { sigmas: qwenImage21TurboSigmaSchedule }
+    });
+    expect(textOnlyWorkflow.samplerSelect).toMatchObject({
+      class_type: "KSamplerSelect",
+      inputs: { sampler_name: "euler" }
+    });
+    expect(textOnlyWorkflow.guider).toMatchObject({
+      class_type: "CFGGuider",
+      inputs: { cfg: 1 }
+    });
+    expect(Object.values(textOnlyWorkflow).filter((node) => node.class_type === "LoadImage")).toHaveLength(0);
+    expect(validateQwenImage21TurboWorkflow(textOnlyWorkflow, "turbo-8", true)).toEqual([]);
+
+    const editWorkflow = buildQwenImage21TurboWorkflow(imageTask([picture(1)], {
+      modelId: "qwen-image-2-1-turbo",
+      workflowPath: "builtin:image/qwen-image-2-1-turbo",
+      qualityProfile: "turbo-8",
+      prompt: "Keep Picture 1 unchanged except for the requested lighting."
+    }), run);
+
+    expect(editWorkflow.cache?.class_type).toBe("QwenImage21Cache");
+    expect(editWorkflow.positive?.inputs["images.image_1"]).toEqual(["image-picture-1", 0]);
+    expect(editWorkflow.sampler?.class_type).toBe("SamplerCustomAdvanced");
+    expect(editWorkflow.sigmas?.inputs.sigmas).toBe(qwenImage21TurboSigmaSchedule);
+    expect(validateQwenImage21TurboWorkflow(editWorkflow, "turbo-8", true)).toEqual([]);
+    expect(validateQwenImage21TurboRuntimeSchema(
+      { model: editWorkflow.model! },
+      { UNETLoader: { input: { required: {
+        unet_name: [["qwen_image_2.1_turbo_int8_convrot.safetensors"]],
+        weight_dtype: [["default"]]
+      } } } }
+    )).toEqual([]);
   });
 
   it("chains the official AnyAngle LoRA and enforces its two-picture contract", () => {
