@@ -1,5 +1,5 @@
 # Windows 打包与 GitHub Release
-- Status: validating
+- Status: done
 - Updated / Owner: 2026-10-12 / 当前 agent
 - Scope / Authority: 用户授权打包并发布 GitHub Release；发布当前已提交的 0.65.1。
 - Baseline: d32610f，工作区干净；远端 main 相同，无版本标签或 Release。
@@ -7,7 +7,8 @@
 
 ## Resume
 - 新增可重复 Windows x64 安装包与便携 ZIP 打包入口，内置节点及工作流放在 resources。
-- 已完成完整 verify、最终打包、隔离 packaged 启动与正常退出检查；下一步提交、创建 v0.65.1 标签、上传并发布。
+- 已完成完整 verify、最终打包、隔离 packaged 启动与正常退出、提交/标签、上传及公开发布；无待执行项。
+- [v0.65.1 Release](https://github.com/wxy112300/AIVideoGenTool/releases/tag/v0.65.1) 已设为 latest，非 draft / 非 prerelease；代码标签指向 e7b9af7。公开未认证 API 已确认三个下载资产可见。
 - 发布草稿上传期间发现顶层 productName 会改变原用户数据目录；已移至 build，重新打包并验证默认数据目录兼容。发布前仅更新本任务创建的尚未正式发布标签，使用精确 lease 防止覆盖并发修改。
 
 ## Implementation and resources
@@ -23,3 +24,5 @@
 - ZIP 和 NSIS 内嵌归档 CRC 检查通过；7-Zip 对 NSIS 包报告嵌入归档后有尾部数据。未在用户系统执行安装/卸载；未运行 GPU 生成。
 - GPU 模型质量/性能沿用 0.65.1 未验证边界，不以构建证明生成成功。
 - ASAR 保留原 name=ai-video-gen-tool 且无顶层 productName，内置节点/工作流 36 文件逐一 hash 一致；默认路径探针实际读到了原 129 作品，确认兼容原 profile。没有入队或启动运行时。
+- 三个远端资产的 state=uploaded、大小和 GitHub SHA-256 digest 与本地一致：安装包 118,698,019 bytes，便携 ZIP 165,486,115 bytes，校验文件 214 bytes。首次 CLI 大文件上传等待，最终通过现有本机代理与官方上传端点逐文件完成；凭据仅在内存/标准输入，不写入日志或仓库。
+- 自有 Electron/CDP/构建与上传进程已结束，构建产物及临时证据留在忽略目录；未停止其他任务资源。
