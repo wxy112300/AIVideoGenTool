@@ -3,7 +3,6 @@
   "version": "0.65.1",
   "private": true,
   "description": "Local image and video creation studio powered by ComfyUI",
-  "productName": "Local Video Studio",
   "main": "dist/electron/electron/main.js",
   "type": "module",
   "scripts": {
@@ -40,6 +39,7 @@
     "wait-on": "^9.0.3"
   },
   "build": {
+    "productName": "Local Video Studio",
     "appId": "com.wxy112300.localvideostudio",
     "directories": {
       "output": "release"
