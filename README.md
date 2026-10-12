@@ -75,6 +75,10 @@ Qwen3.6/Qwen3.8 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng
 
 ### 2. 克隆并启动 Local Video Studio
 
+也可以从 [GitHub Releases](https://github.com/wxy112300/AIVideoGenTool/releases/latest) 下载 Windows x64 安装包（`Setup.exe`）或便携 ZIP。ZIP 解压后运行 `Local Video Studio.exe`；使用这些包无需安装 Node.js。ComfyUI、Python、模型和 FFmpeg 仍需按上述说明准备。安装包未作代码签名。
+
+从源码生成相同的 Windows 包：`npm.cmd ci` 后运行 `npm.cmd run package:win`，产物位于 `release/`。完成 `npm.cmd run verify` 后可用 `npm.cmd run package:win:built` 复用已经验证的构建。
+
 ```powershell
 git clone https://github.com/wxy112300/AIVideoGenTool.git
 cd AIVideoGenTool

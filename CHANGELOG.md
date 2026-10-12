@@ -10,6 +10,7 @@
 
 ## 0.65.1 — 2026-10-12
 
+- 提供 Windows x64 安装包和便携 ZIP，新增可重复打包命令；内置应用节点与工作流随包分发，用户模型、ComfyUI/Python 环境和作品库保持外部管理。卸载不删除应用数据；发布资产附 SHA-256 校验和，当前安装包未作代码签名。
 - 接入 Qwen Image 2.1 Turbo 独立扩散模型，保留原 2.1、GGUF Q6/Q8 与旧队列/History；新增模型扫描、下载指引和固定官方 8 步 sigma 工作流，支持文生图、多图编辑及 Paint 视觉引导，不叠加旧 Lightning LoRA。
 - 完成 Strata v0.1.41 + Qwen3.8-Flash-Next IQ3_XXS/IQ2_XS 可选提示词后端：沿用模型选择、启动/增强/取消/释放和版本管理，首次校验/CPU pack/tokenizer、完成缓存复用、受认证 loopback 服务、应用退出及队列 GPU 交接。支持参考图、R2V 静音关键帧、Extend/Continuum 边界、Prompt Pack 与批注/对白/可见文字锁；完整结果通过后才写回版本。
 - Strata 软件使用独立 Python 环境，一键安装/重装失败恢复，三角菜单提供卸载；模型共享 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 原地兼容，不自动搬移或下载。默认端口 43127，拒绝 8080 和占用端点接管；32K 上下文、视频 8K/图片编辑 4K 输出预算，超限/截断不保存，不隐式回退 CPU 或下载 MTP。原默认模型不变。

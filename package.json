@@ -3,12 +3,15 @@
   "version": "0.65.1",
   "private": true,
   "description": "Local image and video creation studio powered by ComfyUI",
+  "productName": "Local Video Studio",
   "main": "dist/electron/electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && npm run typecheck && vite build --config vite.config.ts && tsc -p tsconfig.electron.json && node scripts/copy-bundled-comfy-nodes.mjs",
+    "package:win": "npm run build && npm run package:win:built",
+    "package:win:built": "electron-builder --win --x64 --publish never --config.electronDist=node_modules/electron/dist",
     "harness:comfy": "node scripts/local-runtime-harness.mjs",
     "harness:app": "node scripts/app-harness.mjs",
     "test:journeys": "vitest run --config vite.config.ts tests/user-journeys.test.ts tests/app-harness.test.ts --reporter=dot",
@@ -30,10 +33,57 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^43.2.0",
+    "electron-builder": "26.15.3",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",
     "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.wxy112300.localvideostudio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/renderer/**/*",
+      "dist/electron/electron/**/*",
+      "dist/electron/src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/electron/comfy_nodes",
+        "to": "comfy_nodes",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
+      },
+      {
+        "from": "dist/electron/workflows",
+        "to": "workflows"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "Local-Video-Studio-${version}-win-${arch}.${ext}",
+      "signExecutable": false
+    },
+    "nsis": {
+      "artifactName": "Local-Video-Studio-${version}-win-${arch}-Setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
   },
   "dependencies": {
     "cropperjs": "1.6.2",

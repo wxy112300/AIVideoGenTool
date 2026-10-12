@@ -17,6 +17,7 @@ __pycache__/
 
 # Build and test outputs
 dist/
+release/
 coverage/
 
 # Editor and OS files
