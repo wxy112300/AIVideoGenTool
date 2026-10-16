@@ -1,12 +1,21 @@
 # Strata 提示词增强：更新调查与接入计划
 
 - 类型：Task；Status: partial-runtime-validated（新版MTP＋显式预算模式四类后端真实生成完成；通用关键词误拒已移除并回放通过，长稿慢、运镜后处理与UI预算策略仍未收尾）
-- Updated / Owner: 2026-10-16 / 当前 agent；Execution: direct，新增子 agent 0
+- Updated / Owner: 2026-10-17 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
-- 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。仅记录已授权的Strata细分调用行为，不新增持久化/公开IPC字段或设置面板。
+- 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 0.65.3 代码版本收尾（2026-10-17，用户明确要求 patch、提交推送、不发 Release）：纳入自动输出预算、uncensored 单开关及诊断，package／lockfile／README／CHANGELOG 对齐。复用下述同一生产代码状态的单元、串行集成、类型／构建／对比度及真实窗口验收；本轮仅版本与文档变动，不重复 GPU 测试。不打包、不创建 tag／GitHub Release、不上传制品或权重；此前阶段“不 bump／提交”描述由本次授权取代。真实 uncensored 质量／速度验收与既有长稿余项仍保留。
+
+- uncensored接入（2026-10-17，minor、不bump／提交／发布）：提示词单开关、默认关／旧状态归一化、兼容ID、自带ESP小文件hash、会话overlay、当次引擎project／41层确认及逐请求true／false已接完；首次启用按需加载，后续切换复用模型。日志区分requested／supported／vectorLoaded／applied，未完成不声称成功。最终217单元文件2014项、串行6集成文件88项、双端类型／干净构建／20对比度通过；最后整轮verify遇既有DLSS5事务偶发失败，已同状态复验，不冒充clean通过。真实窗口保存／焦点／三尺寸／重启及缺输入恢复后实际点击与取消通过，用户state保持、自有进程清理；[完整证据](evidence/uncensored-mode-validation.md)。资源不足未加载GPU，去拒答效果、图文质量和268KB向量对照仍待实测；未下载权重或新向量。
+
+- 2026-10-17继续只读评估：latest/main仍固定0.1.44.1；128GB候选优先IQ3_S／UD-Q4_K_XL。自带483KB ESP已有但未启用；新增268KB局部层向量、Huihui v2／Swift／RVN与负结果见[扩展证据](evidence/automatic-budget-and-variants.md)。向量不保证任意Flash微调通用，新增量化不能沿用IQ3内存预算。未下载／入库／启用／启动GPU，不改预算代码、不提交发布；候选身份与真实图文长稿A/B仍待验证。
+
+- 自动预算与去拒绝候选（用户2026-10-16授权，patch、不bump／提交／发布）：Strata请求自动用官方tokenizer计数后的32K剩余空间扩大输出，保留8K／4K基础预留、2048思考、取消／资源／时间与质量保护；不扩引擎上下文、不截断输入、不强制写满或加无限重试。补结束原因／实际token／思考正文字符数元数据（无正文）。SC117固化abliterated与alesha运行时483KB向量只做候选评估，固定revision/bytes/hash与共享文件边界见[证据](evidence/automatic-budget-and-variants.md)；未入库或下载。现机32.8GiB可用RAM与26GiB commit不足原准入，未加载GPU；预算真实质量／速度待128GB等资源足够环境复测，不能说已修复全部0词失败。
+- 本轮预算验收：focused6文件95项、全量verify（216单元文件／1998项＋6集成文件／88项、双端类型、干净构建及20对比度）通过；实际上游官方mock HTTP从8192自动调整为32434、56tokens正常stop，通过usage／finish／无正文诊断，原请求未变。mock PID72812与3677端口清理完成；无模型／GPU／新UI滑块／持久化字段／其他后端预算变更。代码当前仅本地修改，未提交推送或打包。
 
 - 跨机器首次增强停在loading-model（2026-10-16，patch、不bump／发布；用户随后明确授权提交推送）：用户报告最新推送版另一台机器长期计时、无error且RAM/VRAM不增长。已确认原始进度detail未入日志、运行时tooltip忽略detail、网页首开失败不重试；这些是可重现缺陷，但没有远端进程/磁盘/完整分步证据，不能把GPU未启动推定为OOM或模型死锁。修复既有tooltip/进度日志，显式区分CPU准备与GPU加载并记录真实Strata PID/phase；监视页有界重试、不重弹用户关闭窗口。未改权重、模型策略、超时或用户状态，远端具体阻塞阶段仍待验证。
 - 本轮验收：原4文件57项focused通过（后补1项关闭中页面回归由全量覆盖）；全量verify的单元／集成、双端类型、干净构建及20对比度通过，发现之前临时emit的clipboard测试副本被多计2项后改名排除，再跑单元为215文件／1987项，集成为6文件／88项。真实官方mock服务＋生产Electron监视窗口再验只读请求/详情/关闭不卸载/停止关闭/重启重开与窄窗通过（非真实模型，截图Loaded不代表GPU）；自有服务端口10588无监听，未启动ComfyUI／GPU／视频队列。进度DOM断言包含校验详情，原按钮缺输入/恢复旅程在全量中保留；不声称另一台电脑完整启动或真实模型质量已验。只推代码，临时日志／截图与模型不提交，远端拉取重启后按新增Detail/StrataPid/StrataPhase定位实际阻塞阶段。

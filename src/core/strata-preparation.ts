@@ -39,11 +39,12 @@ export function strataPreparationMatchesSettings(
 }
 
 /** Legacy/corrupt data is normalized without changing the active prompt runtime. */
-export function normalizeStrataSettings(settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "strataPort">) {
+export function normalizeStrataSettings(settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored">>) {
   return {
     strataInstallDirectory: typeof settings.strataInstallDirectory === "string" ? settings.strataInstallDirectory.trim() : "",
     strataModelDirectory: typeof settings.strataModelDirectory === "string" ? settings.strataModelDirectory.trim() : "",
-    strataPort: validStrataPort(settings.strataPort) ? settings.strataPort : STRATA_DEFAULT_PORT
+    strataPort: validStrataPort(settings.strataPort) ? settings.strataPort : STRATA_DEFAULT_PORT,
+    strataUncensored: settings.strataUncensored === true
   };
 }
 

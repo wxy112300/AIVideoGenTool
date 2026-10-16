@@ -84,6 +84,17 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 }
 
 describe("Settings accessibility markup", () => {
+  it("shows one compatible-model switch, keeps unsupported preference disabled and does not duplicate it on nodes", () => {
+    const render = (modelId: string, tab: SettingsPageViewModel["settingsTab"] = "prompt") => renderSettingsPage(viewModel({ settingsTab: tab,
+      settings: { ...state.settings, promptModelId: modelId, strataUncensored: true } }), renderOptions);
+    const supported = render("strata/qwen3.8-flash-next-iq3_xxs");
+    expect(supported.match(/id="strata-uncensored"/g)).toHaveLength(1);
+    expect(supported.match(/<input id="strata-uncensored"[^>]*>/)?.[0]).toContain("checked");
+    expect(supported.match(/<input id="strata-uncensored"[^>]*>/)?.[0]).not.toContain("disabled");
+    expect(render("strata/future").match(/<input id="strata-uncensored"[^>]*>/)?.[0]).toContain("disabled");
+    expect(render("qwen/qwen3.5-4b")).not.toContain('id="strata-uncensored"');
+    expect(render("strata/qwen3.8-flash-next-iq3_xxs", "nodes")).not.toContain('id="strata-uncensored"');
+  });
   it("retains the stop/retry button when files become unavailable during Strata occupancy", () => {
     const markup = renderSettingsPage(viewModel({ settingsTab: "prompt", promptRuntimeControlIconName: "square",
       promptRuntimeBusy: true, promptStatus: { ready: false, detail: "missing" } }), renderOptions);

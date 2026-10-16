@@ -131,6 +131,9 @@ export class SettingsService {
           ? "Strata 連接埠須為 1024–65535 的整數，不能使用 8080。"
           : "Strata 端口须为 1024–65535 的整数，不能使用 8080。");
     }
+    if (input.strataUncensored !== undefined && typeof input.strataUncensored !== "boolean") {
+      throw new Error("Strata uncensored 设置必须为布尔值。");
+    }
     let settings = { ...input, ...normalizeStrataSettings(input) };
     if (!settings.imageInputLibraryDirectory.trim()) {
       settings = {

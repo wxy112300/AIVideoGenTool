@@ -630,7 +630,7 @@ export function createRendererShellCoordinator(
   function promptRuntimeControlTitle(settings = deps.getSettings()): string {
     if (promptStarting && promptRuntime.service.backend === "strata") return deps.t(uiKeys.runtime.releasePrompt);
     if (!promptReleasing && promptRuntime.service.backend === "strata" && promptRuntime.model.phase === "unknown") return deps.t(uiKeys.runtime.releasePrompt);
-    return promptStarting
+    const title = promptStarting
       ? deps.t(uiKeys.runtime.promptStarting)
       : promptEnhancing
         ? deps.t(uiKeys.runtime.releasePrompt)
@@ -639,6 +639,8 @@ export function createRendererShellCoordinator(
           : promptRuntimeLoaded
             ? deps.t(uiKeys.runtime.releasePrompt)
       : promptModelStatus(settings, deps.getEnvironmentScan(), deps.t).detail;
+    return promptRuntimeLoaded && promptRuntime.service.backend === "strata" && promptRuntime.model.modelId === settings.promptModelId
+      ? `${title} · ${promptRuntime.service.message}` : title;
   }
 
   function promptVramLabel(bytes: number | null): string {

@@ -3,6 +3,9 @@ export class StrataChatStream {
   private buffer = "";
   private text = "";
   private stopped = false;
+  private finishReason: "stop" | "length" | "other" | null = null;
+  private completionTokens: number | null = null;
+  private reasoningCharacters = 0;
   done = false;
 
   push(chunk: string): string[] {
@@ -25,6 +28,8 @@ export class StrataChatStream {
       let payload;
       try { payload = JSON.parse(data); } catch { throw new Error("Strata 流式消息不是有效 JSON。"); }
       if (!payload || payload.error) throw new Error("Strata 推理返回错误，未保存部分输出。");
+      if (Number.isSafeInteger(payload.usage?.completion_tokens) && payload.usage.completion_tokens >= 0)
+        this.completionTokens = payload.usage.completion_tokens;
       if (!Array.isArray(payload.choices) || payload.choices.length !== 1) throw new Error("Strata 流式协议不兼容。");
       const choice = payload.choices[0];
       if (choice?.index !== 0 || !choice.delta || typeof choice.delta !== "object" || this.stopped) {
@@ -32,6 +37,7 @@ export class StrataChatStream {
       }
       if (choice.delta.tool_calls || choice.delta.refusal) throw new Error("Strata 未返回可用提示词文本。");
       const content = choice.delta.content;
+      if (typeof choice.delta.reasoning_content === "string") this.reasoningCharacters += choice.delta.reasoning_content.length;
       if (content != null && typeof content !== "string") throw new Error("Strata 输出文本格式无效。");
       if (content) {
         this.text += content;
@@ -39,6 +45,7 @@ export class StrataChatStream {
         deltas.push(content);
       }
       if (choice.finish_reason != null) {
+        this.finishReason = choice.finish_reason === "stop" || choice.finish_reason === "length" ? choice.finish_reason : "other";
         if (choice.finish_reason === "length") throw new Error("Strata 输出达到 token 上限，未保存截断结果。请缩小本次扩写范围后重试。");
         if (choice.finish_reason !== "stop") throw new Error("Strata 未正常完成提示词输出。");
         this.stopped = true;
@@ -52,5 +59,11 @@ export class StrataChatStream {
     if (!this.done || !this.stopped || this.buffer.trim()) throw new Error("Strata 流式输出未完整结束。");
     if (!this.text.trim()) throw new Error("Strata 未返回提示词文本。");
     return this.text.trim();
+  }
+
+  /** Counts only: diagnostics must not persist model output or private reasoning. */
+  diagnostics() {
+    return { finishReason: this.finishReason, completionTokens: this.completionTokens,
+      contentCharacters: this.text.length, reasoningCharacters: this.reasoningCharacters };
   }
 }

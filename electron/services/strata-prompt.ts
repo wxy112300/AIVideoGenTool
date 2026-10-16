@@ -11,6 +11,7 @@ import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
 import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
+import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 
 /** Stable preparation identity. Hardware admission/reserve is a transient launch overlay,
  * not a reason to rehash/repack weights whenever available RAM changes. */
@@ -61,7 +62,8 @@ export async function buildStrataPromptRequest(
   signal.throwIfAborted();
   return { modelId: settings.promptModelId, messages: [
     ...(parts ? [{ role: "system" as const, content: parts.contract }] : []), { role: "user", content }],
-    maxTokens, contextSize: 32768, visionTokensPerImage: 1024,
+    maxTokens, contextSize: 32768, visionTokensPerImage: 1024, automaticOutputBudget: true,
+    uncensored: settings.strataUncensored === true && supportsStrataUncensored(settings.promptModelId),
     // Use the model's official profile without changing saved creativity for other backends.
     temperature: profile?.reasoning ? 1 : STRATA_NON_THINKING_SAMPLING.temperature,
     ...(profile?.reasoning ? { reasoning: profile.reasoning } : {}) };
@@ -78,12 +80,16 @@ export async function enhancePromptWithStrata(
     await beforeChat?.(chat);
     signal.throwIfAborted();
     let characters = 0;
+    let outputBudget = chat.maxTokens;
     onProgress("generating", null, chat.reasoning
-      ? `正在规划与扩写 · 思考预算 ${chat.reasoning.budgetTokens} / 总输出预算 ${chat.maxTokens} tokens`
-      : `正在生成 · 输出预算 ${chat.maxTokens} tokens`);
+      ? `正在规划与扩写 · 思考预算 ${chat.reasoning.budgetTokens} tokens · 输出空间自动计算`
+      : "正在生成 · 输出空间自动计算");
     let output = await owner.chat(chat, signal, (delta) => {
       characters += delta.length;
-      onProgress("generating", null, `已生成 ${characters} 字符 · 输出预算 ${chat.maxTokens} tokens`);
+      onProgress("generating", null, `已生成 ${characters} 字符 · 输出预算 ${outputBudget} tokens`);
+    }, (tokens) => {
+      outputBudget = tokens;
+      onProgress("generating", null, `输出预算自动调整为 ${tokens} tokens · 含思考，仍在 ${chat.contextSize} 上下文内`);
     });
     signal.throwIfAborted();
     onProgress("validating", null, "正在验证完整结果");
@@ -97,7 +103,8 @@ export async function enhancePromptWithStrata(
           messages: [...chat.messages, { role: "assistant", content: output }, { role: "user", content:
             `The candidate omits these explicitly requested times from the MAIN timeline: ${missing.join(", ")} seconds. Read the original brief, identify each event at those times and integrate it into its proper interval. Return the COMPLETE corrected H3 prompt, not a patch or checklist. Preserve all existing correct details and exact speech. Do not merely list the numbers, invent events or alter other event times.` }] };
         // Same owner, full original context, official tokenizer, no queue or unbounded retry.
-        output = await owner.chat(repair, signal);
+        output = await owner.chat(repair, signal, undefined, (tokens) =>
+          onProgress("generating", null, `纠正调用输出预算自动调整为 ${tokens} tokens · 含完整原稿与候选`));
         signal.throwIfAborted();
         result = normalizeMultimodalPromptOutput(output, request);
         const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);

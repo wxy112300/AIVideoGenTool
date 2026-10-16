@@ -341,6 +341,8 @@ export class PromptApplicationService {
     try {
       const result = await worker;
       controller.signal.throwIfAborted();
+      if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("ready", settings.strataPort,
+        this.deps.strata?.snapshot().message || "Strata 模型已加载。");
       this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
       this.deps.promptRuntimeManager.finishOperation(operationId, "completed");
       promptProgress.finish(
@@ -560,7 +562,8 @@ export class PromptApplicationService {
         status,
         progress,
         elapsedMs,
-        ...(strata ? { strataPid: strata.pid, strataPhase: strata.phase, modelLoaded: strata.modelLoaded } : {}),
+        ...(strata ? { strataPid: strata.pid, strataPhase: strata.phase, modelLoaded: strata.modelLoaded,
+          strataUncensored: strata.uncensored } : {}),
         ...(modelId.startsWith("strata/") && detail && ["checking", "preparing", "loading-model"].includes(stage)
           ? { detail: safeLogErrorMessage(detail) } : {})
       });
@@ -1002,7 +1005,8 @@ export class PromptApplicationService {
       onLog: (message) => onProgress?.(stage, null, message)
     });
     signal.throwIfAborted();
-    this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, "Strata 模型已加载。");
+    this.deps.promptRuntimeManager.strataService("ready", settings.strataPort,
+      this.deps.strata.snapshot().message || "Strata 模型已加载。");
     this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId);
   }
 

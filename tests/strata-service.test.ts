@@ -26,6 +26,37 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
+  it("sends the tokenizer-sized automatic output allowance and bounded thinking, reports usage without text", async () => {
+    const f = fixture(), diagnostics = vi.fn(), onBudget = vi.fn();
+    const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock, onDiagnostics: diagnostics });
+    await service.start(plan()); f.load();
+    f.fetchMock.mockResolvedValueOnce(new Response('{"input_tokens":1000}'));
+    f.fetchMock.mockImplementationOnce(async (_url, options) => {
+      expect(JSON.parse(options!.body as string)).toMatchObject({ max_tokens: 30484, reasoning_budget_tokens: 2048 });
+      return new Response('data: {"choices":[{"index":0,"delta":{"reasoning_content":"private","content":"final"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":12}}\n\ndata: [DONE]\n\n',
+        { headers: { "Content-Type": "text/event-stream" } });
+    });
+    const request = Object.freeze({ modelId: "fixture", messages: [{ role: "user" as const, content: [
+      { type: "text" as const, text: "full input" }, { type: "image_url" as const, image_url: { url: "data:image/png;base64,YQ==" } }] }],
+      maxTokens: 8192, contextSize: 32768, visionTokensPerImage: 1024, automaticOutputBudget: true, temperature: 1,
+      reasoning: { effort: "medium" as const, budgetTokens: 2048 } });
+    try {
+      expect(await service.chat(request, undefined, undefined, onBudget)).toBe("final");
+      expect(request.maxTokens).toBe(8192); expect(onBudget).toHaveBeenCalledWith(30484);
+      expect(diagnostics).toHaveBeenCalledWith({ modelId: "fixture", inputTokens: 1000, maxTokens: 30484, contextSize: 32768,
+        finishReason: "stop", completionTokens: 12, reasoningCharacters: 7, contentCharacters: 5,
+        uncensored: { requested: false, supported: false, vectorId: null, vectorSha256: null, vectorLoaded: false, applied: false } });
+      expect(JSON.stringify(diagnostics.mock.calls)).not.toMatch(/private|final|fixture-secret/u);
+      expect(f.child.stop).not.toHaveBeenCalled();
+    } finally { await service.stop(); }
+  });
+  it("rejects automatic output mode without an explicit context before any inference", async () => {
+    const f = fixture(); await f.service.start(plan());
+    await expect(f.service.chat({ modelId: "fixture", messages: [{ role: "user", content: "input" }], maxTokens: 8192,
+      automaticOutputBudget: true, temperature: .7 })).rejects.toThrow("显式上下文");
+    expect(f.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/v1/chat/completions"))).toBe(false);
+    await f.service.stop();
+  });
   it("keeps monitor credentials main-only and revokes them on stop", async () => {
     const f = fixture();
     expect(f.service.monitorConnection()).toBeNull();

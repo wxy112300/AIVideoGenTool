@@ -68,6 +68,18 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it.each([undefined, "true", true, false])("normalizes uncensored safely and retains it across restart (%s)", async (saved) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-uncensored-store-"));
+    try {
+      const filename = path.join(directory, "studio-state.json"), state = createDefaultState();
+      state.settings.strataUncensored = saved as never;
+      await fs.writeFile(filename, JSON.stringify(state));
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.strataUncensored).toBe(saved === true);
+      expect((await new JsonStore(filename).load()).settings.strataUncensored).toBe(saved === true);
+      expect(loaded.draft).toEqual(state.draft);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   it("preserves opted-in Strata model identity on restart without a new provider setting", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-strata-store-"));
     try {

@@ -5,6 +5,20 @@ const event = (delta: unknown, finish_reason: string | null = null) =>
   `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] })}\r\n\r\n`;
 
 describe("Strata provisional SSE text", () => {
+  it("retains stop/usage/count diagnostics without exposing reasoning or content", () => {
+    const parser = new StrataChatStream();
+    parser.push(event({ reasoning_content: "private" }) + event({ content: "final" }));
+    parser.push(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { completion_tokens: 12 } })}\n\n`);
+    parser.push("data: [DONE]\n\n");
+    expect(parser.result()).toBe("final");
+    expect(parser.diagnostics()).toEqual({ finishReason: "stop", completionTokens: 12, reasoningCharacters: 7, contentCharacters: 5 });
+    expect(JSON.stringify(parser.diagnostics())).not.toMatch(/private|final/u);
+  });
+  it("preserves an explicit length reason even when rejecting truncated output", () => {
+    const parser = new StrataChatStream();
+    expect(() => parser.push(event({ content: "partial" }, "length"))).toThrow("token 上限");
+    expect(parser.diagnostics()).toMatchObject({ finishReason: "length", contentCharacters: 7, completionTokens: null });
+  });
   it("handles fragmented CRLF, comments and reasoning without mixing thought text into the result", () => {
     const parser = new StrataChatStream();
     const source = ": keep-alive\r\n\r\n" + event({ reasoning_content: "private" }) +

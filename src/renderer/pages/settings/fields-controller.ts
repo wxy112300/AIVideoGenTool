@@ -58,6 +58,8 @@ export function mountSettingsFieldsController(
       options.setSettingsDraft(options.formSettings());
       context.notify(context.t(uiKeys.settings.promptWriterRuntime));
     }
+    // Show the Strata-specific switch without inventing a second preference.
+    context.requestRender();
   }, { signal });
 
   root.querySelector("#default-image-model")?.addEventListener("change", () => {

@@ -26,6 +26,34 @@ function fixture() {
 }
 
 describe("application Strata ownership", () => {
+  it("reloads only on first activation, reuses the base pack and retains later on/off mode switches", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "strata-owner-modes-"));
+    const configPath = path.join(root, "pack", "runtime.json"), modelId = "strata/qwen3.8-flash-next-iq3_xxs";
+    await writeStrataPreparedFixture(root, configPath);
+    const f = fixture(), selected = { ...settings, promptModelId: modelId };
+    let vector = false;
+    vi.spyOn(f.service, "hasVerifiedControlVector").mockImplementation(async () => vector);
+    vi.spyOn(f.service, "load").mockImplementation(async () => ({ ...f.service.snapshot(), modelLoaded: true }));
+    const originalSnapshot = f.service.snapshot.bind(f.service);
+    const snapshot = vi.spyOn(f.service, "snapshot");
+    snapshot.mockImplementation(() => ({ ...originalSnapshot(), modelLoaded: f.service.monitorConnection() !== null }));
+    const launch = vi.fn(async (s) => { vector = s.strataUncensored; return { executable: "fixture", args: ["--api-monitor"], cwd: root, apiKey: "secret", port: 43127, modelId }; });
+    const prepare = vi.fn(), cache = vi.fn(async () => configPath);
+    const owner = new StrataRuntimeOwner({ run: vi.fn(), service: f.service, prepare, findPrepared: cache,
+      isResourcesBusy: () => false, prepareLaunch: launch });
+    try {
+      await owner.ensurePromptReady(selected, strataFixturePolicy);
+      // Each cold start builds a lazy plan and an adaptive plan; switching mode off does neither.
+      const initial = launch.mock.calls.length;
+      await owner.ensurePromptReady({ ...selected, strataUncensored: true }, strataFixturePolicy);
+      expect(launch.mock.calls.length).toBe(initial * 2);
+      const enabled = launch.mock.calls.length;
+      await owner.ensurePromptReady({ ...selected, strataUncensored: false }, strataFixturePolicy);
+      await owner.ensurePromptReady({ ...selected, strataUncensored: true }, strataFixturePolicy);
+      expect(launch.mock.calls).toHaveLength(enabled);
+      expect(prepare).not.toHaveBeenCalled(); expect(cache).toHaveBeenCalledTimes(2);
+    } finally { await owner.stop(); vi.restoreAllMocks(); await fs.rm(root, { recursive: true, force: true }); }
+  });
   it("reports CPU-only first-use preparation before any server or GPU launch", async () => {
     const f = fixture(), stages: string[] = [], log = vi.fn(), launch = vi.fn();
     const prepare = vi.fn(async () => { throw new Error("CPU preparation fixture stopped"); });

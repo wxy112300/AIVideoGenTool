@@ -1,6 +1,7 @@
 import type { Settings } from "../../src/types.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime, preparedStrataMtpMatchesSelection, validatePreparedStrataRuntime, type StrataModelPreparationRuntime, type StrataRuntimePolicy } from "./strata-model-preparation.js";
-import { prepareStrataLaunch, StrataService, type StrataChatRequest, type StrataServiceSnapshot } from "./strata-service.js";
+import { prepareStrataLaunch, StrataService, type StrataChatRequest, type StrataServiceSnapshot, type StrataChatDiagnostics } from "./strata-service.js";
+import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 
 interface StrataRuntimeOwnerDependencies {
   run: StrataModelPreparationRuntime["run"];
@@ -10,6 +11,7 @@ interface StrataRuntimeOwnerDependencies {
   prepare?: typeof prepareStrataModelRuntime;
   prepareLaunch?: typeof prepareStrataLaunch;
   findPrepared?: typeof findPreparedStrataRuntime;
+  onDiagnostics?(diagnostics: StrataChatDiagnostics): void;
 }
 
 /** One application owner for preparation, software mutations, requests and process cleanup. No persisted lease. */
@@ -23,7 +25,7 @@ export class StrataRuntimeOwner {
   private selectionKey: string | null = null;
 
   constructor(private readonly deps: StrataRuntimeOwnerDependencies) {
-    this.service = deps.service ?? new StrataService();
+    this.service = deps.service ?? new StrataService({ onDiagnostics: deps.onDiagnostics });
   }
 
   isBusy(): boolean { return Boolean(this.worker || this.stopping); }
@@ -39,6 +41,8 @@ export class StrataRuntimeOwner {
       onStage?: (stage: "checking" | "preparing" | "loading-model") => void; request?: StrataChatRequest } = {}
   ): Promise<StrataServiceSnapshot> {
     return this.run(async (signal) => {
+      const wantsUncensored = settings.strataUncensored === true && supportsStrataUncensored(settings.promptModelId);
+      options.onLog?.(`uncensored: requested=${settings.strataUncensored === true} supported=${supportsStrataUncensored(settings.promptModelId)}`);
       const key = JSON.stringify([settings.promptModelId, settings.strataInstallDirectory,
         options.resolvedModelDirectory ?? settings.modelDirectory, settings.strataModelDirectory, settings.strataPort, policy]);
       if (this.selectionKey === key && this.snapshot().phase === "ready" && this.snapshot().modelLoaded) {
@@ -47,8 +51,10 @@ export class StrataRuntimeOwner {
         try {
           valid = Boolean(this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!) === settings.promptModelId);
           if (valid) valid = await preparedStrataMtpMatchesSelection(this.configPath!, settings, options.resolvedModelDirectory);
+          if (valid && wantsUncensored) valid = await this.service.hasVerifiedControlVector();
         } catch { /* Changed sources invalidate residency and the completion cache. */ }
         if (valid) {
+          options.onLog?.(`uncensored: retained vectorLoaded=${this.snapshot().uncensored?.vectorLoaded === true}; nextRequest=${wantsUncensored}`);
           if (options.request) await this.service.preflight(options.request, signal);
           return this.snapshot();
         }
@@ -69,6 +75,7 @@ export class StrataRuntimeOwner {
       let plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath);
       if (plan.modelId !== settings.promptModelId) throw new Error("Strata 已准备模型与所选模型不一致。");
       try {
+        if (plan.controlVector) options.onLog?.(`uncensored: verified vector=${plan.controlVector.id} sha256=${plan.controlVector.sha256} layers=${plan.controlVector.firstLayer}..${plan.controlVector.lastLayer}; first activation reloads model only, not weights/pack`);
         options.onLog?.(cached ? "复用已验证 pack/tokenizer" : "pack/tokenizer 准备完成");
         options.onStage?.("preparing");
         options.onLog?.("正在启动 Strata 本机 HTTP 服务；就绪后打开只读监视页");
@@ -94,6 +101,7 @@ export class StrataRuntimeOwner {
         options.onStage?.("loading-model");
         options.onLog?.("正在加载 Strata GPU 模型；加载请求上限 10 分钟，可取消并停止自有进程");
         const state = await this.service.load(signal);
+        options.onLog?.(`uncensored: engineConfirmed=${state.uncensored?.vectorLoaded === true} vector=${state.uncensored?.vectorId ?? "none"}; nextRequest=${wantsUncensored}`);
         this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
         return state;
       } catch (error) { await this.service.stop(); throw error; }
@@ -144,12 +152,12 @@ export class StrataRuntimeOwner {
     }, options.signal);
   }
 
-  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<string> {
+  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void): Promise<string> {
     return this.run(async (ownedSignal) => {
       if (!this.modelId || request.modelId !== this.modelId) throw new Error("Strata 请求模型与已准备模型不一致，请先准备所选模型。");
       await this.deps.beforeInference?.();
       ownedSignal.throwIfAborted();
-      return this.service.chat(request, ownedSignal, onText);
+      return this.service.chat(request, ownedSignal, onText, onBudget);
     }, signal);
   }
 

@@ -472,6 +472,8 @@ export interface Settings {
   /** Legacy download location retained for compatibility; no separate settings control. */
   strataModelDirectory: string;
   strataPort: number;
+  /** Optional runtime projection for explicitly compatible Strata models; old states default off. */
+  strataUncensored: boolean;
   promptLlamaServerPath: string;
   promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;

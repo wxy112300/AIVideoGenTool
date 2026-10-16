@@ -23,6 +23,17 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 beforeEach(() => vi.mocked(scanEnvironment).mockReset());
 const modelId = "strata/qwen3.8-flash-next-iq3_xxs";
 const request: EnhanceRequest = { prompt: "Change the red car to blue.", modelId: "qwen-image-edit", mode: "image-edit", origin: "image-edit" };
+
+describe("Strata uncensored request snapshot", () => {
+  it.each([true, false])("binds the saved preference to initial and repair requests (%s)", async (enabled) => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataUncensored: enabled };
+    const chat = await buildStrataPromptRequest(request, settings, new AbortController().signal);
+    settings.strataUncensored = !enabled;
+    expect(chat.uncensored).toBe(enabled);
+    expect({ ...chat, messages: [...chat.messages] }.uncensored).toBe(enabled);
+    expect((await buildStrataPromptRequest(request, { ...settings, promptModelId: "strata/future", strataUncensored: true }, new AbortController().signal)).uncensored).toBe(false);
+  });
+});
 async function imageFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-image-")); roots.push(root);
   const filename = path.join(root, "reference.png");
@@ -116,7 +127,7 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     expect(await f.service.enhance(request)).toBe("The blue car.");
     expect(f.owner.ensurePromptReady).toHaveBeenCalledWith(f.state.settings, strataPromptPolicy(f.state.settings),
       expect.objectContaining({ resolvedModelDirectory: "selected/shared/models", signal: expect.any(AbortSignal) }));
-    expect(f.owner.chat.mock.calls[0][0]).toMatchObject({ modelId, maxTokens: 4096, messages: [{ role: "user" }] });
+    expect(f.owner.chat.mock.calls[0][0]).toMatchObject({ modelId, maxTokens: 4096, automaticOutputBudget: true, messages: [{ role: "user" }] });
     expect(f.manager.snapshot()).toMatchObject({ service: { backend: "strata", phase: "ready" }, model: { phase: "resident", modelId },
       operation: { phase: "terminal", origin: "image-edit", terminalStatus: "completed" } });
     expect(f.progress.some((event) => event.stage === "checking" && event.detail?.includes("25%"))).toBe(true);

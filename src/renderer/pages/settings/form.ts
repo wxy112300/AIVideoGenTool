@@ -55,6 +55,7 @@ export function readSettingsFromForm(
     strataInstallDirectory: value("strata-install-directory", base.strataInstallDirectory),
     strataModelDirectory: base.strataModelDirectory,
     strataPort: Number(value("strata-port", String(base.strataPort))),
+    strataUncensored: checked("strata-uncensored", base.strataUncensored),
     promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
     promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,

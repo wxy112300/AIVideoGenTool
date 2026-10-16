@@ -273,6 +273,9 @@ export class ApplicationRuntime {
     };
     const strataRuntime = this.deps.strataRuntime ?? new StrataRuntimeOwner({
       run: runLoggedProcess,
+      onDiagnostics: (diagnostics) => this.deps.logger.info("prompt", "strata-inference-metrics", "Strata inference metrics", {
+        operationId: this.deps.promptRuntimeManager.snapshot().operation.operationId, ...diagnostics
+      }),
       beforeInference: async () => {
         const settings = this.deps.store.get().settings;
         await promptService.releaseComfyRuntime(settings);
