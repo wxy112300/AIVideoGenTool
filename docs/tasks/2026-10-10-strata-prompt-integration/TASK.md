@@ -9,7 +9,8 @@
 ## Resume
 
 - 0.65.2 patch 发布收尾（2026-10-16）：用户授权递增 patch、提交推送和上传；沿用现有 Windows x64 安装包／ZIP／SHA-256 Release 流程。纳入本任务累计 Strata、H3 校验和 llama 适配改动，版本与 README/CHANGELOG 对齐；不含权重、原始素材或本机测试日志。发布验证与资产状态在本任务记录，不重复 GPU 实验，不将已知长稿质量/延迟与自适应策略余项标为完成。
-- 发布门禁：0.65.2完整verify通过（215单元文件／1982项、6集成文件／88项、类型检查、干净生产构建及20对比度）；Windows安装包／ZIP打包通过，ASAR版本/原profile命名保留、36项内置资源hash一致。隔离packaged AppApi版本、空状态、bundled workflow、实际点击Queue/History/Settings/Create与重载通过，启用focus emulation；原生窗口关闭后自有PID及CDP/Comfy测试端口退出，未启动GPU或修改用户state。ZIP CRC通过，NSIS内嵌归档通过并报告既有尾部数据警告；未实际执行系统安装/卸载。安装包118,715,678 bytes、ZIP165,506,186 bytes，校验值随Release上传；制品和临时证据保持忽略。下一步提交／推送／公开发布及远端digest核对。
+- 发布门禁：0.65.2完整verify通过（215单元文件／1982项、6集成文件／88项、类型检查、干净生产构建及20对比度）；Windows安装包／ZIP打包通过，ASAR版本/原profile命名保留、36项内置资源hash一致。隔离packaged AppApi版本、空状态、bundled workflow、实际点击Queue/History/Settings/Create与重载通过，启用focus emulation；原生窗口关闭后自有PID及CDP/Comfy测试端口退出，未启动GPU或修改用户state。ZIP CRC通过，NSIS内嵌归档通过并报告既有尾部数据警告；未实际执行系统安装/卸载。安装包118,715,678 bytes、ZIP165,506,186 bytes，校验值随Release上传；制品和临时证据保持忽略。暂存检查移除4处EOF空行，涉及的两个TS文件重新编译与已验证打包JS逐字/hash一致，不改变功能验收输入。
+- 发布完成：[v0.65.2](https://github.com/wxy112300/AIVideoGenTool/releases/tag/v0.65.2) 已公开并设为latest，非draft／prerelease。main与annotated tag已原子推送，tag指向代码提交`2ff3b75`。安装包、ZIP、214-byte校验文件均上传；公开未认证GitHub API确认三个资产可见，大小及SHA-256 digest全部与本地一致。仅发布本任务代码／文档及应用制品，未上传模型、私人素材、原始测试日志或认证；自有构建／上传／测试进程收尾，未停止其他程序。该发布请求已完成，任务整体的已知质量／性能余项仍保留。
 
 - 最新官方网页监视接入（2026-10-16，minor、不bump）：用户要求启动后可观察网页状态。启用安装自带API Monitor，缺源码/网页能力的旧版本保持原启动；自有listener就绪后自动打开独立只读Electron网页窗口，初次加载也可观察。无新设置/端口/IPC，主进程注入临时认证，网页无密钥/Node/preload；白名单GET以外全部拒绝，原加载/卸载等按钮隐藏且网络禁止，不绕过队列互斥。关闭窗口不卸载且不反复弹，停止模型/后端后关闭，下次启动重开。上游最近100请求正文仅服务内存保留到停止/重启；页面失败不影响模型。自动化与官方mock服务器＋真实窗口/请求详情/恶意POST与外连拦截/双尺寸通过；未额外加载GPU或跑视频队列，不冒充真实大模型启动验收。完整verify与清理见[监视页证据](evidence/browser-monitor-validation.md)，原有按钮/队列资源交接与用户状态保持；Strata长稿质量/性能余项不变。
 
