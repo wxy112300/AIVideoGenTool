@@ -35,7 +35,8 @@ export class StrataRuntimeOwner {
   /** Product entry: prepare/reuse, bind the selected files and explicitly load, under one owner lease. */
   ensurePromptReady(
     settings: Settings, policy: StrataRuntimePolicy,
-    options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void; request?: StrataChatRequest } = {}
+    options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void;
+      onStage?: (stage: "checking" | "preparing" | "loading-model") => void; request?: StrataChatRequest } = {}
   ): Promise<StrataServiceSnapshot> {
     return this.run(async (signal) => {
       const key = JSON.stringify([settings.promptModelId, settings.strataInstallDirectory,
@@ -54,8 +55,13 @@ export class StrataRuntimeOwner {
       }
       if (this.snapshot().pid !== null) await this.service.stop();
       this.modelId = null; this.selectionKey = null;
+      options.onStage?.("checking");
       options.onLog?.("检查模型与已准备缓存");
       const cached = await (this.deps.findPrepared ?? findPreparedStrataRuntime)(settings, settings.promptModelId, policy, { ...options, signal, run: this.deps.run });
+      if (!cached) {
+        options.onStage?.("preparing");
+        options.onLog?.("首次准备：校验共享权重并生成 CPU pack/tokenizer；此阶段尚未启动 Strata 服务，不占用模型显存");
+      }
       const configPath = cached ?? (await (this.deps.prepare ?? prepareStrataModelRuntime)(
         settings, settings.promptModelId, policy, { run: this.deps.run }, { ...options, signal }
       )).configPath;
@@ -64,15 +70,19 @@ export class StrataRuntimeOwner {
       if (plan.modelId !== settings.promptModelId) throw new Error("Strata 已准备模型与所选模型不一致。");
       try {
         options.onLog?.(cached ? "复用已验证 pack/tokenizer" : "pack/tokenizer 准备完成");
+        options.onStage?.("preparing");
+        options.onLog?.("正在启动 Strata 本机 HTTP 服务；就绪后打开只读监视页");
         await this.service.start(plan, signal);
         if (options.request) {
           options.onLog?.("使用官方 tokenizer 检查完整上下文预算");
           await this.service.preflight(options.request, signal);
         }
+        options.onLog?.("正在确认 ComfyUI 已释放 GPU 资源");
         await this.deps.beforeInference?.();
         signal.throwIfAborted();
         // Count the unchanged full request before releasing ComfyUI. Only then measure the
         // resources we actually own; restart the CPU-only lazy server with a session overlay.
+        options.onLog?.("正在检查当前 RAM、Windows 提交余量与显存预算");
         const adaptivePlan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true });
         if (adaptivePlan.resourcePlan) {
           await this.service.stop();
@@ -81,7 +91,8 @@ export class StrataRuntimeOwner {
           options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : "GPU 外专家 RAM 驻留"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
           await this.service.start(plan, signal);
         }
-        options.onLog?.("正在加载 Strata 模型");
+        options.onStage?.("loading-model");
+        options.onLog?.("正在加载 Strata GPU 模型；加载请求上限 10 分钟，可取消并停止自有进程");
         const state = await this.service.load(signal);
         this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
         return state;

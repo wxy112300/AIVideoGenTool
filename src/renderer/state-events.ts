@@ -120,7 +120,7 @@ function promptProgressStatusText(progress: PromptProgress, t: Translate): strin
   const detail = progress.detail?.trim();
   const amount = progress.progress == null ? "" : ` · ${Math.round(progress.progress)}%`;
   const suffix = progress.status === "running"
-    ? `${t(uiKeys.create.promptProgress.elapsed, { time: elapsed })}${amount}`
+    ? `${detail ? `${detail} · ` : ""}${t(uiKeys.create.promptProgress.elapsed, { time: elapsed })}${amount}`
     : progress.status === "cancelled"
       ? t(uiKeys.create.promptProgress.cancel)
       : detail || stage;

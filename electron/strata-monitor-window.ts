@@ -37,6 +37,9 @@ interface StrataMonitorWindowOptions {
 export function startStrataMonitorWindow(options: StrataMonitorWindowOptions): { sync(): void; dispose(): void } {
   let window: BrowserWindow | null = null;
   let openedOrigin: string | null = null;
+  let attemptKey: string | null = null;
+  let attempts = 0;
+  let retryAt = 0;
   let disposed = false;
   const close = () => { const current = window; window = null; if (current && !current.isDestroyed()) current.destroy(); };
   const reportFailure = () => { try { options.onError(); } catch { /* Diagnostics never own model lifecycle. */ } };
@@ -44,11 +47,16 @@ export function startStrataMonitorWindow(options: StrataMonitorWindowOptions): {
     if (disposed) return;
     const runtime = options.runtime();
     if (runtime.service.backend !== "strata" || ["stopped", "error"].includes(runtime.service.phase)) {
-      openedOrigin = null; close(); return;
+      openedOrigin = null; attemptKey = null; attempts = 0; retryAt = 0; close(); return;
     }
-    const origin = strataMonitorOrigin(options.connection());
+    const capability = options.connection();
+    const origin = strataMonitorOrigin(capability);
     // Adaptive lazy-server restarts rotate the private key; keep the same window.
     if (!origin || origin === openedOrigin) return;
+    // Retry transient lazy-server startup/restart failures, not an explicit user dismissal.
+    if (attemptKey !== capability!.apiKey) { attemptKey = capability!.apiKey; attempts = 0; retryAt = 0; }
+    if (attempts >= 3 || Date.now() < retryAt) return;
+    attempts++; retryAt = Date.now() + 2000;
     close(); openedOrigin = origin;
     const isolated = session.fromPartition(`strata-monitor-${randomUUID()}`, { cache: false });
     const connection = () => {
@@ -98,9 +106,12 @@ export function startStrataMonitorWindow(options: StrataMonitorWindowOptions): {
       isolated.webRequest.onHeadersReceived(null);
       void isolated.clearStorageData().catch(() => undefined);
     });
-    void current.loadURL(origin + page).catch(() => { if (!current.isDestroyed()) current.destroy(); reportFailure(); });
+    void current.loadURL(origin + page).catch(() => {
+      if (window !== current || current.isDestroyed()) return;
+      openedOrigin = null; current.destroy(); reportFailure();
+    });
   };
-  const sync = () => { try { update(); } catch { close(); reportFailure(); } };
+  const sync = () => { try { update(); } catch { openedOrigin = null; close(); reportFailure(); } };
   const timer = setInterval(sync, 1000);
   timer.unref();
   return { sync, dispose() { disposed = true; clearInterval(timer); close(); } };

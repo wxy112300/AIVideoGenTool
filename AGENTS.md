@@ -55,4 +55,6 @@ Read affected neighboring checks in [CHANGE_VERIFICATION](docs/CHANGE_VERIFICATI
 
 Classify patch/minor/major impact. Unreleased changes enter `CHANGELOG.md`; coordinate one release owner, not per-worker bumps. At release align package/lockfile versions and README milestone; Electron supplies `app.getVersion()`. Prefer `npm.cmd version patch|minor --no-git-tag-version` and verify via `npm.cmd pkg get version`.
 
+Versions advance continuously; packaged releases are selective. A request to bump a version, commit, push or upload code does not authorize packaging, creating a GitHub Release or uploading release assets. Do those only when the user explicitly requests a packaged Release. Keep an already-published release when the user says to finish it.
+
 Follow [DOCUMENT_POLICY](docs/development/DOCUMENT_POLICY.md) for document lifecycle. Do not create new top-level plans or duplicate task state. Never commit secrets, weights, generated media, machine paths or temporary logs. Rebuild prototypes only when explicitly maintained.

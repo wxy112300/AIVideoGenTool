@@ -48,16 +48,39 @@ function fixture() {
     stop: vi.fn(async () => { snapshot = { ...snapshot, phase: "stopped", pid: null, port: null, modelLoaded: null }; return snapshot; })
   };
   const progress: PromptProgress[] = [];
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const service = new PromptApplicationService({
     store: { get: () => state } as StateRepository,
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger,
+    logger: logger as unknown as AppLogger,
     promptRuntimeManager: manager, externalRuntime: owner, strata: owner,
     isQueueBusy: () => state.queueRunning, sendProgress: (value) => progress.push(value), errorMeta: () => ({})
   });
-  return { service, state, owner, scan, manager, progress };
+  return { service, state, owner, scan, manager, progress, logger };
 }
 
 describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
+  it("keeps CPU preparation details and process identity in progress/logs, without logging generated prompt text", async () => {
+    const f = fixture();
+    f.owner.ensurePromptReady.mockImplementationOnce(async (_settings, _policy, options) => {
+      options.onStage?.("preparing");
+      options.onLog?.("SHA-256 · shard · 25%");
+      options.onLog?.("SHA-256 · shard · 26%");
+      options.onStage?.("loading-model");
+      options.onLog?.("正在加载 GPU 模型");
+      return { phase: "ready", port: 43127, pid: 123, modelLoaded: true, message: "", log: "" };
+    });
+    expect(await f.service.enhance(request)).toBe("The blue car.");
+    expect(f.progress).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: "preparing", detail: "SHA-256 · shard · 25%", progress: null }),
+      expect.objectContaining({ stage: "preparing", detail: "SHA-256 · shard · 26%", progress: null }),
+      expect.objectContaining({ stage: "loading-model", detail: "正在加载 GPU 模型" })
+    ]));
+    expect(f.logger.info).toHaveBeenCalledWith("prompt", "progress", "Prompt enhancement progress", expect.objectContaining({
+      detail: "SHA-256 · shard · 26%", strataPid: null, strataPhase: "stopped", modelLoaded: null
+    }));
+    expect(f.logger.info.mock.calls.filter((call) => call[1] === "progress").some((call) => JSON.stringify(call).includes("The blue car."))).toBe(false);
+    await f.service.releaseForUser();
+  });
   it("propagates adaptive admission failure without chat, and allows recovery through the same enhancement entry", async () => {
     const f = fixture();
     const service = new PromptApplicationService({
@@ -96,7 +119,7 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     expect(f.owner.chat.mock.calls[0][0]).toMatchObject({ modelId, maxTokens: 4096, messages: [{ role: "user" }] });
     expect(f.manager.snapshot()).toMatchObject({ service: { backend: "strata", phase: "ready" }, model: { phase: "resident", modelId },
       operation: { phase: "terminal", origin: "image-edit", terminalStatus: "completed" } });
-    expect(f.progress.some((event) => event.stage === "loading-model" && event.detail?.includes("25%"))).toBe(true);
+    expect(f.progress.some((event) => event.stage === "checking" && event.detail?.includes("25%"))).toBe(true);
     expect(f.progress.at(-1)?.status).toBe("completed");
     expect(f.state).toEqual(before); // Renderer alone creates versions; the backend never mutates draft/queue/history.
     await f.service.releaseRuntime(f.state.settings);

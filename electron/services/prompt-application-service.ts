@@ -530,6 +530,7 @@ export class PromptApplicationService {
     let lastProgress = 0;
     let lastSentAt = 0;
     let lastStage: PromptProgressStage = "preparing";
+    let lastDetail: string | undefined;
     const send = (
       status: PromptProgress["status"],
       stage: PromptProgressStage,
@@ -551,20 +552,26 @@ export class PromptApplicationService {
         ...(error ? { error } : {})
       };
       this.deps.sendProgress(payload);
+      const strata = modelId.startsWith("strata/") ? this.deps.strata?.snapshot() : undefined;
       this.deps.logger.info("prompt", "progress", "Prompt enhancement progress", {
         operationId,
         modelId,
         stage,
         status,
         progress,
-        elapsedMs
+        elapsedMs,
+        ...(strata ? { strataPid: strata.pid, strataPhase: strata.phase, modelLoaded: strata.modelLoaded } : {}),
+        ...(modelId.startsWith("strata/") && detail && ["checking", "preparing", "loading-model"].includes(stage)
+          ? { detail: safeLogErrorMessage(detail) } : {})
       });
     };
     const update: PromptProgressReporter = (stage, progress = null, detail) => {
       const now = Date.now();
-      if (now - lastSentAt < 250 && stage === lastStage) return;
+      const startupDetailChanged = modelId.startsWith("strata/") && ["checking", "preparing", "loading-model"].includes(stage) && detail !== lastDetail;
+      if (now - lastSentAt < 250 && stage === lastStage && !startupDetailChanged) return;
       lastSentAt = now;
       lastStage = stage;
+      lastDetail = detail;
       const normalized = progress == null
         ? null
         : Math.min(99, Math.max(lastProgress, Math.max(0, progress)));
@@ -980,6 +987,7 @@ export class PromptApplicationService {
 
   private async ensureStrataReady(settings: Settings, signal: AbortSignal, onProgress?: PromptProgressReporter, request?: StrataChatRequest): Promise<void> {
     if (!this.deps.strata) throw new Error("Strata 运行组件未接入。");
+    onProgress?.("checking", null, "正在离线检查 Strata 安装、共享模型与 GPU/驱动");
     const scan = await scanEnvironment(settings, "runtime");
     signal.throwIfAborted();
     if (!scan.strataPreparation?.managedInstalled) throw new Error("Strata 尚未安装完整；请在设置 → 节点与依赖中安装或修复。");
@@ -987,9 +995,11 @@ export class PromptApplicationService {
       Number.parseInt(gpu.driverVersion, 10) >= 580 && gpu.vramTotalBytes >= 22 * 1024 ** 3)) {
       throw new Error("当前 Strata 配置需要约 24GB NVIDIA 显存和 580+ 驱动；不会自动切换 CPU。");
     }
+    let stage: "checking" | "preparing" | "loading-model" = "checking";
     await this.deps.strata.ensurePromptReady(settings, strataPromptPolicy(settings), {
       resolvedModelDirectory: scan.modelDirectory, signal, request,
-      onLog: (message) => onProgress?.("loading-model", null, message)
+      onStage: (next) => { stage = next; },
+      onLog: (message) => onProgress?.(stage, null, message)
     });
     signal.throwIfAborted();
     this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, "Strata 模型已加载。");

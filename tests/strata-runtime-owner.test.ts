@@ -26,6 +26,16 @@ function fixture() {
 }
 
 describe("application Strata ownership", () => {
+  it("reports CPU-only first-use preparation before any server or GPU launch", async () => {
+    const f = fixture(), stages: string[] = [], log = vi.fn(), launch = vi.fn();
+    const prepare = vi.fn(async () => { throw new Error("CPU preparation fixture stopped"); });
+    const owner = new StrataRuntimeOwner({ service: f.service, run: vi.fn(), prepare,
+      findPrepared: async () => null, prepareLaunch: launch, isResourcesBusy: () => false });
+    await expect(owner.ensurePromptReady(settings, strataFixturePolicy, { onStage: (stage) => stages.push(stage), onLog: log })).rejects.toThrow("CPU preparation fixture");
+    expect(stages).toEqual(["checking", "preparing"]);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("此阶段尚未启动 Strata 服务"));
+    expect(launch).not.toHaveBeenCalled(); expect(owner.snapshot().pid).toBeNull();
+  });
   it("rejects an over-budget request before GPU handoff/load, cleaning the lazy service", async () => {
     const f = fixture(), handoff = vi.fn(async () => undefined);
     const preflight = vi.spyOn(f.service, "preflight").mockRejectedValue(new Error("上下文超限"));

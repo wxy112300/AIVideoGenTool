@@ -107,7 +107,7 @@ flowchart TD
 ```
 
 - “有图片没文字”和“有用户指令”要分别抓取实际请求；前者 `promptStrategy=reference-auto`，后者不会静默替换成自动随机创意。请求正确不能证明生成文本忠实，真实样例另做语义检查。
-- Strata启动后：健康的自有listener → 官方API Monitor只读窗口（加载阶段也可观察）→ 请求状态/详情/速度；临时密钥不进入renderer。关闭窗口不卸载且同一会话不反复弹出，停止模型/后端后关闭、下一次启动可重开。验证正常只读GET、错误/断线、取消/停止，以及恶意POST/配置/外连均被拒绝；监视流量不得创建新的推理或绕过队列互斥。
+- Strata首次增强：离线检查 → CPU校验/pack（现有提示与日志显示步骤/百分比，Strata PID可为空，不等同GPU加载）→ 健康的自有listener → 官方API Monitor只读窗口 → GPU加载/请求状态/详情/速度；临时密钥不进入renderer。网页首开失败按当前服务密钥最多3次、至少2秒间隔重试；关闭窗口不卸载且同一会话不反复弹出，停止模型/后端后关闭、下一次启动可重开。验证正常只读GET、错误/断线、取消/停止，以及恶意POST/配置/外连均被拒绝；监视流量不得创建新的推理或绕过队列互斥。
 - Qwen MTMD 精简 logits 的修复不改变图片/输入/输出预算；用同权重同图对照原文、首token与decode，并确认旧视觉handler不受影响。共享 llama-cpp-python 升级须验证 Prompt Writer 的架构/诊断版本检查、Gemma实际增强与释放；不能只以导入成功代替两条真实按钮路径，不启用尚未验证的MTP。
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。

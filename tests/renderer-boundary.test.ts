@@ -477,12 +477,15 @@ describe("renderer boundary characterization", () => {
       progress: 42,
       startedAt: 100,
       elapsedMs: 1_200,
-      modelId: "fixture-prompt-model"
+      modelId: "fixture-prompt-model",
+      detail: "SHA-256 · shard · 25%"
     };
     harness.emit("prompt:progress", promptProgress);
     expect(harness.setPromptProgress).toHaveBeenCalledWith(promptProgress);
     expect(harness.root.querySelector("[data-prompt-progress-label]")?.textContent).toBe("00:01");
     expect(harness.root.querySelector("[data-prompt-progress-bar]")?.getAttribute("style")).toContain("42%");
+    expect(harness.root.querySelector("[data-prompt-progress-tooltip]")?.textContent).toContain("SHA-256 · shard · 25%");
+    expect(harness.root.querySelector("#enhance-prompt")?.getAttribute("aria-label")).toContain("SHA-256 · shard · 25%");
     expect(harness.requestRender).not.toHaveBeenCalled();
 
     harness.emit("attention-acceleration:log", "下载进度：42%");

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PromptRuntimeState } from "../src/core/prompt-runtime-state";
 
-const fake = vi.hoisted(() => ({ windows: [] as any[], sessions: [] as any[], failWindow: false }));
+const fake = vi.hoisted(() => ({ windows: [] as any[], sessions: [] as any[], failWindow: false, failLoads: 0 }));
 vi.mock("electron", () => ({
   session: { fromPartition: vi.fn((partition, options) => {
     const hooks: Record<string, any> = {};
@@ -20,14 +20,14 @@ vi.mock("electron", () => ({
     once(name: string, fn: any) { this.events[name] = fn; }
     destroy() { this.destroyed = true; this.events.closed?.(); }
     isDestroyed() { return this.destroyed; }
-    show = vi.fn(); loadURL = vi.fn(async (_url: string) => {});
+    show = vi.fn(); loadURL = vi.fn(async (_url: string) => { if (fake.failLoads > 0) { fake.failLoads--; throw new Error("listener restarting"); } });
   }
 }));
 import { strataMonitorOrigin, strataMonitorRequestAllowed, startStrataMonitorWindow } from "../electron/strata-monitor-window";
 
 const target = { origin: "http://127.0.0.1:43127", apiKey: "private-test-key" };
 const disposers: Array<() => void> = [];
-afterEach(() => { disposers.splice(0).forEach(fn => fn()); fake.windows.length = 0; fake.sessions.length = 0; fake.failWindow = false; vi.clearAllMocks(); });
+afterEach(() => { disposers.splice(0).forEach(fn => fn()); fake.windows.length = 0; fake.sessions.length = 0; fake.failWindow = false; fake.failLoads = 0; vi.useRealTimers(); vi.clearAllMocks(); });
 function fixture() {
   let connection: typeof target | null = { ...target };
   const state = { service: { backend: "strata", phase: "starting" } } as unknown as PromptRuntimeState;
@@ -38,6 +38,30 @@ function fixture() {
 }
 
 describe("Strata official read-only monitor", () => {
+  it("retries a transient first-page failure, but does not reopen after a user dismissal", async () => {
+    vi.useFakeTimers(); fake.failLoads = 1;
+    const f = fixture(); f.monitor.sync(); await Promise.resolve();
+    expect(fake.windows[0].destroyed).toBe(true); expect(f.error).toHaveBeenCalledOnce();
+    f.monitor.sync(); expect(fake.windows).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2000); expect(fake.windows).toHaveLength(2);
+    fake.windows[1].destroy();
+    await vi.advanceTimersByTimeAsync(6000); expect(fake.windows).toHaveLength(2);
+  });
+  it("bounds failed opens to three attempts per server key and permits restart recovery", async () => {
+    vi.useFakeTimers(); fake.failLoads = 10;
+    const f = fixture(); f.monitor.sync(); await vi.advanceTimersByTimeAsync(10000);
+    expect(fake.windows).toHaveLength(3); expect(f.error).toHaveBeenCalledTimes(3);
+    fake.failLoads = 0; f.setConnection({ ...target, apiKey: "rotated" }); f.monitor.sync();
+    expect(fake.windows).toHaveLength(4);
+    f.state.service.phase = "stopped"; f.monitor.sync();
+    expect(fake.windows[3].destroyed).toBe(true);
+  });
+  it("does not reopen or report an error when the user closes a still-loading page", async () => {
+    vi.useFakeTimers(); fake.failLoads = 1;
+    const f = fixture(); f.monitor.sync(); fake.windows[0].destroy();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(fake.windows).toHaveLength(1); expect(f.error).not.toHaveBeenCalled();
+  });
   it("does not let native window failures escape into the model lifecycle or retry every poll", () => {
     const f = fixture(); fake.failWindow = true;
     expect(() => f.monitor.sync()).not.toThrow(); f.monitor.sync();
