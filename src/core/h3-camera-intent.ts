@@ -319,7 +319,7 @@ function outputHasPositiveCameraAngle(output: string, kind: H3CameraAngleKind): 
   for (const match of output.matchAll(pattern)) {
     const index = match.index ?? 0;
     const context = output.slice(Math.max(0, index - 45), index);
-    if (/(?:\b(?:not|never|without|avoid|do\s+not|no)\b|不得|不要|避免|禁止)[^.!?;\n]{0,35}$/iu.test(context)) continue;
+    if (/(?:\b(?:not|never|without|avoid|do\s+not|no)\b|不得|不要|避免|禁止|不(?:切换|改为|变为|采用|使用|进行|出现))[^。！？.!?;\n]{0,35}$/iu.test(context)) continue;
     return true;
   }
   return false;
@@ -552,6 +552,7 @@ export function preserveH3CameraIntentInOutput(
 
   const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   const fallback = cameraFallbackSentence(intent);
+  if (correctedPrompt.includes(fallback)) return correctedPrompt;
   const sectionPattern = new RegExp(`^[*# \\t]*${section}[ \\t]*:`, "imu");
   const sectionMatch = sectionPattern.exec(correctedPrompt);
   if (!sectionMatch) return `${correctedPrompt.trim()}\n\n${section}: [Shot 1] ${fallback}`.trim();

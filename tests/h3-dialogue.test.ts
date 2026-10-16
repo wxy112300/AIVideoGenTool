@@ -11,6 +11,36 @@ import {
 } from "../src/core/h3-dialogue.js";
 
 describe("MiniMax H3 dialogue locks", () => {
+  it("does not move a timeline utterance into soundscape metadata or add a second speaker", () => {
+    const locks = extractH3DialogueLocks('塔台广播画外音只说“保持中线，等待放行。”。');
+    const output = 'integrated_multimodal_description: [Shot 1] 11.5至12.5秒广播：<d>[Chinese] 保持中线，等待放行。</d>。\n\noverall_soundscape: 同一时段无线电只说<d>[Chinese] 保持中线，等待放行。</d>。\n\nnon_diegetic_music: N/A';
+    const restored = restoreH3DialogueLocks(output, locks);
+    expect(restored.split('overall_soundscape:')[0]).toContain('11.5至12.5秒广播：<d>[Chinese] 保持中线，等待放行。</d>');
+    expect(restored.match(/<d>/gu)).toHaveLength(1);
+    expect(restored).not.toContain('corresponding speaker');
+    expect(restoreH3DialogueLocks(restored, locks)).toBe(restored);
+  });
+  it("keeps one explicitly single radio event when a continuity note repeats its declaration", () => {
+    const source = '一声塔台无线电画外音只说“保持中线，等待放行。”。\n[C-广播] 塔台无线电画外音在11.5秒开始，只说“保持中线，等待放行。”。';
+    const locks = extractH3DialogueLocks(source);
+    expect(locks).toHaveLength(1);
+    const output = 'integrated_multimodal_description: [Shot 1] 11.5秒广播：<d>[Chinese] 保持中线，等待放行。</d>';
+    expect(restoreH3DialogueLocks(output, locks)).toBe(output);
+    expect(h3ContentLockInstruction(source)).toContain("never add an on-screen person");
+    const repeated = '第一次塔台无线电画外音说“准备。”。第二次塔台无线电画外音说“准备。”。';
+    expect(extractH3DialogueLocks(repeated)).toHaveLength(2);
+    expect(extractH3DialogueLocks('一声塔台无线电画外音说“准备。”。随后又一声塔台无线电画外音说“准备。”。')).toHaveLength(2);
+  });
+  it("tags exact quoted speech in place without duplicating it or consuming nearby visible text", () => {
+    const source = '塔台广播：“保持中线，等待放行。”';
+    const output = 'integrated_multimodal_description: [Shot 1] 塔台广播：“保持中线，等待放行。” 标牌写着“EXIT”。';
+    const locks = extractH3DialogueLocks(source);
+    const restored = restoreH3DialogueLocks(output, locks);
+    expect(restored.split("保持中线，等待放行。")).toHaveLength(2);
+    expect(restored).toContain("<d>[Chinese] 保持中线，等待放行。</d>");
+    expect(restored).toContain("标牌写着“EXIT”");
+    expect(restoreH3DialogueLocks(restored, locks)).toBe(restored);
+  });
   it("extracts explicit multilingual spoken lines while ignoring visible text", () => {
     const source = "墙上的招牌文字写着“OPEN”，一个女孩用日语说：“大丈夫？”，男人用英语说：\"I am ready!\"";
     const locks = extractH3DialogueLocks(source);

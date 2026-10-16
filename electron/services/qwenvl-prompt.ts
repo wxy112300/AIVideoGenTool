@@ -394,7 +394,8 @@ export async function enhancePromptWithQwenVlPeft(
       request.prompt,
       nativeStateContinuation,
       nativeStateContinuation,
-      request.continuumPreviousChunk
+      request.continuumPreviousChunk,
+      request.h3PromptPreset
     );
   } catch (error) {
     const reportedError = explainQwenVlRuntimeError(error);

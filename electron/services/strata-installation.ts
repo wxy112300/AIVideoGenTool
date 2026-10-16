@@ -1,28 +1,40 @@
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { renameWithRetry } from "./filesystem-retry.js";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
+import { prepareStrataDownloadCache } from "./strata-download-cache.js";
+import { installStrataGgufPython } from "./strata-gguf-python.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
-import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION, STRATA_VERSION } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
 const receiptName = "lvs-strata-install.json";
-export function managedStrataDirectory(): string {
-  return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", `v${STRATA_VERSION}-${STRATA_REVISION.slice(0, 8)}`);
+export function managedStrataDirectory(release: { version: string; revision: string } = STRATA_RELEASES[0]): string {
+  return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", `v${release.version}-${release.revision.slice(0, 8)}`);
+}
+export function strataInstalledRelease(root: string, complete = true): typeof STRATA_RELEASES[number] | undefined {
+  try {
+    const value = JSON.parse(readFileSync(path.join(root, receiptName), "utf8"));
+    if (value.owner !== "local-video-studio" || (complete && !value.installedAt)) return undefined;
+    return STRATA_RELEASES.find((release) => value.revision === release.revision && value.engineSha256 === release.engineSha256
+      && (!value.version || value.version === release.version));
+  } catch { return undefined; }
 }
 export function resolvedStrataDirectory(settings: Pick<Settings, "strataInstallDirectory">): string {
-  return settings.strataInstallDirectory?.trim() || managedStrataDirectory();
+  if (settings.strataInstallDirectory?.trim()) return settings.strataInstallDirectory.trim();
+  for (const release of STRATA_RELEASES) {
+    const root = managedStrataDirectory(release);
+    if (strataInstalledRelease(root) && existsSync(path.join(root, ".venv", "Scripts", "python.exe"))) return root;
+  }
+  return managedStrataDirectory();
 }
 export async function strataManagedReceipt(root: string, complete = true): Promise<boolean> {
-  try {
-    const value = JSON.parse(await fs.readFile(path.join(root, receiptName), "utf8"));
-    return value.owner === "local-video-studio" && value.revision === STRATA_REVISION && value.engineSha256 === STRATA_ENGINE_SHA256 && (!complete || Boolean(value.installedAt));
-  } catch { return false; }
+  return Boolean(strataInstalledRelease(root, complete));
 }
 interface InstallationRuntime {
-  download(url: string, destination: string, settings: Settings, onProgress?: (receivedBytes: number) => void): Promise<void>;
+  download(url: string, destination: string, settings: Settings, onProgress?: (receivedBytes: number) => void, onLog?: (message: string) => void): Promise<void>;
   findPython(settings: Settings): Promise<string>;
   environment(settings: Settings): NodeJS.ProcessEnv;
   run(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; onLog?: (message: string) => void }): Promise<string>;
@@ -53,7 +65,10 @@ export function containsPath(parent: string, child: string): boolean {
   return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 async function checkedUninstallRoot(settings: StrataUninstallSettings, options: StrataUninstallOptions): Promise<string> {
-  const root = path.resolve(options.managedDirectory ?? managedStrataDirectory());
+  const root = path.resolve(options.managedDirectory ?? resolvedStrataDirectory(settings));
+  if (!options.managedDirectory && !STRATA_RELEASES.some((release) => pathIdentity(path.resolve(managedStrataDirectory(release))) === pathIdentity(root))) {
+    throw new Error("手动安装目录不由应用卸载，原文件未修改。");
+  }
   if (settings.strataInstallDirectory.trim() && pathIdentity(path.resolve(settings.strataInstallDirectory.trim())) !== pathIdentity(root)) {
     throw new Error("手动安装目录不由应用卸载，原文件未修改。");
   }
@@ -109,6 +124,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
   let staging = "";
   let backup = "";
   let published = false;
+  let archive = "";
   let env: NodeJS.ProcessEnv | undefined;
   const run = (executable: string, args: string[], cwd: string, timeoutMs = 600_000) => runtime.run(executable, args, { cwd, env, timeoutMs, onLog: log });
   try {
@@ -135,12 +151,20 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run("git.exe", ["checkout", "--detach", "FETCH_HEAD"], staging);
     const revision = (await run("git.exe", ["rev-parse", "HEAD"], staging)).trim();
     if (revision !== STRATA_REVISION) throw new Error("Strata 源码提交校验失败。");
+    await installStrataGgufPython(staging, run, log);
     log("下载并校验 NVIDIA 引擎");
     stage("download", 0);
-    const archive = path.join(staging, "engine.zip");
-    await runtime.download(STRATA_ENGINE_URL, archive, settings, (receivedBytes) => stage("download", receivedBytes));
+    archive = await prepareStrataDownloadCache(path.dirname(root), { run, log });
+    await runtime.download(STRATA_ENGINE_URL, archive, settings, (receivedBytes) => stage("download", receivedBytes), log);
     stage("verify");
-    await (runtime.verifyArchive ?? verifyStrataEngineArchive)(archive);
+    try { await (runtime.verifyArchive ?? verifyStrataEngineArchive)(archive); }
+    catch (error) {
+      checkInstallationCancelled();
+      const invalid = `${archive}.invalid-${Date.now()}`;
+      await renameWithRetry(archive, invalid);
+      log(`校验失败的下载保留在：${invalid}；再次更新将重新下载此引擎包`);
+      throw error;
+    }
     const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
     const expandScript = `$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath ${literal(archive)} -DestinationPath ${literal(path.join(staging, "engine"))} -Force`;
     stage("extract");
@@ -185,6 +209,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     }
     if (backup) await renameWithRetry(backup, root).catch((restoreError) => log(`旧安装保留在 ${backup}；恢复失败：${String(restoreError)}`));
     if (staging) log(`未完成下载保留在：${staging}`);
+    if (archive) log(`引擎下载缓存保留在：${archive}`);
     return { ok: false, message, log: logs.join("\n") };
   } finally {
     installing = false;

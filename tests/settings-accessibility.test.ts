@@ -688,7 +688,8 @@ describe("Settings accessibility markup", () => {
     } as unknown as EnvironmentScanResult;
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
-    const versionMarkup = markup.match(/<p class="node-version-line"[\s\S]*?<\/p>/u)?.[0] ?? "";
+    const nodeCardsMarkup = markup.replace(/<article\b[^>]*data-strata-preparation="runtime"[\s\S]*?<\/article>/u, "");
+    const versionMarkup = nodeCardsMarkup.match(/<p class="node-version-line"[\s\S]*?<\/p>/u)?.[0] ?? "";
 
     expect(versionMarkup).toContain('class="node-version-line"');
     expect(versionMarkup).toContain("固定版");
@@ -752,7 +753,9 @@ describe("Settings accessibility markup", () => {
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
 
-    expect(markup.match(/class="node-version-line"/g)).toHaveLength(2);
+    const nodeCardsMarkup = markup.replace(/<article\b[^>]*data-strata-preparation="runtime"[\s\S]*?<\/article>/u, "");
+    expect(nodeCardsMarkup.match(/class="node-version-line"/g)).toHaveLength(2);
+    expect(markup.match(/class="node-version-line"/g)).toHaveLength(3); // Strata uses the same row independently.
     expect(markup).toContain("滚动版");
     expect(markup).toContain("提交日期");
     expect(markup).toContain("2026-09-19");

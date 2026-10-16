@@ -45,6 +45,15 @@ function multimodalVisionNodeFixture(): string {
   return [
     "import atexit",
     "",
+    "class GGUFModelManager:",
+    "    def load(self):",
+    "        self.model = Llama(",
+    "            model_path=model_path,",
+    "            chat_handler=self.chat_handler,",
+    "            n_ctx=n_ctx,",
+    "            logits_all=True,",
+    "        )",
+    "",
     "def load_model(n_ctx: int = 4096):",
     "    pass",
     "",
@@ -458,6 +467,21 @@ describe("dependency installer", () => {
 
   it("recognizes every app-owned H3 Prompt Writer patch file", () => {
     expect(h3PromptWriterPatchFiles).toContain("backend/catalog.py");
+    expect(h3PromptWriterPatchFiles).toContain("backend/models/gguf_adapters.py");
+  });
+
+  it.each(["\n", "\r\n"])("extends Writer runtime bounds without removing architecture/minimum checks (%j)", (newline) => {
+    const source = [
+      "MAXIMUM_VERSION = (0, 4, 0)",
+      "def runtime_supports(adapter, parsed):",
+      "    if adapter is None:",
+      "        return False",
+      "    return parsed >= adapter.minimum_runtime and parsed < (0, 4, 0)",
+      ""
+    ].join(newline);
+    const patched = patchH3PromptWriterLlamaCppCompatibility(source);
+    expect(patched).toBe(source.replaceAll("(0, 4, 0)", "(0, 5, 0)"));
+    expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
   });
 
   it("falls back to llama-cpp-python 0.3.46's ggml log callback name", () => {
@@ -1213,7 +1237,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(processCalls.some((args) => args.includes("nvcc"))).toBe(false);
     expect(processCalls.some((args) => args.some((arg) => arg.includes("git+https://github.com/JamePeng"))))
       .toBe(false);
-    expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.3.46-cu128-win-20260808"))))
+    expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.4.2-cu128-win-20261003"))))
       .toBe(process.platform === "win32");
     expect(result.log).toContain("共用的 JamePeng llama-cpp-python 后端");
   });

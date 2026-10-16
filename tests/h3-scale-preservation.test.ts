@@ -7,6 +7,21 @@ import {
 } from "../src/core/h3-scale-preservation.js";
 
 describe("H3 scale semantics", () => {
+  it("does not add human/clothing scale rules to aircraft proportions and a small camera easing", () => {
+    const source = "保持主体比例，前景飞机滑行。只出现两架飞机，不增加车辆、人员、行李。镜头继续微小缓动后收住。声音不来自飞机发动机或画面中的人物。";
+    expect(extractH3ScaleIntent(source).detected).toBe(false);
+    expect(h3ScalePreservationInstruction(source, "I2VA")).toBe("");
+    const output = "integrated_multimodal_description: [Shot 1] 飞机停稳。";
+    expect(ensureH3ScalePreservationInOutput(output, "I2VA", source)).toBe(output);
+    expect(extractH3ScaleIntent(source + "一个等比例缩小的女孩站在杯子旁。").detected).toBe(true);
+  });
+  it("keeps its Chinese relative scale lock idempotent across repeated repair passes", () => {
+    const source = "大、小主体相对于可见环境保持各自的大小关系。";
+    const output = "integrated_multimodal_description: [Shot 1] 主体沿地面向前移动。";
+    const once = ensureH3ScalePreservationInOutput(output, "I2VA", source);
+    expect(once).toContain("尺度关系：");
+    expect(ensureH3ScalePreservationInOutput(once, "I2VA", source)).toBe(once);
+  });
   it("recognizes human size wording as a smaller world-scale relationship", () => {
     const intent = extractH3ScaleIntent(
       "A tiny girl walks across a full-size kitchen. She is a real human, not a figure."

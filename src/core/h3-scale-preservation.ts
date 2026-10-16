@@ -79,13 +79,18 @@ export function extractH3ScaleIntent(
   const hasLargerScale = hasMatch(largerSubjectScalePattern, text);
   const hasRelation = hasMatch(scaleRelationPattern, text) || hasMatch(numericScalePattern, text);
   const humanSubject = hasMatch(humanSubjectPattern, text);
-  const humanIdentity = hasMatch(humanIdentityPattern, text);
+  // A ban on adding people, or an off-screen source not belonging to people,
+  // is not evidence that the scene contains a human needing a body-scale lock.
+  const identityText = text.replace(/(?:不(?:增加|添加|出现|来自)|不要(?:增加|添加|出现)|没有|无)[^。！？；;\n]{0,100}(?:人物|人员|人类|人群|行人)[^。！？；;\n]{0,40}/gu, "");
+  const humanIdentity = hasMatch(humanIdentityPattern, identityText);
   const antiToy = hasMatch(antiToyPattern, text);
   const microFpvIntent = extractH3MicroFpvIntent(text);
   const microFpvMetaphor = microFpvIntent.detected;
   const microFpvViewpoint = microFpvIntent.viewpoint;
   const microFpvScaleCue = microFpvMetaphor && (hasSmallerScale || hasMatch(microFpvScaleCuePattern, text));
-  const detected = humanSubject && (hasSmallerScale || hasLargerScale || hasRelation || microFpvScaleCue);
+  const explicitSubjectComparison = /(?:大[、,，]小主体|larger and smaller subjects)/iu.test(text);
+  const detected = humanSubject && (hasSmallerScale || hasLargerScale
+    || (hasRelation && (humanIdentity || explicitSubjectComparison)) || microFpvScaleCue);
   const morphologyChangeRequested = hasMatch(explicitMorphologyPattern, text) && !hasMatch(explicitAntiToyPattern, text);
   const direction: H3ScaleDirection = hasSmallerScale && hasLargerScale
     ? "relative"
@@ -215,8 +220,10 @@ export function ensureH3ScalePreservationInOutput(
   if (!intent.detected || !intent.humanSubject) {
     return promptText;
   }
-  const shouldAddScaleLock = !intent.morphologyChangeRequested && !scaleOutputAlreadyLocked(promptText);
-  const shouldAddMicroLock = intent.microFpvMetaphor && !microScaleOutputAlreadyLocked(promptText);
+  const shouldAddScaleLock = !intent.morphologyChangeRequested && !scaleOutputAlreadyLocked(promptText)
+    && !promptText.includes(scaleOutputLock(intent, promptText));
+  const shouldAddMicroLock = intent.microFpvMetaphor && !microScaleOutputAlreadyLocked(promptText)
+    && !promptText.includes(microScaleOutputLock(intent, promptText));
   if (!shouldAddScaleLock && !shouldAddMicroLock) return promptText;
   const locks = [
     ...(shouldAddScaleLock ? [scaleOutputLock(intent, promptText)] : []),

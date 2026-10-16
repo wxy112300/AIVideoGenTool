@@ -1,6 +1,17 @@
 import type { Settings } from "../../../types";
 import { settingsText } from "./copy";
 
+/** One release-version row for nodes and independently managed runtimes. Values are escaped here. */
+export function renderDependencyVersions(locale: Settings["uiLocale"], escape: (value: string) => string,
+  versions: { current: string; recommended: string; latest: string; currentFallback: string; fallback: string }): string {
+  const entries = [["nodes.localVersion", versions.current, versions.currentFallback],
+    ["nodes.recommendedVersion", versions.recommended, versions.fallback],
+    ["nodes.latestVersion", versions.latest, versions.fallback]] as const;
+  return `<p class="node-version-line" aria-label="${escape(settingsText(locale, "nodes.versionSummary"))}">${entries.map(([label, version, fallback]) =>
+    `<span class="node-version-item"><span class="node-version-label">${escape(settingsText(locale, label))}</span><strong class="node-version-value">${escape(version ? `v${version}` : fallback)}</strong></span>`
+  ).join('<span class="node-version-separator" aria-hidden="true">·</span>')}</p>`;
+}
+
 export interface DependencyActionOptions {
   locale: Settings["uiLocale"];
   escapeHtml(value: string): string;

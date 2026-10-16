@@ -507,7 +507,8 @@ export async function enhancePromptWithComfyUi(
     request.prompt,
     nativeStateContinuation,
     nativeStateContinuation,
-    request.continuumPreviousChunk
+    request.continuumPreviousChunk,
+    request.h3PromptPreset
   );
 }
 

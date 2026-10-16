@@ -19,6 +19,8 @@ import {
 } from "./h3-scale-preservation.js";
 import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
 import { countPromptWords } from "./prompt-count.js";
+import { h3ExpansionCharacterCount, h3ExpansionTimeline,
+  h3ExpansionUniqueContent, h3ExpansionUsesHanProse } from "./h3-expansion-quality.js";
 
 export type H3ShotPolicy = "hard-single" | "default-single" | "allow-multiple";
 
@@ -747,7 +749,8 @@ export function normalizeH3PromptOutput(
   scaleContext = "",
   omitAlignment = false,
   nativeStateContinuation = false,
-  previousChunk?: number
+  previousChunk?: number,
+  preset?: H3PromptPreset
 ): string {
   if (nativeStateContinuation && /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(promptText)) {
     throw new Error("Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。");
@@ -756,6 +759,10 @@ export function normalizeH3PromptOutput(
     stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)),
     mode
   ));
+  // Reject insufficient model-authored detail before any application-owned repair can inflate it.
+  if (preset === "detailed-cinematic") {
+    assertDetailedCinematicExpansion(cleanedBody, mode, durationSeconds, sourcePrompt);
+  }
   const body = restoreH3VisibleTextLocks(
     restoreH3DialogueLocks(cleanedBody, dialogueLocks),
     visibleTextLocks
@@ -792,52 +799,23 @@ export function assertDetailedCinematicExpansion(
   sourcePrompt: string
 ): void {
   const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
-  const sectionMatch = new RegExp(`^${section}\\s*:`, "imu").exec(promptText);
-  if (!sectionMatch) {
+  const cleanSource = stripPromptAnnotations(sourcePrompt);
+  const modelTimeline = h3ExpansionTimeline(unwrapH3ModelOutput(promptText, mode), mode);
+  if (modelTimeline === undefined) {
     throw new Error(`影视细节扩写未返回 ${section} 主时间线；原提示词已保持不变。`);
   }
-  const contentStart = sectionMatch.index + sectionMatch[0].length;
-  const remaining = promptText.slice(contentStart);
-  const nextSection = /\n\s*(?:subject_definitions|summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
-  const timeline = nextSection?.index === undefined ? remaining : remaining.slice(0, nextSection.index);
+  const timeline = h3ExpansionUniqueContent(stripPromptAnnotations(modelTimeline), cleanSource);
   const actualWords = countPromptWords(timeline);
   const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
   if (actualWords < minimumWords) {
     throw new Error(`影视细节扩写的主时间线只有 ${actualWords} 词，未达到本次至少 ${minimumWords} 词的细节覆盖要求；结果没有保存，原提示词已保持不变。`);
   }
-
-  const stopWords = new Set([
-    "about", "after", "along", "before", "from", "into", "only", "than", "that", "their", "them", "then", "there", "these", "they", "this", "through", "toward", "with", "while", "your"
-  ]);
-  const normalizeToken = (token: string): string => {
-    const lower = token.toLocaleLowerCase();
-    if (!/^[a-z]+$/u.test(lower) || lower.length < 5) return lower;
-    return lower.replace(/(?:ing|ed|es|s)$/u, "");
-  };
-  const cleanSource = stripPromptAnnotations(sourcePrompt);
-  const outputHasCjk = /\p{Script=Han}/u.test(timeline);
-  const sourceHasCjk = /\p{Script=Han}/u.test(cleanSource);
-  const outputTokens = new Set(
-    [...new Intl.Segmenter(undefined, { granularity: "word" }).segment(timeline)]
-      .filter((segment) => segment.isWordLike)
-      .map((segment) => normalizeToken(segment.segment))
-  );
-  const sourceTokens = [...new Intl.Segmenter(undefined, { granularity: "word" }).segment(cleanSource)]
-    .filter((segment) => segment.isWordLike)
-    .map((segment) => segment.segment)
-    .filter((token) => {
-      if (/\p{Script=Han}/u.test(token)) return outputHasCjk && token.length >= 2;
-      const normalized = normalizeToken(token);
-      if (/\d/u.test(normalized)) return true;
-      if (sourceHasCjk !== outputHasCjk) return false;
-      return normalized.length >= 4 && !stopWords.has(normalized);
-    })
-    .map(normalizeToken)
-    .filter((token, index, tokens) => tokens.indexOf(token) === index);
-  if (sourceTokens.length >= 4) {
-    const missing = sourceTokens.filter((token) => !outputTokens.has(token));
-    if (missing.length / sourceTokens.length > 0.4) {
-      throw new Error(`影视细节扩写遗漏了过多原始提示词要点（例如 ${missing.slice(0, 5).join("、")}）；结果没有保存，原提示词已保持不变。`);
-    }
+  const outputHasCjk = h3ExpansionUsesHanProse(timeline);
+  const sourceHasCjk = h3ExpansionUsesHanProse(cleanSource);
+  if (sourceHasCjk === outputHasCjk && h3ExpansionCharacterCount(timeline) < h3ExpansionCharacterCount(cleanSource)) {
+    throw new Error("影视细节扩写的有效正文短于原始提示词；结果没有保存，原提示词已保持不变。");
   }
+
+  // Generic word overlap cannot distinguish instruction wording from scene facts or paraphrases.
+  // This gate checks structure and expansion length, not semantic completeness.
 }

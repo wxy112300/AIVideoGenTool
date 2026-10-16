@@ -61,6 +61,7 @@ import { createStudioEventBus } from "./services/studio-event-bus.js";
 import { createWindowStudioEventBridge } from "./window-event-bridge.js";
 import { registerWindowShellIpc } from "./window-shell-ipc.js";
 import { registerCacheIpc } from "./cache-ipc.js";
+import { startStrataMonitorWindow } from "./strata-monitor-window.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -702,6 +703,12 @@ app.whenReady().then(async () => {
   try {
     await runtime.start({
       onServicesReady: (context) => {
+        const monitor = startStrataMonitorWindow({
+          connection: () => context.services.strata.monitorConnection(),
+          runtime: () => promptRuntimeManager.snapshot(),
+          onError: () => appLogger.warn("prompt", "strata-monitor-open-failed", "Strata 监视页打开失败，模型服务不受影响。")
+        });
+        app.once("will-quit", () => monitor.dispose());
         setOwnedComfyProcessExitListener((event) => {
           context.services.lifecycle.handleOwnedComfyProcessExit(event);
         });

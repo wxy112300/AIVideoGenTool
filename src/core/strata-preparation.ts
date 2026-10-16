@@ -65,7 +65,7 @@ export function strataPreparationProfiles(locale: UiLocale = "zh-CN"): ModelScan
       runtimeReady: false,
       runtimeVerified: false,
       components: scan.components.map((component) => ({
-        label: component.label, expected: component.expected, found: false, matches: [],
+        label: component.label, expected: component.expected, optional: component.optional, found: false, matches: [],
         installGuide: { ...component.installGuide! }
       }))
     };

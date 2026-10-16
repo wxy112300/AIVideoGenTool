@@ -21,6 +21,20 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("offers offline Writer repair for the old shared-runtime upper bound and clears it after adaptation", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-writer-runtime-bound-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "ComfyUI-MiniMaxH3-Prompt-Writer", "backend", "models");
+    await fs.mkdir(directory, { recursive: true });
+    const filename = path.join(directory, "gguf_adapters.py");
+    await fs.writeFile(filename, "    return parsed >= adapter.minimum_runtime and parsed < (0, 4, 0)\n");
+    const settings = { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" };
+    const scan = async () => (await scanCustomNodes(root, settings)).find((node) => node.id === "minimax-h3-prompt-writer")!;
+    expect((await scan()).updateNotice).toContain("llama-cpp-python 0.4.x");
+    await fs.writeFile(filename, "    return parsed >= adapter.minimum_runtime and parsed < (0, 5, 0)\n");
+    expect((await scan()).updateNotice).not.toContain("llama-cpp-python 0.4.x");
+  });
+
   it("rejects same-version GGUF forks and restores readiness only for the maintained source and pin", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-source-"));
     temporaryDirectories.push(root);

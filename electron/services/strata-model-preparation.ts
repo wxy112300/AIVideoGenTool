@@ -1,12 +1,14 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Settings } from "../../src/types.js";
-import { STRATA_MODEL_REVISION, STRATA_REVISION } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_MODEL_REVISION, STRATA_REVISION, STRATA_EXPERT_PROFILE } from "../../src/core/catalog/dependencies/strata.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
-import { containsPath, managedStrataDirectory, physicalPath, resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
+import { containsPath, managedStrataDirectory, physicalPath, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import { scanStrataPreparation, type StrataFileInspector } from "./strata-preparation.js";
+import { renameWithRetry } from "./filesystem-retry.js";
+import { prepareStrataMtp, validateStrataMtp, type StrataMtpRecord } from "./strata-mtp.js";
 
 export interface StrataRuntimePolicy {
   maxContext: number;
@@ -59,7 +61,7 @@ export function validateStrataRuntimePolicy(policy: StrataRuntimePolicy): void {
 
 export function buildStrataRuntimeConfig(input: {
   installDirectory: string; packDirectory: string; shards: string[]; pleShard: string;
-  projector: string; modelId: string; port: number; policy: StrataRuntimePolicy;
+  projector: string; modelId: string; port: number; policy: StrataRuntimePolicy; mtpDirectory?: string;
 }) {
   validateStrataRuntimePolicy(input.policy);
   if (!validStrataPort(input.port) || input.shards.length !== 2 || !input.shards.includes(input.pleShard)) throw new Error("Strata 模型分片或端口无效。");
@@ -67,8 +69,11 @@ export function buildStrataRuntimeConfig(input: {
   return {
     exe: path.join(input.installDirectory, "engine", "strata.exe"), cwd: input.installDirectory,
     args: ["--pack", input.packDirectory, "--native", input.shards[0], "--ple-gguf", input.pleShard,
-      "--expert-cache", "auto", "--prefill", "auto", "--spec", "0", "--max-context", String(policy.maxContext),
-      ...(policy.maxContext > 8192 ? ["--kv", policy.kv] : []), "--vision", "--vram-reserve-mib", String(policy.vramReserveMiB)],
+      "--expert-cache", "auto", "--prefill", "auto", "--spec", input.mtpDirectory ? "4" : "2",
+      ...(input.mtpDirectory ? ["--spec-min-p", "0.5", "--mtp", input.mtpDirectory] : []), "--max-context", String(policy.maxContext),
+      ...(policy.maxContext > 8192 ? ["--kv", policy.kv] : []), "--vision", "--vram-reserve-mib", String(policy.vramReserveMiB),
+      "--resident-experts", "--expert-profile", path.join(input.installDirectory, STRATA_EXPERT_PROFILE)],
+    log: path.join(input.packDirectory, "engine.log"),
     tokenizer: path.join(input.packDirectory, "tokenizer"), model_name: input.modelId,
     lib_dirs: [path.join(input.installDirectory, ".venv", "Lib", "site-packages", "nvidia", "cu13", "bin", "x86_64")],
     port: input.port, host: "127.0.0.1", lazy_load: true,
@@ -99,10 +104,20 @@ export function strataDerivedDataDirectory(): string {
   return path.join(path.dirname(managedStrataDirectory()), "data");
 }
 
+/** A newly downloaded optional MTP invalidates a retained non-MTP engine on the next request. */
+export async function preparedStrataMtpMatchesSelection(configPath: string, settings: Settings, resolvedModelDirectory?: string): Promise<boolean> {
+  const receipt = JSON.parse(await fs.readFile(path.join(path.dirname(configPath), "lvs-strata-model.json"), "utf8"));
+  const scan = await scanStrataPreparation(settings, undefined, resolvedModelDirectory);
+  const mtp = scan.profiles.find((profile) => profile.id === settings.promptModelId)?.components.find((component) => component.optional);
+  return receipt.mtp === false ? !mtp?.found
+    : Boolean(mtp?.found && path.resolve(mtp.matches[0]) === path.resolve(receipt.mtp.source.filename));
+}
+
 /** Reuse only a completed pack for this exact model/root/policy; invalid/failed directories stay untouched. */
 export async function findPreparedStrataRuntime(
   settings: Settings, modelId: string, policy: StrataRuntimePolicy,
-  options: { resolvedModelDirectory?: string; dataDirectory?: string; signal?: AbortSignal } = {}
+  options: { resolvedModelDirectory?: string; dataDirectory?: string; signal?: AbortSignal;
+    run?: StrataModelPreparationRuntime["run"]; onLog?: (message: string) => void } = {}
 ): Promise<string | null> {
   const install = path.resolve(resolvedStrataDirectory(settings));
   const scan = await scanStrataPreparation(settings, undefined, options.resolvedModelDirectory);
@@ -121,19 +136,43 @@ export async function findPreparedStrataRuntime(
           path.resolve(asset.filename) === path.resolve(profile.components[index].matches[0])
           && asset.bytes === profile.components[index].installGuide.bytes
           && asset.sha256 === profile.components[index].installGuide.sha256)) continue;
-      if (await validatePreparedStrataRuntime(configPath, install) === modelId) return configPath;
+      if (await validatePreparedStrataRuntime(configPath, install, { upgradeLegacyConfig: true }) !== modelId) continue;
     } catch { /* No completion/changed inputs: prepare a fresh transaction, never repair weights in place. */ }
+    // Re-read after the exact legacy-config migration; prepare only MTP when it was added later.
+    let receipt;
+    try { receipt = JSON.parse(await fs.readFile(path.join(data, entry.name, "lvs-strata-model.json"), "utf8"));
+      await validatePreparedStrataRuntime(configPath, install);
+    } catch { continue; }
+    const mtp = profile.components.find((component) => component.optional && component.found);
+    if (mtp && receipt.mtp === false) {
+      if (!options.run) return null;
+      const run = (args: string[], timeoutMs: number) => options.run!(
+        path.join(install, ".venv", "Scripts", "python.exe"), ["-B", ...args],
+        { cwd: install, timeoutMs, signal: options.signal, onLog: options.onLog });
+      receipt.mtp = await prepareStrataMtp({ installDirectory: install, packDirectory: path.dirname(configPath),
+        filename: mtp.matches[0], verifyAsset: verifyStrataAsset, run, signal: options.signal, onLog: options.onLog });
+      const config = buildStrataRuntimeConfig({ installDirectory: install, packDirectory: path.dirname(configPath),
+        shards: receipt.assets.slice(0, 2).map((asset: StrataVerifiedAsset) => asset.filename),
+        pleShard: receipt.assets[receipt.pleShard].filename, projector: receipt.assets[2].filename,
+        modelId, port: settings.strataPort, policy, mtpDirectory: receipt.mtp.directory });
+      await replaceJson(configPath, config);
+      await replaceJson(path.join(path.dirname(configPath), "lvs-strata-model.json"), receipt);
+      await validatePreparedStrataRuntime(configPath, install);
+    }
+    return configPath;
   }
   return null;
 }
 
 /** A directory or JSON file alone is not a successfully prepared runtime. */
-export async function validatePreparedStrataRuntime(configPath: string, installDirectory: string): Promise<string> {
+export async function validatePreparedStrataRuntime(
+  configPath: string, installDirectory: string, options: { upgradeLegacyConfig?: boolean } = {}
+): Promise<string> {
   const packDirectory = path.dirname(path.resolve(configPath));
   const receipt = JSON.parse(await fs.readFile(path.join(packDirectory, "lvs-strata-model.json"), "utf8"));
   const config = JSON.parse(await fs.readFile(configPath, "utf8"));
-  if (receipt.owner !== "local-video-studio" || receipt.schema !== 1 || receipt.sourceRevision !== STRATA_REVISION
-    || receipt.modelRevision !== STRATA_MODEL_REVISION || !receipt.preparedAt || receipt.mtp !== false
+  if (receipt.owner !== "local-video-studio" || receipt.schema !== 1 || receipt.sourceRevision !== (strataInstalledRelease(installDirectory)?.revision ?? STRATA_REVISION)
+    || receipt.modelRevision !== STRATA_MODEL_REVISION || !receipt.preparedAt || (receipt.mtp !== false && (!receipt.mtp || typeof receipt.mtp !== "object"))
     || typeof receipt.modelId !== "string" || !Array.isArray(receipt.assets) || receipt.assets.length !== 3 || ![0, 1].includes(receipt.pleShard)) {
     throw new Error("Strata 模型准备记录无效，请重新准备。");
   }
@@ -143,13 +182,30 @@ export async function validatePreparedStrataRuntime(configPath: string, installD
     const stat = await fs.stat(asset.filename);
     if (!stat.isFile() || stat.size !== asset.bytes || stat.mtimeMs !== asset.mtimeMs || stat.ctimeMs !== asset.ctimeMs) throw new Error("模型在准备后改变，请重新准备。");
   }
+  if (receipt.mtp !== false) await validateStrataMtp(receipt.mtp, packDirectory);
   const expected = buildStrataRuntimeConfig({ installDirectory, packDirectory, shards: receipt.assets.slice(0, 2).map((asset: StrataVerifiedAsset) => asset.filename),
     pleShard: receipt.assets[receipt.pleShard].filename, projector: receipt.assets[2].filename, modelId: receipt.modelId,
-    port: config.port, policy: receipt.policy });
-  if (!isDeepStrictEqual(config, expected)) throw new Error("Strata 运行配置与准备记录不一致，请重新准备。");
+    port: config.port, policy: receipt.policy, mtpDirectory: receipt.mtp === false ? undefined : receipt.mtp.directory });
+  // Only the exact app-generated 0.65.1 launch shape is eligible for this derived-config repair.
+  // Sources, pack artifacts and receipt must still pass every check before any write.
+  const previous = { ...expected, args: expected.args.map((arg) => arg === "--resident-experts" ? "--mmap-experts" : arg).concat("--resident-budget-gib", "16") };
+  const { log: _log, ...legacyExpected } = previous;
+  legacyExpected.args = previous.args.slice(0, -5).map((arg, index, args) => args[index - 1] === "--spec" ? "0" : arg);
+  const upgrade = options.upgradeLegacyConfig === true && receipt.mtp === false
+    && (isDeepStrictEqual(config, previous) || isDeepStrictEqual(config, legacyExpected));
+  if (!upgrade && !isDeepStrictEqual(config, expected)) throw new Error("Strata 运行配置与准备记录不一致，请重新准备。");
   await validatePackFiles(packDirectory);
   if (!isDeepStrictEqual(receipt.artifacts, await strataPackArtifactFacts(packDirectory))) throw new Error("Strata pack/tokenizer 在准备后改变，请重新准备。");
+  if (upgrade) {
+    await replaceJson(configPath, expected);
+  }
   return receipt.modelId;
+}
+
+async function replaceJson(filename: string, value: unknown): Promise<void> {
+  const temporary = `${filename}.next-${randomUUID()}`;
+  await fs.writeFile(temporary, JSON.stringify(value, null, 2), { flag: "wx" });
+  await renameWithRetry(temporary, filename);
 }
 
 export async function strataPackArtifactFacts(directory: string) {
@@ -175,7 +231,7 @@ async function validatePackFiles(directory: string): Promise<void> {
     || !types.every((type) => Number.isInteger(type)) || !merges.every((merge) => merge.split(" ").length === 2)) throw new Error("tokenizer token 或合并规则无效。");
 }
 
-/** CPU preparation only. No setup.py, downloads, MTP, native engine, or model service. */
+/** CPU preparation only. No setup.py, downloads, native engine, or model service. */
 export async function prepareStrataModelRuntime(
   settings: Settings, modelId: string, policy: StrataRuntimePolicy, runtime: StrataModelPreparationRuntime,
   options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void } = {}
@@ -208,12 +264,21 @@ export async function prepareStrataModelRuntime(
     const data = path.resolve(runtime.dataDirectory ?? strataDerivedDataDirectory());
     const actualData = await physicalPath(data);
     for (const protectedRoot of [install, options.resolvedModelDirectory ?? settings.modelDirectory, scan.status.modelDirectory,
-      ...profile.components.map((component) => path.dirname(component.matches[0]))].filter(Boolean)) {
+      ...profile.components.filter((component) => component.found).map((component) => path.dirname(component.matches[0]))].filter(Boolean)) {
       const actualRoot = await physicalPath(protectedRoot);
       if (containsPath(actualRoot, actualData) || containsPath(actualData, actualRoot)) throw new Error("Strata 派生目录与软件或共享模型目录重叠，拒绝写入。");
     }
     const assets: StrataVerifiedAsset[] = [];
-    for (const component of profile.components) {
+    if (profile.components.some((component) => component.optional && component.found)) {
+      onLog?.("检查离线 MTP 转换依赖");
+      try {
+        await runPreparationParserCheck(python, install, runtime, signal);
+      } catch {
+        check();
+        throw new Error("Strata 离线 MTP 解析器不可用，请在节点与依赖中修复 Strata 安装（gguf-py）；未加载模型或下载权重。");
+      }
+    }
+    for (const component of profile.components.filter((item) => !item.optional)) {
       check(); onLog?.(`校验 ${component.label}`);
       const { bytes, sha256 } = component.installGuide;
       if (!bytes || !sha256) throw new Error("模型 catalog 缺少完整校验信息。");
@@ -241,18 +306,30 @@ export async function prepareStrataModelRuntime(
       if (current.size !== asset.bytes || current.mtimeMs !== asset.mtimeMs || current.ctimeMs !== asset.ctimeMs) throw new Error("模型在准备期间改变，未发布运行配置。");
     }
     check();
+    const mtpComponent = profile.components.find((component) => component.optional && component.found);
+    const mtp: StrataMtpRecord | false = mtpComponent
+      ? await prepareStrataMtp({ installDirectory: install, packDirectory: output, filename: mtpComponent.matches[0],
+        verifyAsset: runtime.verifyAsset ?? verifyStrataAsset, run, signal, onLog })
+      : false;
+    if (!mtp) onLog?.("MTP 配套权重未就绪，使用无 MTP 基础模式；未下载文件");
     const config = buildStrataRuntimeConfig({ installDirectory: install, packDirectory: output, shards, pleShard: shards[header.pleShard],
-      projector: assets[2].filename, modelId, port: settings.strataPort, policy });
+      projector: assets[2].filename, modelId, port: settings.strataPort, policy, mtpDirectory: mtp ? mtp.directory : undefined });
     const configPath = path.join(output, "runtime.json");
     const receiptPath = path.join(output, "lvs-strata-model.json");
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), { flag: "wx" });
     check();
-    await fs.writeFile(receiptPath, JSON.stringify({ owner: "local-video-studio", schema: 1, modelId, sourceRevision: STRATA_REVISION,
-      modelRevision: STRATA_MODEL_REVISION, assets, artifacts: await strataPackArtifactFacts(output), policy, pleShard: header.pleShard, mtp: false, preparedAt: new Date().toISOString() }, null, 2), { flag: "wx" });
+    await fs.writeFile(receiptPath, JSON.stringify({ owner: "local-video-studio", schema: 1, modelId, sourceRevision: strataInstalledRelease(install)?.revision ?? STRATA_REVISION,
+      modelRevision: STRATA_MODEL_REVISION, assets, artifacts: await strataPackArtifactFacts(output), policy, pleShard: header.pleShard, mtp, preparedAt: new Date().toISOString() }, null, 2), { flag: "wx" });
     onLog?.("pack/tokenizer 与运行配置已准备；未加载模型、未验证推理。");
     return { configPath, packDirectory: output, receiptPath, modelId };
   } catch (error) {
     if (output) onLog?.(`未完成派生文件保留供检查：${output}（没有完成记录）`);
     throw error;
   } finally { preparing.delete(key); }
+}
+
+async function runPreparationParserCheck(python: string, install: string, runtime: StrataModelPreparationRuntime, signal?: AbortSignal): Promise<void> {
+  await runtime.run(python, ["-B", "-c",
+    "import sys; from pathlib import Path; sys.path.insert(0,str(Path(sys.argv[1])/'tools')); from _paths import add_gguf_py; add_gguf_py(); import gguf; assert hasattr(gguf,'GGUFReader')",
+    install], { cwd: install, timeoutMs: 30_000, signal });
 }

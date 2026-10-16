@@ -100,15 +100,24 @@ flowchart TD
   AUTO & INTENT & REV --> REQ[EnhanceRequest: origin / mode / refs / duration / LoRA / boundary]
   REQ --> PF[preflight → Prompt 模型与 GPU 资源检查]
   PF --> MODEL[Prompt runtime / Provider / Pack]
-  MODEL --> RESULT[新 prompt version 写回发起模式]
+  MODEL --> RAW[详细预设：原始正文验收 / 其他预设保持原密度]
+  RAW --> NORMALIZE[通过后恢复格式与精确内容锁]
+  NORMALIZE --> RESULT[新 prompt version 写回发起模式]
   RESULT --> REVIEW[用户审阅 / 编辑 / 撤销 / 入队]
 ```
 
 - “有图片没文字”和“有用户指令”要分别抓取实际请求；前者 `promptStrategy=reference-auto`，后者不会静默替换成自动随机创意。请求正确不能证明生成文本忠实，真实样例另做语义检查。
+- Strata启动后：健康的自有listener → 官方API Monitor只读窗口（加载阶段也可观察）→ 请求状态/详情/速度；临时密钥不进入renderer。关闭窗口不卸载且同一会话不反复弹出，停止模型/后端后关闭、下一次启动可重开。验证正常只读GET、错误/断线、取消/停止，以及恶意POST/配置/外连均被拒绝；监视流量不得创建新的推理或绕过队列互斥。
+- Qwen MTMD 精简 logits 的修复不改变图片/输入/输出预算；用同权重同图对照原文、首token与decode，并确认旧视觉handler不受影响。共享 llama-cpp-python 升级须验证 Prompt Writer 的架构/诊断版本检查、Gemma实际增强与释放；不能只以导入成功代替两条真实按钮路径，不启用尚未验证的MTP。
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。
 - Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
 - 异步回写使用请求的 `origin`；切换到图片编辑或 Extend 后，旧请求只能更新原草稿。失败不破坏原 prompt，取消不是错误成功。
+- Strata先以官方tokenizer核对完整输入、图片与输出预留，再加载GPU；超限失败无新版本且不截断资料。单图I2VA＋用户原稿＋影视细节扩写采用分层/有界思考（medium、2048计入8192总输出）；其他路径保持原调用，不新增设置控件。按原停止按钮取消，思考不写回正文；长资料服务对照不代替真实按钮与版本验收。
+- Strata模型卡的MTP配套文件沿用组件信息弹窗和共享模型根手动下载；扫描不下载/哈希/加载。完整本地文件经固定hash→官方CPU转换→中文词表→原按钮加载；补齐MTP会使旧驻留下次请求重建，完整主pack不重准备。无MTP保留基础模式；新加载日志报告完整RAM驻留失败则停止，不静默接受文件层降速。配置/缺件UI与真实性能分层验收。
+- Strata完整tokenizer预检→释放ComfyUI→按当前RAM/Windows提交余量/显存选择会话驻留策略→加载前复检→加载与推理低资源监测。资源不足/未知从原按钮明确失败且不写版本，不修改分页文件、不截断输入；充分资源可选完整arena，已驻留的暖请求不按剩余RAM重新选型或反复重载。会话配置不改变基础pack完成记录，停止删除自有会话文件。MTP解析器在软件安装阶段固定源码获取，增强时离线检查，不隐式联网补依赖。
+- 此Strata细分路径缺少原稿明确数字时间点时，仅允许一次保留完整上下文的非思考纠正，每次仍检查32K/8192预算；再次失败不写回、不循环。时间数字存在不等于事件/角色/否定语义正确，仍需人工审阅。对白恢复限定主时间线，音场同句描述不抢占正文台词。
+- 影视细节扩写在模型原始正文上校验原稿长度与时长底线，程序补句不充当扩写；重复填充、格式标签不增加覆盖长度。不使用通用原稿关键词覆盖率拦截，不因指令用语或同义改写拒绝；结构/长度通过不代表语义完整或没有跑题。精确对白/可见文字处理、明确数字时间点检查和截断拒绝保持各自原范围。失败无新版本，补齐后可从原增强按钮恢复；精简和批注修订不套用扩写长度门槛。
 
 入口：`prompt-controller.ts` / `helpers.ts` → `src/core/prompts/` → `electron/services/prompt-application-service.ts` / `prompt-runtime-manager.ts` / `prompt-extension-media.ts`。不要只改 Pack 文本而漏掉请求字段或 runtime。
 
@@ -232,6 +241,10 @@ H3 native 需要对应 AV/模型/尺寸资格；SeedVR2 的原生 INT8 分段路
 
 <a id="settings-runtime"></a>
 ## Settings：哪个时刻影响哪一层
+
+Strata更新下载恢复：用户点击更新→固定资产缓存/旧半包来源核对→按实际字节Range续传；断线只在有限预算内重试，取消保留半包且不再请求，具体错误进入原安装日志。再次点击跨新staging复用同一资产缓存；完成后仍按固定size/hash→解压→独立venv→发布记录。校验失败的包改名保留、不发布，旧软件/共享模型保留。真实本地curl中断/续传、Range拒绝、取消与合成安装事务分别记录，不把这些证据称为GitHub实际更新成功。
+
+Strata版本分支：本机受信安装记录 / catalog推荐 / 官方release最新查询 → 共用节点版本行；当前旧版显示更新，未装显示安装，同推荐显示重装。实际下载只由用户点击触发；新版完成前保留旧默认，完成后优先新版，显式手动路径不切换。旧缓存仍绑定实际软件revision，不把提高推荐号当成运行已验证；最新查询失败显示未知，不用推荐值冒充。版本选择/合成安装证据与真实引擎安装/推理证据分开报告。
 
 Strata 卸载分支：应用管理安装 → 既有三角菜单“卸载” → 默认聚焦取消的应用确认弹窗 → typed `uninstallStrata` → 后台核对当前管理路径/安装记录/模型根隔离/操作忙碌 → 删除当前软件目录 → 日志/离线复扫 → 无三角的未安装卡片。取消不调用卸载；文件归属改变时拒绝并保留错误及复扫后的状态，用户可取消或恢复后重试。共享模型、独立数据与旧备份保留，不修改设置、queue/History、ComfyUI Python，不启动或重启 ComfyUI。手动目录仅保留原有打开位置功能，不授予删除权限。
 

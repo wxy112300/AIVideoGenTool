@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { canUninstallStrata, resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
+import { canUninstallStrata, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import type { Settings, StrataPreparationStatus } from "../../src/types.js";
 import { strataModelRoot, strataModelScanRoots, strataPreparationProfiles } from "../../src/core/strata-preparation.js";
 import { STRATA_ENGINE_FILES, STRATA_SOURCE_FILES } from "../../src/core/catalog/dependencies/strata.js";
@@ -48,8 +48,10 @@ export async function scanStrataPreparation(
       break;
     }
   })));
-  for (const profile of profiles) profile.available = profile.components.every((component) => component.found);
+  for (const profile of profiles) profile.available = profile.components.every((component) => component.optional || component.found);
   const status: StrataPreparationStatus = {
+    installedVersion: strataInstalledRelease(installDirectory)?.version,
+    installedRevision: strataInstalledRelease(installDirectory)?.revision,
     installDirectory, modelDirectory, configuredInstallDirectory: settings.strataInstallDirectory.trim(), files,
     configuredModelDirectory: settings.modelDirectory.trim(), configuredComfyInstallDirectory: settings.comfyInstallDirectory.trim(),
     managedUninstallable: await canUninstallStrata(settings, { protectedDirectories: [resolvedModelDirectory] }),

@@ -2,7 +2,8 @@ import type { Settings, StrataPreparationStatus, StrataInstallProgress } from ".
 import { STRATA_VERSION } from "../../../core/catalog/dependencies/strata";
 import { strataPreparationMatchesSettings } from "../../../core/strata-preparation";
 import { settingsText } from "./copy";
-import { renderDependencyActionSplit } from "./dependency-actions";
+import { renderDependencyActionSplit, renderDependencyVersions } from "./dependency-actions";
+import { compareReleaseVersions } from "../../../core/release-version";
 
 export function strataProgressPresentation(locale: Settings["uiLocale"], progress?: StrataInstallProgress, cancelling = false): { label: string; percent: number | null } {
   const stage = progress?.stage ?? "prepare";
@@ -46,12 +47,15 @@ export function renderStrataPreparationPanel(
   const directoryField = (id: string, label: string, value: string) => `<label>${label}<div class="input-action"><input id="${id}" type="text" value="${escape(value)}" /><button class="secondary" type="button" data-pick-strata-directory="${id}">${s("strata.choose")}</button></div></label>`;
   const current = strataPreparationMatchesSettings(settings, status) ? status : undefined;
   const installed = current?.managedInstalled && current.sourcePresent && current.enginePresent;
+  const needsUpdate = installed && current.installedVersion && compareReleaseVersions(current.installedVersion, STRATA_VERSION) < 0;
   const icon = operation.icon || (() => "");
   const progress = strataProgressPresentation(settings.uiLocale, operation.progress, operation.cancelling);
-  return `<article class="panel custom-node-card ${installed ? "available" : "warning"}" data-strata-preparation="runtime">
-    <div class="custom-node-copy"><div class="model-title"><h3>Strata</h3><span class="model-badge">v${STRATA_VERSION}</span></div>
+  return `<article class="panel custom-node-card ${installed && !needsUpdate ? "available" : "warning"}" data-strata-preparation="runtime">
+    <div class="custom-node-copy"><div class="model-title"><h3>Strata</h3></div>
     <p class="muted">${s("strata.note")}</p>
     <p class="muted probe-evidence">${s("strata.stage")}</p>
+    ${renderDependencyVersions(settings.uiLocale, escape, { current: current?.installedVersion || "", recommended: STRATA_VERSION,
+      latest: current?.latestVersion || "", currentFallback: !current ? s("strata.notScanned") : installed ? s("nodes.versionUnread") : s("nodes.notInstalled"), fallback: s("nodes.versionUnavailable") })}
     <div class="dependency-install-progress" id="strata-install-progress" aria-live="polite" ${operation.installing ? "" : "hidden"}>
       <div class="progress ${progress.percent === null ? "indeterminate" : ""}" role="progressbar" aria-label="Strata" aria-valuetext="${escape(progress.label)}" aria-valuemin="0" aria-valuemax="100" ${progress.percent === null ? "" : `aria-valuenow="${progress.percent}"`}><span ${progress.percent === null ? "" : `style="width: ${progress.percent}%"`}></span></div>
       <strong id="strata-install-stage">${escape(progress.label)}</strong>
@@ -63,8 +67,8 @@ export function renderStrataPreparationPanel(
     <p class="muted">${s("strata.portNote")}</p>
     <p class="muted">${s("strata.evidence")}</p></details>
     ${(operation.log || operation.installing) ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="python-runtime:strata">${escape(operation.log || settingsText(settings.uiLocale, "nodes.installing"))}</pre></details>` : ""}
-    </div><div class="custom-node-actions"><span class="model-availability ${installed ? "available" : "warning"}" role="status" aria-live="polite">${installed ? s("strata.installed") : current ? s("strata.missing") : s("strata.notScanned")}</span>
-    ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-strata" aria-busy="${Boolean(operation.installing)}" ${operation.blocked || operation.installing ? "disabled" : ""}>${icon(operation.installing || installed ? "refresh-cw" : "download")}${operation.installing ? s("nodes.installing") : installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>`, {
+    </div><div class="custom-node-actions"><span class="model-availability ${installed && !needsUpdate ? "available" : "warning"}" role="status" aria-live="polite">${needsUpdate ? s("nodes.needsUpdate") : installed ? s("strata.installed") : current ? s("strata.missing") : s("strata.notScanned")}</span>
+    ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-strata" aria-busy="${Boolean(operation.installing)}" ${operation.blocked || operation.installing ? "disabled" : ""}>${icon(operation.installing || installed ? "refresh-cw" : "download")}${operation.installing ? s("nodes.installing") : needsUpdate ? s("nodes.update") : installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>`, {
       locale: settings.uiLocale, escapeHtml: escape, icon,
       location: current?.installDirectory || "",
       locationAvailable: Boolean(current?.sourcePresent || current?.enginePresent),

@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { patchMultimodalPromptLeanLogits } from "./multimodal-prompt-logits.js";
 import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
@@ -1081,7 +1082,12 @@ const llamaCppLogCallbackFallback = (indent: string) => [
 ].join("\n");
 
 export function patchH3PromptWriterLlamaCppCompatibility(source: string): string {
-  let patched = source;
+  // Writer 0.4.7 predates the shared JamePeng 0.4.x runtime. Keep its
+  // architecture/minimum-version checks, extending only the known upper bound.
+  let patched = source
+    .replace(/^(MAXIMUM_VERSION = )\(0, 4, 0\)(\r?)$/gmu, "$1(0, 5, 0)$2")
+    .replace(/(return parsed >= adapter\.minimum_runtime and parsed < )\(0, 4, 0\)/gu,
+      "$1(0, 5, 0)");
   if (!source.includes("from llama_cpp import ggml_log_callback as llama_log_callback")) {
     patched = patched.replace(
       /^(\s*)from llama_cpp import llama_log_callback\r?$/gmu,
@@ -1652,7 +1658,7 @@ export async function prepareMultimodalPromptNodes(
   const patched = patchMultimodalPromptResidency(
     patchMultimodalPromptQwen38Recognition(
       patchMultimodalPromptAdaptiveGeneration(
-        patchMultimodalPromptContextSize(source)
+        patchMultimodalPromptLeanLogits(patchMultimodalPromptContextSize(source))
       )
     )
   );
@@ -1673,9 +1679,9 @@ export async function prepareMultimodalPromptNodes(
         ? fs.writeFile(discoveryFilename, patchedDiscovery, "utf8")
         : Promise.resolve()
     ]);
-    report("已为 MultiModal Prompt Nodes 应用普通 8K、详细扩写按需 16K/3072、安全诊断、模型驻留及 Qwen3.8 vision 投影兼容");
+    report("已为 MultiModal Prompt Nodes 应用普通 8K、详细扩写按需 16K/3072、安全诊断、模型驻留、Qwen3.8 vision 投影及 Qwen MTMD 精简 logits 兼容");
   } else {
-    report("MultiModal Prompt Nodes 已使用普通 8K、详细扩写按需 16K/3072，并支持安全诊断、显式驻留/卸载与 Qwen3.8 vision 投影");
+    report("MultiModal Prompt Nodes 已使用普通 8K、详细扩写按需 16K/3072，并支持安全诊断、显式驻留/卸载、Qwen3.8 vision 投影与 Qwen MTMD 精简 logits");
   }
 }
 
@@ -1715,6 +1721,7 @@ export async function prepareH3PromptWriter(
   }
   const files: Array<{ filename: string; required: boolean; reportMissing?: boolean }> = [
     { filename: backendFilename, required: true },
+    { filename: path.join(targetDirectory, "backend", "models", "gguf_adapters.py"), required: false },
     { filename: path.join(targetDirectory, "backend", "assembly.py"), required: false },
     { filename: path.join(targetDirectory, "backend", "catalog.py"), required: false },
     { filename: path.join(targetDirectory, "backend", "context.py"), required: false },

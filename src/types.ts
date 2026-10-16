@@ -2043,6 +2043,9 @@ export interface EnvironmentScanResult {
 }
 
 export interface StrataPreparationStatus {
+  installedVersion?: string;
+  installedRevision?: string;
+  latestVersion?: string;
   managedInstalled?: boolean;
   managedUninstallable?: boolean;
   configuredInstallDirectory?: string;

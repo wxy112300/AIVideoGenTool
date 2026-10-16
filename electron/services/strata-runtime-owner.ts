@@ -1,5 +1,5 @@
 import type { Settings } from "../../src/types.js";
-import { findPreparedStrataRuntime, prepareStrataModelRuntime, validatePreparedStrataRuntime, type StrataModelPreparationRuntime, type StrataRuntimePolicy } from "./strata-model-preparation.js";
+import { findPreparedStrataRuntime, prepareStrataModelRuntime, preparedStrataMtpMatchesSelection, validatePreparedStrataRuntime, type StrataModelPreparationRuntime, type StrataRuntimePolicy } from "./strata-model-preparation.js";
 import { prepareStrataLaunch, StrataService, type StrataChatRequest, type StrataServiceSnapshot } from "./strata-service.js";
 
 interface StrataRuntimeOwnerDependencies {
@@ -29,40 +29,61 @@ export class StrataRuntimeOwner {
   isBusy(): boolean { return Boolean(this.worker || this.stopping); }
   get runningWorker(): Promise<unknown> | null { return this.worker; }
   snapshot(): StrataServiceSnapshot { return this.service.snapshot(); }
+  monitorConnection() { return this.service.monitorConnection(); }
   abort(reason: Error): void { this.controller?.abort(reason); }
 
   /** Product entry: prepare/reuse, bind the selected files and explicitly load, under one owner lease. */
   ensurePromptReady(
     settings: Settings, policy: StrataRuntimePolicy,
-    options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void } = {}
+    options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void; request?: StrataChatRequest } = {}
   ): Promise<StrataServiceSnapshot> {
     return this.run(async (signal) => {
       const key = JSON.stringify([settings.promptModelId, settings.strataInstallDirectory,
         options.resolvedModelDirectory ?? settings.modelDirectory, settings.strataModelDirectory, settings.strataPort, policy]);
       if (this.selectionKey === key && this.snapshot().phase === "ready" && this.snapshot().modelLoaded) {
         // Stat/receipt checks catch changed weights/pack without hashing them on every enhancement.
+        let valid = false;
         try {
-          if (this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!) === settings.promptModelId) return this.snapshot();
+          valid = Boolean(this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!) === settings.promptModelId);
+          if (valid) valid = await preparedStrataMtpMatchesSelection(this.configPath!, settings, options.resolvedModelDirectory);
         } catch { /* Changed sources invalidate residency and the completion cache. */ }
+        if (valid) {
+          if (options.request) await this.service.preflight(options.request, signal);
+          return this.snapshot();
+        }
       }
       if (this.snapshot().pid !== null) await this.service.stop();
       this.modelId = null; this.selectionKey = null;
       options.onLog?.("检查模型与已准备缓存");
-      const cached = await (this.deps.findPrepared ?? findPreparedStrataRuntime)(settings, settings.promptModelId, policy, { ...options, signal });
+      const cached = await (this.deps.findPrepared ?? findPreparedStrataRuntime)(settings, settings.promptModelId, policy, { ...options, signal, run: this.deps.run });
       const configPath = cached ?? (await (this.deps.prepare ?? prepareStrataModelRuntime)(
         settings, settings.promptModelId, policy, { run: this.deps.run }, { ...options, signal }
       )).configPath;
       signal.throwIfAborted();
-      const plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath);
+      let plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath);
       if (plan.modelId !== settings.promptModelId) throw new Error("Strata 已准备模型与所选模型不一致。");
       try {
         options.onLog?.(cached ? "复用已验证 pack/tokenizer" : "pack/tokenizer 准备完成");
         await this.service.start(plan, signal);
+        if (options.request) {
+          options.onLog?.("使用官方 tokenizer 检查完整上下文预算");
+          await this.service.preflight(options.request, signal);
+        }
         await this.deps.beforeInference?.();
         signal.throwIfAborted();
+        // Count the unchanged full request before releasing ComfyUI. Only then measure the
+        // resources we actually own; restart the CPU-only lazy server with a session overlay.
+        const adaptivePlan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true });
+        if (adaptivePlan.resourcePlan) {
+          await this.service.stop();
+          plan = adaptivePlan;
+          if (plan.modelId !== settings.promptModelId) throw new Error("Strata 自适应配置模型身份改变。");
+          options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : "GPU 外专家 RAM 驻留"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
+          await this.service.start(plan, signal);
+        }
         options.onLog?.("正在加载 Strata 模型");
         const state = await this.service.load(signal);
-        this.modelId = plan.modelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
+        this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
         return state;
       } catch (error) { await this.service.stop(); throw error; }
     }, options.signal);

@@ -1,16 +1,19 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { EnhanceRequest, Settings, PromptProgressReporter } from "../../src/types.js";
-import { assertDetailedCinematicExpansion } from "../../src/core/h3-prompt.js";
-import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
-import { estimateH3TextTokens } from "../../src/core/h3-token-count.js";
-import { multimodalPromptInstruction, normalizeMultimodalPromptOutput } from "./multimodal-prompt.js";
+import { multimodalPromptInstruction, multimodalPromptTargetLanguage, normalizeMultimodalPromptOutput } from "./multimodal-prompt.js";
 import type { StrataChatRequest, StrataContentPart } from "./strata-service.js";
+import { STRATA_NON_THINKING_SAMPLING } from "./strata-service.js";
+import { strataH3InstructionParts } from "../../src/core/prompts/h3/strata.js";
+import { missingH3SourceTimepoints } from "../../src/core/h3-timing.js";
+import { unwrapH3ModelOutput } from "../../src/core/h3-prompt.js";
+import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
 import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
 
-/** Bounded 4090-oriented baseline, no MTP/downloads or silent CPU fallback. */
+/** Stable preparation identity. Hardware admission/reserve is a transient launch overlay,
+ * not a reason to rehash/repack weights whenever available RAM changes. */
 export function strataPromptPolicy(_settings: Pick<Settings, "vramReserveGb">): StrataRuntimePolicy {
   return { maxContext: 32768, kv: "k8v4", visionTokens: 1024, visionGpu: true,
     vramReserveMiB: 2048 };
@@ -31,16 +34,21 @@ export async function strataImageContent(filename: string, signal: AbortSignal):
 
 export async function buildStrataPromptRequest(
   request: EnhanceRequest, settings: Settings, signal: AbortSignal,
-  encodeImage: typeof strataImageContent = strataImageContent
+  encodeImage: typeof strataImageContent = strataImageContent,
+  evaluation?: { layout: "structured" | "flat"; dossier?: string; reasoning?: StrataChatRequest["reasoning"] }
 ): Promise<StrataChatRequest> {
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
   if (paths.length > 12) throw new Error("Strata 每次最多接收 12 张参考图。");
-  const instruction = multimodalPromptInstruction(request, settings);
-  // A language-aware estimate for early feedback, followed by the server's real tokenizer check.
+  // Adopt only the bounded, explicitly authored single-picture path evaluated on real weights.
+  // Other modes, Extend, auto seeds, image editing and targeted revisions keep their existing Pack.
+  const profile = evaluation ?? (request.mode === "h3-vision" && request.h3PromptMode === "I2VA"
+    && request.h3PromptPreset === "detailed-cinematic" && paths.length === 1 && request.prompt.trim()
+    && !request.extensionSource && !request.promptStrategy
+    ? { layout: "structured" as const, reasoning: { effort: "medium" as const, budgetTokens: 2048 } } : undefined);
+  const parts = profile?.layout === "structured"
+    ? strataH3InstructionParts(request, settings, profile.dossier, multimodalPromptTargetLanguage(request, settings)) : undefined;
+  const instruction = parts ? parts.sourceData : multimodalPromptInstruction(request, settings);
   const maxTokens = request.mode === "image-edit" ? 4096 : 8192;
-  if (estimateH3TextTokens(instruction) + paths.length * 1024 + maxTokens + 1024 > 32768) {
-    throw new Error("提示词与参考图超过当前 32K 上下文预算；请缩短输入或减少参考图。不会截断原始指令。");
-  }
   const content: StrataContentPart[] = [{ type: "text", text: instruction }];
   let encodedBytes = instruction.length;
   for (const filename of paths) {
@@ -49,30 +57,52 @@ export async function buildStrataPromptRequest(
     if (encodedBytes > 48 * 1024 ** 2) throw new Error("参考图合计超过请求大小限制，请缩小图片后重试。");
     content.push(image);
   }
+  if (parts) content.push({ type: "text", text: parts.task });
   signal.throwIfAborted();
-  return { modelId: settings.promptModelId, messages: [{ role: "user", content }],
+  return { modelId: settings.promptModelId, messages: [
+    ...(parts ? [{ role: "system" as const, content: parts.contract }] : []), { role: "user", content }],
     maxTokens, contextSize: 32768, visionTokensPerImage: 1024,
-    temperature: Math.min(1, Math.max(0.2, settings.promptCreativity)) };
+    // Use the model's official profile without changing saved creativity for other backends.
+    temperature: profile?.reasoning ? 1 : STRATA_NON_THINKING_SAMPLING.temperature,
+    ...(profile?.reasoning ? { reasoning: profile.reasoning } : {}) };
 }
 
 export async function enhancePromptWithStrata(
   request: EnhanceRequest, settings: Settings, owner: Pick<StrataRuntimeOwner, "chat">,
-  signal: AbortSignal, onProgress: PromptProgressReporter
+  signal: AbortSignal, onProgress: PromptProgressReporter,
+  beforeChat?: (chat: StrataChatRequest) => Promise<void>
 ): Promise<string> {
   onProgress("uploading", null, "正在准备参考图");
   return withStrataReferenceMedia(request, signal, async (prepared) => {
     const chat = await buildStrataPromptRequest(prepared, settings, signal);
+    await beforeChat?.(chat);
+    signal.throwIfAborted();
     let characters = 0;
-    onProgress("generating", null, `正在生成 · 输出预算 ${chat.maxTokens} tokens`);
-    const output = await owner.chat(chat, signal, (delta) => {
+    onProgress("generating", null, chat.reasoning
+      ? `正在规划与扩写 · 思考预算 ${chat.reasoning.budgetTokens} / 总输出预算 ${chat.maxTokens} tokens`
+      : `正在生成 · 输出预算 ${chat.maxTokens} tokens`);
+    let output = await owner.chat(chat, signal, (delta) => {
       characters += delta.length;
       onProgress("generating", null, `已生成 ${characters} 字符 · 输出预算 ${chat.maxTokens} tokens`);
     });
     signal.throwIfAborted();
     onProgress("validating", null, "正在验证完整结果");
-    const result = normalizeMultimodalPromptOutput(output, request);
-    if (request.h3PromptPreset === "detailed-cinematic") {
-      assertDetailedCinematicExpansion(result, h3PromptModeForRequest(request), request.h3DurationSeconds ?? 5, request.prompt);
+    let result = normalizeMultimodalPromptOutput(output, request);
+    if (chat.reasoning && request.h3PromptPreset === "detailed-cinematic") {
+      const mode = h3PromptModeForRequest(request), duration = request.h3DurationSeconds ?? 5;
+      const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
+      if (missing.length) {
+        onProgress("generating", null, `正在补全明确时间点 ${missing.join("、")} 秒 · 最多一次纠正`);
+        const repair: StrataChatRequest = { ...chat, reasoning: undefined, temperature: STRATA_NON_THINKING_SAMPLING.temperature,
+          messages: [...chat.messages, { role: "assistant", content: output }, { role: "user", content:
+            `The candidate omits these explicitly requested times from the MAIN timeline: ${missing.join(", ")} seconds. Read the original brief, identify each event at those times and integrate it into its proper interval. Return the COMPLETE corrected H3 prompt, not a patch or checklist. Preserve all existing correct details and exact speech. Do not merely list the numbers, invent events or alter other event times.` }] };
+        // Same owner, full original context, official tokenizer, no queue or unbounded retry.
+        output = await owner.chat(repair, signal);
+        signal.throwIfAborted();
+        result = normalizeMultimodalPromptOutput(output, request);
+        const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
+        if (remaining.length) throw new Error(`影视细节扩写仍缺少明确时间点 ${remaining.join("、")} 秒；一次纠正后未通过，原提示词保持不变。`);
+      }
     }
     return result;
   });

@@ -59,7 +59,7 @@ const languageAliases: readonly {
   { name: "Vietnamese", patterns: [/越南语|越南文/u, /tiếng việt/iu, /\bvietnamese\b/iu] }
 ];
 
-const speechCuePattern = /(?:\b(?:say|says|said|saying|speak|speaks|spoken|ask|asks|asked|reply|replies|replied|answer|answers|answered|shout|shouts|shouted|yell|yells|yelled|whisper|whispers|whispered|sing|sings|sang|singing|chant|chants|recite|recites|voiceover|dialogue|line)\b|说|说道|说着|喊|叫|问|回答|低声|大声|唱|唱着|念|旁白|台词|对白|発言|言う|話す|喋る|말하|말한다|외치|노래)/iu;
+const speechCuePattern = /(?:\b(?:say|says|said|saying|speak|speaks|spoken|ask|asks|asked|reply|replies|replied|answer|answers|answered|shout|shouts|shouted|yell|yells|yelled|whisper|whispers|whispered|sing|sings|sang|singing|chant|chants|recite|recites|voiceover|dialogue|line|broadcasts?)\b|说|说道|说着|喊|叫|问|回答|低声|大声|唱|唱着|念|旁白|台词|对白|广播|播报|発言|言う|話す|喋る|말하|말한다|외치|노래)/iu;
 const visualTextCuePattern = /(?:\bon[- ]screen\b|screen\s+text|visible\s+text|banner|sign|label|subtitle|caption|logo|title|text\s+(?:reads?|says?)|written|displayed|显示|写着|招牌|标语|字幕|画面文字|屏幕文字|文字)/iu;
 const humanSpeakerCuePattern = /(?:\b(?:character|person|man|woman|girl|boy|speaker|narrator|voice)\b|角色|人物|女孩|男孩|男人|女人|说话人|旁白|声音)/iu;
 const voiceoverCuePattern = /(?:\bvoice[- ]?over\b|off[- ]screen\s+(?:voice|narration)|\bnarrat(?:e|es|ed|ion)\b|旁白|画外音|幕后旁白)/iu;
@@ -291,10 +291,21 @@ export function extractH3DialogueLocks(sourcePrompt: string): H3DialogueLock[] {
   }
 
   candidates.sort((left, right) => left.sourceStart - right.sourceStart);
+  // A brief and its continuity note can declare the same single radio event twice.
+  // Keep intentional repeated speech and distinct explicit speakers unchanged.
+  const repeatedBroadcast = /(?:(?:再次|又一声|第二次|两次)[^。！？\n]{0,18}(?:无线电|广播|塔台)|(?:无线电|广播|塔台)[^。！？\n]{0,18}(?:再次|第二次|两次)|\b(?:twice|again)\b[^.!?\n]{0,25}\b(?:radio|broadcast))/iu.test(sourcePrompt);
+  const singleBroadcast = !repeatedBroadcast && /(?:(?<![第另])(?:一声|一次|唯一)[^。！？\n]{0,18}(?:无线电|广播|塔台)|\b(?:a single|only one)\s+(?:radio|broadcast))/iu.test(sourcePrompt);
+  const locks = singleBroadcast ? candidates.filter((candidate, index) => !candidates.slice(0, index).some(previous =>
+    candidate.vocalMode === "voiceover" && previous.vocalMode === "voiceover"
+    && candidate.explicitSpeakerId === previous.explicitSpeakerId
+    && normalizeComparableText(candidate.text) === normalizeComparableText(previous.text)
+    && candidate.language === previous.language
+    && [candidate, previous].every(value => /(?:无线电|广播|塔台|\bradio\b|\bbroadcast\b)/iu.test(
+      sourcePrompt.slice(Math.max(0, value.sourceStart - 80), value.sourceStart))))) : candidates;
   const speakerIds = new Map<string, string>();
   const usedSpeakerIds = new Set<string>();
   let nextSpeaker = 1;
-  return candidates.map((candidate, index) => {
+  return locks.map((candidate, index) => {
     const explicit = candidate.explicitSpeakerId?.split(",")[0]?.trim();
     const hintKey = normalizeSpeakerHint(candidate.speakerHint);
     const existing = explicit || (hintKey ? speakerIds.get(hintKey) : undefined);
@@ -423,7 +434,7 @@ export function h3ContentLockInstruction(sourcePrompt: string): string {
           "Emit every dialogue lock exactly once in the main timeline or detailed_description. Put only the language tag and the exact spoken words inside <d>; never translate, paraphrase, censor, normalize, or replace them.",
           ...dialogueLocks.map((lock) => {
             const vocalRule = lock.vocalMode === "voiceover"
-              ? "Use off-screen voiceover and keep the corresponding on-screen speaker's lips completely closed."
+              ? "Use off-screen voiceover. Only if the source already includes a corresponding visible human speaker, keep their lips completely closed; never add an on-screen person or mouth for an off-screen source."
               : lock.vocalMode === "singing"
                 ? "Use a singing/lyrics event and synchronize the visible performance to the exact words."
                 : "Use diegetic speech and require the visible speaker's lips to articulate every syllable in sync with the voice.";
@@ -551,12 +562,17 @@ export function restoreH3VisibleTextLocks(
   return insertMissingVisibleText(repaired, missing);
 }
 
-export function restoreH3DialogueLocks(
+function restoreH3DialogueText(
   promptText: string,
   locks: readonly H3DialogueLock[]
 ): string {
   if (!locks.length) return promptText;
-  const blocks = parseH3DialogueBlocks(promptText);
+  // Recognized speech that already has exact words needs in-place tagging, not an appended duplicate.
+  const blocks = [
+    ...parseH3DialogueBlocks(promptText).map((block) => ({ ...block, quoted: false })),
+    ...extractH3DialogueLocks(promptText).filter((lock) => lock.sourceKind === "quoted")
+      .map((lock) => ({ start: lock.sourceStart, end: lock.sourceEnd, text: lock.text, language: lock.language, quoted: true }))
+  ].sort((left, right) => left.start - right.start);
   const used = new Set<number>();
   let repaired = promptText;
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
@@ -564,6 +580,7 @@ export function restoreH3DialogueLocks(
     const exactIndex = locks.findIndex((lock, lockIndex) =>
       !used.has(lockIndex) && normalizeComparableText(lock.text) === normalizeComparableText(block.text)
     );
+    if (block.quoted && exactIndex < 0) continue;
     const fallbackIndex = exactIndex >= 0
       ? exactIndex
       : locks.findIndex((_lock, lockIndex) => !used.has(lockIndex));
@@ -575,6 +592,19 @@ export function restoreH3DialogueLocks(
   }
   const missing = locks.filter((_lock, lockIndex) => !used.has(lockIndex));
   return insertMissingDialogue(repaired, missing);
+}
+
+export function restoreH3DialogueLocks(promptText: string, locks: readonly H3DialogueLock[]): string {
+  if (!locks.length) return promptText;
+  const main = /((?:integrated_multimodal_description|detailed_description):[\s\S]*?)(?=\n\s*(?:overall_soundscape|non_diegetic_music):|$)/iu.exec(promptText);
+  if (!main || main.index === undefined) return restoreH3DialogueText(promptText, locks);
+  const restored = restoreH3DialogueText(main[0], locks);
+  // Soundscape describes the same event, not a second tagged speech event.
+  // Keep exact words there as plain metadata; it must not consume the timeline lock.
+  const suffix = promptText.slice(main.index + main[0].length).replace(/<d>\s*\[([^\]]+)\]\s*([\s\S]*?)<\/d>/giu,
+    (full, _language: string, text: string) => locks.some(lock => normalizeComparableText(lock.text) === normalizeComparableText(text))
+      ? text.trim() : full);
+  return promptText.slice(0, main.index) + restored + suffix;
 }
 
 export function validateH3DialogueOutput(

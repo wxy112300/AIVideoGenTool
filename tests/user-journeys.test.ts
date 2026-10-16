@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
 import { h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
 import { strataPreparationProfiles } from "../src/core/strata-preparation";
+import { normalizeMultimodalPromptOutput } from "../electron/services/multimodal-prompt";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => {
@@ -14,6 +15,27 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("keeps an under-length detailed result out of versions and recovers through the actual Enhance button", async () => {
+    const h = journey = await createJourney();
+    h.input("#prompt-enhance-mode", "detailed-cinematic", "change");
+    const source = "Please design an explicit cinematic expansion according to the reference: a woman waves her hand.";
+    const paraphrase = "The female performer lifts her palm and gently greets the viewer.";
+    h.input("#prompt-input", source);
+    const before = structuredClone(h.state().draft.promptVersions);
+    const output = (count: number) => `integrated_multimodal_description: [Shot 1] ${paraphrase} ${Array.from({ length: count }, (_, index) => `detail${index}`).join(" ")}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`;
+    h.enhancePrompt.mockImplementationOnce(async (request) => normalizeMultimodalPromptOutput(output(20), request));
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    await settle();
+    expect(h.state().draft.promptVersions).toEqual(before);
+    expect(h.state().queue).toHaveLength(0);
+    h.enhancePrompt.mockImplementationOnce(async (request) => normalizeMultimodalPromptOutput(output(600), request));
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.state().draft.promptVersions.length).toBe(before.length + 1));
+    expect(h.state().draft.promptVersions.at(-1)?.id).toBeTruthy();
+    expect(h.state().draft.promptVersions.at(-1)?.text).toContain(paraphrase);
+    expect(h.state().queue).toHaveLength(0);
+  });
   it("Strata files missing blocks Enhance; recovery enables the actual button and saves only a complete result", async () => {
     const h = journey = await createJourney();
     h.state().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";

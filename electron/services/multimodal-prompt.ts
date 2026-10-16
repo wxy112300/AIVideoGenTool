@@ -342,7 +342,7 @@ export function normalizeMultimodalPromptOutput(output: string, request: Enhance
   const continuation = isH3NativeStateContinuationRequest(request);
   return normalizeH3PromptOutput(output, h3PromptModeForRequest(request), request.h3DurationSeconds ?? 5,
     extractH3DialogueLocks(source), extractH3VisibleTextLocks(source), source, request.prompt,
-    continuation, continuation, request.continuumPreviousChunk);
+    continuation, continuation, request.continuumPreviousChunk, request.h3PromptPreset);
 }
 
 function appendImageNodes(

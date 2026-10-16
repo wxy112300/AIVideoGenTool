@@ -554,6 +554,7 @@ export async function enhancePrompt(
     request.prompt,
     nativeStateContinuation,
     nativeStateContinuation,
-    request.continuumPreviousChunk
+    request.continuumPreviousChunk,
+    request.h3PromptPreset
   );
 }

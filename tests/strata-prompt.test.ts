@@ -58,6 +58,20 @@ function fixture() {
 }
 
 describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
+  it("propagates adaptive admission failure without chat, and allows recovery through the same enhancement entry", async () => {
+    const f = fixture();
+    const service = new PromptApplicationService({
+      store: { get: () => f.state } as StateRepository,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger,
+      promptRuntimeManager: f.manager, externalRuntime: f.owner, strata: f.owner,
+      isQueueBusy: () => false, sendProgress: () => {}, errorMeta: () => ({})
+    });
+    f.owner.ensurePromptReady.mockRejectedValueOnce(new Error("Strata Windows 提交余量不足；未加载模型"));
+    await expect(service.enhance(request)).rejects.toThrow("提交余量");
+    expect(f.owner.chat).not.toHaveBeenCalled();
+    expect(await service.enhance(request)).toBe("The blue car.");
+    expect(await service.enhance(request)).toBe("The blue car.");
+  });
   it("routes only catalog IDs and keeps legacy provider settings from hijacking Strata", () => {
     expect(promptModelBackend(modelId)).toBe("strata");
     expect(promptModelBackend("strata/unknown")).toBeNull();
@@ -158,6 +172,46 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
 });
 
 describe("Strata Pack, image and output contracts", () => {
+  it.each([true, false])("makes at most one real-model correction for missing explicit times, success=%s", async success => {
+    const settings = createDefaultState().settings; settings.promptModelId = modelId;
+    const req: EnhanceRequest = { prompt: "The red light flashes at 4.0 seconds and at 10.0 seconds.", modelId: "minimax_h3_fl2va",
+      mode: "h3-vision", h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", imagePaths: [await imageFixture()], h3DurationSeconds: 15 };
+    const make = (times: string) => `integrated_multimodal_description: [Shot 1] The red light flashes at ${times} seconds. ${Array.from({ length: 600 }, (_, i) => `detail${i}`).join(" ")}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`;
+    const owner = { chat: vi.fn().mockResolvedValueOnce(make("10.0")).mockResolvedValueOnce(make(success ? "4.0 and 10.0" : "10.0")) };
+    const result = enhancePromptWithStrata(req, settings, owner, new AbortController().signal, vi.fn());
+    if (success) expect(await result).toContain("4.0 and 10.0"); else await expect(result).rejects.toThrow("一次纠正");
+    expect(owner.chat).toHaveBeenCalledTimes(2);
+    expect(owner.chat.mock.calls[1][0]).toMatchObject({ reasoning: undefined, temperature: .7 });
+    expect(JSON.stringify(owner.chat.mock.calls[1][0].messages)).toContain(req.prompt);
+  });
+  it("adopts bounded thinking only for authored single-image I2VA detailed expansion", async () => {
+    const settings = createDefaultState().settings; settings.promptModelId = modelId;
+    const req: EnhanceRequest = { prompt: "飞机滑行并停稳。", modelId: "minimax_h3_fl2va", mode: "h3-vision",
+      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", imagePaths: ["first.png"] };
+    const encode = async () => ({ type: "image_url" as const, image_url: { url: "data:image/png;base64,YQ==" } });
+    const selected = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode);
+    expect(selected).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 }, messages: [{ role: "system" }, { role: "user" }] });
+    for (const change of [{ h3PromptMode: "FL2VA" as const }, { h3PromptPreset: "official-storyboard" as const },
+      { promptStrategy: "reference-auto" as const }, { imagePaths: [] }]) {
+      const chat = await buildStrataPromptRequest({ ...req, ...change }, settings, new AbortController().signal, encode);
+      expect(chat.reasoning).toBeUndefined(); expect(chat.temperature).toBe(.7);
+      expect(chat.messages).toHaveLength(1);
+    }
+    const baseline = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode, { layout: "flat" });
+    expect(baseline.reasoning).toBeUndefined(); expect(baseline.messages).toHaveLength(1);
+  });
+  it.each([0.3, 0.6, 0.9])("uses the official model temperature instead of generic creativity %s", async (creativity) => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = modelId;
+    settings.promptCreativity = creativity;
+    for (const req of [request, { prompt: "An airliner taxis and stops.", modelId: "minimax_h3_fl2va",
+      mode: "h3-vision" as const, h3PromptMode: "T2VA" as const }]) {
+      const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal);
+      expect(chat.temperature).toBe(0.7);
+      expect(settings.promptCreativity).toBe(creativity);
+      expect(chat.maxTokens).toBe(req.mode === "image-edit" ? 4096 : 8192);
+    }
+  });
   it("keeps ordered FL2VA images, user intent, custom preset and locked multilingual dialogue", async () => {
     const settings = createDefaultState().settings; settings.promptModelId = modelId;
     const req: EnhanceRequest = { prompt: 'A woman says in Japanese: "大丈夫？" Keep the camera fixed.',
@@ -172,10 +226,35 @@ describe("Strata Pack, image and output contracts", () => {
     expect(JSON.stringify(chat.messages)).toContain("<Picture 2>");
     expect(JSON.stringify(chat.messages)).not.toContain("VisionLLM language-check compatibility");
   });
-  it("does not truncate overlong inputs and does not enlarge context from H3 GPU settings", async () => {
+  it("retains long input for the official tokenizer instead of rejecting by character estimate", async () => {
     const f = fixture();
-    await expect(buildStrataPromptRequest({ ...request, prompt: "字".repeat(40000) }, f.state.settings, new AbortController().signal)).rejects.toThrow("上下文");
+    const chat = await buildStrataPromptRequest({ ...request, prompt: "字".repeat(40000) }, f.state.settings, new AbortController().signal);
+    expect(JSON.stringify(chat.messages)).toContain("字".repeat(40000));
+    expect(chat.contextSize).toBe(32768);
     expect(strataPromptPolicy({ vramReserveGb: 20 })).toEqual(strataPromptPolicy({ vramReserveGb: 2 }));
+  });
+  it("keeps the complete experimental dossier distinct from style, with task after the ordered image", async () => {
+    const settings = createDefaultState().settings; settings.promptModelId = modelId;
+    const req: EnhanceRequest = { prompt: '她说“保持中线”。飞机向前滑行。', modelId: "minimax_h3_fl2va", mode: "h3-vision",
+      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", imagePaths: ["first.png"], h3DurationSeconds: 15 };
+    const dossier = "完整事实资料。".repeat(5000);
+    const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal,
+      async () => ({ type: "image_url", image_url: { url: "data:image/png;base64,YQ==" } }),
+      { layout: "structured", dossier, reasoning: { effort: "medium", budgetTokens: 2048 } });
+    expect(chat.messages[0].role).toBe("system");
+    const content = chat.messages[1].content as Array<{ type: string; text?: string }>;
+    expect(content.map(part => part.type)).toEqual(["text", "image_url", "text"]);
+    expect(content[0].text).toContain(dossier);
+    expect(content[0].text).toContain(req.prompt);
+    expect(content[2].text).toContain("FINAL TASK");
+    expect(chat).toMatchObject({ maxTokens: 8192, temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 } });
+    expect(settings.promptModelId).toBe(modelId);
+  });
+  it("prepares the full request before acquiring the model and never chats after preflight failure", async () => {
+    const f = fixture(); f.owner.ensurePromptReady.mockRejectedValueOnce(new Error("官方tokenizer上下文超限"));
+    await expect(f.service.enhance(request)).rejects.toThrow("上下文");
+    expect(f.owner.ensurePromptReady.mock.calls[0][2]).toMatchObject({ request: { contextSize: 32768, maxTokens: 4096 } });
+    expect(f.owner.chat).not.toHaveBeenCalled();
   });
   it("encodes supported local images and rejects unsupported/cancelled reads", async () => {
     const filename = await imageFixture(), signal = new AbortController().signal;
@@ -190,5 +269,16 @@ describe("Strata Pack, image and output contracts", () => {
     const req: EnhanceRequest = { prompt: "A woman waves.", modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: "detailed-cinematic" };
     const chat = vi.fn(async () => "integrated_multimodal_description: [Shot 1] The woman waves.\noverall_soundscape: N/A\nnon_diegetic_music: N/A");
     await expect(enhancePromptWithStrata(req, settings, { chat }, new AbortController().signal, vi.fn())).rejects.toThrow();
+  });
+  it("rejects a detailed result before recovery adds enough words, without mutating the draft or queue", async () => {
+    const f = fixture(), before = structuredClone(f.state);
+    const source = 'A tiny woman says in English: "Ready."';
+    const body = `${source} ${Array.from({ length: 218 }, (_, index) => `detail${index}`).join(" ")}`;
+    f.owner.chat.mockResolvedValueOnce(`integrated_multimodal_description: [Shot 1] ${body}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`);
+    await expect(f.service.enhance({ prompt: source, modelId: "minimax_h3_fl2va", mode: "h3-vision",
+      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 })).rejects.toThrow("至少 250");
+    expect(f.state).toEqual(before);
+    expect(f.progress.at(-1)?.status).toBe("failed");
+    expect(f.manager.snapshot().model.phase).toBe("unloaded");
   });
 });

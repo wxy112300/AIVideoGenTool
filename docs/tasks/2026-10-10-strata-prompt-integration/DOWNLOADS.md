@@ -1,8 +1,8 @@
 # Strata：一键安装组件，单独下载模型
 
-- 类型：任务阶段指南；日期：2026-10-11；适用：Windows / NVIDIA，Strata v0.1.41。
+- 类型：任务阶段指南；日期：2026-10-15；适用：Windows / NVIDIA，推荐 Strata v0.1.44.1，保留 v0.1.41 安装识别。
 - 状态唯一入口：[TASK](TASK.md)；固定文件元数据以 [运行组件 catalog](../../../src/core/catalog/dependencies/strata.ts) 和 [模型 catalog](../../../src/core/catalog/models/strata.ts) 为准。
-- 产品接线已完成，可选模型沿用原提示词按钮按需运行；原默认模型不变。完整权重与真实推理/质量/性能仍待验收。
+- 产品接线已完成，可选模型沿用原提示词按钮按需运行；原默认模型不变。主模型已有部分真实推理证据，但影视增强尚未完整验收；新增MTP的真实转换/显存峰值/速度仍待测试。
 
 ## 下载与目录
 
@@ -21,6 +21,16 @@ ComfyUI 模型根目录/LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/
   mmproj-Qwen3.8-Flash-Next-BF16.gguf
 ```
 
+## MTP 配套加速权重
+
+主模型保持现有 ISTA-DASLab 量化。配套的 MTP Q2_0 由 SC117 使用 Strata 工具从原版 Qwen MTP 转换，不是该仓库的改写主模型；[发布者来源说明](https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/blob/eec4e10a2c29b440a2ae85591fa11569ce752963/strata/README.md)。
+
+- [手动下载 mtp-q2_0.gguf](https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/eec4e10a2c29b440a2ae85591fa11569ce752963/mtp-q2_0.gguf)：889,017,216 bytes（约 0.89GB / 848MiB）。
+- SHA-256：`a22206a4d74eafbf31063a84610292535fb3b49af9a339963817fd04aed81e4d`。
+- 放在所选 ComfyUI 模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/mtp/mtp-q2_0.gguf`。两个量化档共享此文件，不新增根目录设置。
+
+用户使用浏览器/下载器获取文件，应用不下载模型。扫描区分可选配套文件与主模型就绪；补齐后下一次启动/增强会校验 SHA-256，用官方 `mtp_rt.py` 离线转换并复制固定中文词表。派生运行文件仍在应用独立 data，不覆盖共享源权重；完整主 pack 仅补 MTP、不重哈希/转换主分片。配套文件缺失保留无 MTP 基础模式。推理速度、峰值显存与完整质量须实测，文件扫描/离线转换不等于已验收。
+
 ## 在应用中配置
 
 - 应用管理安装的三角菜单提供“卸载”，确认后仅永久删除当前软件目录及独立 Python 环境；共享模型、独立数据和旧备份保留。手动目录不提供卸载。软件目录内的本地修改不保留，可重新一键安装。
@@ -35,4 +45,4 @@ ComfyUI 模型根目录/LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/
 
 不用双击 `START-HERE.bat` 或手工运行 setup。软件和模型文件完整后重新扫描，在原提示词模型下拉选择所下载的量化版本并保存。点击原模型启动或增强按钮，首次自动校验权重并准备 CPU pack/tokenizer，然后加载；进度沿用原提示词进度，方形停止按钮可取消。后续复查并复用完成缓存，源权重不复制或搬移。派生文件在软件版本目录同级 `data`，卸载软件仍保留。基础路径不需要 MTP，后续加速不自动下载；不购买云 API、不占用8080、不改原默认模型。
 
-启动、增强、取消、释放和退出均已接上应用 owner。上下文采用32K，视频输出预算8K、图片编辑4K；超限或截断不保存半截版本。R2V视频以静音关键帧供视觉检查，不表示音频理解。服务/代码/mock验证不代表完整 Qwen 推理已验；权重下载和真实资源、视觉、输出质量与性能测试仍待完成。
+启动、增强、取消、释放和退出均已接上应用 owner。上下文采用32K，视频输出预算8K、图片编辑4K；超限或截断不保存半截版本。R2V视频以静音关键帧供视觉检查，不表示音频理解。服务/代码/mock验证不代表完整 Qwen 推理已验；真实证据与剩余资源/质量/性能测试以TASK当前摘要为准。

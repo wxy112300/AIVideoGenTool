@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,8 +9,22 @@ import { resolvedStrataDirectory, strataManagedReceipt } from "./strata-installa
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream } from "../../src/core/strata-chat-stream.js";
+import { planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
+import { readStrataResources, watchStrataResources } from "./strata-resources.js";
 
 export type StrataContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+
+/** Qwen3.8-Flash-Next official non-thinking profile; not shared with other backends.
+ * https://huggingface.co/Qwen/Qwen3.8-Flash-Next#best-practices */
+export const STRATA_NON_THINKING_SAMPLING = Object.freeze({
+  temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0,
+  presence_penalty: 1.5, repetition_penalty: 1
+});
+
+export const STRATA_THINKING_SAMPLING = Object.freeze({
+  temperature: 1, top_p: 0.95, top_k: 20, min_p: 0,
+  presence_penalty: 0, repetition_penalty: 1
+});
 
 function validContent(content: unknown): boolean {
   if (typeof content === "string") return content.length <= 131072;
@@ -28,6 +42,20 @@ export interface StrataChatRequest {
   temperature: number;
   contextSize?: number;
   visionTokensPerImage?: number;
+  /** Internal bounded evaluation; not a persisted setting or automatic mode switch. */
+  reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
+}
+
+function validateChatRequest(request: StrataChatRequest): void {
+  if (!request.modelId.trim() || !Number.isSafeInteger(request.maxTokens) || request.maxTokens < 1
+    || request.maxTokens > 32768 || !Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2
+    || !request.messages.length || request.messages.some((message) =>
+      !["system", "user", "assistant"].includes(message.role) || !validContent(message.content))
+    || (request.reasoning && (!["low", "medium", "high"].includes(request.reasoning.effort)
+      || !Number.isSafeInteger(request.reasoning.budgetTokens) || request.reasoning.budgetTokens < 1
+      || request.reasoning.budgetTokens > request.maxTokens - 1024))) {
+    throw new Error("Strata 提示词请求参数无效。");
+  }
 }
 
 export interface StrataLaunchPlan {
@@ -37,12 +65,17 @@ export interface StrataLaunchPlan {
   port: number;
   apiKey: string;
   modelId?: string;
+  residentEngineLog?: string;
+  resourcePlan?: StrataResourcePlan;
+  temporaryConfig?: string;
+  env?: Record<string, string>;
 }
 
 /** Internal only: accepts a completed, coherently verified pack/config preparation. */
 export async function prepareStrataLaunch(
   settings: Pick<Settings, "strataInstallDirectory" | "strataPort">,
-  configPath: string
+  configPath: string,
+  options: { adaptive?: boolean; readResources?: typeof readStrataResources } = {}
 ): Promise<StrataLaunchPlan> {
   if (!validStrataPort(settings.strataPort)) throw new Error("Strata 端口无效（不能使用 8080）。");
   const cwd = path.resolve(resolvedStrataDirectory(settings));
@@ -53,11 +86,30 @@ export async function prepareStrataLaunch(
     if (!(await fs.stat(filename).catch(() => null))?.isFile()) throw new Error(`Strata 启动文件缺失：${filename}`);
   }
   const modelId = await validatePreparedStrataRuntime(config, cwd);
+  const runtimeConfig = JSON.parse(await fs.readFile(config, "utf8"));
+  const monitorAvailable = (await fs.readFile(path.join(cwd, "serve", "server.py"), "utf8")).includes('"--api-monitor"') &&
+    (await Promise.all(["monitor.html", "monitor.js", "tokens.css"].map((name) =>
+      fs.stat(path.join(cwd, "serve", "web", name)).then((stat) => stat.isFile() && stat.size > 0).catch(() => false)
+    ))).every(Boolean);
+  let launchConfig = config;
+  let resourcePlan: StrataResourcePlan | undefined;
+  if (options.adaptive) {
+    const reserveIndex = runtimeConfig.args.indexOf("--vram-reserve-mib");
+    if (reserveIndex < 0) throw new Error("Strata 准备配置缺少显存策略。");
+    resourcePlan = planStrataResources(await (options.readResources ?? readStrataResources)(), Number(runtimeConfig.args[reserveIndex + 1]));
+    runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
+    if (resourcePlan.hostMode === "arena") runtimeConfig.args = runtimeConfig.args.filter((arg: string) => arg !== "--resident-experts");
+    launchConfig = path.join(path.dirname(config), `runtime-session-${randomUUID()}.json`);
+    await fs.writeFile(launchConfig, JSON.stringify(runtimeConfig, null, 2), { flag: "wx" });
+  }
   const apiKey = randomBytes(32).toString("hex");
   return {
     executable, cwd, port: settings.strataPort, apiKey, modelId,
-    args: ["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", config,
-      "--host", "127.0.0.1", "--port", String(settings.strataPort), "--lazy", "--api-key", apiKey]
+    ...(resourcePlan ? { resourcePlan, temporaryConfig: launchConfig,
+      env: { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB) } } : {}),
+    ...(runtimeConfig.args.includes("--resident-experts") ? { residentEngineLog: runtimeConfig.log } : {}),
+    args: ["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", launchConfig,
+      "--host", "127.0.0.1", "--port", String(settings.strataPort), "--lazy", ...(monitorAvailable ? ["--api-monitor"] : []), "--api-key", apiKey]
   };
 }
 
@@ -70,7 +122,7 @@ export interface StrataOwnedProcess {
 /** No detached server or adopted PID: retain the child until its tree has exited. */
 export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk: string) => void): Promise<StrataOwnedProcess> {
   const child = spawn(plan.executable, plan.args, {
-    cwd: plan.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"]
+    cwd: plan.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...plan.env }
   });
   child.stdout.on("data", (chunk: Buffer) => output(chunk.toString()));
   child.stderr.on("data", (chunk: Buffer) => output(chunk.toString()));
@@ -112,6 +164,12 @@ export interface StrataServiceSnapshot {
   log: string;
 }
 
+/** Main-process-only capability. Never include this in snapshots, IPC or logs. */
+export interface StrataMonitorConnection {
+  origin: string;
+  apiKey: string;
+}
+
 interface StrataServiceDependencies {
   launch?: typeof launchStrataProcess;
   portInUse?: typeof isLocalPortInUse;
@@ -119,6 +177,7 @@ interface StrataServiceDependencies {
   startupTimeoutMs?: number;
   pollMs?: number;
   requestTimeoutMs?: number;
+  readResources?: typeof readStrataResources;
 }
 
 /** Service readiness is not model readiness. Not yet exposed through AppApi or model routing. */
@@ -185,6 +244,12 @@ export class StrataService {
     });
   }
 
+  monitorConnection(): StrataMonitorConnection | null {
+    return this.plan?.args.includes("--api-monitor") && this.child?.running() && this.state.phase === "ready"
+      ? { origin: `http://127.0.0.1:${this.plan.port}`, apiKey: this.plan.apiKey }
+      : null;
+  }
+
   inspect(): Promise<StrataServiceSnapshot> { return this.exclusive(() => this.inspectImpl()); }
 
   /** Explicit authenticated warmup; a lazy HTTP listener is not a resident model. */
@@ -193,16 +258,37 @@ export class StrataService {
       signal?.throwIfAborted();
       if (!this.plan || !this.child?.running()) throw new Error("Strata 服务尚未就绪。");
       const plan = this.plan;
+      const safety = new AbortController();
+      signal = AbortSignal.any([...(signal ? [signal] : []), safety.signal]);
+      let disposeWatch = async () => {};
       try {
+        if (plan.resourcePlan) {
+          const resources = await (this.deps.readResources ?? readStrataResources)();
+          const pressure = strataResourcePressure(resources);
+          if (pressure) throw new Error(pressure);
+          if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
+            || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
+            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error("Strata 加载前资源已变化，安全预算不再满足；未加载模型，请释放资源后重试。");
+          signal.throwIfAborted();
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources);
+        }
+        const logStart = plan.residentEngineLog ? (await fs.stat(plan.residentEngineLog).catch(() => null))?.size ?? 0 : 0;
         const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/load`, {
           method: "POST", redirect: "error",
           signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)]),
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json", Origin: `http://127.0.0.1:${plan.port}` },
           body: JSON.stringify({ model: plan.modelId })
         });
-        if (!response.ok || (await response.json()).status !== "loaded" || !await this.probe()) {
+        const acknowledgement = await response.json().catch(() => null);
+        if (!response.ok) {
+          const reason = typeof acknowledgement?.error?.message === "string"
+            ? acknowledgement.error.message.replaceAll(plan.apiKey, "[redacted]").slice(0, 2000) : "未返回有效加载错误";
+          throw new Error(`Strata 模型加载失败（HTTP ${response.status}）：${reason}。详情见派生目录 engine.log。`);
+        }
+        if (acknowledgement?.status !== "loaded" || !await this.probe()) {
           throw new Error("Strata 模型加载未确认，请检查内存、显存和 CUDA 驱动后重试。");
         }
+        if (plan.residentEngineLog) await assertStrataResidentLog(plan.residentEngineLog, logStart);
         signal?.throwIfAborted();
         this.state = { ...this.state, phase: "ready", modelLoaded: true, message: "Strata 模型已加载。" };
         return this.snapshot();
@@ -212,53 +298,72 @@ export class StrataService {
         this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null };
         if (signal?.aborted) throw signal.reason;
         throw new Error((error instanceof Error ? error.message : "Strata 加载失败。").replaceAll(plan.apiKey, "[redacted]"));
-      }
+      } finally { await disposeWatch(); }
     });
+  }
+
+  /** CPU tokenizer only, including the selected thinking template. Safe before /v1/load. */
+  preflight(request: StrataChatRequest, signal?: AbortSignal): Promise<void> {
+    return this.exclusive(() => this.checkContext(request, signal));
+  }
+
+  private async checkContext(request: StrataChatRequest, signal?: AbortSignal): Promise<void> {
+    validateChatRequest(request);
+    signal?.throwIfAborted();
+    if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error("Strata 服务尚未就绪。");
+    if (request.contextSize === undefined) return;
+    if (!Number.isSafeInteger(request.contextSize) || request.contextSize < 1024 || request.contextSize > 32768
+      || !Number.isSafeInteger(request.visionTokensPerImage) || request.visionTokensPerImage! < 1) throw new Error("Strata 上下文策略无效。");
+    const plan = this.plan;
+    const textOf = (message: StrataChatRequest["messages"][number]) => typeof message.content === "string" ? message.content
+      : message.content.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("");
+    const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/messages/count_tokens`, {
+      method: "POST", redirect: "error",
+      signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]),
+      headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: request.modelId,
+        thinking: request.reasoning ? { type: "enabled" } : { type: "disabled" },
+        ...(request.reasoning ? { output_config: { effort: request.reasoning.effort } } : {}),
+        system: request.messages.filter((message) => message.role === "system").map(textOf).join("\n"),
+        messages: request.messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: textOf(message) })) })
+    });
+    const count = response.ok ? (await response.json()).input_tokens : null;
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("Strata tokenizer 计数失败，未提交推理。");
+    const imageCount = request.messages.reduce((total, message) => total + (Array.isArray(message.content)
+      ? message.content.filter((part) => part.type === "image_url").length : 0), 0);
+    if (count + imageCount * (request.visionTokensPerImage! + 4) + request.maxTokens + 256 > request.contextSize) {
+      throw new Error(`Strata 输入约 ${count} 文本 tokens，加上视觉与输出预算超过 ${request.contextSize} 上下文；请缩短输入或减少参考图。原始指令未截断。`);
+    }
+    signal?.throwIfAborted();
   }
 
   /** Caller owns GPU arbitration. A failed/aborted stream stops the owned process, not just HTTP. */
   chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<string> {
     return this.exclusive(async () => {
-      if (!request.modelId.trim() || !Number.isSafeInteger(request.maxTokens) || request.maxTokens < 1
-      || request.maxTokens > 32768 || !Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2
-        || !request.messages.length || request.messages.some((message) =>
-          !["system", "user", "assistant"].includes(message.role) || !validContent(message.content))) {
-        throw new Error("Strata 提示词请求参数无效。");
-      }
+      validateChatRequest(request);
       signal?.throwIfAborted();
       if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error("Strata 服务尚未就绪。");
       const plan = this.plan;
+      const safety = new AbortController();
       const requestSignal = AbortSignal.any([
-        ...(signal ? [signal] : []), AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)
+        ...(signal ? [signal] : []), safety.signal, AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)
       ]);
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+      let disposeWatch = async () => {};
       try {
-        if (request.contextSize !== undefined) {
-          if (!Number.isSafeInteger(request.contextSize) || request.contextSize < 1024 || request.contextSize > 32768
-            || !Number.isSafeInteger(request.visionTokensPerImage) || request.visionTokensPerImage! < 1) throw new Error("Strata 上下文策略无效。");
-          const textOf = (message: StrataChatRequest["messages"][number]) => typeof message.content === "string" ? message.content
-            : message.content.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("");
-          const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/messages/count_tokens`, {
-            method: "POST", redirect: "error", signal: requestSignal,
-            headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: request.modelId, thinking: { type: "disabled" },
-              system: request.messages.filter((message) => message.role === "system").map(textOf).join("\n"),
-              messages: request.messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: textOf(message) })) })
-          });
-          const count = response.ok ? (await response.json()).input_tokens : null;
-          if (!Number.isSafeInteger(count) || count < 0) throw new Error("Strata tokenizer 计数失败，未提交推理。");
-          const imageCount = request.messages.reduce((count, message) => count + (Array.isArray(message.content)
-            ? message.content.filter((part) => part.type === "image_url").length : 0), 0);
-          if (count + imageCount * (request.visionTokensPerImage! + 4) + request.maxTokens + 256 > request.contextSize) {
-            throw new Error(`Strata 输入约 ${count} 文本 tokens，加上视觉与输出预算超过 ${request.contextSize} 上下文；请缩短输入或减少参考图。原始指令未截断。`);
-          }
-          requestSignal.throwIfAborted();
+        if (plan.resourcePlan) {
+          const pressure = strataResourcePressure(await (this.deps.readResources ?? readStrataResources)());
+          if (pressure) throw new Error(pressure);
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources);
         }
+        await this.checkContext(request, requestSignal);
         const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/chat/completions`, {
           method: "POST", redirect: "error", signal: requestSignal,
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: request.modelId, messages: request.messages, max_tokens: request.maxTokens,
-            temperature: request.temperature, stream: true, chat_template_kwargs: { enable_thinking: false } })
+            ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
+            ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}),
+            stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) } })
         });
         if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream") || !response.body) {
           await response.body?.cancel().catch(() => undefined);
@@ -294,9 +399,11 @@ export class StrataService {
           throw new Error(this.state.message);
         }
         if (signal?.aborted) throw signal.reason;
+        if (safety.signal.aborted) throw safety.signal.reason;
         // Do not expose server bodies, model text or per-launch credentials in errors.
         throw new Error((error instanceof Error ? error.message : "Strata 提示词请求失败。").replaceAll(plan.apiKey, "[redacted]"));
       } finally {
+        await disposeWatch();
         await reader?.cancel().catch(() => undefined);
         reader?.releaseLock();
       }
@@ -356,6 +463,7 @@ export class StrataService {
       if (this.child.running()) throw new Error("Strata 进程仍在运行。");
     }
     this.child = null;
+    if (this.plan?.temporaryConfig) await fs.unlink(this.plan.temporaryConfig).catch(() => undefined);
     this.plan = null;
     this.state.pid = null;
   }
@@ -365,4 +473,18 @@ export class StrataService {
     this.serial = result.catch(() => undefined);
     return result;
   }
+}
+
+/** Do not accept the engine's implicit partial/file-tier fallback as the requested resident mode. */
+export async function assertStrataResidentLog(filename: string, offset: number): Promise<void> {
+  const file = await fs.open(filename, "r");
+  try {
+    const stat = await file.stat();
+    const length = Math.min(Math.max(0, stat.size - offset), 256 * 1024);
+    if (!length) throw new Error("未取得本次 Strata 专家驻留日志，未开始推理。");
+    const bytes = Buffer.alloc(length);
+    await file.read(bytes, 0, length, Math.max(offset, stat.size - length));
+    if (/WARNING: the (?:whole )?resident RAM mode does not fit/u.test(bytes.toString("utf8")))
+      throw new Error("Strata 非GPU专家未能完整驻留 RAM（可用内存或 Windows 提交容量不足），已停止文件回读降速路径。请释放内存后重试，详情见 engine.log。");
+  } finally { await file.close(); }
 }

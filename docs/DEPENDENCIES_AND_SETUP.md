@@ -16,9 +16,17 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 
 Strata 是独立运行组件，不是 ComfyUI 节点。Qwen3.8-Flash-Next 可在原提示词模型选择器中选用，启动/增强会自动完成校验、CPU pack/tokenizer、受认证的本机服务和模型加载，取消/释放/开始队列/退出均清理自有进程。软件安装本身不启动模型；它使用独立 `.venv`，不向 ComfyUI Python 安装包，不执行上游整套 setup，也不下载权重。重装保留旧目录并在失败时恢复。
 
+Strata 服务就绪后自动打开随安装提供的官方 API Monitor，只读显示加载状态、请求、原始输入/输出及耗时与速度。使用同一127.0.0.1端口，不用8080、不启动第二个服务；密钥只由主进程为白名单只读请求注入，不进URL、preload或网页存储。模型开关、取消和队列释放仍由本应用管理，监视页加载/卸载控制隐藏且请求层拒绝。关闭监视窗口不退出模型；主动退出模型或队列交接停止服务后监视窗口关闭，下次启动再打开。原生监视功能仅在内存保留最近100次请求（包含正文/思考与有界截获内容），服务重启清除，不写入作品历史。
+
+MTP 的官方转换器还需要 `setup.py` 固定提交的 llama.cpp `gguf-py`。一键安装只稀疏获取这部分解析源码，不构建 llama、不下载模型；已有缺件安装可用原重装入口修复。增强准备离线检查依赖后才哈希大模型。推理按当前可用物理 RAM 和 Windows 提交余量分别预算，内存充足采用完整专家 arena，较紧则采用官方非GPU专家驻留；Windows加载另计GPU容量级提交预留，不把总内存或分页文件总大小当作可用内存。不足/未知时拒绝加载、不自动修改系统设置。会话缓存保持auto、至少5GiB显存预留，运行中采样低资源取消；不是加载峰值硬上限或速度保证，128GB机器也必须通过当时资源检查。
+
+运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自 catalog，最新版本由官方 release 查询取得；网络失败不把推荐值当作最新。当前推荐0.1.44.1，已识别的0.1.41继续可用并显示更新。新版本独立安装完成后才优先选择，旧版本/权重/数据不自动删除；派生pack绑定实际安装revision，升级后可能需要重新离线准备，不要求重新下载共享主模型。手动指定运行目录仍保持显式选择，不被自动切换。
+
 模型共用所选 ComfyUI 的模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 只读兼容扫描。派生 pack/tokenizer 位于软件版本目录的同级 `data`，完成记录按源文件/模型/策略复检后复用；未完成资料不当缓存，软件卸载保留模型和数据。默认端口 43127，禁止 8080，冲突不接管、不自动修改设置。没有第二个模型根设置，不替换旧模型默认值。文件齐全不代表 GPU、视觉和输出质量已验；当前接入代码完成，完整模型验收由用户下载后另做。版本/来源见 catalog；操作见 [Strata 下载指南](tasks/2026-10-10-strata-prompt-integration/DOWNLOADS.md)。
 
 Strata 安装进度直接显示在运行组件卡片内，独立于折叠日志。引擎下载的百分比及大小来自实际下载文件字节，只代表该次下载，不代表整个安装；源码获取、校验、解压、Python 环境和依赖安装以动态条与当前步骤表示。取消时保留取消反馈，收尾后隐藏；切换设置页签不会重置当前步骤。
+
+Strata引擎包在软件版本目录同级`downloads`下按固定revision/hash缓存，用户点击更新才下载。可恢复网络错误最多尝试3次，共用10分钟预算，每次按实际缓存大小续传；取消立即停止自有curl/等待重试并保留字节。旧安装暂存区的ZIP半包仅在Git提交与官方origin匹配后复制到缓存，原文件不移动/删除。服务器拒绝Range、证书/404等非瞬时错误不盲目重试；日志显示具体curl错误（有界、下载URL脱敏）。下载齐字节仍须固定SHA-256，坏包改名保留后拒绝发布；不替用户降低校验或自动启用代理。共享模型文件不参与此软件缓存。
 
 ## 2. 五种不同的“已安装”
 
@@ -147,7 +155,9 @@ Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓�
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 
-Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前推荐上游 0.4.7；节点保留应用依赖的 `/h3studio/*` 提示词接口，同时新增 Auto VRAM、媒体编辑/拼贴、浮动媒体面板、主题/界面尺寸和外部 llama.cpp 路由器能力。0.3.x 基础节点不再携带必需 Python 依赖，Direct GGUF 的可选 `requirements-gguf.txt` 由本应用的共享运行时安装器接管。设置 → 节点与依赖会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供安装、重装/修复和卸载。Windows 统一使用固定版本的 JamePeng CUDA/CPU 动态后端（`0.3.46`，CUDA 12.9 映射到已发布的 `cu128` wheel）；它在运行时选择兼容 CPU 实现，并加载独立 `ggml-cuda.dll`，避免旧静态 wheel 能导入却在加载 GGUF 时触发 `0xC000001D`。上游 0.4.5 的 Windows CUDA 13 文档另有 `0.3.35` 的测试安装指引；本应用仍以共享运行库的 `0.3.46` 动态后端和应用侧 CUDA 自检为准，不会因节点更新重复覆盖已通过自检的后端。探针会显式注册动态后端后再判断 GPU offload，安装器只替换此包而不重装 ComfyUI 的 NumPy/Pillow 等公共依赖。约 299 MB 的 wheel 下载会在设置日志中显示百分比，慢速网络等待上限为 45 分钟。节点安装与运行依赖修复还会为 Prompt Writer 应用 `GGMLType` KV 常量兼容层、Gemma 4 原生 chat handler 和非 Thinking 输出预算，让 Direct Gemma 默认保持 16K Standard，不会因为普通输入自动扩展到 24K Extended，以免在 24GB 显卡上把 KV cache 推到显存上限；UNSEEN NSFW 4090 档位使用 Q4_K_M 主模型和匹配的 q4_0 vision projector，并降低批处理大小以适配 24GB 显存；GGUF 模型与多模态 chat handler 的清理也会改为幂等流程，`Llama.close()` 已关闭 handler 时不会再次释放同一资源、覆盖生成结果或留下虚假的 loaded 状态。更新前如果发现节点目录存在本地改动（包括应用自动写入的兼容层），安装器会用同一个完整适配器核对补丁指纹；有 catalog 固定提交时按该目标校验和替换，没有固定提交时才比较上游 HEAD；需要替换时把旧目录移到 `node-backups`，再下载并校验干净副本，避免 `git pull` 因本地修改失败和重复创建备份。节点批次重启后还会检查 `/h3studio/status`、`/models`、GGUF diagnostics 与共享 llama 运行库；如果 0.3.x 节点自带的轻量诊断探针显示 `gpu_offload:false`，设置页会把它作为提示而不是失败，最终以应用侧 torch-first 共享运行库自检和实际生成前检查为准。自检失败会保留完整 pip 日志和原生退出码，不会把 CPU 版或无法确认的包标记为就绪。
+共享运行库推荐固定为 JamePeng `0.4.2` / `20261003` Windows wheel；依赖兼容范围为 `>=0.3.34,<0.5`，已有旧版 CUDA 自检通过的安装不会被静默升级。Qwen MultiModal 的受管理补丁仅对 Qwen35 家族的 MTMD handler 关闭全量 logits，保留旧视觉 handler 的原行为，避免按完整上下文分配巨大的 Python scores 数组；不减少图片、上下文或输出预算，不启用 MTP。Prompt Writer 一键修复同时适配架构检查与诊断文件的 0.4.x 上限，保留最低版本/架构检查。两项旧适配均在离线扫描中提示一键修复，完成后须重启 ComfyUI。0.4.2/cu130/cp312 隔离实测覆盖 Qwen3.6 27B，不能代称本机没有权重的 Qwen3.8 27B 已验；性能与长稿失败边界见[评估证据](tasks/2026-10-10-strata-prompt-integration/evidence/qwen27b-speed-assessment.md#升级与真实测试2026-10-16)。
+
+Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前推荐节点上游 0.4.7，保留应用依赖的 `/h3studio/*` 提示词接口；可选 `requirements-gguf.txt` 由共享运行时安装器接管。Windows 使用上述固定 JamePeng 动态后端，运行时选择兼容 CPU 实现并加载 `ggml-cuda.dll`；探针先注册后端再判断 GPU offload，安装器只替换此包，不重装 NumPy/Pillow。wheel 大小随 CUDA/Python 资产变化，日志显示下载百分比，等待上限45分钟。节点兼容层保留 `GGMLType` KV 常量、Gemma 4 原生 chat handler、非 Thinking 输出和幂等清理；Direct Gemma 默认16K Standard，不因普通输入自动扩展24K。UNSEEN NSFW 4090 档位仍用Q4_K_M与匹配q4_0 projector及低批处理。更新本地已修改节点时，先按固定推荐提交核对完整适配器指纹；确需替换则备份旧目录再校验新副本，不用强制 pull 覆盖。批次重启后检查 status、models、GGUF diagnostics和应用侧共享运行库CUDA自检；轻量节点探针的 gpu_offload:false只作提示，自检失败保留pip日志/原生退出码，未知或CPU包不标为GPU就绪。
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。两个节点的安装入口和“修复运行依赖”现在都调用同一个安装器、固定版本和 CUDA 自检；节点 `requirements.txt` 中的普通 `llama-cpp-python` 条目会被过滤，安装其中一个不会再用 PyPI 或 Git 源码构建覆盖另一个。相同 ComfyUI 的并发安装请求会合并为一个事务；已有 CUDA 自检通过的后端不会因更新 Prompt Writer 被重装。当前 Python/CUDA 不在预编译矩阵时，安装器会在下载前明确失败并保留日志，不会偷偷回退到 CPU 或启动第二个 llama 服务。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
 

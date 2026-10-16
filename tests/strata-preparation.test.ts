@@ -1,4 +1,5 @@
 import path from "node:path";
+import { STRATA_SOURCE_FILES, STRATA_ENGINE_FILES, STRATA_VERSION } from "../src/core/catalog/dependencies/strata";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults";
 import { normalizeStrataSettings, strataModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles, validStrataPort } from "../src/core/strata-preparation";
@@ -10,6 +11,36 @@ import { settingsText } from "../src/renderer/pages/settings/copy";
 import { STRATA_MODEL_REVISION } from "../src/core/catalog/dependencies/strata";
 
 describe("Strata file preparation", () => {
+  it("uses the node version row, keeps actual/recommended/latest separate and updates an older install", () => {
+    const settings = createDefaultSettings();
+    const status = { configuredInstallDirectory: "", configuredModelDirectory: "", configuredComfyInstallDirectory: "",
+      installDirectory: "managed-old", modelDirectory: "models", files: [], sourcePresent: true, enginePresent: true,
+      managedInstalled: true, managedUninstallable: true, installedVersion: "0.1.41", latestVersion: "0.1.45", scannedAt: "fixture" };
+    const markup = renderStrataPreparationPanel(settings, status, value => value);
+    expect(markup).toContain('class="node-version-line"');
+    expect(markup).toContain('本机</span><strong class="node-version-value">v0.1.41');
+    expect(markup).toContain(`推荐</span><strong class="node-version-value">v${STRATA_VERSION}`);
+    expect(markup).toContain('最新</span><strong class="node-version-value">v0.1.45');
+    expect(markup).toContain('id="install-strata" aria-busy="false" >更新</button>');
+    expect(markup).not.toContain('class="model-badge"');
+    const offline = renderStrataPreparationPanel(settings, { ...status, latestVersion: "" }, value => value);
+    expect(offline).toContain('最新</span><strong class="node-version-value">');
+    expect(offline).not.toContain('最新</span><strong class="node-version-value">v');
+  });
+  it("keeps missing MTP optional, shares one pinned manual download across quants and gives its model folder", async () => {
+    const settings = { ...createDefaultSettings(), modelDirectory: path.resolve("shared-models") };
+    const profiles = strataPreparationProfiles();
+    const base = new Map(profiles.flatMap((profile) => profile.components.filter((component) => !component.optional)
+      .map((component) => [path.join(strataModelRoot(settings), component.expected), component.installGuide.bytes!] as const)));
+    const scan = await scanStrataPreparation(settings, async (filename) => base.has(filename) ? { size: base.get(filename)!, header: "GGUF" } : null);
+    expect(scan.profiles.every((profile) => profile.available && !profile.components[3].found && profile.components[3].optional)).toBe(true);
+    const guide = scan.profiles[0].components[3].installGuide;
+    expect(guide).toEqual(scan.profiles[1].components[3].installGuide);
+    expect(guide).toMatchObject({ bytes: 889017216, targetSubdirectory: "mtp", recommendedFilename: "mtp-q2_0.gguf" });
+    expect(guide.downloadUrl).toContain("/eec4e10a2c29b440a2ae85591fa11569ce752963/mtp-q2_0.gguf");
+    expect(guide.downloadUrl).not.toContain("/strata/mtp-q2_0.gguf");
+    expect(settingsText("zh-CN", "model.component.optional")).not.toContain("Lightning");
+  });
   it("shares the ComfyUI model root without letting a legacy Strata setting override it", () => {
     const settings = { strataModelDirectory: "D:\\existing", modelDirectory: "D:\\ComfyUI\\models\\" };
     expect(strataModelRoot(settings)).toBe("D:\\ComfyUI\\models\\LLM\\Qwen3.8-Flash-Next-GSQ-RCO-GGUF");
@@ -21,7 +52,7 @@ describe("Strata file preparation", () => {
     const inspect = vi.fn(async () => null);
     const settings = { ...createDefaultSettings(), strataInstallDirectory: path.resolve("fixture-uninstalled-strata") };
     const scan = await scanStrataPreparation(settings, inspect);
-    expect(inspect).toHaveBeenCalledTimes(6);
+    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length);
     expect(scan.status.installDirectory).toContain("strata");
     expect(scan.status.modelDirectory).toBe("");
     expect(strataPreparationMatchesSettings(settings, scan.status)).toBe(true);
@@ -38,7 +69,7 @@ describe("Strata file preparation", () => {
     const scan = await scanStrataPreparation(settings, inspect);
     expect(scan.status).toMatchObject({ sourcePresent: true, enginePresent: true });
     expect(scan.profiles.every((profile) => profile.available && profile.integrated && !profile.runtimeReady && !profile.runtimeVerified)).toBe(true);
-    expect(inspect).toHaveBeenCalledTimes(11); // Six runtime paths, four shards, one shared projector.
+    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 6); // Shared projector/MTP inspected once per root.
     expect(scan.profiles[0].components[0].matches[0]).toContain(modelRoot);
   });
 
@@ -52,7 +83,7 @@ describe("Strata file preparation", () => {
     expect(strataPreparationMatchesSettings(settings, scan.status)).toBe(true);
     expect(strataPreparationMatchesSettings({ ...settings, modelDirectory: path.resolve("new-models") }, scan.status)).toBe(false);
     expect(strataPreparationMatchesSettings({ ...settings, comfyInstallDirectory: path.resolve("another-comfy") }, scan.status)).toBe(false);
-    expect(inspect).toHaveBeenCalledTimes(16); // Includes five bounded legacy paths when files are missing.
+    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 12); // Six bounded paths in each root.
   });
 
   it.each(["old-only", "both", "invalid-new"])("reads old shared files in place but keeps the download root model-named (%s)", async (layout) => {
@@ -102,7 +133,7 @@ describe("Strata file preparation", () => {
   it("pins each model download, preserves original filenames and shares the projector", () => {
     const profiles = strataPreparationProfiles();
     for (const component of profiles.flatMap((profile) => profile.components)) {
-      expect(component.installGuide.downloadUrl).toContain(`/resolve/${STRATA_MODEL_REVISION}/`);
+      expect(component.installGuide.downloadUrl).toContain(`/resolve/${component.installGuide.revision}/`);
       expect(component.installGuide.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(component.installGuide.bytes).toBeGreaterThan(0);
     }

@@ -7,6 +7,13 @@ import {
 } from "../src/core/h3-camera-intent.js";
 
 describe("H3 camera intent guard", () => {
+  it("does not treat a prohibited camera angle as a positive angle or keep appending its own fallback", () => {
+    const source = "低机位正面视角，镜头沿跑道缓慢后移，右侧建筑固定。";
+    const output = "integrated_multimodal_description: [Shot 1] 镜头以低机位正面视角沿跑道后移，右侧建筑固定，不切换至平视、俯拍或鸟瞰。";
+    expect(auditH3CameraIntent(source, output).missing).not.toContain("camera-angle");
+    const once = preserveH3CameraIntentInOutput(output, source, "I2VA");
+    expect(preserveH3CameraIntentInOutput(once, source, "I2VA")).toBe(once);
+  });
   it("extracts viewpoint, arc movement, and interior-to-exterior direction", () => {
     const intent = extractH3CameraIntent(
       "The camera rotates around the girl, showing the view from inside the room looking outside."

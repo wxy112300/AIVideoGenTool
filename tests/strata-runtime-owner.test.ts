@@ -26,6 +26,20 @@ function fixture() {
 }
 
 describe("application Strata ownership", () => {
+  it("rejects an over-budget request before GPU handoff/load, cleaning the lazy service", async () => {
+    const f = fixture(), handoff = vi.fn(async () => undefined);
+    const preflight = vi.spyOn(f.service, "preflight").mockRejectedValue(new Error("上下文超限"));
+    const load = vi.spyOn(f.service, "load");
+    const owner = new StrataRuntimeOwner({ service: f.service, run: vi.fn(), prepare: f.prepare,
+      findPrepared: async () => null, isResourcesBusy: () => false, beforeInference: handoff,
+      prepareLaunch: async () => ({ executable: "fixture", args: [], cwd: "fixture", apiKey: "secret", port: 43127, modelId: "fixture-model" }) });
+    const request = { modelId: "fixture-model", messages: [{ role: "user" as const, content: "完整长资料" }],
+      maxTokens: 8192, temperature: .7, contextSize: 32768, visionTokensPerImage: 1024 };
+    await expect(owner.ensurePromptReady({ ...settings, promptModelId: "fixture-model" }, strataFixturePolicy, { request })).rejects.toThrow("上下文");
+    expect(preflight).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+    expect(load).not.toHaveBeenCalled(); expect(handoff).not.toHaveBeenCalled();
+    expect(f.child.stop).toHaveBeenCalledOnce(); expect(owner.snapshot().pid).toBeNull();
+  });
   it("owns prepare -> authenticated load -> retained reuse, with a caller-bound signal instead of blocking its own Prompt lease", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "strata-owner-prompt-"));
     const configPath = path.join(root, "pack", "runtime.json");

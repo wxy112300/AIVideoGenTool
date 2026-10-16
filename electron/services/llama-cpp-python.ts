@@ -1,13 +1,13 @@
 import type { Settings, LlamaCppPythonStatus } from "../../src/types.js";
 import { pythonProbeCache } from "./python-probe-cache.js";
 
-export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.4";
+export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.5";
 export const LLAMA_CPP_PYTHON_WHEEL_ROOT =
   "https://abetlen.github.io/llama-cpp-python/whl";
 
 /** Pinned Windows wheel with dynamically loaded CUDA and CPU backends. */
-export const LLAMA_CPP_PYTHON_JAMEPENG_VERSION = "0.3.46";
-export const LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE = "20260808";
+export const LLAMA_CPP_PYTHON_JAMEPENG_VERSION = "0.4.2";
+export const LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE = "20261003";
 
 const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu124",
@@ -17,7 +17,7 @@ const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu131"
 ]);
 
-// Verified against the published v0.3.46 Windows release assets. Reject an
+// Verified against the published v0.4.2 Windows release assets. Reject an
 // unknown ABI before pip starts so another computer gets an actionable error
 // instead of a long download followed by a GitHub 404.
 export const LLAMA_CPP_PYTHON_JAMEPENG_PYTHON_ABIS = [
@@ -441,7 +441,7 @@ async function installLlamaCppPythonPackageUnlocked(
       );
     } else if (repairWheel) {
       report(
-        `安装 JamePeng ${LLAMA_CPP_PYTHON_JAMEPENG_VERSION} Windows CUDA 动态后端；下载约 299 MB，网络较慢时可能需要 10–20 分钟……`
+        `安装 JamePeng ${LLAMA_CPP_PYTHON_JAMEPENG_VERSION} Windows CUDA 动态后端；下载大小取决于匹配的 CUDA / Python 安装包……`
       );
     } else {
       report(

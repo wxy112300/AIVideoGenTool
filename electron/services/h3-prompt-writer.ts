@@ -16,7 +16,6 @@ import {
 } from "../../src/core/qwen-image-prompt.js";
 import { imageEditPromptContractForTarget } from "../../src/core/image-prompt.js";
 import {
-  assertDetailedCinematicExpansion,
   h3ExplicitConstraintSummary,
   h3DetailedExpansionMinimumWords,
   h3DetailedExpansionTargetWords,
@@ -479,7 +478,8 @@ export async function enhancePromptWithH3PromptWriter(
       request.prompt,
       nativeStateContinuation,
       nativeStateContinuation,
-      request.continuumPreviousChunk
+      request.continuumPreviousChunk,
+      request.h3PromptPreset
     );
     if (!detailedExpansion) return normalizeWriterResult(result.prompt);
     let currentResult = result;
@@ -489,7 +489,6 @@ export async function enhancePromptWithH3PromptWriter(
     for (let repairAttempt = 0; repairAttempt <= 2; repairAttempt += 1) {
       try {
         normalizedPrompt = normalizeWriterResult(currentPrompt);
-        assertDetailedCinematicExpansion(normalizedPrompt, h3Mode, durationSeconds, sourcePrompt);
         return normalizedPrompt;
       } catch (error) {
         validationError = error;

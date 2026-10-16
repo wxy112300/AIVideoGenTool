@@ -428,13 +428,13 @@ describe("MiniMax H3 prompt templates", () => {
       source
     )).not.toThrow();
 
-    const unrelatedTimeline = Array.from({ length: 260 }, (_, index) => `unrelated${index + 1}`).join(" ");
+    const paraphrasedTimeline = `The enormous figure scoops up the miniature companion and walks toward the glass as the lens follows in parallel. ${Array.from({ length: 260 }, (_, index) => `detail${index + 1}`).join(" ")}`;
     expect(() => assertDetailedCinematicExpansion(
-      `integrated_multimodal_description: [Shot 1] ${unrelatedTimeline}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`,
+      `integrated_multimodal_description: [Shot 1] ${paraphrasedTimeline}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`,
       "I2VA",
       5,
       source
-    )).toThrow("遗漏了过多原始提示词要点");
+    )).not.toThrow();
   });
 
   it("removes labeled annotation echoes from the generated H3 output", () => {

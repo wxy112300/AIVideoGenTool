@@ -132,6 +132,7 @@ function sharedLlamaRequirementPackages(source: string): {
 }
 
 export const h3PromptWriterPatchFiles = [
+  "backend/models/gguf_adapters.py",
   "backend/models/gguf_backend.py",
   "backend/models/gguf/_backend.py",
   "backend/assembly.py",

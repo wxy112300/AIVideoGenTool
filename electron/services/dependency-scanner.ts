@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
+import { multimodalPromptSupportsLeanLogits } from "../../src/infrastructure/multimodal-prompt-logits.js";
 import path from "node:path";
 import {
   customNodeCatalog,
@@ -24,6 +25,7 @@ import { readComfyGitCommitDate, readComfyGitRevision } from "./comfy-discovery.
 import {
   multimodalPromptRecognizesQwen38,
   multimodalPromptSupportsAdaptiveGeneration,
+  patchH3PromptWriterLlamaCppCompatibility,
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
 } from "../../src/infrastructure/dependency-node-adapters.js";
@@ -564,6 +566,16 @@ export async function scanCustomNodes(
         updateNotice = notice;
         optionalUpdateRecommended = true;
       }
+    } else if (definition.id === "minimax-h3-prompt-writer" && directory) {
+      const sources = await Promise.all([
+        "backend/models/gguf_adapters.py", "backend/runtime_diagnostics.py"
+      ].map((filename) => fs.readFile(path.join(directory, filename), "utf8").catch(() => "")));
+      if (sources.some((source) => patchH3PromptWriterLlamaCppCompatibility(source) !== source)) {
+        const notice = "节点尚未适配共享 llama-cpp-python 0.4.x；请执行一键修复并重启 ComfyUI";
+        compatibilityNotice = notice;
+        updateNotice = notice;
+        optionalUpdateRecommended = true;
+      }
     } else if (definition.id === "comfyui-multimodal-prompt-nodes" && directory) {
       const [visionSource, discoverySource] = await Promise.all([
         fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8").catch(() => ""),
@@ -578,10 +590,13 @@ export async function scanCustomNodes(
           multimodalPromptSupportsAdaptiveGeneration(visionSource) &&
           visionSource.includes("/local-video-studio/multimodal-prompt/diagnostics")
         );
-      if (!qwen38Compatible || !projectorDiscoveryCompatible || !adaptiveGenerationCompatible) {
+      const leanLogitsCompatible = !visionSource || multimodalPromptSupportsLeanLogits(visionSource);
+      if (!qwen38Compatible || !projectorDiscoveryCompatible || !adaptiveGenerationCompatible || !leanLogitsCompatible) {
         const notice = !qwen38Compatible || !projectorDiscoveryCompatible
           ? "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI"
-          : "节点尚未适配影视细节扩写的按需 16K/3072 输出预算与安全诊断；长时间线仍会被 2048 token 限制，请执行一键修复并重启 ComfyUI";
+          : !adaptiveGenerationCompatible
+            ? "节点尚未适配影视细节扩写的按需 16K/3072 输出预算与安全诊断；长时间线仍会被 2048 token 限制，请执行一键修复并重启 ComfyUI"
+            : "节点尚未适配 Qwen MTMD 精简 logits；请执行一键修复并重启 ComfyUI，旧视觉后端行为保持不变";
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;

@@ -70,6 +70,7 @@ import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { PromptRuntimeManager } from "./prompt-runtime-manager.js";
 import { enhancePromptWithStrata, strataPromptPolicy } from "./strata-prompt.js";
+import type { StrataChatRequest } from "./strata-service.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 
 type PromptBackend = Exclude<ReturnType<typeof promptModelBackend>, null>;
@@ -784,12 +785,13 @@ export class PromptApplicationService {
       const leaseAlreadyRetained = this.promptRuntimeLeaseMatches(promptBackend, settings.promptModelId);
       if (this.retainedPromptRuntime && !leaseAlreadyRetained) await this.releaseRuntime(settings);
       this.deps.promptRuntimeManager.setOperationPhase(operationId, "warming-model");
-      await this.ensureStrataReady(settings, controller.signal, onProgress);
-      this.retainedPromptRuntime = { backend: promptBackend, modelId: settings.promptModelId };
-      this.deps.promptRuntimeManager.setOperationPhase(operationId, "submitting");
       // Strata has no ComfyUI prompt ID. Keep it null, with running feedback in PromptProgress.
       const result = await withPromptExtensionMedia(request, operationId, controller.signal, (prepared) =>
-        enhancePromptWithStrata(prepared, settings, this.deps.strata!, controller.signal, onProgress));
+        enhancePromptWithStrata(prepared, settings, this.deps.strata!, controller.signal, onProgress, async (chat) => {
+          await this.ensureStrataReady(settings, controller.signal, onProgress, chat);
+          this.retainedPromptRuntime = { backend: promptBackend, modelId: settings.promptModelId };
+          this.deps.promptRuntimeManager.setOperationPhase(operationId, "submitting");
+        }));
       return { result, leaseAlreadyRetained };
     }
     await this.deps.externalRuntime?.stop();
@@ -976,7 +978,7 @@ export class PromptApplicationService {
     }
   }
 
-  private async ensureStrataReady(settings: Settings, signal: AbortSignal, onProgress?: PromptProgressReporter): Promise<void> {
+  private async ensureStrataReady(settings: Settings, signal: AbortSignal, onProgress?: PromptProgressReporter, request?: StrataChatRequest): Promise<void> {
     if (!this.deps.strata) throw new Error("Strata 运行组件未接入。");
     const scan = await scanEnvironment(settings, "runtime");
     signal.throwIfAborted();
@@ -986,7 +988,7 @@ export class PromptApplicationService {
       throw new Error("当前 Strata 配置需要约 24GB NVIDIA 显存和 580+ 驱动；不会自动切换 CPU。");
     }
     await this.deps.strata.ensurePromptReady(settings, strataPromptPolicy(settings), {
-      resolvedModelDirectory: scan.modelDirectory, signal,
+      resolvedModelDirectory: scan.modelDirectory, signal, request,
       onLog: (message) => onProgress?.("loading-model", null, message)
     });
     signal.throwIfAborted();

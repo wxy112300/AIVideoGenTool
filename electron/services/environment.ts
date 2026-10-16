@@ -7,7 +7,8 @@ export { renameWithRetry } from "./filesystem-retry.js";
 import { scanStrataPreparation } from "./strata-preparation.js";
 import { installStrataRuntime, uninstallStrataRuntime } from "./strata-installation.js";
 import { withDownloadFileProgress } from "./download-file-progress.js";
-import { STRATA_ENGINE_BYTES } from "../../src/core/catalog/dependencies/strata.js";
+import { downloadWithResume } from "./resumable-download.js";
+import { STRATA_ENGINE_BYTES, STRATA_REPOSITORY } from "../../src/core/catalog/dependencies/strata.js";
 import type { StrataInstallProgress } from "../../src/types.js";
 import { installationSignal, checkInstallationCancelled } from "./installation-cancellation.js";
 import { promisify } from "node:util";
@@ -334,13 +335,13 @@ async function latestCatalogNodeReleaseVersions(
   const entries = customNodeCatalog.filter((definition) =>
     definition.releaseSource === "github-release"
   );
-  const versions = await Promise.all(entries.map(async (definition) => {
+  const versions = await Promise.all([...entries.map(async (definition) => {
     const repository = definition.repositoryUrl
       .replace(/^https?:\/\/github\.com\//i, "")
       .replace(/\.git$/i, "")
       .replace(/\/+$/u, "");
     return [definition.id, await latestGitHubReleaseVersion(settings, repository)] as const;
-  }));
+  }), latestGitHubReleaseVersion(settings, STRATA_REPOSITORY).then((version) => ["strata", version] as const)]);
   return Object.fromEntries(versions.filter(([, version]) => version));
 }
 
@@ -1997,7 +1998,14 @@ export async function uninstallStrata(settings: Settings, onProgress?: (message:
 
 export function installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
   return installStrataRuntime(settings, {
-    download: (url, destination, requested, report) => downloadFileWithCurl(url, destination, requested, report ? { totalBytes: STRATA_ENGINE_BYTES, onProgress: report } : undefined),
+    download: async (url, destination, requested, report, onLog) => {
+      const curl = await findExecutable("curl.exe");
+      if (!curl) throw new Error("没有找到 curl，无法下载 Strata 引擎。");
+      await downloadWithResume({ url, destination, totalBytes: STRATA_ENGINE_BYTES, signal: installationSignal(),
+        extraArgs: requested.proxyEnabled ? ["--proxy", normalizeProxyUrl(requested.proxyUrl)] : [],
+        run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, env: downloadEnvironment(requested) }),
+        onProgress: report, onLog });
+    },
     findPython: async (requested) => {
       const candidates = await discoverPythonRuntimes(requested);
       for (const candidate of candidates) {
@@ -5496,7 +5504,7 @@ async function scanFullEnvironment(
     attentionAcceleration,
     items,
     modelProfiles: [...modelProfiles, ...strata.profiles],
-    strataPreparation: strata.status,
+    strataPreparation: { ...strata.status, latestVersion: (await latestNodeVersionsPromise).strata || "" },
     customNodes: runtimeValidatedCustomNodes,
     dlss5Runtime,
     depthAnything,
@@ -5785,7 +5793,7 @@ async function scanEnvironmentDependencies(
     attentionAcceleration,
     items,
     modelProfiles: [...modelProfiles, ...strata.profiles],
-    strataPreparation: strata.status,
+    strataPreparation: { ...strata.status, latestVersion: runtimeOnly ? previous.strataPreparation?.latestVersion || "" : (await latestNodeVersionsPromise).strata || "" },
     customNodes: runtimeValidatedCustomNodes,
     dlss5Runtime: managedGuideAssets.dlss5Runtime,
     depthAnything: managedGuideAssets.depthAnything,

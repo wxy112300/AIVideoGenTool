@@ -25,7 +25,7 @@ import {
 import { promptModelCapabilityOrderValue } from "../../../core/prompt-models";
 import { strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 import { renderStrataPreparationPanel } from "./strata-preparation";
-import { renderDependencyActionSplit } from "./dependency-actions";
+import { renderDependencyActionSplit, renderDependencyVersions } from "./dependency-actions";
 import { compareReleaseVersions } from "../../../core/release-version";
 import {
   renderSettingsComfyCompatibilityPanel,
@@ -856,26 +856,9 @@ export function renderSettingsPage(
       : versionMode === "pinned"
         ? s("nodes.pinnedVersion")
         : s("nodes.versionUnavailable");
-    const renderVersion = (value: string, fallback: string) =>
-      value ? `v${escape(value)}` : escape(fallback);
-    const localVersion = renderVersion(
-      node.version,
-      node.installed
-        ? versionMode === "release" ? s("nodes.versionUnread") : versionFallback
-        : s("nodes.notInstalled")
-    );
     const versionSummaryMarkup = versionMode === "release"
-      ? (() => {
-          const recommendedVersion = renderVersion(node.recommendedVersion, versionFallback);
-          const latestVersion = renderVersion(node.latestVersion, versionFallback);
-          return `<p class="node-version-line" aria-label="${escape(s("nodes.versionSummary"))}">
-            <span class="node-version-item"><span class="node-version-label">${s("nodes.localVersion")}</span><strong class="node-version-value">${localVersion}</strong></span>
-            <span class="node-version-separator" aria-hidden="true">·</span>
-            <span class="node-version-item"><span class="node-version-label">${s("nodes.recommendedVersion")}</span><strong class="node-version-value">${recommendedVersion}</strong></span>
-            <span class="node-version-separator" aria-hidden="true">·</span>
-            <span class="node-version-item"><span class="node-version-label">${s("nodes.latestVersion")}</span><strong class="node-version-value">${latestVersion}</strong></span>
-          </p>`;
-        })()
+      ? renderDependencyVersions(settings.uiLocale, escape, { current: node.version, recommended: node.recommendedVersion,
+          latest: node.latestVersion, currentFallback: node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled"), fallback: versionFallback })
       : `<p class="node-version-line" aria-label="${escape(s("nodes.versionSummary"))}">
           <span class="node-version-item"><span class="node-version-label">${s("nodes.versionLabel")}</span><strong class="node-version-value">${versionFallback}</strong></span>
           ${versionMode === "rolling" && node.revisionDate ? `<span class="node-version-separator" aria-hidden="true">·</span><span class="node-version-item"><span class="node-version-label">${s("nodes.commitDate")}</span><strong class="node-version-value">${escape(node.revisionDate)}</strong></span>` : ""}
