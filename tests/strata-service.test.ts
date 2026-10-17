@@ -26,6 +26,30 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
+  it("uses the confirmed file tier at chat entry, resets it on stop, and honors custom pressure at every entry", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "strata-file-tier-")); roots.push(root);
+    const log = path.join(root,"engine.log"); await fs.writeFile(log,"");
+    const f=fixture(); const GiB=1024**3;
+    const safe={memoryAvailableBytes:40*GiB,commitAvailableBytes:45*GiB,vramAvailableBytes:21.5*GiB,vramTotalBytes:24*GiB};
+    let low=false,chatCount=0;
+    const read=async()=>low?{...safe,memoryAvailableBytes:2.5*GiB,commitAvailableBytes:10*GiB,vramAvailableBytes:4*GiB}:safe;
+    f.fetchMock.mockImplementation(async url=>{
+      if(String(url).endsWith('/v1/load')){await fs.appendFile(log,'WARNING: the whole resident RAM mode does not fit\n');low=true;f.load();return new Response('{"status":"loaded"}');}
+      if(String(url).endsWith('/v1/chat/completions')){chatCount++;return new Response('data: {"choices":[{"index":0,"delta":{"content":"complete"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});}
+      return new Response(JSON.stringify(String(url).endsWith('/health')?{service:'strata',status:'ok',loaded:true,api_key:true}:{object:'list',data:[]}));
+    });
+    const service=new StrataService({launch:f.launch,portInUse:f.portInUse,fetch:f.fetchMock,readResources:read});
+    const launch={...plan(),resourcePlan:planStrataResources(safe,5120,{allowFileReadFallback:true}),allowResidentFallback:true,residentEngineLog:log};
+    await service.start(launch);await service.load();expect(service.snapshot().hostMemoryMode).toBe('file-read');
+    const request={modelId:'fixture',messages:[{role:'user' as const,content:'enhance'}],maxTokens:8192,temperature:.7};
+    expect(await service.chat(request)).toBe('complete');expect(await service.chat(request)).toBe('complete');expect(chatCount).toBe(2);
+    await service.stop();expect(service.snapshot().hostMemoryMode).toBeNull();
+    const override=vi.fn(()=>"explicit custom pressure");
+    const fresh=fixture();
+    const other=new StrataService({launch:fresh.launch,portInUse:fresh.portInUse,fetch:fresh.fetchMock,readResources:read,resourcePressure:override});
+    await other.start({...plan(),resourcePlan:launch.resourcePlan});
+    await expect(other.chat(request)).rejects.toThrow('explicit custom pressure');expect(override).toHaveBeenCalledOnce();expect(chatCount).toBe(2);
+  });
   it("sends the tokenizer-sized automatic output allowance and bounded thinking, reports usage without text", async () => {
     const f = fixture(), diagnostics = vi.fn(), onBudget = vi.fn();
     const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock, onDiagnostics: diagnostics });
@@ -87,6 +111,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     const next = (await fs.stat(filename)).size;
     await fs.appendFile(filename, "WARNING: the whole resident RAM mode does not fit (available commit)\n");
     await expect(assertStrataResidentLog(filename, next)).rejects.toThrow("提交容量");
+    await expect(assertStrataResidentLog(filename, next, true)).resolves.toBe(true);
     await expect(assertStrataResidentLog(filename, (await fs.stat(filename)).size)).rejects.toThrow("本次");
   });
   it("preflights a long request with the matching thinking template without loading GPU", async () => {
@@ -194,6 +219,61 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     expect(f.service.snapshot()).toMatchObject({ phase: "stopped", pid: null, modelLoaded: null });
   });
 
+  it("keeps a long-context stream and its next enhancement resident after transient telemetry loss", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const safe = { memoryAvailableBytes: 100 * 1024 ** 3, commitAvailableBytes: 100 * 1024 ** 3,
+      vramAvailableBytes: 21.5 * 1024 ** 3, vramTotalBytes: 24 * 1024 ** 3 };
+    const read = vi.fn().mockResolvedValueOnce({ ...safe, commitAvailableBytes: null }).mockResolvedValueOnce(safe)
+      .mockResolvedValueOnce({ ...safe, vramAvailableBytes: null }).mockResolvedValue(safe);
+    const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock as typeof fetch, readResources: read });
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    let chatCount = 0;
+    const originalFetch = f.fetchMock.getMockImplementation()!;
+    f.fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).includes("count_tokens")) return new Response('{"input_tokens":16000}');
+      if (!String(url).endsWith("/v1/chat/completions")) return originalFetch(url, options);
+      expect(JSON.parse(options!.body as string).max_tokens).toBe(16512);
+      chatCount++;
+      return new Response(new ReadableStream({ start(controller) {
+        stream = controller;
+        options!.signal!.addEventListener("abort", () => controller.error(options!.signal!.reason), { once: true });
+      } }), { headers: { "content-type": "text/event-stream" } });
+    });
+    try {
+      await service.start({ ...plan(), resourcePlan: planStrataResources(safe, 5120) }); f.load();
+      const request = { modelId: "fixture", messages: [{ role: "user" as const, content: "long source ".repeat(8000) }],
+        maxTokens: 8192, contextSize: 32768, visionTokensPerImage: 1024, automaticOutputBudget: true, temperature: .7 };
+      const first = service.chat(request);
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(chatCount).toBe(1); expect(f.child.stop).not.toHaveBeenCalled();
+      stream.enqueue(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"complete first"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')); stream.close();
+      await expect(first).resolves.toBe("complete first");
+      read.mockResolvedValueOnce({ ...safe, commitAvailableBytes: null }).mockResolvedValueOnce(safe);
+      const second = service.chat(request); await vi.advanceTimersByTimeAsync(500);
+      expect(chatCount).toBe(2);
+      stream.enqueue(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"complete second"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')); stream.close();
+      await expect(second).resolves.toBe("complete second");
+      expect(f.launch).toHaveBeenCalledOnce(); expect(f.child.stop).not.toHaveBeenCalled();
+      expect(service.snapshot()).toMatchObject({ phase: "ready", modelLoaded: true });
+    } finally { await service.stop(); vi.useRealTimers(); }
+  });
+
+  it("stops only its model after persistent telemetry loss, before sending another inference", async () => {
+    vi.useFakeTimers(); const f = fixture();
+    const safe = { memoryAvailableBytes: 100 * 1024 ** 3, commitAvailableBytes: 100 * 1024 ** 3,
+      vramAvailableBytes: 21.5 * 1024 ** 3, vramTotalBytes: 24 * 1024 ** 3 };
+    const read = vi.fn().mockResolvedValue({ ...safe, commitAvailableBytes: null });
+    const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock as typeof fetch, readResources: read });
+    try {
+      await service.start({ ...plan(), resourcePlan: planStrataResources(safe, 5120) });
+      const failure = expect(service.chat({ modelId: "fixture", messages: [{ role: "user", content: "source" }], maxTokens: 100, temperature: .7 })).rejects.toThrow("持续不可用");
+      await vi.advanceTimersByTimeAsync(1500); await failure;
+      expect(read).toHaveBeenCalledTimes(3); expect(f.child.stop).toHaveBeenCalledOnce();
+      expect(f.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/v1/chat/completions"))).toBe(false);
+    } finally { await service.stop(); vi.useRealTimers(); }
+  });
+
   it("can cancel service startup before its deadline and cleans up only its child", async () => {
     const f = fixture(), controller = new AbortController();
     f.fetchMock.mockImplementation(async () => { controller.abort(new Error("cancel startup")); throw new Error("not ready"); });
@@ -231,10 +311,16 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe("5120");
       expect(derived.args[derived.args.indexOf("--expert-cache")+1]).toBe("auto");
       expect(session.env).toMatchObject({STRATA_RESIDENT_HEADROOM_GIB:"6"});
+      expect(session.allowResidentFallback).toBe(mode==="resident");
+      expect(session.env!.STRATA_FILE_RELEASE).toBe(process.platform==="win32"&&mode==="resident"?"0":undefined);
       expect(await fs.readFile(config,"utf8")).toBe(before);
       const f=fixture();await f.service.start(session);await f.service.stop();
       await expect(fs.stat(session.temporaryConfig!)).rejects.toMatchObject({code:"ENOENT"});
     }
+    const fallback = await prepareStrataLaunch(settings,config,{adaptive:true,readResources:async()=>({memoryAvailableBytes:40*1024**3,
+      commitAvailableBytes:45*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3})});
+    expect(fallback.allowResidentFallback).toBe(true);expect(fallback.resourcePlan!.requiredCommitBytes).toBe(42*1024**3);
+    await fs.unlink(fallback.temporaryConfig!);
     await fs.rm(config);
     await expect(prepareStrataLaunch(settings, config)).rejects.toThrow("启动文件缺失");
   });

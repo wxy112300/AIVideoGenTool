@@ -70,6 +70,16 @@ function fixture() {
 }
 
 describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
+  it("rejects invalid text without stopping a healthy model, then reuses it for the next enhancement", async () => {
+    const f=fixture(),before=structuredClone(f.state);
+    f.owner.chat.mockResolvedValueOnce('integrated_multimodal_description: [Shot 1] Too short.\noverall_soundscape: N/A\nnon_diegetic_music: N/A');
+    await expect(f.service.enhance({prompt:'A detailed airport scene.',modelId:'minimax_h3_fl2va',mode:'h3-vision',h3PromptMode:'I2VA',h3PromptPreset:'detailed-cinematic',h3DurationSeconds:15})).rejects.toThrow('词');
+    expect(f.owner.stop).not.toHaveBeenCalled();expect(f.owner.snapshot()).toMatchObject({pid:123,modelLoaded:true});
+    expect(f.manager.snapshot()).toMatchObject({service:{phase:'ready'},model:{phase:'resident'},operation:{terminalStatus:'failed'}});
+    expect(f.logger.info).toHaveBeenCalledWith('prompt','strata-validation-retained',expect.any(String),expect.objectContaining({strataPid:123}));
+    expect(f.state).toEqual(before);expect(await f.service.enhance(request)).toBe('The blue car.');
+    expect(f.owner.snapshot().pid).toBe(123);await f.service.releaseForUser();expect(f.owner.stop).toHaveBeenCalledOnce();
+  });
   it("keeps CPU preparation details and process identity in progress/logs, without logging generated prompt text", async () => {
     const f = fixture();
     f.owner.ensurePromptReady.mockImplementationOnce(async (_settings, _policy, options) => {
@@ -313,6 +323,7 @@ describe("Strata Pack, image and output contracts", () => {
       h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 })).rejects.toThrow("至少 250");
     expect(f.state).toEqual(before);
     expect(f.progress.at(-1)?.status).toBe("failed");
-    expect(f.manager.snapshot().model.phase).toBe("unloaded");
+    expect(f.manager.snapshot().model.phase).toBe("resident");
+    expect(f.owner.stop).not.toHaveBeenCalled();
   });
 });

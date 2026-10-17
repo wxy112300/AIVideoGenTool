@@ -4,6 +4,7 @@ import { prepareStrataLaunch, StrataService, type StrataChatRequest, type Strata
 import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 
 interface StrataRuntimeOwnerDependencies {
+  resourceGate?: { acquire(): Promise<void>; track(pid: number): Promise<void> };
   run: StrataModelPreparationRuntime["run"];
   isResourcesBusy(signal?: AbortSignal): boolean;
   beforeInference?(): Promise<void>;
@@ -14,7 +15,7 @@ interface StrataRuntimeOwnerDependencies {
   onDiagnostics?(diagnostics: StrataChatDiagnostics): void;
 }
 
-/** One application owner for preparation, software mutations, requests and process cleanup. No persisted lease. */
+/** Application operation owner; production composes the shared cross-process resource gate. */
 export class StrataRuntimeOwner {
   private readonly service: StrataService;
   private controller: AbortController | null = null;
@@ -25,7 +26,7 @@ export class StrataRuntimeOwner {
   private selectionKey: string | null = null;
 
   constructor(private readonly deps: StrataRuntimeOwnerDependencies) {
-    this.service = deps.service ?? new StrataService({ onDiagnostics: deps.onDiagnostics });
+    this.service = deps.service ?? new StrataService({ onDiagnostics: deps.onDiagnostics, onSpawn: (pid) => deps.resourceGate?.track(pid) });
   }
 
   isBusy(): boolean { return Boolean(this.worker || this.stopping); }
@@ -96,11 +97,14 @@ export class StrataRuntimeOwner {
           plan = adaptivePlan;
           if (plan.modelId !== settings.promptModelId) throw new Error("Strata 自适应配置模型身份改变。");
           options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : "GPU 外专家 RAM 驻留"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
+          options.onLog?.(`资源准入：commit至少 ${(plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB；允许官方文件回读=${plan.allowResidentFallback === true}，实际模式待引擎确认`);
+          options.onLog?.(`Windows文件页释放：STRATA_FILE_RELEASE=${plan.env?.STRATA_FILE_RELEASE ?? "unset"}；仅影响自有引擎的只读专家文件页，不清理其他进程`);
           await this.service.start(plan, signal);
         }
         options.onStage?.("loading-model");
         options.onLog?.("正在加载 Strata GPU 模型；加载请求上限 10 分钟，可取消并停止自有进程");
         const state = await this.service.load(signal);
+        options.onLog?.(`模型已加载：hostMemoryMode=${state.hostMemoryMode ?? "unknown"}；H3上下文保持 ${policy.maxContext}`);
         options.onLog?.(`uncensored: engineConfirmed=${state.uncensored?.vectorLoaded === true} vector=${state.uncensored?.vectorId ?? "none"}; nextRequest=${wantsUncensored}`);
         this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
         return state;
@@ -194,6 +198,8 @@ export class StrataRuntimeOwner {
     const ownedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     this.controller = controller;
     const worker = Promise.resolve().then(async () => {
+      ownedSignal.throwIfAborted();
+      await this.deps.resourceGate?.acquire();
       ownedSignal.throwIfAborted();
       return operation(ownedSignal);
     });

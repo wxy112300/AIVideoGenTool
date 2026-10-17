@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.electron.json",
+  "compilerOptions": { "outDir": ".runtime", "rootDir": "../..", "types": ["node"] },
+  "include": ["../../electron/services/strata-agent-controller.ts"]
+}

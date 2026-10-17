@@ -13,13 +13,16 @@ export interface StrataResourcePlan {
   availableMemoryBytes: number;
   minimumFreeVramBytes: number;
   headroomGiB: number;
+  estimatedCommitBytes?: number;
+  commitTrial?: boolean;
 }
 
 /** IQ3_XXS arena size and low-RAM split follow pinned Strata setup.py (0.1.44.1).
  * These are admission estimates, NOT a hard CUDA allocation cap. Keep cache=auto.
  * Reserve additionally covers the GPU image encoder, WDDM reporting error and workspace.
  */
-export function planStrataResources(resources: StrataResources, requestedReserveMiB: number): StrataResourcePlan {
+export function planStrataResources(resources: StrataResources, requestedReserveMiB: number,
+  options: { commitTrial?: boolean; allowFileReadFallback?: boolean } = {}): StrataResourcePlan {
   const { memoryAvailableBytes: ram, commitAvailableBytes: commit, vramAvailableBytes: free, vramTotalBytes: total } = resources;
   if (![ram, commit, free, total, requestedReserveMiB].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
     || !total || free! > total) throw new Error("无法确认 Strata 的可用 RAM、Windows 提交余量或显存，未加载模型。请重新检查资源。");
@@ -41,15 +44,38 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   // Windows CUDA/WDDM loading also consumes commit independently of physical RAM.
   // Measured on 4090: ~19GiB commit disappeared before the RAM complement allocation.
   // Budget one adapter's capacity rather than assuming free RAM == free commit.
-  const requiredCommitBytes = requiredMemoryBytes + total;
+  const estimatedCommitBytes = requiredMemoryBytes + total;
+  // Explicit Agent validation only: measure WDDM overhead instead of treating the
+  // entire adapter capacity as an observed allocation. RAM/VRAM and live floors remain.
+  // The Agent accepts upstream's bounded file tier instead of demanding the full
+  // complement allocation. Real 32K/64K/128K/262144 runs on this 24GiB Windows
+  // adapter retained >=7.9GiB commit; native auto-cache/file-tier selects its own
+  // bounded complement. Retain a 42GiB admission estimate for explicit file-tier
+  // launches, including H3 after user-authorized adoption. Arena stays strict.
+  const fallbackCommitBytes = Math.max(requiredMemoryBytes, total + 18 * GiB);
+  const requiredCommitBytes = options.commitTrial ? requiredMemoryBytes
+    : options.allowFileReadFallback && hostMode === "resident" ? fallbackCommitBytes : estimatedCommitBytes;
   if (commit! < requiredCommitBytes) throw new Error(`Strata Windows 加载预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM、${(requiredCommitBytes / GiB).toFixed(1)}GiB 提交余量（含 CUDA 加载预留），目前提交余量 ${(commit! / GiB).toFixed(1)}GiB；未加载模型。请释放程序占用，或检查系统分页文件容量后重试；应用不会修改系统设置。`);
-  return { hostMode, vramReserveMiB: reserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB };
+  return { hostMode, vramReserveMiB: reserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB,
+    ...(options.commitTrial ? { commitTrial: true, estimatedCommitBytes } : {}) };
 }
 
 /** Last-resort early stop in addition to admission and auto-cache reserve, not an OOM guarantee. */
-export function strataResourcePressure(resources: StrataResources): string | null {
-  if (![resources.vramAvailableBytes, resources.commitAvailableBytes, resources.memoryAvailableBytes].every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0)) return "Strata 资源监测不可用，已中止自有模型以保护资源。";
-  if (resources.vramAvailableBytes! < 2 * GiB) return "Strata 空闲显存低于 2GiB 安全线，已中止自有模型。";
-  if (Math.min(resources.memoryAvailableBytes, resources.commitAvailableBytes!) < 3 * GiB) return "Strata 可用内存或提交余量低于 3GiB 安全线，已中止自有模型。";
+export function missingStrataResourceMetrics(resources: StrataResources): string[] {
+  return (["vramAvailableBytes", "commitAvailableBytes", "memoryAvailableBytes"] as const)
+    .filter((key) => { const value = resources[key]; return typeof value !== "number" || !Number.isFinite(value) || value < 0; });
+}
+
+/** A known dangerous metric wins even if a different sensor is temporarily unavailable. */
+export function knownStrataResourcePressure(resources: StrataResources): string | null {
+  const valid = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  if (valid(resources.vramAvailableBytes) && resources.vramAvailableBytes < 2 * GiB) return "Strata 空闲显存低于 2GiB 安全线，已中止自有模型。";
+  if ([resources.memoryAvailableBytes, resources.commitAvailableBytes].some((v) => valid(v) && v < 3 * GiB))
+    return "Strata 可用内存或提交余量低于 3GiB 安全线，已中止自有模型。";
   return null;
+}
+
+export function strataResourcePressure(resources: StrataResources): string | null {
+  return knownStrataResourcePressure(resources) ?? (missingStrataResourceMetrics(resources).length
+    ? "Strata 资源监测不可用，已中止自有模型以保护资源。" : null);
 }

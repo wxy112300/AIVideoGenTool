@@ -10,8 +10,9 @@ import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream } from "../../src/core/strata-chat-stream.js";
 import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
-import { planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
-import { readStrataResources, watchStrataResources } from "./strata-resources.js";
+import { knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
+import { readReliableStrataResources, readStrataResources, watchStrataResources } from "./strata-resources.js";
+import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
 import { supportsStrataUncensored, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
 import { assertStrataControlVectorLog, verifyStrataControlVector, type StrataControlVector } from "./strata-uncensored.js";
 
@@ -81,6 +82,7 @@ export interface StrataLaunchPlan {
   apiKey: string;
   modelId?: string;
   residentEngineLog?: string;
+  allowResidentFallback?: boolean;
   resourcePlan?: StrataResourcePlan;
   temporaryConfig?: string;
   env?: Record<string, string>;
@@ -122,7 +124,7 @@ export async function prepareStrataLaunch(
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf("--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error("Strata 准备配置缺少显存策略。");
-    resourcePlan = planStrataResources(await (options.readResources ?? readStrataResources)(), Number(runtimeConfig.args[reserveIndex + 1]));
+    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources), Number(runtimeConfig.args[reserveIndex + 1]), { allowFileReadFallback: true });
     runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
     if (resourcePlan.hostMode === "arena") runtimeConfig.args = runtimeConfig.args.filter((arg: string) => arg !== "--resident-experts");
   }
@@ -136,8 +138,11 @@ export async function prepareStrataLaunch(
     engineLog: runtimeConfig.log, uncensoredRequested: settings.strataUncensored === true,
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
-    ...(resourcePlan ? { resourcePlan,
-      env: { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB) } } : {}),
+    ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
+      env: { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+        // Keep this working-set opt-in OFF pending the interrupted long-input
+        // trial's kernel-dump investigation. Short trials are not full validation.
+        ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
     ...(runtimeConfig.args.includes("--resident-experts") ? { residentEngineLog: runtimeConfig.log } : {}),
     args: ["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", launchConfig,
       "--host", "127.0.0.1", "--port", String(settings.strataPort), "--lazy", ...(monitorAvailable ? ["--api-monitor"] : []), "--api-key", apiKey]
@@ -187,6 +192,7 @@ export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk
 }
 
 export interface StrataServiceSnapshot {
+  hostMemoryMode?: "arena" | "resident" | "file-read" | null;
   phase: "stopped" | "starting" | "ready" | "stopping" | "error";
   port: number | null;
   pid: number | null;
@@ -203,6 +209,7 @@ export interface StrataMonitorConnection {
 }
 
 interface StrataServiceDependencies {
+  onSpawn?(pid: number): Promise<void> | undefined;
   launch?: typeof launchStrataProcess;
   portInUse?: typeof isLocalPortInUse;
   fetch?: typeof fetch;
@@ -210,11 +217,18 @@ interface StrataServiceDependencies {
   pollMs?: number;
   requestTimeoutMs?: number;
   readResources?: typeof readStrataResources;
+  resourcePressure?: typeof strataResourcePressure;
   onDiagnostics?(diagnostics: StrataChatDiagnostics): void;
 }
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
 export class StrataService {
+  private readonly residencyPressure = new FileReadResourcePressure();
+  private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
+  private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) =>
+    (this.deps.resourcePressure ?? this.residencyPressure.check.bind(this.residencyPressure))(sample);
+  private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.resourcePressure
+    ? knownStrataResourcePressure(sample) : this.residencyPressure.knownPressure(sample);
   private vectorLoaded = false;
   private modeRequested = false;
   private modeApplied: boolean | null = null;
@@ -231,7 +245,7 @@ export class StrataService {
     if (this.child && !this.child.running() && this.state.phase === "ready") {
       this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 服务已退出。" };
     }
-    return { ...this.state, uncensored: {
+    return { ...this.state, hostMemoryMode: this.state.modelLoaded ? this.hostMemoryMode : null, uncensored: {
       requested: this.modeRequested, supported: supportsStrataUncensored(this.plan?.modelId ?? ""),
       vectorId: this.plan?.controlVector?.id ?? null, vectorSha256: this.plan?.controlVector?.sha256 ?? null,
       vectorLoaded: this.vectorLoaded && this.state.modelLoaded === true, applied: this.state.modelLoaded ? this.modeApplied : null
@@ -263,6 +277,7 @@ export class StrataService {
       }
       signal?.throwIfAborted();
       this.plan = { ...plan, args: [...plan.args] };
+      this.residencyPressure.setLoading(false); this.residencyPressure.setFileRead(false); this.hostMemoryMode = null;
       this.vectorLoaded = false; this.modeApplied = null; this.modeRequested = plan.uncensoredRequested === true;
       this.state = { phase: "starting", port: plan.port, pid: null, modelLoaded: null, message: "正在启动 Strata 服务（延迟加载模型）。", log: "" };
       try {
@@ -270,6 +285,7 @@ export class StrataService {
           this.state.log = `${this.state.log}${chunk}`.replaceAll(plan.apiKey, "[redacted]").slice(-8_000);
         });
         this.state.pid = this.child.pid;
+        await this.deps.onSpawn?.(this.child.pid);
         const deadline = Date.now() + (this.deps.startupTimeoutMs ?? 30_000);
         while (Date.now() < deadline) {
           signal?.throwIfAborted();
@@ -316,15 +332,16 @@ export class StrataService {
       signal = AbortSignal.any([...(signal ? [signal] : []), safety.signal]);
       let disposeWatch = async () => {};
       try {
+        this.residencyPressure.setLoading(plan.allowResidentFallback === true);
         if (plan.resourcePlan) {
-          const resources = await (this.deps.readResources ?? readStrataResources)();
-          const pressure = strataResourcePressure(resources);
+          const resources = await readReliableStrataResources(this.deps.readResources, { signal, knownPressure: this.knownPressure });
+          const pressure = this.pressure(resources);
           if (pressure) throw new Error(pressure);
           if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
             || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
             || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error("Strata 加载前资源已变化，安全预算不再满足；未加载模型，请释放资源后重试。");
           signal.throwIfAborted();
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources);
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { pressure: this.pressure, knownPressure: this.knownPressure });
         }
         const logStart = plan.residentEngineLog ? (await fs.stat(plan.residentEngineLog).catch(() => null))?.size ?? 0 : 0;
         const vectorLogStart = plan.controlVector && plan.engineLog ? (await fs.stat(plan.engineLog).catch(() => null))?.size ?? 0 : 0;
@@ -343,7 +360,12 @@ export class StrataService {
         if (acknowledgement?.status !== "loaded" || !await this.probe()) {
           throw new Error("Strata 模型加载未确认，请检查内存、显存和 CUDA 驱动后重试。");
         }
-        if (plan.residentEngineLog) await assertStrataResidentLog(plan.residentEngineLog, logStart);
+        const fileRead = Boolean(plan.residentEngineLog && await assertStrataResidentLog(plan.residentEngineLog, logStart, plan.allowResidentFallback));
+        this.residencyPressure.setFileRead(fileRead);
+        this.hostMemoryMode = fileRead ? "file-read" : plan.resourcePlan?.hostMode ?? null;
+        if (fileRead) this.state.log += this.deps.resourcePressure
+          ? "\n[Agent] 官方文件回读模式已启用，非完整RAM驻留；速度需实测。\n"
+          : "\n[Strata] 官方文件回读模式已确认；RAM>=2GiB、commit>=6GiB、VRAM>=2GiB时不按完整驻留的3GiB RAM线误停。\n";
         if (plan.controlVector) {
           if (!plan.engineLog) throw new Error("Strata uncensored 缺少引擎确认日志。");
           await assertStrataControlVectorLog(plan.engineLog, vectorLogStart, plan.controlVector);
@@ -359,7 +381,7 @@ export class StrataService {
         this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null };
         if (signal?.aborted) throw signal.reason;
         throw new Error((error instanceof Error ? error.message : "Strata 加载失败。").replaceAll(plan.apiKey, "[redacted]"));
-      } finally { await disposeWatch(); }
+      } finally { this.residencyPressure.setLoading(false); await disposeWatch(); }
     });
   }
 
@@ -419,9 +441,9 @@ export class StrataService {
         if (request.uncensored && (!this.vectorLoaded || !plan.controlVector))
           throw new Error("Strata uncensored 向量尚未确认加载，请重新启动所选模型；未发送推理请求。");
         if (plan.resourcePlan) {
-          const pressure = strataResourcePressure(await (this.deps.readResources ?? readStrataResources)());
+          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { signal: requestSignal, knownPressure: this.knownPressure }));
           if (pressure) throw new Error(pressure);
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources);
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { pressure: this.pressure, knownPressure: this.knownPressure });
         }
         budget = await this.checkContext(request, requestSignal);
         requestSignal.throwIfAborted();
@@ -540,6 +562,7 @@ export class StrataService {
       if (this.child.running()) throw new Error("Strata 进程仍在运行。");
     }
     this.child = null;
+    this.residencyPressure.setLoading(false); this.residencyPressure.setFileRead(false); this.hostMemoryMode = null;
     this.vectorLoaded = false; this.modeApplied = null;
     if (this.plan?.temporaryConfig) await fs.unlink(this.plan.temporaryConfig).catch(() => undefined);
     this.plan = null;
@@ -554,7 +577,7 @@ export class StrataService {
 }
 
 /** Do not accept the engine's implicit partial/file-tier fallback as the requested resident mode. */
-export async function assertStrataResidentLog(filename: string, offset: number): Promise<void> {
+export async function assertStrataResidentLog(filename: string, offset: number, allowFallback = false): Promise<true | void> {
   const file = await fs.open(filename, "r");
   try {
     const stat = await file.stat();
@@ -562,7 +585,9 @@ export async function assertStrataResidentLog(filename: string, offset: number):
     if (!length) throw new Error("未取得本次 Strata 专家驻留日志，未开始推理。");
     const bytes = Buffer.alloc(length);
     await file.read(bytes, 0, length, Math.max(offset, stat.size - length));
-    if (/WARNING: the (?:whole )?resident RAM mode does not fit/u.test(bytes.toString("utf8")))
+    if (/WARNING: the (?:whole )?resident RAM mode does not fit/u.test(bytes.toString("utf8"))) {
+      if (allowFallback) return true;
       throw new Error("Strata 非GPU专家未能完整驻留 RAM（可用内存或 Windows 提交容量不足），已停止文件回读降速路径。请释放内存后重试，详情见 engine.log。");
+    }
   } finally { await file.close(); }
 }

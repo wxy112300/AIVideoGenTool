@@ -69,7 +69,7 @@ import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { PromptRuntimeManager } from "./prompt-runtime-manager.js";
-import { enhancePromptWithStrata, strataPromptPolicy } from "./strata-prompt.js";
+import { enhancePromptWithStrata, strataPromptPolicy, StrataPromptValidationError } from "./strata-prompt.js";
 import type { StrataChatRequest } from "./strata-service.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 
@@ -78,6 +78,7 @@ type PromptWorker = Promise<unknown>;
 type PromptCancellation = { recovered: boolean; settled: boolean };
 
 export interface PromptApplicationServiceDependencies {
+  acquireGpu?(): Promise<void>;
   store: StateRepository;
   logger: AppLogger;
   promptRuntimeManager: PromptRuntimeManager;
@@ -359,13 +360,23 @@ export class PromptApplicationService {
       return result;
     } catch (error) {
       if (promptBackend === "strata") {
-        const stopped = await this.deps.strata?.stop().then(() => true, () => false);
-        this.retainedPromptRuntime = null;
-        this.publishStrataState(settings, Boolean(stopped), operationId);
-        if (!stopped) {
-          this.deps.promptRuntimeManager.finishOperation(operationId, "failed", "Strata cleanup unconfirmed");
-          promptProgress.finish("failed", "unloading", "Strata 清理未完成，请重试释放。");
-          throw new Error("Strata 清理未完成，请重试释放。");
+        const live = this.deps.strata?.snapshot();
+        if (error instanceof StrataPromptValidationError && !controller.signal.aborted && live?.phase === "ready" && live.modelLoaded && live.pid !== null) {
+          this.retainedPromptRuntime = { backend: "strata", modelId: settings.promptModelId };
+          this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, live.message);
+          this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
+          this.deps.logger.info("prompt", "strata-validation-retained", "Strata output rejected; healthy model retained", {
+            operationId, strataPid: live.pid, hostMemoryMode: live.hostMemoryMode ?? "unknown"
+          });
+        } else {
+          const stopped = await this.deps.strata?.stop().then(() => true, () => false);
+          this.retainedPromptRuntime = null;
+          this.publishStrataState(settings, Boolean(stopped), operationId);
+          if (!stopped) {
+            this.deps.promptRuntimeManager.finishOperation(operationId, "failed", "Strata cleanup unconfirmed");
+            promptProgress.finish("failed", "unloading", "Strata 清理未完成，请重试释放。");
+            throw new Error("Strata 清理未完成，请重试释放。");
+          }
         }
       }
       if (controller.signal.aborted) {
@@ -563,7 +574,7 @@ export class PromptApplicationService {
         progress,
         elapsedMs,
         ...(strata ? { strataPid: strata.pid, strataPhase: strata.phase, modelLoaded: strata.modelLoaded,
-          strataUncensored: strata.uncensored } : {}),
+          strataUncensored: strata.uncensored, strataHostMemoryMode: strata.hostMemoryMode ?? "unknown" } : {}),
         ...(modelId.startsWith("strata/") && detail && ["checking", "preparing", "loading-model"].includes(stage)
           ? { detail: safeLogErrorMessage(detail) } : {})
       });
@@ -611,6 +622,8 @@ export class PromptApplicationService {
     const throwIfCancelled = (): void => {
       if (signal?.aborted) throw signal.reason;
     };
+    throwIfCancelled();
+    await this.deps.acquireGpu?.();
     throwIfCancelled();
     const serviceSettings = comfyUiSettingsForPromptRuntime(settings);
     const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);

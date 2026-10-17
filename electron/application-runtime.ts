@@ -28,6 +28,7 @@ import { SettingsService, type SettingsServiceDependencies } from "./services/se
 import { EnvironmentQueryService } from "./services/environment-query-service.js";
 import { PromptApplicationService } from "./services/prompt-application-service.js";
 import { StrataRuntimeOwner } from "./services/strata-runtime-owner.js";
+import { StudioGpuGuard } from "./services/studio-gpu-guard.js";
 import { RuntimeAdminService } from "./services/runtime-admin-service.js";
 import { QueueService } from "./services/queue-service.js";
 import { ComfyOutputService } from "./services/comfy-output-service.js";
@@ -134,6 +135,7 @@ export interface ApplicationRuntimeDependencies {
   runtimeState: ComfyRuntimeStateController;
   promptRuntimeManager: PromptRuntimeManager;
   strataRuntime?: StrataRuntimeOwner;
+  gpuGuard?: Pick<StudioGpuGuard, "acquire" | "track">;
   historyFileSystem: HistoryFileSystemPort;
   nativeAvArtifactFileSystem?: NativeAvArtifactFileSystemPort;
   imageInspection: ImageInspectionPort;
@@ -271,7 +273,14 @@ export class ApplicationRuntime {
       if (!queueService) throw new Error("Queue service is not initialized");
       return queueService;
     };
-    const strataRuntime = this.deps.strataRuntime ?? new StrataRuntimeOwner({
+    const gpuGuard: Pick<StudioGpuGuard, "acquire" | "track"> = this.deps.gpuGuard ?? new StudioGpuGuard({
+      busy: (): boolean => Boolean(this.deps.store.get().queueRunning || activeQueueService().runningWorker ||
+        activeQueueService().cleanupWorker || promptService.isPromptBusy() || strataRuntime.isBusy()),
+      releasePrompt: () => promptService.releaseRuntime(this.deps.store.get().settings),
+      comfyUrl: () => this.deps.store.get().settings.comfyUrl
+    });
+    const strataRuntime: StrataRuntimeOwner = this.deps.strataRuntime ?? new StrataRuntimeOwner({
+      resourceGate: gpuGuard,
       run: runLoggedProcess,
       onDiagnostics: (diagnostics) => this.deps.logger.info("prompt", "strata-inference-metrics", "Strata inference metrics", {
         operationId: this.deps.promptRuntimeManager.snapshot().operation.operationId, ...diagnostics
@@ -297,6 +306,7 @@ export class ApplicationRuntime {
       )
     });
     const promptService = new PromptApplicationService({
+      acquireGpu: () => gpuGuard.acquire(),
       store: this.deps.store,
       logger: this.deps.logger,
       promptRuntimeManager: this.deps.promptRuntimeManager,
@@ -395,7 +405,10 @@ export class ApplicationRuntime {
         });
         return registered;
       },
-      releasePromptRuntime: (settings) => promptService.releaseRuntime(settings),
+      releasePromptRuntime: async (settings) => {
+        await gpuGuard.acquire();
+        return promptService.releaseRuntime(settings);
+      },
       nativePromptBusy: () => promptService.isWorkerBusy(),
       effectiveImageInputLibraryDirectory: (settings) =>
         settingsService.effectiveImageInputLibraryDirectory(settings),

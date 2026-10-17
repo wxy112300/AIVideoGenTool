@@ -1,0 +1,21 @@
+{
+  "shared/utils.js": "35768b0001e9ef11ca5a3bc7be5db5b60d4ec2ba71d408c55ca20d1416ac7179",
+  "modules/providers/services/claude-cli-liveness.service.js": "bf57bdd25eedb611a4d2c16f8458895a4af38da581552f15d6a1f8c259937178",
+  "modules/providers/list/claude/claude-session-synchronizer.provider.js": "8f12e9873adbb4ea180912c28f48518be00386cf1bcd594c878480786a123994",
+  "modules/providers/list/claude/claude-skills.provider.js": "32660a1e9dea4677844a71d254510a08f5be5807e33866affebb38325d7ed6ea",
+  "modules/providers/services/provider-token-usage.service.js": "fc4a2adca08cf952c6a4c0872c0f58f79b18a70a01c3bda96fc0e94c9d54d8ed",
+  "modules/providers/list/claude/claude-mcp.provider.js": "27ef300bc0465d84b04b794291584af0330a5edcdfb53f510297816a23611eef",
+  "modules/providers/services/provider-capabilities.service.js": "74dbed372161bf6d6d64af81c22a5101d697a57f72e6c8b0ab25682f528588f2",
+  "index.js": "39f296861734109974f1e71648cace3891538aad2894929b43d539e1be94b1f8",
+  "load-env.js": "bdbd546487ac17ae3fbafcd5d21655c374b3904b32e4419c11fc702dc3a0e1b1",
+  "shared/image-attachments.js": "f1737af4a89160af59cbaeb095a92628ca79ae0663f7db61e6758859b119a984",
+  "modules/browser-use/browser-use.service.js": "e99dd2a0962d09a983c97e23fb54bee23e0e9724420440ca24fb49b5746a19fb",
+  "modules/plugins/plugin-registry.service.js": "02e8511e7809ae388df0877de9678aad7c8570d877d0d083c88c12435d4a416d",
+  "modules/providers/provider.registry.js": "a5ce2d8641e4d41038f6a23b6e17b6d03dfce9caf01ad585605d4c354688eca4",
+  "modules/providers/services/sessions-watcher.service.js": "361a4b0cdf9bff74c9b99f3035fa7f5d99305ae262ef4c24b9a8b0a0280b955c",
+  "modules/providers/list/claude/claude-runtime.provider.js": "49cfdbaf033c8a2f616604ee63dec36e6b15e48d89f39604652dbb36f15e632e",
+  "modules/providers/list/claude/claude-auth.provider.js": "a505275256a6d0244e605fc30aaa3436617aa40cebcc124b1bda1310181ed77d",
+  "modules/providers/list/claude/claude-models.provider.js": "d9b6a7baf673db2e3534f032fae72b42ddc5d58f6df250cfc48a15ad8aa8c0c8",
+  "modules/websocket/services/websocket-server.service.js": "666e14352c2bebc932c91c3f80a6b3b5b30a3f1b208c29d3f53af366301c15a4",
+  "modules/websocket/services/shell-websocket.service.js": "284c1b2a383100ab34aeeeb28fc3853ebb3a5427ed970ea2e2ec79e06d9d7ff7"
+}

@@ -8,6 +8,12 @@
 
 ## Resume
 
+- 0.65.4代码版本收尾（2026-10-18）：用户授权新patch并将全部仓库代码连同独立Strata工具提交推送；package/lockfile/README/CHANGELOG统一为0.65.4，不打包、tag或GitHub Release。复用回退后完整verify2069unit/88integration/类型构建/20对比度，正式state不变；蓝屏根因和长稿/取消重试等未验边界继续保留，本轮不再启动GPU。
+
+- 2026-10-18重启后收尾（patch，未提交）：用户授权直接采用Agent经验优化H3；已接分模式回读预算/host诊断、阶段资源与部分遥测复测、文本校验失败保留健康模型。官方文件页释放候选三轮真实图文62.3/60.4/70.5s同PID通过，但长资料期间系统0x3B/0xC0000005蓝屏，已回退FILE_RELEASE=0，不能宣称完整稳定。经授权管理员只读dump定位Taskmgr.exe线程的win32kfull!DEVLOCKOBJ::vDestructor/GDI刷批分支，非Strata直接栈，根因未定；故障时RAM约10.76GiB/commit余量9.24GiB，另有无时点的5次提交失败计数，VRAM未知。暂不继续GPU，取消/重试和神经遥测注入未执行。正式state未变，进程/端口因重启退出；[完整证据](evidence/h3-residency-real-retest.md)。候选100focused及回退后verify2069unit/88integration/类型构建对比度通过。按用户要求节省额度，不重做整轮实验；下一步独立排查Windows图形内核，禁止从故障点认定根因或保证回退治愈。
+
+- 资源监测误停修复（2026-10-17，patch，用户授权实施，不bump／提交／发布）：旧逻辑单次缺失便主动停止服务。H3加载／增强前与运行中改最多3次／12秒新鲜复测，独立显存查询，真实2GiB显存／3GiB内存及提交余量仍立即停止，保持取消／归属／不重放。与Agent任务协调共享文件和build，保留onSpawn／资源接线；5文件69项及最终verify通过（221单元文件2058项、6集成文件88项、双端类型／构建／20对比度）。真实遥测3次正常，官方mock真实HTTP两次增强在故障注入后保持同PID、正常stop；无GPU／队列，进程端口已清理。现机资源不足安全加载，另一台机器高token原负载仍待用户复测；详见[资源遥测恢复验收](evidence/telemetry-recovery.md)。只完成本次H3修复，不冒充Agent产品已验。
+
 - 0.65.3 代码版本收尾（2026-10-17，用户明确要求 patch、提交推送、不发 Release）：纳入自动输出预算、uncensored 单开关及诊断，package／lockfile／README／CHANGELOG 对齐。复用下述同一生产代码状态的单元、串行集成、类型／构建／对比度及真实窗口验收；本轮仅版本与文档变动，不重复 GPU 测试。不打包、不创建 tag／GitHub Release、不上传制品或权重；此前阶段“不 bump／提交”描述由本次授权取代。真实 uncensored 质量／速度验收与既有长稿余项仍保留。
 
 - uncensored接入（2026-10-17，minor、不bump／提交／发布）：提示词单开关、默认关／旧状态归一化、兼容ID、自带ESP小文件hash、会话overlay、当次引擎project／41层确认及逐请求true／false已接完；首次启用按需加载，后续切换复用模型。日志区分requested／supported／vectorLoaded／applied，未完成不声称成功。最终217单元文件2014项、串行6集成文件88项、双端类型／干净构建／20对比度通过；最后整轮verify遇既有DLSS5事务偶发失败，已同状态复验，不冒充clean通过。真实窗口保存／焦点／三尺寸／重启及缺输入恢复后实际点击与取消通过，用户state保持、自有进程清理；[完整证据](evidence/uncensored-mode-validation.md)。资源不足未加载GPU，去拒答效果、图文质量和268KB向量对照仍待实测；未下载权重或新向量。

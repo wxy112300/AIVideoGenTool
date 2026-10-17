@@ -93,6 +93,7 @@ function runtimeFixture() {
     readDimensions: () => ({ width: 640, height: 360 })
   };
   const dependencies: ApplicationRuntimeDependencies = {
+    gpuGuard: { acquire: vi.fn(async () => undefined), track: vi.fn(async () => undefined) },
     paths: paths(),
     store,
     events: createStudioEventBus(),

@@ -6,6 +6,7 @@
 - [H3 高分辨率 Upscale Gate](2026-09-07-h3-high-resolution/TASK.md)
 - [H3 Prompt 增强框架修复](2026-09-12-h3-prompt-enhancement/TASK.md)
 - [Strata 提示词增强更新调查与接入计划](2026-10-10-strata-prompt-integration/TASK.md)
+- [可选 Strata 本地 Agent 工具包](2026-10-17-strata-local-agent/TASK.md)
 - [图片工作台 AI Upscale 剩余事项](2026-09-07-image-workspace/TASK.md)
 - [Renderer 响应性与可扩展状态存储](2026-09-17-renderer-responsiveness/TASK.md)
 - [History 批量管理与标签编辑](2026-09-20-history-batch-management/TASK.md)

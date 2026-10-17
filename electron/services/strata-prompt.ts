@@ -13,6 +13,13 @@ import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
 import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 
+/** Completed, healthy inference whose text fails product validation; not a transport/resource failure. */
+export class StrataPromptValidationError extends Error { override name = "StrataPromptValidationError"; }
+function validatedOutput(output: string, request: EnhanceRequest): string {
+  try { return normalizeMultimodalPromptOutput(output, request); }
+  catch (error) { throw new StrataPromptValidationError(error instanceof Error ? error.message : String(error)); }
+}
+
 /** Stable preparation identity. Hardware admission/reserve is a transient launch overlay,
  * not a reason to rehash/repack weights whenever available RAM changes. */
 export function strataPromptPolicy(_settings: Pick<Settings, "vramReserveGb">): StrataRuntimePolicy {
@@ -93,7 +100,7 @@ export async function enhancePromptWithStrata(
     });
     signal.throwIfAborted();
     onProgress("validating", null, "正在验证完整结果");
-    let result = normalizeMultimodalPromptOutput(output, request);
+    let result = validatedOutput(output, request);
     if (chat.reasoning && request.h3PromptPreset === "detailed-cinematic") {
       const mode = h3PromptModeForRequest(request), duration = request.h3DurationSeconds ?? 5;
       const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
@@ -106,9 +113,9 @@ export async function enhancePromptWithStrata(
         output = await owner.chat(repair, signal, undefined, (tokens) =>
           onProgress("generating", null, `纠正调用输出预算自动调整为 ${tokens} tokens · 含完整原稿与候选`));
         signal.throwIfAborted();
-        result = normalizeMultimodalPromptOutput(output, request);
+        result = validatedOutput(output, request);
         const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
-        if (remaining.length) throw new Error(`影视细节扩写仍缺少明确时间点 ${remaining.join("、")} 秒；一次纠正后未通过，原提示词保持不变。`);
+        if (remaining.length) throw new StrataPromptValidationError(`影视细节扩写仍缺少明确时间点 ${remaining.join("、")} 秒；一次纠正后未通过，原提示词保持不变。`);
       }
     }
     return result;

@@ -19,6 +19,7 @@ __pycache__/
 dist/
 release/
 coverage/
+Tools/Strata-Agent/.runtime/
 
 # Editor and OS files
 .vscode/
