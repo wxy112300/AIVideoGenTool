@@ -8,6 +8,10 @@
 
 ## Resume
 
+- 2026-10-18提交收尾：用户明确要求提交推送、不发Release；本次纳入三模式/推荐0.1.45及其依赖的已完成独立Agent监控/诊断改动，覆盖本轮此前“不提交”的阶段限制。应用版本仍0.65.4，无额外bump、tag、打包或Release；复用同一功能代码的2082单元/88集成、类型构建对比度及隔离UI/重启/小资产校验证据，不再启动模型。真实新引擎质量/性能与远端掉线根因未验范围继续保留。
+
+- 2026-10-18用户授权三模式与升级（minor，未bump/提交/发布）：推荐0.1.45，固定477ac13及官方NVIDIA包digest；受管理安装事务下载267552bytes sergqwer向量、校验并保留来源许可。H3与独立工具统一off/builtin/community，旧true迁移builtin，选择快照/向量身份重载/关闭复用/日志已接线；保留Agent另一个Session的监控与诊断改动。完整verify、实际小文件和隔离UI验收见[本轮证据](evidence/strata-0145-three-modes.md)。仅推荐线与安装器实现更新，未替用户安装引擎或下载主权重，未启动GPU，不将候选去拒答/性能或旧蓝屏根因标为通过。
+
 - 0.65.4代码版本收尾（2026-10-18）：用户授权新patch并将全部仓库代码连同独立Strata工具提交推送；package/lockfile/README/CHANGELOG统一为0.65.4，不打包、tag或GitHub Release。复用回退后完整verify2069unit/88integration/类型构建/20对比度，正式state不变；蓝屏根因和长稿/取消重试等未验边界继续保留，本轮不再启动GPU。
 
 - 2026-10-18重启后收尾（patch，未提交）：用户授权直接采用Agent经验优化H3；已接分模式回读预算/host诊断、阶段资源与部分遥测复测、文本校验失败保留健康模型。官方文件页释放候选三轮真实图文62.3/60.4/70.5s同PID通过，但长资料期间系统0x3B/0xC0000005蓝屏，已回退FILE_RELEASE=0，不能宣称完整稳定。经授权管理员只读dump定位Taskmgr.exe线程的win32kfull!DEVLOCKOBJ::vDestructor/GDI刷批分支，非Strata直接栈，根因未定；故障时RAM约10.76GiB/commit余量9.24GiB，另有无时点的5次提交失败计数，VRAM未知。暂不继续GPU，取消/重试和神经遥测注入未执行。正式state未变，进程/端口因重启退出；[完整证据](evidence/h3-residency-real-retest.md)。候选100focused及回退后verify2069unit/88integration/类型构建对比度通过。按用户要求节省额度，不重做整轮实验；下一步独立排查Windows图形内核，禁止从故障点认定根因或保证回退治愈。

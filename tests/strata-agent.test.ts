@@ -2,7 +2,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { agentDefaults, agentDirectory, agentSettings, applyAgentDiscovery, normalizeAgentPreferences, readAgentPreferences, saveAgentPreferences } from "../electron/services/strata-agent-settings.js";
+import { agentDefaults, agentDirectory, agentSettings, agentStrataInstallationSettings, applyAgentDiscovery, normalizeAgentPreferences, readAgentPreferences, saveAgentPreferences } from "../electron/services/strata-agent-settings.js";
+import { managedStrataDirectory } from "../electron/services/strata-installation.js";
+import { STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
 import { agentLaunchPlan } from "../electron/services/strata-agent-profile.js";
 import { agentToken } from "../electron/services/strata-agent-token.js";
 import { discoverAgentPack, locateClaude } from "../electron/services/strata-agent-doctor.js";
@@ -30,6 +32,30 @@ async function leaseFixture(onHandoff = async () => false) {
 }
 
 describe("standalone Agent safety boundaries (no GPU inference)", () => {
+  it("targets the new managed version beside a retained old install, not the old selected directory", async () => {
+    const directory = await root(); vi.stubEnv("LOCALAPPDATA", directory);
+    try {
+      const release = STRATA_RELEASES[1], old = managedStrataDirectory(release);
+      await fs.mkdir(old, { recursive: true });
+      await fs.writeFile(path.join(old, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...release, installedAt: "fixture" }));
+      const p = { ...agentDefaults(), strataDirectory: old };
+      expect((await agentStrataInstallationSettings(p)).strataInstallDirectory).toBe("");
+      expect(p.strataDirectory).toBe(old);
+      await expect(agentStrataInstallationSettings({ ...p, strataDirectory: path.join(directory, "manual") })).rejects.toThrow("手动");
+      expect(await fs.stat(old)).toBeTruthy();
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it("migrates legacy uncensored to bundled only and preserves all three explicit modes", async () => {
+    const { uncensoredMode: _mode, ...legacy } = agentDefaults();
+    expect(normalizeAgentPreferences({ ...legacy, uncensored: true }).uncensoredMode).toBe("builtin");
+    expect(normalizeAgentPreferences({ ...legacy, uncensored: false }).uncensoredMode).toBe("off");
+    for (const mode of ["off", "builtin", "community"] as const) {
+      const p = normalizeAgentPreferences({ ...agentDefaults(), uncensored: true, uncensoredMode: mode });
+      expect(p.uncensoredMode).toBe(mode); expect(p.uncensored).toBe(mode !== "off");
+      expect((await agentSettings(p, path.join(os.tmpdir(), "absent-mode-state.json"))).strataUncensoredMode).toBe(mode);
+    }
+    expect(() => normalizeAgentPreferences({ ...agentDefaults(), uncensoredMode: "anything" })).toThrow("模式无效");
+  });
   it("retires the rejected generated software default without rewriting a chosen shared prefix", () => {
     expect(normalizeAgentPreferences({ ...agentDefaults(), cloudDirectory: path.join(agentDirectory(), "software") }).cloudDirectory).toBe("");
     const shared = path.join(os.tmpdir(), "shared-npm");
@@ -111,6 +137,7 @@ describe("standalone Agent safety boundaries (no GPU inference)", () => {
       token: "fixture-token", directory: path.join(directory, "agent"), guardScript: path.join(directory, "guard.py"), resources });
     expect(plan.args.join(" ")).not.toContain("fixture-token");
     expect(plan.env?.STRATA_API_KEY).toBe("fixture-token");
+    expect(plan.env?.STRATA_FILE_RELEASE).toBe("0");
     const config = JSON.parse(await fs.readFile(plan.args[plan.args.indexOf("--config") + 1]!, "utf8"));
     expect(config.cwd).toContain(path.join("agent", "runs")); expect(config.log).toContain(path.join("agent", "runs"));
     expect(config.slot_save_path).toContain(path.join("agent", "runs")); expect(config.tokenizer).toBe(path.join(directory, "pack", "tokenizer"));

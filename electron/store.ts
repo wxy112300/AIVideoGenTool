@@ -798,6 +798,7 @@ export class JsonStore implements StateRepository {
         savedSettings.strataModelDirectory !== this.state.settings.strataModelDirectory ||
         savedSettings.strataPort !== this.state.settings.strataPort ||
         savedSettings.strataUncensored !== this.state.settings.strataUncensored ||
+        savedSettings.strataUncensoredMode !== this.state.settings.strataUncensoredMode ||
         savedQueueLifecycle !== "idle" ||
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycleStartedAt?: unknown }).queueLifecycleStartedAt === "string" ||

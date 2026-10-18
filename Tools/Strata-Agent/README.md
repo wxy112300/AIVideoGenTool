@@ -6,9 +6,17 @@
 
 主界面保留模型、uncensored、家庭局域网、启动和停止全部。局域网默认关闭并锁定到首次安全验收之后。“设置与依赖”自动回填发现的Strata、共享模型、完成pack、Claude和CC Switch，以及常规npm共享安装位置；空白pack表示尚未发现完成配置，启动时按需准备。手动选择保留，检测期间新编辑不会被迟到结果覆盖。可选择路径及端口、保存开页偏好；不创建第二套模型库。运行选择冻结，修改后用“应用并重启”，活跃/未知任务先确认；不修改H3设置。
 
+uncensored改为“关闭／自带·ESP／社区·sergqwer”下拉选择。旧版开启迁移为自带，不自动切到社区。自带使用4..44层483520bytes向量，社区使用8..33层267552bytes向量；切换后应用并重启，日志显示mode、向量id/hash及本次引擎确认。Strata推荐0.1.45；菜单“更新Strata”复用统一安装器，附小向量校验与来源/许可证说明，不下载主模型。更新受管理旧版会显示新的安装目录，成功后只切换本工具路径并重新发现pack；旧安装、共享模型和H3设置保留。手动目录不自动覆盖。两种投影均为实验功能，不保证去拒答或质量改善，也不放宽Claude文件/shell权限。
+
 “自动检测／重试”读取统一catalog、受信receipt、模型文件和实时RAM／提交余量／显存。“安装缺失软件”先展示版本、目标、已知规模和未知依赖规模，明确确认后执行。Strata复用统一安装器；CloudCLI固定1.37.5、SDK0.3.165，已有兼容官方Claude>=2.1.165直接复用，否则在确认旧/新版本和影响后，通过标准npm更新共享Claude；先备份旧包与命令入口。请求npm省略可选包，但本机npm实际带入SDK平台CLI；保留标准依赖树，禁止回退该入口，不静默换harness。安装前重核官方稳定版/npm latest/安全公告和integrity，变化则停止。直接包下载先核固定SRI，已有常规安装不要求本工具receipt；SDK入口另核hash，不修改共享源码。保留安装日志、包缓存和旧包备份；npm失败/取消可能部分生效，复检后再重试。
 
-右击依赖详情可更新/修复Strata、安装/更新/修复共享Claude与CloudCLI、打开本机数据位置；复用npm prefix中已有其他软件，不改共享目录ACL；未知同名包内容、npm link或正在使用的包拒绝更新，不自动降级更高版本。Node/Git/CC Switch的缺件自动安装向导仍待补，当前电脑已有；CC Switch是可选兼容入口，日常启动不需要打开它。
+主界面的“连接与帮助”菜单可打开原生管理页、复制本机密钥、打开本轮日志目录，以及更新/修复软件、打开本机数据位置；依赖详情右键也保留同一菜单。CloudCLI首次创建的是本机账号，无需Anthropic/Cloud登录。原生页提示“API key needed”时，从此菜单复制并粘贴到其认证框，不能将key填入地址栏。复用npm prefix中已有其他软件，不改共享目录ACL；未知同名包内容、npm link或正在使用的包拒绝更新，不自动降级更高版本。Node/Git/CC Switch的缺件自动安装向导仍待补，当前电脑已有；CC Switch是可选兼容入口，日常启动不需要打开它。
+
+主操作区固定，设置在下方滚动，展开不会强制把窗口增高到屏幕外。启动后每两秒读取服务存活、模型加载、GUI进程与当前请求的耗时/输出数量；短暂连接失败先显示检查中，连续三次失败报告失联，连接恢复后继续更新。模型引擎退出与Python HTTP退出分别显示；此检测不自动终止任务、重放工具或加载第二个模型。若需重启，确认停止全部后再启动，并在CloudCLI选择原Claude会话恢复。uncensored模式选择、对应向量载入、实际拒答效果是不同事实；不保证去除拒答，也不改变文件和shell权限。
+
+“打开本轮服务 / 引擎日志目录”定位私有 `runs/<本轮ID>/`：`server.log`保留脱敏后的Python输出、异常和进程退出码，`engine.log`为原生引擎日志。私有`latest-run.json`索引使重开启动器后仍能找回最近日志/异常，不接管旧进程。操作/状态变化/资源保护原因及最近资源值记录在 `logs/<日期>.jsonl`；资源采样超过12秒不更新时标为最近值。资源保护停止的原因会保留，避免被普通“已停止”提示覆盖。日志仅留本机，可能含服务输出中的对话信息，分享前检查内容。上游90秒冻结检测与300秒无输出期限保持原值；遇到约两分钟掉线必须结合本轮日志判断，不能仅凭时间判为超时。
+
+在发生故障的电脑点击“连接与帮助 → 导出诊断（本机，不自动上传）”；即使没有Node、服务已退出或启动器打不开，也可双击本目录的 `Export-Diagnostics.cmd`。报告保存到 `%LOCALAPPDATA%\Local Video Studio\strata-agent\diagnostics\<时间-ID>\diagnostics.json`，完成后显示路径并打开目录。只收集最近两份操作日志、最近三个run的engine/server日志（每份末256KiB）、经过校验的上下文/模式/端口及当前RAM/Windows提交余量/NVIDIA显存；不是崩溃瞬间采样。导出文件夹仅当前用户/SYSTEM可读，不联网、不解密token、不复制路由/运行配置/账号数据库/Claude sessions/权重；日志按凭证特征脱敏，但仍可能含对话内容，分享前检查。旧版只有`logs`和`runs/*/engine.log`时也可导出；没有保存过的Python输出无法事后恢复，报告会明确指出缺口。不要把整个数据目录发送出去。
 
 普通Claude保留原Claude/CC Switch当前后端。本工具只给自己的GUI/CLI子进程设置本地BASE_URL、认证和model映射，清除该子进程的旧云路由冲突；不写全局/项目路由，不重设HOME或已有CLAUDE_CONFIG_DIR。复用现有sessions、MCP、skills、hooks和permissions；GUI只开放Claude provider，一次一个Agent任务或终端，禁止bypass、自动替换活跃任务和登录初始化命令。原生管理页初次可从菜单明确复制密钥，GUI首次创建的是本地账号，不登录Cloud。 共享软件与独立运行数据分离：默认使用现有npm prefix（Windows通常为`%APPDATA%/npm`），其他程序也可调用同一个claude/cloudcli。启动器仅在自己的进程忽略共享CloudCLI的.env、绑定已核对SDK和CLI，普通入口继续原有配置。
 
@@ -39,6 +47,10 @@ node Tools/Strata-Agent/verify-source.mjs <CloudCLI包目录> <Agent-SDK包目�
 node Tools/Strata-Agent/verify-lease.mjs
 powershell.exe -NoProfile -File Tools/Strata-Agent/verify-job.ps1
 node Tools/Strata-Agent/verify-http.mjs
+node Tools/Strata-Agent/verify-monitor.mjs --long
+node Tools/Strata-Agent/verify-monitor.mjs --crash
+powershell.exe -NoProfile -File Tools/Strata-Agent/strata-agent.ps1 -Smoke
+powershell.exe -NoProfile -File Tools/Strata-Agent/verify-diagnostics.ps1
 ```
 
-`verify-lease`使用临时协调目录，`verify-job`仅无GPU自有测试进程，`verify-http`使用已安装Strata的**CPU mock**，都不证明真实Agent能力。内部`engineValidation`只用于阶段验收；日用仍只有窗口的一次启动。已完成的真实scratch/GUI证据独立记录；262K完整Agent利用率、原生窗口/H3完整旅程和LAN继续按TASK验收。
+`verify-lease`使用临时协调目录，`verify-job`仅无GPU自有测试进程，`verify-http`使用已安装Strata的**CPU mock**。`verify-monitor --long`让实际Python HTTP/guard承载125秒脚本等待，验证监控与退出记录；仍没有真实模型、CLI或GPU。`-Smoke`只检查实际WinForms控件布局、折叠操作和渲染，不等同鼠标或系统高DPI验收。内部`engineValidation`只用于阶段验收；日用仍只有窗口的一次启动。已完成的真实scratch/GUI证据独立记录；262K完整Agent利用率、原生窗口/H3完整旅程和LAN继续按TASK验收。

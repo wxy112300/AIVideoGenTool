@@ -11,7 +11,7 @@ import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
 import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
-import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
+import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/strata-uncensored.js";
 
 /** Completed, healthy inference whose text fails product validation; not a transport/resource failure. */
 export class StrataPromptValidationError extends Error { override name = "StrataPromptValidationError"; }
@@ -70,7 +70,8 @@ export async function buildStrataPromptRequest(
   return { modelId: settings.promptModelId, messages: [
     ...(parts ? [{ role: "system" as const, content: parts.contract }] : []), { role: "user", content }],
     maxTokens, contextSize: 32768, visionTokensPerImage: 1024, automaticOutputBudget: true,
-    uncensored: settings.strataUncensored === true && supportsStrataUncensored(settings.promptModelId),
+    uncensored: strataUncensoredMode(settings) !== "off" && supportsStrataUncensored(settings.promptModelId),
+    uncensoredMode: supportsStrataUncensored(settings.promptModelId) ? strataUncensoredMode(settings) : "off",
     // Use the model's official profile without changing saved creativity for other backends.
     temperature: profile?.reasoning ? 1 : STRATA_NON_THINKING_SAMPLING.temperature,
     ...(profile?.reasoning ? { reasoning: profile.reasoning } : {}) };

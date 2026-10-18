@@ -8,6 +8,7 @@ const fake = vi.hoisted(() => ({ doctor: vi.fn(), cloudStart: vi.fn(), cloudStop
 vi.mock("../electron/services/strata-agent-doctor.js", () => ({ agentDoctor: fake.doctor }));
 vi.mock("../electron/services/strata-agent-cloud.js", () => ({ verifyCloudAdapter: fake.adapter, AgentCloud: class {
   running = false;
+  get alive() { return this.running; }
   async start(input: unknown, signal: AbortSignal) { this.running = true; return fake.cloudStart(input, signal); }
   async stop() { await fake.cloudStop(); this.running = false; }
 } }));
@@ -33,6 +34,36 @@ async function fixture() {
   return { controller, engine, stopEngine, preferences: agentDefaults() };
 }
 describe("one-click transaction using process mocks only", () => {
+  it("restores only private diagnostic locations after a launcher restart without adopting old processes", async () => {
+    const { controller } = await fixture();
+    const directory = directories.at(-1)!;
+    const serverLog = path.join(directory, "runs", "previous", "server.log"), engineLog = path.join(directory, "runs", "previous", "engine.log");
+    await fs.writeFile(path.join(directory, "latest-run.json"), JSON.stringify({ serverLog, engineLog, fault: { kind: "process-exit", message: "previous failure", at: "2026-10-18" } }));
+    const result = await controller.dispatch({ action: "status" }) as any;
+    expect(result.logs).toMatchObject({ server: serverLog, engine: engineLog });
+    expect(result.fault.message).toBe("previous failure");
+    expect(result.runtime.pid).toBeNull(); expect(result.ownedGpu).toBe(false); expect(result.gui.owned).toBe(false);
+    const second = new AgentController("unused-tool", vi.fn(), directory); controllers.push(second);
+    await fs.writeFile(path.join(directory, "latest-run.json"), JSON.stringify({ serverLog: path.join(directory, "..", "server.log"), engineLog }));
+    expect((await second.dispatch({ action: "status" }) as any).logs.server).toBe("");
+  });
+  it("retains a resource fault through cleanup and redacts split secret output in the private service log", async () => {
+    const { controller } = await fixture();
+    const filename = path.join(directories.at(-1)!, "server.log");
+    (controller as any).serverLog = filename;
+    (controller as any).currentToken = "fixture-secret";
+    (controller as any).writeServerLog("Authorization: Bearer fixture-");
+    (controller as any).writeServerLog("secret\nengine failed code=17\n");
+    (controller as any).recordFault("resource-protection", "commit low fixture-secret");
+    controller.reportFailure("secondary cancellation fixture-secret");
+    await controller.stop(true);
+    expect(await fs.readFile(filename, "utf8")).toBe("Authorization: Bearer [redacted]\nengine failed code=17\n");
+    const status = await controller.dispatch({ action: "status" }) as any;
+    expect(status.fault).toMatchObject({ kind: "resource-protection", message: "commit low [redacted]" });
+    expect(status.logs.server).toBe(filename);
+    expect(JSON.stringify(status)).not.toContain("fixture-secret");
+    expect(status.ownedGpu).toBe(false);
+  });
   it("checks all dependencies before loading an engine and passes only child-scoped routing to the GUI", async () => {
     const { controller, preferences, engine } = await fixture();
     const result = await controller.dispatch({ action: "start", preferences }) as any;

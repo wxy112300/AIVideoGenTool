@@ -73,10 +73,25 @@ describe("queue lock recovery", () => {
     try {
       const filename = path.join(directory, "studio-state.json"), state = createDefaultState();
       state.settings.strataUncensored = saved as never;
+      delete (state.settings as Partial<typeof state.settings>).strataUncensoredMode;
       await fs.writeFile(filename, JSON.stringify(state));
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.strataUncensored).toBe(saved === true);
+      expect(loaded.settings.strataUncensoredMode).toBe(saved === true ? "builtin" : "off");
       expect((await new JsonStore(filename).load()).settings.strataUncensored).toBe(saved === true);
+      expect(loaded.draft).toEqual(state.draft);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
+  it.each(["off", "builtin", "community"] as const)("persists the explicit %s mode across restart without losing unrelated state", async mode => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "strata-mode-state-"));
+    try {
+      const filename = path.join(directory, "state.json"), state = createDefaultState();
+      state.settings.strataUncensoredMode = mode; state.settings.strataUncensored = false;
+      await fs.writeFile(filename, JSON.stringify(state));
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.strataUncensoredMode).toBe(mode);
+      expect(loaded.settings.strataUncensored).toBe(mode !== "off");
+      expect((await new JsonStore(filename).load()).settings.strataUncensoredMode).toBe(mode);
       expect(loaded.draft).toEqual(state.draft);
     } finally { await fs.rm(directory, { recursive: true, force: true }); }
   });

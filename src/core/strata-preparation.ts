@@ -1,6 +1,7 @@
 import type { ModelScanProfile, Settings, StrataPreparationStatus, UiLocale } from "../types.js";
 import { QWEN_FLASH_NEXT_MODEL_DIRECTORY, strataModelEntries } from "./catalog/models/strata.js";
 import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
+import { strataUncensoredMode } from "./strata-uncensored.js";
 
 export function validStrataPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535 && value !== 8080;
@@ -39,12 +40,13 @@ export function strataPreparationMatchesSettings(
 }
 
 /** Legacy/corrupt data is normalized without changing the active prompt runtime. */
-export function normalizeStrataSettings(settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored">>) {
+export function normalizeStrataSettings(settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored" | "strataUncensoredMode">>) {
   return {
     strataInstallDirectory: typeof settings.strataInstallDirectory === "string" ? settings.strataInstallDirectory.trim() : "",
     strataModelDirectory: typeof settings.strataModelDirectory === "string" ? settings.strataModelDirectory.trim() : "",
     strataPort: validStrataPort(settings.strataPort) ? settings.strataPort : STRATA_DEFAULT_PORT,
-    strataUncensored: settings.strataUncensored === true
+    strataUncensored: strataUncensoredMode(settings) !== "off",
+    strataUncensoredMode: strataUncensoredMode(settings)
   };
 }
 

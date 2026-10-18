@@ -473,7 +473,9 @@ export interface Settings {
   strataModelDirectory: string;
   strataPort: number;
   /** Optional runtime projection for explicitly compatible Strata models; old states default off. */
+  /** Legacy compatibility mirror; mode is authoritative. */
   strataUncensored: boolean;
+  strataUncensoredMode: import("./core/strata-uncensored.js").StrataUncensoredMode;
   promptLlamaServerPath: string;
   promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;
@@ -2587,7 +2589,7 @@ export interface DependencyInstallProgress {
 }
 
 export interface StrataInstallProgress {
-  stage: "prepare" | "source" | "download" | "verify" | "extract" | "python" | "packages" | "check" | "complete" | "recovery";
+  stage: "prepare" | "source" | "download" | "verify" | "extract" | "assets" | "python" | "packages" | "check" | "complete" | "recovery";
   /** Percentage of the current transfer only, not of the entire installation. */
   percent?: number;
   receivedBytes?: number;

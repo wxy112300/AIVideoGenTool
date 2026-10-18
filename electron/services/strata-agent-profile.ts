@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
 import { verifyStrataControlVector } from "./strata-uncensored.js";
+import { normalizeStrataUncensoredMode } from "../../src/core/strata-uncensored.js";
 import { privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
 import type { AgentPreferences } from "./strata-agent-settings.js";
 import type { StrataLaunchPlan } from "./strata-service.js";
@@ -27,10 +28,11 @@ export async function agentLaunchPlan(input: {
   if (reserve < 0) throw new Error("pack 缺少显存策略。");
   config.args[reserve + 1] = String(resourcePlan.vramReserveMiB);
   if (resourcePlan.hostMode === "arena") config.args = config.args.filter((arg: string) => arg !== "--resident-experts");
-  const controlVector = p.uncensored ? await verifyStrataControlVector(install) : undefined;
+  const mode = normalizeStrataUncensoredMode(p.uncensoredMode, p.uncensored);
+  const controlVector = mode !== "off" ? await verifyStrataControlVector(install, mode) : undefined;
   if (controlVector) config.args.push("--control-vector-scaled", `${controlVector.filename}:1.0`, "--control-vector-layer-range",
     String(controlVector.firstLayer), String(controlVector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer");
-  config.sampling = { ...(config.sampling ?? {}), experimental_speed_projection: p.uncensored };
+  config.sampling = { ...(config.sampling ?? {}), experimental_speed_projection: mode !== "off" };
   config.cwd = directory;
   config.log = path.join(directory, "engine.log");
   config.slot_save_path = path.join(directory, "slots");
@@ -48,7 +50,9 @@ export async function agentLaunchPlan(input: {
     args: ["-B", "-u", input.guardScript, "--serve", install, "--engine", "strata", "--config", filename,
       "--host", "127.0.0.1", "--port", String(p.strataPort), "--lazy", "--api-monitor"],
     env: { STRATA_API_KEY: input.token, STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+      // Same Windows safety rollback as H3; never inherit a working-set opt-in from the shell.
+      STRATA_FILE_RELEASE: "0",
       STRATA_AGENT_ADMISSION: path.join(input.directory, "admission.json") },
     resourcePlan, allowResidentFallback: true, engineLog: config.log, ...(config.args.includes("--resident-experts") ? { residentEngineLog: config.log } : {}),
-    controlVector, uncensoredRequested: p.uncensored };
+    controlVector, uncensoredRequested: mode !== "off", uncensoredMode: mode };
 }

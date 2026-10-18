@@ -5,13 +5,15 @@ import { createDefaultSettings } from "../src/core/defaults";
 describe("settings form", () => {
   it("reads one uncensored preference and retains it while its Strata control is hidden", () => {
     const previousDocument = globalThis.document;
-    const base = { ...createDefaultSettings(), strataUncensored: true };
+    const base = { ...createDefaultSettings(), strataUncensored: true, strataUncensoredMode: "community" as const };
     const querySelector = vi.fn(() => null as unknown);
     globalThis.document = { querySelector } as unknown as Document;
     try {
       expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataUncensored).toBe(true);
-      querySelector.mockImplementation((...args: unknown[]) => args[0] === "#strata-uncensored" ? { checked: false } : null);
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataUncensoredMode).toBe("community");
+      querySelector.mockImplementation((...args: unknown[]) => args[0] === "#strata-uncensored" ? { value: "off" } : null);
       expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataUncensored).toBe(false);
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataUncensoredMode).toBe("off");
     } finally { globalThis.document = previousDocument; }
   });
   it("keeps preparation fields across tabs and reads visible Strata inputs", () => {

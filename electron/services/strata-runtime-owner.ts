@@ -1,7 +1,7 @@
 import type { Settings } from "../../src/types.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime, preparedStrataMtpMatchesSelection, validatePreparedStrataRuntime, type StrataModelPreparationRuntime, type StrataRuntimePolicy } from "./strata-model-preparation.js";
 import { prepareStrataLaunch, StrataService, type StrataChatRequest, type StrataServiceSnapshot, type StrataChatDiagnostics } from "./strata-service.js";
-import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
+import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/strata-uncensored.js";
 
 interface StrataRuntimeOwnerDependencies {
   resourceGate?: { acquire(): Promise<void>; track(pid: number): Promise<void> };
@@ -42,8 +42,9 @@ export class StrataRuntimeOwner {
       onStage?: (stage: "checking" | "preparing" | "loading-model") => void; request?: StrataChatRequest } = {}
   ): Promise<StrataServiceSnapshot> {
     return this.run(async (signal) => {
-      const wantsUncensored = settings.strataUncensored === true && supportsStrataUncensored(settings.promptModelId);
-      options.onLog?.(`uncensored: requested=${settings.strataUncensored === true} supported=${supportsStrataUncensored(settings.promptModelId)}`);
+      const mode = strataUncensoredMode(settings);
+      const wantsUncensored = mode !== "off" && supportsStrataUncensored(settings.promptModelId);
+      options.onLog?.(`uncensored: mode=${mode} requested=${mode !== "off"} supported=${supportsStrataUncensored(settings.promptModelId)}`);
       const key = JSON.stringify([settings.promptModelId, settings.strataInstallDirectory,
         options.resolvedModelDirectory ?? settings.modelDirectory, settings.strataModelDirectory, settings.strataPort, policy]);
       if (this.selectionKey === key && this.snapshot().phase === "ready" && this.snapshot().modelLoaded) {
@@ -52,7 +53,7 @@ export class StrataRuntimeOwner {
         try {
           valid = Boolean(this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!) === settings.promptModelId);
           if (valid) valid = await preparedStrataMtpMatchesSelection(this.configPath!, settings, options.resolvedModelDirectory);
-          if (valid && wantsUncensored) valid = await this.service.hasVerifiedControlVector();
+          if (valid && wantsUncensored) valid = await this.service.hasVerifiedControlVector(mode);
         } catch { /* Changed sources invalidate residency and the completion cache. */ }
         if (valid) {
           options.onLog?.(`uncensored: retained vectorLoaded=${this.snapshot().uncensored?.vectorLoaded === true}; nextRequest=${wantsUncensored}`);

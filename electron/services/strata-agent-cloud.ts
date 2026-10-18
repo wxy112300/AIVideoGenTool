@@ -26,6 +26,7 @@ export class AgentCloud {
   private port: number | null = null;
   private startupError: Error | null = null;
   get running() { return this.child !== null; } // Includes an exited/failed supervisor pending explicit cleanup.
+  get alive() { return this.child !== null && !this.startupError && this.child.exitCode === null && this.child.signalCode === null; }
   constructor(private readonly toolDirectory: string, private readonly directory: string, private readonly track: (pid: number) => Promise<void>) {}
   async start(input: { software: string; sdkDirectory: string; cli: string; token: string; strataPort: number; guiPort: number; contextTokens?: number }, signal: AbortSignal) {
     if (this.child) throw new Error("GUI 已由此窗口管理，请先停止全部。");

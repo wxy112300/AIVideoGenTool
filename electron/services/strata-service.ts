@@ -13,7 +13,7 @@ import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
 import { knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
 import { readReliableStrataResources, readStrataResources, watchStrataResources } from "./strata-resources.js";
 import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
-import { supportsStrataUncensored, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
+import { supportsStrataUncensored, strataUncensoredMode, normalizeStrataUncensoredMode, isStrataUncensoredMode, strataVectorForMode, type StrataUncensoredMode, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
 import { assertStrataControlVectorLog, verifyStrataControlVector, type StrataControlVector } from "./strata-uncensored.js";
 
 export type StrataContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -49,13 +49,15 @@ export interface StrataChatRequest {
   /** Expand only this request's output allowance inside its already-loaded context. */
   automaticOutputBudget?: boolean;
   uncensored?: boolean;
+  uncensoredMode?: StrataUncensoredMode;
   /** Internal bounded evaluation; not a persisted setting or automatic mode switch. */
   reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
 }
 
 function validateChatRequest(request: StrataChatRequest): void {
+  if (request.uncensoredMode !== undefined && !isStrataUncensoredMode(request.uncensoredMode)) throw new Error("Strata uncensored 模式无效。");
   if (request.uncensored !== undefined && typeof request.uncensored !== "boolean") throw new Error("Strata uncensored 请求参数无效。");
-  if (request.uncensored && !supportsStrataUncensored(request.modelId)) throw new Error("当前 Strata 模型不支持 uncensored 控制向量。");
+  if (normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored) !== "off" && !supportsStrataUncensored(request.modelId)) throw new Error("当前 Strata 模型不支持 uncensored 控制向量。");
   if (!request.modelId.trim() || !Number.isSafeInteger(request.maxTokens) || request.maxTokens < 1
     || request.maxTokens > 32768 || !Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2
     || !request.messages.length || request.messages.some((message) =>
@@ -89,11 +91,12 @@ export interface StrataLaunchPlan {
   controlVector?: StrataControlVector;
   engineLog?: string;
   uncensoredRequested?: boolean;
+  uncensoredMode?: StrataUncensoredMode;
 }
 
 /** Internal only: accepts a completed, coherently verified pack/config preparation. */
 export async function prepareStrataLaunch(
-  settings: Pick<Settings, "strataInstallDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored">>,
+  settings: Pick<Settings, "strataInstallDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored" | "strataUncensoredMode">>,
   configPath: string,
   options: { adaptive?: boolean; readResources?: typeof readStrataResources } = {}
 ): Promise<StrataLaunchPlan> {
@@ -113,8 +116,9 @@ export async function prepareStrataLaunch(
     ))).every(Boolean);
   let launchConfig = config;
   let resourcePlan: StrataResourcePlan | undefined;
-  const controlVector = settings.strataUncensored && supportsStrataUncensored(modelId)
-    ? await verifyStrataControlVector(cwd) : undefined;
+  const mode = strataUncensoredMode(settings);
+  const controlVector = mode !== "off" && supportsStrataUncensored(modelId)
+    ? await verifyStrataControlVector(cwd, mode) : undefined;
   if (controlVector) {
     runtimeConfig.args.push("--control-vector-scaled", `${controlVector.filename}:1.0`, "--control-vector-layer-range",
       String(controlVector.firstLayer), String(controlVector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer");
@@ -135,7 +139,7 @@ export async function prepareStrataLaunch(
   const apiKey = randomBytes(32).toString("hex");
   return {
     executable, cwd, port: settings.strataPort, apiKey, modelId,
-    engineLog: runtimeConfig.log, uncensoredRequested: settings.strataUncensored === true,
+    engineLog: runtimeConfig.log, uncensoredRequested: mode !== "off", uncensoredMode: mode,
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
     ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
@@ -165,7 +169,11 @@ export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk
   let alive = true;
   let exited!: () => void;
   const closed = new Promise<void>((resolve) => { exited = resolve; });
-  child.once("close", () => { alive = false; exited(); });
+  child.once("close", (code, signal) => {
+    alive = false;
+    output(`\n[Strata process exited] code=${code ?? "null"} signal=${signal ?? "none"}\n`);
+    exited();
+  });
   await new Promise<void>((resolve, reject) => {
     child.once("error", reject);
     child.once("spawn", resolve);
@@ -219,6 +227,8 @@ interface StrataServiceDependencies {
   readResources?: typeof readStrataResources;
   resourcePressure?: typeof strataResourcePressure;
   onDiagnostics?(diagnostics: StrataChatDiagnostics): void;
+  /** Private diagnostics sink; callers must redact credentials and protect its files. */
+  onOutput?(chunk: string): void;
 }
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
@@ -231,6 +241,7 @@ export class StrataService {
     ? knownStrataResourcePressure(sample) : this.residencyPressure.knownPressure(sample);
   private vectorLoaded = false;
   private modeRequested = false;
+  private selectedMode: StrataUncensoredMode = "off";
   private modeApplied: boolean | null = null;
   private child: StrataOwnedProcess | null = null;
   private plan: StrataLaunchPlan | null = null;
@@ -246,16 +257,17 @@ export class StrataService {
       this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 服务已退出。" };
     }
     return { ...this.state, hostMemoryMode: this.state.modelLoaded ? this.hostMemoryMode : null, uncensored: {
+      mode: this.selectedMode,
       requested: this.modeRequested, supported: supportsStrataUncensored(this.plan?.modelId ?? ""),
       vectorId: this.plan?.controlVector?.id ?? null, vectorSha256: this.plan?.controlVector?.sha256 ?? null,
       vectorLoaded: this.vectorLoaded && this.state.modelLoaded === true, applied: this.state.modelLoaded ? this.modeApplied : null
     } };
   }
 
-  async hasVerifiedControlVector(): Promise<boolean> {
+  async hasVerifiedControlVector(mode: Exclude<StrataUncensoredMode, "off"> = "builtin"): Promise<boolean> {
     if (!this.plan?.controlVector || !this.vectorLoaded) return false;
     try {
-      const current = await verifyStrataControlVector(this.plan.cwd);
+      const current = await verifyStrataControlVector(this.plan.cwd, mode);
       return current.sha256 === this.plan.controlVector.sha256 && current.id === this.plan.controlVector.id;
     } catch { return false; }
   }
@@ -278,11 +290,14 @@ export class StrataService {
       signal?.throwIfAborted();
       this.plan = { ...plan, args: [...plan.args] };
       this.residencyPressure.setLoading(false); this.residencyPressure.setFileRead(false); this.hostMemoryMode = null;
-      this.vectorLoaded = false; this.modeApplied = null; this.modeRequested = plan.uncensoredRequested === true;
+      this.vectorLoaded = false; this.modeApplied = null;
+      this.selectedMode = normalizeStrataUncensoredMode(plan.uncensoredMode, plan.uncensoredRequested);
+      this.modeRequested = this.selectedMode !== "off";
       this.state = { phase: "starting", port: plan.port, pid: null, modelLoaded: null, message: "正在启动 Strata 服务（延迟加载模型）。", log: "" };
       try {
         this.child = await (this.deps.launch ?? launchStrataProcess)(this.plan, (chunk) => {
           this.state.log = `${this.state.log}${chunk}`.replaceAll(plan.apiKey, "[redacted]").slice(-8_000);
+          try { this.deps.onOutput?.(chunk.replaceAll(plan.apiKey, "[redacted]")); } catch { /* Diagnostics cannot own process lifetime. */ }
         });
         this.state.pid = this.child.pid;
         await this.deps.onSpawn?.(this.child.pid);
@@ -426,6 +441,7 @@ export class StrataService {
       signal?.throwIfAborted();
       if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error("Strata 服务尚未就绪。");
       const plan = this.plan;
+      const mode = normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored);
       const safety = new AbortController();
       const requestSignal = AbortSignal.any([
         ...(signal ? [signal] : []), safety.signal, AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)
@@ -436,9 +452,10 @@ export class StrataService {
       let budget: { inputTokens: number | null; maxTokens: number } = { inputTokens: null, maxTokens: request.maxTokens };
       const vectorLoadedAtRequest = this.vectorLoaded;
       try {
-        this.modeRequested = request.uncensored === true;
+        this.selectedMode = mode;
+        this.modeRequested = mode !== "off";
         this.modeApplied = null;
-        if (request.uncensored && (!this.vectorLoaded || !plan.controlVector))
+        if (mode !== "off" && (!this.vectorLoaded || plan.controlVector?.id !== strataVectorForMode(mode).id))
           throw new Error("Strata uncensored 向量尚未确认加载，请重新启动所选模型；未发送推理请求。");
         if (plan.resourcePlan) {
           const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { signal: requestSignal, knownPressure: this.knownPressure }));
@@ -452,7 +469,7 @@ export class StrataService {
           method: "POST", redirect: "error", signal: requestSignal,
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: request.modelId, messages: request.messages, max_tokens: budget.maxTokens,
-            experimental_speed_projection: request.uncensored === true,
+            experimental_speed_projection: mode !== "off",
             ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
             ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}),
             stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) } })
@@ -480,7 +497,7 @@ export class StrataService {
         this.state.modelLoaded = await this.probe();
         if (!this.state.modelLoaded) throw new Error("Strata 请求结束后模型加载状态丢失，结果未保存。");
         requestSignal.throwIfAborted();
-        this.modeApplied = request.uncensored === true;
+        this.modeApplied = mode !== "off";
         this.state.message = this.modeApplied ? "Strata 模型已加载 · uncensored 已启用。" : "Strata 模型已加载 · uncensored 未启用。";
         return result;
       } catch (error) {
@@ -501,7 +518,7 @@ export class StrataService {
         reader?.releaseLock();
         try { this.deps.onDiagnostics?.({ modelId: request.modelId, ...budget,
           contextSize: request.contextSize ?? null, ...stream.diagnostics(), uncensored: {
-            requested: request.uncensored === true, supported: supportsStrataUncensored(request.modelId),
+            mode, requested: mode !== "off", supported: supportsStrataUncensored(request.modelId),
             vectorId: plan.controlVector?.id ?? null, vectorSha256: plan.controlVector?.sha256 ?? null,
             vectorLoaded: vectorLoadedAtRequest, applied: this.modeApplied
           } }); } catch { /* Diagnostics never own inference. */ }

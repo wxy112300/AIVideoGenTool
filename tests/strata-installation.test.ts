@@ -6,10 +6,13 @@ import { createDefaultSettings } from "../src/core/defaults";
 import { STRATA_ENGINE_URL, STRATA_REVISION, STRATA_ENGINE_BYTES, STRATA_RELEASES, STRATA_LLAMA_REVISION } from "../src/core/catalog/dependencies/strata";
 import { installStrataRuntime, strataManagedReceipt, verifyStrataEngineArchive, managedStrataDirectory, resolvedStrataDirectory, strataInstalledRelease, canUninstallStrata } from "../electron/services/strata-installation";
 import { InstallationCancellation, installationSignal } from "../electron/services/installation-cancellation";
+import * as vectorTools from "../electron/services/strata-uncensored";
+import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
 
 const fixtures: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const folder of fixtures.splice(0)) await fs.rm(folder, { recursive: true, force: true }); });
 async function fixture() {
+  vi.spyOn(vectorTools, "verifyStrataControlVector").mockImplementation(async (dir, mode = "builtin") => ({ ...strataVectorForMode(mode), filename: path.join(dir, strataVectorForMode(mode).relativePath) }));
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-install-test-")); fixtures.push(folder);
   const root = path.join(folder, "runtime");
   const runtime = {
@@ -35,6 +38,16 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("does not replace an existing install when the small community asset fails verification", async () => {
+    const { root, runtime } = await fixture();
+    expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
+    await fs.writeFile(path.join(root, "keep.txt"), "old runtime");
+    vi.mocked(vectorTools.verifyStrataControlVector).mockRejectedValueOnce(new Error("community SHA-256 mismatch"));
+    const failed = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(failed.ok).toBe(false); expect(failed.message).toContain("SHA-256");
+    expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old runtime");
+    expect(await strataManagedReceipt(root)).toBe(true);
+  });
   it("keeps a failed transfer in an asset-keyed cache for the next install and retains the previous software", async () => {
     const { root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
@@ -45,7 +58,7 @@ describe("Strata software installer", () => {
     expect(failed).toMatchObject({ ok: false, message: expect.stringContaining("curl 56") });
     expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old software");
     expect(await fs.readFile(archive, "utf8")).toBe("partial transfer");
-    runtime.download.mockImplementation(async (_url, destination) => { expect(destination).toBe(archive); expect(await fs.readFile(destination, "utf8")).toBe("partial transfer"); });
+    runtime.download.mockImplementation(async (url, destination) => { if (url === STRATA_ENGINE_URL) { expect(destination).toBe(archive); expect(await fs.readFile(destination, "utf8")).toBe("partial transfer"); } else await fs.writeFile(destination, "vector fixture"); });
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
   });
   it("keeps a recognized older managed install usable until the recommended update completes", async () => {
@@ -59,7 +72,7 @@ describe("Strata software installer", () => {
     };
     await write(oldRoot, old, true);
     expect(resolvedStrataDirectory(createDefaultSettings())).toBe(oldRoot);
-    expect(strataInstalledRelease(oldRoot)?.version).toBe("0.1.41");
+    expect(strataInstalledRelease(oldRoot)?.version).toBe("0.1.44.1");
     expect(await canUninstallStrata(createDefaultSettings())).toBe(true);
     await write(newRoot, current, false);
     expect(resolvedStrataDirectory(createDefaultSettings())).toBe(oldRoot);
@@ -142,6 +155,8 @@ describe("Strata software installer", () => {
     expect(first.ok, first.log).toBe(true);
     expect(await strataManagedReceipt(root)).toBe(true);
     expect(runtime.download).toHaveBeenCalledWith(STRATA_ENGINE_URL, expect.any(String), expect.any(Object), expect.any(Function), expect.any(Function));
+    expect(runtime.download).toHaveBeenCalledWith(STRATA_COMMUNITY_VECTOR.source, expect.stringContaining("sergqwer-8-33.gguf"), expect.any(Object), undefined, expect.any(Function), STRATA_COMMUNITY_VECTOR.bytes);
+    expect(await fs.readFile(path.join(root, "data/lvs-control-vectors/NOTICE.txt"), "utf8")).toContain(STRATA_COMMUNITY_VECTOR.revision);
     const commands = runtime.run.mock.calls.map(([exe, args]) => `${exe} ${args.join(" ")}`).join("\n");
     expect(commands).toContain(`fetch --depth=1 origin ${STRATA_REVISION}`);
     expect(commands).toContain(".venv");
@@ -164,8 +179,8 @@ describe("Strata software installer", () => {
     };
     const result = await installStrataRuntime(createDefaultSettings(), { ...runtime, download }, (_message, progress) => { if (progress) events.push(progress); });
     expect(result.ok).toBe(true);
-    expect(events.map(event => event.stage)).toEqual(["prepare", "source", "download", "download", "download", "verify", "extract", "python", "packages", "check", "complete"]);
-    expect(events.filter(event => event.stage === "download").map(event => event.percent)).toEqual([0, 49, 100]);
+    expect(events.map(event => event.stage)).toEqual(["prepare", "source", "download", "download", "download", "verify", "extract", "assets", "python", "packages", "check", "complete"]);
+    expect(events.filter(event => event.stage === "download").map(event => event.percent)).toEqual([0, Math.floor(Math.floor(STRATA_ENGINE_BYTES / 2) * 100 / STRATA_ENGINE_BYTES), 100]);
     expect(events.find(event => event.stage === "packages")?.percent).toBeUndefined();
   });
   it("rejects custom directories and unowned targets without touching files", async () => {

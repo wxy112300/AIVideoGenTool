@@ -3,6 +3,9 @@ import { modelCatalog } from "../../../core/catalog";
 
 type SettingsCopyKey =
   | "prompt.uncensored"
+  | "prompt.uncensored.off"
+  | "prompt.uncensored.builtin"
+  | "prompt.uncensored.community"
   | "prompt.uncensoredHint"
   | "prompt.uncensoredUnsupported"
   | "strata.title"
@@ -11,6 +14,7 @@ type SettingsCopyKey =
   | "strata.install.download"
   | "strata.install.verify"
   | "strata.install.extract"
+  | "strata.install.assets"
   | "strata.install.python"
   | "strata.install.packages"
   | "strata.install.check"
@@ -356,14 +360,18 @@ type SettingsCopyCatalog = Record<SettingsCopyKey, string>;
 
 const zhCN: SettingsCopyCatalog = {
   "strata.title": "Strata · 独立提示词运行组件",
-  "prompt.uncensored": "启用 uncensored 模式",
-  "prompt.uncensoredHint": "对兼容模型应用去拒答向量，原始权重不变。保存后下次增强生效；首次启用会重新加载模型。",
+  "prompt.uncensored": "uncensored 模式",
+  "prompt.uncensored.off": "关闭",
+  "prompt.uncensored.builtin": "自带 · ESP",
+  "prompt.uncensored.community": "社区 · sergqwer",
+  "prompt.uncensoredHint": "原始权重不变；保存后下次增强生效。首次启用或更换向量会重载模型，去拒答效果因任务而异。",
   "prompt.uncensoredUnsupported": "当前模型不支持；偏好保留，兼容模型可继续使用。",
   "strata.install.prepare": "检查安装环境",
   "strata.install.source": "获取源码",
   "strata.install.download": "下载引擎",
   "strata.install.verify": "校验引擎",
   "strata.install.extract": "解压引擎",
+  "strata.install.assets": "准备控制向量",
   "strata.install.python": "创建 Python 环境",
   "strata.install.packages": "安装 Python 依赖",
   "strata.install.check": "检查运行组件",
@@ -707,14 +715,18 @@ const zhCN: SettingsCopyCatalog = {
 const zhTW: SettingsCopyCatalog = {
   ...zhCN,
   "strata.title": "Strata · 獨立提示詞執行元件",
-  "prompt.uncensored": "啟用 uncensored 模式",
-  "prompt.uncensoredHint": "對相容模型套用去拒答向量，原始權重不變。儲存後下次增強生效；首次啟用會重新載入模型。",
+  "prompt.uncensored": "uncensored 模式",
+  "prompt.uncensored.off": "關閉",
+  "prompt.uncensored.builtin": "自帶 · ESP",
+  "prompt.uncensored.community": "社群 · sergqwer",
+  "prompt.uncensoredHint": "原始權重不變；儲存後下次增強生效。首次啟用或更換向量會重載模型，去拒答效果因任務而異。",
   "prompt.uncensoredUnsupported": "目前模型不支援；保留偏好供相容模型使用。",
   "strata.install.prepare": "檢查安裝環境",
   "strata.install.source": "取得原始碼",
   "strata.install.download": "下載引擎",
   "strata.install.verify": "驗證引擎",
   "strata.install.extract": "解壓引擎",
+  "strata.install.assets": "準備控制向量",
   "strata.install.python": "建立 Python 環境",
   "strata.install.packages": "安裝 Python 相依套件",
   "strata.install.check": "檢查執行元件",
@@ -1035,14 +1047,18 @@ const zhTW: SettingsCopyCatalog = {
 
 const enUS: SettingsCopyCatalog = {
   "strata.title": "Strata · Independent prompt runtime",
-  "prompt.uncensored": "Enable uncensored mode",
-  "prompt.uncensoredHint": "Apply a refusal-reduction vector to compatible models without changing weights. Takes effect on the next enhancement after saving; first activation reloads the model.",
+  "prompt.uncensored": "Uncensored mode",
+  "prompt.uncensored.off": "Off",
+  "prompt.uncensored.builtin": "Bundled · ESP",
+  "prompt.uncensored.community": "Community · sergqwer",
+  "prompt.uncensoredHint": "Weights stay unchanged. Applies to the next enhancement after saving; first activation or changing vectors reloads the model. Results vary by task.",
   "prompt.uncensoredUnsupported": "Not supported by this model; the preference is retained for compatible models.",
   "strata.install.prepare": "Checking environment",
   "strata.install.source": "Fetching source",
   "strata.install.download": "Downloading engine",
   "strata.install.verify": "Verifying engine",
   "strata.install.extract": "Extracting engine",
+  "strata.install.assets": "Preparing control vectors",
   "strata.install.python": "Creating Python environment",
   "strata.install.packages": "Installing Python packages",
   "strata.install.check": "Checking runtime files",

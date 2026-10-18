@@ -35,6 +35,8 @@ describe("Strata installation progress", () => {
     expect(bar.hasAttribute("aria-valuenow")).toBe(false);
     expect(bar.querySelector<HTMLElement>("span")?.style.width).toBe("");
     expect(document.querySelector("#strata-install-stage")?.textContent).toBe("安装 Python 依赖");
+    updateStrataInstallProgress({ stage: "assets" }, "zh-CN");
+    expect(document.querySelector("#strata-install-stage")?.textContent).toBe("准备控制向量");
     expect(document.activeElement).toBe(input); expect(input.value).toBe("43128");
     expect(document.querySelector("[role=progressbar]")).toBe(bar);
   });

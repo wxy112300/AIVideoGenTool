@@ -10,17 +10,19 @@ import { GpuResourceLease } from "./gpu-resource-lease.js";
 import { privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
 import { StrataService } from "./strata-service.js";
 import { readReliableStrataResources } from "./strata-resources.js";
-import { planStrataResources } from "../../src/core/strata-resource-policy.js";
+import { planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
 import { AgentResourcePressure } from "../../src/core/strata-agent-resources.js";
 import { isLocalPortInUse, localEndpoint } from "./local-service-process.js";
 import { prepareStrataModelRuntime } from "./strata-model-preparation.js";
 import { installStrata, runLoggedProcess } from "./environment.js";
 import { InstallationCancellation } from "./installation-cancellation.js";
 import { STRATA_ENGINE_BYTES, STRATA_VERSION } from "../../src/core/catalog/dependencies/strata.js";
-import { resolvedStrataDirectory } from "./strata-installation.js";
+import { managedStrataDirectory, resolvedStrataDirectory } from "./strata-installation.js";
+import { agentStrataInstallationSettings } from "./strata-agent-settings.js";
 import { AgentCloud, verifyCloudAdapter } from "./strata-agent-cloud.js";
 import { AGENT_SOFTWARE, atLeastVersion, checkAgentSoftwareUpstream, cloudPackageDirectory, installAgentSoftware, planSharedAgentSoftware, type SharedSoftwarePlan } from "./strata-agent-software.js";
 import { backupClaudeAndSwitch, switchBackupConfig } from "./strata-agent-cc-switch.js";
+import { AgentRuntimeMonitor } from "./strata-agent-monitor.js";
 
 export class AgentController {
   private readonly lease = new GpuResourceLease("agent", async () => {
@@ -28,7 +30,17 @@ export class AgentController {
     return false; // Explicit stop is required until full harness activity tracking has passed P2/P4.
   });
   private readonly coldPressure = new AgentResourcePressure();
-  private readonly service = new StrataService({ onSpawn: (pid) => this.lease.track(pid), resourcePressure: (resources) => this.coldPressure.check(resources) });
+  private readonly service = new StrataService({ onSpawn: (pid) => this.lease.track(pid), resourcePressure: (resources) => this.coldPressure.check(resources),
+    onOutput: (chunk) => this.writeServerLog(chunk) });
+  private readonly monitor = new AgentRuntimeMonitor();
+  private serverLog = "";
+  private serverOutput = "";
+  private engineLog = "";
+  private fault: { kind: string; message: string; at: string } | null = null;
+  private monitorRead: Promise<unknown> | null = null;
+  private lastMonitorSignature = "";
+  private lastResources: StrataResources | null = null;
+  private restoredDiagnostics: Promise<void> | null = null;
   private readonly cloud: AgentCloud;
   private readonly installations = new InstallationCancellation();
   private operation: Promise<unknown> | null = null;
@@ -47,6 +59,7 @@ export class AgentController {
     this.cloud = new AgentCloud(toolDirectory, directory, (pid) => this.lease.track(pid));
   }
   private log(message: string) {
+    message = this.redact(message);
     const record = { event: "progress", operationId: this.operationId, message, at: new Date().toISOString() };
     this.emit(record);
     this.logReady ??= privateLocalDirectory(path.join(this.directory, "logs"));
@@ -55,7 +68,78 @@ export class AgentController {
       await fs.appendFile(path.join(directory, `${record.at.slice(0, 10)}.jsonl`), JSON.stringify(record) + "\n", { mode: 0o600 });
     }).catch(() => { this.emit({ event: "logError", message: "本机操作日志无法写入；窗口反馈仍保留。" }); });
   }
-  reportFailure(message: string) { this.log(message.replaceAll(this.currentToken || "\0", "[redacted]")); }
+  reportFailure(message: string) {
+    // Retain the root safety reason instead of replacing it with a secondary abort error.
+    if (this.fault && ["resource-protection", "telemetry-failure"].includes(this.fault.kind)) this.log(message);
+    else this.recordFault("operation-failed", message);
+  }
+  private redact(message: string) {
+    return message.replaceAll(this.currentToken || "\0", "[redacted]")
+      .replace(/(Bearer\s+|(?:api[_-]?key|auth[_-]?token)["'\s:=]+)[^\s"',}]+/giu, "$1[redacted]");
+  }
+  private writeServerLog(chunk: string) {
+    if (!this.serverLog) return;
+    this.serverOutput += chunk;
+    const end = this.serverOutput.lastIndexOf("\n");
+    if (end < 0) return; // Redact whole lines, including secrets split across stdout chunks.
+    const filename = this.serverLog, text = this.redact(this.serverOutput.slice(0, end + 1));
+    this.serverOutput = this.serverOutput.slice(end + 1);
+    this.logging = this.logging.then(() => fs.appendFile(filename, text, { mode: 0o600 })).catch(() => {
+      this.emit({ event: "logError", message: "服务日志写入失败；请检查本机数据目录的空间和权限。" });
+    });
+  }
+  private recordFault(kind: string, message: string) {
+    if (this.fault?.kind === kind && this.fault.message === message) return;
+    this.fault = { kind, message: this.redact(message), at: new Date().toISOString() };
+    this.log(`[${kind}] ${this.fault.message}`);
+    if (this.lastResources) this.log(`故障时最近资源：RAM=${this.lastResources.memoryAvailableBytes} commit=${this.lastResources.commitAvailableBytes} VRAM=${this.lastResources.vramAvailableBytes} bytes`);
+    this.emit({ event: "fault", fault: this.fault, message: this.fault.message });
+    this.persistDiagnostics();
+  }
+  private persistDiagnostics() {
+    if (!this.serverLog) return;
+    const record = { serverLog: this.serverLog, engineLog: this.engineLog, fault: this.fault };
+    this.logging = this.logging.then(() => writePrivateJson(path.join(this.directory, "latest-run.json"), record))
+      .catch(() => this.emit({ event: "logError", message: "最近运行诊断索引写入失败；本轮日志仍可在runs目录查找。" }));
+  }
+  private async restoreDiagnostics() {
+    if (this.serverLog) return;
+    try {
+      const saved = JSON.parse(await fs.readFile(path.join(this.directory, "latest-run.json"), "utf8"));
+      const valid = (filename: unknown, basename: string) => {
+        if (typeof filename !== "string" || path.basename(filename) !== basename) return false;
+        const relative = path.relative(path.join(this.directory, "runs"), filename);
+        return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+      };
+      if (this.serverLog || !valid(saved.serverLog, "server.log") || !valid(saved.engineLog, "engine.log")) return;
+      this.serverLog = saved.serverLog; this.engineLog = saved.engineLog;
+      if (saved.fault && typeof saved.fault.kind === "string" && typeof saved.fault.message === "string" && typeof saved.fault.at === "string")
+        this.fault = { kind: saved.fault.kind.slice(0, 80), message: this.redact(saved.fault.message.slice(0, 4000)), at: saved.fault.at.slice(0, 40) };
+    } catch { /* No previous run/index is normal. Never adopt a process from this index. */ }
+  }
+  private async status() {
+    await (this.restoredDiagnostics ??= this.restoreDiagnostics());
+    let runtime = this.service.snapshot();
+    // Service.inspect is serialized with load/chat. Monitoring must remain responsive while loading.
+    let live = !this.operation && !this.stopping && runtime.phase === "ready" && runtime.port && this.currentToken
+      ? await this.monitor.read(runtime.port, this.currentToken) : null;
+    const current = this.service.snapshot();
+    if (current.pid !== runtime.pid || this.operation || this.stopping) { live = null; runtime = current; }
+    if (runtime.phase === "error") this.recordFault("process-exit", runtime.message);
+    if (this.cloud.running && !this.cloud.alive && !this.operation && !this.stopping)
+      this.recordFault("gui-exit", "CloudCLI GUI 进程已退出。模型归属保留；请先停止全部后重试，不会自动中止或重放文件操作。");
+    if (live?.connection === "unreachable") this.recordFault("http-unreachable", "Strata 连续三次无法连接。未终止或重放活跃任务；请查看服务日志，确认后停止并重新启动，可恢复原 Claude 会话。");
+    if (live?.connection === "online" && live.loaded === false && runtime.modelLoaded === true)
+      this.recordFault("model-unloaded", "Strata HTTP 在线，但模型已卸载或引擎已退出。请查看本轮 engine.log / server.log；未自动重试工具或重载模型。");
+    const signature = JSON.stringify([runtime.phase, live?.connection, live && "loaded" in live ? live.loaded : null, this.cloud.alive]);
+    if (signature !== this.lastMonitorSignature) {
+      this.lastMonitorSignature = signature;
+      this.log(`服务状态：Strata=${runtime.phase} HTTP=${live?.connection ?? "未探测"} 模型=${live && "loaded" in live ? live.loaded : runtime.modelLoaded} GUI=${this.cloud.alive ? "在线" : "未运行"}`);
+    }
+    return { runtime: { ...runtime, log: "" }, live, fault: this.fault, gui: { owned: this.cloud.running, alive: this.cloud.alive },
+      busy: Boolean(this.operation || this.stopping), ownedGpu: this.lease.held,
+      logs: { directory: path.join(this.directory, "logs"), server: this.serverLog, engine: this.engineLog } };
+  }
   private async exclusive<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
     if (this.operation || this.stopping) throw new Error("当前操作尚未结束，请取消或等待后重试。");
     const abort = new AbortController(); this.abort = abort;
@@ -82,9 +166,11 @@ export class AgentController {
         const repairSoftware = command.mode === "repairAgentSoftware";
         const onlySoftware = repairSoftware || command.mode === "agentSoftware";
         let softwarePlan: SharedSoftwarePlan | undefined;
-        const items = onlySoftware || (doctor.strata.managedInstalled && !repair && !update) ? [] : [{ name: "Strata", version: STRATA_VERSION,
-          target: resolvedStrataDirectory(await agentSettings(preferences)), bytes: STRATA_ENGINE_BYTES,
-          impact: "固定引擎包约148MiB，另需源码和Python依赖（大小未知）；独立venv，不下载模型；无系统PATH/分页文件/用户provider变更。旧安装保留。" }];
+        const needsStrata = !onlySoftware && (!doctor.strata.managedInstalled || repair || update);
+        if (needsStrata) await agentStrataInstallationSettings(preferences);
+        const items = !needsStrata ? [] : [{ name: "Strata", version: STRATA_VERSION,
+          target: managedStrataDirectory(), bytes: STRATA_ENGINE_BYTES,
+          impact: `固定引擎约${(STRATA_ENGINE_BYTES / 1024 ** 2).toFixed(1)}MiB，附社区向量约262KiB；另需源码和Python依赖（大小未知）。独立venv，不下载模型；无系统PATH/分页文件/provider变更。旧安装保留。` }];
         if (!["update", "repair"].includes(command.mode ?? "")) {
           if (!doctor.npm) throw new Error(doctor.npmIssue || "未找到共享 npm 安装位置，请修复 Node/npm 后重试。");
           softwarePlan = await planSharedAgentSoftware(doctor.npm, doctor.claude, repairSoftware);
@@ -106,24 +192,28 @@ export class AgentController {
         if (!plan.items.length) return { message: "没有已批准的缺失软件需要安装。" };
         await this.lease.acquire();
         try {
-          const settings = await agentSettings(plan.preferences);
+          let installedPreferences = plan.preferences;
           const fresh = await agentDoctor(plan.preferences, this.directory);
           if (fresh.ports.strataPortBusy) throw new Error("Strata 端口仍有监听，归属未确认；未修改软件，请先在原窗口停止。");
           if (plan.items.some((item) => item.name === "Strata") && (!fresh.strata.managedInstalled || plan.repair)) {
+            const settings = await agentStrataInstallationSettings(plan.preferences);
             const result = await this.installations.run("strata", () => installStrata(settings, (message, progress) => {
               if (message) this.log(message); if (progress) this.emit({ event: "installProgress", progress });
             }), signal);
             if (!result.ok) throw new Error(result.message);
+            installedPreferences = { ...plan.preferences, strataDirectory: managedStrataDirectory(), packConfig: "" };
+            await saveAgentPreferences(installedPreferences, this.directory);
           }
           if (plan.softwarePlan?.items.length) {
             const installed = await installAgentSoftware(plan.softwarePlan, this.directory, signal, (message) => this.log(message), fresh.claude);
             if (!installed.available) throw new Error("共享软件安装后复检失败，请重试。");
-            await saveAgentPreferences({ ...plan.preferences, cloudDirectory: installed.path, claudeEntry: installed.claudePath }, this.directory);
+            await saveAgentPreferences({ ...installedPreferences, cloudDirectory: installed.path, claudeEntry: installed.claudePath }, this.directory);
           }
           return { message: "已批准软件准备完成；共享权重未下载。请重新检测，真实Agent工具仍待验收。", preferences: await readAgentPreferences(this.directory) };
         } finally { await this.lease.release(); }
       });
       case "start": return this.exclusive(async (signal) => {
+        this.fault = null; this.monitor.reset();
         const preferences = normalizeAgentPreferences(command.preferences);
         const doctor = await agentDoctor(preferences, this.directory);
         if (!atLeastVersion(process.versions.node, "22.15.0")) throw new Error("CloudCLI版本适配需要 Node 22.15+，推荐现有24 LTS。");
@@ -166,7 +256,10 @@ export class AgentController {
       });
       case "cancel": this.abort?.abort(new Error("操作已取消")); await this.operation?.catch(() => undefined); return { message: "操作已收尾。" };
       case "stop": return this.stop(command.confirmed === true);
-      case "status": return { runtime: this.service.snapshot(), busy: Boolean(this.operation), ownedGpu: this.lease.held };
+      case "status": {
+        this.monitorRead ??= this.status().finally(() => { this.monitorRead = null; });
+        return this.monitorRead;
+      }
       default: throw new Error("不支持的启动器操作。");
     }
   }
@@ -189,6 +282,7 @@ export class AgentController {
       signal.throwIfAborted();
       this.log(`按当前 RAM、Windows 提交余量和显存预检 ${contextTokens / 1024}K；上下文扩展不修改共享H3策略`);
       const resources = await readReliableStrataResources(undefined, { signal });
+      this.lastResources = resources;
       this.emit({ event: "resources", resources });
       const limits = planStrataResources(resources, 5120, { commitTrial, allowFileReadFallback: true });
       if (commitTrial) this.log("用户授权Agent实测：本次不叠加整卡容量作为提交硬门槛，实时RAM/提交/显存及低资源停止仍启用；不影响H3默认策略。");
@@ -204,6 +298,13 @@ export class AgentController {
       this.currentToken = await agentToken(this.directory);
       const plan = await agentLaunchPlan({ preferences, install: doctor.strata.installDirectory, packConfig,
         token: this.currentToken, directory: this.directory, guardScript: path.join(this.toolDirectory, "guard.py"), resources: await readReliableStrataResources(undefined, { signal }), commitTrial, contextTokens });
+      this.fault = null; this.monitor.reset();
+      this.serverOutput = "";
+      this.engineLog = plan.engineLog ?? "";
+      this.serverLog = path.join(path.dirname(this.engineLog), "server.log");
+      await fs.writeFile(this.serverLog, `[Agent run] ${new Date().toISOString()} context=${contextTokens} uncensoredMode=${preferences.uncensoredMode} vector=${plan.controlVector?.id ?? "none"} sha256=${plan.controlVector?.sha256 ?? "none"}\n`, { flag: "wx", mode: 0o600 });
+      this.persistDiagnostics();
+      this.log(`本轮日志：${path.dirname(this.serverLog)}（server.log 服务输出；engine.log 原生引擎）`);
       const owner = JSON.parse(await fs.readFile(path.join(this.lease.directory, "gpu-owner.json"), "utf8"));
       this.admissionEnabled = true;
       this.sampleAbort = new AbortController();
@@ -211,11 +312,13 @@ export class AgentController {
       const sample = async () => {
         // Keep a full retry budget below the native guard's 8s freshness limit.
         const fresh = await readReliableStrataResources(undefined, { signal: sampleSignal, maxWaitMs: 6000,
+          knownPressure: (resources) => this.coldPressure.knownPressure(resources),
           onDiagnostic: (event) => {
             if (event.event === "pressure" && !this.coldPressure.check({ ...event, vramTotalBytes: null })) return;
             this.log(`资源探针 ${event.event} / 第${event.attempt}次 / ${event.elapsedMs}ms / ${event.sources.join(",")} / RAM=${event.memoryAvailableBytes} commit=${event.commitAvailableBytes} VRAM=${event.vramAvailableBytes}`);
           } });
         if (!this.admissionEnabled || sampleSignal.aborted) return;
+        this.lastResources = fresh;
         await writePrivateJson(path.join(this.directory, "admission.json"), {
           enabled: this.admissionEnabled, sampledAt: Date.now(), epoch: owner.epoch, controllerPid: process.pid,
           leaseFile: path.join(this.lease.directory, "gpu-owner.json"), limits: plan.resourcePlan
@@ -224,7 +327,7 @@ export class AgentController {
         const pressure = this.coldPressure.check(fresh);
         if (this.admissionEnabled && pressure) {
           this.admissionEnabled = false;
-          this.log(pressure);
+          this.recordFault("resource-protection", pressure);
           this.abort?.abort(new Error("资源保护已触发"));
           // Emergency resource protection is visible, never repurposed as silent handoff.
           if (!this.operation) void this.stop(true).catch(() => this.log("资源保护清理未完成，请重试停止全部"));
@@ -232,9 +335,10 @@ export class AgentController {
       };
       await sample();
       this.timer = setInterval(() => {
-        if (!this.sampling) this.sampling = sample().catch(() => {
+        if (!this.sampling) this.sampling = sample().catch((error) => {
           if (sampleSignal.aborted || !this.admissionEnabled) return;
           this.admissionEnabled = false; this.abort?.abort(new Error("实时资源探针失败"));
+          this.recordFault("telemetry-failure", error instanceof Error ? error.message : "实时资源探针失败，保护停止自有服务。");
           if (!this.operation) void this.stop(true).catch(() => this.log("探针失败后清理未完成"));
         }).finally(() => { this.sampling = null; });
       }, 1000);

@@ -4,16 +4,19 @@ import os from "node:os";
 import { createDefaultSettings } from "../../src/core/defaults.js";
 import { strataPreparationProfiles, validStrataPort } from "../../src/core/strata-preparation.js";
 import { localStateBase, privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
+import { normalizeStrataUncensoredMode, isStrataUncensoredMode, type StrataUncensoredMode } from "../../src/core/strata-uncensored.js";
+import { managedStrataDirectory, strataInstalledRelease } from "./strata-installation.js";
 
 export interface AgentPreferences {
   schema: 1; modelId: string; uncensored: boolean; lan: boolean;
+  uncensoredMode: StrataUncensoredMode;
   strataDirectory: string; modelRoot: string; modelDirectory: string; packConfig: string;
   claudeEntry: string; ccSwitchPath: string; cloudDirectory: string; strataPort: number; guiPort: number;
   openNative: boolean; openGui: boolean; contextTokens: number;
 }
 export const agentDirectory = () => path.join(localStateBase(), "strata-agent");
 export const agentDefaults = (): AgentPreferences => ({ schema: 1,
-  modelId: strataPreparationProfiles()[0]!.id, uncensored: false, lan: false,
+  modelId: strataPreparationProfiles()[0]!.id, uncensored: false, uncensoredMode: "off", lan: false,
   strataDirectory: "", modelRoot: "", modelDirectory: "", packConfig: "", claudeEntry: "", ccSwitchPath: "", cloudDirectory: "",
   strataPort: 43127, guiPort: 43128, openNative: true, openGui: true, contextTokens: 262144 });
 
@@ -36,6 +39,9 @@ export function normalizeAgentPreferences(value: unknown): AgentPreferences {
     if (typeof input[key] !== "boolean") throw new Error(`设置 ${key} 无效。`);
     result[key] = input[key];
   }
+  if (input.uncensoredMode !== undefined && !isStrataUncensoredMode(input.uncensoredMode)) throw new Error("uncensored 模式无效。");
+  result.uncensoredMode = normalizeStrataUncensoredMode(input.uncensoredMode, input.uncensored);
+  result.uncensored = result.uncensoredMode !== "off";
   for (const key of ["strataPort", "guiPort"] as const) {
     if (!validStrataPort(input[key])) throw new Error("端口应为 1024–65535，不能使用 8080。");
     result[key] = input[key];
@@ -93,7 +99,22 @@ export async function agentSettings(preferences: AgentPreferences, stateFile = p
   return { ...settings, comfyInstallDirectory: "", modelDirectory: preferences.modelRoot || (preferences.modelDirectory ? "" : text("modelDirectory")),
     strataModelDirectory: preferences.modelDirectory || text("strataModelDirectory"),
     strataInstallDirectory: preferences.strataDirectory || text("strataInstallDirectory"),
-    strataPort: preferences.strataPort, strataUncensored: preferences.uncensored, promptModelId: preferences.modelId,
+    strataPort: preferences.strataPort, strataUncensored: preferences.uncensoredMode !== "off", strataUncensoredMode: preferences.uncensoredMode, promptModelId: preferences.modelId,
     // Independent operation never connects to or starts Comfy. This URL is only an occupancy check.
     discoveredComfyUrl: text("comfyUrl"), uiLocale: "zh-CN" as const };
+}
+
+/** Updating an auto-discovered old managed path installs beside it, never overwrites a manual checkout. */
+export async function agentStrataInstallationSettings(preferences: AgentPreferences) {
+  const settings = await agentSettings(preferences);
+  const selected = settings.strataInstallDirectory.trim();
+  if (selected) {
+    const release = strataInstalledRelease(selected);
+    const identity = (filename: string) => path.resolve(filename).toLowerCase();
+    if (identity(selected) !== identity(managedStrataDirectory()) &&
+      (!release || identity(selected) !== identity(managedStrataDirectory(release)))) {
+      throw new Error("手动 Strata 目录不由启动器更新；请选择应用管理安装，原目录未修改。");
+    }
+  }
+  return { ...settings, strataInstallDirectory: "" };
 }

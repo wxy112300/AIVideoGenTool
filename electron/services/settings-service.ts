@@ -1,5 +1,6 @@
 import path from "node:path";
 import { normalizeStrataSettings, validStrataPort } from "../../src/core/strata-preparation.js";
+import { isStrataUncensoredMode } from "../../src/core/strata-uncensored.js";
 import type {
   AppState,
   HistoryAsset,
@@ -133,6 +134,9 @@ export class SettingsService {
     }
     if (input.strataUncensored !== undefined && typeof input.strataUncensored !== "boolean") {
       throw new Error("Strata uncensored 设置必须为布尔值。");
+    }
+    if (input.strataUncensoredMode !== undefined && !isStrataUncensoredMode(input.strataUncensoredMode)) {
+      throw new Error("Strata uncensored 模式无效，请选择关闭、自带或社区向量。");
     }
     let settings = { ...input, ...normalizeStrataSettings(input) };
     if (!settings.imageInputLibraryDirectory.trim()) {

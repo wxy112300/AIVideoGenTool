@@ -7,6 +7,8 @@ import { renameWithRetry } from "./filesystem-retry.js";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { prepareStrataDownloadCache } from "./strata-download-cache.js";
 import { installStrataGgufPython } from "./strata-gguf-python.js";
+import { STRATA_COMMUNITY_VECTOR } from "../../src/core/strata-uncensored.js";
+import { verifyStrataControlVector } from "./strata-uncensored.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
 import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
@@ -34,7 +36,7 @@ export async function strataManagedReceipt(root: string, complete = true): Promi
   return Boolean(strataInstalledRelease(root, complete));
 }
 interface InstallationRuntime {
-  download(url: string, destination: string, settings: Settings, onProgress?: (receivedBytes: number) => void, onLog?: (message: string) => void): Promise<void>;
+  download(url: string, destination: string, settings: Settings, onProgress?: (receivedBytes: number) => void, onLog?: (message: string) => void, totalBytes?: number): Promise<void>;
   findPython(settings: Settings): Promise<string>;
   environment(settings: Settings): NodeJS.ProcessEnv;
   run(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; onLog?: (message: string) => void }): Promise<string>;
@@ -172,6 +174,19 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     for (const name of ["strata.exe", "strata-vision.exe", "BUILD.json"]) {
       if (!(await fs.stat(path.join(staging, "engine", name))).size) throw new Error(`引擎缺少 ${name}`);
     }
+    checkInstallationCancelled();
+    const vector = STRATA_COMMUNITY_VECTOR;
+    stage("assets");
+    log(`准备社区控制向量 ${vector.id}（${vector.bytes} bytes，不下载模型）`);
+    const vectorFile = path.join(staging, vector.relativePath);
+    await fs.mkdir(path.dirname(vectorFile), { recursive: true });
+    await runtime.download(vector.source, vectorFile, settings, undefined, log, vector.bytes);
+    checkInstallationCancelled();
+    await verifyStrataControlVector(staging, "community");
+    await verifyStrataControlVector(staging, "builtin");
+    await fs.writeFile(path.join(path.dirname(vectorFile), "NOTICE.txt"),
+      `Community vector by sergqwer, derived from Qwen3.8-Flash-Next. Qwen Community License 1.0 applies.\nSource and license notice: ${vector.notice}\nRevision: ${vector.revision}\nSHA-256: ${vector.sha256}\nExperimental refusal-reduction projection; not a guarantee of output quality or refusal-free behavior.\n`, "utf8");
+    log(`控制向量 SHA-256 校验通过：${vector.id}，作用层 ${vector.firstLayer}..${vector.lastLayer}`);
     // Publish before creating venv: Windows scripts retain their absolute paths.
     checkInstallationCancelled();
     // A crash during pip must remain app-owned/retryable, but never installed.

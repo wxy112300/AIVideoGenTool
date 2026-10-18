@@ -26,6 +26,15 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
+  it("delivers redacted private diagnostics and detects an owned process exit on the next snapshot", async () => {
+    const f = fixture(), output = vi.fn();
+    const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock, onOutput: output });
+    await service.start(plan());
+    expect(output).toHaveBeenCalledWith("[redacted] startup\n");
+    f.exit();
+    expect(service.snapshot()).toMatchObject({ phase: "error", modelLoaded: null, message: expect.stringContaining("已退出") });
+    await service.stop();
+  });
   it("uses the confirmed file tier at chat entry, resets it on stop, and honors custom pressure at every entry", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "strata-file-tier-")); roots.push(root);
     const log = path.join(root,"engine.log"); await fs.writeFile(log,"");
@@ -69,7 +78,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       expect(request.maxTokens).toBe(8192); expect(onBudget).toHaveBeenCalledWith(30484);
       expect(diagnostics).toHaveBeenCalledWith({ modelId: "fixture", inputTokens: 1000, maxTokens: 30484, contextSize: 32768,
         finishReason: "stop", completionTokens: 12, reasoningCharacters: 7, contentCharacters: 5,
-        uncensored: { requested: false, supported: false, vectorId: null, vectorSha256: null, vectorLoaded: false, applied: false } });
+        uncensored: { mode: "off", requested: false, supported: false, vectorId: null, vectorSha256: null, vectorLoaded: false, applied: false } });
       expect(JSON.stringify(diagnostics.mock.calls)).not.toMatch(/private|final|fixture-secret/u);
       expect(f.child.stop).not.toHaveBeenCalled();
     } finally { await service.stop(); }

@@ -142,7 +142,7 @@ describe("Strata file preparation", () => {
   });
 
   it("normalizes old settings without choosing an active prompt model and forbids 8080", () => {
-    expect(normalizeStrataSettings({} as ReturnType<typeof createDefaultSettings>)).toEqual({ strataInstallDirectory: "", strataModelDirectory: "", strataPort: 43127, strataUncensored: false });
+    expect(normalizeStrataSettings({} as ReturnType<typeof createDefaultSettings>)).toEqual({ strataInstallDirectory: "", strataModelDirectory: "", strataPort: 43127, strataUncensored: false, strataUncensoredMode: "off" });
     for (const port of [8080, 80, 65536, 43127.5, NaN, "43127"]) expect(validStrataPort(port)).toBe(false);
     expect(validStrataPort(43127)).toBe(true);
     expect(createDefaultSettings().promptModelId).not.toContain("strata");

@@ -26,10 +26,12 @@ const request: EnhanceRequest = { prompt: "Change the red car to blue.", modelId
 
 describe("Strata uncensored request snapshot", () => {
   it.each([true, false])("binds the saved preference to initial and repair requests (%s)", async (enabled) => {
-    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataUncensored: enabled };
+    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataUncensored: enabled, strataUncensoredMode: enabled ? "community" as const : "off" as const };
     const chat = await buildStrataPromptRequest(request, settings, new AbortController().signal);
     settings.strataUncensored = !enabled;
+    settings.strataUncensoredMode = enabled ? "off" : "community";
     expect(chat.uncensored).toBe(enabled);
+    expect(chat.uncensoredMode).toBe(enabled ? "community" : "off");
     expect({ ...chat, messages: [...chat.messages] }.uncensored).toBe(enabled);
     expect((await buildStrataPromptRequest(request, { ...settings, promptModelId: "strata/future", strataUncensored: true }, new AbortController().signal)).uncensored).toBe(false);
   });

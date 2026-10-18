@@ -1998,10 +1998,10 @@ export async function uninstallStrata(settings: Settings, onProgress?: (message:
 
 export function installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
   return installStrataRuntime(settings, {
-    download: async (url, destination, requested, report, onLog) => {
+    download: async (url, destination, requested, report, onLog, totalBytes) => {
       const curl = await findExecutable("curl.exe");
       if (!curl) throw new Error("没有找到 curl，无法下载 Strata 引擎。");
-      await downloadWithResume({ url, destination, totalBytes: STRATA_ENGINE_BYTES, signal: installationSignal(),
+      await downloadWithResume({ url, destination, totalBytes: totalBytes ?? STRATA_ENGINE_BYTES, signal: installationSignal(),
         extraArgs: requested.proxyEnabled ? ["--proxy", normalizeProxyUrl(requested.proxyUrl)] : [],
         run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, env: downloadEnvironment(requested) }),
         onProgress: report, onLog });

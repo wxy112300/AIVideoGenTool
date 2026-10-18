@@ -1,5 +1,6 @@
 import type { H3PromptPreset, ImagePromptPreset, Settings } from "../../../types";
 import { imageOutputCountMax } from "../../../core/image-workflow";
+import { normalizeStrataUncensoredMode, strataUncensoredMode } from "../../../core/strata-uncensored";
 
 function value(id: string, fallback: string): string {
   return document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
@@ -39,6 +40,7 @@ export function readSettingsFromForm(
       base.h3AutoPromptSeedInstructions[h3AutoPromptSeedId] ?? ""
     );
   }
+  const uncensoredMode = normalizeStrataUncensoredMode(value("strata-uncensored", strataUncensoredMode(base)));
   return {
     comfyUrl: value("comfy-url", base.comfyUrl),
     comfyInstallDirectory: value("comfy-install-directory", base.comfyInstallDirectory),
@@ -55,7 +57,8 @@ export function readSettingsFromForm(
     strataInstallDirectory: value("strata-install-directory", base.strataInstallDirectory),
     strataModelDirectory: base.strataModelDirectory,
     strataPort: Number(value("strata-port", String(base.strataPort))),
-    strataUncensored: checked("strata-uncensored", base.strataUncensored),
+    strataUncensored: uncensoredMode !== "off",
+    strataUncensoredMode: uncensoredMode,
     promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
     promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,
