@@ -1098,6 +1098,11 @@ export class JsonStore implements StateRepository {
     return structuredClone(this.state.settings);
   }
 
+  getHistoryAsset(id: string): HistoryAsset | undefined {
+    const asset = this.state.history.find((item) => item.id === id);
+    return asset ? structuredClone(asset) : undefined;
+  }
+
   async update(mutator: (state: AppState) => void): Promise<AppState> {
     await this.updateWithoutSnapshot(mutator);
     return this.snapshot();

@@ -1,6 +1,7 @@
 import { historyFilterIsActive, type HistoryFilterState } from "../core/history-filter";
 import { layoutBrowseTiles, type BrowsePage, type BrowseVideo } from "../core/lan-browser";
 import { api, ApiError } from "./api";
+import { CoverLoader } from "./covers";
 import { duration, escape, icon, renderIcons, text, toast } from "./ui";
 
 /** Only visible tiles own image elements; pages retain lightweight metadata. */
@@ -16,7 +17,8 @@ export class Library {
   private frame = 0;
   private generation = 0;
   private pagingFailed = false;
-  private retryTimers = new Set<number>();
+  private covers = new CoverLoader();
+  private releaseCovers = new Map<number, () => void>();
   constructor(private root: HTMLElement, private status: HTMLElement, private open: (item: BrowseVideo, index: number) => void) {
     new ResizeObserver(() => this.relayout()).observe(root);
     window.addEventListener("scroll", () => this.schedule(), { passive: true });
@@ -67,8 +69,8 @@ export class Library {
   }
   private clearTiles(): void {
     this.tiles.clear(); this.root.replaceChildren();
-    for (const timer of this.retryTimers) clearTimeout(timer);
-    this.retryTimers.clear();
+    for (const release of this.releaseCovers.values()) release();
+    this.releaseCovers.clear();
   }
   private visibleAnchor(): { id: string; top: number } | null {
     const scroll = window.scrollY - this.root.offsetTop;
@@ -79,7 +81,9 @@ export class Library {
   update(item: BrowseVideo): void {
     const index = this.items.findIndex((candidate) => candidate.id === item.id);
     if (index < 0) return;
-    this.items[index] = item; this.tiles.get(index)?.remove(); this.tiles.delete(index); this.schedule();
+    this.items[index] = item;
+    this.releaseCovers.get(index)?.(); this.releaseCovers.delete(index);
+    this.tiles.get(index)?.remove(); this.tiles.delete(index); this.schedule();
   }
   private relayout(): void {
     this.layout = layoutBrowseTiles(this.items, this.root.clientWidth, this.mode);
@@ -99,25 +103,20 @@ export class Library {
         const control = document.createElement("button"); control.type = "button";
         element = control; element.className = "media-tile";
         element.dataset.index = String(tile.index); element.setAttribute("aria-label", item.title || text("play"));
-        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async" loading="lazy"><span class="tile-meta"><span>${item.favorite ? icon("heart") : ""}${item.rating ? `★ ${item.rating}` : ""}</span><span>${escape(duration(item.duration))}</span></span>`;
+        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async"><span class="tile-meta"><span>${item.favorite ? icon("heart") : ""}${item.rating ? `★ ${item.rating}` : ""}</span><span>${escape(duration(item.duration))}</span></span>`;
         const image = element.querySelector("img")!;
         const placeholder = element.querySelector<HTMLElement>(".cover-placeholder")!;
         image.addEventListener("load", () => { placeholder.hidden = true; image.classList.add("loaded"); });
-        let attempts = 0;
-        image.addEventListener("error", () => {
-          if (attempts++ >= 3) { placeholder.querySelector("span")!.textContent = text("coverUnavailable"); return; }
-          if (!image.isConnected) return;
-          const timer = window.setTimeout(() => { this.retryTimers.delete(timer); if (image.isConnected) image.src = `${item.coverUrl}?retry=${attempts}`; }, 3000 * attempts);
-          this.retryTimers.add(timer);
-        });
-        if (item.coverUrl) image.src = item.coverUrl;
+        const failed = () => { placeholder.querySelector("span")!.textContent = text("coverUnavailable"); };
+        image.addEventListener("error", failed);
+        if (item.coverUrl) this.releaseCovers.set(tile.index, this.covers.load(image, item.coverUrl, failed));
         else placeholder.querySelector("span")!.textContent = text("notAvailable");
         this.tiles.set(tile.index, element); this.root.append(element); renderIcons(element);
       }
       Object.assign(element.style, { transform: `translate(${tile.x}px,${tile.y}px)`, width: `${tile.width}px`, height: `${tile.height}px` });
       element.classList.toggle("album", this.mode === "album");
     }
-    for (const [index, element] of this.tiles) if (!visible.has(index)) { element.remove(); this.tiles.delete(index); }
+    for (const [index, element] of this.tiles) if (!visible.has(index)) { this.releaseCovers.get(index)?.(); this.releaseCovers.delete(index); element.remove(); this.tiles.delete(index); }
     if (!this.pending && !this.pagingFailed && this.items.length < this.total && max > this.layout.height - 800) void this.more();
   }
   private async more(): Promise<void> {

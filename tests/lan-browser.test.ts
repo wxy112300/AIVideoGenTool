@@ -131,6 +131,31 @@ describe("LAN history browser", () => {
     const response = await fetch(`${f.base}/api/v1/videos/one/versions/v1/cover`);
     expect(response.status).toBe(200); expect(response.headers.get("content-type")).toBe("image/jpeg");
     expect((await response.arrayBuffer()).byteLength).toBe(4);
+    expect(response.headers.get("etag")).toBeTruthy();
+    const conditional = await fetch(`${f.base}/api/v1/videos/one/versions/v1/cover`, { headers: { "If-None-Match": response.headers.get("etag")! } });
+    expect(conditional.status).toBe(304);
+    // A new service has no in-memory jobs or result cache: reuse must come from disk.
+    const restartedQuery = new HistoryQueryService({ store: f.store, logger: {} as AppLogger,
+      paths: { historyCoverDirectory: path.join(f.root, "covers") }, fileSystem: nativeHistoryFileSystem, resolveTaskOutputDirectory: async () => f.root });
+    expect((await restartedQuery.lookupHistoryCover(key, path.join(f.root, "video.mp4"))).state).toBe("hit");
+    const settings = vi.spyOn(f.store, "getSettings"); const snapshot = vi.spyOn(f.store, "get");
+    await restartedQuery.resolveHistoryFile(version.files[0]!);
+    expect(settings).toHaveBeenCalledOnce(); expect(snapshot).not.toHaveBeenCalled();
+  });
+  it("does not hold HTTP slots while a missing cover is being generated, and deduplicates its background job", async () => {
+    const f = await fixture(); const asset = f.state().history[0]!, version = asset.versions[0]!;
+    const producer = new LanBrowserCovers(f.query);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const frame = vi.spyOn(producer as unknown as { frame(): Promise<Buffer> }, "frame").mockImplementation(async () => { await blocked; return Buffer.from([128,128,128,255]); });
+    const controller = new AbortController();
+    const filename = path.join(f.root, "video.mp4");
+    expect(await producer.get(asset, version, filename, controller.signal, false)).toBeNull();
+    await vi.waitFor(() => expect(frame).toHaveBeenCalledOnce());
+    expect(await producer.get(asset, version, filename, controller.signal, false)).toBeNull();
+    expect(frame).toHaveBeenCalledOnce();
+    release();
+    expect(await producer.get(asset, version, filename, controller.signal)).toBeTruthy();
   });
   it("reports a port collision without stopping its owner, then recovers on retry", async () => {
     const f = await fixture();

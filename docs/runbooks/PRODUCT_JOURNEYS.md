@@ -336,10 +336,16 @@ H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑
 npm.cmd run harness:app -- guide lan-browser
 npm.cmd run build
 node scripts/harness/lan-browser-smoke.mjs
+node scripts/harness/lan-browser-polish-smoke.mjs temp/lan-smoke-<输出目录>
+node scripts/harness/history-cover-queue-smoke.mjs temp/lan-smoke-<输出目录>
 node scripts/harness/restart-lan-smoke.mjs temp/lan-smoke-<输出目录>
 node scripts/harness/close-lan-smoke.mjs temp/lan-smoke-<输出目录>
 ```
 
 该 CPU 夹具生成三种比例的短 MP4，在隔离 App Settings 点击开关，并启动没有 `window.studio` 的独立 Chromium 窗口，检查双列/横竖屏、真实解码、手势、整理写回和停止监听。输出只进入 gitignored `temp`，不接触用户库，不运行 GPU。清理 helper 核对 fixture/PID/空队列后使用自有原生窗口正常关闭。真实手机/iPad Safari 编码、音频和跨设备防火墙可达性需另验；本机通过 LAN 地址访问不代表真机通过。
+
+polish 复用仍在运行的同一夹具，以真实触摸与 Fetch 延迟验证加载圈、倍速时间连续性/无 seek 或重载、进度条精确落点与播放意图、滑屏/返回动画、暂停隐藏、返回顶部及 iOS 开关，并统计桌面缓存命中。restart 经正常关闭后重启同一 profile，同时检查封面/metadata 未重写、HTTP 直接返回及桌面无再次视频生产。
+
+history-cover-queue 以已有 LAN 合成素材为种子建立新的自有 profile/空封面缓存（输出另一个 lan-smoke 目录），真实进入桌面 History，观察冷生产开始后滚动并切到 Create；断言卡片离开后所有已接受任务完成且各保存一次、没有滚动取消，回到列表读缓存。正常关闭再重启后检查图片/metadata 未改变且不再解码生产，并邻接验证详情播放；按其新输出目录调用 close-lan-smoke 回收。
 
 网页开发可以运行 `npm.cmd run dev:web`（127.0.0.1:5174）；开发代理默认连已开启的 8790 服务。生产使用 `build:web` 输出，由 App 提供同源页面与接口。密码/配对按当前产品决定延后。

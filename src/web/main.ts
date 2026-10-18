@@ -28,13 +28,13 @@ async function refresh(preserve = false): Promise<void> {
   root.querySelector('[data-action="filter"]')!.classList.toggle("active", historyFilterIsActive(filter));
 }
 function apply(next: HistoryFilterState): void { filter = next; history.replaceState({}, "", updateUrl()); void refresh(); }
-function closePlayer(): void {
-  player.close();
+async function closePlayer(): Promise<void> {
+  await player.close();
   if (player.dirty) { player.dirty = false; void refresh(true); }
 }
 async function openFromUrl(): Promise<void> {
   const url = new URL(location.href); const id = url.searchParams.get("watch");
-  if (!id) { closePlayer(); return; }
+  if (!id) { await closePlayer(); return; }
   try {
     const item = await api.detail(id, url.searchParams.get("version") ?? undefined);
     const page = await api.around(library.queryId, id);
@@ -46,7 +46,7 @@ async function boot(): Promise<void> {
   root.innerHTML = `<div class="boot-status">${escape(text("loading"))}</div>`;
   try {
     info = await api.info(); await setLocale(info.locale);
-    root.innerHTML = `<main id="library-shell"><header class="library-header"><h1>${text("library")}</h1><div class="library-tools"><label class="sort-control"><span class="sr-only">${text("sort")}</span><select id="sort">${sortOptions(filter.sort)}</select></label>${button("filter", icon("sliders-horizontal"), text("filter"))}${button("layout", icon("columns-3"), text("album"))}${button("refresh", icon("refresh-cw"), text("refresh"))}</div></header><button id="new-content" hidden>${text("newContent")}</button><div id="media-wall"></div><div id="library-status" role="status"></div></main><section id="watch" aria-label="${text("play")}" tabindex="-1" hidden></section><div id="toast" role="status" hidden></div>`;
+    root.innerHTML = `<main id="library-shell"><header class="library-header"><h1>${text("library")}</h1><div class="library-tools"><label class="sort-control"><span class="sr-only">${text("sort")}</span><select id="sort">${sortOptions(filter.sort)}</select></label>${button("filter", icon("sliders-horizontal"), text("filter"))}${button("layout", icon("columns-3"), text("album"))}${button("refresh", icon("refresh-cw"), text("refresh"))}</div></header><button id="new-content" hidden>${text("newContent")}</button><div id="media-wall"></div><div id="library-status" role="status"></div>${button("top", icon("arrow-up"), text("returnTop"), "return-top")}</main><section id="watch" aria-label="${text("play")}" tabindex="-1" hidden></section><div id="toast" role="status" hidden></div>`;
     library = new Library(root.querySelector("#media-wall")!, root.querySelector("#library-status")!, (item, index) => {
       history.pushState({ viewer: true }, "", updateUrl(item)); void player.show(item, index, library.total, library.queryId);
     });
@@ -55,6 +55,10 @@ async function boot(): Promise<void> {
     }, (item) => history.replaceState(history.state, "", updateUrl(item)));
     root.querySelector("#sort")!.addEventListener("change", (event) => apply({ ...filter, sort: (event.target as HTMLSelectElement).value as HistorySort }));
     root.querySelector('[data-action="filter"]')!.addEventListener("click", () => showFilters(filter, info, apply));
+    const top = root.querySelector<HTMLButtonElement>('[data-action="top"]')!;
+    const showTop = () => { top.hidden = scrollY < innerHeight * .65; };
+    window.addEventListener("scroll", showTop, { passive: true }); showTop();
+    top.addEventListener("click", () => window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" }));
     root.querySelector('[data-action="layout"]')!.addEventListener("click", (event) => {
       const mode = library.mode === "masonry" ? "album" : "masonry"; library.setMode(mode);
       const control = event.currentTarget as HTMLButtonElement; control.innerHTML = icon(mode === "album" ? "columns-3" : "layout-grid"); control.title = text(mode === "album" ? "masonry" : "album"); control.setAttribute("aria-label", control.title); renderIcons(control);

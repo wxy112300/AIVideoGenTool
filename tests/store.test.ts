@@ -12,6 +12,18 @@ function fileError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
 }
 
+describe("narrow history snapshot", () => {
+  it("does not copy unrelated state and cannot mutate stored history through its return value", () => {
+    const store = new JsonStore(path.join(os.tmpdir(), "unused-narrow-history-state.json"));
+    const asset = { id: "cached-video", title: "Original", tags: ["nature"], versions: [] } as unknown as HistoryAsset;
+    store.mutateTransient((state) => { state.history = [asset]; });
+    const wide = vi.spyOn(store, "get");
+    const narrow = store.getHistoryAsset(asset.id)!; narrow.title = "Changed"; narrow.tags.push("other");
+    expect(store.getHistoryAsset(asset.id)).toMatchObject({ title: "Original", tags: ["nature"] });
+    expect(store.getHistoryAsset("missing")).toBeUndefined(); expect(wide).not.toHaveBeenCalled();
+  });
+});
+
 describe("Windows state file replacement", () => {
   it("retries transient EPERM rename failures", async () => {
     const rename = vi

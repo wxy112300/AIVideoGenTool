@@ -8,6 +8,8 @@ import { assertStrataResidentLog, prepareStrataLaunch, StrataService, type Strat
 import { isLocalPortInUse } from "../electron/services/local-service-process.js";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
 import { planStrataResources } from "../src/core/strata-resource-policy.js";
+import { AgentResourcePressure } from "../src/core/strata-agent-resources.js";
+import { AGENT_RESOURCE_RETRY } from "../electron/services/strata-agent-sampler.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -26,6 +28,32 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
+  it("uses the supplied Agent thirty-second policy during load so partial telemetry can recover after twelve seconds", async () => {
+    vi.useFakeTimers();
+    const f = fixture(), GiB = 1024 ** 3;
+    const safe = { memoryAvailableBytes: 100 * GiB, commitAvailableBytes: 100 * GiB, vramAvailableBytes: 22 * GiB, vramTotalBytes: 24 * GiB };
+    const partial = { ...safe, memoryAvailableBytes: 2.5 * GiB, vramAvailableBytes: null };
+    const pressure = new AgentResourcePressure(); pressure.setLoading(true);
+    const started = Date.now();
+    const read = vi.fn(async () => Date.now() - started < 14_000 ? partial : safe);
+    const originalFetch = f.fetchMock.getMockImplementation()!;
+    f.fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/v1/load')) { f.load(); return new Response('{"status":"loaded"}'); }
+      return originalFetch(url, options);
+    });
+    const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock, readResources: read,
+      resourceRetry: AGENT_RESOURCE_RETRY, resourcePressure: sample => pressure.check(sample), knownResourcePressure: sample => pressure.knownPressure(sample) });
+    try {
+      await service.start({ ...plan(), resourcePlan: planStrataResources(safe, 5120) });
+      const loaded = service.load();
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(f.child.stop).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect((await loaded).modelLoaded).toBe(true);
+      expect(read.mock.calls.length).toBeGreaterThan(3);
+      expect(f.child.running()).toBe(true);
+    } finally { await service.stop(); vi.useRealTimers(); }
+  });
   it("delivers redacted private diagnostics and detects an owned process exit on the next snapshot", async () => {
     const f = fixture(), output = vi.fn();
     const service = new StrataService({ launch: f.launch, portInUse: f.portInUse, fetch: f.fetchMock, onOutput: output });

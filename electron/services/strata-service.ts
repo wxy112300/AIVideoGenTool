@@ -11,7 +11,7 @@ import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream } from "../../src/core/strata-chat-stream.js";
 import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
 import { knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
-import { readReliableStrataResources, readStrataResources, watchStrataResources } from "./strata-resources.js";
+import { readReliableStrataResources, readStrataResources, watchStrataResources, type StrataResourceRetryPolicy } from "./strata-resources.js";
 import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
 import { supportsStrataUncensored, strataUncensoredMode, normalizeStrataUncensoredMode, isStrataUncensoredMode, strataVectorForMode, type StrataUncensoredMode, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
 import { assertStrataControlVectorLog, verifyStrataControlVector, type StrataControlVector } from "./strata-uncensored.js";
@@ -225,7 +225,9 @@ interface StrataServiceDependencies {
   pollMs?: number;
   requestTimeoutMs?: number;
   readResources?: typeof readStrataResources;
+  resourceRetry?: StrataResourceRetryPolicy;
   resourcePressure?: typeof strataResourcePressure;
+  knownResourcePressure?: typeof knownStrataResourcePressure;
   onDiagnostics?(diagnostics: StrataChatDiagnostics): void;
   /** Private diagnostics sink; callers must redact credentials and protect its files. */
   onOutput?(chunk: string): void;
@@ -237,8 +239,9 @@ export class StrataService {
   private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
   private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) =>
     (this.deps.resourcePressure ?? this.residencyPressure.check.bind(this.residencyPressure))(sample);
-  private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.resourcePressure
-    ? knownStrataResourcePressure(sample) : this.residencyPressure.knownPressure(sample);
+  private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.knownResourcePressure
+    ? this.deps.knownResourcePressure(sample) : this.deps.resourcePressure
+      ? knownStrataResourcePressure(sample) : this.residencyPressure.knownPressure(sample);
   private vectorLoaded = false;
   private modeRequested = false;
   private selectedMode: StrataUncensoredMode = "off";
@@ -349,14 +352,14 @@ export class StrataService {
       try {
         this.residencyPressure.setLoading(plan.allowResidentFallback === true);
         if (plan.resourcePlan) {
-          const resources = await readReliableStrataResources(this.deps.readResources, { signal, knownPressure: this.knownPressure });
+          const resources = await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal, knownPressure: this.knownPressure });
           const pressure = this.pressure(resources);
           if (pressure) throw new Error(pressure);
           if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
             || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
             || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error("Strata 加载前资源已变化，安全预算不再满足；未加载模型，请释放资源后重试。");
           signal.throwIfAborted();
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { pressure: this.pressure, knownPressure: this.knownPressure });
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure });
         }
         const logStart = plan.residentEngineLog ? (await fs.stat(plan.residentEngineLog).catch(() => null))?.size ?? 0 : 0;
         const vectorLogStart = plan.controlVector && plan.engineLog ? (await fs.stat(plan.engineLog).catch(() => null))?.size ?? 0 : 0;
@@ -458,9 +461,9 @@ export class StrataService {
         if (mode !== "off" && (!this.vectorLoaded || plan.controlVector?.id !== strataVectorForMode(mode).id))
           throw new Error("Strata uncensored 向量尚未确认加载，请重新启动所选模型；未发送推理请求。");
         if (plan.resourcePlan) {
-          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { signal: requestSignal, knownPressure: this.knownPressure }));
+          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal: requestSignal, knownPressure: this.knownPressure }));
           if (pressure) throw new Error(pressure);
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { pressure: this.pressure, knownPressure: this.knownPressure });
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure });
         }
         budget = await this.checkContext(request, requestSignal);
         requestSignal.throwIfAborted();

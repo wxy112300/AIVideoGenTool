@@ -12,7 +12,7 @@ describe("LAN Settings entry",()=>{
     const saved=readSettingsFromForm({...base,lanBrowserEnabled:true,lanBrowserPort:18790},"official-storyboard","faithful");
     expect(saved.lanBrowserEnabled).toBe(true); expect(saved.lanBrowserPort).toBe(18790);
   });
-  it("copies the selected LAN URL, opens the local browser through AppApi, and saves the real switch change",async()=>{
+  it("shows each LAN URL in a readonly textbox with inline copy/open actions, and saves the real switch change",async()=>{
     const settings={...createDefaultSettings(),lanBrowserEnabled:true};
     const t=(key:string)=>key;
     document.body.innerHTML=renderLanBrowserSettings(settings,t,s=>s);
@@ -22,10 +22,12 @@ describe("LAN Settings entry",()=>{
     const context={root:document.body,t,notify:vi.fn(),application:{getLanBrowserStatus:async()=>({state:"running",port:8790,localUrl:"http://127.0.0.1:8790/",urls:["http://192.168.1.2:8790/","http://10.0.0.2:8790/"],error:""}),openLanBrowser:open,retryLanBrowser:vi.fn()}} as unknown as RendererContext;
     const dispose=mountLanBrowserSettings(context,{formSettings:()=>({...settings,lanBrowserEnabled:document.querySelector<HTMLInputElement>("#lan-browser-enabled")!.checked}),requestSaveSettings:save});
     try{
-      const copy=document.querySelector<HTMLButtonElement>("[data-lan-copy]")!;
-      await vi.waitFor(()=>expect(copy.disabled).toBe(false));
-      document.querySelector<HTMLSelectElement>("[data-lan-address]")!.value="http://10.0.0.2:8790/";
-      copy.click(); document.querySelector<HTMLButtonElement>("[data-lan-open]")!.click();
+      await vi.waitFor(()=>expect(document.querySelector<HTMLButtonElement>("[data-lan-copy]")!.disabled).toBe(false));
+      const fields=[...document.querySelectorAll<HTMLInputElement>("input[data-lan-address]")];
+      expect(fields.map(field=>field.value)).toEqual(["http://192.168.1.2:8790/","http://10.0.0.2:8790/"]);
+      expect(fields.every(field=>field.readOnly)).toBe(true);
+      const row=fields[1]!.closest("[data-lan-address-row]")!;
+      row.querySelector<HTMLButtonElement>("[data-lan-copy]")!.click(); row.querySelector<HTMLButtonElement>("[data-lan-open]")!.click();
       expect(writeText).toHaveBeenCalledWith("http://10.0.0.2:8790/"); expect(open).toHaveBeenCalledOnce();
       const field=document.querySelector<HTMLInputElement>("#lan-browser-enabled")!; field.checked=false; field.dispatchEvent(new Event("change"));
       expect(save).toHaveBeenCalledWith(expect.objectContaining({lanBrowserEnabled:false}));

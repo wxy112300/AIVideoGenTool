@@ -352,6 +352,20 @@ export function mountHistoryMediaController(
       historyCoverCacheObserver?.observe(media);
       historyCoverWarmupObserver?.observe(media);
     }, 32);
+    const updateVisiblePriorities = () => {
+      if (fallbackWarmupFrame !== null) return;
+      fallbackWarmupFrame = window.requestAnimationFrame(() => {
+        fallbackWarmupFrame = null;
+        for (const [media, previous] of warmupPriorities) {
+          const bounds = media.getBoundingClientRect();
+          const priority = bounds.bottom > 0 && bounds.top < window.innerHeight ? "viewport" : "prefetch";
+          if (priority === previous) continue;
+          warmupPriorities.set(media, priority); options.scheduleHistoryCoverWarmup([media], priority);
+        }
+      });
+    };
+    window.addEventListener("scroll", updateVisiblePriorities, { passive: true, signal });
+    window.addEventListener("resize", updateVisiblePriorities, { passive: true, signal });
   }
 
   return () => {

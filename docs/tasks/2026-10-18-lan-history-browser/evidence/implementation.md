@@ -62,3 +62,35 @@
 - 本机 gitignored 夹具 temp/lan-smoke-up7mlC/report.json 为 ok：进度背景 none、评分入口 1 个且数字在按钮内部、无游离分数入口；实际点击评分浮层并保存半星；i 信息窗长 Prompt 滚动、换行与包含 script 标签的字面文本均正确，未创建脚本节点。空内容、关闭后恢复播放、既有安全区/手势/两种布局/标注/停止监听继续通过。已查看 phone-rating.png、phone-prompt.png。
 - 同夹具 prompt-recovery.json 为 ok：通过浏览器 Fetch 故障注入验证失败提示、实际点击重试后加载成功，以及关闭挂起的信息请求后无残留浮层或迟到正文。仅测试自有 HTTP 请求，没有直接调用业务 handler。
 - 最新完整回归为 2,186 项通过；构建、类型与对比度通过。真机 iOS/Safari 验收仍未替代；资源清理以该夹具 cleanup.json 为准。
+
+## 2026-10-18 补充：用户实测后的缓存与播放器优化
+
+- 只读盘点当前用户库：129 视频资产、140 版本；137 版本命中 v3 磁盘缓存，3 个缺少 JPEG/metadata，0 个源大小或 mtime 变化造成失效。此证据不支持“每次启动全库重新生成”，但也不能证明用户其他机器的缓存情况。没有改动用户状态/媒体或重建缓存。
+- 定位并修复：`resolveHistoryFile` 只取 Settings，LAN 按 ID 只复制目标资产；此前每张封面定位都会复制完整 AppState，当前约 2.8 MB 快照在该机实测约 13.5ms/次（单次环境基线，不当作所有设备性能）。v3 key/mtime/size/sourceRevision 与删除防复活保护保持。冷封面生成后台去重，HTTP 立即释放后重试；命中项不等待 FFmpeg。列表 4 个并发短请求，Blob 有界复用，卸载回收 object URL，ETag 复验；无全库预生成。
+- 播放器改为纯声音图标、加载/缓冲圈；进场/返回与纵向滑屏动画，画面跟随拖动，reduced-motion 跳过位移；缓冲中仍可继续切片。列表返回顶部、iOS 布尔开关、暂停标记 2 秒淡出/空白处隐藏。进度条独立 44px 命中层避免原生 thumb 的短轨道覆盖映射，合并解码 seek 后精确提交，焦点停在 slider 也更新；进度行仍透明并保留安全区。
+- 实际触摸验收最初捕获 74% 指针落点被原生 range 覆盖为 75.1%，已通过独立命中层修正。一次脚本在 200ms 淡出过程中断言 opacity=0，改为等待真实淡出完成；没有放宽产品要求。
+- 最终隔离夹具 `temp/lan-smoke-dYB0ZJ/`：基础 report.json 为 ok，手机双列瀑布流/四列相册、320px 三列、iPad 横竖屏和桌面、原有筛选/Prompt/三种整理与服务开关通过。安全区 bottom=34 时进度完整 44px 目标 bottom=792（额外 18px）；横屏 bottom=21/left=right=44 时 bottom=351/left=82/right=762，均安全。
+- 最终构建的 `polish.json` 为 ok：Fetch 暂停真实媒体请求时加载圈可见，声音为无文本 SVG；长按 2× 在 0.6574s 推进 1.314846s，松开连续至 1.750519s 并恢复 1×，没有 seeking/loadstart/emptied 事件，最大解码帧间隔约 100.3ms（12fps CPU H.264 样本）。进度显示 740/1000，12 秒视频最终 8.879999s，暂停拖动保持暂停、播放拖动恢复播放；滑动时舞台 transform=-210px，实际 Animation 运行后切片，返回动画、顶部按钮和 51px iOS 开关实际点击通过。补测纯观看 Escape 返回后再开视频，信息/返回入口可见、舞台 transform=none，防止前次沉浸/拖动状态残留。
+- 两张封面暖读合计约 14.5ms（loopback，不代表物理 LAN）；文件大小/mtime 不变。实际桌面 History 7 次 lookup 全部 hit、sourceVideoLoads=0。`restart.json` 验证正常关闭后的新 PID，同 profile 自动开服务、整理持久化、HTTP 封面直接 200；原缓存/metadata 未重写，桌面重启 7 次 lookup 全部 hit，sourceVideoLoads=0。
+- 已查看 loading/scrub/swipe/switch/paused-clean 五张实际截图。`cleanup.json` 为 browser/app/native/listenerClosed 全 true；无 ComfyUI/GPU 占用。真机 iOS/Safari、Android、实际音频与跨物理设备网络仍需验证，未声称已解决所有硬件解码卡顿。
+- 最终完整 `npm.cmd run verify` 通过：229 单元文件/2,115 项 + 6 集成文件/88 项，总计 2,203；typecheck、双入口生产构建及 20 项对比度通过，日志在 gitignored `temp/lan-polish-verify.log`。该数字为当时工作区整体，包含其他任务同期检查；Strata 相关改动未由本任务编辑或回滚。原有 chunk 大小警告非阻断。
+- API 设计参考：[MDN currentTime](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/currentTime)、[MDN fastSeek](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/fastSeek)；精确释放使用 currentTime，长按仅切 playbackRate，不以不精确 seek 模拟倍速。
+
+## 2026-10-18 补充：封面后台队列与退出持久缓存
+
+- 用户明确修复方向：生成封面是后台队列任务，快速滚动最多调整顺序，不能让预览后精修/保存被卡片卸载打断；App 退出仍保留已经落盘的缓存。本轮为 patch，Unreleased 登记，保持 0.66.0。
+- 桌面 media store 本来由应用级 History coordinator 持有，现将其 lookup/图片生产/视频生产/保存调度器改为非抢占（通用 scheduler 其他消费者仍保留原默认行为）。增加 background 等级；最后 UI consumer 离开只降级、不取消，当前视口变化原地升/降等待优先级，在途任务始终复用。图片/视频生产仍分别限制 3/1 并发，保存 1；完成后回收无引用 Blob 并限制结果 LRU，未把整个库主动入队。
+- 仅 source/reference 变动、显式 invalidate 和 dispose 中止旧任务；校验 revision、stale 重读与删除防复活逻辑保留。退出释放临时队列/解码器/内存 URL，不删除 v3 JPEG/PNG 或 metadata；不要求 App 退出后继续运行后台进程。LAN 既有宿主 CPU 补图也不因网页卡片销毁而中止。
+- 单元回归覆盖非抢占执行、已接受离屏任务不丢、等待队列重新排序、预览后离开仍保存、重入在途 lookup 去重、App dispose 中止迟到结果、source stale 重新校验；原保存失效/删除保护与缓存命中不解码继续通过。focused 6 文件最初 41 项通过，最后增加 source stale 竞态检查纳入完整 verify。
+- `temp/lan-smoke-cover-queue-LnwVTt/cover-queue.json` 为 ok：新隔离 profile、18 个合成视频记录、空缓存。实际进入 History 后快速滚动至底并点 Create；离页时 lookup=13、sourceVideoLoads=1、seeks=1（已有预览，尚未保存）。保持 Create 页面时，全部 13 项完成：sourceVideoLoads=13、coverSaves=13、sourceDecodes=13、seeks=65、cancelledRequests=0、临时 URL 创建/回收均 26、剩余 Blob/URL=0。回到列表 6 次 hit，不增加源解码。
+- 同 profile 经 helper 正常原生关闭后重启，7 次 lookup 全 hit、sourceVideoLoads=0；此前封面与 metadata 的大小/mtime 完全相同。详情通过可见播放器入口真实解码（10 帧、paused=false），不调用生成队列或 ComfyUI。最终 cleanup.json 为 browser/app/native/listenerClosed 全 true。
+- 调试限制：Chromium Fetch 不拦截 studio-media 自定义协议，最终改为真实冷生产计数与“离页时尚未完成”的严格断言，不替换生产 handler。两次详情 smoke 在 autoplay 尚未稳定时点击了正在转为播放的按钮，导致自身暂停；改为等待媒体 ready 与状态稳定后才决定是否点击，真实播放随后通过。失败夹具 oBbfNn/bPYcBw/qWbX2h/q2lmDm 均各自正常清理。
+- 最终 `npm.cmd run verify` 通过：229 单元文件/2,125 项 + 6 集成文件/88 项，共 2,213；生产构建、类型和 20 项对比度通过，日志 `temp/history-cover-queue-verify.log`。总数包含共享工作区其他任务当时的检查；其代码未由本任务修改或回滚。未修改用户库、下载权重、打包、提交或推送。
+
+## 2026-10-18 补充：局域网设置位置与两列排版
+
+- 根据用户要求，将 LAN 分区放在缓存管理之后、下载代理之前，开关/端口复用现有 settings-grid two；端口提示随右列，状态和失败重试独立显示。地址不再是 select，改为每网卡一个只读文本框，同行复制对应 URL、通过原 AppApi 在本机打开浏览器。轮询不变时不重建文本框；未更改服务配置或 IPC。
+- focused：`tests/lan-browser-settings.test.ts` + `tests/settings-form.test.ts` 共 10 项通过；包含多网卡第二行真实复制对应字段、只读输入、打开 AppApi 与保存开关。
+- 完整 `verify` 通过：229 单元文件/2,126 项 + 6 集成文件/88 项，共 2,214；类型、生产构建、20 项对比度通过，日志 `temp/lan-settings-layout-verify.log`。总数仍包含其他任务同一工作区的检查，本任务未改其代码。
+- 实际隔离夹具 `temp/lan-smoke-BvDW60/report.json` 为 ok：1280×800/1440×900 两种尺寸均断言 cache→LAN→proxy、开关与端口左右两列且顶端对齐、全部 URL 为 readonly text input、复制/打开与输入同行、无横向溢出。地址输入可用宽度分别约 685/845px；两张实际截图 settings-lan-1280.png/settings-lan-1440.png 已查看。
+- 相同夹具继续通过服务开关、独立网页筛选、相册/瀑布流、播放/Prompt/三种整理与停止监听。最终 cleanup.json 为 browser/app/native/listenerClosed 全 true；未访问用户库或启动 ComfyUI/GPU。该轮为 patch Unreleased，未另行递增版本、提交推送或打包。

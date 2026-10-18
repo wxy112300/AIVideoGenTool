@@ -11,7 +11,7 @@ import {
   scheduleHistoryBatches,
   type HistoryMediaTaskPriority
 } from "./media-scheduler";
-import type { MediaResourceConsumer, Presentation } from "./media-resource-store";
+import type { MediaResourceConsumer, MediaResourceSubscription, Presentation } from "./media-resource-store";
 
 export interface ImageHistoryMediaControllerOptions {
   loadImageHistoryThumbnail?(image: HTMLImageElement, signal?: AbortSignal): Promise<boolean>;
@@ -19,7 +19,7 @@ export interface ImageHistoryMediaControllerOptions {
     image: HTMLImageElement,
     priority: HistoryMediaTaskPriority,
     consumer: Omit<MediaResourceConsumer, "priority" | "signal">
-  ): () => void;
+  ): MediaResourceSubscription;
   invalidateImageHistoryThumbnail?(key: string): void;
 }
 
@@ -70,7 +70,7 @@ export function mountImageHistoryMediaController(
   const thumbnailScheduler = options.subscribeImageHistoryThumbnail
     ? null
     : createHistoryMediaScheduler(3);
-  const thumbnailSubscriptions = new Map<HTMLElement, () => void>();
+  const thumbnailSubscriptions = new Map<HTMLElement, MediaResourceSubscription>();
   const thumbnailSchedulerKeys = new Map<HTMLElement, string>();
   const gallerySchedules = new Map<HTMLElement, {
     schedule(priority: HistoryMediaTaskPriority): void;
@@ -101,7 +101,8 @@ export function mountImageHistoryMediaController(
     };
     if (request !== undefined) cancelPrevious();
     if (options.subscribeImageHistoryThumbnail) {
-      if (request === undefined && thumbnailSubscriptions.has(surface)) return;
+      const existing = thumbnailSubscriptions.get(surface);
+      if (request === undefined && existing) { existing.reprioritize?.(priority); return; }
       const controller = new AbortController();
       const unsubscribe = options.subscribeImageHistoryThumbnail(image, priority, {
         onPresentation: async (presentation: Presentation) => {
@@ -127,10 +128,10 @@ export function mountImageHistoryMediaController(
           }
         }
       });
-      thumbnailSubscriptions.set(surface, () => {
+      thumbnailSubscriptions.set(surface, Object.assign(() => {
         controller.abort();
         unsubscribe();
-      });
+      }, { reprioritize: (priority: HistoryMediaTaskPriority) => unsubscribe.reprioritize?.(priority) }));
       return;
     }
     const schedulerKey = `${key}\u0000${[...image.closest<HTMLElement>("[data-image-media]")?.parentElement?.children ?? []].indexOf(surface)}`;
@@ -318,6 +319,19 @@ export function mountImageHistoryMediaController(
   const cancelSetup = scheduleHistoryBatches(imageSurfaces, setupSurface);
 
   let galleryObserver: IntersectionObserver | null = null;
+  let priorityFrame: number | null = null;
+  const updateVisiblePriorities = () => {
+    if (priorityFrame !== null) return;
+    priorityFrame = window.requestAnimationFrame(() => {
+      priorityFrame = null;
+      for (const [surface, subscription] of thumbnailSubscriptions) {
+        const bounds = surface.getBoundingClientRect();
+        subscription.reprioritize?.(bounds.bottom > 0 && bounds.top < innerHeight ? "viewport" : "prefetch");
+      }
+    });
+  };
+  window.addEventListener("scroll", updateVisiblePriorities, { passive: true, signal });
+  window.addEventListener("resize", updateVisiblePriorities, { passive: true, signal });
   let cancelGalleryObserverSetup: (() => void) | null = null;
   if (typeof IntersectionObserver === "undefined") {
     gallerySurfaces.forEach((surface) => gallerySchedules.get(surface)?.schedule("prefetch"));
@@ -345,6 +359,7 @@ export function mountImageHistoryMediaController(
   return () => {
     cancelSetup();
     events.abort();
+    if (priorityFrame !== null) window.cancelAnimationFrame(priorityFrame);
     cancelGalleryObserverSetup?.();
     cancelGalleryObserverSetup = null;
     galleryObserver?.disconnect();

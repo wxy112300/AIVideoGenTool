@@ -254,7 +254,7 @@ export class HistoryQueryService {
 
   async resolveHistoryFile(
     file: HistoryFile,
-    settings: Settings = this.deps.store.get().settings
+    settings: Settings = this.deps.store.getSettings()
   ): Promise<string | null> {
     return this.resolveExistingHistoryFile([
       file.absolutePath ?? "",

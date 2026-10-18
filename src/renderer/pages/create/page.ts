@@ -599,8 +599,8 @@ export function renderCreatePage(
         <section class="composer-control-group composer-motion-group">
           <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.motionTitle)}</strong><span>${t(uiKeys.create.videoSettings.motionDescription)}</span></div></div>
           <div class="composer-control-grid composer-motion-grid">
-        <label class="settings-field settings-duration">${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}
-          <div class="inline-field"><input id="duration" type="range" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
+        <label class="settings-field settings-duration"><span class="settings-duration-heading"><span>${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}</span><output id="duration-frames" for="duration duration-number">${t(uiKeys.create.videoSettings.durationFrames, { count: viewModel.interpolationGeneratedFrames })}</output></span>
+          <div class="inline-field"><input id="duration" type="range" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
         </label>
         <label class="settings-field settings-fps">${t(uiKeys.create.videoSettings.targetFps)}
           <select id="fps" ${viewModel.isMiniMaxH3 ? "disabled" : ""}>

@@ -1,4 +1,4 @@
-export type HistoryMediaTaskPriority = "interactive" | "viewport" | "prefetch";
+export type HistoryMediaTaskPriority = "interactive" | "viewport" | "prefetch" | "background";
 
 export type HistoryMediaTask = (
   signal: AbortSignal
@@ -54,10 +54,11 @@ interface ScheduledTask {
 const priorityOrder: Record<HistoryMediaTaskPriority, number> = {
   interactive: 0,
   viewport: 1,
-  prefetch: 2
+  prefetch: 2,
+  background: 3
 };
 
-export function createHistoryMediaScheduler(concurrency: number): HistoryMediaScheduler {
+export function createHistoryMediaScheduler(concurrency: number, options: { preempt?: boolean } = {}): HistoryMediaScheduler {
   const limit = Math.max(1, Math.floor(concurrency));
   const pending = new Map<string, ScheduledTask>();
   const running = new Map<string, ScheduledTask>();
@@ -89,6 +90,7 @@ export function createHistoryMediaScheduler(concurrency: number): HistoryMediaSc
   };
 
   const preemptFor = (priority: HistoryMediaTaskPriority): void => {
+    if (options.preempt === false) return;
     if (running.size < limit) return;
     const candidate = [...running.values()]
       .filter((task) => !task.controller?.signal.aborted)

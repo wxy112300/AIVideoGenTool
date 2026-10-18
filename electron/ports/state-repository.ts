@@ -1,4 +1,4 @@
-import type { AppState, Settings } from "../../src/types.js";
+import type { AppState, HistoryAsset, Settings } from "../../src/types.js";
 
 export type StateMutator = (state: AppState) => void;
 
@@ -11,6 +11,8 @@ export interface StateRepository {
   load(): Promise<AppState>;
   get(): AppState;
   getSettings(): Settings;
+  /** Narrow immutable media read; avoids cloning drafts, queue and the entire library per thumbnail. */
+  getHistoryAsset?(id: string): HistoryAsset | undefined;
   update(mutator: StateMutator): Promise<AppState>;
   /** Persist a mutation without cloning the potentially large state for a caller that needs no snapshot. */
   updateWithoutSnapshot?(mutator: StateMutator): Promise<void>;

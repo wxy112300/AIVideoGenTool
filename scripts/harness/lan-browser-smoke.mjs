@@ -23,16 +23,16 @@ const state = createDefaultState();
 Object.assign(state.settings, { comfyUrl: "http://192.0.2.1:9", comfyDirectory: "", comfyPythonPath: "", uiLocale: "zh-CN", lanBrowserEnabled: false, lanBrowserPort: webPort, autoRetryFailedTasks: false, outputDirectory: path.join(directory,"video"), imageOutputDirectory: path.join(directory,"images"), imageInputLibraryDirectory: path.join(directory,"inputs") });
 await fs.mkdir(state.settings.outputDirectory,{ recursive:true });
 for (const [name,size] of [["landscape","640x360"],["portrait","360x640"],["square","480x480"]]) {
-  await execute("ffmpeg",["-nostdin","-hide_banner","-loglevel","error","-f","lavfi","-i",`testsrc2=size=${size}:rate=12`,"-t","3","-an","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-movflags","+faststart",path.join(state.settings.outputDirectory,`${name}.mp4`)]);
+  await execute("ffmpeg",["-nostdin","-hide_banner","-loglevel","error","-f","lavfi","-i",`testsrc2=size=${size}:rate=12`,"-t","12","-an","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-movflags","+faststart",path.join(state.settings.outputDirectory,`${name}.mp4`)]);
 }
 for (let i=0;i<120;i++) {
   const name = ["portrait","landscape","square"][i%3], filename=`${name}.mp4`;
   const [width,height] = name==="portrait"?[360,640]:name==="square"?[480,480]:[640,360];
   const file={filename,subfolder:"",type:"output",absolutePath:path.join(state.settings.outputDirectory,filename)};
   const createdAt=new Date(Date.UTC(2026,9,18,0,0,120-i)).toISOString();
-  const version={id:`version-${i}`,kind:"original",createdAt,outputFilename:filename,modelId:"minimax_h3_fl2va",width,height,duration:3,fps:12,workflowPath:"private",comfyPromptId:"",comfyOutputs:{},files:[file]};
+  const version={id:`version-${i}`,kind:"original",createdAt,outputFilename:filename,modelId:"minimax_h3_fl2va",width,height,duration:12,fps:12,workflowPath:"private",comfyPromptId:"",comfyOutputs:{},files:[file]};
   const prompt = i===0 ? 'PRIVATE PROMPT\n<script>window.__lanPromptExecuted=true</script>\n'+"A calm scene with natural lighting.\n".repeat(200) : i===1 ? "" : "PRIVATE PROMPT";
-  state.history.push({mediaKind:"video",id:`lan-${i}`,taskId:`task-${i}`,title:`Video ${i+1}`,outputFilename:filename,createdAt,updatedAt:createdAt,modelId:version.modelId,favorite:i%4===0,rating:i%5===0?4.5:null,tags:[i%2?"city":"nature"],duration:3,resolution:Math.min(width,height),fps:12,prompt,seed:i,comfyPromptId:"",comfyOutputs:{},files:[file],defaultVersionId:version.id,versions:[version]});
+  state.history.push({mediaKind:"video",id:`lan-${i}`,taskId:`task-${i}`,title:`Video ${i+1}`,outputFilename:filename,createdAt,updatedAt:createdAt,modelId:version.modelId,favorite:i%4===0,rating:i%5===0?4.5:null,tags:[i%2?"city":"nature"],duration:12,resolution:Math.min(width,height),fps:12,prompt,seed:i,comfyPromptId:"",comfyOutputs:{},files:[file],defaultVersionId:version.id,versions:[version]});
 }
 const userData=path.join(directory,"user-data"); await fs.mkdir(userData,{recursive:true});
 const statePath=path.join(userData,"studio-state.json"); await fs.writeFile(statePath,JSON.stringify(state));
@@ -71,7 +71,17 @@ try {
   await click(studio,"#lan-browser-enabled");
   report.service=await pollUntil(()=>studio.evaluate("window.studio.getLanBrowserStatus()"),v=>v.state==="running",30000,"Switch starts LAN service");
   await wait(()=>studio.evaluate('!document.querySelector("[data-lan-open]").disabled'),"Open URL control");
-  report.settings=await studio.evaluate('({enabled:document.querySelector("#lan-browser-enabled").checked,addresses:[...document.querySelector("[data-lan-address]").options].map(o=>o.value),copyEnabled:!document.querySelector("[data-lan-copy]").disabled,openEnabled:!document.querySelector("[data-lan-open]").disabled})');
+  report.settings=await studio.evaluate('({enabled:document.querySelector("#lan-browser-enabled").checked,addresses:[...document.querySelectorAll("[data-lan-address]")].map(o=>o.value),copyEnabled:!document.querySelector("[data-lan-copy]").disabled,openEnabled:!document.querySelector("[data-lan-open]").disabled})');
+  report.settingsLayout=[];
+  for(const [width,height] of [[1280,800],[1440,900]]){
+    await studio.send("Emulation.setDeviceMetricsOverride",{width,height,deviceScaleFactor:1,mobile:false});
+    await studio.evaluate('document.querySelector("[data-lan-panel]").scrollIntoView({block:"center"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    const layout=await studio.evaluate('(()=>{const p=document.querySelector("[data-lan-panel]"),grid=p.querySelector(".settings-grid.two"),a=grid.children[0].getBoundingClientRect(),b=grid.children[1].getBoundingClientRect();const rows=[...p.querySelectorAll("[data-lan-address-row]")].map(row=>{const input=row.querySelector("input"),copy=row.querySelector("[data-lan-copy]"),open=row.querySelector("[data-lan-open]"),r=input.getBoundingClientRect(),c=copy.getBoundingClientRect(),o=open.getBoundingClientRect();return{readonly:input.readOnly,type:input.type,inputWidth:r.width,inline:Math.abs(r.y+r.height/2-c.y-c.height/2)<2&&Math.abs(c.y+c.height/2-o.y-o.height/2)<2,right:o.right}});return{width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,afterCache:p.previousElementSibling.classList.contains("app-cache-panel"),beforeProxy:!!p.nextElementSibling.querySelector("#proxy-enabled"),twoColumns:b.x>=a.right&&Math.abs(a.y-b.y)<2,rows}})()');
+    assert.equal(layout.afterCache,true);assert.equal(layout.beforeProxy,true);assert.equal(layout.twoColumns,true);assert.equal(layout.overflow,false);
+    assert(layout.rows.every(row=>row.readonly&&row.type==="text"&&row.inline&&row.inputWidth>160&&row.right<=width));
+    report.settingsLayout.push(layout);
+    const shot=await studio.send("Page.captureScreenshot",{format:"png"});await fs.writeFile(path.join(directory,`settings-lan-${width}.png`),Buffer.from(shot.data,"base64"));
+  }
   const local=`http://127.0.0.1:${webPort}/`;
   report.lanInterfaceReachable=[];
   for(const url of report.service.urls) { try { report.lanInterfaceReachable.push({url,status:(await fetch(url,{signal:AbortSignal.timeout(3000)})).status}); } catch { report.lanInterfaceReachable.push({url,status:0}); } }

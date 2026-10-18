@@ -7,6 +7,7 @@ import {
   createMediaResourceStore,
   type MediaRef,
   type MediaResourceConsumer,
+  type MediaResourceSubscription,
   type Presentation
 } from "./media-resource-store";
 import { produceHistoryThumbnail } from "./thumbnail-producers";
@@ -18,7 +19,7 @@ export interface HistoryMediaRuntime {
     image: HTMLImageElement,
     priority: HistoryMediaTaskPriority,
     consumer: Omit<MediaResourceConsumer, "priority" | "signal">
-  ): () => void;
+  ): MediaResourceSubscription;
   invalidateImageHistoryThumbnail(key: string): void;
   loadHistoryCoverFromCache(media: HTMLElement, signal?: AbortSignal): Promise<boolean>;
   subscribeHistoryCover(media: HTMLElement, priority: HistoryMediaTaskPriority): () => void;
@@ -142,7 +143,7 @@ export function createHistoryMediaRuntime(
 ): HistoryMediaRuntime {
   const imageKeys = new Set<string>();
   const coverPresentations = new WeakMap<HTMLElement, Presentation>();
-  const coverSubscriptions = new Map<HTMLElement, () => void>();
+  const coverSubscriptions = new Map<HTMLElement, MediaResourceSubscription>();
   const rememberImageKey = (key: string): void => {
     imageKeys.delete(key);
     imageKeys.add(key);
@@ -249,11 +250,11 @@ export function createHistoryMediaRuntime(
       onPresentation: consumer?.onPresentation ?? defaultConsumer.onPresentation,
       onFailure: consumer?.onFailure ?? defaultConsumer.onFailure
     });
-    const unsubscribe = () => {
+    const unsubscribe = Object.assign(() => {
       if (coverSubscriptions.get(media) === unsubscribe) coverSubscriptions.delete(media);
       controller.abort();
       unsubscribeStore();
-    };
+    }, { reprioritize: (priority: HistoryMediaTaskPriority) => unsubscribeStore.reprioritize?.(priority) });
     coverSubscriptions.set(media, unsubscribe);
     return unsubscribe;
   };
@@ -298,7 +299,7 @@ export function createHistoryMediaRuntime(
     image: HTMLImageElement,
     priority: HistoryMediaTaskPriority,
     consumer: Omit<MediaResourceConsumer, "priority" | "signal">
-  ): (() => void) => {
+  ): MediaResourceSubscription => {
     const ref = mediaRefForImage(image);
     if (!ref.key || !ref.sourceUrl) return () => undefined;
     rememberImageKey(ref.key);
@@ -309,10 +310,10 @@ export function createHistoryMediaRuntime(
       onPresentation: consumer.onPresentation,
       onFailure: consumer.onFailure
     });
-    return () => {
+    return Object.assign(() => {
       controller.abort();
       unsubscribeStore();
-    };
+    }, { reprioritize: (priority: HistoryMediaTaskPriority) => unsubscribeStore.reprioritize?.(priority) });
   };
 
   const loadHistoryCoverFromCache = async (
@@ -381,13 +382,15 @@ export function createHistoryMediaRuntime(
     priority: HistoryMediaTaskPriority = "viewport"
   ): void => {
     mediaCards.forEach((media) => {
-      if (coverSubscriptions.has(media)) return;
+      const existing = coverSubscriptions.get(media);
+      if (existing) { existing.reprioritize?.(priority); return; }
       const unsubscribe = subscribeHistoryCover(media, priority);
       if (!coverSubscriptions.has(media)) unsubscribe();
     });
   };
 
   const cancelHistoryCoverWarmup = (media: HTMLElement): void => {
+    // Release this card's subscription only. The app-lifetime store keeps its job.
     const unsubscribe = coverSubscriptions.get(media);
     if (!unsubscribe) return;
     coverSubscriptions.delete(media);
@@ -429,6 +432,7 @@ export function createHistoryMediaRuntime(
     scheduleHistoryCoverWarmup,
     cancelHistoryCoverWarmup,
     stopHistoryCoverWarmup: () => {
+      // Page/hover cleanup removes consumers; it does not discard queued covers.
       for (const [media, unsubscribe] of coverSubscriptions) {
         coverSubscriptions.delete(media);
         unsubscribe();

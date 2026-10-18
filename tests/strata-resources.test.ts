@@ -12,6 +12,18 @@ beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("Strata fresh telemetry retries", () => {
+  it("recovers from the reported 5.3s probe failure after the old Agent 6s cutoff, using H3's shared budget", async () => {
+    const events = vi.fn();
+    const read = vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(missing), 5300)))
+      .mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(safe), 1100)));
+    let settled = false;
+    const fresh = readReliableStrataResources(read, { onDiagnostic: events });
+    fresh.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(6000); expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(900); await expect(fresh).resolves.toEqual(safe);
+    expect(events.mock.calls.map(([e]) => e.event)).toEqual(["retry", "recovered"]);
+  });
   it("retries a missing sensor during confirmed file-cache RAM pressure instead of misreporting a hard stop", async () => {
     const policy=new FileReadResourcePressure();policy.setFileRead(true);
     const cache={...safe,memoryAvailableBytes:2.5*GiB,commitAvailableBytes:8*GiB};

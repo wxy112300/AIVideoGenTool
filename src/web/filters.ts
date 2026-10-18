@@ -14,7 +14,7 @@ export function showFilters(filter: HistoryFilterState, info: BrowseLibraryInfo,
   dialog.className = "sheet";
   const render = (value: HistoryFilterState) => {
     dialog.innerHTML = `<form method="dialog"><header><h2>${text("filter")}</h2>${button("cancel", icon("x"), text("close"))}</header>
-      <label class="check"><input name="favorite" type="checkbox" ${value.favoriteOnly ? "checked" : ""}>${text("favorite")}</label>
+      <label class="check switch-field"><span>${text("favorite")}</span><input name="favorite" type="checkbox" role="switch" ${value.favoriteOnly ? "checked" : ""}><span class="switch-track" aria-hidden="true"></span></label>
       <label>${text("sort")}<select name="sort">${sortOptions(value.sort)}</select></label>
       <div class="field-pair"><label>${text("minRating")}<select name="minRating">${ratings(value.minRating)}</select></label><label>${text("maxRating")}<select name="maxRating">${ratings(value.maxRating)}</select></label></div>
       <label>${text("minDuration")}<input name="minDuration" type="number" min="0" step="1" value="${value.minDuration ?? ""}"></label>

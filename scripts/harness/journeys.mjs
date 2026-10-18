@@ -4,7 +4,7 @@ export const journeys = [
     id: "lan-browser", title: "Settings 开关 → 独立网页 → 视频浏览与整理",
     section: "lan-browser",
     paths: ["src/web/main.ts", "src/web/library.ts", "src/web/player.ts", "src/web/gestures.ts", "src/renderer/pages/settings/lan-browser.ts", "electron/lan-browser-host.ts", "electron/services/lan-browser-server.ts", "electron/services/lan-browser-library.ts", "electron/services/lan-browser-covers.ts"],
-    tests: ["tests/lan-browser.test.ts", "tests/lan-browser-gestures.test.ts", "tests/lan-browser-settings.test.ts", "tests/main-boundary.test.ts", "tests/history-services.test.ts", "tests/media-document-services.test.ts", "tests/settings-form.test.ts"],
+    tests: ["tests/lan-browser.test.ts", "tests/lan-browser-gestures.test.ts", "tests/lan-browser-seek.test.ts", "tests/lan-browser-covers.test.ts", "tests/lan-browser-settings.test.ts", "tests/main-boundary.test.ts", "tests/history-services.test.ts", "tests/media-document-services.test.ts", "tests/settings-form.test.ts", "tests/store.test.ts"],
     checks: ["真实 Settings 开关启动/停止监听、LAN 地址与复制/打开入口；端口冲突可恢复", "无 preload 的手机双列/平板横竖屏/桌面网页；筛选、相册/瀑布流、分页与返回位置", "视频完整显示、解码帧推进、循环、中心暂停/周围沉浸、长按恢复、上下切换", "透明进度区保留安全区；单个评分按钮与浮层；i 信息窗只读 Prompt、长/空文本与关闭恢复", "收藏/半星评分/标签写入同一库；冲突不静默覆盖；缓存命中不重生成", "CPU 隔离验收：build 后 node scripts/harness/lan-browser-smoke.mjs；按输出目录运行 close-lan-smoke.mjs 正常关闭，真机 Safari/LAN 另验"]
   },
   {
@@ -38,9 +38,9 @@ export const journeys = [
   {
     id: "history", title: "结果详情 → 重新编辑 / Extend / Continuum 分支",
     section: "history",
-    paths: ["src/renderer/pages/history/actions.ts", "src/renderer/pages/history/actions-controller.ts", "src/renderer/pages/history/navigation-controller.ts", "electron/services/queue-execution-side-effects.ts"],
-    tests: ["tests/history-actions.test.ts", "tests/history-workspace-coordinator.test.ts", "tests/queue-history.test.ts", "tests/video-output-duration.test.ts", "tests/h3-continuum-managed.test.ts"],
-    checks: ["指定版本而非数组最后一项；重新编辑恢复参数，Extend 新 prompt/seed 与源版本关联", "Continue / Next、Regenerate Current、Continue From Here 保持序列与 take 身份", "返回父历史、播放、文件缺失、删除后动作可达性；旧队列/历史重启兼容"]
+    paths: ["src/renderer/pages/history/actions.ts", "src/renderer/pages/history/actions-controller.ts", "src/renderer/pages/history/navigation-controller.ts", "src/renderer/pages/history/media-resource-store.ts", "src/renderer/pages/history/media-scheduler.ts", "electron/services/queue-execution-side-effects.ts"],
+    tests: ["tests/history-actions.test.ts", "tests/history-workspace-coordinator.test.ts", "tests/history-media-resource-store.test.ts", "tests/history-media-scheduler.test.ts", "tests/history-media-controllers.test.ts", "tests/queue-history.test.ts", "tests/video-output-duration.test.ts", "tests/h3-continuum-managed.test.ts"],
+    checks: ["指定版本而非数组最后一项；重新编辑恢复参数，Extend 新 prompt/seed 与源版本关联", "Continue / Next、Regenerate Current、Continue From Here 保持序列与 take 身份", "返回父历史、播放、文件缺失、删除后动作可达性；旧队列/历史重启兼容", "封面队列：滚动/切页只调等待优先级，在途生成/保存不中断；退出保留磁盘缓存，重启命中不解码；真实检查见 history-cover-queue-smoke.mjs"]
   },
   {
     id: "upscale", title: "成功视频版本 → 放大对话框 → 独立队列 → 新版本",

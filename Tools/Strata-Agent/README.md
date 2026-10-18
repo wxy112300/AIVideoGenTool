@@ -34,6 +34,10 @@ Agent明确允许官方文件回读模式，显示实际模式与资源保护；
 
 开发验证（均从仓库根运行）：
 
+Agent运行资源监测由工具自动启动一个自有轻量Python子进程，复用所选Strata Python、Windows原生RAM/提交接口和已安装驱动的NVML；不在每秒轮询中启动PowerShell/WMI/nvidia-smi，不增加Claude常驻服务。准入、加载、运行读取新鲜结果；持续不可用仍显示原因并保护停止，真实低内存/提交/显存阈值不变。“停止全部”统一回收该监测进程，H3保持独立策略。
+
+Agent预检、加载及运行监测采用三十秒资源采样宽限；单次请求三秒超时后继续退避重采样，不因三次失败提前停止，三十秒内恢复即继续。H3仍使用原三次、十二秒策略。没有新鲜样本时不刷新加载许可，八秒后拒绝新的冷加载，已有任务仍可在重测预算内恢复。明确的实际低资源仍立即保护，持续未知不会无限等待；这不是思考或回答时限。导出完成状态在打开模态提示前即消费，避免计时器重入反复弹窗。
+
 ```powershell
 node Tools/Strata-Agent/prepare.mjs
 npx.cmd vitest run --config vite.config.ts tests/strata-agent.test.ts tests/strata-agent-wiring.test.ts tests/strata-agent-controller.test.ts
@@ -51,6 +55,8 @@ node Tools/Strata-Agent/verify-monitor.mjs --long
 node Tools/Strata-Agent/verify-monitor.mjs --crash
 powershell.exe -NoProfile -File Tools/Strata-Agent/strata-agent.ps1 -Smoke
 powershell.exe -NoProfile -File Tools/Strata-Agent/verify-diagnostics.ps1
+powershell.exe -NoProfile -STA -File Tools/Strata-Agent/verify-diagnostic-reentry.ps1
+node Tools/Strata-Agent/verify-resources.mjs <已安装Strata的Python绝对路径>
 ```
 
 `verify-lease`使用临时协调目录，`verify-job`仅无GPU自有测试进程，`verify-http`使用已安装Strata的**CPU mock**。`verify-monitor --long`让实际Python HTTP/guard承载125秒脚本等待，验证监控与退出记录；仍没有真实模型、CLI或GPU。`-Smoke`只检查实际WinForms控件布局、折叠操作和渲染，不等同鼠标或系统高DPI验收。内部`engineValidation`只用于阶段验收；日用仍只有窗口的一次启动。已完成的真实scratch/GUI证据独立记录；262K完整Agent利用率、原生窗口/H3完整旅程和LAN继续按TASK验收。

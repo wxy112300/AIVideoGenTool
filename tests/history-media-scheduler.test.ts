@@ -16,6 +16,17 @@ async function flushScheduler(): Promise<void> {
 }
 
 describe("history media scheduler", () => {
+  it("can finish running background work while changing pending order without aborting it", async () => {
+    const scheduler = createHistoryMediaScheduler(1, { preempt: false });
+    const first = deferred<boolean>(); const started: string[] = []; let signal!: AbortSignal;
+    scheduler.enqueue("first", taskSignal => { signal = taskSignal; started.push("first"); return first.promise; }, "prefetch");
+    await flushScheduler();
+    scheduler.enqueue("old", () => { started.push("old"); }, "viewport");
+    scheduler.enqueue("visible", () => { started.push("visible"); }, "prefetch");
+    scheduler.reprioritize("old", "background"); scheduler.reprioritize("visible", "interactive");
+    expect(signal.aborted).toBe(false); first.resolve(true); await flushScheduler();
+    expect(started).toEqual(["first", "visible", "old"]); scheduler.dispose();
+  });
   it("limits work and favors interactive tasks over prefetch tasks", async () => {
     const scheduler = createHistoryMediaScheduler(2);
     const started: string[] = [];

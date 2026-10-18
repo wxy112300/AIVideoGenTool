@@ -12,7 +12,8 @@ export interface StrataResourceDiagnostic {
   attempt: number; elapsedMs: number; missingMetrics: string[]; sources: string[];
   memoryAvailableBytes: number; commitAvailableBytes: number | null; vramAvailableBytes: number | null;
 }
-interface RetryOptions { signal?: AbortSignal; onDiagnostic?(event: StrataResourceDiagnostic): void; retryDelayMs?: number; maxWaitMs?: number;
+export interface StrataResourceRetryPolicy { maxWaitMs?: number; retryUntilDeadline?: boolean }
+interface RetryOptions extends StrataResourceRetryPolicy { signal?: AbortSignal; onDiagnostic?(event: StrataResourceDiagnostic): void; retryDelayMs?: number;
   knownPressure?: (sample: StrataResources) => string | null }
 const probeTimeoutMs = 5000;
 
@@ -82,7 +83,7 @@ function cancellable<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> 
   });
 }
 
-/** Three fresh probes within 12s; never invent free memory or reuse a previous request's sample. */
+/** Default: three fresh probes within 12s. Callers may keep retrying until their deadline. */
 export async function readReliableStrataResources(read = readStrataResources, options: RetryOptions = {}): Promise<StrataResourceProbe> {
   const budget = new AbortController(), started = Date.now();
   const signal = AbortSignal.any([budget.signal, ...(options.signal ? [options.signal] : [])]);
@@ -96,7 +97,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
       memoryAvailableBytes: last.memoryAvailableBytes, commitAvailableBytes: last.commitAvailableBytes, vramAvailableBytes: last.vramAvailableBytes }); } catch { /* Observer only. */ }
   };
   try {
-    for (attempt = 1; attempt <= 3; attempt++) {
+    for (attempt = 1; options.retryUntilDeadline || attempt <= 3; attempt++) {
       options.signal?.throwIfAborted();
       try { last = await cancellable(() => {
         const probe = read(signal);
@@ -114,7 +115,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
         if (attempt > 1) report("recovered");
         return last;
       }
-      if (attempt === 3 || budget.signal.aborted) break;
+      if ((!options.retryUntilDeadline && attempt === 3) || budget.signal.aborted) break;
       report("retry");
       try { await cancellable(() => new Promise<void>((resolve) => {
         const finish = () => { clearTimeout(wait); signal.removeEventListener("abort", finish); resolve(); };

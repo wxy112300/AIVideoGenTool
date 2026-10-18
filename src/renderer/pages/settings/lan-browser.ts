@@ -3,17 +3,23 @@ import { LAN_BROWSER_DEFAULT_PORT } from "../../../core/lan-browser";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { Translate } from "../../../core/i18n";
 import type { RendererContext, RendererCleanup } from "../../contracts";
+import { escapeHtml } from "../../shared/dom";
+
+function addressRow(url: string, t: Translate, escape: (text: string) => string): string {
+  const k = uiKeys.lanBrowser;
+  return `<div class="input-action" data-lan-address-row><input type="text" data-lan-address readonly value="${escape(url)}" aria-label="${escape(t(k.copy))}" ${url ? "" : "disabled"}><button type="button" class="secondary" data-lan-copy disabled>${t(k.copy)}</button><button type="button" class="secondary" data-lan-open disabled>${t(k.open)}</button></div>`;
+}
 
 export function renderLanBrowserSettings(settings: Settings, t: Translate, escape: (text: string) => string): string {
   const k = uiKeys.lanBrowser;
   return `<section class="panel settings-section" data-lan-panel>
     <div class="section-heading"><div><h2>${t(k.title)}</h2><span class="muted">${t(k.description)}</span></div></div>
-    <label class="ios-switch-field"><span class="policy-copy"><strong>${t(k.enabled)}</strong><small>${t(k.unprotected)}</small></span><input id="lan-browser-enabled" type="checkbox" ${settings.lanBrowserEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
-    <label>${t(k.port)}<input id="lan-browser-port" type="number" min="1024" max="65535" step="1" value="${settings.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT}"></label>
-    <small class="muted">${t(k.saveHint)}</small>
-    <p data-lan-status role="status" aria-live="polite">${t(k.loading)}</p>
-    <div class="input-action"><select data-lan-address aria-label="${escape(t(k.copy))}" disabled></select><button type="button" class="secondary" data-lan-copy disabled>${t(k.copy)}</button></div>
-    <div class="button-row"><button type="button" class="secondary" data-lan-open disabled>${t(k.open)}</button><button type="button" class="ghost" data-lan-retry hidden>${t(k.retry)}</button></div>
+    <div class="settings-grid two">
+      <label class="ios-switch-field"><span class="policy-copy"><strong>${t(k.enabled)}</strong><small>${t(k.unprotected)}</small></span><input id="lan-browser-enabled" type="checkbox" ${settings.lanBrowserEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+      <label>${t(k.port)}<input id="lan-browser-port" type="number" min="1024" max="65535" step="1" value="${settings.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT}"><small class="muted">${t(k.saveHint)}</small></label>
+    </div>
+    <div class="button-row"><p data-lan-status role="status" aria-live="polite">${t(k.loading)}</p><button type="button" class="ghost" data-lan-retry hidden>${t(k.retry)}</button></div>
+    <div class="lan-browser-addresses" data-lan-addresses>${addressRow("", t, escape)}</div>
   </section>`;
 }
 
@@ -27,9 +33,7 @@ export function mountLanBrowserSettings(context: RendererContext, options: {
   const k = uiKeys.lanBrowser;
   const field = panel.querySelector<HTMLInputElement>("#lan-browser-enabled")!;
   const status = panel.querySelector<HTMLElement>("[data-lan-status]")!;
-  const addresses = panel.querySelector<HTMLSelectElement>("[data-lan-address]")!;
-  const copy = panel.querySelector<HTMLButtonElement>("[data-lan-copy]")!;
-  const open = panel.querySelector<HTMLButtonElement>("[data-lan-open]")!;
+  const addresses = panel.querySelector<HTMLElement>("[data-lan-addresses]")!;
   const retry = panel.querySelector<HTMLButtonElement>("[data-lan-retry]")!;
   let urlsSignature = "";
   let polling = false;
@@ -43,19 +47,14 @@ export function mountLanBrowserSettings(context: RendererContext, options: {
       status.textContent = value.state === "error" ? value.error
         : context.t(k[value.state === "running" ? "running" : value.state === "starting" ? "starting" : "off"]);
       if (value.state === "running" && !value.urls.length) status.textContent += ` · ${context.t(k.noAddress)}`;
-      open.disabled = value.state !== "running";
-      copy.disabled = value.state !== "running" || !value.urls.length;
       retry.hidden = value.state !== "error";
       const next = JSON.stringify(value.urls);
       if (next !== urlsSignature) {
-        const selected = addresses.value;
-        addresses.replaceChildren(...value.urls.map((url) => {
-          const option = document.createElement("option"); option.value = url; option.textContent = url; return option;
-        }));
-        if (value.urls.includes(selected)) addresses.value = selected;
-        addresses.disabled = !value.urls.length;
+        addresses.innerHTML = (value.urls.length ? value.urls : [""]).map((url) => addressRow(url, context.t, escapeHtml)).join("");
         urlsSignature = next;
       }
+      addresses.querySelectorAll<HTMLButtonElement>("[data-lan-open]").forEach((button) => { button.disabled = value.state !== "running"; });
+      addresses.querySelectorAll<HTMLButtonElement>("[data-lan-copy]").forEach((button) => { button.disabled = value.state !== "running" || !value.urls.length; });
     } catch {
       if (!events.signal.aborted) status.textContent = context.t(k.error);
     } finally { polling = false; }
@@ -66,11 +65,14 @@ export function mountLanBrowserSettings(context: RendererContext, options: {
   retry.addEventListener("click", () => {
     void context.application.retryLanBrowser().then(poll).catch(notifyError);
   }, { signal: events.signal });
-  open.addEventListener("click", () => {
-    void context.application.openLanBrowser().catch(notifyError);
-  }, { signal: events.signal });
-  copy.addEventListener("click", () => {
-    void navigator.clipboard.writeText(addresses.value).then(() => context.notify(context.t(k.copied), { renderPage: false })).catch(notifyError);
+  addresses.addEventListener("click", (event) => {
+    const target = (event.target as Element).closest<HTMLButtonElement>("button");
+    if (!target || target.disabled) return;
+    if (target.hasAttribute("data-lan-open")) void context.application.openLanBrowser().catch(notifyError);
+    if (target.hasAttribute("data-lan-copy")) {
+      const url = target.closest("[data-lan-address-row]")!.querySelector<HTMLInputElement>("[data-lan-address]")!.value;
+      void navigator.clipboard.writeText(url).then(() => context.notify(context.t(k.copied), { renderPage: false })).catch(notifyError);
+    }
   }, { signal: events.signal });
   void poll();
   const timer = window.setInterval(() => { void poll(); }, 1500);

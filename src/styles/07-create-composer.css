@@ -183,6 +183,14 @@
 .video-lora-issue > .ui-icon { width: 14px; height: 14px; margin-top: 1px; }
 .video-lora-issue.error { border-color: rgba(226, 91, 104, .34); color: #efa4ad; background: rgba(134, 38, 51, .1); }
 
+.settings-duration-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
 .composer-control-grid .settings-duration .inline-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px auto;

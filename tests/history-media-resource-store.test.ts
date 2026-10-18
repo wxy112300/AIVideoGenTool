@@ -55,6 +55,80 @@ function saved(url = "studio-media://cover/saved.jpg"): HistoryCoverSaveResult {
 }
 
 describe("history media resource store", () => {
+  it("revalidates a changed source after a stale save before producing its replacement", async () => {
+    let lookups = 0; const saves: string[] = [];
+    const store = createMediaResourceStore({
+      lookup: async () => ({ state: "miss", sourceRevision: `source-${++lookups}` }),
+      produce: async (_ref, revision) => thumbnail(revision),
+      save: async input => { saves.push(input.sourceRevision); return saves.length === 1 ? { state: "stale" } : saved(); },
+      createObjectUrl: () => "blob:source-change"
+    });
+    const unsubscribe = store.subscribe(mediaRef(), consumer([]));
+    await flushTasks(); await flushTasks();
+    expect(saves).toEqual(["source-1", "source-2"]); unsubscribe(); store.dispose();
+  });
+  it("reorders pending videos for the current viewport and retains offscreen jobs until each saves once", async () => {
+    const started: string[] = [];
+    let finishActive!: (value: ProducedThumbnail) => void;
+    let activeSignal!: AbortSignal;
+    const save = vi.fn(async (_input: { key: string }) => saved());
+    const store = createMediaResourceStore({
+      lookup: async (ref) => ({ state: "miss", sourceRevision: ref.key }),
+      produce: (ref, _revision, signal) => {
+        started.push(ref.key);
+        if (ref.key === "active") { activeSignal = signal; return new Promise<ProducedThumbnail>(resolve => { finishActive = resolve; }); }
+        return Promise.resolve(thumbnail(ref.key));
+      }, save, createObjectUrl: () => "blob:queued"
+    });
+    const ref = (key: string) => mediaRef({ key, kind: "video", sourceUrl: `studio-media://history/${key}.mp4` });
+    const active = store.subscribe(ref("active"), consumer([], [], "prefetch")); await flushTasks();
+    const oldVisible = store.subscribe(ref("old-visible"), consumer([], [], "viewport"));
+    const nextVisible = store.subscribe(ref("next-visible"), consumer([], [], "prefetch"));
+    const retained = store.subscribe(ref("retained"), consumer([], [], "prefetch"));
+    await flushTasks(); oldVisible(); nextVisible.reprioritize?.("viewport"); active();
+    expect(activeSignal.aborted).toBe(false); expect(started).toEqual(["active"]);
+    finishActive(thumbnail("active")); await flushTasks(); await flushTasks();
+    expect(started).toEqual(["active", "next-visible", "retained", "old-visible"]);
+    expect(save).toHaveBeenCalledTimes(4);
+    expect(save.mock.calls.map(([input]) => input.key).sort()).toEqual(["active", "next-visible", "old-visible", "retained"]);
+    nextVisible(); retained(); store.dispose();
+  });
+
+  it("continues video refinement after publishing a preview even if its only consumer leaves", async () => {
+    let finish!: (value: ProducedThumbnail) => void;
+    let signal!: AbortSignal;
+    const save = vi.fn(async () => saved()); const shown: Presentation[] = [];
+    const store = createMediaResourceStore({
+      lookup: async () => ({ state: "miss", sourceRevision: "preview-background" }),
+      produce: async (_ref, revision, taskSignal, hooks) => {
+        signal = taskSignal; await hooks.publishPreview?.(thumbnail(revision));
+        return new Promise<ProducedThumbnail>(resolve => { finish = resolve; });
+      }, save, createObjectUrl: () => "blob:preview-background"
+    });
+    const unsubscribe = store.subscribe(mediaRef({ kind: "video" }), consumer(shown)); await flushTasks();
+    expect(shown.map(p => p.phase)).toEqual(["preview"]);
+    unsubscribe(); expect(signal.aborted).toBe(false);
+    finish(thumbnail("preview-background")); await flushTasks();
+    expect(save).toHaveBeenCalledOnce(); expect(shown.map(p => p.phase)).toEqual(["preview"]);
+    store.dispose();
+  });
+
+  it("cancels work explicitly on disposal and ignores late completion without deleting saved results", async () => {
+    let signal!: AbortSignal; let finish!: (value: ProducedThumbnail) => void;
+    const save = vi.fn(async () => saved());
+    const store = createMediaResourceStore({
+      lookup: async ref => ({ state: "miss", sourceRevision: ref.key }),
+      produce: (ref, _revision, taskSignal) => {
+        if (ref.key === "saved") return Promise.resolve(thumbnail(ref.key));
+        signal = taskSignal; return new Promise<ProducedThumbnail>(resolve => { finish = resolve; });
+      }, save, createObjectUrl: () => "blob:exit"
+    });
+    store.subscribe(mediaRef({ key: "saved" }), consumer([])); await flushTasks(); expect(save).toHaveBeenCalledOnce();
+    store.subscribe(mediaRef({ key: "unfinished", kind: "video" }), consumer([])); await flushTasks();
+    store.dispose(); expect(signal.aborted).toBe(true);
+    finish(thumbnail("unfinished")); await flushTasks(); expect(save).toHaveBeenCalledOnce();
+  });
+
   it("shares one lookup and producer while delivering the result to every consumer", async () => {
     const lookup = vi.fn(async (): Promise<HistoryCoverLookup> => ({
       state: "miss",
@@ -272,7 +346,7 @@ describe("history media resource store", () => {
     store.dispose();
   });
 
-  it("preempts a slow video prefetch when another card becomes interactive", async () => {
+  it("finishes a running video instead of preempting it when another card becomes interactive", async () => {
     const firstRef = mediaRef({
       key: "prefetch-video",
       kind: "video",
@@ -288,11 +362,12 @@ describe("history media resource store", () => {
       sourceRevision: ref.key
     }));
     let prefetchSignal: AbortSignal | undefined;
+    let finishPrefetch!: (value: ProducedThumbnail) => void;
     const produce = vi.fn((ref: MediaRef, _revision: string, signal: AbortSignal) => {
       if (ref.key === firstRef.key) {
         prefetchSignal = signal;
         return new Promise<ProducedThumbnail | null>((resolve) => {
-          signal.addEventListener("abort", () => resolve(null), { once: true });
+          finishPrefetch = resolve;
         });
       }
       return Promise.resolve(thumbnail(ref.key));
@@ -311,7 +386,11 @@ describe("history media resource store", () => {
     const secondUnsubscribe = store.subscribe(secondRef, consumer(secondPresentations, [], "interactive"));
     await flushTasks();
 
-    expect(prefetchSignal?.aborted).toBe(true);
+    expect(prefetchSignal?.aborted).toBe(false);
+    expect(secondPresentations).toHaveLength(0);
+    expect(produce).toHaveBeenCalledOnce();
+    finishPrefetch(thumbnail(firstRef.key));
+    await flushTasks();
     expect(secondPresentations).toHaveLength(1);
     expect(produce).toHaveBeenCalledTimes(2);
     firstUnsubscribe();
@@ -319,27 +398,22 @@ describe("history media resource store", () => {
     store.dispose();
   });
 
-  it("aborts the old producer after the last consumer leaves and allows a later retry", async () => {
-    const lookup = vi.fn(async (): Promise<HistoryCoverLookup> => ({
-      state: "miss",
-      sourceRevision: "revision-retry"
-    }));
+  it("finishes and persists after the last card leaves, then reuses that disk result", async () => {
+    let diskSaved = false;
+    const lookup = vi.fn(async (): Promise<HistoryCoverLookup> => diskSaved
+      ? { state: "hit", sourceRevision: "revision-retry", url: "studio-media://cover/saved.jpg" }
+      : { state: "miss", sourceRevision: "revision-retry" });
     let firstSignal: AbortSignal | undefined;
-    let produceCalls = 0;
+    let finish!: (value: ProducedThumbnail) => void;
     const produce = vi.fn((_ref: MediaRef, _revision: string, signal: AbortSignal) => {
-      produceCalls += 1;
-      if (produceCalls === 1) {
-        firstSignal = signal;
-        return new Promise<ProducedThumbnail | null>((resolve) => {
-          signal.addEventListener("abort", () => resolve(null), { once: true });
-        });
-      }
-      return Promise.resolve(thumbnail("revision-retry"));
+      firstSignal = signal;
+      return new Promise<ProducedThumbnail>((resolve) => { finish = resolve; });
     });
+    const save = vi.fn(async () => { diskSaved = true; return saved(); });
     const store = createMediaResourceStore({
       lookup,
       produce,
-      save: async () => saved(),
+      save,
       createObjectUrl: () => "blob:retry"
     });
     const first: Presentation[] = [];
@@ -348,19 +422,22 @@ describe("history media resource store", () => {
     await flushTasks();
     expect(produce).toHaveBeenCalledOnce();
     unsubscribeFirst();
-    expect(firstSignal?.aborted).toBe(true);
+    expect(firstSignal?.aborted).toBe(false);
+    finish(thumbnail("revision-retry")); await flushTasks();
+    expect(save).toHaveBeenCalledOnce(); expect(first).toHaveLength(0);
 
     const second: Presentation[] = [];
     const unsubscribeSecond = store.subscribe(mediaRef(), consumer(second));
     await flushTasks();
 
-    expect(produce).toHaveBeenCalledTimes(2);
+    expect(produce).toHaveBeenCalledOnce();
     expect(second).toHaveLength(1);
+    expect(second[0]?.origin).toBe("disk");
     unsubscribeSecond();
     store.dispose();
   });
 
-  it("settles an aborted lookup even when the underlying lookup ignores its signal", async () => {
+  it("shares an unfinished lookup across scrolling away and back without canceling or duplicating it", async () => {
     let resolveFirstLookup!: (result: HistoryCoverLookup) => void;
     let lookupCalls = 0;
     let firstSignal: AbortSignal | undefined;
@@ -387,14 +464,15 @@ describe("history media resource store", () => {
     const first = store.subscribe(mediaRef(), consumer(presentations));
     await flushTasks();
     first();
-    expect(firstSignal?.aborted).toBe(true);
+    expect(firstSignal?.aborted).toBe(false);
 
     const second = store.subscribe(mediaRef(), consumer(presentations));
     await flushTasks();
 
-    expect(lookup).toHaveBeenCalledTimes(2);
-    expect(presentations).toHaveLength(1);
+    expect(lookup).toHaveBeenCalledOnce();
     resolveFirstLookup({ state: "hit", url: "studio-media://cover/old.jpg", sourceRevision: "old" });
+    await flushTasks();
+    expect(presentations).toHaveLength(1);
     second();
     store.dispose();
   });

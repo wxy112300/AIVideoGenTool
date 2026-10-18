@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.66.0**。本 minor 版本新增手机优先的局域网历史视频浏览：完整筛选排序、瀑布流/相册、完整画面循环播放、触摸手势，以及收藏、评分、标签和只读 Prompt 信息窗。设置 → 系统可开启服务、复制 LAN 地址或在本机浏览器打开；服务默认关闭，随 App 退出停止，当前未设密码。版本变化见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.66.1**。本 patch 版本修复局域网浏览播放与设置排版、封面后台队列、时长输入精度及 Strata Agent 资源监测与诊断导出。局域网历史视频浏览支持完整筛选排序、瀑布流/相册、完整画面循环播放、触摸手势，以及收藏、评分、标签和只读 Prompt 信息窗。设置 → 系统可开启服务、复制 LAN 地址或在本机浏览器打开；服务默认关闭，随 App 退出停止，当前未设密码。版本变化见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 同时保留可脱离 Studio 使用的 [Strata Agent 启动器](Tools/Strata-Agent/README.md)，入口为 `Tools/Strata-Agent/Start.cmd`。独立工具的 localhost GUI/CLI 闭环已实测，其 LAN 尚未开放；H3 长稿稳定性仍未完成验收，蓝屏根因未定，文件页释放候选保持关闭。原默认模型、工作流、队列、作品历史与共享权重保留。
 

@@ -188,16 +188,22 @@ function Start-Controller {
   $script:read=$script:child.StandardOutput.ReadLineAsync(); $script:errors=$script:child.StandardError.ReadToEndAsync()
   Send-Command 'doctor'
 }
+function Show-DiagnosticResult($result) {
+  [void][Windows.Forms.MessageBox]::Show(($status.Text+"`r`n日志可能含对话信息，分享前请检查；没有自动上传。`r`n"+($result.issues -join "`r`n")),'Strata Agent 诊断')
+  Start-Process explorer.exe -ArgumentList @($result.directory)
+}
 function Receive-DiagnosticExport {
     if($script:diagnosticProcess -and $script:diagnosticProcess.HasExited -and $script:diagnosticOutput.IsCompleted){
+      # Consume before any modal message loop can dispatch another Timer tick.
+      $completed=$script:diagnosticProcess; $output=$script:diagnosticOutput
+      $script:diagnosticProcess=$null; $script:diagnosticOutput=$null; $script:diagnosticErrors=$null
+      $completed.Dispose(); $exportDiagnostics.Enabled=$true
       try {
-        $result=$script:diagnosticOutput.Result | ConvertFrom-Json
+        $result=$output.Result | ConvertFrom-Json
         if(!$result.ok){throw $result.message}
         $status.Text='诊断已保存：'+$result.file; Add-Log $status.Text
-        [void][Windows.Forms.MessageBox]::Show(($status.Text+"`r`n日志可能含对话信息，分享前请检查；没有自动上传。`r`n"+($result.issues -join "`r`n")),'Strata Agent 诊断')
-        Start-Process explorer.exe -ArgumentList @($result.directory)
+        Show-DiagnosticResult $result
       } catch {$status.Text='诊断导出失败；请核对数据目录权限，或运行 Export-Diagnostics.cmd 查看提示。'; Add-Log $status.Text}
-      finally {$script:diagnosticProcess.Dispose(); $script:diagnosticProcess=$null; $exportDiagnostics.Enabled=$true}
     }
 }
 function Prepare-Controller {

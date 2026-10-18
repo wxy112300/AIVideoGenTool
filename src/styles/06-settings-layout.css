@@ -534,6 +534,8 @@
   white-space: nowrap;
 }
 
+.lan-browser-addresses { display: grid; gap: 8px; }
+
 .settings-section .compact-label {
   width: min(280px, 100%);
   min-width: 0;

@@ -641,28 +641,35 @@ export function mountCreatePageController(
 
   const range = root.querySelector<HTMLInputElement>("#duration");
   const number = root.querySelector<HTMLInputElement>("#duration-number");
-  const updateDuration = (value: string) => {
+  const updateDuration = (source: HTMLInputElement, commit = false) => {
     const state = getState();
     if (!state) return;
+    const value = Number(source.value);
+    // Keep intermediate decimal/empty edits intact until the user commits.
+    if (!commit && (!source.value || !Number.isFinite(value))) return;
     const maxDuration = state.draft.inputMode === "video"
       ? extensionSafetyForDraft(state.draft, state.settings).maxDurationSeconds
       : generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
     const minimumDuration = isMiniMaxH3ContinuumModel(state.draft.modelId) ? 4 : 1;
-    const duration = Math.max(minimumDuration, Math.min(maxDuration, Number(value) || minimumDuration));
+    const requested = Number.isFinite(value) ? value : minimumDuration;
+    const duration = Math.max(minimumDuration, Math.min(maxDuration, commit ? Math.round(requested * 10) / 10 : requested));
     options.patchDraft({ duration });
     options.syncEnqueueUi();
     if (range) range.value = String(duration);
-    if (number) number.value = String(duration);
+    if (number && (source === range || commit)) number.value = duration.toFixed(1);
     const added = root.querySelector("#trim-added");
     const total = root.querySelector("#trim-total");
     const kept = state.draft.trimEndSeconds - state.draft.trimStartSeconds;
     if (added) added.textContent = t(uiKeys.create.interaction.trimAdded, { value: duration.toFixed(1) });
     if (total) total.textContent = t(uiKeys.create.interaction.trimApproxTotal, { value: (kept + duration).toFixed(1) });
   };
-  range?.addEventListener("input", () => updateDuration(range.value), { signal });
-  number?.addEventListener("input", () => updateDuration(number.value), { signal });
+  range?.addEventListener("input", () => updateDuration(range), { signal });
+  number?.addEventListener("input", () => updateDuration(number), { signal });
   range?.addEventListener("change", () => options.context.requestRender(), { signal });
-  number?.addEventListener("change", () => options.context.requestRender(), { signal });
+  number?.addEventListener("change", () => {
+    updateDuration(number, true);
+    options.context.requestRender();
+  }, { signal });
 
   root.querySelector("#clear-draft")?.addEventListener("click", () => {
     options.requestClearDraftConfirmation();

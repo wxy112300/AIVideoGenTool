@@ -66,10 +66,14 @@ export interface MediaResourceStoreDependencies {
 }
 
 export interface MediaResourceStore {
-  subscribe(ref: MediaRef, consumer: MediaResourceConsumer): () => void;
+  subscribe(ref: MediaRef, consumer: MediaResourceConsumer): MediaResourceSubscription;
   invalidate(keys?: readonly string[]): void;
   dispose(): void;
 }
+
+export type MediaResourceSubscription = (() => void) & {
+  reprioritize?(priority: HistoryMediaTaskPriority): void;
+};
 
 interface Subscriber extends MediaResourceConsumer {
   id: number;
@@ -185,10 +189,12 @@ export function createMediaResourceStore(
   dependencies: MediaResourceStoreDependencies
 ): MediaResourceStore {
   const entries = new Map<string, ResourceEntry>();
-  const lookupScheduler = createHistoryMediaScheduler(8);
-  const imageScheduler = createHistoryMediaScheduler(3);
-  const videoScheduler = createHistoryMediaScheduler(1);
-  const saveScheduler = createHistoryMediaScheduler(1);
+  // Once accepted, thumbnail work belongs to this app-lifetime queue, not to a card.
+  // Scrolling changes pending order; running decoders and durable saves finish once.
+  const lookupScheduler = createHistoryMediaScheduler(8, { preempt: false });
+  const imageScheduler = createHistoryMediaScheduler(3, { preempt: false });
+  const videoScheduler = createHistoryMediaScheduler(1, { preempt: false });
+  const saveScheduler = createHistoryMediaScheduler(1, { preempt: false });
   const revokeObjectUrl = dependencies.revokeObjectUrl ?? defaultRevokeObjectUrl;
   const revoke = (url: string): void => {
     revokeObjectUrl(url);
@@ -249,12 +255,19 @@ export function createMediaResourceStore(
   };
 
   const highestPriority = (entry: ResourceEntry): HistoryMediaTaskPriority => {
-    let priority: HistoryMediaTaskPriority = "prefetch";
+    let priority: HistoryMediaTaskPriority = "background";
     for (const subscriber of entry.subscribers.values()) {
       if (subscriber.priority === "interactive") return "interactive";
       if (subscriber.priority === "viewport") priority = "viewport";
+      if (subscriber.priority === "prefetch" && priority === "background") priority = "prefetch";
     }
     return priority;
+  };
+
+  const reprioritize = (entry: ResourceEntry): void => {
+    const priority = highestPriority(entry);
+    lookupScheduler.reprioritize(entry.key, priority);
+    (entry.ref.kind === "image" ? imageScheduler : videoScheduler).reprioritize(entry.key, priority);
   };
 
   const notifyFailure = (
@@ -428,6 +441,8 @@ export function createMediaResourceStore(
       } finally {
         if (entries.get(entry.key) === entry && entry.generation === generation) {
           entry.saveInFlight = false;
+          if (!entry.lookupCompleted) ensureWork(entry);
+          trimResultKeys();
         }
       }
     }, "prefetch");
@@ -436,7 +451,6 @@ export function createMediaResourceStore(
   const startProduction = (entry: ResourceEntry): void => {
     if (
       disposed ||
-      entry.subscribers.size === 0 ||
       entry.productionInFlight ||
       !entry.ref.sourceUrl
     ) return;
@@ -456,11 +470,7 @@ export function createMediaResourceStore(
                 if (signal.aborted) return;
                 await createGeneratedPresentation(entry, thumbnail, "preview", generation, signal);
                 if (!signal.aborted && entry.ref.kind === "video") {
-                  const priority = highestPriority(entry);
-                  scheduler.reprioritize(
-                    entry.key,
-                    priority === "interactive" ? "interactive" : "prefetch"
-                  );
+                  scheduler.reprioritize(entry.key, highestPriority(entry));
                 }
               }
             }
@@ -493,6 +503,8 @@ export function createMediaResourceStore(
       } finally {
         if (entries.get(entry.key) === entry && entry.generation === generation) {
           entry.productionInFlight = false;
+          if (!entry.lookupCompleted) ensureWork(entry);
+          trimResultKeys();
         }
       }
     }, highestPriority(entry));
@@ -582,6 +594,7 @@ export function createMediaResourceStore(
       } finally {
         if (entries.get(entry.key) === entry && entry.generation === generation) {
           entry.lookupInFlight = false;
+          trimResultKeys();
         }
       }
     }, highestPriority(entry));
@@ -592,6 +605,7 @@ export function createMediaResourceStore(
       if (!entry.ref.sourceUrl && entry.subscribers.size > 0) notifyFailure(entry, "missing");
       return;
     }
+    if (entry.lookupInFlight || entry.productionInFlight || entry.saveInFlight) return;
     if (entry.needsRevalidation) {
       entry.needsRevalidation = false;
       entry.lookupCompleted = false;
@@ -640,12 +654,8 @@ export function createMediaResourceStore(
     entry.subscribers.delete(id);
     if (entry.subscribers.size === 0) {
       unreferencedBlobBytes += entry.generatedBytes;
-      entry.lookupInFlight = false;
-      entry.productionInFlight = false;
-      lookupScheduler.cancel(entry.key);
-      imageScheduler.cancel(entry.key);
-      videoScheduler.cancel(entry.key);
-      entry.needsRevalidation = true;
+      reprioritize(entry);
+      entry.needsRevalidation = !entry.lookupInFlight && !entry.productionInFlight && !entry.saveInFlight;
       trimUnreferencedBlobs();
       trimResultKeys();
       syncBenchmarkResourceState();
@@ -654,7 +664,8 @@ export function createMediaResourceStore(
 
   return {
     subscribe(ref, consumer) {
-      if (disposed || !ref.key) return () => undefined;
+      const inactive = Object.assign(() => undefined, { reprioritize: (_priority: HistoryMediaTaskPriority) => undefined });
+      if (disposed || !ref.key) return inactive;
       let entry = entries.get(ref.key);
       if (!entry) {
         entry = {
@@ -691,19 +702,21 @@ export function createMediaResourceStore(
       }
       if (subscriber.signal.aborted) {
         unsubscribe(entry, id);
-        return () => undefined;
+        return inactive;
       }
       subscriber.signal.addEventListener("abort", abortHandler, { once: true });
       touch(entry);
-      const shouldRevalidate = wasEmpty && entry.lookupCompleted;
+      const shouldRevalidate = wasEmpty && entry.lookupCompleted && !entry.lookupInFlight && !entry.productionInFlight && !entry.saveInFlight;
       if (entry.presentation && !shouldRevalidate) deliver(entry, subscriber);
       if (shouldRevalidate) entry.needsRevalidation = true;
-      if (entry.productionInFlight) {
-        const scheduler = entry.ref.kind === "image" ? imageScheduler : videoScheduler;
-        scheduler.reprioritize(entry.key, highestPriority(entry));
-      }
+      reprioritize(entry);
       ensureWork(entry);
-      return () => unsubscribe(entry!, id);
+      return Object.assign(() => unsubscribe(entry!, id), {
+        reprioritize: (priority: HistoryMediaTaskPriority) => {
+          if (disposed || !entry!.subscribers.has(id)) return;
+          subscriber.priority = priority; reprioritize(entry!);
+        }
+      });
     },
 
     invalidate(keys) {

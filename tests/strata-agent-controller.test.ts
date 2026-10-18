@@ -99,10 +99,12 @@ describe("one-click transaction using process mocks only", () => {
   });
   it("still stops the owned model if GUI cleanup fails, while reporting incomplete ownership and allowing retry", async () => {
     const { controller, preferences, stopEngine } = await fixture();
+    const stopSampler = vi.spyOn((controller as any).sampler, "stop");
     await controller.dispatch({ action: "start", preferences });
     fake.cloudStop.mockRejectedValueOnce(new Error("fixture GUI stop failure"));
     await expect(controller.dispatch({ action: "stop", confirmed: true })).rejects.toThrow("fixture GUI stop failure");
     expect(stopEngine).toHaveBeenCalledOnce();
+    expect(stopEngine).toHaveBeenCalledBefore(stopSampler);
     await expect(controller.dispatch({ action: "stop", confirmed: true })).resolves.toMatchObject({ message: expect.stringContaining("自有服务已停止") });
   });
 });

@@ -89,7 +89,9 @@ export class LanBrowserLibrary {
   }
 
   record(assetId: string, versionId?: string): { asset: HistoryAsset; version: AssetVersion } {
-    const asset = this.deps.store.get().history.find((item) => item.id === assetId);
+    const asset = this.deps.store.getHistoryAsset
+      ? this.deps.store.getHistoryAsset(assetId)
+      : this.deps.store.get().history.find((item) => item.id === assetId);
     if (!asset || !asset.versions.length) throw new BrowseError(404, "视频已不可用。");
     const version = versionId ? asset.versions.find((v) => v.id === versionId) : preferredVersion(asset);
     if (!version) throw new BrowseError(404, "视频版本已不可用。");

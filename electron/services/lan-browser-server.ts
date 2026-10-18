@@ -198,14 +198,17 @@ export class LanBrowserServer {
       if (read && parts.length === 7 && parts[4] === "versions" && (parts[6] === "media" || parts[6] === "cover")) {
         const source = await library.source(id, parts[5]!);
         const filename = parts[6] === "media" ? source.filename
-          : await this.covers.get(source.asset, source.version, source.filename, this.controller.signal);
-        if (!filename) return new Response(null, { status: 503, headers: { "Retry-After": "3", "Cache-Control": "no-store" } });
+          : await this.covers.get(source.asset, source.version, source.filename, this.controller.signal, false);
+        if (!filename) return new Response(null, { status: 503, headers: { "Retry-After": "1", "Cache-Control": "no-store" } });
         const stat = await fs.stat(filename).catch(() => null);
         if (!stat?.isFile() || !stat.size) throw new BrowseError(404, "媒体不可用。");
+        const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
+        if (parts[6] === "cover" && request.headers["if-none-match"] === etag) return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "private, max-age=60" } });
         const result = mediaFileResponse(filename, stat.size, {
           method: request.method!, headers: { get: (name) => String(request.headers[name.toLowerCase()] ?? "") || null }
         });
         result.headers.set("Cache-Control", parts[6] === "media" ? "private, no-cache" : "private, max-age=60");
+        result.headers.set("ETag", etag);
         return result;
       }
     }

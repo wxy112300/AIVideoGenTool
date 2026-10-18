@@ -14,13 +14,13 @@ export class LanBrowserCovers {
 
   constructor(private readonly query: HistoryQueryService) {}
 
-  async get(asset: HistoryAsset, version: AssetVersion, filename: string, signal: AbortSignal): Promise<string | null> {
+  async get(asset: HistoryAsset, version: AssetVersion, filename: string, signal: AbortSignal, wait = true): Promise<string | null> {
     const key = this.query.coverCacheKeyForVideoVersion(asset, version);
     const lookup = await this.query.lookupHistoryCover(key, filename);
     if (lookup.state === "hit") return this.cacheFilename(lookup.url);
     if (lookup.state !== "miss" || signal.aborted) return null;
     const existing = this.jobs.get(key);
-    if (existing) return existing;
+    if (existing) return wait ? existing : null;
     if (this.jobs.size >= 12 || (this.failedUntil.get(key) ?? 0) > Date.now()) return null;
     for (const [failedKey, until] of this.failedUntil) if (until <= Date.now()) this.failedUntil.delete(failedKey);
     const job = this.tail.catch(() => undefined).then(async () => {
@@ -54,7 +54,7 @@ export class LanBrowserCovers {
     }).finally(() => this.jobs.delete(key));
     this.jobs.set(key, job);
     this.tail = job;
-    return job;
+    return wait ? job : null;
   }
 
   private cacheFilename(url: string): string | null {

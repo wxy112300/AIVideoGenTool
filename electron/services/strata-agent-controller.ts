@@ -23,6 +23,7 @@ import { AgentCloud, verifyCloudAdapter } from "./strata-agent-cloud.js";
 import { AGENT_SOFTWARE, atLeastVersion, checkAgentSoftwareUpstream, cloudPackageDirectory, installAgentSoftware, planSharedAgentSoftware, type SharedSoftwarePlan } from "./strata-agent-software.js";
 import { backupClaudeAndSwitch, switchBackupConfig } from "./strata-agent-cc-switch.js";
 import { AgentRuntimeMonitor } from "./strata-agent-monitor.js";
+import { AGENT_RESOURCE_RETRY, AgentResourceSampler } from "./strata-agent-sampler.js";
 
 export class AgentController {
   private readonly lease = new GpuResourceLease("agent", async () => {
@@ -30,7 +31,10 @@ export class AgentController {
     return false; // Explicit stop is required until full harness activity tracking has passed P2/P4.
   });
   private readonly coldPressure = new AgentResourcePressure();
+  private readonly sampler = new AgentResourceSampler();
   private readonly service = new StrataService({ onSpawn: (pid) => this.lease.track(pid), resourcePressure: (resources) => this.coldPressure.check(resources),
+    knownResourcePressure: (resources) => this.coldPressure.knownPressure(resources),
+    readResources: (signal) => this.sampler.read(signal), resourceRetry: AGENT_RESOURCE_RETRY,
     onOutput: (chunk) => this.writeServerLog(chunk) });
   private readonly monitor = new AgentRuntimeMonitor();
   private serverLog = "";
@@ -280,8 +284,11 @@ export class AgentController {
     await this.lease.acquire();
     try {
       signal.throwIfAborted();
+      this.log("启动专用轻量资源采样器：Windows原生RAM/提交 + NVML显存；不在每秒采样时启动PowerShell/WMI");
+      await this.sampler.start(path.join(doctor.strata.installDirectory, ".venv", "Scripts", "python.exe"),
+        path.join(this.toolDirectory, "resources.py"), pid => this.lease.track(pid));
       this.log(`按当前 RAM、Windows 提交余量和显存预检 ${contextTokens / 1024}K；上下文扩展不修改共享H3策略`);
-      const resources = await readReliableStrataResources(undefined, { signal });
+      const resources = await readReliableStrataResources(this.sampler.read, { ...AGENT_RESOURCE_RETRY, signal });
       this.lastResources = resources;
       this.emit({ event: "resources", resources });
       const limits = planStrataResources(resources, 5120, { commitTrial, allowFileReadFallback: true });
@@ -297,7 +304,7 @@ export class AgentController {
       signal.throwIfAborted();
       this.currentToken = await agentToken(this.directory);
       const plan = await agentLaunchPlan({ preferences, install: doctor.strata.installDirectory, packConfig,
-        token: this.currentToken, directory: this.directory, guardScript: path.join(this.toolDirectory, "guard.py"), resources: await readReliableStrataResources(undefined, { signal }), commitTrial, contextTokens });
+        token: this.currentToken, directory: this.directory, guardScript: path.join(this.toolDirectory, "guard.py"), resources: await readReliableStrataResources(this.sampler.read, { ...AGENT_RESOURCE_RETRY, signal }), commitTrial, contextTokens });
       this.fault = null; this.monitor.reset();
       this.serverOutput = "";
       this.engineLog = plan.engineLog ?? "";
@@ -310,8 +317,9 @@ export class AgentController {
       this.sampleAbort = new AbortController();
       const sampleSignal = this.sampleAbort.signal;
       const sample = async () => {
-        // Keep a full retry budget below the native guard's 8s freshness limit.
-        const fresh = await readReliableStrataResources(undefined, { signal: sampleSignal, maxWaitMs: 6000,
+        // Agent gets a full 30s telemetry grace period. An 8s-stale admission blocks NEW loads;
+        // it must not shorten recovery for a model/task already running.
+        const fresh = await readReliableStrataResources(this.sampler.read, { ...AGENT_RESOURCE_RETRY, signal: sampleSignal,
           knownPressure: (resources) => this.coldPressure.knownPressure(resources),
           onDiagnostic: (event) => {
             if (event.event === "pressure" && !this.coldPressure.check({ ...event, vramTotalBytes: null })) return;
@@ -398,6 +406,7 @@ export class AgentController {
     await attempt(() => fs.unlink(path.join(this.directory, "admission.json")).catch((error) => { if (error.code !== "ENOENT") throw error; }));
     const port = this.service.snapshot().port;
     await attempt(() => this.service.stop());
+    await attempt(() => this.sampler.stop());
     if (port && await isLocalPortInUse(port)) errors.push("自有服务退出后端口仍有监听；归属未知，未终止其他进程。");
     if (!errors.length) await attempt(() => this.lease.release());
     await this.logging;

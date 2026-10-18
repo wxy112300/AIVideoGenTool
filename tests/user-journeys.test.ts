@@ -15,6 +15,43 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("edits tenths of a second with live H3 frame alignment and freezes the decimal duration on enqueue", async () => {
+    const h = journey = await createJourney({ prompt: "", duration: 5 });
+    h.element("#clear-prompt").click();
+    await settle();
+    expect(h.element("#enqueue").disabled).toBe(true);
+    expect(h.element<HTMLInputElement>("#duration").step).toBe("0.1");
+    expect(h.element<HTMLInputElement>("#duration-number").step).toBe("0.1");
+    h.input("#duration", "5.1");
+    expect(h.state().draft.duration).toBe(5.1);
+    expect(h.element<HTMLInputElement>("#duration-number").value).toBe("5.1");
+    expect(h.element("#duration-frames").textContent).toBe("124 模型帧");
+    h.input("#duration", "5.2");
+    expect(h.element("#duration-frames").textContent).toBe("141 模型帧");
+    const number = h.element<HTMLInputElement>("#duration-number");
+    number.focus();
+    h.input("#duration-number", "");
+    expect(number.value).toBe("");
+    expect(h.state().draft.duration).toBe(5.2);
+    h.input("#duration-number", "5.10");
+    expect(document.activeElement).toBe(number);
+    expect(number.value).toBe("5.10");
+    expect(h.element("#duration-frames").textContent).toBe("124 模型帧");
+    h.input("#duration-number", "5.2", "change");
+    await settle();
+    h.input("#prompt-input", "A balloon slowly rises above a field.");
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.element("#enqueue").click();
+    await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
+    expect(h.state().queue[0]).toMatchObject({ duration: 5.2 });
+    expect(h.state().queue[0]?.id).toBeTruthy();
+    h.input("#duration-number", "99", "change");
+    await settle();
+    expect(h.state().draft.duration).toBe(15);
+    expect(h.element("#duration-frames").textContent).toBe("362 模型帧");
+    expect(h.state().queue[0]?.duration).toBe(5.2);
+  });
+
   it("keeps an under-length detailed result out of versions and recovers through the actual Enhance button", async () => {
     const h = journey = await createJourney();
     h.input("#prompt-enhance-mode", "detailed-cinematic", "change");

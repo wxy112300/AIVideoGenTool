@@ -2,6 +2,7 @@ export interface WatchGestureActions {
   tap(center: boolean): void;
   move(direction: -1 | 1): void;
   speed(active: boolean): void;
+  drag?(distance: number): void;
 }
 
 /** One pointer owns one action. Cancelling always releases temporary playback speed. */
@@ -14,14 +15,17 @@ export function mountWatchGestures(root: HTMLElement, actions: WatchGestureActio
   const cancel = () => {
     clearTimeout(timer);
     if (pointer?.long) actions.speed(false);
+    if (pointer?.moved) actions.drag?.(0);
     pointer = null;
   };
   root.addEventListener("pointerdown", (event) => {
-    if (!event.isPrimary || event.button !== 0 || (event.target as Element).closest("button,input,select,dialog,a")) return;
+    if (!event.isPrimary || event.button !== 0 || (event.target as Element).closest("button,input,select,dialog,a,[data-seek]")) return;
     const rect = root.getBoundingClientRect();
     // Leave the browser edges and iOS Home indicator region to native navigation.
     const safeBottom = Number.parseFloat(getComputedStyle(root).getPropertyValue("--watch-safe-bottom")) || 0;
     if (event.clientX - rect.left < 18 || rect.right - event.clientX < 18 || event.clientY >= rect.bottom - safeBottom) return;
+    // Suppress synthesized clicks and the native long-press menu on touch devices.
+    event.preventDefault();
     cancel();
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now(), moved: false, long: false };
     root.setPointerCapture?.(event.pointerId);
@@ -34,6 +38,8 @@ export function mountWatchGestures(root: HTMLElement, actions: WatchGestureActio
     if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 10) {
       pointer.moved = true; clearTimeout(timer);
     }
+    const dy = event.clientY - pointer.y;
+    if (pointer.moved && Math.abs(dy) > Math.abs(event.clientX - pointer.x) * 1.25) actions.drag?.(dy);
   }, { signal });
   root.addEventListener("pointerup", (event) => {
     if (!pointer || pointer.id !== event.pointerId) return;
@@ -41,12 +47,13 @@ export function mountWatchGestures(root: HTMLElement, actions: WatchGestureActio
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     const elapsed = Math.max(1, performance.now() - start.time);
-    cancel();
+    clearTimeout(timer); pointer = null;
+    if (start.long) actions.speed(false);
     if (start.long) return;
     if (start.moved) {
       if (Math.abs(dy) > Math.abs(dx) * 1.25 && (Math.abs(dy) >= 56 || (Math.abs(dy) > 24 && Math.abs(dy) / elapsed > 0.5))) {
         actions.move(dy < 0 ? 1 : -1);
-      }
+      } else actions.drag?.(0);
       return;
     }
     const rect = root.getBoundingClientRect();
@@ -55,13 +62,14 @@ export function mountWatchGestures(root: HTMLElement, actions: WatchGestureActio
     actions.tap(x >= 0.28 && x <= 0.72 && y >= 0.3 && y <= 0.7);
   }, { signal });
   root.addEventListener("pointercancel", cancel, { signal });
+  root.addEventListener("contextmenu", (event) => { if (!(event.target as Element).closest("dialog")) event.preventDefault(); }, { signal });
   root.addEventListener("lostpointercapture", (event) => {
     // A deferred loss from a prior tap must not cancel a newly captured hold.
     if (!pointer || pointer.id !== event.pointerId || root.hasPointerCapture?.(event.pointerId)) return;
     cancel();
   }, { signal });
   root.addEventListener("wheel", (event) => {
-    if ((event.target as Element).closest("dialog,input,select")) return;
+    if ((event.target as Element).closest("dialog,input,select,[data-seek]")) return;
     event.preventDefault();
     if (Math.abs(event.deltaY) > 32 && performance.now() - wheelTime > 450) {
       wheelTime = performance.now(); actions.move(event.deltaY > 0 ? 1 : -1);

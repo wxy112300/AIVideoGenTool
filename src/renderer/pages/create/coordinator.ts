@@ -882,6 +882,8 @@ export function createCreateWorkspaceCoordinator(
     const button = document.querySelector<HTMLButtonElement>("#enqueue");
     if (!button) return;
     const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
+    const durationFrames = document.querySelector<HTMLOutputElement>("#duration-frames");
+    if (durationFrames) durationFrames.value = uiText("create.videoSettings.durationFrames", { count: viewModel.interpolationGeneratedFrames });
     const status = document.querySelector<HTMLElement>("[data-continuum-source-status]");
     if (status) {
       status.dataset.tone = "info";

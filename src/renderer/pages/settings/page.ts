@@ -545,7 +545,6 @@ export function renderSettingsPage(
 
   const applicationPathsPanel = `
     <section class="settings-panel">
-      ${renderLanBrowserSettings(settings, t, options.escapeHtml)}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
         <select id="ui-locale" aria-label="${t(uiKeys.settings.localeTitle)}"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select>
@@ -569,6 +568,7 @@ export function renderSettingsPage(
          <div class="asset-library-settings-row"><div><strong>${t(uiKeys.settings.system.assetLibraryMaintenance)}</strong><span class="muted">${t(uiKeys.settings.system.assetLibraryDescription)}</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}${t(uiKeys.settings.system.organizeAssetLibrary)}</button></div>
       </section>
       ${cachePanel}
+      ${renderLanBrowserSettings(settings, t, options.escapeHtml)}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.system.proxyTitle)}</h2><span class="muted">${t(uiKeys.settings.system.proxyDescription)}</span></div><span class="model-badge">${t(settings.proxyEnabled ? uiKeys.settings.system.enabled : uiKeys.settings.system.disabled)}</span></div>
         <div class="settings-grid two">

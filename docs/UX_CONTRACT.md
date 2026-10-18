@@ -14,6 +14,8 @@ On iOS the progress slider's entire 44px touch target stays above `safe-area-ins
 
 The progress row has a transparent background. One rating button combines the star and current score; it opens a compact floating rating dialog. A separate i information button opens read-only prompt text on demand. Long prompts preserve line breaks, scroll and render as plain text; empty/error states remain dismissible. Opening either dialog pauses playback and closing restores the prior play/pause intent without changing the current video.
 
+The LAN viewer uses an icon-only sound control and a visible loading ring during initial loading/buffering. Pausing briefly shows the play button, then fades it after about two seconds; an outer tap hides controls for a clean paused frame. Scrubbing captures touch separately from the native range thumb, follows the pointer immediately, coalesces decoder seeks and commits the exact release position while preserving play/pause intent. Progress continues updating even if the slider retains keyboard focus. Feed drags move the picture and settle vertically; returning to the list has a short transition. Reduced motion skips displacement animations. The list provides a bottom-right back-to-top button after scrolling, and boolean filters use an iOS-style switch.
+
 ## Source and Prototype Workflow
 
 - The current renderer under `src/renderer/` and `src/styles/`, together with renderer screenshot/fixture evidence, is the interaction and layout source of truth for current work.
@@ -62,6 +64,8 @@ The progress row has a transparent background. One rating button combines the st
 - The detail page remains within its parent navigation context. For example, History stays selected while viewing video or image details.
 
 ## Async and Media States
+
+History thumbnail jobs belong to an application-lifetime background queue. Scrolling, leaving the page and hover cleanup release UI consumers and lower pending priority; they do not cancel accepted cache lookup, decoding/refinement or persistence. Visible/interactive requests reorder waiting jobs without preempting running thumbnail work. Returning reuses the in-flight task. Source invalidation/deletion and application disposal may cancel temporary work; exit never deletes completed thumbnail images or metadata.
 
 - Environment scanning is an application-wide lifecycle, not a Settings-only state. Startup and later rescans must show a cross-page scanning notice and replace it immediately with completion or failure feedback when the scan itself settles.
 - Overlapping environment scans use the newest request as the visible result. A slower stale scan must not overwrite a newer path selection, status, completion notice, or error.
