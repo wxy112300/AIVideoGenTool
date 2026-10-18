@@ -1,4 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { mountLanBrowserSettings } from "./lan-browser";
 import {
   mountSettingsFieldsController,
   type SettingsFieldsControllerOptions
@@ -44,6 +45,7 @@ export function mountSettingsControllers(
 ): RendererCleanup {
   const cleanups = [
     mountSettingsFieldsController(context, options.fields),
+    mountLanBrowserSettings(context, options.page),
     mountSettingsServiceController(context, options.environment),
     mountSettingsEnvironmentController(context, options.environment),
     mountSettingsNodeDependencyController(context, options.environment),

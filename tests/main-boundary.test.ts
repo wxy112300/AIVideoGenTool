@@ -59,6 +59,7 @@ const windowShellSources = new Map([
 const queueRuntimeSource = source("electron/services/queue-runtime-service.ts");
 const registrationSources = new Map([
   ["main", mainSource],
+  ["lan-browser-host", source("electron/lan-browser-host.ts")],
   ...queueSources,
   ...historySources,
   ...mediaSources,
@@ -107,7 +108,10 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(95);
+    expect(invokeChannels.size).toBe(98);
+    expect(registrations.get("lan-browser:status")).toEqual(["lan-browser-host"]);
+    expect(registrations.get("lan-browser:retry")).toEqual(["lan-browser-host"]);
+    expect(registrations.get("lan-browser:open")).toEqual(["lan-browser-host"]);
     expect(registrations.get("dependency-install:cancel")).toEqual(["environment-ipc"]);
     expect(registrations.get("strata:install")).toEqual(["environment-ipc"]);
     expect(registrations.get("strata:uninstall")).toEqual(["environment-ipc"]);
@@ -121,6 +125,7 @@ describe("main/preload boundary characterization", () => {
     expect(duplicateOwners).toEqual([]);
 
     const specializedOwners: Record<string, string[]> = {
+      "lan-browser-host": ["lan-browser:status", "lan-browser:retry", "lan-browser:open"],
       "queue-enqueue": [
         "queue:enqueue",
         "queue:enqueue-extension",

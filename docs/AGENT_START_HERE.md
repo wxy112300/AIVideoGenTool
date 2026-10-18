@@ -14,6 +14,7 @@
 | 应用生命周期、运行时 | Architecture | `electron/application-runtime.ts`、`electron/services/`、`electron/ports/`、`electron/*-ipc.ts` |
 | Renderer 交互/布局 | [UX](UX_CONTRACT.md) | `src/renderer/pages/`、`src/styles/`、`src/renderer/render-coordinator.ts` |
 | History 媒体调度/滚动性能 | UX；按需查 [性能证据](research/history/2026.9.1-wp-c04-electron-performance-evidence.md) | `src/renderer/pages/history/`、render coordinator |
+| 局域网历史视频浏览 | Architecture + UX；`guide lan-browser` | `src/web/`、`src/core/lan-browser.ts`、`electron/lan-browser-host.ts`、`electron/services/lan-browser-*` |
 | 模型、LoRA、节点 | [Workflow](WORKFLOW_CONTRACT.md) | `src/core/catalog/models/`、`catalog/loras/`、`catalog/dependencies/` |
 | 视频 graph/参数 | Workflow | `src/core/workflow.ts`、`video-policy.ts`、`workflows/` |
 | 新图片编辑模型 | Workflow + UX（有 UI 变化时） | `src/core/image-workflow.ts`、image draft/queue/history 模块、catalog |

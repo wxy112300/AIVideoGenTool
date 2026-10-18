@@ -455,6 +455,9 @@ export type LtxExtensionModelProfile =
   | "q4_k_m";
 
 export interface Settings {
+  /** Optional LAN history viewer. Missing legacy fields keep sharing disabled. */
+  lanBrowserEnabled?: boolean;
+  lanBrowserPort?: number;
   comfyUrl: string;
   comfyInstallDirectory: string;
   comfyPythonPath: string;
@@ -2434,6 +2437,9 @@ export type HistoryCoverSaveResult =
   | { state: "stale" | "failed" };
 
 export interface AppApi {
+  getLanBrowserStatus(): Promise<import("./core/lan-browser.js").LanBrowserStatus>;
+  retryLanBrowser(): Promise<import("./core/lan-browser.js").LanBrowserStatus>;
+  openLanBrowser(): Promise<void>;
   getState(): Promise<AppState>;
   getComfyRuntimeState(): Promise<ComfyRuntimeState>;
   getPromptRuntimeState(): Promise<PromptRuntimeState>;

@@ -6,6 +6,7 @@ import type {
 import { isHistoryRating, normalizeHistoryTags } from "../../src/core/history-filter.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
+import { historyMetadataRevision, HistoryMetadataConflict } from "./history-metadata-revision.js";
 
 export interface HistoryMetadataServiceDependencies {
   store: StateRepository;
@@ -39,7 +40,8 @@ export class HistoryMetadataService {
 
   async updateMetadata(
     assetId: string,
-    patch: HistoryMetadataPatch
+    patch: HistoryMetadataPatch,
+    expectedRevision?: string
   ): Promise<AppState> {
     if (typeof assetId !== "string" || !assetId.trim()) {
       throw new Error("历史记录参数无效。");
@@ -50,6 +52,9 @@ export class HistoryMetadataService {
       const image = state.imageHistory.find((item) => item.id === assetId);
       const target = video ?? image;
       if (!target) throw new Error("历史记录不存在。");
+      if (expectedRevision !== undefined && historyMetadataRevision(target) !== expectedRevision) {
+        throw new HistoryMetadataConflict();
+      }
       if (validated.favorite !== undefined) target.favorite = validated.favorite;
       if (validated.rating !== undefined) target.rating = validated.rating;
       if (validated.tags !== undefined) target.tags = validated.tags;

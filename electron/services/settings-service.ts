@@ -1,4 +1,5 @@
 import path from "node:path";
+import { LAN_BROWSER_DEFAULT_PORT } from "../../src/core/lan-browser.js";
 import { normalizeStrataSettings, validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataUncensoredMode } from "../../src/core/strata-uncensored.js";
 import type {
@@ -125,6 +126,13 @@ export class SettingsService {
       throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
     }
 
+    if (input.lanBrowserEnabled !== undefined && typeof input.lanBrowserEnabled !== "boolean") {
+      throw new Error("局域网浏览开关无效。");
+    }
+    if (input.lanBrowserPort !== undefined && (!Number.isInteger(input.lanBrowserPort) || input.lanBrowserPort < 1024 || input.lanBrowserPort > 65535)) {
+      throw new Error("局域网浏览端口须为 1024–65535 的整数。");
+    }
+
     if (input.strataPort !== undefined && !validStrataPort(input.strataPort)) {
       throw new Error(input.uiLocale === "en-US"
         ? "Strata port must be an integer from 1024 to 65535, excluding 8080."
@@ -139,6 +147,8 @@ export class SettingsService {
       throw new Error("Strata uncensored 模式无效，请选择关闭、自带或社区向量。");
     }
     let settings = { ...input, ...normalizeStrataSettings(input) };
+    settings.lanBrowserEnabled = input.lanBrowserEnabled === true;
+    settings.lanBrowserPort = input.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT;
     if (!settings.imageInputLibraryDirectory.trim()) {
       settings = {
         ...settings,

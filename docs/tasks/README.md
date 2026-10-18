@@ -2,6 +2,7 @@
 
 只保存任务链接，不复制状态；打开对应 TASK 的 Resume 获取当前结论。这里只列已纳入新流程的任务，不声称覆盖所有正在运行的 Codex 任务。模型名称不是文件所有权证明。
 
+- [局域网历史视频浏览器](2026-10-18-lan-history-browser/TASK.md)
 - [DLSS5 历史方案归档](../archive/dlss5/README.md)
 - [H3 高分辨率 Upscale Gate](2026-09-07-h3-high-resolution/TASK.md)
 - [H3 Prompt 增强框架修复](2026-09-12-h3-prompt-enhancement/TASK.md)

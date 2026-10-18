@@ -1,4 +1,5 @@
 import { historyCoverCandidates } from "./helpers";
+import { scoreHistoryCoverPixels } from "../../../core/history-cover";
 import type {
   MediaRef,
   ProducedThumbnail,
@@ -158,28 +159,7 @@ export function historyCoverScore(video: HTMLVideoElement): number | null {
   try {
     canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
     const pixels = canvasContext.getImageData(0, 0, canvas.width, canvas.height).data;
-    let brightnessTotal = 0;
-    let brightnessSquaredTotal = 0;
-    let saturationTotal = 0;
-    for (let index = 0; index < pixels.length; index += 4) {
-      const red = pixels[index] ?? 0;
-      const green = pixels[index + 1] ?? 0;
-      const blue = pixels[index + 2] ?? 0;
-      const brightness = red * 0.299 + green * 0.587 + blue * 0.114;
-      brightnessTotal += brightness;
-      brightnessSquaredTotal += brightness * brightness;
-      saturationTotal += Math.max(red, green, blue) - Math.min(red, green, blue);
-    }
-    const pixelCount = pixels.length / 4;
-    const brightnessAverage = brightnessTotal / pixelCount;
-    const brightnessVariance = Math.max(
-      0,
-      brightnessSquaredTotal / pixelCount - brightnessAverage * brightnessAverage
-    );
-    const saturationAverage = saturationTotal / pixelCount;
-    const exposurePenalty = Math.abs(brightnessAverage - 128) * 0.35;
-    const unusablePenalty = brightnessAverage < 18 || brightnessAverage > 242 ? 120 : 0;
-    return Math.sqrt(brightnessVariance) * 1.5 + saturationAverage * 0.35 - exposurePenalty - unusablePenalty;
+    return scoreHistoryCoverPixels(pixels);
   } catch {
     return null;
   }

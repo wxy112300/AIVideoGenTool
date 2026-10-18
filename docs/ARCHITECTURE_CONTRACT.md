@@ -17,6 +17,14 @@ Creation draft
 
 The renderer must not directly access arbitrary local files or spawn processes. Privileged filesystem, process, clipboard, dialog, and service operations pass through the typed preload/IPC boundary.
 
+### Optional LAN history browser
+
+`src/web/` is a separate mobile-first browser entry with no preload. The desktop shell owns `electron/lan-browser-host.ts`, which starts/stops the opt-in HTTP listener from saved Settings and disposes it on normal application exit. `ApplicationRuntime` remains free of HTTP policy; ComfyUI is not required to browse.
+
+The LAN adapter projects video browsing DTOs, facets, fixed-order paginated queries and asset/version media. User-authorized prompt viewing uses a separate on-demand, read-only asset/version endpoint; it returns only identity and the prompt text, using the same version LoRA formatting as desktop History. List/detail browsing DTOs still omit prompts. Only favorite, half-star rating and tags can be written, through the existing serialized metadata service with revision checks. It must not expose AppState, arbitrary file access/paths, workflow graphs, creation, queue or Settings methods. Browser and API share one origin; Host/Origin checks and private-network access remain transport boundaries. Pairing/password is deferred by product decision; the Settings switch defaults off and identifies the current unprotected access.
+
+Desktop and LAN share filtering, preferred-version selection, range streaming and the existing revision-guarded `history-covers/v3` cache. Cache hits are served directly; misses use a bounded serial CPU FFmpeg producer with the same candidate/scoring rules. No GPU generation or whole-library cover regeneration is involved. The desktop process remains the only state writer.
+
 ## Ownership Map
 
 | Area | Primary owner | Contract |

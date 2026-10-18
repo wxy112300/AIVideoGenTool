@@ -62,6 +62,7 @@ import { createWindowStudioEventBridge } from "./window-event-bridge.js";
 import { registerWindowShellIpc } from "./window-shell-ipc.js";
 import { registerCacheIpc } from "./cache-ipc.js";
 import { startStrataMonitorWindow } from "./strata-monitor-window.js";
+import { registerLanBrowserHost } from "./lan-browser-host.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -98,6 +99,7 @@ let store: StateRepository;
 let rendererHasUnsavedSettings = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let applicationRuntime: ApplicationRuntime | null = null;
+let lanBrowserHost: ReturnType<typeof registerLanBrowserHost> | null = null;
 
 function activeApplicationRuntime(): ApplicationRuntime {
   if (!applicationRuntime) throw new Error("Application runtime is not initialized");
@@ -314,6 +316,7 @@ function interruptForExit(
 
 async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
+  await lanBrowserHost?.dispose();
   await activeApplicationRuntime().stop();
   rendererHasUnsavedSettings = false;
   pendingWindowCloseRequest = null;
@@ -703,6 +706,10 @@ app.whenReady().then(async () => {
   try {
     await runtime.start({
       onServicesReady: (context) => {
+        lanBrowserHost = registerLanBrowserHost({
+          context, ipc: ipcMain, webRoot: path.join(currentDirectory, "..", "..", "web"),
+          ready: runtime.waitForInitialState(), openExternal: (url) => shell.openExternal(url), logger: appLogger
+        });
         const monitor = startStrataMonitorWindow({
           connection: () => context.services.strata.monitorConnection(),
           runtime: () => promptRuntimeManager.snapshot(),

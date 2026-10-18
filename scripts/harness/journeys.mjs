@@ -1,6 +1,13 @@
 // Navigation, not a second model catalog. Runtime truth stays in catalog/AppApi.
 export const journeys = [
   {
+    id: "lan-browser", title: "Settings 开关 → 独立网页 → 视频浏览与整理",
+    section: "lan-browser",
+    paths: ["src/web/main.ts", "src/web/library.ts", "src/web/player.ts", "src/web/gestures.ts", "src/renderer/pages/settings/lan-browser.ts", "electron/lan-browser-host.ts", "electron/services/lan-browser-server.ts", "electron/services/lan-browser-library.ts", "electron/services/lan-browser-covers.ts"],
+    tests: ["tests/lan-browser.test.ts", "tests/lan-browser-gestures.test.ts", "tests/lan-browser-settings.test.ts", "tests/main-boundary.test.ts", "tests/history-services.test.ts", "tests/media-document-services.test.ts", "tests/settings-form.test.ts"],
+    checks: ["真实 Settings 开关启动/停止监听、LAN 地址与复制/打开入口；端口冲突可恢复", "无 preload 的手机双列/平板横竖屏/桌面网页；筛选、相册/瀑布流、分页与返回位置", "视频完整显示、解码帧推进、循环、中心暂停/周围沉浸、长按恢复、上下切换", "透明进度区保留安全区；单个评分按钮与浮层；i 信息窗只读 Prompt、长/空文本与关闭恢复", "收藏/半星评分/标签写入同一库；冲突不静默覆盖；缓存命中不重生成", "CPU 隔离验收：build 后 node scripts/harness/lan-browser-smoke.mjs；按输出目录运行 close-lan-smoke.mjs 正常关闭，真机 Safari/LAN 另验"]
+  },
+  {
     id: "assets", title: "任务落盘 → 资产检查 / 归档 / 转移 / 删除",
     section: "assets", documentation: "docs/runbooks/ASSET_LIFECYCLE.md",
     paths: ["electron/queue-history.ts", "electron/services/history-destructive-service.ts", "electron/services/image-asset-library-service.ts", "electron/services/settings-service.ts", "src/infrastructure/video-history-migration.ts", "src/core/native-av-artifact-paths.ts", "electron/services/history-query-service.ts", "electron/services/native-av-artifact.ts"],

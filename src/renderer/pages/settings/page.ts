@@ -37,6 +37,7 @@ import {
 } from "./fragments";
 import { settingsH3AutoPromptSeedDescription, settingsText } from "./copy";
 import { fieldLabelWithTip } from "../../shared/markup";
+import { renderLanBrowserSettings } from "./lan-browser";
 import {
   customNodeBulkActionMode,
   customNodeIdsForBulkAction,
@@ -544,6 +545,7 @@ export function renderSettingsPage(
 
   const applicationPathsPanel = `
     <section class="settings-panel">
+      ${renderLanBrowserSettings(settings, t, options.escapeHtml)}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
         <select id="ui-locale" aria-label="${t(uiKeys.settings.localeTitle)}"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select>

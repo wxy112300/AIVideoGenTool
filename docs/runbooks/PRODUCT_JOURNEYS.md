@@ -7,6 +7,8 @@
 
 ## 总图：哪些层回答哪些问题
 
+外部浏览路线见 [LAN 浏览](#lan-browser)，不经过生成队列或 ComfyUI。
+
 ```mermaid
 flowchart TD
   U[用户 / DOM 自动化] --> C[Create: 图生视频 / Extend / 图片编辑]
@@ -320,3 +322,24 @@ H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑
 运行程序见 [Electron API runbook](../AGENT_ELECTRON_API_RUNBOOK.md)，回归层级见 [CHANGE_VERIFICATION](../CHANGE_VERIFICATION.md)。`verify` 绿灯只涵盖自动化层。报告逐个场景的 passed / failed / blocked / not-run，不给整张地图盖“全部验证通过”。
 
 维护方式：改了某条边，就更新该节、对应场景导航和会失败的行为测试；不要全量读 1000 多条测试或复制 catalog 生成另一份易过期清单。新增测试先说清“哪种用户可见回归会让它失败”；字符串/hash/快照可保留做协议/兼容/资产完整性，但不能冒充用户旅程。
+
+<a id="lan-browser"></a>
+## 局域网视频浏览：设置开关 → 浏览器 → 同库整理
+
+设置 → 系统 → 局域网视频浏览：开关保存后由桌面宿主启动 HTTP，显示当前 IPv4 网卡地址、复制与本机浏览器打开按钮；关闭或正常退出 App 后停止监听。端口冲突显示错误，改端口保存或重试恢复。不依赖 ComfyUI 在线。
+
+外部 `src/web/` 不使用 preload；`/api/v1` 仅提供视频 DTO、facets、筛选分页、asset/version 封面与媒体流，以及收藏/评分/标签写入。浏览中采用固定顺序查询，整理不使当前手势序列跳动，返回列表后重算筛选并恢复锚点。桌面事件与串行持久化仍由原服务负责，409 冲突保留编辑草稿供重试。
+
+播放器进度区透明；星标与分数为同一个按钮，在悬浮评分窗完成操作。用户新增的 i 信息窗只读展示 Prompt，通过 asset/version 专用接口按需获取，列表 DTO 不包含正文；长文本纯文本滚动显示，关闭按打开前意图恢复播放。服务仍不允许 Prompt 写入或读取完整执行参数。
+
+```powershell
+npm.cmd run harness:app -- guide lan-browser
+npm.cmd run build
+node scripts/harness/lan-browser-smoke.mjs
+node scripts/harness/restart-lan-smoke.mjs temp/lan-smoke-<输出目录>
+node scripts/harness/close-lan-smoke.mjs temp/lan-smoke-<输出目录>
+```
+
+该 CPU 夹具生成三种比例的短 MP4，在隔离 App Settings 点击开关，并启动没有 `window.studio` 的独立 Chromium 窗口，检查双列/横竖屏、真实解码、手势、整理写回和停止监听。输出只进入 gitignored `temp`，不接触用户库，不运行 GPU。清理 helper 核对 fixture/PID/空队列后使用自有原生窗口正常关闭。真实手机/iPad Safari 编码、音频和跨设备防火墙可达性需另验；本机通过 LAN 地址访问不代表真机通过。
+
+网页开发可以运行 `npm.cmd run dev:web`（127.0.0.1:5174）；开发代理默认连已开启的 8790 服务。生产使用 `build:web` 输出，由 App 提供同源页面与接口。密码/配对按当前产品决定延后。

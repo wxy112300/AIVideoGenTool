@@ -1,6 +1,6 @@
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { mediaFileResponse } from "./media-file-response.js";
 import type { HistoryBatchCopyKind, HistoryBatchCopyResult } from "../../src/types.js";
 import { historyBatchImageFile, historyBatchVideoFile } from "../../src/core/history-batch.js";
 import type { StateRepository } from "../ports/state-repository.js";
@@ -31,20 +31,6 @@ export interface MediaReadServiceDependencies {
   createReadStream?: typeof createReadStream;
   resolveExistingFile?: (filename: string) => Promise<string | null>;
 }
-
-const contentTypes = new Map([
-  [".mp4", "video/mp4"],
-  [".m4v", "video/mp4"],
-  [".webm", "video/webm"],
-  [".mov", "video/quicktime"],
-  [".mkv", "video/x-matroska"],
-  [".gif", "image/gif"],
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".webp", "image/webp"],
-  [".bmp", "image/bmp"]
-]);
 
 export class MediaReadService {
   constructor(private readonly deps: MediaReadServiceDependencies) {}
@@ -206,56 +192,9 @@ export class MediaReadService {
         return new Response("Media file not found", { status: 404 });
       }
       filename = resolvedFilename;
-      const contentType = contentTypes.get(path.extname(filename).toLowerCase())
-        ?? "application/octet-stream";
-      const range = request.headers.get("range");
-      const match = range?.match(/^bytes=(\d*)-(\d*)$/);
-      if (range && (!match || (!match[1] && !match[2]))) {
-        return new Response("Invalid range", {
-          status: 416,
-          headers: { "Content-Range": `bytes */${stat.size}` }
-        });
-      }
-      let start = 0;
-      let end = stat.size - 1;
-      if (match?.[1]) {
-        start = Number(match[1]);
-        end = match[2] ? Number(match[2]) : stat.size - 1;
-      } else if (match?.[2]) {
-        const suffixLength = Number(match[2]);
-        start = Math.max(0, stat.size - suffixLength);
-      }
-      if (
-        !Number.isSafeInteger(start) ||
-        !Number.isSafeInteger(end) ||
-        start < 0 ||
-        end < start ||
-        start >= stat.size
-      ) {
-        return new Response("Range not satisfiable", {
-          status: 416,
-          headers: { "Content-Range": `bytes */${stat.size}` }
-        });
-      }
-      end = Math.min(end, stat.size - 1);
-      const partial = Boolean(match);
-      const headers = new Headers({
-        "Accept-Ranges": "bytes",
-        "Access-Control-Allow-Headers": "Range",
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": contentType,
-        "Content-Length": String(end - start + 1)
-      });
-      if (partial) headers.set("Content-Range", `bytes ${start}-${end}/${stat.size}`);
-      if (request.method === "HEAD") {
-        return new Response(null, { status: partial ? 206 : 200, headers });
-      }
-      const stream = Readable.toWeb(
-        (this.deps.createReadStream ?? createReadStream)(filename, { start, end })
-      );
-      return new Response(stream as BodyInit, {
-        status: partial ? 206 : 200,
-        headers
+      return mediaFileResponse(filename, stat.size, request, {
+        createReadStream: this.deps.createReadStream,
+        desktopCors: true
       });
     } catch {
       return new Response("Unable to open media", { status: 500 });

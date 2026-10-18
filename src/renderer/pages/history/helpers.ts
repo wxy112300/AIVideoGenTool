@@ -6,9 +6,12 @@ import type {
 } from "../../../types";
 import { createTranslator, type Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
-import { createHistoryCoverCacheKey } from "../../../core/history-cover";
+import { createHistoryCoverCacheKey, historyCoverSeed, historyInitialCoverTime, historyCoverCandidates } from "../../../core/history-cover";
+export { historyCoverSeed, historyInitialCoverTime, historyCoverCandidates };
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import { imageProjectCoverVersion } from "../../../core/image-project";
+import { versionVideoIndex, versionShortEdge, preferredVersion, currentHistoryVersion } from "../../../core/history-video";
+export { versionVideoIndex, versionShortEdge, preferredVersion, currentHistoryVersion };
 import {
   defaultHistoryFilter,
   filterHistoryAssets,
@@ -16,17 +19,6 @@ import {
   historyFilterModelIds,
   type HistoryFilterState
 } from "../../../core/history-filter";
-
-export function versionVideoIndex(version: AssetVersion): number {
-  const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
-  return version.files.findIndex((file) => videoPattern.test(file.filename));
-}
-
-export function versionShortEdge(version: AssetVersion): number {
-  const width = Number.isFinite(version.width) && version.width > 0 ? version.width : 0;
-  const height = Number.isFinite(version.height) && version.height > 0 ? version.height : 0;
-  return Math.max(0, Math.round(Math.min(width || height, height || width)));
-}
 
 export function resolutionLabel(value: number, t: Translate = createTranslator("zh-CN").t): string {
   const rounded = Math.max(0, Math.round(value));
@@ -43,19 +35,6 @@ export function historyResolutionLabel(
     ? asset.resolution
     : versionShortEdge(version);
   return resolutionLabel(requestedResolution, t);
-}
-
-export function preferredVersion(asset: HistoryAsset): AssetVersion {
-  return asset.versions.find((version) => version.id === asset.defaultVersionId) ??
-    [...asset.versions].sort((left, right) => versionShortEdge(right) - versionShortEdge(left))[0]!;
-}
-
-export function currentHistoryVersion(
-  asset: HistoryAsset,
-  selectedVersionId?: string
-): AssetVersion {
-  return asset.versions.find((version) => version.id === selectedVersionId) ??
-    preferredVersion(asset);
 }
 
 export function historyMediaUrl(
@@ -131,33 +110,6 @@ export function historyCoverCacheKey(
     createdAt: version.createdAt,
     filename: file?.filename ?? version.outputFilename,
     absolutePath: file?.absolutePath ?? ""
-  });
-}
-
-export function historyCoverSeed(assetId: string, versionId: string): number {
-  let hash = 2166136261;
-  for (const character of `${assetId}:${versionId}`) {
-    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  }
-  return hash >>> 0;
-}
-
-export function historyInitialCoverTime(duration: number, seed: number): number {
-  const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
-  if (safeDuration <= 0.5) return safeDuration / 2;
-  const positions = [0.2, 0.31, 0.43, 0.56, 0.68, 0.79];
-  const position = positions[seed % positions.length] ?? 0.43;
-  return Math.min(safeDuration - 0.1, Math.max(0.1, safeDuration * position));
-}
-
-export function historyCoverCandidates(duration: number, seed: number): number[] {
-  const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
-  if (safeDuration <= 0.5) return [safeDuration / 2];
-  const positions = [0.18, 0.28, 0.38, 0.49, 0.6, 0.71, 0.82];
-  const start = seed % positions.length;
-  return Array.from({ length: 4 }, (_, index) => {
-    const position = positions[(start + index) % positions.length] ?? 0.49;
-    return Math.min(safeDuration - 0.1, Math.max(0.1, safeDuration * position));
   });
 }
 

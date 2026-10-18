@@ -1,5 +1,6 @@
 import type { AppState, Draft, Settings } from "../types.js";
 import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
+import { LAN_BROWSER_DEFAULT_PORT } from "./lan-browser.js";
 import {
   createDefaultH3PromptPresets,
   createDefaultQwenImagePromptPresets,
@@ -82,6 +83,8 @@ export { createClearedDraft } from "./draft-defaults.js";
 
 export function createDefaultSettings(): Settings {
   return {
+    lanBrowserEnabled: false,
+    lanBrowserPort: LAN_BROWSER_DEFAULT_PORT,
     comfyUrl: "http://127.0.0.1:8188",
     comfyInstallDirectory: "",
     comfyPythonPath: "",

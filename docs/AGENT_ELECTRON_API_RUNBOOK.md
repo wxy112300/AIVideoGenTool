@@ -42,7 +42,7 @@ Agent / CDP（仅 loopback）
 - [`src/renderer/studio-client.ts`](../src/renderer/studio-client.ts) 将 preload 能力投影为 renderer capability views，页面模块不应重新读取全局。
 - [`electron/application-runtime.ts`](../electron/application-runtime.ts) 是嵌入式应用组合根，没有 Electron、HTTP server、daemon 或 LAN 监听策略。
 
-因此，Agent 可以通过真实 renderer 上的 `window.studio` 调用现有界面背后的应用能力，但不能据此声称产品已经拥有公开 API。未来若要提供 HTTP/SSE/WebSocket、独立 Headless 或 LAN API，必须另立契约、鉴权、生命周期和兼容性设计。
+Agent 可以通过真实 renderer 上的 `window.studio` 调用现有界面背后的应用能力；该操作桥不是产品网络接口。产品另有默认关闭、仅视频浏览与整理的受限 LAN 服务，其边界见 [Architecture](ARCHITECTURE_CONTRACT.md#optional-lan-history-browser)，操作与隔离验收见 [LAN 旅程](runbooks/PRODUCT_JOURNEYS.md#lan-browser)。该服务不公开整个 AppApi；通用 Headless/SSE/WebSocket 仍需单独定义契约。
 
 ## 2. 选择正确的操作层
 
@@ -379,4 +379,4 @@ flags, fallbacks, warnings, and any user-confirmed manual steps
 - 通过 `version.taskId` 找到新增 history version，输出 PNG 非空，`readImage` 成功读取，画面与 prompt 相符；
 - 应用随后释放并精确清理 app-owned ComfyUI 进程和端口。
 
-这次样例证明的是一条真实 image renderer → preload/IPC → ApplicationRuntime/QueueService → ComfyUI → history/output 闭环；它不改变当前“没有公共 HTTP/Headless/LAN API”的架构结论。
+这次历史样例仅证明一条真实 image renderer → preload/IPC → ApplicationRuntime/QueueService → ComfyUI → history/output 闭环，不构成网络 API 证据。后续新增的受限 LAN 浏览服务有独立的 [旅程与验收](runbooks/PRODUCT_JOURNEYS.md#lan-browser)。

@@ -2,7 +2,9 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.65.4**。本 patch 版本修复 Strata 遥测短暂缺失导致的误停、完善分模式资源保护，并在文本校验失败时保留健康模型；同时纳入可脱离 Studio 使用的 [Strata Agent 启动器](Tools/Strata-Agent/README.md)，入口为 `Tools/Strata-Agent/Start.cmd`。独立工具的 localhost GUI/CLI 闭环已实测，LAN 尚未开放；H3 长稿稳定性仍未完成验收，蓝屏根因未定，文件页释放候选保持关闭。原默认模型、工作流、队列、作品历史与共享权重保留。版本变化见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.66.0**。本 minor 版本新增手机优先的局域网历史视频浏览：完整筛选排序、瀑布流/相册、完整画面循环播放、触摸手势，以及收藏、评分、标签和只读 Prompt 信息窗。设置 → 系统可开启服务、复制 LAN 地址或在本机浏览器打开；服务默认关闭，随 App 退出停止，当前未设密码。版本变化见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+
+同时保留可脱离 Studio 使用的 [Strata Agent 启动器](Tools/Strata-Agent/README.md)，入口为 `Tools/Strata-Agent/Start.cmd`。独立工具的 localhost GUI/CLI 闭环已实测，其 LAN 尚未开放；H3 长稿稳定性仍未完成验收，蓝屏根因未定，文件页释放候选保持关闭。原默认模型、工作流、队列、作品历史与共享权重保留。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -13,6 +15,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 - LoRA 堆栈：顺序、强度、兼容模型、触发词和冲突提示随队列快照保存。
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
+- 局域网视频浏览：设置 → 系统 → 局域网视频浏览，开启后复制 LAN 地址到手机/iPad，或在本机浏览器打开；移动优先媒体墙、完整筛选、循环播放、收藏/半星评分/标签。服务随 App 退出而停止，默认关闭；当前未设密码。
 - 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
 - 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal、Qwen3-VL 8B + H3 Prompt Rewriter LoRA，以及 MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF；可选独立 Strata / Qwen3.8-Flash-Next 后端。
 

@@ -5,6 +5,9 @@ import type { AppApi } from "../types";
  * Electron transport remains behind createElectronRendererClient().
  */
 const applicationMethodNames = [
+  "getLanBrowserStatus",
+  "retryLanBrowser",
+  "openLanBrowser",
   "getState",
   "getComfyRuntimeState",
   "getPromptRuntimeState",

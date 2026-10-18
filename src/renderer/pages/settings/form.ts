@@ -1,5 +1,6 @@
 import type { H3PromptPreset, ImagePromptPreset, Settings } from "../../../types";
 import { imageOutputCountMax } from "../../../core/image-workflow";
+import { LAN_BROWSER_DEFAULT_PORT } from "../../../core/lan-browser";
 import { normalizeStrataUncensoredMode, strataUncensoredMode } from "../../../core/strata-uncensored";
 
 function value(id: string, fallback: string): string {
@@ -42,6 +43,8 @@ export function readSettingsFromForm(
   }
   const uncensoredMode = normalizeStrataUncensoredMode(value("strata-uncensored", strataUncensoredMode(base)));
   return {
+    lanBrowserEnabled: checked("lan-browser-enabled", base.lanBrowserEnabled ?? false),
+    lanBrowserPort: Number(value("lan-browser-port", String(base.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT))),
     comfyUrl: value("comfy-url", base.comfyUrl),
     comfyInstallDirectory: value("comfy-install-directory", base.comfyInstallDirectory),
     comfyPythonPath: value("comfy-python-path", base.comfyPythonPath),

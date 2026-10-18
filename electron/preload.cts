@@ -27,6 +27,9 @@ import type {
 import type { PromptRuntimeState } from "../src/core/prompt-runtime-state.js";
 
 const api: AppApi = {
+  getLanBrowserStatus: () => ipcRenderer.invoke("lan-browser:status"),
+  retryLanBrowser: () => ipcRenderer.invoke("lan-browser:retry"),
+  openLanBrowser: () => ipcRenderer.invoke("lan-browser:open"),
   getState: () => ipcRenderer.invoke("state:get"),
   getComfyRuntimeState: () => ipcRenderer.invoke("comfy-runtime:get"),
   getPromptRuntimeState: () => ipcRenderer.invoke("prompt-runtime:get"),
