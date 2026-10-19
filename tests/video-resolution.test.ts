@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { nearestSupportedVideoResolution } from "../src/core/video-resolution";
+import { H3_BASE_RESOLUTIONS, nearestSupportedVideoResolution } from "../src/core/video-resolution";
 
 describe("nearestSupportedVideoResolution", () => {
-  const h3 = [360, 480, 540, 720, 768] as const;
+  const h3 = H3_BASE_RESOLUTIONS;
 
   it("keeps a supported history resolution", () => {
     expect(nearestSupportedVideoResolution(768, h3, 480)).toBe(768);
+    expect(nearestSupportedVideoResolution(640, h3, 480)).toBe(640);
   });
 
   it("uses the highest option when history is above the model range", () => {

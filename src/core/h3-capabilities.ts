@@ -4,6 +4,7 @@ import type {
   H3HighResolution
 } from "../types.js";
 import { customNodeDefinition, modelCatalog } from "./catalog/index.js";
+import { H3_BASE_RESOLUTIONS } from "./video-resolution.js";
 
 /** H3 high-resolution targets are delivery targets, not base draft presets. */
 export const H3_NATIVE_HIGH_RESOLUTIONS = [1080, 1440] as const satisfies readonly H3HighResolution[];
@@ -77,7 +78,7 @@ function isH3Model(modelId: string): boolean {
 }
 
 function isBaseResolution(value: number): value is H3BaseResolution {
-  return [360, 480, 540, 720, 768].includes(value);
+  return (H3_BASE_RESOLUTIONS as readonly number[]).includes(value);
 }
 
 function isHighResolution(value: number): value is H3HighResolution {

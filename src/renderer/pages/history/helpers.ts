@@ -9,6 +9,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { createHistoryCoverCacheKey, historyCoverSeed, historyInitialCoverTime, historyCoverCandidates } from "../../../core/history-cover";
 export { historyCoverSeed, historyInitialCoverTime, historyCoverCandidates };
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
+import { H3_BASE_RESOLUTIONS } from "../../../core/video-resolution";
 import { imageProjectCoverVersion } from "../../../core/image-project";
 import { versionVideoIndex, versionShortEdge, preferredVersion, currentHistoryVersion } from "../../../core/history-video";
 export { versionVideoIndex, versionShortEdge, preferredVersion, currentHistoryVersion };
@@ -31,7 +32,7 @@ export function historyResolutionLabel(
   t: Translate = createTranslator("zh-CN").t
 ): string {
   const requestedResolution = version.kind === "original" &&
-    [360, 480, 540, 720, 768, 1080, 1440, 2160].includes(asset.resolution)
+    [...H3_BASE_RESOLUTIONS, 1080, 1440, 2160].includes(asset.resolution)
     ? asset.resolution
     : versionShortEdge(version);
   return resolutionLabel(requestedResolution, t);

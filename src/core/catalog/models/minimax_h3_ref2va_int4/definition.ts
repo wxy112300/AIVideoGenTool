@@ -1,4 +1,5 @@
 import type { CatalogModelEntry } from "../../types.js";
+import { H3_BASE_RESOLUTIONS } from "../../../video-resolution.js";
 import { H3_MAX_DURATION_SECONDS, H3_MAX_GENERATED_FRAMES } from "../../../h3-temporal.js";
 import {
   h3Fl2vaAudioVae,
@@ -29,7 +30,7 @@ export const minimaxH3Ref2vaInt4: CatalogModelEntry = {
       maxReferenceImages: 9,
       maxDurationSeconds: H3_MAX_DURATION_SECONDS,
       maxGeneratedFrames: H3_MAX_GENERATED_FRAMES,
-      resolutions: [360, 480, 540, 720, 768]
+      resolutions: H3_BASE_RESOLUTIONS
     },
     scan: {
       vram: "pruned INT4 · RAM offload · 多参考",

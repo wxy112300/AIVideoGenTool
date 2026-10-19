@@ -1,3 +1,4 @@
+import { H3_BASE_RESOLUTIONS } from "../../../core/video-resolution";
 import type {
   AppState,
   BundledWorkflow,
@@ -134,7 +135,7 @@ export function videoResolutionOptionsForDraft(
   jointAvSerializerInstalled: boolean
 ): readonly number[] {
   const base = isMiniMaxH3Model(draft.modelId)
-    ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
+    ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? H3_BASE_RESOLUTIONS
     : [480, 540, 720];
   const h3Create1080 = !extending && draft.modelId === "minimax_h3_fl2va" &&
     draft.videoLoras.length === 0 &&

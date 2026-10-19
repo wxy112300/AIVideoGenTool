@@ -36,7 +36,7 @@ import {
   KONOHAMARU_MODEL_ID
 } from "../../../core/konohamaru-dlss5";
 import { modelCatalog } from "../../../core/catalog";
-import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
+import { H3_BASE_RESOLUTIONS, nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { modelName } from "../../shared/labels";
 import { currentHistoryVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./helpers";
 import type { UpscaleDialogState } from "../../shell/secondary-dialogs";
@@ -232,7 +232,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       ratio: asset.ratio ?? state.draft.ratio,
       resolution: nearestSupportedVideoResolution(
         requestedResolution,
-        modelCatalog.get(asset.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768],
+        modelCatalog.get(asset.modelId)?.definition.capabilities?.resolutions ?? H3_BASE_RESOLUTIONS,
         state.draft.resolution
       ) as Draft["resolution"],
       duration: asset.duration,

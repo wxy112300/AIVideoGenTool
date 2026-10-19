@@ -1,3 +1,6 @@
+/** Shared base presets for standard H3 generation and continuation. */
+export const H3_BASE_RESOLUTIONS = [360, 480, 540, 640, 720, 768] as const;
+
 /**
  * Pick the resolution option that best preserves a source video's requested
  * short-edge resolution for the currently selected extension model.

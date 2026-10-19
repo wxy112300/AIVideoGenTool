@@ -120,6 +120,15 @@ describe("activityTimeoutMinutesForTask", () => {
 });
 
 describe("renderWorkflow", () => {
+  it("passes the 640p canvas through the native H3 graph without falling back to 480p", () => {
+    const source = JSON.parse(readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8"));
+    const h3Task = { ...task, modelId: "minimax_h3_fl2va", resolution: 640 as const, duration: 30 };
+    expect(generationSafetyForTask(h3Task).safe).toBe(true);
+    const rendered = renderWorkflow(source, h3Task, { inputImage: "first.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(rendered["6"]?.inputs).toMatchObject({ width: 1152, height: 640, length: 736 });
+    expect(extensionOutputDimensions({ ...extensionTask, modelId: "minimax_h3_ref2va", resolution: 640 })).toEqual([1152, 640]);
+  });
+
   it("renders Camera Motion as an optional H3 LoRA without enabling Turbo sampling", () => {
     const source = JSON.parse(
       readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
@@ -1593,7 +1602,7 @@ describe("generation VRAM safety", () => {
   });
 
   it("keeps H3 resolution tiers distinct for extremely wide source images", () => {
-    const dimensions = ([360, 480, 540, 720, 768] as const).map((resolution) =>
+    const dimensions = ([360, 480, 540, 640, 720, 768] as const).map((resolution) =>
       outputDimensions({
         ...task,
         modelId: "minimax_h3_fl2va",
@@ -1608,6 +1617,7 @@ describe("generation VRAM safety", () => {
       [928, 352],
       [1216, 480],
       [1376, 544],
+      [1632, 640],
       [1824, 736],
       [1952, 768]
     ]);

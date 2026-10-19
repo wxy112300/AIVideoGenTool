@@ -47,7 +47,7 @@ import {
 } from "../../../core/workflow";
 import { modelCatalog } from "../../../core/catalog";
 import { shouldEnableSpectrumByDefault } from "../../../core/video-policy";
-import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
+import { H3_BASE_RESOLUTIONS, nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { bundledWorkflowModelId } from "../../../core/video-loras";
 import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
@@ -840,7 +840,7 @@ export function createCreateWorkspaceCoordinator(
               source.resolution,
               modelCatalog.get(selectedModelId)?.definition.capabilities?.resolutions ??
                 modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
-                [360, 480, 540, 720, 768],
+                H3_BASE_RESOLUTIONS,
               state.draft.resolution
             ) as Draft["resolution"]
           }

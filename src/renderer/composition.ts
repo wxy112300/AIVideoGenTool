@@ -21,6 +21,7 @@ import {
   normalizeH3Steps
 } from "../core/workflow";
 import { videoLorasForCreation } from "../core/video-loras";
+import { H3_BASE_RESOLUTIONS } from "../core/video-resolution";
 import type {
   AppState,
   Draft,
@@ -105,7 +106,7 @@ function draftFromQueueTask(
     return null;
   }
   const now = new Date().toISOString();
-  const resolution = [360, 480, 540, 720, 768].includes(task.resolution)
+  const resolution = (H3_BASE_RESOLUTIONS as readonly number[]).includes(task.resolution)
     ? task.resolution as Draft["resolution"]
     : 480;
   const extension = task.taskType === "extension";

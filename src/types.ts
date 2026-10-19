@@ -6,6 +6,7 @@ import type {
   VramStallEvidenceFamily,
   VramStallWatchdogMinutes
 } from "./core/vram-stall-watchdog.js";
+import type { H3_BASE_RESOLUTIONS } from "./core/video-resolution.js";
 
 export type TaskStatus =
   | "waiting"
@@ -77,7 +78,7 @@ export type H3ReferenceRole =
 export type H3ReferenceMediaType = "image" | "video";
 
 /** Base H3 short-edge presets that are currently executed by ComfyUI. */
-export type H3BaseResolution = 360 | 480 | 540 | 720 | 768;
+export type H3BaseResolution = (typeof H3_BASE_RESOLUTIONS)[number];
 /** Final short-edge targets for the separate H3 native second-sampling path. */
 export type H3HighResolution = 1080 | 1440;
 /** Resolutions accepted by the H3 creation draft; high resolutions are gated. */

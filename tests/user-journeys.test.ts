@@ -20,6 +20,8 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     h.element("#clear-prompt").click();
     await settle();
     expect(h.element("#enqueue").disabled).toBe(true);
+    h.input("#resolution", "640", "change");
+    expect(h.state().draft.resolution).toBe(640);
     expect(h.element<HTMLInputElement>("#duration").step).toBe("0.1");
     expect(h.element<HTMLInputElement>("#duration-number").step).toBe("0.1");
     h.input("#duration", "5.1");
@@ -43,13 +45,15 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     expect(h.element("#enqueue").disabled).toBe(false);
     h.element("#enqueue").click();
     await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
-    expect(h.state().queue[0]).toMatchObject({ duration: 5.2 });
+    expect(h.state().queue[0]).toMatchObject({ duration: 5.2, resolution: 640 });
     expect(h.state().queue[0]?.id).toBeTruthy();
     h.input("#duration-number", "99", "change");
     await settle();
     expect(h.state().draft.duration).toBe(30);
     expect(h.element("#duration-frames").textContent).toBe("736 模型帧");
     expect(h.state().queue[0]?.duration).toBe(5.2);
+    h.input("#resolution", "540", "change");
+    expect(h.state().queue[0]?.resolution).toBe(640);
     h.element("#enqueue").click();
     await vi.waitFor(() => expect(h.state().queue).toHaveLength(2));
     expect(h.state().queue[1]).toMatchObject({ duration: 30 });
