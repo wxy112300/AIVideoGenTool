@@ -639,6 +639,7 @@ describe("queue execution snapshots", () => {
       ...createDefaultDraft(),
       inputMode: "video" as const,
       modelId: "minimax_h3_ref2va",
+      duration: 30,
       sourceVideoPath: "source.mp4",
       sourceVideoDuration: 12,
       trimEndSeconds: 12,
@@ -662,7 +663,8 @@ describe("queue execution snapshots", () => {
     expect(queued.h3SaveJointAv).toBe(true);
     expect(queued.h3LatentSaveMode).toBe("all");
     expect(queued.h3AvOutputPolicy).toBe("shared");
-    expect(queued.maxGeneratedFrames).toBe(362);
+    expect(queued.maxGeneratedFrames).toBe(770);
+    expect(queued.duration).toBe(30);
     expect(queued.fps).toBe(24);
     expect(queued.frameInterpolation).toBe("off");
     expect(queued.sourceVideoPath).toBe("source.mp4");
@@ -671,6 +673,8 @@ describe("queue execution snapshots", () => {
       ["video", "source.mp4"],
       ["image", "subject.png"]
     ]);
+    draft.duration = 5;
+    expect(queued.duration).toBe(30);
   });
 
   it("uses standard Spectrum for new H3 extension snapshots", () => {

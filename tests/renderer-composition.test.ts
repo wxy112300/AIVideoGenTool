@@ -114,9 +114,9 @@ afterEach(() => {
 });
 
 describe("renderer composition", () => {
-  it("normalizes Motion Context duration while navigating to creation", () => {
+  it.each([15, 30, 30.1])("preserves or bounds Motion Context duration %s while navigating to creation", (duration) => {
     const state = createDefaultState();
-    state.draft.duration = 15;
+    state.draft.duration = duration;
     state.draft.modelId = "minimax_h3_ref2va";
     const ui = createRendererUiState();
     const setCreationMode = vi.fn();
@@ -139,7 +139,11 @@ describe("renderer composition", () => {
 
     navigation.navigateToCreationMode("video-extension");
 
-    expect(patchDraft).toHaveBeenCalledWith({ duration: motionContextMaxDurationSeconds() });
+    if (duration > motionContextMaxDurationSeconds()) {
+      expect(patchDraft).toHaveBeenCalledWith({ duration: motionContextMaxDurationSeconds() });
+    } else {
+      expect(patchDraft).not.toHaveBeenCalled();
+    }
     expect(setCreationMode).toHaveBeenCalledWith("video-extension");
     expect(setPage).toHaveBeenCalledWith("create");
     expect(ui.historyForwardTarget).toBeNull();

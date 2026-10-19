@@ -9,6 +9,8 @@ import {
 } from "../../src/core/prompt-models.js";
 import {
   h3PromptExpansionTokenBudget,
+  h3PromptNodeOutputLimit,
+  assertH3PromptOutputBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
@@ -27,7 +29,6 @@ import {
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { applyPromptRevision, stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { countPromptWords } from "../../src/core/prompt-count.js";
-import { estimateH3TextTokens } from "../../src/core/h3-token-count.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { getPerformanceMetrics } from "./performance.js";
@@ -49,7 +50,6 @@ export interface MultimodalRuntimeSelection {
 }
 
 const gib = 1024 ** 3;
-const visionLlmDesiredMaxOutputTokens = 3072;
 const minimumFreeVramForMultimodalModel: Record<string, number> = {
   "qwen/qwen3.6-27b-uncensored-q4": 20 * gib,
   "qwen/qwen3.8-27b-uncensored-q4": 20 * gib
@@ -197,21 +197,7 @@ export function multimodalPromptTargetLanguage(
 export function multimodalRuntimeMaxOutputTokens(
   objectInfo: Record<string, unknown>
 ): number {
-  const node = objectInfo.VisionLLMNode;
-  if (!node || typeof node !== "object") return 2048;
-  const input = (node as { input?: unknown }).input;
-  if (!input || typeof input !== "object") return 2048;
-  const sections = input as { required?: unknown; optional?: unknown };
-  for (const section of [sections.required, sections.optional]) {
-    if (!section || typeof section !== "object") continue;
-    const config = (section as Record<string, unknown>).max_tokens;
-    if (!Array.isArray(config) || !config[1] || typeof config[1] !== "object") continue;
-    const maximum = Number((config[1] as { max?: unknown }).max);
-    if (Number.isFinite(maximum) && maximum >= 64) {
-      return Math.min(visionLlmDesiredMaxOutputTokens, Math.trunc(maximum));
-    }
-  }
-  return 2048;
+  return h3PromptNodeOutputLimit(objectInfo, "VisionLLMNode", "max_tokens");
 }
 
 interface MultimodalRuntimeDiagnostics {
@@ -226,7 +212,7 @@ export interface MultimodalPromptOutputDiagnostics {
   recognizedFields: string[];
   mainTimelineWords: number;
   outputWords: number;
-  estimatedOutputTokens: number;
+  estimatedOutputTokens: number | null;
   requestedMaxTokens: number;
   finishReason: string;
   promptTokens: number | null;
@@ -261,7 +247,6 @@ export function multimodalPromptOutputDiagnostics(
     const nextField = /\n\s*(?:subject_definitions|summary|retention_analysis|detailed_description|integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:/imu.exec(remaining);
     timeline = nextField?.index === undefined ? remaining : remaining.slice(0, nextField.index);
   }
-  const estimatedOutputTokens = estimateH3TextTokens(output);
   const finishReason = typeof runtime.finish_reason === "string" ? runtime.finish_reason : "";
   const completionTokens = Number.isFinite(runtime.completion_tokens)
     ? Math.max(0, Math.trunc(Number(runtime.completion_tokens)))
@@ -276,27 +261,30 @@ export function multimodalPromptOutputDiagnostics(
     recognizedFields,
     mainTimelineWords: countPromptWords(timeline),
     outputWords: countPromptWords(output),
-    estimatedOutputTokens,
+    estimatedOutputTokens: null,
     requestedMaxTokens,
     finishReason,
     promptTokens,
     completionTokens,
     totalTokens,
     suspectedTruncation: finishReason === "length" ||
-      (completionTokens !== null && completionTokens >= requestedMaxTokens - 8) ||
-      (completionTokens === null && estimatedOutputTokens >= Math.floor(requestedMaxTokens * 0.9))
+      (completionTokens !== null && completionTokens >= requestedMaxTokens - 8)
   };
 }
 
 export function multimodalPromptFailureDiagnostic(
   diagnostics: MultimodalPromptOutputDiagnostics
 ): string {
-  const observedTokens = diagnostics.completionTokens ?? diagnostics.estimatedOutputTokens;
+  const tokenDetail = diagnostics.completionTokens === null
+    ? "实际输出 token 数未知"
+    : `输出 ${diagnostics.completionTokens}/${diagnostics.requestedMaxTokens} token`;
   if (diagnostics.suspectedTruncation) {
-    return `诊断：输出约 ${observedTokens}/${diagnostics.requestedMaxTokens} token，停止原因 ${diagnostics.finishReason || "未知"}，疑似达到生成长度上限。`;
+    return `诊断：${tokenDetail}，停止原因 ${diagnostics.finishReason || "未知"}，疑似达到生成长度上限。`;
   }
   if (diagnostics.finishReason) {
-    return `诊断：节点以 ${diagnostics.finishReason} 停止，输出约 ${observedTokens}/${diagnostics.requestedMaxTokens} token，未接近长度上限；更可能是模型提前结束或未遵循字段/细节要求。`;
+    return diagnostics.completionTokens === null
+      ? `诊断：节点以 ${diagnostics.finishReason} 停止，${tokenDetail}，无法确认是否达到长度上限。`
+      : `诊断：节点以 ${diagnostics.finishReason} 停止，${tokenDetail}，未接近长度上限；更可能是模型提前结束或未遵循字段/细节要求。`;
   }
   return "诊断：当前节点未返回生成停止原因；请在设置中一键修复 MultiModal Prompt Nodes 并重启 ComfyUI，以启用长度与 token 诊断。";
 }
@@ -434,10 +422,8 @@ export function buildMultimodalPromptWorkflow(
     ? 64
     : request.mode === "image-edit"
       ? 768
-      : Math.min(
-          runtimeMaxOutputTokens,
-          h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset)
-        );
+      : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset, request.prompt);
+  assertH3PromptOutputBudget(maxTokens, runtimeMaxOutputTokens, "MultiModal Qwen");
   const workflow: Record<string, PromptNode> = {
     "vision-llm": {
       class_type: "VisionLLMNode",

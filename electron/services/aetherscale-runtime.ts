@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { cleanupManifestSoftwareBackups, removeSoftwareArtifact } from "./software-update-cleanup.js";
 import { promisify } from "node:util";
 import type {
   AetherScaleWorkerState,
@@ -1143,6 +1144,8 @@ export async function installAetherScaleRuntime(
     if (!status.carrierReady) {
       throw new Error(`AetherScale carrier 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
     }
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, AETHERSCALE_CARRIER_BACKUP_DIRECTORY), AETHERSCALE_CARRIER_MANIFEST_FILENAME, validCarrierManifest, carrierDirectory, report);
     report("AetherScale carrier runtime 已原子安装；安装阶段未执行 nvngx.dll worker。");
     return {
       ok: true,

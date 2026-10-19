@@ -31,6 +31,54 @@ async function setMtime(filename: string, modifiedAt: Date): Promise<void> {
 }
 
 describe("app cache service", () => {
+  it("keeps a protected first backup and continues clearing the next software target", async () => {
+    const root = await createTemporaryRoot();
+    const protectedPath = path.join(root, "protected"), disposablePath = path.join(root, "disposable");
+    await writeCacheFile(protectedPath, "user.mp4", 11);
+    await writeCacheFile(disposablePath, "runtime.dll", 7);
+    const targets = [protectedPath, disposablePath].map(target => ({ path: target, identity: target }));
+    const clear = vi.fn(async (target: typeof targets[number]) => {
+      if (target.path === protectedPath) throw new Error("contains user media");
+      await fs.rm(target.path, { recursive: true });
+    });
+    const software = { inspect: vi.fn(async () => await Promise.all(targets.map(async target =>
+      await fs.stat(target.path).then(() => target, () => null))).then(found => found.filter(target => target !== null))), clear,
+      withCleanup: async <T>(work: () => Promise<T>) => work() };
+    const cache = createAppCacheService({ temporaryRoot: root,
+      session: { getCacheSize: async () => 0, clearCache: async () => {} }, software });
+    const result = await cache.clear();
+    expect(result.errors).toEqual(["contains user media"]);
+    expect(clear.mock.calls.map(([target]) => target.path)).toEqual([protectedPath, disposablePath]);
+    expect(await fs.stat(protectedPath)).toBeTruthy();
+    await expect(fs.stat(disposablePath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(result.clearedBytes).toBe(7);
+  });
+  it("counts and clears old software through the same cache operation and reports protected leftovers", async () => {
+    const root = await createTemporaryRoot(), softwarePath = path.join(root, "old-software");
+    await writeCacheFile(softwarePath, "runtime.dll", 19);
+    const target = { path: softwarePath, identity: "owned-fixture" };
+    const software = { inspect: vi.fn(async () => await fs.stat(softwarePath).then(() => [target], () => [])),
+      clear: vi.fn(async () => { await fs.rm(softwarePath, { recursive: true }); }),
+      withCleanup: async <T>(work: () => Promise<T>) => work() };
+    const service = createAppCacheService({ temporaryRoot: root, session: { getCacheSize: async () => 0, clearCache: async () => {} }, software });
+    expect((await service.inspect()).temporaryBytes).toBe(19);
+    const result = await service.clear();
+    expect(software.clear).toHaveBeenCalledWith(target);
+    expect(result.clearedBytes).toBe(19); expect(result.after.temporaryDirectoryCount).toBe(0);
+    await writeCacheFile(softwarePath, "runtime.dll", 19);
+    software.clear.mockRejectedValueOnce(new Error("contains user data"));
+    expect((await service.clear()).errors).toContain("contains user data");
+    expect(await fs.stat(softwarePath)).toBeTruthy();
+  });
+  it("does not clean software or request a handoff when software maintenance is busy", async () => {
+    const root = await createTemporaryRoot(), file = await writeCacheFile(path.join(root, "backup"), "old.dll", 7);
+    const software = { inspect: async () => [{ path: path.dirname(file), identity: "fixture" }], clear: vi.fn(),
+      withCleanup: async <T>(_work: () => Promise<T>): Promise<T> => { throw new Error("Agent is using the software; no handoff"); } };
+    const service = createAppCacheService({ temporaryRoot: root, session: { getCacheSize: async () => 0, clearCache: async () => {} }, software });
+    const result = await service.clear();
+    expect(result.errors[0]).toContain("no handoff"); expect(result.skippedTemporaryDirectories).toBe(1);
+    expect(software.clear).not.toHaveBeenCalled(); expect(await fs.stat(file)).toBeTruthy();
+  });
   it("measures only app-owned temporary directories alongside the current session cache", async () => {
     const root = await createTemporaryRoot();
     await writeCacheFile(path.join(root, "local-video-studio", "task-1"), "frame.bin", 12);

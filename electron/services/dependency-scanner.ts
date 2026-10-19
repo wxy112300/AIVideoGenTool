@@ -27,7 +27,8 @@ import {
   multimodalPromptSupportsAdaptiveGeneration,
   patchH3PromptWriterLlamaCppCompatibility,
   qwenVlNeedsComfyDesktopLoggingShim,
-  qwenVlNeedsCooperativeInterrupt
+  qwenVlNeedsCooperativeInterrupt,
+  qwenVlSupportsLongOutput
 } from "../../src/infrastructure/dependency-node-adapters.js";
 import {
   konohamaruNeuralUpstreamRuntimeProblems,
@@ -554,14 +555,17 @@ export async function scanCustomNodes(
       const source = await fs
         .readFile(path.join(directory, "nodes.py"), "utf8")
         .catch(() => "");
-      if (source && (qwenVlNeedsComfyDesktopLoggingShim(source) || qwenVlNeedsCooperativeInterrupt(source))) {
+      if (source && (qwenVlNeedsComfyDesktopLoggingShim(source) || qwenVlNeedsCooperativeInterrupt(source) || !qwenVlSupportsLongOutput(source))) {
         // This is a file-level compatibility check, not runtime proof. It
         // lets an offline scan explain why the node can be installed yet fail
         // later on ComfyUI Desktop, and gives the installer a deterministic
         // repair target for every machine/data directory.
-        const notice = qwenVlNeedsCooperativeInterrupt(source)
-          ? "节点缺少提示词生成的协作式中断支持；取消可能无法及时生效，请执行一键修复并重启服务"
-          : "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor，请执行一键修复并重启服务";
+        const notice = [
+          qwenVlNeedsComfyDesktopLoggingShim(source) ? "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor" : "",
+          qwenVlNeedsCooperativeInterrupt(source) ? "节点缺少提示词生成的协作式中断支持；取消可能无法及时生效" : "",
+          !qwenVlSupportsLongOutput(source) ? "节点尚未适配长时间线的 16K 输出与实际上下文预检" : "",
+          "请执行一键修复并重启服务"
+        ].filter(Boolean).join("；");
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;
@@ -595,7 +599,7 @@ export async function scanCustomNodes(
         const notice = !qwen38Compatible || !projectorDiscoveryCompatible
           ? "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI"
           : !adaptiveGenerationCompatible
-            ? "节点尚未适配影视细节扩写的按需 16K/3072 输出预算与安全诊断；长时间线仍会被 2048 token 限制，请执行一键修复并重启 ComfyUI"
+            ? "节点尚未适配长时间线的按需 32K 上下文/16K 输出预算与安全诊断；请执行一键修复并重启 ComfyUI"
             : "节点尚未适配 Qwen MTMD 精简 logits；请执行一键修复并重启 ComfyUI，旧视觉后端行为保持不变";
         compatibilityNotice = notice;
         updateNotice = notice;

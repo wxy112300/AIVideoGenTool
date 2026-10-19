@@ -369,12 +369,12 @@ export async function finalizeExtensionOutput(
   const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
   const audioRate = h3MotionContext || h3Continuum ? "32000" : "48000";
   const [width, height] = extensionOutputDimensions(task);
-  const filter = `${h3Continuum ? "setpts=PTS-STARTPTS," : ""}${scaleFilter(width, height, task.fps)}`;
-  const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
-  const generatedHasAudio = await hasAudioStream(generatedPath, signal);
-  const continuumFrameBudget = h3Continuum
+  const frameBudget = h3Continuum || h3MotionContext || isMiniMaxH3Fl2vaModel(task.modelId)
     ? continuumExtensionFrameBudget(task)
     : undefined;
+  const filter = `${frameBudget ? "setpts=PTS-STARTPTS," : ""}${scaleFilter(width, height, task.fps)}`;
+  const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
+  const generatedHasAudio = await hasAudioStream(generatedPath, signal);
 
   try {
     const retainedArgs = [
@@ -392,12 +392,12 @@ export async function finalizeExtensionOutput(
       "-map", "0:v:0",
       "-map", sourceHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
-      ...(continuumFrameBudget
-        ? ["-frames:v", String(continuumFrameBudget.retainedFrames), "-af", "apad"]
+      ...(frameBudget
+        ? ["-frames:v", String(frameBudget.retainedFrames), "-af", "apad"]
         : []),
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-ar", audioRate, "-ac", "2",
-      ...(!continuumFrameBudget ? ["-shortest"] : []),
+      ...(!frameBudget ? ["-shortest"] : []),
       retainedPath
     );
     await run("ffmpeg", retainedArgs, signal);
@@ -423,12 +423,12 @@ export async function finalizeExtensionOutput(
     continuationArgs.push(
       "-map", "0:v:0", "-map", generatedHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
-      ...(continuumFrameBudget
-        ? ["-frames:v", String(continuumFrameBudget.continuationFrames), "-af", "apad"]
+      ...(frameBudget
+        ? ["-frames:v", String(frameBudget.continuationFrames), "-af", "apad"]
         : []),
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-ar", audioRate, "-ac", "2",
-      ...(!continuumFrameBudget ? ["-shortest"] : []),
+      ...(!frameBudget ? ["-shortest"] : []),
       continuationPath
     );
     await run("ffmpeg", continuationArgs, signal);
@@ -443,10 +443,10 @@ export async function finalizeExtensionOutput(
       "-f", "concat", "-safe", "0", "-i", concatPath,
       "-c", "copy", "-movflags", "+faststart", finalPath
     ], signal);
-    if (continuumFrameBudget) {
+    if (frameBudget) {
       await requireVideoFrameCount(
         finalPath,
-        continuumFrameBudget.totalFrames,
+        frameBudget.totalFrames,
         signal
       );
     }

@@ -262,4 +262,9 @@ describe("MiniMax H3 prompt checks", () => {
     expect(messages).toContain("接触表");
     expect(messages).toContain("00:12.000");
   });
+
+  it.each(["00:30.002", "00:31", "00:60.000"])("rejects out-of-range or invalid official timecodes: %s", (timecode) => {
+    const result = checkH3Prompt(`integrated_multimodal_description: [Shot 1] The subject moves. [Shot 2] At ${timecode}, the action stops.\noverall_soundscape: Room tone.\nnon_diegetic_music: N/A`, { mode: "T2VA", durationSeconds: 30 });
+    expect(result.items.some((item) => item.message.includes(timecode))).toBe(true);
+  });
 });

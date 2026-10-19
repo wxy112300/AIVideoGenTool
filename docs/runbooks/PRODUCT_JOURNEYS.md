@@ -73,6 +73,7 @@ flowchart TD
 - `h3PromptModeForDraft` 决定提示词模式；`h3WorkflowPathForInput` 决定执行工作流。两个都要核对。FL2VA 清空所有图可退到 T2VA；**R2V 空槽仍是 R2V 缺输入**，不能借此绕开校验。
 - R2V 使用 Slots，而非首尾帧面板；图/视频、role、note、标签必须进入 prompt 请求及任务副本。增删/替换参考图也要测，不只测选模型。
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
+- H3请求时长严格>15.1秒时，原时长标题旁显示三语言警告tooltip；15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
 - 模型切换是异步的（获取 bundled workflow）；要测快速切换和返回另一 Create 模式，避免旧返回值覆盖新草稿。
 
 | 用户选项 | 影响链 | 最小反例 |
@@ -104,9 +105,9 @@ flowchart TD
   AUTO & INTENT & REV --> REQ[EnhanceRequest: origin / mode / refs / duration / LoRA / boundary]
   REQ --> PF[preflight → Prompt 模型与 GPU 资源检查]
   PF --> MODEL[Prompt runtime / Provider / Pack]
-  MODEL --> RAW[详细预设：原始正文验收 / 其他预设保持原密度]
-  RAW --> NORMALIZE[通过后恢复格式与精确内容锁]
-  NORMALIZE --> RESULT[新 prompt version 写回发起模式]
+  MODEL --> RAW[详细预设：结构检查 / 长度仅作建议]
+  RAW --> NORMALIZE[恢复格式与精确内容锁]
+  NORMALIZE --> RESULT[新 prompt version 写回发起模式 / 短稿附警告]
   RESULT --> REVIEW[用户审阅 / 编辑 / 撤销 / 入队]
 ```
 
@@ -116,12 +117,13 @@ flowchart TD
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。
 - Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
+- Strata UD-Q4_K_XL：模型卡四分片→共享模型命名目录→原版projector/MTP原地复用→固定hash与`--compat-bf16`离线pack/独立receipt→按Q4专家体量选择完整或显式预算驻留→原提示词按钮/独立Agent启动。缺片阻塞、补齐恢复、切换模型重新发现pack；H3仍32K，Agent长context计host KV。关闭/自带ESP/社区sergqwer三模式均可选，仍验证当次引擎作用层与逐请求应用，不把控制向量加载当去拒答效果。无权重阶段只验卡片/配置/合成按钮链，真实图文、Agent、性能与峰值留待实测。
 - 异步回写使用请求的 `origin`；切换到图片编辑或 Extend 后，旧请求只能更新原草稿。失败不破坏原 prompt，取消不是错误成功。
 - Strata先以官方tokenizer核对完整输入、图片与输出预留，再加载GPU；超限失败无新版本且不截断资料。单图I2VA＋用户原稿＋影视细节扩写采用分层/有界思考（medium、2048计入8192总输出）；其他路径保持原调用，不新增设置控件。按原停止按钮取消，思考不写回正文；长资料服务对照不代替真实按钮与版本验收。
 - Strata模型卡的MTP配套文件沿用组件信息弹窗和共享模型根手动下载；扫描不下载/哈希/加载。完整本地文件经固定hash→官方CPU转换→中文词表→原按钮加载；补齐MTP会使旧驻留下次请求重建，完整主pack不重准备。无MTP保留基础模式；新加载日志报告完整RAM驻留失败则停止，不静默接受文件层降速。配置/缺件UI与真实性能分层验收。
 - Strata完整tokenizer预检→释放ComfyUI→按当前RAM/Windows提交余量/显存选择会话驻留策略→加载前复检→加载与推理低资源监测。资源不足/未知从原按钮明确失败且不写版本，不修改分页文件、不截断输入；充分资源可选完整arena，已驻留的暖请求不按剩余RAM重新选型或反复重载。会话配置不改变基础pack完成记录，停止删除自有会话文件。MTP解析器在软件安装阶段固定源码获取，增强时离线检查，不隐式联网补依赖。
 - 此Strata细分路径缺少原稿明确数字时间点时，仅允许一次保留完整上下文的非思考纠正，每次仍检查32K/8192预算；再次失败不写回、不循环。时间数字存在不等于事件/角色/否定语义正确，仍需人工审阅。对白恢复限定主时间线，音场同句描述不抢占正文台词。
-- 影视细节扩写在模型原始正文上校验原稿长度与时长底线，程序补句不充当扩写；重复填充、格式标签不增加覆盖长度。不使用通用原稿关键词覆盖率拦截，不因指令用语或同义改写拒绝；结构/长度通过不代表语义完整或没有跑题。精确对白/可见文字处理、明确数字时间点检查和截断拒绝保持各自原范围。失败无新版本，补齐后可从原增强按钮恢复；精简和批注修订不套用扩写长度门槛。
+- 影视细节扩写的词数参考与有效正文短于原稿仅作警告，允许从实际增强按钮创建新版本、查看和编辑结果；简单画面不强制凑词数，也不因此自动补写。可见警告按返回正文计算，独立于 prompt 文本；重复填充、格式标签不增加覆盖长度。缺失、空或重复主时间线仍拒绝，不使用通用原稿关键词覆盖率拦截；结构/长度不代表语义完整或没有跑题。精确对白/可见文字处理、明确数字时间点检查、截断、资源及后端时长限制保持各自原范围，真正失败仍无新版本；精简和批注修订不套用详细扩写长度参考。
 
 入口：`prompt-controller.ts` / `helpers.ts` → `src/core/prompts/` → `electron/services/prompt-application-service.ts` / `prompt-runtime-manager.ts` / `prompt-extension-media.ts`。不要只改 Pack 文本而漏掉请求字段或 runtime。
 
@@ -161,12 +163,14 @@ flowchart TD
 
 | 路线 | UI / 输入 | 关键限制与验收 |
 | --- | --- | --- |
-| FL2VA 边界续接 | 视频、trim、prompt；保留 fallback | 抽取准确边界；不宣称有运动 latent 连续性；通常 15 秒上限，实际按 policy |
-| Motion Context | 源 Slot 1 不可删除/改类型，额外图片/视频 Slots；独立 latent 面板 | context 预算使扩展段最多 13 秒；Spectrum 关闭；无 latent 可以视频上下文；有 latent 必须来源检查，结束 trim 对齐源尾部 |
+| FL2VA 边界续接 | 视频、trim、prompt；保留 fallback | 新标准任务新增段至30秒，完整预算736帧，旧快照按原policy；抽取准确边界，不宣称有运动 latent 连续性 |
+| Motion Context | 源 Slot 1 不可删除/改类型，额外图片/视频 Slots；独立 latent 面板 | 新标准任务新增段至30秒，含上下文实际预算770帧；Spectrum 关闭；无 latent 可以视频上下文；有 latent 必须来源检查，结束 trim 对齐源尾部 |
 | Continuum bootstrap | 配对 AV 文件与状态面板；使用整个源尾边界 | 文件名非空不代表可用；payload/manifest/几何等预检失败须阻塞且可恢复 |
 | Continuum managed | 已接受序列/chunk/依赖状态；延续或重生成当前片段 | 必须有 acceptedChunks > 0；没有前缀不能新建 Run 冒充续写。另需原始首帧来源、当前 canonical head 与 run 文件一致；timeline prompt、强制 AV 保存和 duration 按生产校验 |
 
 模式由 `h3ContinuumModeForSource` 判定：已有 accepted chunks 优先 managed；显式 bootstrap 或配对 artifact 走 bootstrap；否则根据 managed 标记/工作流。不是单凭“选了 Continuum”就能知道执行路线。
+
+H3 Extend警告按新增段请求时长严格>15.1秒触发，不按来源、拼接总长或完整采样帧数。长来源加短片段仍不显示；warning不替代来源检查或阻塞提交。新Continuum草稿可至30秒，旧managed Run沿用冻结chunkSeconds；实际长时输出与末段质量另验。
 
 **路由不等于入队资格**。`history-artifact-service.ts` 的 `inspectExtensionSource` 会阻止无 sequence 或 acceptedChunks=0 的 managed 输入。不能因任务工厂/旧队列分支能构造空 sequence，就宣称普通用户能新建 managed Run；不要添加模式开关或绕过门槛来让测试变绿。bootstrap 输出的 canonical AV 不会自动变成 accepted managed prefix。已有合成 receipt 的单测也不代表真实 run 已生成。
 
@@ -246,9 +250,11 @@ H3 native 需要对应 AV/模型/尺寸资格；SeedVR2 的原生 INT8 分段路
 <a id="settings-runtime"></a>
 ## Settings：哪个时刻影响哪一层
 
-Strata更新下载恢复：用户点击更新→固定资产缓存/旧半包来源核对→按实际字节Range续传；断线只在有限预算内重试，取消保留半包且不再请求，具体错误进入原安装日志。再次点击跨新staging复用同一资产缓存；完成后仍按固定size/hash→解压→独立venv→发布记录。校验失败的包改名保留、不发布，旧软件/共享模型保留。真实本地curl中断/续传、Range拒绝、取消与合成安装事务分别记录，不把这些证据称为GitHub实际更新成功。
+缓存清理分支：设置→路径→刷新大小／清理缓存→现有typed cache IPC→浏览器／临时目录与受管理旧软件统一统计→安装互斥＋禁止模型交接的资源租约→重新核对当前安装、receipt、真实路径及用户数据→删除可重建旧软件→复扫、原进度与部分失败原因。活跃Agent/Strata跳过而不卸载；当前版本、共享模型、配置／媒体／会话与未知归属保留。隔离真实按钮验证必须隔离APPDATA／LOCALAPPDATA／TEMP与Comfy根，不能为了测试清理用户真实缓存；断言预期旧文件消失、保护文件和state不变，检查无新增任务／模型请求并收尾测试进程。
 
-Strata版本分支：本机受信安装记录 / catalog推荐 / 官方release最新查询 → 共用节点版本行；当前旧版显示更新，未装显示安装，同推荐显示重装。实际下载只由用户点击触发；新版完成前保留旧默认，完成后优先新版，显式手动路径不切换。旧缓存仍绑定实际软件revision，不把提高推荐号当成运行已验证；最新查询失败显示未知，不用推荐值冒充。版本选择/合成安装证据与真实引擎安装/推理证据分开报告。
+Strata更新下载恢复：用户点击更新→固定资产缓存/旧半包来源核对→按实际字节Range续传；断线只在有限预算内重试，取消保留半包且不再请求，具体错误进入原安装日志。再次点击跨新staging复用同一资产缓存；完成后仍按固定size/hash→解压→独立venv→发布记录。校验失败的包删除、不发布；失败恢复旧软件并清理新暂存，成功后清理旧软件、可核对历史暂存和下载包，始终保护共享模型。真实本地curl中断/续传、Range拒绝、取消与隔离安装事务分别记录，不把这些证据称为GitHub实际更新成功。
+
+Strata版本分支：本机受信安装记录 / catalog推荐 / 官方release最新查询 → 共用节点版本行；当前旧版显示更新，未装显示安装，同推荐显示重装。实际下载只由用户点击触发；更新目标统一为`strata/runtime`，主应用和独立Agent共享解析，旧managed路径迁移但显式手动目录不切换；完成验证后旧软件清理，不长期并存版本。旧缓存仍绑定实际软件revision，不把提高推荐号当成运行已验证；最新查询失败显示未知，不用推荐值冒充。版本选择/隔离安装证据与真实引擎安装/推理证据分开报告。
 
 Strata 卸载分支：应用管理安装 → 既有三角菜单“卸载” → 默认聚焦取消的应用确认弹窗 → typed `uninstallStrata` → 后台核对当前管理路径/安装记录/模型根隔离/操作忙碌 → 删除当前软件目录 → 日志/离线复扫 → 无三角的未安装卡片。取消不调用卸载；文件归属改变时拒绝并保留错误及复扫后的状态，用户可取消或恢复后重试。共享模型、独立数据与旧备份保留，不修改设置、queue/History、ComfyUI Python，不启动或重启 ComfyUI。手动目录仅保留原有打开位置功能，不授予删除权限。
 
@@ -300,6 +306,8 @@ Prompt 最小设置闭环见 [操作配方](../AGENT_ELECTRON_API_RUNBOOK.md#set
 ## 图片编辑也经过同一闭环
 
 独立 `imageDraft` → 模型 capability → Picture Slots / prompt / quality / 尺寸 → `enqueueImageEdit` → image task/runs → `imageHistory` project/version。文生图模型可无图；LaMa 必须 clean image + mask 且无 prompt；BiRefNet 无 prompt、透明 PNG；Paint guide 不能当二值 mask。不要把这些条件泛化到所有图片模型。
+
+图片清空按钮 → 确认 → 只清内容/旧作品关联，不恢复默认模型或步数；生成参数继续沿用当前选择。文本 token 估算随输入原位更新，不计入参考图、不作为准入预算。Strata + Qwen2.1 增强 → 独立图片 profile（T2I/编辑及参考用途）→ 普通图片输出清理 → 新 prompt version；旧后端和 H3 不使用这套图片规则。规则来源与未验质量边界见[图片提示词资料库](../research/qwen-image-21-strata-editing.md)。
 
 H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑草稿转Qwen2.1，旧队列/历史保持身份，重新编辑保留父版本。融合使用现有Qwen2.1 LoRA入口；旧Mask sidecar保留，不自动作为Paint输入。
 

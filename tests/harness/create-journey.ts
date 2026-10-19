@@ -4,8 +4,8 @@ import { createDefaultState } from "../../src/core/defaults";
 import { createTranslator } from "../../src/core/i18n";
 import { createCreateWorkspaceCoordinator, type CreateWorkspaceCoordinatorDependencies } from "../../src/renderer/pages/create/coordinator";
 import { loadPromptPacks } from "../../src/renderer/prompt-packs";
-import { queueTaskFromDraft, extensionTaskFromDraft } from "../../src/core/queue-task-factory";
-import type { AppState, Draft, EnvironmentScanResult, VideoExtensionSourceInspection } from "../../src/types";
+import { queueTaskFromDraft, extensionTaskFromDraft, imageTaskFromDraft } from "../../src/core/queue-task-factory";
+import type { AppState, Draft, ImageEditDraft, EnvironmentScanResult, VideoExtensionSourceInspection } from "../../src/types";
 import type { RendererCleanup, RendererContext } from "../../src/renderer/contracts";
 
 // Real page -> coordinator -> controllers -> snapshot factory. Only external ports
@@ -39,6 +39,11 @@ export async function createJourney(initial: Partial<Draft> = {}) {
   const application = {
     saveDraft: vi.fn(async () => undefined), saveImageDraft: vi.fn(async () => undefined),
     enqueue, enqueueExtension: enqueue,
+    enqueueImageEdit: vi.fn(async (draft: ImageEditDraft) => {
+      const next = structuredClone(state);
+      next.queue.push(imageTaskFromDraft(draft, undefined, { root: "C:/fixture/output", directory: "C:/fixture/output/Images", subfolder: "Images" }));
+      return next;
+    }),
     inspectVideoExtensionSource: vi.fn(async () => structuredClone(inspection)),
     getBundledWorkflow: vi.fn(async (modelId: string, inputMode: string) => ({
       path: path.resolve("workflows", modelId === "minimax_h3_continuum" ? "minimax_h3_continuum_v38_extend_api.json" : modelId === "minimax_h3_ref2va" ? inputMode === "video" ? "minimax_h3_r2v_extend_api.json" : "minimax_h3_r2v_api.json" : "minimax_h3_i2v_api.json"),
@@ -65,7 +70,9 @@ export async function createJourney(initial: Partial<Draft> = {}) {
     workflowCapabilities: { [state.draft.workflowPath]: { supportsEndImage: true, supportsVideoExtension: true } },
     bundledWorkflowKey: (id, input) => `${id}:${input}`, setRendererState: next => { state = next; },
     addPageCleanup: cleanup => cleanups.push(cleanup), render: requestRender,
-    getEnqueueBusy: () => busy, setEnqueueBusy: value => { busy = value; }, requestClearDraftConfirmation: vi.fn(),
+    getEnqueueBusy: () => busy, setEnqueueBusy: value => { busy = value; },
+    // Confirmation is a synthetic external port; the real clear button still drives it.
+    requestClearDraftConfirmation: vi.fn((requested) => { coordinator.clearDraft(requested); requestRender(); }),
     promptRuntimeControlIcon: () => "play", promptRuntimeControlTitle: () => "Prompt",
     promptRuntimeView: () => ({ left: { intent: "none", label: "Prompt", action: "none" }, right: { intent: "none", label: "Prompt", action: "none" } }),
     promptOperationBelongsTo: () => false, getPromptStarting: () => false, getPromptReleasing: () => false,
@@ -91,8 +98,9 @@ export async function createJourney(initial: Partial<Draft> = {}) {
   }
   render();
   return {
-    root, element, input, render, coordinator, application, enhancePrompt, hostCapabilities, scan, context,
+    root, element, input, render, coordinator, application, enhancePrompt, hostCapabilities, scan, context, dependencies,
     state: () => state,
+    setMode: (value: typeof mode) => { mode = value; render(); },
     setInspection: (value: VideoExtensionSourceInspection) => { inspection = value; },
     dispose: () => { disposed = true; cleanups.reverse().forEach(cleanup => cleanup()); root.remove(); }
   };

@@ -2,12 +2,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
-import { planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
+import { applyStrataResourcePlan, planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
 import { verifyStrataControlVector } from "./strata-uncensored.js";
-import { normalizeStrataUncensoredMode } from "../../src/core/strata-uncensored.js";
+import { normalizeStrataUncensoredMode, supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 import { privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
 import type { AgentPreferences } from "./strata-agent-settings.js";
 import type { StrataLaunchPlan } from "./strata-service.js";
+import { STRATA_Q4_MODEL_ID } from "../../src/core/catalog/models/strata.js";
 
 /** Context validation changes only the private Agent overlay, never the shared H3 pack/receipt. */
 export async function agentLaunchPlan(input: {
@@ -22,17 +23,22 @@ export async function agentLaunchPlan(input: {
   const contextTokens = input.contextTokens ?? p.contextTokens;
   if (![32768, 65536, 131072, 262144].includes(contextTokens)) throw new Error("Agent 上下文必须使用逐档验证的32K/64K/128K/262K之一。");
   config.args[context + 1] = String(contextTokens);
-  const resourcePlan = planStrataResources(input.resources, 5120, { commitTrial: input.commitTrial, allowFileReadFallback: true });
+  const resourcePlan = planStrataResources(input.resources, 5120, { commitTrial: input.commitTrial, allowFileReadFallback: true,
+    modelId: p.modelId, contextTokens });
   const directory = await privateLocalDirectory(path.join(input.directory, "runs", randomUUID()));
   const reserve = config.args.indexOf("--vram-reserve-mib");
   if (reserve < 0) throw new Error("pack 缺少显存策略。");
   config.args[reserve + 1] = String(resourcePlan.vramReserveMiB);
-  if (resourcePlan.hostMode === "arena") config.args = config.args.filter((arg: string) => arg !== "--resident-experts");
+  config.args = applyStrataResourcePlan(config.args, resourcePlan, p.modelId);
   const mode = normalizeStrataUncensoredMode(p.uncensoredMode, p.uncensored);
-  const controlVector = mode !== "off" ? await verifyStrataControlVector(install, mode) : undefined;
+  const applyVector = mode !== "off" && supportsStrataUncensored(p.modelId);
+  const controlVector = applyVector ? await verifyStrataControlVector(install, mode as "builtin" | "community") : undefined;
   if (controlVector) config.args.push("--control-vector-scaled", `${controlVector.filename}:1.0`, "--control-vector-layer-range",
     String(controlVector.firstLayer), String(controlVector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer");
-  config.sampling = { ...(config.sampling ?? {}), experimental_speed_projection: mode !== "off" };
+  config.sampling = { ...(config.sampling ?? {}), experimental_speed_projection: applyVector };
+  // Host KV streaming is upstream's default for long Agent contexts, not a
+  // change to the shared H3 32K preparation record.
+  if (p.modelId === STRATA_Q4_MODEL_ID && contextTokens >= 65536) config.args.push("--kv-resident", "32768");
   config.cwd = directory;
   config.log = path.join(directory, "engine.log");
   config.slot_save_path = path.join(directory, "slots");
@@ -53,6 +59,7 @@ export async function agentLaunchPlan(input: {
       // Same Windows safety rollback as H3; never inherit a working-set opt-in from the shell.
       STRATA_FILE_RELEASE: "0",
       STRATA_AGENT_ADMISSION: path.join(input.directory, "admission.json") },
-    resourcePlan, allowResidentFallback: true, engineLog: config.log, ...(config.args.includes("--resident-experts") ? { residentEngineLog: config.log } : {}),
+    resourcePlan, allowResidentFallback: true, engineLog: config.log,
+    ...(config.args.includes("--resident-experts") || config.args.includes("--resident-budget-gib") ? { residentEngineLog: config.log } : {}),
     controlVector, uncensoredRequested: mode !== "off", uncensoredMode: mode };
 }

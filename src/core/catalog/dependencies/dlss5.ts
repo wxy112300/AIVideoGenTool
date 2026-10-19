@@ -27,6 +27,14 @@ export const DLSS5_VAPOURKIT_URL =
 export const DLSS5_VAPOURKIT_SHA256 =
   "0a4894464badc6588d707bb5ee41506a38e1f749884864ed3846a961ffd4d0cb" as const;
 
+export const DLSS5_RETIRED_DESKTOP_ASSET = {
+  repository: "https://github.com/Kim2091/vapourkit-nightly",
+  releaseTag: "nightly-2026-08-31",
+  relativePath: "extracted/resources/app.asar",
+  bytes: 40_483_535,
+  sha256: "1100a865277c20c648dc1fd6b3992a6ce31cc8c495a2453440ee2c5bc0b3cdf1"
+} as const;
+
 export interface Dlss5RuntimeArtifact {
   id: "python" | "vapoursynth" | "numpy" | "vapourkit" | "dlss-sr" | "dlss-nr";
   capability: "shared-required" | "sr-required" | "nr-required" | "nr-optional";

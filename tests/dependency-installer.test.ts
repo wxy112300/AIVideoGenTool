@@ -29,6 +29,8 @@ import {
   patchMmh3UltimateUpscaleSource,
   patchQwenVlComfyDesktopLogging,
   patchQwenVlCooperativeInterrupt,
+  patchQwenVlOutputBudget,
+  qwenVlSupportsLongOutput,
   prepareDlss5DepthAnything,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes,
@@ -37,6 +39,7 @@ import {
 import { MINIMAX_H3_PROMPT_WRITER_REVISION } from "../src/core/catalog/dependencies/nodes";
 import { createDefaultState } from "../src/core/defaults";
 import {
+  customNodeDefinition,
   H3_AV_SERIALIZER_REVISION,
   H3_ULTIMATE_UPSCALE_REVISION
 } from "../src/core/catalog";
@@ -247,6 +250,17 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
 });
 
 describe("Qwen-VL cooperative interrupt adapter", () => {
+  it("upgrades the output schema with actual model context preflight and is idempotent", () => {
+    const fixture = '"max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64})\n' +
+      '        with torch.no_grad():\n            generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens)\n';
+    const patched = patchQwenVlOutputBudget(fixture);
+    expect(qwenVlSupportsLongOutput(patched)).toBe(true);
+    expect(patched).toContain('getattr(_lvs_text_config, "max_position_embeddings", 0)');
+    expect(patched).toContain('inputs["input_ids"].shape[1]');
+    expect(patchQwenVlOutputBudget(patched)).toBe(patched);
+    expect(() => patchQwenVlOutputBudget("class QwenVLCaption: pass")).toThrow(/已停止修改/u);
+  });
+
   const source = [
     "from transformers import AutoProcessor, BitsAndBytesConfig",
     "import folder_paths",
@@ -724,8 +738,8 @@ describe("dependency installer", () => {
     expect(patched).toContain("if not keep_model_loaded:");
     expect(patched).toContain('/local-video-studio/multimodal-prompt/unload');
     expect(patched).toContain('/local-video-studio/multimodal-prompt/diagnostics');
-    expect(patched).toContain('"max": 3072');
-    expect(patched).toContain("n_ctx=16_384 if max_tokens > 2_048 else 8_192");
+    expect(patched).toContain('"max": 16384');
+    expect(patched).toContain("n_ctx=32_768 if max_tokens > 3_072 else (16_384 if max_tokens > 2_048 else 8_192)");
     expect(patched).toContain("_lvs_last_generation_diagnostics");
     expect(multimodalPromptSupportsAdaptiveGeneration(patched)).toBe(true);
     expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
@@ -1061,7 +1075,36 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     });
   });
 
-  it("installs the app-owned serializer from a bundled package with a recoverable backup", async () => {
+  it.each([false, true])("replaces tracked package defaults but protects locally edited configuration (edited=%s)", async edited => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-node-config-update-")); temporaryDirectories.push(comfyRoot);
+    const definition = customNodeDefinition("comfyui-gguf")!;
+    const target = path.join(comfyRoot, "custom_nodes", definition.directoryName);
+    await fs.mkdir(path.join(target, ".git"), { recursive: true });
+    const previous = edited ? '{"local":true}' : '{"upstream":1}';
+    await fs.writeFile(path.join(target, "settings.json"), previous);
+    const runtime: DependencyInstallerRuntime = {
+      findComfyRoot: async () => comfyRoot, findComfyPython: async () => "python.exe", findExecutable: async () => "git.exe",
+      downloadEnvironment: () => ({}), proxyLogLabel: () => "", exists, retryableRenameError: () => false,
+      renameWithRetry: fs.rename,
+      runLoggedProcess: async (_exe, args) => {
+        if (args.includes("remote")) return definition.repositoryUrl;
+        if (args.includes("rev-parse")) return definition.installRevision!;
+        if (args.includes("status")) return " M settings.json";
+        if (args.includes("ls-files")) return "settings.json\0";
+        if (args.includes("diff")) return edited ? "settings.json\0" : "";
+        if (args[0] === "clone") {
+          await fs.mkdir(path.join(args.at(-1)!, ".git"), { recursive: true });
+          await fs.writeFile(path.join(args.at(-1)!, "settings.json"), '{"upstream":2}');
+        }
+        return "";
+      }
+    };
+    const result = await installCustomNodePackage("comfyui-gguf", createDefaultState().settings, runtime);
+    expect(result.ok, result.log).toBe(!edited);
+    expect(await fs.readFile(path.join(target, "settings.json"), "utf8")).toBe(edited ? previous : '{"upstream":2}');
+    expect(await fs.readdir(path.join(comfyRoot, "node-backups"))).toEqual([]);
+  });
+  it("installs the app-owned serializer and removes the temporary old software after validation", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-install-"));
     const bundledRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-source-"));
     temporaryDirectories.push(comfyRoot, bundledRoot);
@@ -1073,6 +1116,8 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     await fs.writeFile(path.join(sourceDirectory, "requirements.txt"), "\n", "utf8");
     await fs.mkdir(targetDirectory, { recursive: true });
     await fs.writeFile(path.join(targetDirectory, "old.txt"), "old", "utf8");
+    await fs.writeFile(path.join(targetDirectory, "local.gguf"), "user model", "utf8");
+    await fs.writeFile(path.join(targetDirectory, "settings.json"), '{"custom":true}', "utf8");
     const runtime: DependencyInstallerRuntime = {
       downloadEnvironment: () => ({ ...process.env }),
       proxyLogLabel: () => "",
@@ -1101,9 +1146,18 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect((await fs.readFile(path.join(targetDirectory, "VERSION"), "utf8")).trim())
       .toBe(H3_AV_SERIALIZER_REVISION);
     expect(await exists(path.join(targetDirectory, "old.txt"))).toBe(false);
+    expect(await fs.readFile(path.join(targetDirectory, "local.gguf"), "utf8")).toBe("user model");
+    expect(await fs.readFile(path.join(targetDirectory, "settings.json"), "utf8")).toContain("custom");
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
       name.startsWith("LocalVideoStudio-H3-"
-      ))).toBe(true);
+      ))).toBe(false);
+    expect((await installCustomNodePackage("local-video-studio-h3-av", createDefaultState().settings, runtime)).ok).toBe(true);
+    expect(await fs.readdir(path.join(comfyRoot, "node-backups"))).toEqual([]);
+    runtime.runLoggedProcess = async () => { throw new Error("pip failed after replacement"); };
+    const failed = await installCustomNodePackage("local-video-studio-h3-av", createDefaultState().settings, runtime);
+    expect(failed.ok).toBe(false);
+    expect(await fs.readFile(path.join(targetDirectory, "local.gguf"), "utf8")).toBe("user model");
+    expect(await fs.readdir(path.join(comfyRoot, "node-backups"))).toEqual([]);
   });
 
   it("rejects unknown packages before touching the runtime", async () => {
@@ -1368,7 +1422,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(result.log).toContain("检测到节点目录存在本地修改");
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
       name.startsWith("ComfyUI-MiniMaxH3-Prompt-Writer-")
-    )).toBe(true);
+    )).toBe(false);
     expect(await exists(path.join(
       targetDirectory,
       "backend",
@@ -1512,9 +1566,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     const backupName = (await fs.readdir(backupRoot)).find((name) =>
       name.startsWith("ComfyUI-MiniMaxH3-Prompt-Writer-")
     );
-    expect(backupName).toBeTruthy();
-    expect(await fs.readFile(path.join(backupRoot, backupName!, "local-commit.txt"), "utf8"))
-      .toBe("preserve this checkout");
+    expect(backupName).toBeUndefined();
     expect(await exists(path.join(targetDirectory, "local-commit.txt"))).toBe(false);
   });
 
@@ -1667,6 +1719,6 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(await exists(path.join(targetDirectory, "old-molbal.txt"))).toBe(false);
     expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
       name.startsWith("ComfyUI-GGUF-")
-    )).toBe(true);
+    )).toBe(false);
   });
 });

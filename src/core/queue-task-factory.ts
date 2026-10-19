@@ -54,6 +54,7 @@ import {
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "./video-draft-normalization.js";
 import {
   h3ContinuumWorkflowPathForInput,
+  h3ExtensionFrameBudgetForModel,
   h3ContinuumManagedWorkflowPathForInput,
   h3WorkflowPathForInput,
   isMiniMaxH3ContinuumModel,
@@ -426,7 +427,7 @@ export function extensionTaskFromDraft(
     h3AvOutputPolicy: isH3 ? "shared" : undefined,
     spectrumMode,
     spectrumModelAwareMode: "off",
-    maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
+    maxGeneratedFrames: isH3 ? h3ExtensionFrameBudgetForModel(draft.modelId) : state.settings.ltxExtensionFrames,
     overlapFrames: isMiniMaxH3ContinuumModel(draft.modelId)
       ? 22
       : state.settings.ltxExtensionOverlapFrames,

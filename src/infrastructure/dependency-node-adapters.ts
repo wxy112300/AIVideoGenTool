@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { H3_REWRITER_NODE_MAX_OUTPUT_TOKENS } from "../core/h3-prompt.js";
 import { patchMultimodalPromptLeanLogits } from "./multimodal-prompt-logits.js";
 import {
   ltxAudioVaeCompatible,
@@ -1289,27 +1290,29 @@ export function patchMultimodalPromptContextSize(source: string): string {
 }
 
 export function multimodalPromptSupportsAdaptiveGeneration(source: string): boolean {
-  return /"max"\s*:\s*3072\b/u.test(source) &&
-    source.includes("n_ctx=16_384 if max_tokens > 2_048 else 8_192") &&
+  return new RegExp(`"max"\\s*:\\s*${H3_REWRITER_NODE_MAX_OUTPUT_TOKENS}\\b`, "u").test(source) &&
+    source.includes("n_ctx=32_768 if max_tokens > 3_072 else (16_384 if max_tokens > 2_048 else 8_192)") &&
     source.includes("_lvs_last_generation_diagnostics");
 }
 
 /**
  * Keep ordinary rewrites on the existing 8K context while giving only
- * long-form requests (>2048 output tokens) a 16K context and 3072-token
+ * long-form requests a 16K/32K context and a bounded 16K-token
  * schema ceiling. The diagnostic payload contains counts and stop reason
  * only; prompt and generated text are never copied into it.
  */
 export function patchMultimodalPromptAdaptiveGeneration(source: string): string {
   let patched = source.replace(
-    /("max_tokens"\s*:\s*\("INT"\s*,\s*\{[\s\S]{0,400}?"max"\s*:\s*)(?:2048|3072)\b/u,
-    (_match, prefix: string) => `${prefix}3072`
+    /("max_tokens"\s*:\s*\("INT"\s*,\s*\{[\s\S]{0,400}?"max"\s*:\s*)(?:2048|3072|16384)\b/u,
+    (_match, prefix: string) => `${prefix}${H3_REWRITER_NODE_MAX_OUTPUT_TOKENS}`
   );
-  if (!patched.includes("n_ctx=16_384 if max_tokens > 2_048 else 8_192")) {
+  const adaptiveContext = "n_ctx=32_768 if max_tokens > 3_072 else (16_384 if max_tokens > 2_048 else 8_192)";
+  patched = patched.replace("n_ctx=16_384 if max_tokens > 2_048 else 8_192", adaptiveContext);
+  if (!patched.includes(adaptiveContext)) {
     patched = patched.replace(
       /(enhanced_prompt\s*=\s*rewrite_prompt_with_gguf\([\s\S]*?^[ \t]*max_tokens=max_tokens,\r?\n)([ \t]*)(temperature=temperature,)/mu,
       (_match, prefix: string, indent: string, temperature: string) =>
-        `${prefix}${indent}n_ctx=16_384 if max_tokens > 2_048 else 8_192,\n${indent}${temperature}`
+        `${prefix}${indent}${adaptiveContext},\n${indent}${temperature}`
     );
   }
   if (!patched.includes("_lvs_last_generation_diagnostics")) {
@@ -1634,15 +1637,43 @@ export async function prepareQwenVlComfyDesktopLogging(
 ): Promise<void> {
   const filename = path.join(targetDirectory, "nodes.py");
   const source = await fs.readFile(filename, "utf8");
-  const patched = patchQwenVlCooperativeInterrupt(
+  const patched = patchQwenVlOutputBudget(patchQwenVlCooperativeInterrupt(
     patchQwenVlComfyDesktopLogging(source)
-  );
+  ));
   if (patched !== source) {
     await fs.writeFile(filename, patched, "utf8");
-    report("已为 Qwen-VL LoRA 节点应用 Desktop 日志兼容层与协作式任务中断");
+    report("已为 Qwen-VL LoRA 节点应用长输出/上下文预检、Desktop 日志兼容与协作式中断");
   } else {
-    report("Qwen-VL LoRA 节点已包含 Desktop 日志兼容层与协作式任务中断");
+    report("Qwen-VL LoRA 节点已包含长输出/上下文预检、Desktop 日志兼容与协作式中断");
   }
+}
+
+export function qwenVlSupportsLongOutput(source: string): boolean {
+  return /"max_new_tokens"\s*:\s*\("INT"\s*,\s*\{[^}]*"max"\s*:\s*16384\b/u.test(source) &&
+    source.includes("_lvs_context_limit") && source.includes("_lvs_input_tokens + max_new_tokens");
+}
+
+export function patchQwenVlOutputBudget(source: string): string {
+  if (qwenVlSupportsLongOutput(source)) return source;
+  let patched = source.replace(
+    /("max_new_tokens"\s*:\s*\("INT"\s*,\s*\{[^}]*"max"\s*:\s*)(?:2048|16384)\b/u,
+    (_match, prefix: string) => `${prefix}${H3_REWRITER_NODE_MAX_OUTPUT_TOKENS}`
+  );
+  if (!patched.includes("_lvs_context_limit")) {
+    patched = patched.replace(/^([ \t]*)with torch\.no_grad\(\):(?=\r?\n\s+generated_ids = m\.generate)/mu,
+      (_match, indent: string) => [
+        `${indent}_lvs_text_config = getattr(m.config, "text_config", m.config)`,
+        `${indent}_lvs_context_limit = getattr(_lvs_text_config, "max_position_embeddings", 0)`,
+        `${indent}_lvs_input_tokens = int(inputs["input_ids"].shape[1])`,
+        `${indent}if not isinstance(_lvs_context_limit, int) or _lvs_context_limit < 1:`,
+        `${indent}    raise ValueError("Qwen-VL model context capacity is unavailable.")`,
+        `${indent}if _lvs_input_tokens + max_new_tokens > _lvs_context_limit:`,
+        `${indent}    raise ValueError(f"Qwen-VL input ({_lvs_input_tokens}) plus output ({max_new_tokens}) exceeds context ({_lvs_context_limit}); input was not truncated.")`,
+        `${indent}with torch.no_grad():`
+      ].join("\n"));
+  }
+  if (!qwenVlSupportsLongOutput(patched)) throw new Error("Qwen-VL LoRA 源码结构与长输出/上下文预检适配不匹配，已停止修改。");
+  return patched;
 }
 
 export async function prepareMultimodalPromptNodes(
@@ -1670,7 +1701,7 @@ export async function prepareMultimodalPromptNodes(
     );
   }
   if (!multimodalPromptSupportsAdaptiveGeneration(patched)) {
-    throw new Error("MultiModal Prompt Nodes 未完成详细扩写的按需 16K/3072 适配，已停止修改。");
+    throw new Error("MultiModal Prompt Nodes 未完成长时间线的按需 32K 上下文/16K 输出适配，已停止修改。");
   }
   if (patched !== source || patchedDiscovery !== discoverySource) {
     await Promise.all([
@@ -1679,9 +1710,9 @@ export async function prepareMultimodalPromptNodes(
         ? fs.writeFile(discoveryFilename, patchedDiscovery, "utf8")
         : Promise.resolve()
     ]);
-    report("已为 MultiModal Prompt Nodes 应用普通 8K、详细扩写按需 16K/3072、安全诊断、模型驻留、Qwen3.8 vision 投影及 Qwen MTMD 精简 logits 兼容");
+    report("已为 MultiModal Prompt Nodes 应用按需 8K/16K/32K 上下文、16K 输出、安全诊断、模型驻留、Qwen3.8 vision 投影及 Qwen MTMD 精简 logits 兼容");
   } else {
-    report("MultiModal Prompt Nodes 已使用普通 8K、详细扩写按需 16K/3072，并支持安全诊断、显式驻留/卸载、Qwen3.8 vision 投影与 Qwen MTMD 精简 logits");
+    report("MultiModal Prompt Nodes 已使用按需 8K/16K/32K 上下文、16K 输出，并支持安全诊断、显式驻留/卸载、Qwen3.8 vision 投影与 Qwen MTMD 精简 logits");
   }
 }
 

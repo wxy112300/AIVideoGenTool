@@ -10,7 +10,7 @@ import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream } from "../../src/core/strata-chat-stream.js";
 import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
-import { knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
+import { applyStrataResourcePlan, knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
 import { readReliableStrataResources, readStrataResources, watchStrataResources, type StrataResourceRetryPolicy } from "./strata-resources.js";
 import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
 import { supportsStrataUncensored, strataUncensoredMode, normalizeStrataUncensoredMode, isStrataUncensoredMode, strataVectorForMode, type StrataUncensoredMode, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
@@ -128,9 +128,10 @@ export async function prepareStrataLaunch(
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf("--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error("Strata 准备配置缺少显存策略。");
-    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources), Number(runtimeConfig.args[reserveIndex + 1]), { allowFileReadFallback: true });
+    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources), Number(runtimeConfig.args[reserveIndex + 1]), {
+      allowFileReadFallback: true, modelId, contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) });
     runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
-    if (resourcePlan.hostMode === "arena") runtimeConfig.args = runtimeConfig.args.filter((arg: string) => arg !== "--resident-experts");
+    runtimeConfig.args = applyStrataResourcePlan(runtimeConfig.args, resourcePlan, modelId);
   }
   if (options.adaptive || controlVector) {
     launchConfig = path.join(path.dirname(config), `runtime-session-${randomUUID()}.json`);
@@ -147,7 +148,7 @@ export async function prepareStrataLaunch(
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
-    ...(runtimeConfig.args.includes("--resident-experts") ? { residentEngineLog: runtimeConfig.log } : {}),
+    ...(runtimeConfig.args.includes("--resident-experts") || runtimeConfig.args.includes("--resident-budget-gib") ? { residentEngineLog: runtimeConfig.log } : {}),
     args: ["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", launchConfig,
       "--host", "127.0.0.1", "--port", String(settings.strataPort), "--lazy", ...(monitorAvailable ? ["--api-monitor"] : []), "--api-key", apiKey]
   };

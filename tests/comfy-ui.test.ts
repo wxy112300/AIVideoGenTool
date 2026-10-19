@@ -27,6 +27,11 @@ import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
 import { H3_FACIAL_REALISM_CLOSEUP_LORA } from "../src/core/video-loras.js";
 
 describe("ComfyUI task liveness", () => {
+  it.each(["official-storyboard", "detailed-cinematic"] as const)("keeps native 30-second %s output headroom", (preset) => {
+    const workflow = buildNativePromptWorkflow({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3PromptPreset: preset, h3DurationSeconds: 30 }, [], "qwen/qwen3.5-2b");
+    expect(workflow["text-generate"]?.inputs.max_length).toBe(preset === "detailed-cinematic" ? 5760 : 3840);
+  });
+
   it("extends HTTP silence tolerance while the task WebSocket remains connected", () => {
     expect(serviceSilenceLimitMs(90 * 60_000, false, true, false)).toBe(20 * 60_000);
     expect(serviceSilenceLimitMs(10 * 60_000, false, true, false)).toBe(10 * 60_000);
@@ -540,7 +545,7 @@ describe("native Qwen prompt workflow", () => {
     expect(detailed).toContain("Detailed cinematic expansion rule");
     expect(detailed).toContain("DETAILED CINEMATIC EXPANSION GATE");
     expect(detailed).toContain("approximately 500 grounded words");
-    expect(detailed).toContain("fewer than 250 grounded words");
+    expect(detailed).toContain("250 grounded words as an advisory");
     expect(detailed).toContain("the most fully developed timeline, never a concise rewrite");
     expect(detailed).toContain("at least two applicable kinds of scene-grounded execution detail");
     expect(detailed).toContain("about twice the standard timeline coverage");
@@ -599,7 +604,7 @@ describe("native Qwen prompt workflow", () => {
 
     expect(instruction).toContain("flexible causal timeline");
     expect(instruction).toContain("approximately 900 grounded words");
-    expect(instruction).toContain("fewer than 450 grounded words");
+    expect(instruction).toContain("450 grounded words as an advisory");
     expect(instruction).toContain("a fixed beat count or equal-time grid");
     expect(instruction).not.toContain("Plan 6 sequential development beats");
   });

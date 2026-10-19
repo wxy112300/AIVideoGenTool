@@ -710,3 +710,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] =
 export function customNodeDefinition(id: string): CatalogCustomNodeDefinition | undefined {
   return customNodeDefinitions.find((definition) => definition.id === id);
 }
+/** Retired identities remain available for maintenance, never for installation recommendations. */
+export function customNodeMaintenanceDefinitions(): readonly CatalogCustomNodeDefinition[] {
+  return customNodeDefinitions;
+}

@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import { privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
+import { removeSoftwareArtifact } from "./software-update-cleanup.js";
 import { agentNpmLocation, assertSharedPackagesIdle, runAgentNpm, type AgentNpmLocation } from "./strata-agent-npm.js";
 export { installationFailureHint } from "./strata-agent-npm.js";
 
@@ -128,17 +129,9 @@ export async function installAgentSoftware(plan: SharedSoftwarePlan, directory: 
   const work = await privateLocalDirectory(path.join(directory, "installations", randomUUID()));
   await fs.writeFile(path.join(work, ".npmrc-user"), "", { flag: "wx" });
   await fs.writeFile(path.join(work, ".npmrc-global"), "", { flag: "wx" });
-  // Backups are recovery data, not a second active installation or executable search location.
-  for (const item of fresh.items) {
-    signal.throwIfAborted();
-    if (item.previousVersion) await fs.cp(item.target, path.join(work, "previous-packages", item.name), { recursive: true, dereference: false });
-  }
-  for (const bin of ["claude", "cloudcli"]) for (const suffix of ["", ".cmd", ".ps1"]) {
-    const source = path.join(location.prefix, bin + suffix);
-    if (await isFile(source)) { await fs.mkdir(path.join(work, "previous-bins"), { recursive: true }); await fs.copyFile(source, path.join(work, "previous-bins", bin + suffix)); }
-  }
+  // npm owns package replacement. Do not duplicate its dependency tree and binaries.
   await writePrivateJson(path.join(work, "plan.json"), fresh);
-  progress(`共享安装位置：${location.prefix}；安装日志及旧包备份：${work}。不修改 Claude/CC Switch/Codex 配置。`);
+  progress(`共享安装位置：${location.prefix}；安装日志：${work}。不复制旧软件包，不修改 Claude/CC Switch/Codex 配置。`);
   try {
     const artifacts: string[] = [];
     for (const item of fresh.items) {
@@ -178,5 +171,33 @@ export async function installAgentSoftware(plan: SharedSoftwarePlan, directory: 
     await writePrivateJson(path.join(work, "result.json"), { completedAt: new Date().toISOString(), software, cli: identity });
     progress("共享软件准备完成；普通 claude/cloudcli 可复用相同安装，原 provider 未修改。真实 Agent 仍待验收。");
     return { ...software, claudePath: cli };
-  } catch (error) { progress(`安装未完成；请重新检测。已修改软件可能部分生效，旧包备份和日志保留：${work}；未自动恢复/覆盖其他软件。`); throw error; }
+  } catch (error) { progress(`安装未完成；请重新检测并重试标准 npm 安装。已修改软件可能部分生效，日志：${work}；未自动恢复/覆盖其他软件。`); throw error; }
+  finally {
+    for (const item of fresh.items) await removeSoftwareArtifact(directory, path.join(work, `${item.key}.tgz`), progress);
+    await cleanupAgentSoftwareCopies(directory, progress);
+  }
+}
+
+/** Older launcher versions copied entire npm packages. Their plan proves the software scope. */
+export async function cleanupAgentSoftwareCopies(directory: string, log: (message: string) => void) {
+  for (const target of await agentSoftwareCopyTargets(directory)) await removeSoftwareArtifact(directory, target, log);
+}
+export async function agentSoftwareCopyTargets(directory: string): Promise<string[]> {
+  const targets: string[] = [];
+  const root = path.join(directory, "installations");
+  for (const entry of await fs.readdir(root, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || !/^[a-f0-9-]{36}$/iu.test(entry.name)) continue;
+    const work = path.join(root, entry.name), receipt = path.join(work, "plan.json");
+    try {
+      if ((await fs.lstat(receipt)).size > 65536) continue;
+      const plan = JSON.parse(await fs.readFile(receipt, "utf8"));
+      const packages: string[] = [...Object.values(AGENT_SOFTWARE).map(item => item.name), AGENT_NATIVE_CLAUDE.name];
+      if (!Array.isArray(plan.items) || !plan.items.length || !plan.items.every((item: { name: string }) => packages.includes(item.name))) continue;
+      for (const name of ["previous-packages", "previous-bins", "cloud.tgz", "sdk.tgz", "claude.tgz", "native.tgz", ".npm-cache/_cacache", ".npm-cache/_prebuilds", ".node-gyp"]) {
+        const target = path.join(work, name), stat = await fs.lstat(target).catch(() => null);
+        if (stat && !stat.isSymbolicLink()) targets.push(target);
+      }
+    } catch { /* Unknown installation records cannot authorize cleanup. */ }
+  }
+  return targets;
 }

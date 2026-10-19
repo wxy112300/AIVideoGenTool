@@ -9,12 +9,19 @@ import { prepareStrataDownloadCache } from "./strata-download-cache.js";
 import { installStrataGgufPython } from "./strata-gguf-python.js";
 import { STRATA_COMMUNITY_VECTOR } from "../../src/core/strata-uncensored.js";
 import { verifyStrataControlVector } from "./strata-uncensored.js";
+import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-update-cleanup.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
 import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
 const receiptName = "lvs-strata-install.json";
-export function managedStrataDirectory(release: { version: string; revision: string } = STRATA_RELEASES[0]): string {
-  return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", `v${release.version}-${release.revision.slice(0, 8)}`);
+const vectorDirectories = ["data/lvs-control-vectors", "data/experimental-speed-projection"];
+export function managedStrataDirectory(release?: { version: string; revision: string }): string {
+  return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", release ? `v${release.version}-${release.revision.slice(0, 8)}` : "runtime");
+}
+export function isManagedStrataPath(directory: string): boolean {
+  const root = path.resolve(directory), current = path.resolve(managedStrataDirectory());
+  return root.toLowerCase() === current.toLowerCase() ||
+    (path.dirname(root).toLowerCase() === path.dirname(current).toLowerCase() && /^v\d+\.\d+\.\d+(?:\.\d+)?-[a-f0-9]{8}$/iu.test(path.basename(root)));
 }
 export function strataInstalledRelease(root: string, complete = true): typeof STRATA_RELEASES[number] | undefined {
   try {
@@ -25,15 +32,23 @@ export function strataInstalledRelease(root: string, complete = true): typeof ST
   } catch { return undefined; }
 }
 export function resolvedStrataDirectory(settings: Pick<Settings, "strataInstallDirectory">): string {
-  if (settings.strataInstallDirectory?.trim()) return settings.strataInstallDirectory.trim();
+  const selected = settings.strataInstallDirectory?.trim();
+  if (selected && !isManagedStrataPath(selected)) return selected;
+  const current = managedStrataDirectory();
+  if (strataInstalledRelease(current) && existsSync(path.join(current, ".venv", "Scripts", "python.exe"))) return current;
   for (const release of STRATA_RELEASES) {
     const root = managedStrataDirectory(release);
     if (strataInstalledRelease(root) && existsSync(path.join(root, ".venv", "Scripts", "python.exe"))) return root;
   }
-  return managedStrataDirectory();
+  return selected && strataInstalledRelease(selected) ? selected : managedStrataDirectory();
 }
 export async function strataManagedReceipt(root: string, complete = true): Promise<boolean> {
-  return Boolean(strataInstalledRelease(root, complete));
+  try {
+    const stat = await fs.lstat(path.join(root, receiptName));
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) return false;
+    const receipt = JSON.parse(await fs.readFile(path.join(root, receiptName), "utf8"));
+    return receipt.owner === "local-video-studio" && /^[a-f0-9]{40}$/u.test(receipt.revision) && /^[a-f0-9]{64}$/u.test(receipt.engineSha256) && (!complete || Boolean(receipt.installedAt));
+  } catch { return false; }
 }
 interface InstallationRuntime {
   download(url: string, destination: string, settings: Settings, onProgress?: (receivedBytes: number) => void, onLog?: (message: string) => void, totalBytes?: number): Promise<void>;
@@ -68,10 +83,10 @@ export function containsPath(parent: string, child: string): boolean {
 }
 async function checkedUninstallRoot(settings: StrataUninstallSettings, options: StrataUninstallOptions): Promise<string> {
   const root = path.resolve(options.managedDirectory ?? resolvedStrataDirectory(settings));
-  if (!options.managedDirectory && !STRATA_RELEASES.some((release) => pathIdentity(path.resolve(managedStrataDirectory(release))) === pathIdentity(root))) {
+  if (!options.managedDirectory && !isManagedStrataPath(root)) {
     throw new Error("手动安装目录不由应用卸载，原文件未修改。");
   }
-  if (settings.strataInstallDirectory.trim() && pathIdentity(path.resolve(settings.strataInstallDirectory.trim())) !== pathIdentity(root)) {
+  if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && pathIdentity(path.resolve(settings.strataInstallDirectory.trim())) !== pathIdentity(root)) {
     throw new Error("手动安装目录不由应用卸载，原文件未修改。");
   }
   const stat = await fs.lstat(root).catch(() => null);
@@ -103,7 +118,7 @@ export async function uninstallStrataRuntime(settings: StrataUninstallSettings, 
     const root = await checkedUninstallRoot(settings, options);
     log(`卸载 Strata 运行组件：${root}`);
     await fs.rm(root, { recursive: true, force: false });
-    log("Strata 已卸载，共享模型、独立数据目录和旧安装备份保留。");
+    log("Strata 已卸载，共享模型与独立用户数据保留。");
     return { ok: true, message: "Strata 已卸载，共享模型文件保留。", log: logs.join("\n") };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -134,7 +149,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     stage("prepare");
     env = runtime.environment(settings);
     if (process.platform !== "win32") throw new Error("Strata 一键安装目前仅支持 Windows NVIDIA 版本。");
-    if (settings.strataInstallDirectory.trim() && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {
+    if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {
       throw new Error("当前选择的是手动安装目录。清空高级设置中的运行目录后，可使用应用管理安装；原目录不会被修改。");
     }
     const targetStat = await fs.lstat(root).catch(() => null);
@@ -145,6 +160,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     try { await run(python, ["-c", "import sys, venv; assert sys.version_info >= (3,10), 'Python 3.10+ required'"], path.dirname(root)); }
     catch { checkInstallationCancelled(); throw new Error("当前 Python 不支持独立 venv。请在运行时设置中选择标准 Python 3.10+（不要选择 Portable embedded Python）后重试。"); }
     staging = await fs.mkdtemp(path.join(path.dirname(root), ".install-"));
+    await fs.writeFile(path.join(staging, "lvs-strata-stage.json"), JSON.stringify({ owner: "local-video-studio" }));
     log(`获取 Strata v${STRATA_VERSION} 固定源码（不下载模型）`);
     stage("source");
     await run("git.exe", ["init", staging], staging);
@@ -162,9 +178,8 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     try { await (runtime.verifyArchive ?? verifyStrataEngineArchive)(archive); }
     catch (error) {
       checkInstallationCancelled();
-      const invalid = `${archive}.invalid-${Date.now()}`;
-      await renameWithRetry(archive, invalid);
-      log(`校验失败的下载保留在：${invalid}；再次更新将重新下载此引擎包`);
+      await removeSoftwareArtifact(path.dirname(root), archive, log);
+      log("已清理校验失败的引擎包；再次更新将重新下载");
       throw error;
     }
     const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -192,6 +207,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     // A crash during pip must remain app-owned/retryable, but never installed.
     await fs.writeFile(path.join(staging, receiptName), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256 }), "utf8");
     if (await strataManagedReceipt(root, false)) {
+      await preserveSoftwareUserData(root, staging, vectorDirectories);
       const candidate = `${root}.backup-${Date.now()}`;
       await renameWithRetry(root, candidate);
       backup = candidate;
@@ -203,7 +219,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run(python, ["-m", "venv", "--copies", path.join(root, ".venv")], root);
     const isolatedPython = path.join(root, ".venv", "Scripts", "python.exe");
     stage("packages");
-    await run(isolatedPython, ["-m", "pip", "install", "--only-binary=:all:", "-r", path.join(root, "requirements.txt"), "nvidia-cublas==13.0.2.14", "nvidia-cuda-runtime==13.0.96"], root, 1_800_000);
+    await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(root, "requirements.txt"), "nvidia-cublas==13.0.2.14", "nvidia-cuda-runtime==13.0.96"], root, 1_800_000);
     log("检查 Python 包及 CUDA DLL 文件（不加载 GPU）");
     stage("check");
     await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil; import pathlib,sys; p=pathlib.Path(sys.prefix)/'Lib/site-packages/nvidia'; assert list(p.rglob('cublas64_13.dll')) and list(p.rglob('cudart64_13.dll')), 'CUDA DLL files missing'"], root);
@@ -211,22 +227,61 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
     log(`运行组件安装完成：${root}`);
     stage("complete");
-    if (backup) log(`旧安装保留在：${backup}`);
+    // The temporary old copy exists only until installation validation succeeds.
+    if (backup) { await removeSoftwareArtifact(path.dirname(root), backup, log); backup = ""; }
+    await cleanupStrataSoftware(settings, root, log).catch(error => log(`旧软件清理未完成：${String(error)}；新版安装保持可用。`));
     return { ok: true, message: "Strata 运行组件已安装。模型文件齐备后，可通过现有提示词按钮完成首次准备与加载。", log: logs.join("\n") };
   } catch (error) {
     stage("recovery");
     const message = error instanceof Error ? error.message : String(error);
     log(message);
     if (published) {
-      const failed = `${root}.failed-${Date.now()}`;
-      try { await renameWithRetry(root, failed); log(`失败安装保留在：${failed}`); }
-      catch (moveError) { log(`失败安装仍位于 ${root}；移动失败：${String(moveError)}`); }
+      await removeSoftwareArtifact(path.dirname(root), root, log);
     }
     if (backup) await renameWithRetry(backup, root).catch((restoreError) => log(`旧安装保留在 ${backup}；恢复失败：${String(restoreError)}`));
-    if (staging) log(`未完成下载保留在：${staging}`);
+    if (staging) await removeSoftwareArtifact(path.dirname(root), staging, log);
     if (archive) log(`引擎下载缓存保留在：${archive}`);
     return { ok: false, message, log: logs.join("\n") };
   } finally {
     installing = false;
+  }
+}
+
+/** Called after a verified install only; never walk shared models or private Agent/GUI data. */
+async function cleanupStrataSoftware(settings: Settings, root: string, log: (message: string) => void) {
+  const parent = path.dirname(root);
+  for (const entry of await fs.readdir(parent, { withFileTypes: true })) {
+    const candidate = path.join(parent, entry.name);
+    if (!entry.isDirectory() || entry.isSymbolicLink() || candidate === root) continue;
+    if (/^(?:v\d+\.\d+\.\d+(?:\.\d+)?-[a-f0-9]{8}|runtime)(?:\.(?:backup|failed)-\d+)?$/iu.test(entry.name) && await strataManagedReceipt(candidate, false)) {
+      try {
+        await checkedUninstallRoot({ ...settings, strataInstallDirectory: candidate }, { managedDirectory: candidate });
+        await preserveSoftwareUserData(candidate, root, vectorDirectories);
+        await removeSoftwareArtifact(parent, candidate, log);
+      } catch (error) { log(`旧软件未清理：${candidate}；${String(error)}`); }
+    } else if (/^\.install-[a-z0-9]+$/iu.test(entry.name)) {
+      try {
+        const marker = await fs.readFile(path.join(candidate, "lvs-strata-stage.json"), "utf8").catch(() => "{}");
+        let owned = JSON.parse(marker).owner === "local-video-studio";
+        if (!owned) {
+          const config = await fs.readFile(path.join(candidate, ".git", "config"), "utf8").catch(() => "");
+          const head = (await fs.readFile(path.join(candidate, ".git", "HEAD"), "utf8").catch(() => "")).trim();
+          owned = /\[remote "origin"\][^[]*?url\s*=\s*https:\/\/github\.com\/Niko1221\/Strata(?:\.git)?\s*(?:\r?\n|$)/u.test(config) && /^[a-f0-9]{40}$/u.test(head);
+        }
+        if (owned) {
+          await preserveSoftwareUserData(candidate, root, vectorDirectories);
+          await removeSoftwareArtifact(parent, candidate, log);
+        }
+      } catch (error) { log(`旧安装暂存未清理：${candidate}；${String(error)}`); }
+    }
+  }
+  const downloads = path.join(parent, "downloads");
+  for (const entry of await fs.readdir(downloads, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || !/^engine-[a-f0-9]{40}-[a-f0-9]{64}$/iu.test(entry.name)) continue;
+    const directory = path.join(downloads, entry.name);
+    try {
+      const receipt = JSON.parse(await fs.readFile(path.join(directory, "download.json"), "utf8"));
+      if (receipt.owner === "local-video-studio" && entry.name === `engine-${receipt.revision}-${receipt.sha256}`) await removeSoftwareArtifact(parent, directory, log);
+    } catch { /* Do not remove unknown downloads. */ }
   }
 }

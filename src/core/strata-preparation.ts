@@ -1,5 +1,5 @@
 import type { ModelScanProfile, Settings, StrataPreparationStatus, UiLocale } from "../types.js";
-import { QWEN_FLASH_NEXT_MODEL_DIRECTORY, strataModelEntries } from "./catalog/models/strata.js";
+import { QWEN_FLASH_NEXT_MODEL_DIRECTORY, QWEN_FLASH_NEXT_UNSLOTH_DIRECTORY, STRATA_Q4_MODEL_ID, strataModelEntries } from "./catalog/models/strata.js";
 import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
 import { strataUncensoredMode } from "./strata-uncensored.js";
 
@@ -18,16 +18,28 @@ export function strataModelRoot(
 }
 
 /** Read old shared downloads in place; new download guides always use strataModelRoot. */
+export function strataProfileModelRoot(root: string, modelId: string): string {
+  if (!root) return root;
+  return modelId === STRATA_Q4_MODEL_ID
+    ? root.replace(/Qwen3\.8-Flash-Next-GSQ-RCO-GGUF([\\/]*)$/iu, `${QWEN_FLASH_NEXT_UNSLOTH_DIRECTORY}$1`)
+    : root.replace(/Qwen3\.8-Flash-Next-GGUF([\\/]*)$/iu, `${QWEN_FLASH_NEXT_MODEL_DIRECTORY}$1`);
+}
+
 export function strataModelScanRoots(
   settings: Pick<Settings, "strataModelDirectory" | "modelDirectory">,
-  resolvedModelDirectory = settings.modelDirectory
+  resolvedModelDirectory = settings.modelDirectory,
+  modelId = ""
 ): string[] {
-  const canonical = strataModelRoot(settings, resolvedModelDirectory);
+  const existing = strataModelRoot(settings, resolvedModelDirectory);
+  const canonical = strataProfileModelRoot(existing, modelId);
+  // Standalone discovery can remember the Q4 family folder directly, without
+  // a Comfy model root. Its original projector/MTP may still live beside it.
+  const sharedOriginal = strataProfileModelRoot(existing, "");
   if (!canonical) return [];
   const root = resolvedModelDirectory?.trim().replace(/[\\/]+$/u, "");
-  if (!root) return [canonical];
+  if (!root) return [...new Set([canonical, existing, sharedOriginal])];
   const separator = root.includes("\\") || /^[a-z]:/iu.test(root) ? "\\" : "/";
-  return [canonical, `${root}${separator}LLM${separator}strata`];
+  return [...new Set([canonical, existing, sharedOriginal, `${root}${separator}LLM${separator}strata`])];
 }
 
 export function strataPreparationMatchesSettings(

@@ -1,4 +1,5 @@
 import type { CatalogModelEntry } from "../../types.js";
+import { H3_MAX_DURATION_SECONDS, H3_MAX_GENERATED_FRAMES } from "../../../h3-temporal.js";
 import { localeEnUS } from "./locale.en-US.js";
 import { localeZhCN } from "./locale.zh-CN.js";
 import { localeZhTW } from "./locale.zh-TW.js";
@@ -17,8 +18,8 @@ export const minimaxH3Fl2vaTurbo: CatalogModelEntry = {
     capabilities: {
       supportsEndFrame: true,
       supportsVideoExtension: true,
-      maxDurationSeconds: 15,
-      maxGeneratedFrames: 362,
+      maxDurationSeconds: H3_MAX_DURATION_SECONDS,
+      maxGeneratedFrames: H3_MAX_GENERATED_FRAMES,
       resolutions: [360, 480, 540, 720, 768]
     }
   },

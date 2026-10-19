@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, ExtensionQueueTask, HistoryFile, NativeAvContinuationArtifact, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
-import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
-import { queueTaskFromDraft } from "../src/core/queue-task-factory";
+import { createDefaultDraft, createDefaultImageEditDraft, createDefaultState } from "../src/core/defaults";
+import { imageTaskFromDraft, queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { H3_TURBO_V4_LORA } from "../src/core/video-loras";
 import { createQueueExecutor, type QueueExecutorDependencies } from "../electron/queue-executor";
 import { QueueWorkerController } from "../electron/queue-worker";
@@ -326,6 +326,81 @@ function createHarness(
 describe("queue executor runtime gate", () => {
   beforeEach(() => {
     configureMocks();
+  });
+
+  function imageHarness(state: AppState) {
+    const image = imageTaskFromDraft({ ...createDefaultImageEditDraft(), modelId: "qwen-image-2-1", outputCount: 2 },
+      undefined, { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" });
+    state.settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+    state.queue = [image]; state.queueRunning = true;
+    const harness = createHarness(state);
+    harness.deps.requireExistingImageOutput = async () => [{ filename: "fixture.png", subfolder: "Images", type: "output", absolutePath: "C:/output/Images/fixture.png" }];
+    mocks.submitImageTask.mockResolvedValue({ promptId: "image-fixture", clientId: "image-client", nodeTypes: {} });
+    return { ...harness, image };
+  }
+
+  it("awaits prompt-model release before image runtime startup and every image submission", async () => {
+    const h = imageHarness(createDefaultState());
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const release = vi.fn(async () => { await gate; return 1; });
+    h.deps.releasePromptRuntime = release;
+    h.deps.ensureComfyUiReady = vi.fn(async () => undefined);
+    const pending = createQueueExecutor(h.deps)();
+    try {
+      await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+      expect(h.deps.ensureComfyUiReady).not.toHaveBeenCalled();
+      expect(mocks.submitImageTask).not.toHaveBeenCalled();
+    } finally { finish(); await pending; }
+    expect(mocks.submitImageTask).toHaveBeenCalledTimes(2);
+    expect(h.store.get().imageHistory).toHaveLength(1);
+    expect(h.store.get().queue).toHaveLength(0);
+    expect(h.snapshots.some(s => s.queue.some(t => t.stage === "卸载提示词模型并释放显存"))).toBe(true);
+  });
+
+  it.each(["image-first", "video-first"])("shares one prompt release across mixed image/video queue (%s)", async order => {
+    const state = createDefaultState(), h = imageHarness(state), video = fixtureTask(state);
+    state.queue = order === "image-first" ? [h.image, video] : [video, h.image];
+    const release = vi.fn(async () => 1); h.deps.releasePromptRuntime = release;
+    mocks.submitImageTask.mockImplementation(async () => {
+      expect(release).toHaveBeenCalledOnce();
+      return { promptId: "image-fixture", clientId: "image-client", nodeTypes: {} };
+    });
+    await createQueueExecutor(h.deps)();
+    expect(release).toHaveBeenCalledOnce();
+    expect(mocks.submitImageTask).toHaveBeenCalledTimes(2);
+    expect(mocks.submitTask).toHaveBeenCalledOnce();
+    expect(h.store.get().queue).toHaveLength(0);
+  });
+
+  it("fails an image task without starting ComfyUI when Strata release cannot be confirmed", async () => {
+    const h = imageHarness(createDefaultState());
+    h.deps.releasePromptRuntime = vi.fn(async () => { throw new Error("Strata stop not confirmed"); });
+    h.deps.ensureComfyUiReady = vi.fn(async () => undefined);
+    await createQueueExecutor(h.deps)();
+    expect(h.deps.ensureComfyUiReady).not.toHaveBeenCalled();
+    expect(mocks.submitImageTask).not.toHaveBeenCalled();
+    expect(h.store.get().queue[0]).toMatchObject({ status: "failed", error: "Strata stop not confirmed" });
+    expect(h.store.get().imageHistory).toHaveLength(0);
+    expect(h.worker.activeController).toBeNull();
+  });
+
+  it("does not start an image runtime when cancelled while prompt-model release is settling", async () => {
+    const h = imageHarness(createDefaultState());
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const release = vi.fn(async () => { await gate; return 1; });
+    h.deps.releasePromptRuntime = release;
+    h.deps.ensureComfyUiReady = vi.fn(async () => undefined);
+    const pending = createQueueExecutor(h.deps)();
+    try {
+      await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+      h.worker.abort(new Error("cancel during handoff"));
+    } finally { finish(); await pending; }
+    expect(h.deps.ensureComfyUiReady).not.toHaveBeenCalled();
+    expect(mocks.submitImageTask).not.toHaveBeenCalled();
+    expect(h.store.get().queue[0]?.status).toBe("cancelled");
+    expect(h.worker.activeController).toBeNull();
   });
 
   it("completes one task, records history, and closes the queue lifecycle", async () => {

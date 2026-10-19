@@ -5,20 +5,22 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults.js";
 import { STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_REVISION, STRATA_SOURCE_FILES, STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
-import { strataModelEntries } from "../src/core/catalog/models/strata.js";
+import { strataModelEntries, STRATA_Q4_MODEL, STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
 import { STRATA_MTP_ASSET } from "../src/core/catalog/models/strata.js";
 import { STRATA_MTP_CJK_VOCAB } from "../electron/services/strata-mtp.js";
 import { strataModelRoot } from "../src/core/strata-preparation.js";
 import { buildStrataRuntimeConfig, findPreparedStrataRuntime, prepareStrataModelRuntime, validatePreparedStrataRuntime, verifyStrataAsset, type StrataModelPreparationRuntime } from "../electron/services/strata-model-preparation.js";
 import { prepareStrataLaunch } from "../electron/services/strata-service.js";
-import { strataFixturePolicy as policy, writeStrataPackFixture } from "./helpers/strata-pack-fixture.js";
+import { strataFixturePolicy as policy, writeStrataPackFixture, writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
+import { managedStrataDirectory } from "../electron/services/strata-installation.js";
 
 const roots: string[] = [];
 const originalMtp = { ...STRATA_MTP_ASSET };
 const originalVocab = { ...STRATA_MTP_CJK_VOCAB };
 afterEach(async () => {
+  vi.unstubAllEnvs();
   Object.assign(STRATA_MTP_ASSET, originalMtp); Object.assign(STRATA_MTP_CJK_VOCAB, originalVocab);
-  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components[3].installGuide!, { bytes: originalMtp.bytes, sha256: originalMtp.sha256 });
+  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!, { bytes: originalMtp.bytes, sha256: originalMtp.sha256 });
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 async function rootFixture() { const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-pack-")); roots.push(root); return root; }
@@ -58,7 +60,7 @@ async function fixture(index = 0) {
       await fs.writeFile(path.join(out, "dense.txt"), Array.from({ length: 29 }, (_, i) => `tensor${i} f32 1 1 ${i} 1`).join("\n"));
       return "CPU MTP complete";
     }
-    const output = args[args.indexOf("--out") + 1]; await writeStrataPackFixture(output); return "fixture pack complete";
+    const output = args[args.indexOf("--out") + 1]; await writeStrataPackFixture(output, entry.id); return "fixture pack complete";
   });
   const runtime = { run, inspect, verifyAsset, dataDirectory: data };
   const prepare = (signal?: AbortSignal) => prepareStrataModelRuntime(settings, entry.id, policy, runtime, { signal });
@@ -66,6 +68,61 @@ async function fixture(index = 0) {
 }
 
 describe("Strata CPU preparation and config", () => {
+  it("reuses a verified same-revision pack when its versioned managed software path becomes the shared runtime", async () => {
+    const root = await rootFixture(); vi.stubEnv("LOCALAPPDATA", root);
+    const former = managedStrataDirectory(STRATA_RELEASES[0]), current = managedStrataDirectory(), config = path.join(root, "pack", "runtime.json");
+    await writeStrataPreparedFixture(former, config);
+    const receipt = await fs.readFile(path.join(root, "pack", "lvs-strata-model.json"), "utf8");
+    await expect(validatePreparedStrataRuntime(config, current)).rejects.toThrow("不一致");
+    expect(await validatePreparedStrataRuntime(config, current, { upgradeLegacyConfig: true })).toBe("strata/qwen3.8-flash-next-iq3_xxs");
+    expect(JSON.parse(await fs.readFile(config, "utf8")).cwd).toBe(current);
+    expect(await fs.readFile(path.join(root, "pack", "lvs-strata-model.json"), "utf8")).toBe(receipt);
+    const tampered = JSON.parse(await fs.readFile(config, "utf8")); tampered.args.push("--unverified");
+    await fs.writeFile(config, JSON.stringify(tampered));
+    await expect(validatePreparedStrataRuntime(config, current, { upgradeLegacyConfig: true })).rejects.toThrow("不一致");
+  });
+  it("prepares all Q4 shards with compatibility conversion, distinct revision and the actual projector", async () => {
+    const f = await fixture(2), before = await Promise.all(f.assets.map(filename => fs.readFile(filename)));
+    const result = await f.prepare();
+    expect(f.entry.id).toBe(STRATA_Q4_MODEL_ID);
+    expect(f.verifyAsset).toHaveBeenCalledTimes(5);
+    const call = f.run.mock.calls.find(([, args]) => args.some(arg => arg.endsWith("iq_pack.py")))!;
+    expect(call[1]).toContain("--compat-bf16");
+    expect(call[1]).not.toContain("--experts-bin");
+    const receipt = JSON.parse(await fs.readFile(result.receiptPath, "utf8"));
+    expect(receipt.modelRevision).toBe(STRATA_Q4_MODEL.revision);
+    expect(receipt.assets).toHaveLength(5);
+    const config = JSON.parse(await fs.readFile(result.configPath, "utf8"));
+    expect(config.vision.mmproj).toBe(f.assets[4]);
+    expect(config.args).toContain("--mmap-experts");
+    expect(config.args).not.toContain("--resident-experts");
+    await expect(validatePreparedStrataRuntime(result.configPath, f.install)).resolves.toBe(f.entry.id);
+    const plan = await prepareStrataLaunch(f.settings, result.configPath, { adaptive: true,
+      readResources: async () => ({ memoryAvailableBytes: 100 * 1024 ** 3, commitAvailableBytes: 130 * 1024 ** 3,
+        vramAvailableBytes: 22 * 1024 ** 3, vramTotalBytes: 24 * 1024 ** 3 }) });
+    expect(plan.resourcePlan?.hostMode).toBe("arena");
+    const session = JSON.parse(await fs.readFile(plan.temporaryConfig!, "utf8"));
+    expect(session.args).not.toContain("--mmap-experts");
+    expect(session.args).not.toContain("--resident-budget-gib");
+    expect(await Promise.all(f.assets.map(filename => fs.readFile(filename)))).toEqual(before);
+    await fs.appendFile(path.join(result.packDirectory, "compat-bf16.json"), "changed");
+    await expect(validatePreparedStrataRuntime(result.configPath, f.install)).rejects.toThrow("pack/tokenizer 在准备后改变");
+  });
+  it("rejects a missing Q4 shard or compatibility report before publishing a runtime", async () => {
+    const f = await fixture(2);
+    await fs.rm(f.assets[3]);
+    await expect(f.prepare()).rejects.toThrow("尚未完整下载");
+    expect(f.run).not.toHaveBeenCalled();
+    await fs.writeFile(f.assets[3], "GGUF synthetic source");
+    f.run.mockImplementation(async (_exe, args) => {
+      if (args.includes("-c")) return '{"pleShard":1}';
+      await writeStrataPackFixture(args[args.indexOf("--out") + 1]);
+      return "missing compatibility reports";
+    });
+    await expect(f.prepare()).rejects.toThrow("conversions.json");
+    const output = path.join(f.data, (await fs.readdir(f.data))[0]);
+    expect(await fs.stat(path.join(output, "lvs-strata-model.json")).catch(() => null)).toBeNull();
+  });
   it("binds prepared cache to the actual installed release, not the newly recommended version", async () => {
     const f = await fixture(), old = STRATA_RELEASES[1];
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
@@ -273,7 +330,7 @@ async function addMtp(f: Awaited<ReturnType<typeof fixture>>) {
   await fs.writeFile(filename, body);
   STRATA_MTP_ASSET.bytes = body.length;
   STRATA_MTP_ASSET.sha256 = createHash("sha256").update(body).digest("hex");
-  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components[3].installGuide!,
+  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!,
     { bytes: STRATA_MTP_ASSET.bytes, sha256: STRATA_MTP_ASSET.sha256 });
   const vocab = Buffer.alloc(STRATA_MTP_CJK_VOCAB.tokens * 4);
   STRATA_MTP_CJK_VOCAB.sha256 = createHash("sha256").update(vocab).digest("hex");
@@ -310,19 +367,19 @@ describe("manually downloaded Strata MTP", () => {
     await fs.appendFile(path.join(mtpDir, "dense.bin"), "changed");
     await expect(validatePreparedStrataRuntime(prepared.configPath, f.install)).rejects.toThrow("MTP 运行文件");
   });
-  it("adds MTP to an intact prepared pack without rehashing/repacking the main model", async () => {
-    const f = await fixture();
+  it.each([0,2])("adds MTP to intact quant %s without rehashing/repacking the main model", async index => {
+    const f = await fixture(index);
     const guides = f.entry.scan!.components.filter((component) => !component.optional).map((component) => component.installGuide!);
     const bytes = guides.map((guide) => guide.bytes);
     try {
       for (const [i, guide] of guides.entries()) guide.bytes = (await fs.stat(f.assets[i])).size;
-      const prepared = await f.prepare(); await addMtp(f);
+      const prepared = await f.prepare(); const baseCalls = f.run.mock.calls.length; await addMtp(f);
       const options = { dataDirectory: f.data, run: f.run };
       expect(await findPreparedStrataRuntime(f.settings, f.entry.id, policy, options)).toBe(prepared.configPath);
-      expect(f.verifyAsset).toHaveBeenCalledTimes(3); // Only the original base preparation.
-      expect(f.run).toHaveBeenCalledTimes(3); // PLE, base pack, then one MTP conversion.
+      expect(f.verifyAsset).toHaveBeenCalledTimes(f.assets.length); // Only the original base preparation.
+      expect(f.run).toHaveBeenCalledTimes(baseCalls + 1); // Add only one MTP conversion.
       expect(await findPreparedStrataRuntime(f.settings, f.entry.id, policy, options)).toBe(prepared.configPath);
-      expect(f.run).toHaveBeenCalledTimes(3);
+      expect(f.run).toHaveBeenCalledTimes(baseCalls + 1);
       await expect(validatePreparedStrataRuntime(prepared.configPath, f.install)).resolves.toBe(f.entry.id);
     } finally { guides.forEach((guide, i) => { guide.bytes = bytes[i]; }); }
   });

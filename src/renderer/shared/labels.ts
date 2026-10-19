@@ -21,3 +21,8 @@ export function modelName(id: string, locale: UiLocale = "zh-CN"): string {
   const catalogLocale = modelCatalog.localized(id, locale);
   return catalogLocale?.shortName ?? catalogLocale?.name ?? id;
 }
+
+/** Keep the existing action/block reason, then identify the next selected model. */
+export function promptModelActionTitle(title: string, modelId: string, locale: UiLocale = "zh-CN", showModel = true): string {
+  return showModel && modelId ? `${title}\n${modelName(modelId, locale)}` : title;
+}

@@ -5,6 +5,7 @@ import type {
   H3ReferenceSlot
 } from "../types.js";
 import { videoPromptForLoras } from "./video-loras.js";
+import { estimatePromptTextTokens } from "./prompt-token-estimate.js";
 import {
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -100,43 +101,8 @@ function qwenImageVisualTokens(width: number, height: number): number {
   );
 }
 
-function estimateTextRunTokens(length: number): number {
-  return length > 0 ? Math.ceil(length / 4) : 0;
-}
-
-/**
- * Estimate raw Qwen BPE length without loading the user's ComfyUI tokenizer.
- * CJK characters and punctuation are kept conservative; Latin/numeric runs
- * use a four-character-per-token approximation. This is deliberately exposed
- * as an estimate rather than presented as cloud billing usage.
- */
-export function estimateH3TextTokens(text: string): number {
-  let tokens = 0;
-  let latinRunLength = 0;
-  const flushLatinRun = (): void => {
-    tokens += estimateTextRunTokens(latinRunLength);
-    latinRunLength = 0;
-  };
-  for (const character of text.trim()) {
-    if (/\s/u.test(character)) {
-      flushLatinRun();
-      continue;
-    }
-    if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(character)) {
-      flushLatinRun();
-      tokens += 1;
-      continue;
-    }
-    if (/[\p{Letter}\p{Number}]/u.test(character)) {
-      latinRunLength += 1;
-      continue;
-    }
-    flushLatinRun();
-    tokens += 1;
-  }
-  flushLatinRun();
-  return tokens;
-}
+// Keep the public H3 name for existing callers; both editors share one heuristic.
+export const estimateH3TextTokens = estimatePromptTextTokens;
 
 function imageBlockTokens(
   label: string,

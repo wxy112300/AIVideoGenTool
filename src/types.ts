@@ -935,7 +935,7 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
   modelProfile: LtxExtensionModelProfile;
-  maxGeneratedFrames: 49 | 65 | 362;
+  maxGeneratedFrames: number;
   overlapFrames: 16 | 22;
   unloadBetweenStages: true;
 }

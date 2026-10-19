@@ -6,15 +6,22 @@ import type { StrataChatRequest, StrataContentPart } from "./strata-service.js";
 import { STRATA_NON_THINKING_SAMPLING } from "./strata-service.js";
 import { strataH3InstructionParts } from "../../src/core/prompts/h3/strata.js";
 import { missingH3SourceTimepoints } from "../../src/core/h3-timing.js";
+import { h3TimelineDurationForRequest } from "../../src/core/h3-auto-prompter.js";
 import { unwrapH3ModelOutput } from "../../src/core/h3-prompt.js";
 import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
 import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
 import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/strata-uncensored.js";
+import { isQwenImage21TargetModel } from "../../src/core/image-prompt.js";
+import { strataQwenImage21InstructionParts, STRATA_QWEN_IMAGE21_PROFILE } from "../../src/core/prompts/qwen-image-2-1/strata.js";
 
 /** Completed, healthy inference whose text fails product validation; not a transport/resource failure. */
 export class StrataPromptValidationError extends Error { override name = "StrataPromptValidationError"; }
+function usesQwenImage21Profile(request: EnhanceRequest): boolean {
+  return request.mode === "image-edit" && (!request.promptStrategy || request.promptStrategy === "rewrite")
+    && isQwenImage21TargetModel(request.imageTargetModelId);
+}
 function validatedOutput(output: string, request: EnhanceRequest): string {
   try { return normalizeMultimodalPromptOutput(output, request); }
   catch (error) { throw new StrataPromptValidationError(error instanceof Error ? error.message : String(error)); }
@@ -48,16 +55,18 @@ export async function buildStrataPromptRequest(
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
   if (paths.length > 12) throw new Error("Strata 每次最多接收 12 张参考图。");
   // Adopt only the bounded, explicitly authored single-picture path evaluated on real weights.
-  // Other modes, Extend, auto seeds, image editing and targeted revisions keep their existing Pack.
+  // Other H3 modes, Extend, auto seeds and targeted revisions keep their existing Pack.
   const profile = evaluation ?? (request.mode === "h3-vision" && request.h3PromptMode === "I2VA"
     && request.h3PromptPreset === "detailed-cinematic" && paths.length === 1 && request.prompt.trim()
     && !request.extensionSource && !request.promptStrategy
     ? { layout: "structured" as const, reasoning: { effort: "medium" as const, budgetTokens: 2048 } } : undefined);
-  const parts = profile?.layout === "structured"
-    ? strataH3InstructionParts(request, settings, profile.dossier, multimodalPromptTargetLanguage(request, settings)) : undefined;
+  const imageParts = usesQwenImage21Profile(request)
+    ? strataQwenImage21InstructionParts(request) : undefined;
+  const parts = imageParts ?? (profile?.layout === "structured"
+    ? strataH3InstructionParts(request, settings, profile.dossier, multimodalPromptTargetLanguage(request, settings)) : undefined);
   const instruction = parts ? parts.sourceData : multimodalPromptInstruction(request, settings);
   const maxTokens = request.mode === "image-edit" ? 4096 : 8192;
-  const content: StrataContentPart[] = [{ type: "text", text: instruction }];
+  const content: StrataContentPart[] = imageParts ? [] : [{ type: "text", text: instruction }];
   let encodedBytes = instruction.length;
   for (const filename of paths) {
     const image = await encodeImage(filename, signal);
@@ -65,6 +74,7 @@ export async function buildStrataPromptRequest(
     if (encodedBytes > 48 * 1024 ** 2) throw new Error("参考图合计超过请求大小限制，请缩小图片后重试。");
     content.push(image);
   }
+  if (imageParts) content.push({ type: "text", text: instruction });
   if (parts) content.push({ type: "text", text: parts.task });
   signal.throwIfAborted();
   return { modelId: settings.promptModelId, messages: [
@@ -82,7 +92,8 @@ export async function enhancePromptWithStrata(
   signal: AbortSignal, onProgress: PromptProgressReporter,
   beforeChat?: (chat: StrataChatRequest) => Promise<void>
 ): Promise<string> {
-  onProgress("uploading", null, "正在准备参考图");
+  onProgress("uploading", null, usesQwenImage21Profile(request)
+    ? `${STRATA_QWEN_IMAGE21_PROFILE} · 正在准备参考图` : "正在准备参考图");
   return withStrataReferenceMedia(request, signal, async (prepared) => {
     const chat = await buildStrataPromptRequest(prepared, settings, signal);
     await beforeChat?.(chat);
@@ -104,7 +115,7 @@ export async function enhancePromptWithStrata(
     let result = validatedOutput(output, request);
     if (chat.reasoning && request.h3PromptPreset === "detailed-cinematic") {
       const mode = h3PromptModeForRequest(request), duration = request.h3DurationSeconds ?? 5;
-      const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
+      const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration, h3TimelineDurationForRequest(request));
       if (missing.length) {
         onProgress("generating", null, `正在补全明确时间点 ${missing.join("、")} 秒 · 最多一次纠正`);
         const repair: StrataChatRequest = { ...chat, reasoning: undefined, temperature: STRATA_NON_THINKING_SAMPLING.temperature,
@@ -115,7 +126,7 @@ export async function enhancePromptWithStrata(
           onProgress("generating", null, `纠正调用输出预算自动调整为 ${tokens} tokens · 含完整原稿与候选`));
         signal.throwIfAborted();
         result = validatedOutput(output, request);
-        const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration);
+        const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration, h3TimelineDurationForRequest(request));
         if (remaining.length) throw new StrataPromptValidationError(`影视细节扩写仍缺少明确时间点 ${remaining.join("、")} 秒；一次纠正后未通过，原提示词保持不变。`);
       }
     }

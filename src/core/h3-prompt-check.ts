@@ -1,5 +1,6 @@
 import type { H3PromptMode, VideoLoraSelection } from "../types.js";
 import { inferH3PromptMode } from "./h3-prompt.js";
+import { parseH3Timecode } from "./h3-temporal.js";
 import {
   promptContainsVideoLoraTrigger,
   videoLoraDefinition
@@ -66,13 +67,13 @@ function checkShotTimestamps(prompt: string): boolean {
   const shotBlocks = [...prompt.matchAll(/\[Shot\s+(\d+)\][\s\S]*?(?=\[Shot\s+\d+\]|$)/giu)];
   const hasTimestamp = shotBlocks
     .filter((match) => Number(match[1]) >= 2)
-    .every((match) => /\bAt\s+\d{2}:\d{2}(?:\.\d{3})?/u.test(match[0]));
+    .every((match) => parseH3Timecode(match[0].match(/\bAt\s+(\d{1,2}:\d{2}(?:\.\d{1,3})?)/u)?.[1] ?? "") !== undefined);
   if (!hasTimestamp) return false;
   const timestamps = shotBlocks
-    .map((match) => match[0].match(/\bAt\s+(\d{2}):(\d{2})(?:\.(\d{3}))?/u))
+    .map((match) => match[0].match(/\bAt\s+(\d{1,2}:\d{2}(?:\.\d{1,3})?)/u))
     .filter((match): match is RegExpMatchArray => Boolean(match))
-    .map((match) => Number(match[1]) * 60_000 + Number(match[2]) * 1_000 + Number(match[3] ?? 0));
-  return timestamps.every((value, index) => index === 0 || value > timestamps[index - 1]!);
+    .map((match) => parseH3Timecode(match[1]!));
+  return timestamps.every((value, index) => value !== undefined && (index === 0 || value > timestamps[index - 1]!));
 }
 
 function firstShotHasTimestamp(prompt: string): boolean {
@@ -102,10 +103,11 @@ function sectionsInOrder(prompt: string, sections: readonly string[]): boolean {
 
 function timestampsOutsideDuration(prompt: string, durationSeconds?: number): string[] {
   if (!Number.isFinite(durationSeconds) || (durationSeconds ?? 0) <= 0) return [];
-  return [...prompt.matchAll(/\bAt\s+(\d{2}):(\d{2})\.(\d{3})/giu)]
-    .filter((match) => Number(match[2]) >= 60 || (
-      Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 1000
-    ) > durationSeconds! + 0.001)
+  return [...prompt.matchAll(/\bAt\s+(\d{1,2}:\d{2}(?:\.\d{1,3})?)/giu)]
+    .filter((match) => {
+      const seconds = parseH3Timecode(match[1]!);
+      return seconds === undefined || seconds > durationSeconds! + 0.001;
+    })
     .map((match) => match[0]);
 }
 

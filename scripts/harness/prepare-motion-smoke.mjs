@@ -9,6 +9,8 @@ if (options.help) {
   process.exit(0);
 }
 let client, taskId;
+const duration = Number(process.env.LVS_SMOKE_DURATION ?? 1);
+assert.ok(Number.isFinite(duration) && duration >= 1 && duration <= 30, "LVS_SMOKE_DURATION must be within 1-30 seconds");
 const report = { ok: false, evidence: "real-motion-context-ui", focusEmulation: true, generationVerified: false };
 try {
   client = await connectApp(options);
@@ -42,7 +44,7 @@ try {
     Boolean, options.timeout, "Source metadata");
   await client.evaluate("document.querySelector('#prompt-input').focus();document.querySelector('#prompt-input').select()");
   await client.send("Input.insertText", { text: "The same red balloon continues rising gently above the green field. Preserve the camera and light; continue the breeze, no speech or music." });
-  await client.evaluate("(()=>{const e=document.querySelector('#duration-number');e.value='1';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await client.evaluate(`(()=>{const input=document.querySelector('#duration-number');input.value=${JSON.stringify(String(duration))};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await pollUntil(() => client.evaluate("!document.querySelector('#enqueue').disabled"),
     Boolean, options.timeout, "Input recovery");
   const draft = await client.evaluate("window.studio.getState().then(s=>s.draft)");
@@ -59,7 +61,7 @@ try {
   const task = await client.evaluate(`window.studio.getState().then(s=>s.queue.find(t=>t.id===${JSON.stringify(taskId)}))`);
   assert.equal(task.taskType, "extension");
   assert.equal(task.modelId, "minimax_h3_ref2va");
-  assert.equal(task.duration, 1);
+  assert.equal(task.duration, duration);
   assert.equal(task.sourceVideoPath, draft.sourceVideoPath);
   assert.ok(task.sourceAssetId && task.sourceVersionId, "History continuation must retain both source IDs");
   assert.equal(task.sourceVersionId, draft.sourceVersionId);
@@ -68,7 +70,9 @@ try {
   Object.assign(report, { ok: true, taskId, recoveredViaHistory: true, actualButtonClicked: true,
     sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
     sourceVideoDuration, trimEndSeconds: task.trimEndSeconds, duration: task.duration,
-    spectrumMode: task.spectrumMode, workflow: path.basename(task.workflowPath), pixelContext: true });
+    spectrumMode: task.spectrumMode, workflow: path.basename(task.workflowPath), pixelContext: true,
+    maxGeneratedFrames: task.maxGeneratedFrames,
+    sampledFrameLabel: await client.evaluate("document.querySelector('#duration-frames').textContent") });
 } catch (error) {
   Object.assign(report, { taskId, error: error.message });
   process.exitCode = 1;

@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { planStrataResources, strataResourcePressure } from "../src/core/strata-resource-policy.js";
+import { applyStrataResourcePlan, planStrataResources, strataResourcePressure } from "../src/core/strata-resource-policy.js";
+import { STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
 import { AgentResourcePressure } from "../src/core/strata-agent-resources.js";
 import { FileReadResourcePressure } from "../src/core/strata-residency-pressure.js";
 const GiB = 1024 ** 3;
 const sample = (ram: number, commit = ram, free = 21.5) => ({ memoryAvailableBytes: ram * GiB,
   commitAvailableBytes: commit * GiB, vramAvailableBytes: free * GiB, vramTotalBytes: 24 * GiB });
 describe("Strata available-resource admission", () => {
+  it("budgets Q4 independently while retaining physical/commit/VRAM protections", () => {
+    const options = { modelId: STRATA_Q4_MODEL_ID, allowFileReadFallback: true };
+    const full = planStrataResources(sample(100,130),5120,options);
+    expect(full.hostMode).toBe("arena");
+    expect(full.requiredMemoryBytes).toBeGreaterThan(80 * GiB);
+    expect(full.requiredCommitBytes).toBeGreaterThan(100 * GiB);
+    const bounded = planStrataResources(sample(48,80),5120,options);
+    expect(bounded).toMatchObject({ hostMode: "resident", residentBudgetGiB: 32 });
+    expect(bounded.requiredCommitBytes).toBeGreaterThan(42 * GiB);
+    expect(applyStrataResourcePlan(["--mmap-experts", "--max-context", "32768"],bounded,STRATA_Q4_MODEL_ID))
+      .toEqual(["--max-context","32768","--resident-budget-gib","32"]);
+    expect(applyStrataResourcePlan(["--mmap-experts"],full,STRATA_Q4_MODEL_ID)).toEqual([]);
+    const long = planStrataResources(sample(48,80),5120,{...options,contextTokens:262144});
+    expect(long.residentBudgetGiB).toBeLessThan(bounded.residentBudgetGiB!);
+    expect(()=>planStrataResources(sample(48,30),5120,{...options,commitTrial:true})).toThrow("提交余量");
+    expect(()=>planStrataResources(sample(20,130),5120,options)).toThrow("内存");
+    expect(()=>planStrataResources(sample(100,130,19),5120,options)).toThrow("空闲显存");
+    expect(()=>planStrataResources({...sample(100,130),commitAvailableBytes:null},5120,options)).toThrow("无法确认");
+  });
   it("allows H3 file cache only in the right phase with a larger physical safety floor", () => {
     let now = 0; const p = new FileReadResourcePressure(() => now);
     expect(p.check(sample(2.5,10,4))).toContain("3GiB");

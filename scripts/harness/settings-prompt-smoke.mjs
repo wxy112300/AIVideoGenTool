@@ -15,6 +15,9 @@ const directory = path.resolve(args.shift() || "");
 const audit = args.includes("--audit");
 const resident = args.includes("--resident");
 const history = args.includes("--history");
+const duration = process.env.LVS_SMOKE_DURATION ? Number(process.env.LVS_SMOKE_DURATION) : null;
+const preset = process.env.LVS_SMOKE_PROMPT_PRESET;
+assert.ok(duration === null || (Number.isFinite(duration) && duration >= 1 && duration <= 30), "LVS_SMOKE_DURATION must be 1-30 seconds");
 assert.ok(!(resident && history), "Choose one bounded scenario");
 const options = parseAppHarnessArgs(["inspect", ...args.filter(v => !["--audit", "--resident", "--history"].includes(v))]);
 const baselinePath = path.join(directory, "settings-prompt-baseline.json");
@@ -76,7 +79,7 @@ try {
       const s=await window.studio.getState();
       const versions=[...s.draft.promptVersions,{...s.draft.promptVersions[0],id:crypto.randomUUID(),label:'6B preserved version',text:'A red balloon rises slowly. Static camera. No speech or music.'}];
       await window.studio.saveDraft({...s.draft,inputMode:'video',modelId:'minimax_h3_ref2va',spectrumMode:'off',spectrumModeUserSet:false,seed:6302,promptVersions:versions,activePromptVersion:1});
-      await window.studio.saveDraft({...s.draft,inputMode:'image',seed:6301,promptVersions:versions,activePromptVersion:1});
+      await window.studio.saveDraft({...s.draft,inputMode:'image',seed:6301,promptVersions:versions,activePromptVersion:1,...${JSON.stringify(duration === null ? {} : { duration })}});
     })()`);
     await client.send("Page.reload");
     await pollUntil(() => client.evaluate("!!window.studio && !!document.querySelector('button[data-page=settings]')"), Boolean, options.timeout, "Renderer ready");
@@ -126,7 +129,18 @@ try {
     assert.deepEqual(content(await state()), beforeEmpty);
     assert.equal((await logs()).filter(r => r.event === "enhance-started").length, operationsBefore);
     report.missingInputBlocked = true;
-    const text = "A red balloon rises slowly above a quiet green field. Static camera, soft daylight. A gentle breeze is audible. No speech or music.";
+    if (preset) {
+      const choices = await client.evaluate("[...document.querySelector('#prompt-enhance-mode').options].filter(option=>!option.disabled).map(option=>option.value)");
+      assert.ok(choices.includes(preset), "Requested preset must be enabled");
+      await client.evaluate("document.querySelector('#prompt-enhance-mode').focus()");
+      for (const key of ["Home", ...Array(choices.indexOf(preset)).fill("ArrowDown"), "Enter"]) {
+        const code = { Home: 36, ArrowDown: 40, Enter: 13 }[key];
+        await client.send("Input.dispatchKeyEvent", { type: "keyDown", key, windowsVirtualKeyCode: code });
+        await client.send("Input.dispatchKeyEvent", { type: "keyUp", key, windowsVirtualKeyCode: code });
+      }
+      assert.equal(await client.evaluate("document.querySelector('#prompt-enhance-mode').value"), preset);
+    }
+    const text = process.env.LVS_SMOKE_PROMPT_TEXT || "A red balloon rises slowly above a quiet green field. Static camera, soft daylight. A gentle breeze is audible. No speech or music.";
     await type(text);
     const beforeEnhance = await pollUntil(state, s => s.draft.promptVersions[s.draft.activePromptVersion].text === text, options.timeout, "Recovered prompt saved");
     await ui.click("#enhance-prompt");
@@ -135,6 +149,8 @@ try {
     assert.equal(operation.meta.promptModelId, baseline.target);
     assert.equal(operation.meta.promptBackend, promptModelBackend(baseline.target));
     assert.equal(operation.meta.modelId, beforeEnhance.draft.modelId, "Request modelId means generation model, not Prompt backend");
+    if (duration !== null) assert.equal(operation.meta.durationSeconds, duration);
+    report.request = { duration: operation.meta.durationSeconds, preset: preset ?? "default" };
     report.operation = { operationId: operation.meta.operationId, promptModelId: operation.meta.promptModelId, promptBackend: operation.meta.promptBackend, generationModelId: operation.meta.modelId };
     report.actualEnhanceClicked = true;
     report.savedModelUsedOnNextRequest = true;

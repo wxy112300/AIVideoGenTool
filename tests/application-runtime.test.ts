@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDefaultState } from "../src/core/defaults";
+import { createDefaultImageEditDraft, createDefaultState } from "../src/core/defaults";
+import { imageTaskFromDraft } from "../src/core/queue-task-factory";
 import type { AppState, Settings } from "../src/types";
 import { createStudioEventBus } from "../electron/services/studio-event-bus";
 import {
@@ -142,6 +143,37 @@ function runtimeFixture() {
 }
 
 describe("ApplicationRuntime", () => {
+  it("hands retained Strata from image prompt assistance to an image queue before Comfy startup", async () => {
+    const current = runtimeFixture();
+    const owner = new StrataRuntimeOwner({ run: vi.fn(), isResourcesBusy: () => false });
+    let pid: number | null = 12345;
+    vi.spyOn(owner, "snapshot").mockImplementation(() => ({ phase: pid ? "ready" : "stopped", pid,
+      port: pid ? 43127 : null, modelLoaded: Boolean(pid), message: "fixture", log: "" }));
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const stop = vi.spyOn(owner, "stop").mockImplementation(async () => { await gate; pid = null; return owner.snapshot(); });
+    const ensure = vi.fn(async () => { expect(pid).toBeNull(); throw new Error("fixture stops before GPU load"); });
+    current.dependencies.queue!.runtime!.ensureComfyUiReady = ensure;
+    const runtime = new ApplicationRuntime({ ...current.dependencies, strataRuntime: owner });
+    const context = await runtime.start();
+    await current.dependencies.store.update(s => {
+      s.settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+      s.queue = [imageTaskFromDraft({ ...createDefaultImageEditDraft(), modelId: "qwen-image-2-1" }, undefined,
+        { root: "C:/Studio/output", directory: "C:/Studio/output/Images", subfolder: "Images" })];
+    });
+    current.dependencies.promptRuntimeManager.strataService("ready", 43127, "fixture resident");
+    current.dependencies.promptRuntimeManager.setModel("resident", "strata/qwen3.8-flash-next-iq3_xxs");
+    try {
+      await context.queue.control.resumeQueue(false);
+      await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
+      expect(ensure).not.toHaveBeenCalled();
+      finish();
+      await context.queue.runningWorker;
+      expect(pid).toBeNull(); expect(ensure).toHaveBeenCalledOnce();
+      expect(current.dependencies.promptRuntimeManager.snapshot().service).toMatchObject({ phase: "stopped" });
+      expect(current.dependencies.store.get().queue[0]).toMatchObject({ status: "failed", error: "fixture stops before GPU load" });
+    } finally { finish(); await context.queue.runningWorker; await runtime.stop(); vi.restoreAllMocks(); }
+  });
   it("aborts the actual admin Strata install context on exit and awaits installer recovery", async () => {
     const current = runtimeFixture();
     const runtime = new ApplicationRuntime(current.dependencies);

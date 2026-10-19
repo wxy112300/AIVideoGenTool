@@ -336,8 +336,8 @@ export function mountImageEditController(
         imageEditPresetText: context.getState()?.settings.imagePromptPresets[enhanceMode] ?? "",
         imagePaths: pictures.map(imageReferenceInputPath),
         referenceContext: [
-          pictures.map((picture) =>
-            `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${options.imageReferenceRolePromptLabel(picture.role ?? "auto")}`
+          pictures.map((picture, index) =>
+            `Input image ${index + 1} / Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${options.imageReferenceRolePromptLabel(picture.role ?? "auto")}`
           ).join("\n"),
           imageMarkupPromptContext(pictures)
         ].filter(Boolean).join("\n\n")

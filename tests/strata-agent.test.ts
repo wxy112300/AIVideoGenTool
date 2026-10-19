@@ -12,6 +12,10 @@ import { GpuResourceLease } from "../electron/services/gpu-resource-lease.js";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
 import { StrataRuntimeOwner } from "../electron/services/strata-runtime-owner.js";
 import { StrataService } from "../electron/services/strata-service.js";
+import { STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
+import * as vectorTools from "../electron/services/strata-uncensored.js";
+import { strataVectorForMode } from "../src/core/strata-uncensored.js";
+import { strataDerivedDataDirectory } from "../electron/services/strata-model-preparation.js";
 
 const roots: string[] = [];
 const leases: GpuResourceLease[] = [];
@@ -19,6 +23,7 @@ const GiB = 1024 ** 3;
 const resources = { memoryAvailableBytes: 100 * GiB, commitAvailableBytes: 130 * GiB, vramAvailableBytes: 22 * GiB, vramTotalBytes: 24 * GiB };
 async function root() { const directory = await fs.mkdtemp(path.join(os.tmpdir(), "strata-agent-test-")); roots.push(directory); return directory; }
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const lease of leases.splice(0)) await lease.release();
   for (const directory of roots.splice(0)) await fs.rm(directory, { recursive: true, force: true });
 });
@@ -32,6 +37,60 @@ async function leaseFixture(onHandoff = async () => false) {
 }
 
 describe("standalone Agent safety boundaries (no GPU inference)", () => {
+  it("cache maintenance never requests a handoff from a loaded Agent/model", async () => {
+    const handoff = vi.fn(async () => true), fixture = await leaseFixture(handoff);
+    await fixture.first.acquire();
+    const cleaner = new GpuResourceLease("studio", async () => false, { directory: fixture.directory, identity: fixture.identity,
+      allowHandoff: false, protect: async directory => { await fs.mkdir(directory, { recursive: true }); return directory; } });
+    leases.push(cleaner);
+    await expect(cleaner.acquire()).rejects.toThrow("未请求卸载或交接");
+    expect(handoff).not.toHaveBeenCalled(); expect(fixture.first.held).toBe(true); expect(cleaner.held).toBe(false);
+  });
+  it("rediscovers an expired generated pack after update but keeps invalid manual packs explicit", async () => {
+    const directory = await root(); vi.stubEnv("LOCALAPPDATA", directory);
+    try {
+      const generated = path.join(strataDerivedDataDirectory(), "old-install", "runtime.json");
+      await fs.mkdir(path.dirname(generated), { recursive: true }); await fs.writeFile(generated, "{}");
+      expect(await discoverAgentPack(directory, agentDefaults().modelId, generated)).toBe("");
+      const manual = path.join(directory, "manual-pack.json"); await fs.writeFile(manual, "{}");
+      await expect(discoverAgentPack(directory, agentDefaults().modelId, manual)).rejects.toThrow("所选 pack");
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it("uses the shared runtime after an app update even when legacy preferences remember a deleted version", async () => {
+    const directory = await root(); vi.stubEnv("LOCALAPPDATA", directory);
+    try {
+      const old = managedStrataDirectory(STRATA_RELEASES[1]);
+      const p = normalizeAgentPreferences({ ...agentDefaults(), strataDirectory: old, packConfig: path.join(directory, "old-pack", "runtime.json") });
+      expect(p.strataDirectory).toBe(""); expect(p.packConfig).toBe("");
+      const found = { strata: { managedInstalled: true, installDirectory: managedStrataDirectory(), modelDirectory: "weights" }, claude: { available: false, path: "" }, ccSwitch: { path: "" }, cloud: { path: "" }, pack: "" };
+      expect(applyAgentDiscovery(p, found).strataDirectory).toBe("");
+      const custom = path.join(directory, "custom-strata");
+      expect(normalizeAgentPreferences({ ...agentDefaults(), strataDirectory: custom, packConfig: path.join(directory, "manual.json") })).toMatchObject({ strataDirectory: custom, packConfig: path.join(directory, "manual.json") });
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it.each(["off","builtin","community"] as const)("creates Q4's isolated long-context plan with %s uncensored mode", async mode => {
+    const directory = await root(), pack = path.join(directory,"q4-pack","runtime.json");
+    await writeStrataPreparedFixture(directory,pack,STRATA_Q4_MODEL_ID);
+    const baseline = await fs.readFile(pack,"utf8");
+    const verify = vi.spyOn(vectorTools,"verifyStrataControlVector").mockImplementation(async (_install, selected) =>
+      ({...strataVectorForMode(selected),filename:path.join(directory,`${selected}.gguf`)}));
+    const preferences = normalizeAgentPreferences({...agentDefaults(),modelId:STRATA_Q4_MODEL_ID,uncensoredMode:mode,uncensored:mode !== "off"});
+    const plan = await agentLaunchPlan({ preferences,install:directory,packConfig:pack,token:"local-test",directory:path.join(directory,"agent"),
+      guardScript:"guard.py",resources:{...resources,memoryAvailableBytes:48*GiB,commitAvailableBytes:80*GiB} });
+    expect(plan.modelId).toBe(STRATA_Q4_MODEL_ID);
+    expect(plan.resourcePlan?.residentBudgetGiB).toBeLessThan(32);
+    expect(Boolean(plan.controlVector)).toBe(mode !== "off");
+    expect(verify).toHaveBeenCalledTimes(mode === "off" ? 0 : 1);
+    const config = JSON.parse(await fs.readFile(plan.args[plan.args.indexOf("--config")+1],"utf8"));
+    expect(config.args).toContain("--resident-budget-gib");
+    expect(config.args).not.toContain("--resident-experts");
+    expect(config.args).not.toContain("--mmap-experts");
+    expect(config.args).toContain("--kv-resident");
+    expect(config.sampling.experimental_speed_projection).toBe(mode !== "off");
+    expect(config.fit_max_tokens).toBe(true);
+    expect(config.host).toBe("127.0.0.1");
+    expect(await fs.readFile(pack,"utf8")).toBe(baseline);
+  });
   it("targets the new managed version beside a retained old install, not the old selected directory", async () => {
     const directory = await root(); vi.stubEnv("LOCALAPPDATA", directory);
     try {

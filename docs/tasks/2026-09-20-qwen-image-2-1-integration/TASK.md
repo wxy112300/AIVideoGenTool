@@ -1,11 +1,13 @@
 # Qwen Image 2.1 图片编辑模型接入评估与实施计划
 
-- Status: base Qwen Image 2.1 product integration implemented through static/runtime-contract gates; official Prompt Enhancer plan established, implementation not started; ComfyUI + RTX 4090 smoke still pending
-- Updated / Owner: 2026-09-21 / Codex
+- Status: base integration implemented; Strata editing profile and image-editor clear/token UI validated; official PE weight integration not started; real editing quality/GPU comparisons pending
+- Updated / Owner: 2026-10-19 / Codex
 - Scope / Authority: 评估 Qwen Image 2.1 作为新的图片编辑模型接入 Local Video Studio；保留现有 Qwen-Image-Edit-2511 的 ID、队列快照、历史记录和回退路径，不做替换式升级，不自动下载或覆盖用户权重。
 - Execution: direct；本文件是跨阶段任务状态与实施计划，先完成依赖/运行时门槛，再实现产品接入。
 
 ## Resume
+
+- 2026-10-19新增用户授权已实施（patch，未提交）：图片清空仅移除内容/lineage，保留当前模型、quality/步数、LoRA、Seed、画布及批次设置；图片页加入实时文本 token 估算（非精确总上下文或增强输出预算）。Strata 的 Qwen2.1 专用 profile 覆盖去水印、画质、换视角、动作、增删合成及尺寸位置，官方/社区取舍和验证边界见[资料库](../../research/qwen-image-21-strata-editing.md)。不下载官方 PE，旧 PE 接入计划仍未实施；2511/H3/其他后端保持原策略。真实隔离 Electron 清空确认、原模型/40步及参数保留、连续输入焦点和 token 更新、1440/1280/900 宽截图及重启保留通过；实际按钮增强写回/缺输入恢复/新任务快照由合成端口旅程覆盖，未冒充 GPU 质量。最终完整 verify 通过：231 单元文件/2185 项、6 集成文件/89 项、类型/干净构建/20 对比度。测试实例及 CDP/本地测试端口均退出，清理使用既有 Harness，非原生窗口退出生命周期证明；无模型下载/服务、用户数据改动、bump/提交/发布，另一任务 H3 改动保持。
 
 - 推荐方案：新增独立 adapter/capability，稳定 ID 为 `qwen-image-2-1`；保持一个模型入口，按是否有参考图在官方 ComfyUI T2I 与编辑图之间分支，默认 1024/约 1 MP、PNG、单输出、CFG 1、25 步预览档；2511 继续作为独立可用选项。
 - 4090 结论：RTX 4090 24 GB 适合优先验证 INT8 DiT + INT8 Qwen3-VL 8B encoder + BF16 VAE 的 1 MP 编辑路线，但目前没有可直接套用的 4090 峰值显存基准。2K/4 MP、10 张参考图、同时保留多个模型和标注参考图，必须视为实验档，不能在计划阶段承诺稳定可用。

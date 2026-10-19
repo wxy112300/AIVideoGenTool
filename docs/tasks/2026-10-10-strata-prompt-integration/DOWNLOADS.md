@@ -1,6 +1,6 @@
 # Strata：一键安装组件，单独下载模型
 
-- 类型：任务阶段指南；日期：2026-10-15；适用：Windows / NVIDIA，推荐 Strata v0.1.44.1，保留 v0.1.41 安装识别。
+- 类型：任务阶段指南；日期：2026-10-19；适用：Windows / NVIDIA，推荐 Strata v0.1.45，保留 v0.1.44.1 / v0.1.41 安装识别。
 - 状态唯一入口：[TASK](TASK.md)；固定文件元数据以 [运行组件 catalog](../../../src/core/catalog/dependencies/strata.ts) 和 [模型 catalog](../../../src/core/catalog/models/strata.ts) 为准。
 - 产品接线已完成，可选模型沿用原提示词按钮按需运行；原默认模型不变。主模型已有部分真实推理证据，但影视增强尚未完整验收；新增MTP的真实转换/显存峰值/速度仍待测试。
 
@@ -11,7 +11,7 @@
 3. [IQ3_XXS 固定版本文件列表](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/tree/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ3_XXS) 两份分片都下载，保持文件名，放默认或自定义根下的 `IQ3_XXS` 子目录。约 64GB 系统 RAM 可先评估此档；两份分片约 75.84GB，不意味着全部驻留 RAM/VRAM，性能待实测。
 4. [相同 revision 的视觉投影](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/resolve/ed59f92082b1e93c0e96d60a8b11aab089b52f09/mmproj-Qwen3.8-Flash-Next-BF16.gguf) 约 0.91GB，放在 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` 下，与量化子目录同级。
 
-如果希望优先评估较低 RAM 占用，改下载 [IQ2_XS 两份分片](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/tree/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS)，约 68.03GB，放 `IQ2_XS` 子目录。两种量化任选其一，不必全下；视觉投影共用。不要下载同名 Unsloth 量化来代替，不要手动下载完整原版 Qwen checkpoint；MTP 是后续通过上游工具提取/准备的独立步骤。预留 GGUF 之外的 setup、pack、MTP、Python/CUDA 空间，不能把上述下载大小当完整磁盘预算。
+较低 RAM 档位为 [IQ2_XS 两份分片](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/tree/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS)，约68.03GB，使用`IQ2_XS`子目录。IQ2与IQ3共用视觉投影和MTP；各量化以对应卡片固定来源识别。GGUF之外还需预留pack、MTP、Python/CUDA空间。
 
 ```text
 ComfyUI 模型根目录/LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/
@@ -21,9 +21,17 @@ ComfyUI 模型根目录/LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/
   mmproj-Qwen3.8-Flash-Next-BF16.gguf
 ```
 
+## UD-Q4_K_XL（128GB RAM 档）
+
+[Unsloth固定revision文件列表](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/38bb39ee97821de2c9009abb7e93950eec396e66/UD-Q4_K_XL)共四分片，111,334,654,784bytes（111.33GB）。四个原文件位于所选ComfyUI模型根的`LLM/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/`，文件名从`Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf`到`00004-of-00004.gguf`。来源许可证为Qwen Community License 1.0；组件弹窗显示各文件固定revision、字节数、SHA-256和目标。
+
+视觉投影与下述MTP沿用原版资产；扫描会读取已有`LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`中的同名文件。新下载可放Q4模型命名目录下同级projector与`mtp/`，无需第二个根设置。首次启动离线校验五个必需文件，运行官方`iq_pack.py --compat-bf16`，约1.4GB派生pack和转换报告保存独立data，源权重不搬移。四分片/视觉缺件时保持不可选；MTP缺失保留基础运行路径。
+
+Q4由H3原按钮与独立Agent共用接线，包含三种uncensored模式及当次引擎确认；H3仍32K，Agent仍按独立偏好。约71.7GiB专家的资源预算与IQ3分开，内存较紧时显式预算驻留/文件回读可能明显变慢。此条为代码接入，Q4完整加载、图文效果、去拒答和速度待权重就绪后实测。[固定版官方运行说明](https://github.com/Niko1221/Strata/blob/477ac13cbe8e582c20484871ce459d20d82df09d/docs/UNSLOTH_Q4.md)。
+
 ## MTP 配套加速权重
 
-主模型保持现有 ISTA-DASLab 量化。配套的 MTP Q2_0 由 SC117 使用 Strata 工具从原版 Qwen MTP 转换，不是该仓库的改写主模型；[发布者来源说明](https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/blob/eec4e10a2c29b440a2ae85591fa11569ce752963/strata/README.md)。
+IQ2/IQ3主模型使用ISTA-DASLab，UD-Q4_K_XL使用上文固定Unsloth量化；三档共用配套MTP。MTP Q2_0由SC117使用Strata工具从原版Qwen MTP转换，不是该仓库的改写主模型；[发布者来源说明](https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/blob/eec4e10a2c29b440a2ae85591fa11569ce752963/strata/README.md)。
 
 - [手动下载 mtp-q2_0.gguf](https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/eec4e10a2c29b440a2ae85591fa11569ce752963/mtp-q2_0.gguf)：889,017,216 bytes（约 0.89GB / 848MiB）。
 - SHA-256：`a22206a4d74eafbf31063a84610292535fb3b49af9a339963817fd04aed81e4d`。

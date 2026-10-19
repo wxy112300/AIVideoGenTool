@@ -1,4 +1,5 @@
 import type { CatalogModelEntry } from "../../types.js";
+import { H3_MAX_DURATION_SECONDS, H3_MAX_GENERATED_FRAMES } from "../../../h3-temporal.js";
 import {
   h3Fl2vaAudioVae,
   h3Fl2vaVideoVae,
@@ -26,8 +27,8 @@ export const minimaxH3Ref2vaInt4: CatalogModelEntry = {
       supportsSpectrum: true,
       supportsReferenceSlots: true,
       maxReferenceImages: 9,
-      maxDurationSeconds: 15,
-      maxGeneratedFrames: 362,
+      maxDurationSeconds: H3_MAX_DURATION_SECONDS,
+      maxGeneratedFrames: H3_MAX_GENERATED_FRAMES,
       resolutions: [360, 480, 540, 720, 768]
     },
     scan: {

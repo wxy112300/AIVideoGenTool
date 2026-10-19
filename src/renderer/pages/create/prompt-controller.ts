@@ -8,6 +8,7 @@ import type {
 } from "../../../types";
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
 import { buildPromptRevisionPlan } from "../../../core/prompt-annotations";
+import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
 import { assertDetailedCinematicExpansion } from "../../../core/h3-prompt";
 import {
   activePromptIndexForDraft,
@@ -227,8 +228,9 @@ export function mountCreatePromptController(
       }
       return;
     }
-    const draft = getDraft();
-    if (!draft) return;
+    const currentDraft = getDraft();
+    if (!currentDraft) return;
+    const draft = normalizeVideoDraft(currentDraft);
     const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
     const h3Mode = h3PromptModeForDraft(draft);
     const selectedH3Preset = isCurrentH3
@@ -349,9 +351,9 @@ export function mountCreatePromptController(
             }
           : undefined
       });
-      if (isCurrentH3 && selectedH3Preset === "detailed-cinematic") {
-        assertDetailedCinematicExpansion(text, h3Mode, draft.duration, currentPrompt);
-      }
+      const warnings = isCurrentH3 && selectedH3Preset === "detailed-cinematic"
+        ? assertDetailedCinematicExpansion(text, h3Mode, draft.duration, currentPrompt, promptSettings?.uiLocale)
+        : [];
       options.setPromptRuntimeLoaded(true);
       options.invalidatePromptEditHistory();
       options.patchDraftForMode(requestOrigin, (nextDraft) => {
@@ -365,11 +367,14 @@ export function mountCreatePromptController(
         });
         return promptPatchForDraft(nextDraft, versions, versions.length - 1);
       });
-      options.context.notify(options.context.t(uiKeys.create.interaction.promptEnhanceCompleted, {
+      const completedMessage = options.context.t(uiKeys.create.interaction.promptEnhanceCompleted, {
         page: options.context.t(requestOrigin === "video-extension"
           ? uiKeys.create.videoExtension
           : uiKeys.create.imageToVideo)
-      }), { kind: "task-complete" });
+      });
+      options.context.notify([completedMessage, ...warnings].join("\n"), {
+        kind: warnings.length ? "warning" : "task-complete"
+      });
     } catch (error) {
       if (!isPromptCancellationError(error)) options.context.notify(error instanceof Error ? error.message : String(error), {
         kind: "error",

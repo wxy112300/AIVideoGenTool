@@ -4,6 +4,8 @@ import {
 } from "../../src/core/prompt-models.js";
 import {
   h3PromptExpansionTokenBudget,
+  h3PromptNodeOutputLimit,
+  assertH3PromptOutputBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
@@ -245,7 +247,7 @@ export function buildQwenVlPeftPromptWorkflow(
         prompt,
         max_new_tokens: warmup
           ? 64
-          : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset)
+          : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset, request.prompt)
       }
     }
   };
@@ -338,6 +340,11 @@ export async function enhancePromptWithQwenVlPeft(
       );
     }
     const clientId = `local-video-studio-qwenvl-prompt-${operationId}`;
+    assertH3PromptOutputBudget(
+      Number(prompt["qwenvl-caption"]!.inputs.max_new_tokens),
+      h3PromptNodeOutputLimit(objectInfo, "QwenVLCaption", "max_new_tokens"),
+      "Qwen-VL LoRA"
+    );
     const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -378,6 +385,14 @@ export async function enhancePromptWithQwenVlPeft(
     );
     onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["qwenvl-caption"]);
+    appLogger.info("prompt", "qwenvl-output-diagnostics", "Qwen-VL prompt output received", {
+      operationId,
+      promptId: result.prompt_id,
+      requestedMaxTokens: prompt["qwenvl-caption"]!.inputs.max_new_tokens,
+      outputCharacters: output.length,
+      finishReason: "unknown",
+      completionTokens: null
+    });
     if (warmup) return output;
     if (request.promptStrategy === "targeted-revision") {
       return applyPromptRevision(request.prompt, output);

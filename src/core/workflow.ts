@@ -22,6 +22,17 @@ import {
 } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
 import {
+  H3_MAX_DURATION_SECONDS,
+  H3_MAX_GENERATED_FRAMES,
+  H3_CONTEXT_FRAMES,
+  H3_MOTION_CONTEXT_MAX_FRAMES,
+  h3FrameCountForSeconds,
+  h3MotionContextFrameCountForSeconds,
+  h3MaxDurationForFrameBudget,
+  h3TemporalPlanForSeconds,
+  type H3TemporalRoute
+} from "./h3-temporal.js";
+import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy,
   shouldApplySpectrum
@@ -169,7 +180,7 @@ export function isMiniMaxH3Model(modelId: string): boolean {
   return modelCatalog.isFamily(modelId, "minimax-h3");
 }
 
-export const H3_CONTINUUM_CONTEXT_FRAMES = 22;
+export const H3_CONTINUUM_CONTEXT_FRAMES = H3_CONTEXT_FRAMES;
 export const H3_CONTINUUM_V38_MIN_DURATION_SECONDS = 4;
 export const H3_CONTINUUM_V38_WORKFLOW_FILENAME = "minimax_h3_continuum_v38_extend_api.json";
 export const H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME = "minimax_h3_continuum_v38_managed_extend_api.json";
@@ -223,7 +234,7 @@ export function h3ContinuumModeForSource(source: {
 }
 
 export function h3ContinuumWorkflowPathForInput(workflowPath: string): string {
-  if (![H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME, H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME].includes(workflowBasename(workflowPath))) {
+  if (workflowPath.trim() && !isKnownBundledH3WorkflowPath(workflowPath)) {
     return workflowPath;
   }
   const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
@@ -231,11 +242,7 @@ export function h3ContinuumWorkflowPathForInput(workflowPath: string): string {
 }
 
 export function h3ContinuumManagedWorkflowPathForInput(workflowPath: string): string {
-  const basename = workflowBasename(workflowPath);
-  if (
-    basename !== H3_CONTINUUM_LEGACY_WORKFLOW_FILENAME &&
-    basename !== H3_CONTINUUM_V38_WORKFLOW_FILENAME
-  ) return workflowPath;
+  if (workflowPath.trim() && !isKnownBundledH3WorkflowPath(workflowPath)) return workflowPath;
   const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
   return `${workflowPath.slice(0, separatorIndex + 1)}${H3_CONTINUUM_MANAGED_V38_WORKFLOW_FILENAME}`;
 }
@@ -765,8 +772,7 @@ export function normalizeH3Steps(
 }
 
 function generationSafetyProfileForModel(
-  modelId: string,
-  workflowPath?: string
+  modelId: string
 ): GenerationSafetyProfile {
   if (isMiniMaxH3Model(modelId)) {
     const capabilities = modelCatalog.get(modelId)?.definition.capabilities;
@@ -779,9 +785,7 @@ function generationSafetyProfileForModel(
           ? "MiniMax H3 Turbo FL2VA"
           : "MiniMax H3 FL2VA",
       maxGeneratedFrames: capabilities?.maxGeneratedFrames ?? 362,
-      maxDurationSeconds: isMiniMaxH3ContinuumModel(modelId) && isMiniMaxH3ContinuumManagedWorkflow(workflowPath)
-        ? 15
-        : capabilities?.maxDurationSeconds ?? 15,
+      maxDurationSeconds: capabilities?.maxDurationSeconds ?? 15,
       resolutions: capabilities?.resolutions
     };
   }
@@ -1011,8 +1015,7 @@ export function frameCountForTask(
   fps: number
 ): number {
   if (task.modelId && isMiniMaxH3Model(task.modelId)) {
-    const requested = Math.max(5, Math.round(task.duration * 24));
-    return requested + ((5 - (requested % 17) + 17) % 17);
+    return h3FrameCountForSeconds(task.duration);
   }
   const requested = Math.max(1, Math.round(task.duration * fps));
   const interval = frameIntervalForModel(task.modelId);
@@ -1031,10 +1034,25 @@ function continuumFrameCountForSeconds(
   const safeDuration = Number.isFinite(durationSeconds)
     ? Math.max(1, durationSeconds)
     : 1;
-  const target = Math.max(5, Math.round(safeDuration * 24) + Math.max(0, Math.floor(contextFrames)));
-  const lower = 5 + Math.max(0, Math.floor((target - 5) / 17)) * 17;
-  const upper = lower + 17;
-  return target - lower <= upper - target ? lower : upper;
+  return h3TemporalPlanForSeconds(safeDuration, "continuum", Math.max(0, Math.floor(contextFrames))).sampledFrames;
+}
+
+export function h3TemporalPlanForTask(task: {
+  modelId: string;
+  duration: number;
+  taskType?: QueueTask["taskType"];
+  inputMode?: Draft["inputMode"];
+  workflowPath?: string;
+  h3ContinuumSequence?: ExtensionQueueTask["h3ContinuumSequence"];
+}) {
+  let route: H3TemporalRoute = "generation";
+  const contextFrames = H3_CONTEXT_FRAMES;
+  if (isMiniMaxH3ContinuumModel(task.modelId)) {
+    route = isMiniMaxH3ContinuumV38Workflow(task.workflowPath) ? "continuum" : "continuum-legacy";
+  } else if (task.taskType === "extension" || task.inputMode === "video") {
+    route = isMiniMaxH3R2vModel(task.modelId) ? "motion-context" : "boundary";
+  }
+  return h3TemporalPlanForSeconds(task.duration, route, contextFrames);
 }
 
 export function continuumSampledFrameCountForSeconds(
@@ -1058,19 +1076,18 @@ export function continuumV38SampledFrameCountForSeconds(durationSeconds: number)
 }
 
 export function continuumV38MaxDurationSeconds(
-  maxGeneratedFrames = 362,
-  maxDurationSeconds = 15
+  maxGeneratedFrames = H3_MAX_GENERATED_FRAMES,
+  maxDurationSeconds = H3_MAX_DURATION_SECONDS
 ): number {
   const frameBudget = Number.isFinite(maxGeneratedFrames)
     ? Math.max(1, Math.floor(maxGeneratedFrames))
     : 362;
-  const upperBound = Number.isFinite(maxDurationSeconds)
-    ? Math.max(1, Math.floor(maxDurationSeconds))
-    : 15;
-  for (let duration = upperBound; duration >= H3_CONTINUUM_V38_MIN_DURATION_SECONDS; duration -= 1) {
-    if (continuumV38SampledFrameCountForSeconds(duration) <= frameBudget) return duration;
-  }
-  return H3_CONTINUUM_V38_MIN_DURATION_SECONDS;
+  return h3MaxDurationForFrameBudget(
+    continuumV38SampledFrameCountForSeconds,
+    frameBudget,
+    maxDurationSeconds,
+    H3_CONTINUUM_V38_MIN_DURATION_SECONDS
+  );
 }
 
 export function continuumVisibleFrameCountForTask(
@@ -1083,22 +1100,18 @@ export function continuumVisibleFrameCountForTask(
 }
 
 export function continuumMaxDurationSeconds(
-  maxGeneratedFrames = 362,
+  maxGeneratedFrames = H3_MAX_GENERATED_FRAMES,
   contextFrames = H3_CONTINUUM_CONTEXT_FRAMES,
-  maxDurationSeconds = 15
+  maxDurationSeconds = H3_MAX_DURATION_SECONDS
 ): number {
   const frameBudget = Number.isFinite(maxGeneratedFrames)
     ? Math.max(1, Math.floor(maxGeneratedFrames))
     : 362;
-  const upperBound = Number.isFinite(maxDurationSeconds)
-    ? Math.max(1, Math.floor(maxDurationSeconds))
-    : 15;
-  for (let duration = upperBound; duration >= 1; duration -= 1) {
-    if (continuumSampledFrameCountForSeconds(duration, contextFrames) <= frameBudget) {
-      return duration;
-    }
-  }
-  return 1;
+  return h3MaxDurationForFrameBudget(
+    duration => continuumSampledFrameCountForSeconds(duration, contextFrames),
+    frameBudget,
+    maxDurationSeconds
+  );
 }
 
 export function frameInterpolationMultiplier(
@@ -1111,22 +1124,11 @@ export function frameInterpolationMultiplier(
 
 export function outputFrameCountForTask(
   task: Pick<GenerationQueueTask, "duration" | "fps"> &
-    Partial<Pick<GenerationQueueTask, "modelId" | "workflowPath">>
+    Partial<Pick<GenerationQueueTask, "modelId" | "workflowPath">> &
+    { taskType?: QueueTask["taskType"]; inputMode?: Draft["inputMode"] }
 ): number {
-  if (task.modelId && isMiniMaxH3ContinuumModel(task.modelId)) {
-    if (isMiniMaxH3ContinuumV38Workflow(task.workflowPath)) {
-      return Math.max(1, Math.round(task.duration * 24));
-    }
-    return Math.max(
-      1,
-      continuumSampledFrameCountForSeconds(task.duration) - H3_CONTINUUM_CONTEXT_FRAMES
-    );
-  }
   if (task.modelId && isMiniMaxH3Model(task.modelId)) {
-    return frameCountForTask(
-      { modelId: task.modelId, duration: task.duration },
-      24
-    );
+    return h3TemporalPlanForTask({ ...task, modelId: task.modelId }).outputFrames;
   }
   return Math.max(1, Math.round(task.duration * task.fps));
 }
@@ -1375,7 +1377,7 @@ export function generationSafetyForTask(
     key: Parameters<typeof workflowMessage>[0],
     params: Record<string, string | number> = {}
   ) => workflowMessage(key, params, locale);
-  const profile = generationSafetyProfileForModel(task.modelId, task.workflowPath);
+  const profile = generationSafetyProfileForModel(task.modelId);
   const { maxDurationSeconds, maxGeneratedFrames } = profile;
   if (
     !Number.isFinite(task.duration) ||
@@ -1468,13 +1470,13 @@ export function activityTimeoutMinutesForTask(
 
 /**
  * Motion Context reserves a fixed prefix of the sampled sequence for the
- * previous segment. Convert that frame budget into the largest whole-second
+ * previous segment. Convert that frame budget into the largest tenth-second
  * duration the creation UI can safely offer.
  */
 export function motionContextMaxDurationSeconds(
-  maxGeneratedFrames = 362,
+  maxGeneratedFrames = H3_MOTION_CONTEXT_MAX_FRAMES,
   contextFrames = 22,
-  maxDurationSeconds = 15
+  maxDurationSeconds = H3_MAX_DURATION_SECONDS
 ): number {
   const frameBudget = Number.isFinite(maxGeneratedFrames)
     ? Math.max(1, Math.floor(maxGeneratedFrames))
@@ -1482,19 +1484,11 @@ export function motionContextMaxDurationSeconds(
   const reservedFrames = Number.isFinite(contextFrames)
     ? Math.max(0, Math.floor(contextFrames))
     : 22;
-  const upperBound = Number.isFinite(maxDurationSeconds)
-    ? Math.max(1, Math.floor(maxDurationSeconds))
-    : 15;
-  for (let duration = upperBound; duration >= 1; duration -= 1) {
-    const generatedFrames = generationFrameCountForTask({
-      modelId: "minimax_h3_ref2va",
-      duration,
-      fps: 24,
-      frameInterpolation: "off"
-    });
-    if (generatedFrames + reservedFrames <= frameBudget) return duration;
-  }
-  return 1;
+  return h3MaxDurationForFrameBudget(
+    duration => h3MotionContextFrameCountForSeconds(duration, reservedFrames),
+    frameBudget,
+    maxDurationSeconds
+  );
 }
 
 export function extensionSafetyForTask(
@@ -1513,7 +1507,7 @@ export function extensionSafetyForTask(
     | "resolution"
     | "unloadBetweenStages"
     | "spectrumMode"
-  > & Partial<Pick<ExtensionQueueTask, "workflowPath">>,
+  > & Partial<Pick<ExtensionQueueTask, "workflowPath" | "h3ContinuumSequence">>,
   locale: UiLocale = "zh-CN"
 ): ExtensionSafety {
   const message = (
@@ -1522,9 +1516,16 @@ export function extensionSafetyForTask(
   ) => workflowMessage(key, params, locale);
   if (isMiniMaxH3Fl2vaModel(task.modelId)) {
     const generationSafety = generationSafetyForTask(task, locale);
+    const maxDurationSeconds = h3MaxDurationForFrameBudget(
+      h3FrameCountForSeconds,
+      task.maxGeneratedFrames,
+      Math.min(generationSafety.maxDurationSeconds, task.maxGeneratedFrames <= 362 ? 15 : H3_MAX_DURATION_SECONDS)
+    );
     const minimumContextSeconds = 1 / 24;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
+      maxGeneratedFrames: task.maxGeneratedFrames,
+      maxDurationSeconds,
       safe,
       minimumContextSeconds,
       message
@@ -1545,11 +1546,14 @@ export function extensionSafetyForTask(
       return result(false, message("trimInvalid"));
     }
     if (!generationSafety.safe) return result(false, generationSafety.message);
+    if (task.duration > maxDurationSeconds || generationSafety.generatedFrames > task.maxGeneratedFrames) {
+      return result(false, message("durationLimit", { maxDurationSeconds }));
+    }
     return result(
       true,
       message("h3BoundarySummary", {
         generatedFrames: generationSafety.generatedFrames,
-        maxGeneratedFrames: generationSafety.maxGeneratedFrames,
+        maxGeneratedFrames: task.maxGeneratedFrames,
         message: generationSafety.message
       })
     );
@@ -1557,33 +1561,50 @@ export function extensionSafetyForTask(
   if (isMiniMaxH3ContinuumModel(task.modelId)) {
     if (isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath)) {
       const safety = generationSafetyForTask(task, locale);
+      const maxDurationSeconds = task.h3ContinuumSequence?.chunkSeconds ??
+        Math.min(safety.maxDurationSeconds, task.maxGeneratedFrames <= 362 ? 15 : H3_MAX_DURATION_SECONDS);
       const minimumContextSeconds = 1 / 24;
+      const result = { ...safety, maxGeneratedFrames: task.maxGeneratedFrames, maxDurationSeconds, minimumContextSeconds };
       if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
-        return { ...safety, safe: false, minimumContextSeconds, message: message("sourceVideoMissing") };
+        return { ...result, safe: false, message: message("sourceVideoMissing") };
       }
       if (task.duration < H3_CONTINUUM_V38_MIN_DURATION_SECONDS) {
-        return { ...safety, safe: false, minimumContextSeconds, message: message("continuumDurationMinimum", { minimum: H3_CONTINUUM_V38_MIN_DURATION_SECONDS }) };
+        return { ...result, safe: false, message: message("continuumDurationMinimum", { minimum: H3_CONTINUUM_V38_MIN_DURATION_SECONDS }) };
       }
-      return { ...safety, minimumContextSeconds };
+      if (task.h3ContinuumSequence && task.duration !== maxDurationSeconds) {
+        return { ...result, safe: false, message: message("continuumDurationFrozen", { duration: maxDurationSeconds }) };
+      }
+      if (task.duration > maxDurationSeconds) {
+        return { ...result, safe: false, message: message("durationLimit", { maxDurationSeconds }) };
+      }
+      if (task.maxGeneratedFrames > 362 && continuumV38SampledFrameCountForSeconds(task.duration) > task.maxGeneratedFrames) {
+        return { ...result, safe: false, message: message("continuumBudget", {
+          sampledFrames: continuumV38SampledFrameCountForSeconds(task.duration),
+          maxGeneratedFrames: task.maxGeneratedFrames
+        }) };
+      }
+      return result;
     }
     const continuumV38 = isMiniMaxH3ContinuumV38Workflow(task.workflowPath);
     const contextFrames = H3_CONTINUUM_CONTEXT_FRAMES;
     const generationSafety = generationSafetyForTask(task, locale);
+    const durationLimit = Math.min(generationSafety.maxDurationSeconds, task.maxGeneratedFrames <= 362 ? 14 : H3_MAX_DURATION_SECONDS);
     const maxDurationSeconds = continuumV38
       ? continuumV38MaxDurationSeconds(
           task.maxGeneratedFrames,
-          generationSafety.maxDurationSeconds
+          durationLimit
         )
       : continuumMaxDurationSeconds(
           task.maxGeneratedFrames,
           contextFrames,
-          generationSafety.maxDurationSeconds
+          durationLimit
         );
     const sampledFrames = continuumV38
       ? continuumV38SampledFrameCountForSeconds(task.duration)
       : continuumSampledFrameCountForSeconds(task.duration, contextFrames);
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
+      maxGeneratedFrames: task.maxGeneratedFrames,
       maxDurationSeconds,
       safe,
       generatedFrames: sampledFrames,
@@ -1650,13 +1671,14 @@ export function extensionSafetyForTask(
     const contextFrames = H3_CONTINUUM_CONTEXT_FRAMES;
     const generationSafety = generationSafetyForTask(task, locale);
     const maxDurationSeconds = motionContextMaxDurationSeconds(
-      generationSafety.maxGeneratedFrames,
+      task.maxGeneratedFrames,
       contextFrames,
-      generationSafety.maxDurationSeconds
+      Math.min(generationSafety.maxDurationSeconds, task.maxGeneratedFrames <= 362 ? 13 : H3_MAX_DURATION_SECONDS)
     );
-    const sampledFrames = generationSafety.generatedFrames + contextFrames;
+    const sampledFrames = h3MotionContextFrameCountForSeconds(task.duration, contextFrames);
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
+      maxGeneratedFrames: task.maxGeneratedFrames,
       maxDurationSeconds,
       safe,
       generatedFrames: sampledFrames,
@@ -1681,12 +1703,12 @@ export function extensionSafetyForTask(
     if (task.spectrumMode !== "off") {
       return result(false, message("motionContextSpectrum"));
     }
-    if (!generationSafety.safe || sampledFrames > generationSafety.maxGeneratedFrames) {
+    if (!generationSafety.safe || sampledFrames > task.maxGeneratedFrames || task.duration > maxDurationSeconds) {
       return result(
         false,
         message("motionContextBudget", {
           sampledFrames,
-          maxGeneratedFrames: generationSafety.maxGeneratedFrames
+          maxGeneratedFrames: task.maxGeneratedFrames
         })
       );
     }
@@ -1694,7 +1716,7 @@ export function extensionSafetyForTask(
       true,
       message("motionContextSummary", {
         sampledFrames,
-        maxGeneratedFrames: generationSafety.maxGeneratedFrames
+        maxGeneratedFrames: task.maxGeneratedFrames
       })
     );
   }
@@ -1761,6 +1783,12 @@ export function extensionSafetyForTask(
       frames: task.overlapFrames
     })
   );
+}
+
+export function h3ExtensionFrameBudgetForModel(modelId: string): number {
+  return isMiniMaxH3R2vModel(modelId)
+    ? H3_MOTION_CONTEXT_MAX_FRAMES
+    : modelCatalog.get(modelId)?.definition.capabilities?.maxGeneratedFrames ?? 362;
 }
 
 export function extensionContextDuration(
@@ -2117,11 +2145,9 @@ export function renderWorkflow(
     FPS: fps,
     SOURCE_FPS: fps / interpolationMultiplier,
     FRAMES: context.frames ?? (
-      task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)
-        ? continuumSampledFrames
-        : task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
-          ? generationFrameCountForTask(task) + H3_CONTINUUM_CONTEXT_FRAMES
-          : generationFrameCountForTask(task)
+      isMiniMaxH3Model(task.modelId)
+        ? h3TemporalPlanForTask(task).graphFrames
+        : generationFrameCountForTask(task)
     ),
     OUTPUT_FRAMES: outputFrameCountForTask(task),
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),

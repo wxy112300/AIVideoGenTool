@@ -73,9 +73,12 @@
 .prompt-progress-bar { display: block; height: 100%; min-width: 0; background: var(--primary); transition: width .25s ease; }
 .prompt-progress-bar.indeterminate { width: 34%; animation: prompt-progress-slide 1.2s ease-in-out infinite; }
 .prompt-progress-active { cursor: pointer; }
+.prompt-button-tip { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; min-width: 0; }
+.prompt-button-tip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
+.prompt-button-tip > .prompt-progress-tooltip { white-space: pre-line; overflow-wrap: anywhere; }
 .prompt-progress-tooltip { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: max-content; max-width: min(320px, 72vw); padding: 9px 11px; border: 1px solid rgba(91, 117, 155, .72); border-radius: 8px; color: #dbe8fa; background: #151d28; box-shadow: 0 10px 28px rgba(0, 0, 0, .42); font-size: 11px; font-weight: 450; line-height: 1.5; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .12s ease, transform .12s ease; }
-#enhance-prompt.prompt-progress-active:hover + .prompt-progress-tooltip,
-#enhance-prompt.prompt-progress-active:focus-visible + .prompt-progress-tooltip { opacity: 1; transform: translateY(0); }
+.prompt-button-tip:hover > .prompt-progress-tooltip,
+.prompt-button-tip:focus-within > .prompt-progress-tooltip { opacity: 1; transform: translateY(0); }
 @keyframes prompt-progress-slide {
   0% { transform: translateX(-110%); }
   50% { transform: translateX(110%); }
@@ -189,6 +192,16 @@
   justify-content: space-between;
   gap: 8px;
   font-variant-numeric: tabular-nums;
+}
+
+.settings-duration-warning,
+.settings-duration-warning:hover,
+.settings-duration-warning:focus-visible {
+  color: var(--warning);
+}
+
+.settings-duration-warning[hidden] {
+  display: none;
 }
 
 .composer-control-grid .settings-duration .inline-field {

@@ -7,6 +7,13 @@ import {
 } from "./h3-prompt.js";
 import { h3AutoPromptSeedFor, type H3AutoPromptSeed } from "./prompts/h3/auto-seeds.js";
 
+export function h3TimelineDurationForRequest(request: EnhanceRequest): number {
+  const seconds = Number.isFinite(request.h3DurationSeconds) && (request.h3DurationSeconds ?? 0) > 0
+    ? request.h3DurationSeconds!
+    : 5;
+  return request.extensionSource ? Math.round(seconds * 24) / 24 : h3EffectiveDurationSeconds(seconds);
+}
+
 export function isH3NativeStateContinuationRequest(request: EnhanceRequest): boolean {
   return request.modelId === "minimax_h3_continuum" && Boolean(request.extensionSource);
 }
@@ -62,7 +69,7 @@ export function h3AutoPromptInstruction(
   seed?: H3AutoPromptSeed
 ): string {
   const mode = h3PromptModeForRequest(request);
-  const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5);
+  const duration = h3TimelineDurationForRequest(request);
   const selectedSeed = seed ?? h3AutoPromptSeedFor(mode, request.autoPromptSeedId);
   const variationId = request.autoPromptVariationId?.trim() || "new variation";
   const referenceContext = request.referenceContext?.trim();
@@ -92,9 +99,10 @@ export function h3AutoPrompterContract(
   mode: H3PromptMode,
   durationSeconds: number,
   referenceContext?: string,
-  preset: H3PromptPreset = "official-storyboard"
+  preset: H3PromptPreset = "official-storyboard",
+  timelineDurationSeconds = h3EffectiveDurationSeconds(durationSeconds)
 ): string {
-  const duration = h3EffectiveDurationSeconds(durationSeconds);
+  const duration = timelineDurationSeconds;
   const referenceRule = referenceContext?.trim()
     ? "Use the supplied reference map as the only source of Subject/Picture/Video/Audio labels."
     : "If no reference map is supplied, do not invent Subject/Picture/Video/Audio labels.";

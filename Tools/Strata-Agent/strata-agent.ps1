@@ -123,9 +123,9 @@ $exportDiagnostics=$menu.Items.Add('导出诊断（本机，不自动上传）')
 })
 $openFolder=$menu.Items.Add('打开本机数据位置'); $openFolder.Add_Click({$location=Join-Path $env:LOCALAPPDATA 'Local Video Studio\strata-agent'; if(Test-Path -LiteralPath $location){Start-Process explorer.exe -ArgumentList @($location)} })
 $updateStrata=$menu.Items.Add('更新 Strata（统一推荐版本）…'); $updateStrata.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='update'}}catch{$status.Text=$_.Exception.Message}})
-$repairStrata=$menu.Items.Add('修复 Strata（先备份旧安装）…'); $repairStrata.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='repair'}}catch{$status.Text=$_.Exception.Message}})
+$repairStrata=$menu.Items.Add('修复 Strata…'); $repairStrata.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='repair'}}catch{$status.Text=$_.Exception.Message}})
 $privateCli=$menu.Items.Add('安装或更新共享 Claude / CloudCLI…'); $privateCli.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='agentSoftware'}}catch{$status.Text=$_.Exception.Message}})
-$repairPrivate=$menu.Items.Add('修复共享 Claude / CloudCLI（先备份）…'); $repairPrivate.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='repairAgentSoftware'}}catch{$status.Text=$_.Exception.Message}})
+$repairPrivate=$menu.Items.Add('修复共享 Claude / CloudCLI…'); $repairPrivate.Add_Click({try{Send-Command 'installationPlan' @{preferences=(Get-Preferences); mode='repairAgentSoftware'}}catch{$status.Text=$_.Exception.Message}})
 $openCc=$menu.Items.Add('打开 CC Switch（保持当前 provider）'); $openCc.Add_Click({if($script:detectedCc -and (Test-Path -LiteralPath $script:detectedCc)){Start-Process -FilePath $script:detectedCc}})
 $ccExport=$menu.Items.Add('备份并复制 CC Switch 备用配置…'); $ccExport.Add_Click({
   if([Windows.Forms.MessageBox]::Show('日常启动无需切换CC Switch。此操作先备份，再复制含本机token的备用Claude配置（只支持已核对3.20.0的GUI JSON编辑器）。手动添加后请保留原provider为当前；若手动切到本地provider，服务停止后该provider会不可用。不会自动导入或改数据库。继续？','可选备用配置','YesNo','Warning') -eq 'Yes'){
@@ -159,6 +159,13 @@ function Get-Preferences {
   if($p.modelDirectory){$p.modelRoot=''}
   return $p
 }
+function Update-ModelCapabilities {
+  if(!$model.SelectedItem){return}
+  $supported=$model.SelectedItem.uncensoredSupported -ne $false
+  $uncensored.Enabled=$supported
+  $tips.SetToolTip($uncensored,$(if($supported){'关闭 / 自带 ESP / 社区 sergqwer；更换向量需停止并重启。不放宽文件或 shell 权限，也不保证不会拒答。'}else{'此模型的控制向量兼容性尚未验证，本次以关闭模式运行；原有偏好保留。'}))
+}
+$model.Add_SelectionChangeCommitted({$script:paths['packConfig'].Text=''; Update-ModelCapabilities})
 function Send-Command($action,$extra=@{}) {
   if(!$script:child -or $script:preparing -or $script:child.HasExited){$status.Text='Controller 未就绪，请自动检测 / 重试。'; return}
   $script:nextId++; $command=@{id=$script:nextId; action=$action}; foreach($key in $extra.Keys){$command[$key]=$extra[$key]}
@@ -285,6 +292,7 @@ $timer.Add_Tick({
       if($action -eq 'doctor'){
         $d=$result.doctor; $script:detectedCc=$d.ccSwitch.path; $model.Items.Clear(); foreach($item in $d.models){[void]$model.Items.Add($item)}
         foreach($item in $model.Items){if($item.id -eq $script:preferences.modelId){$model.SelectedItem=$item}}
+        Update-ModelCapabilities
         $dependencyText.Text="Node $($d.node.version)`r`nnpm：$($d.npm.prefix) $($d.npmIssue)`r`nClaude $($d.claude.version) · $($d.claude.identity)`r`n$($d.claude.path)`r`nStrata $($d.strata.installedVersion) · 完整安装=$($d.strata.managedInstalled)`r`n$($d.strata.installDirectory)`r`n模型=$($d.strata.modelDirectory)`r`n完成 pack=$($d.pack)`r`nCC Switch：$($d.ccSwitch.identity)`r`nCloudCLI：$($d.cloud.stage)`r`nSDK：$($d.cloud.sdkDirectory)`r`n容量与本机当前资源、运行日志分别核对；32K 不足以容纳完整GUI多轮工具。"
         $status.Text='检测完成。选择已有模型后点击启动；缺件请展开“设置与依赖”安装。'; Add-Log $status.Text
         [Console]::WriteLine('[launcher] doctor-response-applied')
@@ -332,8 +340,11 @@ $form.Add_Shown({
     # Component layout exercise, not a mouse/DPI or real Agent acceptance test.
     try {
       if($uncensored.Items.Count -ne 3){throw 'uncensored 三选一缺失'}
+      [void]$model.Items.Add([pscustomobject]@{id='strata/qwen3.8-flash-next-ud-q4_k_xl';name='Qwen3.8-Flash-Next · Strata · UD-Q4_K_XL';uncensoredSupported=$true})
+      $model.SelectedIndex=0; Update-ModelCapabilities
+      if(!$uncensored.Enabled){throw 'Q4 uncensored 模式未开放'}
       foreach($index in 0..2){$uncensored.SelectedIndex=$index; if(!$uncensored.SelectedItem){throw 'uncensored 选项不可选择'}}
-      [Console]::WriteLine('[modes] off / builtin / community selectable; no service launched')
+      [Console]::WriteLine('[modes] Q4 selected; off / builtin / community selectable; no service launched')
       foreach($size in @(@(720,540),@(1000,720))){
         $runtimeState.Text="Strata：online · 模型：已加载 · GUI：在线 · Claude：按需调用 · file-read`r`n正在处理：142秒 · 已生成12000 tokens`r`nuncensored：控制向量已加载=True；不保证拒答消失"
         $status.Text='故障：Strata 连续三次无法连接。未终止或重放活跃任务；请查看服务日志，确认后停止并重新启动，可恢复原 Claude 会话。'

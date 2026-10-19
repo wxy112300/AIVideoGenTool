@@ -1,6 +1,8 @@
 import type { WorkflowMessageKey } from "./workflow-messages.js";
 
 export const zhTWWorkflowMessages: Partial<Record<WorkflowMessageKey, string>> = {
+  h3ExpansionWordsWarning: "影視細節擴寫的主時間線只有 {actualWords} 詞，低於建議的至少 {minimumWords} 詞；已保留結果，可按畫面複雜度決定是否補充。",
+  h3ExpansionSourceLengthWarning: "影視細節擴寫的有效正文短於原始提示詞；已保留結果，請核對關鍵內容是否完整。",
   spectrumConsumersMissing: "Spectrum 加速需要連線到 H3 的 BasicScheduler / BasicGuider 模型輸入。",
   spectrumOutputUnknown: "Spectrum 加速無法識別 H3 模型補丁鏈的輸出。",
   spectrumOutputsDiffer: "Spectrum 加速要求 BasicScheduler 與 BasicGuider 使用同一個 H3 模型輸出。",

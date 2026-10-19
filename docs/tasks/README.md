@@ -2,21 +2,28 @@
 
 只保存任务链接，不复制状态；打开对应 TASK 的 Resume 获取当前结论。这里只列已纳入新流程的任务，不声称覆盖所有正在运行的 Codex 任务。模型名称不是文件所有权证明。
 
-- [H3 原生单次 30 秒：独立能力调查](2026-10-18-h3-native-30s/TASK.md)
+## 当前任务
+
 - [长视频模式：Strata 编排与 Continuum 自动续接](2026-10-18-long-video-director/TASK.md)
-- [局域网历史视频浏览器](2026-10-18-lan-history-browser/TASK.md)
-- [DLSS5 历史方案归档](../archive/dlss5/README.md)
 - [H3 高分辨率 Upscale Gate](2026-09-07-h3-high-resolution/TASK.md)
-- [H3 Prompt 增强框架修复](2026-09-12-h3-prompt-enhancement/TASK.md)
 - [Strata 提示词增强更新调查与接入计划](2026-10-10-strata-prompt-integration/TASK.md)
 - [可选 Strata 本地 Agent 工具包](2026-10-17-strata-local-agent/TASK.md)
 - [图片工作台 AI Upscale 剩余事项](2026-09-07-image-workspace/TASK.md)
 - [Renderer 响应性与可扩展状态存储](2026-09-17-renderer-responsiveness/TASK.md)
-- [History 批量管理与标签编辑](2026-09-20-history-batch-management/TASK.md)
+- [History 时间轴导航](2026-09-20-history-timeline/TASK.md)
 - [Qwen Image 2.1 图片编辑模型接入评估](2026-09-20-qwen-image-2-1-integration/TASK.md)
 - [显存压力卡死 Watchdog](2026-09-20-vram-stall-watchdog/TASK.md)
-- [图片功能精简：H3 与 Qwen 局部融合修复](2026-10-09-h3-image-retirement/TASK.md)
-- [ComfyUI / H3 / Qwen 2.1 上游评估与升级 Skill](2026-10-08-upstream-upgrade-assessment/TASK.md)
 
 新任务按 [流程](../development/WORKFLOW.md)选择短路径或标准路径；需要跨会话交接时使用 [模板](../development/TASK_TEMPLATE.md)。
 相同主题先找已有 TASK，避免不断创建日期更新但内容重复的计划。老 `Plan/active` 未经核对不会自动导入成正在实施的任务。
+
+## 归档任务
+
+- [H3 原生单次 30 秒：独立能力调查](../archive/h3-native-30s/TASK.md)
+- [局域网历史视频浏览器](../archive/2026-10-18-lan-history-browser/TASK.md)
+- [Windows 打包与 GitHub Release：0.65.1](../archive/2026-10-12-github-release/TASK.md)
+- [图片功能精简：H3 与 Qwen 局部融合修复](../archive/2026-10-09-h3-image-retirement/TASK.md)
+- [ComfyUI / H3 / Qwen 2.1 上游评估与升级 Skill](../archive/2026-10-08-upstream-upgrade-assessment/TASK.md)
+- [History 批量管理与标签编辑](../archive/2026-09-20-history-batch-management/TASK.md)
+- [H3 Prompt 增强框架修复](../archive/2026-09-12-h3-prompt-enhancement/TASK.md)
+- [DLSS5 历史方案归档](../archive/dlss5/README.md)

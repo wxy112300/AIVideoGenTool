@@ -21,7 +21,7 @@ import {
   renderImageEditPromptInstructionOptions,
   type CreateModelOptionViewModel
 } from "./fragments";
-import { fieldLabelWithTip } from "../../shared/markup";
+import { fieldLabelWithTip, promptButtonWithTip } from "../../shared/markup";
 
 interface InstallReadyLoraDefinition {
   id: string;
@@ -44,6 +44,7 @@ export interface ContinuumDependencyFileViewModel {
 export interface ImageEditPageViewModel {
   draft: ImageEditDraft;
   prompt: PromptVersion;
+  imagePromptTokenEstimate?: number;
   promptRuntimeBusy: boolean;
   promptEnhancing: boolean;
   imageCapabilityName: string;
@@ -97,6 +98,7 @@ export interface VideoCreatePageViewModel {
   extending: boolean;
   isR2V: boolean;
   isMiniMaxH3: boolean;
+  h3LongDurationWarning: boolean;
   isContinuum: boolean;
   continuumManaged: boolean;
   continuumStatusTone: "success" | "info" | "warning" | "error";
@@ -267,8 +269,8 @@ export function renderImageEditPage(
               <option value="detail-enhance" title="${escapeHtml(viewModel.imageDetailEnhanceTitle)}" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
               <option value="faithful" title="${escapeHtml(viewModel.imageFaithfulEnhanceTitle)}" ${viewModel.imageEnhanceMode === "faithful" ? "selected" : ""}>${t(uiKeys.create.imageEdit.faithful)}</option>
             </select></div>
-            <button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>
-            <button class="secondary button-with-icon" id="enhance-prompt" data-prompt-enhance-blocked="${viewModel.imagePromptEnhanceBlocked ? "true" : "false"}" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle)}" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
+            ${promptButtonWithTip(`<button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-describedby="prompt-runtime-tooltip" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>`, viewModel.releasePromptControlTitle, "prompt-runtime-tooltip", viewModel.releasePromptControlDisabled)}
+            ${promptButtonWithTip(`<button class="secondary button-with-icon" id="enhance-prompt" data-prompt-enhance-blocked="${viewModel.imagePromptEnhanceBlocked ? "true" : "false"}" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} aria-describedby="prompt-progress-tooltip" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>`, viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle, "prompt-progress-tooltip", viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing, true)}
           </div>
         </div>`}
         ${viewModel.promptless ? "" : `
@@ -302,7 +304,7 @@ export function renderImageEditPage(
             viewModel.imageLoraOptionsMarkup +
             '</div></section>'
           : ""}
-        <div class="submit-row composer-submit-row"><p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button><button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div></div>
+        <div class="submit-row composer-submit-row"><p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button>${viewModel.imagePromptTokenEstimate == null ? "" : `<span class="composer-token-estimate" data-image-token-estimate title="${t(uiKeys.create.imageEdit.tokenEstimate)}">${viewModel.imagePromptTokenEstimate} tokens</span>`}<button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div></div>
       </section>
     </div>`;
 }
@@ -516,12 +518,11 @@ export function renderCreatePage(
                 : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>${promptUi.t("sulphurNativeEnhance")}</option>
                   <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>${promptUi.t("faithfulEnhance")}</option>`}
           </select>
-             <button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>
-             <button class="secondary button-with-icon prompt-enhance-button ${viewModel.promptEnhancing ? "prompt-progress-active" : ""}" id="enhance-prompt" ${viewModel.promptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} ${viewModel.promptEnhancing ? "aria-describedby=\"prompt-progress-tooltip\"" : `title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}"`} aria-busy="${viewModel.promptEnhancing}">
+             ${promptButtonWithTip(`<button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-describedby="prompt-runtime-tooltip" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>`, viewModel.releasePromptControlTitle, "prompt-runtime-tooltip", viewModel.releasePromptControlDisabled)}
+             ${promptButtonWithTip(`<button class="secondary button-with-icon prompt-enhance-button ${viewModel.promptEnhancing ? "prompt-progress-active" : ""}" id="enhance-prompt" ${viewModel.promptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} aria-describedby="prompt-progress-tooltip" aria-busy="${viewModel.promptEnhancing}">
                <span class="prompt-progress-track" aria-hidden="true"><span class="prompt-progress-bar ${viewModel.promptProgress?.progress == null && viewModel.promptEnhancing ? "indeterminate" : ""}" data-prompt-progress-bar style="width:${viewModel.promptProgress?.progress ?? 0}%"></span></span>
                <span class="prompt-enhance-content">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}<span data-prompt-progress-label>${viewModel.promptEnhancing ? promptElapsedText(viewModel.promptProgress?.elapsedMs ?? 0) : viewModel.referenceAutoPromptAvailable && !viewModel.prompt.text.trim() ? promptUi.t("autoPrompt") : promptUi.t("optimizePrompt")}</span></span>
-             </button>
-             <span class="prompt-progress-tooltip" id="prompt-progress-tooltip" role="tooltip" data-prompt-progress-tooltip>${viewModel.promptEnhancing ? escapeHtml(viewModel.promptEnhanceButtonTitle) : ""}</span>
+             </button>`, viewModel.promptEnhanceButtonTitle, "prompt-progress-tooltip", viewModel.promptAiDisabled && !viewModel.promptEnhancing, true)}
         </div>
       </div>
       <div class="prompt-editor-shell">
@@ -599,7 +600,7 @@ export function renderCreatePage(
         <section class="composer-control-group composer-motion-group">
           <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.motionTitle)}</strong><span>${t(uiKeys.create.videoSettings.motionDescription)}</span></div></div>
           <div class="composer-control-grid composer-motion-grid">
-        <label class="settings-field settings-duration"><span class="settings-duration-heading"><span>${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}</span><output id="duration-frames" for="duration duration-number">${t(uiKeys.create.videoSettings.durationFrames, { count: viewModel.interpolationGeneratedFrames })}</output></span>
+        <label class="settings-field settings-duration"><span class="settings-duration-heading"><span class="field-label-row"><span>${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}</span><span class="field-info settings-duration-warning" data-h3-duration-warning data-tooltip-toggle tabindex="0" aria-expanded="false" aria-describedby="h3-duration-warning-tip" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}" ${viewModel.h3LongDurationWarning ? "" : "hidden"}>${icon("alert-triangle")}<span class="field-info-tip" id="h3-duration-warning-tip" role="tooltip">${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}</span></span></span><output id="duration-frames" for="duration duration-number">${t(uiKeys.create.videoSettings.durationFrames, { count: viewModel.interpolationGeneratedFrames })}</output></span>
           <div class="inline-field"><input id="duration" type="range" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
         </label>
         <label class="settings-field settings-fps">${t(uiKeys.create.videoSettings.targetFps)}

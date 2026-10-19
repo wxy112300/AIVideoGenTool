@@ -26,6 +26,20 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
   };
 }
 
+/** Clear content/lineage, not the user's selected generation configuration. */
+export function createClearedImageDraft(current: ImageEditDraft): ImageEditDraft {
+  const empty = createDefaultImageEditDraft();
+  return {
+    ...current,
+    projectId: undefined,
+    parentVersionId: undefined,
+    pictures: [],
+    nextPictureNumber: 1,
+    promptVersions: empty.promptVersions,
+    activePromptVersion: 0
+  };
+}
+
 export function createClearedDraft(current: Draft): Draft {
   return {
     ...current,

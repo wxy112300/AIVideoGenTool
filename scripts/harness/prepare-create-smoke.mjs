@@ -10,6 +10,8 @@ if (options.help) {
   process.exit(0);
 }
 const prompt = "A red balloon rises slowly above a quiet green field. Static camera, soft daylight. A gentle breeze is audible. No speech or music.";
+const duration = Number(process.env.LVS_SMOKE_DURATION ?? 1);
+assert.ok(Number.isFinite(duration) && duration >= 1 && duration <= 30, "LVS_SMOKE_DURATION must be within 1-30 seconds");
 let client;
 let report;
 let taskId;
@@ -27,6 +29,7 @@ try {
   await client.evaluate("document.querySelector('#enqueue').click()");
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(await client.evaluate("window.studio.getState().then(s => s.queue.length)"), 0);
+  await client.evaluate(`(()=>{const input=document.querySelector('#duration-number');input.value=${JSON.stringify(String(duration))};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await client.evaluate("document.querySelector('#prompt-input').focus()");
   await client.send("Input.insertText", { text: prompt });
   await pollUntil(() => client.evaluate("!document.querySelector('#enqueue').disabled"),
@@ -35,6 +38,7 @@ try {
   taskId = added.task.id;
   const snapshot = await client.evaluate(`window.studio.getState().then(s => s.queue.find(t => t.id === ${JSON.stringify(taskId)}))`);
   assert.equal(snapshot.prompt, prompt);
+  assert.equal(snapshot.duration, duration);
   assert.match(snapshot.workflowPath, /t2va/i, "No image must resolve T2VA");
   // Main state can expose the ID before renderer's enqueue finally/re-render.
   // Interact only after its real control is ready; never override disabled.
@@ -49,7 +53,8 @@ try {
   report = { ok: true, evidence: "real-ui-enqueue-and-snapshot", taskId, focusEmulation: true,
     missingInputBlocked: true, recoveredByTyping: true, actualButtonClicked: true,
     taskSnapshotUnchanged: true, workflow: path.basename(snapshot.workflowPath),
-    duration: snapshot.duration, resolution: snapshot.resolution, generationVerified: false };
+    duration: snapshot.duration, resolution: snapshot.resolution, generationVerified: false,
+    sampledFrameLabel: await client.evaluate("document.querySelector('#duration-frames').textContent") };
 } catch (error) {
   report = { ok: false, taskId, error: error.message };
   process.exitCode = 1;

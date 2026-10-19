@@ -3,7 +3,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { scanStrataPreparation } from "./strata-preparation.js";
-import { strataPreparationProfiles } from "../../src/core/strata-preparation.js";
+import { strataPreparationProfiles, strataProfileModelRoot } from "../../src/core/strata-preparation.js";
+import { supportsStrataUncensored } from "../../src/core/strata-uncensored.js";
 import { strataDerivedDataDirectory, validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { readStrataResources } from "./strata-resources.js";
 import { isLocalPortInUse } from "./local-service-process.js";
@@ -29,20 +30,22 @@ export async function locateClaude(entry = "") {
 }
 export async function discoverAgentPack(install: string, modelId: string, explicit = "", selectedFiles?: string[]): Promise<string> {
   const roots = [strataDerivedDataDirectory()];
-  const candidates = explicit ? [explicit] : (await Promise.all(roots.map(async (root) =>
+  const relative = explicit ? path.relative(strataDerivedDataDirectory(), path.resolve(explicit)) : "";
+  const generated = Boolean(relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  const candidates = explicit && !generated ? [explicit] : [...(explicit ? [explicit] : []), ...(await Promise.all(roots.map(async (root) =>
     (await fs.readdir(root, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isDirectory() && !entry.isSymbolicLink()).slice(-100)
-      .map((entry) => path.join(root, entry.name, "runtime.json"))))).flat();
+      .map((entry) => path.join(root, entry.name, "runtime.json"))))).flat()];
   for (const config of candidates) {
     try {
       if (await validatePreparedStrataRuntime(config, install) !== modelId) throw new Error("模型身份不匹配");
       const receipt = JSON.parse(await fs.readFile(path.join(path.dirname(config), "lvs-strata-model.json"), "utf8"));
-      const expected = strataPreparationProfiles().find((profile) => profile.id === modelId)?.components.slice(0, 3);
-      if (!expected || !receipt.assets.every((asset: { filename: string; bytes: number; sha256: string }, index: number) =>
+      const expected = strataPreparationProfiles().find((profile) => profile.id === modelId)?.components.filter(component => !component.optional);
+      if (!expected || receipt.assets.length !== expected.length || !receipt.assets.every((asset: { filename: string; bytes: number; sha256: string }, index: number) =>
         asset.bytes === expected[index]?.installGuide.bytes && asset.sha256 === expected[index]?.installGuide.sha256
           && (!selectedFiles || path.resolve(asset.filename).toLowerCase() === path.resolve(selectedFiles[index] ?? "").toLowerCase()))) throw new Error("pack 源文件与所选共享模型/catalog不一致");
       return config;
     }
-    catch (error) { if (explicit) throw new Error(`所选 pack 未通过完成记录校验：${error instanceof Error ? error.message : "未知错误"}`); }
+    catch (error) { if (explicit && !generated) throw new Error(`所选 pack 未通过完成记录校验：${error instanceof Error ? error.message : "未知错误"}`); }
   }
   return "";
 }
@@ -57,7 +60,7 @@ export async function agentDoctor(preferences: AgentPreferences, directory = age
     scanStrataPreparation(settings), locateClaude(preferences.claudeEntry), readStrataResources(),
     isLocalPortInUse(preferences.strataPort), isLocalPortInUse(preferences.guiPort), which("git.exe"), which("python.exe")
   ]);
-  const selectedFiles = scan.profiles.find((profile) => profile.id === preferences.modelId)?.components.slice(0, 3).map((component) => component.matches[0] ?? "");
+  const selectedFiles = scan.profiles.find((profile) => profile.id === preferences.modelId)?.components.filter(component => !component.optional).map((component) => component.matches[0] ?? "");
   const pack = scan.status.managedInstalled ? await discoverAgentPack(scan.status.installDirectory, preferences.modelId, preferences.packConfig, selectedFiles) : "";
   const ccCandidates = [path.join(process.env.LOCALAPPDATA ?? "", "Programs", "CC Switch", "CC Switch.exe"), path.join(process.env.LOCALAPPDATA ?? "", "CC Switch", "CC Switch.exe")];
   let registered = "";
@@ -73,7 +76,8 @@ export async function agentDoctor(preferences: AgentPreferences, directory = age
   } catch { /* File discovery alone is not version validation. */ }
   return { node: { path: process.execPath, version: process.versions.node, available: atLeastVersion(process.versions.node, "22.15.0") },
     claude, ccSwitch: { path: cc, version: ccVersion, available: Boolean(cc && ccVersion), identity: cc ? `CC Switch ${ccVersion || "版本未知"}` : "未在常见位置发现；不代表未安装" },
-    strata: scan.status, models: scan.profiles.map((profile) => ({ id: profile.id, name: profile.name, available: profile.available,
+    strata: { ...scan.status, modelDirectory: strataProfileModelRoot(scan.status.modelDirectory, preferences.modelId) },
+    models: scan.profiles.map((profile) => ({ id: profile.id, name: profile.name, available: profile.available, uncensoredSupported: supportsStrataUncensored(profile.id),
       components: profile.components.map((c) => ({ label: c.label, found: c.found, optional: c.optional, expected: c.expected })) })),
     pack, resources, ports: { strataPortBusy, guiPortBusy }, git, python,
     cloud: await inspectAgentSoftware(software), npm, npmIssue,

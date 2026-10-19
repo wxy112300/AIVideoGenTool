@@ -7,6 +7,7 @@ import { localStateBase, privateLocalDirectory, processIdentity, writePrivateJso
 interface Identity { pid: number; started: string }
 interface LeaseRecord { schema: 1; epoch: string; owner: "studio" | "agent"; process: Identity; children: Identity[]; secret: string }
 export interface GpuLeaseOptions {
+  allowHandoff?: boolean;
   directory?: string;
   identity?: typeof processIdentity;
   protect?: typeof privateLocalDirectory;
@@ -38,6 +39,7 @@ export class GpuResourceLease {
     await (this.options.protect ?? privateLocalDirectory)(this.directory);
     let server = await this.listen();
     if (!server) {
+      if (this.options.allowHandoff === false) throw new Error("Strata／Agent 正在使用软件，已跳过旧软件清理；请在原窗口停止服务后重试。未请求卸载或交接模型。");
       await this.requestHandoff();
       // Windows keeps a pipe instance until the acknowledged handoff socket closes.
       for (let attempt = 0; attempt < 10 && !server; attempt++) {

@@ -59,9 +59,13 @@ describe("extension prompt boundary media", () => {
     });
   });
 
-  it.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0 || spawnSync("ffprobe", ["-version"]).status !== 0)(
-    "preserves frames when extending a previously concatenated Continuum video",
-    async () => {
+  it.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0 || spawnSync("ffprobe", ["-version"]).status !== 0).each([
+    { modelId: "minimax_h3_continuum", workflowPath: "workflows/minimax_h3_continuum_v38_extend_api.json" },
+    { modelId: "minimax_h3_ref2va", workflowPath: "workflows/minimax_h3_r2v_extend_api.json" },
+    { modelId: "minimax_h3_fl2va", workflowPath: "workflows/minimax_h3_extend_api.json" }
+  ] as const)(
+    "preserves frames when extending a previously concatenated $modelId video",
+    async ({ modelId, workflowPath }) => {
       const directory = await mkdtemp(path.join(os.tmpdir(), "continuum-frame-regression-"));
       const sourcePath = path.join(directory, "source.mp4");
       const firstPath = path.join(directory, "first.mp4");
@@ -79,15 +83,16 @@ describe("extension prompt boundary media", () => {
       ], { encoding: "utf8", windowsHide: true }).trim());
       try {
         makeVideo(sourcePath, 362 / 24);
-        makeVideo(firstPath, 14);
-        makeVideo(secondPath, 14);
+        const generatedDuration = 14 + (modelId === "minimax_h3_fl2va" ? 1 / 24 : 0);
+        makeVideo(firstPath, generatedDuration);
+        makeVideo(secondPath, generatedDuration);
         const task: ExtensionQueueTask = {
-          id: path.basename(directory), taskType: "extension", modelId: "minimax_h3_continuum",
+          id: path.basename(directory), taskType: "extension", modelId,
           status: "waiting", createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z",
           outputFilename: "continuation.mp4", prompt: "Continue the motion.", promptVersion: 0,
           ratio: "source", motion: "natural", seed: 1, keepSeedOnCopy: false,
           modelProfile: "q4_k_m", maxGeneratedFrames: 362, unloadBetweenStages: true,
-          workflowPath: "workflows/minimax_h3_continuum_v38_extend_api.json",
+          workflowPath,
           sourceVideoPath: sourcePath, sourceVideoDuration: 362 / 24,
           sourceWidth: 96, sourceHeight: 64, trimStartSeconds: 0, trimEndSeconds: 362 / 24,
           duration: 14, fps: 24, frameInterpolation: "off", resolution: 480, overlapFrames: 22

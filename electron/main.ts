@@ -558,6 +558,7 @@ function registerIpc(
   registerCacheIpc({
     ipc: ipcMain,
     session: session.defaultSession,
+    getSettings: () => store.get().settings,
     canClearTemporary: () => {
       const currentState = store.get();
       return !currentState.queue.some((task) => task.status === "running") &&

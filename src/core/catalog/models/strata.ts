@@ -3,6 +3,25 @@ import { entry } from "./catalog-helpers.js";
 import { STRATA_MODEL_REPOSITORY, STRATA_MODEL_REVISION } from "../dependencies/strata.js";
 
 export const QWEN_FLASH_NEXT_MODEL_DIRECTORY = "Qwen3.8-Flash-Next-GSQ-RCO-GGUF";
+export const QWEN_FLASH_NEXT_UNSLOTH_DIRECTORY = "Qwen3.8-Flash-Next-GGUF";
+export const STRATA_Q4_MODEL_ID = "strata/qwen3.8-flash-next-ud-q4_k_xl";
+/** Identity and launch geometry come from pinned upstream docs/UNSLOTH_Q4.md. */
+export const STRATA_Q4_MODEL = {
+  id: STRATA_Q4_MODEL_ID, repository: "unsloth/Qwen3.8-Flash-Next-GGUF",
+  revision: "38bb39ee97821de2c9009abb7e93950eec396e66", shardCount: 4,
+  expertBytes: 71.7 * 1024 ** 3,
+  shards: [
+    [10946624, "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"],
+    [49859583136, "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"],
+    [49376141504, "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"],
+    [12087983520, "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"]
+  ] as const
+};
+export function strataModelGeometry(modelId: string) {
+  return modelId === STRATA_Q4_MODEL_ID
+    ? { shardCount: 4, revision: STRATA_Q4_MODEL.revision, compatBf16: true }
+    : { shardCount: 2, revision: STRATA_MODEL_REVISION, compatBf16: false };
+}
 
 /** Stock Qwen MTP, community-packed with Strata's tools; publisher metadata checked 2026-10-15. */
 export const STRATA_MTP_ASSET = {
@@ -27,16 +46,17 @@ function mtpAsset(): CatalogModelComponent {
   };
 }
 
-function asset(filename: string, directory: string, bytes: number, sha256: string): CatalogModelComponent {
+function asset(filename: string, directory: string, bytes: number, sha256: string,
+  repository = STRATA_MODEL_REPOSITORY, revision = STRATA_MODEL_REVISION): CatalogModelComponent {
   const expected = directory ? `${directory}/${filename}` : filename;
   return {
     label: filename, expected,
     patterns: [new RegExp(`^${expected.replaceAll(".", "\\.")}$`, "i")],
     installGuide: {
-      sourceLabel: STRATA_MODEL_REPOSITORY,
-      downloadUrl: `https://huggingface.co/${STRATA_MODEL_REPOSITORY}/resolve/${STRATA_MODEL_REVISION}/${expected}`,
+      sourceLabel: repository,
+      downloadUrl: `https://huggingface.co/${repository}/resolve/${revision}/${expected}`,
       targetSubdirectory: directory, recommendedFilename: filename,
-      revision: STRATA_MODEL_REVISION, bytes, sha256, license: "Apache-2.0"
+      revision, bytes, sha256, license: repository === STRATA_Q4_MODEL.repository ? "Qwen Community License 1.0" : "Apache-2.0"
     }
   };
 }
@@ -72,3 +92,29 @@ export const strataModelEntries: CatalogModelEntry[] = ([
     description: `多模態 MoE 模型，512 個專家、約 6B 啟用參數，支援文字與圖像輸入。採用 Gated DeltaNet 與 QSA 混合注意力；GSQ-RCO ${quant} 分片共 ${downloadGb} GB，視覺投影約 0.91 GB。配套 MTP Q2_0 權重約 0.89 GB，用於多 Token 預測加速。`
   });
 });
+
+const q4Name = "Qwen3.8-Flash-Next · Strata · UD-Q4_K_XL";
+strataModelEntries.push(entry({
+  id: STRATA_Q4_MODEL_ID, family: "strata-qwen3.8-flash-next", category: "prompt",
+  adapterId: "strata", order: 8, inputModes: ["image"],
+  scan: {
+    managedBy: "strata", integrated: true, productGate: "open",
+    vram: "RTX 4090 24GB · RAM 128GB · CUDA 13 / driver 580+",
+    components: [
+      ...STRATA_Q4_MODEL.shards.map(([bytes, sha256], index) => asset(
+        `Qwen3.8-Flash-Next-UD-Q4_K_XL-${String(index + 1).padStart(5, "0")}-of-00004.gguf`,
+        "UD-Q4_K_XL", bytes, sha256, STRATA_Q4_MODEL.repository, STRATA_Q4_MODEL.revision)),
+      asset("mmproj-Qwen3.8-Flash-Next-BF16.gguf", "", 907543008, "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0"),
+      mtpAsset()
+    ]
+  }
+}, {
+  name: q4Name, badge: "Strata · Unsloth Q4",
+  description: "多模态 MoE 模型，512 个专家、约 6B 激活参数，采用 Gated DeltaNet 与 QSA 混合注意力。Unsloth 混合精度 UD-Q4_K_XL 四分片共 111.33 GB，专家权重约 71.7 GiB；支持文本与图像输入，共用原版视觉投影与 MTP。"
+}, {
+  name: q4Name, badge: "Strata · Unsloth Q4",
+  description: "Multimodal MoE with 512 experts and about 6B active parameters, using hybrid Gated DeltaNet and QSA attention. Unsloth mixed-precision UD-Q4_K_XL has four shards totaling 111.33 GB and about 71.7 GiB of expert weights. Supports text and images with the original vision projector and MTP."
+}, {
+  name: q4Name, badge: "Strata · Unsloth Q4",
+  description: "多模態 MoE 模型，512 個專家、約 6B 啟用參數，採用 Gated DeltaNet 與 QSA 混合注意力。Unsloth 混合精度 UD-Q4_K_XL 四分片共 111.33 GB，專家權重約 71.7 GiB；支援文字與圖像輸入，共用原版視覺投影與 MTP。"
+}));

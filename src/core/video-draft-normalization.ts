@@ -11,7 +11,7 @@ import {
   resolveVideoGenerationPolicy
 } from "./video-policy.js";
 import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
-import { isMiniMaxH3R2vModel } from "./workflow.js";
+import { h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3R2vModel } from "./workflow.js";
 
 export function normalizeH3FrameSettings(
   draft: Pick<Draft, "modelId" | "fps" | "frameInterpolation">
@@ -57,6 +57,10 @@ export function normalizeVideoDraft(draft: Draft): Draft {
   return {
     ...draft,
     modelId,
+    duration: draft.inputMode === "video" && isMiniMaxH3ContinuumModel(modelId) &&
+      h3ContinuumModeForSource(draft) === "managed" && draft.h3ContinuumSequence
+      ? draft.h3ContinuumSequence.chunkSeconds
+      : draft.duration,
     ratio,
     videoLoras,
     steps: policy.isH3 ? normalizeVideoSteps(draft.steps, policy) : draft.steps,

@@ -8,7 +8,7 @@ import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
-import { strataModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
+import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 
 export interface SettingsPageControllerOptions {
   context: RendererContext;
@@ -78,9 +78,9 @@ export function mountSettingsPageController(
       const component = profile?.components[Number(button.dataset.installComponent)];
       if (!profile || !component) return;
       const status = options.getEnvironmentScan()?.strataPreparation;
-      const targetRoot = strataPreparationMatchesSettings(settings, status)
+      const targetRoot = strataProfileModelRoot(strataPreparationMatchesSettings(settings, status)
         ? status!.modelDirectory
-        : settings.modelDirectory.trim() ? strataModelRoot(settings) : "";
+        : settings.modelDirectory.trim() ? strataModelRoot(settings) : "", profile.id);
       const selection: SettingsInstallGuideSelection = {
         profileName: profile.name, component,
         ...(profile.managedBy === "strata" ? { targetRoot } : {})
@@ -91,7 +91,7 @@ export function mountSettingsPageController(
         try {
           const scanned = (await options.runEnvironmentScan(settings))?.strataPreparation;
           if (options.getInstallGuide() === selection && strataPreparationMatchesSettings(options.formSettings(), scanned)) {
-            options.setInstallGuide({ ...selection, targetRoot: scanned!.modelDirectory });
+            options.setInstallGuide({ ...selection, targetRoot: strataProfileModelRoot(scanned!.modelDirectory, profile.id) });
             (options.requestOverlayRender ?? options.context.requestRender)();
           }
         } catch (error) {

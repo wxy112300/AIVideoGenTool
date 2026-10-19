@@ -1,12 +1,18 @@
 # 可选 Strata 本地 Agent 工具包
 
 - Status: implementing（localhost真实GUI/CLI闭环及262144原生容量通过；LAN/原生窗口完整旅程待续）
-- Updated / Owner: 2026-10-18 / 当前 agent；Execution: direct，子 agent 0。
+- Updated / Owner: 2026-10-19 / 当前 agent；Execution: direct，子 agent 0。
 - Scope / Authority: 用户已授权按既有PLAN继续分阶段实现：轻量独立启动器、共享安装/模型、跨进程资源交接、scratch Claude、CC Switch/CloudCLI一键闭环，localhost通过后才处理LAN。软件安装先展示目标/版本/规模/影响并显式确认；不改Codex，不打包/提交/推送/发布。
 - Baseline: Local Video Studio0.65.3，`9d5c308084fc4c2c783c94d67bf66be09ad02aee`；开始时工作区干净。
 - 关联：[实施计划](PLAN.md)、[调查证据](evidence/assessment.md)、[P1实现与验证](evidence/p1-validation.md)、[接线验证](evidence/wiring-validation.md)、[H3优化经验交接](evidence/h3-optimization-handoff.md)、[原H3集成](../2026-10-10-strata-prompt-integration/TASK.md)。新任务不接管旧任务的提示词质量余项。
 
 ## Resume
+
+- 2026-10-19缓存按钮复用（由Strata任务实施）：Studio原缓存清理也可回收Agent历史软件副本/归档/私有构建缓存；共享安装注册器与维护互斥，资源租约新增仅清理使用的禁止handoff选项，不改变日常模型交接默认。活跃Agent只跳过，不卸载/取消；普通Claude/CC Switch/Codex配置和GUI会话数据保留。推荐仍官方最新0.1.45，不虚增版本；最终verify和隔离UI证据统一见[更新清理审计后续](../2026-10-10-strata-prompt-integration/evidence/update-disk-cleanup.md#后续接入设置缓存按钮与官方版本复核)。
+
+- 2026-10-19受管理更新统一（用户由Strata/H3任务授权）：启动器不再固定受管理版本目录，与Studio共用runtime解析；同版本旧目录也可执行迁移更新，过期自动pack重新发现，手动路径不改。取消npm整树软件备份，收尾清理可下载副本/归档/私有构建缓存，保留配置/会话/数据库与日志。代码、最终verify及组件Smoke证据统一见[更新清理审计](../2026-10-10-strata-prompt-integration/evidence/update-disk-cleanup.md)与其TASK；未替用户实际更新软件或启动服务，不另开任务。
+
+- 2026-10-19由Strata/H3任务执行用户授权的Q4共享接入：启动器从统一catalog显示UD-Q4_K_XL，模型切换清空旧pack选择后重新发现，支持四分片/兼容转换、完整或预算驻留、长上下文host KV及三种uncensored模式；不下载模型、不更改Claude/CC Switch/Codex/H3设置。独立controller编译、Q4选择与三模式WinForms双尺寸组件Smoke通过；主应用完整回归/隔离UI证据统一见[Q4接入记录](../2026-10-10-strata-prompt-integration/evidence/q4-integration.md)，不另开TASK或宣称Q4真实Claude工具/质量已验。既有IQ3/IQ2真实证据不推广到新Q4。
 
 - 用户要求Agent遥测宽限调整为30秒：预检/加载/运行统一注入专属策略，持续缺值或超时在截止前继续退避重采样，不再三次即提前失败；单次请求仍3秒，真实危险资源立即保护、用户取消立即生效，H3默认三次/12秒不变。此前12秒结论为历史状态；本轮验证及限制见日用故障证据末节。
 - 用户指出H3已有修复后再次逐项核对：此前Agent6秒预算未完整继承H3默认12秒，首轮5.3秒挤掉有效重试，是实施遗漏。现运行监测直接复用共享三次/12秒，原生reader单次3秒；8秒admission时效仅限制新的冷加载，不缩短已有任务恢复预算。加载期也显式注入Agent分模式knownPressure，避免一处仍用默认驻留3GiB判断中断重测。新增报告节奏（5.3秒失败、6.9秒恢复）及持续挂起三次完整尝试回归；不是取消低资源/持续未知保护。

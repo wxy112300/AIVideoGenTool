@@ -1,4 +1,4 @@
-import type { H3PromptMode, H3PromptPreset } from "../types.js";
+import type { H3PromptMode, H3PromptPreset, UiLocale } from "../types.js";
 import type { H3DialogueLock, H3VisibleTextLock } from "./h3-dialogue.js";
 import {
   extractH3DialogueLocks,
@@ -19,6 +19,8 @@ import {
 } from "./h3-scale-preservation.js";
 import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
 import { countPromptWords } from "./prompt-count.js";
+import { workflowMessage } from "./runtime/workflow-messages.js";
+import { h3FrameCountForSeconds, h3TemporalPlanForSeconds } from "./h3-temporal.js";
 import { h3ExpansionCharacterCount, h3ExpansionTimeline,
   h3ExpansionUniqueContent, h3ExpansionUsesHanProse } from "./h3-expansion-quality.js";
 
@@ -66,11 +68,26 @@ export function h3ExtensionContinuityInstruction(
   mode: H3PromptMode,
   shotPolicy: H3ShotPolicy,
   nativeStateContinuation = false,
-  previousChunk?: number
+  previousChunk?: number,
+  durationSeconds?: number
 ): string {
+  const plan = durationSeconds === undefined ? undefined : h3TemporalPlanForSeconds(
+    durationSeconds,
+    nativeStateContinuation ? "continuum" : mode === "R2V" ? "motion-context" : "boundary"
+  );
+  const timeline = plan
+    ? [
+      `EXTENSION TIME AXIS: add ${plan.outputSeconds.toFixed(2)} seconds to the retained source. Author event times on the visible NEW segment from 0.00 to ${plan.outputSeconds.toFixed(2)} seconds, not on the accumulated source timeline.`,
+      nativeStateContinuation
+        ? `For a single bootstrap continuation window, the sampler has ${plan.sampledFrames} frames including ${plan.prefixFrames} inherited prefix frames, leaving ${plan.rawNewFrames} raw new frames for ${plan.outputFrames} visible frames. Exact-duration assembly may repeat the last frame and calibrate audio. Managed runs use their actual physical-group plan: an initial native window has no inherited prefix and later groups can merge; the bootstrap window estimate is not a managed-run peak.`
+        : `The sampler has ${plan.sampledFrames} frames including ${plan.prefixFrames} prefix frame(s) (${(plan.prefixFrames / 24).toFixed(4)} seconds). Runtime removes the prefix before assembly. The raw new span is ${plan.rawNewFrames} frames and the visible target is ${plan.outputFrames} frames, so tail trimming can affect the ending.`,
+      "Inherited prefix frames are context, not a new event or a replay. Keep the final action within the visible segment; do not move source timepoints or add the prefix offset to every natural-language event."
+    ].join(" ")
+    : "";
   if (nativeStateContinuation) {
     return [
       "CONTINUUM CHUNK AUTHORING CONTRACT (official Skill: continuity and continuum-contract):",
+      timeline,
       "Return only the current chunk body in the T2VA field shape. The application owns standalone [Chunk N] routing headers and the frozen shared preamble. Never return earlier bodies, routing headers, a List separator, or a new global preamble. [Shot N] is cinematic syntax inside the body, not a chunk selector.",
       `Begin with ${previousChunk && previousChunk > 0 ? `Continuation of Chunk ${previousChunk}.` : "Continuation of the preceding segment."} Follow it with the concrete inherited pose, contact, momentum, camera motion and sound that matter, then the user's requested next action and an inheritable end state.`,
       "Preserve exact user actions, dialogue, timing and requested camera changes. Carry stable identity and scene facts once; do not drown the action in repetitive negative rules or re-amplified appearance adjectives. The observed boundary is visual evidence, not a new <Picture 1>, <Video 1>, or alignment instruction. Do not claim an unseen ending was observed.",
@@ -82,6 +99,7 @@ export function h3ExtensionContinuityInstruction(
   }
   return [
     "EXTENSION CONTINUITY CONTRACT (highest priority):",
+    timeline,
     nativeStateContinuation
       ? "This is a native-state H3 continuation. The sampler receives the previous segment's exact latent audio-video tail as continuity state. Treat the boundary as an in-progress physical and audiovisual state: begin with the next increment of its motion and sound, without holding, replaying, or re-establishing it. Use the T2VA field shape and do not invent <Picture 1>, <Video 1>, or an image-alignment declaration."
       : mode === "R2V"
@@ -348,10 +366,7 @@ export function h3EffectiveDurationSeconds(durationSeconds: number): number {
   const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
     ? durationSeconds
     : 5;
-  const requestedFrames = Math.max(5, Math.round(safeDuration * 24));
-  const alignedFrames = requestedFrames +
-    ((5 - (requestedFrames % 17) + 17) % 17);
-  return alignedFrames / 24;
+  return h3FrameCountForSeconds(safeDuration) / 24;
 }
 
 /**
@@ -362,7 +377,8 @@ export function h3EffectiveDurationSeconds(durationSeconds: number): number {
 export function h3PromptExpansionTokenBudget(
   mode: H3PromptMode,
   durationSeconds = 5,
-  preset: H3PromptPreset = "official-storyboard"
+  preset: H3PromptPreset = "official-storyboard",
+  sourcePrompt = ""
 ): number {
   const durationSlices = Math.max(
     1,
@@ -373,8 +389,30 @@ export function h3PromptExpansionTokenBudget(
     ? mode === "R2V" ? 2304 : 2048
     : mode === "R2V" ? 1792 : 1280;
   const perSlice = detailed ? 960 : 640;
-  const maximum = detailed ? 3072 : 2048;
-  return Math.min(maximum, Math.max(minimum, durationSlices * perSlice));
+  const sourceWords = countPromptWords(stripPromptAnnotations(sourcePrompt));
+  const sourceCoverage = sourceWords > 0
+    ? sourceWords + Math.max(detailed ? 100 : 40, Math.ceil(sourceWords * (detailed ? 0.5 : 0.2)))
+    : 0;
+  return Math.max(minimum, durationSlices * perSlice, Math.ceil(sourceCoverage * 3));
+}
+
+export const H3_REWRITER_NODE_MAX_OUTPUT_TOKENS = 16_384;
+
+export function h3PromptNodeOutputLimit(
+  objectInfo: Record<string, unknown>,
+  classType: string,
+  inputName: string
+): number {
+  const node = objectInfo[classType] as { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } } | undefined;
+  const config = node?.input?.required?.[inputName] ?? node?.input?.optional?.[inputName];
+  const maximum = Array.isArray(config) ? Number(config[1]?.max) : Number.NaN;
+  return Number.isFinite(maximum) && maximum >= 64 ? Math.trunc(maximum) : 2048;
+}
+
+export function assertH3PromptOutputBudget(requested: number, maximum: number, backend: string): void {
+  if (!Number.isFinite(requested) || requested > maximum) {
+    throw new Error(`${backend} 当前节点最多输出 ${maximum} token，本次需要 ${requested}。请在设置中更新对应节点并重启服务，或手动选择容量足够的增强模型。`);
+  }
 }
 
 export function h3DetailedExpansionMinimumWords(
@@ -416,10 +454,10 @@ export function h3DetailedExpansionGateInstruction(
   const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   return [
     "DETAILED CINEMATIC EXPANSION GATE (high priority): this is the most detailed expansion preset, never a rewrite, summary, caption, or compression.",
-    `Develop the ${field} timeline toward approximately ${targetWords} grounded words—about twice the standard coverage for this mode and duration—while keeping every sentence useful. It must never contain fewer than ${minimumWords} grounded words or less executable information than the source. The lower number is only a fail-closed acceptance floor, not the writing target.`,
+    `Develop the ${field} timeline toward approximately ${targetWords} grounded words—about twice the standard coverage for this mode and duration—while keeping every sentence useful. Use ${minimumWords} grounded words as an advisory coverage reference, not a mandatory length. Preserve the source's executable information.`,
     "Preserve every concrete user instruction as its own explicit fact or event in the original order. For every user action, add at least two applicable execution details from preparation, gaze or reaction, posture or weight, contact or force, momentum or settling, affected-subject response, camera path, and causally synchronized sound.",
     "Write an unmistakable playback timeline with explicit opening, development, interaction or transition, camera response, and final settled state. Remove invented decoration and repeated reference inventory before removing any user requirement.",
-    "The application rejects a result whose main timeline is shorter than this floor, so complete the expansion before answering."
+    "A simple scene may need fewer words. Return the complete grounded result without repetition, filler, or invented complexity merely to meet a word count."
   ].join("\n");
 }
 
@@ -459,9 +497,10 @@ export function h3ExplicitConstraintSummary(promptText: string): string {
 export function h3DurationPlan(
   mode: H3PromptMode,
   durationSeconds: number,
-  preset: H3PromptPreset = "official-storyboard"
+  preset: H3PromptPreset = "official-storyboard",
+  timelineDurationSeconds = h3EffectiveDurationSeconds(durationSeconds)
 ): string {
-  const effectiveDuration = h3EffectiveDurationSeconds(durationSeconds);
+  const effectiveDuration = timelineDurationSeconds;
   const detailedPathRule = mode === "FL2VA"
     ? "Keep Picture 1 at the required first-frame anchor and Picture 2 at the required end anchor; use intermediate timing only when it helps describe the causal path between them."
     : mode === "L2VA"
@@ -759,7 +798,6 @@ export function normalizeH3PromptOutput(
     stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)),
     mode
   ));
-  // Reject insufficient model-authored detail before any application-owned repair can inflate it.
   if (preset === "detailed-cinematic") {
     assertDetailedCinematicExpansion(cleanedBody, mode, durationSeconds, sourcePrompt);
   }
@@ -796,26 +834,26 @@ export function assertDetailedCinematicExpansion(
   promptText: string,
   mode: H3PromptMode,
   durationSeconds: number,
-  sourcePrompt: string
-): void {
+  sourcePrompt: string,
+  locale: UiLocale = "zh-CN"
+): string[] {
   const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   const cleanSource = stripPromptAnnotations(sourcePrompt);
   const modelTimeline = h3ExpansionTimeline(unwrapH3ModelOutput(promptText, mode), mode);
-  if (modelTimeline === undefined) {
+  if (!modelTimeline?.trim()) {
     throw new Error(`影视细节扩写未返回 ${section} 主时间线；原提示词已保持不变。`);
   }
   const timeline = h3ExpansionUniqueContent(stripPromptAnnotations(modelTimeline), cleanSource);
   const actualWords = countPromptWords(timeline);
   const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
+  const warnings: string[] = [];
   if (actualWords < minimumWords) {
-    throw new Error(`影视细节扩写的主时间线只有 ${actualWords} 词，未达到本次至少 ${minimumWords} 词的细节覆盖要求；结果没有保存，原提示词已保持不变。`);
+    warnings.push(workflowMessage("h3ExpansionWordsWarning", { actualWords, minimumWords }, locale));
   }
   const outputHasCjk = h3ExpansionUsesHanProse(timeline);
   const sourceHasCjk = h3ExpansionUsesHanProse(cleanSource);
   if (sourceHasCjk === outputHasCjk && h3ExpansionCharacterCount(timeline) < h3ExpansionCharacterCount(cleanSource)) {
-    throw new Error("影视细节扩写的有效正文短于原始提示词；结果没有保存，原提示词已保持不变。");
+    warnings.push(workflowMessage("h3ExpansionSourceLengthWarning", {}, locale));
   }
-
-  // Generic word overlap cannot distinguish instruction wording from scene facts or paraphrases.
-  // This gate checks structure and expansion length, not semantic completeness.
+  return warnings;
 }

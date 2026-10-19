@@ -10,6 +10,13 @@ import { createDefaultState } from "../src/core/defaults.js";
 import { evaluateModelProfiles } from "../electron/services/environment.js";
 
 describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
+  it.each(["official-storyboard", "detailed-cinematic"] as const)("keeps the 30-second %s output budget intact", (preset) => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "lightx2v/minimax-h3-prompt-rewriter-8b";
+    const workflow = buildQwenVlPeftPromptWorkflow({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3PromptMode: "I2VA", h3PromptPreset: preset, h3DurationSeconds: 30 }, ["reference.png"], settings);
+    expect(workflow["qwenvl-caption"]?.inputs.max_new_tokens).toBe(preset === "detailed-cinematic" ? 5760 : 3840);
+  });
+
   const modelId = "lightx2v/minimax-h3-prompt-rewriter-8b";
   const base = "LLM/Qwen-VL/qwen3-vl-8b-instruct";
   const adapter = "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b";

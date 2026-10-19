@@ -1,7 +1,7 @@
 import type { EnhanceRequest, Settings } from "../../../types.js";
 import { h3DetailedExpansionGateInstruction, h3DetailedExpansionTargetWords, h3DurationPlan,
-  h3EffectiveDurationSeconds, h3ExtensionContinuityInstruction, h3PromptSectionSkeleton } from "../../h3-prompt.js";
-import { h3AutoPromptInstruction, h3AutoPrompterContract, h3PromptModeForRequest,
+  h3ExtensionContinuityInstruction, h3PromptSectionSkeleton } from "../../h3-prompt.js";
+import { h3AutoPromptInstruction, h3AutoPrompterContract, h3PromptModeForRequest, h3TimelineDurationForRequest,
   h3ShotPolicyForRequest, isH3NativeStateContinuationRequest, isH3ReferenceAutoPrompt } from "../../h3-auto-prompter.js";
 import { h3ContentLockInstruction } from "../../h3-dialogue.js";
 import { h3CameraIntentInstruction } from "../../h3-camera-intent.js";
@@ -15,7 +15,7 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
   if (request.mode === "image-edit" || request.promptStrategy === "targeted-revision") {
     throw new Error("分层实验仅用于完整 H3 提示词增强，不改变图片编辑或批注修订。");
   }
-  const mode = h3PromptModeForRequest(request), duration = h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5);
+  const mode = h3PromptModeForRequest(request), duration = h3TimelineDurationForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset), native = isH3NativeStateContinuationRequest(request);
   const parsed = parsePromptAnnotations(request.prompt), source = parsed.prompt.trim();
   const context = [request.referenceContext, ...parsed.annotations.map(note => note.text)].filter(Boolean).join("\n");
@@ -27,9 +27,9 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
     shotPolicy === "allow-multiple" ? "Preserve the requested shot structure inside the main timeline field."
       : "Use one continuous [Shot 1], without cuts, viewpoint resets or unrequested reverse shots.",
     preset === "detailed-cinematic" ? h3DetailedExpansionGateInstruction(mode, duration, source) : "",
-    h3DurationPlan(mode, duration, preset),
-    request.extensionSource ? h3ExtensionContinuityInstruction(mode, shotPolicy, native, request.continuumPreviousChunk) : "",
-    isH3ReferenceAutoPrompt(request) ? h3AutoPrompterContract(mode, duration, request.referenceContext, preset) : "",
+    h3DurationPlan(mode, duration, preset, duration),
+    request.extensionSource ? h3ExtensionContinuityInstruction(mode, shotPolicy, native, request.continuumPreviousChunk, request.h3DurationSeconds ?? 5) : "",
+    isH3ReferenceAutoPrompt(request) ? h3AutoPrompterContract(mode, duration, request.referenceContext, preset, duration) : "",
     "Write every official field heading exactly once. Put [Shot 1] and all time intervals INSIDE the main description field, never instead of its heading. Soundscape names causal sound sources; non_diegetic_music is N/A when music is prohibited. R2V additionally needs subject_definitions, summary and retention_analysis before detailed_description.",
     "Required output skeleton and reference alignment:", h3PromptSectionSkeleton(mode, duration, native)
   ].filter(Boolean).join("\n\n");

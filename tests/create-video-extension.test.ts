@@ -6,7 +6,7 @@ import { createClearedDraft } from "../src/core/draft-defaults";
 import { createTranslator } from "../src/core/i18n";
 import { mountVideoExtensionController } from "../src/renderer/pages/create/video-extension-controller";
 import { continuumDependencyFilesFor } from "../src/renderer/pages/create/view-model";
-import { extensionSafetyForDraft, h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
+import { extensionSafetyForDraft, h3PromptModeForDraft, h3TimelineDurationForDraft, interpolationEstimate } from "../src/renderer/pages/create/helpers";
 import type { Draft } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
 
@@ -86,6 +86,52 @@ afterEach(() => {
 
 describe("Continuum draft safety routing", () => {
   it.each([
+    ["minimax_h3_fl2va", 736],
+    ["minimax_h3_ref2va", 770],
+    ["minimax_h3_continuum", 736]
+  ] as const)("admits 30 seconds on %s with its own complete sample budget", (modelId, frames) => {
+    const state = createDefaultState();
+    const draft: Draft = {
+      ...state.draft,
+      inputMode: "video",
+      modelId,
+      duration: 30,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      h3ContinuumMode: "bootstrap",
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 10,
+      trimStartSeconds: 0,
+      trimEndSeconds: 10
+    };
+    expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({ safe: true, generatedFrames: frames, maxDurationSeconds: 30 });
+    expect(extensionSafetyForDraft({ ...draft, duration: 30.1 }, state.settings).safe).toBe(false);
+    expect(interpolationEstimate(draft)).toMatchObject({ generatedFrames: frames, outputFrames: 720 });
+    expect(h3TimelineDurationForDraft(draft)).toBe(30);
+    expect(h3TimelineDurationForDraft({ ...draft, inputMode: "image", modelId: "minimax_h3_fl2va" })).toBe(736 / 24);
+  });
+
+  it("rejects a changed managed duration and checks its prompt on the frozen local axis", () => {
+    const state = createDefaultState();
+    const draft: Draft = {
+      ...state.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_continuum",
+      workflowPath: "C:/workflows/minimax_h3_continuum_v38_managed_extend_api.json",
+      duration: 30,
+      h3ContinuumMode: "managed",
+      h3ContinuumSequence: { chunkSeconds: 15, acceptedChunks: 2 } as NonNullable<Draft["h3ContinuumSequence"]>,
+      sourceVideoPath: "C:/input/source.mp4",
+      sourceVideoDuration: 10,
+      trimStartSeconds: 0,
+      trimEndSeconds: 10
+    };
+    expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({ safe: false, maxDurationSeconds: 15 });
+    expect(h3TimelineDurationForDraft(draft)).toBe(15);
+  });
+
+  it.each([
     { h3ContinuumMode: "bootstrap" as const, h3ContinuumArtifactPath: undefined },
     { h3ContinuumMode: undefined, h3ContinuumArtifactPath: "C:/output/h3-native-av/h3av-source.safetensors" }
   ])("budgets ordinary AV imports as bootstrap despite a managed workflow filename: %j", (source) => {
@@ -100,7 +146,7 @@ describe("Continuum draft safety routing", () => {
       sourceVideoDuration: 362 / 24,
       trimStartSeconds: 0,
       trimEndSeconds: 362 / 24,
-      duration: 15,
+      duration: 30,
       resolution: 480,
       fps: 24,
       frameInterpolation: "off"
@@ -108,20 +154,20 @@ describe("Continuum draft safety routing", () => {
     const original = structuredClone(draft);
 
     expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({
-      safe: false,
-      generatedFrames: 379,
-      maxGeneratedFrames: 362,
-      maxDurationSeconds: 14
+      safe: true,
+      generatedFrames: 736,
+      maxGeneratedFrames: 736,
+      maxDurationSeconds: 30
     });
     expect(extensionSafetyForDraft({ ...draft, duration: 14 }, state.settings)).toMatchObject({
       safe: true,
       generatedFrames: 362,
-      maxDurationSeconds: 14
+      maxDurationSeconds: 30
     });
     expect(draft).toEqual(original);
   });
 
-  it("retains the managed 15-second budget when enqueue will select the managed workflow", () => {
+  it("uses the managed 30-second budget when enqueue will select a new managed workflow", () => {
     const state = createDefaultState();
     const draft: Draft = {
       ...state.draft,
@@ -141,7 +187,7 @@ describe("Continuum draft safety routing", () => {
 
     expect(extensionSafetyForDraft(draft, state.settings)).toMatchObject({
       safe: true,
-      maxDurationSeconds: 15
+      maxDurationSeconds: 30
     });
   });
 });
@@ -298,7 +344,7 @@ describe("Extend video boundary preview", () => {
   it("uses the execution-time reference contract for each H3 extension family", () => {
     const draft = createDefaultState().draft;
     expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_fl2va", startImagePath: "" })).toBe("I2VA");
-    expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_continuum", startImagePath: "" })).toBe("I2VA");
+    expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_continuum", startImagePath: "" })).toBe("T2VA");
     expect(h3PromptModeForDraft({ ...draft, inputMode: "video", modelId: "minimax_h3_ref2va", startImagePath: "" })).toBe("R2V");
   });
 

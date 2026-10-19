@@ -11,6 +11,8 @@ if (!sourceState || sourceState === "--help") {
   process.exit(sourceState ? 0 : 1);
 }
 let client, taskId;
+const duration = Number(process.env.LVS_SMOKE_DURATION ?? 5);
+assert.ok(Number.isFinite(duration) && duration >= 4 && duration <= 30, "LVS_SMOKE_DURATION must be within 4-30 seconds");
 const report = { ok: false, evidence: "real-bootstrap-ui-enqueue", focusEmulation: true,
   sourceInputSetup: "copied-files-and-AppApi-saveDraft", nativeFilePickerVerified: false, generationVerified: false };
 try {
@@ -29,6 +31,7 @@ try {
   await client.evaluate("document.querySelector('[data-continue-history]').click()");
   await pollUntil(() => client.evaluate("!!document.querySelector('#model') && document.querySelector('#source-video')?.readyState>=1"), Boolean, options.timeout, "Source loaded");
   await client.evaluate("(()=>{const e=document.querySelector('#model');e.value='minimax_h3_continuum';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  await pollUntil(() => client.evaluate("window.studio.getState().then(state => state.draft.modelId === 'minimax_h3_continuum')"), Boolean, options.timeout, "Continuum model transition");
   await client.evaluate("window.studio.getState().then(s=>window.studio.saveDraft({...s.draft,h3ContinuumMode:'bootstrap',extensionPromptVersions:[{...s.draft.extensionPromptVersions[0],text:'The red balloon continues rising gently above the green field. Preserve the camera and lighting.'}],extensionActivePromptVersion:0}))");
   await client.send("Page.reload");
   await pollUntil(() => client.evaluate("!!document.querySelector('[data-drop-h3-continuum-av]') && document.querySelector('#enqueue').disabled"), Boolean, options.timeout, "Missing AV gate");
@@ -60,16 +63,19 @@ try {
     try { return await client.evaluate("!!document.querySelector('#enqueue') && !document.querySelector('#enqueue').disabled"); }
     catch { return false; }
   }, Boolean, options.timeout, "Real AV inspection recovery");
+  await client.evaluate(`(()=>{const input=document.querySelector('#duration-number');input.value=${JSON.stringify(String(duration))};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const added = await runAppAction(client, options);
   taskId = added.task.id;
   const task = await client.evaluate(`window.studio.getState().then(s=>s.queue.find(t=>t.id===${JSON.stringify(taskId)}))`);
   assert.equal(task.modelId, "minimax_h3_continuum");
+  assert.equal(task.duration, duration);
   assert.equal(task.h3ContinuumMode, "bootstrap");
   assert.equal(task.h3ContinuumArtifactPath, artifact.payload.absolutePath);
   assert.ok(task.sourceAssetId && task.sourceVersionId);
   Object.assign(report, { ok: true, taskId, recoveredAfterRealInspection: true, actualButtonClicked: true,
     mode: task.h3ContinuumMode, duration: task.duration, sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
-    workflow: path.basename(task.workflowPath) });
+    workflow: path.basename(task.workflowPath), maxGeneratedFrames: task.maxGeneratedFrames,
+    sampledFrameLabel: await client.evaluate("document.querySelector('#duration-frames').textContent") });
 } catch (error) { Object.assign(report, { taskId, error: error.message }); process.exitCode = 1; }
 finally { client?.close(); }
 if (options.output) {

@@ -90,12 +90,13 @@ import { availableVramBytesForReserve } from "../../src/infrastructure/comfy-run
 import {
   h3DurationPlan,
   h3DetailedExpansionGateInstruction,
-  h3EffectiveDurationSeconds,
   h3ExtensionContinuityInstruction,
   h3ExplicitConstraintSummary,
   h3PromptPriorityInstruction,
   h3PromptControlInstruction,
   h3PromptExpansionTokenBudget,
+  h3PromptNodeOutputLimit,
+  assertH3PromptOutputBudget,
   h3PromptSectionSkeleton,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -116,7 +117,7 @@ import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
-import { h3AutoPrompterContract } from "../../src/core/h3-auto-prompter.js";
+import { h3AutoPrompterContract, h3TimelineDurationForRequest } from "../../src/core/h3-auto-prompter.js";
 import { h3LoraPromptInstruction } from "../../src/core/prompts/h3/loras.js";
 import {
   applyPromptRevision,
@@ -236,14 +237,14 @@ export function h3PromptInstruction(
   if (request.promptStrategy === "targeted-revision") {
     return promptRevisionInstruction(request.prompt, referenceContext, presetText);
   }
-  const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5);
+  const duration = h3TimelineDurationForRequest(request);
   const officialSchema = h3PromptSectionSkeleton(mode, duration, nativeStateContinuation);
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForRequest(request);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const extensionContinuityInstruction = request.extensionSource
-    ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk)
+    ? h3ExtensionContinuityInstruction(mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk, request.h3DurationSeconds ?? 5)
     : "";
   const controlInstruction = h3PromptControlInstruction({
     rawPrompt: request.prompt,
@@ -283,10 +284,10 @@ export function h3PromptInstruction(
     ...(scaleInstruction ? [scaleInstruction] : []),
     h3SmallModelPromptContract(mode, preset),
     ...(isH3ReferenceAutoPrompt(request)
-      ? [h3AutoPrompterContract(mode, duration, referenceContext, preset)]
+      ? [h3AutoPrompterContract(mode, duration, referenceContext, preset, duration)]
       : []),
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,
-    h3DurationPlan(mode, duration, preset),
+    h3DurationPlan(mode, duration, preset, duration),
     "Official H3 output fields (use this order, but do not copy these labels as commentary or add a visual inventory):",
     officialSchema,
     `Selected preset (low-priority style hint only): ${preset}.\n${presetText}`
@@ -334,7 +335,7 @@ export function buildNativePromptWorkflow(
           ? 8
           : request.mode === "image-edit"
             ? 896
-            : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset),
+            : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset, request.prompt),
         sampling_mode: "on",
         "sampling_mode.temperature": warmup ? 0.1 : 0.35,
         "sampling_mode.top_k": 40,
@@ -458,6 +459,11 @@ export async function enhancePromptWithComfyUi(
     );
   }
   const clientId = `local-video-studio-prompt-${crypto.randomUUID()}`;
+  assertH3PromptOutputBudget(
+    Number(prompt["text-generate"]!.inputs.max_length),
+    h3PromptNodeOutputLimit(objectInfo, "TextGenerate", "max_length"),
+    "Native Qwen"
+  );
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -488,6 +494,13 @@ export async function enhancePromptWithComfyUi(
   );
   onProgress?.("validating", 94);
   const output = extractTextGenerateOutput(history);
+  getApplicationLogger().info("prompt", "native-output-diagnostics", "Native prompt output received", {
+    promptId: result.prompt_id,
+    requestedMaxTokens: prompt["text-generate"]!.inputs.max_length,
+    outputCharacters: output.length,
+    finishReason: "unknown",
+    completionTokens: null
+  });
   if (warmup) return output;
   if (request.promptStrategy === "targeted-revision") {
     return applyPromptRevision(request.prompt, output);

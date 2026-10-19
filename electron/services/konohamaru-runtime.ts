@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { cleanupManifestSoftwareBackups, preserveSoftwareUserData, removeSoftwareArtifact } from "./software-update-cleanup.js";
 import type { Settings } from "../../src/types.js";
 import {
   KONOHAMARU_NODE_REVISION,
@@ -92,6 +93,10 @@ export function konohamaruNeuralUpstreamAddonPath(nodeDirectory: string): string
 
 function legacyRenoDxAddonPath(nodeDirectory: string): string {
   return path.join(hostDirectory(nodeDirectory), LEGACY_RENODX_ADDON);
+}
+export function konohamaruSoftwareCacheRoots(nodeDirectory: string) {
+  return { backups: path.join(nodeDirectory, "bin", "runtime", VIDEO2DLSSNR_BACKUP_DIRECTORY),
+    addons: [konohamaruNeuralUpstreamAddonPath(nodeDirectory) + ".previous-", legacyRenoDxAddonPath(nodeDirectory) + DISABLED_RENODX_SUFFIX + "-"] };
 }
 
 function isAllowedDownloadUrl(value: string): boolean {
@@ -376,6 +381,8 @@ export async function installKonohamaruNeuralUpstreamRuntime(
     if (finalProblems.length) {
       throw new Error(`neural-upstream runtime 安装后复检失败：${finalProblems.join("、")}`);
     }
+    if (previousAddon) await removeSoftwareArtifact(nodeDirectory, previousAddon, message => onLog?.(message));
+    if (disabledLegacy) await removeSoftwareArtifact(nodeDirectory, disabledLegacy, message => onLog?.(message));
     onLog?.(`neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} addon 已安装并通过 SHA-256 复检`);
     return {
       ok: true,
@@ -610,6 +617,7 @@ export async function installKonohamaruVideo2dlssnrRuntime(
 
     checkInstallationCancelled();
     if (await lstatIsPresent(runtimeDirectory)) {
+      await preserveSoftwareUserData(runtimeDirectory, stagedRuntime);
       await fs.mkdir(backupDirectory, { recursive: true });
       await deps.renameWithRetry(runtimeDirectory, backup);
       movedExisting = true;
@@ -622,6 +630,11 @@ export async function installKonohamaruVideo2dlssnrRuntime(
     if (finalProblems.length) {
       throw new Error(`video2dlssnr runtime 安装后复检失败：${finalProblems.join("、")}`);
     }
+    if (movedExisting) await removeSoftwareArtifact(nodeDirectory, backup, report);
+    await cleanupManifestSoftwareBackups(nodeDirectory, backupDirectory, "install-manifest.json", value => {
+      const manifest = value as { schemaVersion?: number; bundleId?: string } | null;
+      return manifest?.schemaVersion === 1 && manifest.bundleId === KONOHAMARU_VIDEO2DLSSNR_RUNTIME_BUNDLE_ID;
+    }, runtimeDirectory, report);
     report(`video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime 已安装并通过完整性复检`);
     return {
       ok: true,

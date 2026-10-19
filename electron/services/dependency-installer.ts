@@ -43,6 +43,7 @@ import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 import { pythonProbeCache } from "./python-probe-cache.js";
 import { isLocalComfyUrl } from "./comfy-endpoint.js";
 import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
+import { preserveSoftwareUserData, removeSoftwareArtifact } from "./software-update-cleanup.js";
 import { installAetherScaleRuntime, uninstallAetherScaleRuntime } from "./aetherscale-runtime.js";
 import {
   installKonohamaruNeuralUpstreamRuntime,
@@ -55,6 +56,18 @@ function normalizedRepositoryUrl(value: string): string {
 
 function normalizedGitRevision(value: string): string {
   return value.trim().split(/\r?\n/u)[0]?.trim().toLowerCase() ?? "";
+}
+
+/** Modified tracked settings can be user data; only untouched tracked assets are disposable. */
+async function downloadableNodeFiles(git: string, directory: string, runtime: DependencyInstallerRuntime, env: NodeJS.ProcessEnv) {
+  try {
+    const [tracked, changed] = await Promise.all([
+      runtime.runLoggedProcess(git, ["-C", directory, "ls-files", "-z"], { timeoutMs: 30_000, env }),
+      runtime.runLoggedProcess(git, ["-C", directory, "diff", "--name-only", "--no-renames", "-z", "HEAD", "--"], { timeoutMs: 30_000, env })
+    ]);
+    const modified = new Set(changed.split("\0"));
+    return tracked.split("\0").filter(name => name && !modified.has(name));
+  } catch { return []; } // Unknown provenance must not authorize deleting local data.
 }
 
 /**
@@ -441,7 +454,7 @@ async function installBundledNodePackage(
   comfyRoot: string,
   runtime: DependencyInstallerRuntime,
   report: (message: string) => void
-): Promise<void> {
+): Promise<string> {
   const sourceDirectory = await runtime.resolveBundledNodeDirectory?.(
     nodeId,
     definition.directoryName
@@ -475,6 +488,11 @@ async function installBundledNodePackage(
     });
     await fs.mkdir(backupRoot, { recursive: true });
     targetExists = await runtime.exists(targetDirectory);
+    if (targetExists) {
+      const files = (await fs.readdir(sourceDirectory, { recursive: true, withFileTypes: true }))
+        .filter(entry => entry.isFile()).map(entry => path.relative(sourceDirectory, path.join(entry.parentPath, entry.name)).replaceAll("\\", "/"));
+      await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, files);
+    }
     checkInstallationCancelled();
     if (targetExists) {
       await runtime.renameWithRetry(targetDirectory, backupDirectory);
@@ -491,8 +509,8 @@ async function installBundledNodePackage(
         errorOnExist: true
       });
     }
-    if (targetExists) report(`旧目录已备份：${backupDirectory}`);
     report(`应用内置节点包已安装：${definition.name}`);
+    return targetExists ? backupDirectory : "";
   } catch (error) {
     if (targetMovedToBackup) {
       await fs
@@ -543,6 +561,7 @@ async function installCustomNodePackageUnlocked(
     installLog.push(normalized);
     onLog?.(normalized);
   };
+  const replaced: { parent: string; backup: string; target: string }[] = [];
   try {
     report(runtime.proxyLogLabel(settings));
     if (process.platform === "win32") {
@@ -568,7 +587,7 @@ async function installCustomNodePackageUnlocked(
     let aetherScalePrepared = false;
 
     if (definition.source === "bundled") {
-      await installBundledNodePackage(
+      const backup = await installBundledNodePackage(
         nodeId,
         definition,
         targetDirectory,
@@ -576,6 +595,7 @@ async function installCustomNodePackageUnlocked(
         runtime,
         report
       );
+      if (backup) replaced.push({ parent: comfyRoot, backup, target: targetDirectory });
     } else {
       const git = await runtime.findExecutable("git.exe");
       if (!git) throw new Error("缺少 Git，无法下载节点包。");
@@ -663,19 +683,19 @@ async function installCustomNodePackageUnlocked(
               } else if (upstreamUnchanged === false) {
                 report(
                   definition.installRevision
-                    ? "检测到节点 revision 已偏离 catalog pin，将备份旧目录并安装固定版本"
-                    : "检测到 H3 Prompt Writer 上游有新提交，将备份旧目录并安装新副本"
+                    ? "检测到节点 revision 已偏离 catalog pin，将替换为固定版本，验证后清理旧软件"
+                    : "检测到 H3 Prompt Writer 上游有新提交，将替换更新，验证后清理旧软件"
                 );
               } else {
                 report(
                   definition.installRevision
-                    ? "无法确认节点 catalog pin；为安全起见，将备份旧目录后安装固定版本"
-                    : "无法确认 H3 Prompt Writer 上游提交；为安全起见，将备份旧目录后更新"
+                    ? "无法确认节点 catalog pin；将安装并校验固定版本，成功后清理旧软件"
+                    : "无法确认 H3 Prompt Writer 上游提交；将安装并校验新副本，成功后清理旧软件"
                 );
               }
             } else {
               report(
-                "检测到节点目录存在本地修改（可能来自兼容补丁）；不会直接覆盖原目录，改用安全副本更新并保留备份"
+                "检测到节点目录存在本地修改（可能来自兼容补丁）；重新安装源码与兼容层，保留本地模型和配置，成功后清理旧软件"
               );
             }
           }
@@ -684,7 +704,7 @@ async function installCustomNodePackageUnlocked(
           // A status probe failure must never turn into an in-place pull. The
           // replacement path below is copy/backup based and is recoverable.
           report(
-            "无法读取节点仓库的本地状态；为避免覆盖本地修改，改用安全副本更新并保留备份"
+            "无法读取节点仓库的本地状态；使用新副本验证更新，保留本地模型和配置，成功后清理旧软件"
           );
         }
       }
@@ -759,6 +779,7 @@ async function installCustomNodePackageUnlocked(
           }
           await fs.mkdir(backupRoot, { recursive: true });
           checkInstallationCancelled();
+          await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, await downloadableNodeFiles(git, targetDirectory, runtime, commandEnvironment));
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
           try {
             try {
@@ -788,14 +809,15 @@ async function installCustomNodePackageUnlocked(
             );
             throw error;
           }
-          report(`旧目录已备份：${backupDirectory}`);
+          replaced.push({ parent: comfyRoot, backup: backupDirectory, target: targetDirectory });
+          report("旧软件仅在本次安装验证期间暂存，成功后清理");
         } finally {
           await removeTemporaryNodeCheckout(replacementDirectory, report);
         }
       };
       if (mode === "reinstall") {
         await replaceExistingCheckout(
-          "正在执行干净重装：先备份当前目录，再安装上游副本"
+          "正在执行干净重装：验证上游副本，成功后清理旧软件"
         );
       } else if (reuseAppPatchedRepository) {
         // The directory already contains the exact app-managed compatibility
@@ -836,22 +858,22 @@ async function installCustomNodePackageUnlocked(
             throw error;
           }
           await replaceExistingCheckout(
-            "检测到本地分支与上游已分叉，无法安全快进；先备份旧目录并安装干净副本（不会丢失原目录）"
+            "检测到本地分支与上游已分叉，无法安全快进；安装干净副本，成功后清理旧软件"
           );
         }
       } else {
         await replaceExistingCheckout(
           repositoryDirty
-            ? "检测到节点仓库有本地修改，先备份旧目录并安装干净副本（不会丢失原目录）"
+            ? "检测到节点仓库有本地修改，保留模型和配置并安装干净副本，成功后清理旧软件"
             : isGitDirectory && repositoryMatches && !repositoryStatusChecked
-            ? "无法确认节点仓库状态，先备份旧目录并安装干净副本（不会覆盖本地修改）"
+            ? "无法确认节点仓库状态，保留模型和配置并安装干净副本，成功后清理旧软件"
             : definition.installRevision && isGitDirectory && repositoryMatches && !pinnedRevisionMatches
-            ? `当前节点 revision 不符合 catalog pin，备份旧目录并安装 ${definition.installRevision}`
+            ? `当前节点 revision 不符合 catalog pin，将替换为 ${definition.installRevision}，成功后清理旧软件`
             : !repositoryMatches && isGitDirectory
-            ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
+            ? `检测到节点仓库已切换，将替换为 ${definition.repositoryUrl}，成功后清理旧软件`
             : definition.id === "seedvr2"
-            ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
-            : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
+            ? "SeedVR2 使用新版接口：下载干净上游副本并替换，成功后清理旧软件"
+            : "目录由 ComfyUI Manager 管理，下载上游副本后替换，成功后清理旧软件"
         );
       }
     } else {
@@ -1108,12 +1130,34 @@ async function installCustomNodePackageUnlocked(
       if (runtimeResult.log) report(runtimeResult.log);
       if (!runtimeResult.ok) throw new Error(runtimeResult.message);
     }
+    for (const previous of replaced) await removeSoftwareArtifact(previous.parent, previous.backup, report);
+    replaced.length = 0; // The new installation is verified; cleanup must never trigger rollback.
+    // Clear historical software-only copies for this node, not unrelated node/user backups.
+    const backupRoot = path.join(comfyRoot, "node-backups");
+    const backupStat = await fs.lstat(backupRoot).catch(() => null);
+    const backups = backupStat?.isDirectory() && !backupStat.isSymbolicLink() ? await fs.readdir(backupRoot, { withFileTypes: true }).catch(error => { report(`旧软件清理未完成：${String(error)}`); return []; }) : [];
+    for (const entry of backups) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !entry.name.startsWith(`${definition.directoryName}-`) || !/^\d+$/u.test(entry.name.slice(definition.directoryName.length + 1))) continue;
+      const candidate = path.join(backupRoot, entry.name);
+      try {
+        const config = await fs.readFile(path.join(candidate, ".git", "config"), "utf8");
+        const origin = /\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(config)?.[1] ?? "";
+        if (normalizedRepositoryUrl(origin) !== normalizedRepositoryUrl(definition.repositoryUrl)) continue;
+        await preserveSoftwareUserData(candidate, targetDirectory, [], undefined, await downloadableNodeFiles("git.exe", candidate, runtime, commandEnvironment));
+        await removeSoftwareArtifact(comfyRoot, candidate, report);
+      } catch (error) { report(`旧节点副本未清理：${candidate}；${String(error)}`); }
+    }
     return {
       ok: true,
       message: `${definition.name} 已安装或更新。请重启 ComfyUI 后复检。`,
       log: installLog.join("\n\n")
     };
   } catch (error) {
+    for (const previous of replaced.reverse()) {
+      if (await removeSoftwareArtifact(previous.parent, previous.target, report)) {
+        await runtime.renameWithRetry(previous.backup, previous.target).catch(restoreError => report(`恢复旧节点失败：${String(restoreError)}；位置：${previous.backup}`));
+      }
+    }
     const processError = error as Error & { stdout?: string; stderr?: string };
     const details = [
       processError.message,

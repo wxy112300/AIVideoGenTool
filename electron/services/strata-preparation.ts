@@ -29,7 +29,6 @@ export async function scanStrataPreparation(
 ) {
   const installDirectory = resolvedStrataDirectory(settings);
   const modelDirectory = strataModelRoot(settings, resolvedModelDirectory);
-  const modelScanRoots = strataModelScanRoots(settings, resolvedModelDirectory);
   const files = await Promise.all([...STRATA_SOURCE_FILES, ...STRATA_ENGINE_FILES].map(async (relativePath) => ({
     relativePath,
     present: Boolean(installDirectory && (await inspect(path.join(installDirectory, relativePath)))?.size)
@@ -38,7 +37,7 @@ export async function scanStrataPreparation(
   // Shared projector is inspected once, not once per quant.
   const evidence = new Map<string, Promise<StrataFileEvidence | null>>();
   await Promise.all(profiles.flatMap((profile) => profile.components.map(async (component) => {
-    for (const root of modelScanRoots) {
+    for (const root of strataModelScanRoots(settings, resolvedModelDirectory, profile.id)) {
       const filename = path.join(root, component.expected);
       if (!evidence.has(filename)) evidence.set(filename, inspect(filename));
       const file = await evidence.get(filename);

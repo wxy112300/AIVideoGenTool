@@ -1,9 +1,13 @@
 # Windows 打包与 GitHub Release
-- Status: done
+- Status: archived（2026-10-19归档已完成的0.65.1发布）
 - Updated / Owner: 2026-10-12 / 当前 agent
 - Scope / Authority: 用户授权打包并发布 GitHub Release；发布当前已提交的 0.65.1。
 - Baseline: d32610f，工作区干净；远端 main 相同，无版本标签或 Release。
 - Execution: direct，无子 agent。
+
+## 归档说明
+
+- 2026-10-19用户同意归档，文件归属已释放。0.65.1打包、制品校验与公开发布已完成，以下latest及资产状态均为当时核验记录；本轮不重新发布、上传或修改Release，不将未验的系统安装/卸载或模型质量标为通过。
 
 ## Resume
 - 新增可重复 Windows x64 安装包与便携 ZIP 打包入口，内置节点及工作流放在 resources。

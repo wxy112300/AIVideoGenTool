@@ -38,6 +38,25 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("updates to one shared runtime and removes receipt-owned legacy versions, backups and successful downloads", async () => {
+    const { folder, runtime } = await fixture(); vi.stubEnv("LOCALAPPDATA", folder);
+    const root = managedStrataDirectory(), parent = path.dirname(root), old = managedStrataDirectory(STRATA_RELEASES[1]);
+    await fs.mkdir(old, { recursive: true });
+    await fs.writeFile(path.join(old, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[1], installedAt: "fixture" }));
+    await fs.writeFile(path.join(old, "obsolete.dll"), "downloadable binary");
+    const backup = `${old}.backup-123`; await fs.cp(old, backup, { recursive: true });
+    const data = path.join(parent, "data"); await fs.mkdir(data); await fs.writeFile(path.join(data, "user.gguf"), "model");
+    const unknown = path.join(parent, "v0.0.1-12345678"); await fs.mkdir(unknown); await fs.writeFile(path.join(unknown, "keep.txt"), "unknown");
+    for (let pass = 0; pass < 2; pass++) {
+      const result = await installStrataRuntime({ ...createDefaultSettings(), strataInstallDirectory: old }, { ...runtime, managedDirectory: root });
+      expect(result.ok, result.log).toBe(true);
+      expect(resolvedStrataDirectory({ strataInstallDirectory: old })).toBe(root);
+      expect((await fs.readdir(parent)).filter(name => /backup-|failed-|^\.install-|^v0\.1\./u.test(name))).toEqual([]);
+      expect(await fs.readdir(path.join(parent, "downloads"))).toEqual([]);
+    }
+    expect(await fs.readFile(path.join(data, "user.gguf"), "utf8")).toBe("model");
+    expect(await fs.readFile(path.join(unknown, "keep.txt"), "utf8")).toBe("unknown");
+  });
   it("does not replace an existing install when the small community asset fails verification", async () => {
     const { root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
@@ -79,7 +98,7 @@ describe("Strata software installer", () => {
     await write(newRoot, current, true);
     expect(resolvedStrataDirectory(createDefaultSettings())).toBe(newRoot);
     expect(await strataManagedReceipt(oldRoot)).toBe(true);
-    expect(resolvedStrataDirectory({ strataInstallDirectory: oldRoot })).toBe(oldRoot);
+    expect(resolvedStrataDirectory({ strataInstallDirectory: oldRoot })).toBe(newRoot);
   });
   it("retries a transient Windows backup lock without losing the managed installation", async () => {
     const { root, runtime } = await fixture();
@@ -98,7 +117,7 @@ describe("Strata software installer", () => {
     const result = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(result.ok, result.log).toBe(true);
     const backup = spy.mock.calls.find(([source, target]) => source === root && String(target).includes(".backup-"))![1];
-    expect(await fs.readFile(path.join(String(backup), "keep.txt"), "utf8")).toBe("old runtime");
+    await expect(fs.stat(String(backup))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await strataManagedReceipt(root)).toBe(true);
   });
   it("does not invent a backup or attempt restoration when backing up never succeeded", async () => {
@@ -166,7 +185,7 @@ describe("Strata software installer", () => {
     expect(commands).not.toMatch(/setup\.py|--serve|START-HERE|huggingface|8080/);
     const second = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(second.ok, second.log).toBe(true);
-    expect(second.log).toContain("旧安装保留");
+    expect(second.log).toContain("已清理旧软件");
   });
   it("reports ordered installation stages and real download counters separately from logs", async () => {
     const { runtime } = await fixture();
@@ -196,11 +215,11 @@ describe("Strata software installer", () => {
     runtime.verifyArchive = vi.fn(verifyStrataEngineArchive);
     const result = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(result.ok).toBe(false); expect(result.message).toContain("SHA-256");
-    expect(result.log).toContain("未完成下载保留在");
+    expect(result.log).toContain("已清理");
     expect(await strataManagedReceipt(root)).toBe(false);
     expect(runtime.run.mock.calls.some(([, args]) => args.includes("pip"))).toBe(false);
     const cache = path.dirname(runtime.download.mock.calls[0][1]);
-    expect((await fs.readdir(cache)).some(name => name.startsWith("engine.zip.invalid-"))).toBe(true);
+    expect((await fs.readdir(cache)).some(name => name.startsWith("engine.zip.invalid-"))).toBe(false);
     await expect(fs.stat(runtime.download.mock.calls[0][1])).rejects.toMatchObject({ code: "ENOENT" });
   });
   it("restores a prior managed installation after isolated pip fails, retaining diagnostic logs", async () => {

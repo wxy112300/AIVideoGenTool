@@ -25,6 +25,19 @@ function detailedWriterPrompt(wordCount: number): string {
 }
 
 describe("ComfyUI H3 Prompt Writer adapter", () => {
+  it.each([20.1, 30, Number.NaN, Number.POSITIVE_INFINITY])("rejects unsupported duration %s before a network or model request", async (duration) => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(enhancePromptWithH3PromptWriter({
+      prompt: "The same subject walks toward the camera.",
+      modelId: "minimax_h3_fl2va",
+      h3DurationSeconds: duration
+    }, settings, new AbortController().signal)).rejects.toThrow(/Gemma.*20/iu);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("turns a native 0xC000001D diagnostic into an actionable repair message", () => {
     expect(() => validateH3PromptWriterRuntime({
       status: "crashed",
@@ -218,6 +231,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         unload_after: false,
         model_id: "D:/ComfyUI/models/LLM/gemma/gemma-4-12b-it-Q5_K_M.gguf",
         duration_seconds: 5,
+        generation_budget: 2048,
         aspect_ratio: "16:9"
       });
       expect(String(generateBody.creative_brief)).toContain("Camera disambiguation and preservation lock");
@@ -259,7 +273,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     });
   });
 
-  it("uses the detailed token budget and repairs an under-length reference-auto result in bounded stages", async () => {
+  it("uses the detailed token budget and returns an under-length result without automatic length repair", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-auto-writer-"));
     const image = path.join(directory, "reference.png");
     await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -327,19 +341,8 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
       expect(generateBody.mode).toBe("I2VA");
       expect(generateBody.generation_budget).toBe(2880);
       expect(generateBody.unload_after).toBe(false);
-      expect(refineBodies).toHaveLength(2);
-      expect(refineBodies[0]).toMatchObject({
-        mode: "I2VA",
-        generation_budget: 2880,
-        unload_after: false
-      });
-      expect(String(refineBodies[0].current_prompt)).toContain("integrated_multimodal_description:");
-      expect(String(refineBodies[0].instruction)).toContain("must contain at least 450 grounded words");
-      expect(String(refineBodies[0].instruction)).toContain("broader detailed-mode target remains approximately 900 words");
-      expect(String(refineBodies[0].system_prompt_override)).toContain("Preserve every concrete user instruction");
-      expect(String(refineBodies[1].instruction)).toContain("Final coverage repair pass");
-      expect(String(refineBodies[1].instruction)).toContain("Add no fewer than 120 useful words");
-      expect(String(refineBodies[1].current_prompt)).toContain(detailedWriterPrompt(435).split("\n")[0]);
+      expect(refineBodies).toHaveLength(0);
+      expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/h3studio/unload"))).toBe(true);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

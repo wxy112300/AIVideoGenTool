@@ -97,7 +97,7 @@ export class StrataRuntimeOwner {
           await this.service.stop();
           plan = adaptivePlan;
           if (plan.modelId !== settings.promptModelId) throw new Error("Strata 自适应配置模型身份改变。");
-          options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : "GPU 外专家 RAM 驻留"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
+          options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : plan.resourcePlan!.residentBudgetGiB !== undefined ? "专家预算驻留 / 文件回读" : "GPU 外专家 RAM 驻留"}，model=${settings.promptModelId}，residentBudgetGiB=${plan.resourcePlan!.residentBudgetGiB ?? "none"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
           options.onLog?.(`资源准入：commit至少 ${(plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB；允许官方文件回读=${plan.allowResidentFallback === true}，实际模式待引擎确认`);
           options.onLog?.(`Windows文件页释放：STRATA_FILE_RELEASE=${plan.env?.STRATA_FILE_RELEASE ?? "unset"}；仅影响自有引擎的只读专家文件页，不清理其他进程`);
           await this.service.start(plan, signal);

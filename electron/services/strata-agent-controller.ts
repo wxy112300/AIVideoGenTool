@@ -166,7 +166,8 @@ export class AgentController {
         const doctor = await agentDoctor(preferences, this.directory);
         if (this.service.snapshot().pid !== null || this.cloud.running) throw new Error("请先停止全部自有服务，再安装、更新或修复。");
         const repair = command.mode === "repair";
-        const update = command.mode === "update" && doctor.strata.installedVersion !== STRATA_VERSION;
+        const update = command.mode === "update" && (doctor.strata.installedVersion !== STRATA_VERSION ||
+          path.resolve(doctor.strata.installDirectory).toLowerCase() !== path.resolve(managedStrataDirectory()).toLowerCase());
         const repairSoftware = command.mode === "repairAgentSoftware";
         const onlySoftware = repairSoftware || command.mode === "agentSoftware";
         let softwarePlan: SharedSoftwarePlan | undefined;
@@ -174,7 +175,7 @@ export class AgentController {
         if (needsStrata) await agentStrataInstallationSettings(preferences);
         const items = !needsStrata ? [] : [{ name: "Strata", version: STRATA_VERSION,
           target: managedStrataDirectory(), bytes: STRATA_ENGINE_BYTES,
-          impact: `固定引擎约${(STRATA_ENGINE_BYTES / 1024 ** 2).toFixed(1)}MiB，附社区向量约262KiB；另需源码和Python依赖（大小未知）。独立venv，不下载模型；无系统PATH/分页文件/provider变更。旧安装保留。` }];
+          impact: `固定引擎约${(STRATA_ENGINE_BYTES / 1024 ** 2).toFixed(1)}MiB，附社区向量约262KiB；另需源码和Python依赖（大小未知）。独立venv，不下载模型；无系统PATH/分页文件/provider变更。更新验证后清理旧软件。` }];
         if (!["update", "repair"].includes(command.mode ?? "")) {
           if (!doctor.npm) throw new Error(doctor.npmIssue || "未找到共享 npm 安装位置，请修复 Node/npm 后重试。");
           softwarePlan = await planSharedAgentSoftware(doctor.npm, doctor.claude, repairSoftware);
@@ -187,7 +188,7 @@ export class AgentController {
             impact: `${item.previousVersion ? `共享升级 ${item.previousVersion} → ${item.version}` : "共享安装"}；${sizes[item.key]}。` });
         }
         this.installPlan = { id: randomUUID(), repair: repair || update, repairSoftware, preferences, softwarePlan, items };
-        return { ...this.installPlan, message: items.length ? "确认后仅安装所列项目，已有兼容项跳过。npm -g使用共享安装，更新影响其他使用者；使用中拒绝更新，原包/入口先备份。原生依赖可能需C++工具链，完整大小未知。取消/失败可能部分生效，需复检。不会修改provider、CC Switch、Codex配置或系统PATH，不下载模型。安装不代表真实Agent验收成功。" : "当前已可用软件无需重装。" };
+        return { ...this.installPlan, message: items.length ? "确认后仅安装所列项目，已有兼容项跳过。npm -g使用共享安装，更新影响其他使用者；使用中拒绝更新，不额外复制旧包/入口，下载包收尾后清理。原生依赖可能需C++工具链，完整大小未知。取消/失败可能部分生效，需复检后重试。不会修改provider、CC Switch、Codex配置或系统PATH，不下载模型。安装不代表真实Agent验收成功。" : "当前已可用软件无需重装。" };
       });
       case "install": return this.exclusive(async (signal) => {
         const plan = this.installPlan; this.installPlan = null;
@@ -205,7 +206,7 @@ export class AgentController {
               if (message) this.log(message); if (progress) this.emit({ event: "installProgress", progress });
             }), signal);
             if (!result.ok) throw new Error(result.message);
-            installedPreferences = { ...plan.preferences, strataDirectory: managedStrataDirectory(), packConfig: "" };
+            installedPreferences = { ...plan.preferences, strataDirectory: "", packConfig: "" };
             await saveAgentPreferences(installedPreferences, this.directory);
           }
           if (plan.softwarePlan?.items.length) {
@@ -291,7 +292,7 @@ export class AgentController {
       const resources = await readReliableStrataResources(this.sampler.read, { ...AGENT_RESOURCE_RETRY, signal });
       this.lastResources = resources;
       this.emit({ event: "resources", resources });
-      const limits = planStrataResources(resources, 5120, { commitTrial, allowFileReadFallback: true });
+      const limits = planStrataResources(resources, 5120, { commitTrial, allowFileReadFallback: true, modelId: preferences.modelId, contextTokens });
       if (commitTrial) this.log("用户授权Agent实测：本次不叠加整卡容量作为提交硬门槛，实时RAM/提交/显存及低资源停止仍启用；不影响H3默认策略。");
       this.emit({ event: "resources", resources, limits });
       let packConfig = doctor.pack;
@@ -309,7 +310,7 @@ export class AgentController {
       this.serverOutput = "";
       this.engineLog = plan.engineLog ?? "";
       this.serverLog = path.join(path.dirname(this.engineLog), "server.log");
-      await fs.writeFile(this.serverLog, `[Agent run] ${new Date().toISOString()} context=${contextTokens} uncensoredMode=${preferences.uncensoredMode} vector=${plan.controlVector?.id ?? "none"} sha256=${plan.controlVector?.sha256 ?? "none"}\n`, { flag: "wx", mode: 0o600 });
+      await fs.writeFile(this.serverLog, `[Agent run] ${new Date().toISOString()} model=${preferences.modelId} context=${contextTokens} hostMode=${plan.resourcePlan?.hostMode} residentBudgetGiB=${plan.resourcePlan?.residentBudgetGiB ?? "none"} uncensoredMode=${preferences.uncensoredMode} vector=${plan.controlVector?.id ?? "none"} sha256=${plan.controlVector?.sha256 ?? "none"}\n`, { flag: "wx", mode: 0o600 });
       this.persistDiagnostics();
       this.log(`本轮日志：${path.dirname(this.serverLog)}（server.log 服务输出；engine.log 原生引擎）`);
       const owner = JSON.parse(await fs.readFile(path.join(this.lease.directory, "gpu-owner.json"), "utf8"));

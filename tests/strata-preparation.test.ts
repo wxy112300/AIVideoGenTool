@@ -2,7 +2,8 @@ import path from "node:path";
 import { STRATA_SOURCE_FILES, STRATA_ENGINE_FILES, STRATA_VERSION } from "../src/core/catalog/dependencies/strata";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults";
-import { normalizeStrataSettings, strataModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles, validStrataPort } from "../src/core/strata-preparation";
+import { normalizeStrataSettings, strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles, validStrataPort } from "../src/core/strata-preparation";
+import { STRATA_Q4_MODEL_ID, STRATA_Q4_MODEL } from "../src/core/catalog/models/strata";
 import { scanStrataPreparation } from "../electron/services/strata-preparation";
 import { evaluateModelProfiles } from "../electron/services/environment";
 import { renderStrataPreparationPanel } from "../src/renderer/pages/settings/strata-preparation";
@@ -11,6 +12,23 @@ import { settingsText } from "../src/renderer/pages/settings/copy";
 import { STRATA_MODEL_REVISION } from "../src/core/catalog/dependencies/strata";
 
 describe("Strata file preparation", () => {
+  it("requires all four pinned Q4 shards and reuses shared accessories without recursive scans", async () => {
+    const settings = { ...createDefaultSettings(), modelDirectory: path.resolve("q4-shared-models") };
+    const base = strataModelRoot(settings), q4Root = strataProfileModelRoot(base, STRATA_Q4_MODEL_ID);
+    expect(q4Root).toBe(path.join(settings.modelDirectory, "LLM", "Qwen3.8-Flash-Next-GGUF"));
+    const q4 = strataPreparationProfiles().find(profile => profile.id === STRATA_Q4_MODEL_ID)!;
+    const files = new Map(q4.components.map((component, index) => [path.join(index < 4 ? q4Root : base, component.expected), component.installGuide.bytes!]));
+    const inspect = vi.fn(async (filename: string) => files.has(filename) ? { header: "GGUF", size: files.get(filename)! } : null);
+    const scan = await scanStrataPreparation(settings, inspect);
+    expect(scan.profiles.find(profile => profile.id === STRATA_Q4_MODEL_ID)).toMatchObject({ available: true, runtimeVerified: false });
+    const standalone = await scanStrataPreparation({ ...settings, modelDirectory: "", strataModelDirectory: q4Root }, inspect);
+    expect(standalone.profiles.find(profile => profile.id === STRATA_Q4_MODEL_ID)?.available).toBe(true);
+    expect(q4.components.slice(0, 4).reduce((sum, component) => sum + component.installGuide.bytes!, 0)).toBe(111334654784);
+    expect(q4.components.slice(0, 4).every(component => component.installGuide.revision === STRATA_Q4_MODEL.revision)).toBe(true);
+    files.delete(path.join(q4Root, q4.components[3].expected));
+    expect((await scanStrataPreparation(settings, inspect)).profiles.find(profile => profile.id === STRATA_Q4_MODEL_ID)?.available).toBe(false);
+    expect(inspect.mock.calls.every(([filename]) => !filename.includes("strata-agent"))).toBe(true);
+  });
   it("uses the node version row, keeps actual/recommended/latest separate and updates an older install", () => {
     const settings = createDefaultSettings();
     const status = { configuredInstallDirectory: "", configuredModelDirectory: "", configuredComfyInstallDirectory: "",
@@ -33,7 +51,7 @@ describe("Strata file preparation", () => {
     const base = new Map(profiles.flatMap((profile) => profile.components.filter((component) => !component.optional)
       .map((component) => [path.join(strataModelRoot(settings), component.expected), component.installGuide.bytes!] as const)));
     const scan = await scanStrataPreparation(settings, async (filename) => base.has(filename) ? { size: base.get(filename)!, header: "GGUF" } : null);
-    expect(scan.profiles.every((profile) => profile.available && !profile.components[3].found && profile.components[3].optional)).toBe(true);
+    expect(scan.profiles.every((profile) => profile.available && profile.components.filter(component => component.optional).every(component => !component.found))).toBe(true);
     const guide = scan.profiles[0].components[3].installGuide;
     expect(guide).toEqual(scan.profiles[1].components[3].installGuide);
     expect(guide).toMatchObject({ bytes: 889017216, targetSubdirectory: "mtp", recommendedFilename: "mtp-q2_0.gguf" });
@@ -69,7 +87,7 @@ describe("Strata file preparation", () => {
     const scan = await scanStrataPreparation(settings, inspect);
     expect(scan.status).toMatchObject({ sourcePresent: true, enginePresent: true });
     expect(scan.profiles.every((profile) => profile.available && profile.integrated && !profile.runtimeReady && !profile.runtimeVerified)).toBe(true);
-    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 6); // Shared projector/MTP inspected once per root.
+    expect(new Set(inspect.mock.calls.map(([filename]) => filename)).size).toBe(inspect.mock.calls.length); // Shared paths are never inspected twice.
     expect(scan.profiles[0].components[0].matches[0]).toContain(modelRoot);
   });
 
@@ -83,7 +101,7 @@ describe("Strata file preparation", () => {
     expect(strataPreparationMatchesSettings(settings, scan.status)).toBe(true);
     expect(strataPreparationMatchesSettings({ ...settings, modelDirectory: path.resolve("new-models") }, scan.status)).toBe(false);
     expect(strataPreparationMatchesSettings({ ...settings, comfyInstallDirectory: path.resolve("another-comfy") }, scan.status)).toBe(false);
-    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 12); // Six bounded paths in each root.
+    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 26); // Bounded IQ and Q4 family paths, never recursion.
   });
 
   it.each(["old-only", "both", "invalid-new"])("reads old shared files in place but keeps the download root model-named (%s)", async (layout) => {
@@ -174,7 +192,7 @@ describe("Strata file preparation", () => {
   it.each(["zh-CN", "en-US", "zh-TW"] as const)("describes the model rather than installation instructions (%s)", (locale) => {
     for (const profile of strataPreparationProfiles(locale)) {
       expect(profile.description).toContain("512");
-      expect(profile.description).toContain("GSQ-RCO");
+      expect(profile.description).toContain(profile.id.endsWith("ud-q4_k_xl") ? "Unsloth" : "GSQ-RCO");
       expect(profile.description).toContain("QSA");
       expect(profile.description).not.toMatch(/任选|擇一|不必|不要|仅核对|扫描|掃描|Choose|scan|not integrated/);
     }

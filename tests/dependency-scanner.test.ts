@@ -518,7 +518,7 @@ describe("dependency scanner", () => {
       updateAvailable: true,
       compatibilityState: "warning"
     });
-    expect(multimodal?.updateNotice).toContain("16K/3072");
+    expect(multimodal?.updateNotice).toContain("32K 上下文/16K");
     expect(multimodal?.updateNotice).toContain("安全诊断");
   });
 

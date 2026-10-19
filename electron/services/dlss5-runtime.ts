@@ -3,6 +3,7 @@ import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { createReadStream } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { cleanupManifestSoftwareBackups, removeSoftwareArtifact } from "./software-update-cleanup.js";
 import type {
   ConnectionResult,
   Dlss5RuntimeStatus,
@@ -999,6 +1000,8 @@ async function installPinnedDlss5NrRuntime(
     if (!status.nrReady) {
       throw new Error(`DLSS5 NR runtime 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
     }
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report);
     report("DLSS5 基础 NR runtime 已原子安装；SR 与 guided NR 继续按独立能力检查。");
     return {
       ok: true,
@@ -1217,6 +1220,8 @@ export async function installDlss5Runtime(
     report("DLSS5 SR runtime 已原子安装；NR 未随本阶段下载或启用。");
     const status = await scanDlss5Runtime(comfyRoot, nodeDirectory);
     if (!status.srReady) throw new Error(`DLSS5 runtime 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report);
     return {
       ok: true,
       message: "DLSS5 SR runtime 已安装并通过离线文件/config 检查；请重启 ComfyUI 后再做运行时复检。",

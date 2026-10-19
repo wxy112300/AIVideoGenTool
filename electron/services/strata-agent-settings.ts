@@ -5,7 +5,7 @@ import { createDefaultSettings } from "../../src/core/defaults.js";
 import { strataPreparationProfiles, validStrataPort } from "../../src/core/strata-preparation.js";
 import { localStateBase, privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
 import { normalizeStrataUncensoredMode, isStrataUncensoredMode, type StrataUncensoredMode } from "../../src/core/strata-uncensored.js";
-import { managedStrataDirectory, strataInstalledRelease } from "./strata-installation.js";
+import { managedStrataDirectory, isManagedStrataPath, resolvedStrataDirectory } from "./strata-installation.js";
 
 export interface AgentPreferences {
   schema: 1; modelId: string; uncensored: boolean; lan: boolean;
@@ -51,6 +51,11 @@ export function normalizeAgentPreferences(value: unknown): AgentPreferences {
   if (result.lan) throw new Error("家庭局域网尚未完成 localhost 与首次安全验收；当前只能关闭。");
   // Retire only the former generated private default, without deleting any files.
   if (result.cloudDirectory && path.resolve(result.cloudDirectory).toLowerCase() === path.resolve(path.join(agentDirectory(), "software")).toLowerCase()) result.cloudDirectory = "";
+  // A managed installation is shared with Studio, never a remembered version pin.
+  if (result.strataDirectory && isManagedStrataPath(result.strataDirectory)) {
+    if (path.resolve(result.strataDirectory).toLowerCase() !== path.resolve(resolvedStrataDirectory({ strataInstallDirectory: "" })).toLowerCase()) result.packConfig = "";
+    result.strataDirectory = "";
+  }
   return result;
 }
 export async function readAgentPreferences(directory = agentDirectory()): Promise<AgentPreferences> {
@@ -78,7 +83,7 @@ export function applyAgentDiscovery(preferences: AgentPreferences, found: {
   cloud: { path: string }; pack: string;
 }): AgentPreferences {
   return { ...preferences,
-    strataDirectory: preferences.strataDirectory || (found.strata.managedInstalled ? found.strata.installDirectory : ""),
+    strataDirectory: preferences.strataDirectory || (found.strata.managedInstalled && !isManagedStrataPath(found.strata.installDirectory) ? found.strata.installDirectory : ""),
     modelDirectory: preferences.modelDirectory || (!preferences.modelRoot ? found.strata.modelDirectory : ""),
     claudeEntry: preferences.claudeEntry || (found.claude.available ? found.claude.path : ""),
     ccSwitchPath: preferences.ccSwitchPath || found.ccSwitch.path,
@@ -104,15 +109,12 @@ export async function agentSettings(preferences: AgentPreferences, stateFile = p
     discoveredComfyUrl: text("comfyUrl"), uiLocale: "zh-CN" as const };
 }
 
-/** Updating an auto-discovered old managed path installs beside it, never overwrites a manual checkout. */
+/** A single managed runtime shared with Studio; manual checkouts are connection-only. */
 export async function agentStrataInstallationSettings(preferences: AgentPreferences) {
   const settings = await agentSettings(preferences);
   const selected = settings.strataInstallDirectory.trim();
   if (selected) {
-    const release = strataInstalledRelease(selected);
-    const identity = (filename: string) => path.resolve(filename).toLowerCase();
-    if (identity(selected) !== identity(managedStrataDirectory()) &&
-      (!release || identity(selected) !== identity(managedStrataDirectory(release)))) {
+    if (!isManagedStrataPath(selected)) {
       throw new Error("手动 Strata 目录不由启动器更新；请选择应用管理安装，原目录未修改。");
     }
   }

@@ -190,7 +190,9 @@ describe("create workspace coordinator", () => {
     const { coordinator, application, getState } = createCoordinatorHarness();
     const originalVideoPrompt = getState().draft.promptVersions[0]?.text;
 
-    coordinator.patchImageDraft({ outputCount: 3 });
+    coordinator.patchImageDraft({ outputCount: 3, modelId: "qwen-image-2-1", qualityProfile: "native",
+      seed: 42, aspectRatio: "16:9", targetResolution: 1080, projectId: "old-project", parentVersionId: "old-version" });
+    const configuration = structuredClone(getState().imageDraft);
     expect(getState().imageDraft.outputCount).toBe(3);
     expect(coordinator.getImageDraftDirty()).toBe(true);
 
@@ -201,6 +203,14 @@ describe("create workspace coordinator", () => {
     coordinator.clearDraft("image-edit");
 
     expect(getState().imageDraft.pictures).toEqual([]);
+    expect(getState().imageDraft).toMatchObject({
+      modelId: configuration.modelId, qualityProfile: configuration.qualityProfile,
+      seed: 42, aspectRatio: "16:9", targetResolution: configuration.targetResolution, outputCount: 3,
+      imageLoras: configuration.imageLoras, outputFormat: configuration.outputFormat
+    });
+    expect(getState().imageDraft.projectId).toBeUndefined();
+    expect(getState().imageDraft.parentVersionId).toBeUndefined();
+    expect(getState().imageDraft.promptVersions.map(p => p.text)).toEqual([""]);
     expect(getState().draft.promptVersions[0]?.text).toBe(originalVideoPrompt);
     expect(coordinator.getImageDraftDirty()).toBe(true);
   });

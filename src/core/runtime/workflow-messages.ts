@@ -2,6 +2,8 @@ import type { UiLocale } from "../../types.js";
 import { zhTWWorkflowMessages } from "./workflow-messages.zh-TW.js";
 
 export type WorkflowMessageKey =
+  | "h3ExpansionWordsWarning"
+  | "h3ExpansionSourceLengthWarning"
   | "spectrumConsumersMissing"
   | "spectrumOutputUnknown"
   | "spectrumOutputsDiffer"
@@ -37,6 +39,7 @@ export type WorkflowMessageKey =
   | "h3BalancedGuidance"
   | "h3HeavyGuidance"
   | "h3FrameRange"
+  | "continuumDurationFrozen"
   | "currentModel"
   | "modelFrameBudget"
   | "q3NoExtension"
@@ -74,6 +77,8 @@ type RuntimeParams = Record<string, string | number>;
 export type WorkflowLocale = Record<WorkflowMessageKey, string>;
 
 const zhCN: WorkflowLocale = {
+  h3ExpansionWordsWarning: "影视细节扩写的主时间线只有 {actualWords} 词，低于建议的至少 {minimumWords} 词；已保留结果，可按画面复杂度决定是否补充。",
+  h3ExpansionSourceLengthWarning: "影视细节扩写的有效正文短于原始提示词；已保留结果，请核对关键内容是否完整。",
   spectrumConsumersMissing: "Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。",
   spectrumOutputUnknown: "Spectrum 加速无法识别 H3 模型补丁链的输出。",
   spectrumOutputsDiffer: "Spectrum 加速要求 BasicScheduler 与 BasicGuider 使用同一个 H3 模型输出。",
@@ -108,7 +113,8 @@ const zhCN: WorkflowLocale = {
   h3SafeGuidance: "官方本地模板默认档，适合作为当前显卡的稳妥起步范围。",
   h3BalancedGuidance: "当前显卡可尝试的均衡档；请预留更长采样和解码时间。",
   h3HeavyGuidance: "当前显卡重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。",
-  h3FrameRange: "{label} 官方帧范围：{generatedFrames}/{maxGeneratedFrames}。{guidance}",
+  h3FrameRange: "{label} 当前采样预算：{generatedFrames}/{maxGeneratedFrames} 帧；官方公布范围约 4–15 秒。{guidance}",
+  continuumDurationFrozen: "此 Continuum Run 的每段时长已固定为 {duration} 秒；请新建序列以选择其他时长。",
   currentModel: "当前模型",
   modelFrameBudget: "{label} 模型帧预算：{generatedFrames}/{maxGeneratedFrames}。",
   q3NoExtension: "H3 Q3 GGUF 3080 实验档只支持普通 FL2VA 图生视频，不支持视频续写。",
@@ -124,7 +130,7 @@ const zhCN: WorkflowLocale = {
   continuumEndRequired: "H3 Continuum 当前要求续写边界位于源视频末尾；Native AV 对应完整源视频，不能与中途裁剪边界混用。",
   continuumBudget: "H3 Continuum 需要采样 {sampledFrames} 帧，超过当前 {maxGeneratedFrames} 帧预算；请缩短新增时长。",
   continuumSummary: "H3 Continuum：从 Native AV 续写，采样 {sampledFrames}/{maxGeneratedFrames} 帧，保留 22 帧连续性上下文，输出新增 {visibleFrames} 帧。",
-  continuumV38Summary: "H3 Continuum V3.8：使用边界帧 + Video Guide，采样 {sampledFrames}/{maxGeneratedFrames} 帧，输出约 {visibleFrames} 帧；单次 chunk 至少 4 秒。",
+  continuumV38Summary: "H3 Continuum V3.8：使用 Native AV 上下文，采样 {sampledFrames}/{maxGeneratedFrames} 帧，输出 {visibleFrames} 帧；单次 chunk 至少 4 秒。",
   sulphurOnly: "当前只允许 Sulphur 2 使用原生视频续写任务。",
   contextMinimum: "至少保留 {seconds} 秒，才能提供 {frames} 帧续写上下文。",
   sulphurResolution: "Sulphur 2 续写只允许 360p 或 480p 基准分辨率。",
@@ -143,6 +149,8 @@ const zhCN: WorkflowLocale = {
   filenamePlaceholderMissing: "缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名",
 };
 const enUS: Partial<WorkflowLocale> = {
+  h3ExpansionWordsWarning: "The detailed timeline has {actualWords} words, below the recommended {minimumWords}. The result is saved; review whether the scene needs more detail.",
+  h3ExpansionSourceLengthWarning: "The detailed result is shorter than the original prompt. The result is saved; check that key details are complete.",
   spectrumConsumersMissing: "Spectrum acceleration must connect to the H3 BasicScheduler / BasicGuider model input.",
   spectrumOutputUnknown: "Spectrum acceleration could not identify the output of the H3 model patch chain.",
   spectrumOutputsDiffer: "Spectrum acceleration requires BasicScheduler and BasicGuider to use the same H3 model output.",
@@ -177,7 +185,8 @@ const enUS: Partial<WorkflowLocale> = {
   h3SafeGuidance: "The official local-template default is a safe starting range for the current GPU.",
   h3BalancedGuidance: "A balanced range for this GPU; allow more time for sampling and decoding.",
   h3HeavyGuidance: "A heavy load for this GPU; generation is allowed but VRAM and duration risk are higher. Close other GPU programs and avoid queuing several long tasks.",
-  h3FrameRange: "{label} official frame range: {generatedFrames}/{maxGeneratedFrames}. {guidance}",
+  h3FrameRange: "{label} current sampling budget: {generatedFrames}/{maxGeneratedFrames} frames; the published range is about 4–15 seconds. {guidance}",
+  continuumDurationFrozen: "This Continuum Run uses a frozen {duration}-second chunk duration; start a new sequence to select another duration.",
   currentModel: "Current model",
   modelFrameBudget: "{label} model-frame budget: {generatedFrames}/{maxGeneratedFrames}.",
   q3NoExtension: "The H3 Q3 GGUF 3080 experimental profile supports ordinary FL2VA image-to-video only, not video extension.",
@@ -193,7 +202,7 @@ const enUS: Partial<WorkflowLocale> = {
   continuumEndRequired: "H3 Continuum currently requires the extension boundary to be the end of the source video; Native AV represents the complete source and cannot be mixed with a mid-video trim.",
   continuumBudget: "H3 Continuum needs {sampledFrames} sampled frames, exceeding the current budget of {maxGeneratedFrames}. Shorten the new segment.",
   continuumSummary: "H3 Continuum: continuing from Native AV, sampling {sampledFrames}/{maxGeneratedFrames} frames, retaining 22 continuity frames and outputting {visibleFrames} new frames.",
-  continuumV38Summary: "H3 Continuum V3.8: using a boundary frame plus Video Guide, sampling {sampledFrames}/{maxGeneratedFrames} frames and outputting about {visibleFrames} frames; each chunk is at least 4 seconds.",
+  continuumV38Summary: "H3 Continuum V3.8: using Native AV context, sampling {sampledFrames}/{maxGeneratedFrames} frames and outputting {visibleFrames} frames; each chunk is at least 4 seconds.",
   sulphurOnly: "Only Sulphur 2 may use native video extension tasks here.",
   contextMinimum: "Keep at least {seconds} seconds to provide {frames} frames of extension context.",
   sulphurResolution: "Sulphur 2 extension allows only 360p or 480p base resolution.",

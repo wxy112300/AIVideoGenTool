@@ -7,15 +7,15 @@ import { extractH3DialogueLocks } from "../src/core/h3-dialogue.js";
 const envelope = (text: string) => `integrated_multimodal_description: [Shot 1] ${text}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`;
 const words = (count: number) => Array.from({ length: count }, (_, index) => `detail${index}`).join(" ");
 
-describe("H3 model-authored detailed expansion gate", () => {
-  it("rejects output that is shorter than a long source even when it exceeds the fixed duration floor", () => {
+describe("H3 model-authored detailed expansion checks", () => {
+  it("warns when output falls below the source-aware length recommendation", () => {
     const source = words(300);
-    expect(() => assertDetailedCinematicExpansion(envelope(words(320)), "T2VA", 5, source)).toThrow("至少 360");
+    expect(assertDetailedCinematicExpansion(envelope(words(320)), "T2VA", 5, source).join(" ")).toContain("至少 360");
   });
 
-  it("rejects a shorter effective character body even if short-word padding meets the word floor", () => {
+  it("warns about a shorter effective character body even when it meets the word recommendation", () => {
     const source = "internationalization ".repeat(200);
-    expect(() => assertDetailedCinematicExpansion(envelope("a ".repeat(300)), "T2VA", 5, source)).toThrow("短于原始提示词");
+    expect(assertDetailedCinematicExpansion(envelope("a ".repeat(300)), "T2VA", 5, source).join(" ")).toContain("短于原始提示词");
   });
 
   it("does not let application-inserted scale and dialogue locks rescue under-length output", () => {
@@ -23,10 +23,10 @@ describe("H3 model-authored detailed expansion gate", () => {
     const output = envelope(`${source} ${words(218)}`);
     const locks = extractH3DialogueLocks(source);
     const normalized = normalizeH3PromptOutput(output, "I2VA", 5, locks, [], source);
-    // The old order could accept this only after application-owned recovery increased the count.
     expect(countPromptWords(normalized)).toBeGreaterThan(250);
     expect(() => normalizeH3PromptOutput(output, "I2VA", 5, locks, [], source, "", false, false,
-      undefined, "detailed-cinematic")).toThrow("至少 250");
+      undefined, "detailed-cinematic")).not.toThrow();
+    expect(assertDetailedCinematicExpansion(output, "I2VA", 5, source).join(" ")).toContain("至少 250");
     expect(() => normalizeH3PromptOutput(output, "I2VA", 5, locks, [], source, "", false, false,
       undefined, "official-storyboard")).not.toThrow();
   });
@@ -36,13 +36,13 @@ describe("H3 model-authored detailed expansion gate", () => {
     expect(() => assertDetailedCinematicExpansion(output, "T2VA", 5, "")).not.toThrow();
     expect(() => assertDetailedCinematicExpansion(`${envelope(words(130))}\nintegrated_multimodal_description: ${words(131)}`,
       "T2VA", 5, "")).toThrow("重复了主时间线字段");
-    expect(() => assertDetailedCinematicExpansion(`${envelope(words(100))}\nsummary: ${words(500)}`,
-      "T2VA", 5, "")).toThrow("至少 250");
+    expect(assertDetailedCinematicExpansion(`${envelope(words(100))}\nsummary: ${words(500)}`,
+      "T2VA", 5, "").join(" ")).toContain("至少 250");
   });
 
   it("does not count R2V subject inventories or summaries toward the detailed timeline floor", () => {
     const output = `subject_definitions: ${words(600)}\nsummary: ${words(600)}\ndetailed_description: ${words(100)}\noverall_soundscape: ${words(600)}`;
-    expect(() => assertDetailedCinematicExpansion(output, "R2V", 5, "")).toThrow("至少 350");
+    expect(assertDetailedCinematicExpansion(output, "R2V", 5, "").join(" ")).toContain("至少 350");
   });
 
   it("accepts transport wrappers before applying the same raw-body gate", () => {
@@ -55,7 +55,7 @@ describe("H3 model-authored detailed expansion gate", () => {
 
   it("does not count repeated filler or structural tags as added detail", () => {
     const repeated = "The wheels roll smoothly while the camera maintains its position. ".repeat(30);
-    expect(() => assertDetailedCinematicExpansion(envelope(repeated), "T2VA", 5, "")).toThrow("至少 250");
+    expect(assertDetailedCinematicExpansion(envelope(repeated), "T2VA", 5, "").join(" ")).toContain("至少 250");
     expect(h3ExpansionCharacterCount("[Shot 1] <Picture 1> <d>[English] Ready.</d> 00:03.000")).toBe(5);
     const requestedRepeat = "The bell rings twice. The bell rings twice.";
     expect(h3ExpansionUniqueContent(requestedRepeat, requestedRepeat).match(/bell/g)).toHaveLength(2);
@@ -83,5 +83,22 @@ describe("H3 model-authored detailed expansion gate", () => {
     expect(h3ExpansionUsesHanProse('The tower says in Chinese: "保持中线，等待放行。"')).toBe(false);
     expect(h3ExpansionUsesHanProse('The airliner stops. <d>[Chinese] 保持中线，等待放行。</d>')).toBe(false);
     expect(h3ExpansionUsesHanProse('飞机停下，用英语说："Ready."')).toBe(true);
+  });
+
+  it("still rejects missing or empty main timelines", () => {
+    for (const output of ["overall_soundscape: Quiet.", envelope("   ").replace("[Shot 1]", "")]) {
+      expect(() => assertDetailedCinematicExpansion(output, "T2VA", 5, ""))
+        .toThrow("未返回 integrated_multimodal_description");
+    }
+  });
+
+  it("localizes warnings while leaving the prompt content unchanged", () => {
+    const output = envelope("The woman waves.");
+    expect(assertDetailedCinematicExpansion(output, "T2VA", 30, "", "en-US").join(" "))
+      .toContain("below the recommended 750");
+    expect(assertDetailedCinematicExpansion(output, "T2VA", 30, "", "zh-TW").join(" "))
+      .toContain("已保留結果");
+    expect(normalizeH3PromptOutput(output, "T2VA", 30, [], [], "", "", false, false,
+      undefined, "detailed-cinematic")).toBe(output);
   });
 });

@@ -10,6 +10,11 @@ export function fieldLabelWithTip(label: string, tip: string): string {
   return `<span class="field-label-row"><span>${escapeHtml(label)}</span><span class="field-info" data-tooltip-toggle tabindex="0" aria-expanded="false" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" role="tooltip">${escapeHtml(tip)}</span></span></span>`;
 }
 
+/** Disabled buttons need a hover/focus host too; reuse the prompt progress tip. */
+export function promptButtonWithTip(button: string, tip: string, id: string, disabled: boolean, progress = false): string {
+  return `<span class="prompt-button-tip"${disabled ? ` tabindex="0" aria-describedby="${escapeHtml(id)}"` : ""}>${button}<span class="prompt-progress-tooltip" id="${escapeHtml(id)}" role="tooltip"${progress ? " data-prompt-progress-tooltip" : ""}>${escapeHtml(tip)}</span></span>`;
+}
+
 export function videoLoraInfoButton(
   lora: Draft["videoLoras"][number],
   t: Translate = createTranslator("zh-CN").t,

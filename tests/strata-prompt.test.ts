@@ -72,10 +72,33 @@ function fixture() {
 }
 
 describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
+  it("rejects a 30-second Gemma request before starting runtime preparation", async () => {
+    const scenario = fixture();
+    scenario.state.settings.promptModelId = "google/gemma-4-12b-q5";
+    const before = structuredClone(scenario.state);
+    const runtimeBefore = scenario.manager.snapshot();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network must not be reached"));
+    await expect(scenario.service.enhance({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3DurationSeconds: 30 })).rejects.toThrow(/Gemma.*20/iu);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(scenario.manager.snapshot()).toEqual(runtimeBefore);
+    expect(scenario.state).toEqual(before);
+  });
+
+  it("keeps 30-second detailed and ordinary requests on Strata's exact-tokenizer budget path", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = modelId;
+    for (const preset of ["official-storyboard", "detailed-cinematic"] as const) {
+      const chat = await buildStrataPromptRequest({ prompt: "A balloon rises steadily.", modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: preset, h3DurationSeconds: 30 }, settings, new AbortController().signal);
+      expect(chat).toMatchObject({ contextSize: 32768, maxTokens: 8192, automaticOutputBudget: true });
+      expect(chat.reasoning).toBeUndefined();
+      expect(JSON.stringify(chat.messages)).toContain("30.67");
+    }
+  });
+
   it("rejects invalid text without stopping a healthy model, then reuses it for the next enhancement", async () => {
     const f=fixture(),before=structuredClone(f.state);
-    f.owner.chat.mockResolvedValueOnce('integrated_multimodal_description: [Shot 1] Too short.\noverall_soundscape: N/A\nnon_diegetic_music: N/A');
-    await expect(f.service.enhance({prompt:'A detailed airport scene.',modelId:'minimax_h3_fl2va',mode:'h3-vision',h3PromptMode:'I2VA',h3PromptPreset:'detailed-cinematic',h3DurationSeconds:15})).rejects.toThrow('词');
+    f.owner.chat.mockResolvedValueOnce('overall_soundscape: N/A\nnon_diegetic_music: N/A');
+    await expect(f.service.enhance({prompt:'A detailed airport scene.',modelId:'minimax_h3_fl2va',mode:'h3-vision',h3PromptMode:'I2VA',h3PromptPreset:'detailed-cinematic',h3DurationSeconds:15})).rejects.toThrow('未返回');
     expect(f.owner.stop).not.toHaveBeenCalled();expect(f.owner.snapshot()).toMatchObject({pid:123,modelLoaded:true});
     expect(f.manager.snapshot()).toMatchObject({service:{phase:'ready'},model:{phase:'resident'},operation:{terminalStatus:'failed'}});
     expect(f.logger.info).toHaveBeenCalledWith('prompt','strata-validation-retained',expect.any(String),expect.objectContaining({strataPid:123}));
@@ -310,21 +333,22 @@ describe("Strata Pack, image and output contracts", () => {
     const controller = new AbortController(); controller.abort(new Error("cancelled"));
     await expect(strataImageContent(filename, controller.signal)).rejects.toThrow("cancelled");
   });
-  it("normalizes an H3 envelope and refuses a short detailed-cinematic result", async () => {
+  it("normalizes an H3 envelope and returns a short detailed-cinematic result", async () => {
     const settings = createDefaultState().settings; settings.promptModelId = modelId;
     const req: EnhanceRequest = { prompt: "A woman waves.", modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: "detailed-cinematic" };
     const chat = vi.fn(async () => "integrated_multimodal_description: [Shot 1] The woman waves.\noverall_soundscape: N/A\nnon_diegetic_music: N/A");
-    await expect(enhancePromptWithStrata(req, settings, { chat }, new AbortController().signal, vi.fn())).rejects.toThrow();
+    await expect(enhancePromptWithStrata(req, settings, { chat }, new AbortController().signal, vi.fn())).resolves.toContain("The woman waves.");
+    expect(chat).toHaveBeenCalledOnce();
   });
-  it("rejects a detailed result before recovery adds enough words, without mutating the draft or queue", async () => {
+  it("returns a short detailed result with content locks without mutating the draft or queue", async () => {
     const f = fixture(), before = structuredClone(f.state);
     const source = 'A tiny woman says in English: "Ready."';
     const body = `${source} ${Array.from({ length: 218 }, (_, index) => `detail${index}`).join(" ")}`;
     f.owner.chat.mockResolvedValueOnce(`integrated_multimodal_description: [Shot 1] ${body}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`);
     await expect(f.service.enhance({ prompt: source, modelId: "minimax_h3_fl2va", mode: "h3-vision",
-      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 })).rejects.toThrow("至少 250");
+      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 })).resolves.toContain("<d>[English] Ready.</d>");
     expect(f.state).toEqual(before);
-    expect(f.progress.at(-1)?.status).toBe("failed");
+    expect(f.progress.at(-1)?.status).toBe("completed");
     expect(f.manager.snapshot().model.phase).toBe("resident");
     expect(f.owner.stop).not.toHaveBeenCalled();
   });

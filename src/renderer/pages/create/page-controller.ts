@@ -12,7 +12,7 @@ import type {
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
-import { continuumV38MaxDurationSeconds, generationSafetyForTask, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
+import { continuumV38MaxDurationSeconds, generationSafetyForTask, h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
@@ -650,7 +650,12 @@ export function mountCreatePageController(
     const maxDuration = state.draft.inputMode === "video"
       ? extensionSafetyForDraft(state.draft, state.settings).maxDurationSeconds
       : generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
-    const minimumDuration = isMiniMaxH3ContinuumModel(state.draft.modelId) ? 4 : 1;
+    const minimumDuration = state.draft.inputMode === "video" &&
+      isMiniMaxH3ContinuumModel(state.draft.modelId) &&
+      h3ContinuumModeForSource(state.draft) === "managed" &&
+      state.draft.h3ContinuumSequence
+      ? state.draft.h3ContinuumSequence.chunkSeconds
+      : isMiniMaxH3ContinuumModel(state.draft.modelId) ? 4 : 1;
     const requested = Number.isFinite(value) ? value : minimumDuration;
     const duration = Math.max(minimumDuration, Math.min(maxDuration, commit ? Math.round(requested * 10) / 10 : requested));
     options.patchDraft({ duration });

@@ -1,6 +1,6 @@
 # History 批量管理与标签编辑
 
-- Status: complete
+- Status: archived（2026-10-19按用户决定归档已关闭任务）
 - Updated / Owner: 2026-09-20 / 当前 agent
 - Scope / Authority: 用户提出的 History 批量模式、批量文件复制、批量标签编辑与批量删除需求；以当前 renderer、`docs/UX_CONTRACT.md`、`docs/ARCHITECTURE_CONTRACT.md` 和 `docs/CHANGE_VERIFICATION.md` 为约束
 - Baseline: `main` @ `40412ee`；本任务实现已提交，后续排除 Tag 筛选扩展随本次 patch 收口
@@ -9,6 +9,10 @@
 - User override: none
 
 > `TASK.md` 是本功能的唯一计划和 Resume 入口。本任务已收口；自动化校验已通过，当前桌面环境无法暴露可控的原生 Electron 窗口，因此系统剪贴板与真实窗口交互仍未标记为手测通过。
+
+## 归档说明
+
+- 2026-10-19用户同意归档；实现和自动化已完成，无后续实施步骤，文件归属已释放。原生系统剪贴板和真实窗口手测缺口保留，不因归档标记为通过；以下设计和验收记录仅供历史追溯。
 
 ## Resume
 

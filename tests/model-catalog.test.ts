@@ -59,7 +59,8 @@ describe("model catalog", () => {
     expect(promptEntries.filter((entry) => entry.definition.scan?.managedBy !== "strata")).toHaveLength(10);
     expect(promptEntries.filter((entry) => entry.definition.scan?.managedBy === "strata").map((entry) => ({ id: entry.definition.id, integrated: entry.definition.scan?.integrated }))).toEqual([
       { id: "strata/qwen3.8-flash-next-iq3_xxs", integrated: true },
-      { id: "strata/qwen3.8-flash-next-iq2_xs", integrated: true }
+      { id: "strata/qwen3.8-flash-next-iq2_xs", integrated: true },
+      { id: "strata/qwen3.8-flash-next-ud-q4_k_xl", integrated: true }
     ]);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "qwen-image-2-1",

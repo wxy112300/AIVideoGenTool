@@ -51,6 +51,7 @@ import {
   motionContextReferenceSlotsReady
 } from "../../../core/h3-reference";
 import { h3TokenCountForDraft } from "../../../core/h3-token-count";
+import { estimatePromptTextTokens } from "../../../core/prompt-token-estimate";
 import {
   type GenerationSafety,
   generationSafetyForTask,
@@ -82,7 +83,7 @@ import {
 import { escapeHtml } from "../../shared/dom";
 import { fieldLabelWithTip } from "../../shared/markup";
 import { imageWorkflowStatus, isImageModelSelectable, promptModelStatus } from "../../shared/status";
-import { modelName } from "../../shared/labels";
+import { modelName, promptModelActionTitle } from "../../shared/labels";
 import {
   activeImagePrompt,
   activePrompt,
@@ -90,6 +91,7 @@ import {
   extensionSafetyForDraft,
   h3PromptCheckMarkup,
   h3PromptModeForDraft,
+  h3TimelineDurationForDraft,
   h3PromptPresetOptions,
   interpolationEstimate,
   promptSnippetOptions
@@ -529,12 +531,15 @@ export function buildImageEditPageViewModel(
     imageLoraAddDisabled,
     imageLoraOptionsMarkup,
     imageEnhanceMode,
+    imagePromptTokenEstimate: promptless ? undefined : estimatePromptTextTokens(prompt.text),
     imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
     imageFaithfulEnhanceTitle: imagePromptPack.presetDescriptions.faithful,
-    imagePromptOptimizeTitle,
+    imagePromptOptimizeTitle: promptModelActionTitle(imagePromptOptimizeTitle, state.settings.promptModelId,
+      state.settings.uiLocale, !promptEnhancing && !promptStarting && !promptReleasing),
     imagePromptEnhanceBlocked,
     imagePromptAiDisabled,
-    releasePromptControlTitle: options.promptRuntimeControlTitle(),
+    releasePromptControlTitle: promptModelActionTitle(options.promptRuntimeControlTitle(), state.settings.promptModelId,
+      state.settings.uiLocale, promptRuntimeView.left.intent === "start"),
     releasePromptControlIconName: promptRuntimeView.left.icon,
     releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     markupGuideCount,
@@ -1116,6 +1121,7 @@ export function buildVideoCreatePageViewModel(
     extending,
     isR2V,
     isMiniMaxH3,
+    h3LongDurationWarning: isMiniMaxH3 && draft.duration > 15.1,
     isContinuum,
     continuumManaged: isManagedContinuum,
     continuumStatusTone: continuumStatus.tone,
@@ -1141,11 +1147,12 @@ export function buildVideoCreatePageViewModel(
       : h3PromptPack.ui.t("enhanceMode"),
     referenceAutoPromptAvailable,
     promptUi: h3PromptPack.ui,
-    releasePromptControlTitle: options.promptRuntimeControlTitle(),
+    releasePromptControlTitle: promptModelActionTitle(options.promptRuntimeControlTitle(), state.settings.promptModelId,
+      state.settings.uiLocale, promptRuntimeView.left.intent === "start"),
     releasePromptControlIconName: promptRuntimeView.left.icon,
     releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     promptAiDisabled,
-    promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
+    promptEnhanceButtonTitle: promptModelActionTitle(promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)
       : promptBoundaryBlockReason
         ? promptBoundaryBlockReason
@@ -1155,7 +1162,8 @@ export function buildVideoCreatePageViewModel(
           ? h3PromptPack.ui.t("autoPromptHint")
         : isGemmaPromptModel(state.settings.promptModelId)
           ? t(uiKeys.create.validation.gemmaOptimize)
-          : t(uiKeys.create.validation.promptOptimize),
+          : t(uiKeys.create.validation.promptOptimize), state.settings.promptModelId, state.settings.uiLocale,
+        !promptEnhancing && !promptStarting && !promptReleasing),
     h3PromptPresetOptionsMarkup: isMiniMaxH3
       ? h3PromptPresetOptions(activeH3PromptPreset, isR2V, state.settings.uiLocale)
       : "",
@@ -1167,7 +1175,7 @@ export function buildVideoCreatePageViewModel(
           h3Mode,
           draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
           draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"),
-          draft.duration,
+          h3TimelineDurationForDraft(draft),
           escapeHtml,
           h3PromptPack.ui,
           draft.videoLoras

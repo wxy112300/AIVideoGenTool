@@ -12,7 +12,8 @@ export function strataUncensoredMode(settings: { strataUncensoredMode?: unknown;
 }
 
 export function supportsStrataUncensored(modelId: string): boolean {
-  return modelId === "strata/qwen3.8-flash-next-iq3_xxs" || modelId === "strata/qwen3.8-flash-next-iq2_xs";
+  return modelId === "strata/qwen3.8-flash-next-iq3_xxs" || modelId === "strata/qwen3.8-flash-next-iq2_xs"
+    || modelId === "strata/qwen3.8-flash-next-ud-q4_k_xl";
 }
 
 /** Shipped by our pinned Strata source archive. No separate model download or user path. */

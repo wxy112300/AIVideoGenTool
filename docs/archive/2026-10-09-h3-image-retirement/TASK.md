@@ -1,9 +1,13 @@
 # 图片功能精简：H3 与 Qwen 局部融合修复
 
-- Status: completed
+- Status: archived（2026-10-19按用户决定归档已交付范围）
 - Updated / Owner: 2026-10-09 / Codex
 - Authority: 用户明确要求从选项、节点、功能移除 H3 图片；后续明确要求一并移除 Qwen 局部融合修复；其他图片模型按“先评估”处理，不自动移除。不删除权重、媒体或历史；H3 视频继续保留。
 - Execution / impact: direct，无子 agent；minor 功能收缩；后续按用户指令纳入 [0.65.0 版本对齐](../2026-10-08-upstream-upgrade-assessment/evidence/release-065-and-next.md)，不发布安装包。
+
+## 归档说明
+
+- 2026-10-19用户同意归档，文件归属已释放。H3图片与Qwen局部融合修复退休、兼容迁移和限定实跑已完成；其余模型精简建议、画质对照及未验组合保持历史评估性质，不作为本任务待办，不授权删除其他模型、权重、媒体或历史。
 
 ## Resume
 

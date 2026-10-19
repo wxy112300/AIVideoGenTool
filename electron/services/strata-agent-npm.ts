@@ -70,7 +70,7 @@ export async function runAgentNpm(location: AgentNpmLocation, args: string[], wo
       child.once("error", reject);
       child.once("close", (code) => code === 0 && !aborting ? resolve() : reject(new Error(aborting
         ? `共享 npm 安装已${timedOut ? "超时中止" : "取消"}；可能已安装部分软件，请重新检测。`
-        : `共享 npm 安装失败 (${code})。${installationFailureHint(output)} 请重新检测；旧包备份保留，未自动回滚其他程序的依赖。`)));
+        : `共享 npm 安装失败 (${code})。${installationFailureHint(output)} 请重新检测并重试标准安装；未自动回滚其他程序的依赖。`)));
     });
   } finally { clearTimeout(heartbeat); clearTimeout(deadline); signal.removeEventListener("abort", cancel); }
   signal.throwIfAborted();

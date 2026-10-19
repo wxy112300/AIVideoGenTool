@@ -13,6 +13,8 @@ vi.mock("../electron/services/strata-agent-cloud.js", () => ({ verifyCloudAdapte
   async stop() { await fake.cloudStop(); this.running = false; }
 } }));
 import { AgentController } from "../electron/services/strata-agent-controller.js";
+import { managedStrataDirectory } from "../electron/services/strata-installation.js";
+import { STRATA_RELEASES, STRATA_VERSION } from "../src/core/catalog/dependencies/strata.js";
 const directories: string[] = [];
 const controllers: AgentController[] = [];
 afterEach(async () => {
@@ -34,6 +36,19 @@ async function fixture() {
   return { controller, engine, stopEngine, preferences: agentDefaults() };
 }
 describe("one-click transaction using process mocks only", () => {
+  it("plans managed-directory migration on update even when the engine version is already current", async () => {
+    const { controller, preferences, engine } = await fixture();
+    const directory = directories.at(-1)!; vi.stubEnv("LOCALAPPDATA", directory); vi.stubEnv("APPDATA", directory);
+    try {
+      const base = await fake.doctor();
+      fake.doctor.mockResolvedValue({ ...base, strata: { managedInstalled: true, installedVersion: STRATA_VERSION, installDirectory: managedStrataDirectory(STRATA_RELEASES[0]) } });
+      const plan = await controller.dispatch({ action: "installationPlan", mode: "update", preferences }) as any;
+      expect(plan.items).toEqual([expect.objectContaining({ name: "Strata", target: managedStrataDirectory() })]);
+      expect(plan.repair).toBe(true); expect(engine).not.toHaveBeenCalled();
+      fake.doctor.mockResolvedValue({ ...base, strata: { managedInstalled: true, installedVersion: STRATA_VERSION, installDirectory: managedStrataDirectory() } });
+      expect((await controller.dispatch({ action: "installationPlan", mode: "update", preferences }) as any).items).toEqual([]);
+    } finally { vi.unstubAllEnvs(); }
+  });
   it("restores only private diagnostic locations after a launcher restart without adopting old processes", async () => {
     const { controller } = await fixture();
     const directory = directories.at(-1)!;

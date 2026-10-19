@@ -14,20 +14,20 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import { inferH3PromptMode } from "../../../core/h3-prompt";
+import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import {
-  continuumSampledFrameCountForSeconds,
-  continuumV38SampledFrameCountForSeconds,
   extensionSafetyForTask,
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   h3ContinuumManagedWorkflowPathForInput,
   h3ContinuumModeForSource,
   h3ContinuumWorkflowPathForInput,
+  h3ExtensionFrameBudgetForModel,
+  h3TemporalPlanForTask,
   isMiniMaxH3BoundaryExtensionModel,
   isMiniMaxH3ContinuumModel,
-  isMiniMaxH3ContinuumManagedWorkflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -93,15 +93,10 @@ export function activeImagePrompt(draft: ImageEditDraft, locale: UiLocale = "zh-
 }
 
 export function h3PromptModeForDraft(draft: Draft): H3PromptMode {
-  // Every H3 boundary/Continuum extension is executed from the exact source
-  // boundary frame. Continuum V3.8 wires that decoded frame to first_frame;
-  // the FL2VA boundary workflow extracts and uploads the same anchor. Model
-  // selection must therefore not downgrade an Extend draft with an empty UI
-  // image slot to T2VA. Motion Context remains R2V because its source video is
-  // a locked video reference and its context is injected on the latent path.
+  if (draft.inputMode === "video" && isMiniMaxH3ContinuumModel(draft.modelId)) return "T2VA";
   if (
     draft.inputMode === "video" &&
-    (isMiniMaxH3BoundaryExtensionModel(draft.modelId) || isMiniMaxH3ContinuumModel(draft.modelId))
+    isMiniMaxH3BoundaryExtensionModel(draft.modelId)
   ) {
     return "I2VA";
   }
@@ -117,15 +112,27 @@ export function interpolationEstimate(draft: Draft): {
   generatedFrames: number;
   outputFrames: number;
 } {
+  if (isMiniMaxH3Model(draft.modelId)) {
+    const normalized = normalizeVideoDraft(draft);
+    const plan = h3TemporalPlanForTask({
+      ...normalized,
+      workflowPath: isMiniMaxH3ContinuumModel(normalized.modelId)
+        ? h3ContinuumModeForSource(normalized) === "managed"
+          ? h3ContinuumManagedWorkflowPathForInput(normalized.workflowPath)
+          : h3ContinuumWorkflowPathForInput(normalized.workflowPath)
+        : normalized.workflowPath
+    });
+    return { multiplier: 1, generatedFrames: plan.sampledFrames, outputFrames: plan.outputFrames };
+  }
   return {
     multiplier: frameInterpolationMultiplier(draft),
-    generatedFrames: isMiniMaxH3ContinuumModel(draft.modelId)
-      ? isMiniMaxH3ContinuumManagedWorkflow(draft.workflowPath) || draft.workflowPath.endsWith("minimax_h3_continuum_v38_extend_api.json")
-        ? continuumV38SampledFrameCountForSeconds(draft.duration)
-        : continuumSampledFrameCountForSeconds(draft.duration)
-      : generationFrameCountForTask(draft),
+    generatedFrames: generationFrameCountForTask(draft),
     outputFrames: outputFrameCountForTask(draft)
   };
+}
+
+export function h3TimelineDurationForDraft(draft: Draft): number {
+  return interpolationEstimate(draft).outputFrames / (isMiniMaxH3Model(draft.modelId) ? 24 : draft.fps);
 }
 
 export function extensionSafetyForDraft(draft: Draft, settings: Settings) {
@@ -143,7 +150,7 @@ export function extensionSafetyForDraft(draft: Draft, settings: Settings) {
       ? draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution
       : settings.ltxExtensionResolution,
     maxGeneratedFrames: nativeH3
-      ? 362
+      ? h3ExtensionFrameBudgetForModel(draft.modelId)
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages

@@ -1401,7 +1401,34 @@ describe("renderWorkflow", () => {
 });
 
 describe("generation VRAM safety", () => {
-  it("keeps MiniMax H3 on the official 17n+5 grid through its roughly 15-second range", () => {
+  it("uses the actual Core grid for long H3 requests and frozen Motion Context budgets", () => {
+    expect(generationSafetyForTask({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      duration: 30,
+      fps: 24,
+      frameInterpolation: "off"
+    })).toMatchObject({ safe: true, generatedFrames: 736, maxDurationSeconds: 30 });
+    const motion: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      duration: 30,
+      fps: 24,
+      frameInterpolation: "off",
+      resolution: 720,
+      spectrumMode: "off",
+      maxGeneratedFrames: 770
+    };
+    expect(extensionSafetyForTask(motion)).toMatchObject({ safe: true, generatedFrames: 770 });
+    expect(extensionSafetyForTask({ ...motion, maxGeneratedFrames: 758 }).safe).toBe(false);
+    expect(extensionSafetyForTask({ ...motion, duration: 13, maxGeneratedFrames: 362 }))
+      .toMatchObject({ safe: true, generatedFrames: 362 });
+    const rendered = renderWorkflow({ probe: { class_type: "Probe", inputs: { length: "{{FRAMES}}", output: "{{OUTPUT_FRAMES}}" } } }, motion) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(rendered.probe?.inputs).toMatchObject({ length: 758, output: 720 });
+    expect(continuumSampledFrameCountForSeconds(30, 0)).toBe(719);
+  });
+
+  it("keeps MiniMax H3 on the 17n+5 grid through the 30-second request range", () => {
     const h3Task = {
       ...task,
       modelId: "minimax_h3_fl2va",
@@ -1413,8 +1440,8 @@ describe("generation VRAM safety", () => {
     expect(generationSafetyForTask(h3Task)).toMatchObject({
       safe: true,
       generatedFrames: 124,
-      maxGeneratedFrames: 362,
-      maxDurationSeconds: 15
+      maxGeneratedFrames: 736,
+      maxDurationSeconds: 30
     });
     expect(generationSafetyForTask({ ...h3Task, duration: 10 })).toMatchObject({
       safe: true,
@@ -1424,7 +1451,8 @@ describe("generation VRAM safety", () => {
       safe: true,
       generatedFrames: 362
     });
-    expect(generationSafetyForTask({ ...h3Task, duration: 16 }).safe).toBe(false);
+    expect(generationSafetyForTask({ ...h3Task, duration: 30 }).safe).toBe(true);
+    expect(generationSafetyForTask({ ...h3Task, duration: 30.1 }).safe).toBe(false);
   });
 
   it("allows H3 boundary-frame extension through the trained 15-second range", () => {
@@ -1460,12 +1488,12 @@ describe("generation VRAM safety", () => {
     };
     expect(extensionSafetyForTask(h3MotionExtension)).toMatchObject({
       safe: true,
-      generatedFrames: 350,
+      generatedFrames: 362,
       maxGeneratedFrames: 362,
       maxDurationSeconds: 13,
       minimumContextSeconds: 22 / 24
     });
-    expect(motionContextMaxDurationSeconds()).toBe(13);
+    expect(motionContextMaxDurationSeconds()).toBe(30);
     expect(extensionSafetyForTask({ ...h3MotionExtension, duration: 15 }).safe).toBe(false);
     expect(extensionSafetyForTask({
       ...h3MotionExtension,
@@ -1493,7 +1521,7 @@ describe("generation VRAM safety", () => {
       maxDurationSeconds: 14,
       minimumContextSeconds: 22 / 24
     });
-    expect(continuumMaxDurationSeconds()).toBe(14);
+    expect(continuumMaxDurationSeconds()).toBe(30);
     const fiveSecond480p = extensionSafetyForTask({
       ...continuumExtension,
       duration: 5,

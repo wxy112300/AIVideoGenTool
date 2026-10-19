@@ -4,9 +4,31 @@ import { createDefaultSettings } from "../src/core/defaults";
 import type { RendererContext } from "../src/renderer/contracts";
 import { mountLanBrowserSettings, renderLanBrowserSettings } from "../src/renderer/pages/settings/lan-browser";
 import { readSettingsFromForm } from "../src/renderer/pages/settings/form";
+import { uiKeys } from "../src/core/i18n-keys";
 
 afterEach(()=>document.body.replaceChildren());
 describe("LAN Settings entry",()=>{
+  it("omits the port hint and collapses the disabled status row while retaining errors and retry",async()=>{
+    const settings=createDefaultSettings(),t=(key:string)=>key;
+    document.body.innerHTML=renderLanBrowserSettings(settings,t,s=>s);
+    expect(document.body.textContent).not.toContain(uiKeys.lanBrowser.saveHint);
+    expect(document.querySelector<HTMLInputElement>("#lan-browser-port")!.value).toBe(String(settings.lanBrowserPort));
+    const row=document.querySelector<HTMLElement>("[data-lan-status-row]")!;
+    expect(row.hidden).toBe(true);
+    const getStatus=vi.fn(async()=>({state:"off",port:8790,localUrl:"",urls:[] as string[],error:""}));
+    const context={root:document.body,t,notify:vi.fn(),application:{getLanBrowserStatus:getStatus,retryLanBrowser:vi.fn(async()=>{})}} as unknown as RendererContext;
+    const dispose=mountLanBrowserSettings(context,{formSettings:()=>settings,requestSaveSettings:vi.fn(async()=>"saved" as const)});
+    try{
+      await vi.waitFor(()=>expect(document.querySelector("[data-lan-status]")!.textContent).toBe(""));
+      expect(row.hidden).toBe(true);
+      expect(document.body.textContent).not.toContain(uiKeys.lanBrowser.off);
+      getStatus.mockResolvedValue({state:"error",port:8790,localUrl:"",urls:[],error:"Port in use"});
+      document.querySelector<HTMLInputElement>("#lan-browser-enabled")!.dispatchEvent(new Event("change"));
+      await vi.waitFor(()=>expect(row.hidden).toBe(false));
+      expect(document.querySelector("[data-lan-status]")!.textContent).toBe("Port in use");
+      expect(document.querySelector<HTMLButtonElement>("[data-lan-retry]")!.hidden).toBe(false);
+    }finally{dispose();}
+  });
   it("keeps sharing disabled by default and retains the switch/port when saving another tab",()=>{
     const base=createDefaultSettings(); expect(base.lanBrowserEnabled).toBe(false);
     const saved=readSettingsFromForm({...base,lanBrowserEnabled:true,lanBrowserPort:18790},"official-storyboard","faithful");

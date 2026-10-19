@@ -101,9 +101,14 @@ describe("H3 native AV completion collector", () => {
       role: "extend-segment-clean-av",
       width: 864,
       height: 480,
-      frameCount: 146,
+      frameCount: 158,
       contextFrames: 22
     });
+    expect(nativeAvArtifactMetadataForTask(
+      { ...task, duration: 30 },
+      "C:/ComfyUI/output",
+      "2026-09-02T00:00:00.000Z"
+    )).toMatchObject({ frameCount: 770, contextFrames: 22 });
   });
 
   it("records the Continuum V3.8 raw latent including its protected prefix", () => {

@@ -141,19 +141,13 @@ function updatePromptProgressDom(progress: PromptProgress | null, t: Translate):
   const accessibleStatus = promptProgressStatusText(progress, t);
   const suffix = accessibleStatus.slice(accessibleStatus.indexOf(" · ") + 3);
   button.setAttribute("aria-label", accessibleStatus);
-  if (active) {
-    if (tooltip) {
-      button.removeAttribute("title");
-      button.setAttribute("aria-describedby", "prompt-progress-tooltip");
-      tooltip.textContent = accessibleStatus;
-    } else {
-      button.removeAttribute("aria-describedby");
-      button.title = accessibleStatus;
-    }
+  if (tooltip) {
+    button.removeAttribute("title");
+    button.setAttribute("aria-describedby", "prompt-progress-tooltip");
+    tooltip.textContent = accessibleStatus;
   } else {
     button.removeAttribute("aria-describedby");
     button.title = accessibleStatus;
-    if (tooltip) tooltip.textContent = "";
   }
   if (label) label.textContent = active ? elapsed : suffix;
   if (bar) {

@@ -3,8 +3,26 @@ import { createDefaultDraft } from "../src/core/defaults";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization";
 import { H3_REF2V_TURBO_LORA, H3_REF2V_TURBO_LORA_ID } from "../src/core/video-loras";
 import { shouldEnableSpectrumByDefault } from "../src/core/video-policy";
+import type { Draft } from "../src/types";
 
 describe("video draft normalization", () => {
+  it("uses the frozen managed chunk duration without changing the accepted sequence or source draft", () => {
+    const sequence = { chunkSeconds: 15, acceptedChunks: 2 } as NonNullable<Draft["h3ContinuumSequence"]>;
+    const draft: Draft = {
+      ...createDefaultDraft(),
+      inputMode: "video",
+      modelId: "minimax_h3_continuum",
+      duration: 30,
+      h3ContinuumMode: "managed",
+      h3ContinuumSequence: sequence
+    };
+    const normalized = normalizeVideoDraft(draft);
+    expect(normalized.duration).toBe(15);
+    expect(normalized.h3ContinuumSequence).toBe(sequence);
+    expect(draft.duration).toBe(30);
+    expect(normalizeVideoDraft({ ...draft, h3ContinuumSequence: undefined }).duration).toBe(30);
+  });
+
   it("removes incompatible cross-model state from H3 drafts", () => {
     const normalized = normalizeVideoDraft({
       ...createDefaultDraft(),

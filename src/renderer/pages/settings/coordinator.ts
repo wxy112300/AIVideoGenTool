@@ -376,6 +376,7 @@ export function createSettingsWorkspaceCoordinator(
     try {
       const result: AppCacheClearResult = await deps.context.application.clearAppCache();
       appCache = result.after;
+      appCacheError = result.errors.slice(0, 3).join("\n");
       const affectedDirectories = result.skippedTemporaryDirectories + result.errors.length;
       if (affectedDirectories > 0) {
         deps.showMessage(uiText(uiKeys.settings.actions.cacheClearPartial, {

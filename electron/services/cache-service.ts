@@ -1,4 +1,5 @@
-import { promises as fs } from "node:fs";
+import { promises as nodeFs } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -9,6 +10,8 @@ import type {
 
 const DEFAULT_STALE_AFTER_MS = 10 * 60 * 1000;
 const TEMPORARY_DIRECTORY_PREFIX = "local-video-studio";
+const fs: typeof nodeFs = process.versions.electron
+  ? createRequire(import.meta.url)("original-fs").promises : nodeFs;
 
 export interface AppCacheSession {
   getCacheSize(): Promise<number>;
@@ -22,12 +25,20 @@ export interface AppCacheServiceOptions {
   canClearTemporary?: () => boolean;
   now?: () => Date;
   staleAfterMs?: number;
+  software?: AppSoftwareCache;
+}
+export interface SoftwareCacheTarget { path: string; identity: string }
+export interface AppSoftwareCache {
+  inspect(): Promise<SoftwareCacheTarget[]>;
+  clear(target: SoftwareCacheTarget): Promise<void>;
+  withCleanup<T>(work: () => Promise<T>): Promise<T>;
 }
 
 interface TemporaryCacheTarget {
   path: string;
   bytes: number;
   latestModifiedAtMs: number;
+  software?: SoftwareCacheTarget;
 }
 
 interface DirectoryMeasure {
@@ -64,7 +75,7 @@ async function measureDirectory(directory: string): Promise<DirectoryMeasure> {
   } catch {
     return { bytes: 0, latestModifiedAtMs: 0 };
   }
-  if (!rootStat.isDirectory()) return { bytes: 0, latestModifiedAtMs: rootStat.mtimeMs };
+  if (!rootStat.isDirectory()) return { bytes: rootStat.isFile() ? rootStat.size : 0, latestModifiedAtMs: rootStat.mtimeMs };
 
   const entries = await readDirectoryEntries(directory);
   const children = await Promise.all(entries.map(async (entry) => {
@@ -123,10 +134,14 @@ export function createAppCacheService(options: AppCacheServiceOptions) {
   const staleAfterMs = Math.max(0, options.staleAfterMs ?? DEFAULT_STALE_AFTER_MS);
 
   async function inspectDetailed(): Promise<AppCacheInspection> {
-    const [currentSessionBytes, targets] = await Promise.all([
+    const [currentSessionBytes, temporary, software] = await Promise.all([
       options.session.getCacheSize(),
-      temporaryCacheTargets(temporaryRoot)
+      temporaryCacheTargets(temporaryRoot),
+      options.software?.inspect() ?? []
     ]);
+    const targets = [...temporary, ...await Promise.all(software.map(async target => ({
+      path: target.path, ...await measureDirectory(target.path), software: target
+    })))];
     const temporaryBytes = targets.reduce((total, target) => total + target.bytes, 0);
     const snapshot = {
       currentSessionBytes: Math.max(0, currentSessionBytes),
@@ -142,7 +157,8 @@ export function createAppCacheService(options: AppCacheServiceOptions) {
     return (await inspectDetailed()).snapshot;
   }
 
-  async function clear(clearOptions: {
+  let clearing = false;
+  async function clearUnlocked(clearOptions: {
     onProgress?: (progress: AppCacheProgress) => void;
   } = {}): Promise<AppCacheClearResult> {
     const startedAt = now().toISOString();
@@ -189,7 +205,8 @@ export function createAppCacheService(options: AppCacheServiceOptions) {
     } else {
       for (let index = 0; index < targets.length; index += 1) {
         const target = targets[index];
-        if (target.latestModifiedAtMs > cutoff) {
+        if (target.software) continue;
+        if (!(options.canClearTemporary?.() ?? true) || target.latestModifiedAtMs > cutoff) {
           skippedTemporaryDirectories += 1;
         } else {
           try {
@@ -200,6 +217,23 @@ export function createAppCacheService(options: AppCacheServiceOptions) {
         }
         processedBytes += target.bytes;
         emitProgress("clearing-temporary", index + 1, targets.length, processedBytes, totalBytes);
+      }
+    }
+    const softwareTargets = targets.filter(target => target.software);
+    if (canClearTemporary && softwareTargets.length && options.software) {
+      try {
+        await options.software.withCleanup(async () => {
+          for (const target of softwareTargets) {
+            if (!(options.canClearTemporary?.() ?? true)) { skippedTemporaryDirectories++; continue; }
+            try { await options.software!.clear(target.software!); }
+            catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+            processedBytes += target.bytes;
+            emitProgress("clearing-temporary", targets.indexOf(target) + 1, targets.length, processedBytes, totalBytes);
+          }
+        });
+      } catch (error) {
+        skippedTemporaryDirectories += softwareTargets.length;
+        errors.push(error instanceof Error ? error.message : String(error));
       }
     }
     if (!canClearTemporary) {
@@ -220,5 +254,10 @@ export function createAppCacheService(options: AppCacheServiceOptions) {
     };
   }
 
+  async function clear(clearOptions: Parameters<typeof clearUnlocked>[0] = {}): Promise<AppCacheClearResult> {
+    if (clearing) throw new Error("缓存清理正在进行，请等待完成。");
+    clearing = true;
+    try { return await clearUnlocked(clearOptions); } finally { clearing = false; }
+  }
   return { inspect, clear };
 }

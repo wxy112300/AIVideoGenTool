@@ -60,6 +60,7 @@ import {
 import { ensureQwenVlManagedMetadata } from "./qwenvl-model-assets.js";
 import {
   enhancePromptWithH3PromptWriter,
+  validateH3PromptWriterDuration,
   releaseH3PromptWriter,
   warmH3PromptWriter
 } from "./h3-prompt-writer.js";
@@ -294,6 +295,7 @@ export class PromptApplicationService {
     if (!promptBackend) {
       throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
+    if (promptBackend === "h3-prompt-writer") validateH3PromptWriterDuration(request, settings);
     this.deps.promptRuntimeManager.selectBackend(runtime, settings.strataPort);
     if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, "正在准备 Strata");
     const operation = this.deps.promptRuntimeManager.beginOperation(promptOrigin, true);

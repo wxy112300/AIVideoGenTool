@@ -488,6 +488,11 @@ describe("renderer boundary characterization", () => {
     expect(harness.root.querySelector("#enhance-prompt")?.getAttribute("aria-label")).toContain("SHA-256 · shard · 25%");
     expect(harness.requestRender).not.toHaveBeenCalled();
 
+    harness.emit("prompt:progress", { ...promptProgress, status: "completed", stage: "validating", progress: 100 });
+    expect(harness.root.querySelector("#enhance-prompt")?.hasAttribute("title")).toBe(false);
+    expect(harness.root.querySelector("#enhance-prompt")?.getAttribute("aria-describedby")).toBe("prompt-progress-tooltip");
+    expect(harness.root.querySelector("[data-prompt-progress-tooltip]")?.textContent).not.toBe("");
+
     harness.emit("attention-acceleration:log", "下载进度：42%");
     expect(harness.root.querySelector("#attention-install-stage")?.textContent).toBe("下载进度：42%");
     expect(harness.root.querySelector("#attention-install-progress")?.getAttribute("hidden")).toBeNull();

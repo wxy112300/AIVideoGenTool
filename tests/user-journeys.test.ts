@@ -47,12 +47,57 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     expect(h.state().queue[0]?.id).toBeTruthy();
     h.input("#duration-number", "99", "change");
     await settle();
-    expect(h.state().draft.duration).toBe(15);
-    expect(h.element("#duration-frames").textContent).toBe("362 模型帧");
+    expect(h.state().draft.duration).toBe(30);
+    expect(h.element("#duration-frames").textContent).toBe("736 模型帧");
     expect(h.state().queue[0]?.duration).toBe(5.2);
+    h.element("#enqueue").click();
+    await vi.waitFor(() => expect(h.state().queue).toHaveLength(2));
+    expect(h.state().queue[1]).toMatchObject({ duration: 30 });
   });
 
-  it("keeps an under-length detailed result out of versions and recovers through the actual Enhance button", async () => {
+  it("warns strictly above 15.1 requested seconds without blocking enqueue or replacing focused input", async () => {
+    const h = journey = await createJourney({ duration: 15.1 });
+    h.element("#clear-prompt").click();
+    await settle();
+    expect(h.element("[data-h3-duration-warning]").hidden).toBe(true);
+    expect(h.element("#enqueue").disabled).toBe(true);
+    const number = h.element<HTMLInputElement>("#duration-number");
+    number.focus();
+    h.input("#duration-number", "15.2");
+    expect(h.element("[data-h3-duration-warning]").hidden).toBe(false);
+    expect(document.activeElement).toBe(number);
+    expect(h.element("#duration-number")).toBe(number);
+    const warning = h.element("[data-h3-duration-warning]");
+    warning.focus();
+    warning.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(warning.getAttribute("aria-expanded")).toBe("true");
+    expect(warning.querySelector('[role="tooltip"]')?.textContent).toContain("可继续生成");
+    h.input("#prompt-input", "A balloon slowly rises above a field.");
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.element("#enqueue").click();
+    await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
+    expect(h.state().queue[0]).toMatchObject({ duration: 15.2, id: expect.any(String) });
+    h.input("#duration-number", "15.1");
+    expect(h.element("[data-h3-duration-warning]").hidden).toBe(true);
+    expect(h.element("[data-h3-duration-warning]").getAttribute("aria-expanded")).toBe("false");
+    expect(h.state().queue[0]).toMatchObject({ duration: 15.2 });
+  });
+
+  it("warns from the added duration rather than the source or combined length in Extend", async () => {
+    const scenario = journey = await createJourney({ inputMode: "video", modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "fixture.mp4", sourceVideoDuration: 40, trimEndSeconds: 40,
+      sourceWidth: 864, sourceHeight: 480, duration: 5 });
+    expect(scenario.element("[data-h3-duration-warning]").hidden).toBe(true);
+    scenario.input("#duration-number", "15.1");
+    expect(scenario.element("[data-h3-duration-warning]").hidden).toBe(true);
+    scenario.input("#duration-number", "15.2");
+    expect(scenario.element("[data-h3-duration-warning]").hidden).toBe(false);
+    expect(scenario.element("#enqueue").disabled).toBe(false);
+    scenario.render();
+    expect(scenario.element("[data-h3-duration-warning]").hidden).toBe(false);
+  });
+
+  it("saves an under-length detailed result with a warning through the actual Enhance button", async () => {
     const h = journey = await createJourney();
     h.input("#prompt-enhance-mode", "detailed-cinematic", "change");
     const source = "Please design an explicit cinematic expansion according to the reference: a woman waves her hand.";
@@ -64,19 +109,25 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     h.element("#enhance-prompt").click();
     await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
     await settle();
-    expect(h.state().draft.promptVersions).toEqual(before);
+    expect(h.state().draft.promptVersions).toHaveLength(before.length + 1);
+    expect(h.state().draft.promptVersions.slice(0, before.length)).toEqual(before);
+    expect(h.state().draft.promptVersions.at(-1)?.text).toContain(paraphrase);
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toContain(paraphrase);
+    expect(h.context.notify).toHaveBeenLastCalledWith(expect.stringContaining("低于建议"), { kind: "warning" });
+    expect(h.state().draft.promptVersions.at(-1)?.text).not.toContain("低于建议");
     expect(h.state().queue).toHaveLength(0);
     h.enhancePrompt.mockImplementationOnce(async (request) => normalizeMultimodalPromptOutput(output(600), request));
     h.element("#enhance-prompt").click();
-    await vi.waitFor(() => expect(h.state().draft.promptVersions.length).toBe(before.length + 1));
+    await vi.waitFor(() => expect(h.state().draft.promptVersions.length).toBe(before.length + 2));
     expect(h.state().draft.promptVersions.at(-1)?.id).toBeTruthy();
     expect(h.state().draft.promptVersions.at(-1)?.text).toContain(paraphrase);
+    expect(h.context.notify).toHaveBeenLastCalledWith(expect.any(String), { kind: "task-complete" });
     expect(h.state().queue).toHaveLength(0);
   });
-  it("Strata files missing blocks Enhance; recovery enables the actual button and saves only a complete result", async () => {
+  it.each(["strata/qwen3.8-flash-next-iq3_xxs", "strata/qwen3.8-flash-next-ud-q4_k_xl"])("%s missing files block Enhance; recovery enables the actual button and saves only a complete result", async modelId => {
     const h = journey = await createJourney();
-    h.state().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
-    const profile = strataPreparationProfiles()[0]!;
+    h.state().settings.promptModelId = modelId;
+    const profile = strataPreparationProfiles().find(profile => profile.id === modelId)!;
     h.scan.modelProfiles.push(profile);
     h.scan.strataPreparation = { managedInstalled: true } as typeof h.scan.strataPreparation;
     h.render(); h.input("#prompt-input", "A red balloon rises.");
@@ -198,8 +249,14 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     const h = journey = await createJourney({ inputMode: "video", modelId: "minimax_h3_ref2va", sourceVideoPath: "fixture.mp4", sourceVideoDuration: 5, trimEndSeconds: 5, sourceWidth: 864, sourceHeight: 480 });
     expect(h.root.querySelector("[data-drop-h3-motion-context-latent]")).not.toBeNull();
     expect(h.element("#enqueue").disabled).toBe(false); // video context does not require a saved latent
+    h.input("#duration-number", "30", "change");
+    expect(h.element("#duration-frames").textContent).toBe("770 模型帧");
+    expect(h.element("[data-h3-duration-warning]").hidden).toBe(false);
     h.input("#model", "minimax_h3_continuum", "change"); await settle();
-    expect(h3PromptModeForDraft(h.state().draft)).toBe("I2VA");
+    expect(h3PromptModeForDraft(h.state().draft)).toBe("T2VA");
+    h.input("#duration-number", "30", "change");
+    expect(h.element("#duration-frames").textContent).toBe("736 模型帧");
+    expect(h.element("[data-h3-duration-warning]").hidden).toBe(false);
     expect(h.root.querySelector("[data-drop-h3-motion-context-latent]")).toBeNull();
     expect(h.element("#enqueue").disabled).toBe(true);
     h.element("#enqueue").click(); expect(h.application.enqueue).not.toHaveBeenCalled();
@@ -208,6 +265,6 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(false));
     h.element("#enqueue").click();
     await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
-    expect(h.state().queue[0]).toMatchObject({ taskType: "extension", modelId: "minimax_h3_continuum", h3ContinuumArtifactPath: "fixture.safetensors" });
+    expect(h.state().queue[0]).toMatchObject({ taskType: "extension", modelId: "minimax_h3_continuum", duration: 30, maxGeneratedFrames: 736, h3ContinuumArtifactPath: "fixture.safetensors" });
   });
 });

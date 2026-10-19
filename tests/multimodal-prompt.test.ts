@@ -13,6 +13,14 @@ import {
 import { createDefaultState } from "../src/core/defaults.js";
 
 describe("Qwen3.6 ComfyUI prompt workflow", () => {
+  it.each(["official-storyboard", "detailed-cinematic"] as const)("submits the full 30-second %s budget with a compatible runtime", (preset) => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3PromptPreset: preset, h3DurationSeconds: 30 }, [], settings, false, "GPU", false, undefined, 16384);
+    expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(preset === "detailed-cinematic" ? 5760 : 3840);
+    expect(() => buildMultimodalPromptWorkflow({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3PromptPreset: preset, h3DurationSeconds: 30 }, [], settings, false, "GPU", false, undefined, 3072)).toThrow(/3072/u);
+  });
+
   it("resolves automatic output language from user text instead of the English system prompt", () => {
     const settings = createDefaultState().settings;
     settings.promptLanguage = "auto";
@@ -250,10 +258,10 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow["vision-llm"]?.inputs.prompt).not.toContain("H3 execution control header");
   });
 
-  it("caps detailed cinematic output at the VisionLLM schema maximum", () => {
+  it("rejects an insufficient VisionLLM schema instead of silently reducing detailed output", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
-    const workflow = buildMultimodalPromptWorkflow(
+    expect(() => buildMultimodalPromptWorkflow(
       {
         prompt: "",
         modelId: "minimax_h3_fl2va",
@@ -268,9 +276,7 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       },
       ["studio-input-reference.png"],
       settings
-    );
-
-    expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(2048);
+    )).toThrow(/2048.*2880/u);
   });
 
   it("expands only a long detailed-cinematic request beyond 2048 when the runtime supports it", () => {
@@ -353,6 +359,14 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
 
     expect(diagnostics.suspectedTruncation).toBe(false);
     expect(multimodalPromptFailureDiagnostic(diagnostics)).toContain("模型提前结束或未遵循字段/细节要求");
+  });
+
+  it("keeps missing rewriter token counts unknown even when H3 text is long", () => {
+    const diagnostics = multimodalPromptOutputDiagnostics("word ".repeat(6000), "T2VA", 3840);
+    expect(diagnostics.estimatedOutputTokens).toBeNull();
+    expect(diagnostics.completionTokens).toBeNull();
+    expect(diagnostics.suspectedTruncation).toBe(false);
+    expect(multimodalPromptFailureDiagnostic(diagnostics)).toContain("未返回生成停止原因");
   });
 
   it("passes a concrete Chinese target language for automatic Chinese input", () => {

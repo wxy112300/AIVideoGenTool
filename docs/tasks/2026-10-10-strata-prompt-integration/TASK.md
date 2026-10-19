@@ -1,12 +1,36 @@
 # Strata 提示词增强：更新调查与接入计划
 
 - 类型：Task；Status: partial-runtime-validated（新版MTP＋显式预算模式四类后端真实生成完成；通用关键词误拒已移除并回放通过，长稿慢、运镜后处理与UI预算策略仍未收尾）
-- Updated / Owner: 2026-10-17 / 当前 agent；Execution: direct，新增子 agent 0
+- Updated / Owner: 2026-10-19 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 2026-10-19代码版本收尾：用户最新授权“所有改动增加patch提交推送”，版本统一为0.66.2，纳入当前功能／修复／测试与文档归档迁移；覆盖此前阶段“不bump／提交”的限制。完整verify通过：234文件2259单元、6文件91集成、双端类型／干净renderer与web及Electron构建／20项对比度；既有jsdom scrollTo与chunk大小警告不阻断。复用既有真实UI／运行证据及未验边界，不重复GPU。仅代码提交推送，不打包、不创建tag或GitHub Release，不下载／启动模型，不把未验运行质量标为通过；暂存审查作为本轮提交门槛。
+
+- 2026-10-19后续JSON误判修复（patch，不bump／提交／发布）：两份旧DLSS5的Depth Anything配置均与现有适配层生成输出逐字节一致，目录只含两个JSON，无权重。直接复用同一生成函数，限制官方来源／精确目录，修改内容／错位／未知来源／真实权重仍保护；不新增观察摘要白名单。ReShade参数已修改，无法证明是临时生成还是用户偏好，继续整份保留，并明确配置保护原因。缓存相关3文件43项及双端typecheck通过，真实四文件只读对比匹配；不重复完整verify／UI／GPU，不删除真实备份。见[同一节点缓存证据](evidence/update-disk-cleanup.md#节点缓存误判修复)。
+
+- 2026-10-19节点缓存误判修复（patch，不bump／提交／发布）：官方未修改Git演示媒体先于通用媒体保护识别；DLSS5历史桌面ASAR仅官方旧节点来源＋UUID暂存精确路径＋固定大小／hash通过后放行，沿用catalog记录及现有ASAR安全删除器。真实Electron探针发现统计lstat会缓存ASAR并导致EBUSY，已改原生original-fs统计／hash，同一隔离探针43.2.0退出0：旧软件副本删除，用户媒体／同大小修改ASAR保留，首错后继续。相关5文件累计58项、双端typecheck及隔离编译通过，无新增诊断；局部文件清理分级，不重跑完整verify／UI／GPU。三个真实备份仅只读检查，两份ASAR摘要未变；插帧备份另有修改的ReShade.ini，应继续整目录保留。无真实目录删除，无外部服务／模型／下载／进程接管。详见[节点缓存证据](evidence/update-disk-cleanup.md#节点缓存误判修复)。
+
+- 2026-10-19缓存内置资产误判修复（patch，不bump／提交／发布）：核实官方源码的 `data/draft_vocab*.bin` 是 MTP 草稿词表子集，同类 coder／sycl 专家 profile 也随源码分发。沿用受信目录、官方 origin 与 Git 未修改文件集合，仅豁免精确资产路径；移除普通 expert-profile 无条件豁免，修改／无来源／同名越位／模型／配置会话／链接继续保护。15项目录回归及相邻缓存／维护／Agent不交接共32项通过，双端typecheck、隔离Electron编译通过；局部判定变更按focused分级，本轮未重跑完整verify／UI／GPU。验证后复检并通过生产清理服务原维护锁和禁止handoff租约，仅删除用户指定 `.install-MwRoER`、`.install-QgVKhT`、`.install-UE6RN2`，共8099文件／379354758bytes，三者无残留；当前0.1.45仍在，状态文件和当前收据hash不变，其他同级目录名不变，租约释放，无停止其他进程。详见[本轮证据](evidence/update-disk-cleanup.md#内置词表误判修复与真实残留清理)。
+
+- 2026-10-19缓存按钮收尾（patch，不bump／提交／发布）：用户要求将上轮软件残留清理接入设置原有缓存按钮，并在有新版时提高Strata推荐。已接原cache IPC／总量／进度，独立软件发现服务使用catalog与所选根；保留当前安装／有效pack／模型／用户配置媒体会话／未知归属，含用户数据的副本跳过并显示原因，不把旧数据复制回当前软件。安装注册与维护互斥，跨进程资源租约禁止handoff，不为清理卸载活跃模型／Agent。官方latest/main查询仍0.1.45／477ac13、包size/hash与现catalog一致，推荐不虚增；同版旧目录更新/重装仍支持前条迁移。最终verify退出0：234文件2228单元、6文件91集成、类型／干净构建／20对比度；独立prepare通过。真实隔离原按钮点击、进度、文件删除/保护、1280/960宽和state不变通过，522B→261B，保护原因在原面板；测试实例和7035/6800监听退出，无GPU/任务请求。仅删除测试夹具垃圾，未清理真实目录、下载或改偏好。详细来源/失败修正/验收见[同一审计](evidence/update-disk-cleanup.md#后续接入设置缓存按钮与官方版本复核)，本机报告temp/create-smoke-8MiPbo/software-cache-ui.json；其他改动保留。
+
+- 2026-10-19更新积累修复（patch，代码与隔离验收完成，不bump／提交／发布）：用户明确要求更新替换旧软件、清理无意义备份并审计其他节点。Strata固定`strata/runtime`与共享解析，旧managed路径归一为自动选择；同版本旧目录更新也生成迁移计划，过期自动pack重新发现，同revision仅位置改变时完整校验后重定位原pack，手动安装/pack仍严格保留。普通／内置节点、DLSS5／AetherScale／Konohamaru清理成功事务旧软件与可核对历史副本，Agent取消npm整树备份并清理下载/私有内容缓存；用户配置/模型/媒体迁移或冲突阻止，不丢弃被修改的跟踪配置，路径/链接保护及失败恢复保留。最终verify退出0：233文件2221单元、6文件91集成、双端类型、干净renderer/web/Electron构建、20对比度通过；独立prepare和WinForms双尺寸/三模式Smoke通过。真实旧偏好只读解析到0.1.45，配置hash不变、失效pack已归一，不启动服务；43127/43128无监听。未执行真实软件更新/下载/GPU，真实安装尚在旧版目录，清理与固定路径迁移在下次用户确认更新/重装成功后执行；未知归属/冲突/占用明确记录。详见[审计与验收](evidence/update-disk-cleanup.md)，本机忽略日志temp/software-update-final-verify.log；仓库其他改动保留。
+
+- 2026-10-19社区启动只读诊断/实测：用户报告另一台失败并授权本机启动，随后允许尝试强行启动；未关闭保护。初始RAM32.8/commit25.5GiB不足，后续资源回升后原策略通过。0.1.45＋IQ3_XXS＋社区向量经真实Agent engineValidation、官方哈希/新pack/MTP加载，通过本次`8..33 (26 steered)`确认；开启/关闭/再开启三条短HTTP请求均200/stop/OK，1.269/0.495/0.451s，未跑队列/Claude/GUI。总143.04s含新版本准备，HTTP鉴权后模型加载69.03s；最低采样RAM5.71/commit8.09/VRAM4.48GiB，无OOM，自有服务/采样器/租约及43127/43128已清理。旧Agent偏好仍指0.1.44.1且该目录缺社区文件，真实启动前校验可复现缺件错误；0.1.45文件hash/26层维度正常。但另一台根因仍需其错误/诊断，不以本机情况代替。无产品源码修复、配置修改或下载，新增派生缓存保留；见[本轮证据](evidence/community-startup-validation.md)。
+
+- Q4最终收尾：独立启动器直接记住Q4模型目录时仍能复用同级原版projector/MTP；加入回归并刷新独立编译。最终完整verify为2211单元/89集成、类型/干净构建/20对比度通过，覆盖下条早一轮2210统计；隔离Electron PID/端口已退出，未下载或启动模型。
+
+- 2026-10-19 Q4接入（minor，未提交/不下载）：用户授权新增Unsloth UD-Q4_K_XL卡片、H3/图片提示词与独立启动器完整接线，并明确要求uncensored也支持。固定Unsloth38bb39e四分片111334654784bytes及各hash，保留原版projector/MTP来源；Q4自动目标为共享LLM/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL，已有GSQ目录附件原地复用，不改默认/目录设置。四分片+BF16兼容pack/转换报告、独立revision与缓存、全必需源复检、Q4专属资源准入/预算驻留/长Agent host KV均接线；自带/社区向量复用完整性及当次引擎确认，不静默关闭。完整verify2210unit/89integration/类型构建/20对比度通过；最终额外Q4生产DOM缺件→恢复→实际按钮→版本ID与邻接67项通过。真实隔离Electron卡片/4个信息弹窗/三尺寸/三模式通过，独立controller编译及Q4 WinForms双尺寸组件Smoke通过；文件/source/模拟层不冒充真实Q4加载/去拒答/性能。权重未下载，GPU未启动；正式配置、原稿、queue/History保留，自有Electron/CDP/夹具端口退出。详见[Q4接入证据](evidence/q4-integration.md)，同一记录供独立工具复用。
+
+- 2026-10-19自定义tips纠正（patch，未提交）：用户要求复用后做的深色提示样式，随后指出按钮贴合。图片/视频/Extend 统一采用现有 prompt-progress-tooltip 外置包装，禁用按钮可由包装层悬停及键盘查看；进度终态不再回写原生title。包装层固定 flex 不收缩，避免按钮溢出挤掉原gap；保留6–7px原间距。37 focused通过，最终完整verify为2196单元/89集成、类型构建/20对比度通过，上一条H3旧文案失败已在另一任务当前状态消除，本轮未改其断言。隔离Electron三模式×1440/1280/900宽×双按钮18次真实hover检查，以及禁用键盘focus、非透明背景/视口边界/无原生title、包装完整包住按钮及6–8px间隔断言通过，未触发推理；截图人工复核见忽略目录temp/create-smoke-xXUwJ5，报告custom-tooltip-ui.json。测试实例/端口退出，不证明原生退出生命周期；不改正式配置、不启动GPU、不bump/推送。
+
+- 2026-10-19悬停模型提示（patch，未提交）：用户要求图片/视频/Extend 的启动及增强按钮在未启动时展示所选模型。共用 catalog 名称/locale，加到原动作或阻塞说明后，不改变 disabled/IPC/加载/取消策略；停止控件不标成新选模型。49 focused、类型检查、干净构建及20对比度通过；隔离Electron三个模式的真实控件title/hover均含Flash-Next/Strata/IQ3_XXS，悬停前后runtime严格不变且无队列，测试实例/PID/端口已退出。全量verify单元层2192通过、2项H3旧字数文案断言失败（另一任务已将强制词数改为建议覆盖）；本次未改H3断言，全量集成未因该失败继续执行，不宣称全绿。忽略目录temp/prompt-model-tooltip-verify.log与temp/create-smoke-9ux5tn/prompt-tooltip-ui.json保留本机证据。不下载/启动模型、不改正式配置、不bump/推送。
+
+- 2026-10-19图片队列交接修复（patch，未提交）：用户报告 Strata 图片提示词增强后开始队列未自动卸载。根因是 image-generation 提前进入独立执行器，绕过视频分支内的 releasePromptRuntime。提取同一 worker 共用的释放步骤，图片在 prepareTaskRuntime/ensureComfyUiReady 前等待；释放失败或交接取消不启动 GPU runtime。定向 5 文件 110 项通过，包含待释放阻塞、混合顺序、失败、取消和 ApplicationRuntime→PromptApplicationService→Strata owner 停止的组合验证（模拟进程，不冒充 GPU 实测）。完整 npm run verify 退出 0：单元/集成、类型检查、干净生产构建及 20 对比度检查通过；既有 jsdom scrollTo 未实现与构建 chunk 大小警告不阻断。既有运行中提示词 busy gate、独立 Agent lease 和用户状态保留；未下载、启动模型、bump 或推送，其他 H3 在途改动未改写。
 
 - 2026-10-18提交收尾：用户明确要求提交推送、不发Release；本次纳入三模式/推荐0.1.45及其依赖的已完成独立Agent监控/诊断改动，覆盖本轮此前“不提交”的阶段限制。应用版本仍0.65.4，无额外bump、tag、打包或Release；复用同一功能代码的2082单元/88集成、类型构建对比度及隔离UI/重启/小资产校验证据，不再启动模型。真实新引擎质量/性能与远端掉线根因未验范围继续保留。
 

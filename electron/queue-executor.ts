@@ -303,7 +303,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
 
   async function executeImageGenerationQueueTask(
     task: ImageGenerationQueueTask,
-    settingsAtClaim?: Settings
+    settingsAtClaim: Settings | undefined,
+    releasePromptModel: (signal: AbortSignal) => Promise<void>
   ): Promise<void> {
     const controller = queueWorkerController.beginTask();
     const taskStartedAt = Date.now();
@@ -527,6 +528,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         startedAt: new Date().toISOString(),
         error: undefined
       });
+      await releasePromptModel(controller.signal);
       await sideEffects.prepareTaskRuntime(task, controller.signal, false);
       await ensureComfyUiReady(task.id, controller.signal);
       const runtimeState = deps.getComfyRuntimeState?.();
@@ -677,6 +679,20 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
   
   async function executeQueue(): Promise<void> {
     let promptModelReleased = false;
+    // Every task family must hand off the same resident prompt runtime before
+    // starting/loading its GPU runtime. Share once per worker, including mixed queues.
+    const releasePromptModel = async (taskId: string, signal: AbortSignal): Promise<void> => {
+      signal.throwIfAborted();
+      if (promptModelReleased) return;
+      await updateTask(taskId, { progress: 1, stage: "卸载提示词模型并释放显存" });
+      signal.throwIfAborted();
+      const unloaded = await releasePromptRuntime(store.get().settings);
+      signal.throwIfAborted();
+      promptModelReleased = true;
+      logger.info("queue", "prompt-runtime-released", "Prompt runtime handoff completed before queue runtime startup", { taskId, unloaded });
+      if (unloaded > 0) await updateTask(taskId, { progress: 1, stage: "已释放提示词模型" });
+      signal.throwIfAborted();
+    };
     while (store.get().queueRunning) {
       const current = store.get();
       const nextTask = nextQueueWaitingTask(
@@ -699,7 +715,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const claimedTask = store.get().queue.find((item) => item.id === nextTask.id);
       if (!store.get().queueRunning || claimedTask?.status !== "running") continue;
       if (isImageGenerationQueueTask(claimedTask)) {
-        await executeImageGenerationQueueTask(claimedTask, settingsAtClaim);
+        await executeImageGenerationQueueTask(claimedTask, settingsAtClaim,
+          (signal) => releasePromptModel(claimedTask.id, signal));
         continue;
       }
       let task: Exclude<QueueTask, ImageGenerationQueueTask> = claimedTask;
@@ -1002,20 +1019,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           () => void logPerformanceSnapshot(),
           performanceLogIntervalMs
         );
-        if (!promptModelReleased) {
-          await updateTask(task.id, {
-            progress: 1,
-            stage: "卸载提示词模型并释放显存"
-          });
-          const unloaded = await releasePromptRuntime(store.get().settings);
-          promptModelReleased = true;
-          if (unloaded > 0) {
-            await updateTask(task.id, {
-              progress: 1,
-              stage: "已释放 ComfyUI 提示词模型"
-            });
-          }
-        }
+        await releasePromptModel(task.id, activeController.signal);
         const hasVideoLoras = Boolean(task.videoLoras?.length);
         await sideEffects.prepareTaskRuntime(
           task,

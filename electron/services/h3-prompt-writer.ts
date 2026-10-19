@@ -7,6 +7,7 @@ import {
   h3AutoPrompterContract,
   h3PromptModeForRequest,
   h3ShotPolicyForRequest,
+  h3TimelineDurationForRequest,
   isH3NativeStateContinuationRequest,
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -324,6 +325,15 @@ export async function releaseH3PromptWriter(
   return Boolean(response.unload_requested);
 }
 
+export function validateH3PromptWriterDuration(request: EnhanceRequest, settings: Pick<Settings, "uiLocale">): void {
+  const durationSeconds = request.h3DurationSeconds ?? 5;
+  if (request.mode !== "image-edit" && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 20)) {
+    throw new Error(settings.uiLocale === "en-US"
+      ? "Gemma Prompt Writer supports prompt enhancement up to 20 seconds. Select a prompt model that supports the requested duration in Settings."
+      : "Gemma Prompt Writer 支持最多 20 秒的提示词增强。请在设置中手动选择支持当前时长的增强模型。");
+  }
+}
+
 export async function enhancePromptWithH3PromptWriter(
   request: EnhanceRequest,
   settings: Settings,
@@ -335,6 +345,8 @@ export async function enhancePromptWithH3PromptWriter(
   validateH3ReferenceAutoPrompt(request);
   onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
+  const durationSeconds = request.h3DurationSeconds ?? 5;
+  validateH3PromptWriterDuration(request, settings);
   const root = baseUrl(settings);
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
   const h3Mode = h3PromptModeForRequest(request);
@@ -359,10 +371,9 @@ export async function enhancePromptWithH3PromptWriter(
     imageEdit,
     mediaPaths
   );
-  const durationSeconds = request.h3DurationSeconds ?? 5;
   const detailedExpansion = !imageEdit && !targetedRevision && h3Preset === "detailed-cinematic";
-  const detailedGenerationBudget = detailedExpansion
-    ? h3PromptExpansionTokenBudget(h3Mode, durationSeconds, h3Preset)
+  const detailedGenerationBudget = !imageEdit
+    ? Math.max(2048, h3PromptExpansionTokenBudget(h3Mode, durationSeconds, h3Preset, sourcePrompt))
     : undefined;
   const usesExtensionBoundaryTransport = !imageEdit &&
     h3Mode === "T2VA" &&
@@ -412,7 +423,7 @@ export async function enhancePromptWithH3PromptWriter(
       : [
       priorityInstruction,
       request.extensionSource
-        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk)
+        ? h3ExtensionContinuityInstruction(h3Mode, shotPolicy, nativeStateContinuation, request.continuumPreviousChunk, durationSeconds)
         : "",
       h3Preset === "detailed-cinematic"
         ? h3DetailedExpansionGateInstruction(h3Mode, durationSeconds, sourcePrompt)
@@ -430,10 +441,10 @@ export async function enhancePromptWithH3PromptWriter(
       contentLocks,
       scaleInstruction,
       isH3ReferenceAutoPrompt(request)
-        ? h3AutoPrompterContract(h3Mode, request.h3DurationSeconds ?? 5, request.referenceContext, h3Preset)
+        ? h3AutoPrompterContract(h3Mode, durationSeconds, request.referenceContext, h3Preset, h3TimelineDurationForRequest(request))
         : "",
       transportModeInstruction,
-      h3DurationPlan(h3Mode, durationSeconds, h3Preset),
+      h3DurationPlan(h3Mode, durationSeconds, h3Preset, h3TimelineDurationForRequest(request)),
       presetBrief
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);

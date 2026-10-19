@@ -7,6 +7,7 @@ import * as vectorTools from "../electron/services/strata-uncensored.js";
 import { prepareStrataLaunch, StrataService } from "../electron/services/strata-service.js";
 import { STRATA_ENGINE_SHA256, STRATA_REVISION } from "../src/core/catalog/dependencies/strata.js";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
+import { STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
 
 const modelId = "strata/qwen3.8-flash-next-iq3_xxs";
 const roots: string[] = [];
@@ -25,6 +26,7 @@ describe("Strata uncensored integrity and compatibility", () => {
   it("does not treat arbitrary Flash names, Swift or existing abliterated weights as compatible", () => {
     expect(supportsStrataUncensored(modelId)).toBe(true);
     expect(supportsStrataUncensored("strata/qwen3.8-flash-next-iq2_xs")).toBe(true);
+    expect(supportsStrataUncensored(STRATA_Q4_MODEL_ID)).toBe(true);
     for (const id of ["qwen/qwen3.8-27b", "strata/swift-iq3_xxs", "strata/flash-next-future", "strata/qwen3.8-flash-next-iq3_xxs-abliterated"])
       expect(supportsStrataUncensored(id)).toBe(false);
   });
@@ -49,13 +51,13 @@ describe("Strata uncensored integrity and compatibility", () => {
     await fs.appendFile(file, line);
     await expect(vectorTools.assertStrataControlVectorLog(file, offset, vector)).resolves.toBeUndefined();
   });
-  it("uses a disposable launch overlay, preserving the verified base config and pack receipt", async () => {
+  it.each([modelId,STRATA_Q4_MODEL_ID])("uses a disposable %s launch overlay, preserving verified config and receipt", async activeModelId => {
     const dir = await root(), config = path.join(dir, "pack", "runtime.json");
     for (const name of [".venv/Scripts/python.exe", "serve/server.py"]) {
       const filename = path.join(dir, name); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
     }
     await fs.writeFile(path.join(dir, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: "fixture" }));
-    await writeStrataPreparedFixture(dir, config);
+    await writeStrataPreparedFixture(dir, config, activeModelId);
     const base = await fs.readFile(config, "utf8"), receiptFile = path.join(path.dirname(config), "lvs-strata-model.json"), receipt = await fs.readFile(receiptFile, "utf8");
     const vector = { ...STRATA_UNCENSORED_VECTOR, filename: path.join(dir, STRATA_UNCENSORED_VECTOR.relativePath) };
     const verify = vi.spyOn(vectorTools, "verifyStrataControlVector").mockResolvedValue(vector);
@@ -78,7 +80,8 @@ describe("Strata uncensored integrity and compatibility", () => {
 });
 
 describe("Strata mode requests and facts", () => {
-  it.each([[true, "builtin"], [true, "community"], [false, "community"]] as const)("refuses a missing engine confirmation and clears activation after stop (confirmation=%s, %s)", async (confirmed, mode) => {
+  it.each([[true, "builtin",modelId], [true, "community",modelId], [false, "community",modelId],
+    [true,"builtin",STRATA_Q4_MODEL_ID],[true,"community",STRATA_Q4_MODEL_ID],[false,"community",STRATA_Q4_MODEL_ID]] as const)("requires engine confirmation and clears activation after stop (%s, %s, %s)", async (confirmed, mode, modelId) => {
     const descriptor = strataVectorForMode(mode);
     const dir = await root(), log = path.join(dir, "engine.log"); await fs.writeFile(log, "");
     let alive = false, loaded = false;

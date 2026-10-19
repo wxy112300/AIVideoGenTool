@@ -1,10 +1,14 @@
 # ComfyUI / 模型 / 节点 / LoRA 升级评估与 Skill
 
-- Status: completed
+- Status: archived（2026-10-19归档；计划已于2026-10-10按用户决定关闭）
 - Updated / Owner: 2026-10-10 / Codex
 - Scope / Authority: 初始评估与 Skill 已完成。用户随后授权核心/GGUF兼容与推荐版本，再授权继续升级Spectrum及无需适配的其他节点。当前标注v0.39.2 +26 commits/d91ed5f按用户确认保留；隔离Harness不启动用户队列、不下载权重，仅升级已审计清单。
 - Assessment baseline (2026-10-08): app 0.64.3；Git 3c33056606815af2e9b1c079c3b507e8c0d5a7bb；开始时工作区 clean；core 0.37.0 / c194dd00，上游 stable 0.39.0。
 - Execution: direct；无子 agent；整合本轮 minor 0.65.0 与后续兼容修复，package/lock/README/CHANGELOG 对齐；按用户最新授权提交并推送 main，不创建 tag 或发布安装包。
+
+## 归档说明
+
+- 用户已明确关闭本轮升级计划，2026-10-19同意归档，文件归属已释放。升级身份、真实输出、清理和未验组合完整保留；本目录是带日期的历史证据，后续升级从现行catalog、实际安装与升级评估Skill重新确认，不自动接续旧版本清单或性能/画质对照。
 
 ## Resume
 

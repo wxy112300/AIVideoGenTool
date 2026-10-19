@@ -26,7 +26,8 @@ import type {
 } from "../../contracts";
 import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode } from "../../../core/creation-drafts";
 import { clearPromptVersion, activePromptIndexForDraft, promptPatchForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
-import { createClearedDraft, createDefaultImageEditDraft } from "../../../core/draft-defaults";
+import { createClearedDraft, createClearedImageDraft } from "../../../core/draft-defaults";
+import { estimatePromptTextTokens } from "../../../core/prompt-token-estimate";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import {
@@ -54,7 +55,7 @@ import { icon, renderIcons } from "../../shared/icons";
 import { videoLoraInfoButton } from "../../shared/markup";
 import { videoLoraPurposeLabel } from "../../shared/labels";
 import { formatTrimTime } from "../../shared/formatters";
-import { loadImagePreview, imageFileIsSupported, imageReferenceRolePromptLabels, h3ReferenceRolePromptLabels, resizePromptInput, updateImagePromptWordCounter } from "./helpers";
+import { loadImagePreview, imageFileIsSupported, imageReferenceRolePromptLabels, h3ReferenceRolePromptLabels, h3TimelineDurationForDraft, resizePromptInput, updateImagePromptWordCounter } from "./helpers";
 import { mountCreateAssembly } from "./assembly";
 import { mountH3ReferencesController } from "./references-controller";
 import { renderCreatePage, renderImageEditPage, type CreatePageOptions } from "./page";
@@ -284,7 +285,7 @@ export function createCreateWorkspaceCoordinator(
       mode,
       hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
       hasVideoReference,
-      durationSeconds: state.draft.duration,
+      durationSeconds: h3TimelineDurationForDraft(state.draft),
       videoLoras
     });
     element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
@@ -884,6 +885,14 @@ export function createCreateWorkspaceCoordinator(
     const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
     const durationFrames = document.querySelector<HTMLOutputElement>("#duration-frames");
     if (durationFrames) durationFrames.value = uiText("create.videoSettings.durationFrames", { count: viewModel.interpolationGeneratedFrames });
+    const durationWarning = document.querySelector<HTMLElement>("[data-h3-duration-warning]");
+    if (durationWarning) {
+      durationWarning.hidden = !viewModel.h3LongDurationWarning;
+      if (durationWarning.hidden) {
+        durationWarning.classList.remove("is-open");
+        durationWarning.setAttribute("aria-expanded", "false");
+      }
+    }
     const status = document.querySelector<HTMLElement>("[data-continuum-source-status]");
     if (status) {
       status.dataset.tone = "info";
@@ -943,6 +952,8 @@ export function createCreateWorkspaceCoordinator(
   function syncImageEditEnqueueUi(): void {
     const state = getState();
     const draft = state.imageDraft;
+    const tokenEstimate = document.querySelector<HTMLElement>("[data-image-token-estimate]");
+    if (tokenEstimate) tokenEstimate.textContent = `${estimatePromptTextTokens(draft.promptVersions[draft.activePromptVersion]?.text ?? "")} tokens`;
     const imageProfile = deps.getEnvironmentScan()?.modelProfiles.find((profile) => profile.id === draft.modelId);
     const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
     const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
@@ -1092,7 +1103,7 @@ export function createCreateWorkspaceCoordinator(
   }
 
   function clearDraft(mode: CreationMode): void {
-    if (mode === "image-edit") patchImageDraft(createDefaultImageEditDraft());
+    if (mode === "image-edit") patchImageDraft(createClearedImageDraft(getState().imageDraft));
     else patchDraftForMode(mode, (draft) => createClearedDraft(draft));
   }
 

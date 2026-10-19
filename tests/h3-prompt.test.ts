@@ -6,17 +6,33 @@ import {
   h3DetailedExpansionGateInstruction,
   h3DetailedExpansionTargetWords,
   h3DurationPlan,
+  h3ExtensionContinuityInstruction,
   h3ExplicitConstraintSummary,
   h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
+  h3PromptNodeOutputLimit,
+  assertH3PromptOutputBudget,
   h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
-import { h3PromptPresetTextForRequest } from "../src/core/h3-prompt-presets.js";
+import { h3PromptPresetTextForRequest, defaultH3PromptPresets } from "../src/core/h3-prompt-presets.js";
 import { promptSnippetFor } from "../src/core/prompts/index.js";
+import { h3TimelineDurationForRequest } from "../src/core/h3-auto-prompter.js";
+import type { EnhanceRequest, H3PromptPreset } from "../src/types.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("authors Extend on the visible new axis while Create keeps its complete grid duration", () => {
+    const request = { modelId: "minimax_h3_ref2va", h3DurationSeconds: 30 } as EnhanceRequest;
+    expect(h3TimelineDurationForRequest(request)).toBe(736 / 24);
+    expect(h3TimelineDurationForRequest({ ...request, extensionSource: { filePath: "C:/input/source.mp4", trimStartSeconds: 5, trimEndSeconds: 10 } })).toBe(30);
+    const instruction = h3ExtensionContinuityInstruction("R2V", "single-shot", false, undefined, 30);
+    expect(instruction).toContain("0.00 to 30.00 seconds");
+    expect(instruction).toContain("770 frames including 22");
+    expect(instruction).toContain("raw new span is 748 frames");
+    expect(instruction).toContain("not on the accumulated source timeline");
+  });
+
   it("selects only the control modules required by the request", () => {
     const plan = buildH3PromptControlPlan({
       rawPrompt: "A tiny woman walks from the cup to the plate while a second person responds. The low-angle camera rotates around her exactly 180 degrees. She says in Japanese: \"大丈夫？\". The sign reads \"EXIT\".（注：保留原始动作）",
@@ -188,10 +204,38 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3PromptExpansionTokenBudget("FL2VA", 15)).toBe(1920);
   });
 
+  it("scales all eleven presets through 30 seconds without changing their authored text", () => {
+    const presets = Object.keys(defaultH3PromptPresets) as H3PromptPreset[];
+    expect(presets).toHaveLength(11);
+    for (const preset of presets) {
+      const original = defaultH3PromptPresets[preset];
+      expect(h3PromptExpansionTokenBudget("R2V", 30, preset)).toBe(preset === "detailed-cinematic" ? 5760 : 3840);
+      expect(h3PromptExpansionTokenBudget("R2V", 30, preset)).toBeGreaterThan(h3PromptExpansionTokenBudget("R2V", 15, preset));
+      expect(defaultH3PromptPresets[preset]).toBe(original);
+    }
+  });
+
+  it("reserves long-source headroom without reducing detailed quality floors", () => {
+    const source = Array.from({ length: 2000 }, (_, index) => `action${index}`).join(" ");
+    expect(h3PromptExpansionTokenBudget("I2VA", 30, "detailed-cinematic", source)).toBe(9000);
+    expect(h3PromptExpansionTokenBudget("I2VA", 30, "official-storyboard", source)).toBe(7200);
+    expect(h3DetailedExpansionTargetWords("I2VA", 30, source)).toBe(3000);
+    expect(h3DetailedExpansionGateInstruction("R2V", 30)).toContain("950 grounded words as an advisory");
+  });
+
+  it("reads optional live ceilings and rejects capacity gaps instead of silently clamping", () => {
+    expect(h3PromptNodeOutputLimit({ VisionLLMNode: { input: { optional: { max_tokens: ["INT", { max: 16384 }] } } } }, "VisionLLMNode", "max_tokens")).toBe(16384);
+    expect(h3PromptNodeOutputLimit({}, "QwenVLCaption", "max_new_tokens")).toBe(2048);
+    expect(() => assertH3PromptOutputBudget(5760, 3072, "MultiModal")).toThrow(/3072.*5760/u);
+    expect(() => assertH3PromptOutputBudget(5760, 16384, "MultiModal")).not.toThrow();
+  });
+
   it("gives the detailed cinematic preset extra local output headroom", () => {
     expect(h3PromptExpansionTokenBudget("T2VA", 5, "detailed-cinematic")).toBe(2048);
     expect(h3PromptExpansionTokenBudget("R2V", 5, "detailed-cinematic")).toBe(2304);
     expect(h3PromptExpansionTokenBudget("FL2VA", 15, "detailed-cinematic")).toBe(2880);
+    expect(h3PromptExpansionTokenBudget("T2VA", 30)).toBe(3840);
+    expect(h3PromptExpansionTokenBudget("R2V", 30, "detailed-cinematic")).toBe(5760);
   });
 
   it("targets about twice the standard coverage without weakening the acceptance floor", () => {
@@ -199,7 +243,7 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3DetailedExpansionTargetWords("FL2VA", 15)).toBe(900);
     expect(h3DetailedExpansionTargetWords("R2V", 5)).toBe(700);
     expect(h3DetailedExpansionGateInstruction("FL2VA", 15)).toContain("approximately 900 grounded words");
-    expect(h3DetailedExpansionGateInstruction("FL2VA", 15)).toContain("fewer than 450 grounded words");
+    expect(h3DetailedExpansionGateInstruction("FL2VA", 15)).toContain("450 grounded words as an advisory");
   });
 
   it("removes the obsolete short range from persisted copies of the old built-in preset", () => {
@@ -409,16 +453,17 @@ describe("MiniMax H3 prompt templates", () => {
     expect(normalized).toContain("integrated_multimodal_description: [Shot 1]");
   });
 
-  it("rejects a shortened detailed-cinematic result before it becomes a version", () => {
+  it("warns about a shortened detailed-cinematic result without blocking it", () => {
     const source = "The giant lifts the tiny person, then carries them toward the window while the camera tracks alongside.";
     expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("approximately 500 grounded words");
-    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("fewer than 250 grounded words");
-    expect(() => assertDetailedCinematicExpansion(
+    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).toContain("250 grounded words as an advisory");
+    expect(h3DetailedExpansionGateInstruction("I2VA", 5, source)).not.toContain("application rejects");
+    expect(assertDetailedCinematicExpansion(
       "integrated_multimodal_description: [Shot 1] The giant lifts the tiny person.\noverall_soundscape: N/A\nnon_diegetic_music: N/A",
       "I2VA",
       5,
       source
-    )).toThrow("原提示词已保持不变");
+    ).join(" ")).toContain("已保留结果");
 
     const detailedTimeline = `${source} ${Array.from({ length: 250 }, (_, index) => `detail${index + 1}`).join(" ")}`;
     expect(() => assertDetailedCinematicExpansion(

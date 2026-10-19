@@ -14,7 +14,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 - Qwen3.6 / Qwen3.8 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。Qwen3.8 当前登记的是 JonathanColetti 的非 MTP Uncensored Q4 与配套 vision 投影文件。
 - 旧状态中可能仍有 LM Studio/llama-server 字段用于兼容迁移，但当前 UI 不要求、也不推荐安装独立服务。
 
-Strata 是独立运行组件，不是 ComfyUI 节点。Qwen3.8-Flash-Next 可在原提示词模型选择器中选用，启动/增强会自动完成校验、CPU pack/tokenizer、受认证的本机服务和模型加载，取消/释放/开始队列/退出均清理自有进程。软件安装本身不启动模型；它使用独立 `.venv`，不向 ComfyUI Python 安装包，不执行上游整套 setup，也不下载权重。重装保留旧目录并在失败时恢复。
+Strata 是独立运行组件，不是 ComfyUI 节点。Qwen3.8-Flash-Next 可在原提示词模型选择器中选用，启动/增强会自动完成校验、CPU pack/tokenizer、受认证的本机服务和模型加载，取消/释放/开始队列/退出均清理自有进程。软件安装本身不启动模型；它使用独立 `.venv`，不向 ComfyUI Python 安装包，不执行上游整套 setup，也不下载权重。受管理安装统一使用 `strata/runtime`，主应用与独立启动器共用解析，不记住具体版本路径；旧受管理路径兼容迁移，手动目录保留。更新只在事务内暂存旧软件供失败恢复，成功验证后删除旧软件、受信历史副本、安装暂存和成功下载包，不永久保留版本备份。失败清理本次暂存，仅保留可续传的固定资产半包及日志。
 
 提示词页在选择Strata时显示单一uncensored三选一：关闭／自带·ESP／社区·sergqwer。旧布尔true迁移为自带、false或缺省为关闭；新模式优先，不静默启用社区。保存只影响下一次增强，不兼容项禁用并保留偏好，其他后端不应用。自带向量483520bytes、4..44层；社区向量267552bytes、8..33层，固定来源revision/大小/SHA-256，随用户触发的Strata软件安装或更新事务准备，存软件目录的`data/lvs-control-vectors`，不是共享模型或ComfyUI节点，不下载新主权重。首次启用或更换向量重载模型；关闭再开启同一已确认向量可复用模型，逐请求显式发送投影true／false。基准pack／receipt不随模式改变，不重哈希大权重。缺件／坏hash／当次引擎未确认对应作用层时明确失败，不回退别的向量冒充成功。日志含mode、向量id/hash、requested／supported／engineConfirmed与vectorLoaded／applied（未完成为null）；加载和去拒答质量分别验收，不保证无拒答、质量或速度收益。
 
@@ -30,23 +30,27 @@ Strata资源遥测的暂时缺失与确认低资源分开处理：H3加载／增
 
 正常完整推理后的格式、长度或时间点校验失败，不保存结果，但保留已确认ready/loaded的自有Strata模型供下一次增强；记录`StrataValidationRetained`。流式/资源/服务失败、用户取消及清理不确定仍走停止保护，手动释放、队列交接和退出语义不变。保留模型不等于放宽文本质量门禁。
 
-运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自catalog，最新版本由官方release查询取得；网络失败不把推荐值当作最新。当前推荐0.1.45（固定477ac13），0.1.44.1和0.1.41继续可用并显示更新。安装事务新增社区小向量阶段，失败不替换旧安装，成功后才优先新版本；旧版本/权重/数据不自动删除。派生pack绑定实际安装revision，升级后可能需要重新离线准备，不要求重新下载共享主模型。手动指定目录保持显式选择，不被自动切换；独立Agent明确更新受管理旧版时展示新目标，成功后更新自己的路径并重新发现pack，不修改H3设置。
+运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自catalog，最新版本由官方release查询取得；网络失败不把推荐值当作最新。当前推荐0.1.45（固定477ac13），0.1.44.1和0.1.41未更新前继续可用并显示更新。安装事务包含社区小向量阶段，失败不替换旧安装，成功验证后清理旧软件；共享权重与用户数据保留。派生pack绑定实际安装revision，升级后可能需要重新离线准备，同revision仅迁移受管理路径时可完整校验后重定位原pack，不重复生成。手动指定目录保持显式选择；主应用与独立Agent始终解析同一个受管理runtime，自动pack过期时重新发现，不修改H3设置。
 
 模型共用所选 ComfyUI 的模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 只读兼容扫描。派生 pack/tokenizer 位于软件版本目录的同级 `data`，完成记录按源文件/模型/策略复检后复用；未完成资料不当缓存，软件卸载保留模型和数据。默认端口 43127，禁止 8080，冲突不接管、不自动修改设置。没有第二个模型根设置，不替换旧模型默认值。文件齐全不代表 GPU、视觉和输出质量已验；当前接入代码完成，完整模型验收由用户下载后另做。版本/来源见 catalog；操作见 [Strata 下载指南](tasks/2026-10-10-strata-prompt-integration/DOWNLOADS.md)。
 
+Unsloth UD-Q4_K_XL 使用同一共享模型根下 `LLM/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL`，固定四分片共111.33GB；视觉投影和可选MTP也识别已有GSQ-RCO目录，不复制或重新下载。独立准备使用官方`--compat-bf16`并保留兼容转换报告，缓存绑定Q4来源而非IQ revision。主应用与Agent共用Q4资源预算；内存充分完整驻留，较紧采用显式专家RAM预算/文件回读，长Agent上下文另计host KV，不复用IQ3的42GiB提交例外。Q4三种uncensored模式按用户授权开放，但仍须固定向量校验与当次引擎作用层确认；缺件/未确认明确失败，不静默关闭。实际Q4图文、质量、速度和资源峰值待用户下载后实测；不改变默认模型或H3的32K上下文。
+
 Strata 安装进度直接显示在运行组件卡片内，独立于折叠日志。引擎下载的百分比及大小来自实际下载文件字节，只代表该次下载，不代表整个安装；源码获取、校验、解压、Python 环境和依赖安装以动态条与当前步骤表示。取消时保留取消反馈，收尾后隐藏；切换设置页签不会重置当前步骤。
 
-Strata引擎包在软件版本目录同级`downloads`下按固定revision/hash缓存，用户点击更新才下载。可恢复网络错误最多尝试3次，共用10分钟预算，每次按实际缓存大小续传；取消立即停止自有curl/等待重试并保留字节。旧安装暂存区的ZIP半包仅在Git提交与官方origin匹配后复制到缓存，原文件不移动/删除。服务器拒绝Range、证书/404等非瞬时错误不盲目重试；日志显示具体curl错误（有界、下载URL脱敏）。下载齐字节仍须固定SHA-256，坏包改名保留后拒绝发布；不替用户降低校验或自动启用代理。共享模型文件不参与此软件缓存。
+Strata引擎包在软件目录同级`downloads`下按固定revision/hash缓存，用户点击更新才下载。可恢复网络错误最多尝试3次，共用10分钟预算，每次按实际缓存大小续传；取消立即停止自有curl/等待重试并保留同一资产半包。旧暂存区ZIP只在提交与官方origin匹配后导入，安装成功后清理来源已确认的旧暂存。服务器拒绝Range、证书/404等非瞬时错误不盲目重试；日志显示具体curl错误（有界、下载URL脱敏）。下载齐字节仍须固定SHA-256，坏包删除并拒绝发布，成功后清理软件资产缓存；不降低校验或自动启用代理。共享模型文件不参与此软件缓存。
 
-可选[Strata本地Agent启动器](tasks/2026-10-17-strata-local-agent/TASK.md)独立复用上述Strata安装和共享权重。Claude/CloudCLI/SDK使用常规npm共享安装，优先检测和复用现有兼容版本；缺件/更新先展示旧→新、位置、规模和影响并明确确认。仅启动器配置、token、GUI数据、日志和恢复备份隔离；不改普通Claude/CC Switch当前路由或Codex配置。服务/模型/Agent工具能力逐层验收，检测或安装成功不代表真实Agent通过。
+可选[Strata本地Agent启动器](tasks/2026-10-17-strata-local-agent/TASK.md)独立复用上述Strata安装和共享权重。Claude/CloudCLI/SDK使用常规npm共享安装，优先检测和复用现有兼容版本；缺件/更新先展示旧→新、位置、规模和影响并明确确认。仅启动器配置、token、GUI数据、日志和不可再下载的用户配置备份隔离；不改普通Claude/CC Switch当前路由或Codex配置。服务/模型/Agent工具能力逐层验收，检测或安装成功不代表真实Agent通过。
 
 Agent在64GB/4090上已逐档验证32K基础工具、64K GUI、128K/262144原生容量及同session互通；默认Strata262144、Claude客户端保守200000。原生220K容量探针不代替Claude长工具会话。Agent允许明确显示的官方文件回读；H3随后按用户授权采用上文独立的32K回读策略，不继承Agent的512MiB RAM底线或更大context。实时RAM、Windows提交和显存保护保留，不修改分页文件。LAN仍关闭，具体证据与未验边界由同一TASK维护。
 
 ## 2. 五种不同的“已安装”
 
-Strata 的应用管理安装可在安装按钮右侧三角菜单选择“卸载”，确认后永久删除当前软件目录（含独立 `.venv`）；共享模型、独立数据目录、重装备份及失败资料不删除。未安装、手动目录或未知归属不提供卸载；安装中与生成/提示词忙碌时禁止操作，后台在删除前复检归属、真实路径及模型根重叠。软件目录中的本地修改不保留，卸载后可一键重装；只离线复扫，不修改 ComfyUI Python、不重启 ComfyUI。
+设置 → 路径 → 缓存管理的原有“清理缓存”也处理历史软件残留，不要求重新下载安装。统计覆盖已确认归属的 Strata 非当前版本／备份／失败暂存／软件引擎缓存、所选 ComfyUI 的节点和 runtime 备份，以及独立 Agent 的旧 npm 包／下载／私有构建缓存；不扫描其他磁盘或修改当前软件。仍在安装时不进入软件清理；跨进程租约采用禁止交接模式，Strata／Agent 正在运行则跳过并说明，不为清理而卸载模型。不停止外部进程；清理前复检当前路径、来源记录、真实包含关系及本地数据。模型、配置、数据库、会话、有效pack与未知文件不能作为普通缓存删除，含此类数据的旧副本保留并显示原因；缓存清理不把旧副本的数据写入当前节点。目录／字节统计、进度与部分失败继续显示在原缓存面板及日志。软件清理前后不修改草稿、queue、History 或偏好设置。
 
-当前应用推荐核心为 ComfyUI `0.39.2`，各工作流最低兼容线独立保留。通用 GGUF 使用 leejet 维护版固定提交 `373048b8403a7820620065210a691263d4da0a61`；同为 `2.0.0` 的其他 fork、未确认 origin 或不同提交不会被判为已满足该推荐线。安装/更新会备份旧目录，H3 专用 GGUF 的目录和注册名不变。
+Strata 的应用管理安装可在安装按钮右侧三角菜单选择“卸载”，确认后永久删除当前软件目录（含独立 `.venv`）；共享模型、独立用户数据与目标以外的未知目录不删除。未安装、手动目录或未知归属不提供卸载；安装中与生成/提示词忙碌时禁止操作，后台在删除前复检归属、真实路径及模型根重叠。软件目录中的本地修改不保留，卸载后可一键重装；只离线复扫，不修改 ComfyUI Python、不重启 ComfyUI。更新产生的旧软件由成功更新事务清理，不以卸载代替更新收尾。
+
+当前应用推荐核心为 ComfyUI `0.39.2`，各工作流最低兼容线独立保留。通用 GGUF 使用 leejet 维护版固定提交 `373048b8403a7820620065210a691263d4da0a61`；同为 `2.0.0` 的其他 fork、未确认 origin 或不同提交不会被判为已满足该推荐线。安装/更新成功后清理旧软件，H3 专用 GGUF 的目录和注册名不变。
 
 排错时必须区分以下状态：
 
@@ -126,7 +130,7 @@ npm.cmd run harness:comfy -- restart-comfy
 npm.cmd run harness:comfy -- repair-prompt-writer
 ```
 
-`probe-prompt-writer` 是默认的只读操作，直接检查 `/h3studio/status`、模型接口和 GGUF diagnostics。`restart-comfy` 复用应用的本地进程所有权和启停服务；CLI harness 使用已有的隐藏 detached launcher，避免命令结束时关闭它启动的 ComfyUI，Electron 应用仍保留可见控制台。`repair-prompt-writer` 复用节点安装器、安全备份、兼容补丁、Python 语法校验、重启和运行时复检。可用 `--state <studio-state.json>` 指向另一份明确的应用状态，或用 `--json` 取得机器可读结果。只有这些服务接口无法覆盖且任务确实依赖 GUI 状态时，才应使用桌面自动化。
+`probe-prompt-writer` 是默认的只读操作，直接检查 `/h3studio/status`、模型接口和 GGUF diagnostics。`restart-comfy` 复用应用的本地进程所有权和启停服务；CLI harness 使用已有的隐藏 detached launcher，避免命令结束时关闭它启动的 ComfyUI，Electron 应用仍保留可见控制台。`repair-prompt-writer` 复用节点安装器、事务内暂存恢复、兼容补丁、Python 语法校验、重启和运行时复检。可用 `--state <studio-state.json>` 指向另一份明确的应用状态，或用 `--json` 取得机器可读结果。只有这些服务接口无法覆盖且任务确实依赖 GUI 状态时，才应使用桌面自动化。
 
 如果需要验证“真实界面功能”而不是单独的 ComfyUI 服务接口，应使用 [`Agent Electron API smoke runbook`](AGENT_ELECTRON_API_RUNBOOK.md)：通过显式 loopback CDP 连接实际 Electron renderer，在 `window.studio` 上调用现有 `AppApi`，再按 task ID 验证队列、历史和输出。这个桥接只用于本机 Agent/测试操作，不是 public HTTP、Headless 或 LAN API；必须记录调试开关、隔离范围和 app-owned 进程清理。不要直接调用 `/prompt` 后把结果写成产品 UI/API smoke，也不要把 `--cpu`、禁用节点或测试 harness 参数的成功当作正常运行时证据。
 
@@ -143,7 +147,7 @@ npm.cmd run harness:comfy -- repair-prompt-writer
 “设置 → 节点与依赖”中的可管理第三方节点和 Python 运行依赖可一键安装或更新。`llama-cpp-python`、SageAttention、Triton、KJNodes 等可安装依赖也属于此页；它们的修复不能被描述成 ComfyUI 核心修复。安装器会：
 
 1. 定位所选 ComfyUI 的 `custom_nodes` 和 Python。
-2. 使用 Git clone/pull；需要安全替换时先备份原目录。
+2. 使用 Git clone/pull；替换仅在事务期间暂存原目录，全部安装验证成功后删除旧软件，失败恢复原目录。本地模型、媒体及配置迁移到新副本，同名数据冲突则拒绝替换；源码与应用兼容层按固定来源重新安装，不永久保留整个旧目录。清理限定所选安装和可核对归属的历史副本，路径越界、链接或占用失败进入日志，不把清理失败当成模型可用性证明。
 3. 应用本项目明确维护的兼容补丁。
 4. 使用所选 ComfyUI Python 执行节点的 `requirements.txt`。
 5. 在卡片中实时输出阶段、Git/pip 内容、超时和错误。
@@ -151,7 +155,7 @@ npm.cmd run harness:comfy -- repair-prompt-writer
 
 可以连续点击多个节点加入等待队列。应用会锁定该批次开始时所选的 ComfyUI 实例和 Python，串行执行每个节点的 Git/pip 操作；单项失败会写入对应卡片日志并继续下一项，不会让后续节点永远等待。批次末尾统一重启和复扫，卡片会区分“排队中”“处理中”和“正在重启并复检”。重启/复检阶段不再接受新的节点，避免节点被安装到另一套环境。
 
-排队项的主按钮显示“移出队列”，只移除该节点，不执行安装，也不取消其他项；运行中的节点及 Strata、llama-cpp-python、H3 加速软件显示“取消安装”。点击后显示“正在取消…”，后台仅中止当前安装启动的 Git/pip/下载子进程树，等待退出及既有恢复处理完成后解除占用，后续节点才继续。取消与失败分开记录，日志保留；只有已成功安装的节点参与批次重启。没有成功项时仅离线复扫，不启动 ComfyUI。取消不是卸载：未完成资料、目录备份保留，已完成的共享 Python 包替换不保证自动回滚，可按复扫结果重试安装/修复。安装收尾已完成时会说明未中止已完成的操作；重启/复检阶段不提供安装取消。
+排队项的主按钮显示“移出队列”，只移除该节点，不执行安装，也不取消其他项；运行中的节点及 Strata、llama-cpp-python、H3 加速软件显示“取消安装”。点击后显示“正在取消…”，后台仅中止当前安装启动的 Git/pip/下载子进程树，等待退出及既有恢复处理完成后解除占用，后续节点才继续。取消与失败分开记录，日志保留；只有已成功安装的节点参与批次重启。没有成功项时仅离线复扫，不启动 ComfyUI。取消不是卸载：恢复可恢复的原目录并清理本次暂存，仅保留日志和可续传半包；共享 Python 包替换不保证自动回滚，可按复扫结果重试安装/修复。安装收尾已完成时会说明未中止已完成的操作；重启/复检阶段不提供安装取消。
 
 应用可管理的节点卸载时会永久删除匹配的 `custom_nodes` 目录，不创建或依赖本地备份；需要恢复时重新执行一键安装，由 catalog 声明的仓库、版本规则和兼容补丁重新下载构建。确认对话框会提示本地修改不会保留。手动安装的节点不由应用卸载；如果 ComfyUI 原本没有运行，卸载也不会为了刷新节点而启动它。
 
@@ -171,7 +175,7 @@ Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓�
 
 共享运行库推荐固定为 JamePeng `0.4.2` / `20261003` Windows wheel；依赖兼容范围为 `>=0.3.34,<0.5`，已有旧版 CUDA 自检通过的安装不会被静默升级。Qwen MultiModal 的受管理补丁仅对 Qwen35 家族的 MTMD handler 关闭全量 logits，保留旧视觉 handler 的原行为，避免按完整上下文分配巨大的 Python scores 数组；不减少图片、上下文或输出预算，不启用 MTP。Prompt Writer 一键修复同时适配架构检查与诊断文件的 0.4.x 上限，保留最低版本/架构检查。两项旧适配均在离线扫描中提示一键修复，完成后须重启 ComfyUI。0.4.2/cu130/cp312 隔离实测覆盖 Qwen3.6 27B，不能代称本机没有权重的 Qwen3.8 27B 已验；性能与长稿失败边界见[评估证据](tasks/2026-10-10-strata-prompt-integration/evidence/qwen27b-speed-assessment.md#升级与真实测试2026-10-16)。
 
-Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前推荐节点上游 0.4.7，保留应用依赖的 `/h3studio/*` 提示词接口；可选 `requirements-gguf.txt` 由共享运行时安装器接管。Windows 使用上述固定 JamePeng 动态后端，运行时选择兼容 CPU 实现并加载 `ggml-cuda.dll`；探针先注册后端再判断 GPU offload，安装器只替换此包，不重装 NumPy/Pillow。wheel 大小随 CUDA/Python 资产变化，日志显示下载百分比，等待上限45分钟。节点兼容层保留 `GGMLType` KV 常量、Gemma 4 原生 chat handler、非 Thinking 输出和幂等清理；Direct Gemma 默认16K Standard，不因普通输入自动扩展24K。UNSEEN NSFW 4090 档位仍用Q4_K_M与匹配q4_0 projector及低批处理。更新本地已修改节点时，先按固定推荐提交核对完整适配器指纹；确需替换则备份旧目录再校验新副本，不用强制 pull 覆盖。批次重启后检查 status、models、GGUF diagnostics和应用侧共享运行库CUDA自检；轻量节点探针的 gpu_offload:false只作提示，自检失败保留pip日志/原生退出码，未知或CPU包不标为GPU就绪。
+Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前推荐节点上游 0.4.7，保留应用依赖的 `/h3studio/*` 提示词接口；可选 `requirements-gguf.txt` 由共享运行时安装器接管。Windows 使用上述固定 JamePeng 动态后端，运行时选择兼容 CPU 实现并加载 `ggml-cuda.dll`；探针先注册后端再判断 GPU offload，安装器只替换此包，不重装 NumPy/Pillow。wheel 大小随 CUDA/Python 资产变化，日志显示下载百分比，等待上限45分钟。节点兼容层保留 `GGMLType` KV 常量、Gemma 4 原生 chat handler、非 Thinking 输出和幂等清理；Direct Gemma 默认16K Standard，不因普通输入自动扩展24K。UNSEEN NSFW 4090 档位仍用Q4_K_M与匹配q4_0 projector及低批处理。更新本地已修改节点时，先按固定推荐提交核对完整适配器指纹；确需替换则先校验新副本、事务内暂存旧目录并迁移本地模型/配置，依赖安装成功后删除旧软件，不保留永久源码备份。批次重启后检查 status、models、GGUF diagnostics和应用侧共享运行库CUDA自检；轻量节点探针的 gpu_offload:false只作提示，自检失败保留pip日志/原生退出码，未知或CPU包不标为GPU就绪。
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。两个节点的安装入口和“修复运行依赖”现在都调用同一个安装器、固定版本和 CUDA 自检；节点 `requirements.txt` 中的普通 `llama-cpp-python` 条目会被过滤，安装其中一个不会再用 PyPI 或 Git 源码构建覆盖另一个。相同 ComfyUI 的并发安装请求会合并为一个事务；已有 CUDA 自检通过的后端不会因更新 Prompt Writer 被重装。当前 Python/CUDA 不在预编译矩阵时，安装器会在下载前明确失败并保留日志，不会偷偷回退到 CPU 或启动第二个 llama 服务。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
 
@@ -195,7 +199,7 @@ ComfyUI Desktop 某些版本在嵌入式控制台关闭后会让节点的普通 
 
 Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.29`。`v0.2.17` 补完 H3 Continuum 互操作：混合 VIDEO/AUDIO mask 可继续使用原生 H3 forecast，learned-latent sampler-2 refinement 不继承 sampler-1 的 Continuum actual-prefix，旧版 ComfyUI 核心缺少 `mask_row_values` 时安全降级为一次原生 H3 transformer 评估；`v0.2.18–v0.2.20` 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作、嵌套 custom-node 命名空间发现和首次 ER-SDE step provenance；`v0.2.21` 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；`v0.2.22` 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 支持；`v0.2.23` 完成 active SA-Solver PECE 与 RefDelta 多后端互操作，并将 active-PECE 默认策略设为 `balanced`；`v0.2.24` 移除已验证 few-step/progressive 流程中的两个不必要 actual-evaluation barriers：active SA-Solver PECE 的终端 Untwist 只有在明确安全元数据和窄边界下才会延后预测，corrector 仍保持 actual；RES Multistep 不再隐式把 final tail 提升到 3，现有工作流传入的 `tail_actual_steps` 按原值生效；`v0.2.25` 修复当前 ComfyUI DynamicVRAM/Comfy Compiler 下 Spectrum H3 solver 与 Aimdo malloc-graph 的崩溃边界，不全局关闭 DynamicVRAM 或 Compiler；`v0.2.26` 增加 provider-generic numerical-attention history/receipt 合约，无法证明后端连续性时安全退回 actual-only；`v0.2.27` 增加预测头流式投影与 CUDA target lifetime 修复，并恢复审查过的 Core BlockSparseAttention Mixed-Grid forecast recovery，主要降低预测头 CUDA 显存压力，不承诺整体速度提升。`v0.2.28` 修复 Windows CRLF 造成的 source audit 误判；`v0.2.29` 改用实际 BSA/Flow/Untwist 运行结构、路由和 receipt 确认普通 forecast 兼容，强化历史身份及 cold-to-primed 校准安全，未知结构仍安全退回 actual。当前应用内置 H3 仍使用 RES/ER-SDE，不切换为 SA/PECE；因此现有模型、LoRA、工作流结构和既有互操作保持兼容，RefDelta、SEEDS 和 SA-Solver 仍不是本应用硬依赖。它保留原生 ER-SDE、KJNodes 预览回放、Untwisting RoPE 外部补丁契约和隔离的生成后研究进程。设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum、Diff-Aid 或 Untwisting RoPE 变成硬依赖。
 
-已核对的其他窄升级推荐线为 Inpaint Nodes `1.4.4`（ColorMatch 支持 RGBA 并保留 alpha）、Crop & Stitch `3.0.17`（图像/Mask rank、通道、dtype、NaN/Inf 和 batch 清洗）及 MultiModal Prompt Nodes `1.0.16`（本机已安装，保留应用兼容补丁）。最低支持线保持不变；更大采样协议或本地补丁变更的节点不因上游版本号较高就自动提高推荐线。实际验收边界见[节点升级证据](tasks/2026-10-08-upstream-upgrade-assessment/evidence/nodes-20261009.md)。
+已核对的其他窄升级推荐线为 Inpaint Nodes `1.4.4`（ColorMatch 支持 RGBA 并保留 alpha）、Crop & Stitch `3.0.17`（图像/Mask rank、通道、dtype、NaN/Inf 和 batch 清洗）及 MultiModal Prompt Nodes `1.0.16`（本机已安装，保留应用兼容补丁）。最低支持线保持不变；更大采样协议或本地补丁变更的节点不因上游版本号较高就自动提高推荐线。实际验收边界见[节点升级证据](archive/2026-10-08-upstream-upgrade-assessment/evidence/nodes-20261009.md)。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 
@@ -252,8 +256,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 - 图片模型有独立的扩散模型、编码器和 VAE 组件。
 - Qwen 多图/Canvas 标记会影响实际图片输入槽数量；workflow adapter 和 Create 限制必须一致。
 - 图片任务同样先离线入队检查，执行时再验证节点。
-- Qwen 2511 局部融合修复及其专属 Crop & Stitch 节点已退出活动目录；仅保留历史名称和显式卸载身份。节点移出加载目录时可恢复备份，共享2511权重和普通编辑路线保留；Qwen2.1 Lighting Blend/Fix仍在原有LoRA入口选择。
-- H3 I2I / REF2VA 图片功能已退出活动目录，H3 Image Studio 不再参与扫描、推荐、安装或更新；只保留历史名称和显式卸载身份。节点移出 `custom_nodes` 时保留可恢复备份，不删除图片媒体、模型权重或 H3 视频节点。旧 H3 图片历史重新编辑默认使用 Qwen Image 2.1。
+- Qwen 2511 局部融合修复及其专属 Crop & Stitch 节点已退出活动目录；仅保留历史名称和显式卸载身份。软件卸载按节点卸载规则删除，不额外备份源码；共享2511权重和普通编辑路线保留，Qwen2.1 Lighting Blend/Fix仍在原有LoRA入口选择。
+- H3 I2I / REF2VA 图片功能已退出活动目录，H3 Image Studio 不再参与扫描、推荐、安装或更新；只保留历史名称和显式卸载身份。软件卸载按节点卸载规则删除，不额外备份源码，不删除图片媒体、模型权重或 H3 视频节点。旧 H3 图片历史重新编辑默认使用 Qwen Image 2.1。
 
 ### 视频增强
 

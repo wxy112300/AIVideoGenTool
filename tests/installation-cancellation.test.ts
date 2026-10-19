@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { InstallationCancellation, installationSignal } from "../electron/services/installation-cancellation";
+import { InstallationCancellation, installationSignal, hasActiveInstallations, withSoftwareMaintenance } from "../electron/services/installation-cancellation";
 import { runLoggedProcess } from "../electron/services/environment";
 import { downloadFileWithCurl } from "../electron/services/environment";
 import { createDefaultSettings } from "../src/core/defaults";
@@ -9,6 +9,18 @@ import path from "node:path";
 import os from "node:os";
 
 describe("installation cancellation", () => {
+  it("excludes software cache maintenance and installation without cancelling either operation", async () => {
+    const registry = new InstallationCancellation();
+    await withSoftwareMaintenance(async () => {
+      expect(await registry.run("node", async () => ({ ok: true, message: "should not run" }))).toMatchObject({ ok: false });
+    });
+    let finish!: () => void;
+    const pending = registry.run("node", async () => { await new Promise<void>(resolve => { finish = resolve; }); return { ok: true, message: "done" }; });
+    await Promise.resolve(); expect(hasActiveInstallations()).toBe(true);
+    await expect(withSoftwareMaintenance(async () => {})).rejects.toThrow("安装或清理");
+    finish(); await pending; expect(hasActiveInstallations()).toBe(false);
+    await expect(withSoftwareMaintenance(async () => "ready")).resolves.toBe("ready");
+  });
   it("inherits owner shutdown cancellation and releases its slot only after installer recovery", async () => {
     const registry = new InstallationCancellation(), parent = new AbortController();
     let began!: () => void, recover!: () => void;

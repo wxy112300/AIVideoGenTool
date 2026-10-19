@@ -1,9 +1,14 @@
 # H3 Prompt 增强框架修复
-- Status: complete
+- Status: archived（2026-10-19按用户决定归档已交付范围）
 - Updated / Owner: 2026-09-19 / current agent
 - Scope / Authority: 按用户确认的研究结论修改 H3 Prompt 增强、快捷插入、三种增强后端及审计；保留十个预设、全部快捷项、已有 Draft/Queue/History 兼容性。
 - Baseline: `c8fbf5d`; 开始时仅 `CHANGELOG.md` 与 `docs/research/h3/2026.9.12-h3-prompt-control-reassessment.md` 为本任务研究改动。
 - Execution: direct
+
+## 归档说明
+
+- 2026-10-19用户同意归档；原实施日期、测试和负结果保留，文件归属已释放。真实Prompt/视频质量A/B未验，不作为本任务继续执行的待办。
+- 本文的3072输出封顶、字数拒绝及仅为长度自动补写属于历史策略，已由[H3 30秒任务](../../archive/h3-native-30s/TASK.md)中的共享长文预算与字数警告策略替代。当前行为以现行契约和代码为准，不从本归档恢复旧门槛。
 
 ## Resume
 - 已确认 / 决定：默认 hard-single，明确 cut/多视角才允许多镜头；快捷插入始终先进入增强器且不按模式禁用；未知事实省略；年龄不从尺度词推断；最终 H3 正文避免失败概念长清单；FL2VA、R2VA、Extend 使用不同参考语义；三个增强后端共享同一能力合同。

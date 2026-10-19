@@ -2,6 +2,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { ConnectionResult } from "../../src/types.js";
 
 const context = new AsyncLocalStorage<AbortSignal>();
+let activeInstallations = 0;
+let softwareMaintenance = false;
+export function hasActiveInstallations(): boolean { return activeInstallations > 0; }
+/** In-process exclusion; callers additionally hold the cross-process software/GPU lease. */
+export async function withSoftwareMaintenance<T>(work: () => Promise<T>): Promise<T> {
+  if (activeInstallations || softwareMaintenance) throw new Error("软件正在安装或清理，请等待完成后再试。");
+  softwareMaintenance = true;
+  try { return await work(); } finally { softwareMaintenance = false; }
+}
 export function installationSignal(): AbortSignal | undefined { return context.getStore(); }
 export function checkInstallationCancelled(): void { installationSignal()?.throwIfAborted(); }
 
@@ -10,12 +19,14 @@ export class InstallationCancellation {
   private readonly operations = new Map<string, { controller: AbortController; done: Promise<ConnectionResult> }>();
 
   run(id: string, install: () => Promise<ConnectionResult>, parentSignal?: AbortSignal): Promise<ConnectionResult> {
+    if (softwareMaintenance) return Promise.resolve({ ok: false, message: "正在清理旧软件，请等待完成后再安装。" });
     if (this.operations.has(id)) return Promise.resolve({ ok: false, message: "该安装正在执行，请等待当前操作结束。" });
     const controller = new AbortController();
     const abortFromParent = () => controller.abort(parentSignal?.reason);
     if (parentSignal?.aborted) abortFromParent();
     else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
     // Register before invoking install, including synchronous progress callbacks.
+    activeInstallations++;
     const done = Promise.resolve().then(() => context.run(controller.signal, async () => {
       try {
         checkInstallationCancelled();
@@ -30,6 +41,7 @@ export class InstallationCancellation {
     })).finally(() => {
       parentSignal?.removeEventListener("abort", abortFromParent);
       this.operations.delete(id);
+      activeInstallations--;
     });
     this.operations.set(id, { controller, done });
     return done;
