@@ -50,7 +50,7 @@ export interface StrataChatRequest {
   automaticOutputBudget?: boolean;
   uncensored?: boolean;
   uncensoredMode?: StrataUncensoredMode;
-  /** Internal bounded evaluation; not a persisted setting or automatic mode switch. */
+  /** Per-request bounded thinking; enabled by the prompt adapter, not a persisted setting. */
   reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
 }
 

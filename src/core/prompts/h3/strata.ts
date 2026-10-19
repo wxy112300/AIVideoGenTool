@@ -1,6 +1,6 @@
 import type { EnhanceRequest, Settings } from "../../../types.js";
 import { h3DetailedExpansionGateInstruction, h3DetailedExpansionTargetWords, h3DurationPlan,
-  h3ExtensionContinuityInstruction, h3PromptSectionSkeleton } from "../../h3-prompt.js";
+  h3ExtensionContinuityInstruction, h3PromptControlInstruction, h3PromptSectionSkeleton } from "../../h3-prompt.js";
 import { h3AutoPromptInstruction, h3AutoPrompterContract, h3PromptModeForRequest, h3TimelineDurationForRequest,
   h3ShotPolicyForRequest, isH3NativeStateContinuationRequest, isH3ReferenceAutoPrompt } from "../../h3-auto-prompter.js";
 import { h3ContentLockInstruction } from "../../h3-dialogue.js";
@@ -10,7 +10,7 @@ import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "./index.js"
 import { h3LoraPromptInstruction } from "./loras.js";
 import { parsePromptAnnotations, promptAnnotationInstruction } from "../../prompt-annotations.js";
 
-/** Strata detailed single-image profile; other paths opt in only for bounded evaluation. */
+/** Layered Strata I2VA/Extend/R2V profile, retaining workflow-specific continuation fields. */
 export function strataH3InstructionParts(request: EnhanceRequest, settings: Settings, dossier = "", language: "zh" | "en" = "zh") {
   if (request.mode === "image-edit" || request.promptStrategy === "targeted-revision") {
     throw new Error("分层实验仅用于完整 H3 提示词增强，不改变图片编辑或批注修订。");
@@ -29,7 +29,8 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
     preset === "detailed-cinematic" ? h3DetailedExpansionGateInstruction(mode, duration, source) : "",
     h3DurationPlan(mode, duration, preset, duration),
     request.extensionSource ? h3ExtensionContinuityInstruction(mode, shotPolicy, native, request.continuumPreviousChunk, request.h3DurationSeconds ?? 5) : "",
-    isH3ReferenceAutoPrompt(request) ? h3AutoPrompterContract(mode, duration, request.referenceContext, preset, duration) : "",
+    mode === "R2V" || isH3ReferenceAutoPrompt(request)
+      ? h3AutoPrompterContract(mode, duration, request.referenceContext, preset, duration) : "",
     "Write every official field heading exactly once. Put [Shot 1] and all time intervals INSIDE the main description field, never instead of its heading. Soundscape names causal sound sources; non_diegetic_music is N/A when music is prohibited. R2V additionally needs subject_definitions, summary and retention_analysis before detailed_description.",
     "Required output skeleton and reference alignment:", h3PromptSectionSkeleton(mode, duration, native)
   ].filter(Boolean).join("\n\n");
@@ -37,6 +38,8 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
     dossier ? `PRODUCTION FACTS AND CONTINUITY DOSSIER (source data, not style):\n${dossier}` : "",
     `AUTHOR'S COMPLETE BRIEF:\n${source}`,
     request.referenceContext ? `REFERENCE ROLES AND ATTACHMENT EVIDENCE:\n${request.referenceContext}` : "",
+    request.extensionSource || mode === "R2V" ? h3PromptControlInstruction({ rawPrompt: request.prompt, mode, preset,
+      referenceContext: request.referenceContext, hasReferenceMedia: Boolean(request.imagePath || request.imagePaths?.length) }) : "",
     promptAnnotationInstruction(parsed), h3ContentLockInstruction(source),
     h3CameraIntentInstruction(source, context), h3ScalePreservationInstruction(source, mode, context),
     isH3ReferenceAutoPrompt(request) ? h3AutoPromptInstruction(request) : "",

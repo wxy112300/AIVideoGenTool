@@ -7,6 +7,7 @@ import { promptModelBackend, promptRuntimeForSettings, promptModelSupportsImageE
 import { promptModelStatus } from "../src/renderer/shared/status.js";
 import { strataPreparationProfiles } from "../src/core/strata-preparation.js";
 import { buildStrataPromptRequest, enhancePromptWithStrata, strataImageContent, strataPromptPolicy } from "../electron/services/strata-prompt.js";
+import { withPromptExtensionMedia } from "../electron/services/prompt-extension-media.js";
 import { PromptApplicationService } from "../electron/services/prompt-application-service.js";
 import { PromptRuntimeManager } from "../electron/services/prompt-runtime-manager.js";
 import { scanEnvironment } from "../electron/services/environment.js";
@@ -90,7 +91,7 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     for (const preset of ["official-storyboard", "detailed-cinematic"] as const) {
       const chat = await buildStrataPromptRequest({ prompt: "A balloon rises steadily.", modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: preset, h3DurationSeconds: 30 }, settings, new AbortController().signal);
       expect(chat).toMatchObject({ contextSize: 32768, maxTokens: 8192, automaticOutputBudget: true });
-      expect(chat.reasoning).toBeUndefined();
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 });
       expect(JSON.stringify(chat.messages)).toContain("30.67");
     }
   });
@@ -241,6 +242,59 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
 });
 
 describe("Strata Pack, image and output contracts", () => {
+  it.each([
+    { model: "minimax_h3_fl2va", mode: "I2VA" as const, field: "integrated_multimodal_description", native: false },
+    { model: "minimax_h3_ref2va", mode: "R2V" as const, field: "detailed_description", native: false },
+    { model: "minimax_h3_continuum", mode: "I2VA" as const, field: "integrated_multimodal_description", native: true }
+  ])("extends $model from the selected final frame with layered instructions and thinking", async ({ model, mode, field, native }) => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId };
+    const boundary = await imageFixture(), cleanup = vi.fn(async () => undefined);
+    const prepareFrame = vi.fn(async () => ({ filePath: boundary, cleanup }));
+    const req: EnhanceRequest = { prompt: "保持两人的身份和站位，让左侧人物继续扶住右侧人物，镜头沿原方向跟随。",
+      modelId: model, mode: "h3-vision", origin: "video-extension", h3PromptMode: mode,
+      h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 15, continuumPreviousChunk: 2,
+      extensionSource: { filePath: "source.mp4", trimStartSeconds: 2, trimEndSeconds: 8 }, referenceMediaPaths: ["source.mp4"] };
+    const owner = { chat: vi.fn(async (_chat: unknown) => `${mode === "R2V" ? "subject_definitions: Two people.\nsummary: Continue.\nretention_analysis: fully_preserved\n" : ""}${field}: [Shot 1] The left person continues supporting the right person as the camera tracks.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A`) };
+    const progress = vi.fn();
+    const result = await withPromptExtensionMedia(req, "extend-test", new AbortController().signal,
+      prepared => enhancePromptWithStrata(prepared, settings, owner, new AbortController().signal, progress), { prepareFrame });
+    expect(prepareFrame).toHaveBeenCalledWith(req.extensionSource, "extend-test", expect.any(AbortSignal));
+    expect(owner.chat).toHaveBeenCalledOnce();
+    const chat = owner.chat.mock.calls[0][0] as unknown as Awaited<ReturnType<typeof buildStrataPromptRequest>>;
+    expect(chat).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 }, automaticOutputBudget: true, contextSize: 32768 });
+    expect(chat.messages[0].role).toBe("system");
+    const content = chat.messages[1].content as Array<{ type: string; text?: string }>;
+    expect(content.map(part => part.type)).toEqual(["text", "image_url", "text"]);
+    expect(content[0].text).toContain(req.prompt);
+    expect(content[0].text).toContain("exact final");
+    expect(content[0].text).not.toContain("sampled frame");
+    expect(content[2].text).toContain(`15.00-second ${native ? "T2VA" : mode}`);
+    expect(chat.messages[0].content).toContain("visible NEW segment from 0.00 to 15.00");
+    expect(chat.messages[0].content).toContain(native ? "CONTINUUM CHUNK AUTHORING CONTRACT" : "EXTENSION CONTINUITY CONTRACT");
+    expect(result).toContain(`${field}:`);
+    if (native || mode === "R2V") expect(result).not.toContain("<Picture 1>");
+    else expect(result).toMatch(/^For the target video, at 0.00 seconds/);
+    expect(progress).toHaveBeenCalledWith("generating", null, expect.stringContaining("思考预算 2048"));
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(req.imagePaths).toBeUndefined();
+  });
+  it.each([undefined, "reference-auto"] as const)("uses the layered R2V contract for authored/auto requests (%s), without treating sources as one subject", async promptStrategy => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId };
+    const req: EnhanceRequest = { prompt: promptStrategy ? "" : "Use the person from Picture 1 and the room from Picture 2.",
+      modelId: "minimax_h3_ref2va", mode: "h3-vision", h3PromptMode: "R2V", h3PromptPreset: "detailed-cinematic",
+      promptStrategy, imagePaths: ["person.png", "room.png"], referenceContext: "<Picture 1> = person; <Picture 2> = room", h3DurationSeconds: 15 };
+    const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal,
+      async filename => ({ type: "image_url", image_url: { url: filename } }));
+    expect(chat).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, maxTokens: 8192 });
+    expect(chat.messages[0].role).toBe("system");
+    expect(chat.messages[0].content).toContain("subject_definitions");
+    expect(chat.messages[0].content).toContain("detailed_description");
+    expect(chat.messages[0].content).toContain("attribute_transfer");
+    expect(JSON.stringify(chat.messages)).toContain("R2V entity-role module");
+    expect(JSON.stringify(chat.messages)).toContain(req.referenceContext);
+    const content = chat.messages[1].content as Array<{ type: string; image_url?: { url: string } }>;
+    expect(content.filter(part => part.type === "image_url").map(part => part.image_url?.url)).toEqual(req.imagePaths);
+  });
   it.each([true, false])("makes at most one real-model correction for missing explicit times, success=%s", async success => {
     const settings = createDefaultState().settings; settings.promptModelId = modelId;
     const req: EnhanceRequest = { prompt: "The red light flashes at 4.0 seconds and at 10.0 seconds.", modelId: "minimax_h3_fl2va",
@@ -250,10 +304,10 @@ describe("Strata Pack, image and output contracts", () => {
     const result = enhancePromptWithStrata(req, settings, owner, new AbortController().signal, vi.fn());
     if (success) expect(await result).toContain("4.0 and 10.0"); else await expect(result).rejects.toThrow("一次纠正");
     expect(owner.chat).toHaveBeenCalledTimes(2);
-    expect(owner.chat.mock.calls[1][0]).toMatchObject({ reasoning: undefined, temperature: .7 });
+    expect(owner.chat.mock.calls[1][0]).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, temperature: 1 });
     expect(JSON.stringify(owner.chat.mock.calls[1][0].messages)).toContain(req.prompt);
   });
-  it("adopts bounded thinking only for authored single-image I2VA detailed expansion", async () => {
+  it("enables bounded thinking for every prompt path while preserving each layout", async () => {
     const settings = createDefaultState().settings; settings.promptModelId = modelId;
     const req: EnhanceRequest = { prompt: "飞机滑行并停稳。", modelId: "minimax_h3_fl2va", mode: "h3-vision",
       h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", imagePaths: ["first.png"] };
@@ -261,13 +315,14 @@ describe("Strata Pack, image and output contracts", () => {
     const selected = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode);
     expect(selected).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 }, messages: [{ role: "system" }, { role: "user" }] });
     for (const change of [{ h3PromptMode: "FL2VA" as const }, { h3PromptPreset: "official-storyboard" as const },
-      { promptStrategy: "reference-auto" as const }, { imagePaths: [] }]) {
+      { promptStrategy: "reference-auto" as const }, { imagePaths: [] },
+      { promptStrategy: "targeted-revision" as const, prompt: "飞机滑行并停稳。（批注：停稳后打开舱门）" }]) {
       const chat = await buildStrataPromptRequest({ ...req, ...change }, settings, new AbortController().signal, encode);
-      expect(chat.reasoning).toBeUndefined(); expect(chat.temperature).toBe(.7);
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 }); expect(chat.temperature).toBe(1);
       expect(chat.messages).toHaveLength(1);
     }
     const baseline = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode, { layout: "flat" });
-    expect(baseline.reasoning).toBeUndefined(); expect(baseline.messages).toHaveLength(1);
+    expect(baseline.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 }); expect(baseline.messages).toHaveLength(1);
   });
   it.each([0.3, 0.6, 0.9])("uses the official model temperature instead of generic creativity %s", async (creativity) => {
     const settings = createDefaultState().settings;
@@ -276,7 +331,8 @@ describe("Strata Pack, image and output contracts", () => {
     for (const req of [request, { prompt: "An airliner taxis and stops.", modelId: "minimax_h3_fl2va",
       mode: "h3-vision" as const, h3PromptMode: "T2VA" as const }]) {
       const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal);
-      expect(chat.temperature).toBe(0.7);
+      expect(chat.temperature).toBe(1);
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 });
       expect(settings.promptCreativity).toBe(creativity);
       expect(chat.maxTokens).toBe(req.mode === "image-edit" ? 4096 : 8192);
     }

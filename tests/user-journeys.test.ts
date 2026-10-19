@@ -4,6 +4,8 @@ import { createJourney } from "./harness/create-journey";
 import { h3PromptModeForDraft } from "../src/renderer/pages/create/helpers";
 import { strataPreparationProfiles } from "../src/core/strata-preparation";
 import { normalizeMultimodalPromptOutput } from "../electron/services/multimodal-prompt";
+import { buildStrataPromptRequest } from "../electron/services/strata-prompt";
+import { promptVersionsForDraft } from "../src/core/draft-prompts";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => {
@@ -15,6 +17,49 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it.each(["image", "video"] as const)("Strata R2V %s input: missing-file recovery and real Enhance click reach layered thinking without a queue", async inputMode => {
+    const h = journey = await createJourney({ modelId: "minimax_h3_ref2va", duration: 15 });
+    if (inputMode === "video") {
+      h.element('[data-input-mode="video"]').click(); await settle();
+      await h.coordinator.selectDraftVideo("fixture.mp4", { assetId: "asset", versionId: "version", duration: 8,
+        width: 864, height: 480, resetPrompt: true });
+      h.render();
+    } else {
+      if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
+      await settle(); h.element("[data-pick-h3-slot]").click(); await settle();
+    }
+    const promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+    h.state().settings.promptModelId = promptModelId;
+    const profile = strataPreparationProfiles().find(profile => profile.id === promptModelId)!;
+    h.scan.modelProfiles.push(profile);
+    h.scan.strataPreparation = { managedInstalled: true } as typeof h.scan.strataPreparation;
+    h.render();
+    h.input("#prompt-enhance-mode", "detailed-cinematic", "change");
+    h.input("#prompt-input", "Continue the subject's turn and keep the camera tracking smoothly.");
+    expect(h.element("#enhance-prompt").disabled).toBe(true);
+    h.element("#enhance-prompt").click(); expect(h.enhancePrompt).not.toHaveBeenCalled();
+    profile.available = true; profile.components.forEach(component => component.found = true); h.render();
+    expect(h.element("#enhance-prompt").disabled).toBe(false);
+    let compiled: Awaited<ReturnType<typeof buildStrataPromptRequest>> | undefined;
+    h.enhancePrompt.mockImplementationOnce(async request => {
+      // File extraction/IPC are separate service tests; the real UI request reaches the production builder here.
+      compiled = await buildStrataPromptRequest({ ...request, imagePaths: ["boundary-or-reference.png"] },
+        h.state().settings, new AbortController().signal,
+        async () => ({ type: "image_url", image_url: { url: "data:image/png;base64,fixture" } }));
+      return normalizeMultimodalPromptOutput("subject_definitions: One subject.\nsummary: Continue the turn.\nretention_analysis: fully_preserved\ndetailed_description: [Shot 1] The subject continues turning while the camera tracks smoothly.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A", request);
+    });
+    const before = promptVersionsForDraft(h.state().draft).length;
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    await settle();
+    expect(promptVersionsForDraft(h.state().draft).length).toBe(before + 1);
+    expect(compiled).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, temperature: 1,
+      messages: [{ role: "system" }, { role: "user" }] });
+    expect(h.enhancePrompt.mock.calls[0][0]).toMatchObject({ h3PromptMode: "R2V", h3PromptPreset: "detailed-cinematic",
+      ...(inputMode === "video" ? { extensionSource: { filePath: "fixture.mp4", trimEndSeconds: 8 } } : {}) });
+    expect(promptVersionsForDraft(h.state().draft).at(-1)?.id).toBeTruthy();
+    expect(h.state().queue).toHaveLength(0);
+  });
   it("edits tenths of a second with live H3 frame alignment and freezes the decimal duration on enqueue", async () => {
     const h = journey = await createJourney({ prompt: "", duration: 5 });
     h.element("#clear-prompt").click();

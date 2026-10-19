@@ -1,12 +1,16 @@
 # Strata 提示词增强：更新调查与接入计划
 
 - 类型：Task；Status: partial-runtime-validated（新版MTP＋显式预算模式四类后端真实生成完成；通用关键词误拒已移除并回放通过，长稿慢、运镜后处理与UI预算策略仍未收尾）
-- Updated / Owner: 2026-10-19 / 当前 agent；Execution: direct，新增子 agent 0
+- Updated / Owner: 2026-10-20 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 0.66.4代码版本收尾（2026-10-20）：用户授权增加patch并提交推送，本次仅纳入本任务Extend/R2V与全部增强thinking修复、相关测试/契约/旅程及版本记录；package/lockfile/README/CHANGELOG对齐0.66.4。复用下条完整verify与四次真实抽帧/合成HTTP接口证据，不重复加载GPU，不打包、tag或发布Release；另一任务长视频计划/调研文档保留未暂存。真实模型质量与延迟待验边界不变。
+
+- 2026-10-20 Extend/R2V与全模式思考修复（patch，未bump/提交/发布）：用户确认Extend按最后可见帧续接，并追加R2V优化、全部Strata增强启用thinking。所有增强及单次时间点纠正统一medium/2048与官方thinking采样，仍在原32K自动预算内；不变更独立Agent/其他后端/资源保护。Extend与R2V（含自动起稿/普通预设，批注除外）接分层指令，复用共享H3控制和R2V角色/保留关系契约；三种Extend保留I2VA/R2V/原生T2VA字段、局部新增段时间轴。统一抽取所选trim终点最后可见帧，Strata不再额外采样该源视频，其他视频参考保持原编号/静音采样。最终verify退出0：234文件2268单元、6文件91集成、双端类型、干净构建及20对比度通过（temp/strata-extend-thinking-verify.log）。新增生产DOM缺件→恢复→实际增强按钮→版本ID与无队列回归通过，Extend断言使用独立extensionPromptVersions；合成端口不冒充真实Electron/GPU。真实ffmpeg抽帧＋生产适配器＋真实本地HTTP/SSE合成后端连续4次覆盖边界/Motion Context/Continuum/重复请求，同PID、thinking/2048/单图/自动预算与思考不写回通过；临时帧删除、PID14504与5256端口退出（temp/strata-extend-http-YEOTfV/report.json）。模拟tokenizer计数/响应不证明官方模型质量、速度或完整神经推理。现机空闲RAM约28.15GiB/提交22.01GiB不足安全预算，未启动GPU/ComfyUI/独立Agent，无下载，正式配置/素材/队列/History未动。本轮只完成请求接线修复，真实Extend/R2V扩写质量与延迟仍待资源充足环境验收。
 
 - 2026-10-19代码版本收尾：用户最新授权“所有改动增加patch提交推送”，版本统一为0.66.2，纳入当前功能／修复／测试与文档归档迁移；覆盖此前阶段“不bump／提交”的限制。完整verify通过：234文件2259单元、6文件91集成、双端类型／干净renderer与web及Electron构建／20项对比度；既有jsdom scrollTo与chunk大小警告不阻断。复用既有真实UI／运行证据及未验边界，不重复GPU。仅代码提交推送，不打包、不创建tag或GitHub Release，不下载／启动模型，不把未验运行质量标为通过；暂存审查作为本轮提交门槛。
 

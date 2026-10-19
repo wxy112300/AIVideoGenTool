@@ -3,7 +3,6 @@ import path from "node:path";
 import type { EnhanceRequest, Settings, PromptProgressReporter } from "../../src/types.js";
 import { multimodalPromptInstruction, multimodalPromptTargetLanguage, normalizeMultimodalPromptOutput } from "./multimodal-prompt.js";
 import type { StrataChatRequest, StrataContentPart } from "./strata-service.js";
-import { STRATA_NON_THINKING_SAMPLING } from "./strata-service.js";
 import { strataH3InstructionParts } from "../../src/core/prompts/h3/strata.js";
 import { missingH3SourceTimepoints } from "../../src/core/h3-timing.js";
 import { h3TimelineDurationForRequest } from "../../src/core/h3-auto-prompter.js";
@@ -18,6 +17,7 @@ import { strataQwenImage21InstructionParts, STRATA_QWEN_IMAGE21_PROFILE } from "
 
 /** Completed, healthy inference whose text fails product validation; not a transport/resource failure. */
 export class StrataPromptValidationError extends Error { override name = "StrataPromptValidationError"; }
+const promptReasoning: NonNullable<StrataChatRequest["reasoning"]> = { effort: "medium", budgetTokens: 2048 };
 function usesQwenImage21Profile(request: EnhanceRequest): boolean {
   return request.mode === "image-edit" && (!request.promptStrategy || request.promptStrategy === "rewrite")
     && isQwenImage21TargetModel(request.imageTargetModelId);
@@ -54,12 +54,15 @@ export async function buildStrataPromptRequest(
 ): Promise<StrataChatRequest> {
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
   if (paths.length > 12) throw new Error("Strata 每次最多接收 12 张参考图。");
-  // Adopt only the bounded, explicitly authored single-picture path evaluated on real weights.
-  // Other H3 modes, Extend, auto seeds and targeted revisions keep their existing Pack.
-  const profile = evaluation ?? (request.mode === "h3-vision" && request.h3PromptMode === "I2VA"
-    && request.h3PromptPreset === "detailed-cinematic" && paths.length === 1 && request.prompt.trim()
-    && !request.extensionSource && !request.promptStrategy
-    ? { layout: "structured" as const, reasoning: { effort: "medium" as const, budgetTokens: 2048 } } : undefined);
+  // Extend and R2V share the layered H3 profile. The Pack selects continuation/reference
+  // fields from the execution workflow, not image count. Targeted edits retain their splice contract.
+  const profile = evaluation ?? (request.mode === "h3-vision"
+    && request.promptStrategy !== "targeted-revision"
+    && (request.extensionSource || request.h3PromptMode === "R2V"
+      || (request.h3PromptMode === "I2VA" && paths.length === 1
+        && request.h3PromptPreset === "detailed-cinematic" && request.prompt.trim() && !request.promptStrategy))
+    ? { layout: "structured" as const } : undefined);
+  const reasoning = evaluation?.reasoning ?? { ...promptReasoning };
   const imageParts = usesQwenImage21Profile(request)
     ? strataQwenImage21InstructionParts(request) : undefined;
   const parts = imageParts ?? (profile?.layout === "structured"
@@ -83,8 +86,7 @@ export async function buildStrataPromptRequest(
     uncensored: strataUncensoredMode(settings) !== "off" && supportsStrataUncensored(settings.promptModelId),
     uncensoredMode: supportsStrataUncensored(settings.promptModelId) ? strataUncensoredMode(settings) : "off",
     // Use the model's official profile without changing saved creativity for other backends.
-    temperature: profile?.reasoning ? 1 : STRATA_NON_THINKING_SAMPLING.temperature,
-    ...(profile?.reasoning ? { reasoning: profile.reasoning } : {}) };
+    temperature: 1, reasoning };
 }
 
 export async function enhancePromptWithStrata(
@@ -113,12 +115,13 @@ export async function enhancePromptWithStrata(
     signal.throwIfAborted();
     onProgress("validating", null, "正在验证完整结果");
     let result = validatedOutput(output, request);
-    if (chat.reasoning && request.h3PromptPreset === "detailed-cinematic") {
+    if (chat.messages[0]?.role === "system" && request.mode === "h3-vision"
+      && request.h3PromptPreset === "detailed-cinematic") {
       const mode = h3PromptModeForRequest(request), duration = request.h3DurationSeconds ?? 5;
       const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration, h3TimelineDurationForRequest(request));
       if (missing.length) {
         onProgress("generating", null, `正在补全明确时间点 ${missing.join("、")} 秒 · 最多一次纠正`);
-        const repair: StrataChatRequest = { ...chat, reasoning: undefined, temperature: STRATA_NON_THINKING_SAMPLING.temperature,
+        const repair: StrataChatRequest = { ...chat,
           messages: [...chat.messages, { role: "assistant", content: output }, { role: "user", content:
             `The candidate omits these explicitly requested times from the MAIN timeline: ${missing.join(", ")} seconds. Read the original brief, identify each event at those times and integrate it into its proper interval. Return the COMPLETE corrected H3 prompt, not a patch or checklist. Preserve all existing correct details and exact speech. Do not merely list the numbers, invent events or alter other event times.` }] };
         // Same owner, full original context, official tokenizer, no queue or unbounded retry.

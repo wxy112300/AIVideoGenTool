@@ -21,14 +21,17 @@ export async function withStrataReferenceMedia<T>(
       ? "continuation boundary, enhancer-only; not a Picture execution reference"
       : "<Picture 1>, exact continuation first-frame boundary");
   }
-  const videos = [...new Set(request.referenceMediaPaths ?? [])].filter((filename) => /\.(?:mp4|mov|mkv|webm|avi|m4v)$/iu.test(filename));
-  if (videos.length > 3) throw new Error("Strata 每次最多分析 3 份视频参考，请减少参考数量后重试。");
+  // The shared extension adapter already supplied the exact selected final frame.
+  // Do not sample earlier source states again; keep other named video references unchanged.
+  const videoReferences = [...new Set(request.referenceMediaPaths ?? [])].filter((filename) => /\.(?:mp4|mov|mkv|webm|avi|m4v)$/iu.test(filename));
+  if (videoReferences.length > 3) throw new Error("Strata 每次最多分析 3 份视频参考，请减少参考数量后重试。");
+  const videos = videoReferences.map((filename, index) => ({ filename, index }))
+    .filter(({ filename }) => filename !== request.extensionSource?.filePath);
   try {
-    for (const [index, filename] of videos.entries()) {
+    for (const { index, filename } of videos) {
       signal.throwIfAborted();
-      const source = request.extensionSource?.filePath === filename ? request.extensionSource : null;
-      const start = source?.trimStartSeconds ?? 0;
-      const end = source?.trimEndSeconds ?? await (deps.duration ?? probeVideoDuration)(filename, signal);
+      const start = 0;
+      const end = await (deps.duration ?? probeVideoDuration)(filename, signal);
       if (!end || !Number.isFinite(end) || end <= start) throw new Error(`视频参考时长无效：${path.basename(filename)}`);
       for (const fraction of [0, 0.5, 1]) {
         signal.throwIfAborted();
