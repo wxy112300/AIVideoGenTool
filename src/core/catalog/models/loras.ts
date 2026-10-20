@@ -5,6 +5,11 @@ import {
 } from "../loras/definitions.js";
 
 const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
+  "minimax-h3-faceswap-ref2va-v1": {
+    "zh-CN": { name: "MiniMax H3 FaceSwap · Ref2VA v1", badge: "H3 R2V · 视频换脸", description: "UntMods 的 H3 Ref2VA 换脸 LoRA。提供一段原视频和至少一张紧裁参考人脸，默认强度 1.0，执行时补齐 Faceswap；输出为重新生成的视频。" },
+    "zh-TW": { name: "MiniMax H3 FaceSwap · Ref2VA v1", badge: "H3 R2V · 影片換臉", description: "UntMods 的 H3 Ref2VA 換臉 LoRA。提供一段原影片與至少一張緊裁參考人臉，預設強度 1.0，執行時補齊 Faceswap；輸出為重新生成的影片。" },
+    "en-US": { name: "MiniMax H3 FaceSwap · Ref2VA v1", badge: "H3 R2V · video face swap", description: "UntMods' H3 Ref2VA face-swap LoRA. Supply one source video and at least one tightly cropped reference face; defaults to strength 1.0 and adds a missing Faceswap trigger. The output is a regenerated video." }
+  },
   "h3-pdd-fl2va-8step": {
     "zh-CN": { name: "MiniMax H3 PDD FL2VA · 8 步", badge: "H3 专属 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank 路线；普通 LoRA loader、8 步 Euler + Simple，配套 pruned INT8 FL2VA 基座。" },
     "zh-TW": { name: "MiniMax H3 PDD FL2VA · 8 步", badge: "H3 專屬 · PDD 加速", description: "ComfyUI 0.35 原生 PDD output head bank 路線；普通 LoRA loader、8 步 Euler + Simple，搭配 pruned INT8 FL2VA 基座。" },
@@ -84,6 +89,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-CN": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 专属 · 人脸特写", description: "增强人脸特写的皮肤纹理、眼神与微表情；触发词：Facial Realism。" },
     "zh-TW": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 專屬 · 人臉特寫", description: "增強人臉特寫的皮膚紋理、眼神與微表情；觸發詞：Facial Realism。" },
     "en-US": { name: "MiniMax H3 Facial Realism CloseUp", badge: "H3 only · facial close-up", description: "Enhances close-up facial realism, skin texture, eyes, and micro-expressions; trigger: Facial Realism." }
+  },
+  "qwen-image-2-1-bfs-head-v1-1": {
+    "zh-CN": { name: "Qwen Image 2.1 · BFS Head V1.1", badge: "Qwen 2.1 · 换脸/整头", description: "社区 BFS 整头替换 LoRA（包含头发）。Picture 1 放目标底图，Picture 2 放参考人脸；默认强度 1.0，添加时给空 Prompt 填入可编辑的换头指令。" },
+    "zh-TW": { name: "Qwen Image 2.1 · BFS Head V1.1", badge: "Qwen 2.1 · 換臉/整頭", description: "社群 BFS 整頭替換 LoRA（包含頭髮）。Picture 1 放目標底圖，Picture 2 放參考人臉；預設強度 1.0，新增時給空 Prompt 填入可編輯的換頭指令。" },
+    "en-US": { name: "Qwen Image 2.1 · BFS Head V1.1", badge: "Qwen 2.1 · face/head swap", description: "Community BFS head replacement, including hair. Picture 1 is the target image; Picture 2 is the reference face/head. Defaults to strength 1.0 and fills an empty prompt with an editable head-swap instruction when added." }
   },
   "qwen-image-2-1-fix": {
     "zh-CN": { name: "Qwen Image 2.1 · Fix", badge: "Qwen 2.1 · 质量修复", description: "Qwen Image 2.1 的社区 Fix 适配器；优先改善颜色、细节纹理和手部稳定性，并自动启用 APG、FreSca 与官方推荐采样设置。" },

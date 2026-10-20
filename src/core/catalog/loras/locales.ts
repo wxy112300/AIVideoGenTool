@@ -16,6 +16,31 @@ export interface CatalogLoraLocale {
 }
 
 const zhCN: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-faceswap-ref2va-v1": {
+    guide: {
+      summary: "UntMods 的 H3 Ref2VA 视频换脸 LoRA；从参考脸迁移身份到原视频人物，执行时自动去重补入 Faceswap。",
+      recommendedStrength: "作者建议 1.0；先用标准采样做基准。Picture 1 放紧裁人脸，Video 1 放原片，Prompt 明确要替换的人物。",
+      effects: "适合原视频 + 参考脸的身份替换；属于重新生成，动作、表情、口型、衣服、音轨和背景都需逐项检查，不保证逐帧或像素一致。",
+      stacking: "先单独使用，不自动启用作者示例中的 8-step Turbo；现有 Ref2V Turbo/PDD 叠加仅作独立对照，不能据此宣称质量或速度。",
+      compatibility: "仅普通 H3 Ref2VA INT8 R2V：至少一张有效人脸图、恰好一段有效原视频。使用短单镜头、24fps、原片比例和接近原片的时长；FL2VA、INT4、续写和 Continuum 不开放。无需为此安装 CRT-Nodes。",
+      source: "UntMods / FaceSwap_MiniMaxH3_REF2VA · Apache-2.0（基座另遵守 MiniMax 许可）"
+    },
+    rules: {
+      referenceInputs: "H3 FaceSwap 需要至少一张参考人脸图片（Picture 1）和恰好一段原视频（Video 1）；请补齐并移除多余视频。",
+      faceswapTurbo: "FaceSwap 与低步数加速的组合尚未实测；作者示例的 8-step Turbo 不等于当前 Ref2V 4-step/PDD，请先保留标准采样的独立对照。"
+    }
+  },
+  "qwen-image-2-1-bfs-head-v1-1": {
+    guide: {
+      summary: "BFS Head V1.1 是作者推荐的 Qwen Image 2.1 换脸/整头 LoRA，包含头发替换，并非仅替换五官。",
+      recommendedStrength: "默认 1.0；先沿用普通 Qwen 2.1 采样参数做同 Seed 对照。添加时给空 Prompt 填入作者指令，已有文本保留；执行时补齐 head_swap: 触发词。",
+      effects: "Picture 1 提供目标身体、姿态、表情和背景，Picture 2 提供参考身份及头发。作者称 V1.1 减轻皮肤平滑；小脸、遮挡、大角度及背景保真需逐图检查。",
+      stacking: "一次只使用一个图片 LoRA；不要与 AnyAngle、Fix、Lighting Blend 或 Pruna 加速叠加。",
+      compatibility: "恰好两张 Picture，不能反序；Paint 批注会占额外输入，请先清除。用于普通 Qwen Image 2.1 官方/Q8_0/Q6_K 路径，独立 Turbo 不开放；不使用旧 Qwen Edit 或 Klein 权重。GGUF 与实际质量仍需分别验证。",
+      source: "Alissonerdx / BFS-Best-Face-Swap · bfs_head_v1.1_qwen_2.1.safetensors · MIT"
+    },
+    rules: {}
+  },
   "h3-pdd-fl2va-8step": {
     guide: {
       summary: "ComfyUI 0.35 原生 PDD Acc FL2VA 8 步 LoRA；通过输出 head bank 在每个 sigma 区间使用对应 head，不依赖 H3-Optimizations。",
@@ -314,6 +339,31 @@ const zhCN: Record<string, CatalogLoraLocale> = {
 };
 
 const enUS: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-faceswap-ref2va-v1": {
+    guide: {
+      summary: "UntMods' H3 Ref2VA video face-swap LoRA transfers reference-face identity to a source-video subject; execution deduplicates the Faceswap trigger.",
+      recommendedStrength: "The author recommends 1.0. Start with standard sampling. Picture 1 is a tightly cropped reference face; Video 1 is the source. Identify the person to replace in the prompt.",
+      effects: "The result is regenerated video. Inspect motion, expression, lip sync, clothing, audio and background; frame-accurate or pixel-exact preservation is not guaranteed.",
+      stacking: "Start with FaceSwap alone. The example's eight-step Turbo is not enabled automatically; compare existing Ref2V Turbo/PDD combinations separately without assuming speed or quality benefits.",
+      compatibility: "Ordinary H3 Ref2VA INT8 R2V only: at least one valid face image and exactly one valid source video. Start with a short continuous shot at 24 fps and matching aspect/duration. FL2VA, INT4, extension and Continuum are excluded. CRT-Nodes is not required for this path.",
+      source: "UntMods / FaceSwap_MiniMaxH3_REF2VA · Apache-2.0; base-model license applies separately"
+    },
+    rules: {
+      referenceInputs: "H3 FaceSwap requires at least one reference face image (Picture 1) and exactly one source video (Video 1); fill missing inputs and remove extra videos.",
+      faceswapTurbo: "FaceSwap with low-step acceleration has not been tested here. The author's eight-step Turbo differs from the current Ref2V four-step/PDD paths; retain a standard-sampling baseline."
+    }
+  },
+  "qwen-image-2-1-bfs-head-v1-1": {
+    guide: {
+      summary: "The author's recommended BFS Head V1.1 for Qwen Image 2.1 replaces the head, including hair, rather than only facial features.",
+      recommendedStrength: "Default 1.0. Start with ordinary Qwen 2.1 sampling and a same-Seed baseline. Adding the LoRA fills an empty prompt with the author's instruction and preserves existing text; execution adds a missing head_swap: trigger.",
+      effects: "Picture 1 supplies the target body, pose, expression and background; Picture 2 supplies identity and hair. The author reports reduced skin smoothing in V1.1. Inspect small faces, occlusion, angles and background changes.",
+      stacking: "Use one image LoRA at a time; do not stack AnyAngle, Fix, Lighting Blend or Pruna acceleration.",
+      compatibility: "Exactly two Pictures in this order; clear Paint annotations, which add extra inputs. Available for ordinary official/Q8_0/Q6_K Qwen Image 2.1 paths, excluding standalone Turbo. Do not use Qwen Edit or Klein weights. GGUF and output quality need separate validation.",
+      source: "Alissonerdx / BFS-Best-Face-Swap · bfs_head_v1.1_qwen_2.1.safetensors · MIT"
+    },
+    rules: {}
+  },
   "h3-pdd-fl2va-8step": {
     guide: {
       summary: "Native ComfyUI 0.35 PDD Acc FL2VA eight-step LoRA using the output head bank for sigma-range-specific heads, without H3-Optimizations.",

@@ -391,7 +391,16 @@ export function mountImageEditController(
     const definition = id ? imageLoraDefinition(id) : undefined;
     if (!draft || !definition || draft.imageLoras.length > 0 ||
       !imageLoraCompatibleWithModel(definition, draft.modelId)) return;
-    options.patchImageDraft({ imageLoras: [imageLoraSelection(definition)] });
+    const prompt = draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "";
+    const defaultPrompt = !prompt && definition.defaultPrompt
+      ? updateManualPromptVersion(
+          draft.promptVersions,
+          draft.activePromptVersion,
+          definition.defaultPrompt,
+          t(uiKeys.create.interaction.manualEdit)
+        )
+      : {};
+    options.patchImageDraft({ imageLoras: [imageLoraSelection(definition)], ...defaultPrompt });
     options.syncEnqueueUi();
     context.requestRender();
   }, { signal });

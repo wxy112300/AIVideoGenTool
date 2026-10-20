@@ -1,6 +1,31 @@
 import type { CatalogLoraLocale } from "./locales.js";
 
 export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-faceswap-ref2va-v1": {
+    guide: {
+      summary: "UntMods 的 H3 Ref2VA 影片換臉 LoRA；將參考臉身分轉移至原影片人物，執行時自動去重補入 Faceswap。",
+      recommendedStrength: "作者建議 1.0；先用標準取樣做基準。Picture 1 放緊裁人臉，Video 1 放原片，Prompt 明確指定替換人物。",
+      effects: "輸出為重新生成的影片；動作、表情、口型、衣服、音軌及背景需逐項檢查，不保證逐幀或像素一致。",
+      stacking: "先單獨使用，不自動啟用作者範例的 8-step Turbo；現有 Ref2V Turbo/PDD 疊加需獨立對照，不能據此宣稱品質或速度。",
+      compatibility: "僅普通 H3 Ref2VA INT8 R2V：至少一張有效人臉圖、恰好一段有效原影片。先用短單鏡頭、24fps、原片比例與接近原片的時長；FL2VA、INT4、續寫和 Continuum 不開放。此路徑不需 CRT-Nodes。",
+      source: "UntMods / FaceSwap_MiniMaxH3_REF2VA · Apache-2.0（基座另遵守 MiniMax 授權）"
+    },
+    rules: {
+      referenceInputs: "H3 FaceSwap 需要至少一張參考人臉圖片（Picture 1）和恰好一段原影片（Video 1）；請補齊並移除多餘影片。",
+      faceswapTurbo: "FaceSwap 與低步數加速的組合尚未實測；作者範例的 8-step Turbo 不等於目前 Ref2V 4-step/PDD，請先保留標準取樣對照。"
+    }
+  },
+  "qwen-image-2-1-bfs-head-v1-1": {
+    guide: {
+      summary: "BFS Head V1.1 是作者推薦的 Qwen Image 2.1 換臉/整頭 LoRA，包含頭髮替換，並非僅替換五官。",
+      recommendedStrength: "預設 1.0；先沿用普通 Qwen 2.1 取樣參數做同 Seed 對照。新增時給空 Prompt 填入作者指令，已有文字保留；執行時補齊 head_swap: 觸發詞。",
+      effects: "Picture 1 提供目標身體、姿態、表情與背景，Picture 2 提供參考身分及頭髮。作者稱 V1.1 減輕皮膚平滑；小臉、遮擋、大角度與背景保真需逐圖檢查。",
+      stacking: "一次只使用一個圖片 LoRA；不要與 AnyAngle、Fix、Lighting Blend 或 Pruna 加速疊加。",
+      compatibility: "恰好兩張 Picture，不能反序；Paint 批註會占額外輸入，請先清除。用於普通 Qwen Image 2.1 官方/Q8_0/Q6_K 路徑，獨立 Turbo 不開放；不使用舊 Qwen Edit 或 Klein 權重。GGUF 與實際品質仍需分別驗證。",
+      source: "Alissonerdx / BFS-Best-Face-Swap · bfs_head_v1.1_qwen_2.1.safetensors · MIT"
+    },
+    rules: {}
+  },
 
   "h3-pdd-fl2va-8step": {
     guide: {

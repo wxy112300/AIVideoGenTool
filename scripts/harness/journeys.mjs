@@ -18,7 +18,7 @@ export const journeys = [
     id: "create-video", title: "选模型 → 首尾帧 / R2V → 提示词 → 入队",
     section: "create-video",
     paths: ["src/renderer/pages/create/coordinator.ts", "src/renderer/pages/create/view-model.ts", "src/renderer/pages/create/page-controller.ts", "src/core/video-draft-normalization.ts", "electron/queue-enqueue.ts"],
-    tests: ["tests/user-journeys.test.ts", "tests/video-draft-normalization.test.ts", "tests/video-policy.test.ts", "tests/queue-services.test.ts"],
+    tests: ["tests/user-journeys.test.ts", "tests/h3-faceswap.test.ts", "tests/video-draft-normalization.test.ts", "tests/video-policy.test.ts", "tests/queue-services.test.ts"],
     checks: ["FL2VA: T2VA/I2VA/L2VA/FL2VA 输入转换；R2V 空槽阻塞与补齐恢复", "真实 DOM 按钮启用并点击；新增 task ID，修改 draft 不改变 task", "H3请求时长15.1无警告、严格>15.1显示；三语言hover/键盘与增量显隐保留焦点，警告不阻塞真实按钮", "AV 保存、Spectrum/LoRA、尺寸/FPS/时长分别检查 UI 与快照"]
   },
   {
@@ -60,7 +60,7 @@ export const journeys = [
     id: "image", title: "图片模型 → Picture / Paint / Mask → 入队 → 项目版本",
     section: "image",
     paths: ["src/renderer/pages/create/image-edit-controller.ts", "src/core/image-workflow", "src/core/image-project.ts", "electron/queue-enqueue.ts"],
-    tests: ["tests/create-enqueue.test.ts", "tests/image-workflow.test.ts", "tests/image-project.test.ts", "tests/queue-services.test.ts", "tests/h3-image-retirement.test.ts", "tests/qwen-fusion-retirement.test.ts", "tests/image-edit-journey.test.ts", "tests/strata-qwen-image21.test.ts"],
+    tests: ["tests/create-enqueue.test.ts", "tests/image-workflow.test.ts", "tests/image-project.test.ts", "tests/queue-services.test.ts", "tests/h3-image-retirement.test.ts", "tests/qwen-fusion-retirement.test.ts", "tests/image-edit-journey.test.ts", "tests/bfs-image-lora.test.ts", "tests/strata-qwen-image21.test.ts"],
     checks: ["按 capability 检查文生图/参考图数/无提示词/Mask；缺失输入补齐后可提交", "Paint 与二值 Mask 分离；异步 prompt 回写来源草稿；模型切换不污染视频 draft", "清空只移除内容/lineage，保留当前生成参数；文本token估算随输入更新且保留焦点", "Strata Qwen2.1分离编辑/T2I、保留原始要求及稳定Picture映射；短编辑不被字数门禁拒绝；实际质量单独验", "version.taskId 关联真实输出，重编辑保留 lineage", "退休模型从活动选项/节点排除；旧草稿和默认转Qwen2.1，旧queue/history保持身份"]
   }
 ];

@@ -267,6 +267,7 @@ export function videoLoraConfigurationIssues(context: {
   spectrumMode: string;
   attentionMode: string;
   videoLoras: readonly VideoLoraSelection[];
+  h3ReferenceSlots?: readonly Draft["h3ReferenceSlots"][number][];
   ratio?: Draft["ratio"];
   locale?: UiLocale;
 }): VideoLoraConfigurationIssue[] {
@@ -295,6 +296,18 @@ export function videoLoraConfigurationIssues(context: {
     }
     const definition = videoLoraDefinition(lora.id);
     if (!definition) return;
+    const references = definition.rules.referenceRequirements;
+    if (references) {
+      const filledSlots = (context.h3ReferenceSlots ?? []).filter((slot) => slot.mediaPath.trim());
+      const images = filledSlots.filter((slot) => slot.mediaType === "image").length;
+      const videos = filledSlots.filter((slot) => slot.mediaType === "video").length;
+      if (images < references.minImages || videos < references.minVideos || videos > references.maxVideos) {
+        push({
+          code: `references:${lora.id}`, severity: "error", loraIds: [lora.id],
+          message: loraRuleText(lora.id, "referenceInputs", context.locale)
+        });
+      }
+    }
     if (definition.retired) {
       push({
         code: `retired:${lora.id}`,

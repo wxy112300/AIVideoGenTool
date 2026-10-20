@@ -40,6 +40,7 @@ describe("video LoRA catalog", () => {
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_ORBIT_360_LORA.id,
       H3_CINEMATIC_REALISM_LORA.id,
+      "minimax-h3-faceswap-ref2va-v1",
       H3_BETTER_HUMAN_MOTION_LORA.id,
       H3_CAMERA_MOTION_LORA.id,
       H3_EQUI360_LORA.id,

@@ -94,7 +94,7 @@ export function imagePromptForLoras(
   );
   if (!missingPrefixes.length) return normalizedPrompt;
   const triggerText = missingPrefixes.join(", ");
-  return normalizedPrompt ? triggerText + ", " + normalizedPrompt : triggerText;
+  return normalizedPrompt ? triggerText + (triggerText.endsWith(":") ? " " : ", ") + normalizedPrompt : triggerText;
 }
 
 export function detectedImageLoraFilename(profile: ModelScanProfile | undefined): string {
@@ -156,7 +156,8 @@ export function imageLoraConfigurationError(
     return `${definition.name} 不兼容当前图片模型。`;
   }
   if (definition.requiredPictureCount !== undefined && pictureCount !== definition.requiredPictureCount) {
-    return `${definition.name} 需要正好 ${definition.requiredPictureCount} 张 Picture：Picture 1 为目标视角粗渲染，Picture 2 为原图。`;
+    const roles = definition.pictureRoles?.map((role, index) => `Picture ${index + 1} 为${role}`).join("，");
+    return `${definition.name} 需要正好 ${definition.requiredPictureCount} 张 Picture${roles ? `：${roles}` : ""}。`;
   }
   return "";
 }

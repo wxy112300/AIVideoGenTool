@@ -86,6 +86,7 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "qwen-image-2-1-bfs-head-v1-1",
       "qwen-image-2-1-fix",
       "qwen-image-2-1-anyangle",
       "qwen-image-2-1-lighting-blend",
@@ -98,6 +99,7 @@ describe("model catalog", () => {
       "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-360-orbit",
       "minimax-h3-cinematic-realism",
+      "minimax-h3-faceswap-ref2va-v1",
       "minimax-h3-better-human-motion",
       "minimax-h3-camera-motion-v1",
       "minimax-h3-equi360",

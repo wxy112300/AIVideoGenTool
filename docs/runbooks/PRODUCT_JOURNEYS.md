@@ -72,6 +72,7 @@ flowchart TD
 
 - `h3PromptModeForDraft` 决定提示词模式；`h3WorkflowPathForInput` 决定执行工作流。两个都要核对。FL2VA 清空所有图可退到 T2VA；**R2V 空槽仍是 R2V 缺输入**，不能借此绕开校验。
 - R2V 使用 Slots，而非首尾帧面板；图/视频、role、note、标签必须进入 prompt 请求及任务副本。增删/替换参考图也要测，不只测选模型。
+- H3 FaceSwap：设置页手动补齐 UntMods 专用权重 → 普通 INT8 Ref2VA → 添加 FaceSwap 1.0 → Picture 1 参考脸 / Video 1 原片 → 缺脸/缺视频/多原视频可见阻塞 → 补齐后实际按钮入队 → 有序参考及 LoRA 冻结 → 原生 R2V 执行/History。触发词自动去重，提示词增强保留身份与表演来源分工；不自动选八步加速，不以旧续写入口代替原片编辑。权重/真实生成证据见 [FaceSwap TASK](../tasks/2026-10-20-face-swap-lora/TASK.md)。
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
 - H3请求时长严格>15.1秒时，原时长标题旁显示三语言警告tooltip；15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
 - 模型切换是异步的（获取 bundled workflow）；要测快速切换和返回另一 Create 模式，避免旧返回值覆盖新草稿。
@@ -315,6 +316,7 @@ H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑
 
 现有 `guide image` 定位 capability/adapter 与校验；用户旅程应覆盖增删图、Paint/Mask 保存、切模型、prompt 完成回流、实际按钮、结果重编辑及版本 lineage。
 
+BFS 换脸/整头：设置页来源链接手动补齐 Qwen 2.1 专用 LoRA → 离线扫描 → 图片编辑选择普通 Qwen 2.1 → 添加 BFS → 空 Prompt 填入可编辑作者指令（已有文本保留）→ Picture 1 目标底图 / Picture 2 参考头部 → 缺图阻塞与补齐恢复 → 实际按钮入队 → 冻结有序图片/LoRA/Prompt → 原图片工作流与 History。整头包含头发；Paint 会添加额外模型输入，应先清除；普通无 LoRA、其他图片 LoRA 和历史身份保持。详见 [BFS 任务证据](../tasks/2026-10-20-face-swap-lora/TASK.md)，未出图不宣称效果已验。
 
 ## 选择证据：每个改变都要走过它影响的边
 

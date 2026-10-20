@@ -50,6 +50,7 @@ export interface VideoGenerationPolicyInput {
   spectrumMode?: string;
   attentionMode?: string;
   videoLoras?: readonly VideoLoraSelection[];
+  h3ReferenceSlots?: readonly Draft["h3ReferenceSlots"][number][];
   locale?: UiLocale;
 }
 
@@ -129,6 +130,7 @@ export function resolveVideoGenerationPolicy(
       spectrumMode: input.spectrumMode ?? "off",
       attentionMode: input.attentionMode ?? "sage",
       videoLoras: input.videoLoras ?? [],
+      h3ReferenceSlots: input.h3ReferenceSlots,
       locale: input.locale
     })
   };

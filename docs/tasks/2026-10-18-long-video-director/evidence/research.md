@@ -3,6 +3,7 @@
 - 类型：Research / source-and-code assessment；状态：research-complete，未执行本轮 runtime / quality 验证。
 - 查询日期：2026-10-18（Asia/Singapore）；本地基线：`475722c2c231da2aa8782d66e6c03d22a5913809` / 0.66.0，已有非本任务 dirty changes。
 - 适用范围：H3 Continuum 长片编排与当前 Strata/Qwen 接缝；采用建议见 [PLAN](../PLAN.md)，当前状态见 [TASK](../TASK.md)。本文件不替代 catalog 或安装清单。
+- 2026-10-20补充见第6节；第1–5节保留原始研究快照，其中旧14/15秒应用上限、候选latest和独立长视频入口建议不再作为当前事实或交互决定。
 
 ## 1. 当前工具的真实接缝
 
@@ -90,3 +91,83 @@ Qwen为后续镜头生成新图是合理候选，但“每段中间帧”不是�
 - 未读取用户state、未导出私人prompt/机器路径，未启动模型/队列/ComfyUI，未安装软件/下载权重，未执行模型速度/资源/质量A/B。
 - selected实例、实际schema、全部适配差异、合法净帧算法在真实图上的结果、structured planner质量、120s续接/漂移/恢复与最终合成峰值仍待P0及后续阶段。
 - 研究结果在上游revision改变、所选模型/图/依赖改变后须复核相应部分；不重做仍适用的静态与短链证据，不把source层结论升级为runtime层。
+
+## 6. 2026-10-20交互补查与证据边界
+
+范围：用户要求先调查待确认项，再将Create/Extend一体化交互及实施分期写入文档。本节记录前轮只读源码调查与本轮文档采用，不重复安装/生成。本地package为0.66.3；并发Strata代码/测试改动保留，本节不宣称已验其最新行为。
+
+### 来源身份
+
+- 上游[最新Release v3.9.9](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.9.9)发布于2026-10-19；GitHub tag API确认commit为 `427fba1add24b7939eba8028451a90465b13faba`，不是以main标签代替固定来源。
+- 前轮深读v3.9.8固定commit `58fbd855feb13fa67a0613614df04e2b6fe808e2`；本次补读3.9.9的公开Sampler、Review、条件分支与序列代码。仓库catalog仍3.9.1；实际selected安装、运行schema和兼容结果本次未复核，不能把候选当本机已接通。
+- 3.9.9针对特定KJ Preview Override配置补充v6复用资格与失败原因，旧不安全/v5 Take不自动升级。其目标GPU/浏览器复测不是120秒质量、全部wrapper或本应用整图验收；本轮不据此自动升级。
+
+### 段长、脚本与恢复
+
+| 问题 | 固定来源 | 结论与限制 |
+| --- | --- | --- |
+| Run是否只有一段prompt | [3.9.9 Sampler](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/v3/nodes.py) | 一个sequence prompt可解析成每段prompt；Run包含1–16段，共用段长。整片编辑器和分页是应用投影，不是后端必须分页；也不是一次H3采样读完整片并生成全部时间。 |
+| 推荐如何拆段 | [3.9.8 Easy resolver](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/58fbd855feb13fa67a0613614df04e2b6fe808e2/v3/easy_nodes.py)、[constants](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/58fbd855feb13fa67a0613614df04e2b6fe808e2/constants.py) | Easy取 `min(16, ceil(T/10))` 再等分；段长schema4–30秒、推荐5–15秒。PLAN的段数范围是据此设计的名义初始化，不是质量/速度最优曲线。 |
+| 不等长与重叠 | [temporal helpers](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/58fbd855feb13fa67a0613614df04e2b6fe808e2/temporal.py)、[3.9.9 sequence](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/v2/sequence.py) | `17k+5`网格、累计净帧补偿、上下文裁切和最终定长是不同步骤。共同名义段长下实际净贡献可不同；不能用 `N*(d-22/24)` 计算成片，不能为末段随意改Run段长。 |
+| 当前段预览是否要解码所有前缀 | [Sampler投影](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/v3/nodes.py) 的 `_apply_review_decode_scope` | Review支持当前物理组AV/assembly输出投影；完整prefix仍在session/Run存储。Full Run/finish remaining不等同该投影，本应用receipt/最终输出如何消费仍须P0验证。 |
+| 取消后从哪里继续 | [Review resolver](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/v3/review_control.py)、sequence的 `commit_group` | 复用完整、验证通过的已提交组；当前组重新采样，不是diffusion-step恢复。采样组可先于最终解码持久化；需区分采样、解码、合成、发布失败和app落盘间隙。 |
+| 每页是否都可单独重做 | sequence的 `_terminal_flf_merge_enabled` / `commit_group` | 部分首尾帧且5秒段长配置会将最终两逻辑段合为物理组；重做/恢复/参考分配按整组处理，不承诺每页独立采样。 |
+| 反复Extend是否无限 | Sampler的 `chunks` 及Review的prefix边界 | 16是单Run累计上限。整包新增计数与Run累计计数要分开；到顶需另验新Run尾状态移交，不能每次在原Run再加16段。 |
+
+### 持续参考与低输入创作
+
+- [3.9.9参考说明](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/docs/V39_REFERENCE_INLINE.md)公开固定R1–R9、All chunks/Per chunk与First/Last混合路径。参考持续输入、首帧约束、Strata看图是不同用途；参考赋值也不是人物可见性时间表。
+- [条件选择](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/conditioning.py)按输入存在性求Reference/Hybrid模式；[默认模板说明](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/README.md)加载FL2VA并提供参考接法。因此“有持续Reference就必须换Ref2VA”推断过强；接口存在不等于对应FL2VA/Ref2VA/checkpoint/LoRA的身份效果已通过。
+- [有效参考存储契约](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/58fbd855feb13fa67a0613614df04e2b6fe808e2/v3/reference_storage_contract.py)记录每物理组的有效参考、Picture映射和prompt hash；未来组变化能否保留前缀取决于实际组契约。修改共享全局文字、原始锚点或有效编号可能影响旧组，不可仅看“编辑的是第几页”。
+- sequence路由运行时还明确拒绝与 `initial_state` 组合；不能直接假定V3.9路由加上现有bootstrap就已提供跨Run接续。P0/P5必须解决真实adapter边界。
+- [参考prompt指南](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/58fbd855feb13fa67a0613614df04e2b6fe808e2/write-h3-v39-reference-prompts/SKILL.md)要求稳定主体身份、局部有效引用、逐段动作/交接且不把计划当观察。它是独立社区适配，不是MiniMax官方质量保证，也不会自动被Strata加载。
+- 从实际生成图识别新人物、提取身份锚点、选择未来段并改写未执行prompt，是本应用待新增的编排，不是Continuum已有角色跟踪。用户只给单图是合法目标；未规定部分允许创作，用户原图保持优先，滚动尾帧不能持续覆盖稳定身份。
+
+### 当前应用复用边界
+
+- [生产Create布局](../../../../src/renderer/pages/create/page.ts)当前LoRA在时间与运动之前，H3 FPS固定24；新提案调整两个现有视频路线而非新增第四模式，其他模型FPS行为保留。
+- [prompt controller](../../../../src/renderer/pages/create/prompt-controller.ts)按Create/Extend origin回写单维版本；分段稳定身份/逐页版本与异步修订归属是新增要求，不能只切textarea内容。
+- [managed graph](../../../../workflows/minimax_h3_continuum_v38_managed_extend_api.json)使用V3.8兼容Sampler、First Image、Review与receipt，尚无Reference接入；当前R2V Extend是Motion Context，不是同一图的参考开关。
+- [Queue remove/reset](../../../../electron/queue-mutation-service.ts)的remove主要修改队列记录；reset会调用[waiting加速策略](../../../../src/core/h3-execution-policy.ts)，不能直接当作保持同Run条件的恢复。新整包恢复应冻结兼容profile，保留旧普通任务行为。
+- [History删除](../../../../electron/services/history-destructive-service.ts)保护官方Run owner并检查共享引用；任务中间数据需单独建立所有权/引用清理，不递归删Run目录。[History回流](../../../../src/renderer/pages/history/actions.ts)已有完整视频来源、sequence与tail身份可复用，整个脚本/布局/版本组合还需扩展。
+
+### 用户反馈与未验证项
+
+- 用户报告三次原生30秒样本出现15秒内动作完成、后续循环/倒退/重复或切镜，另有640p约半小时及人物异常；本轮不重测，也不将三个样本外推为普遍成功率。采用“原生常规/实验解锁”交互，保留旧工程输出事实与显式回退。
+- 长稿可在创作层保存，实际Prompt编码预算分阶段检查；不能承诺上万字直送单次H3。全自动先分动作再局部扩写，整片/分段共享结构而非复制文本，是应用设计决定，不是上游现成编辑器。
+- 1280×720、120秒、24fps、RGB float32完整像素张量约29.7GiB，仅为shape算术，不是VRAM峰值或实测RAM。Disk-backed Finalize不覆盖所有decoder/下游分配；[存储说明](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/blob/427fba1add24b7939eba8028451a90465b13faba/docs/TEMPORARY_STORAGE_JA.md)将scratch/cache与持久Run/Take分开。
+- 本轮无安装、应用启动、GPU、真实用户数据修改/删除、质量/性能A/B；P0-P6划分是待实施建议，120秒、持续身份参考与跨Run效果均待各阶段验收。
+
+## 7. 2026-10-20 P0离线判定与停止记录
+
+用户新增授权为执行P0，本节替代第6节中“实际安装未复核”的当前状态，不改写历史来源。原始路径、文件stat、探针输出和编译产物只保存在忽略目录 `temp/long-video-p0-2026-10-20/`，本节不提交机器路径、用户prompt或媒体。应用0.66.4；没有安装、下载、运行GPU或写入正式state。
+
+### 实际身份与证据等级
+
+| 对象 | 2026-10-20实际读取 | 证据边界 |
+| --- | --- | --- |
+| Core | 0.39.0开发提交 `d91ed5f5b7fa60fa18464c2ad7c80254da2f0f29`，Git干净，origin为gitcode的ComfyUI镜像 | 读取所选安装下真正含main.py的内部core；不是Desktop安装目录版本或运行健康证明。 |
+| Data / Python | 用当前TS隔离编译的findComfyRoot解析实际data；所选Python 3.12.11，独立于core目录 | 只读取必要设置；完整路径在installation.json，不向文档固化单机布局。 |
+| Continuum | 3.9.1 / `94eaf70d674a58244e1cb139f021290d63fb2e6c`，官方GitHub origin，干净 | 实际安装与catalog一致，不是已升级3.9.9。 |
+| 邻接节点 | KJNodes1.5.2 / `d3cfe21625e5170126ce06fbfcfe1d88108688c3`，Spectrum0.2.29 / `806fe498d574a726fecb8818917f00a4b993fd77`，Motion0.6.2 / `5335715abe54c1a9bfbe3494da29aae3e8635ce3`，均干净 | 本轮不升级、修补或重启节点。 |
+| 应用H3节点 | VERSION为0.3.6，无独立.git来源 | 不能用空Git status宣称独立来源/commit已验证。 |
+| 权重 | FL2VA与Ref2VA INT8、32B NVFP4文本编码器、音频VAE、FP16/INT8视频VAE、预览与若干LoRA文件存在，保存bytes/mtime | 仅文件stat，未全文件hash、未加载；不声称与发布者LFS hash一致或模型效果相同。 |
+| 资源 | 初次只读探测：RAM可用27.79GiB、commit余量23.73GiB、显存空闲19243MiB；未检测到Electron/Python服务或8188/9333/9222监听 | 瞬时资源观察，不是H3加载准入/峰值保证；Strata历史准入也不能直接当当前运行结果。 |
+
+### 决定性CPU检查
+
+- 安装3.9.1的 `v3/nodes.py::_apply_review_decode_scope` 已存在；`v3/execution_planner.py::resolve_projection_decision` 是纯投影决策。直接执行真实函数的6个场景：未完成Review返回当前组；complete、Finish Remaining、缺物理组事实返回完整前缀；终端pair只选一半不投影、完整选择才投影。没有加载ComfyUI或权重。
+- 导入安装版temporal/constants而不执行包入口：官方时间自检通过，4/5/7.5/10/15/30秒×5/22/39帧上下文的18个网格检查通过。只证明17k+5/净帧算术；不证明实际视频帧数、末尾补齐质量或A/V同步。
+- 用AST抽取[实际应用receipt类](../../../../comfy_nodes/LocalVideoStudio-H3/nodes.py)并执行 `_storage_facts`，输入4份明确标记为合成的status：1/1、2/2通过；计划3段而只完成1/2段均拒绝“没有为每个最终Chunk提供存储记录”。报告 `boundaries.json` 保留UTF-8错误文本；首轮receipt-boundary.json中终端编码损坏的错误文本不作字符串证据，断言结果由后轮复核。
+- [旧managed收据校验](../../../../src/core/h3-continuum-managed-receipt.ts)同样要求reused+generated=requested。现有[回归测试](../../../../tests/h3-continuum-managed.test.ts)补充预设3/12段首组结果必须拒收，定向通过。保留严格拒绝，不把新增planned总数塞进旧requested字段。
+- 所选Python执行应用Run锁守卫11项通过，包含新Run的expected-prefix=0、旧Run过期head/部分前缀写入前拒绝。现行managed/comfy-ui基线70项通过；当前Electron TS隔离编译与双端typecheck通过。均非UI入口/实际生成证据。
+- 尝试运行安装版上游temporal/Review pytest时，所选Python报告 `No module named pytest`，未安装依赖；上游pytest套件未通过也未执行。上述直接函数检查是有界替代，不声称覆盖其存储重启、完整Run复用或decoder测试。
+
+### Adapter决定与未解除门槛
+
+1. **保留3.9.1基线，独立new-run。**实际安装已具备单组投影，不能为此先要求升级3.9.9。新入口预设完整布局，保留原始First Image、冻结profile与独立Run identity；既有managed续接保留accepted>0/Run锁/head保护。源码识别的V38/V39/Finalize注册位于 `v3/driving_nodes.py`，没有在线object_info证据。
+2. **新分组契约是runtime前置缺口。**区分计划总数、已提交逻辑前缀、物理组范围、实际生成/复用和输出scope；从真实manifest/组事实记账，不能补造全部N份receipt记录。现有registry把数组按逻辑索引读取，不能把当前组的局部索引直接喂给完整前缀流程。该协议尚未实施；旧receipt不放宽。
+3. **组预览和最终输出分开。**未完成Review可消费当前物理组；最后一次Review会切完整前缀，优先以其做一次最终解码/组装候选。官方Finalize是decoded images/audio＋assembly_plan节点，不能直接接Run目录；独立Full Run重载是否零新增采样、内存是否满足、最后一组预览如何回填，仍要实跑。尚不宣称120秒可有界内存完成，也不拿MP4直接concat代替官方net-frame/seam。
+4. **持续参考与跨Run仍是候选。**V38基础Reference与V39路由源码存在，但应用图未接入、实际checkpoint/LoRA效果未测。第6节的3.9.9路由/initial_state限制是候选源码事实，本轮未在3.9.1运行中复现，不能外推为已支持或已拒绝；旧bootstrap桥也不等于新的Run Storage移交。16段触顶后的原生AV尾状态＋身份锚点仍须独立验证，不强行换成尾帧。
+
+按PLAN停止条件，发现未适配的部分序列receipt后不继续GPU实验：H3新增采样0/4，Strata规划0/4，没有new-run首段、2×5秒/append/10秒、音画/恢复、Strata分配质量或实际资源收益通过证据。不得把历史bootstrap80秒或旧managed2→3作为本次预设N段执行通过。先完成最小分组receipt/checkpoint适配和CPU检查，再在隔离资源内恢复原预算；P1纯逻辑不依赖该GPU结果，但本轮未开始P1。

@@ -17,6 +17,7 @@ import {
   isH3TurboV4LoraId,
   isH3TurboLoraId,
   videoLoraCompatibleWithModel,
+  videoLoraConfigurationIssues,
   videoLoraFilename,
   videoPromptForLoras
 } from "./video-loras.js";
@@ -388,6 +389,12 @@ function applyVideoLoraStack(
 ): void {
   const selected = task.videoLoras ?? [];
   if (!isMiniMaxH3Model(task.modelId) || selected.length === 0) return;
+  const referenceIssue = videoLoraConfigurationIssues({
+    modelId: task.modelId, inputMode: task.taskType === "extension" ? "video" : "image",
+    videoLoras: selected, h3ReferenceSlots: task.h3ReferenceSlots,
+    spectrumMode: task.spectrumMode ?? "off", attentionMode: task.attentionMode ?? "sage", locale
+  }).find((issue) => issue.code.startsWith("references:") && issue.severity === "error");
+  if (referenceIssue) throw new Error(referenceIssue.message);
 
   const attentionNodes = Object.values(workflow).filter((node) =>
     (node.class_type === "PathchSageAttentionKJ" ||

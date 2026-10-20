@@ -197,7 +197,7 @@ export function imageEditEnqueueBlockReason(
   const imageLoraBlockReason = imageLoraConfigurationError(
     draft.imageLoras,
     draft.modelId,
-    inputPictures.length
+    imageModelInputCount
   );
   if (imageLoraBlockReason) return imageLoraBlockReason;
   if (referenceBlockReason) return referenceBlockReason;
@@ -885,6 +885,7 @@ export function buildVideoCreatePageViewModel(
     spectrumMode: draft.spectrumMode,
     attentionMode: state.settings.h3AttentionMode,
     videoLoras: draft.videoLoras,
+    h3ReferenceSlots: draft.h3ReferenceSlots,
     locale: state.settings.uiLocale
   });
   const turboEnabled = videoPolicy.turboEnabled;

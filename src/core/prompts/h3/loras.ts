@@ -13,6 +13,12 @@ export interface H3LoraPromptProfile {
  * adapter's useful visual intent without asking it to construct ComfyUI nodes.
  */
 export const h3LoraPromptLibrary: Readonly<Record<string, H3LoraPromptProfile>> = {
+  "minimax-h3-faceswap-ref2va-v1": {
+    id: "minimax-h3-faceswap-ref2va-v1",
+    triggerWord: "Faceswap",
+    instruction: "For the requested face replacement, take identity from the tightly cropped reference face in <Picture 1> and the source performance from <Video 1>. Identify the source person using the user's labels and visible traits; retain the requested source pose, gaze, expression, action timing, framing, lighting, clothing, background and soundscape. Do not turn face replacement into a full character or clothing replacement, invent facial attributes, or add new shots.",
+    usage: "This is a Ref2VA video face-swap adapter requiring a reference image and one source video. The app injects Faceswap separately. Keep input roles distinct and follow the user's explicit scope; do not promise exact identity, pixel preservation, original audio or lip-sync accuracy."
+  },
   "minimax-h3-equi360": {
     id: "minimax-h3-equi360",
     triggerWord: "equirect360",

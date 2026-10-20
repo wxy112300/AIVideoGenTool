@@ -469,6 +469,9 @@ describe("managed Continuum contracts", () => {
     expect(validateH3ContinuumManagedReceipt({ ...raw, package_version: "3.9.1" })).toContain("缺少真实采样契约");
     const modern = { ...raw, package_version: "3.9.1", sampling_contract_version: 6, contract_sha256: "a".repeat(64), resume_safe: true };
     expect(validateH3ContinuumManagedReceipt(modern)).toBeNull();
+    for (const plannedChunks of [3, 12]) {
+      expect(validateH3ContinuumManagedReceipt({ ...modern, requested_chunks: plannedChunks })).toContain("计数与最终 Chunk 总数不一致");
+    }
     expect(validateH3ContinuumManagedReceipt({ ...modern, sampling_contract_version: 5 })).toContain("v6");
     expect(validateH3ContinuumManagedReceipt({ ...modern, resume_safe: undefined })).toContain("resumeSafe");
     expect(extractH3ContinuumManagedReceipt({ outputs: { "24": { result: [JSON.stringify(raw)] } } }, "24")).toMatchObject({

@@ -732,7 +732,7 @@ export class QueueEnqueueService {
       const issues = videoLoraConfigurationIssues({
         modelId: draft.modelId, inputMode: draft.inputMode,
         spectrumMode: draft.spectrumMode, attentionMode: enqueueSettings.h3AttentionMode,
-        videoLoras: draft.videoLoras
+        videoLoras: draft.videoLoras, h3ReferenceSlots: draft.h3ReferenceSlots
       });
       const blocking = issues.find((issue) => issue.severity === "error");
       if (blocking) throw new Error(blocking.message);
@@ -849,7 +849,9 @@ export class QueueEnqueueService {
     const imageLoraError = imageLoraConfigurationError(
       normalized.imageLoras,
       normalized.modelId,
-      normalized.pictures.length
+      normalized.pictures.length + (adapter.supportsMarkupReferenceGuide
+        ? normalized.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
+        : 0)
     );
     if (imageLoraError) throw new Error(imageLoraError);
     const hasReference = normalized.pictures.length > 0;
@@ -973,7 +975,8 @@ export class QueueEnqueueService {
     }
     const loraIssue = videoLoraConfigurationIssues({
       modelId: draft.modelId, inputMode: draft.inputMode, spectrumMode: draft.spectrumMode,
-      attentionMode: enqueueSettings.h3AttentionMode, videoLoras: draft.videoLoras
+      attentionMode: enqueueSettings.h3AttentionMode, videoLoras: draft.videoLoras,
+      h3ReferenceSlots: draft.h3ReferenceSlots
     }).find((issue) => issue.severity === "error");
     if (loraIssue) throw new Error(loraIssue.message);
     this.rejectUnavailableH3NativeResolution(draft);

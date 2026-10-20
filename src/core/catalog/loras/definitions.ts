@@ -22,6 +22,7 @@ export interface VideoLoraRules {
   orderPriority: number;
   settingConflicts: VideoLoraSettingConflict[];
   combinations: VideoLoraCombinationRule[];
+  referenceRequirements?: { minImages: number; minVideos: number; maxVideos: number };
   workflowRequirement?: "h3-turbo-sampling" | "h3-pdd-sampling";
 }
 
@@ -36,6 +37,8 @@ export interface CatalogVideoLoraDefinition extends VideoLoraSelection {
 export interface CatalogImageLoraDefinition extends ImageLoraSelection {
   catalogOrder: number;
   requiredPictureCount?: number;
+  pictureRoles?: readonly string[];
+  defaultPrompt?: string;
   scan: CatalogModelScanDefinition;
 }
 
@@ -105,8 +108,16 @@ export const H3_REALISM_PEOPLE_LORA_FILENAME =
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_ID = "minimax-h3-facial-realism-closeup";
 export const H3_FACIAL_REALISM_CLOSEUP_LORA_FILENAME =
   "minimax-h3-facial-realism-closeup-cp2000.safetensors";
+export const H3_FACE_SWAP_LORA_ID = "minimax-h3-faceswap-ref2va-v1";
+export const H3_FACE_SWAP_LORA_FILENAME = "SS_FaceSwap_MiniMax_H3_REF2VA.safetensors";
+export const H3_FACE_SWAP_LORA_REVISION = "b2a5823ca64bc78d91725fbfcc576095bfceb764";
 export const QWEN_IMAGE_21_ANYANGLE_LORA_ID = "qwen-image-2-1-anyangle";
 export const QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME = "QI2.1_AnyAngle.safetensors";
+export const QWEN_IMAGE_21_BFS_HEAD_LORA_ID = "qwen-image-2-1-bfs-head-v1-1";
+export const QWEN_IMAGE_21_BFS_HEAD_LORA_FILENAME = "bfs_head_v1.1_qwen_2.1.safetensors";
+export const QWEN_IMAGE_21_BFS_HEAD_LORA_REVISION = "0ca3913ade4b4ada458d60c232354e8586c4c181";
+export const QWEN_IMAGE_21_BFS_HEAD_PROMPT =
+  "head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k";
 export const QWEN_IMAGE_21_LIGHTING_BLEND_LORA_ID = "qwen-image-2-1-lighting-blend";
 export const QWEN_IMAGE_21_LIGHTING_BLEND_LORA_FILENAME = "Qwenimag21_c2-st2000.safetensors";
 export const QWEN_IMAGE_21_FIX_LORA_ID = "qwen-image-2-1-fix";
@@ -459,6 +470,45 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     }]
   }
 }, {
+  id: H3_FACE_SWAP_LORA_ID,
+  name: "MiniMax H3 FaceSwap · Ref2VA v1",
+  filename: H3_FACE_SWAP_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: ["minimax_h3_ref2va"],
+  compatibleInputModes: ["image"],
+  purpose: "content",
+  promptPrefixes: ["Faceswap"],
+  catalogOrder: 101,
+  rules: {
+    orderPriority: 40,
+    settingConflicts: [],
+    combinations: [{ loraId: H3_REF2V_TURBO_LORA_ID, severity: "warning", localeKey: "faceswapTurbo" },
+      { loraId: H3_PDD_REF2VA_LORA_ID, severity: "warning", localeKey: "faceswapTurbo" }],
+    referenceRequirements: { minImages: 1, minVideos: 1, maxVideos: 1 }
+  },
+  scan: {
+    vram: "Ref2VA FaceSwap · 65.6 MB · strength 1.0 · trigger Faceswap",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly", "MiniMaxH3ReferenceToVideo"],
+    components: [{
+      label: "UntMods H3 FaceSwap · Ref2VA v1",
+      expected: `loras/${H3_FACE_SWAP_LORA_FILENAME}`,
+      patterns: [/loras[\\/]SS_FaceSwap_MiniMax_H3_REF2VA\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "UntMods / FaceSwap_MiniMaxH3_REF2VA",
+        downloadUrl: `https://huggingface.co/UntMods/FaceSwap_MiniMaxH3_REF2VA/resolve/${H3_FACE_SWAP_LORA_REVISION}/${H3_FACE_SWAP_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_FACE_SWAP_LORA_FILENAME,
+        revision: H3_FACE_SWAP_LORA_REVISION,
+        bytes: 65623904,
+        sha256: "1e032cf519cc143f434e67516d8ad0aacf4c6e146315b2dcc3b1c2800470326d",
+        license: "Apache-2.0",
+        notes: "H3 Ref2VA 视频换脸 LoRA；至少一张紧裁人脸参考图和恰好一段原视频，分别使用 Picture 1 / Video 1。默认强度 1.0，执行 Prompt 自动去重补入 Faceswap。先用短单镜头、24fps、原片比例和接近原片的时长做标准采样对照；不自动复制作者工作流中的 8-step Turbo 或采样器。仅当前 INT8 Ref2VA R2V，不适用于 FL2VA、INT4、视频续写或 Continuum。输出是重新生成的视频，音轨、口型、动作、衣服和背景不保证逐帧保真。"
+      }
+    }]
+  }
+}, {
   id: H3_BETTER_HUMAN_MOTION_LORA_ID,
   name: "MiniMax H3 Better Human Motion",
   filename: H3_BETTER_HUMAN_MOTION_LORA_FILENAME,
@@ -772,6 +822,45 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
 }];
 
 export const IMAGE_LORA_DEFINITIONS: readonly CatalogImageLoraDefinition[] = [{
+  id: QWEN_IMAGE_21_BFS_HEAD_LORA_ID,
+  name: "Qwen Image 2.1 · BFS Head V1.1",
+  filename: QWEN_IMAGE_21_BFS_HEAD_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "qwen-image",
+  compatibleModelIds: [
+    "qwen-image-2-1",
+    "qwen-image-2-1-uncensored-gguf",
+    "qwen-image-2-1-uncensored-gguf-q6"
+  ],
+  compatibleInputModes: ["image"],
+  promptPrefixes: ["head_swap:"],
+  defaultPrompt: QWEN_IMAGE_21_BFS_HEAD_PROMPT,
+  catalogOrder: 152,
+  requiredPictureCount: 2,
+  pictureRoles: ["目标底图（保留身体、姿态、构图和背景）", "参考人脸/头部（含头发）"],
+  scan: {
+    managedBy: "comfyui",
+    vram: "LoRA · BFS Head V1.1 · 约 260 MB · strength 1.0 · 两图整头替换",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly"],
+    components: [{
+      label: "BFS Head V1.1 · Qwen Image 2.1",
+      expected: `loras/${QWEN_IMAGE_21_BFS_HEAD_LORA_FILENAME}`,
+      patterns: [/loras[\\/]bfs_head_v1\.1_qwen_2\.1\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "Alissonerdx / BFS-Best-Face-Swap · Qwen Image 2.1",
+        downloadUrl: `https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/${QWEN_IMAGE_21_BFS_HEAD_LORA_REVISION}/${QWEN_IMAGE_21_BFS_HEAD_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: QWEN_IMAGE_21_BFS_HEAD_LORA_FILENAME,
+        revision: QWEN_IMAGE_21_BFS_HEAD_LORA_REVISION,
+        bytes: 260096144,
+        sha256: "d1d748d5601077f3b6d05766f6823510e901970d916afa404a97e85dc92fa88e",
+        license: "MIT",
+        notes: "作者推荐的 Qwen Image 2.1 整头替换版本（含头发），并非仅五官替换。Picture 1 放目标底图，Picture 2 放参考头部；默认强度 1.0。添加时为空 Prompt 填入作者指令，已有文本保留；执行时补齐 head_swap: 触发词。V1.1 旨在减轻皮肤平滑，实际身份、表情和背景保真需逐图检查。不要使用旧 Qwen Edit 2509/2511 或 Klein 的同名系列权重；不叠加 Pruna 加速或其他图片 LoRA。"
+      }
+    }]
+  }
+}, {
   id: QWEN_IMAGE_21_ANYANGLE_LORA_ID,
   name: "Qwen Image 2.1 · AnyAngle",
   filename: QWEN_IMAGE_21_ANYANGLE_LORA_FILENAME,
@@ -785,6 +874,7 @@ export const IMAGE_LORA_DEFINITIONS: readonly CatalogImageLoraDefinition[] = [{
   compatibleInputModes: ["image"],
   catalogOrder: 150,
   requiredPictureCount: 2,
+  pictureRoles: ["目标视角粗渲染", "原图"],
   scan: {
     managedBy: "comfyui",
     vram: "LoRA · rank 24 · BF16 · 约 120 MB · strength 1.0",
