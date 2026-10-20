@@ -30,7 +30,7 @@ export class AgentController {
     this.emit({ event: "handoff", message: "Studio 请求 GPU。请在此窗口完成或停止会话后点“停止全部”；活跃 Agent 不会被静默中止。" });
     return false; // Explicit stop is required until full harness activity tracking has passed P2/P4.
   });
-  private readonly coldPressure = new AgentResourcePressure();
+  private readonly coldPressure = new AgentResourcePressure(Date.now, event => this.log(`资源${event.event}：RAM=${event.memoryAvailableBytes} commit=${event.commitAvailableBytes} VRAM=${event.vramAvailableBytes} bytes；持续${event.elapsedMs}ms；${event.event === "critical" ? "持续严重提交不足，紧急保护" : "普通低余量仅预警不中断"}`));
   private readonly sampler = new AgentResourceSampler();
   private readonly service = new StrataService({ onSpawn: (pid) => this.lease.track(pid), resourcePressure: (resources) => this.coldPressure.check(resources),
     knownResourcePressure: (resources) => this.coldPressure.knownPressure(resources),
@@ -356,14 +356,14 @@ export class AgentController {
       const unauthorized = await fetch(`http://127.0.0.1:${preferences.strataPort}/v1/models`, { redirect: "error", signal: AbortSignal.timeout(5000) });
       if (![401, 403].includes(unauthorized.status)) throw new Error("Strata 未认证负测失败，停止自有引擎。");
       this.log("HTTP 身份/鉴权通过；加载自有模型，可取消");
-      this.log("Agent冷加载允许RAM短时低于3GiB最多30秒，512MiB RAM/3GiB提交/2GiB显存仍停止；健康提交需至少6GiB。加载后按实际驻留/回读模式保护。");
+      this.log("RAM/提交普通低余量只预警，不因单次读数或缓存低RAM停止模型；仅提交余量持续10秒低于512MiB触发紧急保护，显存2GiB保护保留。这是应用兜底，不是官方最低内存要求。");
       this.coldPressure.setLoading(true);
       let runtime;
       try { runtime = await this.service.load(signal); }
       finally { this.coldPressure.setLoading(false); }
       const fileRead = runtime.log.includes("[Agent] 官方文件回读模式");
       this.coldPressure.setFileRead(fileRead);
-      if (fileRead) this.log("模型已加载：官方文件回读模式；提交>=6GiB且显存>=2GiB时，文件映射RAM缓存不按3GiB驻留余量中止工具；RAM低于512MiB仍保护停止。H3策略不变。");
+      if (fileRead) this.log("模型已加载：官方文件回读模式；与H3共用RAM/提交预警策略，低RAM本身不停止工具会话。");
       signal.throwIfAborted();
       await saveAgentPreferences({ ...preferences, packConfig }, this.directory);
       this.log(`独立引擎已加载；耗时 ${((Date.now() - started) / 1000).toFixed(1)} 秒。尚未验证 Claude 工具调用。`);

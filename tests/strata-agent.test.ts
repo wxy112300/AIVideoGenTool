@@ -213,7 +213,7 @@ describe("standalone Agent safety boundaries (no GPU inference)", () => {
     const directory = await root(), pack = path.join(directory, "pack", "runtime.json");
     await writeStrataPreparedFixture(directory, pack);
     const input = { preferences: agentDefaults(), install: directory, packConfig: pack, token: "secret", directory: path.join(directory, "agent"), guardScript: "guard.py", resources };
-    await expect(agentLaunchPlan({ ...input, resources: { ...resources, commitAvailableBytes: 20 * GiB } })).rejects.toThrow("提交余量");
+    await expect(agentLaunchPlan({ ...input, resources: { ...resources, commitAvailableBytes: 5 * GiB } })).rejects.toThrow("提交余量");
     expect(await fs.stat(input.directory).catch(() => null)).toBeNull();
     const config = JSON.parse(await fs.readFile(pack, "utf8")); config.args[config.args.indexOf("--max-context") + 1] = "262144";
     await fs.writeFile(pack, JSON.stringify(config));

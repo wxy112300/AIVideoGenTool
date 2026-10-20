@@ -12,12 +12,12 @@ import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
 import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/strata-uncensored.js";
+import { normalizeStrataReasoningEffort } from "../../src/core/strata-reasoning.js";
 import { isQwenImage21TargetModel } from "../../src/core/image-prompt.js";
 import { strataQwenImage21InstructionParts, STRATA_QWEN_IMAGE21_PROFILE } from "../../src/core/prompts/qwen-image-2-1/strata.js";
 
 /** Completed, healthy inference whose text fails product validation; not a transport/resource failure. */
 export class StrataPromptValidationError extends Error { override name = "StrataPromptValidationError"; }
-const promptReasoning: NonNullable<StrataChatRequest["reasoning"]> = { effort: "medium", budgetTokens: 2048 };
 function usesQwenImage21Profile(request: EnhanceRequest): boolean {
   return request.mode === "image-edit" && (!request.promptStrategy || request.promptStrategy === "rewrite")
     && isQwenImage21TargetModel(request.imageTargetModelId);
@@ -54,15 +54,15 @@ export async function buildStrataPromptRequest(
 ): Promise<StrataChatRequest> {
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
   if (paths.length > 12) throw new Error("Strata 每次最多接收 12 张参考图。");
-  // Extend and R2V share the layered H3 profile. The Pack selects continuation/reference
-  // fields from the execution workflow, not image count. Targeted edits retain their splice contract.
+  // One compiler for every full H3 rewrite: no mode-specific layout or runtime policy.
+  // The Pack owns reference/continuation differences; targeted edits keep their splice contract.
   const profile = evaluation ?? (request.mode === "h3-vision"
     && request.promptStrategy !== "targeted-revision"
-    && (request.extensionSource || request.h3PromptMode === "R2V"
-      || (request.h3PromptMode === "I2VA" && paths.length === 1
-        && request.h3PromptPreset === "detailed-cinematic" && request.prompt.trim() && !request.promptStrategy))
     ? { layout: "structured" as const } : undefined);
-  const reasoning = evaluation?.reasoning ?? { ...promptReasoning };
+  const policy = strataPromptPolicy(settings);
+  const effort = normalizeStrataReasoningEffort(settings.strataReasoningEffort);
+  // Upstream 0 means automatic thinking with answer_room, NOT disabled thinking.
+  const reasoning = evaluation?.reasoning ?? (effort === "off" ? undefined : { effort, budgetTokens: 0 });
   const imageParts = usesQwenImage21Profile(request)
     ? strataQwenImage21InstructionParts(request) : undefined;
   const parts = imageParts ?? (profile?.layout === "structured"
@@ -82,11 +82,11 @@ export async function buildStrataPromptRequest(
   signal.throwIfAborted();
   return { modelId: settings.promptModelId, messages: [
     ...(parts ? [{ role: "system" as const, content: parts.contract }] : []), { role: "user", content }],
-    maxTokens, contextSize: 32768, visionTokensPerImage: 1024, automaticOutputBudget: true,
+    maxTokens, contextSize: policy.maxContext, visionTokensPerImage: policy.visionTokens, automaticOutputBudget: true,
     uncensored: strataUncensoredMode(settings) !== "off" && supportsStrataUncensored(settings.promptModelId),
     uncensoredMode: supportsStrataUncensored(settings.promptModelId) ? strataUncensoredMode(settings) : "off",
     // Use the model's official profile without changing saved creativity for other backends.
-    temperature: 1, reasoning };
+    temperature: reasoning ? 1 : 0.7, reasoning };
 }
 
 export async function enhancePromptWithStrata(
@@ -103,15 +103,16 @@ export async function enhancePromptWithStrata(
     let characters = 0;
     let outputBudget = chat.maxTokens;
     onProgress("generating", null, chat.reasoning
-      ? `正在规划与扩写 · 思考预算 ${chat.reasoning.budgetTokens} tokens · 输出空间自动计算`
+      ? `正在规划与扩写 · ${chat.reasoning.budgetTokens ? `思考预算 ${chat.reasoning.budgetTokens} tokens` : "思考预算自动分配并预留正文空间"} · 输出空间自动计算`
       : "正在生成 · 输出空间自动计算");
     let output = await owner.chat(chat, signal, (delta) => {
       characters += delta.length;
       onProgress("generating", null, `已生成 ${characters} 字符 · 输出预算 ${outputBudget} tokens`);
     }, (tokens) => {
       outputBudget = tokens;
-      onProgress("generating", null, `输出预算自动调整为 ${tokens} tokens · 含思考，仍在 ${chat.contextSize} 上下文内`);
-    });
+      onProgress("generating", null, `输出预算自动调整为 ${tokens} tokens${chat.reasoning ? " · 含思考" : ""}，仍在 ${chat.contextSize} 上下文内`);
+    }, (count) => onProgress("generating", null,
+      `正在思考 · 已接收 ${count} 个思考字符 · 思考与正文共享 ${outputBudget} tokens；思考内容不写入提示词`));
     signal.throwIfAborted();
     onProgress("validating", null, "正在验证完整结果");
     let result = validatedOutput(output, request);

@@ -53,7 +53,7 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
     await settle();
     expect(promptVersionsForDraft(h.state().draft).length).toBe(before + 1);
-    expect(compiled).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, temperature: 1,
+    expect(compiled).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 0 }, temperature: 1,
       messages: [{ role: "system" }, { role: "user" }] });
     expect(h.enhancePrompt.mock.calls[0][0]).toMatchObject({ h3PromptMode: "R2V", h3PromptPreset: "detailed-cinematic",
       ...(inputMode === "video" ? { extensionSource: { filePath: "fixture.mp4", trimEndSeconds: 8 } } : {}) });

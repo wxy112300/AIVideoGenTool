@@ -94,11 +94,16 @@ export class StrataRuntimeOwner {
         options.onLog?.("正在检查当前 RAM、Windows 提交余量与显存预算");
         const adaptivePlan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true });
         if (adaptivePlan.resourcePlan) {
+          const resourcePlan = adaptivePlan.resourcePlan;
           await this.service.stop();
           plan = adaptivePlan;
           if (plan.modelId !== settings.promptModelId) throw new Error("Strata 自适应配置模型身份改变。");
           options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : plan.resourcePlan!.residentBudgetGiB !== undefined ? "专家预算驻留 / 文件回读" : "GPU 外专家 RAM 驻留"}，model=${settings.promptModelId}，residentBudgetGiB=${plan.resourcePlan!.residentBudgetGiB ?? "none"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
           options.onLog?.(`资源准入：commit至少 ${(plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB；允许官方文件回读=${plan.allowResidentFallback === true}，实际模式待引擎确认`);
+          if (resourcePlan.estimatedCommitBytes !== undefined && plan.allowResidentFallback) options.onLog?.(`完整驻留提交估计 ${(resourcePlan.estimatedCommitBytes / 1024 ** 3).toFixed(1)}GiB 仅供参考，不作文件回读启动门槛；引擎按当前RAM/commit选择驻留量。`);
+          if (resourcePlan.estimatedResidentMemoryBytes !== undefined) {
+            options.onLog?.(`专家完整驻留目标 ${(resourcePlan.estimatedResidentMemoryBytes / 1024 ** 3).toFixed(1)}GiB；启动 RAM 预留 ${(resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1)}GiB。${plan.allowResidentFallback ? "不足完整驻留时允许官方按可用内存保留热点专家，其余文件回读；可能变慢，实际模式以引擎日志为准。" : "本次保留完整驻留策略。"}`);
+          }
           options.onLog?.(`Windows文件页释放：STRATA_FILE_RELEASE=${plan.env?.STRATA_FILE_RELEASE ?? "unset"}；仅影响自有引擎的只读专家文件页，不清理其他进程`);
           await this.service.start(plan, signal);
         }
@@ -157,12 +162,13 @@ export class StrataRuntimeOwner {
     }, options.signal);
   }
 
-  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void): Promise<string> {
+  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void,
+    onReasoning?: (characters: number) => void): Promise<string> {
     return this.run(async (ownedSignal) => {
       if (!this.modelId || request.modelId !== this.modelId) throw new Error("Strata 请求模型与已准备模型不一致，请先准备所选模型。");
       await this.deps.beforeInference?.();
       ownedSignal.throwIfAborted();
-      return this.service.chat(request, ownedSignal, onText, onBudget);
+      return this.service.chat(request, ownedSignal, onText, onBudget, onReasoning);
     }, signal);
   }
 

@@ -1,5 +1,5 @@
-import { FileReadResourcePressure } from "./strata-residency-pressure.js";
-/** Preserve the independently verified Agent floor; H3 keeps a larger 2GiB RAM floor. */
+import { FileReadResourcePressure, type StrataHostPressureDiagnostic } from "./strata-residency-pressure.js";
+/** Agent and H3 share host warning/critical semantics; lifecycle/context stay separate. */
 export class AgentResourcePressure extends FileReadResourcePressure {
-  constructor(now = Date.now) { super(now, 0.5); }
+  constructor(now = Date.now, onDiagnostic?: (event: StrataHostPressureDiagnostic) => void) { super(now, onDiagnostic); }
 }

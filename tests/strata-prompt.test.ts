@@ -25,6 +25,22 @@ beforeEach(() => vi.mocked(scanEnvironment).mockReset());
 const modelId = "strata/qwen3.8-flash-next-iq3_xxs";
 const request: EnhanceRequest = { prompt: "Change the red car to blue.", modelId: "qwen-image-edit", mode: "image-edit", origin: "image-edit" };
 
+describe("saved Strata reasoning per request", () => {
+  it.each(["off", "low", "medium", "high"] as const)("applies %s to image, H3 and targeted requests without changing loaded context", async effort => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataReasoningEffort: effort };
+    for (const input of [request, { ...request, mode: "h3-vision" as const, modelId: "minimax_h3_fl2va", h3PromptMode: "T2VA" as const },
+      { ...request, promptStrategy: "targeted-revision" as const }]) {
+      const chat = await buildStrataPromptRequest(input, settings, new AbortController().signal);
+      expect(chat.reasoning).toEqual(effort === "off" ? undefined : { effort, budgetTokens: 0 });
+      expect(chat.temperature).toBe(effort === "off" ? .7 : 1);
+      expect(chat.contextSize).toBe(32768); expect(chat.automaticOutputBudget).toBe(true);
+      settings.strataReasoningEffort = "medium";
+      expect(chat.reasoning?.effort).toBe(effort === "off" ? undefined : effort);
+      settings.strataReasoningEffort = effort;
+    }
+  });
+});
+
 describe("Strata uncensored request snapshot", () => {
   it.each([true, false])("binds the saved preference to initial and repair requests (%s)", async (enabled) => {
     const settings = { ...createDefaultState().settings, promptModelId: modelId, strataUncensored: enabled, strataUncensoredMode: enabled ? "community" as const : "off" as const };
@@ -91,7 +107,7 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     for (const preset of ["official-storyboard", "detailed-cinematic"] as const) {
       const chat = await buildStrataPromptRequest({ prompt: "A balloon rises steadily.", modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: preset, h3DurationSeconds: 30 }, settings, new AbortController().signal);
       expect(chat).toMatchObject({ contextSize: 32768, maxTokens: 8192, automaticOutputBudget: true });
-      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 });
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 0 });
       expect(JSON.stringify(chat.messages)).toContain("30.67");
     }
   });
@@ -242,6 +258,16 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
 });
 
 describe("Strata Pack, image and output contracts", () => {
+  it("shows actual thinking progress as counts, with the automatic allowance, never private reasoning", async () => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId }, progress = vi.fn();
+    const owner = { chat: vi.fn(async (_chat, _signal, onText, onBudget, onThinking) => {
+      onBudget(30000); onThinking(4200); onText("Edited image prompt."); return "Edited image prompt.";
+    }) };
+    expect(await enhancePromptWithStrata(request, settings, owner, new AbortController().signal, progress)).toBe("Edited image prompt.");
+    expect(progress).toHaveBeenCalledWith("generating", null, expect.stringContaining("思考预算自动分配"));
+    expect(progress).toHaveBeenCalledWith("generating", null, expect.stringMatching(/正在思考.*4200.*30000/u));
+    expect(owner.chat.mock.calls[0][0].reasoning).toEqual({ effort: "medium", budgetTokens: 0 });
+  });
   it.each([
     { model: "minimax_h3_fl2va", mode: "I2VA" as const, field: "integrated_multimodal_description", native: false },
     { model: "minimax_h3_ref2va", mode: "R2V" as const, field: "detailed_description", native: false },
@@ -261,7 +287,7 @@ describe("Strata Pack, image and output contracts", () => {
     expect(prepareFrame).toHaveBeenCalledWith(req.extensionSource, "extend-test", expect.any(AbortSignal));
     expect(owner.chat).toHaveBeenCalledOnce();
     const chat = owner.chat.mock.calls[0][0] as unknown as Awaited<ReturnType<typeof buildStrataPromptRequest>>;
-    expect(chat).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 }, automaticOutputBudget: true, contextSize: 32768 });
+    expect(chat).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 0 }, automaticOutputBudget: true, contextSize: 32768 });
     expect(chat.messages[0].role).toBe("system");
     const content = chat.messages[1].content as Array<{ type: string; text?: string }>;
     expect(content.map(part => part.type)).toEqual(["text", "image_url", "text"]);
@@ -274,7 +300,7 @@ describe("Strata Pack, image and output contracts", () => {
     expect(result).toContain(`${field}:`);
     if (native || mode === "R2V") expect(result).not.toContain("<Picture 1>");
     else expect(result).toMatch(/^For the target video, at 0.00 seconds/);
-    expect(progress).toHaveBeenCalledWith("generating", null, expect.stringContaining("思考预算 2048"));
+    expect(progress).toHaveBeenCalledWith("generating", null, expect.stringContaining("思考预算自动分配"));
     expect(cleanup).toHaveBeenCalledOnce();
     expect(req.imagePaths).toBeUndefined();
   });
@@ -285,7 +311,7 @@ describe("Strata Pack, image and output contracts", () => {
       promptStrategy, imagePaths: ["person.png", "room.png"], referenceContext: "<Picture 1> = person; <Picture 2> = room", h3DurationSeconds: 15 };
     const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal,
       async filename => ({ type: "image_url", image_url: { url: filename } }));
-    expect(chat).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, maxTokens: 8192 });
+    expect(chat).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 0 }, maxTokens: 8192 });
     expect(chat.messages[0].role).toBe("system");
     expect(chat.messages[0].content).toContain("subject_definitions");
     expect(chat.messages[0].content).toContain("detailed_description");
@@ -304,7 +330,7 @@ describe("Strata Pack, image and output contracts", () => {
     const result = enhancePromptWithStrata(req, settings, owner, new AbortController().signal, vi.fn());
     if (success) expect(await result).toContain("4.0 and 10.0"); else await expect(result).rejects.toThrow("一次纠正");
     expect(owner.chat).toHaveBeenCalledTimes(2);
-    expect(owner.chat.mock.calls[1][0]).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 2048 }, temperature: 1 });
+    expect(owner.chat.mock.calls[1][0]).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 0 }, temperature: 1 });
     expect(JSON.stringify(owner.chat.mock.calls[1][0].messages)).toContain(req.prompt);
   });
   it("enables bounded thinking for every prompt path while preserving each layout", async () => {
@@ -313,16 +339,16 @@ describe("Strata Pack, image and output contracts", () => {
       h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", imagePaths: ["first.png"] };
     const encode = async () => ({ type: "image_url" as const, image_url: { url: "data:image/png;base64,YQ==" } });
     const selected = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode);
-    expect(selected).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 2048 }, messages: [{ role: "system" }, { role: "user" }] });
+    expect(selected).toMatchObject({ temperature: 1, reasoning: { effort: "medium", budgetTokens: 0 }, messages: [{ role: "system" }, { role: "user" }] });
     for (const change of [{ h3PromptMode: "FL2VA" as const }, { h3PromptPreset: "official-storyboard" as const },
       { promptStrategy: "reference-auto" as const }, { imagePaths: [] },
       { promptStrategy: "targeted-revision" as const, prompt: "飞机滑行并停稳。（批注：停稳后打开舱门）" }]) {
       const chat = await buildStrataPromptRequest({ ...req, ...change }, settings, new AbortController().signal, encode);
-      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 }); expect(chat.temperature).toBe(1);
-      expect(chat.messages).toHaveLength(1);
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 0 }); expect(chat.temperature).toBe(1);
+      expect(chat.messages.map(message => message.role)).toEqual(change.promptStrategy === "targeted-revision" ? ["user"] : ["system", "user"]);
     }
     const baseline = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode, { layout: "flat" });
-    expect(baseline.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 }); expect(baseline.messages).toHaveLength(1);
+    expect(baseline.reasoning).toEqual({ effort: "medium", budgetTokens: 0 }); expect(baseline.messages).toHaveLength(1);
   });
   it.each([0.3, 0.6, 0.9])("uses the official model temperature instead of generic creativity %s", async (creativity) => {
     const settings = createDefaultState().settings;
@@ -332,7 +358,7 @@ describe("Strata Pack, image and output contracts", () => {
       mode: "h3-vision" as const, h3PromptMode: "T2VA" as const }]) {
       const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal);
       expect(chat.temperature).toBe(1);
-      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 });
+      expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 0 });
       expect(settings.promptCreativity).toBe(creativity);
       expect(chat.maxTokens).toBe(req.mode === "image-edit" ? 4096 : 8192);
     }
@@ -345,6 +371,9 @@ describe("Strata Pack, image and output contracts", () => {
     const encode = vi.fn(async (filename: string) => ({ type: "image_url" as const, image_url: { url: filename } }));
     const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode);
     expect(encode.mock.calls.map(([filename]) => filename)).toEqual(["first.png", "last.png"]);
+    expect(chat.messages[0].role).toBe("system");
+    expect(JSON.stringify(chat.messages)).toContain("FL2VA subject-correspondence module");
+    expect(JSON.stringify(chat.messages)).toContain("FINAL TASK");
     expect(chat.maxTokens).toBe(8192);
     expect(JSON.stringify(chat.messages)).toContain("大丈夫？");
     expect(JSON.stringify(chat.messages)).toContain("Keep the camera fixed.");

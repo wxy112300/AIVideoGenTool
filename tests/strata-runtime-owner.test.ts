@@ -45,6 +45,10 @@ describe("application Strata ownership", () => {
       await owner.ensurePromptReady(selected, strataFixturePolicy);
       // Each cold start builds a lazy plan and an adaptive plan; switching mode off does neither.
       const initial = launch.mock.calls.length;
+      for (const strataReasoningEffort of ["off", "low", "high", "medium"] as const) {
+        await owner.ensurePromptReady({ ...selected, strataReasoningEffort }, strataFixturePolicy);
+        expect(launch.mock.calls.length).toBe(initial);
+      }
       await owner.ensurePromptReady({ ...selected, strataUncensored: true, strataUncensoredMode: "builtin" }, strataFixturePolicy);
       expect(launch.mock.calls.length).toBe(initial * 2);
       const enabled = launch.mock.calls.length;

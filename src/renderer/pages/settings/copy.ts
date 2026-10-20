@@ -8,6 +8,12 @@ type SettingsCopyKey =
   | "prompt.uncensored.community"
   | "prompt.uncensoredHint"
   | "prompt.uncensoredUnsupported"
+  | "prompt.reasoning"
+  | "prompt.reasoning.off"
+  | "prompt.reasoning.low"
+  | "prompt.reasoning.medium"
+  | "prompt.reasoning.high"
+  | "prompt.reasoningHint"
   | "strata.title"
   | "strata.install.prepare"
   | "strata.install.source"
@@ -366,6 +372,12 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.uncensored.community": "社区 · sergqwer",
   "prompt.uncensoredHint": "原始权重不变；保存后下次增强生效。首次启用或更换向量会重载模型，去拒答效果因任务而异。",
   "prompt.uncensoredUnsupported": "当前模型不支持；偏好保留，兼容模型可继续使用。",
+  "prompt.reasoning": "思考强度",
+  "prompt.reasoning.off": "关闭",
+  "prompt.reasoning.low": "低",
+  "prompt.reasoning.medium": "中",
+  "prompt.reasoning.high": "高",
+  "prompt.reasoningHint": "保存后下次增强生效，无需重载模型。高对应官方 xhigh；high 与 xhigh 是同一档。",
   "strata.install.prepare": "检查安装环境",
   "strata.install.source": "获取源码",
   "strata.install.download": "下载引擎",
@@ -721,6 +733,12 @@ const zhTW: SettingsCopyCatalog = {
   "prompt.uncensored.community": "社群 · sergqwer",
   "prompt.uncensoredHint": "原始權重不變；儲存後下次增強生效。首次啟用或更換向量會重載模型，去拒答效果因任務而異。",
   "prompt.uncensoredUnsupported": "目前模型不支援；保留偏好供相容模型使用。",
+  "prompt.reasoning": "思考強度",
+  "prompt.reasoning.off": "關閉",
+  "prompt.reasoning.low": "低",
+  "prompt.reasoning.medium": "中",
+  "prompt.reasoning.high": "高",
+  "prompt.reasoningHint": "儲存後下次增強生效，無需重載模型。高對應官方 xhigh；high 與 xhigh 是同一檔。",
   "strata.install.prepare": "檢查安裝環境",
   "strata.install.source": "取得原始碼",
   "strata.install.download": "下載引擎",
@@ -1048,6 +1066,12 @@ const zhTW: SettingsCopyCatalog = {
 const enUS: SettingsCopyCatalog = {
   "strata.title": "Strata · Independent prompt runtime",
   "prompt.uncensored": "Uncensored mode",
+  "prompt.reasoning": "Reasoning effort",
+  "prompt.reasoning.off": "Off",
+  "prompt.reasoning.low": "Low",
+  "prompt.reasoning.medium": "Medium",
+  "prompt.reasoning.high": "High",
+  "prompt.reasoningHint": "Applies to the next enhancement after saving, without reloading. High is the official xhigh level; high and xhigh are aliases.",
   "prompt.uncensored.off": "Off",
   "prompt.uncensored.builtin": "Bundled · ESP",
   "prompt.uncensored.community": "Community · sergqwer",

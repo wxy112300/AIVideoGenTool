@@ -480,6 +480,8 @@ export interface Settings {
   /** Legacy compatibility mirror; mode is authoritative. */
   strataUncensored: boolean;
   strataUncensoredMode: import("./core/strata-uncensored.js").StrataUncensoredMode;
+  /** Per-enhancement effort, not part of the model's resident launch identity. */
+  strataReasoningEffort: import("./core/strata-reasoning.js").StrataReasoningEffort;
   promptLlamaServerPath: string;
   promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;

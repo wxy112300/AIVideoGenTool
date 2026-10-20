@@ -80,6 +80,19 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it.each([undefined, "bad", "off", "low", "medium", "high", "xhigh"])("normalizes and persists Strata reasoning (%s)", async value => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "strata-reasoning-store-"));
+    try {
+      const filename = path.join(directory, "state.json"), state = createDefaultState();
+      state.settings.strataReasoningEffort = value as never;
+      await fs.writeFile(filename, JSON.stringify(state));
+      const loaded = await new JsonStore(filename).load();
+      const expected = value === "xhigh" ? "high" : ["off", "low", "medium", "high"].includes(value!) ? value : "medium";
+      expect(loaded.settings.strataReasoningEffort).toBe(expected);
+      expect((await new JsonStore(filename).load()).settings.strataReasoningEffort).toBe(expected);
+      expect(loaded.draft).toEqual(state.draft);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   it.each([undefined, "true", true, false])("normalizes uncensored safely and retains it across restart (%s)", async (saved) => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-uncensored-store-"));
     try {

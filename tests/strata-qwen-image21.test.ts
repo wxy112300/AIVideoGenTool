@@ -20,7 +20,7 @@ describe("Strata Qwen Image 2.1 authored editing profile", () => {
     expect(content[0]).toMatchObject({ type: "image_url" });
     expect(JSON.stringify(content)).toContain(request.prompt);
     expect(chat).toMatchObject({ maxTokens: 4096, automaticOutputBudget: true, contextSize: 32768 });
-    expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 2048 });
+    expect(chat.reasoning).toEqual({ effort: "medium", budgetTokens: 0 });
   });
 
   it("drops only exact old factory presets, preserving custom preferences and original data", () => {

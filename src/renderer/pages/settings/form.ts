@@ -2,6 +2,7 @@ import type { H3PromptPreset, ImagePromptPreset, Settings } from "../../../types
 import { imageOutputCountMax } from "../../../core/image-workflow";
 import { LAN_BROWSER_DEFAULT_PORT } from "../../../core/lan-browser";
 import { normalizeStrataUncensoredMode, strataUncensoredMode } from "../../../core/strata-uncensored";
+import { normalizeStrataReasoningEffort } from "../../../core/strata-reasoning";
 
 function value(id: string, fallback: string): string {
   return document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
@@ -62,6 +63,7 @@ export function readSettingsFromForm(
     strataPort: Number(value("strata-port", String(base.strataPort))),
     strataUncensored: uncensoredMode !== "off",
     strataUncensoredMode: uncensoredMode,
+    strataReasoningEffort: normalizeStrataReasoningEffort(value("strata-reasoning-effort", base.strataReasoningEffort)),
     promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
     promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,

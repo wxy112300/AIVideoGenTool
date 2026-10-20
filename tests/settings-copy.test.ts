@@ -7,6 +7,12 @@ import {
 } from "../src/renderer/pages/settings/copy";
 
 describe("Settings localized copy", () => {
+  it("explains the official high/xhigh alias and next-request behavior in all locales", () => {
+    for (const locale of ["zh-CN", "zh-TW", "en-US"] as const) {
+      expect(settingsText(locale, "prompt.reasoningHint")).toContain("xhigh");
+      expect(settingsText(locale, "prompt.reasoning.medium")).not.toBe("prompt.reasoning.medium");
+    }
+  });
   it("keeps model evidence and hardware recommendations localized", () => {
     const profile = { id: "minimax_h3_fl2va", category: "video" } as const;
 

@@ -102,6 +102,7 @@ export function createDefaultSettings(): Settings {
     strataPort: STRATA_DEFAULT_PORT,
     strataUncensored: false,
     strataUncensoredMode: "off",
+    strataReasoningEffort: "medium",
     promptLlamaServerPath: "",
     promptLlamaPort: 8091,
     h3PromptPresets: createDefaultH3PromptPresets(),

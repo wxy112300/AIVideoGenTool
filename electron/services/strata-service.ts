@@ -13,6 +13,7 @@ import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
 import { applyStrataResourcePlan, knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
 import { readReliableStrataResources, readStrataResources, watchStrataResources, type StrataResourceRetryPolicy } from "./strata-resources.js";
 import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
+import { getApplicationLogger } from "../../src/infrastructure/app-logger.js";
 import { supportsStrataUncensored, strataUncensoredMode, normalizeStrataUncensoredMode, isStrataUncensoredMode, strataVectorForMode, type StrataUncensoredMode, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
 import { assertStrataControlVectorLog, verifyStrataControlVector, type StrataControlVector } from "./strata-uncensored.js";
 
@@ -50,7 +51,7 @@ export interface StrataChatRequest {
   automaticOutputBudget?: boolean;
   uncensored?: boolean;
   uncensoredMode?: StrataUncensoredMode;
-  /** Per-request bounded thinking; enabled by the prompt adapter, not a persisted setting. */
+  /** Per-request thinking; budget 0 delegates to upstream answer_room, not a persisted setting. */
   reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
 }
 
@@ -63,7 +64,7 @@ function validateChatRequest(request: StrataChatRequest): void {
     || !request.messages.length || request.messages.some((message) =>
       !["system", "user", "assistant"].includes(message.role) || !validContent(message.content))
     || (request.reasoning && (!["low", "medium", "high"].includes(request.reasoning.effort)
-      || !Number.isSafeInteger(request.reasoning.budgetTokens) || request.reasoning.budgetTokens < 1
+      || !Number.isSafeInteger(request.reasoning.budgetTokens) || request.reasoning.budgetTokens < 0
       || request.reasoning.budgetTokens > request.maxTokens - 1024))) {
     throw new Error("Strata 提示词请求参数无效。");
   }
@@ -73,6 +74,8 @@ function validateChatRequest(request: StrataChatRequest): void {
 
 export interface StrataChatDiagnostics extends ReturnType<StrataChatStream["diagnostics"]> {
   modelId: string; inputTokens: number | null; maxTokens: number; contextSize: number | null;
+  requestedMaxTokens: number; automaticOutputBudget: boolean;
+  reasoningRequested: boolean; reasoningEffort: string | null; reasoningBudgetTokens: number | null;
   uncensored?: StrataUncensoredFacts;
 }
 
@@ -236,7 +239,14 @@ interface StrataServiceDependencies {
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
 export class StrataService {
-  private readonly residencyPressure = new FileReadResourcePressure();
+  private readonly residencyPressure = new FileReadResourcePressure(Date.now, event => {
+    const message = `Strata资源${event.event === "recovered" ? "恢复" : event.event === "critical" ? "紧急保护" : "预警（不中断）"}：RAM=${(event.memoryAvailableBytes / 1024 ** 3).toFixed(2)}GiB commit=${((event.commitAvailableBytes ?? 0) / 1024 ** 3).toFixed(2)}GiB VRAM=${((event.vramAvailableBytes ?? 0) / 1024 ** 3).toFixed(2)}GiB loading=${event.loading} fileRead=${event.fileRead} duration=${event.elapsedMs}ms`;
+    this.state.log = `${this.state.log}\n[Strata] ${message}\n`.slice(-65536);
+    try {
+      const logger = getApplicationLogger();
+      logger[event.event === "recovered" ? "info" : event.event === "critical" ? "error" : "warn"]("prompt", `strata-host-${event.event}`, message, { ...event });
+    } catch { /* Observability cannot cancel generation. */ }
+  });
   private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
   private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) =>
     (this.deps.resourcePressure ?? this.residencyPressure.check.bind(this.residencyPressure))(sample);
@@ -358,7 +368,7 @@ export class StrataService {
           if (pressure) throw new Error(pressure);
           if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
             || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
-            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error("Strata 加载前资源已变化，安全预算不再满足；未加载模型，请释放资源后重试。");
+            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error(`Strata 加载前资源已变化：RAM ${(resources.memoryAvailableBytes / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1)}GiB，提交余量 ${(resources.commitAvailableBytes! / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB，显存 ${(resources.vramAvailableBytes! / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.minimumFreeVramBytes / 1024 ** 3).toFixed(1)}GiB（当前/启动预留）；未加载模型。`);
           signal.throwIfAborted();
           disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure });
         }
@@ -384,7 +394,7 @@ export class StrataService {
         this.hostMemoryMode = fileRead ? "file-read" : plan.resourcePlan?.hostMode ?? null;
         if (fileRead) this.state.log += this.deps.resourcePressure
           ? "\n[Agent] 官方文件回读模式已启用，非完整RAM驻留；速度需实测。\n"
-          : "\n[Strata] 官方文件回读模式已确认；RAM>=2GiB、commit>=6GiB、VRAM>=2GiB时不按完整驻留的3GiB RAM线误停。\n";
+          : "\n[Strata] 官方文件回读模式已确认；RAM/提交普通低余量仅预警，不因单次读数停止；显存保护与持续严重提交不足保护保留。\n";
         if (plan.controlVector) {
           if (!plan.engineLog) throw new Error("Strata uncensored 缺少引擎确认日志。");
           await assertStrataControlVectorLog(plan.engineLog, vectorLogStart, plan.controlVector);
@@ -439,7 +449,8 @@ export class StrataService {
   }
 
   /** Caller owns GPU arbitration. A failed/aborted stream stops the owned process, not just HTTP. */
-  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void): Promise<string> {
+  chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void,
+    onReasoning?: (characters: number) => void): Promise<string> {
     return this.exclusive(async () => {
       validateChatRequest(request);
       signal?.throwIfAborted();
@@ -472,11 +483,12 @@ export class StrataService {
         const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/chat/completions`, {
           method: "POST", redirect: "error", signal: requestSignal,
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: request.modelId, messages: request.messages, max_tokens: budget.maxTokens,
+          // Upstream monitor captures only the first 256K characters. Keep diagnostics before image base64.
+          body: JSON.stringify({ model: request.modelId, max_tokens: budget.maxTokens,
             experimental_speed_projection: mode !== "off",
             ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
             ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}),
-            stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) } })
+            stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) }, messages: request.messages })
         });
         if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream") || !response.body) {
           await response.body?.cancel().catch(() => undefined);
@@ -490,7 +502,11 @@ export class StrataService {
           requestSignal.throwIfAborted();
           const part = await reader.read();
           if (part.done) { stream.push(decoder.decode()); break; }
-          for (const delta of stream.push(decoder.decode(part.value, { stream: true }))) {
+          const previousThinking = stream.diagnostics().reasoningCharacters;
+          const deltas = stream.push(decoder.decode(part.value, { stream: true }));
+          const thinking = stream.diagnostics().reasoningCharacters;
+          if (thinking > previousThinking) onReasoning?.(thinking);
+          for (const delta of deltas) {
             requestSignal.throwIfAborted();
             onText?.(delta);
           }
@@ -521,6 +537,9 @@ export class StrataService {
         await reader?.cancel().catch(() => undefined);
         reader?.releaseLock();
         try { this.deps.onDiagnostics?.({ modelId: request.modelId, ...budget,
+          requestedMaxTokens: request.maxTokens, automaticOutputBudget: request.automaticOutputBudget === true,
+          reasoningRequested: Boolean(request.reasoning), reasoningEffort: request.reasoning?.effort ?? null,
+          reasoningBudgetTokens: request.reasoning?.budgetTokens ?? null,
           contextSize: request.contextSize ?? null, ...stream.diagnostics(), uncensored: {
             mode, requested: mode !== "off", supported: supportsStrataUncensored(request.modelId),
             vectorId: plan.controlVector?.id ?? null, vectorSha256: plan.controlVector?.sha256 ?? null,

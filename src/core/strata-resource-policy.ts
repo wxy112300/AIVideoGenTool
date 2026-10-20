@@ -17,6 +17,8 @@ export interface StrataResourcePlan {
   estimatedCommitBytes?: number;
   commitTrial?: boolean;
   residentBudgetGiB?: number;
+  /** Performance target, not the admission floor when native file readback is allowed. */
+  estimatedResidentMemoryBytes?: number;
 }
 
 /** IQ3_XXS arena size and low-RAM split follow pinned Strata setup.py (0.1.44.1).
@@ -61,26 +63,30 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   // Conservative lower estimate of cache capacity, not an explicit expert slot count.
   const cache = Math.max(0, free! - (6 + reserve / 1024) * GiB);
   const complement = Math.max(0, arena - cache) + headroomGiB * GiB;
-  const hostMode = available >= full ? "arena" : "resident";
-  const requiredMemoryBytes = hostMode === "arena" ? full : complement;
-  if (available < requiredMemoryBytes) throw new Error(`Strata 完整专家驻留预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用内存与提交余量，目前只有 ${(available / GiB).toFixed(1)}GiB；未加载模型。请释放内存后重试，不会静默改用文件回读。`);
+  const hostMode = available >= full && (!options.allowFileReadFallback || options.commitTrial || commit! >= full + total) ? "arena" : "resident";
+  const estimatedResidentMemoryBytes = hostMode === "arena" ? full : complement;
+  const fileReadAllowed = options.allowFileReadFallback === true && !options.commitTrial && hostMode === "resident";
+  // --resident-experts is upstream's soft mode: it checks the whole complement before
+  // allocating, then keeps only what fits after its headroom and reads misses from disk.
+  // Use the configured engine headroom, not a full-complement or adapter-sized
+  // hard gate. Upstream #403/#467 clamps residency and falls back to mapped files.
+  // The larger estimates below are diagnostics, not an allocation/peak guarantee.
+  const requiredMemoryBytes = fileReadAllowed ? headroomGiB * GiB : estimatedResidentMemoryBytes;
+  if (available < requiredMemoryBytes) throw new Error(fileReadAllowed
+    ? `Strata 文件回读启动预留需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM，目前 ${(available / GiB).toFixed(1)}GiB；未加载模型。请释放部分内存后重试。`
+    : `Strata 完整专家驻留预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM，目前 ${(available / GiB).toFixed(1)}GiB；未加载模型。本次未允许文件回读。`);
   // Windows CUDA/WDDM loading also consumes commit independently of physical RAM.
   // Measured on 4090: ~19GiB commit disappeared before the RAM complement allocation.
   // Budget one adapter's capacity rather than assuming free RAM == free commit.
-  const estimatedCommitBytes = requiredMemoryBytes + total;
+  const estimatedCommitBytes = estimatedResidentMemoryBytes + total;
   // Explicit Agent validation only: measure WDDM overhead instead of treating the
   // entire adapter capacity as an observed allocation. RAM/VRAM and live floors remain.
-  // The Agent accepts upstream's bounded file tier instead of demanding the full
-  // complement allocation. Real 32K/64K/128K/262144 runs on this 24GiB Windows
-  // adapter retained >=7.9GiB commit; native auto-cache/file-tier selects its own
-  // bounded complement. Retain a 42GiB admission estimate for explicit file-tier
-  // launches, including H3 after user-authorized adoption. Arena stays strict.
-  const fallbackCommitBytes = Math.max(requiredMemoryBytes, total + 18 * GiB);
   const requiredCommitBytes = options.commitTrial ? requiredMemoryBytes
-    : options.allowFileReadFallback && hostMode === "resident" ? fallbackCommitBytes : estimatedCommitBytes;
+    : fileReadAllowed ? headroomGiB * GiB : estimatedCommitBytes;
   if (commit! < requiredCommitBytes) throw new Error(`Strata Windows 加载预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM、${(requiredCommitBytes / GiB).toFixed(1)}GiB 提交余量（含 CUDA 加载预留），目前提交余量 ${(commit! / GiB).toFixed(1)}GiB；未加载模型。请释放程序占用，或检查系统分页文件容量后重试；应用不会修改系统设置。`);
   return { hostMode, vramReserveMiB: reserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB,
-    ...(options.commitTrial ? { commitTrial: true, estimatedCommitBytes } : {}) };
+    estimatedResidentMemoryBytes, estimatedCommitBytes,
+    ...(options.commitTrial ? { commitTrial: true } : {}) };
 }
 
 /** Apply only a session overlay; base pack/config identity remains unchanged. */
@@ -98,12 +104,11 @@ export function missingStrataResourceMetrics(resources: StrataResources): string
     .filter((key) => { const value = resources[key]; return typeof value !== "number" || !Number.isFinite(value) || value < 0; });
 }
 
-/** A known dangerous metric wins even if a different sensor is temporarily unavailable. */
+/** Stateless GPU guard. Host pressure needs the shared warning/debounce policy,
+ * never an immediate RAM/commit kill from a single reading. */
 export function knownStrataResourcePressure(resources: StrataResources): string | null {
   const valid = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
   if (valid(resources.vramAvailableBytes) && resources.vramAvailableBytes < 2 * GiB) return "Strata 空闲显存低于 2GiB 安全线，已中止自有模型。";
-  if ([resources.memoryAvailableBytes, resources.commitAvailableBytes].some((v) => valid(v) && v < 3 * GiB))
-    return "Strata 可用内存或提交余量低于 3GiB 安全线，已中止自有模型。";
   return null;
 }
 

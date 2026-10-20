@@ -3,6 +3,15 @@ import { readSettingsFromForm } from "../src/renderer/pages/settings/form";
 import { createDefaultSettings } from "../src/core/defaults";
 
 describe("settings form", () => {
+  it("reads reasoning effort and retains it when the Strata control is hidden", () => {
+    const previous = globalThis.document, base = { ...createDefaultSettings(), strataReasoningEffort: "high" as const };
+    globalThis.document = { querySelector: vi.fn(() => null) } as unknown as Document;
+    try {
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataReasoningEffort).toBe("high");
+      globalThis.document = { querySelector: vi.fn((id: string) => id === "#strata-reasoning-effort" ? { value: "off" } : null) } as unknown as Document;
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").strataReasoningEffort).toBe("off");
+    } finally { globalThis.document = previous; }
+  });
   it("reads one uncensored preference and retains it while its Strata control is hidden", () => {
     const previousDocument = globalThis.document;
     const base = { ...createDefaultSettings(), strataUncensored: true, strataUncensoredMode: "community" as const };

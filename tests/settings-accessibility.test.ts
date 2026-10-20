@@ -102,6 +102,17 @@ describe("Settings accessibility markup", () => {
       promptRuntimeBusy: true, promptStatus: { ready: false, detail: "missing" } }), renderOptions);
     expect(markup.match(/<button[^>]*id="release-prompt-model"[^>]*>/)?.[0]).not.toContain("disabled");
   });
+  it("places one four-level reasoning selector beside uncensored, defaulting to medium only for Strata", () => {
+    const settings = { ...state.settings, promptModelId: "strata/qwen3.8-flash-next-iq3_xxs" };
+    const render = (selected = settings) => renderSettingsPage(viewModel({ settings: selected, settingsTab: "prompt" }), renderOptions);
+    const html = render();
+    expect(html.match(/id="strata-reasoning-effort"/g)).toHaveLength(1);
+    const options = html.match(/id="strata-reasoning-effort">(.*?)<\/select>/s)![1];
+    expect(options.match(/<option /g)).toHaveLength(4);
+    expect(options).toContain('value="medium" selected');
+    expect(html).toMatch(/settings-grid two">\s*<label>uncensored.*?id="strata-uncensored".*?id="strata-reasoning-effort"/s);
+    expect(render({ ...settings, promptModelId: "qwen/qwen3.5-4b" })).not.toContain('id="strata-reasoning-effort"');
+  });
   it("offers Strata downloads and unavailable opt-in models before scanning, with no extra root field", () => {
     const nodes = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
     expect(nodes).toContain('data-strata-preparation="runtime"');
