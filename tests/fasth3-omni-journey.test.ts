@@ -33,8 +33,8 @@ it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enq
   expect(h.state().draft.steps).toBe(8);
   expect(h.root.querySelector("#pick-start")).toBeNull();
   expect(h.element("#enqueue").disabled).toBe(true);
-  expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("0.42.1+");
-  h.scan.comfyCompatibility.version = "0.42.1"; h.render();
+  expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("0.42.0+");
+  h.scan.comfyCompatibility.version = "0.42.0"; h.render();
   expect(h.element("#enqueue").disabled).toBe(true);
   if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
   await settle(); h.element("[data-pick-h3-slot]").click(); await settle();

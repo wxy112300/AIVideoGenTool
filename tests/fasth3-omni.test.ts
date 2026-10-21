@@ -84,20 +84,21 @@ describe("FastH3 Omni independent H3 integration", () => {
       fileSystem: fs, workflowRoots: [path.resolve("workflows")], logger: { info: vi.fn() }, getLtxExtensionModelProfile: () => "q3_k_m" });
     const get = handlers.get("workflow:get-bundled")!;
     expect(await get(undefined, modelId, "image")).toMatchObject({ modelId, path: path.resolve("workflows", filename), supportsEndImage: false, supportsVideoExtension: false,
-      metadata: { comfyUi: { minimumVersion: "0.42.1" } } });
+      metadata: { comfyUi: { minimumVersion: "0.42.0" } } });
     expect(await get(undefined, modelId, "video")).toBeNull();
   });
 
-  it.each(["0.39.0", "0.42.0", ""])("rejects core %s before reading or uploading media, including restored queued tasks", async version => {
+  it.each(["0.39.0", "0.41.9", ""])("rejects core %s before reading or uploading media, including restored queued tasks", async version => {
     const { state, task } = fixture();
     const fetch = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith("/system_stats")
       ? { system: { comfyui_version: version }, devices: [] } : {}), { headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetch);
-    await expect(submitTask(task, state.settings, new AbortController().signal)).rejects.toThrow("0.42.1+");
+    await expect(submitTask(task, state.settings, new AbortController().signal)).rejects.toThrow("0.42.0+");
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(modelCoreVersionBlockReason("minimax_h3_ref2va", version)).toBe("");
   });
   it("accepts the supported core version without relabeling old H3 requirements", () => {
+    expect(modelCoreVersionBlockReason(modelId, "0.42.0")).toBe("");
     expect(modelCoreVersionBlockReason(modelId, "0.42.1")).toBe("");
     expect(modelCoreVersionBlockReason(modelId, "v0.43.0")).toBe("");
   });

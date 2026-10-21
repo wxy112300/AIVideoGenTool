@@ -3,7 +3,8 @@ import { H3_BASE_RESOLUTIONS } from "../../../video-resolution.js";
 import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3LivePreviewTae, h3Nvfp4TextEncoder } from "../minimax_h3_shared.js";
 
 export const FASTH3_OMNI_MODEL_ID = "minimax_h3_omni";
-export const FASTH3_OMNI_MINIMUM_COMFY_VERSION = "0.42.1";
+// v0.42.0 already detects PDD head banks and passes pdd_steps to MiniMaxH3.
+export const FASTH3_OMNI_MINIMUM_COMFY_VERSION = "0.42.0";
 export const FASTH3_OMNI_WORKFLOW_FILENAME = "minimax_h3_omni_r2v_api.json";
 const revision = "82eff2a6eee6c962846879f4bab52610a4df24d3";
 const filename = "fasth3_omniref_8step_pruned_int8_convrot.safetensors";
@@ -61,19 +62,19 @@ export const minimaxH3Omni: CatalogModelEntry = {
       name: "FastH3 Omni · 多参考 INT8 · 8 步",
       shortName: "FastH3 Omni",
       badge: "H3 · R2V · 8 步",
-      description: "FastVideo 蒸馏 H3 多参考音视频模型。沿用图片/视频参考及视频音轨，固定 8 步；需要 ComfyUI 0.42.1+。独立音频参考、续写和叠加加速尚未开放。"
+      description: `FastVideo 蒸馏 H3 多参考音视频模型。沿用图片/视频参考及视频音轨，固定 8 步；需要 ComfyUI ${FASTH3_OMNI_MINIMUM_COMFY_VERSION}+。独立音频参考、续写和叠加加速尚未开放。`
     },
     "zh-TW": {
       name: "FastH3 Omni · 多參考 INT8 · 8 步",
       shortName: "FastH3 Omni",
       badge: "H3 · R2V · 8 步",
-      description: "FastVideo 蒸餾 H3 多參考影音模型。沿用圖片/影片參考及影片音軌，固定 8 步；需要 ComfyUI 0.42.1+。獨立音訊參考、續寫與疊加加速尚未開放。"
+      description: `FastVideo 蒸餾 H3 多參考影音模型。沿用圖片/影片參考及影片音軌，固定 8 步；需要 ComfyUI ${FASTH3_OMNI_MINIMUM_COMFY_VERSION}+。獨立音訊參考、續寫與疊加加速尚未開放。`
     },
     "en-US": {
       name: "FastH3 Omni · multi-reference INT8 · 8 steps",
       shortName: "FastH3 Omni",
       badge: "H3 · R2V · 8 steps",
-      description: "FastVideo distilled H3 with image/video references and video soundtracks, fixed at 8 steps. Requires ComfyUI 0.42.1+. Standalone audio references, extension and stacked acceleration are not enabled."
+      description: `FastVideo distilled H3 with image/video references and video soundtracks, fixed at 8 steps. Requires ComfyUI ${FASTH3_OMNI_MINIMUM_COMFY_VERSION}+. Standalone audio references, extension and stacked acceleration are not enabled.`
     }
   }
 };

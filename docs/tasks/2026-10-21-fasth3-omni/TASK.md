@@ -1,7 +1,7 @@
 # FastH3 Omni 独立 H3 模型接入
 
 - Status: validating（代码与本地验证完成；真实新模型成片待运行依赖）
-- Updated / Owner: 2026-10-21 / 当前任务
+- Updated / Owner: 2026-10-22 / 当前任务
 - Scope / Authority: 用户要求新增为独立 H3 模型，套用既有逻辑；不下载权重、不替换旧模型或运行时。
 - Execution: direct；无子 agent。
 
@@ -9,13 +9,23 @@
 
 - 新增 INT8 ConvRot FastH3 Omni，复用 H3 R2V 图片/视频参考、视频音轨、Prompt、队列、History 与设置扫描。
 - 固定 8 步 Euler / Simple、guidance 1、video/audio shift 12/3；保留旧 H3 模型、ID 和工作流。
-- 源码确认 ComfyUI v0.42.1 具备完整 PDD checkpoint 的 `pdd_steps` 加载；仓库原推荐 v0.39.2 的 PDD LoRA 支持不等于完整 checkpoint 支持。
+- 当前正确最低线为 ComfyUI v0.42.0：已核对官方该标签的 detector 及 MiniMaxH3 实现均支持完整 checkpoint 的 `pdd_steps`。先前仅检查 v0.42.1 就设为最低线，导致误挡已有能力的 v0.42.0；2026-10-22 已修正。仓库旧推荐 v0.39.2 的 PDD LoRA 支持仍不等于完整 checkpoint 支持。
 - 首版沿用现有参考槽位，不扩展独立音频输入；不开放未经验证的 Extend、Spectrum、稀疏 attention、旧加速 LoRA 组合。
 - 已完成：独立 catalog/三语模型说明、固定权重下载/哈希指引、专用 R2V 图、8 步 PDD 采样、模型切换、Prompt/queue/AV/History 复用，以及创建/入队/执行前的核心版本门槛。稀疏 attention 在此模型解析为 off，保留全局设置和旧 H3 行为；切回 Base 恢复标准步数。
 - 已完成：其输出进入继续创作时回到普通受支持的 H3 R2V 续写模型，保留 source asset/version 身份，不误用 Omni checkpoint 做续写。
-- 2026-10-21 后续：按用户要求将全应用及 Omni 推荐核心统一为 0.42.3；Omni 最低线仍为 0.42.1，各旧工作流最低线不变。同步依赖说明和 Unreleased，25 项相关测试与 typecheck 通过。
-- 当前安装身份待核对：用户报告已升至 0.42.3，但应用设置选中的源码目录在此次只读检查中 `comfyui_version.py` / `pyproject.toml` 均自报 0.42.0，HEAD `40dcb30a96fc345f54632c56af81a4a320c2fc1e`，describe 为 `v0.42.0-15-g40dcb30a9`。未修改安装或路径，未据此宣称运行时已通过 Omni 门槛。
-- 下一步：确认选中核心/运行服务达到 0.42.1+ 并补齐新权重后，从隔离状态做单图 480p/5秒/8步真实生成，再验视频参考、音轨、播放/重启/取消与同参数对照。补齐前不声称 smoke passed 或速度/质量收益。
+- 推荐核心保持用户指定的 0.42.3；本次修正仅改变 Omni 最低线（0.42.0）、相关说明和回归，不改变旧工作流最低线或本机安装。
+- 当前安装身份已核对：所选源码自报 0.42.0，HEAD `40dcb30a96fc345f54632c56af81a4a320c2fc1e`，describe 为 `v0.42.0-15-g40dcb30a9`。本机 origin 为 GitCode 镜像，另外用官方 GitHub v0.42.0 标签核对 detector / model，不仅依赖镜像标签或版本名。
+- 下一步：用户重启 Studio 加载本次构建、重新扫描；后续使用真实权重做隔离单图 480p/5秒/8步生成，再验视频参考、音轨、播放/重启/取消与同参数对照。此版本阻塞已解决；不因 UI 可入队就声称真实成片或速度/质量收益。
+
+## 2026-10-22 版本门槛误判修复
+
+- 根因：先前把“已检查过的 0.42.1”误当作最低要求，三层共同 helper 因此都拒绝自报 0.42.0 的有效核心。
+- 一手源码：[v0.42.0 model.py](https://github.com/Comfy-Org/ComfyUI/blob/v0.42.0/comfy/ldm/minimax/model.py) 的 `pdd_steps`/多 head 投影加载，与 [model_detection.py](https://github.com/Comfy-Org/ComfyUI/blob/v0.42.0/comfy/model_detection.py) 中按 `pdd_steps` 还原音视频 latent 维度的逻辑均已存在。model blob 为 `6e3884b71ef2fe980ce9c387a90ea032e83d64b0`，detector blob 为 `79c0e143eca5b779d5c5d2221be67e46f4c88091`。
+- 修复：catalog 唯一最低值改为 0.42.0，三语描述改为插值读取它；现有 UI / enqueue / submitTask helper 自动沿用。0.39.0、0.41.9、未知版本仍拒绝；补入 0.42.0 正向断言与完整 DOM 点击旅程。
+- Checks：4 文件 / 16 项 focused + typecheck 通过；完整 `verify` 在本次整合状态通过 2387 单元、91 集成、双 TS、干净构建、20 项对比度。日志 `temp/fasth3-gate-fix/verify.log`。前一个 MOSS 任务的 verify 早于本修复，未冒用为本次证据；确认其构建收尾后才运行本轮。
+- 真实 Electron/UI/IPC：`temp/create-smoke-QVZnBI/omni-gate-report.json`。使用真实所选核心的离线版本证据 0.42.0 和明确标识为非权重的微型文件存在性夹具，不改用户模型。键盘选 Omni → 输入 → 缺 Slot 阻塞 → AppApi 准备自有有效 PNG 参考并刷新 → 按钮恢复 → 实际鼠标点击 → waiting task `c519128f-e175-426e-bc6d-0ba6ec5c88d8`；8 步/24FPS/队列停止。夹具不验证权重加载和 GPU 输出；全程未启动生成。
+- Cleanup：`temp/create-smoke-QVZnBI/cleanup.json` 成功；ComfyUI 始终 stopped，关闭本次隔离 Electron。用户原应用未停止/重启/改状态，因此需要用户重启 Studio 才能加载新的 renderer 和主进程版本门槛。
+- 影响：patch；已写 Unreleased，同步当前契约与依赖说明，无版本 bump/打包/发布。
 
 ## Evidence / handoff
 
