@@ -55,6 +55,18 @@ H3 snippets are editable intent seeds, not complete prompts sent directly to the
 
 Keep snippet text short, positive, and executable. Prefer a concrete subject action, camera path, sound source, or endpoint over a catalogue of failure concepts. Stable snippet IDs and the existing flat picker order are compatibility and UX contracts; changing model-facing wording does not require regrouping the picker.
 
+## H3 visual-quality knowledge
+
+`h3/visual-quality.ts` owns the optional photorealistic intent seed and model-facing visual knowledge. Complete H3 request compilers include this same knowledge separately from the compact execution control header: Strata's layered system contract, the generic compiler and Prompt Writer, including reference-auto and Extend; the legacy LM Studio compiler also retains it. The enhancer interprets the full brief, notes and assigned style references, selecting a few concrete skin/material/light/color/temporal attributes only when compatible with the requested medium. Preserve negation, subject scope, reference roles, keyframes, action and inherited continuation appearance. Animation, painting, CG, intentional gloss, hard light and fast motion must retain their authored meaning. Grain and shallow depth of field are optional looks, not automatic quality fixes.
+
+The `visual-photorealistic-quality` quick insert is editable English intent with three localized indexes. Existing IDs/order and saved presets remain intact. No new negative field, runtime setting, forced suffix or global realism default is introduced: the current BasicGuider graphs have no independent negative conditioning. Targeted revisions retain their local edit boundary and image editing keeps its own Pack. [Sources and unmeasured quality limits](research/h3/2026-10-21-visual-quality.md).
+
+## Per-request H3 output language
+
+`src/core/prompt-language.ts` resolves an explicit positive opening authoring directive before the saved Chinese/English preference and automatic input-language fallback. Supported examples are a standalone `用英文` / `用中文` line or opening clause, `请用英文输出提示词：...`, `输出语言：英文`, `Use English. ...` and `Please write the prompt in Chinese. ...`. Keep the directive separate from the scene with a newline or punctuation. Consecutive conflicting opening language directives fail with an actionable error; duplicates of the same choice are harmless. This does not save a new default or add languages beyond Chinese/English.
+
+Only complete opening clauses are recognized: never scan quoted speech, lyrics, visible text, code examples, references, local annotations or later scene sentences for a language keyword. Speech/subtitle instructions (`用英文说...`, `Use English dialogue`, `Write English subtitles`), negated or interrogative instructions and unsupported forms retain the existing backend/default behavior. The shared resolver drives Strata's final task and the multimodal node's `target_language` as well as prose instructions, preventing validator conflicts. Generic/native/PEFT H3 and Prompt Writer receive the same explicit override instruction; legacy LM Studio retains compatibility. Recognized directives remain in the editable source but are authoring metadata, never a video event or output prefix. H3 headings stay English; exact dialogue, lyrics, voiceover and visible text stay verbatim. Targeted revisions keep their fragment/splice boundary; image-edit Packs retain their separate language contract.
+
 ## Presets
 
 Preset IDs remain stable for persisted Settings and history compatibility. Pack content owns the built-in English default bodies. Locale files only provide the preset label and description shown in Create and Settings.

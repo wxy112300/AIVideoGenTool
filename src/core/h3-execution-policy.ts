@@ -11,6 +11,7 @@ import type {
   Settings
 } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
+import { FASTH3_OMNI_MODEL_ID } from "./catalog/models/minimax_h3_omni/definition.js";
 import {
   isH3Ref2vTurboEnabled,
   isH3PddLoraId,
@@ -212,6 +213,7 @@ export function h3AttentionOwnerFor(
 
 export function h3TurboProfileFor(input: Pick<H3ExecutionPolicyInput, "modelId" | "videoLoras">): string | undefined {
   const model = input.modelId;
+  if (model === FASTH3_OMNI_MODEL_ID) return "h3-fasth3-omni";
   const loras = input.videoLoras ?? [];
   if (loras.some((lora) => isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, model))) {
     return "h3-pdd";
@@ -255,10 +257,12 @@ export function resolveH3ExecutionPolicy(
   const attentionMode = normalizeH3AttentionMode(input.attentionMode);
   const attentionOwner = h3AttentionOwnerFor(attentionMode, normalizedFrom);
   const sparseRequested = normalizeH3SparseAttentionMode(input.sparseAttentionMode);
+  const omniSparseNormalized = input.modelId === FASTH3_OMNI_MODEL_ID && sparseRequested !== "off";
+  if (omniSparseNormalized) normalizedFrom.push(`sparse:${sparseRequested}->off`);
   const turboProfile = h3TurboProfileFor(input);
   const motionContextSparseNormalized = motionContext && sparseRequested === "sol-attn";
   if (motionContextSparseNormalized) normalizedFrom.push("sparse:sol-attn->off");
-  const sparseAttentionMode = motionContextSparseNormalized
+  const sparseAttentionMode = motionContextSparseNormalized || omniSparseNormalized
     ? "off"
     : effectiveSparseMode(sparseRequested, turboProfile, isR2v);
   const runtimeMode = normalizeH3RuntimeMode(input.runtimeMode);

@@ -1,122 +1,353 @@
-<div class="studio-prototype">
-  <header class="studio-topbar">
-    <a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a>
-    <nav class="studio-nav" aria-label="主导航"><a href="./create.html" aria-current="page">创建</a><a href="./queue.html">队列 <span class="badge">3</span></a><a href="./history.html">历史</a><a href="./settings.html">设置</a></nav>
-  </header>
-  <main class="studio-body create-page">
-    <section class="page-head create-page-head">
-      <div><div class="page-title"><h1>创建</h1><span class="badge ok">自动保存</span></div><p class="muted">先生产图片素材，再将满意版本送入 H3 图生视频或多参考流程。</p></div>
-      <div class="actions mode-switch" role="group" aria-label="创建模式"><button class="btn primary" data-input-mode="image"><i data-lucide="clapperboard"></i>图生视频</button><button class="btn" data-input-mode="video"><i data-lucide="video"></i>视频续写</button><button class="btn" data-input-mode="image-edit"><i data-lucide="wand-sparkles"></i>图片处理</button></div>
-    </section>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>创建 · Local Video Studio 原型</title>
+  <script src="app/boot.js"></script>
+  <link rel="stylesheet" href="design-system/tokens.css">
+  <link rel="stylesheet" href="design-system/controls.css">
+  <link rel="stylesheet" href="design-system/surfaces.css">
+  <link rel="stylesheet" href="app/app.css">
+  <link rel="stylesheet" href="app/create.css">
+</head>
+<body data-page="create">
+  <div class="app-shell">
+    <header data-shell></header>
+    <main>
+      <section class="page-heading sticky create-heading">
+        <div class="page-title">
+          <h1 data-when="mode=video">创建视频</h1><h1 data-when="mode=extend">视频续写</h1><h1 data-when="mode=image">图片处理</h1>
+        </div>
+        <div class="seg lg" data-set-state="mode" aria-label="创建模式">
+          <button type="button" data-value="video" aria-pressed="true"><i data-lucide="image"></i>图生视频</button>
+          <button type="button" data-value="extend" aria-pressed="false"><i data-lucide="video"></i>视频续写</button>
+          <button type="button" data-value="image" aria-pressed="false"><i data-lucide="wand-sparkles"></i>图片处理</button>
+        </div>
+      </section>
 
-    <section data-mode-panel="image">
-      <div class="handoff-banner" data-handoff-banner hidden><div><span class="badge ok">来自图片项目</span><strong>已将选中图片放入第一个素材 Slot</strong><p class="muted tiny">普通 I2V 中作为首帧；R2F / R2V 中作为 Picture 1，可继续添加其他参考素材。</p></div><button class="btn"><i data-lucide="replace"></i>更换图片</button></div>
-      <div class="workspace">
-        <section class="panel">
-          <div class="section-head"><div><h2>多参考 Slots</h2><p class="muted tiny">H3 R2V · 图片 2/9 · 视频 1/3 · 最多 12 个素材</p></div><button class="btn"><i data-lucide="plus"></i>添加 Slot</button></div>
-          <div class="slot-list">
-            <article class="reference-slot"><div class="slot-thumb"><i data-lucide="user-round"></i></div><div><strong>Picture 1</strong><p class="muted tiny">人物身份与服装</p></div><select aria-label="参考作用"><option>主体</option><option>场景</option><option>风格</option></select><button class="btn icon-btn danger" title="删除"><i data-lucide="x"></i></button></article>
-            <article class="reference-slot"><div class="slot-thumb"><i data-lucide="image"></i></div><div><strong>Picture 2</strong><p class="muted tiny">机场黄昏环境</p></div><select aria-label="参考作用"><option>场景</option><option>主体</option><option>镜头</option></select><button class="btn icon-btn danger" title="删除"><i data-lucide="x"></i></button></article>
-            <article class="reference-slot"><div class="slot-thumb"><i data-lucide="film"></i></div><div><strong>Video 1</strong><p class="muted tiny">动作与声音参考 · 6.2 秒</p></div><select aria-label="参考作用"><option>动作</option><option>镜头</option><option>声音</option></select><button class="btn icon-btn danger" title="删除"><i data-lucide="x"></i></button></article>
-          </div>
-          <div class="media-well has-media" data-drag-demo style="margin-top:12px;min-height:190px">
-            <div class="media-placeholder"><i data-lucide="images"></i><strong>拖入图片或视频可新增参考</strong><span>图片支持粘贴；拖入已有 Slot 可直接覆盖</span></div>
-            <div class="media-caption"><button class="btn"><i data-lucide="folder-open"></i>选择素材</button><button class="btn danger"><i data-lucide="trash-2"></i>清空参考</button></div>
-            <div class="drop-note">松开以添加到参考 Slots</div>
-          </div>
-        </section>
+      <div class="create-workspace">
+        <!-- ================= Left: inputs (sticky) ================= -->
+        <aside class="create-media" aria-label="参考素材">
 
-        <section class="panel">
-          <div class="section-head"><div><h2>提示词</h2><p class="muted tiny">3 / 3 · H3 官方分镜</p></div><div class="actions"><button class="btn icon-btn" title="上一版"><i data-lucide="chevron-left"></i></button><button class="btn icon-btn" title="下一版" disabled><i data-lucide="chevron-right"></i></button><select style="width:auto"><option>H3 官方分镜</option><option>忠实扩写</option><option>动作强化</option></select><button class="btn icon-btn" title="按 H3 官方字段组织完整的视听时间线，适合一般视频请求。"><i data-lucide="info"></i></button><button class="btn primary"><i data-lucide="sparkles"></i>优化 H3 提示词</button></div></div>
-          <textarea>[Shot 1] 使用 Picture 1 的人物身份与服装，置于 Picture 2 的黄昏机场。镜头缓慢向前推进，人物转身看向跑道；动作节奏参考 Video 1。
+          <!-- 图生视频 · 首尾帧 -->
+          <section class="media-panel" data-when="mode=video input=fl2va">
+            <div class="panel-head"><h3>参考画面</h3></div>
+            <div class="frame-grid" id="frame-grid" data-when="media=filled"></div>
+            <button class="drop" type="button" data-when="media=empty"><i data-lucide="image-plus"></i><strong>添加首帧</strong><span class="caption">点击、拖入或粘贴</span></button>
+          </section>
 
-At 00:04.000, cut to a close-up as warm runway light crosses the face.
+          <!-- 图生视频 · 多参考 -->
+          <section class="media-panel" data-when="mode=video input=r2v">
+            <div class="panel-head"><h3>多参考</h3><span class="caption num" id="r2v-count"></span></div>
+            <div class="slot-list lit-group" id="r2v-grid"></div>
+          </section>
 
-overall_soundscape: 远处喷气发动机、微风和衣料摩擦声。
-non_diegetic_music: 克制的电影感弦乐。</textarea>
-          <div class="actions"><label class="field" style="min-width:230px">快速插入<select><option>选择镜头、动作、声音或对白片段</option><option>缓慢推进镜头</option><option>环境声音</option><option>对白标签</option></select></label><button class="btn"><i data-lucide="plus"></i>插入</button><span class="badge ok">结构检查通过</span></div>
-          <details class="control-section prompt-helper">
-            <summary><strong>H3 提示词助手</strong> <span class="badge">R2V 多参考</span></summary>
-            <div class="grid-3"><div class="fact"><span>参考标签</span><strong>Picture / Video 顺序已匹配</strong></div><div class="fact"><span>时间轴</span><strong>包含明确切镜点</strong></div><div class="fact"><span>声音</span><strong>现场声与音乐已分离</strong></div></div>
-            <div class="actions"><button class="btn"><i data-lucide="list-ordered"></i>使用结构模板</button><button class="btn"><i data-lucide="panels-top-left"></i>打开结构化构建器</button></div>
-          </details>
-          <div class="control-section">
-            <div class="section-head"><div><h2>核心输出</h2><p class="muted tiny">只显示会直接改变这次任务的决定</p></div><button class="info-icon" title="加入队列时会把全部参数保存为不可变快照。"><i data-lucide="info"></i></button></div>
-            <div class="grid-3">
-              <label class="field">模型<select data-summary-model><option>MiniMax H3 R2V · 多参考 INT8</option><option>MiniMax H3 R2V · 多参考 INT4</option><option>MiniMax H3 FL2VA</option><option>MiniMax H3 LightX2V Turbo</option><option>Sulphur 2 GGUF</option></select></label>
-              <label class="field">画面比例<select><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option></select></label>
-              <label class="field">清晰度<select data-summary-quality><option>768p · 高显存开放档</option><option>720p</option><option>540p</option><option>480p · 低显存起步</option></select></label>
-              <label class="field">时长<select data-summary-duration><option>10 秒</option><option>15 秒</option><option>8 秒</option><option>5 秒</option></select></label>
-              <label class="field">目标帧率<select data-summary-fps><option>24 FPS · H3 原生</option></select></label>
-            </div>
-            <details class="advanced-settings">
-              <summary><strong>增强与复现</strong><span class="muted tiny">Steps、Spectrum、动作、Seed</span></summary>
-              <div class="grid-3">
-                <label class="field">采样步数（H3）<select data-summary-steps><option>20 · 标准质量</option><option>16 · 平衡预览</option><option>12 · 快速预览</option></select></label>
-                <label class="field">Spectrum 加速<select data-spectrum-mode data-summary-spectrum><option value="off">关闭 · 原生完整计算</option><option value="balanced">平衡 · 使用系统内存缓存</option></select></label>
-                <label class="field" data-spectrum-model-aware hidden>模型感知预测<select><option>关闭 · 标准 Spectrum</option><option>Schedule · 保守调度</option><option>Schedule + Confidence</option><option>Full · 调度、置信度与残差修正</option></select></label>
-                <label class="field">动作幅度<select><option>自然</option><option>轻微</option><option>强烈</option></select></label>
-                <label class="field">随机 Seed<input data-summary-seed value="7161563643789542"></label>
+          <!-- 视频续写 -->
+          <section class="media-panel" data-when="mode=extend">
+            <div class="panel-head"><h3>输入视频</h3><span class="info" data-when="route=motion|boundary" data-tip="从保留范围的末帧开始续写"><i data-lucide="info"></i></span><span class="info" data-when="route=continuum" data-tip="从完整源视频末尾续写"><i data-lucide="info"></i></span>
+              <button class="btn btn-plain btn-sm head-action" type="button" data-when="media=filled"><i data-lucide="x"></i>移除视频</button></div>
+            <div data-when="media=filled" class="extend-source">
+              <div class="source-player" style="--ratio:16 / 9">
+                <div class="source-art"></div>
+                <div class="source-bar">
+                  <button class="pc" type="button" aria-label="播放"><i data-lucide="play"></i></button>
+                  <button class="pc" type="button" data-tip="定位续写起点" aria-label="定位续写起点"><i data-lucide="skip-forward"></i></button>
+                  <div class="source-scrub"><span style="--t:30%"></span></div>
+                  <span class="num caption">00:02.4</span>
+                  <button class="pc" type="button" aria-label="静音"><i data-lucide="volume-2"></i></button>
+                  <button class="pc" type="button" aria-label="全屏"><i data-lucide="maximize"></i></button>
+                </div>
               </div>
-            </details>
-            <div class="summary-strip"><div><strong>H3 原生 24 FPS · 同步立体声音频</strong><p class="muted tiny">240 个模型帧 · 预计显存峰值 20–22 GB</p></div><span class="badge ok">RTX 4090 安全预算内</span></div>
-          </div>
-        </section>
-      </div>
-      <div class="create-action-bar" data-mode-action="image"><div class="action-context"><strong data-action-title>图生视频</strong><span class="muted tiny" data-action-context>H3 R2V · 768p · 10 秒 · 24 FPS · Seed 固定</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger" data-open-dialog="clear-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary" data-demo-enqueue="image"><i data-lucide="list-plus"></i>加入队列</button></div></div>
-    </section>
-
-    <section data-mode-panel="image-edit" hidden>
-      <div class="handoff-banner" data-edit-project-banner hidden><div><span class="badge">继续编辑</span><strong>黄昏机场人物素材 · 基于版本 06</strong><p class="muted tiny">新结果仍会写入同一个图片项目，并保留父版本关系。</p></div><a class="btn" href="./image-detail.html"><i data-lucide="images"></i>返回版本相册</a></div>
-      <div class="workspace image-workspace">
-        <section class="panel">
-          <div class="section-head"><div><h2 data-image-input-title>参考图片</h2><p class="muted tiny" data-image-input-summary>Qwen 多图编辑 · 当前 2 / 6</p></div><button class="btn" data-add-edit-picture data-lama-hidden><i data-lucide="plus"></i>添加图片</button></div>
-          <div class="slot-list edit-picture-list" data-edit-picture-list>
-            <article class="reference-slot" data-edit-picture="1"><div class="slot-thumb picture-scene-thumb"><i data-lucide="image"></i></div><div><strong>Picture 1</strong><p class="muted tiny">airport-scene.png · 基础画面</p></div><select aria-label="Picture 1 的作用" disabled data-lama-hidden><option>基础画面</option></select><div class="picture-actions"><button class="btn" data-open-image-markup title="标记 Picture 1"><i data-lucide="highlighter"></i><span data-image-markup-label>标记图片</span></button><button class="btn icon-btn" title="替换 Picture 1"><i data-lucide="replace"></i></button></div></article>
-            <article class="reference-slot" data-edit-picture="2" data-lama-hidden><div class="slot-thumb picture-person-thumb"><i data-lucide="user-round"></i></div><div><strong>Picture 2</strong><p class="muted tiny">character-v06.png</p></div><select aria-label="Picture 2 的作用"><option>人物</option><option>物体</option><option>姿态</option><option>风格</option><option>背景</option></select><div class="picture-actions"><button class="btn icon-btn" data-open-image-markup title="标记 Picture 2"><i data-lucide="pencil"></i></button><button class="btn icon-btn danger" data-remove-edit-picture title="删除 Picture 2"><i data-lucide="x"></i></button></div></article>
-          </div>
-          <div class="media-well edit-picture-drop" data-drag-demo data-lama-hidden>
-            <div class="media-placeholder"><i data-lucide="images"></i><strong>拖入图片添加参考</strong><span>拖到已有 Picture 可直接覆盖</span></div>
-            <div class="media-caption"><button class="btn"><i data-lucide="folder-open"></i>选择图片</button><button class="btn"><i data-lucide="clipboard-paste"></i>从剪贴板粘贴</button></div>
-            <div class="drop-note">松开以添加 Picture</div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div data-image-prompt-controls><div class="section-head"><div><h2>图片编辑 Prompt</h2><p class="muted tiny"><span data-image-prompt-counter>2 / 3</span> · 当前为结合素材图优化后的版本</p></div><div class="actions"><button class="btn icon-btn" data-image-prompt-prev title="上一版"><i data-lucide="chevron-left"></i></button><button class="btn icon-btn" data-image-prompt-next title="下一版"><i data-lucide="chevron-right"></i></button><select style="width:auto" data-image-prompt-preset><option>综合编辑 · 保守保持</option><option>去除水印</option><option>修复合成痕迹 · Compositing Artifacts</option><option>人物姿态与身份</option><option>添加 / 移除元素</option><option>风格与材质转换</option><option>细节修复</option></select><button class="btn primary" data-optimize-image-prompt><i data-lucide="sparkles"></i>结合图片优化</button></div></div>
-          <textarea data-image-prompt>将 Picture 2 的人物放到 Picture 1 右侧靠窗的位置。保持 Picture 2 的人物身份、面部特征、发型和服装；匹配 Picture 1 的透视、尺度、色温、光源方向、接触阴影、景深和胶片颗粒，使人物自然融入场景。仅让人物右手自然抬起挥手，不要改变 Picture 1 中其他内容。</textarea>
-          <div class="quick-insert-row">
-            <label class="field">快速插入常用指令<select data-image-instruction><option value="">选择保持、修改、质量或禁止项</option><optgroup label="常用修复"><option value="移除画面中的水印、半透明文字和标记，并根据周围内容自然补全被遮挡区域；保持其他内容不变。">去除水印并自然补全</option><option value="修复抠图边缘、色温、光源方向、接触阴影、透视、景深、清晰度和噪点不一致造成的合成痕迹，使所有素材自然融入同一画面。">修复合成痕迹</option></optgroup><optgroup label="保持"><option value="保持人物身份、面部特征和发型不变。">保持人物身份与面部</option><option value="保持原始构图、镜头视角和主体位置不变。">保持构图与主体位置</option><option value="除明确指定的区域外，不要改变画面中的其他内容。">只修改指定内容</option><option value="保持背景结构、光源方向和景深关系不变。">保持背景与光线</option></optgroup><optgroup label="编辑"><option value="移除指定元素，并使用周围纹理、光影和透视自然补全区域。">自然移除指定元素</option><option value="添加指定元素，并匹配原图的透视、尺度、光照、阴影、景深和颗粒。">自然添加指定元素</option><option value="只改变指定人物的目标肢体动作，保持面部、服装、身体比例和其他姿态不变。">只改变指定动作</option></optgroup><optgroup label="质量"><option value="增强真实纹理和局部细节，避免塑料质感、过度锐化、鬼影和虚假纹理。">增强细节但不过度锐化</option></optgroup><optgroup label="禁止"><option value="不要添加文字、Logo、水印或用户未要求的新元素。">不要新增文字或元素</option><option value="不要产生重复肢体、重影、异常手指、面部漂移或背景结构变化。">避免常见生成缺陷</option></optgroup></select></label><button class="btn" data-insert-image-instruction><i data-lucide="plus"></i>插入</button>
-          </div></div>
-          <div class="summary-strip" data-lama-panel hidden><div><strong>局部移除不需要 Prompt</strong><p class="muted tiny">点击 Picture 1 的“绘制移除区域”，用半透明高亮覆盖目标；提交时发送干净原图和独立黑白 Mask。</p></div><span class="badge warn">尚未绘制 Mask</span></div>
-          <div class="control-section">
-            <div class="section-head"><div><h2>生成设置</h2><p class="muted tiny">先生成候选版本，选中满意结果后再到详情页放大</p></div><span class="badge ok" data-image-version-badge>预计 6 个版本</span></div>
-            <div class="grid-3 image-generation-grid">
-              <label class="field">模型<select data-image-model><option value="qwen">Qwen Image Edit 2511 FP8</option><option value="lama">LaMa · 局部移除</option><option value="flux">FLUX.1 Kontext Dev FP8</option><option value="seedream">Seedream 5.0 Lite · 云端</option></select></label>
-              <label class="field">质量<select data-image-quality><option>原生质量</option><option>Lightning · 快速</option></select></label>
-              <label class="field">输出格式<select data-image-format><option value="png">PNG · 无损</option><option value="jpeg">JPEG · 较小文件</option><option value="webp">WebP · 高压缩率</option></select></label>
-              <label class="field range-field"><span class="range-heading"><span>生成数量</span><strong data-image-count-value>6 张</strong></span><input type="range" min="1" max="10" step="1" value="6" data-image-count><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
-              <label class="field image-seed-field" data-lama-hidden>Seed · 留空随机<div class="seed-input-row"><input data-image-seed-input data-summary-seed inputmode="numeric" placeholder="每张随机"><button class="btn icon-btn" data-random-image-seed title="生成随机 Seed"><i data-lucide="dices"></i></button><button class="btn icon-btn" data-clear-image-seed title="清空并恢复随机"><i data-lucide="x"></i></button></div></label>
+              <div class="trim-panel" data-when="route=motion|boundary">
+                <div class="row between"><span class="label">裁剪保留范围<span class="info" data-tip="视频保持暂停；拖动左右手柄时预览对应画面"><i data-lucide="info"></i></span></span><span class="num caption" id="trim-readout"></span></div>
+                <div class="trim" id="trim"><div class="trim-strip"></div><div class="trim-sel"></div><input type="range" min="0" max="10" step="0.1" value="2.4" aria-label="裁剪起点"><input type="range" min="0" max="10" step="0.1" value="8" aria-label="裁剪终点"></div>
+                <div class="trim-stats num"><div><span>保留</span><b id="trim-kept"></b></div><div><span>裁掉</span><b id="trim-cut"></b></div><div><span>新增</span><b id="trim-add"></b></div><div><span>预计成片</span><b id="trim-total"></b></div></div>
+              </div>
             </div>
-            <div class="summary-strip"><div><strong data-image-batch-summary>一个任务 · 6 个随机 Seed 顺序生成</strong><p class="muted tiny" data-image-output-summary>PNG · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”</p></div><span class="badge ok">RTX 4090 顺序执行</span></div>
-          </div>
-        </section>
-      </div>
-      <div class="create-action-bar" data-mode-action="image-edit"><div class="action-context"><strong data-action-title>图片处理</strong><span class="muted tiny" data-action-context>Qwen Image Edit · PNG · 6 张 · Seed 随机</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger" data-open-dialog="clear-image-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary" data-demo-enqueue="image-edit"><i data-lucide="list-plus"></i>加入队列</button></div></div>
-    </section>
+            <button class="drop" type="button" data-when="media=empty"><i data-lucide="video"></i><strong>添加视频</strong><span class="caption">点击或拖入</span></button>
 
-    <section data-mode-panel="video" hidden>
-      <div class="workspace">
-        <section class="panel"><div class="section-head"><div><h2>输入视频</h2><p class="muted tiny">裁出要保留的片段，从范围末帧继续生成</p></div><button class="btn danger"><i data-lucide="x"></i>移除视频</button></div><div class="media-well has-media"><div class="media-placeholder"><i data-lucide="film"></i><strong>source-airport.mp4</strong><span>00:00.0 — 00:08.4 · 拖动手柄时暂停预览</span></div></div><div class="summary-strip" style="margin-top:12px"><span>保留 <strong>8.4 秒</strong></span><span>新增 <strong>5 秒</strong></span><span>预计成片 <strong>13.4 秒</strong></span></div></section>
-        <section class="panel"><div class="section-head"><div><h2>描述接下来发生什么</h2><p class="muted tiny">H3 使用结尾帧接续并保留原生音轨；边界动作可能变化</p></div><button class="btn primary"><i data-lucide="sparkles"></i>优化 H3 提示词</button></div><textarea>[Shot 1] 从保留片段末帧继续。人物向跑道走去，镜头平稳跟随，并保持上一段的环境声空间感。</textarea><div class="grid-3" style="margin-top:14px"><label class="field">模型<select data-summary-model><option>MiniMax H3 FL2VA</option><option>MiniMax H3 INT4</option><option>MiniMax H3 Turbo</option></select></label><label class="field">新增时长<select data-summary-duration><option>5 秒</option><option>10 秒</option></select></label><label class="field">清晰度<select data-summary-quality><option>768p</option><option>720p</option></select></label><label class="field">目标帧率<select data-summary-fps><option>24 FPS</option><option>30 FPS</option></select></label></div></section>
+            <!-- Motion Context latent (R2V route) -->
+            <div class="sub-panel" data-when="route=motion media=filled">
+              <div class="sub-head"><strong>Motion Context latent<span class="info" data-tip="可选；不可用时改为从源视频读取"><i data-lucide="info"></i></span></strong></div>
+              <div class="file-pick" data-tip="已从 History 自动绑定"><span class="ok-dot" aria-label="可用"></span><code class="ellipsis">city-walk-1019.motion-context.safetensors</code><button class="btn btn-plain btn-sm" type="button">更换</button><button class="btn btn-icon btn-sm" type="button" data-tip="清除 latent" aria-label="清除 latent"><i data-lucide="x"></i></button></div>
+            </div>
+            <div class="sub-panel" data-when="route=motion media=filled">
+              <div class="sub-head"><strong>多参考</strong><span class="caption num" id="extend-count"></span></div>
+              <div class="slot-list" id="extend-slots"></div>
+            </div>
+
+            <!-- Continuum files -->
+            <div class="sub-panel" data-when="route=continuum media=filled">
+              <div class="sub-head"><strong>Continuum 文件</strong><div class="seg sm" id="run-route"><button type="button" aria-pressed="true" data-tip="首个 Run 在入队时创建">原生 Run Storage</button><button type="button" aria-pressed="false" data-tip="使用同一套 H3 权重生成的完整 JointAV latent">AV 兼容模式</button></div></div>
+              <div class="run-status"><span class="status success"><i data-lucide="circle-check"></i>可继续</span><span class="caption num">已接受 8 / 16 段</span></div>
+              <div class="dep-list">
+                <div class="dep" data-state="ok"><span class="dot"></span><div><strong>Run Storage 清单</strong><code class="ellipsis">run-storage/city-walk-1019/manifest.json</code></div></div>
+                <div class="dep" data-state="ok"><span class="dot"></span><div><strong>第 8 段 payload</strong><code class="ellipsis">chunk-08.av.safetensors</code></div></div>
+                <div class="dep" data-state="pending"><span class="dot"></span><div><strong>第 9 段 payload</strong><code class="ellipsis">入队时创建</code></div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 图片处理 -->
+          <section class="media-panel" data-when="mode=image">
+            <div class="panel-head"><h3>参考图片</h3></div>
+            <div class="slot-list" id="picture-list" data-when="media=filled"></div>
+            <button class="drop" type="button" data-when="media=empty"><i data-lucide="image-plus"></i><strong>添加基础画面</strong><span class="caption">点击、拖入或粘贴</span></button>
+          </section>
+        </aside>
+
+        <!-- ================= Right: editor ================= -->
+        <div class="create-editor">
+
+          <!-- Prompt -->
+          <section class="card pad stack prompt-card" id="prompt-card" data-show-prompt>
+            <div class="prompt-toolbar">
+              <h3 data-when="mode=video|image">提示词</h3><h3 data-when="mode=extend">描述接下来发生什么</h3>
+              <span class="meta num" id="version-label">2 / 3 · 扩写 1</span>
+              <div class="version-switch">
+                <button class="btn btn-icon btn-sm" type="button" id="prompt-prev" data-tip="上一版提示词" aria-label="上一版提示词"><i data-lucide="chevron-left"></i></button>
+                <button class="btn btn-icon btn-sm" type="button" id="prompt-next" data-tip="下一版提示词" aria-label="下一版提示词"><i data-lucide="chevron-right"></i></button>
+                <button class="btn btn-icon btn-sm btn-destructive" type="button" id="prompt-clear" data-tip="清空当前提示词版本" aria-label="清空当前提示词版本"><i data-lucide="trash-2"></i></button>
+              </div>
+              <span class="spacer"></span>
+              <div class="preset-select" data-when="mode=video|extend"><select id="preset" data-size="sm" aria-label="扩写方式">
+                <option data-note="按 H3 官方字段组织完整视听时间线" selected>通用影视时间线</option>
+                <option data-note="补全动作、镜头、材质、光照与音效">影视细节扩写</option>
+                <option data-note="优先保护参考图身份、构图与连续性">参考画面保真</option>
+                <option data-note="无剪辑连续镜头，强调因果与收束">单镜头连续动作</option>
+                <option data-note="对白、演唱、环境声与音乐同步">对白与原生声音</option>
+                <option data-note="按时长拆解镜头节拍与转场">节拍分镜与镜头节奏</option>
+                <option data-note="保护产品、界面与品牌素材真实性">产品与品牌演示</option>
+                <option data-note="歌曲、歌词、节拍与表演同一时间线">音乐视频与歌词</option>
+                <option data-note="角色锁定、因果故事与风格化运动">风格化动画叙事</option>
+                <option data-note="只按（批注：……）修改对应句子">批注修订</option>
+                <option data-note="为 R2V 图片、视频与音频分配关系">多参考关系编排</option>
+              </select></div>
+              <div class="preset-select" data-when="mode=image"><select id="image-preset" data-size="sm" aria-label="图片提示词优化方式">
+                <option data-note="补充区域、材质、光照与边缘融合" selected>细节增强</option>
+                <option data-note="只澄清明确的编辑意图">忠实整理</option>
+              </select></div>
+              <button class="btn btn-icon btn-gray btn-sm runtime-btn" type="button" id="runtime-btn" data-state="idle"><i data-lucide="play"></i></button>
+              <button class="btn btn-tinted btn-sm" type="button" id="enhance"><i data-lucide="sparkles"></i>优化提示词</button>
+            </div>
+
+            <div class="rich-editor" id="rich-prompt" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false"></div>
+            <div class="whole" id="whole-script" hidden></div>
+
+            <div class="page-tabs-row" data-when="long=on" id="page-tabs-row">
+              <div class="mode-select"><select id="ai-mode" data-size="sm" aria-label="写作方式"><option data-note="一次写完所有段">全自动</option><option selected data-note="先写提纲，再逐页扩写">半自动</option></select></div>
+              <span class="sep" aria-hidden="true"></span>
+              <div class="page-tabs" id="page-tabs" role="tablist" aria-label="提示词分段"></div>
+              <button class="btn btn-icon btn-sm" type="button" id="lock-page" data-tip="锁定本页" aria-label="锁定本页"><i data-lucide="lock-open"></i></button>
+              <span class="sep" aria-hidden="true"></span>
+              <div class="seg sm" id="script-view"><button type="button" data-value="pages" aria-pressed="true" data-tip="分段" aria-label="分段"><i data-lucide="panels-top-left"></i></button><button type="button" data-value="whole" aria-pressed="false" data-tip="整片" aria-label="整片"><i data-lucide="scroll-text"></i></button></div>
+            </div>
+
+            <div class="prompt-foot">
+              <span class="menu-anchor">
+                <button class="btn btn-gray btn-sm" type="button" data-menu-trigger aria-expanded="false"><i data-lucide="text-cursor-input"></i>快速插入<i data-lucide="chevron-down"></i></button>
+                <div class="menu popover insert-menu" role="dialog" aria-label="快速插入">
+                  <div class="menu-search"><div class="input-group"><i data-lucide="search"></i><input placeholder="搜索画质、镜头、动作、声音或对白" id="insert-search" aria-label="搜索快速插入"></div></div>
+                  <div id="insert-items"></div>
+                </div>
+              </span>
+              <span class="spacer"></span>
+              <span class="prompt-check" data-when="mode=video|extend" data-tip-title="H3 提示词检查" data-tip="字段完整 · 时间线覆盖 8.0 秒 · 无冲突"><i data-lucide="shield-check"></i>H3 检查通过</span>
+              <span class="word-count num" id="word-count" aria-live="polite"></span>
+            </div>
+          </section>
+
+          <!-- Promptless image tools -->
+          <section class="card pad promptless" data-when="mode=image imagekind=cutout">
+            <span class="dialog-icon accent"><i data-lucide="scissors"></i></span><div><h3>自动抠图</h3><p class="meta">无需提示词 · 输出透明背景 PNG</p></div>
+          </section>
+          <section class="card pad promptless" data-when="mode=image imagekind=removal">
+            <span class="dialog-icon accent"><i data-lucide="eraser"></i></span><div><h3>局部移除</h3><p class="meta">无需提示词 · 只处理 Mask 区域</p></div>
+          </section>
+
+          <!-- Output (video / extend) -->
+          <section class="card pad stack" data-when="mode=video|extend">
+            <div class="card-head"><h3>输出设置</h3></div>
+            <div class="param-grid">
+              <div class="field span-2"><label>模型</label>
+                <div data-when="mode=video"><select id="video-model" aria-label="模型">
+                  <optgroup label="首帧 / 首尾帧"><option data-state="input=fl2va" data-note="推荐 · 音画同步" selected>MiniMax H3 FL2VA · 首帧 / 首尾帧</option><option data-state="input=fl2va" data-note="16 GB 显存可用">MiniMax H3 FL2VA · INT4 低显存</option><option data-state="input=fl2va" data-note="低显存实验">MiniMax H3 FL2VA · Q3 GGUF</option><option data-state="input=fl2va" data-note="8 步快速">MiniMax H3 LightX2V Turbo · 首尾帧</option></optgroup>
+                  <optgroup label="多参考"><option data-state="input=r2v">MiniMax H3 R2V · 多参考 INT8</option><option data-state="input=r2v" data-note="低显存">MiniMax H3 R2V · 多参考 INT4</option></optgroup>
+                  <optgroup label="其他"><option disabled data-note="缺组件">Wan 2.2 I2V 5B</option></optgroup>
+                </select></div>
+                <div data-when="mode=extend"><select id="extend-model" aria-label="模型">
+                  <option data-state="route=motion" data-note="Motion Context 推荐" selected>MiniMax H3 R2V · 多参考 INT8</option>
+                  <option data-state="route=boundary" data-note="尾帧兼容">MiniMax H3 FL2VA · 首帧 / 首尾帧</option>
+                  <option data-state="route=continuum" data-note="Native AV Continuum">MiniMax H3 Continuum · JointAV 接续</option>
+                </select></div>
+              </div>
+              <div class="field"><label>画面比例</label>
+                <div data-when="mode=video"><select id="ratio" aria-label="画面比例"><option value="source" selected>原图</option><option value="16:9">16:9</option><option value="21:9">21:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:3">4:3</option><option value="3:4">3:4</option></select></div>
+                <div data-when="mode=extend"><select id="ratio-extend" disabled aria-label="画面比例"><option>跟随输入视频</option></select></div>
+              </div>
+              <div class="field span-3 res-field" id="video-res" data-min="256" data-max="2160" data-step="16" data-align="16">
+                <span class="label">清晰度<span class="value caption num" data-res-out></span></span>
+                <div class="seg res-seg" data-res-seg aria-label="清晰度">
+                  <button type="button" data-value="360" aria-pressed="false">360p</button>
+                  <button type="button" data-value="480" aria-pressed="false" data-tip="最快">480p</button>
+                  <button type="button" data-value="540" aria-pressed="false">540p</button>
+                  <button type="button" data-value="640" aria-pressed="false">640p</button>
+                  <button type="button" data-value="720" aria-pressed="true" data-tip="推荐">720p</button>
+                  <button type="button" data-value="768" aria-pressed="false">768p</button>
+                  <button type="button" data-value="1080" aria-pressed="false" data-tip-title="1080p · 二次采样" data-tip="需要 24 GB 显存">1080p</button>
+                  <button type="button" data-value="custom" aria-pressed="false"><i data-lucide="sliders-horizontal"></i>自定义</button>
+                </div>
+                <div class="slider-field js-slider res-custom" data-res-slider hidden><div><div class="range-wrap"><input type="range" min="256" max="2160" step="16" value="832" aria-label="自定义短边"></div><div class="range-ticks"><span>256</span><span>2160</span></div></div><label class="number"><input type="number" min="256" max="2160" step="16" value="832" aria-label="自定义短边（像素）"><span>px</span></label></div>
+              </div>
+              <div class="field"><label>采样步数</label><select aria-label="采样步数"><option>8 步 · 蒸馏</option><option selected>30 步</option><option>40 步</option></select></div>
+              <div class="field"><label>Spectrum<span class="info" data-tip="缓存加速"><i data-lucide="info"></i></span></label><select id="spectrum" aria-label="Spectrum"><option value="on" selected>开</option><option value="off">关</option></select></div>
+              <div class="field"><label>保存 latent<span class="info" data-tip="用于后续续写、Continuum 和原生超分；文件可能比 MP4 更大"><i data-lucide="info"></i></span></label><select id="latent-save" aria-label="保存 latent"><option value="all" selected>保存</option><option value="none">不保存</option></select></div>
+            </div>
+          </section>
+
+          <!-- Time & motion (above LoRA, per the long-video plan) -->
+          <section class="card pad stack" data-when="mode=video|extend">
+            <div class="card-head"><h3>时间与运动</h3><span class="caption num">24 FPS</span></div>
+            <div class="param-grid time-grid">
+              <div class="field"><label>生成方式</label>
+                <select id="gen-mode" aria-label="生成方式"><option value="native" data-note="单次，最长 15.1 秒" selected>原生</option><option value="unlocked" data-note="实验性，最长 30 秒">原生解锁</option><option value="continuum" data-note="多段续接，4–120 秒">Continuum 多段</option></select>
+              </div>
+              <div class="field span-2"><span class="label"><span data-when="mode=video">时长</span><span data-when="mode=extend">新增时长</span><span data-when="long=off" class="warn-dot" id="long-warn" hidden data-tip="超过 15.1 秒的片段可能增加显存占用和生成耗时，动作、音画同步与末段质量尚未完整验证。可继续生成。"><i data-lucide="triangle-alert"></i></span><span class="value caption num" id="frames-out"></span></span>
+                <div class="slider-field js-slider" id="dur-field"><div><div class="range-wrap"><input type="range" min="1" max="15.1" step="0.1" value="8" aria-label="时长"></div><div class="range-ticks" id="dur-ticks"><span>1</span><span>5</span><span>10</span><span>15.1</span></div></div><label class="number"><input type="number" min="1" max="15.1" step="0.1" value="8" aria-label="时长（秒）"><span>秒</span></label></div>
+              </div>
+            </div>
+            <div class="long-layout" data-when="long=on">
+              <div class="field"><span class="label">段数<span class="value caption num" id="seg-range"></span></span>
+                <div class="slider-field js-slider" id="seg-field" data-band="4,12"><div><div class="range-wrap"><input type="range" min="1" max="16" step="1" value="6" aria-label="段数"></div><div class="range-ticks"><span>1</span><span>4</span><span>8</span><span>12</span><span>16</span></div></div><label class="number"><input type="number" min="1" max="16" value="6" aria-label="段数"><span>段</span></label></div>
+              </div>
+              <div class="ruler" id="ruler" aria-hidden="true"></div>
+              <div class="row between"><span class="meta" id="layout-summary"></span><button class="btn btn-gray btn-sm" type="button" id="confirm-layout"><i data-lucide="check"></i>确认布局</button></div>
+            </div>
+          </section>
+
+          <!-- Image generation settings -->
+          <section class="card pad stack" data-when="mode=image">
+            <div class="card-head"><h3>生成设置</h3></div>
+            <div class="param-grid">
+              <div class="field span-2"><label>模型</label>
+                <select id="image-model" aria-label="模型">
+                  <optgroup label="生成 / 编辑"><option data-state="imagekind=edit" selected>Qwen Image 2.1 · 官方文生图/图片编辑</option><option data-state="imagekind=edit">Qwen-Image-Edit-2511 · 图片处理</option><option data-state="imagekind=edit">H3 · 参考编辑（REF2VA）</option><option data-state="imagekind=edit" data-note="快速">Z-Image-Turbo · 快速生成/参考控制</option><option data-state="imagekind=edit">OmniGen2 · 文生图/参考编辑</option></optgroup>
+                  <optgroup label="工具"><option data-state="imagekind=cutout">BiRefNet · 自动抠图</option><option data-state="imagekind=removal">LaMa · 局部移除</option></optgroup>
+                </select>
+              </div>
+              <div class="field"><label>质量</label><select aria-label="质量"><option data-note="Lightning 8 步">快速</option><option selected>标准</option><option>精细</option></select></div>
+              <div class="field" data-when="imagekind=edit"><label>输出比例</label><select id="image-ratio" aria-label="输出比例"><option value="source" selected>保持原图</option><option value="1:1">1:1</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option><option value="3:4">3:4</option><option value="3:2">3:2</option><option value="2:3">2:3</option></select></div>
+              <div class="field span-2" data-when="imagekind=edit"><label>随机 Seed</label><div class="input-group"><input class="num" placeholder="留空则每张随机" aria-label="随机 Seed"><button class="btn btn-icon btn-sm" type="button" data-tip="生成随机 Seed" aria-label="生成随机 Seed" data-seed-random><i data-lucide="dices"></i></button><button class="btn btn-icon btn-sm" type="button" data-tip="清空 Seed" aria-label="清空 Seed" data-seed-clear><i data-lucide="x"></i></button></div></div>
+              <div class="field span-3 res-field" id="image-res" data-when="imagekind=edit" data-min="480" data-max="2160" data-step="8" data-align="8" data-free>
+                <span class="label">输出分辨率<span class="value caption num" data-res-out></span></span>
+                <div class="seg res-seg" data-res-seg aria-label="快速选择分辨率">
+                  <button type="button" data-value="source" aria-pressed="false">原图</button>
+                  <button type="button" data-value="720" aria-pressed="false">720</button>
+                  <button type="button" data-value="1024" aria-pressed="true">1024</button>
+                  <button type="button" data-value="1080" aria-pressed="false">1080</button>
+                  <button type="button" data-value="1536" aria-pressed="false">1536</button>
+                  <button type="button" data-value="2160" aria-pressed="false">2160</button>
+                </div>
+                <div class="slider-field js-slider" data-res-slider><div><div class="range-wrap"><input type="range" min="480" max="2160" step="8" value="1024" aria-label="输出短边"></div></div><label class="number"><input type="number" min="480" max="2160" step="8" value="1024" aria-label="输出短边（像素）"><span>px</span></label></div>
+              </div>
+              <div class="field span-3"><span class="label">生成数量</span>
+                <div class="slider-field js-slider" id="count-field"><div><div class="range-wrap"><input type="range" min="1" max="8" step="1" value="4" aria-label="生成数量"></div><div class="range-ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div></div><label class="number"><input type="number" min="1" max="8" value="4" aria-label="生成数量"><span>张</span></label></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- LoRA: drag the grip (or ↑/↓ on it) to reorder; the add menu inserts on click -->
+          <section class="card lora-card" data-show-prompt>
+            <div class="lora-head"><h3><span data-when="mode=image">图片 LoRA</span><span data-when="mode=video|extend">LoRA</span></h3><span class="caption num" id="lora-caption"></span></div>
+            <div class="lora-list" id="lora-list"></div>
+            <div class="lora-foot">
+              <span class="menu-anchor">
+                <button class="btn btn-gray btn-sm" type="button" data-menu-trigger aria-expanded="false"><i data-lucide="plus"></i>添加 LoRA<i data-lucide="chevron-down"></i></button>
+                <div class="menu popover lora-menu" role="dialog" aria-label="添加 LoRA">
+                  <div class="menu-search"><div class="input-group"><i data-lucide="search"></i><input placeholder="搜索 LoRA" id="lora-search" aria-label="搜索 LoRA"></div></div>
+                  <div id="lora-items"></div>
+                </div>
+              </span>
+            </div>
+          </section>
+
+          <!-- Reproducibility + workflow -->
+          <section class="card pad stack" data-when="mode=video|extend">
+            <div class="param-grid">
+              <div class="field"><label>随机 Seed</label><div class="input-group"><input class="num" id="seed" placeholder="留空则随机" aria-label="随机 Seed"><button class="btn btn-icon btn-sm" type="button" data-tip="生成一个新的随机 Seed" aria-label="生成一个新的随机 Seed" data-seed-random><i data-lucide="dices"></i></button><button class="btn btn-icon btn-sm" type="button" data-tip="清空 Seed" aria-label="清空 Seed" data-seed-clear><i data-lucide="x"></i></button></div></div>
+              <div class="field span-2"><label>ComfyUI API 工作流</label><div class="workflow-row"><i data-lucide="workflow"></i><code class="ellipsis" data-tip="E:\workflows\h3-fl2va-api.json">h3-fl2va-api.json · 内置</code><button class="btn btn-gray btn-sm" type="button"><i data-lucide="folder-open"></i>更换 JSON</button></div></div>
+            </div>
+          </section>
+
+          <!-- Submit -->
+          <div class="submit-bar" id="submit-bar">
+            <div class="submit-copy">
+              <span class="block-reason" data-when="block=blocked"><i data-lucide="circle-alert"></i><span id="block-text">请先选择首帧图片</span><button class="btn btn-plain btn-sm" type="button" id="block-jump">去添加</button></span>
+              <span class="submit-summary num" data-when="block=ready" id="submit-summary"></span>
+            </div>
+            <span class="draft-alert" data-when="draft=failed" role="alert"><span class="status warning"><i data-lucide="triangle-alert"></i>草稿未能保存</span><button class="btn btn-plain btn-sm" type="button"><i data-lucide="refresh-cw"></i>重试</button></span>
+            <span class="caption num" id="token-estimate" data-tip="不含参考图和系统模板">312 tokens</span>
+            <button class="btn btn-plain btn-sm btn-destructive" type="button" id="clear-draft"><i data-lucide="trash-2"></i>清空</button>
+            <button class="btn btn-hero lit" type="button" id="enqueue"><i data-lucide="list-plus"></i><span class="btn-label"><span class="ghost">加入中…</span><span data-label>加入队列</span></span></button>
+          </div>
+        </div>
       </div>
-      <div class="create-action-bar" data-mode-action="video"><div class="action-context"><strong data-action-title>视频续写</strong><span class="muted tiny" data-action-context>H3 FL2VA · 新增 5 秒 · 768p · 24 FPS</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger"><i data-lucide="x"></i>清空</button><button class="btn primary" data-demo-enqueue="video"><i data-lucide="list-plus"></i>加入队列</button></div></div>
-    </section>
-  </main>
-  <div class="dialog-backdrop" id="clear-dialog"><section class="dialog" role="dialog" aria-modal="true"><div><span class="badge warn">不可撤销</span><h2 style="margin-top:9px">清空当前创作？</h2></div><p class="muted">参考素材、提示词版本和当前参数都会恢复默认；已经加入队列的任务不受影响。</p><div class="actions" style="justify-content:flex-end"><button class="btn" data-close-dialog>取消</button><button class="btn danger" data-close-dialog>确认清空</button></div></section></div>
-  <div class="dialog-backdrop" id="clear-image-dialog"><section class="dialog" role="dialog" aria-modal="true"><div><span class="badge warn">清空草稿</span><h2 style="margin-top:9px">清空图片编辑内容？</h2></div><p class="muted">基础素材、编辑要求和当前参数会恢复默认；历史项目和已经加入队列的批次不受影响。</p><div class="actions" style="justify-content:flex-end"><button class="btn" data-close-dialog>取消</button><button class="btn danger" data-close-dialog>确认清空</button></div></section></div>
-  <div class="image-markup-overlay" data-image-markup-overlay hidden>
-    <header class="image-markup-header"><div><strong data-markup-title>标记 Picture 1</strong><span class="muted tiny">airport-scene.png · 原图不会被修改</span></div><div class="actions"><button class="btn" data-markup-cancel>取消</button><button class="btn primary" data-markup-save><i data-lucide="check"></i><span data-markup-save-label>保存标记</span></button></div></header>
-    <div class="image-markup-body"><aside class="image-markup-tools" aria-label="标记工具"><button class="btn icon-btn primary" data-markup-tool="select" title="选择"><i data-lucide="mouse-pointer-2"></i></button><button class="btn icon-btn" data-markup-tool="brush" title="画笔"><i data-lucide="pencil"></i></button><button class="btn icon-btn" data-markup-tool="highlight" title="高亮"><i data-lucide="highlighter"></i></button><button class="btn icon-btn" data-markup-tool="rectangle" data-annotation-tool title="矩形区域"><i data-lucide="square"></i></button><button class="btn icon-btn" data-markup-tool="ellipse" data-annotation-tool title="椭圆区域"><i data-lucide="circle"></i></button><button class="btn icon-btn" data-markup-tool="arrow" data-annotation-tool title="箭头"><i data-lucide="arrow-up-right"></i></button><button class="btn icon-btn" data-markup-tool="text" data-annotation-tool title="文字"><i data-lucide="type"></i></button><span class="markup-tool-divider"></span><button class="btn icon-btn" title="撤销"><i data-lucide="undo-2"></i></button><button class="btn icon-btn" title="重做"><i data-lucide="redo-2"></i></button></aside><main class="image-markup-stage"><div class="image-markup-canvas"><div class="markup-demo-scene"><span class="markup-demo-box" data-annotation-demo>A</span><span class="markup-demo-arrow" data-annotation-demo>→</span><span class="markup-demo-note" data-annotation-demo>移除这里的水印</span><span class="markup-demo-mask" data-mask-demo hidden></span></div></div><div class="markup-zoom"><button class="btn icon-btn"><i data-lucide="minus"></i></button><span>68%</span><button class="btn icon-btn"><i data-lucide="plus"></i></button><button class="btn">适应窗口</button></div></main><aside class="image-markup-inspector" data-markup-inspector><div><strong data-markup-inspector-title>标记说明</strong><p class="muted tiny" data-markup-inspector-copy>区域会自动编号；说明会同时进入 Prompt。</p></div><article class="markup-note-card" data-annotation-tool><span class="markup-note-index">A</span><textarea>移除这里的水印，并根据周围墙面纹理自然补全。</textarea></article><div class="control-section"><label class="field" data-annotation-tool>颜色<select><option>红色 · 高对比</option><option>黄色</option><option>蓝色</option><option>绿色</option></select></label><label class="field">线宽<input type="range" min="2" max="96" value="18"></label></div><p class="muted tiny" data-markup-footer>最终图片会自动要求模型移除红框、箭头、编号和标注文字。</p></aside></div>
+    </main>
   </div>
-</div>
+
+  <!-- Markup / mask editor -->
+  <div class="markup-overlay" id="markup-overlay" hidden>
+    <header class="markup-head"><div><strong id="markup-title">标记 Picture 1</strong><span class="caption">reference-city.png</span></div><div class="row"><button class="btn btn-gray btn-sm" type="button" data-markup-close>取消</button><button class="btn btn-primary btn-sm" type="button" data-markup-close><i data-lucide="check"></i>保存标记</button></div></header>
+    <div class="markup-body">
+      <aside class="markup-tools" aria-label="标记工具" id="markup-tools">
+        <button type="button" data-tool="crop" data-tip="裁剪" data-markup-only><i data-lucide="crop"></i></button>
+        <span class="markup-sep" data-markup-only></span>
+        <button type="button" data-tool="select" aria-pressed="true" data-tip="选择"><i data-lucide="mouse-pointer-2"></i></button>
+        <button type="button" data-tool="brush" data-tip="画笔"><i data-lucide="brush"></i></button>
+        <button type="button" data-tool="highlight" data-tip="高亮"><i data-lucide="highlighter"></i></button>
+        <button type="button" data-tool="rect" data-tip="矩形" data-markup-only><i data-lucide="square"></i></button>
+        <button type="button" data-tool="ellipse" data-tip="椭圆" data-markup-only><i data-lucide="circle"></i></button>
+        <button type="button" data-tool="arrow" data-tip="箭头" data-markup-only><i data-lucide="move-up-right"></i></button>
+        <button type="button" data-tool="text" data-tip="文字" data-markup-only><i data-lucide="type"></i></button>
+        <button type="button" data-tool="eraser" data-tip="橡皮"><i data-lucide="eraser"></i></button>
+        <span class="markup-sep"></span>
+        <button type="button" data-tip="撤销 · Ctrl Z"><i data-lucide="undo-2"></i></button>
+        <button type="button" data-tip="重做 · Ctrl Y"><i data-lucide="redo-2"></i></button>
+      </aside>
+      <main class="markup-stage">
+        <div class="markup-canvas" style="background:linear-gradient(140deg,#0f2027,#2c5364,#7fb3a6)">
+          <span class="mk-rect" data-markup-only style="left:18%;top:22%;width:26%;height:30%"><b>1</b></span>
+          <span class="mk-ellipse" data-markup-only style="left:58%;top:48%;width:20%;height:26%"><b>2</b></span>
+          <span class="mk-mask" data-mask-only style="left:30%;top:56%;width:28%;height:22%"></span>
+        </div>
+        <div class="markup-zoom"><button class="btn btn-icon btn-sm" type="button" aria-label="缩小"><i data-lucide="minus"></i></button><span class="num caption">100%</span><button class="btn btn-icon btn-sm" type="button" aria-label="放大"><i data-lucide="plus"></i></button><button class="btn btn-plain btn-sm" type="button"><i data-lucide="scan"></i>适应窗口</button></div>
+      </main>
+      <aside class="markup-inspector">
+        <div data-markup-only><strong>标记说明</strong><span class="info" data-tip="生成时会要求模型移除框线、箭头、编号和文字"><i data-lucide="info"></i></span></div>
+        <div class="mk-note" data-markup-only><span class="mk-num">1</span><input class="input" value="把路灯换成暖黄色霓虹招牌" aria-label="标记 1 说明"></div>
+        <div class="mk-note" data-markup-only><span class="mk-num">2</span><input class="input" value="移除这辆自行车" aria-label="标记 2 说明"></div>
+        <div class="field" data-markup-only><span class="label">颜色</span><div class="row swatch-row"><button type="button" style="--c:#ff4f55" aria-pressed="true" aria-label="红"></button><button type="button" style="--c:#ffd60a" aria-label="黄"></button><button type="button" style="--c:#30d158" aria-label="绿"></button><button type="button" style="--c:#64d2ff" aria-label="蓝"></button><button type="button" style="--c:#ffffff" aria-label="白"></button></div></div>
+        <div class="field"><span class="label">线宽</span><div class="slider-field js-slider"><div class="range-wrap"><input type="range" min="2" max="28" value="8" aria-label="线宽"></div><label class="number"><input type="number" min="2" max="28" value="8" aria-label="线宽"><span>px</span></label></div></div>
+      </aside>
+    </div>
+  </div>
+
+  <script id="proto-states" type="application/json">
+    {
+      "mode": { "label": "创建模式", "options": { "video": "图生视频", "extend": "视频续写", "image": "图片处理" } },
+      "input": { "label": "图生视频输入（随模型）", "options": { "fl2va": "首尾帧", "r2v": "多参考" } },
+      "route": { "label": "续写路线（随模型）", "options": { "motion": "R2V Motion Context", "boundary": "结尾帧接续", "continuum": "Continuum" } },
+      "long": { "label": "生成方式", "options": { "off": "原生", "on": "Continuum 多段" } },
+      "imagekind": { "label": "图片模型类型", "options": { "edit": "生成 / 编辑", "cutout": "自动抠图", "removal": "局部移除" } },
+      "media": { "label": "素材", "options": { "filled": "已添加", "empty": "空" } },
+      "block": { "label": "提交状态", "options": { "ready": "可提交", "blocked": "有阻塞原因" } },
+      "draft": { "label": "草稿保存", "options": { "ok": "正常（不显示）", "failed": "失败" } }
+    }
+  </script>
+  <script src="../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="design-system/ds.js"></script>
+  <script src="app/app.js"></script>
+  <script src="app/create.js"></script>
+</body>
+</html>

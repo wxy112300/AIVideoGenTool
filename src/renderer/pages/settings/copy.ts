@@ -1,5 +1,6 @@
 import type { ModelScanProfile, UiLocale } from "../../../types";
-import { modelCatalog } from "../../../core/catalog";
+import { H3_COMFY_KITCHEN_VERSION, modelCatalog } from "../../../core/catalog";
+import { COMFYUI_RECOMMENDED_VERSION } from "../../../core/catalog/dependencies/comfy-core";
 
 type SettingsCopyKey =
   | "prompt.uncensored"
@@ -617,7 +618,7 @@ const zhCN: SettingsCopyCatalog = {
   "accel.videoVaeTitle": "H3 视频 VAE",
   "accel.videoVaeDescription": "影响 MiniMax H3 视频 VAE 的编码与解码；保存后对下一个尚未开始的 H3 任务生效，正在计算的任务不变。音频 VAE 和其他模型不受影响。",
   "accel.videoVaeMode": "视频 VAE 后端",
-  "accel.videoVaeModeTip": "FP16 是兼容基线；INT8 ConvRot 是 ComfyUI 官方视频 VAE 加速路径，建议配套 ComfyUI 0.37.0 与 comfy-kitchen 0.2.35 CUDA 内核。",
+  "accel.videoVaeModeTip": `FP16 是兼容基线；INT8 ConvRot 是 ComfyUI 官方视频 VAE 加速路径，建议配套 ComfyUI ${COMFYUI_RECOMMENDED_VERSION} 与 comfy-kitchen ${H3_COMFY_KITCHEN_VERSION} CUDA 内核。`,
   "accel.videoVaeAuto": "自动 · 优先 INT8 ConvRot",
   "accel.videoVaeFp16": "兼容模式 · FP16 基线",
   "accel.videoVaeInt8": "官方加速模式 · INT8 ConvRot",
@@ -956,7 +957,7 @@ const zhTW: SettingsCopyCatalog = {
   "accel.videoVaeTitle": "H3 影片 VAE",
   "accel.videoVaeDescription": "影響 MiniMax H3 影片 VAE 的編碼與解碼；儲存後對下一個尚未開始的 H3 工作生效，正在計算的工作不變。音訊 VAE 與其他模型不受影響。",
   "accel.videoVaeMode": "影片 VAE 後端",
-  "accel.videoVaeModeTip": "FP16 是相容基線；INT8 ConvRot 是 ComfyUI 官方影片 VAE 加速路徑，建議搭配 ComfyUI 0.37.0 與 comfy-kitchen 0.2.35 CUDA 核心。",
+  "accel.videoVaeModeTip": `FP16 是相容基線；INT8 ConvRot 是 ComfyUI 官方影片 VAE 加速路徑，建議搭配 ComfyUI ${COMFYUI_RECOMMENDED_VERSION} 與 comfy-kitchen ${H3_COMFY_KITCHEN_VERSION} CUDA 核心。`,
   "accel.videoVaeAuto": "自動 · 優先 INT8 ConvRot",
   "accel.videoVaeFp16": "相容模式 · FP16 基線",
   "accel.videoVaeInt8": "官方加速模式 · INT8 ConvRot",
@@ -1316,7 +1317,7 @@ const enUS: SettingsCopyCatalog = {
   "accel.videoVaeTitle": "H3 video VAE",
   "accel.videoVaeDescription": "Affects MiniMax H3 video VAE encoding and decoding; after saving, it applies to the next H3 task that has not started. A task already computing is unchanged. The audio VAE and other models are unaffected.",
   "accel.videoVaeMode": "Video VAE backend",
-  "accel.videoVaeModeTip": "FP16 is the compatibility baseline. INT8 ConvRot is ComfyUI's official video VAE acceleration path; pair it with the recommended ComfyUI 0.37.0 and comfy-kitchen 0.2.35 CUDA kernel.",
+  "accel.videoVaeModeTip": `FP16 is the compatibility baseline. INT8 ConvRot is ComfyUI's official video VAE acceleration path; pair it with the recommended ComfyUI ${COMFYUI_RECOMMENDED_VERSION} and comfy-kitchen ${H3_COMFY_KITCHEN_VERSION} CUDA kernel.`,
   "accel.videoVaeAuto": "Automatic · prefer INT8 ConvRot",
   "accel.videoVaeFp16": "Compatibility mode · FP16 baseline",
   "accel.videoVaeInt8": "Official acceleration · INT8 ConvRot",
@@ -1515,6 +1516,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基础显存",
     minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多参考需更多 RAM",
     minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
+    minimax_h3_omni: "22.2GB INT8 权重 · 需 RAM/offload · 显存峰值与速度待实测",
     sulphur2: "RTX 3060 12GB 以上 · 系统 RAM 32GB 以上",
     wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推荐",
     hunyuan15: "RTX 3090/4090 24GB 以上",
@@ -1554,6 +1556,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基礎顯存",
     minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多參考需要更多 RAM",
     minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推薦 · 12GB 僅實驗",
+    minimax_h3_omni: "22.2GB INT8 權重 · 需 RAM/offload · 顯存峰值與速度待實測",
     sulphur2: "RTX 3060 12GB 以上 · 系統 RAM 32GB 以上",
     wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推薦",
     hunyuan15: "RTX 3090/4090 24GB 以上",
@@ -1593,6 +1596,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB or higher · Turbo does not reduce base VRAM",
     minimax_h3_ref2va: "RTX 3090/4090 24GB or higher · multiple references need more RAM",
     minimax_h3_ref2va_int4: "RTX 4070/4080 16GB recommended · 12GB experimental only",
+    minimax_h3_omni: "22.2GB INT8 weights · RAM/offload required · peak VRAM and speed unmeasured",
     sulphur2: "RTX 3060 12GB or higher · System RAM 32GB or higher",
     wan22_5b: "RTX 3080 12GB/4070 12GB or higher · 16GB recommended",
     hunyuan15: "RTX 3090/4090 24GB or higher",

@@ -111,6 +111,13 @@ describe("Settings accessibility markup", () => {
     expect(options.match(/<option /g)).toHaveLength(4);
     expect(options).toContain('value="medium" selected');
     expect(html).toMatch(/settings-grid two">\s*<label>uncensored.*?id="strata-uncensored".*?id="strata-reasoning-effort"/s);
+    for (const markup of [html, render({ ...settings, promptModelId: "strata/future" })]) {
+      for (const id of ["strata-uncensored", "strata-reasoning-effort"]) {
+        const field = markup.match(new RegExp(`<label>[^<]*<select id="${id}"[^>]*>.*?</label>`, "s"))?.[0];
+        expect(field).toBeDefined();
+        expect(field).toMatch(/<\/select><\/label>$/);
+      }
+    }
     expect(render({ ...settings, promptModelId: "qwen/qwen3.5-4b" })).not.toContain('id="strata-reasoning-effort"');
   });
   it("offers Strata downloads and unavailable opt-in models before scanning, with no extra root field", () => {

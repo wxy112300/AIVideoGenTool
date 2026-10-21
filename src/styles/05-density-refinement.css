@@ -596,6 +596,13 @@ main { padding-top: 0; }
   line-height: 1.55;
 }
 
+.confirm-copy .confirm-linked-references {
+  margin-top: 12px;
+  max-height: 128px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 .confirm-progress {
   margin-top: 13px;
   padding: 10px 11px;

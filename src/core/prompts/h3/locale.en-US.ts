@@ -62,6 +62,7 @@ export const snippetLocale: Record<string, PromptSnippetLocale> = {
   "visual-anti-cg-plastic": { group: "Visual realism and materials", label: "Avoid CG, toy, and plastic look" },
   "visual-natural-materials": { group: "Visual realism and materials", label: "Natural skin and material detail" },
   "visual-natural-light": { group: "Visual realism and materials", label: "Natural light and exposure" },
+  "visual-photorealistic-quality": { group: "Visual realism and materials", label: "Photorealistic image quality" },
   "capture-smartphone-1x": { group: "Capture and camera feel", label: "Older smartphone 1x realism" },
   "capture-documentary-handheld": { group: "Capture and camera feel", label: "Documentary handheld feel" },
   "motion-causal-onset": { group: "Motion and reaction", label: "Natural action onset" },

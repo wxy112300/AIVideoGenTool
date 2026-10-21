@@ -1,4 +1,5 @@
 import type { PromptSnippetDefinition } from "../types.js";
+import { h3PhotorealisticQualitySeed } from "./visual-quality.js";
 
 export const h3SnippetDefinitions: readonly PromptSnippetDefinition[] = [
   { id: "continuity-reference-lock", groupId: "continuity", text: "Use each supplied reference only for its assigned role. Preserve the identity, appearance, clothing ownership, spatial relationships, and composition anchors visibly established by the relevant reference while applying the requested changes." },
@@ -7,6 +8,7 @@ export const h3SnippetDefinitions: readonly PromptSnippetDefinition[] = [
   { id: "visual-anti-cg-plastic", groupId: "visual-realism", text: "Use live-action photographic material behavior: natural skin reflectance, fine hair, responsive fabric, varied surface detail, contact shadows, and restrained specular highlights." },
   { id: "visual-natural-materials", groupId: "visual-realism", text: "Preserve small real-world material variation through visible skin and fine hair, slight fabric irregularity, natural reflections, contact shadows, and uneven surface texture." },
   { id: "visual-natural-light", groupId: "visual-realism", text: "Use naturalistic lighting and exposure with believable shadow direction, gradual highlight roll-off, ambient bounce, and scene-consistent color response." },
+  { id: "visual-photorealistic-quality", groupId: "visual-realism", text: h3PhotorealisticQualitySeed },
   { id: "capture-smartphone-1x", groupId: "camera-capture", text: "Use an authentic older-smartphone 1x main-camera look with mild wide-angle perspective, ordinary exposure, subtle handheld drift, slight focus breathing, and restrained motion blur." },
   { id: "capture-documentary-handheld", groupId: "camera-capture", text: "Use observational documentary capture with practical light, modest handheld movement, responsive focus, imperfect framing, and restrained color processing." },
   { id: "motion-causal-onset", groupId: "motion-reaction", text: "Begin the main action with one visible preparation appropriate to that action, then carry its physical response forward continuously." },

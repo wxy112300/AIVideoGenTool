@@ -20,6 +20,7 @@ import { createTranslator, type Translate } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
+import { modelCoreVersionBlockReason } from "../../../core/model-core-requirements";
 import { SPECTRUM_PDD_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, imagePromptPackForTarget } from "../../prompt-packs";
@@ -243,6 +244,7 @@ export interface VideoEnqueueBlockReasonInput {
   startImagePath: string;
   allowTextOnly?: boolean;
   turboCoreBlockReason: string;
+  modelCoreBlockReason?: string;
   turboLoraBlockReason: string;
   selectedLoraBlockReason: string;
 }
@@ -284,8 +286,8 @@ export function videoEnqueueBlockReason(
     ? t(uiKeys.create.validation.startFrameMissing)
     : !input.promptText.trim()
       ? t(uiKeys.create.validation.promptMissing)
-      : input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
-        ? input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
+      : input.modelCoreBlockReason || input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
+        ? input.modelCoreBlockReason || input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
         : !input.workflowPath
           ? t(uiKeys.create.validation.modelWorkflowMissing)
           : !input.r2vSlotsReady
@@ -1081,6 +1083,7 @@ export function buildVideoCreatePageViewModel(
     startImagePath: draft.startImagePath,
     allowTextOnly: h3Mode === "T2VA",
     turboCoreBlockReason,
+    modelCoreBlockReason: modelCoreVersionBlockReason(draft.modelId, environmentScan?.comfyCompatibility.version, state.settings.uiLocale),
     turboLoraBlockReason,
     selectedLoraBlockReason
   });

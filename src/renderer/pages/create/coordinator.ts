@@ -761,10 +761,14 @@ export function createCreateWorkspaceCoordinator(
           ? "minimax_h3_ref2va"
           : undefined
     );
-    const selectedModelId = sourceModelId ?? state.draft.modelId;
+    const candidateModelId = sourceModelId ?? state.draft.modelId;
+    const selectedModelId = isMiniMaxH3R2vModel(candidateModelId) &&
+      modelCatalog.get(candidateModelId)?.definition.capabilities?.supportsVideoExtension === false
+      ? "minimax_h3_ref2va"
+      : candidateModelId;
     const preserveMotionContextDraft = state.draft.inputMode === "video" && isMiniMaxH3R2vModel(state.draft.modelId);
     let selectedWorkflowPath = state.draft.workflowPath;
-    if (sourceModelId) {
+    if (sourceModelId || selectedModelId !== state.draft.modelId) {
       const workflowModelId = bundledWorkflowModelId({
         modelId: selectedModelId,
         videoLoras: []

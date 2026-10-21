@@ -138,10 +138,10 @@ flowchart LR
 
 | 操作 | 文件/记录结果 | 保护与后续行为 |
 | --- | --- | --- |
-| 删除视频作品（含批量） | 删除其版本的视频与可管理辅助文件，再移除记录和封面 | 其他 History、草稿、queue 的共享路径/asset 引用可能阻塞；不是只删列表卡片 |
+| 删除视频作品（含批量） | 删除其版本的视频与可管理辅助文件，再移除记录和封面 | 其他 History、草稿、queue 的共享路径/asset 引用触发二次确认，确认后允许缺失；不级联删除其他记录或整个 Run |
 | 删除视频某版本 | 删除该版本文件，保留作品并选剩余版本 | 不能用此操作删除唯一版本；该情况走整个作品删除 |
 | 删除 JointAV | 删除可管理的 payload/manifest/owner/aliases；该版本资格转 missing | MP4 保留；依赖 AV 的操作不再可用。continuum-run-chunk owner 禁止从单版本删除 |
-| 删除 Motion Context 数据 | 删除可定位传统 latent，清除相应文件引用和路径 | MP4 保留；共享引用会阻塞。canonical AV 重合时须看实际 owner/格式，不能简单按扩展名选这个操作 |
+| 删除 Motion Context 数据 | 删除可定位传统 latent，清除相应文件引用和路径 | MP4 保留；共享引用触发二次确认。canonical AV 重合时须看实际 owner/格式，不能简单按扩展名选这个操作 |
 | 删除图片生成版本 | 删除生成输出及对应版本/封面，保留项目 | source 原始导入版本不能单独删除；同项目共享输出要处理引用 |
 | 删除整个图片项目 | 移除项目并清理非 source 生成文件 | 不顺带删外部原图/托管输入；留存素材由素材库扫描判断是否孤儿 |
 | 清理图片孤儿 | 仅重新验证后的 L 内指定孤儿文件 | 不影响仍被引用的输入，不清理视频/AV |
@@ -151,13 +151,19 @@ flowchart LR
 flowchart TD
   USER[用户明确删除目标] --> RESOLVE[解析版本 / 文件 / owner]
   RESOLVE --> REFS{有其他使用者或 run owner?}
-  REFS -->|有| BLOCK[阻塞并说明依赖]
+  REFS -->|共享引用| CONFIRM[列出关联对象 / 二次确认]
+  CONFIRM -->|取消| KEEP[保留文件与记录]
+  CONFIRM -->|确认且引用未变| DELETE
+  CONFIRM -->|引用变化| REFS
+  REFS -->|独立Run owner| OWNER[保留整个Run / 不级联删除]
   REFS -->|无| DELETE[逐文件删除]
   DELETE -->|完整| COMMIT[更新记录 / 资格 / 封面]
   DELETE -->|部分失败| INVALID[保留失败记录，辅助资格必要时降为 invalid]
 ```
 
 文件系统删除并不是整体原子事务；部分失败不能谎称全部成功。删除保护依赖**最新引用状态**，不是只看最初点击时的截图。批量也必须检查逐项结果与剩余记录，不能把“请求已返回”当成全批成功。
+
+2026-10-20 起，共享引用不再永久拒绝视频删除：第一次确认后若后端发现关联，显示第二个应用确认框，默认取消；明确确认后仅删除所选目标，其他作品、队列和草稿原样保留，可能出现文件/续写数据缺失。Extend 仍按现有实际文件检查与可用回退处理，不保证缺失源视频时仍可执行。授权绑定目标/匹配引用；新引用或目标变化重新确认，不提供全局 force。下方早期“拒绝”实跑记录属于旧策略历史，不代表当前交互。
 
 **已实跑：canonical AV 辅助删除（2026-10-03，Phase 5D）**。History 的“删除原生 AV 数据”→确认，在活动/非活动 Extend 草稿引用时明确拒绝，文件与资格保留；通过 Create“清空草稿”解除引用后再次确认，删除 manifest/payload，保留 MP4、task/asset/version 身份。重启后 AV 为 missing，owner/嵌套 owner/Motion 引用已清除，旧来源检查为 bootstrap/missing，History 播放/返回通过。此结论不覆盖单版本/整作品删除、queue 共享引用或 managed run owner。
 

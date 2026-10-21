@@ -1,4 +1,5 @@
 import type { IpcMain } from "electron";
+import type { HistoryDeleteApproval } from "../src/core/history-delete-confirmation.js";
 import type { Draft, HistoryBatchCopyKind, HistoryMetadataBatchUpdate, HistoryMetadataPatch } from "../src/types.js";
 import type { HistoryDestructiveService } from "./services/history-destructive-service.js";
 import type { HistoryMetadataService } from "./services/history-metadata-service.js";
@@ -54,8 +55,8 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
         : input.data.slice().buffer as ArrayBuffer
     })
   );
-  deps.ipc.handle("history:delete", async (_event, assetId: string) =>
-    deps.destructive.deleteHistory(assetId)
+  deps.ipc.handle("history:delete", async (_event, assetId: string, approval?: HistoryDeleteApproval) =>
+    deps.destructive.deleteHistory(assetId, approval)
   );
   deps.ipc.handle(
     "history:update-metadata",
@@ -69,17 +70,17 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
   );
   deps.ipc.handle(
     "history:delete-batch",
-    async (_event, kind: HistoryBatchCopyKind, assetIds: string[]) =>
-      deps.destructive.deleteHistoryBatch(kind, assetIds)
+    async (_event, kind: HistoryBatchCopyKind, assetIds: string[], approval?: HistoryDeleteApproval) =>
+      deps.destructive.deleteHistoryBatch(kind, assetIds, approval)
   );
-  deps.ipc.handle("history:delete-version", async (_event, assetId: string, versionId: string) =>
-    deps.destructive.deleteVideoVersion(assetId, versionId)
+  deps.ipc.handle("history:delete-version", async (_event, assetId: string, versionId: string, approval?: HistoryDeleteApproval) =>
+    deps.destructive.deleteVideoVersion(assetId, versionId, approval)
   );
-  deps.ipc.handle("history:delete-joint-av", async (_event, assetId: string, versionId: string) =>
-    deps.destructive.deleteJointAv(assetId, versionId)
+  deps.ipc.handle("history:delete-joint-av", async (_event, assetId: string, versionId: string, approval?: HistoryDeleteApproval) =>
+    deps.destructive.deleteJointAv(assetId, versionId, approval)
   );
-  deps.ipc.handle("history:delete-motion-context", async (_event, assetId: string, versionId: string) =>
-    deps.destructive.deleteMotionContext(assetId, versionId)
+  deps.ipc.handle("history:delete-motion-context", async (_event, assetId: string, versionId: string, approval?: HistoryDeleteApproval) =>
+    deps.destructive.deleteMotionContext(assetId, versionId, approval)
   );
   deps.ipc.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) =>
     deps.metadata.setImageCover(projectId, versionId)

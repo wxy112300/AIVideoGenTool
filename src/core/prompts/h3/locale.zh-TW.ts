@@ -62,6 +62,7 @@ export const snippetLocale: Record<string, PromptSnippetLocale> = {
   "visual-anti-cg-plastic": { group: "真實感與材質", label: "避免 CG、玩偶與塑膠感" },
   "visual-natural-materials": { group: "真實感與材質", label: "自然肌膚與材質細節" },
   "visual-natural-light": { group: "真實感與材質", label: "自然光與真實曝光" },
+  "visual-photorealistic-quality": { group: "真實感與材質", label: "寫實畫質 · 真實渲染" },
   "capture-smartphone-1x": { group: "拍攝與設備", label: "舊手機 1x 真實感" },
   "capture-documentary-handheld": { group: "拍攝與設備", label: "紀錄片手持質感" },
   "motion-causal-onset": { group: "動作與反應", label: "自然動作起因" },

@@ -80,13 +80,13 @@ try {
     report.actualVersionSwitchVerified=true;
     await ui.click(`[data-history-version-delete-id="${f.targetVersionId}"]`);
     await ui.click("#accept-confirmation");
-    report.protectionMessage=await pollUntil(()=>client.evaluate("document.querySelector('#app-flash.visible[data-kind=error] [data-flash-message]')?.textContent??''"),
-      text=>text.includes("拒绝物理删除")&&text.includes(f.shared?`history:${f.assetId}:${f.originalVersionId}`:`queue:${f.queueTaskId}`),options.timeout,"Exact shared reference protection");
+    report.protectionMessage=await pollUntil(()=>client.evaluate("document.querySelector('#confirm-description')?.textContent??''"),
+      text=>text.includes("其他记录保留"),options.timeout,"Shared reference confirmation before unlink");
     assert.equal(assetOf(await get()).versions.length,2);
     for(const file of files) assert.equal(await hash(file.path),file.sha256);
     report.protectedFilesUnchanged=true;
     await ui.click("#cancel-confirmation");
-    await ui.click("#dismiss-app-flash");
+    if(await client.evaluate("!!document.querySelector('#app-flash.visible')")) await ui.click("#dismiss-app-flash");
     if(!f.shared) {
       await ui.click("button[data-page=queue]");
       await ui.click(`[data-remove="${f.queueTaskId}"]`);

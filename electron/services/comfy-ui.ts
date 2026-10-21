@@ -1,5 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { modelCoreVersionBlockReason } from "../../src/core/model-core-requirements.js";
+import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
+import { h3PromptOutputLanguageInstruction } from "../../src/core/prompt-language.js";
 import type {
   EnhanceRequest,
   H3PromptPreset,
@@ -274,6 +277,8 @@ export function h3PromptInstruction(
     priorityInstruction,
     ...(extensionContinuityInstruction ? [extensionContinuityInstruction] : []),
     controlInstruction,
+    h3VisualQualityKnowledge,
+    h3PromptOutputLanguageInstruction(request),
     ...(annotationInstruction ? [annotationInstruction] : []),
     userIntent,
     ...(loraInstruction ? [loraInstruction] : []),
@@ -913,11 +918,15 @@ export async function submitTask(
       { signal }
     ),
     jsonRequest<{
+      system?: { comfyui_version?: string };
       devices?: Array<{ vram_total?: number }>;
     }>(`${baseUrl}/system_stats`, { signal }).catch(() => ({
-      devices: []
+      devices: [],
+      system: undefined
     }))
   ]);
+  const coreBlockReason = modelCoreVersionBlockReason(task.modelId, systemStats.system?.comfyui_version, settings.uiLocale);
+  if (coreBlockReason) throw new Error(coreBlockReason);
   const vramTotalBytes = Math.max(
     0,
     ...(systemStats.devices ?? []).map((device) =>

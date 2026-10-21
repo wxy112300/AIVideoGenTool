@@ -22,6 +22,7 @@ import {
   videoPromptForLoras
 } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
+import { FASTH3_OMNI_MODEL_ID, FASTH3_OMNI_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_omni/definition.js";
 import {
   H3_MAX_DURATION_SECONDS,
   H3_MAX_GENERATED_FRAMES,
@@ -192,6 +193,7 @@ function workflowBasename(workflowPath: string): string {
 }
 
 const knownBundledH3WorkflowFilenames = new Set([
+  FASTH3_OMNI_WORKFLOW_FILENAME,
   "minimax_h3_t2va_api.json",
   "minimax_h3_t2va_gguf_q3_api.json",
   "minimax_h3_t2va_turbo_api.json",
@@ -742,7 +744,7 @@ function applyMiniMaxH3PddSampling(
   const pdd = task.videoLoras?.find((lora) =>
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   );
-  if (!pdd) return;
+  if (!pdd && task.modelId !== FASTH3_OMNI_MODEL_ID) return;
 
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
@@ -928,7 +930,7 @@ export function workflowSupportsH3PddSampling(
   return hasNode("KSamplerSelect") &&
     hasNode("BasicScheduler") &&
     hasNode("BasicGuider", (inputs) => Array.isArray(inputs.model)) &&
-    (options.modelId !== "minimax_h3_ref2va" || hasNode("MiniMaxH3ReferenceToVideo"));
+    (!isMiniMaxH3R2vModel(options.modelId ?? "") || hasNode("MiniMaxH3ReferenceToVideo"));
 }
 
 export function workflowSupportsVideoExtension(source: unknown): boolean {
@@ -1836,6 +1838,10 @@ const wan14ModelAssets: Record<
 };
 
 const miniMaxH3ModelAssets: Record<string, { diffusionModel: string; textEncoder: string }> = {
+  [FASTH3_OMNI_MODEL_ID]: {
+    diffusionModel: "fasth3_omniref_8step_pruned_int8_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  },
   minimax_h3_continuum: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
@@ -2319,9 +2325,9 @@ export function renderWorkflow(
       });
     }
   }
-  if (isMiniMaxH3Model(task.modelId) && task.videoLoras?.some((lora) =>
+  if (task.modelId === FASTH3_OMNI_MODEL_ID || (isMiniMaxH3Model(task.modelId) && task.videoLoras?.some((lora) =>
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
-  )) {
+  ))) {
     if (!workflowSupportsH3PddSampling(workflow, { modelId: task.modelId })) {
       throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
     }

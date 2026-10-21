@@ -6,6 +6,7 @@ import { strataPreparationProfiles } from "../src/core/strata-preparation";
 import { normalizeMultimodalPromptOutput } from "../electron/services/multimodal-prompt";
 import { buildStrataPromptRequest } from "../electron/services/strata-prompt";
 import { promptVersionsForDraft } from "../src/core/draft-prompts";
+import { h3PromptPackFor } from "../src/core/prompts/h3/index";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => {
@@ -17,6 +18,49 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("sends an opening language directive through the real Enhance control without translating exact dialogue", async () => {
+    const h = journey = await createJourney({ startImagePath: "fixture.png" });
+    h.state().settings.promptLanguage = "zh";
+    const prompt = '用英文\n女子转向镜头，用中文说："你好。"';
+    h.input("#prompt-input", prompt);
+    let compiled = "";
+    h.enhancePrompt.mockImplementationOnce(async request => {
+      compiled = JSON.stringify((await buildStrataPromptRequest(request, h.state().settings,
+        new AbortController().signal, async () => ({ type: "image_url", image_url: { url: "data:image/png;base64,fixture" } }))).messages);
+      return normalizeMultimodalPromptOutput("integrated_multimodal_description: [Shot 1] The woman turns and says <d>[Chinese] 你好。</d>.\noverall_soundscape: Room tone.\nnon_diegetic_music: N/A", request);
+    });
+    const before = promptVersionsForDraft(h.state().draft).length;
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    await settle();
+    expect(h.enhancePrompt.mock.calls[0]?.[0].prompt).toBe(prompt);
+    expect(compiled).toContain("Use English explanatory prose.");
+    expect(promptVersionsForDraft(h.state().draft)).toHaveLength(before + 1);
+    expect(promptVersionsForDraft(h.state().draft).at(-1)?.text).toContain("<d>[Chinese] 你好。</d>");
+    expect(h.state().settings.promptLanguage).toBe("zh");
+  });
+
+  it("inserts the realism seed through the picker and sends it with the authored action on Enhance", async () => {
+    const h = journey = await createJourney({ startImagePath: "fixture.png" });
+    h.input("#prompt-input", "Only the left hand moves. Keep the camera fixed.");
+    h.input("#prompt-snippet", "visual-photorealistic-quality", "change");
+    h.element("#insert-prompt-snippet").click();
+    await settle();
+    const seed = h3PromptPackFor().snippets.find(snippet => snippet.id === "visual-photorealistic-quality")!.text;
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toContain(seed);
+    expect(document.activeElement).toBe(h.element("#prompt-input"));
+    const before = promptVersionsForDraft(h.state().draft).length;
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    expect(h.enhancePrompt.mock.calls[0]?.[0]).toMatchObject({
+      prompt: `Only the left hand moves. Keep the camera fixed.\n${seed}`, h3PromptMode: "I2VA"
+    });
+    await settle();
+    expect(promptVersionsForDraft(h.state().draft)).toHaveLength(before + 1);
+    expect(promptVersionsForDraft(h.state().draft).at(-1)?.id).toBeTruthy();
+    expect(h.state().queue).toHaveLength(0);
+  });
+
   it.each(["image", "video"] as const)("Strata R2V %s input: missing-file recovery and real Enhance click reach layered thinking without a queue", async inputMode => {
     const h = journey = await createJourney({ modelId: "minimax_h3_ref2va", duration: 15 });
     if (inputMode === "video") {

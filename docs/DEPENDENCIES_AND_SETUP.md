@@ -50,7 +50,7 @@ Agent在64GB/4090上已逐档验证32K基础工具、64K GUI、128K/262144原生
 
 Strata 的应用管理安装可在安装按钮右侧三角菜单选择“卸载”，确认后永久删除当前软件目录（含独立 `.venv`）；共享模型、独立用户数据与目标以外的未知目录不删除。未安装、手动目录或未知归属不提供卸载；安装中与生成/提示词忙碌时禁止操作，后台在删除前复检归属、真实路径及模型根重叠。软件目录中的本地修改不保留，卸载后可一键重装；只离线复扫，不修改 ComfyUI Python、不重启 ComfyUI。更新产生的旧软件由成功更新事务清理，不以卸载代替更新收尾。
 
-当前应用推荐核心为 ComfyUI `0.39.2`，各工作流最低兼容线独立保留。通用 GGUF 使用 leejet 维护版固定提交 `373048b8403a7820620065210a691263d4da0a61`；同为 `2.0.0` 的其他 fork、未确认 origin 或不同提交不会被判为已满足该推荐线。安装/更新成功后清理旧软件，H3 专用 GGUF 的目录和注册名不变。
+当前应用推荐核心为 ComfyUI `0.42.3`，各工作流最低兼容线独立保留。通用 GGUF 使用 leejet 维护版固定提交 `373048b8403a7820620065210a691263d4da0a61`；同为 `2.0.0` 的其他 fork、未确认 origin 或不同提交不会被判为已满足该推荐线。安装/更新成功后清理旧软件，H3 专用 GGUF 的目录和注册名不变。
 
 排错时必须区分以下状态：
 
@@ -233,15 +233,15 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
-- 当前 H3 推荐使用 ComfyUI `0.39.2`，并将官方 `comfy-kitchen` ConvRot CUDA 内核对齐到 `0.2.37`：原生 `ModelAttentionBackend`、`BlockSparseAttention`、H3 PDD head bank 和 `MiniMaxH3SigmaShift` 均由核心提供，不再依赖已撤回的 H3-Optimizations/AIMDO 产品节点。此前在 `0.35.0` 环境采集的验证基线包括 `comfy-kitchen==0.2.33`、`comfy-aimdo==0.5.3`、匹配的 SageAttention/Triton 与 PyTorch 2.10 cu130 trio；这些是历史运行时证据，不是当前推荐版本。
+- 当前 H3 推荐使用 ComfyUI `0.42.3`；应用的官方 `comfy-kitchen` ConvRot CUDA 内核目标对齐为 `0.2.39`，与该核心的固定依赖一致。2026-10-21 核对 [PyPI 正式版](https://pypi.org/project/comfy-kitchen/0.2.39/)为 `0.2.39`，提供 Windows x64 的 Python 3.10、3.11 和 3.12+ ABI3 wheel；这是推荐与安装目标，不代表本机包已升级或真实生成已验。原生 `ModelAttentionBackend`、`BlockSparseAttention`、H3 PDD head bank 和 `MiniMaxH3SigmaShift` 均由核心提供，不再依赖已撤回的 H3-Optimizations/AIMDO 产品节点。此前在 `0.35.0` 环境采集的验证基线包括 `comfy-kitchen==0.2.33`、`comfy-aimdo==0.5.3`、匹配的 SageAttention/Triton 与 PyTorch 2.10 cu130 trio；这些是历史运行时证据，不是当前推荐版本。
 - 设置中的 H3 policy 在任务等待时跟随保存后的 dense attention（Sage、Sage-Triton、PyTorch、Comfy Kitchen）、sparse attention（Auto、关闭、Sol-Attention、原生 SLA、未验证即拒绝的 VSA）、`compatibility/native` runtime 和 `auto/disabled` Comfy compiler；任务开始后冻结本次执行。执行时按实时 `/object_info` 核对所选 ComfyUI 节点的精确输入 schema；显存、async offload、compiler 和最终视频 VAE 不会跨工作流或跨正在执行的任务泄漏。
 - 应用生成的 Spectrum H3 图保留第一遍自适应预测，但默认关闭 `offline_smoothing_replay`。该回放会额外保留多 GiB H3 特征并重新装载模型，在 0.35 + RTX 4090 动态显存配置下可能造成共享 GPU/系统内存压力；手工图仍可显式开启，不能把第一遍进度误认为整项任务完成。
 - PDD FL2VA/Ref2VA 是普通 `LoraLoaderModelOnly` LoRA，固定 8 steps、Euler/Simple、video shift `12`、audio shift `3`、CFG `1.0`。当前 catalog 只接受与 `minimax_h3_fl2va_pruned_int8_convrot.safetensors` 或 `minimax_h3_ref2va_pruned_int8_convrot.safetensors` 匹配的 `*_Acc-8Step_pruned_comfy.safetensors`；[固定来源提交](https://huggingface.co/Kijai/MiniMax-H3-experimental/commit/f94b1bcc9442e531b73e0ee819ddfc3656072648) 与[原生 loader/采样参考](https://github.com/Jalen-Brunson/ComfyUI-MiniMax-H3-PDD-Acc/blob/main/README.md)只用于核对文件和 recipe。权重仍由用户管理，本轮不会自动下载，也没有新增最终视频 VAE。
 - R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐节点版本为 `v0.6.2`（`v0.6` 增加手工 Chain 自动串联、`segments` 和 Clear latents，`v0.6.1` 增加接口同源保护，`v0.6.2` 修复旧画布空 `segments`），要求 ComfyUI `0.34.0+`；`v0.3.1` 继续作为 ComfyUI `0.32/0.33` 的最低兼容回退线，修复旧 H3 layout 变化并保留 Ref2VA、latent 和音频连续能力。
 - Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。v0.5 以来的 Load 0 是首个 clip 的无 latent context，正数 index 读取精确 slot，Chain 只用于手工画布串联；本应用构造的 API 工作流固定使用四个基础节点和显式正数 Slot 1，不依赖 Chain，也不需要删除并重新添加节点。上游迁移说明只适用于手工保存且 widget 位置来自旧节点 schema 的 ComfyUI 画布。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
 - LightX2V Turbo、Cinema、Better Human Motion、Camera Motion、Realism People 和 AfterMidnight 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。当前 FL2VA 默认使用官方 LightX2V v1.2 768p 4-step（strength 1.0、video shift 6、audio shift 3、Euler），Spectrum `v0.2.6+` 仍需按任务做同 Seed 对照。
-- H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.39.2`；推荐版本是更新提示，不是离线入队的硬性阻挡。当前支持的 Turbo 权重包括官方 v1.2 768p 4-step、v1.0 8-step 和 Ref2V 4-step，均放入所选 ComfyUI 的 `models/loras`，不要把它们当成独立基础模型。旧 ckpt850 EMA、v0.1 FL2VA、旧 v1.0 768p 和 PinkFluffyBunny 已从新任务目录移除；历史只保留名称快照，编辑历史时不会带入创作页；AfterMidnight v1.2 仅用于 Ref2VA，不可移植到 FL2VA。
-- H3 视频 VAE 的编码与解码支持 `minimax_h3_video_vae_fp16.safetensors` 基线和官方 `minimax_h3_video_vae_int8_convrot.safetensors`。设置中的 `自动` 在下一条尚未开始的 H3 任务领取时优先选择已安装的 INT8 ConvRot；缺少该文件时回退到 FP16，明确选择的后端缺失时也回退到另一份已安装 VAE。两者都缺失时设置禁用，H3 不能入队；正在计算的任务不会因设置变化而改用另一后端。官方 ConvRot 加速还要求目标 ComfyUI Python 中的 `comfy-kitchen==0.2.37` CUDA backend 已通过运行时探针验证。
+- 普通 H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.42.3`；推荐版本是更新提示，不是离线入队的硬性阻挡。FastH3 Omni 的完整 PDD checkpoint 独立要求 `v0.42.1+`。当前支持的 Turbo 权重包括官方 v1.2 768p 4-step、v1.0 8-step 和 Ref2V 4-step，均放入所选 ComfyUI 的 `models/loras`，不要把它们当成独立基础模型。旧 ckpt850 EMA、v0.1 FL2VA、旧 v1.0 768p 和 PinkFluffyBunny 已从新任务目录移除；历史只保留名称快照，编辑历史时不会带入创作页；AfterMidnight v1.2 仅用于 Ref2VA，不可移植到 FL2VA。
+- H3 视频 VAE 的编码与解码支持 `minimax_h3_video_vae_fp16.safetensors` 基线和官方 `minimax_h3_video_vae_int8_convrot.safetensors`。设置中的 `自动` 在下一条尚未开始的 H3 任务领取时优先选择已安装的 INT8 ConvRot；缺少该文件时回退到 FP16，明确选择的后端缺失时也回退到另一份已安装 VAE。两者都缺失时设置禁用，H3 不能入队；正在计算的任务不会因设置变化而改用另一后端。官方 ConvRot 加速还要求目标 ComfyUI Python 中的 `comfy-kitchen==0.2.39` CUDA backend 已通过运行时探针验证。
 - KJNodes 按功能使用：H3 SageAttention 模式需要 `PathchSageAttentionKJ`，TAE 实时预览只额外尝试 `ModelPreviewOverrideKJ`，显存调试使用 `VRAM_Debug`；预览缺失时自动降级，不阻塞普通生成。
 - H3 实时预览是可选能力：更新 KJNodes 以获得 `ModelPreviewOverrideKJ`，并把 Kijai 的 `taeh3.safetensors` 放入 `models/vae_approx`。设置页会离线检查 KJNodes 的预览源码，服务启动后再通过 `/object_info` 验证节点注册；它只负责采样期间的低分辨率 RGB 预览，不替代 `models/vae` 中的最终视频 VAE。队列开关默认关闭，缺少节点或权重时保持原工作流运行。
 - SageAttention、Spectrum、Cache/Attention patch 是模型范围内的策略，不得泄漏到 Qwen、Sulphur 或其他工作流。

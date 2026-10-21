@@ -165,22 +165,22 @@ const api: AppApi = {
   randomizeTaskSeed: (taskId: string) =>
     ipcRenderer.invoke("queue:randomize-seed", taskId),
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
-  deleteHistoryAsset: (assetId: string) =>
-    ipcRenderer.invoke("history:delete", assetId),
-  deleteHistoryVersion: (assetId: string, versionId: string) =>
-    ipcRenderer.invoke("history:delete-version", assetId, versionId),
-  deleteHistoryJointAv: (assetId: string, versionId: string) =>
-    ipcRenderer.invoke("history:delete-joint-av", assetId, versionId),
-  deleteHistoryMotionContext: (assetId: string, versionId: string) =>
-    ipcRenderer.invoke("history:delete-motion-context", assetId, versionId),
+  deleteHistoryAsset: (assetId, approval) =>
+    ipcRenderer.invoke("history:delete", assetId, approval),
+  deleteHistoryVersion: (assetId, versionId, approval) =>
+    ipcRenderer.invoke("history:delete-version", assetId, versionId, approval),
+  deleteHistoryJointAv: (assetId, versionId, approval) =>
+    ipcRenderer.invoke("history:delete-joint-av", assetId, versionId, approval),
+  deleteHistoryMotionContext: (assetId, versionId, approval) =>
+    ipcRenderer.invoke("history:delete-motion-context", assetId, versionId, approval),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
   updateHistoryMetadataBatch: (updates: HistoryMetadataBatchUpdate[]) =>
     ipcRenderer.invoke("history:update-metadata-batch", updates),
   copyHistoryFiles: (kind: "video" | "image", assetIds: string[]) =>
     ipcRenderer.invoke("history:copy-files", kind, assetIds),
-  deleteHistoryAssets: (kind: "video" | "image", assetIds: string[]) =>
-    ipcRenderer.invoke("history:delete-batch", kind, assetIds),
+  deleteHistoryAssets: (kind, assetIds, approval) =>
+    ipcRenderer.invoke("history:delete-batch", kind, assetIds, approval),
   setImageHistoryCover: (projectId: string, versionId?: string) =>
     ipcRenderer.invoke("image-history:set-cover", projectId, versionId),
   deleteImageHistoryVersion: (projectId: string, versionId: string) =>

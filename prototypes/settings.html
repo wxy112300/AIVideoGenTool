@@ -1,39 +1,394 @@
-<div class="studio-prototype">
-  <header class="studio-topbar"><a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a><nav class="studio-nav"><a href="./create.html">创建</a><a href="./queue.html">队列</a><a href="./history.html">历史</a><a href="./settings.html" aria-current="page">设置</a></nav></header>
-  <main class="studio-body">
-    <section class="page-head"><div><div class="page-title"><h1>设置</h1><span class="badge">NVIDIA GeForce RTX 4090 · 24 GB</span></div><p class="muted">模型扫描、GPU 显存检测、本地服务、节点依赖和诊断日志。</p></div><div class="actions"><span class="badge ok" data-demo-status>已保存</span><button class="btn" data-demo-action="扫描完成 · 9 个模型可用"><i data-lucide="scan-search"></i>重新扫描全部</button><button class="btn" disabled>放弃更改</button><button class="btn primary" disabled>保存设置</button></div></section>
-    <div class="settings-layout">
-      <nav class="panel settings-sidebar" aria-label="设置分类">
-        <button class="settings-tab active" data-settings-tab="system"><i data-lucide="settings"></i>系统与路径</button>
-        <button class="settings-tab" data-settings-tab="acceleration"><i data-lucide="zap"></i>性能与加速</button>
-        <button class="settings-tab" data-settings-tab="video"><i data-lucide="images"></i>视频模型<small>6/6</small></button>
-        <button class="settings-tab" data-settings-tab="image"><i data-lucide="image"></i>图像编辑模型<small>4/4</small></button>
-        <button class="settings-tab" data-settings-tab="nodes"><i data-lucide="workflow"></i>节点与工作流<small>9/9</small></button>
-        <button class="settings-tab" data-settings-tab="prompt"><i data-lucide="sparkles"></i>提示词扩写<small>3/3</small></button>
-        <button class="settings-tab" data-settings-tab="upscale"><i data-lucide="maximize-2"></i>分辨率提升<small>3/3</small></button>
-        <button class="settings-tab" data-settings-tab="logs"><i data-lucide="file-text"></i>运行日志</button>
-      </nav>
-      <section>
-        <div class="settings-pane active" data-settings-pane="system">
-          <section class="panel"><div class="section-head"><div><h2>本机环境</h2><p class="muted tiny">必需组件、可选工具和本地服务状态</p></div><span class="badge ok">环境可运行</span></div><div class="grid-4"><div class="metric"><span class="muted tiny">GPU</span><strong>RTX 4090</strong><span class="muted tiny">24 GB</span></div><div class="metric"><span class="muted tiny">ComfyUI</span><strong>已连接</strong><span class="muted tiny">v0.31.0+</span></div><div class="metric"><span class="muted tiny">FFmpeg</span><strong>已安装</strong></div><div class="metric"><span class="muted tiny">LM Studio</span><strong>未启动</strong><span class="muted tiny">可选服务</span></div></div></section>
-          <section class="panel"><div class="section-head"><div><h2>ComfyUI 安装实例</h2><p class="muted tiny">选择启动、更新和离线检测使用的安装</p></div><span class="badge warn">发现 2 个安装</span></div><label class="field">当前安装入口<div class="actions"><input value="D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI" style="flex:1"><button class="btn"><i data-lucide="folder-open"></i>选择目录</button></div></label><div class="summary-strip" style="display:grid;gap:10px;margin-top:12px"><div><span class="muted tiny">核心目录</span><code style="display:block;margin-top:4px">D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI</code><p class="muted tiny">包含 main.py 和核心版本文件，用于启动与更新</p></div><div><span class="muted tiny">数据 / 节点目录</span><code style="display:block;margin-top:4px">C:\Users\当前用户\Documents\ComfyUI</code><p class="muted tiny">包含 models、custom_nodes、input、output 和 user</p></div></div><div style="display:grid;gap:9px;margin-top:12px"><article class="installation active"><div><div class="status-line"><strong>Desktop</strong><span class="badge">Desktop v0.35.0 · 核心 v0.31.0+</span></div><span class="muted tiny">安装入口</span><code>D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI</code></div><button class="btn" disabled>当前使用</button></article><article class="installation"><div><div class="status-line"><strong>源码版</strong><span class="badge">核心 v0.29.2</span></div><span class="muted tiny">安装入口</span><code>D:\Program Files\ComfyUI</code></div><button class="btn">使用此版本</button></article></div></section>
-          <section class="panel"><div class="section-head"><div><h2>ComfyUI 连接</h2><p class="muted tiny">默认接口 8188；自动检测提前启动的 Desktop 服务</p></div><div class="actions"><button class="btn">测试连接</button><button class="btn primary">启动服务</button><button class="btn">重启服务</button><button class="btn danger">强制终止所有进程</button></div></div><label class="field">服务地址<input value="http://127.0.0.1:8188"></label></section>
-          <section class="panel"><div class="section-head"><div><h2>文件路径</h2><p class="muted tiny">历史记录保存实际输出文件路径；当前输出仍可指向 ComfyUI output</p></div></div><div class="grid-2"><label class="field">ComfyUI 模型目录<input value="D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\models"></label><label class="field">视频输出目录<input value="D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\output"></label></div></section>
-          <section class="panel"><div class="section-head"><div><h2>下载代理</h2><p class="muted tiny">供 Git、pip、工作流与节点运行时模型下载使用</p></div><span class="badge">默认关闭</span></div><div class="grid-2"><label class="field">代理开关<select><option>关闭</option><option>开启</option></select></label><label class="field">代理地址<input value="http://127.0.0.1:7890"></label><label class="field">使用镜像网站下载模型<select><option>关闭</option><option>开启</option></select></label></div></section>
-          <section class="panel"><div class="section-head"><div><h2>GPU 运行策略</h2><p class="muted tiny">24 GB 总显存 - 0.5 GB 余量 = 23.5 GB 工作预算</p></div><span class="badge ok">RTX 4090</span></div><div class="grid-4"><label class="field">显存安全余量<select><option>0.5 GB · 激进</option><option>0.75 GB · 平衡</option><option>1 GB · 保守</option></select></label><label class="field">安全取消<select><option>开启</option><option>关闭</option></select></label><label class="field">任务失败自动重试<select><option>开启</option><option>关闭</option></select></label><label class="field">自动重试次数<select><option>2 次 · 推荐</option><option>1 次</option><option>3 次</option></select></label></div><p class="muted tiny" style="margin-top:9px">仅对 CUDA 上下文、显存、ComfyUI 失联或卡死执行清理、重启和重试。</p></section>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>设置 · Local Video Studio 原型</title>
+  <script src="app/boot.js"></script>
+  <link rel="stylesheet" href="design-system/tokens.css">
+  <link rel="stylesheet" href="design-system/controls.css">
+  <link rel="stylesheet" href="design-system/surfaces.css">
+  <link rel="stylesheet" href="app/app.css">
+  <link rel="stylesheet" href="app/settings.css">
+</head>
+<body data-page="settings">
+  <div class="app-shell">
+    <header data-shell></header>
+    <main>
+      <section class="page-heading sticky">
+        <div class="page-title"><h1>设置</h1><span class="badge plain num">NVIDIA GeForce RTX 4090 · 24.0 GB</span></div>
+        <span></span>
+        <div class="page-actions">
+          <button class="btn btn-gray lit" type="button" id="rescan-all" data-tip="重新扫描 ComfyUI、节点、模型与运行环境"><i data-lucide="scan-search"></i>重新扫描全部</button>
         </div>
-        <div class="settings-pane" data-settings-pane="acceleration">
-          <section class="panel acceleration-prototype-section"><div class="section-head"><div><h2>H3 加速策略</h2><p class="muted tiny">选择 H3 的 Attention 后端；只影响 MiniMax H3 工作流。</p></div><span class="badge ok">已就绪</span></div><div class="grid-2 acceleration-prototype-strategy"><label class="field">H3 Attention 后端<select><option>自动加速 · SageAttention CUDA FP16</option><option>稳定加速 · SageAttention Triton FP16</option><option>兼容模式 · PyTorch Attention</option></select></label><div class="summary-strip"><div><strong>模型级 SageAttention 已就绪</strong><p class="muted tiny">自动降级策略 <span class="field-info" tabindex="0" aria-label="CUDA 内核异常时会依次降级到 SageAttention Triton 和 PyTorch Attention，避免队列反复崩溃。">ⓘ</span></p></div><span class="badge ok">自动降级</span></div></div></section>
-          <section class="panel acceleration-prototype-section"><div class="section-head"><div><h2>运行时解释器</h2><p class="muted tiny">选择用于启动 ComfyUI、安装依赖和读取加速状态的 Python 环境。</p></div><span class="badge">ComfyUI 虚拟环境</span></div><div class="grid-2"><label class="field">当前路径<input value="D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\.venv\Scripts\python.exe"></label><label class="field">扫描到的候选<select><option>Python 3.12.11 · 当前</option><option>Python 3.12.8 · 系统 PATH</option></select></label></div></section>
-          <section class="panel acceleration-prototype-section"><div class="section-head"><div><h2>运行时组件</h2><p class="muted tiny">检查当前环境中的 PyTorch、CUDA、SageAttention、Triton 与 KJNodes。</p></div><span class="badge ok">已就绪</span></div><div class="grid-4"><div class="metric"><span class="muted tiny">Python</span><strong>3.12.11</strong></div><div class="metric"><span class="muted tiny">PyTorch / CUDA</span><strong>2.8.0+cu129</strong></div><div class="metric"><span class="muted tiny">SageAttention</span><strong>2.2.0</strong></div><div class="metric"><span class="muted tiny">Triton / KJNodes</span><strong>已兼容</strong></div></div><div class="actions acceleration-prototype-actions"><button class="btn primary">重新安装/修复</button><span class="muted tiny">安装时会暂时停止 ComfyUI <span class="field-info" tabindex="0" aria-label="环境补全后，若服务此前正在运行，程序会自动将它重启。">ⓘ</span></span></div></section>
-        </div>
-        <div class="settings-pane" data-settings-pane="video"><section class="panel"><div class="section-head"><div><h2>视频模型</h2><p class="muted tiny">按真实组件完整性判断可用状态</p></div><label class="field" style="min-width:300px">默认模型<select><option>MiniMax H3 FL2VA · INT8</option><option>MiniMax H3 R2V · INT8</option><option>MiniMax H3 LightX2V Turbo</option></select></label></div><div class="summary-strip"><span>找到 6 个已接入可运行模型</span><span class="badge ok">扫描完成</span></div></section><div style="display:grid;gap:10px"><article class="model-profile"><div><div class="status-line"><h3>MiniMax H3 FL2VA · 首帧 / 首尾帧</h3><span class="badge">INT8 ConvRot</span></div><p class="muted tiny">官方基础质量路径 · 20 Steps · 原生 24 FPS 与立体声音频</p></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>MiniMax H3 FL2VA · INT4 低显存</h3><p class="muted tiny">显存不足或多进程环境使用</p></div><span class="badge ok">可用</span></article><article class="model-profile"><div><div class="status-line"><h3>MiniMax H3 LightX2V Turbo</h3><span class="badge warn">4–8 Steps</span></div><p class="muted tiny">Turbo 是减少采样步数的蒸馏 LoRA；当前采用 LightX2V 社区方案。</p></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>MiniMax H3 R2V · 多参考 INT8 / INT4</h3><p class="muted tiny">图片 ≤9、视频 ≤3、素材总数 ≤12。</p></div><span class="badge ok">2 档可用</span></article><article class="model-profile"><div><h3>Sulphur 2 GGUF</h3><p class="muted tiny">I2V 与原生 Extend 共用 Q2/Q3/Q4 部署档位。</p></div><span class="badge ok">可用</span></article></div></div>
-        <div class="settings-pane" data-settings-pane="image"><section class="panel"><div class="section-head"><div><h2>图像编辑模型</h2><p class="muted tiny">用于 H3 之前的素材修正、重绘、抽卡和放大；只展示组件完整的能力</p></div><label class="field" style="min-width:280px">默认图片模型<select><option>Qwen Image Edit · 精确改图</option><option>FLUX Kontext · 语义编辑</option><option>Seedream Edit · 高质重绘</option></select></label></div><div class="grid-4"><label class="field">默认生成数量<select><option>6 张</option><option>4 张</option><option>8 张</option></select></label><label class="field">批次执行<select><option>逐张生成 · 显存安全</option><option>允许并行 · 自动评估</option></select></label><label class="field">默认尺寸<select><option>保持原图尺寸</option><option>1536 长边</option><option>2048 长边</option></select></label><label class="field">默认输出格式<select><option>PNG</option><option>WebP</option><option>JPEG</option></select></label></div></section><div class="model-capability-grid"><article class="model-profile"><div><div class="status-line"><h3>Qwen Image Edit</h3><span class="badge">默认</span></div><p class="muted tiny">精确指令编辑、人物姿态、添加/移除元素和合成修复。</p><div class="capability-tags"><span>身份保持</span><span>语义编辑</span><span>多轮迭代</span></div></div><div class="actions"><span class="badge ok">可用</span><button class="btn">检查更新</button></div></article><article class="model-profile"><div><h3>FLUX Kontext</h3><p class="muted tiny">画面语义修改、风格转换与构图重塑。</p><div class="capability-tags"><span>风格</span><span>背景</span><span>多图参考</span></div></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>Seedream Edit</h3><p class="muted tiny">高质量重绘、人物和商品素材修改。</p><div class="capability-tags"><span>高质重绘</span><span>姿态</span><span>细节</span></div></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>SUPIR</h3><p class="muted tiny">低质量素材修复与高分辨率细节重建，不承担复杂语义编辑。</p><div class="capability-tags"><span>修复</span><span>放大</span><span>细节重建</span></div></div><span class="badge ok">可用</span></article></div><section class="panel"><div class="section-head"><div><h2>图片输出</h2><p class="muted tiny">图片与视频历史分开显示，版本仍保存真实文件路径</p></div><button class="btn"><i data-lucide="folder-open"></i>选择目录</button></div><label class="field">图片输出目录<input value="D:\Local Video Studio\Images"></label></section></div>
-        <div class="settings-pane" data-settings-pane="nodes"><section class="panel"><div class="section-head"><div><h2>节点与工作流依赖</h2><p class="muted tiny">未启动 ComfyUI 时先离线检查；启动后补充运行时验证</p></div><div class="actions"><span class="badge warn">1 个节点可更新</span><button class="btn primary"><i data-lucide="refresh-cw"></i>一键更新节点 <span class="badge">1</span></button></div></div><p class="muted tiny">一键操作会串行处理 Custom Nodes，最后只重启和复检一次；不会混入 ComfyUI 核心或工作流文件更新。</p></section><div style="display:grid;gap:10px"><article class="dependency"><div><h3>KJNodes · H3 实时预览</h3><p class="muted tiny">必须包含 ModelPreviewOverrideKJ；离线检查源码，服务启动后再验证节点注册。</p></div><span class="badge ok">已加载</span></article><article class="dependency"><div><h3>MiniMax H3 原生音视频核心 <span class="badge">ComfyUI v0.31.0+</span></h3><p class="muted tiny">Turbo 使用原生 LoRA 与音视频采样，不依赖旧 Turbo custom node。</p></div><span class="badge ok">已加载</span></article><article class="dependency"><div><h3>图片编辑核心工作流</h3><p class="muted tiny">Qwen Image Edit、FLUX Kontext、Seedream Edit 和 SUPIR API 工作流。</p></div><div class="actions"><span class="badge ok">4/4 可用</span><button class="btn">重新安装</button></div></article><article class="dependency"><div><h3>Qwen 提示词核心节点</h3><p class="muted tiny">ComfyUI 原生 TextGenerate 链路。</p></div><span class="badge ok">文件检查通过</span></article><article class="dependency"><div><h3>Spectrum for MiniMax H3</h3><p class="muted tiny">发现项目推荐版本更新：当前 v0.2.15，推荐 v0.2.16。</p></div><div class="actions"><span class="badge warn">需要更新</span><button class="btn primary"><i data-lucide="refresh-cw"></i>更新并重启</button></div></article><article class="dependency"><div><h3>SeedVR2 Video Upscaler</h3><p class="muted tiny">节点、Python 依赖和运行时模型均已检查。</p></div><div class="actions"><span class="badge ok">运行时已验证</span><button class="btn">检查更新</button></div></article><article class="dependency"><div><h3>内置 API 工作流</h3><p class="muted tiny">视频、图片编辑与提升工作流统一随应用版本更新。</p></div><button class="btn">重新安装</button></article></div></div>
-        <div class="settings-pane" data-settings-pane="prompt"><section class="panel"><div class="section-head"><div><h2>提示词扩写运行时</h2><p class="muted tiny">应用自管理 llama-server、LM Studio 或 ComfyUI 原生 Qwen；图片编辑会同时发送素材图</p></div><span class="badge ok">视觉输入可用</span></div><div class="grid-2"><label class="field">运行方式<select><option>应用自管理 llama-server</option><option>LM Studio</option><option>ComfyUI 原生 Qwen</option></select></label><label class="field">提示词模型<select><option>Unconcerned Qwen3-VL GGUF</option><option>Qwen3.5 4B</option><option>Qwen3.5 2B</option></select></label><label class="field">llama-server 路径<input value="D:\Tools\llama.cpp\llama-server.exe"></label><label class="field">服务端口<input value="8191"></label><label class="field">输出语言<select><option>自动</option><option>中文</option><option>英文</option></select></label><label class="field">创造性<select><option>平衡 · 0.7</option><option>忠实 · 0.3</option></select></label></div></section><section class="panel"><div class="section-head"><div><h2>H3 提示词预设</h2><p class="muted tiny">按 T2VA、FL2VA、R2V 和续写模式选择模板</p></div><button class="btn">恢复默认</button></div><label class="field">当前预设<select><option>官方分镜</option><option>R2V 多参考</option><option>忠实扩写</option></select></label><textarea style="margin-top:10px">你是 MiniMax H3 的视听提示词助手。保留用户意图，按镜头时间轴、参考标签、现场声、对白和背景音乐组织输出……</textarea></section><section class="panel"><div class="section-head"><div><h2>图片编辑 Prompt 预设</h2><p class="muted tiny">把素材图、用户需求、保持项和当前模型能力一起交给视觉小模型</p></div><button class="btn">恢复默认</button></div><div class="grid-2"><label class="field">默认预设<select><option>精确改图 · 保持主体</option><option>素材增强 · 保守修复</option><option>风格重绘 · 创意</option><option>姿态与动作修改</option></select></label><label class="field">输出格式<select><option>正向编辑指令 + 保持约束</option><option>正向 / 负向 Prompt</option></select></label></div><textarea style="margin-top:10px">先分析输入图的主体、构图、光源、景深和可能的合成问题。保留用户要求不变的身份与内容，再为当前图片编辑模型输出明确、可执行且不互相冲突的编辑指令……</textarea><div class="capability-tags"><span>发送缩略图</span><span>不保存图片内容到日志</span><span>按模型适配语法</span></div></section></div>
-        <div class="settings-pane" data-settings-pane="upscale"><section class="panel"><div class="section-head"><div><h2>分辨率提升模型</h2><p class="muted tiny">组件完整后才出现在详情页和队列编辑弹窗</p></div><label class="field" style="min-width:230px">默认模型<select><option>SeedVR2</option><option>FlashVSR</option><option>Real-ESRGAN</option></select></label></div></section><div style="display:grid;gap:10px"><article class="model-profile"><div><h3>SeedVR2</h3><p class="muted tiny">新版节点与模型组合；自动/保守/速度优先分块，不保留旧恢复路径。</p></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>FlashVSR</h3><p class="muted tiny">轻量视频超分工作流</p></div><span class="badge ok">可用</span></article><article class="model-profile"><div><h3>Real-ESRGAN</h3><p class="muted tiny">逐帧兼容方案</p></div><span class="badge ok">可用</span></article></div></div>
-        <div class="settings-pane" data-settings-pane="logs"><section class="panel"><div class="section-head"><div><h2>运行日志</h2><p class="muted tiny">记录生命周期、任务阶段和错误；不记录提示词、输入内容或媒体路径</p></div><button class="btn">刷新</button></div><div class="summary-strip"><div class="actions"><button class="btn">日志目录</button><button class="btn">崩溃转储</button></div><div class="actions"><span class="badge">保留 7 天</span><span class="badge">记录 284</span></div></div><pre class="log-terminal">[21:40:12] [INFO] application.ready version=0.1.0&#10;[21:40:14] [INFO] environment.scan.complete comfy=connected models=9&#10;[21:42:03] [INFO] queue.task.start type=generation model=minimax_h3_fl2va&#10;[21:54:49] [INFO] task.stage sampling progress=0.65&#10;[21:55:02] [INFO] telemetry gpu=96 vram_gb=18.7 ram_gb=55.8</pre><p class="muted tiny" style="margin-top:8px">日志区域支持右键复制、全选和清屏；清屏不删除磁盘日志。</p></section></div>
       </section>
-    </div>
-  </main>
-</div>
+
+      <div class="settings-layout">
+        <nav class="side-nav" role="tablist" aria-label="设置分类" data-tabs>
+          <button type="button" role="tab" data-tab="comfyui"><i data-lucide="server"></i><span>ComfyUI 环境</span><span></span></button>
+          <button type="button" role="tab" data-tab="system"><i data-lucide="folder-cog"></i><span>应用与路径</span><span></span></button>
+          <button type="button" role="tab" data-tab="nodes"><i data-lucide="package-open"></i><span>节点与依赖</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="acceleration"><i data-lucide="zap"></i><span>性能与加速</span><span></span></button>
+          <button type="button" role="tab" data-tab="video"><i data-lucide="film"></i><span>视频模型</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="lora"><i data-lucide="layers"></i><span>LoRA</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="image"><i data-lucide="images"></i><span>图片模型</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="prompt"><i data-lucide="sparkles"></i><span>提示词扩写</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="upscale"><i data-lucide="maximize-2"></i><span>分辨率提升</span><span class="meta-count num"></span></button>
+          <button type="button" role="tab" data-tab="appearance"><i data-lucide="palette"></i><span>外观</span><span></span></button>
+          <button type="button" role="tab" data-tab="logs"><i data-lucide="file-text"></i><span>运行日志</span><span></span></button>
+        </nav>
+
+        <!-- ============ ComfyUI 环境 ============ -->
+        <section class="settings-panel" data-panel="comfyui">
+          <div class="panel-head"><h2>ComfyUI 环境</h2><span class="badge running" data-when="service=running">服务运行中</span><span class="badge" data-when="service=stopped">服务未启动</span></div>
+
+          <article class="card form-card">
+            <div class="card-title"><h3>服务</h3><span class="spacer"></span><span class="caption num" data-when="service=running">PID 18424 · 已运行 2 小时 14 分</span></div>
+            <div class="set-row"><div class="copy"><span>服务地址</span><span class="caption">应用接管此地址上的本地 ComfyUI，退出时停止</span></div>
+              <div class="control"><input class="input num" value="http://127.0.0.1:8188" aria-label="服务地址"><button class="btn btn-gray lit" type="button"><i data-lucide="zap"></i>测试连接</button></div></div>
+            <div class="set-row"><div class="copy"><span>强制停止</span><span class="caption">立即结束 ComfyUI 进程，正在执行的任务会中断</span></div>
+              <div class="control"><button class="btn btn-destructive" type="button" data-when="service=running"><i data-lucide="ban"></i>强制停止</button><button class="btn btn-destructive" type="button" disabled data-when="service=stopped"><i data-lucide="ban"></i>强制停止</button></div></div>
+          </article>
+
+          <article class="card form-card">
+            <div class="card-title"><h3>ComfyUI 核心版本</h3><span class="spacer"></span><span class="status success"><i data-lucide="circle-check"></i>已识别</span></div>
+            <div class="set-row"><div class="copy"><span>版本</span></div>
+              <div class="control"><div class="version-line" style="margin:0"><span>本机 <b>v0.37.0</b></span><span>推荐 <b>v0.37.0</b></span><span>最新 <b class="newer">v0.38.1</b></span><code data-tip="提交 4e1b2c9 · 2026-10-11">4e1b2c9</code></div></div></div>
+            <div class="set-row"><div class="copy"><span>更新</span><span class="caption">使用 ComfyUI 官方更新器；更新后点“重新扫描全部”</span></div>
+              <div class="control"><button class="btn btn-gray lit" type="button"><i data-lucide="download"></i>打开官方更新器</button><button class="btn btn-plain" type="button"><i data-lucide="external-link"></i>手动更新说明</button></div></div>
+            <details class="node-log" style="margin:0 0 12px"><summary>更新日志</summary><pre>v0.38.1 · 2026-10-18  修复 DynamicVRAM 在多 GPU 下的回收
+v0.38.0 · 2026-10-15  新增 Comfy Kitchen CUDA 0.2.36
+v0.37.0 · 2026-10-11  INT8 ConvRot VAE 官方加速路径</pre></details>
+          </article>
+
+          <article class="card form-card">
+            <div class="card-title"><h3>检测到的问题</h3><span class="spacer"></span><span class="status success" data-when="issues=none"><i data-lucide="circle-check"></i>未发现问题</span><span class="badge warning" data-when="issues=some">1 项</span></div>
+            <div class="set-row" data-when="issues=some"><div class="copy"><span>扫描到的路径与当前设置不一致</span><span class="caption">模型目录设置为 <code>D:\ComfyUI\models</code>，当前安装使用 <code>C:\Users\Studio\Documents\ComfyUI\models</code></span></div>
+              <div class="control"><button class="btn btn-tinted lit" type="button"><i data-lucide="wrench"></i>修复</button></div></div>
+          </article>
+
+          <article class="card form-card">
+            <div class="card-title"><h3>ComfyUI 安装实例</h3><span class="spacer"></span><button class="btn btn-tinted btn-sm" type="button" data-when="issues=some"><i data-lucide="check-check"></i>采用这些路径</button></div>
+            <div class="set-row"><div class="copy"><span>核心目录</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\AppData\Local\Programs\ComfyUI\resources\ComfyUI</code><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+            <div class="set-row"><div class="copy"><span>数据与节点目录</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI</code><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+            <div class="install-row"><span class="badge accent">Desktop</span><span class="where"><strong style="color:var(--text-1)">ComfyUI Desktop · v0.37.0</strong><code class="caption">C:\Users\Studio\Documents\ComfyUI</code></span><span class="status success"><i data-lucide="circle-check"></i>当前使用</span></div>
+            <div class="install-row"><span class="badge plain">Portable</span><span class="where"><strong style="color:var(--text-1)">ComfyUI Portable · v0.35.2</strong><code class="caption">D:\ComfyUI_windows_portable\ComfyUI</code></span><button class="btn btn-gray btn-sm lit" type="button">使用此版本</button></div>
+          </article>
+
+          <article class="card form-card">
+            <div class="card-title"><h3>Python 环境</h3><span class="spacer"></span><span class="badge plain">Desktop 内置</span></div>
+            <div class="set-row"><div class="copy"><span>当前 ComfyUI 的 Python</span><span class="caption num">Python 3.12.10 · PyTorch 2.11.0+cu130 · CUDA 13.0</span></div>
+              <div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI\.venv\Scripts\python.exe</code><button class="btn btn-icon" type="button" aria-label="选择文件" data-tip="选择 python.exe"><i data-lucide="file-search"></i></button></div></div></div>
+            <div class="set-row"><div class="copy"><span>检测到的环境</span></div>
+              <div class="control"><select data-size="sm" aria-label="检测到的 Python 环境"><option selected>Desktop .venv · Python 3.12.10</option><option>Portable python_embeded · Python 3.12.7</option><option>系统 Python · 3.13.1</option></select></div></div>
+          </article>
+        </section>
+
+        <!-- ============ 应用与路径 ============ -->
+        <section class="settings-panel" data-panel="system">
+          <div class="panel-head"><h2>应用与路径</h2></div>
+          <article class="card form-card">
+            <div class="card-title"><h3>界面语言</h3></div>
+            <div class="set-row"><div class="copy"><span>语言</span><span class="caption">保存后生效；未完成的翻译显示为中文</span></div>
+              <div class="control"><select data-size="sm" aria-label="界面语言"><option selected>简体中文</option><option>繁體中文</option><option>English</option></select></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>文件路径</h3><span class="spacer"></span><button class="btn btn-gray btn-sm lit" type="button" id="open-assets" data-tip="归档旧历史引用，并检查未被使用的输入素材"><i data-lucide="package-open"></i>整理素材库</button></div>
+            <div class="set-row"><div class="copy"><span>视频输出目录</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI\output\Videos</code><button class="btn btn-icon" type="button" aria-label="选择目录" data-tip="选择目录"><i data-lucide="folder-search"></i></button><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+            <div class="set-row"><div class="copy"><span>图片输出目录</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI\output\Images</code><button class="btn btn-icon" type="button" aria-label="选择目录" data-tip="选择目录"><i data-lucide="folder-search"></i></button><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+            <div class="set-row"><div class="copy"><span>输入素材库</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI\input</code><button class="btn btn-icon" type="button" aria-label="选择目录" data-tip="选择目录"><i data-lucide="folder-search"></i></button><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+            <div class="set-row"><div class="copy"><span>模型目录</span></div><div class="control"><div class="path-field"><code>C:\Users\Studio\Documents\ComfyUI\models</code><button class="btn btn-icon" type="button" aria-label="选择目录" data-tip="选择目录"><i data-lucide="folder-search"></i></button><button class="btn btn-icon" type="button" aria-label="打开目录" data-tip="打开目录"><i data-lucide="folder-open"></i></button></div></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>缓存</h3><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button" id="refresh-cache"><i data-lucide="refresh-cw"></i>刷新大小</button><button class="btn btn-destructive btn-sm" type="button" id="open-cache"><i data-lucide="trash-2"></i>清理缓存</button></div>
+            <div class="set-row stack"><div class="stat-grid"><div class="stat"><span class="caption">缓存总量</span><strong id="cache-total">2.41 GB</strong></div><div class="stat"><span class="caption">当前会话缓存</span><strong id="cache-session">612 MB</strong></div><div class="stat"><span class="caption">临时文件与旧软件</span><strong id="cache-temp">1.81 GB</strong></div><div class="stat"><span class="caption">可检查项目</span><strong>14</strong></div></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>局域网浏览</h3><span class="spacer"></span><span class="badge running" data-when="lan=on">运行中</span><span class="badge" data-when="lan=off">已关闭</span></div>
+            <div class="set-row"><div class="copy"><span>开启浏览服务</span><span class="caption">同一网络内的手机、平板可浏览历史作品</span></div><div class="control"><span class="switch"><input type="checkbox" aria-label="开启浏览服务" checked><span></span></span></div></div>
+            <div class="set-row"><div class="copy"><span>端口</span></div><div class="control"><input class="input num" value="8765" style="max-width:120px" aria-label="端口"></div></div>
+            <div class="set-row" data-when="lan=on"><div class="copy"><span>访问地址</span></div><div class="control"><code style="color:var(--text-1)">http://192.168.1.23:8765</code><button class="btn btn-icon btn-sm" type="button" aria-label="复制地址" data-tip="复制地址"><i data-lucide="copy"></i></button><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="external-link"></i>在浏览器打开</button></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>下载代理</h3><span class="spacer"></span><span class="badge">已关闭</span></div>
+            <div class="set-row"><div class="copy"><span>启用下载代理</span><span class="caption">节点安装立即使用；ComfyUI 运行时需保存后重启</span></div><div class="control"><span class="switch"><input type="checkbox" aria-label="启用下载代理"><span></span></span></div></div>
+            <div class="set-row"><div class="copy"><span>代理地址</span></div><div class="control"><input class="input num" placeholder="127.0.0.1:7890" aria-label="代理地址"></div></div>
+            <div class="set-row"><div class="copy"><span>使用镜像网站下载模型</span></div><div class="control"><span class="switch"><input type="checkbox" aria-label="使用镜像网站下载模型"><span></span></span></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>GPU 运行策略</h3><span class="spacer"></span><span class="caption num">1 张 GPU · 工作预算 23.0 GB</span></div>
+            <div class="set-row"><div class="copy"><span>设备</span></div><div class="control"><span class="caption num">GPU 0 · RTX 4090 · 24.0 GB · 驱动 581.42</span></div></div>
+            <div class="set-row"><div class="copy"><span>显存预留</span><span class="caption">为系统与预览保留的显存</span></div><div class="control"><div class="seg"><button type="button" aria-pressed="false">0.5 GB · 激进</button><button type="button" aria-pressed="true">0.75 GB · 平衡</button><button type="button" aria-pressed="false">1 GB · 保守</button></div></div></div>
+            <div class="set-row"><div class="copy"><span>安全取消</span><span class="caption">取消任务时等待当前节点结束，避免显存残留</span></div><div class="control"><span class="switch"><input type="checkbox" checked aria-label="安全取消"><span></span></span></div></div>
+            <div class="set-row"><div class="copy"><span>失败自动重试</span></div><div class="control"><select data-size="sm" aria-label="失败自动重试"><option>关闭</option><option>1 次</option><option selected>2 次 · 推荐</option><option>3 次</option><option>4 次</option><option>5 次</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>显存停滞看门狗</span><span class="caption">显存长时间无变化时判定卡死并重启</span></div><div class="control"><select data-size="sm" aria-label="看门狗"><option>关闭</option><option>1 分钟</option><option selected>5 分钟</option><option>10 分钟</option><option>15 分钟</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>队列隔离</span><span class="caption">任务之间重启 ComfyUI 的时机</span></div><div class="control"><select data-size="sm" aria-label="队列隔离"><option>从不</option><option>LoRA 变化时</option><option selected>模型变化时</option><option>每个任务</option></select></div></div>
+          </article>
+        </section>
+
+        <!-- ============ 节点与依赖 ============ -->
+        <section class="settings-panel" data-panel="nodes">
+          <div class="panel-head"><h2>节点与依赖</h2><span class="badge success" data-count="nodes"></span><span class="spacer"></span><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="download"></i>安装全部缺失</button></div>
+          <article class="card form-card" data-when="install=running">
+            <div class="card-title"><h3>依赖安装中</h3><span class="spacer"></span><span class="caption">队列中 2 个节点</span></div>
+            <div class="set-row stack"><div class="row between"><span>ComfyUI-MultiModal-Prompt-Nodes · 安装依赖 3/7</span><span class="caption num">43%</span></div><div class="progress"><span style="--value:43%"></span></div>
+              <details class="node-log" style="margin:0" open><summary>安装日志</summary><pre>Cloning into 'ComfyUI-MultiModal-Prompt-Nodes'...
+Resolving deltas: 100% (412/412), done.
+Installing requirements (3/7) llama-cpp-python==0.3.16</pre></details></div>
+          </article>
+          <div class="card-grid" id="node-cards"></div>
+          <article class="card set-card">
+            <button class="set-toggle" type="button" aria-expanded="false" style="border-top:0"><i data-lucide="chevron-right" class="chev"></i><span>节点占位符参考 · 应用支持的工作流变量</span></button>
+            <div class="disclosure"><div><div class="token-list"><code>{{PROMPT}}</code><code>{{NEGATIVE_PROMPT}}</code><code>{{SEED}}</code><code>{{H3_DIFFUSION_MODEL}}</code><code>{{H3_TEXT_ENCODER}}</code><code>{{H3_VIDEO_VAE}}</code><code>{{H3_AUDIO_VAE}}</code><code>{{WIDTH}}</code><code>{{HEIGHT}}</code><code>{{FRAMES}}</code><code>{{FPS}}</code><code>{{INPUT_IMAGE}}</code><code>{{END_IMAGE}}</code><code>{{OUTPUT_PREFIX}}</code></div></div></div>
+          </article>
+        </section>
+
+        <!-- ============ 性能与加速 ============ -->
+        <section class="settings-panel" data-panel="acceleration">
+          <div class="panel-head"><h2>性能与加速</h2><span class="caption">只影响 MiniMax H3 工作流</span></div>
+          <article class="card form-card">
+            <div class="card-title"><h3>H3 加速策略</h3><span class="spacer"></span><span class="status success"><i data-lucide="circle-check"></i>已就绪</span></div>
+            <div class="set-row"><div class="copy"><span>Attention 后端<span class="info" data-tip-title="SageAttention Triton · 推荐" data-tip="当前 4090 同任务中，搭配 SOL 速度最快；稠密模式的峰值显存也最低。需要 SageAttention 与 Triton 环境。"><i data-lucide="info"></i></span></span><span class="caption">H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪</span></div>
+              <div class="control"><select data-size="sm" aria-label="Attention 后端"><option selected>SageAttention Triton · 推荐</option><option>SageAttention CUDA</option><option>PyTorch SDPA</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>稀疏 Attention<span class="info" data-tip="全局只保留已可测试的稠密与 SOL；Turbo-SLA 的专用 SLA 由任务配方内部绑定。"><i data-lucide="info"></i></span></span></div>
+              <div class="control"><select data-size="sm" aria-label="稀疏 Attention"><option selected>稠密 Attention · 稳定推荐</option><option>SOL 稀疏</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>运行时策略<span class="info" data-tip="不启用 Dynamic VRAM 或 async offload；当前测试更快，RAM 峰值约 34–37 GiB。"><i data-lucide="info"></i></span></span></div>
+              <div class="control"><select data-size="sm" aria-label="运行时策略"><option selected>固定驻留 · 强烈推荐</option><option>Dynamic VRAM</option><option>Async offload</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>Comfy 编译器</span></div>
+              <div class="control"><select data-size="sm" aria-label="Comfy 编译器"><option selected>禁用 · H3/4090 推荐</option><option>torch.compile</option></select></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>H3 视频 VAE</h3><span class="spacer"></span><span class="status success"><i data-lucide="circle-check"></i>已就绪</span></div>
+            <div class="set-row"><div class="copy"><span>视频 VAE 后端</span><span class="caption">已找到两种视频 VAE；自动模式优先 INT8 ConvRot，缺失时回退 FP16</span></div>
+              <div class="control"><select data-size="sm" aria-label="视频 VAE 后端"><option selected>自动 · 优先 INT8 ConvRot</option><option>FP16</option><option>INT8 ConvRot</option></select></div></div>
+          </article>
+          <article class="card set-card lit">
+            <div class="set-head"><div><div class="set-title"><h3>加速运行时</h3><span class="badge plain">Python 依赖</span></div><p class="set-desc">SageAttention 与 Triton，用于 H3 注意力加速。</p></div>
+              <div class="set-actions"><span class="status success"><i data-lucide="circle-check"></i>运行验证通过</span><div class="row"><button class="btn btn-gray btn-sm" type="button"><i data-lucide="scan-search"></i>重新验证</button><button class="btn btn-gray btn-sm" type="button"><i data-lucide="wrench"></i>修复</button><button class="btn btn-destructive btn-sm" type="button"><i data-lucide="trash-2"></i>卸载</button></div></div></div>
+            <div class="runtime-grid"><div><span class="caption">Python</span><strong class="num"><i data-lucide="circle-check"></i>3.12.10</strong></div><div><span class="caption">PyTorch</span><strong class="num"><i data-lucide="circle-check"></i>2.11.0+cu130</strong></div><div><span class="caption">SageAttention</span><strong class="num"><i data-lucide="circle-check"></i>2.2.0</strong></div><div><span class="caption">Triton</span><strong class="num"><i data-lucide="circle-check"></i>3.6.0</strong></div></div>
+          </article>
+        </section>
+
+        <!-- ============ 视频模型 ============ -->
+        <section class="settings-panel" data-panel="video">
+          <div class="panel-head"><h2>视频模型</h2><span class="badge" data-count="video"></span></div>
+          <article class="card form-card">
+            <div class="set-row"><div class="copy"><span>默认模型</span></div><div class="control"><select data-size="sm" aria-label="默认模型"><option selected>MiniMax H3 FL2VA · 首帧 / 首尾帧</option><option>MiniMax H3 LightX2V Turbo · 首尾帧</option><option>MiniMax H3 R2V · 多参考 INT8</option><option disabled>MiniMax H3 FL2VA · INT4 低显存 · 缺组件</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>默认续写模型</span></div><div class="control"><select data-size="sm" aria-label="默认续写模型"><option selected>MiniMax H3 Continuum · JointAV 接续</option><option>MiniMax H3 R2V · 多参考 INT8</option></select></div></div>
+          </article>
+          <div class="card-stack" id="video-cards"></div>
+        </section>
+
+        <!-- ============ LoRA ============ -->
+        <section class="settings-panel" data-panel="lora">
+          <div class="panel-head"><h2>LoRA</h2><span class="badge" data-count="lora"></span><span class="caption">为已接入的视频模型提供可选的性能、运镜、人物和内容适配</span></div>
+          <div class="card-grid" id="lora-cards"></div>
+        </section>
+
+        <!-- ============ 图片模型 ============ -->
+        <section class="settings-panel" data-panel="image">
+          <div class="panel-head"><h2>图片模型</h2><span class="badge" data-count="image"></span></div>
+          <article class="card form-card">
+            <div class="set-row"><div class="copy"><span>默认图片模型</span></div><div class="control"><select data-size="sm" aria-label="默认图片模型"><option selected>OmniGen2 · 文生图/参考编辑</option><option>HiDream-O1-Image · 原生生成/参考编辑</option><option>Z-Image · 文生图/图生图</option><option>Z-Image Turbo · 快速出图</option><option disabled>Qwen Image 2.1 · Q8_0 · 缺组件</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>质量档</span></div><div class="control"><div class="seg"><button type="button" aria-pressed="false">快速 · 20 步</button><button type="button" aria-pressed="true">标准 · 50 步</button></div></div></div>
+          </article>
+          <div class="card-stack" id="image-cards"></div>
+        </section>
+
+        <!-- ============ 提示词扩写 ============ -->
+        <section class="settings-panel" data-panel="prompt">
+          <div class="panel-head"><h2>提示词扩写</h2><span class="badge" data-count="prompt"></span></div>
+          <article class="card form-card">
+            <div class="card-title"><h3>本地提示词模型</h3><span class="spacer"></span><span class="badge accent">本地运行</span><button class="btn btn-icon btn-gray btn-sm" type="button" aria-label="预热提示词模型" data-tip-title="预热提示词模型" data-tip="加载后常驻显存，之后扩写更快"><i data-lucide="play"></i></button></div>
+            <div class="set-row"><div class="copy"><span>默认提示词模型</span></div><div class="control"><select data-size="sm" aria-label="默认提示词模型"><option disabled>Qwen3.8-Flash-Next · Strata · IQ3_XXS · 缺组件</option><option selected>Qwen3.6 27B Q4 · Uncensored · ComfyUI · 视频/图片</option><option>Gemma 4 26B-A4B Q4 · Uncensored</option><option>Gemma 4 12B Q4 · Uncensored</option><option>Gemma 4 E4B Q5 · Uncensored</option><option>MiniMax H3 Prompt Rewriter LoRA · Qwen3-VL 8B</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>uncensored 模式</span></div><div class="control"><select data-size="sm" aria-label="uncensored 模式"><option selected>自带 · ESP</option><option>关闭</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>思考强度</span></div><div class="control"><div class="seg"><button type="button" aria-pressed="false">低</button><button type="button" aria-pressed="true">中</button><button type="button" aria-pressed="false">高</button></div></div></div>
+            <div class="set-row"><div class="copy"><span>扩写语言</span></div><div class="control"><select data-size="sm" aria-label="扩写语言"><option selected>跟随输入语言</option><option>English</option><option>简体中文</option></select></div></div>
+            <div class="set-row"><div class="copy"><span>创造性</span><span class="caption">0.7 为平衡</span></div><div class="control"><div class="slider-field js-slider" style="flex:1;max-width:420px"><div class="range-wrap"><input type="range" min="0" max="1.5" step="0.1" value="0.7" aria-label="创造性"></div><label class="number"><input type="number" min="0" max="1.5" step="0.1" value="0.7" aria-label="创造性数值"></label></div></div></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>视频提示词预设</h3><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-ccw"></i>恢复默认</button></div>
+            <div class="set-row"><div class="copy"><span>当前编辑预设</span></div><div class="control"><select data-size="sm" aria-label="视频提示词预设"><option selected>通用影视时间线</option><option>忠实整理</option><option>H3 视觉描述</option><option>多参考</option></select></div></div>
+            <div class="set-row stack"><div class="copy"><span>预设规则头</span><span class="caption">内置的 H3 官方基线始终强制参考标签、首尾帧关系、连续性、音频和输出格式</span></div>
+              <textarea class="textarea preset-text" aria-label="预设规则头">Use the official H3 structured prompt format shown in the scaffold below.
+Keep these sections and order exactly. Inside integrated_multimodal_description or detailed_description, expand into a practical storyboard with [Shot 1], [Shot 2], and time ranges only when they help the requested action.
+Make the result feel like a production-ready director's shot sheet: visual style, scene overview, concrete action beats, camera, and synchronized audio.</textarea></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>无提示词视频预设</h3><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-ccw"></i>恢复默认</button></div>
+            <div class="set-row"><div class="copy"><span>默认起稿方向<span class="info" data-tip="根据可见角色的身份线索和所处场景，自动组织一段合理动作；台词使用角色自然的语言。选择具体方向后会固定创意方向，但每次点击仍会使用新的变化标识。"><i data-lucide="info"></i></span></span><span class="caption">提示词为空时，从参考画面设计动作、镜头和互动</span></div>
+              <div class="control"><select data-size="sm" aria-label="默认起稿方向"><option selected>Contextual action and dialogue</option><option>Cinematic camera move</option><option>Quiet ambient moment</option></select></div></div>
+            <div class="set-row stack"><div class="copy"><span>起稿指令</span></div>
+              <textarea class="textarea preset-text" aria-label="起稿指令">Develop the reference as a polished, Hollywood-grade feature-film beat: find a strong visual hook, then use intentional lighting, lensing, blocking, production design, and motivated camera language to build one coherent action.</textarea></div>
+          </article>
+          <article class="card form-card">
+            <div class="card-title"><h3>图片提示词预设</h3><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-ccw"></i>恢复默认</button></div>
+            <div class="set-row"><div class="copy"><span>当前编辑预设</span><span class="caption">只影响图片“优化提示词”的整理策略</span></div><div class="control"><select data-size="sm" aria-label="图片提示词预设"><option selected>忠实整理</option><option>细节扩写</option><option>优化提示词</option></select></div></div>
+            <div class="set-row stack"><div class="copy"><span>预设规则头</span></div>
+              <textarea class="textarea preset-text" aria-label="图片预设规则头">Rewrite the user's image-edit instruction as one concise, direct English paragraph. Preserve the exact requested operation, subject identity, attributes, quantities, positions, reference-image roles, proper nouns, visible text, and explicit constraints.</textarea></div>
+          </article>
+          <div class="group-title"><h3>模型</h3></div>
+          <div class="card-stack" id="prompt-cards"></div>
+        </section>
+
+        <!-- ============ 分辨率提升 ============ -->
+        <section class="settings-panel" data-panel="upscale">
+          <div class="panel-head"><h2>分辨率提升</h2><span class="badge success" data-count="upscale"></span></div>
+          <article class="card form-card">
+            <div class="set-row"><div class="copy"><span>默认模型</span></div><div class="control"><select data-size="sm" aria-label="默认提升模型"><option selected>SeedVR2 3B INT8 ConvRot · 原生</option><option>Konohamaru DLSS5 Visual Enhancer</option><option>MiniMax H3 Learned 3D Latent Upscaler</option><option>SeedVR2</option><option>FlashVSR</option><option>Real-ESRGAN x4plus</option></select></div></div>
+          </article>
+          <div class="card-stack" id="upscale-cards"></div>
+        </section>
+
+        <!-- ============ 外观 ============ -->
+        <section class="settings-panel" data-panel="appearance">
+          <div class="panel-head"><h2>外观</h2><span class="caption">立即生效，并随设置保存</span></div>
+          <article class="card form-card">
+            <div class="set-row"><div class="copy"><span>主题色</span><span class="caption">主要按钮、进度、滑块和开关</span></div><div class="control"><div class="accent-picker" id="set-accent" role="radiogroup" aria-label="主题色"></div></div></div>
+            <div class="set-row"><div class="copy"><span>灰阶</span><span class="caption">界面中性色的色温</span></div><div class="control"><div class="seg" data-appearance="palette"><button type="button" data-value="graphite">中性</button><button type="button" data-value="sand">暖灰</button><button type="button" data-value="slate">冷灰</button><button type="button" data-value="mauve">柔灰</button><button type="button" data-value="apple">系统灰</button></div></div></div>
+            <div class="set-row"><div class="copy"><span>背景深度</span></div><div class="control"><div class="seg" data-appearance="depth"><button type="button" data-value="0">更深</button><button type="button" data-value="1">深</button><button type="button" data-value="2">平衡</button></div></div></div>
+            <div class="set-row"><div class="copy"><span>动态效果</span><span class="caption">“减少”时位移动画改为淡入淡出</span></div><div class="control"><div class="seg" data-appearance="motion"><button type="button" data-value="system">跟随系统</button><button type="button" data-value="standard">标准</button><button type="button" data-value="reduced">减少</button></div></div></div>
+            <div class="set-row"><div class="copy"><span>预览</span></div><div class="control appearance-preview"><button class="btn btn-primary btn-sm" type="button"><i data-lucide="list-plus"></i>加入队列</button><button class="btn btn-tinted btn-sm" type="button"><i data-lucide="sparkles"></i>优化提示词</button><span class="switch"><input type="checkbox" checked aria-label="预览开关"><span></span></span><div class="progress" style="width:96px"><span style="--value:62%"></span></div></div></div>
+          </article>
+        </section>
+
+        <!-- ============ 运行日志 ============ -->
+        <section class="settings-panel" data-panel="logs">
+          <div class="panel-head"><h2>运行日志</h2><span class="caption num">保留 7 天 · 1,284 条</span><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button"><i data-lucide="refresh-cw"></i>刷新</button><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="folder-open"></i>打开日志目录</button><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="folder-open"></i>打开崩溃转储目录</button></div>
+          <p class="caption">记录程序生命周期、任务阶段和错误，不记录提示词、输入内容或媒体路径。右键可复制或全选。</p>
+          <pre class="log-view" tabindex="0" aria-label="运行日志"><span class="t">2026-10-21 09:12:04</span> <span class="ok">INFO </span> app      启动 v0.66.5
+<span class="t">2026-10-21 09:12:05</span> <span class="ok">INFO </span> comfy    接管 127.0.0.1:8188 · ComfyUI Desktop v0.37.0
+<span class="t">2026-10-21 09:12:19</span> <span class="ok">INFO </span> comfy    就绪 · 用时 14.2 秒
+<span class="t">2026-10-21 09:12:20</span> <span class="ok">INFO </span> scan     环境扫描完成
+<span class="t">2026-10-21 09:31:47</span> <span class="ok">INFO </span> queue    任务 7f3c 开始 · MiniMax H3 Continuum · 480p · 30 秒
+<span class="t">2026-10-21 09:39:35</span> <span class="ok">INFO </span> queue    任务 7f3c 完成 · 用时 7 分 48 秒
+<span class="t">2026-10-21 09:41:02</span> <span class="warn">WARN </span> gpu      显存余量低于预留 0.75 GB，已等待回收
+<span class="t">2026-10-21 09:52:16</span> <span class="err">ERROR</span> queue    任务 81aa 失败 · OOM at KSampler · 自动重试 1/2
+<span class="t">2026-10-21 09:58:40</span> <span class="ok">INFO </span> queue    任务 81aa 完成 · 用时 6 分 11 秒</pre>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="dialog-backdrop" id="guide-dialog" hidden>
+    <section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+      <div class="dialog-head"><span class="dialog-icon accent" data-for="missing"><i data-lucide="download"></i></span><span class="dialog-icon" data-for="installed" style="color:var(--success)"><i data-lucide="circle-check"></i></span><div><span class="caption" id="guide-profile"></span><h3 id="guide-title"></h3></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <p class="meta" data-for="missing">在浏览器中下载，完成后放入目标目录，再点“重新扫描全部”。</p>
+      <p class="meta" data-for="installed">文件已就绪，来源与位置如下。</p>
+      <div class="kv">
+        <span>来源</span><strong style="color:var(--text-1)" id="guide-source"></strong><span></span>
+        <span>大小</span><code id="guide-size"></code><span></span>
+        <span>文件名</span><code id="guide-file"></code><button class="btn btn-icon btn-sm" type="button" data-tip="复制" aria-label="复制文件名"><i data-lucide="copy"></i></button>
+        <span>目标目录</span><code id="guide-dir"></code><button class="btn btn-icon btn-sm" type="button" data-tip="复制" aria-label="复制目录"><i data-lucide="copy"></i></button>
+      </div>
+      <div class="dialog-actions"><button class="btn btn-plain" type="button" data-close>关闭</button><span class="spacer"></span>
+        <button class="btn btn-gray" type="button" data-for="missing" data-tip="目录不存在时自动创建"><i data-lucide="folder-open"></i>打开目录</button><button class="btn btn-primary" type="button" data-for="missing" data-autofocus><i data-lucide="external-link"></i>在浏览器中下载</button>
+        <button class="btn btn-gray" type="button" data-for="installed"><i data-lucide="external-link"></i>打开来源页面</button><button class="btn btn-primary" type="button" data-for="installed"><i data-lucide="folder-open"></i>在文件夹中显示</button></div>
+    </section>
+  </div>
+
+  <!-- 整理图片素材库 -->
+  <div class="dialog-backdrop" id="assets-dialog" hidden>
+    <section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="assets-title">
+      <div class="dialog-head"><span class="dialog-icon accent"><i data-lucide="package-open"></i></span><div><span class="caption">图片输入资产</span><h3 id="assets-title">整理图片素材库</h3></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <p class="meta">归档仍在外部的历史素材，并检查素材库中没有被历史、草稿或队列引用的文件。</p>
+      <div class="dialog-stats">
+        <div class="stat"><span class="caption">记录引用</span><strong>1,284</strong></div>
+        <div class="stat"><span class="caption">待整理</span><strong id="assets-pending">37</strong><span class="caption">412 MB</span></div>
+        <div class="stat warning"><span class="caption">已缺失</span><strong>3</strong></div>
+        <div class="stat"><span class="caption">可清理</span><strong id="assets-orphans">6</strong><span class="caption">58.2 MB</span></div>
+      </div>
+      <details><summary class="caption" style="cursor:pointer">查看 3 个缺失引用</summary>
+        <ul class="change-list" style="margin-top:8px"><li><code>D:\Downloads\ref-portrait-03.png</code><span>3 条历史</span></li><li><code>D:\Downloads\street-night.jpg</code><span>1 条历史</span></li><li><code>E:\tmp\mask-01.png</code><span>1 条历史</span></li></ul></details>
+      <div class="phase-line" id="assets-phase" hidden><strong id="assets-phase-label">扫描引用</strong><span class="spacer"></span><span class="num" id="assets-phase-count"></span></div>
+      <div class="progress" id="assets-progress" hidden><span style="--value:0%"></span></div>
+      <div class="result-block" id="assets-result" hidden><i data-lucide="circle-check"></i><div><strong id="assets-result-title"></strong><p id="assets-result-detail"></p><span class="caption">操作编号 op-7f3c21 · 可在运行日志中检索</span></div></div>
+      <details id="assets-orphan-list"><summary class="row" style="cursor:pointer"><strong style="color:var(--text-1)">可清理的未引用素材</strong><span class="caption">6 个 · 58.2 MB · 展开选择</span></summary>
+        <div class="file-list" style="margin-top:8px">
+          <label class="check"><input type="checkbox" checked><code>input/2026-09/unused-ref-a1f3.png</code><span class="caption num">12.4 MB</span></label>
+          <label class="check"><input type="checkbox" checked><code>input/2026-09/unused-ref-b72c.png</code><span class="caption num">11.9 MB</span></label>
+          <label class="check"><input type="checkbox" checked><code>input/2026-10/crop-0921-02.png</code><span class="caption num">8.6 MB</span></label>
+          <label class="check"><input type="checkbox" checked><code>input/2026-10/mask-tmp-4410.png</code><span class="caption num">1.2 MB</span></label>
+          <label class="check"><input type="checkbox" checked><code>input/2026-10/paste-1730021.png</code><span class="caption num">14.1 MB</span></label>
+          <label class="check"><input type="checkbox" checked><code>input/2026-10/paste-1730388.png</code><span class="caption num">10.0 MB</span></label>
+        </div></details>
+      <div class="notice danger" id="assets-confirm" hidden><i data-lucide="triangle-alert"></i><div><strong>确认永久删除勾选的孤立文件？</strong><p>执行前会重新扫描引用；素材库外文件不会被删除。</p></div><span></span></div>
+      <div class="dialog-actions">
+        <button class="btn btn-plain" type="button" data-close>关闭</button><button class="btn btn-plain" type="button" id="assets-rescan"><i data-lucide="scan-search"></i>重新扫描</button><span class="spacer"></span>
+        <button class="btn btn-destructive" type="button" id="assets-cleanup"><i data-lucide="trash-2"></i>清理所选</button>
+        <button class="btn btn-primary" type="button" id="assets-organize" data-autofocus><i data-lucide="folder-open"></i>归档并修复</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 清理缓存 -->
+  <div class="dialog-backdrop" id="cache-dialog" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="cache-title">
+      <div class="dialog-head"><span class="dialog-icon danger"><i data-lucide="trash-2"></i></span><div><span class="caption">缓存管理</span><h3 id="cache-title">清理缓存</h3></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div id="cache-choose" style="display:grid;gap:8px">
+        <label class="check-row check"><input type="checkbox" checked><span><strong>当前会话缓存</strong><br><span class="caption">浏览器缓存与缩略图缓存，下次打开时自动重建</span></span><span class="num">612 MB</span></label>
+        <label class="check-row check"><input type="checkbox" checked><span><strong>临时文件与旧软件</strong><br><span class="caption">14 个可检查项目 · 包含受管理软件的旧副本</span></span><span class="num">1.81 GB</span></label>
+        <p class="caption">保留当前安装、模型和用户数据。</p>
+        <div class="notice warning" data-when="job=busy"><i data-lucide="triangle-alert"></i><p>当前有任务运行；结束任务后可清理临时文件与旧软件。</p><span></span></div>
+      </div>
+      <div id="cache-run" hidden style="display:grid;gap:8px">
+        <div class="phase-line"><strong id="cache-stage">正在扫描缓存目录…</strong><span class="spacer"></span><span class="num" id="cache-elapsed">已用 00:00</span></div>
+        <div class="progress indeterminate" id="cache-bar"><span></span></div>
+        <div class="phase-line num"><span id="cache-count"></span><span id="cache-bytes"></span><span class="spacer"></span><span id="cache-remaining"></span></div>
+      </div>
+      <div class="result-block" id="cache-result" hidden><i data-lucide="circle-check"></i><div><strong>已清理缓存 2.29 GB。</strong><p>有 2 项因占用或数据保护未清理，可在运行日志中查看。</p></div></div>
+      <div class="dialog-actions"><button class="btn btn-plain" type="button" data-close id="cache-close">取消</button><span class="spacer"></span><button class="btn btn-destructive-filled btn-destructive" type="button" id="cache-start"><i data-lucide="trash-2"></i>清理 2.41 GB</button></div>
+    </section>
+  </div>
+
+  <!-- 未保存更改：离开或放弃时确认 -->
+  <div class="dialog-backdrop" id="discard-dialog" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="discard-title">
+      <div class="dialog-head"><span class="dialog-icon"><i data-lucide="circle-alert"></i></span><div><h3 id="discard-title">有未保存的更改</h3><span class="caption" id="discard-sub"></span></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <ul class="change-list" id="discard-list"></ul>
+      <div class="dialog-actions"><button class="btn btn-plain" type="button" data-close>继续编辑</button><span class="spacer"></span><button class="btn btn-destructive" type="button" id="discard-confirm"><i data-lucide="rotate-ccw"></i>放弃更改</button><button class="btn btn-primary" type="button" id="discard-save" data-autofocus><i data-lucide="save"></i>保存设置</button></div>
+    </section>
+  </div>
+
+  <div class="save-bar" id="save-bar" role="region" aria-label="未保存的更改" hidden>
+    <span class="dot"></span>
+    <div class="copy"><strong id="save-count">1 项未保存更改</strong><span class="caption" id="save-names"></span></div>
+    <button class="btn btn-plain btn-sm" type="button" id="save-discard"><i data-lucide="rotate-ccw"></i>放弃</button>
+    <button class="btn btn-primary btn-sm lit" type="button" id="save-commit"><i data-lucide="save"></i>保存设置</button>
+  </div>
+
+  <script id="proto-states" type="application/json">
+    {
+      "service": { "label": "ComfyUI 服务", "options": { "running": "运行中", "stopped": "未启动" } },
+      "issues": { "label": "环境问题", "options": { "none": "无", "some": "路径不一致" } },
+      "install": { "label": "节点安装", "options": { "idle": "空闲", "running": "安装中" } },
+      "lan": { "label": "局域网浏览", "options": { "on": "开", "off": "关" } },
+      "job": { "label": "生成任务", "options": { "idle": "空闲", "busy": "运行中" } }
+    }
+  </script>
+  <script>
+    // Mark current appearance before app.js binds the segmented controls.
+    (() => {
+      const current = { accent: "azure", palette: "graphite", depth: "1", motion: "system" };
+      try { Object.assign(current, JSON.parse(localStorage.getItem("lvs-proto-appearance") || "{}")); } catch {}
+      document.querySelectorAll("[data-appearance]").forEach((seg) => seg.querySelectorAll("button").forEach((button) =>
+        button.setAttribute("aria-pressed", String(button.dataset.value === String(current[seg.dataset.appearance])))));
+    })();
+  </script>
+  <script src="../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="design-system/ds.js"></script>
+  <script src="app/settings.js"></script>
+  <script src="app/app.js"></script>
+  <script>
+    (() => {
+      const picker = document.getElementById("set-accent");
+      const paint = () => picker.querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.value === App.appearance.accent)));
+      picker.innerHTML = App.accents.map(([value, label, color]) => `<button type="button" role="radio" data-value="${value}" aria-label="${label}" data-tip="${label}" style="--c:${color}"></button>`).join("");
+      picker.addEventListener("click", (event) => { const button = event.target.closest("button"); if (button) App.setAppearance({ accent: button.dataset.value }); });
+      document.addEventListener("appearance", paint);
+      paint();
+      document.querySelectorAll("[data-appearance]").forEach((seg) => seg.addEventListener("change", (event) => App.setAppearance({ [seg.dataset.appearance]: event.detail.value })));
+    })();
+  </script>
+</body>
+</html>

@@ -26,7 +26,7 @@ describe("bundled workflow provenance", () => {
       });
       expect(metadata?.source.relativePath).toBe(`workflows/${filename}`);
       expect(metadata?.comfyUi.recommendedVersion).toBe(
-        "0.39.2"
+        "0.42.3"
       );
     }
   });
@@ -42,7 +42,7 @@ describe("bundled workflow provenance", () => {
 
   it("records the higher-risk H3 and LTX provenance separately", () => {
     expect(workflowMetadataForFilename("minimax_h3_r2v_extend_api.json")).toMatchObject({
-      comfyUi: { minimumVersion: "0.32.0", recommendedVersion: "0.39.2" },
+      comfyUi: { minimumVersion: "0.32.0", recommendedVersion: "0.42.3" },
       verifiedAt: "2026-09-03",
       nodePackages: ["video-helper-suite", "h3-motion-context", "kjnodes"]
     });

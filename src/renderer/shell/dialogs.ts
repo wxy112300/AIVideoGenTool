@@ -2,15 +2,16 @@ import type { WindowCloseRequest } from "../../types";
 import { uiKeys } from "../../core/i18n-keys";
 import type { Translate } from "../../core/i18n";
 import { formatElapsedDuration } from "../shared/formatters";
+import type { HistoryDeleteImpact } from "../../core/history-delete-confirmation";
 
 export type ConfirmationRequest =
   | { kind: "clear-draft" }
-  | { kind: "delete-history"; assetId: string; title: string }
-  | { kind: "delete-history-batch"; historyKind: "video" | "image"; assetIds: string[]; count: number }
+  | { kind: "delete-history"; assetId: string; title: string; deletionImpact?: HistoryDeleteImpact }
+  | { kind: "delete-history-batch"; historyKind: "video" | "image"; assetIds: string[]; count: number; deletionImpact?: HistoryDeleteImpact }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
-  | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
-  | { kind: "delete-joint-av"; assetId: string; versionId: string; title: string }
-  | { kind: "delete-motion-context"; assetId: string; versionId: string; title: string }
+  | { kind: "delete-video-version"; assetId: string; versionId: string; title: string; deletionImpact?: HistoryDeleteImpact }
+  | { kind: "delete-joint-av"; assetId: string; versionId: string; title: string; deletionImpact?: HistoryDeleteImpact }
+  | { kind: "delete-motion-context"; assetId: string; versionId: string; title: string; deletionImpact?: HistoryDeleteImpact }
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: string }
@@ -47,6 +48,7 @@ export interface WindowCloseDialogOptions {
 export function renderConfirmationDialog(options: ConfirmationDialogOptions): string {
   const request = options.request;
   if (!request) return "";
+  const deletionImpact = "deletionImpact" in request ? request.deletionImpact : undefined;
   const deleting = request.kind === "delete-history";
   const deletingBatch = request.kind === "delete-history-batch";
   const deletingImageVersion = request.kind === "delete-image-version";
@@ -64,13 +66,21 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
   const uninstallingLlama = request.kind === "uninstall-llama-cpp-python";
   const uninstallingStrata = request.kind === "uninstall-strata";
   const t = options.t;
+  const linkedReferenceLabel = (reference: { id: string; label: string }): string => {
+    if (reference.id === "draft:draft") return t(uiKeys.nav.create);
+    if (reference.id === "draft:image-to-video-draft") return t(uiKeys.create.imageToVideo);
+    if (reference.id === "draft:video-extension-draft") return t(uiKeys.create.videoExtension);
+    return reference.id.startsWith("queue:") ? `${t(uiKeys.nav.queue)} · ${reference.label}` : reference.label;
+  };
   const customNodeProgress = uninstallingCustomNode && options.confirmationBusy
     ? `<div class="confirm-progress" role="status" aria-live="polite">
         <span class="confirm-progress-label">${t(uiKeys.dialog.processing)}</span>
         <pre data-confirmation-dependency-log="custom-node:${options.escapeHtml(request.nodeId)}">${options.escapeHtml(options.customNodeLog || t(uiKeys.dialog.processing))}</pre>
       </div>`
     : "";
-  const title = confirmingPromptCpu
+  const title = deletionImpact
+    ? t(uiKeys.dialog.deleteLinkedTitle)
+    : confirmingPromptCpu
     ? t(uiKeys.dialog.promptCpuTitle)
     : deletingJointAv
     ? t(uiKeys.dialog.deleteJointAvTitle, { title: request.title })
@@ -97,7 +107,9 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
           : forceStoppingComfy
             ? t(uiKeys.dialog.forceStopTitle)
             : t(uiKeys.dialog.clearDraftTitle);
-  const description = confirmingPromptCpu
+  const description = deletionImpact
+    ? t(uiKeys.dialog.deleteLinkedDescription, { count: deletionImpact.references.length })
+    : confirmingPromptCpu
     ? t(uiKeys.dialog.promptCpuDescription, {
         used: request.usedVram,
         total: request.totalVram,
@@ -139,6 +151,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
           <span class="eyebrow">${t(confirmingPromptCpu ? uiKeys.dialog.resourceWarning : uiKeys.dialog.irreversible)}</span>
           <h2 id="confirm-title">${options.escapeHtml(title)}</h2>
           <p id="confirm-description">${options.escapeHtml(description)}</p>
+          ${deletionImpact ? `<p class="confirm-linked-references">${deletionImpact.references.slice(0, 5).map(reference => options.escapeHtml(linkedReferenceLabel(reference))).join("<br>")}</p>${deletionImpact.references.length > 5 ? `<p>${t(uiKeys.dialog.deleteLinkedMore, { count: deletionImpact.references.length - 5 })}</p>` : ""}` : ""}
           ${confirmingPromptCpu
             ? `<div class="confirm-warning">${t(uiKeys.dialog.promptCpuWarning)}</div>`
             : deletingJointAv

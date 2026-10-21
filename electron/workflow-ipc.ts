@@ -15,6 +15,7 @@ import {
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
 import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
+import { FASTH3_OMNI_MODEL_ID, FASTH3_OMNI_WORKFLOW_FILENAME } from "../src/core/catalog/models/minimax_h3_omni/definition.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 
 type WorkflowFileSystem = Pick<typeof nodeFs, "stat" | "readFile">;
@@ -96,6 +97,7 @@ async function bundledWorkflowFor(
     deps.getLtxExtensionModelProfile()
   );
   if (inputMode === "video") {
+    if (modelId === FASTH3_OMNI_MODEL_ID) return null;
     if (modelId === "minimax_h3_fl2va_q3_gguf") {
       const filename = "minimax_h3_i2v_gguf_q3_api.json";
       const candidate = await findWorkflow(deps, filename);
@@ -163,6 +165,10 @@ async function bundledWorkflowFor(
   }
 
   const definitions: Record<string, { filename: string; label: string }> = {
+    [FASTH3_OMNI_MODEL_ID]: {
+      filename: FASTH3_OMNI_WORKFLOW_FILENAME,
+      label: "内置 · FastH3 Omni · 8 步多参考音视频"
+    },
     minimax_h3_fl2va: {
       filename: "minimax_h3_i2v_api.json",
       label: "内置 · MiniMax H3 FL2VA · 原生 24 FPS 音视频"

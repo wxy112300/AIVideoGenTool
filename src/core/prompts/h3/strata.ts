@@ -8,6 +8,8 @@ import { h3CameraIntentInstruction } from "../../h3-camera-intent.js";
 import { h3ScalePreservationInstruction } from "../../h3-scale-preservation.js";
 import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "./index.js";
 import { h3LoraPromptInstruction } from "./loras.js";
+import { h3VisualQualityKnowledge } from "./visual-quality.js";
+import { h3PromptOutputLanguageInstruction } from "../../prompt-language.js";
 import { parsePromptAnnotations, promptAnnotationInstruction } from "../../prompt-annotations.js";
 
 /** Shared compiler for all full H3 rewrites, retaining workflow-specific reference/continuation fields. */
@@ -30,6 +32,7 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
     h3DurationPlan(mode, duration, preset, duration),
     request.extensionSource ? h3ExtensionContinuityInstruction(mode, shotPolicy, native, request.continuumPreviousChunk, request.h3DurationSeconds ?? 5) : "",
     h3AutoPrompterContract(mode, duration, request.referenceContext, preset, duration),
+    h3VisualQualityKnowledge,
     "Write every official field heading exactly once. Put [Shot 1] and all time intervals INSIDE the main description field, never instead of its heading. Soundscape names causal sound sources; non_diegetic_music is N/A when music is prohibited. R2V additionally needs subject_definitions, summary and retention_analysis before detailed_description.",
     "Required output skeleton and reference alignment:", h3PromptSectionSkeleton(mode, duration, native)
   ].filter(Boolean).join("\n\n");
@@ -47,8 +50,7 @@ export function strataH3InstructionParts(request: EnhanceRequest, settings: Sett
   ].filter(Boolean).join("\n\n");
   const task = [
     `FINAL TASK: Write the complete ${duration.toFixed(2)}-second ${mode} H3 prompt from the full brief, dossier and attached references. Preserve all specific events and constraints; expand compatible execution details rather than summarizing the source.`,
-    language === "en" ? "Use English explanatory prose."
-      : "Use Chinese explanatory prose. Keep official field headings in English ASCII.",
+    h3PromptOutputLanguageInstruction(request, { uiLocale: settings.uiLocale, promptLanguage: language }),
     "Dialogue, lyrics and visible text remain verbatim in their original language. Do not output a checklist, commentary, planning or reasoning.",
     preset === "detailed-cinematic" && language !== "en"
       ? `For Chinese prose, aim for approximately ${Math.round(h3DetailedExpansionTargetWords(mode, duration, source) * 2)} useful Chinese characters in the main timeline; this is a writing target, not permission to add filler or omit source facts.` : "",

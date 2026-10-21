@@ -41,6 +41,8 @@ export interface CatalogModelScanDefinition {
   /** Custom-node packages that must exist on disk before this model can be queued. */
   requiredCustomNodeIds?: readonly string[];
   runtimeNodeTypes?: readonly string[];
+  /** Full checkpoint loading can need a newer core than the node schema alone. */
+  minimumComfyVersion?: string;
   components: readonly CatalogModelComponent[];
 }
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectDirectory = path.dirname(scriptDirectory);
-const prototypeDirectory = path.join(projectDirectory, 'prototypes');
+const prototypeDirectory = path.join(projectDirectory, 'prototypes', 'legacy');
 const outputDirectory = path.join(prototypeDirectory, 'preview');
 const userHome = process.env.USERPROFILE ?? process.env.HOME ?? '';
 const visualizeRoot = path.join(

@@ -1,0 +1,132 @@
+/*
+ * Local Video Studio design tokens — approved 2026-10-21; spec in DESIGN.md.
+ * Neutral ramps: Radix Colors dark scales (MIT, verified from @radix-ui/colors),
+ * plus an Apple-derived ramp (system grays; intermediate steps interpolated).
+ */
+
+/* ---------- Neutral ramps (12 steps, dark → light) ---------- */
+:root,
+[data-palette="graphite"] {
+  --n1: #111111; --n2: #191919; --n3: #222222; --n4: #2a2a2a; --n5: #313131; --n6: #3a3a3a;
+  --n7: #484848; --n8: #606060; --n9: #6e6e6e; --n10: #7b7b7b; --n11: #b4b4b4; --n12: #eeeeee;
+}
+[data-palette="sand"] {
+  --n1: #111110; --n2: #191918; --n3: #222221; --n4: #2a2a28; --n5: #31312e; --n6: #3b3a37;
+  --n7: #494844; --n8: #62605b; --n9: #6f6d66; --n10: #7c7b74; --n11: #b5b3ad; --n12: #eeeeec;
+}
+[data-palette="slate"] {
+  --n1: #111113; --n2: #18191b; --n3: #212225; --n4: #272a2d; --n5: #2e3135; --n6: #363a3f;
+  --n7: #43484e; --n8: #5a6169; --n9: #696e77; --n10: #777b84; --n11: #b0b4ba; --n12: #edeef0;
+}
+[data-palette="mauve"] {
+  --n1: #121113; --n2: #1a191b; --n3: #232225; --n4: #2b292d; --n5: #323035; --n6: #3c393f;
+  --n7: #49474e; --n8: #625f69; --n9: #6f6d78; --n10: #7c7a85; --n11: #b5b2bc; --n12: #eeeef0;
+}
+[data-palette="apple"] {
+  --n1: #161618; --n2: #1c1c1e; --n3: #242426; --n4: #2c2c2e; --n5: #333336; --n6: #3a3a3c;
+  --n7: #48484a; --n8: #636366; --n9: #7c7c80; --n10: #8e8e93; --n11: #aeaeb2; --n12: #f2f2f7;
+}
+
+/* ---------- Depth: which ramp step the canvas starts on (default: deep) ---------- */
+:root,
+[data-depth="1"] {
+  --canvas: var(--n1); --surface-1: var(--n2); --surface-2: var(--n3); --surface-3: var(--n4);
+  --line: var(--n4); --line-strong: var(--n6); --text-3: color-mix(in srgb, var(--n10) 70%, var(--n11));
+}
+[data-depth="0"] {
+  --canvas: color-mix(in srgb, var(--n1) 70%, #000); --surface-1: var(--n1); --surface-2: var(--n2); --surface-3: var(--n3);
+  --line: var(--n3); --line-strong: var(--n5); --text-3: color-mix(in srgb, var(--n10) 70%, var(--n11));
+}
+[data-depth="2"] {
+  --canvas: var(--n2); --surface-1: var(--n3); --surface-2: var(--n4); --surface-3: var(--n5);
+  --line: var(--n5); --line-strong: var(--n7); --text-3: color-mix(in srgb, var(--n10) 50%, var(--n11));
+}
+[data-depth="3"] {
+  --canvas: var(--n3); --surface-1: var(--n4); --surface-2: var(--n5); --surface-3: var(--n6);
+  --line: var(--n6); --line-strong: var(--n8); --text-3: color-mix(in srgb, var(--n10) 25%, var(--n11));
+}
+
+:root {
+  /* Content */
+  --text-1: var(--n12);          /* titles, values, primary copy */
+  --text-2: var(--n11);          /* body, labels */
+  /* --text-3 comes from depth: metadata, captions */
+  --text-4: var(--n8);           /* disabled, placeholders */
+
+  /* Theme accent: prominent actions, progress, sliders, switches. Neutral UI stays monochrome. */
+  --accent: #0090ff;
+  --accent-hover: #3b9eff;
+  --on-accent: #ffffff;
+  --accent-text: #70b8ff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-soft-hover: color-mix(in srgb, var(--accent) 24%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+
+  --selected: var(--n12);
+  --focus-ring: color-mix(in srgb, var(--n12) 72%, transparent);
+  --hover-wash: color-mix(in srgb, var(--n12) 6%, transparent);
+  --press-wash: color-mix(in srgb, var(--n12) 10%, transparent);
+  --edge-light: color-mix(in srgb, var(--n12) 55%, transparent);
+
+  /* Status: Radix *-11 dark; small areas only */
+  --success: #3dd68c;
+  --warning: #ffca16;
+  --danger: #ff9592;
+  --info: #70b8ff;
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) 12%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --info-soft: color-mix(in srgb, var(--info) 12%, transparent);
+
+  /* Media scrim (over thumbnails/players only) */
+  --scrim: rgb(0 0 0 / .55);
+  --scrim-soft: rgb(0 0 0 / .32);
+
+  /* Typography */
+  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px; --fs-24: 24px;
+  --lh-tight: 1.25; --lh-body: 1.5;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;
+
+  /* Space (4px grid) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+  /* Shape */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+  --control-sm: 28px; --control-md: 32px; --control-lg: 36px; --control-xl: 44px;
+
+  /* Elevation: flat by surface ladder; shadows only for floating layers */
+  --shadow-float: 0 12px 32px rgb(0 0 0 / .45), 0 0 0 1px var(--line);
+  --shadow-lift: 0 18px 40px rgb(0 0 0 / .5), 0 0 0 1px var(--line-strong);
+
+  /* Motion */
+  --dur-1: 90ms;   /* hover, press */
+  --dur-2: 160ms;  /* show/hide, color, page fade */
+  --dur-3: 240ms;  /* panels, menus, toasts */
+  --dur-4: 360ms;  /* layout, list reorder */
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: linear(0, .009, .035 2.1%, .141 4.4%, .723 12.9%, .938 16.7%, 1.017 20.3%, 1.043 24.3%, 1.035 28.4%, 1.007 36.5%, .997 41%, 1 53.4%);
+  --light-strength: .07;
+}
+
+/* ---------- Accent candidates: sky / ocean blues (Apple system colors, Radix Blue) ---------- */
+[data-accent="sky"] { --accent: #64d2ff; --accent-hover: #8adcff; --on-accent: #00212e; --accent-text: var(--accent); }
+[data-accent="ocean"] { --accent: #0a84ff; --accent-hover: #409cff; --on-accent: #ffffff; --accent-text: #4aa3ff; }
+[data-accent="azure"] { --accent: #0090ff; --accent-hover: #3b9eff; --on-accent: #ffffff; --accent-text: #70b8ff; }
+[data-accent="lagoon"] { --accent: #40c8e0; --accent-hover: #6ad6e8; --on-accent: #002228; --accent-text: var(--accent); }
+[data-accent="mono"] { --accent: var(--n12); --accent-hover: #ffffff; --on-accent: var(--n1); --accent-text: var(--accent); }
+/* Warm and signal accents (Apple system colors, dark); dark text on fill keeps AA. */
+[data-accent="orange"] { --accent: #ff9f0a; --accent-hover: #ffb340; --on-accent: #241500; --accent-text: var(--accent); }
+[data-accent="green"] { --accent: #30d158; --accent-hover: #5ede7d; --on-accent: #00230b; --accent-text: var(--accent); }
+[data-accent="red"] { --accent: #ff453a; --accent-hover: #ff6961; --on-accent: #2b0400; --accent-text: #ff6961; }
+
+[data-motion="reduced"] {
+  --dur-1: 0ms; --dur-2: 120ms; --dur-3: 120ms; --dur-4: 120ms;
+  --ease-spring: var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 120ms; --dur-3: 120ms; --dur-4: 120ms; --ease-spring: var(--ease-out); }
+}

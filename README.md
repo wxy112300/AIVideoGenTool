@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.66.5**。本次统一 Strata 各 H3 模式的提示词编译与自动思考预算，增加无需重载模型的思考强度设置，并将普通低 RAM／提交余量改为预警，允许官方热点驻留与文件回读；保留显存和持续严重提交不足保护。真实后端连续增强及设置保存／重启恢复已验，不保证所有负载的峰值安全、质量或速度。此前的 H3 640p 档位、软件更新与缓存清理修复、局域网设置精简、Strata Q4 接入、图片编辑增强及 H3 长时长支持保留，各项实测范围与待验边界见版本记录。局域网历史视频浏览支持完整筛选排序、瀑布流/相册、完整画面循环播放、触摸手势，以及收藏、评分、标签和只读 Prompt 信息窗。设置 → 系统可开启服务、复制 LAN 地址或在本机浏览器打开；服务默认关闭，随 App 退出停止，当前未设密码。版本变化见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.66.6**。本次对齐 ComfyUI 0.42.3 与 comfy-kitchen 0.2.39 推荐线，加入 FastH3 Omni 接入、H3 写实画质提示词与单次输出语言覆盖，并改进 History 关联删除确认。新 UI 设计系统、原型与合成数据基线已整理，renderer 视觉迁移仍待按计划实施。FastH3 Omni 真实成片及画质、速度收益仍待实测，各项验证范围见 [CHANGELOG.md](CHANGELOG.md)。此前的 Strata 思考强度与资源保护、图片编辑、长视频和局域网浏览能力保留。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 同时保留可脱离 Studio 使用的 [Strata Agent 启动器](Tools/Strata-Agent/README.md)，入口为 `Tools/Strata-Agent/Start.cmd`。独立工具的 localhost GUI/CLI 闭环已实测，其 LAN 尚未开放；H3 长稿稳定性仍未完成验收，蓝屏根因未定，文件页释放候选保持关闭。原默认模型、工作流、队列、作品历史与共享权重保留。
 

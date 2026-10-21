@@ -2,6 +2,8 @@ import type { IpcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { modelCoreVersionBlockReason } from "../src/core/model-core-requirements.js";
+import { FASTH3_OMNI_MODEL_ID } from "../src/core/catalog/models/minimax_h3_omni/definition.js";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
@@ -701,9 +703,9 @@ export class QueueEnqueueService {
     const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
-    if (draft.videoLoras.some((lora) =>
+    if ((draft.modelId === FASTH3_OMNI_MODEL_ID || draft.videoLoras.some((lora) =>
       isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
-    ) && !workflowSupportsH3PddSampling(workflow, { modelId: draft.modelId })) {
+    )) && !workflowSupportsH3PddSampling(workflow, { modelId: draft.modelId })) {
       throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
     }
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
@@ -713,6 +715,10 @@ export class QueueEnqueueService {
     const dependencyScan = dependencyScanRequired
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
+    if (dependencyScan) {
+      const coreBlockReason = modelCoreVersionBlockReason(draft.modelId, dependencyScan.comfyCompatibility.version, enqueueSettings.uiLocale);
+      if (coreBlockReason) throw new Error(coreBlockReason);
+    }
     if (dependencyScanRequired && !dependencyScan) {
       logger.info("queue", "enqueue-environment-preflight-deferred", "未阻塞入队：环境依赖检查将在任务准备阶段执行", {
         taskType: "generation",

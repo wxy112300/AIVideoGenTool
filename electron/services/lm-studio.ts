@@ -9,6 +9,8 @@ import type {
 } from "../../src/types.js";
 import { h3PromptPresetForMode, h3PromptPresetTextForRequest } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
+import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
+import { h3PromptOutputLanguageInstruction, promptTargetLanguage } from "../../src/core/prompt-language.js";
 import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
   h3AutoPrompterContract,
@@ -190,13 +192,11 @@ export function selectLmStudioModel(
   );
 }
 
-function faithfulSystemPrompt(settings: Settings): string {
+function faithfulSystemPrompt(request: EnhanceRequest, settings: Settings): string {
   const language =
-    settings.promptLanguage === "zh"
+    promptTargetLanguage(request, settings) === "zh"
       ? "使用中文输出。"
-      : settings.promptLanguage === "en"
-        ? "Output in English."
-        : "输出语言必须与用户输入保持一致。";
+      : "Output in English.";
   return [
     "你是忠实的视频提示词编辑器，只能整理和细化用户已经明确提供的信息。",
     "绝对禁止新增或猜测人物身份、年龄、外貌、服装、地点、时间、天气、物品、背景、事件、情绪、声音或剧情。",
@@ -212,12 +212,9 @@ function faithfulUserPrompt(prompt: string, settings: Settings): string {
   const sourcePrompt = parsedPrompt.prompt.trim();
   const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const language =
-    settings.promptLanguage === "zh" ||
-    (settings.promptLanguage === "auto" && /[\u3400-\u9fff]/u.test(sourcePrompt))
+    promptTargetLanguage({ prompt, modelId: "" }, settings) === "zh"
       ? "请使用中文输出。"
-      : settings.promptLanguage === "en"
-        ? "Output in English."
-        : "Keep the output language identical to the input.";
+      : "Output in English.";
   return [
     language,
     "不得加入原文没有出现的视觉、人物或剧情信息。",
@@ -320,6 +317,8 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
       ? [h3DetailedExpansionGateInstruction(mode, Number(duration), sourcePrompt)]
       : []),
     controlInstruction,
+    h3VisualQualityKnowledge,
+    h3PromptOutputLanguageInstruction(request),
     ...(annotationInstruction ? [annotationInstruction] : []),
     ...(isH3ReferenceAutoPrompt(request)
         ? [h3AutoPromptInstruction(request)]
@@ -442,7 +441,7 @@ export async function buildLmStudioChatRequest(
     temperature: Math.min(settings.promptCreativity, 0.2),
     max_tokens: 700,
     messages: [
-      { role: "system", content: faithfulSystemPrompt(settings) },
+      { role: "system", content: faithfulSystemPrompt(request, settings) },
       { role: "user", content: faithfulUserPrompt(request.prompt, settings) }
     ]
   };

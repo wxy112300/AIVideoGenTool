@@ -8,6 +8,7 @@ import { createTranslator } from "../src/core/i18n";
 import { createRendererShellCoordinator, type RendererShellCoordinatorDependencies } from "../src/renderer/shell/coordinator";
 import { createRendererUiState } from "../src/renderer/ui-state";
 import type { ComfyRuntimeState } from "../src/types";
+import { historyDeleteConfirmationMessage } from "../src/core/history-delete-confirmation";
 
 const runtime: ComfyRuntimeState = {
   phase: "ready",
@@ -162,6 +163,35 @@ afterEach(() => {
 });
 
 describe("renderer shell coordinator", () => {
+  it("shows a second linked-delete decision, cancels safely, and approves only the displayed impact", async () => {
+    const { coordinator, application, modalRoot, ui } = createCoordinatorHarness();
+    const impact = { referenceToken: "a".repeat(64), references: [
+      { id: "history:dependent:v1", label: "续接作品 · dependent.mp4" },
+      { id: "draft:image-to-video-draft", label: "draft:image-to-video-draft" },
+      { id: "draft:video-extension-draft", label: "draft:video-extension-draft" },
+      { id: "queue:task", label: "queued.mp4" }
+    ] };
+    vi.mocked(application.deleteHistoryAsset).mockRejectedValueOnce(new Error(`Error invoking remote method 'history:delete': Error: ${historyDeleteConfirmationMessage(impact)}`));
+    const request = { kind: "delete-history" as const, assetId: "selected", title: "原片" };
+    coordinator.requestConfirmation(request);
+    modalRoot.querySelector<HTMLButtonElement>("#accept-confirmation")!.click();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(modalRoot.textContent).toContain("仍有关联引用，继续删除");
+    expect(modalRoot.textContent).toContain("续接作品 · dependent.mp4");
+    expect(modalRoot.textContent).not.toContain("draft:");
+    expect(modalRoot.textContent).toContain("队列 · queued.mp4");
+    expect(document.activeElement?.id).toBe("cancel-confirmation");
+    expect(ui.confirmationBusy).toBe(false);
+    modalRoot.querySelector<HTMLButtonElement>("#cancel-confirmation")!.click();
+    expect(application.deleteHistoryAsset).toHaveBeenCalledTimes(1);
+    expect(ui.pendingConfirmation).toBeNull();
+    coordinator.requestConfirmation({ ...request, deletionImpact: impact });
+    modalRoot.querySelector<HTMLButtonElement>("#accept-confirmation")!.click();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(application.deleteHistoryAsset).toHaveBeenLastCalledWith("selected", { referenceToken: impact.referenceToken });
+    expect(ui.pendingConfirmation).toBeNull();
+  });
+
   it("reuses the stop control to cancel Strata startup and retains retry release for unknown occupancy", async () => {
     const { coordinator, application } = createCoordinatorHarness();
     const warming = createPromptRuntimeState({ ...runtime, backend: "strata" });

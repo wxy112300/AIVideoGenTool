@@ -7,6 +7,7 @@ import type {
   VramStallWatchdogMinutes
 } from "./core/vram-stall-watchdog.js";
 import type { H3_BASE_RESOLUTIONS } from "./core/video-resolution.js";
+import type { HistoryDeleteApproval } from "./core/history-delete-confirmation.js";
 
 export type TaskStatus =
   | "waiting"
@@ -2554,14 +2555,14 @@ export interface AppApi {
   duplicateTask(taskId: string): Promise<AppState>;
   randomizeTaskSeed(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
-  deleteHistoryAsset(assetId: string): Promise<AppState>;
-  deleteHistoryVersion(assetId: string, versionId: string): Promise<AppState>;
-  deleteHistoryJointAv(assetId: string, versionId: string): Promise<AppState>;
-  deleteHistoryMotionContext(assetId: string, versionId: string): Promise<AppState>;
+  deleteHistoryAsset(assetId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
+  deleteHistoryVersion(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
+  deleteHistoryJointAv(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
+  deleteHistoryMotionContext(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
   updateHistoryMetadataBatch(updates: HistoryMetadataBatchUpdate[]): Promise<AppState>;
   copyHistoryFiles(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<HistoryBatchCopyResult>;
-  deleteHistoryAssets(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<AppState>;
+  deleteHistoryAssets(kind: HistoryBatchCopyKind, assetIds: string[], approval?: HistoryDeleteApproval): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;

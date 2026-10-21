@@ -8,6 +8,7 @@
 - [History research and evidence](history/)：性能基线、C04 packaged evidence、History detail harness 诊断。
 - [DLSS5 historical research](../archive/dlss5/README.md)：HECer SR 与 AetherScale 的来源、接入计划和失败边界已归档，不再作为当前研究或实施入口。
 - [Image model research](image-edit/)：图片编辑模型的候选和验证边界；工作台剩余事项以 [image-workspace TASK](../tasks/2026-09-07-image-workspace/TASK.md) 为准。
+- [UI design](ui-design/README.md)：迁移前 renderer 截图基线（0.66.5）、审美审计与灰阶调研索引；视觉规范以 [DESIGN.md](../../DESIGN.md) 为准。
 
 ## 使用规则
 

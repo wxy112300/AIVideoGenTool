@@ -1,4 +1,6 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { historyDeleteConfirmationMessage, historyDeleteImpactFromError, type HistoryDeleteApproval } from "../../src/core/history-delete-confirmation.js";
 import type {
   AppState,
   AssetVersion,
@@ -53,7 +55,7 @@ export interface HistoryDestructiveServiceDependencies {
 export class HistoryDestructiveService {
   constructor(private readonly deps: HistoryDestructiveServiceDependencies) {}
 
-  async deleteHistory(assetId: string): Promise<AppState> {
+  async deleteHistory(assetId: string, approval?: HistoryDeleteApproval): Promise<AppState> {
     const startedAt = Date.now();
     this.deps.logger.info("history", "delete-started", "History asset deletion started", { assetId });
     const current = this.deps.store.get();
@@ -77,7 +79,8 @@ export class HistoryDestructiveService {
           new Set(asset.versions.map((version) => `history:${asset.id}:${version.id}`)),
           resolvedVideoFiles?.referencePaths ?? filesToDelete,
           "视频文件",
-          asset.versions.flatMap(version => historyAuxiliaryAssetIds(version))
+          asset.versions.flatMap(version => historyAuxiliaryAssetIds(version)),
+          approval
         );
       }
       // Keep the existing user-facing wording for this legacy whole-record
@@ -117,7 +120,7 @@ export class HistoryDestructiveService {
     }
   }
 
-  async deleteHistoryBatch(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<AppState> {
+  async deleteHistoryBatch(kind: HistoryBatchCopyKind, assetIds: string[], approval?: HistoryDeleteApproval): Promise<AppState> {
     if (kind !== "video" && kind !== "image") throw new Error("历史媒体类型无效。");
     const requestedIds = [...new Set(assetIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))];
     if (!requestedIds.length) return this.deps.store.get();
@@ -153,7 +156,8 @@ export class HistoryDestructiveService {
           )),
           resolvedVideo.flatMap((files) => files.referencePaths),
           "视频文件",
-          selectedVersions.flatMap(historyAuxiliaryAssetIds)
+          selectedVersions.flatMap(historyAuxiliaryAssetIds),
+          approval
         );
       } else {
         await this.assertPathsExclusive(
@@ -206,7 +210,7 @@ export class HistoryDestructiveService {
     }
   }
 
-  async deleteVideoVersion(assetId: string, versionId: string): Promise<AppState> {
+  async deleteVideoVersion(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState> {
     const startedAt = Date.now();
     const current = this.deps.store.get();
     const asset = current.history.find((item) => item.id === assetId);
@@ -232,7 +236,8 @@ export class HistoryDestructiveService {
       new Set([`history:${assetId}:${versionId}`]),
       resolvedVersionFiles.referencePaths,
       "视频文件",
-      historyAuxiliaryAssetIds(version)
+      historyAuxiliaryAssetIds(version),
+      approval
     );
     this.deps.logger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
       assetId,
@@ -304,10 +309,15 @@ export class HistoryDestructiveService {
     settings: Settings
   ): Promise<ResolvedHistoryDeletionFiles> {
     const uniqueFiles = uniqueHistoryFiles(files);
-    const resolved = await Promise.all(uniqueFiles.map(async (file) => ({
-      file,
-      filename: await this.deps.resolveHistoryFile(file, settings)
-    })));
+    const resolved = await Promise.all(uniqueFiles.map(async (file) => {
+      const filename = await this.deps.resolveHistoryFile(file, settings);
+      // A previously deleted shared file is not an incomplete deletion. An
+      // exact recorded path can still be unlinked: ENOENT is success, whereas
+      // access/IO failures remain visible. Never guess among logical fallbacks.
+      const recordedPath = file.absolutePath && path.isAbsolute(file.absolutePath) &&
+        path.basename(file.absolutePath) === file.filename ? file.absolutePath : null;
+      return { file, filename: filename ?? recordedPath };
+    }));
     return {
       paths: [...new Set(resolved
         .map((entry) => entry.filename)
@@ -325,7 +335,7 @@ export class HistoryDestructiveService {
     };
   }
 
-  async deleteJointAv(assetId: string, versionId: string): Promise<AppState> {
+  async deleteJointAv(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState> {
     const startedAt = Date.now();
     const current = this.deps.store.get();
     const asset = current.history.find((item) => item.id === assetId);
@@ -369,7 +379,8 @@ export class HistoryDestructiveService {
         ...targetFiles.flatMap((file) => historyFileCandidates(file, current.settings))
       ],
       "JointAV 文件",
-      unifiedAsset ? [unifiedAsset.assetId] : []
+      unifiedAsset ? [unifiedAsset.assetId] : [],
+      approval
     );
     try {
       const deletedJointAvFiles = await this.unlinkFiles(
@@ -427,7 +438,7 @@ export class HistoryDestructiveService {
     }
   }
 
-  async deleteMotionContext(assetId: string, versionId: string): Promise<AppState> {
+  async deleteMotionContext(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState> {
     const startedAt = Date.now();
     const current = this.deps.store.get();
     const asset = current.history.find((item) => item.id === assetId);
@@ -450,7 +461,9 @@ export class HistoryDestructiveService {
       this.deps.store.get(),
       new Set([`history:${assetId}:${versionId}`]),
       [filename],
-      "Motion Context latent 文件"
+      "Motion Context latent 文件",
+      [],
+      approval
     );
     this.deps.logger.info("history", "motion-context-delete-started", "开始删除 Motion Context latent 文件", {
       assetId,
@@ -645,7 +658,8 @@ export class HistoryDestructiveService {
     allowedReferenceIds: ReadonlySet<string>,
     targetPaths: readonly string[],
     mediaLabel: string,
-    targetAssetIds: readonly string[] = []
+    targetAssetIds: readonly string[] = [],
+    approval?: HistoryDeleteApproval
   ): Promise<void> {
     const targetKeys = new Set(targetPaths.map(normalizedHistoryPath));
     let scanState = state;
@@ -668,9 +682,33 @@ export class HistoryDestructiveService {
           reference.assetIds.some((assetId) => targetAssetIds.includes(assetId)) ||
           reference.paths.some((file) => targetKeys.has(file))
         )
-        .map((reference) => reference.referenceId);
+        .sort((left, right) => left.referenceId.localeCompare(right.referenceId));
       if (blockers.length) {
-        throw new Error(`${mediaLabel}仍被其他版本、队列或草稿引用，拒绝物理删除：${blockers.join("、")}`);
+        const referenceToken = createHash("sha256").update(JSON.stringify({
+          allowed: [...allowedReferenceIds].sort(), paths: [...targetKeys].sort(),
+          assetIds: [...targetAssetIds].sort(),
+          references: blockers.map(reference => ({
+            id: reference.referenceId,
+            paths: reference.paths.filter(file => targetKeys.has(file)).sort(),
+            assetIds: reference.assetIds.filter(id => targetAssetIds.includes(id)).sort()
+          }))
+        })).digest("hex");
+        // Image deletion keeps its existing protection; this approval covers
+        // video/continuation data only, never expands the actual file set.
+        if (mediaLabel === "图片文件") {
+          throw new Error(`${mediaLabel}仍被其他版本、队列或草稿引用，拒绝物理删除：${blockers.map(reference => reference.referenceId).join("、")}`);
+        }
+        if (approval?.referenceToken !== referenceToken) {
+          this.deps.logger.info("history", "delete-confirmation-required", "Linked deletion requires confirmation", {
+            referenceCount: blockers.length, referenceIds: blockers.map(reference => reference.referenceId)
+          });
+          throw new Error(historyDeleteConfirmationMessage({ referenceToken, references: blockers.map(reference => ({
+            id: reference.referenceId, label: referenceLabel(latestState, reference.referenceId)
+          })) }));
+        }
+        this.deps.logger.info("history", "linked-delete-approved", "User confirmed linked deletion", {
+          referenceCount: blockers.length, referenceIds: blockers.map(reference => reference.referenceId)
+        });
       }
       return;
     }
@@ -685,6 +723,7 @@ export class HistoryDestructiveService {
     error: unknown,
     extra: Record<string, unknown> = {}
   ): void {
+    if (historyDeleteImpactFromError(error)) return;
     this.deps.logger.error("history", event, safeLogErrorMessage(error), {
       assetId,
       durationMs: Date.now() - startedAt,
@@ -699,6 +738,15 @@ interface HistoryAuxiliaryReference {
   referenceId: string;
   paths: string[];
   assetIds: string[];
+}
+
+function referenceLabel(state: AppState, referenceId: string): string {
+  for (const asset of state.history) {
+    const version = asset.versions.find(version => referenceId === `history:${asset.id}:${version.id}`);
+    if (version) return `${asset.title} · ${version.outputFilename}`;
+  }
+  const task = state.queue.find(task => referenceId === `queue:${task.id}`);
+  return task?.outputFilename || referenceId;
 }
 
 interface ResolvedHistoryDeletionFiles {

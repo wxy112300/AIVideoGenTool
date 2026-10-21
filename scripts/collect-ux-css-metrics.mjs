@@ -18,7 +18,7 @@ const scopes = [
   {
     id: "prototype",
     label: "Prototype shared CSS",
-    files: [path.join(workspace, "prototypes", "studio-prototype.css")]
+    files: [path.join(workspace, "prototypes", "legacy", "studio-prototype.css")]
   }
 ];
 

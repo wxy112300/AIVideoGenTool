@@ -4,6 +4,11 @@
 
 ## 当前任务
 
+- [本次 Prompt 输出语言覆盖](2026-10-21-prompt-language/TASK.md)
+- [H3 写实画质知识与快捷插入](2026-10-21-h3-visual-quality/TASK.md)
+- [FastH3 Omni 独立 H3 模型接入](2026-10-21-fasth3-omni/TASK.md)
+- [UI 迁移：按 DESIGN.md 重建 renderer](2026-10-21-ui-migration/TASK.md)
+- [UI 设计系统与交互美学重建（设计阶段已完成，作决定记录）](2026-10-20-ui-design-system/TASK.md)
 - [长视频模式：Strata 编排与 Continuum 自动续接](2026-10-18-long-video-director/TASK.md)
 - [H3 高分辨率 Upscale Gate](2026-09-07-h3-high-resolution/TASK.md)
 - [Strata 提示词增强更新调查与接入计划](2026-10-10-strata-prompt-integration/TASK.md)

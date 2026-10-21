@@ -72,6 +72,7 @@ export function h3SmallModelPromptContract(
     : [];
   return [
     "H3 small-model contract. User-intent priority: follow this order: user request, H3 mode/keyframes, action and camera timeline, synchronized sound, then continuity anchors that are actually needed.",
+    "Descriptive-language precedence: English prose is the default only when no resolved output language is supplied. A resolved output-language instruction overrides English prose references and examples in this contract. This changes explanatory prose only; official headings stay English and exact speech, lyrics and visible text retain their original language.",
     h3CommunityPromptWriterContract(mode, preset),
     "Use a silent four-pass workflow: extract the user's concrete requirements; plan sequential action beats across the supplied duration; render the required H3 fields; audit before answering.",
     "User-word lock / User-intent preservation rule: preserve every concrete user requirement in meaning, including subject details, clothing or exposure level, objects, unusual nouns, scale, materials, body parts, actions, poses, behavior, camera terms, dialogue, and visible text. Never omit, euphemize, sanitize, or replace an explicit user term; do not reinterpret it. Translate ordinary prose only when needed for English output; keep every spoken line and visible text exact whether or not the user wrapped it in quotation marks.",
@@ -96,7 +97,7 @@ export function h3SmallModelPromptContract(
       : "Base-mode reference audit: use an image as a concrete keyframe only when the selected mode requires it; do not turn a single frame into an unrelated reference inventory.",
     formatRule,
     outputRule,
-    "Return only the final English H3 prompt. No analysis, planning notes, preface, Markdown fence, generic negative prompt, or extra sections."
+    "Return only the final English H3 prompt unless the resolved output-language instruction selects another descriptive language. No analysis, planning notes, preface, Markdown fence, generic negative prompt, or extra sections."
   ].join("\n");
 }
 

@@ -12,7 +12,7 @@ export const journeys = [
     section: "assets", documentation: "docs/runbooks/ASSET_LIFECYCLE.md",
     paths: ["electron/queue-history.ts", "electron/services/history-destructive-service.ts", "electron/services/image-asset-library-service.ts", "electron/services/settings-service.ts", "src/infrastructure/video-history-migration.ts", "src/core/native-av-artifact-paths.ts", "electron/services/history-query-service.ts", "electron/services/native-av-artifact.ts"],
     tests: ["tests/history-services.test.ts", "tests/history-delete.test.ts", "tests/image-asset-library.test.ts", "tests/image-asset-library-service.test.ts", "tests/video-history-migration.test.ts", "tests/video-migration-consumers.test.ts", "tests/draft-settings-services.test.ts", "tests/native-av-artifact.test.ts", "tests/native-av-artifact-paths.test.ts", "tests/asset-migration-harness.test.ts", "tests/version-delete-harness.test.ts"],
-    checks: ["task/version → 媒体 / AV owner / aliases 去重核对；文件存在与续写资格分开", "图片库扫描不覆盖视频；归档复制与孤儿清理分开；新引用必须保护", "apply 不搬旧文件；migrate 校验→提交→清理；新 AV/sequence 引用需单独验收", "共享引用阻塞删除；单版本/作品/辅助数据分别验证；仅操作隔离测试资产"]
+    checks: ["task/version → 媒体 / AV owner / aliases 去重核对；文件存在与续写资格分开", "图片库扫描不覆盖视频；归档复制与孤儿清理分开；新引用必须保护", "apply 不搬旧文件；migrate 校验→提交→清理；新 AV/sequence 引用需单独验收", "视频共享引用二次确认：取消不删、确认仅删所选目标、新引用重新确认；单版本/作品/辅助数据分别验证，仅操作隔离测试资产"]
   },
   {
     id: "create-video", title: "选模型 → 首尾帧 / R2V → 提示词 → 入队",

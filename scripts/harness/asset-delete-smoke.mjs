@@ -81,16 +81,15 @@ try {
     const deleteSelector = wholeAsset ? `[data-delete-history="${baseline.assetId}"]` : "[data-delete-joint-av]";
     await click(deleteSelector);
     await click("#accept-confirmation");
-    // Read the production notification surface without replacing AppApi or its handlers.
+    // The backend pauses before unlink; the second dialog can be cancelled.
     report.protectionMessage = await pollUntil(() => client.evaluate(`(() => {
-      const flash=document.querySelector('#app-flash.visible[data-kind=error]');
-      return flash?.querySelector('[data-flash-message]')?.textContent ?? '';
-    })()`), text => text.includes("拒绝物理删除"), options.timeout, "Shared draft deletion guard");
+      return document.querySelector('#confirm-description')?.textContent ?? '';
+    })()`), text => text.includes("其他记录保留"), options.timeout, "Shared draft deletion confirmation");
     assert.equal(version(await client.evaluate("window.studio.getState()"), baseline).h3ContinuationData.status, "available");
     for (const f of baseline.files) assert.equal(await digest(f.path), f.sha256);
     report.protectedFilesUnchanged = true;
     await click("#cancel-confirmation");
-    await click("#dismiss-app-flash");
+    if (await client.evaluate("!!document.querySelector('#app-flash.visible')")) await click("#dismiss-app-flash");
     await click("button[data-page=create]");
     await click("#clear-draft");
     await click("#accept-confirmation");

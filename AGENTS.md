@@ -48,7 +48,7 @@ Read affected neighboring checks in [CHANGE_VERIFICATION](docs/CHANGE_VERIFICATI
 - Docs: diff, links and command consistency.
 - Focused logic: relevant Vitest tests + `npm.cmd run typecheck`.
 - Shared state/IPC/queue/history/workflow: focused tests + `npm.cmd run verify`.
-- Shared renderer/CSS/substantial UX: verify + manual [UX](docs/UX_CONTRACT.md) checks.
+- Shared renderer/CSS/substantial UX: verify + manual [UX](docs/UX_CONTRACT.md) checks; visual language follows [DESIGN.md](DESIGN.md).
 - Runtime strategy: verify + static graph checks + real minimal generation when available.
 
 `verify` runs tests, clean typechecked build and contrast checks. Repeat only when changed inputs/failures invalidate evidence. Report actual checks, unverified runtime dependencies, preserved behavior and resource cleanup; inspect scoped diff and unexpected deletions. Never infer performance/quality from static success.

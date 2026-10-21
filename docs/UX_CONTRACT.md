@@ -1,6 +1,6 @@
 # UX and Visual Design Contract
 
-This is the acceptance contract for product UI work. It turns subjective requests such as "cleaner" or "more polished" into repeatable decisions without forcing a heavyweight design-system migration.
+This is the acceptance contract for product UI work. It turns subjective requests such as "cleaner" or "more polished" into repeatable decisions without forcing a heavyweight design-system migration. Visual language (color, type, spacing, components, motion) is defined in [DESIGN.md](../DESIGN.md); this contract governs behavior and acceptance.
 
 ## Product Character
 
@@ -19,10 +19,11 @@ The LAN viewer uses an icon-only sound control and a visible loading ring during
 ## Source and Prototype Workflow
 
 - The current renderer under `src/renderer/` and `src/styles/`, together with renderer screenshot/fixture evidence, is the interaction and layout source of truth for current work.
-- The repository's existing `prototypes/` pages are historical reference material because the user has explicitly identified them as an older design. Their screenshots and behavior are not approval evidence.
+- The early `prototypes/legacy/` pages are archived reference material because the user has explicitly identified them as an older design. Their screenshots and behavior are not approval evidence.
+- `prototypes/` (outside `legacy/`) holds the 2026-10-20 design-system prototypes. The style tile was approved on 2026-10-21 as the visual reference for [DESIGN.md](../DESIGN.md); page layouts become approval evidence only for items the user has explicitly approved in [the UI design-system task](tasks/2026-10-20-ui-design-system/TASK.md).
 - Substantial new modules, navigation changes, or page restructuring must first be resolved against the current renderer DOM, states, breakpoints and preserve list unless the user explicitly requests a new prototype.
 - Small production fixes may be implemented directly in the current renderer; update a prototype only when it is deliberately being maintained as historical/reference material.
-- When maintaining prototype source fragments and shared assets, run `npm.cmd run prototype:build`; do not patch only `prototypes/preview/`.
+- When maintaining the archived legacy fragments, run `npm.cmd run prototype:build`; do not patch only `prototypes/legacy/preview/`. New prototypes are plain HTML/CSS/JS without a build step.
 - A prototype demonstrates intent. It does not prove persistence, IPC, model support, or runtime success.
 
 ## Layout Grammar

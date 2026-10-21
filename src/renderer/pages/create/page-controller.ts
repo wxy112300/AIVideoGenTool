@@ -195,7 +195,8 @@ export function mountCreatePageController(
               )) {
                 return configuredModel;
               }
-              if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId) || isMiniMaxH3ContinuumModel(state.draft.modelId)) {
+              if ((isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId) || isMiniMaxH3ContinuumModel(state.draft.modelId)) &&
+                modelSupportsCreateInputMode(state.draft.modelId, "video", false, "", options.workflowCapabilities, options.bundledWorkflows)) {
                 return state.draft.modelId;
               }
               const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");

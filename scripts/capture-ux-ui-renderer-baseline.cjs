@@ -10,6 +10,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(workspace, "package.jso
 const manifestPath = path.join(workspace, "docs", "ux-ui-renderer-baseline.manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const userDataRoot = path.join(os.tmpdir(), "local-video-studio-ux-renderer", `run-${process.pid}`);
+const rendererApiMethodNames = [...fs.readFileSync(path.join(workspace, "src", "renderer", "studio-client.ts"), "utf8").matchAll(/^\s+"([A-Za-z0-9]+)",?$/gmu)].map((match) => match[1]);
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
@@ -1465,6 +1466,7 @@ const api = {
   enqueue: async () => { fixtureStats.enqueue += 1; await delay(80); return clone(currentState); }, enqueueExtension: async () => { fixtureStats.enqueueExtension += 1; await delay(80); return clone(currentState); }, enqueueImageEdit: async () => { fixtureStats.imageEdit += 1; await delay(80); return clone(currentState); }, enqueueUpscale: async () => clone(currentState), updateUpscaleTask: async () => clone(currentState), removeTask: async () => clone(currentState), startQueue: async () => clone(currentState), pauseQueue: async () => clone(currentState), cancelTask: async () => clone(currentState), moveTask: async () => clone(currentState), duplicateTask: async () => clone(currentState), resetTask: async () => clone(currentState), deleteHistoryAsset: async () => clone(currentState), updateHistoryMetadata: async () => clone(currentState), setImageHistoryCover: async () => clone(currentState), deleteImageHistoryVersion: async () => clone(currentState),
   onStateChanged: (listener) => { stateListeners.add(listener); return () => stateListeners.delete(listener); }, onComfyRuntimeStateChanged: (listener) => { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); }, onTaskPreview: (listener) => { taskPreviewListeners.add(listener); return () => taskPreviewListeners.delete(listener); }, onPromptRuntimeStateChanged: () => () => {}, onPromptProgress: () => () => {}, onWindowCloseRequest: () => () => {}, onAttentionInstallLog: () => () => {}, onDependencyInstallLog: () => () => {}, onHistoryMigrationProgress: () => () => {}, scanImageAssetLibrary: async () => clone(emptyLibraryScan), organizeImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), cleanupImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), onImageAssetLibraryProgress: () => () => {}
 };
+for (const name of ${JSON.stringify(rendererApiMethodNames)}) if (!(name in api)) api[name] = /^on[A-Z]/.test(name) ? () => () => {} : async () => null;
 contextBridge.exposeInMainWorld("studio", api);`;
   await fsp.writeFile(preloadPath, source, "utf8");
   return preloadPath;
@@ -1484,6 +1486,8 @@ async function captureAll(options, preloadPath) {
       webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: false }
     });
     if (options.smoke) window.focus();
+    // Hidden windows keep returning the first painted frame after navigation.
+    else window.showInactive();
     window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
       console.log(`[renderer-console:${level}] ${message} (${sourceId}:${line})`);
     });

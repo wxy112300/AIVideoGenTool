@@ -12,6 +12,7 @@ import {
   H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION
 } from "./catalog/dependencies/nodes.js";
 import { COMFYUI_RECOMMENDED_VERSION } from "./catalog/dependencies/comfy-core.js";
+import { FASTH3_OMNI_MINIMUM_COMFY_VERSION } from "./catalog/models/minimax_h3_omni/definition.js";
 
 export interface WorkflowSourceMetadata {
   schema: {
@@ -81,6 +82,11 @@ function metadata(
 }
 
 export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMetadata>> = {
+  minimax_h3_omni_r2v_api: metadata("minimax_h3_omni_r2v_api.json", ["video-helper-suite", "kjnodes"], {
+    comfyUi: { minimumVersion: FASTH3_OMNI_MINIMUM_COMFY_VERSION, recommendedVersion: recommendedCore },
+    upstreamUrl: "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/tree/82eff2a6eee6c962846879f4bab52610a4df24d3",
+    verifiedAt: "2026-10-21"
+  }),
   hunyuan15_i2v_api: metadata("hunyuan15_i2v_api.json", []),
   hunyuan15_sr_i2v_api: metadata("hunyuan15_sr_i2v_api.json", []),
   minimax_h3_fl2va_turbo_api: metadata("minimax_h3_fl2va_turbo_api.json", ["kjnodes"], {

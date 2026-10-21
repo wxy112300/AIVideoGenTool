@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>页面原型 · Local Video Studio</title>
+  <script src="app/boot.js"></script>
+  <link rel="stylesheet" href="design-system/tokens.css">
+  <link rel="stylesheet" href="design-system/controls.css">
+  <link rel="stylesheet" href="design-system/surfaces.css">
+  <link rel="stylesheet" href="app/app.css">
+</head>
+<body data-page="index">
+  <div class="app-shell">
+    <header data-shell></header>
+    <main>
+      <section class="page-heading"><div class="page-title"><h1>页面原型</h1><p>按 DESIGN.md 逐页确认布局；左下角“原型”切换状态、窗口宽度与标注。</p></div></section>
+      <div class="proto-index">
+        <a class="lit" href="style-tile.html"><strong><i data-lucide="swatch-book"></i>设计系统样板</strong><span>组件、色彩、动效（已定稿）</span><span class="badge success">G1 已通过</span></a>
+        <a class="lit" href="create.html"><strong><i data-lucide="wand-sparkles"></i>创建</strong><span>图生视频（首尾帧 / 多参考）、视频续写、图片处理、长视频</span><span class="badge success">已填充</span></a>
+        <a class="lit" href="queue.html"><strong><i data-lucide="list-video"></i>队列</strong><span>执行、等待、批次分界、长视频创作包、需要处理、空状态</span><span class="badge success">已填充</span></a>
+        <a class="lit" href="history.html"><strong><i data-lucide="images"></i>历史</strong><span>视频 / 图片、瀑布流 / 相册、批量、空状态</span><span class="badge success">已填充</span></a>
+        <a class="lit" href="video-detail.html"><strong><i data-lucide="film"></i>视频详情</strong><span>普通 / Continuum 长视频</span><span class="badge success">已填充</span></a>
+        <a class="lit" href="image-detail.html"><strong><i data-lucide="image"></i>图片详情</strong><span>版本轨、查看器、大图、原始素材 / 编辑版本</span><span class="badge success">已填充</span></a>
+        <a class="lit" href="settings.html"><strong><i data-lucide="settings-2"></i>设置</strong><span>10 个分类 + 外观</span><span class="badge success">已填充</span></a>
+      </div>
+    </main>
+  </div>
+  <script src="../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="design-system/ds.js"></script>
+  <script src="app/app.js"></script>
+</body>
+</html>

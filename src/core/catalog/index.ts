@@ -5,6 +5,7 @@ import { minimaxH3Fl2vaQ3Gguf } from "./models/minimax_h3_fl2va_q3_gguf/definiti
 import { minimaxH3Fl2vaTurbo } from "./models/minimax_h3_fl2va_turbo/definition.js";
 import { minimaxH3Ref2va } from "./models/minimax_h3_ref2va/definition.js";
 import { minimaxH3Ref2vaInt4 } from "./models/minimax_h3_ref2va_int4/definition.js";
+import { minimaxH3Omni } from "./models/minimax_h3_omni/definition.js";
 import { minimaxH3Continuum } from "./models/minimax_h3_continuum/definition.js";
 import { sulphur2 } from "./models/sulphur2/definition.js";
 import { promptModelEntries } from "./models/prompt.js";
@@ -22,6 +23,7 @@ export const modelCatalog = createModelCatalog([
   minimaxH3Fl2vaTurbo,
   minimaxH3Ref2va,
   minimaxH3Ref2vaInt4,
+  minimaxH3Omni,
   minimaxH3Continuum,
   sulphur2,
   ...promptModelEntries,

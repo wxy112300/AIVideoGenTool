@@ -179,4 +179,4 @@ Extension worker 负责：
 - 记录 VRAM、RAM、阶段卸载和失败恢复证据。
 - 新结果作为独立历史作品出现，源作品及其分辨率版本不改变。
 
-交互原型位于 `prototypes/create.html`，历史入口位于 `prototypes/history-detail.html`。
+交互原型位于 `prototypes/legacy/create.html`，历史入口位于 `prototypes/legacy/history-detail.html`（2026-10-20 已归档为早期设计）。

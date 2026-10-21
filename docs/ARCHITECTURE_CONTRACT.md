@@ -94,6 +94,7 @@ Application methods must retain their receiver across the composition boundary. 
 - Path resolution must support existing records after restart and preserve legacy records through explicit fallback/migration logic.
 - Cover images are derived cache artifacts. A missing or stale cover may be regenerated without modifying the original media or history identity.
 - Deleting from history removes both the selected record/project data and the corresponding media only after confirmation. Partial failure must be surfaced and must not silently leave metadata claiming success.
+- Video deletion with shared History/queue/draft references requires a second consequence confirmation, not a permanent veto. Approval binds the selected target and current matching references; changes require renewed confirmation. Delete only the selected files/records, never cascade into dependent records or recursively remove a Continuum Run. Retained references may become missing and use existing inspection/fallback behavior; immutable queued snapshots are not rewritten.
 
 ### Settings and environment
 

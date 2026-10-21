@@ -17,8 +17,7 @@ import { h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
-  h3ContentLockInstruction,
-  stripH3ContentFromSource
+  h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
 import {
   h3PromptModeForRequest,
@@ -29,6 +28,7 @@ import {
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { applyPromptRevision, stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { countPromptWords } from "../../src/core/prompt-count.js";
+import { promptTargetLanguage } from "../../src/core/prompt-language.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { getPerformanceMetrics } from "./performance.js";
@@ -185,13 +185,7 @@ export function multimodalPromptTargetLanguage(
   request: EnhanceRequest,
   settings: Pick<Settings, "promptLanguage" | "uiLocale">
 ): "zh" | "en" {
-  if (settings.promptLanguage === "zh" || settings.promptLanguage === "en") {
-    return settings.promptLanguage;
-  }
-  const userText = request.prompt.trim() || request.referenceContext?.trim() || "";
-  const descriptiveText = stripH3ContentFromSource(userText);
-  if (descriptiveText) return /\p{Script=Han}/u.test(descriptiveText) ? "zh" : "en";
-  return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
+  return promptTargetLanguage(request, settings);
 }
 
 export function multimodalRuntimeMaxOutputTokens(

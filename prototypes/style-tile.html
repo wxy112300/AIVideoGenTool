@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="zh-CN" data-palette="graphite" data-depth="1" data-accent="azure">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local Video Studio · 设计系统</title>
+  <link rel="stylesheet" href="design-system/tokens.css">
+  <link rel="stylesheet" href="design-system/controls.css">
+  <link rel="stylesheet" href="design-system/surfaces.css">
+  <link rel="stylesheet" href="style-tile.css">
+</head>
+<body>
+  <header class="tile-bar">
+    <div class="tile-brand"><span class="brand-mark" aria-hidden="true"></span><strong>Local Video Studio</strong><span class="meta">设计系统 · 候选</span></div>
+    <div class="tile-controls">
+      <div class="field inline"><label for="palette">灰阶</label>
+        <select id="palette" data-size="sm">
+          <option value="graphite" data-note="Radix Gray · 纯中性">Graphite 中性</option>
+          <option value="sand" data-note="Radix Sand · 微暖">Sand 暖灰</option>
+          <option value="slate" data-note="Radix Slate · 微冷">Slate 冷灰</option>
+          <option value="mauve" data-note="Radix Mauve · 微紫">Mauve 柔灰</option>
+          <option value="apple" data-note="Apple 系统灰">Apple 系统灰</option>
+        </select>
+      </div>
+      <div class="field inline"><span class="label">深度</span>
+        <div class="seg" id="depth"><button type="button" data-value="0" aria-pressed="false">更深</button><button type="button" data-value="1" aria-pressed="true">深</button><button type="button" data-value="2" aria-pressed="false">平衡</button></div>
+      </div>
+      <div class="field inline"><span class="label">主题色</span>
+        <div class="accent-picker" id="accent" role="radiogroup" aria-label="主题色">
+          <button type="button" role="radio" data-value="sky" aria-checked="false" data-tip="天空 #64d2ff" style="--c:#64d2ff"></button>
+          <button type="button" role="radio" data-value="lagoon" aria-checked="false" data-tip="浅海 #40c8e0" style="--c:#40c8e0"></button>
+          <button type="button" role="radio" data-value="azure" aria-checked="true" data-tip="晴蓝 #0090ff" style="--c:#0090ff"></button>
+          <button type="button" role="radio" data-value="ocean" aria-checked="false" data-tip="海蓝 #0a84ff" style="--c:#0a84ff"></button>
+          <button type="button" role="radio" data-value="mono" aria-checked="false" data-tip="无（白）" style="--c:#eeeeee"></button>
+        </div>
+      </div>
+      <label class="switch-row"><span class="label">减少动态效果</span><span class="switch"><input type="checkbox" id="reduced"><span></span></span></label>
+    </div>
+  </header>
+
+  <div class="tile-layout">
+    <nav class="tile-toc" aria-label="目录">
+      <span class="toc-group">基础</span>
+      <a href="#color">色彩</a><a href="#type">字体与图标</a>
+      <span class="toc-group">组件</span>
+      <a href="#buttons">按钮与光感</a><a href="#inputs">输入与选择</a><a href="#sliders">滑块与开关</a><a href="#prompt">创建页：参考 + 提示词</a><a href="#lora">LoRA 堆叠</a><a href="#overlays">菜单与浮层</a><a href="#states">状态与反馈</a>
+      <span class="toc-group">页面模式</span>
+      <a href="#shell">导航与通知</a><a href="#history">历史</a><a href="#detail">视频详情</a><a href="#queue">队列</a><a href="#long-video">长视频</a><a href="#settings">设置</a>
+      <span class="toc-group">规则</span>
+      <a href="#motion">动效</a><a href="#copy">文案</a>
+    </nav>
+
+    <main class="tile-main">
+      <!-- ============ 色彩 ============ -->
+      <section id="color" class="tile-section">
+        <div class="section-head"><h2>色彩</h2><p class="meta">中性灰承载界面，主题色只给“下一步最重要的动作”、进度、滑块和开关；作品始终是最鲜艳的内容。</p></div>
+        <div class="ladder" id="ladder"></div>
+        <div class="tile-grid two">
+          <div class="card pad stack">
+            <h3>文字对比度</h3>
+            <table class="contrast" id="contrast"></table>
+          </div>
+          <div class="card pad stack">
+            <h3>角色</h3>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--accent)"></span><span>主题色</span><span class="meta">主操作、进度、滑块、开关、选中勾</span></div>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--n12)"></span><span>白</span><span class="meta">标题、当前选中、筛选激活</span></div>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--success)"></span><span>成功</span><span class="meta">就绪、完成</span></div>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--warning)"></span><span>注意</span><span class="meta">需要更新、需复核</span></div>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--danger)"></span><span>错误</span><span class="meta">缺失、失败、删除</span></div>
+            <div class="role-row"><span class="swatch-dot" style="background:var(--info)"></span><span>信息</span><span class="meta">提示、扫描中</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 字体与图标 ============ -->
+      <section id="type" class="tile-section">
+        <div class="section-head"><h2>字体与图标</h2><p class="meta">7 个字号、3 个字重；中文正文不加粗。图标使用项目已有的 Lucide，16px / 1.75 线宽，按钮内 14–18px。</p></div>
+        <div class="tile-grid two">
+          <div class="card pad type-scale">
+            <div><span class="caption">24 · 600</span><span style="font-size:24px;font-weight:600;color:var(--text-1)">夜色中的城市镜头</span></div>
+            <div><span class="caption">20 · 600</span><span style="font-size:20px;font-weight:600;color:var(--text-1)">创建</span></div>
+            <div><span class="caption">16 · 600</span><span style="font-size:16px;font-weight:600;color:var(--text-1)">输出设置</span></div>
+            <div><span class="caption">14 · 500</span><span style="font-size:14px;font-weight:500;color:var(--text-1)">MiniMax H3 · FL2VA</span></div>
+            <div><span class="caption">13 · 400</span><span>镜头缓慢推进，雨后的街道反射霓虹灯光。</span></div>
+            <div><span class="caption">12 · 500</span><span style="font-size:12px;font-weight:500;color:var(--text-3)">采样步数</span></div>
+            <div><span class="caption">11 · 400</span><span class="caption">2026-10-20 22:14 · 1280×720 · 5.0 秒</span></div>
+            <div><span class="caption">mono</span><code class="ellipsis" title="E:\AIVideo\output\2026-10\h3-夜色城市-20261020-221455.mp4">E:\AIVideo\output\2026…20261020-221455.mp4</code></div>
+            <div><span class="caption">数字</span><span class="num" style="color:var(--text-1);font-size:20px;font-weight:500">01:24 · 87% · 18.4 GB</span></div>
+          </div>
+          <div class="card pad">
+            <div class="icon-grid" id="icon-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 按钮 ============ -->
+      <section id="buttons" class="tile-section">
+        <div class="section-head"><h2>按钮与光感</h2><p class="meta">层级参考 Apple：突出（主题色、更大）› 主要 › 着色 › 灰色 › 纯文字。每个区域最多一个突出按钮；鼠标靠近时，卡片和按钮边缘会被指针照亮。</p></div>
+        <div class="card pad stack lit-group">
+          <div class="row wrap">
+            <button class="btn btn-hero lit" type="button"><i data-lucide="list-plus"></i>加入队列<span class="kbd">Ctrl ⏎</span></button>
+            <button class="btn btn-primary lit" type="button"><i data-lucide="play"></i>开始队列</button>
+            <button class="btn btn-tinted lit" type="button"><i data-lucide="sparkles"></i>优化提示词</button>
+            <button class="btn btn-gray lit" type="button"><i data-lucide="folder-open"></i>打开目录</button>
+            <button class="btn btn-plain" type="button"><i data-lucide="rotate-ccw"></i>放弃更改</button>
+            <button class="btn btn-destructive" type="button"><i data-lucide="trash-2"></i>删除</button>
+          </div>
+          <div class="row wrap">
+            <button class="btn btn-hero" type="button" disabled><i data-lucide="list-plus"></i>加入队列</button>
+            <button class="btn btn-primary" type="button" id="busy-demo"><i data-lucide="refresh-cw"></i>点击模拟处理</button>
+            <button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="copy"></i>复制文件</button>
+            <button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="external-link"></i>在浏览器下载</button>
+            <div class="split">
+              <button class="btn btn-primary btn-sm" type="button" id="install-demo"><i data-lucide="download"></i>一键安装</button>
+              <span class="menu-anchor"><button class="btn btn-primary btn-sm btn-more" type="button" data-menu-trigger aria-expanded="false" aria-label="更多操作"><i data-lucide="chevron-down"></i></button>
+                <div class="menu right" role="menu"><button class="menu-item" role="menuitem" type="button"><i data-lucide="folder-open"></i>打开位置</button><div class="menu-sep"></div><button class="menu-item destructive" role="menuitem" type="button"><i data-lucide="trash-2"></i>卸载</button></div></span>
+            </div>
+            <span class="vdivider"></span>
+            <button class="btn btn-icon" type="button" data-tip="上一个" aria-label="上一个"><i data-lucide="chevron-left"></i></button>
+            <button class="btn btn-icon" type="button" data-tip="下一个" aria-label="下一个"><i data-lucide="chevron-right"></i></button>
+            <button class="btn btn-icon btn-gray" type="button" data-tip="收藏" aria-label="收藏"><i data-lucide="heart"></i></button>
+            <button class="btn btn-icon btn-sm" type="button" data-tip="更多" aria-label="更多"><i data-lucide="ellipsis"></i></button>
+          </div>
+          <div class="lit-demo">
+            <div class="card lit pad"><i data-lucide="film"></i><h4>图生视频</h4><p class="meta">一张图开始</p></div>
+            <div class="card lit pad"><i data-lucide="clapperboard"></i><h4>视频续写</h4><p class="meta">接着上一段</p></div>
+            <div class="card lit pad"><i data-lucide="image"></i><h4>图片编辑</h4><p class="meta">多图参考</p></div>
+            <div class="card lit pad"><i data-lucide="scaling"></i><h4>提升分辨率</h4><p class="meta">SeedVR2</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 输入与选择 ============ -->
+      <section id="inputs" class="tile-section">
+        <div class="section-head"><h2>输入与选择</h2><p class="meta">下拉列表宽度按内容伸展、不换行；带分组、说明和禁用原因。</p></div>
+        <div class="card pad stack">
+          <div class="tile-grid three">
+            <div class="field"><label for="demo-model">视频模型</label>
+              <select id="demo-model">
+                <optgroup label="MiniMax H3"><option data-note="首尾帧 · 音画同步" selected>H3 FL2VA · bf16</option><option data-note="多图参考">H3 Ref2VA · fp8</option></optgroup>
+                <optgroup label="其他"><option data-note="缺少 Transformer 权重" disabled>Wan 2.2 I2V</option></optgroup>
+              </select>
+            </div>
+            <div class="field"><label for="demo-res">清晰度</label>
+              <select id="demo-res"><option data-note="最快">480p</option><option selected data-note="推荐">720p</option><option data-note="需要 24 GB 显存">1080p</option></select>
+            </div>
+            <div class="field"><label for="demo-sampler">采样器</label>
+              <select id="demo-sampler"><option selected>euler_ancestral_cfg_pp</option><option>res_multistep</option><option>dpmpp_2m_sde</option></select>
+            </div>
+            <div class="field"><label>种子</label>
+              <div class="input-group"><input class="num" placeholder="留空为随机" aria-label="种子" id="seed"><button class="btn btn-icon btn-sm" type="button" data-tip="随机" aria-label="随机" id="seed-random"><i data-lucide="dices"></i></button><button class="btn btn-icon btn-sm" type="button" data-tip="清空" aria-label="清空" id="seed-clear"><i data-lucide="x"></i></button></div>
+            </div>
+            <div class="field"><label>搜索</label>
+              <div class="input-group"><i data-lucide="search"></i><input placeholder="提示词、文件名、标签"><span class="kbd">Ctrl F</span></div>
+            </div>
+            <div class="field"><label for="demo-path">输出目录</label>
+              <div class="input-group"><input id="demo-path" class="mono" value="E:\AIVideo\output"><button class="btn btn-gray btn-sm" type="button"><i data-lucide="folder"></i>选择</button></div>
+            </div>
+          </div>
+          <div class="row wrap">
+            <div class="seg lg" id="create-mode"><button type="button" aria-pressed="false"><i data-lucide="image"></i>图片编辑</button><button type="button" aria-pressed="true"><i data-lucide="film"></i>图生视频</button><button type="button" aria-pressed="false"><i data-lucide="clapperboard"></i>视频续写</button></div>
+            <span class="vdivider"></span>
+            <button class="chip" type="button" aria-pressed="true"><i data-lucide="check"></i>推镜</button><button class="chip" type="button" aria-pressed="false">慢动作</button><button class="chip" type="button" aria-pressed="false">手持</button>
+            <span class="vdivider"></span>
+            <label class="check"><input type="checkbox" checked>保存 latent</label>
+            <label class="check"><input type="checkbox" id="indeterminate">全选</label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 滑块与开关 ============ -->
+      <section id="sliders" class="tile-section">
+        <div class="section-head"><h2>滑块与开关</h2><p class="meta">数值多的参数用滑块 + 可输入数字；开关用于立即生效的布尔设置。</p></div>
+        <div class="tile-grid two">
+          <div class="card pad stack">
+            <div class="field"><span class="label">时长<span class="value" id="dur-readout">5.0 秒</span></span>
+              <div class="slider-field js-slider" data-unit=" 秒" id="dur-field"><div><div class="range-wrap"><input type="range" min="1" max="15.1" step="0.1" value="5" aria-label="时长"></div><div class="range-ticks"><span>1</span><span>5</span><span>10</span><span>15.1</span></div></div><label class="number"><input type="number" min="1" max="15.1" step="0.1" value="5" aria-label="时长（秒）"><span>秒</span></label></div>
+            </div>
+            <div class="field"><span class="label">采样步数</span>
+              <div class="slider-field js-slider"><div class="range-wrap"><input type="range" min="4" max="60" step="1" value="30" aria-label="采样步数"></div><label class="number"><input type="number" min="4" max="60" value="30" aria-label="采样步数"><span>步</span></label></div>
+            </div>
+            <div class="field"><span class="label">输出数量</span>
+              <div class="slider-field js-slider"><div><div class="range-wrap"><input type="range" min="1" max="8" step="1" value="4" aria-label="输出数量"></div><div class="range-ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div></div><label class="number"><input type="number" min="1" max="8" value="4" aria-label="输出数量"><span>张</span></label></div>
+            </div>
+            <div class="field"><span class="label">裁切源视频<span class="value num" id="trim-readout">0:02.4 – 0:08.0</span></span>
+              <div class="trim" id="trim"><div class="trim-strip"></div><div class="trim-sel"></div><input type="range" min="0" max="10" step="0.1" value="2.4" aria-label="起点"><input type="range" min="0" max="10" step="0.1" value="8" aria-label="终点"></div>
+            </div>
+          </div>
+          <div class="card pad stack">
+            <label class="switch-row"><span class="switch-copy"><span>实时预览</span><span class="meta">生成时显示 TAE 预览帧</span></span><span class="switch"><input type="checkbox" checked><span></span></span></label>
+            <hr class="divider">
+            <label class="switch-row"><span class="switch-copy"><span>自动重试失败任务</span><span class="meta">最多 2 次</span></span><span class="switch"><input type="checkbox"><span></span></span></label>
+            <hr class="divider">
+            <label class="switch-row"><span class="switch-copy"><span>完成后自动卸载模型</span></span><span class="switch"><input type="checkbox" checked><span></span></span></label>
+            <hr class="divider">
+            <label class="switch-row"><span class="switch-copy"><span>局域网浏览</span><span class="meta">ComfyUI 未运行时不可用</span></span><span class="switch"><input type="checkbox" disabled><span></span></span></label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 创建页：参考（左）+ 编辑（右） ============ -->
+      <section id="prompt" class="tile-section">
+        <div class="section-head"><h2>创建页 · 参考与提示词</h2><p class="meta">沿用现有布局：左列参考素材（最小 350px、约占 41%，随页面吸顶），右列编辑。素材按原始比例占满列宽、高度自动延展（单张上限 640px），所有参考位纵向排列，保证看得清。</p></div>
+        <div class="seg lg" id="media-mode"><button type="button" data-value="fl2va" aria-pressed="true"><i data-lucide="images"></i>首尾帧 FL2VA</button><button type="button" data-value="r2v" aria-pressed="false"><i data-lucide="layers"></i>多参考 R2V</button><button type="button" data-value="edit" aria-pressed="false"><i data-lucide="wand-sparkles"></i>图片编辑</button></div>
+        <div class="create-demo">
+        <aside class="create-media" id="media" aria-label="参考素材">
+        <div class="media-panel" data-media="fl2va">
+          <div class="panel-head"><div><h3>参考画面</h3><span class="caption">支持首帧与尾帧</span></div><button class="btn btn-gray btn-sm" type="button" id="toggle-end"><i data-lucide="images"></i>添加尾帧</button></div>
+          <div class="frame-grid" id="frame-grid">
+            <div class="frame lit" data-frame="start" style="--ratio:16 / 9;--r:1.7778"><div class="frame-media" style="background:linear-gradient(140deg,#0f2027,#2c5364,#7fb3a6)"></div><span class="chip-media frame-res num">1280 × 720</span><span class="frame-hint">点击或拖入替换</span><span class="frame-label">首帧</span><button class="btn btn-gray btn-sm frame-clear" type="button"><i data-lucide="x"></i>清除</button></div>
+          </div>
+        </div>
+
+        <div class="media-panel" data-media="r2v" hidden>
+          <div class="panel-head"><div><h3>多参考</h3><span class="caption num" id="r2v-summary">2 张图片 · 1 段视频</span></div><button class="btn btn-gray btn-sm" type="button" id="add-r2v"><i data-lucide="plus"></i>添加参考<span class="caption num" id="r2v-count">3/12</span></button></div>
+          <div class="r2v-grid lit-group" id="r2v-grid"></div>
+        </div>
+
+        <div class="media-panel" data-media="edit" hidden>
+          <div class="panel-head"><div><h3>参考图片</h3><span class="caption num">2 / 4 张 · 模型输入 3 / 4</span></div><button class="btn btn-gray btn-sm" type="button"><i data-lucide="plus"></i>添加图片</button></div>
+          <div class="picture-list" id="picture-list"></div>
+          <button class="drop" type="button" id="picture-drop"><i data-lucide="upload"></i><strong style="color:var(--text-1)">拖入下一张参考图</strong><span class="caption">PNG、JPG、WEBP、BMP</span></button>
+        </div>
+        </aside>
+
+        <div class="create-editor">
+        <div class="card pad stack">
+          <div class="prompt-toolbar">
+            <h3>提示词</h3>
+            <span class="meta num">2 / 3 · 优化结果</span>
+            <div class="version-switch" aria-label="提示词版本">
+              <button class="btn btn-icon btn-sm" type="button" data-tip="上一个版本" aria-label="上一个版本"><i data-lucide="chevron-left"></i></button>
+              <button class="btn btn-icon btn-sm" type="button" data-tip="下一个版本" aria-label="下一个版本"><i data-lucide="chevron-right"></i></button>
+              <button class="btn btn-icon btn-sm btn-destructive" type="button" data-tip="清空当前版本" aria-label="清空当前版本"><i data-lucide="trash-2"></i></button>
+            </div>
+            <span class="spacer"></span>
+            <div class="field inline" style="width:150px"><select id="preset" data-size="sm" aria-label="写作预设"><option data-note="官方分镜写法" selected>官方分镜</option><option data-note="动作细节优先">动作连贯</option><option data-note="为 R2V 分配参考关系">多参考关系编排</option><option data-note="保留原意，只润色">忠实润色</option></select></div>
+            <button class="btn btn-icon btn-gray btn-sm runtime-btn" type="button" id="runtime-btn" data-state="idle" aria-label="预热提示词模型" data-tip="预热提示词模型（常驻显存）"><i data-lucide="play"></i></button>
+            <button class="btn btn-tinted btn-sm" type="button" id="enhance-demo"><i data-lucide="sparkles"></i>优化提示词</button>
+          </div>
+          <div class="rich-editor" id="rich-prompt" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false"></div>
+          <div class="prompt-foot">
+            <span class="menu-anchor">
+              <button class="btn btn-gray btn-sm" type="button" data-menu-trigger aria-expanded="false"><i data-lucide="text-cursor-input"></i>快速插入<i data-lucide="chevron-down"></i></button>
+              <div class="menu insert-menu" role="menu" id="insert-menu">
+                <div class="menu-search"><div class="input-group"><i data-lucide="search"></i><input placeholder="搜索常用写法" id="insert-search" aria-label="搜索常用写法"></div></div>
+                <div id="insert-items"></div>
+              </div>
+            </span>
+            <span class="word-count num" id="word-count" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="card pad editor-rest"><span class="caption">输出设置、时间与运动、LoRA 等控件沿用右列现有顺序（见后续章节与逐页原型）</span></div>
+        </div>
+        </div>
+      </section>
+
+      <!-- Markup editor (image edit tools) -->
+      <div class="markup-overlay" id="markup-overlay" hidden>
+        <header class="markup-head"><div><strong id="markup-title">标记 Picture 1</strong><span class="caption">reference-city.png · 原图不会被修改</span></div><div class="row"><button class="btn btn-gray btn-sm" type="button" data-markup-close>取消</button><button class="btn btn-primary btn-sm" type="button" data-markup-close><i data-lucide="check"></i>保存标记</button></div></header>
+        <div class="markup-body">
+          <aside class="markup-tools" aria-label="标记工具" id="markup-tools">
+            <button type="button" data-tool="crop" data-tip="裁剪"><i data-lucide="crop"></i></button>
+            <span class="markup-sep"></span>
+            <button type="button" data-tool="select" aria-pressed="true" data-tip="选择"><i data-lucide="mouse-pointer-2"></i></button>
+            <button type="button" data-tool="brush" data-tip="画笔"><i data-lucide="brush"></i></button>
+            <button type="button" data-tool="highlight" data-tip="高亮"><i data-lucide="highlighter"></i></button>
+            <button type="button" data-tool="rect" data-tip="矩形"><i data-lucide="square"></i></button>
+            <button type="button" data-tool="ellipse" data-tip="椭圆"><i data-lucide="circle"></i></button>
+            <button type="button" data-tool="arrow" data-tip="箭头"><i data-lucide="move-up-right"></i></button>
+            <button type="button" data-tool="text" data-tip="文字"><i data-lucide="type"></i></button>
+            <button type="button" data-tool="eraser" data-tip="橡皮"><i data-lucide="eraser"></i></button>
+            <span class="markup-sep"></span>
+            <button type="button" data-tip="撤销 Ctrl Z"><i data-lucide="undo-2"></i></button>
+            <button type="button" data-tip="重做 Ctrl Y"><i data-lucide="redo-2"></i></button>
+          </aside>
+          <main class="markup-stage">
+            <div class="markup-canvas" style="background:linear-gradient(140deg,#0f2027,#2c5364,#7fb3a6)">
+              <span class="mk-rect" style="left:18%;top:22%;width:26%;height:30%"><b>1</b></span>
+              <span class="mk-ellipse" style="left:58%;top:48%;width:20%;height:26%"><b>2</b></span>
+            </div>
+            <div class="markup-zoom"><button class="btn btn-icon btn-sm" type="button" aria-label="缩小"><i data-lucide="minus"></i></button><span class="num caption">100%</span><button class="btn btn-icon btn-sm" type="button" aria-label="放大"><i data-lucide="plus"></i></button><button class="btn btn-plain btn-sm" type="button"><i data-lucide="scan"></i>适应窗口</button></div>
+          </main>
+          <aside class="markup-inspector">
+            <div><strong>标记说明</strong><p class="caption">区域自动编号，说明会同时进入提示词。滚轮缩放，Space + 拖动平移。</p></div>
+            <div class="mk-note"><span class="mk-num">1</span><input class="input" value="把路灯换成暖黄色霓虹招牌"></div>
+            <div class="mk-note"><span class="mk-num">2</span><input class="input" value="移除这辆自行车"></div>
+            <div class="field"><span class="label">颜色</span><div class="row swatch-row"><button type="button" style="--c:#ff4f55" aria-pressed="true"></button><button type="button" style="--c:#ffd60a"></button><button type="button" style="--c:#30d158"></button><button type="button" style="--c:#64d2ff"></button><button type="button" style="--c:#ffffff"></button></div></div>
+            <div class="field"><span class="label">线宽</span><div class="slider-field js-slider"><div class="range-wrap"><input type="range" min="2" max="28" value="8" aria-label="线宽"></div><label class="number"><input type="number" min="2" max="28" value="8" aria-label="线宽"><span>px</span></label></div></div>
+            <p class="caption">最终提示会要求模型移除框线、箭头、编号和标注文字。</p>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ============ LoRA ============ -->
+      <section id="lora" class="tile-section">
+        <div class="section-head"><h2>LoRA 堆叠</h2><p class="meta">顺序可拖动；强度用滑块 + 数字；兼容问题就地提示。</p></div>
+        <div class="card stack-list" id="lora-stack"></div>
+      </section>
+
+      <!-- ============ 浮层 ============ -->
+      <section id="overlays" class="tile-section">
+        <div class="section-head"><h2>菜单与浮层</h2><p class="meta">右键菜单、确认对话框、通知统一一种材质：表面 3 + 浮层阴影 + 弹性进入。</p></div>
+        <div class="card pad row wrap">
+          <span class="menu-anchor"><button class="btn btn-gray" type="button" data-menu-trigger aria-expanded="false"><i data-lucide="mouse-pointer-click"></i>历史右键菜单</button>
+            <div class="menu" role="menu">
+              <div class="menu-heading">夜色中的城市镜头</div>
+              <button class="menu-item" role="menuitem" type="button"><i data-lucide="maximize-2"></i>查看详情<span class="kbd">⏎</span></button>
+              <button class="menu-item" role="menuitem" type="button"><i data-lucide="wand-sparkles"></i>继续创作</button>
+              <div class="menu-sep"></div>
+              <button class="menu-item" role="menuitem" type="button"><i data-lucide="copy"></i>复制文件<span class="kbd">Ctrl C</span></button>
+              <button class="menu-item" role="menuitem" type="button"><i data-lucide="link"></i>复制路径</button>
+              <button class="menu-item" role="menuitem" type="button"><i data-lucide="folder-open"></i>打开所在文件夹</button>
+              <div class="menu-sep"></div>
+              <button class="menu-item destructive" role="menuitem" type="button"><i data-lucide="trash-2"></i>删除<span class="kbd">Del</span></button>
+            </div></span>
+          <button class="btn btn-gray" type="button" id="open-confirm"><i data-lucide="trash-2"></i>删除确认</button>
+          <button class="btn btn-gray" type="button" id="open-guide"><i data-lucide="download"></i>下载指引</button>
+          <button class="btn btn-gray" type="button" id="toast-success"><i data-lucide="bell"></i>通知</button>
+          <button class="btn btn-gray" type="button" id="toast-warning"><i data-lucide="triangle-alert"></i>警告通知</button>
+          <button class="btn btn-gray" type="button" data-tip="悬停 450ms 后显示"><i data-lucide="info"></i>提示气泡</button>
+        </div>
+      </section>
+
+      <!-- ============ 状态 ============ -->
+      <section id="states" class="tile-section">
+        <div class="section-head"><h2>状态与反馈</h2><p class="meta">加载、空、不可用、错误分开表达；加载时不显示错误。</p></div>
+        <div class="tile-grid four">
+          <div class="state-card"><div class="skeleton" style="aspect-ratio:16/9"></div><div class="skeleton" style="height:10px;width:70%"></div><span class="caption">加载中</span></div>
+          <div class="state"><i data-lucide="inbox"></i><h4>队列是空的</h4><p>在创建页加入任务</p><button class="btn btn-gray btn-sm" type="button"><i data-lucide="plus"></i>去创建</button></div>
+          <div class="state"><i data-lucide="file-question"></i><h4>文件不可用</h4><p>E:\AIVideo\output 已移动</p><button class="btn btn-gray btn-sm" type="button"><i data-lucide="folder-search"></i>重新定位</button></div>
+          <div class="state danger"><i data-lucide="circle-alert"></i><h4>生成失败</h4><p>显存不足（OOM）</p><div class="row"><button class="btn btn-gray btn-sm" type="button"><i data-lucide="rotate-cw"></i>重试</button><button class="btn btn-plain btn-sm" type="button">日志</button></div></div>
+        </div>
+        <div class="tile-grid two">
+          <div class="stack">
+            <div class="notice"><i data-lucide="info"></i><div><strong>正在扫描环境</strong><p>扫描完成后自动更新</p></div><div class="ring"></div></div>
+            <div class="notice warning"><i data-lucide="triangle-alert"></i><div><strong>ComfyUI 版本低于推荐</strong><p>v0.3.62 · 推荐 v0.3.66</p></div><button class="btn btn-gray btn-sm" type="button">更新</button></div>
+            <div class="notice danger"><i data-lucide="circle-alert"></i><div><strong>无法入队</strong><p>缺少首帧图片</p></div><button class="btn btn-gray btn-sm" type="button">选择图片</button></div>
+          </div>
+          <div class="card pad stack">
+            <div class="row wrap"><span class="badge success">就绪</span><span class="badge running">运行中</span><span class="badge warning">需要更新</span><span class="badge danger">缺少 2 项</span><span class="badge info">扫描中</span><span class="badge">等待</span><span class="badge accent">新</span></div>
+            <div class="row wrap"><span class="status success"><i data-lucide="circle-check"></i>运行验证通过</span><span class="status warning"><i data-lucide="circle-help"></i>兼容性未知</span><span class="status danger"><i data-lucide="circle-alert"></i>未安装</span><span class="status running"><i data-lucide="loader-circle"></i>安装中</span></div>
+            <div class="progress"><span style="--value:62%"></span></div>
+            <div class="progress secondary thin"><span style="--value:40%"></span></div>
+            <div class="progress indeterminate"><span></span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 导航与通知 ============ -->
+      <section id="shell" class="tile-section">
+        <div class="section-head"><h2>导航与通知</h2><p class="meta">一行顶栏：品牌、全局通知、资源监视器与导航对齐；数字可读（≥ 11px）。</p></div>
+        <div class="shell-demo">
+          <div class="shell-brand"><span class="brand-mark"></span><strong>Local Video Studio</strong></div>
+          <div class="shell-notice"><i data-lucide="circle-check"></i>环境扫描完成<button class="btn btn-icon btn-sm" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div>
+          <div class="shell-right">
+            <div class="monitor num" id="monitor"><span>CPU <b>12%</b></span><span>GPU <b>87%</b></span><span>64°</span><span>RAM <b>41%</b></span><span>VRAM <b>18.2</b>/24 GB</span></div>
+            <nav class="nav"><a href="#shell" aria-current="page"><i data-lucide="wand-sparkles"></i>创建</a><a href="#shell"><i data-lucide="list-video"></i>队列<span class="badge count">2</span></a><a href="#shell"><i data-lucide="images"></i>历史</a><a href="#shell"><i data-lucide="settings-2"></i>设置</a></nav>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 历史 ============ -->
+      <section id="history" class="tile-section">
+        <div class="section-head"><h2>历史</h2><p class="meta">结构与现有页面一致：瀑布流 3–5 列（卡宽 300–520px，保留原比例），相册 180–240px 方图，间距 10 / 8px；卡片保留模型、分辨率、时长、评分 / 收藏、悬停播放与进度、标题、时间、渲染耗时和“⋯”快捷操作；文件名移到标题悬停提示和“⋯”菜单顶部，文字区压缩为两行。批量管理工具条固定在画廊顶部。只换材质，不改排版逻辑。</p></div>
+        <div class="history-heading">
+          <div class="history-title"><h1>历史作品</h1><span class="caption num">137 个视频</span></div>
+          <div class="seg lg" id="history-kind"><button type="button" aria-pressed="true"><i data-lucide="film"></i>视频</button><button type="button" aria-pressed="false"><i data-lucide="image"></i>图片</button></div>
+          <div class="history-tools">
+            <span class="menu-anchor">
+              <button class="btn btn-icon btn-gray" type="button" data-menu-trigger aria-expanded="false" aria-label="筛选" data-tip="筛选"><i data-lucide="sliders-horizontal"></i><span class="filter-dot"></span></button>
+              <div class="menu right popover filter-panel" role="dialog" aria-label="筛选">
+                <div class="row between"><h4>筛选</h4><span class="meta num">42 / 137</span></div>
+                <div class="filter-grid">
+                  <div class="field"><label for="f-sort">排序</label><select id="f-sort" data-size="sm"><option selected>最新优先</option><option>最早优先</option><option>评分从高到低</option><option>评分从低到高</option><option>时长从长到短</option><option>时长从短到长</option></select></div>
+                  <div class="field"><label for="f-model">模型</label><select id="f-model" data-size="sm"><option>全部</option><option selected>MiniMax H3 FL2VA</option><option>MiniMax H3 Ref2VA</option><option>MiniMax H3 Continuum</option></select></div>
+                  <div class="field"><span class="label">评分</span><div class="range-pair"><select data-size="sm" aria-label="最低评分"><option>不限</option><option>0.5 ★</option><option>1 ★</option><option>1.5 ★</option><option>2 ★</option><option>2.5 ★</option><option selected>3 ★</option><option>3.5 ★</option><option>4 ★</option><option>4.5 ★</option><option>5 ★</option></select><span class="caption">–</span><select data-size="sm" aria-label="最高评分"><option selected>不限</option><option>3 ★</option><option>3.5 ★</option><option>4 ★</option><option>4.5 ★</option><option>5 ★</option></select></div></div>
+                  <div class="field"><label for="f-dur">最短时长</label><select id="f-dur" data-size="sm"><option selected>不限</option><option>1 秒</option><option>3 秒</option><option>5 秒</option><option>10 秒</option><option>15 秒</option><option>30 秒</option><option>60 秒</option></select></div>
+                </div>
+                <label class="switch-row"><i data-lucide="heart"></i><span class="switch-copy"><span>只看收藏</span></span><span class="switch"><input type="checkbox" checked><span></span></span></label>
+                <label class="switch-row"><i data-lucide="square-check"></i><span class="switch-copy"><span>批量管理</span></span><span class="switch"><input type="checkbox" id="batch-toggle"><span></span></span></label>
+                <div class="field"><span class="label">标签<span class="spacer"></span><span class="seg" id="tag-mode"><button type="button" data-value="include" aria-pressed="true"><i data-lucide="plus"></i>包含</button><button type="button" data-value="exclude" aria-pressed="false"><i data-lucide="minus"></i>排除</button></span></span>
+                  <div class="filter-tags" id="filter-tags"><button class="ftag" type="button" data-state="include">城市</button><button class="ftag" type="button" data-state="include">雨夜</button><button class="ftag" type="button" data-state="exclude">测试</button><button class="ftag" type="button">人物</button><button class="ftag" type="button">延时</button><button class="ftag" type="button">航拍</button><button class="ftag" type="button">霓虹</button></div>
+                  <span class="caption">包含：同时带有全部所选标签；排除：带有任一即隐藏</span>
+                </div>
+                <div class="row between"><button class="btn btn-plain btn-sm" type="button"><i data-lucide="x"></i>清除筛选</button></div>
+              </div>
+            </span>
+            <span class="caption num" data-tip="显示 42 / 共 137">42/137</span>
+            <div class="seg" id="history-layout"><button type="button" aria-pressed="true"><i data-lucide="columns-3"></i>瀑布流</button><button type="button" aria-pressed="false"><i data-lucide="layout-grid"></i>相册</button></div>
+          </div>
+        </div>
+        <div class="batch-bar" id="batch-bar" hidden role="toolbar" aria-label="批量管理">
+          <span class="batch-mode"><i data-lucide="square-check"></i>批量管理</span><button class="btn btn-plain btn-sm" type="button" id="batch-all"><i data-lucide="square"></i>全选</button><span class="meta num" id="batch-count">已选 0 / 8</span><span class="spacer"></span>
+          <button class="btn btn-plain btn-sm" type="button"><i data-lucide="copy"></i>复制</button><button class="btn btn-plain btn-sm" type="button"><i data-lucide="tag"></i>添加标签</button><button class="btn btn-destructive btn-sm" type="button"><i data-lucide="trash-2"></i>删除</button><button class="btn btn-icon btn-sm" type="button" id="batch-exit" aria-label="退出批量" data-tip="退出批量"><i data-lucide="x"></i></button>
+        </div>
+        <div class="history-stage">
+          <div class="history-gallery masonry lit-group" id="history-grid"></div>
+          <div class="timeline" aria-label="时间轴"><span class="tl-line"></span><span class="tl-fill"></span><button class="tl-thumb" type="button" aria-label="当前位置 10月20日"></button><span class="tl-mark" style="top:8%">10/20</span><span class="tl-mark" style="top:38%">10/18</span><span class="tl-mark" style="top:70%">10/12</span></div>
+        </div>
+      </section>
+
+      <!-- ============ 视频详情 ============ -->
+      <section id="detail" class="tile-section">
+        <div class="section-head"><h2>视频详情</h2><p class="meta">左：播放器 + 标签；右：作品 → 创作 → 文件 → 版本。提示词独占一整行；下方记录卡片两列自由流动，长卡片不会在旁边留下空白。</p></div>
+        <div class="detail-bar">
+          <button class="btn btn-gray btn-sm" type="button"><i data-lucide="arrow-left"></i>返回历史</button>
+          <span class="spacer"></span>
+          <span class="caption num">第 12 / 137 个</span>
+          <div class="detail-nav"><button class="btn btn-plain btn-sm" type="button" data-tip-title="上一个" data-tip="雨夜街道推镜 · Page Up"><i data-lucide="arrow-left"></i>上一个<span class="kbd">PgUp</span></button><button class="btn btn-plain btn-sm" type="button" data-tip-title="下一个" data-tip="海边日落延时 · Page Down">下一个<span class="kbd">PgDn</span><i data-lucide="arrow-right"></i></button></div>
+        </div>
+
+        <div class="detail-hero">
+          <div class="detail-main">
+            <div class="player" id="player" tabindex="0" aria-label="视频播放器" data-idle="false">
+              <div class="player-media" style="--video-aspect:16 / 9"><div class="player-art"></div></div>
+              <div class="player-top fs-only">
+                <strong class="player-title ellipsis">Continue the same continuous shot as she turns toward the window</strong>
+                <div class="player-meta"><span>MiniMax H3 Continuum</span><span>1280 × 720</span><span>24 FPS</span><span>16:9</span></div>
+              </div>
+              <button class="player-center" type="button" id="player-center" aria-label="播放"><i data-lucide="play"></i></button>
+              <div class="player-bar">
+                <div class="player-scrub" id="player-scrub" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="80" tabindex="0"><span class="scrub-buffer"></span><span class="scrub-fill"></span><span class="scrub-thumb"></span><span class="scrub-hover num" id="scrub-hover">0:00</span></div>
+                <div class="player-controls">
+                  <div class="pc-group"><button class="pc" type="button" data-tip="上一个 · Page Up" aria-label="上一个"><i data-lucide="skip-back"></i></button><span class="pc-pos num">12 / 137</span><button class="pc" type="button" data-tip="下一个 · Page Down" aria-label="下一个"><i data-lucide="skip-forward"></i></button></div>
+                  <span class="pc-sep"></span>
+                  <button class="pc" type="button" id="pc-play" aria-label="播放"><i data-lucide="play"></i></button>
+                  <span class="pc-time num" id="pc-time">0:00 / 1:20</span>
+                  <span class="spacer"></span>
+                  <div class="pc-volume"><button class="pc" type="button" id="pc-mute" aria-label="静音"><i data-lucide="volume-2"></i></button><div class="pc-volume-range"><input type="range" min="0" max="100" value="70" aria-label="音量"></div></div>
+                  <span class="pc-sep"></span>
+                  <button class="pc fs-only" type="button" id="pc-fav" aria-pressed="true" data-tip="取消收藏" aria-label="收藏"><i data-lucide="heart"></i></button>
+                  <button class="pc" type="button" id="pc-full" data-tip="全屏 · F" aria-label="全屏"><i data-lucide="maximize"></i></button>
+                  <span class="menu-anchor"><button class="pc" type="button" data-menu-trigger aria-expanded="false" aria-label="设置"><i data-lucide="settings"></i></button>
+                    <div class="menu right player-menu" role="menu">
+                      <button class="menu-item" type="button"><i data-lucide="download"></i>下载</button>
+                      <div class="menu-heading">播放速度</div>
+                      <div class="speed-row" id="speed-row"><button type="button">0.5</button><button type="button">0.75</button><button type="button" aria-pressed="true">1</button><button type="button">1.25</button><button type="button">1.5</button><button type="button">2</button></div>
+                      <div class="menu-sep"></div>
+                      <button class="menu-item" type="button"><i data-lucide="picture-in-picture-2"></i>画中画</button>
+                    </div></span>
+                </div>
+              </div>
+            </div>
+            <div class="tag-block">
+              <div class="tag-row"><span class="tag-label"><i data-lucide="tag"></i>标签</span><div class="tag-list" id="tag-input"><span class="tag">城市<button type="button" aria-label="移除 城市"><i data-lucide="x"></i></button></span><span class="tag">雨夜<button type="button" aria-label="移除 雨夜"><i data-lucide="x"></i></button></span><span class="tag">人物<button type="button" aria-label="移除 人物"><i data-lucide="x"></i></button></span></div></div>
+              <div class="tag-row"><span class="tag-label"><i data-lucide="plus"></i>添加</span><div class="input-group tag-add"><input placeholder="输入标签，回车添加" id="tag-field" aria-label="添加标签"></div><div class="row wrap" id="tag-suggest"><button class="chip" type="button">延时</button><button class="chip" type="button">霓虹</button><button class="chip" type="button">航拍</button><button class="chip" type="button">测试</button></div></div>
+            </div>
+          </div>
+
+          <aside class="detail-side card" aria-label="作品信息与操作">
+            <section class="zone">
+              <h2 class="side-title" title="Continue the same continuous shot as she turns toward the window">Continue the same continuous shot as she turns toward the window</h2>
+              <p class="side-meta num">MiniMax H3 Continuum · 1:20 · 1280 × 720 · 24 FPS</p>
+              <p class="side-time num"><span>2026-10-19 14:00:52 完成</span><span>用时 7 分 48 秒</span></p>
+              <div class="row curation"><div class="rating js-rating" data-value="3.5" data-clearable></div><span class="meta num" id="rating-value">3.5</span><button class="btn btn-icon btn-sm rating-clear" type="button" data-tip="清除评分" aria-label="清除评分"><i data-lucide="x"></i></button><span class="spacer"></span><button class="btn btn-icon btn-gray" type="button" id="fav" aria-pressed="true" data-tip="取消收藏" aria-label="收藏"><i data-lucide="heart"></i></button></div>
+            </section>
+
+            <section class="zone">
+              <div class="action-pair">
+                <button class="btn btn-hero lit" type="button" data-tip="以本视频结尾续写下一段"><i data-lucide="video"></i>继续创作</button>
+                <button class="btn btn-gray btn-lg lit" type="button" data-tip="把参数和提示词带回创建页"><i data-lucide="sliders-horizontal"></i>在创建页调整</button>
+              </div>
+              <div class="continuum-line">
+                <span class="caption num" data-tip="Continuum Run · city-walk-1019"><i data-lucide="layers"></i>第 8/16 段</span>
+                <span class="spacer"></span>
+                <button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-cw"></i>重做当前段</button>
+                <button class="btn btn-plain btn-sm" type="button"><i data-lucide="corner-down-right"></i>从此处继续</button>
+              </div>
+            </section>
+
+            <section class="zone">
+              <div class="zone-head"><h4>文件</h4><span class="badge plain" data-tip="可用于无损续接">+ 音画 AV</span></div>
+              <code class="file-name" data-tip="E:\AIVideo\output\2026-10\MINIMAX-H3-CONTINUUM-360p-30s-20261019-140052.mp4">MINIMAX-H3-CONTINUUM-360p-30s-20261019-140052.mp4</code>
+              <div class="file-actions"><button class="btn btn-gray lit" type="button" data-tip="复制文件 · Ctrl C"><i data-lucide="copy"></i>复制文件</button><button class="btn btn-gray lit" type="button"><i data-lucide="folder-open"></i>定位文件</button></div>
+            </section>
+
+            <section class="zone">
+              <div class="zone-head"><h4>版本</h4><span class="caption num">2</span></div>
+              <div class="seg version-seg" id="version-rail"><button type="button" aria-pressed="true" data-tip="原始生成 · 1280 × 720">原始 · 720p</button><button type="button" aria-pressed="false" data-tip="SeedVR2 · 1920 × 1080">提升 · 1080p</button></div>
+              <div class="row"><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="maximize-2"></i>提升分辨率</button><span class="spacer"></span><button class="btn btn-destructive btn-sm" type="button" data-tip="只删除当前选中的版本"><i data-lucide="trash-2"></i>删除当前版本</button></div>
+            </section>
+
+            <section class="zone zone-danger">
+              <button class="btn btn-destructive btn-sm" type="button" data-tip="删除整条记录及所有版本文件"><i data-lucide="trash-2"></i>删除视频记录</button>
+            </section>
+          </aside>
+        </div>
+
+        <article class="card prompt-card">
+          <div class="prompt-card-head"><h3>提示词</h3><span class="caption num">版本 2 · 312 tokens · 186 词</span><span class="spacer"></span><button class="btn btn-gray btn-sm" type="button"><i data-lucide="copy"></i>复制</button></div>
+          <div class="prompt-card-body" tabindex="0" aria-label="完整提示词">One continuous realistic cinematic shot, 24 fps, natural motion blur.
+
+Continue the same continuous shot as she turns toward the window. Rain streaks run down the glass; warm interior light spills onto her face and the knitted collar of her coat. The camera slowly pushes in as she pauses, her breath fogging the cold pane. Neon reflections from the street below drift across the window — red, then cyan — catching the wet strands of her hair.
+
+She lifts one hand and traces a line through the condensation, then lets it fall. Behind her, the room stays dim and quiet: a lamp, a stack of books, a half-empty cup. Ambient sound: steady rain, a distant tram bell, the low hum of the radiator.
+
+Keep her face, hairstyle and clothing identical to the previous segment. No cuts, no text, no new characters.</div>
+        </article>
+
+        <div class="record-head"><h3>生成记录</h3><span class="caption">入队时的只读快照</span></div>
+        <div class="record-flow">
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="cpu"></i>生成</h4><span class="caption">MiniMax H3 Continuum</span></div>
+            <div class="mini-stats num"><div><span>采样步数</span><b>30</b></div><div><span>Tokens</span><b>312<small>/1024</small></b></div><div><span>提示词版本</span><b>2</b></div></div>
+            <div class="policy"><span class="caption">Attention</span><span class="policy-chain"><span class="chip-flat">SageAttention</span><i data-lucide="arrow-right"></i><span class="chip-flat on">SDPA</span></span><i data-lucide="info" data-tip="左：设置值；右：入队时实际使用"></i></div>
+            <dl class="kv-list"><dt>种子</dt><dd class="mono">1843270091<button class="btn btn-icon btn-sm" type="button" data-tip="复制种子" aria-label="复制种子"><i data-lucide="copy"></i></button></dd><dt>工作流</dt><dd class="mono ellipsis" data-tip="E:\workflows\h3-continuum-api.json">h3-continuum-api.json</dd><dt>Prompt ID</dt><dd class="mono ellipsis">c1f0e2a4-77b1-4d0e-9ab2</dd></dl>
+          </article>
+
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="layers"></i>Continuum</h4><span class="badge running">可继续</span></div>
+            <div class="chunk-bar" aria-label="已完成 8 / 16 段"><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done current"></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="row between caption num"><span>8 / 16 段 · 每段 10 秒</span><span>已用 1:20 / 可达 2:40</span></div>
+            <dl class="kv-list"><dt>Run</dt><dd class="mono">city-walk-1019</dd><dt>Take</dt><dd class="mono">take-03</dd><dt>分支</dt><dd class="mono">main</dd></dl>
+          </article>
+
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="activity"></i>运行统计</h4><span class="caption">低频采样摘要</span></div>
+            <div class="time-bar" aria-label="耗时分布"><span style="--w:7%;--c:var(--n8)" data-tip="加载模型 0:32"></span><span style="--w:79%;--c:var(--accent)" data-tip="采样 6:12"></span><span style="--w:12%;--c:var(--n10)" data-tip="解码 0:58"></span><span style="--w:2%;--c:var(--n7)" data-tip="保存 0:06"></span></div>
+            <div class="time-legend caption num"><span><i style="--c:var(--n8)"></i>加载 0:32</span><span><i style="--c:var(--accent)"></i>采样 6:12</span><span><i style="--c:var(--n10)"></i>解码 0:58</span><span><i style="--c:var(--n7)"></i>保存 0:06</span></div>
+            <div class="meters num">
+              <div><span>显存峰值</span><div class="meter"><i style="--v:89%"></i></div><b>21.4 / 24 GB</b></div>
+              <div><span>内存峰值</span><div class="meter"><i style="--v:60%"></i></div><b>38.2 / 64 GB</b></div>
+              <div><span>GPU 平均</span><div class="meter"><i style="--v:94%"></i></div><b>94%</b></div>
+              <div><span>温度峰值</span><div class="meter warn"><i style="--v:71%"></i></div><b>71°C</b></div>
+            </div>
+          </article>
+
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="film"></i>输出</h4><span class="caption">原始生成</span></div>
+            <div class="mini-stats num"><div><span>时长</span><b>1:20</b></div><div><span>分辨率</span><b>1280×720</b></div><div><span>帧率</span><b>24</b></div><div><span>总帧数</span><b>1920</b></div></div>
+            <dl class="kv-list"><dt>比例</dt><dd>16:9</dd><dt>插帧</dt><dd>无</dd><dt>输出目录</dt><dd class="mono ellipsis" data-tip="E:\AIVideo\output\2026-10">E:\AIVideo\output\2026-10<button class="btn btn-icon btn-sm" type="button" data-tip="打开目录" aria-label="打开目录"><i data-lucide="folder-open"></i></button></dd></dl>
+          </article>
+
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="images"></i>输入素材</h4><span class="caption">2 个</span></div>
+            <div class="input-grid">
+              <figure><span style="background:linear-gradient(140deg,#0f2027,#2c5364,#7fb3a6);aspect-ratio:16/9"></span><figcaption class="caption num">首帧 · 1280 × 720</figcaption></figure>
+              <figure><span style="background:linear-gradient(110deg,#2b1055,#7597de,#d3a4c3);aspect-ratio:9/16"></span><figcaption class="caption num">尾帧 · 720 × 1280</figcaption></figure>
+            </div>
+          </article>
+
+          <article class="card record">
+            <div class="record-title"><h4><i data-lucide="sparkles"></i>LoRA</h4><span class="caption">2 个 · 按顺序叠加</span></div>
+            <div class="lora-snap"><span class="num caption">1</span><span class="ellipsis">运镜控制 · Camera Push</span><div class="meter"><i style="--v:40%"></i></div><b class="num">0.80</b></div>
+            <div class="lora-snap"><span class="num caption">2</span><span class="ellipsis">胶片颗粒</span><div class="meter"><i style="--v:17.5%"></i></div><b class="num">0.35</b></div>
+          </article>
+        </div>
+
+        <article class="card record">
+          <div class="record-title"><h4><i data-lucide="folder"></i>全部输出文件</h4><span class="caption num">3 个 · 1.15 GB</span></div>
+          <div class="file-list">
+            <div class="file-row"><i data-lucide="film"></i><code class="ellipsis">MINIMAX-H3-CONTINUUM-360p-30s-20261019-140052.mp4</code><span class="badge plain">视频</span><span class="caption num">48.2 MB</span><button class="btn btn-icon btn-sm" type="button" data-tip="在文件夹中显示" aria-label="在文件夹中显示"><i data-lucide="folder-open"></i></button></div>
+            <div class="file-row"><i data-lucide="database"></i><code class="ellipsis">city-walk-1019.av.safetensors</code><span class="badge plain">音画 AV</span><span class="caption num">1.1 GB</span><button class="btn btn-icon btn-sm" type="button" data-tip="在文件夹中显示" aria-label="在文件夹中显示"><i data-lucide="folder-open"></i></button></div>
+            <div class="file-row"><i data-lucide="file-json"></i><code class="ellipsis">run-storage/manifest.json</code><span class="badge plain">Run 清单</span><span class="caption num">12 KB</span><button class="btn btn-icon btn-sm" type="button" data-tip="在文件夹中显示" aria-label="在文件夹中显示"><i data-lucide="folder-open"></i></button></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- ============ 队列 ============ -->
+      <section id="queue" class="tile-section">
+        <div class="section-head"><h2>队列</h2><p class="meta">运行中任务就地展开；按住把手拖动排序，分隔条同一模型。</p></div>
+        <div class="queue-list" id="queue-list"></div>
+      </section>
+
+      <!-- ============ 长视频 ============ -->
+      <section id="long-video" class="tile-section">
+        <div class="section-head"><h2>长视频</h2><p class="meta">依据长视频编排 PLAN：生成方式、时长与段数（滑块）、整片 / 分段脚本、创作包卡片与分段面板。</p></div>
+        <div class="card pad stack">
+          <div class="row between"><h3>时间与运动</h3><span class="caption">位于 LoRA 之前</span></div>
+          <div class="tile-grid three">
+            <div class="field"><label for="gen-mode">生成方式</label>
+              <select id="gen-mode"><option value="native" data-note="单次，最长 15.1 秒">原生</option><option value="unlocked" data-note="实验性，最长 30 秒">原生解锁</option><option value="continuum" selected data-note="多段续接，4–120 秒">Continuum 多段</option></select>
+            </div>
+            <div class="field"><span class="label">目标时长</span>
+              <div class="slider-field js-slider" id="total-field" data-unit=" 秒"><div><div class="range-wrap"><input type="range" min="4" max="120" step="1" value="60" aria-label="目标时长"></div><div class="range-ticks"><span>4</span><span>30</span><span>60</span><span>90</span><span>120</span></div></div><label class="number"><input type="number" min="4" max="120" value="60" aria-label="目标时长（秒）"><span>秒</span></label></div>
+            </div>
+            <div class="field" id="seg-wrap"><span class="label">段数<span class="value caption" id="seg-range">推荐 4–12</span></span>
+              <div class="slider-field js-slider" id="seg-field" data-band="4,12"><div><div class="range-wrap"><input type="range" min="1" max="16" step="1" value="6" aria-label="段数"></div><div class="range-ticks"><span>1</span><span>4</span><span>8</span><span>12</span><span>16</span></div></div><label class="number"><input type="number" min="1" max="16" value="6" aria-label="段数"><span>段</span></label></div>
+            </div>
+          </div>
+          <div class="ruler" id="ruler" aria-hidden="true"></div>
+          <div class="row between"><span class="meta" id="layout-summary"></span><button class="btn btn-gray btn-sm" type="button" id="confirm-layout"><i data-lucide="check"></i>确认布局</button></div>
+        </div>
+        <div class="card pad stack" id="script-card">
+          <div class="row between wrap"><h3>提示词</h3><div class="seg" id="script-view"><button type="button" data-value="pages" aria-pressed="true"><i data-lucide="panels-top-left"></i>分段</button><button type="button" data-value="whole" aria-pressed="false"><i data-lucide="scroll-text"></i>整片</button></div></div>
+          <div class="page-tabs-row" id="page-tabs-row">
+            <div class="mode-select"><select id="ai-mode" data-size="sm" aria-label="写作方式"><option data-note="一次分配动作并写完所有段">全自动</option><option selected data-note="先写提纲，再逐页扩写">半自动</option></select></div>
+            <span class="sep" aria-hidden="true"></span>
+            <div class="page-tabs" id="page-tabs" role="tablist" aria-label="提示词分段"></div>
+          </div>
+          <div id="script-editor"></div>
+          <div class="row between"><span class="meta" id="script-meta"></span><div class="row"><button class="btn btn-plain btn-sm" type="button"><i data-lucide="lock"></i>锁定本页</button><button class="btn btn-tinted btn-sm lit" type="button" id="enhance"><i data-lucide="sparkles"></i>增强本页</button></div></div>
+        </div>
+        <div class="submit-bar"><span class="meta">缺少首帧图片 · <a href="#media">选择</a></span><span class="spacer"></span><span class="meta">提交整个创作包 · 新增 <strong class="num" id="submit-count">6</strong> 段</span><button class="btn btn-hero lit" type="button"><i data-lucide="list-plus"></i>加入队列</button></div>
+        <div class="tile-grid two">
+          <div class="card package lit" id="package-card"></div>
+          <div class="card pad stack" id="history-segments"></div>
+        </div>
+      </section>
+
+      <!-- ============ 设置 ============ -->
+      <section id="settings" class="tile-section">
+        <div class="section-head"><h2>设置</h2><p class="meta">模型、LoRA、节点、运行环境四类卡片各自保留全部操作；说明文字压缩为摘要，细节按需展开。下载在浏览器中进行。</p></div>
+        <div class="settings-demo">
+          <aside class="side-nav" aria-label="设置分区">
+            <button type="button"><i data-lucide="server"></i>ComfyUI 环境<span class="dot"></span></button>
+            <button type="button"><i data-lucide="puzzle"></i>节点与依赖<span class="meta-count">23/23</span></button>
+            <button type="button"><i data-lucide="folder-tree"></i>应用与路径<span></span></button>
+            <button type="button"><i data-lucide="palette"></i>外观<span></span></button>
+            <button type="button"><i data-lucide="gauge"></i>性能与加速<span></span></button>
+            <button type="button" aria-current="true"><i data-lucide="film"></i>视频模型<span class="meta-count bad">4/8</span></button>
+            <button type="button"><i data-lucide="layers"></i>LoRA<span class="meta-count">8/21</span></button>
+            <button type="button"><i data-lucide="image"></i>图片模型<span class="meta-count">2/3</span></button>
+            <button type="button"><i data-lucide="sparkles"></i>提示词增强<span class="meta-count">3/5</span></button>
+            <button type="button"><i data-lucide="scaling"></i>提升分辨率<span class="meta-count">2/2</span></button>
+            <button type="button"><i data-lucide="scroll-text"></i>日志<span></span></button>
+          </aside>
+          <div class="settings-body">
+            <div class="settings-head">
+              <div><h2>视频模型</h2><span class="caption">RTX 4090 · 24 GB</span></div>
+              <span class="spacer"></span>
+              <span class="dirty"><span class="dirty-dot"></span>未保存</span>
+              <button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-ccw"></i>放弃</button>
+              <button class="btn btn-primary btn-sm" type="button"><i data-lucide="save"></i>保存</button>
+              <button class="btn btn-gray btn-sm" type="button"><i data-lucide="scan-search"></i>重新扫描</button>
+            </div>
+            <div class="settings-group-title"><h3>外观</h3><span class="caption">立即生效，并随设置保存</span></div>
+            <article class="card set-card appearance" id="appearance">
+              <div class="appearance-row"><div><h4>主题色</h4><span class="caption">主操作、进度、滑块和开关</span></div><div class="accent-picker lg" id="set-accent" role="radiogroup" aria-label="主题色"></div></div>
+              <div class="appearance-row"><div><h4>灰阶</h4><span class="caption">界面中性色的色温</span></div><div style="width:200px"><select id="set-palette" data-size="sm" aria-label="灰阶"><option value="graphite">Graphite 中性</option><option value="sand">Sand 暖灰</option><option value="slate">Slate 冷灰</option><option value="mauve">Mauve 柔灰</option><option value="apple">Apple 系统灰</option></select></div></div>
+              <div class="appearance-row"><div><h4>背景深度</h4><span class="caption">画布从灰阶的哪一级开始</span></div><div class="seg" id="set-depth"><button type="button" data-value="0" aria-pressed="false">更深</button><button type="button" data-value="1" aria-pressed="true">深</button><button type="button" data-value="2" aria-pressed="false">平衡</button></div></div>
+              <div class="appearance-row"><div><h4>动态效果</h4><span class="caption">“减少”时位移动画改为淡入淡出</span></div><div class="seg" id="set-motion"><button type="button" data-value="system" aria-pressed="true">跟随系统</button><button type="button" data-value="full" aria-pressed="false">标准</button><button type="button" data-value="reduced" aria-pressed="false">减少</button></div></div>
+            </article>
+            <div class="stack" id="settings-cards"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 动效 ============ -->
+      <section id="motion" class="tile-section">
+        <div class="section-head"><h2>动效</h2><p class="meta">4 个时长 × 3 条曲线；“减少动态效果”下所有位移退化为淡入淡出。</p></div>
+        <div class="tile-grid two">
+          <div class="card pad stack"><div class="motion-tracks" id="motion-tracks"></div><button class="btn btn-gray btn-sm" type="button" id="play-tracks"><i data-lucide="play"></i>播放</button></div>
+          <div class="card pad stack">
+            <div class="row wrap"><button class="btn btn-gray btn-sm" type="button" id="skeleton-demo"><i data-lucide="loader"></i>加载 → 呈现</button><button class="btn btn-gray btn-sm" type="button" id="tween-demo"><i data-lucide="activity"></i>数字补间</button><button class="btn btn-gray btn-sm" type="button" id="page-demo"><i data-lucide="panels-top-left"></i>页面切换</button></div>
+            <div class="feedback-stage">
+              <div class="skeleton-card" id="skeleton-card"><div class="skeleton media"></div><div class="skeleton line"></div></div>
+              <div class="telemetry"><div><span class="caption">GPU</span><strong class="num" id="t-gpu">42%</strong></div><div><span class="caption">显存</span><strong class="num" id="t-vram">11.2 GB</strong></div><div><span class="caption">温度</span><strong class="num" id="t-temp">61°</strong></div></div>
+            </div>
+            <div class="page-demo" id="page-stage"><div class="page-pane"><h3>创建</h3><p class="meta">淡入 160ms + 上移 4px</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 文案 ============ -->
+      <section id="copy" class="tile-section">
+        <div class="section-head"><h2>文案</h2><p class="meta">标题即说明；解释只在空状态、错误恢复和首次使用时出现。</p></div>
+        <div class="copy-table">
+          <div class="copy-row"><span class="caption">现在</span><p>导入参考画面，调整提示词，然后加入本地生成队列。</p><span class="caption">改为</span><p class="ok">（删除）</p></div>
+          <div class="copy-row"><span class="caption">现在</span><p>若显示“设置值 → 实际策略”，右侧是入队时最终策略；底层 kernel 的自动回退仍以运行日志为准。</p><span class="caption">改为</span><p class="ok">Attention：SageAttention → SDPA <i data-lucide="info" data-tip="入队时的实际策略"></i></p></div>
+          <div class="copy-row"><span class="caption">现在</span><p>完整权重已就绪；ComfyUI 当前未运行，因此尚未进行在线节点校验。</p><span class="caption">改为</span><p class="ok"><span class="badge success">文件就绪</span><span class="badge">未在线校验</span></p></div>
+          <div class="copy-row"><span class="caption">现在</span><p>视频预览加载失败，点击卡片仍可打开详情</p><span class="caption">改为</span><p class="ok">预览不可用 · <button class="btn btn-plain btn-sm" type="button"><i data-lucide="rotate-cw"></i>重试</button></p></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Dialogs -->
+  <div class="dialog-backdrop" id="confirm-dialog" hidden>
+    <section class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="dialog-head"><span class="dialog-icon danger"><i data-lucide="trash-2"></i></span><div><h3 id="confirm-title">删除“夜色中的城市镜头”？</h3><p class="meta">将删除 3 个版本及其文件，无法撤销。</p></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <label class="check"><input type="checkbox">同时删除关联的 latent 文件</label>
+      <div class="dialog-actions"><button class="btn btn-gray" type="button" data-close data-autofocus>取消</button><button class="btn btn-destructive-filled btn" type="button" data-close><i data-lucide="trash-2"></i>删除</button></div>
+    </section>
+  </div>
+  <div class="dialog-backdrop" id="guide-dialog" hidden>
+    <section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+      <div class="dialog-head"><span class="dialog-icon accent"><i data-lucide="download"></i></span><div><span class="caption" id="guide-profile">MiniMax H3 · Ref2VA</span><h3 id="guide-title">Transformer</h3></div><button class="btn btn-icon btn-sm" type="button" data-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <p class="meta">在浏览器中下载，完成后放入目标目录，再点“重新扫描”。</p>
+      <div class="kv">
+        <span>来源</span><strong style="color:var(--text-1)">Hugging Face · MiniMaxAI/H3</strong><span></span>
+        <span>版本</span><code>rev 94eaf70d674a</code><span></span>
+        <span>大小</span><code>17.8 GB</code><span></span>
+        <span>SHA-256</span><code class="ellipsis">7f3c9a1e0b5d2c88a41f6e9d03b7c2a5e4f1d6b8c9a0e3f2d1c4b5a6978e0f1d</code><button class="btn btn-icon btn-sm" type="button" data-tip="复制" aria-label="复制 SHA-256"><i data-lucide="copy"></i></button>
+        <span>文件名</span><code id="guide-file">h3-ref2va-fp8.safetensors</code><button class="btn btn-icon btn-sm js-copy" type="button" data-tip="复制" aria-label="复制文件名"><i data-lucide="copy"></i></button>
+        <span>目标目录</span><code>E:\ComfyUI\models\diffusion_models</code><button class="btn btn-icon btn-sm js-copy" type="button" data-tip="复制" aria-label="复制目录"><i data-lucide="copy"></i></button>
+      </div>
+      <div class="notice warning"><i data-lucide="triangle-alert"></i><div><strong>注意</strong><p>fp8 版本需要 RTX 40 系列或更新显卡</p></div><span></span></div>
+      <div class="dialog-actions"><button class="btn btn-plain" type="button" data-close>关闭</button><span class="spacer"></span><button class="btn btn-gray" type="button" data-tip="目录不存在时自动创建"><i data-lucide="folder-open"></i>打开目录</button><button class="btn btn-primary" type="button" data-autofocus><i data-lucide="external-link"></i>在浏览器中下载</button></div>
+    </section>
+  </div>
+
+  <script src="../node_modules/lucide/dist/umd/lucide.min.js"></script>
+  <script src="design-system/ds.js"></script>
+  <script src="style-tile.js"></script>
+</body>
+</html>

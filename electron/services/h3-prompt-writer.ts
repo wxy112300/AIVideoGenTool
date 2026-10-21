@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
 import { managedPromptModel } from "../../src/core/prompt-models.js";
+import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
+import { h3PromptOutputLanguageInstruction } from "../../src/core/prompt-language.js";
 import {
   h3AutoPromptInstruction,
   h3AutoPrompterContract,
@@ -429,6 +431,8 @@ export async function enhancePromptWithH3PromptWriter(
         ? h3DetailedExpansionGateInstruction(h3Mode, durationSeconds, sourcePrompt)
         : "",
       controlInstruction,
+      h3VisualQualityKnowledge,
+      h3PromptOutputLanguageInstruction(request),
       annotationInstruction,
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)

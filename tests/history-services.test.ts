@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults.js";
+import { historyDeleteImpactFromError, type HistoryDeleteApproval } from "../src/core/history-delete-confirmation.js";
 import type {
   AssetVersion,
   HistoryAsset,
@@ -1025,7 +1026,7 @@ describe("History application services", () => {
     await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
   });
 
-  it("refuses JointAV deletion when another History version references the same pair", async () => {
+  it("requires a second confirmation before deleting a shared JointAV pair while retaining the other version", async () => {
     const root = await temporaryRoot();
     const artifactDirectory = path.join(root, "h3-native-av");
     const manifestPath = path.join(artifactDirectory, "h3av-shared.json");
@@ -1054,6 +1055,17 @@ describe("History application services", () => {
     await expect(fs.readFile(manifestPath, "utf8")).resolves.toBe("manifest");
     await expect(fs.readFile(payloadPath, "utf8")).resolves.toBe("payload");
     expect(store.get().history[0]?.versions[0]?.h3ContinuationData?.status).toBe("available");
+    const service = destructiveFor(store, query);
+    const impact = await service.deleteJointAv("asset-1", "original").catch(historyDeleteImpactFromError);
+    expect(impact).toMatchObject({ references: [{ id: "history:asset-1:upscale" }] });
+    await service.deleteJointAv("asset-1", "original", impact as HistoryDeleteApproval);
+    await expect(fs.stat(manifestPath)).rejects.toThrow();
+    await expect(fs.stat(payloadPath)).rejects.toThrow();
+    expect(store.get().history[0]?.versions[1]).toEqual(second);
+    // The surviving record may intentionally reference missing AV. It must
+    // remain deletable later, rather than getting trapped by unresolved files.
+    await service.deleteHistory("asset-1");
+    expect(store.get().history).toEqual([]);
   });
 
   it("normalizes relative and cached absolute AV references through the resolver", async () => {
@@ -1131,8 +1143,8 @@ describe("History application services", () => {
     const query = queryFor(store, root);
     const unlink = vi.spyOn(nativeHistoryFileSystem, "unlink");
 
-    await expect(destructiveFor(store, query).deleteJointAv("asset-1", version.id))
-      .rejects.toThrow("queue:upscale-reference");
+    const impact = await destructiveFor(store, query).deleteJointAv("asset-1", version.id).catch(historyDeleteImpactFromError);
+    expect(impact).toMatchObject({ references: [{ id: "queue:upscale-reference" }] });
     expect(unlink).not.toHaveBeenCalled();
     unlink.mockRestore();
   });
@@ -1216,8 +1228,8 @@ describe("History application services", () => {
     const store = repository(state);
     const query = queryFor(store, root);
 
-    await expect(destructiveFor(store, query).deleteJointAv("asset-1", "original"))
-      .rejects.toThrow("draft:video-extension-draft");
+    const impact = await destructiveFor(store, query).deleteJointAv("asset-1", "original").catch(historyDeleteImpactFromError);
+    expect(impact).toMatchObject({ references: [{ id: "draft:video-extension-draft" }] });
     await expect(fs.stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(fs.stat(payloadPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
   });
@@ -1328,6 +1340,38 @@ describe("History application services", () => {
       .rejects.toThrow("官方 Run Storage owner");
     await expect(fs.stat(manifestPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
     await expect(fs.stat(payloadPath)).resolves.toMatchObject({ isFile: expect.any(Function) });
+  });
+
+  it.each(["asset", "batch", "version"] as const)("confirms linked Continuum %s deletion without cascading into other records or the Run", async (kind) => {
+    const root = await temporaryRoot();
+    const file = (name: string) => ({ filename: name, subfolder: "", type: "output", absolutePath: path.join(root, name) });
+    for (const name of ["selected.mp4", "other.mp4", "retained.mp4", "run.safetensors"]) await fs.writeFile(path.join(root, name), name);
+    const selected = videoVersion("selected", [file("selected.mp4")]);
+    selected.h3AvAsset = { assetId: "shared-chunk", storageKind: "continuum-run-chunk", ownerPath: file("run.safetensors") } as never;
+    const other = videoVersion("other", [file("other.mp4")]);
+    other.h3ContinuumSequence = { chunks: [{ assetId: "shared-chunk" }] } as never;
+    const state = createDefaultState();
+    state.settings.outputDirectory = root;
+    state.history = [videoAsset("selected-asset", kind === "version" ? [selected, videoVersion("retained", [file("retained.mp4")])] : [selected]), videoAsset("other-asset", [other])];
+    const store = repository(state), query = queryFor(store, root), service = destructiveFor(store, query);
+    const remove = (approval?: HistoryDeleteApproval) => kind === "asset" ? service.deleteHistory("selected-asset", approval)
+      : kind === "batch" ? service.deleteHistoryBatch("video", ["selected-asset"], approval)
+      : service.deleteVideoVersion("selected-asset", "selected", approval);
+    const impact = await remove().catch(historyDeleteImpactFromError);
+    expect(impact).toMatchObject({ references: [{ id: "history:other-asset:other", label: expect.stringContaining("other-asset") }] });
+    await expect(fs.readFile(path.join(root, "selected.mp4"), "utf8")).resolves.toBe("selected.mp4");
+    // Approval is not a global force switch: a new dependent requires a new decision.
+    await store.update(next => { next.history.push(videoAsset("new-dependent", [structuredClone(other)])); });
+    const refreshed = await remove(impact as HistoryDeleteApproval).catch(historyDeleteImpactFromError);
+    expect(refreshed).toMatchObject({ references: expect.any(Array) });
+    expect((refreshed as HistoryDeleteApproval).referenceToken).not.toBe((impact as HistoryDeleteApproval).referenceToken);
+    expect(store.get().history).toHaveLength(3);
+    await remove(refreshed as HistoryDeleteApproval);
+    await expect(fs.stat(path.join(root, "selected.mp4"))).rejects.toThrow();
+    await expect(fs.readFile(path.join(root, "run.safetensors"), "utf8")).resolves.toBe("run.safetensors");
+    expect(store.get().history.find(asset => asset.id === "other-asset")).toEqual(state.history[1]);
+    expect(store.get().history.some(asset => asset.id === "new-dependent")).toBe(true);
+    expect(store.get().history.find(asset => asset.id === "selected-asset")?.versions.map(version => version.id)).toEqual(kind === "version" ? ["retained"] : undefined);
   });
 
   it("keeps a managed Run artifact read-only when deleting the whole History record", async () => {
