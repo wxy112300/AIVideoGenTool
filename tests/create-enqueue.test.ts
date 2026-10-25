@@ -217,8 +217,8 @@ describe("create enqueue preflight checks", () => {
     expect(selectedVideoResolution(1080, [360, 480, 540, 720, 768])).toBe(768);
   });
 
-  it("rerenders resolution options after the video aspect ratio changes", () => {
-    expect(videoSettingChangeRequiresRender("ratio")).toBe(true);
+  it("updates aspect ratio and resolution controls in place", () => {
+    expect(videoSettingChangeRequiresRender("ratio")).toBe(false);
     expect(videoSettingChangeRequiresRender("resolution")).toBe(false);
   });
 

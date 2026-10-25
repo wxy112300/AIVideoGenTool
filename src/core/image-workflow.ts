@@ -10,3 +10,4 @@ export * from "./image-workflow/hidream-o1.js";
 export * from "./image-workflow/omnigen2.js";
 export * from "./image-workflow/legacy.js";
 export * from "./image-workflow/registry.js";
+export * from "./image-workflow/moss-image.js";

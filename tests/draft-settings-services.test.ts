@@ -74,6 +74,23 @@ function createSettingsService(
   });
 }
 
+describe("immediate appearance persistence", () => {
+  it("saves only appearance and preserves unsaved settings, queue and native dirty guard", async () => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial);
+    const clearRendererDirty = vi.fn();
+    const resolveComfyOutputDirectory = vi.fn();
+    const sendState = vi.fn();
+    const service = createSettingsService(repository, { clearRendererDirty, resolveComfyOutputDirectory, sendState });
+    const appearance = { accent: "green", palette: "slate", depth: "0", motion: "reduced" } as const;
+    const saved = await service.save({ ...initial.settings, outputDirectory: "UNSAVED", defaultVideoModel: "UNSAVED", appearance }, "appearance");
+    expect(saved).toEqual({ ...initial, settings: { ...initial.settings, appearance } });
+    expect(clearRendererDirty).not.toHaveBeenCalled();
+    expect(resolveComfyOutputDirectory).not.toHaveBeenCalled();
+    expect(sendState).toHaveBeenCalledWith(saved);
+  });
+});
+
 function createMigrationPort(plan: VideoHistoryMigrationPlan): {
   migration: SettingsHistoryMigrationPort;
   spies: {

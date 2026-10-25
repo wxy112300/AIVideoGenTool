@@ -44,8 +44,8 @@ export async function loadQueueInputPreviews(context: RendererContext): Promise<
       if (image.dataset.livePreviewActive === "true") return;
       image.src = dataUrl;
       image.style.display = "";
-      image.closest<HTMLElement>("[data-queue-input-preview]")
-        ?.querySelector<HTMLElement>("[data-queue-input-empty]")
+      image.closest<HTMLElement>("[data-queue-input-preview], .live-preview")
+        ?.querySelector<HTMLElement>("[data-queue-input-empty], [data-live-preview-empty]")
         ?.setAttribute("hidden", "");
     } catch {
       // The task can remain visible even when its source image was moved.

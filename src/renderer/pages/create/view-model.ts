@@ -1,4 +1,6 @@
-import { H3_BASE_RESOLUTIONS } from "../../../core/video-resolution";
+import { H3_BASE_RESOLUTIONS, isCustomVideoResolution } from "../../../core/video-resolution";
+import { videoDurationLimitsForDraft } from "./helpers";
+import { imageModelOptionNote, localizeImageOptionLabel } from "../../shared/image-option-label";
 import type {
   AppState,
   BundledWorkflow,
@@ -40,6 +42,7 @@ import {
   cachedImageProfileAllowsEnqueue
 } from "../../../core/image-workflow";
 import { normalizeImageEditDraft } from "../../../core/image-project";
+import { icon } from "../../shared/icons";
 import {
   BUILTIN_IMAGE_LORAS,
   imageLoraCompatibleWithModel,
@@ -114,6 +117,7 @@ export interface CreateViewModelDependencies {
   t: Translate;
   state: AppState;
   environmentScan: EnvironmentScanResult | null;
+  environmentScanning?: boolean;
   performanceMetrics: PerformanceMetrics | null;
   workflowCapabilities: Readonly<Record<string, WorkflowCapabilities>>;
   bundledWorkflows: Readonly<Record<string, BundledWorkflow>>;
@@ -154,8 +158,10 @@ export function resolutionAfterJointAvPreference(
 
 export function selectedVideoResolution(
   resolution: Draft["resolution"],
-  options: readonly number[]
+  options: readonly number[],
+  custom?: { min: number; max: number; step: number }
 ): number {
+  if (custom && isCustomVideoResolution(resolution, custom)) return resolution;
   return options.includes(resolution) ? resolution : options.at(-1) ?? resolution;
 }
 
@@ -171,7 +177,7 @@ export function imageEditEnqueueBlockReason(
   imageProfile: EnvironmentScanResult["modelProfiles"][number] | undefined,
   t: Translate = createTranslator("zh-CN").t
 ): string {
-  if (!imageModelAdapterFor(draft.modelId)) return "当前图片模型已移除或不受支持，请重新选择模型。";
+  if (!imageModelAdapterFor(draft.modelId)) return t(uiKeys.create.finish.modelRemoved);
   const imageCapability = imageModelCapabilityFor(draft.modelId);
   const inputPictures = imagePicturesForModelInput(draft.pictures, imageCapability.supportsTextOnly === true);
   const incompletePicture = inputPictures.find((picture) => !picture.absolutePath);
@@ -193,7 +199,7 @@ export function imageEditEnqueueBlockReason(
           : imageModelInputCount > imageCapability.maxPictures
             ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
             : imageCapability.requiresMask && !inputPictures[0]?.mask?.regionCount
-              ? "请先在原图上绘制并保存 Mask"
+              ? t(uiKeys.create.finish.maskMissing)
               : "";
   const imageLoraBlockReason = imageLoraConfigurationError(
     draft.imageLoras,
@@ -206,18 +212,18 @@ export function imageEditEnqueueBlockReason(
     return t(uiKeys.create.validation.imagePromptMissing);
   }
   if (imageProfile?.missingCustomNodeNames?.length) {
-    return `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
+    return t(uiKeys.create.finish.nodesMissing, { nodes: imageProfile.missingCustomNodeNames.join("、") });
   }
   if (imageProfile && !cachedImageProfileAllowsEnqueue(imageProfile)) {
     return !imageProfile?.available
-      ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
+      ? t(uiKeys.create.finish.modelIncomplete, { name: imageCapability.name })
       : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name });
   }
   const selectedQuality = imageCapability.qualityProfiles.find((profile) => profile.id === draft.qualityProfile);
   const requiredQualityComponent = imageQualityProfileRequiredComponentLabel(imageCapability, draft.qualityProfile);
   if (selectedQuality && requiredQualityComponent &&
       !imageQualityProfileComponentFound(imageCapability, draft.qualityProfile, imageProfile?.components ?? [])) {
-    return `${selectedQuality.label} 需要 ${requiredQualityComponent}；请先在设置 → 图片模型中补齐后重新扫描。`;
+    return t(uiKeys.create.finish.qualityMissing, { quality: localizeImageOptionLabel(selectedQuality.label, t), component: requiredQualityComponent });
   }
   return "";
 }
@@ -336,7 +342,7 @@ export function buildImageEditPageViewModel(
     imageCapability.textOnlyOutputWidth ?? 0,
     imageCapability.textOnlyOutputHeight ?? 0,
     selectedAspectRatio,
-    basePicture ? imageCapability.customOutputMultiple ?? 8 : 8
+    imageCapability.outputMultiple ?? (basePicture ? imageCapability.customOutputMultiple ?? 8 : 8)
   );
   const imageModelProfiles = sortProfilesByCatalogOrder(
     environmentScan?.modelProfiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired) ?? [],
@@ -374,23 +380,26 @@ export function buildImageEditPageViewModel(
     return !draft.imageLoras.some((candidate) => candidate.id === lora.id) &&
       profileProvidesImageLora(profile, lora.filename);
   });
-  const imageLoraAddDisabled = imageLoraAddableOptions.length === 0;
-  const imageLoraAddOptionsMarkup = imageLoraAddableOptions.length
-    ? imageLoraAddableOptions.map((lora) => {
+  const imageLoraAddDisabled = imageLoraAddableOptions.length === 0 || draft.imageLoras.length > 0;
+  const imageLoraMenuOptions = imageLoraOptions.filter(lora => draft.imageLoras.some(selected => selected.id === lora.id) ||
+    profileProvidesImageLora(environmentScan?.modelProfiles.find(profile => profile.id === lora.id), lora.filename));
+  const imageLoraAddOptionsMarkup = imageLoraMenuOptions.length
+    ? imageLoraMenuOptions.map((lora) => {
       const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
-      return "<option value=\"" + escapeHtml(lora.id) + "\">" +
+      const available = profileProvidesImageLora(environmentScan?.modelProfiles.find(profile => profile.id === lora.id), lora.filename);
+      return "<option value=\"" + escapeHtml(lora.id) + "\" data-selected=\"" + String(draft.imageLoras.some(selected => selected.id === lora.id)) + "\" data-family=\"" + escapeHtml(lora.modelFamily) + "\" " + (!available || draft.imageLoras.length > 0 ? "disabled" : "") + ">" +
         escapeHtml(localized?.name ?? lora.name) +
         "</option>";
     }).join("")
     : "<option value=\"\">" +
       escapeHtml(!environmentScan
-        ? "等待环境扫描……"
+        ? t(uiKeys.create.finish.scanning)
         : draft.imageLoras.length
-          ? "已添加兼容的图片 LoRA"
-          : "没有可添加的图片 LoRA") +
+          ? t(uiKeys.create.finish.loraAdded)
+          : t(uiKeys.create.finish.noLora)) +
       "</option>";
   const imageLoraOptionsMarkup = selectedImageLoras.length
-    ? "<div class=\"video-lora-list\">" +
+    ? "<div class=\"create-lora-list\">" +
       selectedImageLoras.map((lora, index) => {
         const localized = modelCatalog.localized(lora.id, state.settings.uiLocale);
         const profile = environmentScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
@@ -400,58 +409,24 @@ export function buildImageEditPageViewModel(
           ? [guideLocale.summary, guideLocale.compatibility, guideLocale.recommendedStrength].filter(Boolean).join(" ")
           : "";
         const status = !environmentScan
-          ? "等待环境扫描……"
+          ? t(uiKeys.create.finish.scanning)
           : !profile
-            ? "请在设置 → 节点与依赖中扫描 LoRA 文件。"
+            ? t(uiKeys.create.finish.scanLora)
             : available
-              ? "文件已就绪。"
-              : "未检测到 " + lora.filename + "，请按设置页卡片安装。";
+              ? t(uiKeys.create.finish.fileReady)
+              : t(uiKeys.create.finish.fileMissing, { file: lora.filename });
         const triggerText = lora.promptPrefixes?.length
-          ? "触发词：" + lora.promptPrefixes.join(", ")
+          ? t(uiKeys.create.finish.triggerWords, { words: lora.promptPrefixes.join(", ") })
           : "";
         const guideText = [guide, triggerText].filter(Boolean).join(" ");
         const localizedName = localized?.name ?? lora.name;
-        return "<article class=\"video-lora-row image-lora-row\" data-image-lora-id=\"" +
-          escapeHtml(lora.id) + "\">" +
-          "<div class=\"video-lora-identity\"><span class=\"video-lora-order\">" +
-          String(index + 1) +
-          "</span><div><span class=\"video-lora-name-line\"><strong>" +
-          escapeHtml(localizedName) +
-          "</strong></span><span>" +
-          escapeHtml(lora.modelFamily) +
-          (triggerText ? " · " + escapeHtml(triggerText) : "") +
-          "</span><span class=\"image-lora-status\"><strong>" +
-          escapeHtml(available ? "文件已就绪" : "文件待处理") +
-          "</strong><span>" +
-          escapeHtml(guideText || status) +
-          "</span>" +
-          (guideText ? "<small>" + escapeHtml(status) + "</small>" : "") +
-          "</span></div></div>" +
-          "<label class=\"video-lora-strength\"><span>" +
-          escapeHtml(t(uiKeys.create.videoSettings.strength)) +
-          "</span><input type=\"range\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
-          escapeHtml(String(lora.strength)) +
-          "\" data-image-lora-strength=\"" +
-          escapeHtml(lora.id) +
-          "\" aria-label=\"" +
-          escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
-          "\"><input type=\"number\" min=\"0\" max=\"2\" step=\"0.05\" value=\"" +
-          escapeHtml(String(lora.strength)) +
-          "\" data-image-lora-strength-number=\"" +
-          escapeHtml(lora.id) +
-          "\" aria-label=\"" +
-          escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName) +
-          "\"></label>" +
-          "<div class=\"video-lora-actions\"><button class=\"icon-button\" type=\"button\" data-remove-image-lora=\"" +
-          escapeHtml(lora.id) +
-          "\" aria-label=\"" +
-          escapeHtml(t(uiKeys.create.videoSettings.remove) + " " + localizedName) +
-          "\" title=\"" +
-          escapeHtml(t(uiKeys.create.videoSettings.remove) + " LoRA") +
-          "\"><span aria-hidden=\"true\">×</span></button></div></article>";
+        return `<article class="create-lora-row image-lora-row" data-image-lora-id="${escapeHtml(lora.id)}">
+          <div class="create-lora-name"><strong>${escapeHtml(localizedName)}</strong>${guideText ? `<span tabindex="0" class="field-info" data-ui-tooltip="${escapeHtml(guideText)}" aria-label="${escapeHtml(guideText)}">${icon("info")}</span>` : ""}<small>${escapeHtml(lora.modelFamily)}</small>${!available ? `<span class="image-lora-error">${escapeHtml(status)}</span>` : ""}</div>
+          <div class="create-lora-strength"><input type="range" min="0" max="2" step="0.05" value="${lora.strength}" data-image-lora-strength="${escapeHtml(lora.id)}" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName)}"><input type="number" min="0" max="2" step="0.05" value="${lora.strength}" data-image-lora-strength-number="${escapeHtml(lora.id)}" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.strength) + " " + localizedName)}"></div>
+          <button class="ghost icon-button" type="button" data-remove-image-lora="${escapeHtml(lora.id)}" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.remove) + " " + localizedName)}">${icon("x")}</button></article>`;
       }).join("") +
       "</div>"
-    : "<div class=\"video-lora-empty\">尚未添加图片 LoRA</div>";
+    : "";
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -477,7 +452,8 @@ export function buildImageEditPageViewModel(
     ? inputPictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
     : 0;
   const imageModelInputCount = inputPictures.length + markupGuideCount;
-  const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile, t);
+  const enqueuePending = Boolean(options.environmentScanning && !environmentScan);
+  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : imageEditEnqueueBlockReason(draft, imageProfile, t);
   const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
   const backgroundRemoval = imageCapability.operation === "background-removal";
   const promptlessTitle = t(backgroundRemoval
@@ -512,23 +488,27 @@ export function buildImageEditPageViewModel(
       !imageLightningComponentFound(imageProfile?.components ?? []);
     const disabled = qualityComponentMissing || lightningMissing;
     const missingLabel = qualityComponentMissing
-      ? ` · 缺少 ${qualityNeedsComponent}`
+      ? t(uiKeys.create.finish.missingComponent, { component: qualityNeedsComponent! })
       : lightningMissing
         ? ` · ${t(uiKeys.create.videoSettings.missingLora)}`
         : "";
-    return `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${missingLabel}</option>`;
+    return `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHtml(localizeImageOptionLabel(profile.label, t))}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${missingLabel}</option>`;
   }).join("");
   return {
     draft,
     prompt,
     promptRuntimeBusy,
     promptEnhancing,
-    imageCapabilityName: imageCapability.name,
+    imageCapabilityName: modelCatalog.localized(draft.modelId, state.settings.uiLocale)?.name ?? imageCapability.name,
+    imageCapabilityDescription: imageModelOptionNote(draft.modelId, t),
     imageCapabilityMaxPictures: imageCapability.maxPictures,
-    imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
+    imageModelOptionsMarkup: [false, true].map(tool => {
+      const profiles = imageModelOptions.filter(profile => ["inpaint", "background-removal"].includes(imageModelCapabilityFor(profile.id).operation ?? "") === tool);
+      return profiles.length ? `<optgroup label="${t(tool ? uiKeys.create.imageEdit.toolModels : uiKeys.create.imageEdit.generationModels)}">${profiles.map(profile => `<option value="${escapeHtml(profile.id)}" data-note="${escapeHtml(imageModelOptionNote(profile.id, t))}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(modelCatalog.localized(profile.id, state.settings.uiLocale)?.name ?? profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join("")}</optgroup>` : "";
+    }).join(""),
     imageQualityOptionsMarkup,
-    imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
-    imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
+    imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(localizeImageOptionLabel(option.label, t))}</option>`).join(""),
+    imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(localizeImageOptionLabel(option.label, t))}</option>`).join(""),
     imageLoraVisible,
     imageLoraAddOptionsMarkup,
     imageLoraAddDisabled,
@@ -547,6 +527,7 @@ export function buildImageEditPageViewModel(
     releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     markupGuideCount,
     imageModelInputCount,
+    enqueuePending,
     enqueueBlockReason,
     count,
     outputCountVisible: !imageCapability.deterministic,
@@ -557,11 +538,11 @@ export function buildImageEditPageViewModel(
     imageProfileStatusText: !imageProfile
       ? t(uiKeys.create.validation.imageRescan)
       : !imageProfile.available
-        ? `${imageCapability.name} 模型文件不完整，当前不可选择或加入队列。`
+        ? t(uiKeys.create.finish.modelIncomplete, { name: imageCapability.name })
         : (imageProfile.productGate ?? modelCatalog.get(imageProfile.id)?.definition.scan?.productGate) === "locked"
           ? t(uiKeys.status.imageProductGatePending)
         : imageProfile.missingCustomNodeNames?.length
-          ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。模型可以选择，但安装节点前不能加入队列。`
+          ? t(uiKeys.create.finish.nodesMissing, { nodes: imageProfile.missingCustomNodeNames.join("、") })
         : imageProfile.runtimeVerified && !imageProfile.runtimeReady
           ? t(uiKeys.create.validation.imageRuntimeRecheck, { status: imageWorkflowStatus(imageProfile, t) })
           : t(uiKeys.create.validation.imageWorkflowRecheck, { status: imageWorkflowStatus(imageProfile, t) }),
@@ -580,37 +561,38 @@ export function buildImageEditPageViewModel(
 export function continuumDependencyBlockReasonFor(
   environmentScan: EnvironmentScanResult | null,
   modelId: string,
-  managed: boolean
+  managed: boolean,
+  t: Translate = createTranslator("zh-CN").t
 ): string {
   if (!managed || !environmentScan) return "";
   if (environmentScan.comfyCompatibility.checkedFrom && !environmentScan.comfyCompatibility.h3CoreSupported) {
-    return "当前 ComfyUI 未通过 H3 核心兼容性检查，请先在设置中修复并重新扫描。";
+    return t(uiKeys.create.finish.coreInvalid);
   }
   const profile = environmentScan.modelProfiles.find((candidate) => candidate.id === modelId);
-  if (!profile) return "环境扫描没有找到 MiniMax H3 Continuum 档案，请先重新扫描。";
+  if (!profile) return t(uiKeys.create.finish.continuumMissing);
   if (!profile.available) {
     const missing = profile.components
       .filter((component) => !component.found && !component.optional)
       .map((component) => component.expected)
       .join("、");
-    return `MiniMax H3 Continuum 模型文件不完整${missing ? `，缺少：${missing}` : ""}。`;
+    return t(uiKeys.create.finish.continuumFiles, { missing: missing ? t(uiKeys.create.finish.missingList, { items: missing }) : "" });
   }
   if (profile.missingCustomNodeNames?.length) {
-    return `Continuum 缺少必需节点：${profile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`;
+    return t(uiKeys.create.finish.continuumNodes, { nodes: profile.missingCustomNodeNames.join("、") });
   }
   if (profile.customNodeCompatibility === "error") {
-    return "Continuum 节点版本或 revision 不兼容，请在设置 → 节点与依赖中修复后重新扫描。";
+    return t(uiKeys.create.finish.continuumVersion);
   }
   if (profile.runtimeVerified && profile.runtimeReady === false) {
-    return `当前 ComfyUI 未注册 Continuum 所需节点${profile.runtimeMissingNodes?.length ? `：${profile.runtimeMissingNodes.join("、")}` : ""}。请重启 ComfyUI 后重新扫描。`;
+    return t(uiKeys.create.finish.runtimeNodes, { nodes: profile.runtimeMissingNodes?.length ? `: ${profile.runtimeMissingNodes.join(", ")}` : "" });
   }
   for (const nodeId of profile.requiredCustomNodeIds ?? []) {
     const node = environmentScan.customNodes.find((candidate) => candidate.id === nodeId);
     if (node?.compatibilityState === "error") {
-      return `${node.name} 当前不兼容：${node.loadError || node.compatibilityNotice || "请在设置中修复后重新扫描。"}`;
+      return t(uiKeys.create.finish.nodeInvalid, { name: node.name, reason: node.loadError || node.compatibilityNotice || t(uiKeys.create.finish.repairScan) });
     }
     if (node?.runtimeVerified && !node.loaded) {
-      return `${node.name} 尚未加载到当前 ComfyUI。请重启 ComfyUI 后重新扫描。`;
+      return t(uiKeys.create.finish.nodeNotLoaded, { name: node.name });
     }
   }
   return "";
@@ -938,10 +920,12 @@ export function buildVideoCreatePageViewModel(
     extending,
     jointAvSerializerInstalled
   );
-  const selectedResolution = selectedVideoResolution(draft.resolution, resolutionOptions);
+  const modelCustomResolution = modelCatalog.get(draft.modelId)?.definition.capabilities?.customResolution;
+  const customResolution = modelCustomResolution ? { ...modelCustomResolution, max: Math.min(modelCustomResolution.max, Math.max(...resolutionOptions)) } : undefined;
+  const selectedResolution = selectedVideoResolution(draft.resolution, resolutionOptions, customResolution);
   const resolutionOptionsMarkup = extending && !isMiniMaxH3
     ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p</option>`
-    : resolutionOptions.map((value) => {
+    : [...new Set([...resolutionOptions, selectedResolution])].map((value) => {
         const [width, height] = outputDimensions({
           ...draft,
           resolution: value as Draft["resolution"]
@@ -1019,7 +1003,8 @@ export function buildVideoCreatePageViewModel(
   const continuumDependencyBlockReason = continuumDependencyBlockReasonFor(
     environmentScan,
     draft.modelId,
-    isContinuum && extending
+    isContinuum && extending,
+    t
   );
   const continuumRuntimeUnverified = isManagedContinuum && extending && (
     !environmentScan ||
@@ -1059,7 +1044,8 @@ export function buildVideoCreatePageViewModel(
     (missingSelectedLora
       ? t(uiKeys.create.validation.selectedLoraMissing, { name: missingSelectedLora.name })
       : slaNodeBlockReason);
-  const enqueueBlockReason = videoEnqueueBlockReason({
+  const enqueuePending = Boolean(options.environmentScanning && !environmentScan);
+  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : videoEnqueueBlockReason({
     t,
     promptText: prompt.text,
     extending,
@@ -1126,12 +1112,19 @@ export function buildVideoCreatePageViewModel(
     extending,
     isR2V,
     isMiniMaxH3,
-    h3LongDurationWarning: isMiniMaxH3 && draft.duration > 15.1,
+    h3LongDurationWarning: isMiniMaxH3 && draft.duration > videoDurationLimitsForDraft(draft, state.settings).nativeMax,
     isContinuum,
     continuumManaged: isManagedContinuum,
     continuumStatusTone: continuumStatus.tone,
     continuumStatusLabel: continuumStatus.label,
     continuumStatusDetail: continuumStatus.detail,
+    continuumFileStatus: {
+      tone: options.extensionSourceInspection?.status === "available" ? "success" : options.extensionSourceInspection ? "error" : "info",
+      label: t(options.extensionSourceInspection?.status === "available" ? uiKeys.create.editor.filesReady
+        : options.extensionSourceInspection?.status === "missing" ? uiKeys.create.continuumArtifact.dependencyMissing
+        : options.extensionSourceInspection ? uiKeys.create.editor.filesInvalid
+        : draft.sourceVideoPath ? uiKeys.create.continuumArtifact.dependencyChecking : uiKeys.create.continuumArtifact.dependencyNoReference)
+    },
     continuumArtifactReady,
     continuumArtifactFilename,
     continuumArtifactHistoryBound: Boolean(draft.h3ContinuumArtifact),
@@ -1183,7 +1176,8 @@ export function buildVideoCreatePageViewModel(
           h3TimelineDurationForDraft(draft),
           escapeHtml,
           h3PromptPack.ui,
-          draft.videoLoras
+          draft.videoLoras,
+          t
         )
       : "",
     modelOptions: createModelOptionViewModels(
@@ -1191,9 +1185,15 @@ export function buildVideoCreatePageViewModel(
       environmentScan,
       workflowCapabilities,
       bundledWorkflows,
-      t
+      t,
+      state.settings.uiLocale
     ),
     resolutionOptionsMarkup,
+    resolutionChoices: extending && !isMiniMaxH3 ? [state.settings.ltxExtensionResolution] : resolutionOptions,
+    selectedResolution,
+    customResolution,
+    outputWidth: outputDimensions(draft)[0],
+    outputHeight: outputDimensions(draft)[1],
     stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
       const label = turboEnabled
         ? value === 4
@@ -1206,13 +1206,13 @@ export function buildVideoCreatePageViewModel(
           : value === Math.max(...videoPolicy.steps.options)
             ? t(uiKeys.create.options.balancedStepsPreview)
             : t(uiKeys.create.options.fastStepsPreview);
-      return `<option value="${value}" ${h3Steps === value ? "selected" : ""}>${value} · ${label}</option>`;
+      return `<option value="${value}" ${h3Steps === value ? "selected" : ""} data-note="${escapeHtml(label)}">${value} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`;
     }).join(""),
     stepsTitle: turboEnabled
       ? t(uiKeys.create.options.turboStepsTitle)
       : t(uiKeys.create.options.h3StepsTitle),
     spectrumLabelMarkup: fieldLabelWithTip(
-      t(uiKeys.create.validation.spectrumLabel),
+      "Spectrum",
       extending && isR2V
         ? t(uiKeys.create.validation.spectrumMotionContext)
         : !spectrumEligible
@@ -1223,8 +1223,8 @@ export function buildVideoCreatePageViewModel(
             ? t(uiKeys.create.validation.spectrumInstall)
             : t(uiKeys.create.validation.spectrumLoaded, { version: spectrumNode?.version ? `v${spectrumNode.version}` : t(uiKeys.create.options.spectrumLoaded) })
     ),
-    spectrumOptionsMarkup: `<option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>${t(uiKeys.create.options.spectrumOff)}</option>
-      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""} ${spectrumEligible && spectrumLoaded ? "" : "disabled"}>${t(uiKeys.create.options.spectrumBalanced)}</option>`,
+    spectrumOptionsMarkup: `<option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""} data-note="${escapeHtml(t(uiKeys.create.options.spectrumOff))}">${t(uiKeys.create.editor.off)}</option>
+      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""} ${spectrumEligible && spectrumLoaded ? "" : "disabled"} data-note="${escapeHtml(t(uiKeys.create.options.spectrumBalanced))}">${t(uiKeys.create.editor.on)}</option>`,
     spectrumTitle: extending && isR2V
       ? t(uiKeys.create.validation.spectrumMotionContext)
       : !spectrumEligible
@@ -1265,6 +1265,8 @@ export function buildVideoCreatePageViewModel(
     safetySafe: safety.safe,
     safetyMessage: safety.message,
     safetyMaxDurationSeconds: safety.maxDurationSeconds,
+    nativeMaxDurationSeconds: videoDurationLimitsForDraft(draft, state.settings).nativeMax,
+    unlockedMaxDurationSeconds: videoDurationLimitsForDraft(draft, state.settings).unlockedMax,
     safetyMaxGeneratedFrames: safety.maxGeneratedFrames,
     interpolationMultiplier: interpolation.multiplier,
     interpolationGeneratedFrames: interpolation.generatedFrames,
@@ -1276,6 +1278,7 @@ export function buildVideoCreatePageViewModel(
         ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath)
         : t(uiKeys.create.validation.chooseApiWorkflow),
     enqueueBlockReason,
+    enqueuePending,
     enqueueDisabled: Boolean(enqueueBlockReason),
     enqueueBusy
   };

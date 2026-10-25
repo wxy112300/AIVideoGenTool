@@ -25,6 +25,7 @@ import {
 } from "../../../core/workflow";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { mountPromptInsertMenu } from "./insert-menu";
 import {
   activePrompt,
   h3PromptModeForDraft,
@@ -88,18 +89,9 @@ export function mountCreatePromptController(
   }, { signal });
 
   const promptInput = root.querySelector<HTMLTextAreaElement>("#prompt-input");
-  const promptSnippetSelect = root.querySelector<HTMLSelectElement>("#prompt-snippet");
-  const insertSnippetButton = root.querySelector<HTMLButtonElement>("#insert-prompt-snippet");
-  const updateSnippetButton = () => {
-    if (insertSnippetButton) insertSnippetButton.disabled = !promptSnippetSelect?.value;
-  };
-  promptSnippetSelect?.addEventListener("change", updateSnippetButton, { signal });
-  insertSnippetButton?.addEventListener("click", () => {
-    if (!promptInput || !promptSnippetSelect) return;
-    insertPromptSnippet(promptInput, promptSnippetFor(promptSnippetSelect.value));
-    promptSnippetSelect.value = "";
-    updateSnippetButton();
-  }, { signal });
+  const disposeInsertMenu = mountPromptInsertMenu(root, (id) => {
+    if (promptInput) insertPromptSnippet(promptInput, promptSnippetFor(id));
+  });
 
   promptInput?.addEventListener("input", () => {
     const draft = getDraft();
@@ -391,5 +383,5 @@ export function mountCreatePromptController(
     }
   }, { signal });
 
-  return () => events.abort();
+  return () => { events.abort(); disposeInsertMenu(); };
 }

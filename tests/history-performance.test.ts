@@ -47,6 +47,7 @@ import {
 } from "../src/renderer/pages/history/media-controller.ts";
 import { createHistoryMediaScheduler } from "../src/renderer/pages/history/media-scheduler.ts";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance.ts";
+import { mountVirtualHistory, prepareVirtualHistory } from "../src/renderer/pages/history/virtual-gallery";
 
 type HistoryBenchmarkKind = "video" | "image";
 type HistoryBenchmarkLayout = "masonry" | "album";
@@ -202,6 +203,10 @@ async function runHistoryBenchmark(
   const renderMs = performance.now() - renderStart;
   const domParseStart = performance.now();
   root.innerHTML = markup;
+  const gallery = root.querySelector<HTMLElement>(".history-gallery")!;
+  Object.defineProperty(gallery, "clientWidth", { value: 1100 });
+  prepareVirtualHistory(root);
+  const disposeWindow = mountVirtualHistory(root, () => () => undefined);
   const domParseMs = performance.now() - domParseStart;
   const records = kind === "video" ? state.history.length : state.imageHistory.length;
   const renderedCards = root.querySelectorAll(".history-gallery-item").length;
@@ -303,6 +308,7 @@ async function runHistoryBenchmark(
     videoPeakConcurrency: videoPeak
   };
   cleanup();
+  disposeWindow();
   root.remove();
   videoScheduler.dispose();
   return result;
@@ -342,7 +348,8 @@ describe("synthetic History performance benchmark", () => {
     expect(results).toHaveLength(4);
     results.forEach((result) => {
       expect(result.records).toBe(500);
-      expect(result.renderedCards).toBe(500);
+      expect(result.renderedCards).toBeGreaterThan(0);
+      expect(result.renderedCards).toBeLessThan(80);
       expect(result.controllerMountMs).toBeGreaterThanOrEqual(0);
     });
     const videoResults = results.filter((result) => result.kind === "video");

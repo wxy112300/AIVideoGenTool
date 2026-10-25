@@ -24,6 +24,7 @@ import { createHistoryActions, type HistoryActionsOptions } from "./actions";
 import { createHistoryMediaRuntime } from "./media-helpers";
 import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
+import { replaceSharedUiMarkup } from "../../shared/ui/runtime";
 import { formatVideoDuration } from "../../shared/formatters";
 import {
   mountHistoryNavigationController,
@@ -268,6 +269,7 @@ export function createHistoryWorkspaceCoordinator(
     setDialog: (dialog) => {
       deps.ui.upscaleDialog = dialog;
     },
+    renderOverlay: deps.renderOverlay,
     rememberModalFocus: deps.rememberModalFocus,
     saveDraftImmediately: deps.saveDraftImmediately,
     selectDraftVideo: deps.selectDraftVideo,
@@ -494,6 +496,9 @@ export function createHistoryWorkspaceCoordinator(
   ): void {
     const reset = () => {
       if (deps.getPage() !== expectedPage) return;
+      // The requested route changes before the outgoing list leaves. Never
+      // scroll that still-visible list to the detail's origin.
+      if (!deps.context.root.querySelector(".history-media-detail")) return;
       window.scrollTo({ top: 0, behavior: "auto" });
     };
     // The detail shell is committed synchronously for the image path, while
@@ -511,7 +516,7 @@ export function createHistoryWorkspaceCoordinator(
     const currentPlayer = document.querySelector<HTMLElement>(".history-player");
     if (!currentPlayer) return false;
     const nextMarkup = document.createElement("div");
-    nextMarkup.innerHTML = historyAssembly.renderDetail(deps.context, "video");
+    replaceSharedUiMarkup(nextMarkup, historyAssembly.renderDetail(deps.context, "video"));
     const nextPlayer = nextMarkup.querySelector<HTMLElement>(".history-player");
     if (!nextPlayer || !swapHistoryDetailFragments({
       currentRoot: document,

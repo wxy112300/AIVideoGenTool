@@ -86,6 +86,28 @@ function scanWithNodeRuntimeFailure(nodeId: string, detail: string): Environment
 }
 
 describe("CustomNodeInstallQueue", () => {
+  it("removes all waiting installs atomically without cancelling active work or losing later additions", async () => {
+    const settings = createDefaultState().settings, logs: Record<string, string> = {};
+    let finish!: (value: { ok: boolean; message: string }) => void;
+    const install = vi.fn((id: string) => id === "active"
+      ? new Promise<{ ok: boolean; message: string }>(resolve => { finish = resolve; })
+      : Promise.resolve({ ok: true, message: "installed" }));
+    const cancelInstall = vi.fn(), restart = vi.fn(async () => ({ ok: true, message: "restarted" }));
+    const queue = new CustomNodeInstallQueue({
+      install, cancelInstall, restart, scan: async () => scanWithLoadedNodes("active", "later"),
+      nodeName: id => id, getLog: id => logs[id] || "", setLog: (id, log) => { logs[id] = log; },
+      notify: vi.fn(), onSnapshot: vi.fn(), messages: messages(), removedMessage: "removed"
+    });
+    queue.enqueue("active", settings); queue.enqueue("waiting-b", settings); queue.enqueue("waiting-c", settings);
+    expect(queue.cancelWaiting()).toBe(2);
+    expect(queue.snapshot()).toMatchObject({ activeNodeId: "active", queuedNodeIds: [], batchNodeIds: ["active"] });
+    expect(cancelInstall).not.toHaveBeenCalled();
+    expect(logs["waiting-b"]).toContain("removed"); expect(logs["waiting-c"]).toContain("removed");
+    expect(queue.enqueue("later", settings).accepted).toBe(true);
+    finish({ ok: true, message: "installed" }); await queue.waitForIdle();
+    expect(install.mock.calls.map(([id]) => id)).toEqual(["active", "later"]);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
   it("removes waiting installs without executing them and waits for active cancellation before starting the next", async () => {
     const settings = createDefaultState().settings;
     let finish!: (result: import("../src/types").ConnectionResult) => void;

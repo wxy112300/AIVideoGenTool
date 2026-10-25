@@ -15,6 +15,7 @@ import {
 import type { Page } from "../../contracts";
 import { queueWorkProgressText, seedVr2ProgressView } from "./card";
 import { patchResourceMonitor } from "../../shell/resource-monitor";
+import { tweenText } from "../../shared/ui/tween";
 import type { RendererApplicationApi } from "../../studio-client";
 
 export interface QueueLiveStatusOptions {
@@ -32,8 +33,11 @@ function setMetric(id: string, value: number | null, detail = ""): void {
   const label = document.querySelector<HTMLElement>(`#${id}`);
   const detailElement = document.querySelector<HTMLElement>(`#${id}-detail`);
   const bar = document.querySelector<HTMLElement>(`#${id}-bar`);
-  if (label) label.textContent = available ? `${Math.round(value)}%` : "—";
-  if (detailElement) detailElement.textContent = detail;
+  if (label) {
+    tweenText(label, available ? `${Math.round(value)}%` : "—");
+    label.closest<HTMLElement>(".performance-card")?.setAttribute("data-pressure", available && value >= 90 ? "hot" : "normal");
+  }
+  if (detailElement) tweenText(detailElement, detail);
   if (bar) bar.style.width = `${available ? Math.max(0, Math.min(100, value)) : 0}%`;
 }
 
@@ -303,7 +307,7 @@ export function patchQueueLiveDom(
   const workProgressText = queueWorkProgressText(running, t);
   workProgress.textContent = workProgressText;
   workProgress.hidden = !workProgressText;
-  progressLabel.textContent = `${Math.round(progress)}%`;
+  tweenText(progressLabel, `${Math.round(progress)}%`);
   progressBar.style.width = `${progress}%`;
   const progressContainer = progressBar.closest<HTMLElement>("[role=progressbar]");
   progressContainer?.setAttribute("aria-valuenow", String(Math.round(progress)));

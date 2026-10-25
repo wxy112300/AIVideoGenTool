@@ -1,5 +1,6 @@
 import type { Draft } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
+import { h3ReferenceImageDimensions } from "./h3-reference.js";
 import { normalizeH3MemoryOptions } from "./h3-memory-policy.js";
 import {
   baseVideoModelId,
@@ -53,10 +54,14 @@ export function normalizeVideoDraft(draft: Draft): Draft {
     draft,
     draft.inputMode === "video" && isMiniMaxH3R2vModel(modelId)
   );
+  const referenceDimensions = draft.inputMode === "image" && isMiniMaxH3R2vModel(modelId)
+    ? h3ReferenceImageDimensions(draft.h3ReferenceSlots)
+    : undefined;
 
   return {
     ...draft,
     modelId,
+    ...(referenceDimensions ? { sourceWidth: referenceDimensions.width, sourceHeight: referenceDimensions.height } : {}),
     duration: draft.inputMode === "video" && isMiniMaxH3ContinuumModel(modelId) &&
       h3ContinuumModeForSource(draft) === "managed" && draft.h3ContinuumSequence
       ? draft.h3ContinuumSequence.chunkSeconds

@@ -66,7 +66,7 @@ function renderQueuePerformanceGrid(
   className: string
 ): string {
   const metrics = options.performanceMetrics;
-  return `<section class="performance-grid queue-performance-grid ${className}" aria-label="${options.t(uiKeys.queue.performance)}">
+  return `<section class="queue-performance-grid panel ${className}" aria-label="${options.t(uiKeys.queue.performance)}">
       ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
       ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
       ${options.performanceCard(options.t(uiKeys.queue.gpu), "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}
@@ -78,7 +78,7 @@ function renderQueueSectionHeading(
   options: QueuePageOptions,
   count: number
 ): string {
-  return `<div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count })}</span></div>`;
+  return `<div class="queue-section-heading"><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span>${options.t(uiKeys.queue.count, { count })}</span></div>`;
 }
 
 function renderWaitingEmpty(options: QueuePageOptions): string {
@@ -88,7 +88,7 @@ function renderWaitingEmpty(options: QueuePageOptions): string {
 function renderQueuePauseBoundary(options: QueuePageOptions): string {
   return `<div class="queue-pause-boundary" data-queue-boundary-marker role="group" aria-label="${options.t(uiKeys.queue.pauseBoundary.title)}">
     <button type="button" class="queue-pause-boundary-handle" data-queue-boundary-drag aria-label="${options.t(uiKeys.queue.pauseBoundary.drag)}" title="${options.t(uiKeys.queue.pauseBoundary.drag)}" aria-keyshortcuts="ArrowUp ArrowDown Home End">${options.icon("grip-horizontal")}</button>
-    <div class="queue-pause-boundary-copy"><strong>${options.t(uiKeys.queue.pauseBoundary.title)}</strong><span>${options.t(uiKeys.queue.pauseBoundary.description)}</span></div>
+    <div class="queue-pause-boundary-copy" title="${options.t(uiKeys.queue.pauseBoundary.description)}"><strong>${options.t(uiKeys.queue.pauseBoundary.title)}</strong></div>
     <button type="button" class="ghost icon-button queue-pause-boundary-clear" data-queue-boundary-clear aria-label="${options.t(uiKeys.queue.pauseBoundary.clear)}" title="${options.t(uiKeys.queue.pauseBoundary.clearTitle)}">${options.icon("x")}</button>
   </div>`;
 }
@@ -176,17 +176,14 @@ export function renderQueuePage(
   return `
     <section class="page-heading queue-page-heading" aria-labelledby="queue-title">
       <div class="queue-page-heading-main">
+        <h1 id="queue-title">${options.t(uiKeys.queue.title)}</h1>
         <div class="queue-heading-line" data-queue-header-tone="${headerTone}">
-          <div class="queue-title-group">
-            <h1 id="queue-title">${options.t(uiKeys.queue.title)}</h1>
-            <span class="model-badge queue-task-count-badge" id="queue-active-count" data-queue-state="${headerTone}" aria-live="polite">${options.t(uiKeys.queue.taskCount, { count: activeTasks.length })}</span>
-          </div>
-          <span class="queue-heading-divider" aria-hidden="true"></span>
           <div class="queue-runtime-status" aria-live="polite">
-            <span id="queue-comfy-status" class="queue-runtime-badge" data-status="${comfyUi.tone}" title="${comfyUi.label}">${comfyUi.shortLabel}</span>
+            <span id="queue-comfy-status" class="queue-runtime-status-value" data-status="${comfyUi.tone}" title="${comfyUi.label}">${comfyUi.shortLabel}</span>
           </div>
+          <span id="queue-active-count" data-queue-state="${headerTone}">${options.t(uiKeys.queue.taskCount, { count: activeTasks.length })}</span>
           <div id="queue-run-summary" class="queue-run-summary" aria-label="${options.t(uiKeys.queue.ariaOverview)}" ${showRunSummary ? "" : "hidden"}>
-            <span class="queue-run-metric queue-run-elapsed"><span id="queue-runtime-elapsed">${showRunSummary ? elapsedText(state.queueStartedAt, options.t) : ""}</span></span>
+            <span class="queue-run-metric queue-run-elapsed"><span id="queue-runtime-elapsed">${state.queueStartedAt && (state.queueRunning || (lifecycle !== "idle" && lifecycle !== "error")) ? elapsedText(state.queueStartedAt, options.t) : ""}</span></span>
             <span class="queue-run-metric" title="${remainingSeconds == null ? options.t(uiKeys.queue.etaNoteAfterFirst) : options.t(uiKeys.queue.etaNoteCurrentProgress)}"><span>${options.t(uiKeys.queue.etaShort)}</span><strong id="queue-eta">${options.queueEstimateText(remainingSeconds)}</strong></span>
           </div>
         </div>
@@ -203,7 +200,7 @@ export function renderQueuePage(
     <div class="queue-operation-status" id="queue-operation-status" data-tone="${operation.tone}" ${operation.visible ? "" : "hidden"} role="status" aria-live="polite"><span class="queue-operation-indicator" aria-hidden="true"></span><span id="queue-operation-message">${options.escapeHtml(operation.message)}</span></div>
     ${renderQueuePerformanceGrid(options, "queue-top-performance-grid")}
     ${queueBody}
-    ${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}
+    ${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span title="${options.t(uiKeys.queue.attentionDescription)}">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}
     `;
 }
 

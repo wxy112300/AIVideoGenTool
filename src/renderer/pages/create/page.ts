@@ -22,10 +22,15 @@ import {
   type CreateModelOptionViewModel
 } from "./fragments";
 import { fieldLabelWithTip, promptButtonWithTip } from "../../shared/markup";
+import { renderCreateHeading } from "./heading";
+import { renderVideoFrames } from "./media-frames";
+import { renderImageOutput } from "./image-output";
 
 interface InstallReadyLoraDefinition {
   id: string;
   name: string;
+  purpose: VideoLoraPurpose;
+  modelFamily: string;
 }
 
 interface VideoLoraIssueViewModel {
@@ -48,6 +53,7 @@ export interface ImageEditPageViewModel {
   promptRuntimeBusy: boolean;
   promptEnhancing: boolean;
   imageCapabilityName: string;
+  imageCapabilityDescription?: string;
   imageCapabilityMaxPictures: number;
   imageModelOptionsMarkup: string;
   imageQualityOptionsMarkup: string;
@@ -69,6 +75,7 @@ export interface ImageEditPageViewModel {
   markupGuideCount: number;
   imageModelInputCount: number;
   enqueueBlockReason: string;
+  enqueuePending?: boolean;
   count: number;
   outputCountVisible: boolean;
   promptlessTitle: string;
@@ -104,6 +111,7 @@ export interface VideoCreatePageViewModel {
   continuumStatusTone: "success" | "info" | "warning" | "error";
   continuumStatusLabel: string;
   continuumStatusDetail: string;
+  continuumFileStatus: { tone: "success" | "info" | "warning" | "error"; label: string };
   continuumArtifactReady: boolean;
   continuumArtifactFilename: string;
   continuumArtifactHistoryBound: boolean;
@@ -131,6 +139,11 @@ export interface VideoCreatePageViewModel {
   h3PromptCheckMarkup: string;
   modelOptions: ReadonlyArray<CreateModelOptionViewModel>;
   resolutionOptionsMarkup: string;
+  resolutionChoices: readonly number[];
+  selectedResolution: number;
+  customResolution?: { min: number; max: number; step: number };
+  outputWidth: number;
+  outputHeight: number;
   stepsOptionsMarkup: string;
   stepsTitle: string;
   spectrumLabelMarkup: string;
@@ -155,6 +168,8 @@ export interface VideoCreatePageViewModel {
   safetySafe: boolean;
   safetyMessage: string;
   safetyMaxDurationSeconds: number;
+  nativeMaxDurationSeconds: number;
+  unlockedMaxDurationSeconds: number;
   safetyMaxGeneratedFrames: number;
   interpolationMultiplier: 1 | 2 | 4;
   interpolationGeneratedFrames: number;
@@ -163,6 +178,7 @@ export interface VideoCreatePageViewModel {
   selectedWorkflowDescription: string;
   enqueueBlockReason: string;
   enqueueDisabled: boolean;
+  enqueuePending?: boolean;
   enqueueBusy: boolean;
   h3TokenEstimate?: number;
 }
@@ -208,60 +224,59 @@ export function renderImageEditPage(
   const hasBasePicture = Boolean(
     viewModel.draft.pictures.find((picture) => picture.pictureNumber === 1)?.absolutePath
   );
-  const showPictureDropZone = supportsMultiplePictures
+  const showPictureDropZone = viewModel.imageCapabilityMaxPictures > 0 && (supportsMultiplePictures
     ? !(maskMode && hasBasePicture)
-    : !hasBasePicture;
+    : !hasBasePicture);
   const renderPictureTools = (picture: ImageEditDraft["pictures"][number]): string => {
     if (!picture.absolutePath) return "";
     const buttons: string[] = [];
     if (maskMode) {
-      buttons.push(`<button class="secondary button-with-icon" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="绘制移除区域" title="绘制或修改 Mask">${icon("brush")}<span>${picture.mask ? "修改 Mask" : "绘制 Mask"}</span></button>`);
+      buttons.push(`<button class="secondary button-with-icon" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.markup.maskTitle)}" title="${t(picture.mask ? uiKeys.create.finish.editMask : uiKeys.create.finish.drawMask)}">${icon("brush")}<span>${t(picture.mask ? uiKeys.create.finish.editMask : uiKeys.create.finish.drawMask)}</span></button>`);
     } else if (!viewModel.promptless && viewModel.annotationSupported) {
       buttons.push(`<button class="icon-button" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.markImage)}">${icon("pencil")}</button>`);
     }
     if (!maskMode && viewModel.maskSupported) {
-      buttons.push(`<button class="icon-button" data-mask-image-picture="${escapeHtml(picture.id)}" aria-label="绘制 Mask" title="${picture.mask ? "修改 Mask" : "绘制 Mask"}">${icon("brush")}</button>`);
+      buttons.push(`<button class="icon-button" data-mask-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.finish.drawMask)}" title="${t(picture.mask ? uiKeys.create.finish.editMask : uiKeys.create.finish.drawMask)}">${icon("brush")}</button>`);
     }
     return buttons.join("");
   };
   return `
-    <section class="page-heading create-page-heading image-edit-page-heading">
-      <div class="page-heading-copy"><h1>${t(uiKeys.create.imageEditTitle)}</h1><p>${t(uiKeys.create.imageEditDescription)}</p></div>
-      <div class="create-page-actions">
-        <div class="input-mode-switch" role="group" aria-label="${t(uiKeys.create.modeLabel)}">
-          <button class="ghost button-with-icon" data-input-mode="image" aria-pressed="false">${icon("image")}${t(uiKeys.create.imageToVideo)}</button>
-          <button class="ghost button-with-icon" data-input-mode="video" aria-pressed="false">${icon("video")}${t(uiKeys.create.videoExtension)}</button>
-          <button class="secondary active button-with-icon" data-input-mode="image-edit" aria-pressed="true">${icon("wand-sparkles")}${t(uiKeys.create.imageEditMode)}</button>
-        </div>
-        <span class="save-state">${t(uiKeys.create.autoSave)}</span>
-      </div>
-    </section>
+    ${renderCreateHeading("image-edit", options)}
     <div class="create-workspace image-edit-workspace">
-      <section class="media-panel image-edit-references">
-        <div class="section-heading">
-          <div><h2>${t(uiKeys.create.imageReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.imageEdit.slotSummary, { count: viewModel.draft.pictures.length, max: viewModel.imageCapabilityMaxPictures })}${viewModel.markupGuideCount ? ` · ${t(uiKeys.create.imageEdit.modelInputSummary, { count: viewModel.imageModelInputCount, max: viewModel.imageCapabilityMaxPictures })}` : ""} · ${t(uiKeys.create.imageEdit.baseInputSummary)}</span></div>
+      <section class="media-panel image-edit-references create-image-media">
+        <div class="section-heading create-media-heading">
+          ${viewModel.imageCapabilityMaxPictures === 0
+            ? `<div><h2>${escapeHtml(viewModel.imageCapabilityName)}</h2></div>`
+            : `<div><h2>${t(uiKeys.create.imageReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.imageEdit.slotSummary, { count: viewModel.draft.pictures.length, max: viewModel.imageCapabilityMaxPictures })}${viewModel.markupGuideCount ? ` · ${t(uiKeys.create.imageEdit.modelInputSummary, { count: viewModel.imageModelInputCount, max: viewModel.imageCapabilityMaxPictures })}` : ""}</span></div>`}
           ${maskMode || !supportsMultiplePictures ? "" : `<button class="secondary button-with-icon" id="add-image-slot" ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>${icon("plus")}${t(uiKeys.create.addSlot)}</button>`}
         </div>
-        <div class="image-picture-list">
+        ${viewModel.imageCapabilityMaxPictures === 0 ? `<p class="muted">${escapeHtml(viewModel.imageCapabilityDescription ?? "")}</p>` : ""}
+        ${viewModel.imageCapabilityMaxPictures === 0 && !viewModel.draft.pictures.some(picture => picture.absolutePath) ? "" : `<div class="image-picture-list">
           ${viewModel.draft.pictures.length ? viewModel.draft.pictures.map((picture) => `
             <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"} ${picture.markup || picture.mask ? "has-markup" : ""}" data-image-picture-card="${escapeHtml(picture.id)}">
-              <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" data-drop-label="${escapeHtml(t(picture.absolutePath ? uiKeys.create.imageEdit.replaceSlotImage : uiKeys.create.imageEdit.chooseSlotImage, { index: picture.pictureNumber }))}" style="--picture-ratio:${picture.width > 0 && picture.height > 0 ? `${picture.width} / ${picture.height}` : "1 / 1"}" aria-label="${t(picture.absolutePath ? uiKeys.create.imageEdit.replaceSlotImage : uiKeys.create.imageEdit.chooseSlotImage, { index: picture.pictureNumber })}">
+              <div class="create-image-surface create-slot-media" style="--media-ratio:${picture.width > 0 && picture.height > 0 ? `${picture.width} / ${picture.height}` : "16 / 7"};--media-r:${picture.width > 0 && picture.height > 0 ? picture.width / picture.height : 16 / 7}">
+              <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" ${viewModel.imageCapabilityMaxPictures === 0 ? "disabled" : ""} data-image-picture-pick="${escapeHtml(picture.id)}" data-drop-label="${escapeHtml(t(picture.absolutePath ? uiKeys.create.imageEdit.replaceSlotImage : uiKeys.create.imageEdit.chooseSlotImage, { index: picture.pictureNumber }))}" style="--picture-ratio:${picture.width > 0 && picture.height > 0 ? `${picture.width} / ${picture.height}` : "1 / 1"}" aria-label="${t(picture.absolutePath ? uiKeys.create.imageEdit.replaceSlotImage : uiKeys.create.imageEdit.chooseSlotImage, { index: picture.pictureNumber })}">
                 <img data-image-picture-preview="${escapeHtml(picture.id)}" alt="${t(uiKeys.create.imageEdit.previewAlt, { index: picture.pictureNumber })}" ${picture.absolutePath ? "" : "hidden"}>
-                ${picture.absolutePath ? "" : `<span>${icon("image")}${t(uiKeys.create.imageEdit.chooseImage)}</span>`}
+                ${picture.absolutePath ? "" : `<span>${icon("image-plus")}${t(uiKeys.create.imageEdit.chooseImage)}</span>`}
               </button>
+              <span class="create-image-badges">${picture.crop ? `<span title="${picture.crop.width} × ${picture.crop.height}">${icon("crop")}${t(uiKeys.create.markup.crop)}</span>` : ""}${picture.mask ? `<span>${icon("brush")}Mask · ${picture.mask.regionCount}</span>` : picture.markup ? `<span>${icon("pencil")}${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</span>
+              ${picture.absolutePath ? `<div class="create-media-actions"><button type="button" data-image-picture-pick="${escapeHtml(picture.id)}">${icon("refresh-cw")}${t(uiKeys.create.mediaReplace)}</button><button type="button" data-clear-image-picture="${escapeHtml(picture.id)}">${icon("x")}${t(uiKeys.create.mediaClear)}</button></div>` : ""}
+              </div>
               <div class="image-picture-card-body">
-                <div class="image-picture-card-title"><strong>${t(uiKeys.create.imageEdit.slotTitle, { index: picture.pictureNumber })}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? t(uiKeys.create.imageEdit.baseInput) : t(uiKeys.create.imageEdit.reference)}</span>${picture.crop ? `<span class="model-availability available">裁剪 · ${picture.crop.width} × ${picture.crop.height}</span>` : ""}${picture.mask ? `<span class="model-availability available">${icon("brush")} Mask · ${picture.mask.regionCount}</span>` : picture.markup ? `<span class="model-availability available">${icon("pencil")} ${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</div>
-                <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
-                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>`}
+                <div class="image-picture-card-title"><span class="create-picture-index">${picture.pictureNumber}</span><span class="picture-number">Picture ${picture.pictureNumber}</span>${picture.pictureNumber === 1 ? `<span class="model-badge">${t(uiKeys.create.imageEdit.baseInput)}</span>` : ""}</div>
+                <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml((picture.originalPath || picture.absolutePath).split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
+                ${maskMode || picture.pictureNumber === 1 ? "" : `<label><select aria-label="${t(uiKeys.create.imageEdit.referenceRole)}" data-image-picture-role="${escapeHtml(picture.id)}">${imageReferenceRoleOptions(options, picture)}</select></label>`}
               </div>
               <div class="image-picture-card-actions">${renderPictureTools(picture)}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
-            </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(uiKeys.create.imageEdit.emptyTitle)}</strong><small>${t(uiKeys.create.imageEdit.emptyDescription)}</small></div>`}
+            </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(viewModel.supportsTextOnly ? uiKeys.create.finish.optionalReference : uiKeys.create.imageEdit.emptyTitle)}</strong>${viewModel.supportsTextOnly ? "" : `<small>${t(uiKeys.create.imageEdit.emptyDescription)}</small>`}</div>`}
         </div>
+        `}
         ${showPictureDropZone ? `<button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${supportsMultiplePictures && viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>
           <span class="drop-icon">${icon("upload")}</span><strong>${t(supportsMultiplePictures ? uiKeys.create.imageEdit.dropNextSlot : uiKeys.create.imageEdit.chooseImage)}</strong><span>${t(uiKeys.create.imageEdit.imageFormats)}</span>
         </button>` : ""}
       </section>
-      <section class="panel composer image-edit-composer">
+      <section class="panel composer image-edit-composer create-editor">
+        <section class="create-prompt-card">
         ${viewModel.promptless ? `<div class="section-heading composer-heading"><div><h2>${escapeHtml(viewModel.promptlessTitle)}</h2><span class="muted">${escapeHtml(viewModel.promptlessDescription)}</span></div></div>` : `<div class="section-heading composer-heading">
           <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button><button class="icon-button danger" id="clear-image-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}">${icon("trash-2")}</button></div></div>
           <div class="prompt-action-controls">
@@ -274,37 +289,11 @@ export function renderImageEditPage(
           </div>
         </div>`}
         ${viewModel.promptless ? "" : `
-        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
-        <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>${t(uiKeys.create.imageEdit.quickInsert)}</span><select id="image-edit-instruction">${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}${t(uiKeys.create.imageEdit.insert)}</button></div>`}
-        <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>${t(uiKeys.create.imageEdit.generationSettings)}</strong><span>${viewModel.outputCountVisible ? t(uiKeys.create.imageEdit.batchDescription) : escapeHtml(viewModel.promptlessDescription)}</span></div></div><div class="composer-control-grid image-edit-settings-grid">
-          <label class="settings-field">${t(uiKeys.create.imageEdit.model)}<select id="image-edit-model">${viewModel.imageModelOptionsMarkup}</select></label>
-          <label class="settings-field">${t(uiKeys.create.imageEdit.quality)}<select id="image-edit-quality">${viewModel.imageQualityOptionsMarkup}</select></label>
-          ${viewModel.imageAspectRatioVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.outputAspectRatio)}<select id="image-edit-aspect-ratio" aria-label="${t(uiKeys.create.imageEdit.outputAspectRatio)}">${viewModel.imageAspectRatioOptionsMarkup}</select></label>` : ""}
-          ${viewModel.imageResolutionVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.outputResolution)}<select id="image-edit-resolution" aria-label="${t(uiKeys.create.imageEdit.outputResolution)}">${viewModel.imageResolutionOptionsMarkup}</select></label>` : ""}
-          ${viewModel.promptless ? "" : `<label class="settings-field">${t(uiKeys.create.imageEdit.randomSeed)}<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${viewModel.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>`}
-          ${viewModel.outputCountVisible ? `<label class="settings-field range-field"><span class="range-heading"><span>${t(uiKeys.create.imageEdit.outputCount)}</span><strong id="image-edit-count-value">${t(uiKeys.create.imageEdit.outputCountValue, { count: viewModel.count })}</strong></span><input id="image-edit-count" type="range" min="1" max="${imageOutputCountMax}" step="1" value="${viewModel.count}"></label>` : ""}
-        </div></section>
-        ${viewModel.imageLoraVisible
-          ? '<section class="composer-control-group image-lora-options"><div class="video-lora-stack"><div class="video-lora-stack-heading"><div><strong>图片 LoRA</strong><span>' +
-            (viewModel.draft.imageLoras.length
-              ? t(uiKeys.create.videoSettings.loraEnabled, { count: viewModel.draft.imageLoras.length })
-              : t(uiKeys.create.videoSettings.loraOptional)) +
-            '</span></div><div class="video-lora-add"><select id="image-lora-to-add" aria-label="' +
-            t(uiKeys.create.videoSettings.chooseLora) +
-            '" ' +
-            (viewModel.imageLoraAddDisabled ? 'disabled' : '') +
-            '>' +
-            viewModel.imageLoraAddOptionsMarkup +
-            '</select><button class="secondary button-with-icon" id="add-image-lora" type="button" ' +
-            (viewModel.imageLoraAddDisabled ? 'disabled' : '') +
-            '>' +
-            icon('plus') +
-            t(uiKeys.create.videoSettings.add) +
-            '</button></div></div>' +
-            viewModel.imageLoraOptionsMarkup +
-            '</div></section>'
-          : ""}
-        <div class="submit-row composer-submit-row"><p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button>${viewModel.imagePromptTokenEstimate == null ? "" : `<span class="composer-token-estimate" data-image-token-estimate title="${t(uiKeys.create.imageEdit.tokenEstimate)}">${viewModel.imagePromptTokenEstimate} tokens</span>`}<button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div></div>
+        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea></div>
+        `}
+        ${viewModel.promptless ? "" : `<div class="create-prompt-footer">${viewModel.imageCapabilityMaxPictures > 0 ? `<select id="image-edit-instruction" hidden data-native-select>${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select><button id="insert-image-edit-instruction" hidden disabled></button><button class="secondary button-with-icon" id="image-prompt-insert-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" data-search-label="${t(uiKeys.create.insertSearch)}" data-empty-label="${t(uiKeys.create.insertEmpty)}">${icon("text-cursor-input")}${t(uiKeys.create.imageEdit.quickInsert)}${icon("chevron-down")}</button>` : ""}<span class="create-prompt-spacer"></span><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>`}
+        </section>
+        ${renderImageOutput(viewModel, options)}
       </section>
     </div>`;
 }
@@ -330,13 +319,6 @@ export function renderCreatePage(
   const escapeHtml = options.escapeHtml;
   const t = options.t;
   const promptUi = viewModel.promptUi;
-  const showH3InputResolution = viewModel.isMiniMaxH3 && !viewModel.isR2V;
-  const formatInputDimensions = (width: number | undefined, height: number | undefined): string =>
-    showH3InputResolution && Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0
-      ? `${Math.trunc(width!)} × ${Math.trunc(height!)}`
-      : "";
-  const startInputResolution = formatInputDimensions(viewModel.draft.sourceWidth, viewModel.draft.sourceHeight);
-  const endInputResolution = formatInputDimensions(viewModel.draft.endImageWidth, viewModel.draft.endImageHeight);
   const continuumDependencyLabelFor = (file: ContinuumDependencyFileViewModel): string => {
     if (file.kind === "payload") return t(uiKeys.create.continuumArtifact.dependencyPayload);
     if (file.kind === "manifest") return t(uiKeys.create.continuumArtifact.dependencyManifest);
@@ -351,10 +333,10 @@ export function renderCreatePage(
   };
   const continuumDependencyActionsFor = (file: ContinuumDependencyFileViewModel): string => {
     if (viewModel.continuumManaged) {
-      return `<span class="continuum-dependency-file-ownership">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyManaged))}</span>`;
+      return "";
     }
     if (file.kind === "manifest") {
-      return `<span class="continuum-dependency-file-ownership">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyPaired))}</span>`;
+      return "";
     }
     if (file.kind !== "payload") return "";
     const chooseLabel = viewModel.continuumArtifactFilename
@@ -368,7 +350,7 @@ export function renderCreatePage(
   const continuumDependencyFilesMarkup = viewModel.continuumDependencyFiles.map((file) =>
     `<div class="continuum-dependency-file" data-continuum-dependency-file="${file.kind}:${file.chunkIndex ?? ""}" data-continuum-file-status="${file.status}">
       <span class="continuum-dependency-status-dot" aria-hidden="true"></span>
-      <div class="continuum-dependency-file-copy"><strong>${escapeHtml(continuumDependencyLabelFor(file))}</strong><span data-continuum-file-name title="${escapeHtml(file.location || file.filename)}">${escapeHtml(file.filename)}</span><small data-continuum-file-location title="${escapeHtml(file.location)}"${file.location ? "" : " hidden"}>${escapeHtml(file.location)}</small></div>
+      <div class="continuum-dependency-file-copy"><strong>${escapeHtml(continuumDependencyLabelFor(file))}</strong><span data-continuum-file-name title="${escapeHtml(file.location || file.filename)}">${escapeHtml(file.filename)}</span></div>
       <span class="continuum-dependency-file-status" data-continuum-file-status-label>${escapeHtml(continuumDependencyStatusLabelFor(file.status))}</span>
       ${continuumDependencyActionsFor(file)}
     </div>`
@@ -379,29 +361,12 @@ export function renderCreatePage(
       </div>`
     : "";
   return `
-    <section class="page-heading create-page-heading">
-      <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
-      <div class="create-page-actions">
-        <div class="input-mode-switch" role="group" aria-label="${t(uiKeys.create.modeLabel)}">
-          <button class="${viewModel.extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!viewModel.extending}">${icon("image")}${t(uiKeys.create.imageToVideo)}</button>
-          <button class="${viewModel.extending ? "secondary active" : "ghost"} button-with-icon" data-input-mode="video" aria-pressed="${viewModel.extending}">${icon("video")}${t(uiKeys.create.videoExtension)}</button>
-          <button class="ghost button-with-icon" data-input-mode="image-edit" aria-pressed="false">${icon("wand-sparkles")}${t(uiKeys.create.imageEditMode)}</button>
-        </div>
-        <span class="save-state">${t(uiKeys.create.autoSave)}</span>
-      </div>
-    </section>
+    ${renderCreateHeading(viewModel.extending ? "video" : "image", options)}
     <div class="create-workspace ${viewModel.isR2V ? "r2v-workspace" : ""} ${viewModel.isContinuum ? "continuum-workspace" : ""}">
-      <section class="panel media-panel">
-      <div class="section-heading">
-        <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? viewModel.isContinuum ? "" : t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
-        ${viewModel.extending
-          ? `<div class="section-heading-actions">
-              ${viewModel.isR2V && viewModel.draft.sourceVideoPath && viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""}
-              ${viewModel.draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}${t(uiKeys.create.removeVideo)}</button>` : ""}
-            </div>`
-          : viewModel.isR2V
-            ? viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""
-            : `<button class="secondary button-with-icon" id="toggle-end" ${!viewModel.supportsEndImage && !viewModel.draft.endImagePath ? "disabled" : ""}>${icon(viewModel.draft.endImagePath ? "x" : "images")}${viewModel.draft.endImagePath ? t(uiKeys.create.removeEndFrame) : t(uiKeys.create.addEndFrame)}</button>`}
+      <section class="panel media-panel create-video-media">
+      <div class="create-media-heading">
+        <h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2>${viewModel.isR2V ? `<span title="${escapeHtml(t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }))}">${t(uiKeys.create.mediaReferenceCounts, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span>` : ""}
+        ${viewModel.extending && viewModel.draft.sourceVideoPath ? `<button class="ghost button-with-icon" id="remove-video">${icon("x")}${t(uiKeys.create.removeVideo)}</button>` : ""}
       </div>
       ${viewModel.extending
         ? viewModel.draft.sourceVideoPath
@@ -427,7 +392,7 @@ export function renderCreatePage(
                   ? ""
                   : `<div class="trim-panel">
                     <div class="trim-heading"><strong>${t(uiKeys.create.videoMedia.trimTitle)}</strong><span><output id="trim-start-output">${formatTrimTime(viewModel.draft.trimStartSeconds)}</output> — <output id="trim-end-output">${formatTrimTime(viewModel.draft.trimEndSeconds)}</output></span></div>
-                    <div class="trim-editor" id="trim-editor" style="--trim-start:${viewModel.trimStartPercent}%;--trim-end:${viewModel.trimEndPercent}%">
+                    <div class="trim-editor" id="trim-editor" data-ui-skip style="--trim-start:${viewModel.trimStartPercent}%;--trim-end:${viewModel.trimEndPercent}%">
                       <div class="trim-filmstrip" aria-hidden="true">${Array.from({ length: 8 }, () => "<i></i>").join("")}</div>
                       <div class="trim-dim trim-dim-start"></div><div class="trim-dim trim-dim-end"></div><div class="trim-selection"></div>
                       <input class="trim-range" id="trim-start" type="range" min="0" max="${viewModel.draft.sourceVideoDuration}" step="0.1" value="${viewModel.draft.trimStartSeconds}" aria-label="${t(uiKeys.create.videoMedia.trimStart)}" aria-valuetext="${formatTrimTime(viewModel.draft.trimStartSeconds)}">
@@ -443,7 +408,7 @@ export function renderCreatePage(
                 : `<p class="video-loading">${t(uiKeys.create.videoMedia.loadingVideo)}</p>`}
             </div>`
             : `<button class="drop-zone video-drop-zone" id="pick-video" data-drop-video data-drop-label="${t(uiKeys.create.videoMedia.addVideoDrop)}">
-              <span class="drop-icon">${icon("video")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropVideo)}</strong><span>${t(uiKeys.create.videoMedia.videoFormats)}</span>
+              <span class="drop-icon">${icon("video")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropVideo)}</strong>
             </button>`
         : viewModel.isR2V
           ? renderH3ReferenceSlotsMarkup(viewModel.draft.h3ReferenceSlots, {
@@ -452,27 +417,10 @@ export function renderCreatePage(
               h3ReferenceRoleLabels: options.h3ReferenceRoleLabels,
               t
             })
-          : `<div class="media-grid ${viewModel.draft.endImagePath ? "paired" : ""}">
-        <div class="media-slot">
-          ${viewModel.draft.startImagePath
-            ? `<div class="drop-zone has-image" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.replaceStartFrame)}">
-                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}">${startInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${startInputResolution}`)}">${escapeHtml(startInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
-              </div>`
-            : `<button class="drop-zone" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.addStartFrame)}">
-                <span class="drop-icon">${icon("image")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropStart)}</strong><span>${t(uiKeys.create.videoMedia.imageFormats)}</span>
-              </button>`}
-              ${viewModel.draft.startImagePath ? `<button class="image-remove button-with-icon" data-clear-frame="start" aria-label="${t(uiKeys.create.videoMedia.deleteStartFrame)}" title="${t(uiKeys.create.videoMedia.deleteStartFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>` : ""}
-        </div>
-        ${viewModel.draft.endImagePath
-          ? `<div class="media-slot">
-              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}">${endInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${endInputResolution}`)}">${escapeHtml(endInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
-              <button class="image-remove button-with-icon" data-clear-frame="end" aria-label="${t(uiKeys.create.videoMedia.deleteEndFrame)}" title="${t(uiKeys.create.videoMedia.deleteEndFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>
-            </div>`
-          : ""}
-          </div>`}
+          : renderVideoFrames(viewModel, options)}
       ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel continuum-source-check" aria-labelledby="continuum-dependency-title">
-        <div class="continuum-dependency-heading"><h3 id="continuum-dependency-title">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}</h3></div>
-        <div class="continuum-status continuum-dependency-summary" data-continuum-source-status data-tone="info" role="status"><strong>${escapeHtml(viewModel.continuumDependencyRoute)}</strong><span>${escapeHtml(viewModel.continuumDependencyProgress)}</span></div>
+        <div class="continuum-dependency-heading"><h3 id="continuum-dependency-title">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}</h3><span class="continuum-route-value" data-continuum-route>${escapeHtml(viewModel.continuumDependencyRoute)}</span></div>
+<div class="continuum-status continuum-dependency-summary" data-continuum-source-status data-tone="${viewModel.continuumFileStatus.tone}" role="status"><strong><span class="continuum-source-state-icon" data-continuum-status-icon aria-hidden="true">${icon(viewModel.continuumFileStatus.tone === "success" ? "circle-check" : viewModel.continuumFileStatus.tone === "error" ? "circle-alert" : "info")}</span><span data-continuum-status-label>${escapeHtml(viewModel.continuumFileStatus.label)}</span></strong><span data-continuum-progress>${escapeHtml(viewModel.continuumDependencyProgress)}</span></div>
         ${viewModel.continuumDependencyFiles.length > 0 ? `<div class="continuum-dependency-files" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}">${continuumDependencyFilesMarkup}</div>` : ""}
         ${continuumDependencyEmptyMarkup}
       </section>` : ""}
@@ -480,19 +428,14 @@ export function renderCreatePage(
         <div class="section-heading">
           <div><h2 id="motion-context-latent-title" title="${escapeHtml(t(uiKeys.create.motionContextLatent.description))}">${t(uiKeys.create.motionContextLatent.title)}</h2></div>
         </div>
-        <div class="continuum-artifact-drop ${viewModel.motionContextLatentReady ? "has-artifact" : ""}" id="pick-h3-motion-context-latent" data-drop-h3-motion-context-latent data-drop-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}" title="${escapeHtml(t(uiKeys.create.motionContextLatent.pendingValidation))}" role="button" tabindex="0" aria-label="${escapeHtml(viewModel.motionContextLatentReady ? t(uiKeys.create.motionContextLatent.change) : t(uiKeys.create.motionContextLatent.choose))}">
-          <span class="drop-icon">${icon("database")}</span>
-          <strong>${t(viewModel.motionContextLatentReady ? uiKeys.create.motionContextLatent.change : uiKeys.create.motionContextLatent.choose)}</strong>
-          ${viewModel.motionContextLatentFilename ? `<span>${escapeHtml(viewModel.motionContextLatentFilename)}</span>` : ""}
-        </div>
-        ${viewModel.motionContextLatentReady ? `<div class="continuum-artifact-meta"><button class="ghost button-with-icon" id="clear-h3-motion-context-latent" type="button">${icon("x")}${t(uiKeys.create.motionContextLatent.clear)}</button></div>` : ""}
-        <div class="continuum-status" data-motion-context-status data-tone="${viewModel.motionContextStatusTone}" role="status">
+        <div class="create-context-file"><span class="create-context-dot" data-tone="${viewModel.motionContextStatusTone}"></span><code title="${escapeHtml(viewModel.draft.h3ContextLatentPath ?? "")}">${escapeHtml(viewModel.motionContextLatentFilename || t(uiKeys.create.motionContextLatent.empty))}</code><button class="ghost" type="button" id="pick-h3-motion-context-latent" data-drop-h3-motion-context-latent>${t(viewModel.motionContextLatentReady ? uiKeys.create.motionContextLatent.change : uiKeys.create.motionContextLatent.choose)}</button>${viewModel.motionContextLatentReady ? `<button class="ghost icon-button" id="clear-h3-motion-context-latent" type="button" aria-label="${t(uiKeys.create.motionContextLatent.clear)}">${icon("x")}</button>` : ""}</div>
+        <div class="continuum-status" data-motion-context-status data-tone="${viewModel.motionContextStatusTone}" role="status" ${!viewModel.motionContextLatentReady || viewModel.motionContextStatusTone === "success" ? "hidden" : ""}>
           <strong>${escapeHtml(viewModel.motionContextStatusLabel)}</strong><span>${escapeHtml(viewModel.motionContextStatusDetail)}</span>
         </div>
       </section>` : ""}
-      ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
+      ${viewModel.extending && viewModel.isR2V && viewModel.draft.sourceVideoPath ? `<section class="h3-motion-context-references">
         <div class="section-heading">
-          <div><h2>${t(uiKeys.create.r2vReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span></div>
+          <div><h2>${t(uiKeys.create.r2vReferencesTitle)}</h2></div>
         </div>
         ${renderH3ReferenceSlotsMarkup(
           ensureMotionContextSourceSlot(viewModel.draft.h3ReferenceSlots, viewModel.draft.sourceVideoPath),
@@ -500,8 +443,9 @@ export function renderCreatePage(
         )}
       </section>` : ""}
       </section>
-      <section class="panel composer">
-      <div class="section-heading composer-heading">
+      <div class="composer create-editor">
+      <section class="create-prompt-card">
+      <div class="create-prompt-toolbar">
         <div class="composer-heading-main">
           <h2>${t(viewModel.extending ? uiKeys.create.extensionPromptTitle : uiKeys.create.promptTitle)}</h2>
           <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} · ${escapeHtml(viewModel.prompt.label)}</span>
@@ -517,7 +461,7 @@ export function renderCreatePage(
               ? viewModel.h3PromptPresetOptionsMarkup
                 : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>${promptUi.t("sulphurNativeEnhance")}</option>
                   <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>${promptUi.t("faithfulEnhance")}</option>`}
-          </select>
+          </select></div>
              ${promptButtonWithTip(`<button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-describedby="prompt-runtime-tooltip" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>`, viewModel.releasePromptControlTitle, "prompt-runtime-tooltip", viewModel.releasePromptControlDisabled)}
              ${promptButtonWithTip(`<button class="secondary button-with-icon prompt-enhance-button ${viewModel.promptEnhancing ? "prompt-progress-active" : ""}" id="enhance-prompt" ${viewModel.promptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} aria-describedby="prompt-progress-tooltip" aria-busy="${viewModel.promptEnhancing}">
                <span class="prompt-progress-track" aria-hidden="true"><span class="prompt-progress-bar ${viewModel.promptProgress?.progress == null && viewModel.promptEnhancing ? "indeterminate" : ""}" data-prompt-progress-bar style="width:${viewModel.promptProgress?.progress ?? 0}%"></span></span>
@@ -526,18 +470,20 @@ export function renderCreatePage(
         </div>
       </div>
       <div class="prompt-editor-shell">
-        <textarea id="prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
-        <div id="prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div>
+        <textarea id="prompt-input" rows="4" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
       </div>
-      <div class="prompt-tool-row">
-        <label class="prompt-snippet-picker"><span>${promptUi.t("snippetPicker")}</span><select id="prompt-snippet"><option value="">${promptUi.t("snippetPlaceholder")}</option>${viewModel.promptSnippetOptionsMarkup}</select></label>
-        <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}${promptUi.t("insertSnippet")}</button>
+      <div class="create-prompt-footer">
+        <select id="prompt-snippet" hidden data-native-select aria-label="${promptUi.t("snippetPicker")}">${viewModel.promptSnippetOptionsMarkup}</select>
+        <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" aria-haspopup="dialog" aria-expanded="false" data-search-label="${t(uiKeys.create.insertSearch)}" data-empty-label="${t(uiKeys.create.insertEmpty)}">${icon("text-cursor-input")}${promptUi.t("snippetPicker")}${icon("chevron-down")}</button>
+        <span class="create-prompt-spacer"></span>${viewModel.h3PromptCheckMarkup}<div id="prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div>
       </div>
+      </section>
+      <div class="create-remaining-controls">
       <div class="composer-settings">
         <section class="composer-control-group composer-output-group">
-          <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.outputTitle)}</strong><span>${t(uiKeys.create.videoSettings.outputDescription)}</span></div></div>
+          <div class="create-card-heading"><h3>${t(uiKeys.create.videoSettings.outputTitle)}</h3></div>
           <div class="composer-control-grid composer-output-grid">
-        <label class="settings-field settings-model">${t(uiKeys.create.videoSettings.model)}
+        <label class="settings-field settings-model create-span-2">${t(uiKeys.create.videoSettings.model)}
           <select id="model">
             ${renderCreateModelOptions(viewModel.modelOptions, escapeHtml)}
           </select>
@@ -549,18 +495,19 @@ export function renderCreatePage(
             ).join("")}
           </select>
         </label>
-        <label class="settings-field settings-resolution">${t(uiKeys.create.videoSettings.resolution)}
-          <select id="resolution" ${viewModel.extending && !viewModel.isMiniMaxH3 ? "disabled" : ""}>
+        <div class="settings-field settings-resolution create-span-3"><span class="create-field-label">${t(uiKeys.create.videoSettings.resolution)}<output class="create-caption" data-output-dimensions>${viewModel.outputWidth} × ${viewModel.outputHeight}</output></span>
+          <select id="resolution" hidden data-native-select aria-label="${t(uiKeys.create.videoSettings.resolution)}" ${viewModel.extending && !viewModel.isMiniMaxH3 ? "disabled" : ""}>
             ${viewModel.resolutionOptionsMarkup}
-          </select>
-        </label>
-        ${viewModel.isMiniMaxH3 ? `<label class="settings-field settings-steps">${t(uiKeys.create.videoSettings.h3Steps)}
-          <select id="steps" aria-label="${t(uiKeys.create.videoSettings.h3Steps)}" title="${escapeHtml(viewModel.stepsTitle)}">
+          </select><div class="create-resolution-segment" data-ui-segmented="video-resolution" role="group" aria-label="${t(uiKeys.create.videoSettings.resolution)}">${viewModel.resolutionChoices.map(value => `<button type="button" id="video-resolution-${value}" data-video-resolution="${value}" aria-pressed="${value === viewModel.selectedResolution}" ${viewModel.extending && !viewModel.isMiniMaxH3 ? "disabled" : ""}>${value}p</button>`).join("")}<button type="button" id="video-resolution-custom" data-custom-resolution aria-pressed="false">${icon("sliders-horizontal")}${t(uiKeys.create.editor.custom)}</button></div>
+          <div class="create-custom-resolution" data-custom-resolution-panel data-range='${escapeHtml(JSON.stringify(viewModel.customResolution ?? { min: Math.min(...viewModel.resolutionChoices), max: Math.max(...viewModel.resolutionChoices), step: 1 }))}' ${viewModel.customResolution ? "data-continuous" : `title="${t(uiKeys.create.editor.customRestricted)}"`} hidden><input type="range" min="${viewModel.customResolution?.min ?? Math.min(...viewModel.resolutionChoices)}" max="${viewModel.customResolution?.max ?? Math.max(...viewModel.resolutionChoices)}" step="${viewModel.customResolution?.step ?? 1}" value="${viewModel.selectedResolution}" aria-label="${t(uiKeys.create.editor.shortEdge)}"><input type="number" min="${viewModel.customResolution?.min ?? Math.min(...viewModel.resolutionChoices)}" max="${viewModel.customResolution?.max ?? Math.max(...viewModel.resolutionChoices)}" step="${viewModel.customResolution?.step ?? 1}" value="${viewModel.selectedResolution}" aria-label="${t(uiKeys.create.editor.shortEdge)}"><span>px</span></div>
+        </div>
+        ${viewModel.isMiniMaxH3 ? `<label class="settings-field settings-steps"><span data-steps-help>${fieldLabelWithTip(t(uiKeys.create.videoSettings.h3Steps), viewModel.stepsTitle)}</span>
+          <select id="steps" aria-label="${t(uiKeys.create.videoSettings.h3Steps)}">
             ${viewModel.stepsOptionsMarkup}
           </select>
         </label>
         <label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
-          <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.spectrumTitle)}">
+          <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""}>
             ${viewModel.spectrumOptionsMarkup}
           </select>
         </label>
@@ -570,40 +517,18 @@ export function renderCreatePage(
           </select>
         </label>` : ""}
           </div>
-          <div class="video-lora-stack">
-            <div class="video-lora-stack-heading">
-              <div><strong>${viewModel.loraLabelMarkup}</strong><span>${viewModel.draft.videoLoras.length ? t(uiKeys.create.videoSettings.loraEnabled, { count: viewModel.draft.videoLoras.length }) : t(uiKeys.create.videoSettings.loraOptional)}</span></div>
-              <div class="video-lora-add">
-                <select id="video-lora-to-add" aria-label="${t(uiKeys.create.videoSettings.chooseLora)}" ${viewModel.installReadyLoraDefinitions.length ? "" : "disabled"}>
-                  ${viewModel.installReadyLoraDefinitions.length
-                    ? viewModel.installReadyLoraDefinitions.map((lora) => `<option value="${escapeHtml(lora.id)}">${escapeHtml(lora.name)}</option>`).join("")
-                    : `<option value="">${escapeHtml(viewModel.installReadyLoraEmptyLabel)}</option>`}
-                </select>
-                <button class="secondary button-with-icon" id="add-video-lora" type="button" ${viewModel.installReadyLoraDefinitions.length ? "" : "disabled"}>${icon("plus")}${t(uiKeys.create.videoSettings.add)}</button>
-              </div>
-            </div>
-            ${viewModel.draft.videoLoras.length
-              ? `<div class="video-lora-list">${viewModel.draft.videoLoras.map((lora, index) => `
-                  <article class="video-lora-row" data-video-lora-id="${escapeHtml(lora.id)}">
-                    <div class="video-lora-identity"><span class="video-lora-order">${index + 1}</span><div><span class="video-lora-name-line"><strong>${escapeHtml(lora.name)}</strong>${options.videoLoraInfoButton(lora)}</span><span>${escapeHtml(lora.modelFamily)} · ${options.videoLoraPurposeLabel(lora.purpose)}</span></div></div>
-                    <label class="video-lora-strength"><span>${t(uiKeys.create.videoSettings.strength)}</span><input type="range" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength="${escapeHtml(lora.id)}"><input type="number" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength-number="${escapeHtml(lora.id)}"></label>
-                    <div class="video-lora-actions">
-                      <button class="icon-button" type="button" data-move-video-lora="${escapeHtml(lora.id)}" data-direction="up" aria-label="${t(uiKeys.create.videoSettings.moveUp)} ${escapeHtml(lora.name)}" title="${t(uiKeys.create.videoSettings.moveUp)} LoRA" ${index === 0 ? "disabled" : ""}>${icon("move-up")}</button>
-                      <button class="icon-button" type="button" data-move-video-lora="${escapeHtml(lora.id)}" data-direction="down" aria-label="${t(uiKeys.create.videoSettings.moveDown)} ${escapeHtml(lora.name)}" title="${t(uiKeys.create.videoSettings.moveDown)} LoRA" ${index === viewModel.draft.videoLoras.length - 1 ? "disabled" : ""}>${icon("move-down")}</button>
-                      <button class="icon-button" type="button" data-remove-video-lora="${escapeHtml(lora.id)}" aria-label="${t(uiKeys.create.videoSettings.remove)} ${escapeHtml(lora.name)}" title="${t(uiKeys.create.videoSettings.remove)} LoRA">${icon("x")}</button>
-                    </div>
-                  </article>`).join("")}</div>`
-              : `<div class="video-lora-empty">${t(uiKeys.create.videoSettings.unusedLora)}</div>`}
-            ${viewModel.loraIssues.length ? `<div class="video-lora-issues">${viewModel.loraIssues.map((issue) => `<div class="video-lora-issue ${issue.severity}">${icon(issue.severity === "error" ? "circle-alert" : "alert-triangle")}<span>${escapeHtml(issue.message)}</span></div>`).join("")}</div>` : ""}
-          </div>
         </section>
         <section class="composer-control-group composer-motion-group">
-          <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.motionTitle)}</strong><span>${t(uiKeys.create.videoSettings.motionDescription)}</span></div></div>
-          <div class="composer-control-grid composer-motion-grid">
-        <label class="settings-field settings-duration"><span class="settings-duration-heading"><span class="field-label-row"><span>${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}</span><span class="field-info settings-duration-warning" data-h3-duration-warning data-tooltip-toggle tabindex="0" aria-expanded="false" aria-describedby="h3-duration-warning-tip" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}" ${viewModel.h3LongDurationWarning ? "" : "hidden"}>${icon("alert-triangle")}<span class="field-info-tip" id="h3-duration-warning-tip" role="tooltip">${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}</span></span></span><output id="duration-frames" for="duration duration-number">${t(uiKeys.create.videoSettings.durationFrames, { count: viewModel.interpolationGeneratedFrames })}</output></span>
-          <div class="inline-field"><input id="duration" type="range" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><input id="duration-number" type="number" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
+          <div class="create-card-heading"><h3>${t(uiKeys.create.videoSettings.motionTitle)}</h3>${viewModel.isMiniMaxH3 ? `<span class="create-caption">24 FPS</span>` : ""}</div>
+          <div class="composer-control-grid composer-motion-grid">${viewModel.isMiniMaxH3 ? `<label class="settings-field">${t(uiKeys.create.editor.generationMode)}<select id="generation-mode" data-native-max="${viewModel.nativeMaxDurationSeconds}" data-safe-max="${viewModel.unlockedMaxDurationSeconds}" ${viewModel.continuumManaged && viewModel.draft.h3ContinuumSequence ? `data-fixed-duration="${viewModel.draft.h3ContinuumSequence.chunkSeconds}"` : ""} aria-label="${t(uiKeys.create.editor.generationMode)}">
+            <option value="native" data-note="${t(uiKeys.create.editor.nativeNote, { max: viewModel.nativeMaxDurationSeconds })}" ${viewModel.draft.duration <= viewModel.nativeMaxDurationSeconds ? "selected" : ""}>${t(uiKeys.create.editor.native)}</option>
+            ${viewModel.unlockedMaxDurationSeconds > viewModel.nativeMaxDurationSeconds ? `<option value="unlocked" data-note="${t(uiKeys.create.editor.unlockedNote, { max: viewModel.unlockedMaxDurationSeconds })}" ${viewModel.draft.duration > viewModel.nativeMaxDurationSeconds ? "selected" : ""}>${t(uiKeys.create.editor.unlocked)}</option>` : ""}
+            ${viewModel.extending && viewModel.isR2V ? "" : `<option value="preview" data-note="${t(uiKeys.create.editor.multiNote)}">${t(uiKeys.create.editor.multi)}</option>`}
+          </select></label>` : ""}
+        <label class="settings-field settings-duration create-span-2"><span class="settings-duration-heading"><span class="field-label-row"><span>${viewModel.extending ? t(uiKeys.create.videoSettings.addedDuration) : t(uiKeys.create.videoSettings.duration)}</span><span class="field-info settings-duration-warning" data-h3-duration-warning data-tooltip-toggle tabindex="0" aria-expanded="false" aria-describedby="h3-duration-warning-tip" aria-label="${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}" ${viewModel.h3LongDurationWarning ? "" : "hidden"}>${icon("alert-triangle")}<span class="field-info-tip" id="h3-duration-warning-tip" role="tooltip">${escapeHtml(t(uiKeys.create.videoSettings.longDurationWarning))}</span></span></span><output id="duration-frames" for="duration duration-number">${t(uiKeys.create.videoSettings.durationFrames, { count: viewModel.interpolationGeneratedFrames })}</output></span>
+          <div class="inline-field"><div class="create-duration-slider"><input id="duration" type="range" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.isMiniMaxH3 && viewModel.draft.duration <= 15.1 ? Math.min(15.1, viewModel.safetyMaxDurationSeconds) : viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><div class="create-duration-ticks" aria-hidden="true">${[...new Set([viewModel.isContinuum ? 4 : 1, 5, 10, viewModel.isMiniMaxH3 && viewModel.draft.duration <= 15.1 ? Math.min(15.1, viewModel.safetyMaxDurationSeconds) : viewModel.safetyMaxDurationSeconds])].filter(value => value <= viewModel.safetyMaxDurationSeconds).sort((a,b) => a-b).map(value => `<span>${value}</span>`).join("")}</div></div><input id="duration-number" type="number" step="0.1" min="${viewModel.isContinuum ? 4 : 1}" max="${viewModel.isMiniMaxH3 && viewModel.draft.duration <= 15.1 ? Math.min(15.1, viewModel.safetyMaxDurationSeconds) : viewModel.safetyMaxDurationSeconds}" value="${viewModel.draft.duration}"><span>${t(uiKeys.create.videoSettings.seconds)}</span></div>
         </label>
-        <label class="settings-field settings-fps">${t(uiKeys.create.videoSettings.targetFps)}
+        <label class="settings-field settings-fps" ${viewModel.isMiniMaxH3 ? "hidden" : ""}>${t(uiKeys.create.videoSettings.targetFps)}
           <select id="fps" ${viewModel.isMiniMaxH3 ? "disabled" : ""}>
             ${(viewModel.isMiniMaxH3 ? [24] : [8, 12, 16, 24, 25, 30]).map((value) =>
               `<option value="${value}" ${viewModel.draft.fps === value ? "selected" : ""}>${value} FPS</option>`
@@ -626,30 +551,38 @@ export function renderCreatePage(
         </label>`}
           </div>
         </section>
+        <section class="create-lora-card">
+          <div class="create-lora-heading"><h3>LoRA</h3><span class="create-caption">${viewModel.draft.videoLoras.length > 1 ? t(uiKeys.create.editor.loraOrder) : ""}</span></div>
+          <div class="create-lora-list" ${viewModel.draft.videoLoras.length ? "" : "hidden"}>${viewModel.draft.videoLoras.map(lora => `
+            <article class="create-lora-row" data-sortable-item data-video-lora-id="${escapeHtml(lora.id)}">
+              <button type="button" class="create-lora-grip" data-sortable-handle id="video-lora-grip-${escapeHtml(lora.id)}" aria-label="${escapeHtml(lora.name)} · ${t(uiKeys.create.editor.loraDrag)}" title="${t(uiKeys.create.editor.loraDrag)}">${icon("grip-vertical")}</button>
+              <div class="create-lora-name"><strong>${escapeHtml(lora.name)}${options.videoLoraInfoButton(lora)}</strong><span class="create-caption">${escapeHtml(lora.modelFamily)} · ${options.videoLoraPurposeLabel(lora.purpose)}</span></div>
+              <div class="create-lora-strength"><input aria-label="${escapeHtml(lora.name)} · ${t(uiKeys.create.videoSettings.strength)}" type="range" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength="${escapeHtml(lora.id)}"><input aria-label="${t(uiKeys.create.videoSettings.strength)}" type="number" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength-number="${escapeHtml(lora.id)}"></div>
+              <button class="ghost icon-button" type="button" data-remove-video-lora="${escapeHtml(lora.id)}" aria-label="${t(uiKeys.create.videoSettings.remove)} ${escapeHtml(lora.name)}" title="${t(uiKeys.create.videoSettings.remove)}">${icon("x")}</button>
+            </article>`).join("")}</div>
+          <div class="create-lora-footer"><select id="video-lora-to-add" hidden data-native-select aria-label="${t(uiKeys.create.videoSettings.chooseLora)}">${[...viewModel.draft.videoLoras, ...viewModel.installReadyLoraDefinitions].map(lora => `<option value="${escapeHtml(lora.id)}" ${viewModel.draft.videoLoras.some(selected => selected.id === lora.id) ? "disabled" : ""} data-group="${escapeHtml(options.videoLoraPurposeLabel(lora.purpose))}" data-family="${escapeHtml(lora.modelFamily)}">${escapeHtml(lora.name)}</option>`).join("")}</select>
+            <button class="secondary button-with-icon" id="add-video-lora" type="button" aria-haspopup="dialog" aria-expanded="false" data-search-label="${t(uiKeys.create.editor.loraSearch)}" data-no-results-label="${t(uiKeys.create.editor.loraEmpty)}" data-empty-label="${escapeHtml(viewModel.installReadyLoraEmptyLabel)}">${icon("plus")}${t(uiKeys.create.editor.addLora)}${icon("chevron-down")}</button>
+          </div>
+          ${viewModel.loraIssues.length ? `<div class="create-lora-issues">${viewModel.loraIssues.map(issue => `<p class="${issue.severity}">${icon(issue.severity === "error" ? "circle-alert" : "alert-triangle")}${escapeHtml(issue.message)}</p>`).join("")}</div>` : ""}
+        </section>
         <section class="composer-control-group composer-seed-group">
-          <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.reproducibility)}</strong><span>${t(uiKeys.create.videoSettings.seedDescription)}</span></div></div>
+
           <div class="composer-control-grid composer-seed-grid">
         <label class="settings-field settings-seed">${t(uiKeys.create.videoSettings.randomSeed)}
-          <div class="inline-field seed-control"><input id="seed" type="number" placeholder="${t(uiKeys.create.videoSettings.randomPlaceholder)}" value="${viewModel.draft.seed ?? ""}"><button class="secondary button-with-icon seed-random" id="random-seed" type="button" title="${t(uiKeys.create.videoSettings.newRandomSeed)}">${icon("refresh-cw")}${t(uiKeys.runtime.random)}</button><button class="icon-button" id="clear-seed" type="button" aria-label="${t(uiKeys.create.videoSettings.clearSeed)}" title="${t(uiKeys.create.videoSettings.clearSeed)}">${icon("x")}</button></div>
+          <div class="inline-field seed-control"><input id="seed" type="number" placeholder="${t(uiKeys.create.videoSettings.randomPlaceholder)}" value="${viewModel.draft.seed ?? ""}"><button class="ghost icon-button seed-random" id="random-seed" type="button" title="${t(uiKeys.create.videoSettings.newRandomSeed)}">${icon("dices")}</button><button class="icon-button" id="clear-seed" type="button" aria-label="${t(uiKeys.create.videoSettings.clearSeed)}" title="${t(uiKeys.create.videoSettings.clearSeed)}">${icon("x")}</button></div>
         </label>
+        <div class="settings-field create-span-2"><span>${t(uiKeys.create.videoSettings.workflow)}</span><div class="create-workflow-row">${icon("workflow")}<code title="${escapeHtml(viewModel.draft.workflowPath)}">${viewModel.selectedWorkflowDescription}</code><button class="secondary button-with-icon" id="pick-workflow">${icon("folder-open")}${t(uiKeys.create.videoSettings.replaceJson)}</button></div></div>
           </div>
         </section>
-        <div class="interpolation-summary settings-summary ${!viewModel.safetySafe || !viewModel.r2vSlotsReady || (viewModel.isContinuum && !viewModel.continuumArtifactReady) ? "unsafe" : viewModel.isMiniMaxH3 && (viewModel.draft.duration > 10 || viewModel.draft.resolution >= 768) ? "caution" : viewModel.interpolationMultiplier === 1 ? "disabled" : ""}">
-          <div><strong>${!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.r2vMissing) : viewModel.isContinuum && !viewModel.continuumArtifactReady ? t(uiKeys.create.validation.continuumArtifactMissing) : !viewModel.safetySafe ? t(viewModel.isContinuum ? uiKeys.create.videoSettings.continuumSafety : uiKeys.create.videoSettings.safetyBudget) : viewModel.isMiniMaxH3 ? t(uiKeys.create.videoSettings.h3NativeAudio) : viewModel.interpolationMultiplier === 1 ? t(uiKeys.create.videoSettings.interpolationOffSummary) : t(uiKeys.create.videoSettings.interpolationSummary, { source: viewModel.draft.fps / viewModel.interpolationMultiplier, target: viewModel.draft.fps })}</strong><span>${t(uiKeys.create.videoSettings.generatedFrames, { generated: viewModel.interpolationGeneratedFrames, max: viewModel.safetyMaxGeneratedFrames, output: viewModel.interpolationOutputFrames })}</span></div>
-          <p>${escapeHtml(!viewModel.r2vSlotsReady ? t(uiKeys.create.videoSettings.safetyDetail) : viewModel.isContinuum && !viewModel.continuumArtifactReady ? t(uiKeys.create.validation.continuumArtifactMissing) : viewModel.safetyMessage)} ${viewModel.safetySafe && viewModel.r2vSlotsReady && (!viewModel.isContinuum || viewModel.continuumArtifactReady) && viewModel.interpolationMultiplier !== 1 ? t(uiKeys.create.videoSettings.unloadBeforeRife) : ""}</p>
-        </div>
       </div>
-      <div class="workflow-field composer-workflow-field">
-        <div><strong>${t(uiKeys.create.videoSettings.workflow)}</strong><p class="muted">${viewModel.selectedWorkflowDescription}</p></div>
-        <button class="secondary button-with-icon" id="pick-workflow">${icon("workflow")}${viewModel.draft.workflowPath ? t(uiKeys.create.videoSettings.replaceJson) : t(uiKeys.create.videoSettings.selectJson)}</button>
-      </div>
-      <div class="submit-row composer-submit-row">
-        <p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p>
-        <div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}${t(uiKeys.create.videoSettings.clearDraft)}</button>
+      <div class="create-submit-bar">
+        <div class="create-submit-copy"><span class="create-submit-summary" data-submit-summary ${viewModel.enqueueBlockReason ? "hidden" : ""}>${viewModel.outputWidth} × ${viewModel.outputHeight} · ${viewModel.draft.duration.toFixed(1)}s · ${viewModel.draft.fps} FPS</span><p class="composer-submit-status ${viewModel.enqueuePending ? "pending" : "error"}" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon(viewModel.enqueuePending ? "refresh-cw" : "circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p></div>
+        <span class="create-draft-alert" data-draft-save-error role="alert" hidden><span>${icon("alert-triangle")}${t(uiKeys.create.editor.draftFailed)}</span><button class="ghost button-with-icon" type="button" data-retry-draft-save>${icon("refresh-cw")}${t(uiKeys.create.editor.retry)}</button></span><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}${t(uiKeys.create.videoSettings.clearDraft)}</button>
         ${viewModel.h3TokenEstimate == null ? "" : `<span class="composer-token-estimate" data-h3-token-estimate>${Math.trunc(viewModel.h3TokenEstimate)} tokens</span>`}
-        <button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue" data-enqueue-block-reason="${escapeHtml(viewModel.enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration))}" ${viewModel.enqueueDisabled || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}" title="${escapeHtml(viewModel.enqueueBlockReason || (viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration)))}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.videoSettings.enqueueBusy) : t(uiKeys.create.videoSettings.enqueue)}</span></button></div>
+        <button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue" data-ui-label-variants="${escapeHtml(JSON.stringify([t(uiKeys.create.videoSettings.enqueue), t(uiKeys.create.videoSettings.enqueueBusy)]))}" data-enqueue-block-reason="${escapeHtml(viewModel.enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration))}" ${viewModel.enqueueDisabled || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}" title="${escapeHtml(viewModel.enqueueBlockReason || (viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration)))}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "list-plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.videoSettings.enqueueBusy) : t(uiKeys.create.videoSettings.enqueue)}</span></button></div>
       </div>
-      </section>
+      </div>
+      </div>
     </div>`;
 }
 

@@ -1,79 +1,64 @@
-# UX/UI P00 当前 renderer 基线
+# 当前 renderer 视觉基线
 
-> 状态：`verified`（renderer capture baseline）。这是当前 UI 的唯一视觉基线；`prototypes/` 只作为历史参考，不作为设计批准或实现证据。
+> 类型：可重复截图基线；状态：M9 verified；更新：2026-10-24。任务状态以 [迁移 TASK](tasks/2026-10-21-ui-migration/TASK.md) 为准，执行结果见 [M9 证据](tasks/2026-10-21-ui-migration/evidence/m9-closeout.md)。
 
 ## 来源与边界
 
-基线直接来自真实 renderer 入口和当前 CSS，而不是 `prototypes/preview/`：
+截图来自当前生产 renderer 入口 `src/main.ts`、`src/renderer/` 和 `src/style.css`，由 Vite 提供同一源码。manifest 见 [ux-ui-renderer-baseline.manifest.json](ux-ui-renderer-baseline.manifest.json)。
 
-- 入口：`src/main.ts` → `src/renderer/`；
-- 样式：`src/style.css` → `src/styles/`；
-- 页面：Create、Queue、History/Details、Settings；
-- 源 commit：`f4653727004e6d4cc2be1ceb7d8b4d0e749bf560`；
-- 源版本：`0.30.2`（以 `package.json` 为准）；
-- manifest：[`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json)。
+- 版本：`0.66.6`；checkout commit：`ae25c113b107f1ea10b4c1f39824305767387784`。
+- 源状态：包含 M0–M9 的未提交工作树；commit 标识 checkout，不代表干净发布。
+- 桌面样式：tokens → base.structure / base.defaults → components → patterns → pages。结构层保留仍被页面使用的几何规则，旧编号样式和变量桥接已移除。
+- LAN 使用独立 `src/web/theme.css`，保留原有配色，不继承桌面外观设置。
+- 原型用于理解已批准的设计；当前 DOM、真实模型能力与产品契约决定可执行行为。
 
-manifest 的 source commit 是本轮 rebase 的基准 commit；最新 136 张截图来自同一工作树，包含 P02 语义 token 别名、P03/L10 shared surface 迁移、P03/L11 text/separator 迁移、P03/L12 action/focus 迁移、P03/L13 status/badge 语义迁移、P03/L14 brand/nav shell 迁移、P03/L15 panel/elevation 迁移、P05 `aria-current` 语义和 P08 Image Edit 窄窗规则。L14 移除了顶栏、品牌标记和活动导航的装饰性 glow，保留活动导航的背景、边界与下划线反馈；L15 移除了普通 panel 的装饰性阴影，同时保留 dialog、popover、tooltip、context menu、lightbox、confirm、cropper 和 asset-library 等 overlay elevation；因此这组截图记录了当前版本 `0.30.2` 的可见 shell 与 panel/overlay 材质差异，而不再是 L13 的 zero-visual-diff 证据。后续 renderer CSS 变更后应重新生成并更新基准记录。
-
-截图 harness 使用临时 userData、mock preload 和合成 fixture，只读取当前 renderer，不读取或修改用户任务、历史记录、设置或模型文件。因此它证明的是当前 renderer 在固定状态下的视觉/DOM基线，不等同于 ComfyUI 运行态 smoke。
+capture 使用临时 userData、mock preload 和合成状态，不读取或改变用户历史、设置与模型。截图证明固定状态下的布局，不能证明安装、GPU 生成或真实媒体播放。
 
 ## 重新生成
 
-先在一个终端启动 Vite，再在另一个终端运行真实 renderer capture：
+启动 Vite（端口须由本任务拥有）：
 
-```text
+```powershell
 npx.cmd vite --host 127.0.0.1 --port 5173 --strictPort
-npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs
 ```
 
-只检查矩阵，不启动 Electron：
+另一终端执行：
 
-```text
+```powershell
+$env:UX_UI_RENDERER_URL = 'http://127.0.0.1:5173/'
+npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --diagnose
 npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --dry-run
-```
-
-检查当前语义文字在四类 renderer surface 上的对比度：
-
-```text
 npm.cmd run verify:ux-ui-contrast
 ```
 
-局部检查可追加 `--fixture create-image-edit --viewport 900x800 --diagnose`；输入/焦点 smoke 使用 `--smoke --fixture create-image-edit --viewport 900x800`。
+默认输出 `temp/ui-m9/baseline/`。可追加 `--fixture create-image-edit --viewport 900x800 --smoke` 检查局部交互；`--style-metrics` 保存几何和计算样式。显式 `--viewport` 对所有选中 fixture 生效，包括未列入默认分组的窄视口。
 
-输出目录为 `temp/ux-ui-baseline/renderer/`，被 `.gitignore` 忽略。当前已捕获 `136` 张 PNG，视口尺寸严格匹配 manifest。
+三语/缩放补充示例（用不同输出目录保留证据）：
 
-## 视口与状态矩阵
+```powershell
+npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --locale en-US --viewport 547x800 --output temp/ui-m9/en-narrow
+npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --locale zh-TW --viewport 547x800 --output temp/ui-m9/tw-narrow
+npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --zoom 1.5 --viewport 820x800 --output temp/ui-m9/zoom
+```
+
+## 矩阵
 
 | 组 | 视口 |
 | --- | --- |
-| 标准 | `1440×900`、`1280×800`、`900×800`、`760×800` |
-| 断点 | `1121×800` / `1120×800`、`901×800` / `900×800`、`761×800` / `760×800` |
+| 标准 | 1440×900、1120×800、900×800、820×800 |
+| 断点补充 | 1121×800、901×800、761×800、760×800 |
+| 可选 | 1280×800、547×800，或自定义 WIDTHxHEIGHT |
 
-已覆盖的当前 renderer fixture：
+21 个 fixture：Create 三模式；Queue；History 视频/图片各两种布局；视频与图片详情；Settings 全部 11 分区。详情各拍四个标准视口，其余各拍八个视口，默认共 **160 张**。历史 id `settings-system` 继续表示 ComfyUI 环境；`settings-application` 表示应用与路径。
 
-- Create：图生视频、视频续写、图片编辑；
-- Queue：合成 waiting + failed；live running 仍需独立运行态 smoke；
-- History：视频/图片 × masonry/album；
-- Details：视频详情、图片详情；
-- Settings：ComfyUI 环境、应用与路径、性能与加速、video、image、nodes、prompt、upscale、logs；其中当前 manifest 的 `settings-system` 是保留的历史 fixture id，实际捕获 ComfyUI 环境页，应用与路径由 Settings smoke 单独切换检查。
+M9 已完成默认 160 张，以及英文窄屏、繁中窄屏、中文 150% 缩放各 21 张，共 **223 张**。PNG 物理尺寸按请求的内容视口保存；缩放改变 CSS 可用宽度。滚动条会占用 document.clientWidth，不应把它误认成 PNG 宽度偏差。
 
-P16 另有独立的 `settingsStateFixtures`，不计入上述 136 张 baseline：运行 `npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --settings-states --diagnose` 可捕获 offline、scanning、installing、partial、confirmed error 五种 Settings 状态在标准四视口下的 20 张隔离证据。它们用于 Settings review，不替代真实 ComfyUI、安装 subprocess 或 runtime smoke。
+2026-10-24 追加动态/文案复核后，三语 image/prompt/nodes 各补一张 1440×900 定向截图，位于 `temp/ui-m9a/copy-<locale>/`。后续变化与动态中间态见 [追加证据](tasks/2026-10-21-ui-migration/evidence/m9a-dynamic-copy.md)，原 223 张记录 M9 收尾时的状态。静态 capture 现在等待有限动画结束；它仍不能证明动态流畅度。
 
-## 当前 UI 观察与 preserve list
+`--settings-states` 另拍 offline/scanning/installing/partial/error，属于合成呈现证据，不计入默认 160 张，也不能代替安装 subprocess 验收。
 
-当前基线呈现的是深色近黑画布、蓝色 action/accent、真实媒体主导的 Create/History/Details，以及蓝色反馈和状态层。后续升级可以改善层级、密度、键盘和恢复路径，但必须以这些真实页面的 DOM、断点和可见行为为起点，不得把旧 prototype 的暖石墨方案直接迁移进 renderer。
+## 保持项与证据限度
 
-必须保持：
+保留模型专属能力、草稿/富文本编辑、文件与 Slot、拖放/撤销、队列快照与单 GPU 策略、历史筛选/版本/父导航、播放/Lightbox、设置离线扫描与保存/放弃，以及持久化身份和 IPC 边界。基线可随已授权功能增量更新，不冻结模型或参数目录。
 
-- Create 三种模式、草稿输入、选择/拖放、undo/redo、清空恢复和队列提交语义；
-- Queue 的顺序、运行/暂停/继续/取消/恢复/重排、预览和单 GPU 重任务策略；
-- History 的视频/图片分类、masonry/album、封面/hover preview、版本关系、删除和路径恢复；
-- 视频/图片详情的 viewer、版本轨、Lightbox、文件动作、继续编辑和 handoff；
-- Settings 的离线扫描、多安装、服务生命周期，以及 model/node/runtime 的证据分层；
-- 当前 focus、selection、dirty state、IPC、persisted state、workflow 和用户数据。
-
-## 证据边界
-
-- 已验证：renderer capture 脚本、manifest、136 张固定尺寸截图、当前页面与断点的静态视觉基线、P03/L11 的 20 组文字/背景对比度检查、P03/L12 的 action/focus token selector 静态检查，以及 P03/L13 的四状态 status/badge selector matrix。
-- 尚未由本基线证明：ComfyUI 真实生成、队列长生命周期、文件权限/路径恢复、全键盘路径、Windows 缩放/高对比度和 Reduced Motion。
-- prototype 的旧 P00/P01 截图与暖石墨候选已降级为历史记录；它们不能作为后续 phase 的 approval gate。
+M9 的真实 Electron 检查另外验证创建和放大缺输入恢复、实际按钮入队、快照冻结、真实媒体播放、三语窄屏与减少动态效果。它们不由合成截图推导；详情及重启、资源清理结果见 M9 证据。未运行真实安装、GPU 生成或 Windows 系统级 DPI/高对比度验收。150% 为 Electron 页面缩放。

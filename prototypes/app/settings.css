@@ -24,8 +24,50 @@
 .set-row > .control > .select { width: clamp(220px, 28vw, 340px); }
 .set-row > .control > .input { width: 260px; }
 .set-row > .control > .slider-field { width: 340px; }
-.set-row .info { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--text-3); cursor: help; }
-.set-row .info svg.lucide { width: 14px; height: 14px; }
+.set-row .info, .set-card .info { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--text-3); cursor: help; }
+.set-row .info svg.lucide, .set-card .info svg.lucide { width: 14px; height: 14px; }
+/* Item card (runtime dependencies + nodes): title row with status, one-line purpose, footer with meta and actions */
+.item-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 12px 16px; }
+.item-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; min-height: 24px; }
+.item-top .set-title { min-width: 0; flex-wrap: nowrap; }
+.item-top .set-title h3 { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.item-top .set-title .badge, .item-top .set-title .info { flex: none; }
+.item-status { flex: none; display: inline-flex; }
+.item-status .status.running svg.lucide { animation: spin 1s linear infinite; color: var(--accent-text); }
+.item-card .set-desc { margin: 0; overflow: hidden; color: var(--text-3); white-space: nowrap; text-overflow: ellipsis; }
+.item-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 4px; min-height: 28px; }
+.item-foot .version-line { margin: 0; min-width: 0; gap: 2px 12px; }
+.version-line b.behind { color: var(--warning); }
+.version-line .soft, .version-line b.soft { color: var(--text-3); font-weight: var(--fw-regular); }
+.item-actions { flex: none; display: flex; gap: 6px; }
+.item-card .runtime-grid { padding: 4px 0 0; }
+.item-card .runtime-grid > div { gap: 1px; cursor: help; }
+.item-card .tile-detail { color: var(--text-3); font-size: var(--fs-11); }
+.desktop-note { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+.desktop-note svg.lucide { width: 13px; height: 13px; color: var(--info); }
+/* Inline advanced settings: a quiet link in the footer opens a compact two-field row inside the card */
+.link-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: var(--fw-medium) var(--fs-12)/1 var(--font-sans); cursor: pointer; }
+.link-toggle:hover { color: var(--text-1); }
+.link-toggle svg.lucide { width: 13px; height: 13px; }
+.disclosure[data-open] { grid-template-rows: 1fr; }
+.adv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 12px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.adv-grid .field { display: grid; gap: 4px; min-width: 0; }
+.adv-grid .label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-12); }
+.adv-grid .input-group input { min-width: 0; }
+/* Live console while installing; collapses into a closed log when done */
+.install-console { display: grid; gap: 4px; margin-top: 6px; padding: 8px 10px; border-radius: var(--r-md); background: color-mix(in srgb, var(--canvas) 70%, #000); }
+.console-head { display: flex; justify-content: space-between; color: var(--text-3); font-size: var(--fs-11); }
+.install-console pre { margin: 0; max-height: 120px; overflow: auto; color: var(--text-2); font: var(--fs-11)/1.6 var(--font-mono); white-space: pre-wrap; }
+.item-card > .node-log { margin: 6px 0 0; }
+.install-queue { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: var(--r-lg); background: color-mix(in srgb, var(--accent) 8%, var(--surface-1)); color: var(--text-2); font-size: var(--fs-12); }
+.install-queue > svg.lucide { width: 15px; height: 15px; color: var(--accent-text); animation: spin 1s linear infinite; }
+.install-queue .spacer { flex: 1; }
+.btn[data-queued] { color: var(--text-2); border-style: dashed; }
+.btn[data-queued]:hover { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.dep-card .runtime-grid .info svg.lucide { color: var(--text-3); }
+.node-sections { display: grid; gap: 12px; }
+.version-line .ok-text { display: inline-flex; align-items: center; gap: 4px; color: var(--success); }
+.version-line .ok-text svg.lucide { width: 12px; height: 12px; }
 .form-card > .set-row:first-of-type { border-top: 0; }
 .form-card > .card-title + .set-row { border-top: 1px solid var(--line); }
 

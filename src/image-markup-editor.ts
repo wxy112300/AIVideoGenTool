@@ -1,5 +1,6 @@
 import {
   Canvas,
+  Circle,
   Ellipse,
   FabricImage,
   FabricObject,
@@ -13,6 +14,10 @@ import {
   type TPointerEventInfo
 } from "fabric/es";
 import Cropper from "cropperjs";
+import { createTranslator, type Translate } from "./core/i18n";
+import { renderMarkupEditor } from "./renderer/pages/create/markup-view";
+import { renderIcons } from "./renderer/shared/icons";
+import { primeSharedUi, paintRangeFill } from "./renderer/shared/ui/runtime";
 import "cropperjs/dist/cropper.css";
 import type { ImageCropData, ImageCropSelection } from "./types.js";
 
@@ -43,6 +48,7 @@ interface StoredMarkupDocument {
 }
 
 export interface ImageMarkupEditorOptions {
+  t?: Translate;
   pictureNumber: number;
   filename: string;
   sourceDataUrl: string;
@@ -59,17 +65,6 @@ export interface ImageMarkupEditorResult {
   crop: ImageCropSelection | null;
   croppedPng?: ArrayBuffer;
 }
-
-const toolLabels: Record<ImageMarkupTool, string> = {
-  select: "选择",
-  brush: "画笔",
-  highlight: "高亮",
-  rectangle: "矩形",
-  ellipse: "椭圆",
-  arrow: "箭头",
-  text: "文字",
-  eraser: "删除"
-};
 
 const annotationProperties = [
   "annotationId",
@@ -99,18 +94,14 @@ function annotationLabel(index: number): string {
   return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
 }
 
-function defaultNote(kind: ImageMarkupTool): string {
+function defaultNote(kind: ImageMarkupTool, t: Translate): string {
   return kind === "arrow"
-    ? "按箭头指示调整位置或方向"
+    ? t("create.finish.noteArrow")
     : kind === "text"
-      ? "按标注文字执行修改"
+      ? t("create.finish.noteText")
       : kind === "highlight"
-        ? "重点修改高亮区域"
-        : "只修改标记区域";
-}
-
-function dataUrlFilename(filename: string): string {
-  return filename.split(/[\\/]/u).pop() ?? filename;
+        ? t("create.finish.noteHighlight")
+        : t("create.finish.noteRegion");
 }
 
 function normalizeCropSelection(
@@ -164,6 +155,8 @@ export async function openImageMarkupEditor(
   options: ImageMarkupEditorOptions
 ): Promise<ImageMarkupEditorResult | null> {
   const maskMode = options.mode === "mask";
+  const t = options.t ?? createTranslator().t;
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const originalSourceElement = document.createElement("img");
   originalSourceElement.src = options.sourceDataUrl;
   await originalSourceElement.decode();
@@ -195,36 +188,12 @@ export async function openImageMarkupEditor(
 
   const overlay = document.createElement("div");
   overlay.className = "image-markup-overlay";
-  overlay.innerHTML = `
-    <header class="image-markup-header">
-      <div><strong>${maskMode ? "绘制移除区域" : `标记 Picture ${options.pictureNumber}`}</strong><span>${escapeMarkup(dataUrlFilename(options.filename))} · 原图不会被修改</span></div>
-      <div class="button-row"><button class="secondary" data-markup-cancel>取消</button><button class="primary" data-markup-save>${maskMode ? "保存 Mask" : "保存标记"}</button></div>
-    </header>
-    <div class="image-markup-body">
-      <aside class="image-markup-tools" aria-label="标记工具">
-        <button data-markup-crop title="裁剪">裁剪</button>
-        ${(maskMode
-          ? (["select", "brush", "highlight", "eraser"] as ImageMarkupTool[])
-          : (["select", "brush", "highlight", "rectangle", "ellipse", "arrow", "text", "eraser"] as ImageMarkupTool[])
-        ).map((tool) => `<button class="${tool === (maskMode ? "highlight" : "select") ? "active" : ""}" data-markup-tool="${tool}" title="${toolLabels[tool]}">${toolLabels[tool]}</button>`).join("")}
-        <span class="markup-tool-divider"></span>
-        <button data-markup-undo title="撤销">撤销</button><button data-markup-redo title="重做">重做</button>
-      </aside>
-      <main class="image-markup-stage"><div class="image-markup-canvas-shell"><canvas data-markup-canvas></canvas></div><div class="markup-zoom"><button data-markup-zoom-out>−</button><span data-markup-zoom-value>100%</span><button data-markup-zoom-in>＋</button><button data-markup-fit>适应窗口</button></div></main>
-      <aside class="image-markup-inspector">
-        <div><strong>${maskMode ? "Mask 说明" : "标记说明"}</strong><p>${maskMode ? "用半透明高亮覆盖要移除的物体。可以绘制多个区域；保存后只向模型发送独立黑白 Mask。" : "区域自动编号，说明会同时进入 Prompt。"}滚轮缩放；选择工具下拖动画面平移，也可用中键或 Space + 拖动。</p></div>
-        <div class="markup-note-list" data-markup-note-list ${maskMode ? "hidden" : ""}></div>
-        <div class="markup-style-controls"><label ${maskMode ? "hidden" : ""}>颜色<input type="color" data-markup-color value="#ff4f55"></label><label>线宽<input type="range" data-markup-width min="2" max="${maskMode ? 96 : 28}" value="${maskMode ? 18 : 8}"></label></div>
-        <p class="markup-removal-hint">${maskMode ? "高亮颜色只是界面覆盖层，不会写入原图或生成结果。" : "最终提示会要求模型移除框线、箭头、编号和标注文字。"}</p>
-      </aside>
-    </div>
-    <div class="image-cropper-dialog" data-image-cropper-dialog hidden>
-      <div class="image-cropper-panel">
-        <header><div><strong>裁剪 Picture ${options.pictureNumber}</strong><span>裁剪不会修改原图，保存后标记和 Mask 都以裁剪后的画布为准。</span></div><button class="secondary" data-cropper-cancel>取消</button></header>
-        <div class="image-cropper-stage"><img data-image-cropper-image alt="待裁剪图片"></div>
-        <footer><label>比例<select data-cropper-aspect><option value="free">自由</option><option value="original">原图比例</option><option value="1">1 : 1</option><option value="1.3333333333">4 : 3</option><option value="1.7777777778">16 : 9</option><option value="0.5625">9 : 16</option></select></label><button class="secondary" data-cropper-reset>还原原图</button><span class="image-cropper-size" data-cropper-size></span><button class="primary" data-cropper-apply>应用裁剪</button></footer>
-      </div>
-    </div>`;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "image-markup-title");
+  overlay.innerHTML = renderMarkupEditor(options.pictureNumber, options.filename, maskMode, t);
+  primeSharedUi(overlay);
+  renderIcons(overlay);
   document.body.append(overlay);
   document.body.classList.add("image-markup-open");
 
@@ -234,6 +203,7 @@ export async function openImageMarkupEditor(
   const noteList = overlay.querySelector<HTMLElement>("[data-markup-note-list]")!;
   const colorInput = overlay.querySelector<HTMLInputElement>("[data-markup-color]")!;
   const widthInput = overlay.querySelector<HTMLInputElement>("[data-markup-width]")!;
+  const widthNumber = overlay.querySelector<HTMLInputElement>("[data-markup-width-number]")!;
   const zoomValue = overlay.querySelector<HTMLElement>("[data-markup-zoom-value]")!;
   const canvas = new Canvas(canvasElement, {
     width: sourceElement.naturalWidth,
@@ -287,6 +257,7 @@ export async function openImageMarkupEditor(
   let draftArrow: { line: Line; head: Triangle } | null = null;
   let pointerStart = { x: 0, y: 0 };
   let displayScale = 1;
+  let fitToWindow = true;
   let spacePressed = false;
   let panState: { clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null = null;
   let annotationSequence = annotationObjects(canvas).length;
@@ -450,7 +421,8 @@ export async function openImageMarkupEditor(
     }
   };
   const fitCanvas = (): void => {
-    const availableWidth = Math.max(240, stage.clientWidth - 70);
+    fitToWindow = true;
+    const availableWidth = Math.min(820, Math.max(120, stage.clientWidth - 64));
     const availableHeight = Math.max(180, stage.clientHeight - 90);
     applyDisplayScale(Math.min(
       1,
@@ -467,8 +439,8 @@ export async function openImageMarkupEditor(
     noteList.innerHTML = maskMode
       ? ""
       : unique.size
-      ? [...unique.values()].map((object) => `<label class="markup-note-card"><span>${escapeMarkup(object.annotationLabel ?? "?")}</span><textarea data-markup-note="${escapeMarkup(object.annotationId ?? "")}">${escapeMarkup(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle"))}</textarea></label>`).join("")
-      : `<div class="markup-note-empty">画出区域、箭头或文字后，可在这里补充具体要求。</div>`;
+      ? [...unique.values()].map((object) => `<label class="markup-note-card"><span>${escapeMarkup(object.annotationLabel ?? "?")}</span><textarea class="ui-field" aria-label="${escapeMarkup(t("create.markup.noteLabel", { label: object.annotationLabel ?? "?" }))}" data-markup-note="${escapeMarkup(object.annotationId ?? "")}">${escapeMarkup(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle", t))}</textarea></label>`).join("")
+      : `<div class="markup-note-empty">${escapeMarkup(t("create.markup.empty"))}</div>`;
     noteList.querySelectorAll<HTMLTextAreaElement>("[data-markup-note]").forEach((input) => {
       input.addEventListener("input", () => {
         const annotationId = input.dataset.markupNote;
@@ -484,15 +456,15 @@ export async function openImageMarkupEditor(
     object.annotationId = crypto.randomUUID();
     object.annotationLabel = annotationLabel(annotationSequence++);
     object.annotationKind = kind;
-    object.annotationNote = defaultNote(kind);
+    object.annotationNote = defaultNote(kind, t);
     object.set({ transparentCorners: false, cornerColor: "#7cb8ff", borderColor: "#7cb8ff" });
     return object;
   };
 
-  const labelFor = (object: MarkupFabricObject): FabricText => new FabricText(
-    object.annotationLabel ?? "?",
-    { left: 8, top: 6, originX: "left", originY: "top", fill: "#ffffff", fontSize: 26, fontWeight: 800, backgroundColor: colorInput.value, selectable: false, evented: false }
-  );
+  const labelFor = (object: MarkupFabricObject): Group => new Group([
+    new Circle({ radius: 17, fill: colorInput.value, originX: "center", originY: "center", left: 0, top: 0 }),
+    new FabricText(object.annotationLabel ?? "?", { originX: "center", originY: "center", left: 0, top: 0, fill: "#ffffff", fontSize: 18, fontWeight: 500 })
+  ], { left: -17, top: -17, originX: "left", originY: "top", selectable: false, evented: false });
 
   const finalizeRegion = (object: MarkupFabricObject, kind: "rectangle" | "ellipse"): void => {
     canvas.remove(object);
@@ -501,7 +473,7 @@ export async function openImageMarkupEditor(
     const shape = kind === "rectangle"
       ? new Rect({ left: 0, top: 0, originX: "left", originY: "top", width, height, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), strokeUniform: true })
       : new Ellipse({ left: 0, top: 0, originX: "left", originY: "top", rx: width / 2, ry: height / 2, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), strokeUniform: true });
-    const group = new Group([shape, labelFor(object)], { left: object.left, top: object.top, originX: "left", originY: "top" }) as MarkupFabricObject;
+    const group = new Group([shape, labelFor(object)], { left: object.left - 17, top: object.top - 17, originX: "left", originY: "top" }) as MarkupFabricObject;
     group.annotationLabel = object.annotationLabel;
     group.annotationId = object.annotationId;
     group.annotationKind = kind;
@@ -529,7 +501,10 @@ export async function openImageMarkupEditor(
       brush.width = Number(widthInput.value) * (tool === "highlight" ? 3 : 1);
       canvas.freeDrawingBrush = brush;
     }
-    overlay.querySelectorAll<HTMLElement>("[data-markup-tool]").forEach((button) => button.classList.toggle("active", button.dataset.markupTool === tool));
+    overlay.querySelectorAll<HTMLElement>("[data-markup-tool]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.markupTool === tool);
+      button.setAttribute("aria-pressed", String(button.dataset.markupTool === tool));
+    });
     canvas.discardActiveObject();
     canvas.requestRenderAll();
   };
@@ -580,7 +555,7 @@ export async function openImageMarkupEditor(
     }
     if (activeTool === "text") {
       const point = canvas.getScenePoint(event.e);
-      const text = decorate(new IText("输入说明", {
+      const text = decorate(new IText(t("create.finish.textPlaceholder"), {
         left: point.x,
         top: point.y,
         originX: "left",
@@ -698,6 +673,7 @@ export async function openImageMarkupEditor(
 
   const onStageWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    fitToWindow = false;
     const zoomFactor = Math.exp(-event.deltaY * .0015);
     applyDisplayScale(displayScale * zoomFactor, {
       clientX: event.clientX,
@@ -705,11 +681,13 @@ export async function openImageMarkupEditor(
     });
   };
   stage.addEventListener("wheel", onStageWheel, { passive: false });
+  const resizeObserver = new ResizeObserver(() => { if (fitToWindow) fitCanvas(); else canvas.calcOffset(); });
+  resizeObserver.observe(stage);
 
   overlay.querySelector("[data-markup-crop]")?.addEventListener("click", openCropper);
   overlay.querySelectorAll<HTMLElement>("[data-markup-tool]").forEach((button) => button.addEventListener("click", () => selectTool(button.dataset.markupTool as ImageMarkupTool)));
-  overlay.querySelector("[data-markup-zoom-in]")?.addEventListener("click", () => applyDisplayScale(displayScale * 1.2));
-  overlay.querySelector("[data-markup-zoom-out]")?.addEventListener("click", () => applyDisplayScale(displayScale / 1.2));
+  overlay.querySelector("[data-markup-zoom-in]")?.addEventListener("click", () => { fitToWindow = false; applyDisplayScale(displayScale * 1.2); });
+  overlay.querySelector("[data-markup-zoom-out]")?.addEventListener("click", () => { fitToWindow = false; applyDisplayScale(displayScale / 1.2); });
   overlay.querySelector("[data-markup-fit]")?.addEventListener("click", fitCanvas);
   overlay.querySelector("[data-cropper-cancel]")?.addEventListener("click", closeCropper);
   overlay.querySelector("[data-cropper-reset]")?.addEventListener("click", () => {
@@ -764,11 +742,25 @@ export async function openImageMarkupEditor(
     undoStack.push(next);
     await restoreSnapshot(next);
   });
-  colorInput.addEventListener("input", () => selectTool(activeTool));
-  widthInput.addEventListener("input", () => selectTool(activeTool));
+  const syncColor = (): void => {
+    overlay.querySelectorAll<HTMLElement>("[data-markup-swatch]").forEach(button =>
+      button.setAttribute("aria-pressed", String(button.dataset.markupSwatch === colorInput.value)));
+    selectTool(activeTool);
+  };
+  overlay.querySelectorAll<HTMLElement>("[data-markup-swatch]").forEach(button => button.addEventListener("click", () => {
+    colorInput.value = button.dataset.markupSwatch!; syncColor();
+  }));
+  colorInput.addEventListener("input", syncColor);
+  widthInput.addEventListener("input", () => { widthNumber.value = widthInput.value; selectTool(activeTool); });
+  widthNumber.addEventListener("change", () => {
+    if (!Number.isFinite(widthNumber.valueAsNumber)) { widthNumber.value = widthInput.value; return; }
+    widthInput.value = widthNumber.value; widthNumber.value = widthInput.value;
+    paintRangeFill(widthInput); selectTool(activeTool);
+  });
 
   renderNotes();
   window.requestAnimationFrame(fitCanvas);
+  selectTool(maskMode ? "highlight" : "select");
 
   return new Promise<ImageMarkupEditorResult | null>((resolve) => {
     let finished = false;
@@ -778,14 +770,31 @@ export async function openImageMarkupEditor(
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
       stage.removeEventListener("wheel", onStageWheel);
+      resizeObserver.disconnect();
       closeCropper();
       canvas.dispose();
       overlay.remove();
       document.body.classList.remove("image-markup-open");
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
       resolve(result);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       const editableTarget = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      if (event.key === "Tab") {
+        const scope = cropDialog.hidden ? overlay : cropDialog;
+        const focusable = [...scope.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea, select:not(:disabled), [tabindex='0']")]
+          .filter(element => element.getClientRects().length && !element.closest("[hidden]"));
+        const first = focusable[0], last = focusable.at(-1);
+        if (event.shiftKey && (document.activeElement === first || !scope.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !scope.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+      }
+      if (event.key === "Escape") {
+        if (overlay.querySelector('[aria-expanded="true"]')) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (!cropDialog.hidden) closeCropper(); else finish(null);
+        return;
+      }
+      if (!cropDialog.hidden) return;
       if (event.code === "Space" && !editableTarget) {
         event.preventDefault();
         spacePressed = true;
@@ -794,12 +803,11 @@ export async function openImageMarkupEditor(
         canvas.defaultCursor = "grab";
         canvas.setCursor("grab");
       }
-      if (event.key === "Escape") finish(null);
-      if (event.ctrlKey && event.key.toLowerCase() === "z") {
+      if (event.ctrlKey && event.key.toLowerCase() === "z" && !editableTarget && !(canvas.getActiveObject() instanceof IText && (canvas.getActiveObject() as IText).isEditing)) {
         event.preventDefault();
-        (overlay.querySelector("[data-markup-undo]") as HTMLButtonElement | null)?.click();
+        (overlay.querySelector(event.shiftKey ? "[data-markup-redo]" : "[data-markup-undo]") as HTMLButtonElement | null)?.click();
       }
-      if (event.ctrlKey && event.key.toLowerCase() === "y") {
+      if (event.ctrlKey && event.key.toLowerCase() === "y" && !editableTarget) {
         event.preventDefault();
         (overlay.querySelector("[data-markup-redo]") as HTMLButtonElement | null)?.click();
       }
@@ -823,6 +831,7 @@ export async function openImageMarkupEditor(
     };
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
+    overlay.querySelector<HTMLButtonElement>("[data-markup-cancel]")?.focus({ preventScroll: true });
     overlay.querySelector("[data-markup-cancel]")?.addEventListener("click", () => finish(null));
     overlay.querySelector("[data-markup-save]")?.addEventListener("click", async () => {
       const objects = annotationObjects(canvas);
@@ -840,8 +849,8 @@ export async function openImageMarkupEditor(
       const unique = new Map<string, MarkupFabricObject>();
       for (const object of objects) if (object.annotationId && !unique.has(object.annotationId)) unique.set(object.annotationId, object);
       const summary = maskMode
-        ? `${unique.size} 个移除区域`
-        : [...unique.values()].map((object) => `${object.annotationLabel ?? "?"}：${(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle")).trim()}`).join("\n");
+        ? t("create.finish.maskRegions", { count: unique.size })
+        : [...unique.values()].map((object) => `${object.annotationLabel ?? "?"}：${(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle", t)).trim()}`).join("\n");
       canvas.discardActiveObject();
       canvas.requestRenderAll();
       const document: StoredMarkupDocument = {

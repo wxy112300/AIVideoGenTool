@@ -1,3 +1,5 @@
+import { isMossImageModel } from "../../src/core/moss-image-spec.js";
+import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
 import type {
   EnhanceRequest,
   PromptExecutionPreflight,
@@ -319,6 +321,7 @@ export function multimodalPromptInstruction(request: EnhanceRequest, settings: S
 
 export function normalizeMultimodalPromptOutput(output: string, request: EnhanceRequest): string {
   if (request.promptStrategy === "targeted-revision") return applyPromptRevision(request.prompt, output);
+  if (request.mode === "image-edit" && isMossImageModel(request.imageTargetModelId)) return normalizeMossImagePromptOutput(output);
   if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
   const source = stripPromptAnnotations(request.prompt);
   const continuation = isH3NativeStateContinuationRequest(request);

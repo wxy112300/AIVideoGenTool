@@ -36,10 +36,10 @@ describe("Strata file preparation", () => {
       managedInstalled: true, managedUninstallable: true, installedVersion: "0.1.41", latestVersion: "0.1.45", scannedAt: "fixture" };
     const markup = renderStrataPreparationPanel(settings, status, value => value);
     expect(markup).toContain('class="node-version-line"');
-    expect(markup).toContain('本机</span><strong class="node-version-value">v0.1.41');
+    expect(markup).toContain('本机</span><strong class="node-version-value behind">v0.1.41');
     expect(markup).toContain(`推荐</span><strong class="node-version-value">v${STRATA_VERSION}`);
-    expect(markup).toContain('最新</span><strong class="node-version-value">v0.1.45');
-    expect(markup).toContain('id="install-strata" aria-busy="false" >更新</button>');
+    expect(markup).toContain('最新</span><strong class="node-version-value newer">v0.1.45');
+    expect(markup).toContain('id="install-strata" data-node-operation="update" aria-busy="false" >更新</button>');
     expect(markup).not.toContain('class="model-badge"');
     const offline = renderStrataPreparationPanel(settings, { ...status, latestVersion: "" }, value => value);
     expect(offline).toContain('最新</span><strong class="node-version-value">');
@@ -177,11 +177,11 @@ describe("Strata file preparation", () => {
 
   it("localizes preparation copy and hides stale runtime evidence after changing the path", () => {
     expect(settingsText("en-US", "strata.note")).not.toMatch(/[一-龥]/u);
-    expect(settingsText("zh-TW", "strata.note")).toContain("一鍵安裝");
+    expect(settingsText("zh-TW", "strata.note")).toContain("獨立執行環境");
     const settings = createDefaultSettings();
     const markup = renderStrataPreparationPanel(settings, { installDirectory: "old", modelDirectory: "old", files: [{ relativePath: "setup.py", present: true }], sourcePresent: true, enginePresent: true, scannedAt: "old" }, (value) => value);
     expect(markup).toContain('id="install-strata"');
-    expect(markup).toContain("高级设置与安装详情");
+    expect(markup).toContain("高级设置");
     expect(markup).not.toContain("SHA-256: <code>");
     expect(markup).not.toContain("下载源码 ZIP");
     expect(markup).toContain('value="43127"');
@@ -191,9 +191,8 @@ describe("Strata file preparation", () => {
 
   it.each(["zh-CN", "en-US", "zh-TW"] as const)("describes the model rather than installation instructions (%s)", (locale) => {
     for (const profile of strataPreparationProfiles(locale)) {
-      expect(profile.description).toContain("512");
-      expect(profile.description).toContain(profile.id.endsWith("ud-q4_k_xl") ? "Unsloth" : "GSQ-RCO");
-      expect(profile.description).toContain("QSA");
+      expect(profile.description).toMatch(/图片理解|圖片理解|image understanding/);
+      expect(profile.description.length).toBeLessThan(100);
       expect(profile.description).not.toMatch(/任选|擇一|不必|不要|仅核对|扫描|掃描|Choose|scan|not integrated/);
     }
   });

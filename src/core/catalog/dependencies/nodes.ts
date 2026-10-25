@@ -44,7 +44,7 @@ export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.7";
 export const MINIMAX_H3_PROMPT_WRITER_REVISION = "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
-export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.6.2";
+export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.7.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = COMFYUI_RECOMMENDED_VERSION;
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
 export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.5.6";
@@ -85,7 +85,7 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   flashvsr: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.1.1", latestVersion: "1.1.1" },
   "frame-interpolation": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.11", latestVersion: "1.0.11" },
   "comfyui-dlss-frame-interpolation": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
-  "h3-motion-context": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.6.2", latestVersion: "0.6.2" },
+  "h3-motion-context": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION, latestVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION },
   "h3-continuum": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION, latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION },
   "h3-latent-upscaler": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.1.0", latestVersion: "0.1.0" },
   "minimax-h3-learned-upscaler": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
@@ -409,8 +409,17 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: H3_MOTION_CONTEXT_MINIMUM_VERSION,
   recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
   latestVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
-  runtimeRequirement: "推荐 v0.6.2（v0.6 增加手工画布 Chain 自动串联、segments 和槽位清理，v0.6.2 修复旧画布的空 segments）需要 ComfyUI 0.34.0+；ComfyUI 0.32/0.33 继续保留 v0.3.1 回退线。本应用 API workflow 仍使用四个基础节点，不依赖 Chain；安装或更新后必须重启所选 ComfyUI，并通过 /object_info 与最小真实 H3 续写复检。",
+  runtimeRequirement: "v0.7.1 需要 ComfyUI 0.34.0+、Python 3.10+；旧核心保留 v0.3.1。本应用仍使用四个基础节点；更新后重启 ComfyUI。",
   compatibilityEvidence: [{
+    verifiedAt: "2026-10-25",
+    sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.7.1",
+    note: "v0.7.1 保留四个基础节点；Save 增加 ui.latents，Load 新增可选 folder=output/input 和 stock_format=false。无新增 pip 依赖，仍需 ComfyUI 0.34.0+、Python 3.10+ 及已有 torch/safetensors。新增的 Join Match、Refine Blend、Sigmas Tail 未接入应用图；上游建议音频上下文 18，本应用保持显式 24。官方无 GPU mock/layout smoke 通过，尚未安装新版或验证真实续写。",
+    comfyUi: "0.34.0",
+    python: ">=3.10",
+    commit: "518c083d11d80fa5920222ad89889924ee4401c9",
+    workflowIds: ["minimax_h3_r2v_extend_api"],
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-09-10",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.6.2",
     note: "v0.6.2 要求 ComfyUI 0.34.0+，修复旧 Chain 画布中空字符串 segments 无法通过 INT 校验的问题，并更新官方示例为 segments=0；v0.6.1 还为槽位检查/清理接口增加同源保护并限制 latent 路径在 output 目录内，v0.6.0 增加 Chain 自动串联、segments 和 Clear latents。上游变更主要影响手工画布串联；本应用 API workflow 仍不引入 Chain。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",

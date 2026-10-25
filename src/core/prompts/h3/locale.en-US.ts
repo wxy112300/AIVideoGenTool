@@ -25,7 +25,7 @@ export const uiLocale: PromptUiLocale = {
   manualEditVersion: "Manual edit",
   expandedVersion: "Expanded {count}",
   wordCount: "{count} words",
-  wordCountGuidance: "{count} words · typical range {min}–{max}; complex scenes can run longer",
+  wordCountGuidance: "{count} words · reference range {min}–{max} words",
   imageWordCount: "{count} words",
   promptCheckTitle: "H3 prompt check"
 };

@@ -3,6 +3,14 @@ import { H3_COMFY_KITCHEN_VERSION, modelCatalog } from "../../../core/catalog";
 import { COMFYUI_RECOMMENDED_VERSION } from "../../../core/catalog/dependencies/comfy-core";
 
 type SettingsCopyKey =
+  | "model.files"
+  | "model.shared"
+  | "model.recommended"
+  | "model.component.location"
+  | "model.collapse"
+  | "model.download"
+  | "lora.other"
+  | "prompt.localModel"
   | "prompt.uncensored"
   | "prompt.uncensored.off"
   | "prompt.uncensored.builtin"
@@ -87,6 +95,7 @@ type SettingsCopyKey =
   | "sulphur.resolution"
   | "sulphur.frames"
   | "sulphur.framesUnit"
+  | "sulphur.minutesUnit"
   | "sulphur.timeout"
   | "sulphur.recommended"
   | "sulphur.slower"
@@ -161,7 +170,6 @@ type SettingsCopyKey =
   | "prompt.autoVideoPresetRandom"
   | "prompt.autoVideoPresetRandomHint"
   | "prompt.autoVideoPresetRule"
-  | "prompt.autoVideoPresetNote"
   | "prompt.imagePresetTitle"
   | "prompt.imagePresetDescription"
   | "prompt.imageNote"
@@ -177,6 +185,15 @@ type SettingsCopyKey =
   | "upscale.waitingScan"
   | "upscale.empty"
   | "nodes.title"
+  | "nodes.groupRuntime"
+  | "nodes.details"
+  | "nodes.groupVideo"
+  | "nodes.groupUpscale"
+  | "nodes.groupPrompt"
+  | "nodes.groupGeneral"
+  | "nodes.queuedCount"
+  | "nodes.cancelWaiting"
+  | "nodes.processingName"
   | "nodes.description"
   | "nodes.h3AccelerationTitle"
   | "nodes.h3AccelerationBadge"
@@ -220,6 +237,7 @@ type SettingsCopyKey =
   | "nodes.latestVersion"
   | "nodes.versionUnavailable"
   | "nodes.rollingVersion"
+  | "nodes.rollingRecommendation"
   | "nodes.pinnedVersion"
   | "nodes.rescanOnline"
   | "nodes.runtimeMemory"
@@ -235,6 +253,7 @@ type SettingsCopyKey =
   | "nodes.aetherscaleRuntimeReady"
   | "nodes.aetherscaleRuntimeMissing"
   | "nodes.fileCheckPassed"
+  | "nodes.versionUnknown"
   | "nodes.installedRepair"
   | "nodes.updateRestart"
   | "nodes.updateRecheck"
@@ -390,13 +409,13 @@ const zhCN: SettingsCopyCatalog = {
   "strata.install.check": "检查运行组件",
   "strata.install.complete": "安装完成",
   "strata.install.recovery": "恢复安装状态",
-  "strata.details": "高级设置与安装详情",
+  "strata.details": "高级设置",
   "strata.installed": "运行组件已安装",
   "strata.stage": "独立提示词运行组件",
-  "strata.note": "一键安装独立运行组件；模型在提示词模型卡中下载。不会启动模型或修改 ComfyUI 的 Python 包。",
+  "strata.note": "提示词模型的独立运行环境，不改动 ComfyUI 的 Python 包",
   "strata.root": "自定义运行目录（留空由应用管理）",
   "strata.port": "预留本机端口",
-  "strata.portNote": "默认 43127；禁止 8080。此阶段只保存配置，不监听端口；启动接入时还会检查占用。",
+  "strata.portNote": "默认 43127；不支持 8080。",
   "strata.source": "下载源码 ZIP",
   "strata.engine": "下载 NVIDIA 引擎 ZIP",
   "strata.choose": "选择目录",
@@ -430,6 +449,14 @@ const zhCN: SettingsCopyCatalog = {
   "model.component.alternativeAvailable": "备选未安装（当前使用其他组件）：",
   "model.component.viewInfo": "查看 {label} 的{info}",
   "model.component.downloadInstall": "下载与安装",
+  "model.files": "模型文件 {found}/{total}",
+  "model.shared": "共用",
+  "model.recommended": "推荐",
+  "model.component.location": "已找到文件",
+  "model.collapse": "收起",
+  "model.download": "下载",
+  "lora.other": "其他 LoRA",
+  "prompt.localModel": "本地提示词模型",
   "model.component.viewSource": "查看来源",
   "model.component.sourceRevision": "来源 revision",
   "model.component.sha256": "SHA-256",
@@ -450,6 +477,7 @@ const zhCN: SettingsCopyCatalog = {
   "sulphur.resolution": "基准分辨率",
   "sulphur.frames": "每段新增模型帧",
   "sulphur.framesUnit": "帧",
+  "sulphur.minutesUnit": "分钟",
   "sulphur.timeout": "单节点等待上限",
   "sulphur.recommended": "推荐",
   "sulphur.slower": "较慢",
@@ -517,17 +545,16 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.restore": "恢复默认",
   "prompt.currentPreset": "当前编辑预设",
   "prompt.ruleHeader": "预设规则头",
-  "prompt.h3Note": "规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。",
+  "prompt.h3Note": "H3 参考标签、首尾帧关系、连续性及音视频格式始终保留。",
   "prompt.autoVideoPresetTitle": "无提示词视频预设",
   "prompt.autoVideoPresetDescription": "当 H3 Prompt 为空时，从参考画面设计动作、镜头和互动；与普通视频提示词预设分开。",
   "prompt.autoVideoPresetSelection": "默认起稿方向",
   "prompt.autoVideoPresetRandom": "自动随机轮换",
   "prompt.autoVideoPresetRandomHint": "每次清空 Prompt 后优先选择尚未使用的起稿方向，并生成新的变化。",
   "prompt.autoVideoPresetRule": "起稿指令",
-  "prompt.autoVideoPresetNote": "选择具体方向后会固定创意方向，但每次点击仍会使用新的变化标识；修改后保存设置即可生效。",
   "prompt.imagePresetTitle": "图片提示词预设",
   "prompt.imagePresetDescription": "只影响图片“优化提示词”时的整理策略，不改变 Qwen Image 的生成参数。",
-  "prompt.imageNote": "规则头会作为图片 Prompt 优化器的策略说明；最终发送给 Qwen Image 的 Prompt 不会包含这段设置文本。",
+  "prompt.imageNote": "优化规则不加入最终提示词。",
   "prompt.empty": "尚无提示词模型扫描结果",
   "upscale.title": "分辨率提升模型",
   "upscale.description": "模型文件完整即可进入后续提升工作流；需要专用运行节点的模型会在 ComfyUI 可用时验证。",
@@ -540,6 +567,15 @@ const zhCN: SettingsCopyCatalog = {
   "upscale.waitingScan": "等待首次扫描",
   "upscale.empty": "尚无模型扫描结果",
   "nodes.title": "节点与依赖",
+  "nodes.groupRuntime": "运行时依赖",
+  "nodes.details": "安装详情",
+  "nodes.groupVideo": "H3 视频与续写",
+  "nodes.groupUpscale": "放大与补帧",
+  "nodes.groupPrompt": "提示词与视觉理解",
+  "nodes.groupGeneral": "图片与通用",
+  "nodes.queuedCount": "等待 {count} 个",
+  "nodes.cancelWaiting": "取消等待中的",
+  "nodes.processingName": "正在处理 {name}",
   "nodes.description": "管理可安装的第三方 ComfyUI 节点及其运行依赖",
   "nodes.h3AccelerationTitle": "H3 加速运行时",
   "nodes.h3AccelerationBadge": "ComfyUI Python · 共享后端",
@@ -557,7 +593,7 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.finalizing": "正在重启并复检…",
   "nodes.llamaTitle": "llama-cpp-python",
   "nodes.llamaBadge": "提示词节点依赖",
-  "nodes.llamaDescription": "提供在 ComfyUI 内运行本地 GGUF 提示词模型的 Python 接口，Gemma Prompt Writer 与 MultiModal 节点都依赖它。",
+  "nodes.llamaDescription": "ComfyUI 本地 GGUF 提示词模型运行组件",
   "nodes.pythonEnvironment": "目标环境：",
   "nodes.installLog": "安装日志",
   "nodes.installed": "已安装",
@@ -583,6 +619,7 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.latestVersion": "最新",
   "nodes.versionUnavailable": "未标注",
   "nodes.rollingVersion": "滚动版",
+  "nodes.rollingRecommendation": "跟随上游",
   "nodes.pinnedVersion": "固定版",
   "nodes.rescanOnline": "联网后重新扫描",
   "nodes.runtimeMemory": "运行时固定使用系统内存，不额外下载模型。",
@@ -597,7 +634,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.aetherscaleRuntimeLabel": "AetherScale carrier：",
   "nodes.aetherscaleRuntimeReady": "六文件已就绪",
   "nodes.aetherscaleRuntimeMissing": "已安装 · carrier runtime 不可用",
-  "nodes.fileCheckPassed": "文件与版本检查通过",
+  "nodes.fileCheckPassed": "已就绪",
+  "nodes.versionUnknown": "未获取",
   "nodes.installedRepair": "已安装，需修复",
   "nodes.updateRestart": "更新并重启",
   "nodes.updateRecheck": "更新/重启复检",
@@ -751,13 +789,13 @@ const zhTW: SettingsCopyCatalog = {
   "strata.install.check": "檢查執行元件",
   "strata.install.complete": "安裝完成",
   "strata.install.recovery": "恢復安裝狀態",
-  "strata.details": "進階設定與安裝詳情",
+  "strata.details": "進階設定",
   "strata.installed": "執行元件已安裝",
   "strata.stage": "獨立提示詞執行元件",
-  "strata.note": "一鍵安裝獨立執行元件；模型在提示詞模型卡下載。不啟動模型或修改 ComfyUI 的 Python 套件。",
+  "strata.note": "提示詞模型的獨立執行環境，不改動 ComfyUI 的 Python 套件",
   "strata.root": "自訂執行目錄（留空由應用管理）",
   "strata.port": "預留本機連接埠",
-  "strata.portNote": "預設 43127；禁止 8080。此階段只儲存設定，不監聽連接埠；啟動接入時會再檢查占用。",
+  "strata.portNote": "預設 43127；不支援 8080。",
   "strata.source": "下載原始碼 ZIP",
   "strata.engine": "下載 NVIDIA 引擎 ZIP",
   "strata.choose": "選擇目錄",
@@ -791,6 +829,14 @@ const zhTW: SettingsCopyCatalog = {
   "model.component.alternativeAvailable": "替代元件未安裝（目前使用其他元件）：",
   "model.component.viewInfo": "檢視 {label} 的{info}",
   "model.component.downloadInstall": "下載與安裝",
+  "model.files": "模型檔案 {found}/{total}",
+  "model.shared": "共用",
+  "model.recommended": "建議",
+  "model.component.location": "已找到檔案",
+  "model.collapse": "收起",
+  "model.download": "下載",
+  "lora.other": "其他 LoRA",
+  "prompt.localModel": "本機提示詞模型",
   "model.component.viewSource": "檢視來源",
   "model.component.sourceRevision": "來源 revision",
   "model.component.sha256": "SHA-256",
@@ -811,6 +857,7 @@ const zhTW: SettingsCopyCatalog = {
   "sulphur.resolution": "基準解析度",
   "sulphur.frames": "每段新增模型影格",
   "sulphur.framesUnit": "影格",
+  "sulphur.minutesUnit": "分鐘",
   "sulphur.timeout": "單節點等待上限",
   "sulphur.note": "Q2 使用 distilled 模型且不載入 LoRA；Q3/Q4 使用 dev 模型與 distill LoRA。三檔均要求 Gemma 3、LTX 文字連接器、獨立影音 VAE 與 latent upscaler，並強制單一任務、patch_on_device=false、--cache-none、CPU offload 與分塊解碼。8GB 相容仍需要足夠的系統記憶體與分頁檔。",
   "lora.title": "LoRA 目錄",
@@ -856,17 +903,16 @@ const zhTW: SettingsCopyCatalog = {
   "prompt.restore": "還原預設",
   "prompt.currentPreset": "目前編輯預設",
   "prompt.ruleHeader": "預設規則標頭",
-  "prompt.h3Note": "規則標頭可自由修改；內建 H3 官方基線仍會強制參考標籤、首尾影格關係、連續性、音訊與輸出格式。修改後點擊設定頁頂端的「儲存設定」，建立頁下次擴寫立即使用。",
+  "prompt.h3Note": "H3 參考標籤、首尾影格關係、連續性及音視訊格式始終保留。",
   "prompt.autoVideoPresetTitle": "無提示詞影片預設",
   "prompt.autoVideoPresetDescription": "當 H3 Prompt 為空時，根據參考畫面設計動作、鏡頭和互動；與一般影片提示詞預設分開。",
   "prompt.autoVideoPresetSelection": "預設起稿方向",
   "prompt.autoVideoPresetRandom": "自動隨機輪換",
   "prompt.autoVideoPresetRandomHint": "每次清空 Prompt 後優先選擇尚未使用的起稿方向，並產生新的變化。",
   "prompt.autoVideoPresetRule": "起稿指令",
-  "prompt.autoVideoPresetNote": "選擇具體方向後會固定創意方向，但每次點擊仍會使用新的變化標識；修改後儲存設定即可生效。",
   "prompt.imagePresetTitle": "圖片提示詞預設",
   "prompt.imagePresetDescription": "只影響圖片「最佳化提示詞」時的整理策略，不改變 Qwen Image 的生成參數。",
-  "prompt.imageNote": "規則標頭會作為圖片 Prompt 最佳化器的策略說明；最後傳給 Qwen Image 的 Prompt 不會包含這段設定文字。",
+  "prompt.imageNote": "最佳化規則不加入最終提示詞。",
   "prompt.empty": "尚無提示詞模型掃描結果",
   "upscale.title": "解析度提升模型",
   "upscale.description": "模型檔案完整即可進入後續提升工作流程；需要專用執行節點的模型會在 ComfyUI 可用時驗證。",
@@ -879,6 +925,15 @@ const zhTW: SettingsCopyCatalog = {
   "upscale.waitingScan": "等待首次掃描",
   "upscale.empty": "尚無模型掃描結果",
   "nodes.title": "節點與依賴",
+  "nodes.groupRuntime": "執行時依賴",
+  "nodes.details": "安裝詳情",
+  "nodes.groupVideo": "H3 影片與續寫",
+  "nodes.groupUpscale": "放大與補幀",
+  "nodes.groupPrompt": "提示詞與視覺理解",
+  "nodes.groupGeneral": "圖片與通用",
+  "nodes.queuedCount": "等待 {count} 個",
+  "nodes.cancelWaiting": "取消等待中的",
+  "nodes.processingName": "正在處理 {name}",
   "nodes.description": "管理可安裝的第三方 ComfyUI 節點及其執行依賴",
   "nodes.h3AccelerationTitle": "H3 加速執行時",
   "nodes.h3AccelerationBadge": "ComfyUI Python · 共用後端",
@@ -896,7 +951,7 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.finalizing": "正在重新啟動並複檢…",
   "nodes.llamaTitle": "llama-cpp-python",
   "nodes.llamaBadge": "提示詞節點依賴",
-  "nodes.llamaDescription": "提供在 ComfyUI 內執行本機 GGUF 提示詞模型的 Python 介面，Gemma Prompt Writer 與 MultiModal 節點都依賴它。",
+  "nodes.llamaDescription": "ComfyUI 本機 GGUF 提示詞模型執行元件",
   "nodes.pythonEnvironment": "目標環境：",
   "nodes.installLog": "安裝記錄",
   "nodes.installed": "已安裝",
@@ -922,6 +977,7 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.latestVersion": "最新",
   "nodes.versionUnavailable": "未標註",
   "nodes.rollingVersion": "滾動版",
+  "nodes.rollingRecommendation": "跟隨上游",
   "nodes.pinnedVersion": "固定版",
   "nodes.rescanOnline": "連線後重新掃描",
   "nodes.runtimeMemory": "執行時固定使用系統記憶體，不額外下載模型。",
@@ -936,7 +992,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.aetherscaleRuntimeLabel": "AetherScale carrier：",
   "nodes.aetherscaleRuntimeReady": "六檔案已就緒",
   "nodes.aetherscaleRuntimeMissing": "已安裝 · carrier runtime 不可用",
-  "nodes.fileCheckPassed": "檔案與版本檢查通過",
+  "nodes.fileCheckPassed": "已就緒",
+  "nodes.versionUnknown": "未取得",
   "nodes.installedRepair": "已安裝，需要修復",
   "nodes.updateRestart": "更新並重新啟動",
   "nodes.updateRecheck": "更新/重新啟動複檢",
@@ -1089,13 +1146,13 @@ const enUS: SettingsCopyCatalog = {
   "strata.install.check": "Checking runtime files",
   "strata.install.complete": "Installation complete",
   "strata.install.recovery": "Recovering installation",
-  "strata.details": "Advanced settings and installation details",
+  "strata.details": "Advanced settings",
   "strata.installed": "Runtime components installed",
   "strata.stage": "Independent prompt runtime",
-  "strata.note": "Install the independent runtime in one click; download weights from prompt model cards. No model startup or changes to ComfyUI Python packages.",
+  "strata.note": "Independent prompt model runtime; keeps ComfyUI Python packages unchanged",
   "strata.root": "Custom runtime directory (leave empty for app management)",
   "strata.port": "Reserved local port",
-  "strata.portNote": "Default 43127; 8080 is forbidden. This stage only saves configuration, with no listener. Actual startup will also check port availability.",
+  "strata.portNote": "Default: 43127. Port 8080 is not supported.",
   "strata.source": "Download source ZIP",
   "strata.engine": "Download NVIDIA engine ZIP",
   "strata.choose": "Choose directory",
@@ -1129,6 +1186,14 @@ const enUS: SettingsCopyCatalog = {
   "model.component.alternativeAvailable": "Alternative not installed (another component is currently used):",
   "model.component.viewInfo": "View download and installation instructions for {label}",
   "model.component.downloadInstall": "Download & install",
+  "model.files": "Model files {found}/{total}",
+  "model.shared": "Shared",
+  "model.recommended": "Recommended",
+  "model.component.location": "Located files",
+  "model.collapse": "Collapse",
+  "model.download": "Download",
+  "lora.other": "Other LoRAs",
+  "prompt.localModel": "Local prompt model",
   "model.component.viewSource": "View source",
   "model.component.sourceRevision": "Source revision",
   "model.component.sha256": "SHA-256",
@@ -1149,6 +1214,7 @@ const enUS: SettingsCopyCatalog = {
   "sulphur.resolution": "Base resolution",
   "sulphur.frames": "New model frames per segment",
   "sulphur.framesUnit": "frames",
+  "sulphur.minutesUnit": "min",
   "sulphur.timeout": "Per-node timeout",
   "sulphur.recommended": "Recommended",
   "sulphur.slower": "Slower",
@@ -1216,17 +1282,16 @@ const enUS: SettingsCopyCatalog = {
   "prompt.restore": "Restore defaults",
   "prompt.currentPreset": "Preset being edited",
   "prompt.ruleHeader": "Preset rule header",
-  "prompt.h3Note": "The rule header is editable; the built-in H3 baseline still enforces reference tags, start/end-frame relationships, continuity, audio, and output format. Save Settings to use changes on the next expansion.",
+  "prompt.h3Note": "The H3 baseline preserves references, start/end frames, continuity and audiovisual format.",
   "prompt.autoVideoPresetTitle": "No-prompt video presets",
   "prompt.autoVideoPresetDescription": "When the H3 Prompt is blank, design motion, camera, and interaction from the reference media. This is separate from normal video prompt presets.",
   "prompt.autoVideoPresetSelection": "Default drafting direction",
   "prompt.autoVideoPresetRandom": "Automatic random rotation",
   "prompt.autoVideoPresetRandomHint": "After the Prompt is cleared, prefer an unused direction and create a new variation.",
   "prompt.autoVideoPresetRule": "Drafting instruction",
-  "prompt.autoVideoPresetNote": "A fixed direction keeps the creative approach while each click still receives a new variation token. Save Settings to apply changes.",
   "prompt.imagePresetTitle": "Image prompt presets",
   "prompt.imagePresetDescription": "Only affects how the image Optimize Prompt action organizes instructions; it does not change Qwen Image generation parameters.",
-  "prompt.imageNote": "The rule header guides the image Prompt optimizer; it is not included in the final Prompt sent to Qwen Image.",
+  "prompt.imageNote": "Optimization rules stay out of the final prompt.",
   "prompt.empty": "No prompt model scan results",
   "upscale.title": "Upscale models",
   "upscale.description": "Models with complete files can enter the upscale workflow; models with dedicated runtime nodes are validated when ComfyUI is available.",
@@ -1239,6 +1304,15 @@ const enUS: SettingsCopyCatalog = {
   "upscale.waitingScan": "Waiting for first scan",
   "upscale.empty": "No model scan results",
   "nodes.title": "Nodes & dependencies",
+  "nodes.groupRuntime": "Runtime dependencies",
+  "nodes.details": "Installation details",
+  "nodes.groupVideo": "H3 video & continuation",
+  "nodes.groupUpscale": "Upscaling & interpolation",
+  "nodes.groupPrompt": "Prompt & vision",
+  "nodes.groupGeneral": "Image & general",
+  "nodes.queuedCount": "{count} waiting",
+  "nodes.cancelWaiting": "Cancel waiting",
+  "nodes.processingName": "Processing {name}",
   "nodes.description": "Manage installable third-party ComfyUI nodes and their runtime dependencies",
   "nodes.h3AccelerationTitle": "H3 acceleration runtime",
   "nodes.h3AccelerationBadge": "ComfyUI Python · shared backend",
@@ -1256,7 +1330,7 @@ const enUS: SettingsCopyCatalog = {
   "nodes.finalizing": "Restarting and verifying…",
   "nodes.llamaTitle": "llama-cpp-python",
   "nodes.llamaBadge": "Prompt node dependency",
-  "nodes.llamaDescription": "Python bindings for running local GGUF prompt models inside ComfyUI; required by the Gemma Prompt Writer and MultiModal nodes.",
+  "nodes.llamaDescription": "Runtime for local GGUF prompt models in ComfyUI",
   "nodes.pythonEnvironment": "Target environment: ",
   "nodes.installLog": "Installation log",
   "nodes.installed": "Installed",
@@ -1282,6 +1356,7 @@ const enUS: SettingsCopyCatalog = {
   "nodes.latestVersion": "Latest",
   "nodes.versionUnavailable": "Not published",
   "nodes.rollingVersion": "Rolling",
+  "nodes.rollingRecommendation": "Track upstream",
   "nodes.pinnedVersion": "Pinned",
   "nodes.rescanOnline": "Rescan after connecting",
   "nodes.runtimeMemory": "Uses system memory at runtime and does not download extra models.",
@@ -1296,7 +1371,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.aetherscaleRuntimeLabel": "AetherScale carrier: ",
   "nodes.aetherscaleRuntimeReady": "Six files ready",
   "nodes.aetherscaleRuntimeMissing": "Installed · carrier runtime unavailable",
-  "nodes.fileCheckPassed": "File and version checks passed",
+  "nodes.fileCheckPassed": "Ready",
+  "nodes.versionUnknown": "Unavailable",
   "nodes.installedRepair": "Installed; repair needed",
   "nodes.updateRestart": "Update and restart",
   "nodes.updateRecheck": "Update/restart and recheck",
@@ -1426,64 +1502,64 @@ const enUS: SettingsCopyCatalog = {
 
 const h3AutoPromptSeedDescriptions: Record<UiLocale, Record<string, string>> = {
   "zh-CN": {
-    "visible-affordance": "利用画面中已经出现且可操作的物体设计自然动作，例如打开、旋转、触碰、拿起或展开；不要凭空添加物体。",
-    "gaze-and-intent": "围绕注意力变化设计动作：可见人物先注意到画面中的目标，再转移视线、调整姿态并做出小幅反应；没有人物时改用主体或环境特征表达。",
-    "camera-discovery": "用有动机的推、拉、摇、移或跟拍，让镜头逐步发现画面中已有的关系或细节，最后停在更清晰的构图上。",
-    "environmental-cascade": "从画面支持的小环境变化开始，引发衣物、头发、树叶、倒影、尘雾、蒸汽、水、光线或阴影等有依据的连锁运动；不要凭空添加天气或特效。",
-    "cause-and-effect": "设计一个完整的因果动作：准备、发力或接触、可见反应，再自然收尾；保持主体形体、身份和运动方向连续。",
-    "playful-surprise": "基于画面中已有元素加入一个意外但合理、无害的瞬间，例如好奇回望、小插曲、擦肩或由动作触发的揭示；不要编造完整故事。",
-    "documentary-moment": "把画面当作真实片段的开头，用克制的呼吸、眨眼、重心、微动作和轻微手持或静止镜头，呈现被自然捕捉的瞬间。",
-    "material-response": "突出可见材质对运动的反应，例如褶皱、涟漪、反光、金属震动、纸张、皮肤或头发变化；保持材质和光线方向符合参考图。",
-    "spatial-journey": "让可见主体在现有空间中完成一段短移动，如靠近、经过、转身、倾斜或换位；尊重深度、障碍、尺度和原有几何，最后稳定收尾。",
-    "rhythmic-beats": "用期待、动作、反应和停顿组织整段时长；重复动作时每次要有变化，结尾要自然解决而不是戛然而止。",
-    "contrast-and-settle": "利用静到动、暗到亮、闭到开、远到近或紧张到释放等可见对比推动变化，只使用参考图能支持的内容，并让结尾稳定下来。",
-    "subject-pair": "当画面有多个主体时，设计注意力、距离、手势或物体使用上的交流；只有一个主体时，让它与可见环境互动，不能新增参与者。",
-    "character-interaction": "把可见角色当作彼此独立的行动者，设计清晰的注意、回应、距离、手势和轮流动作；根据画面中能确认的关系互动，不新增角色，并保持每个人的身份、位置和主动性。",
-    "mini-narrative": "在不改变场景的前提下组织一个极短的起承转合：先呈现状态，再出现动机或触发，展示动作与反应，最后落在连贯的新状态。",
-    "contextual-action-dialogue": "根据可见角色的身份线索和所处场景，自动组织一段合理动作；当情境支持说话时加入简短对白，并让台词使用角色自然的语言（可以不同于提示词的描述语言）。标明说话者、保持台词简短连贯，不改变用户已有台词，也不凭空添加角色或事实。",
-    "mild-adult-atmosphere": "仅对画面中明确为成年人的角色加入轻度性感或暧昧氛围，例如暧昧眼神、亲密但自愿的距离、撩拨手势、自信姿态或符合参考图的服装与动作；保持含蓄、非露骨，不添加裸露、明确性行为、胁迫或未成年人。如果年龄或同意关系不明确，改为非性化表达。",
-    "hollywood-cinematic": "把参考画面按好莱坞商业电影的高制作水准发展：先找出强视觉钩子，再用有意的布光、镜头语言、调度和场面设计组织一段连贯动作；运镜要有叙事动机，并最终落在构图明确的画面。保留可见主体和场景，不凭空添加昂贵场景、道具、奇观或剧情事实，也避免空泛的预告片套话。",
-    "stillness-break": "先保持参考图般的静止，再用眨眼、呼吸、转头、轻颤、阴影变化、物体反应或镜头漂移打破静止，随后回到可控的停顿。"
+    "visible-affordance": "围绕已有物体设计动作。",
+    "gaze-and-intent": "用视线与姿态表达意图。",
+    "camera-discovery": "用运镜逐步揭示画面细节。",
+    "environmental-cascade": "让环境变化带动连锁运动。",
+    "cause-and-effect": "组织准备、动作、反应与收尾。",
+    "playful-surprise": "加入符合画面的轻巧意外。",
+    "documentary-moment": "用自然微动作呈现纪实感。",
+    "material-response": "突出材质随运动产生的变化。",
+    "spatial-journey": "让主体在原有空间中短距离移动。",
+    "rhythmic-beats": "以动作、反应与停顿组织节奏。",
+    "contrast-and-settle": "用动静等对比推进并稳定收尾。",
+    "subject-pair": "设计主体之间或与环境的互动。",
+    "character-interaction": "安排可见角色的动作与回应。",
+    "mini-narrative": "在原场景内组织简短起承转合。",
+    "contextual-action-dialogue": "按角色与场景组织动作，适时加入对白。",
+    "mild-adult-atmosphere": "仅对明确成年角色营造含蓄暧昧氛围。",
+    "hollywood-cinematic": "用布光、运镜与调度营造电影感。",
+    "stillness-break": "从静止起步，以细微动作打破停顿。"
   },
   "zh-TW": {
-    "visible-affordance": "利用畫面中已經出現且可操作的物體設計自然動作，例如開啟、旋轉、觸碰、拿起或展開；不要憑空新增物體。",
-    "gaze-and-intent": "圍繞注意力變化設計動作：可見人物先注意到畫面中的目標，再轉移視線、調整姿勢並做出小幅反應；沒有人物時改用主體或環境特徵表達。",
-    "camera-discovery": "用有動機的推、拉、搖、移或跟拍，讓鏡頭逐步發現畫面中已有的關係或細節，最後停在更清晰的構圖上。",
-    "environmental-cascade": "從畫面支持的小環境變化開始，引發衣物、頭髮、樹葉、倒影、塵霧、蒸氣、水、光線或陰影等有依據的連鎖運動；不要憑空新增天氣或特效。",
-    "cause-and-effect": "設計一個完整的因果動作：準備、發力或接觸、可見反應，再自然收尾；保持主體形體、身分和運動方向連續。",
-    "playful-surprise": "根據畫面中已有元素加入一個意外但合理、無害的瞬間，例如好奇回望、小插曲、擦身而過或由動作觸發的揭示；不要編造完整故事。",
-    "documentary-moment": "把畫面當作真實片段的開頭，用克制的呼吸、眨眼、重心、微動作和輕微手持或固定鏡頭，呈現被自然捕捉的瞬間。",
-    "material-response": "突出可見材質對運動的反應，例如褶皺、漣漪、反光、金屬震動、紙張、皮膚或頭髮變化；保持材質和光線方向符合參考圖。",
-    "spatial-journey": "讓可見主體在現有空間中完成一段短移動，如靠近、經過、轉身、傾斜或換位；尊重深度、障礙、尺度和原有幾何，最後穩定收尾。",
-    "rhythmic-beats": "用期待、動作、反應和停頓組織整段時長；重複動作時每次都要有變化，結尾要自然解決而不是戛然而止。",
-    "contrast-and-settle": "利用靜到動、暗到亮、閉到開、遠到近或緊張到釋放等可見對比推動變化，只使用參考圖能支持的內容，並讓結尾穩定下來。",
-    "subject-pair": "當畫面有多個主體時，設計注意力、距離、手勢或物體使用上的交流；只有一個主體時，讓它與可見環境互動，不能新增參與者。",
-    "character-interaction": "把可見角色視為彼此獨立的行動者，設計清楚的注意、回應、距離、手勢和輪流動作；根據畫面中能確認的關係互動，不新增角色，並保持每個人的身分、位置和主動性。",
-    "mini-narrative": "在不改變場景的前提下組織一個極短的起承轉合：先呈現狀態，再出現動機或觸發，展示動作與反應，最後落在連貫的新狀態。",
-    "contextual-action-dialogue": "根據可見角色的身分線索和所在場景，自動組織一段合理動作；當情境支持說話時加入簡短對白，並讓台詞使用角色自然的語言（可以不同於提示詞的描述語言）。標明說話者、保持台詞簡短連貫，不改變使用者已有台詞，也不憑空新增角色或事實。",
-    "mild-adult-atmosphere": "僅對畫面中明確為成年人的角色加入輕度性感或曖昧氛圍，例如曖昧眼神、親密但自願的距離、撩撥手勢、自信姿態或符合參考圖的服裝與動作；保持含蓄、非露骨，不加入裸露、明確性行為、脅迫或未成年人。如果年齡或同意關係不明確，改為非性化表達。",
-    "hollywood-cinematic": "把參考畫面按好萊塢商業電影的高製作水準發展：先找出強烈的視覺鉤子，再用有意的布光、鏡頭語言、調度和場面設計組織一段連貫動作；運鏡要有敘事動機，並最終落在構圖明確的畫面。保留可見主體和場景，不憑空新增昂貴場景、道具、奇觀或劇情事實，也避免空泛的預告片套話。",
-    "stillness-break": "先保持參考圖般的靜止，再用眨眼、呼吸、轉頭、輕顫、陰影變化、物體反應或鏡頭漂移打破靜止，接著回到可控制的停頓。"
+    "visible-affordance": "圍繞既有物體設計動作。",
+    "gaze-and-intent": "用視線與姿態表達意圖。",
+    "camera-discovery": "用運鏡逐步揭示畫面細節。",
+    "environmental-cascade": "讓環境變化帶動連鎖運動。",
+    "cause-and-effect": "組織準備、動作、反應與收尾。",
+    "playful-surprise": "加入符合畫面的輕巧意外。",
+    "documentary-moment": "用自然微動作呈現紀實感。",
+    "material-response": "突出材質隨運動產生的變化。",
+    "spatial-journey": "讓主體在原有空間中短距離移動。",
+    "rhythmic-beats": "以動作、反應與停頓組織節奏。",
+    "contrast-and-settle": "用動靜等對比推進並穩定收尾。",
+    "subject-pair": "設計主體之間或與環境的互動。",
+    "character-interaction": "安排可見角色的動作與回應。",
+    "mini-narrative": "在原場景內組織簡短起承轉合。",
+    "contextual-action-dialogue": "按角色與場景組織動作，適時加入對白。",
+    "mild-adult-atmosphere": "僅對明確成年角色營造含蓄曖昧氛圍。",
+    "hollywood-cinematic": "用布光、運鏡與調度營造電影感。",
+    "stillness-break": "從靜止起步，以細微動作打破停頓。"
   },
   "en-US": {
-    "visible-affordance": "Use a visible, actionable object already in the frame to motivate a natural action—opening, turning, touching, lifting, catching, or unfolding—without inventing a prop.",
-    "gaze-and-intent": "Build the motion around a readable shift of attention: a visible person notices something already in frame, adjusts gaze or posture, and responds; without a person, apply the idea to the dominant object or environmental feature.",
-    "camera-discovery": "Use a motivated push, pull, pan, tilt, arc, or track to reveal a relationship or detail already latent in the composition, then settle in a clearer final frame.",
-    "environmental-cascade": "Start with a small change supported by the image and carry it into grounded secondary motion—fabric, hair, leaves, reflections, dust, steam, water, light, or shadows—without adding unsupported weather or effects.",
-    "cause-and-effect": "Design one complete causal action: preparation, effort or contact, visible reaction, and a natural settle, while preserving the subject’s identity, geometry, and screen direction.",
-    "playful-surprise": "Add one plausible, harmless surprise grounded in what is visible—a curious glance, small interruption, near miss, or movement-triggered reveal—without turning it into an invented story.",
-    "documentary-moment": "Treat the image as the start of an observed real moment, using restrained breathing, blinking, weight shifts, micro-actions, and a quiet handheld or static camera so the scene feels caught rather than staged.",
-    "material-response": "Make a visible material’s response to motion the focus—folds, ripples, reflections, vibration, paper, skin, or hair—while keeping the material and lighting faithful to the reference.",
-    "spatial-journey": "Give a visible subject a short journey through the existing space—approach, pass, turn, lean, or shift position—respecting depth, obstacles, scale, and geometry, then end in a stable readable pose.",
-    "rhythmic-beats": "Shape the duration as anticipation, action, reaction, and hold; if motion repeats, each beat should change something, and the ending should resolve instead of stopping mid-action.",
-    "contrast-and-settle": "Use a restrained visible contrast—stillness to motion, shadow to light, closed to open, distant to near, or tension to release—only where the reference supports it, with a physically settled ending.",
-    "subject-pair": "If multiple subjects are visible, design a readable exchange of attention, spacing, gesture, or object use; with one subject, make it interact with the visible environment without adding a participant.",
-    "character-interaction": "Treat visible characters as distinct agents and design a readable exchange of attention, response, spacing, gesture, and turn-taking. Base the relationship on what the image supports, add no character, and preserve each person’s identity, position, and agency.",
-    "mini-narrative": "Create one tiny visual story without changing the setting: establish the state, introduce a grounded trigger or intention, show action and reaction, and finish on a coherent changed state.",
-    "contextual-action-dialogue": "Use the visible characters, their apparent roles, and the setting to choose a plausible short action beat. When the situation supports speech, add brief dialogue in each character’s natural language, which may differ from the descriptive prompt language. Keep speaker identity and turn-taking clear, preserve user-supplied lines exactly, follow the required H3 dialogue conventions, and never invent unsupported people or facts.",
-    "mild-adult-atmosphere": "For clearly adult subjects only, add a restrained sensual or suggestive tone grounded in the reference: flirtatious eye contact, intimate but consensual proximity, a teasing gesture, confident posing, or suggestive wardrobe or movement. Keep it tasteful and non-explicit; do not introduce nudity, explicit sexual acts, coercion, or minors. If age or consent is unclear, keep the direction non-sexual and follow visible evidence.",
-    "hollywood-cinematic": "Develop the reference as a polished, Hollywood-grade feature-film beat: find a strong visual hook, then use intentional lighting, lensing, blocking, production design, and motivated camera language to build one coherent action. Escalate with purposeful push, pull, orbit, tracking, or reveal moves and land on a composed final frame. Preserve what is visible; do not invent expensive locations, props, spectacle, or plot facts, and avoid generic trailer prose.",
-    "stillness-break": "Begin with a convincing hold on the reference, then break stillness with one precise cue—blink, breath, turn, tremor, shadow shift, object response, or camera drift—before returning to a controlled hold."
+    "visible-affordance": "Build action around visible objects.",
+    "gaze-and-intent": "Express intent through gaze and posture.",
+    "camera-discovery": "Reveal existing details through camera movement.",
+    "environmental-cascade": "Link environmental changes into secondary motion.",
+    "cause-and-effect": "Connect preparation, action, reaction and resolution.",
+    "playful-surprise": "Add a small, plausible surprise.",
+    "documentary-moment": "Capture natural, observational micro-actions.",
+    "material-response": "Focus on materials responding to motion.",
+    "spatial-journey": "Move the subject through the existing space.",
+    "rhythmic-beats": "Shape rhythm through action, reaction and pauses.",
+    "contrast-and-settle": "Build contrast and finish in a settled state.",
+    "subject-pair": "Connect subjects with each other or the environment.",
+    "character-interaction": "Give visible characters distinct actions and responses.",
+    "mini-narrative": "Tell a tiny story within the existing setting.",
+    "contextual-action-dialogue": "Choose actions and brief dialogue suited to the scene.",
+    "mild-adult-atmosphere": "Add restrained sensuality for clearly adult subjects only.",
+    "hollywood-cinematic": "Develop cinematic lighting, camera work and staging.",
+    "stillness-break": "Break a still opening with one precise motion."
   }
 };
 
@@ -1657,6 +1733,118 @@ function interpolate(text: string, params: Params): string {
     const value = params[key];
     return value == null ? match : String(value);
   });
+}
+
+const nodePurposeCopy: Record<string, readonly [string, string, string]> = {
+  "video-helper-suite": [
+    "视频读取、编码与音频封装",
+    "影片讀取、編碼與音訊封裝",
+    "Video loading, encoding and audio muxing"
+  ],
+  "comfyui-gguf": [
+    "GGUF 扩散模型加载",
+    "GGUF 擴散模型載入",
+    "GGUF diffusion model loading"
+  ],
+  "kjnodes": [
+    "模型补丁与 H3 实时预览",
+    "模型補丁與 H3 即時預覽",
+    "Model patches and live H3 previews"
+  ],
+  "ltx-video": [
+    "Sulphur 2 续写与低显存运行",
+    "Sulphur 2 續寫與低顯存執行",
+    "Sulphur 2 continuation and low-VRAM execution"
+  ],
+  "minimax-h3-prompt-writer": [
+    "Gemma 4 素材理解与 H3 提示词",
+    "Gemma 4 素材理解與 H3 提示詞",
+    "Gemma 4 media understanding and H3 prompts"
+  ],
+  "comfyui-multimodal-prompt-nodes": [
+    "Qwen 图片理解与提示词生成",
+    "Qwen 圖片理解與提示詞產生",
+    "Qwen image understanding and prompt generation"
+  ],
+  "comfyui-qwenvl-lora": [
+    "H3 提示词重写 LoRA",
+    "H3 提示詞重寫 LoRA",
+    "H3 prompt rewriting LoRA"
+  ],
+  "inpaint-nodes": [
+    "LaMa 蒙版修补与目标移除",
+    "LaMa 遮罩修補與目標移除",
+    "LaMa masked inpainting and object removal"
+  ],
+  "seedvr2": [
+    "视频超分辨率",
+    "影片超解析度",
+    "Video super-resolution"
+  ],
+  "flashvsr": [
+    "视频超分辨率",
+    "影片超解析度",
+    "Video super-resolution"
+  ],
+  "frame-interpolation": [
+    "RIFE / FILM 视频补帧",
+    "RIFE / FILM 影片補幀",
+    "RIFE / FILM frame interpolation"
+  ],
+  "comfyui-dlss-frame-interpolation": [
+    "DLSS 视频放大、时序增强与补帧",
+    "DLSS 影片放大、時序增強與補幀",
+    "DLSS upscaling, temporal enhancement and interpolation"
+  ],
+  "h3-motion-context": [
+    "继承源视频的运动与音频",
+    "繼承來源影片的運動與音訊",
+    "Continue motion and audio from the source video"
+  ],
+  "h3-continuum": [
+    "长视频分段生成、续写与拼接",
+    "長影片分段產生、續寫與拼接",
+    "Segmented long-video generation, continuation and joining"
+  ],
+  "h3-latent-upscaler": [
+    "H3 音画数据拆分与二次采样",
+    "H3 音畫資料拆分與二次採樣",
+    "H3 audio/video latent splitting and second sampling"
+  ],
+  "minimax-h3-learned-upscaler": [
+    "H3 视频 latent 三维放大",
+    "H3 影片 latent 三維放大",
+    "Learned 3D upscaling of H3 video latents"
+  ],
+  "local-video-studio-h3-av": [
+    "H3 音画数据保存与接续",
+    "H3 音畫資料儲存與接續",
+    "H3 audio/video data storage and continuation"
+  ],
+  "mmh3-ultimate-upscale": [
+    "H3 高分辨率分块放大",
+    "H3 高解析度分塊放大",
+    "Tiled high-resolution H3 upscaling"
+  ],
+  "spectrum-minimax-h3": [
+    "H3 采样加速",
+    "H3 採樣加速",
+    "H3 sampling acceleration"
+  ],
+  "plaguekind-h3-sla": [
+    "旧版 H3 稀疏注意力工作流兼容",
+    "舊版 H3 稀疏注意力工作流程相容",
+    "Compatibility for older sparse-attention H3 workflows"
+  ],
+  "comfyui-gguf-h3": [
+    "H3 Q3 实验模型加载",
+    "H3 Q3 實驗模型載入",
+    "Experimental H3 Q3 model loading"
+  ]
+};
+
+export function settingsNodePurpose(locale: UiLocale | undefined, id: string, fallback: string): string {
+  return nodePurposeCopy[id]?.[locale === "en-US" ? 2 : locale === "zh-TW" ? 1 : 0] ?? fallback;
 }
 
 export function settingsText(

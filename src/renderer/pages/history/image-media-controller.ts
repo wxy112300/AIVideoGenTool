@@ -1,4 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { presentDecodedImage } from "./decoded-presentation";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   imageMediaStateAfterLoad,
@@ -32,6 +33,7 @@ function waitForImagePresentation(
   url: string,
   signal: AbortSignal
 ): Promise<boolean> {
+  if (typeof image.decode === "function") return presentDecodedImage(image, url, signal);
   if (signal.aborted || !image.isConnected) return Promise.resolve(false);
   if (image.currentSrc === url && image.complete && image.naturalWidth > 0) {
     return Promise.resolve(true);

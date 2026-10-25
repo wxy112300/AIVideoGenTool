@@ -32,6 +32,7 @@ export interface ConfirmationDialogOptions {
   confirmationBusy: boolean;
   customNodeLog?: string;
   imageHistoryIds: ReadonlySet<string>;
+  historyItems?: Array<{ id: string; title: string; thumbnail?: string }>;
   t: Translate;
   icon(name: string, className?: string): string;
   escapeHtml(value: unknown): string;
@@ -51,6 +52,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
   const deletionImpact = "deletionImpact" in request ? request.deletionImpact : undefined;
   const deleting = request.kind === "delete-history";
   const deletingBatch = request.kind === "delete-history-batch";
+  const batchItems = deletingBatch ? (options.historyItems ?? []).filter(item => request.assetIds.includes(item.id)) : [];
   const deletingImageVersion = request.kind === "delete-image-version";
   const deletingVideoVersion = request.kind === "delete-video-version";
   const deletingJointAv = request.kind === "delete-joint-av";
@@ -89,7 +91,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
     : deletingVersion
     ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
     : deletingBatch
-    ? t(uiKeys.dialog.deleteHistoryBatchTitle, { count: request.count })
+    ? `${t(uiKeys.history.batch.delete)} ${t(request.historyKind === "video" ? uiKeys.history.videoCount : uiKeys.history.imageProjectCount, { count: request.count })}`
     : deleting
     ? t(deletingImage ? uiKeys.dialog.deleteImageTitle : uiKeys.dialog.deleteVideoTitle, { title: request.title })
     : removingQueueTask
@@ -145,11 +147,12 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
             : t(uiKeys.dialog.clearDraftDescription);
   return `
     <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
-      <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
+      <section class="confirm-dialog${deletingBatch && !deletionImpact ? " confirm-history-batch" : ""}" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
         <div class="confirm-icon" aria-hidden="true">${options.icon("alert-triangle")}</div>
         <div class="confirm-copy">
-          <span class="eyebrow">${t(confirmingPromptCpu ? uiKeys.dialog.resourceWarning : uiKeys.dialog.irreversible)}</span>
+          ${deletingBatch && !deletionImpact ? "" : `<span class="eyebrow">${t(confirmingPromptCpu ? uiKeys.dialog.resourceWarning : uiKeys.dialog.irreversible)}</span>`}
           <h2 id="confirm-title">${options.escapeHtml(title)}</h2>
+          ${deletingBatch && batchItems.length ? `<p class="history-delete-names">${batchItems.slice(0, 2).map(item => options.escapeHtml(item.title)).join(" · ")}${batchItems.length > 2 ? ` … ${request.count}` : ""}</p><div class="history-delete-thumbs">${batchItems.slice(0, 6).map(item => `<span title="${options.escapeHtml(item.title)}">${item.thumbnail ? `<img src="${options.escapeHtml(item.thumbnail)}" alt="">` : options.icon(request.historyKind === "video" ? "film" : "image")}</span>`).join("")}</div>` : ""}
           <p id="confirm-description">${options.escapeHtml(description)}</p>
           ${deletionImpact ? `<p class="confirm-linked-references">${deletionImpact.references.slice(0, 5).map(reference => options.escapeHtml(linkedReferenceLabel(reference))).join("<br>")}</p>${deletionImpact.references.length > 5 ? `<p>${t(uiKeys.dialog.deleteLinkedMore, { count: deletionImpact.references.length - 5 })}</p>` : ""}` : ""}
           ${confirmingPromptCpu
@@ -181,7 +184,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingStrata ? t(uiKeys.dialog.uninstallStrata) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t(uiKeys.history.batch.delete) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingStrata ? t(uiKeys.dialog.uninstallStrata) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingBatch ? t("history.list.deleteCount", { count: request.count }) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingMotionContext ? t(uiKeys.history.page.deleteMotionContext) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

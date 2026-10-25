@@ -3,6 +3,7 @@ import "media-chrome/menu";
 import "media-chrome/lang/zh-CN.js";
 import "media-chrome/lang/zh-TW.js";
 import "./style.css";
+import { mountSharedUi } from "./renderer/shared/ui/runtime";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
 import {
@@ -90,6 +91,8 @@ import {
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 const modalRoot = document.querySelector<HTMLDivElement>("#modal-root")!;
+const disposeSharedUi = mountSharedUi(document.body);
+window.addEventListener("beforeunload", disposeSharedUi, { once: true });
 const rendererEntry = createWindowRendererEntry();
 const rendererDependencies = rendererEntry.dependencies;
 const rendererApplication = rendererDependencies.application;
@@ -317,7 +320,7 @@ const rendererApp = createRendererApp({
   },
   notify: showMessage,
   reportUserAction,
-  renderLegacy: () => renderCoordinator.render()
+  renderLegacy: (beforeCommit) => renderCoordinator.render(beforeCommit)
 });
 
 function initializeRenderCoordinator(): void {
@@ -569,10 +572,11 @@ shellCoordinator = createRendererShellCoordinator({
   requestRender: () => renderCoordinator.requestRender(),
   reportUserAction,
   beforeRenderOverlay: settingsWorkspaceCoordinator.beforeRenderOverlay,
-  renderAdditionalOverlays: () => [upscaleDialogHtml(), settingsWorkspaceCoordinator.installGuideDialogHtml()].join(""),
+  renderAdditionalOverlays: () => [upscaleDialogHtml(), settingsWorkspaceCoordinator.installGuideDialogHtml(), settingsWorkspaceCoordinator.cacheDialogHtml()].join(""),
   bindAdditionalOverlays: () => {
     const cleanup = bindUpscaleDialog();
     settingsWorkspaceCoordinator.bindInstallGuideDialog();
+    settingsWorkspaceCoordinator.bindCacheDialog();
     return cleanup;
   }
 }, comfyRuntime);
@@ -584,6 +588,7 @@ createWorkspaceCoordinator = createCreateWorkspaceCoordinator({
   getCreationMode: () => creationMode,
   setCreationMode,
   getEnvironmentScan: () => settingsWorkspaceCoordinator.getEnvironmentScan(),
+  isEnvironmentScanning: () => settingsWorkspaceCoordinator.isEnvironmentScanning(),
   getPerformanceMetrics: () => performanceMetrics,
   bundledWorkflows,
   workflowCapabilities,

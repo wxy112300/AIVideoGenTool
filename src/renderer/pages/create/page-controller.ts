@@ -11,7 +11,7 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
-import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
+import { bundledWorkflowModelId, isH3TurboEnabled, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
 import { continuumV38MaxDurationSeconds, generationSafetyForTask, h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
@@ -26,12 +26,16 @@ import {
   h3SaveJointAvForLatentSaveMode
 } from "../../../core/h3-latent-save";
 import { resolutionAfterJointAvPreference } from "./view-model";
+import { mountLoraMenu } from "./lora-menu";
+import { mountSortable, moveListItem } from "../../shared/ui/sortable";
+import { isLongVideoPreview, mountGenerationMode } from "./generation-mode";
+import { mountResolutionControl } from "./resolution-control";
 
 let creationModeTransitionRevision = 0;
 let modelSelectionRevision = 0;
 
 export function videoSettingChangeRequiresRender(id: string): boolean {
-  return ["ratio", "fps", "frame-interpolation", "spectrum-mode"].includes(id);
+  return false;
 }
 
 export interface CreatePageControllerOptions {
@@ -49,6 +53,7 @@ export interface CreatePageControllerOptions {
   ): void;
   patchImageDraft(patch: Partial<ImageEditDraft>): void;
   syncEnqueueUi(): void;
+  refreshVideoControls?(): void;
   enableSpectrumByDefaultIfAvailable(mode?: Exclude<CreationMode, "image-edit">): void;
   selectDraftVideo(filename: string): Promise<void>;
   formatTrimTime(seconds: number): string;
@@ -391,13 +396,14 @@ export function mountCreatePageController(
     const shouldSwitchWorkflow = turboStateChanged && currentWorkflowIsBundled;
     options.patchDraft({
       videoLoras,
+      ...(videoLoras.length && state.draft.resolution === 1080 ? { resolution: 768 } : {}),
       steps: turboWillBeEnabled
         ? normalizeH3Steps(state.draft.steps, state.draft.modelId, videoLoras)
         : wasTurboEnabled ? 20 : state.draft.steps,
       spectrumMode: state.draft.spectrumMode,
       workflowPath: shouldSwitchWorkflow ? bundled?.path ?? state.draft.workflowPath : state.draft.workflowPath
     });
-    options.context.requestRender();
+    (options.refreshVideoControls ?? options.context.requestRender)();
     if (turboStateChanged && !currentWorkflowIsBundled) {
       options.context.notify(turboWillBeEnabled
         ? t(uiKeys.create.interaction.customWorkflowTurbo)
@@ -409,10 +415,9 @@ export function mountCreatePageController(
     }
   };
 
-  root.querySelector("#add-video-lora")?.addEventListener("click", async () => {
+  childCleanups.push(mountLoraMenu(root, async (id) => {
     const state = getState();
     if (!state) return;
-    const id = root.querySelector<HTMLSelectElement>("#video-lora-to-add")?.value ?? "";
     const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === id);
     if (!lora || state.draft.videoLoras.some((item) => item.id === id)) return;
     const profile = options.getEnvironmentScan()?.modelProfiles.find((item) => item.id === id);
@@ -425,25 +430,22 @@ export function mountCreatePageController(
       state.draft.videoLoras,
       videoLoraSelection(lora, lora.strength, detectedFilename)
     ));
-  }, { signal });
+  }));
 
-  root.querySelectorAll<HTMLButtonElement>("[data-remove-video-lora]").forEach((button) => {
-    button.addEventListener("click", async () => {
+  const loraList = root.querySelector<HTMLElement>(".create-lora-list");
+  if (loraList) childCleanups.push(mountSortable(loraList, (from, to) => {
+    const state = getState();
+    if (state) void applyVideoLoraStack(moveListItem(state.draft.videoLoras, from, to));
+  }));
+
+  root.addEventListener("click", async (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>("[data-remove-video-lora]");
+      if (!button) return;
       const state = getState();
       const id = button.dataset.removeVideoLora;
       if (!state || !id) return;
       await applyVideoLoraStack(state.draft.videoLoras.filter((lora) => lora.id !== id));
     }, { signal });
-  });
-  root.querySelectorAll<HTMLButtonElement>("[data-move-video-lora]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const state = getState();
-      const id = button.dataset.moveVideoLora;
-      const direction = button.dataset.direction === "up" ? -1 : 1;
-      if (!state || !id) return;
-      await applyVideoLoraStack(reorderVideoLoras(state.draft.videoLoras, id, direction));
-    }, { signal });
-  });
 
   const updateLoraStrength = (id: string, rawValue: string): void => {
     const state = getState();
@@ -452,15 +454,18 @@ export function mountCreatePageController(
     options.patchDraft({
       videoLoras: state.draft.videoLoras.map((lora) => lora.id === id ? { ...lora, strength } : lora)
     });
-    root.querySelector<HTMLInputElement>(`[data-video-lora-strength="${CSS.escape(id)}"]`)!.value = String(strength);
-    root.querySelector<HTMLInputElement>(`[data-video-lora-strength-number="${CSS.escape(id)}"]`)!.value = String(strength);
+    root.querySelectorAll<HTMLInputElement>("[data-video-lora-strength], [data-video-lora-strength-number]").forEach(input => {
+      if ((input.dataset.videoLoraStrength ?? input.dataset.videoLoraStrengthNumber) === id) input.value = String(strength);
+    });
   };
-  root.querySelectorAll<HTMLInputElement>("[data-video-lora-strength]").forEach((input) => {
-    input.addEventListener("input", () => updateLoraStrength(input.dataset.videoLoraStrength ?? "", input.value), { signal });
-  });
-  root.querySelectorAll<HTMLInputElement>("[data-video-lora-strength-number]").forEach((input) => {
-    input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
-  });
+  root.addEventListener("input", event => {
+    const input = event.target as HTMLInputElement;
+    if (input.matches("[data-video-lora-strength]")) updateLoraStrength(input.dataset.videoLoraStrength!, input.value);
+  }, { signal });
+  root.addEventListener("change", event => {
+    const input = event.target as HTMLInputElement;
+    if (input.matches("[data-video-lora-strength-number]")) updateLoraStrength(input.dataset.videoLoraStrengthNumber!, input.value);
+  }, { signal });
 
   root.querySelector<HTMLSelectElement>("#h3-latent-save-mode")?.addEventListener("change", (event) => {
     const h3LatentSaveMode = (event.currentTarget as HTMLSelectElement).value === "all"
@@ -474,7 +479,7 @@ export function mountCreatePageController(
         ? { resolution: resolutionAfterJointAvPreference(1080, h3SaveJointAv) }
         : {})
     });
-      options.context.requestRender();
+      (options.refreshVideoControls ?? options.context.requestRender)();
   }, { signal });
 
   for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
@@ -625,6 +630,7 @@ export function mountCreatePageController(
         { seed: value ? Number(value) : null };
       options.patchDraft(patch);
       options.syncEnqueueUi();
+      if (id !== "resolution") options.refreshVideoControls?.();
       if (videoSettingChangeRequiresRender(id)) {
         options.context.requestRender();
       }
@@ -633,15 +639,17 @@ export function mountCreatePageController(
 
   root.querySelector<HTMLButtonElement>("#clear-seed")?.addEventListener("click", () => {
     options.patchDraft({ seed: null });
-    options.context.requestRender();
+    const input = root.querySelector<HTMLInputElement>("#seed"); if (input) input.value = "";
   }, { signal });
   root.querySelector<HTMLButtonElement>("#random-seed")?.addEventListener("click", () => {
     options.patchDraft({ seed: options.imageEdit.randomSeedValue() });
-    options.context.requestRender();
+    const input = root.querySelector<HTMLInputElement>("#seed"); if (input) input.value = String(getState()?.draft.seed ?? "");
   }, { signal });
 
   const range = root.querySelector<HTMLInputElement>("#duration");
+  childCleanups.push(mountResolutionControl(root, () => getState()?.draft));
   const number = root.querySelector<HTMLInputElement>("#duration-number");
+  childCleanups.push(mountGenerationMode(root, t, options.syncEnqueueUi, options.context.notify));
   const updateDuration = (source: HTMLInputElement, commit = false) => {
     const state = getState();
     if (!state) return;
@@ -658,7 +666,8 @@ export function mountCreatePageController(
       ? state.draft.h3ContinuumSequence.chunkSeconds
       : isMiniMaxH3ContinuumModel(state.draft.modelId) ? 4 : 1;
     const requested = Number.isFinite(value) ? value : minimumDuration;
-    const duration = Math.max(minimumDuration, Math.min(maxDuration, commit ? Math.round(requested * 10) / 10 : requested));
+    const visibleMaximum = Math.min(maxDuration, Number(source.max) || maxDuration);
+    const duration = Math.max(minimumDuration, Math.min(visibleMaximum, commit ? Math.round(requested * 10) / 10 : requested));
     options.patchDraft({ duration });
     options.syncEnqueueUi();
     if (range) range.value = String(duration);
@@ -671,18 +680,21 @@ export function mountCreatePageController(
   };
   range?.addEventListener("input", () => updateDuration(range), { signal });
   number?.addEventListener("input", () => updateDuration(number), { signal });
-  range?.addEventListener("change", () => options.context.requestRender(), { signal });
+  range?.addEventListener("change", () => updateDuration(range, true), { signal });
   number?.addEventListener("change", () => {
     updateDuration(number, true);
-    options.context.requestRender();
   }, { signal });
 
   root.querySelector("#clear-draft")?.addEventListener("click", () => {
+    if (isLongVideoPreview(root)) {
+      root.querySelector("#generation-mode")?.dispatchEvent(new Event("clear-preview"));
+      return;
+    }
     options.requestClearDraftConfirmation();
   }, { signal });
   root.querySelector("#enqueue")?.addEventListener("click", async () => {
     const state = getState();
-    if (!state || options.isEnqueueBusy()) return;
+    if (!state || options.isEnqueueBusy() || isLongVideoPreview(root)) return;
     options.setEnqueueBusy(true);
     options.setEnqueueBusyUi(true);
     try {

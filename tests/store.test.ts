@@ -80,6 +80,23 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("loads old appearance defaults and retains saved preferences across restart", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "appearance-store-"));
+    try {
+      const filename = path.join(directory, "state.json"), state = createDefaultState();
+      delete state.settings.appearance;
+      await fs.writeFile(filename, JSON.stringify(state));
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.appearance).toEqual({ accent: "azure", palette: "graphite", depth: "1", motion: "system" });
+      const appearance = { accent: "orange", palette: "apple", depth: "2", motion: "standard" } as const;
+      await store.update((current) => { current.settings.appearance = appearance; });
+      const restarted = await new JsonStore(filename).load();
+      expect(restarted.settings.appearance).toEqual(appearance);
+      expect(restarted.draft).toEqual(state.draft);
+      expect(restarted.history).toEqual(state.history);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   it.each([undefined, "bad", "off", "low", "medium", "high", "xhigh"])("normalizes and persists Strata reasoning (%s)", async value => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "strata-reasoning-store-"));
     try {

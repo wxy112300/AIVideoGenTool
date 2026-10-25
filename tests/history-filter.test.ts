@@ -4,6 +4,7 @@ import {
   filterHistoryAssets,
   filterImageHistoryProjects,
   historyFilterSignature,
+  historyFilterForKind,
   historyTagNames,
   normalizeHistoryFilter,
   normalizeHistoryTags
@@ -52,6 +53,28 @@ const image = (id: string, overrides: Partial<ImageHistoryProject> = {}): ImageH
 });
 
 describe("history curation filters", () => {
+  it("hides video-only conditions in images while retaining the video filter", () => {
+    const videoFilter = normalizeHistoryFilter({ minDuration: 30, sort: "duration-desc", modelIds: ["qwen"] });
+    expect(historyFilterForKind(videoFilter, "image")).toMatchObject({ minDuration: null, sort: "newest", modelIds: ["qwen"] });
+    expect(videoFilter).toMatchObject({ minDuration: 30, sort: "duration-desc" });
+  });
+  it("migrates old single-model filters and keeps explicit all-model selection", () => {
+    expect(normalizeHistoryFilter({ modelId: " h3 " }).modelIds).toEqual(["h3"]);
+    expect(normalizeHistoryFilter({ modelId: "h3", modelIds: [] }).modelIds).toEqual([]);
+    expect(normalizeHistoryFilter({ modelIds: ["qwen", " h3 ", "qwen", ""] }).modelIds).toEqual(["qwen", "h3"]);
+    expect(historyFilterSignature({ modelIds: ["h3", "qwen"] })).toBe(historyFilterSignature({ modelIds: ["qwen", "h3"] }));
+    expect(normalizeHistoryFilter({ modelId: "h3" })).not.toHaveProperty("modelId");
+  });
+
+  it("matches any selected model while preserving tags as an intersection", () => {
+    const records = [video("a", { modelId: "h3", tags: ["scene"] }), video("b", { modelId: "other", tags: ["scene"] }), video("c", { modelId: "qwen", tags: ["scene"] })];
+    expect(filterHistoryAssets(records, { modelIds: ["h3", "qwen"], tags: ["scene"] }).map(item => item.id)).toEqual(["c", "a"]);
+    const project = image("a");
+    project.versions.push({ ...project.versions[0]!, id: "a-v2", versionNumber: 2, modelId: "moss-image-sft" });
+    expect(filterImageHistoryProjects([project, image("b")], { modelIds: ["moss-image-sft"] }).map(item => item.id)).toEqual(["a"]);
+    expect(filterImageHistoryProjects([project], { modelId: "qwen" }).map(item => item.id)).toEqual(["a"]);
+    expect(filterImageHistoryProjects([project], { modelIds: ["missing"] })).toEqual([]);
+  });
   it("filters favorites, rating range, duration, and model together", () => {
     const records = [
       video("a", { favorite: true, rating: 5, duration: 12, modelId: "h3" }),
@@ -125,7 +148,7 @@ describe("history curation filters", () => {
 
   it("normalizes invalid persisted filter values", () => {
     expect(normalizeHistoryFilter({ minRating: 9 as never, sort: "unknown" as never })).toEqual({
-      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelId: "", tags: [], excludedTags: [], sort: "newest"
+      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelIds: [], tags: [], excludedTags: [], sort: "newest"
     });
   });
 });

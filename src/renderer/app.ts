@@ -3,7 +3,7 @@ import { createRenderLifecycle, type RenderLifecycle } from "./lifecycle";
 import type { RendererCleanup, RendererContext } from "./contracts";
 
 export interface RendererAppOptions extends RendererContextOptions {
-  renderLegacy(): void;
+  renderLegacy(beforeCommit: () => void): void;
 }
 
 export interface RendererApp {
@@ -16,13 +16,23 @@ export interface RendererApp {
 export function createRendererApp(options: RendererAppOptions): RendererApp {
   const lifecycle = createRenderLifecycle();
   const context = createRendererContext(options);
+  let awaitingComposition = false;
 
   return {
     context,
     lifecycle,
     render() {
-      lifecycle.beginRender();
-      options.renderLegacy();
+      if (context.getRoute().page === "create" && context.root.querySelector("[data-rich-composing]")) {
+        if (!awaitingComposition) {
+          awaitingComposition = true;
+          context.root.addEventListener("compositionend", () => { awaitingComposition = false; this.render(); }, { once: true });
+        }
+        return;
+      }
+      if (context.getRoute().page === "create") context.root.dataset.createScrollTop ??= String(window.scrollY);
+      // The old page remains interactive during departure and async loading.
+      // Its listeners are disposed only when the coordinator replaces its DOM.
+      options.renderLegacy(() => lifecycle.beginRender());
     },
     addPageCleanup(cleanup) {
       lifecycle.addCleanup(cleanup);

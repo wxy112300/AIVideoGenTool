@@ -16,6 +16,8 @@ export interface CreateModelOptionViewModel {
   unavailable: boolean;
   modeLabel: string;
   suffix: string;
+  group?: string;
+  description?: string;
 }
 
 interface CreateFragmentRenderOptions {
@@ -77,40 +79,41 @@ export function renderH3ReferenceSlotsMarkup(
     referenceOrdinals.set(slot.id, typeCounts[slot.mediaType]);
   });
   return `
-    ${slots.length ? `<div class="h3-reference-grid">${slots.map((slot, index) => `
-      <article class="h3-reference-slot ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}">
-        <div class="h3-reference-slot-head">
-          <div><strong>${t(uiKeys.create.fragments.referenceSlot, { index: index + 1 })}</strong><span>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt; · ${t(slot.mediaType === "video" ? uiKeys.create.fragments.referenceVideo : uiKeys.create.fragments.referenceImage)}${imageDimensionsSuffix(slot)}</span></div>
-          <div class="h3-reference-slot-actions">${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<select class="h3-slot-type" data-h3-slot-type="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.referenceSlot, { index: index + 1 })} ${t(uiKeys.create.fragments.mediaType)}"><option value="image" ${slot.mediaType === "image" ? "selected" : ""}>${t(uiKeys.create.fragments.image)}</option><option value="video" ${slot.mediaType === "video" ? "selected" : ""}>${t(uiKeys.create.fragments.video)}</option></select>`}<button class="secondary" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button">${t(uiKeys.create.fragments.insertTag)}</button>${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<button class="icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.removeSlot)} ${index + 1}" title="${t(uiKeys.create.fragments.removeSlot)}">${icon("x")}</button>`}</div>
+    <div class="create-reference-list">${slots.map((slot, index) => `
+      <article class="create-reference-card ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}">
+        <div class="create-slot-heading">
+          <span class="create-slot-number">${index + 1}</span><strong>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt;</strong><span class="create-slot-dimensions">${imageDimensionsSuffix(slot).replace(/^ · /u, "")}</span>
+          <div class="create-slot-actions">${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<select class="h3-slot-type" data-h3-slot-type="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.referenceSlot, { index: index + 1 })} ${t(uiKeys.create.fragments.mediaType)}"><option value="image" ${slot.mediaType === "image" ? "selected" : ""}>${t(uiKeys.create.fragments.image)}</option><option value="video" ${slot.mediaType === "video" ? "selected" : ""}>${t(uiKeys.create.fragments.video)}</option></select>`}<button class="ghost icon-button" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button" aria-label="${t(uiKeys.create.fragments.insertTag)}" title="${t(uiKeys.create.fragments.insertTag)}">${icon("text-cursor-input")}</button>${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<button class="ghost icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.removeSlot)} ${index + 1}" title="${t(uiKeys.create.fragments.removeSlot)}">${icon("trash-2")}</button>`}</div>
         </div>
         ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video"
             ? `<div class="h3-reference-locked-source"><span class="drop-icon">${icon("video")}</span><div><strong>${t(uiKeys.create.fragments.motionContextSourceSlot)}</strong><span>${t(uiKeys.create.fragments.motionContextSourceDescription)}</span>${slot.mediaPath ? `<code title="${escapeHtml(slot.mediaPath)}">${escapeHtml(slot.mediaPath.split(/[\\/]/u).pop() ?? slot.mediaPath)}</code>` : ""}</div></div>`
           : slot.mediaType === "video" && slot.mediaPath
-            ? `<div class="drop-zone h3-reference-drop has-image h3-video-reference" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(uiKeys.create.fragments.replaceReferenceVideo)}">
+            ? `<div class="create-slot-media create-slot-video" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(uiKeys.create.fragments.replaceReferenceVideo)}">
               <video controls playsinline preload="metadata" src="studio-media://draft/reference-video?source=${encodeURIComponent(slot.mediaPath)}" aria-label="${t(uiKeys.create.fragments.referenceVideo)} ${referenceOrdinals.get(slot.id)}"></video>
-              <button class="image-remove button-with-icon" data-clear-h3-slot="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.deleteReferenceVideo)} ${referenceOrdinals.get(slot.id)}" title="${t(uiKeys.create.fragments.deleteReferenceVideo)}">${icon("x")}<span>${t(uiKeys.create.fragments.deleteReferenceVideo)}</span></button>
+              <div class="create-media-actions"><button type="button" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="video">${icon("refresh-cw")}${t(uiKeys.create.mediaReplace)}</button><button type="button" data-clear-h3-slot="${escapeHtml(slot.id)}">${icon("eraser")}${t(uiKeys.create.mediaClear)}</button></div>
             </div>`
           : slot.mediaPath
-            ? `<div class="h3-reference-media-shell">
-                <button class="drop-zone h3-reference-drop has-image" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(uiKeys.create.fragments.replaceReferenceImage)}">
-                  <img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="${t(uiKeys.create.fragments.referenceImage)} ${index + 1}${t(uiKeys.create.fragments.referencePreview)}"><span class="image-label">${t(uiKeys.create.fragments.clickOrDropReplaceImage)}</span>
+            ? `<div class="create-slot-media" style="--media-ratio:${slot.width && slot.height ? slot.width / slot.height : 16 / 9};--media-r:${slot.width && slot.height ? slot.width / slot.height : 16 / 9}">
+                <button class="drop-zone has-image create-frame-surface" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(uiKeys.create.fragments.replaceReferenceImage)}" aria-label="${t(uiKeys.create.mediaReplace)} Picture ${referenceOrdinals.get(slot.id)}">
+                  <img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="${t(uiKeys.create.fragments.referenceImage)} ${index + 1}${t(uiKeys.create.fragments.referencePreview)}">
                 </button>
-                <button class="image-remove button-with-icon" data-clear-h3-slot="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.deleteReferenceImage)} ${referenceOrdinals.get(slot.id)}" title="${t(uiKeys.create.fragments.deleteReferenceImage)}">${icon("x")}<span>${t(uiKeys.create.fragments.deleteReferenceImage)}</span></button>
+                <div class="create-media-actions"><button type="button" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="image">${icon("refresh-cw")}${t(uiKeys.create.mediaReplace)}</button><button type="button" data-clear-h3-slot="${escapeHtml(slot.id)}">${icon("eraser")}${t(uiKeys.create.mediaClear)}</button></div>
               </div>`
-            : `<button class="drop-zone h3-reference-drop" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}">
-                <span class="drop-icon">${icon(slot.mediaType === "video" ? "video" : "image")}</span><strong>${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}</strong><span>${slot.mediaType === "video" ? "MP4、MOV、WEBM、MKV" : "PNG、JPG、WEBP、BMP"}</span>
+            : `<button class="create-empty-slot" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}">
+                ${icon(slot.mediaType === "video" ? "video" : "image-plus")}<span>${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}</span>
               </button>`}
-        <label>${t(uiKeys.create.fragments.referenceRole)}<select data-h3-slot-role="${escapeHtml(slot.id)}" ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "disabled" : ""}>${h3ReferenceSlotRoleOptions(slot.role, h3ReferenceRoleLabels)}</select></label>
-        <label>${t(uiKeys.create.fragments.note)}<input data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="${t(uiKeys.create.fragments.notePlaceholder)}"></label>
-      </article>`).join("")}</div>` : `
-      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>${t(uiKeys.create.fragments.emptyTitle)}</strong><span>${t(uiKeys.create.fragments.emptyDescription)}</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}${t(uiKeys.create.fragments.addFirstSlot)}</button></div>`}`;
+        <div class="create-slot-fields"><label><select aria-label="${t(uiKeys.create.fragments.referenceRole)}" data-h3-slot-role="${escapeHtml(slot.id)}" ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "disabled" : ""}>${h3ReferenceSlotRoleOptions(slot.role, h3ReferenceRoleLabels)}</select></label>
+        <label><input aria-label="${t(uiKeys.create.fragments.note)}" data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="${t(uiKeys.create.fragments.notePlaceholder)}"></label></div>
+      </article>`).join("")}${slots.length < 12 ? `<button type="button" class="create-add-tile" id="${slots.length ? "add-h3-reference-slot" : "add-h3-reference-slot-empty"}" data-add-h3-slot>${icon("plus")}<span><strong>${t(slots.length ? uiKeys.create.addSlot : uiKeys.create.fragments.addFirstSlot)}</strong><small>${slots.length}/12 · ${t(uiKeys.create.mediaAddHint)}</small></span></button>` : ""}</div>`;
 }
 
 export function renderCreateModelOptions(
   modelOptions: ReadonlyArray<CreateModelOptionViewModel>,
   escapeHtml: EscapeHtml
 ): string {
-  return modelOptions
-    .map((option) => `<option value="${escapeHtml(option.id)}" ${option.selected ? "selected" : ""} ${option.unavailable ? "disabled" : ""}>${escapeHtml(option.name)}${option.modeLabel}${option.suffix}</option>`)
-    .join("");
+  const renderOption = (option: CreateModelOptionViewModel) => `<option value="${escapeHtml(option.id)}" data-note="${escapeHtml([option.modeLabel, option.suffix, option.description].map(value => value?.replace(/^[\s·]+/u, "")).filter(Boolean).join(" · "))}" ${option.selected ? "selected" : ""} ${option.unavailable ? "disabled" : ""}>${escapeHtml(option.name)}</option>`;
+  return [...new Set(modelOptions.map(option => option.group))].map(group => {
+    const content = modelOptions.filter(option => option.group === group).map(renderOption).join("");
+    return group ? `<optgroup label="${escapeHtml(group)}">${content}</optgroup>` : content;
+  }).join("");
 }

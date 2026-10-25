@@ -31,7 +31,9 @@ import {
   promptOperationIsActive
 } from "../core/prompt-runtime-state";
 import { preserveLocalCreationDrafts } from "../core/creation-drafts";
+import { structurallyEqual } from "../core/structural-equal";
 import { updateStrataInstallProgress } from "./pages/settings/strata-preparation";
+import { updateDependencyGitProgress } from "./pages/settings/dependency-presentation";
 import type {
   RendererApplicationApi,
   RendererEventsApi
@@ -75,7 +77,7 @@ function isEditingFormControl(): boolean {
   const activeElement = document.activeElement;
   return activeElement instanceof HTMLInputElement ||
     activeElement instanceof HTMLTextAreaElement ||
-    activeElement instanceof HTMLSelectElement;
+    activeElement instanceof HTMLSelectElement || activeElement instanceof HTMLElement && activeElement.isContentEditable;
 }
 
 function updateImageAssetLibraryProgress(progress: ImageAssetLibraryProgress, t: Translate): void {
@@ -296,6 +298,12 @@ export function registerRendererEvents(
     }),
     options.events.onStateChanged((nextState) => {
       const previousState = options.getState();
+      const appearanceOnly = previousState !== undefined &&
+        !structurallyEqual(previousState.settings.appearance, nextState.settings.appearance) &&
+        structurallyEqual(
+          { ...previousState, settings: { ...previousState.settings, appearance: undefined } },
+          { ...nextState, settings: { ...nextState.settings, appearance: undefined } }
+        );
       const queueStructureStable = options.getPage() === "queue" &&
         previousState !== undefined &&
         queueLayoutSignature(previousState) === queueLayoutSignature(nextState);
@@ -315,6 +323,19 @@ export function registerRendererEvents(
       options.setState(preserveLocalImageDraft && previousState
         ? { ...localState, imageDraft: previousState.imageDraft }
         : localState);
+      // setState applies root theme attributes; preserve controls, focus and open
+      // surfaces when the broadcast contains no page data changes.
+      if (appearanceOnly) return;
+      const visibleDraftUnchanged = previousState && (options.getCreationMode() === "image-edit"
+        ? structurallyEqual(previousState.imageDraft, options.getState()?.imageDraft)
+        : structurallyEqual(previousState.draft, options.getState()?.draft));
+      // A save acknowledgement contains the draft already shown by Create.
+      // Replacing the page here interrupts sliders and repeats explicit edits.
+      if (options.getPage() === "create" && previousState && visibleDraftUnchanged &&
+        structurallyEqual(previousState.settings, nextState.settings) &&
+        previousState.queueRunning === nextState.queueRunning &&
+        structurallyEqual(previousState.queue, nextState.queue) &&
+        !historyChanged && !imageHistoryChanged) return;
       const liveTaskIds = new Set(nextState.queue.map((task) => task.id));
       for (const taskId of queueProgressRevisions.keys()) {
         if (!liveTaskIds.has(taskId)) queueProgressRevisions.delete(taskId);
@@ -451,6 +472,7 @@ export function registerRendererEvents(
     }),
     options.events.onDependencyInstallLog((progress) => {
       const log = options.appendDependencyInstallLog(progress);
+      if (progress.kind === "custom-node") updateDependencyGitProgress(`${progress.kind}:${progress.id}`, log);
       if (progress.kind === "python-runtime" && progress.id === "strata" && progress.progress) {
         updateStrataInstallProgress(progress.progress, options.getState()?.settings.uiLocale ?? "zh-CN");
       }

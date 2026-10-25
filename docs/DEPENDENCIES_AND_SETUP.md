@@ -46,6 +46,8 @@ Agent在64GB/4090上已逐档验证32K基础工具、64K GUI、128K/262144原生
 
 ## 2. 五种不同的“已安装”
 
+FastH3 Omni 的 ComfyUI 原生工作流包含 `ModelAttentionBackend` 和 `BlockSparseAttention`：固定 VSA10 与 Comfy Kitchen dense fallback。无需为这条路径另装 FastVideo 服务；必须继续区分核心 schema、所选 Python 的 GPU 内核可用性和日志中实际 sparse producer。模型被扫描到或八步任务成功入队不代表加速已经生效。
+
 设置 → 路径 → 缓存管理的原有“清理缓存”也处理历史软件残留，不要求重新下载安装。统计覆盖已确认归属的 Strata 非当前版本／备份／失败暂存／软件引擎缓存、所选 ComfyUI 的节点和 runtime 备份，以及独立 Agent 的旧 npm 包／下载／私有构建缓存；不扫描其他磁盘或修改当前软件。仍在安装时不进入软件清理；跨进程租约采用禁止交接模式，Strata／Agent 正在运行则跳过并说明，不为清理而卸载模型。不停止外部进程；清理前复检当前路径、来源记录、真实包含关系及本地数据。模型、配置、数据库、会话、有效pack与未知文件不能作为普通缓存删除，含此类数据的旧副本保留并显示原因；缓存清理不把旧副本的数据写入当前节点。目录／字节统计、进度与部分失败继续显示在原缓存面板及日志。软件清理前后不修改草稿、queue、History 或偏好设置。
 
 Strata 的应用管理安装可在安装按钮右侧三角菜单选择“卸载”，确认后永久删除当前软件目录（含独立 `.venv`）；共享模型、独立用户数据与目标以外的未知目录不删除。未安装、手动目录或未知归属不提供卸载；安装中与生成/提示词忙碌时禁止操作，后台在删除前复检归属、真实路径及模型根重叠。软件目录中的本地修改不保留，卸载后可一键重装；只离线复扫，不修改 ComfyUI Python、不重启 ComfyUI。更新产生的旧软件由成功更新事务清理，不以卸载代替更新收尾。
@@ -165,7 +167,7 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 
 当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、ComfyUI Qwen-VL LoRA、MiniMax H3 Prompt Writer、H3 Motion Context、H3 Learned Latent Upscaler、MMH3 Ultimate Upscale 和 Spectrum。Learned Latent Upscaler 与 MMH3 Ultimate Upscale 只在用户点击对应卡片时把 catalog 固定的 commit 克隆到当前所选 ComfyUI，不随应用分发，也不进入批量补齐；模型权重仍由用户通过模型卡片来源链接自行下载。MMH3 当前只是 1440p 的实验性时空分块候选，catalog 静态登记不解除 UI/队列安全门；必须继续通过 `/object_info`、RTX 4090 真实 smoke、显存与接缝检查。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准；其中 `priority` 是设置页的稳定显示/批量安装顺序，数值越小越优先。新增节点必须根据通用程度、主链路影响和实际使用频率填写优先级：视频主链路与通用节点在前，提示词/图片/后处理功能居中，特定模式和实验性节点在后；未知旧条目自动排到末尾。
 
-节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。远端 Release 只作为“最新发布”信息展示，不参与 `updateAvailable`、兼容性颜色或批量安装选择；非版本标签会被忽略。可执行更新只由应用 catalog 中随版本发布的推荐版本、最低兼容线和兼容修复规则决定。
+节点目录中的 `releaseSource: "github-release"` 启用上游版本查询：结合对应仓库的 GitHub 稳定发布与通过包名、仓库身份校验的 Comfy Registry；没有正式发布时读取该仓库声明的源码版本，数值悬停标明来源。成功观测按仓库及代理缓存 6 小时，手动重新扫描使缓存失效；失败不冒用 catalog 值，也不缓存失败结果。远端版本只作为“最新”信息，不参与 `updateAvailable`、兼容性颜色或批量安装选择。可执行更新仍由应用 catalog 推荐版本、最低兼容线和兼容修复规则决定。
 
 工作流来源元数据集中在 `src/core/workflow-metadata.ts`。它覆盖 `workflows/` 下的全部 API JSON，记录 `/prompt` schema、推荐 ComfyUI 核心版本、使用的节点包和上游来源；API JSON 本身不放额外顶层字段，避免被 ComfyUI 当成节点解析。
 
@@ -237,8 +239,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 - 设置中的 H3 policy 在任务等待时跟随保存后的 dense attention（Sage、Sage-Triton、PyTorch、Comfy Kitchen）、sparse attention（Auto、关闭、Sol-Attention、原生 SLA、未验证即拒绝的 VSA）、`compatibility/native` runtime 和 `auto/disabled` Comfy compiler；任务开始后冻结本次执行。执行时按实时 `/object_info` 核对所选 ComfyUI 节点的精确输入 schema；显存、async offload、compiler 和最终视频 VAE 不会跨工作流或跨正在执行的任务泄漏。
 - 应用生成的 Spectrum H3 图保留第一遍自适应预测，但默认关闭 `offline_smoothing_replay`。该回放会额外保留多 GiB H3 特征并重新装载模型，在 0.35 + RTX 4090 动态显存配置下可能造成共享 GPU/系统内存压力；手工图仍可显式开启，不能把第一遍进度误认为整项任务完成。
 - PDD FL2VA/Ref2VA 是普通 `LoraLoaderModelOnly` LoRA，固定 8 steps、Euler/Simple、video shift `12`、audio shift `3`、CFG `1.0`。当前 catalog 只接受与 `minimax_h3_fl2va_pruned_int8_convrot.safetensors` 或 `minimax_h3_ref2va_pruned_int8_convrot.safetensors` 匹配的 `*_Acc-8Step_pruned_comfy.safetensors`；[固定来源提交](https://huggingface.co/Kijai/MiniMax-H3-experimental/commit/f94b1bcc9442e531b73e0ee819ddfc3656072648) 与[原生 loader/采样参考](https://github.com/Jalen-Brunson/ComfyUI-MiniMax-H3-PDD-Acc/blob/main/README.md)只用于核对文件和 recipe。权重仍由用户管理，本轮不会自动下载，也没有新增最终视频 VAE。
-- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐节点版本为 `v0.6.2`（`v0.6` 增加手工 Chain 自动串联、`segments` 和 Clear latents，`v0.6.1` 增加接口同源保护，`v0.6.2` 修复旧画布空 `segments`），要求 ComfyUI `0.34.0+`；`v0.3.1` 继续作为 ComfyUI `0.32/0.33` 的最低兼容回退线，修复旧 H3 layout 变化并保留 Ref2VA、latent 和音频连续能力。
-- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。v0.5 以来的 Load 0 是首个 clip 的无 latent context，正数 index 读取精确 slot，Chain 只用于手工画布串联；本应用构造的 API 工作流固定使用四个基础节点和显式正数 Slot 1，不依赖 Chain，也不需要删除并重新添加节点。上游迁移说明只适用于手工保存且 widget 位置来自旧节点 schema 的 ComfyUI 画布。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
+- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐节点版本为 `v0.7.1`，要求 ComfyUI `0.34.0+`、Python `3.10+`，没有新增独立 pip 依赖；`v0.3.1` 继续作为旧核心的最低兼容回退线。v0.7 新增实验性的 Join Match、Refine Blend、Sigmas Tail；v0.7.1 校正自动匹配、精简 Blend 参数，并让 Save 通过 `ui.latents` 回报文件、Load 可选读取 input。应用仍只使用原有四个基础节点，新实验节点不随推荐版本变更自动启用。
+- Motion Context 工作流保留 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`；上游 v0.7 的音频建议已改为 18，本次推荐升级不改变现有图的显式参数，后续需独立生成对比。Load 默认仍是 `stock_format=false`、`folder=output`；Load 0 是首个 clip 的无 latent context，正数 index 读取精确 slot。应用图固定使用四个基础节点和显式正数 Slot 1，不依赖 Chain，也不需要删除并重新添加节点。上游画布迁移说明只适用于旧 widget 位置。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
 - LightX2V Turbo、Cinema、Better Human Motion、Camera Motion、Realism People 和 AfterMidnight 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。当前 FL2VA 默认使用官方 LightX2V v1.2 768p 4-step（strength 1.0、video shift 6、audio shift 3、Euler），Spectrum `v0.2.6+` 仍需按任务做同 Seed 对照。
 - 普通 H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.42.3`；推荐版本是更新提示，不是离线入队的硬性阻挡。FastH3 Omni 的完整 PDD checkpoint 独立要求 `v0.42.0+`；官方 v0.42.0 已支持 `pdd_steps` 的检测和完整输出 head bank 加载，不再误用 0.42.1 阻塞 0.42.0。当前支持的 Turbo 权重包括官方 v1.2 768p 4-step、v1.0 8-step 和 Ref2V 4-step，均放入所选 ComfyUI 的 `models/loras`，不要把它们当成独立基础模型。旧 ckpt850 EMA、v0.1 FL2VA、旧 v1.0 768p 和 PinkFluffyBunny 已从新任务目录移除；历史只保留名称快照，编辑历史时不会带入创作页；AfterMidnight v1.2 仅用于 Ref2VA，不可移植到 FL2VA。
 - H3 视频 VAE 的编码与解码支持 `minimax_h3_video_vae_fp16.safetensors` 基线和官方 `minimax_h3_video_vae_int8_convrot.safetensors`。设置中的 `自动` 在下一条尚未开始的 H3 任务领取时优先选择已安装的 INT8 ConvRot；缺少该文件时回退到 FP16，明确选择的后端缺失时也回退到另一份已安装 VAE。两者都缺失时设置禁用，H3 不能入队；正在计算的任务不会因设置变化而改用另一后端。官方 ConvRot 加速还要求目标 ComfyUI Python 中的 `comfy-kitchen==0.2.39` CUDA backend 已通过运行时探针验证。
@@ -254,6 +256,7 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 ### 图片模型与工具
 
 - 图片模型有独立的扩散模型、编码器和 VAE 组件。
+- MOSS SFT / PornMaster V1 使用原生 MOSS 文生图路径，两个扩散 checkpoint 共用 Qwen3.5 9B 编码器与 small FLUX.2 VAE；精确文件名、下载来源和哈希以 Settings / catalog 为准，不自动下载。支持自然语言与 JSON 布局，不要求第三方编辑节点；参考编辑需要另外的编辑权重。选型与未验证边界见 [MOSS 接入记录](tasks/2026-10-21-moss-integration/evidence/selection.md)。
 - Qwen 多图/Canvas 标记会影响实际图片输入槽数量；workflow adapter 和 Create 限制必须一致。
 - 图片任务同样先离线入队检查，执行时再验证节点。
 - Qwen 2511 局部融合修复及其专属 Crop & Stitch 节点已退出活动目录；仅保留历史名称和显式卸载身份。软件卸载按节点卸载规则删除，不额外备份源码；共享2511权重和普通编辑路线保留，Qwen2.1 Lighting Blend/Fix仍在原有LoRA入口选择。

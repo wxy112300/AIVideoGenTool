@@ -25,6 +25,7 @@ import {
 import { syncQueueVideoInputPaths } from "../../src/core/queue.js";
 import { createHistoryCoverCacheKey } from "../../src/core/history-cover.js";
 import { historyFileCandidates } from "../../src/core/history-media.js";
+import { historyVersionOutputFiles } from "../../src/core/history-output-files.js";
 import { validateNativeAvContinuationArtifact } from "../../src/core/h3-continuation-artifact.js";
 import { resolveNativeAvArtifactFilePath } from "../../src/core/native-av-artifact-paths.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
@@ -328,12 +329,10 @@ export class HistoryQueryService {
 
   async restoreHistoryFileSizes(): Promise<void> {
     const current = this.deps.store.get();
-    const files = current.history.flatMap((asset) => asset.versions.flatMap((version) => [
-      ...version.files,
-      ...(version.h3ContinuationData?.artifact
-        ? [version.h3ContinuationData.artifact.manifest, version.h3ContinuationData.artifact.payload]
-        : [])
-    ]));
+    const files = [
+      ...current.history.flatMap((asset) => [...asset.files, ...asset.versions.flatMap(historyVersionOutputFiles)]),
+      ...current.imageHistory.flatMap((project) => project.versions.map((version) => version.file))
+    ];
     const paths = [...new Set(files.map((file) => file.absolutePath).filter((value): value is string => Boolean(value)))];
     const sizes = new Map<string, number>();
     await Promise.all(paths.map(async (filename) => {
@@ -344,14 +343,18 @@ export class HistoryQueryService {
     await this.deps.store.update((state) => {
       for (const asset of state.history) {
         for (const version of asset.versions) {
-          for (const file of version.files) {
+          for (const file of historyVersionOutputFiles(version)) {
             if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
           }
-          const artifact = version.h3ContinuationData?.artifact;
-          if (!artifact) continue;
-          for (const file of [artifact.manifest, artifact.payload]) {
-            if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
-          }
+        }
+        for (const file of asset.files) {
+          if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
+        }
+      }
+      for (const project of state.imageHistory) {
+        for (const version of project.versions) {
+          const file = version.file;
+          if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
         }
       }
     });

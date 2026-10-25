@@ -1,5 +1,5 @@
 import type { CatalogModelEntry } from "../../types.js";
-import { H3_BASE_RESOLUTIONS } from "../../../video-resolution.js";
+import { H3_BASE_RESOLUTIONS, H3_CUSTOM_RESOLUTION_RANGE } from "../../../video-resolution.js";
 import { H3_MAX_DURATION_SECONDS, H3_MAX_GENERATED_FRAMES } from "../../../h3-temporal.js";
 import {
   h3Fl2vaAudioVae,
@@ -29,6 +29,7 @@ export const minimaxH3Fl2vaInt4: CatalogModelEntry = {
       supportsSpectrum: true,
       maxDurationSeconds: H3_MAX_DURATION_SECONDS,
       maxGeneratedFrames: H3_MAX_GENERATED_FRAMES,
+      customResolution: H3_CUSTOM_RESOLUTION_RANGE,
       resolutions: H3_BASE_RESOLUTIONS
     },
     scan: {

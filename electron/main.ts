@@ -52,6 +52,7 @@ import {
   interrupt
 } from "./services/comfy-ui.js";
 import { getPerformanceMetrics } from "./services/performance.js";
+import { readComfyRuntimeMemory } from "./services/comfy-runtime-memory.js";
 import { getApplicationLogger, safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
 import { comfyRuntimeState } from "../src/infrastructure/comfy-runtime-state.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
@@ -670,6 +671,7 @@ app.whenReady().then(async () => {
     restartLocalService,
     freeMemory,
     getPerformanceMetrics,
+    readComfyRuntimeMemory,
     scanEnvironment,
     settingsForTask: comfyUiSettingsForQueueTask
   });

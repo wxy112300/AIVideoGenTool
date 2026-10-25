@@ -3,7 +3,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { renderIcons } from "../../shared/icons";
 
-export type QueueMenuAction = "duplicate" | "promote" | "render-through-here" | "randomize-seed";
+export type QueueMenuAction = "duplicate" | "promote" | "render-through-here" | "randomize-seed" | "remove";
 
 export interface QueueActionMenuOptions {
   icon(name: string, className?: string): string;
@@ -18,7 +18,7 @@ function menuButton(
   action: QueueMenuAction,
   disabled = false
 ): string {
-  return `<button type="button" role="menuitem" data-queue-menu-action="${action}"${disabled ? " disabled" : ""}><span class="context-icon">${icon}</span><span><strong>${label}</strong></span></button>`;
+  return `<button type="button" role="menuitem" class="${action === "remove" ? "destructive" : ""}" data-queue-menu-action="${action}"${disabled ? " disabled" : ""}><span class="context-icon">${icon}</span><span><strong>${label}</strong></span></button>`;
 }
 
 export function mountQueueActionMenu(
@@ -63,7 +63,7 @@ export function mountQueueActionMenu(
       menuButton(options.icon("copy"), context.t(uiKeys.queue.card.duplicate), "duplicate"),
       waiting
         ? menuButton(
-            options.icon("arrow-up"),
+            options.icon("arrow-up-to-line"),
             context.t(uiKeys.queue.card.promote),
             "promote",
             !options.canPromote(taskId)
@@ -71,14 +71,16 @@ export function mountQueueActionMenu(
         : "",
       waiting
         ? menuButton(
-            options.icon("pause"),
+            options.icon("flag"),
             context.t(uiKeys.queue.card.renderThroughHere),
             "render-through-here"
           )
         : "",
       hasSeed
-        ? menuButton(options.icon("refresh-cw"), context.t(uiKeys.queue.card.randomizeSeed), "randomize-seed")
-        : ""
+        ? menuButton(options.icon("dices"), context.t(uiKeys.queue.card.randomizeSeed), "randomize-seed")
+        : "",
+      '<div class="queue-menu-separator" role="separator"></div>',
+      menuButton(options.icon("trash-2"), context.t(uiKeys.queue.card.remove), "remove")
     ].join("");
 
     menu.style.left = "0px";

@@ -1,3 +1,5 @@
+import { mountAppearanceSettings } from "./appearance";
+import { renderSettingsCacheDialog } from "./cache-dialog";
 import type {
   AppCacheClearResult,
   AppCacheSnapshot,
@@ -26,7 +28,9 @@ import {
 } from "../../../core/prompt-models";
 import { modelCatalog } from "../../../core/catalog";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
-import { structurallyEqual } from "../../../core/structural-equal";
+import { settingsChangedKeys } from "../../../core/settings-changes";
+import { settingsChangeSummary } from "./change-summary";
+import { animateUi } from "../../shared/ui/motion";
 import { BUILTIN_VIDEO_LORAS } from "../../../core/video-loras";
 import { h3AutoPromptSeeds } from "../../../core/prompts/h3/auto-seeds";
 import type {
@@ -77,6 +81,7 @@ import {
 } from "../../shared/status";
 import { appLogTerminalHtml, visibleAppLogText } from "../../shared/logs";
 import type { ConfirmationRequest } from "../../shell/confirmation-service";
+import { renderUpscaleOverlayPreservingScroll } from "../../shell/upscale-controller";
 
 export interface SettingsWorkspaceCoordinatorDependencies {
   modalRoot: HTMLElement;
@@ -150,6 +155,8 @@ export interface SettingsWorkspaceCoordinator {
   saveSettings(settings: Settings, mode: SettingsSaveMode): Promise<void>;
   installGuideDialogHtml(): string;
   bindInstallGuideDialog(): void;
+  cacheDialogHtml(): string;
+  bindCacheDialog(): void;
   beforeRenderOverlay(): void;
   openAppLogContextMenu(clientX: number, clientY: number): void;
   closeAppLogContextMenu(): void;
@@ -194,6 +201,8 @@ export function createSettingsWorkspaceCoordinator(
   let appCacheLoading = false;
   let appCacheClearing = false;
   let appCacheError = "";
+  let cacheDialogOpen = false;
+  let cacheResult: AppCacheClearResult | null = null;
 
   const uiText = (
     key: string,
@@ -202,8 +211,7 @@ export function createSettingsWorkspaceCoordinator(
   ): string => createTranslator(deps.getState().settings.uiLocale).t(key, params, fallback);
 
   const settingsHaveUnsavedChanges = (): boolean => {
-    return settingsDraft !== null &&
-      !structurallyEqual(settingsDraft, deps.getState().settings);
+    return settingsChangedKeys(deps.getState().settings, settingsDraft).length > 0;
   };
 
   const syncSettingsDirtyUi = (): void => {
@@ -211,6 +219,11 @@ export function createSettingsWorkspaceCoordinator(
     const setSettingsDirty = deps.context.application.setSettingsDirty;
     if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
     const actionBar = document.querySelector<HTMLElement>(".settings-heading-actions");
+    if (actionBar) {
+      const reveal = actionBar.hidden && (dirty || settingsSaving);
+      actionBar.hidden = !dirty && !settingsSaving;
+      if (reveal) animateUi(actionBar, [{ opacity: 0, transform: "translate(-50%,12px)" }, { opacity: 1, transform: "translate(-50%,0)" }], 240);
+    }
     actionBar?.classList.toggle("is-dirty", dirty || settingsSaving);
     actionBar?.classList.toggle("is-clean", !dirty && !settingsSaving);
     const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
@@ -218,8 +231,13 @@ export function createSettingsWorkspaceCoordinator(
     if (status) status.textContent = settingsSaving
       ? uiText(uiKeys.settings.saving)
       : dirty
-        ? uiText(uiKeys.runtime.unsavedChanges)
+        ? uiText(uiKeys.settings.unsavedCount, { count: settingsChangedKeys(deps.getState().settings, settingsDraft).length })
         : "";
+    const names = document.querySelector<HTMLElement>(".settings-save-names");
+    if (names) {
+      names.textContent = settingsChangeSummary(settingsChangedKeys(deps.getState().settings, settingsDraft), deps.context.t, deps.getState().settings.uiLocale);
+      names.title = names.textContent;
+    }
     document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute(
       "disabled",
       !dirty || settingsSaving
@@ -254,7 +272,23 @@ export function createSettingsWorkspaceCoordinator(
       reason === "startup" ? uiKeys.runtime.startupScanFailed : uiKeys.runtime.environmentScanFailed,
       { error: error instanceof Error ? error.message : String(error) }
     ),
-    requestRender: deps.render,
+    requestRender: () => {
+      const page = deps.getPage();
+      if (page === "history-detail" || page === "image-history-detail") {
+        // Scan readiness belongs to the open Upscale overlay, not the playing viewer.
+        const dialog = deps.modalRoot.querySelector(".upscale-dialog");
+        if (!environmentScanning && dialog) {
+          const editing = dialog.querySelector("input:focus");
+          if (editing) {
+            editing.addEventListener("blur", () => window.requestAnimationFrame(() => {
+              if (deps.modalRoot.contains(dialog)) renderUpscaleOverlayPreservingScroll(deps.modalRoot, deps.renderOverlay);
+            }), { once: true });
+          } else renderUpscaleOverlayPreservingScroll(deps.modalRoot, deps.renderOverlay);
+        }
+        return;
+      }
+      deps.render();
+    },
     reportScan: (reason) => deps.reportUserAction("scan-environment", { reason })
   });
 
@@ -312,6 +346,7 @@ export function createSettingsWorkspaceCoordinator(
   });
 
   const settingsSaveCoordinator = new SettingsSaveCoordinator({
+    updateDraftAppearance: (appearance) => { if (settingsDraft) settingsDraft = { ...settingsDraft, appearance }; },
     getState: deps.getState,
     getEnvironmentScan: () => environmentScan,
     loadLocale: async (locale) => {
@@ -361,6 +396,7 @@ export function createSettingsWorkspaceCoordinator(
     } finally {
       appCacheLoading = false;
       deps.render();
+      if (cacheDialogOpen) deps.renderOverlay();
     }
   };
 
@@ -371,29 +407,33 @@ export function createSettingsWorkspaceCoordinator(
       return;
     }
     appCacheClearing = true;
+    cacheResult = null;
     appCacheError = "";
     deps.render();
+    deps.renderOverlay();
     try {
       const result: AppCacheClearResult = await deps.context.application.clearAppCache();
+      cacheResult = result;
       appCache = result.after;
       appCacheError = result.errors.slice(0, 3).join("\n");
       const affectedDirectories = result.skippedTemporaryDirectories + result.errors.length;
-      if (affectedDirectories > 0) {
+      if (affectedDirectories > 0 && !cacheDialogOpen) {
         deps.showMessage(uiText(uiKeys.settings.actions.cacheClearPartial, {
           size: formatBytes(result.clearedBytes),
           count: affectedDirectories
         }), { kind: "warning" });
-      } else {
+      } else if (!cacheDialogOpen) {
         deps.showMessage(uiText(uiKeys.settings.actions.cacheClearCompleted, {
           size: formatBytes(result.clearedBytes)
         }));
       }
     } catch (error) {
       appCacheError = error instanceof Error ? error.message : String(error);
-      deps.showMessage(uiText(uiKeys.settings.actions.cacheClearFailed, { error: appCacheError }), { kind: "error" });
+      if (!cacheDialogOpen) deps.showMessage(uiText(uiKeys.settings.actions.cacheClearFailed, { error: appCacheError }), { kind: "error" });
     } finally {
       appCacheClearing = false;
       deps.render();
+      deps.renderOverlay();
     }
   };
 
@@ -421,7 +461,7 @@ export function createSettingsWorkspaceCoordinator(
         serviceStarting: serviceStarting ?? (comfyRuntime.phase === "starting" ? "comfy" : null),
         serviceRestarting: serviceRestarting ?? (comfyRuntime.phase === "restarting" ? "comfy" : null),
         serviceForceStopping,
-        serviceStatusMessage: serviceStatusMessage || comfyRuntime.message,
+        serviceStatusMessage: serviceStatusMessage || (["starting", "restarting", "error"].includes(comfyRuntime.phase) ? comfyRuntime.message : ""),
         comfyUpdating,
         comfyUpdateLog,
         environmentRepairing,
@@ -560,7 +600,7 @@ export function createSettingsWorkspaceCoordinator(
       void loadAppCache();
     }
     const state = deps.getState();
-    if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
+    if (settingsTab !== "logs" && settingsTab !== "appearance" && !environmentScan && !environmentScanning) {
       void runEnvironmentScan(settingsDraft ?? state.settings);
       return;
     }
@@ -628,6 +668,7 @@ export function createSettingsWorkspaceCoordinator(
         enqueueCustomNodeInstall: (nodeId, settings, mode) =>
           customNodeInstallManager.enqueue(nodeId, settings, mode),
         cancelCustomNodeInstall: (nodeId) => customNodeInstallManager.cancel(nodeId),
+        cancelWaitingCustomNodes: () => customNodeInstallManager.cancelWaiting(),
         setDependencyInstallCancelling: (id, value) => {
           if (value) dependencyInstallCancelling.add(id);
           else dependencyInstallCancelling.delete(id);
@@ -657,7 +698,10 @@ export function createSettingsWorkspaceCoordinator(
           void loadAppCache();
         },
         clearAppCache: () => {
-          void clearAppCache();
+          deps.rememberModalFocus();
+          cacheResult = null;
+          cacheDialogOpen = true;
+          deps.renderOverlay();
         }
       },
       page: {
@@ -690,6 +734,9 @@ export function createSettingsWorkspaceCoordinator(
     bind: () => {
       const cleanup = bind();
       if (cleanup) deps.addPageCleanup(cleanup);
+      deps.addPageCleanup(mountAppearanceSettings(deps.context.root,
+        (appearance) => settingsSaveCoordinator.saveAppearance(appearance),
+        () => deps.context.notify(uiText(uiKeys.appearance.failed), { kind: "error" })));
     },
     formSettings,
     settingsHaveUnsavedChanges,
@@ -721,6 +768,21 @@ export function createSettingsWorkspaceCoordinator(
     saveSettings: (settings, mode) => settingsSaveCoordinator.save(settings, mode),
     installGuideDialogHtml,
     bindInstallGuideDialog,
+    cacheDialogHtml: () => renderSettingsCacheDialog({ open: cacheDialogOpen, snapshot: appCache, loading: appCacheLoading, clearing: appCacheClearing, error: appCacheError, running: deps.getState().queue.some(task => task.status === "running"), result: cacheResult }, { t: deps.context.t, icon, escapeHtml, formatBytes }),
+    bindCacheDialog: () => {
+      if (!cacheDialogOpen) return;
+      const close = () => {
+        if (appCacheClearing) return;
+        cacheDialogOpen = false;
+        deps.renderOverlay();
+        deps.restoreModalFocus();
+      };
+      for (const id of ["settings-cache-close", "settings-cache-close-icon"]) deps.modalRoot.querySelector(`#${id}`)?.addEventListener("click", close);
+      deps.modalRoot.querySelector("#settings-cache-backdrop")?.addEventListener("click", event => { if (event.target === event.currentTarget) close(); });
+      deps.modalRoot.querySelector("#confirm-clear-app-cache")?.addEventListener("click", () => { void clearAppCache(); });
+      const dialog = deps.modalRoot.querySelector<HTMLElement>(".settings-maintenance-dialog");
+      if (dialog) deps.bindModalFocus(dialog, close, appCacheClearing ? "#settings-cache-title" : "#settings-cache-close");
+    },
     beforeRenderOverlay: () => {
       if (deps.getPage() !== "settings" && selectedInstallGuide) selectedInstallGuide = null;
     },

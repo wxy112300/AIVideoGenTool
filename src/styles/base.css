@@ -1,0 +1,38 @@
+/* Document defaults; structural layout is owned by structure.css. */
+:root {
+  font-family: var(--font-sans);
+  color: var(--text-1);
+  background: var(--canvas);
+  color-scheme: dark;
+}
+
+body {
+  color: var(--text-1);
+  background: var(--canvas);
+}
+
+::selection { color: var(--on-accent); background: var(--accent-fill); }
+
+/* User-selected reduced motion also reaches native and embedded controls. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation: none !important;
+  transition-property: opacity, color, background-color, border-color, box-shadow !important;
+  transition-duration: 120ms !important;
+  scroll-behavior: auto !important;
+}
+
+:root[data-motion="reduced"] *:hover, :root[data-motion="reduced"] *:hover::before, :root[data-motion="reduced"] *:hover::after { transition-duration: 0ms !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="standard"]) *,
+  :root:not([data-motion="standard"]) *::before,
+  :root:not([data-motion="standard"]) *::after {
+    animation: none !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow !important;
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
+  :root:not([data-motion="standard"]) *:hover, :root:not([data-motion="standard"]) *:hover::before, :root:not([data-motion="standard"]) *:hover::after { transition-duration: 0ms !important; }
+}

@@ -9,6 +9,7 @@ import type {
   SettingsSaveMode
 } from "../../../types";
 import { directoryComparisonKey } from "./helpers";
+import type { UiAppearance } from "../../../core/appearance";
 
 export interface SettingsSaveCoordinatorDependencies {
   getState(): AppState;
@@ -20,6 +21,7 @@ export interface SettingsSaveCoordinatorDependencies {
   getBundledWorkflow(modelId: string, inputMode: Draft["inputMode"]): Promise<BundledWorkflow | null>;
   setState(state: AppState): void;
   clearSettingsDraft(): void;
+  updateDraftAppearance?(appearance: UiAppearance): void;
   syncSettingsDirtyUi(): void;
   deleteBundledWorkflow(modelId: string, inputMode: Draft["inputMode"]): void;
   cacheBundledWorkflow(workflow: BundledWorkflow, inputMode: Draft["inputMode"]): void;
@@ -38,6 +40,14 @@ export type SettingsSaveRequestResult = "saved" | "migration-required";
 
 export class SettingsSaveCoordinator {
   constructor(private readonly dependencies: SettingsSaveCoordinatorDependencies) {}
+
+  /** An immediate visual preference never applies or discards the settings draft. */
+  async saveAppearance(appearance: UiAppearance): Promise<void> {
+    const saved = await this.dependencies.saveSettings({ ...this.dependencies.getState().settings, appearance }, "appearance");
+    this.dependencies.updateDraftAppearance?.(appearance);
+    this.dependencies.setState(saved);
+    this.dependencies.syncSettingsDirtyUi();
+  }
 
   async requestSave(nextSettings: Settings): Promise<SettingsSaveRequestResult> {
     const previousSettings = this.dependencies.getState().settings;

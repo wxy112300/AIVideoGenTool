@@ -66,6 +66,7 @@ export interface HistoryActionsOptions {
   getSelectedHistoryVersionId(): string;
   setSelectedHistoryAssetId(assetId: string): void;
   setDialog(dialog: UpscaleDialogState | null): void;
+  renderOverlay(): void;
   rememberModalFocus(): void;
   saveDraftImmediately(draft: Draft): Promise<void>;
   selectDraftVideo(
@@ -114,7 +115,15 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       context.notify(t(uiKeys.history.actions.copyFailed), { renderPage: false });
     }
   };
-  const copyHistoryFile = async (filename: string, successMessage = t(uiKeys.history.menu.videoFileCopied)): Promise<void> => {
+  const pendingFileCopies = new Map<string, Promise<void>>();
+  const copyHistoryFile = (filename: string, successMessage = t(uiKeys.history.menu.videoFileCopied)): Promise<void> => {
+    const existing = pendingFileCopies.get(filename);
+    if (existing) return existing;
+    const pending = performFileCopy(filename, successMessage).finally(() => pendingFileCopies.delete(filename));
+    pendingFileCopies.set(filename, pending);
+    return pending;
+  };
+  const performFileCopy = async (filename: string, successMessage: string): Promise<void> => {
     if (!filename) {
       context.notify(t(uiKeys.history.actions.noMediaFile), { renderPage: false });
       return;
@@ -263,11 +272,14 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     }
     const state = context.getState();
     if (!state) return;
-    const modelId = firstSupportedImageModelId(
+    const editCandidates = [
       modelCatalog.get(version.modelId)?.definition.retired ? "qwen-image-2-1" : version.kind === "source" ? undefined : version.modelId,
       state.imageDraft.modelId,
       state.settings.defaultImageModel
-    );
+    ].filter((id) => id && imageModelCapabilityFor(id).maxPictures > 0);
+    // A MOSS result can be edited by a reference-capable model; its generator
+    // must not receive the output as an unsupported reference image.
+    const modelId = firstSupportedImageModelId(...editCandidates, "qwen-image-2-1");
     const capability = imageModelCapabilityFor(modelId);
     const qualityProfile = capability.qualityProfiles.some((profile) => profile.id === state.imageDraft.qualityProfile)
       ? state.imageDraft.qualityProfile
@@ -462,7 +474,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       modelId: selectedModelId,
       tileMode: state.settings.upscaleTileMode
     });
-    context.requestRender();
+    options.renderOverlay();
   };
   return {
     copyHistoryText,

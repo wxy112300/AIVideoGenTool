@@ -128,15 +128,11 @@ v0.37.0 · 2026-10-11  INT8 ConvRot VAE 官方加速路径</pre></details>
 
         <!-- ============ 节点与依赖 ============ -->
         <section class="settings-panel" data-panel="nodes">
-          <div class="panel-head"><h2>节点与依赖</h2><span class="badge success" data-count="nodes"></span><span class="spacer"></span><button class="btn btn-gray btn-sm lit" type="button"><i data-lucide="download"></i>安装全部缺失</button></div>
-          <article class="card form-card" data-when="install=running">
-            <div class="card-title"><h3>依赖安装中</h3><span class="spacer"></span><span class="caption">队列中 2 个节点</span></div>
-            <div class="set-row stack"><div class="row between"><span>ComfyUI-MultiModal-Prompt-Nodes · 安装依赖 3/7</span><span class="caption num">43%</span></div><div class="progress"><span style="--value:43%"></span></div>
-              <details class="node-log" style="margin:0" open><summary>安装日志</summary><pre>Cloning into 'ComfyUI-MultiModal-Prompt-Nodes'...
-Resolving deltas: 100% (412/412), done.
-Installing requirements (3/7) llama-cpp-python==0.3.16</pre></details></div>
-          </article>
-          <div class="card-grid" id="node-cards"></div>
+          <div class="panel-head"><h2>节点与依赖</h2><span class="badge success" data-count="nodes"></span><span class="spacer"></span><button class="btn btn-tinted btn-sm lit" type="button" id="nodes-bulk" data-tip="更新到推荐版本，完成后重启 ComfyUI 一次"><i data-lucide="arrow-up-circle"></i><span data-bulk-label>更新节点</span><span class="caption num" data-bulk-count>1</span></button></div>
+          <div class="install-queue" id="install-queue" hidden><i data-lucide="loader-circle"></i><span id="install-queue-text"></span><span class="spacer"></span><button class="btn btn-plain btn-sm" type="button" id="install-queue-cancel"><i data-lucide="x"></i>取消等待中的</button></div>
+          <div class="group-title"><h3>运行时依赖</h3><span class="caption">Strata 独立环境；其余安装在 ComfyUI Python 中</span></div>
+          <div class="card-stack" id="dep-cards"></div>
+          <div class="node-sections" id="node-cards"></div>
           <article class="card set-card">
             <button class="set-toggle" type="button" aria-expanded="false" style="border-top:0"><i data-lucide="chevron-right" class="chev"></i><span>节点占位符参考 · 应用支持的工作流变量</span></button>
             <div class="disclosure"><div><div class="token-list"><code>{{PROMPT}}</code><code>{{NEGATIVE_PROMPT}}</code><code>{{SEED}}</code><code>{{H3_DIFFUSION_MODEL}}</code><code>{{H3_TEXT_ENCODER}}</code><code>{{H3_VIDEO_VAE}}</code><code>{{H3_AUDIO_VAE}}</code><code>{{WIDTH}}</code><code>{{HEIGHT}}</code><code>{{FRAMES}}</code><code>{{FPS}}</code><code>{{INPUT_IMAGE}}</code><code>{{END_IMAGE}}</code><code>{{OUTPUT_PREFIX}}</code></div></div></div>
@@ -162,11 +158,6 @@ Installing requirements (3/7) llama-cpp-python==0.3.16</pre></details></div>
             <div class="set-row"><div class="copy"><span>视频 VAE 后端</span><span class="caption">已找到两种视频 VAE；自动模式优先 INT8 ConvRot，缺失时回退 FP16</span></div>
               <div class="control"><select data-size="sm" aria-label="视频 VAE 后端"><option selected>自动 · 优先 INT8 ConvRot</option><option>FP16</option><option>INT8 ConvRot</option></select></div></div>
           </article>
-          <article class="card set-card lit">
-            <div class="set-head"><div><div class="set-title"><h3>加速运行时</h3><span class="badge plain">Python 依赖</span></div><p class="set-desc">SageAttention 与 Triton，用于 H3 注意力加速。</p></div>
-              <div class="set-actions"><span class="status success"><i data-lucide="circle-check"></i>运行验证通过</span><div class="row"><button class="btn btn-gray btn-sm" type="button"><i data-lucide="scan-search"></i>重新验证</button><button class="btn btn-gray btn-sm" type="button"><i data-lucide="wrench"></i>修复</button><button class="btn btn-destructive btn-sm" type="button"><i data-lucide="trash-2"></i>卸载</button></div></div></div>
-            <div class="runtime-grid"><div><span class="caption">Python</span><strong class="num"><i data-lucide="circle-check"></i>3.12.10</strong></div><div><span class="caption">PyTorch</span><strong class="num"><i data-lucide="circle-check"></i>2.11.0+cu130</strong></div><div><span class="caption">SageAttention</span><strong class="num"><i data-lucide="circle-check"></i>2.2.0</strong></div><div><span class="caption">Triton</span><strong class="num"><i data-lucide="circle-check"></i>3.6.0</strong></div></div>
-          </article>
         </section>
 
         <!-- ============ 视频模型 ============ -->
@@ -181,8 +172,8 @@ Installing requirements (3/7) llama-cpp-python==0.3.16</pre></details></div>
 
         <!-- ============ LoRA ============ -->
         <section class="settings-panel" data-panel="lora">
-          <div class="panel-head"><h2>LoRA</h2><span class="badge" data-count="lora"></span><span class="caption">为已接入的视频模型提供可选的性能、运镜、人物和内容适配</span></div>
-          <div class="card-grid" id="lora-cards"></div>
+          <div class="panel-head"><h2>LoRA</h2><span class="badge" data-count="lora"></span></div>
+          <div class="node-sections" id="lora-cards"></div>
         </section>
 
         <!-- ============ 图片模型 ============ -->
@@ -361,7 +352,6 @@ Make the result feel like a production-ready director's shot sheet: visual style
     {
       "service": { "label": "ComfyUI 服务", "options": { "running": "运行中", "stopped": "未启动" } },
       "issues": { "label": "环境问题", "options": { "none": "无", "some": "路径不一致" } },
-      "install": { "label": "节点安装", "options": { "idle": "空闲", "running": "安装中" } },
       "lan": { "label": "局域网浏览", "options": { "on": "开", "off": "关" } },
       "job": { "label": "生成任务", "options": { "idle": "空闲", "busy": "运行中" } }
     }

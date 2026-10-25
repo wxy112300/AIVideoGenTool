@@ -1,4 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { virtualHistoryBox } from "./virtual-gallery";
 import {
   clampHistoryTimelineProgress,
   closestHistoryTimelineMarker,
@@ -7,9 +8,9 @@ import {
   historyTimelineScrollY
 } from "./timeline";
 
-const MIN_STAGE_WIDTH = 1120;
-const MIN_VIEWPORT_WIDTH = 1180;
-const MIN_MARKER_GAP = 28;
+const MIN_STAGE_WIDTH = 400;
+const MIN_VIEWPORT_WIDTH = 480;
+const MIN_MARKER_GAP = 5;
 
 interface TimelineMarkerState {
   element: HTMLButtonElement;
@@ -60,7 +61,7 @@ function scrollWindowTo(top: number, behavior: ScrollBehavior): void {
   }
 }
 
-function writeTimelineLabel(target: HTMLElement, label: string, dateKey?: string): void {
+function writeTimelineLabel(target: HTMLElement, label: string, dateKey?: string, locale = "zh-CN", countLabel = ""): void {
   target.replaceChildren();
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey ?? "");
   if (!match) {
@@ -70,11 +71,12 @@ function writeTimelineLabel(target: HTMLElement, label: string, dateKey?: string
 
   const year = target.ownerDocument.createElement("span");
   year.className = "history-timeline-year";
-  year.textContent = match[1] ?? "";
+  const date = new Date(`${dateKey}T12:00:00`);
+  year.textContent = `${match[1]} · ${new Intl.DateTimeFormat(locale || "zh-CN", { weekday: "short" }).format(date)}${countLabel ? ` · ${countLabel}` : ""}`;
   const monthDay = target.ownerDocument.createElement("span");
   monthDay.className = "history-timeline-month-day";
-  monthDay.textContent = `${match[2] ?? ""}.${match[3] ?? ""}`;
-  target.append(year, monthDay);
+  monthDay.textContent = new Intl.DateTimeFormat(locale || "zh-CN", { month: "long", day: "numeric" }).format(date);
+  target.append(monthDay, year);
 }
 
 export function mountHistoryTimelineController(context: RendererContext): RendererCleanup {
@@ -88,6 +90,7 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   const thumb = timeline.querySelector<HTMLButtonElement>("[data-history-timeline-thumb]");
   const lineFill = timeline.querySelector<HTMLElement>("[data-history-timeline-line-fill]");
   const current = timeline.querySelector<HTMLElement>("[data-history-timeline-current]");
+  const hover = timeline.querySelector<HTMLElement>("[data-history-timeline-hover]");
   const markerElements = [...timeline.querySelectorAll<HTMLButtonElement>("[data-history-timeline-marker]")];
   if (!stage || !gallery || !track || !thumb || !lineFill || !current || !markerElements.length) {
     return () => undefined;
@@ -114,7 +117,7 @@ export function mountHistoryTimelineController(context: RendererContext): Render
         interactionTimer = window.setTimeout(() => {
           interactionTimer = null;
           if (!isDragging) timeline.classList.remove("is-interacting");
-        }, 1400);
+        }, 1200);
       }
     } else if (!isDragging) {
       timeline.classList.remove("is-interacting");
@@ -125,7 +128,9 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     const heading = root.querySelector<HTMLElement>(".history-heading");
     if (!heading) return 14;
     const height = heading.getBoundingClientRect().height;
-    return Math.max(14, height + 12);
+    const contextHeight = root.querySelector<HTMLElement>("[data-history-context]:not([hidden])")?.getBoundingClientRect().height ?? 0;
+    const topbar = root.querySelector<HTMLElement>(".topbar")?.getBoundingClientRect().height ?? 64;
+    return Math.max(14, topbar + height + contextHeight + 20);
   };
 
   const updateScrollState = () => {
@@ -140,10 +145,10 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     thumb.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
 
     const markerIndex = closestHistoryTimelineMarker(
-      visibleMarkerStates.map((marker, index) => ({ index, top: marker.progress })),
+      markerStates.map((marker, index) => ({ index, top: marker.progress })),
       progress
     );
-    const activeMarker = markerIndex >= 0 ? visibleMarkerStates[markerIndex] : undefined;
+    const activeMarker = markerIndex >= 0 ? markerStates[markerIndex] : undefined;
     visibleMarkerStates.forEach((marker) => {
       const active = marker === activeMarker;
       marker.element.classList.toggle("is-active", active);
@@ -152,7 +157,7 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     });
     const activeLabel = activeMarker?.displayLabel ?? "—";
     if (activeLabel !== lastCurrentLabel) {
-      writeTimelineLabel(current, activeLabel, activeMarker?.dateKey);
+      writeTimelineLabel(current, activeLabel, activeMarker?.dateKey, timeline.dataset.historyTimelineLocale, activeMarker ? context.t("history.list.items", { count: Number(activeMarker.element.dataset.historyTimelineCount) || 1 }) : "");
       current.setAttribute("aria-label", activeLabel);
       lastCurrentLabel = activeLabel;
     }
@@ -186,14 +191,10 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     setVisible(canShow);
     if (!canShow) return;
 
-    const heading = root.querySelector<HTMLElement>(".history-heading");
-    const headingRect = heading?.getBoundingClientRect();
     const galleryRect = gallery.getBoundingClientRect();
-    const galleryTop = galleryRect.top;
-    const headingBottom = headingRect?.bottom ?? galleryTop;
-    const top = Math.max(0, Math.ceil(Math.max(galleryTop, headingBottom + 8)));
-    const left = Math.ceil(galleryRect.right + 4);
-    const height = Math.max(180, Math.floor(window.innerHeight - top - 16));
+    const top = Math.ceil(headingOffset());
+    const left = Math.min(window.innerWidth - 30, Math.ceil(galleryRect.right + 4));
+    const height = Math.max(80, Math.floor(window.innerHeight - top - 72));
     timeline.style.setProperty("--history-timeline-top", `${top}px`);
     timeline.style.setProperty("--history-timeline-left", `${left}px`);
     timeline.style.setProperty("--history-timeline-height", `${height}px`);
@@ -201,17 +202,26 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     const trackHeight = Math.max(1, track.getBoundingClientRect().height);
     const maxScroll = maximumScrollY();
     const cards = [...gallery.querySelectorAll<HTMLElement>("[data-history]")];
+    const cardsById = new Map(cards.map(card => [card.dataset.history, card]));
     const offset = headingOffset();
     const states: TimelineMarkerState[] = [];
 
+    // Read all card positions before writing marker styles; interleaving them
+    // forces layout repeatedly when a large library spans many dates.
+    const positions = markerElements.map(element => {
+      const id = element.dataset.historyTimelineTarget ?? "";
+      const box = virtualHistoryBox(gallery, id);
+      if (box) return { top: galleryRect.top + box.top };
+      const card = cardsById.get(id);
+      return card?.getBoundingClientRect();
+    });
     markerElements.forEach((element, order) => {
       element.hidden = true;
       element.classList.remove("is-active");
       element.removeAttribute("aria-current");
       const targetId = element.dataset.historyTimelineTarget ?? "";
-      const card = cards.find((candidate) => candidate.dataset.history === targetId);
-      if (!card) return;
-      const rect = card.getBoundingClientRect();
+      const rect = positions[order];
+      if (!rect) return;
       const targetScrollY = Math.min(
         maxScroll,
         Math.max(0, rect.top + currentScrollY() - offset)
@@ -272,6 +282,18 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     });
     commitAnchor();
 
+    let month = "", lastMonthProgress = -Infinity;
+    visible.forEach(marker => {
+      const key = marker.dateKey.slice(0, 7);
+      const showMonth = key !== month && (marker.progress - lastMonthProgress) * trackHeight >= 22;
+      marker.element.classList.toggle("is-month", showMonth);
+      if (showMonth) {
+        const date = new Date(marker.dateKey + "T12:00:00");
+        if (Number.isFinite(date.getTime())) marker.element.textContent = new Intl.DateTimeFormat(timeline.dataset.historyTimelineLocale || "zh-CN", { year: key.slice(0,4) !== String(new Date().getFullYear()) ? "numeric" : undefined, month: "short" }).format(date);
+        month = key; lastMonthProgress = marker.progress;
+      } else marker.element.textContent = "";
+    });
+
     markerStates = states;
     visibleMarkerStates = visible;
     timeline.dataset.historyTimelineReady = "true";
@@ -295,7 +317,9 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   const beginDrag = (event: PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    thumb.focus({ preventScroll: true });
     isDragging = true;
+    timeline.classList.add("is-dragging");
     setInteracting(true);
     try {
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -308,6 +332,7 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   const finishDrag = (event: PointerEvent) => {
     if (!isDragging) return;
     isDragging = false;
+    timeline.classList.remove("is-dragging");
     try {
       (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
     } catch {
@@ -325,10 +350,11 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     const targetId = marker.dataset.historyTimelineTarget;
     if (!targetId) return;
     const card = markerTarget(targetId);
-    if (!card) return;
+    const box = virtualHistoryBox(gallery, targetId);
+    if (!card && !box) return;
     event.preventDefault();
     event.stopPropagation();
-    const rect = card.getBoundingClientRect();
+    const rect = box ? { top: gallery.getBoundingClientRect().top + box.top } : card!.getBoundingClientRect();
     scrollWindowTo(rect.top + currentScrollY() - headingOffset(), "smooth");
     setInteracting(true, true);
     scheduleScrollState();
@@ -337,14 +363,15 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   const keyboardJump = (event: KeyboardEvent) => {
     const maxScroll = maximumScrollY();
     const currentPosition = currentScrollY();
-    const step = Math.max(48, Math.round(Math.max(1, window.innerHeight) * 0.12));
     let nextPosition: number | null = null;
+    const forward = event.key === "ArrowDown" || event.key === "PageDown";
+    const byMonth = event.key === "PageUp" || event.key === "PageDown";
+    const candidates = forward ? markerStates : [...markerStates].reverse();
+    const currentMarker = [...markerStates].reverse().find(marker => marker.targetScrollY <= currentPosition + 2);
+    const target = candidates.find(marker => (forward ? marker.targetScrollY > currentPosition + 2 : marker.targetScrollY < currentPosition - 2) && (!byMonth || marker.dateKey.slice(0,7) !== currentMarker?.dateKey.slice(0,7)));
     if (event.key === "Home") nextPosition = 0;
     else if (event.key === "End") nextPosition = maxScroll;
-    else if (event.key === "ArrowUp") nextPosition = currentPosition - step;
-    else if (event.key === "ArrowDown") nextPosition = currentPosition + step;
-    else if (event.key === "PageUp") nextPosition = currentPosition - Math.max(step, window.innerHeight * 0.85);
-    else if (event.key === "PageDown") nextPosition = currentPosition + Math.max(step, window.innerHeight * 0.85);
+    else if (["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) nextPosition = target?.targetScrollY ?? (forward ? maxScroll : 0);
     if (nextPosition === null) return;
     event.preventDefault();
     scrollWindowTo(Math.min(maxScroll, Math.max(0, nextPosition)), "auto");
@@ -356,6 +383,17 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   timeline.addEventListener("pointerleave", () => setInteracting(false), { signal });
   timeline.addEventListener("focusin", () => setInteracting(true), { signal });
   timeline.addEventListener("focusout", () => setInteracting(false), { signal });
+  track.addEventListener("pointermove", (event) => {
+    if (!hover || isDragging) return;
+    const rect = track.getBoundingClientRect();
+    const progress = clampHistoryTimelineProgress((event.clientY - rect.top) / Math.max(1, rect.height));
+    const index = closestHistoryTimelineMarker(markerStates.map((marker, index) => ({ index, top: marker.progress })), progress);
+    const marker = markerStates[index];
+    if (marker) {
+      hover.textContent = `${marker.label} · ${context.t("history.list.items", { count: Number(marker.element.dataset.historyTimelineCount) || 1 })}`;
+      hover.style.setProperty("--history-timeline-position", String(progress * 100));
+    }
+  }, { signal });
   track.addEventListener("pointerdown", (event) => {
     const target = event.target as Element | null;
     if (target?.closest("[data-history-timeline-marker], [data-history-timeline-thumb]")) return;
@@ -369,8 +407,9 @@ export function mountHistoryTimelineController(context: RendererContext): Render
   }, { signal, passive: false });
   window.addEventListener("pointerup", finishDrag, { signal });
   window.addEventListener("pointercancel", finishDrag, { signal });
-  window.addEventListener("scroll", scheduleScrollState, { signal, passive: true });
+  window.addEventListener("scroll", () => { scheduleScrollState(); setInteracting(true, true); }, { signal, passive: true });
   window.addEventListener("resize", scheduleMeasure, { signal });
+  gallery.addEventListener("history-virtual-layout", scheduleMeasure, { signal });
   thumb.addEventListener("keydown", keyboardJump, { signal });
   markerElements.forEach((marker) => marker.addEventListener("click", jumpToMarker, { signal }));
   track.addEventListener("click", (event) => {
@@ -385,11 +424,15 @@ export function mountHistoryTimelineController(context: RendererContext): Render
     resizeObserver = new ResizeObserver(scheduleMeasure);
     resizeObserver.observe(stage);
     resizeObserver.observe(gallery);
+    const heading = root.querySelector<HTMLElement>(".history-heading");
+    const contextBar = root.querySelector<HTMLElement>("[data-history-context]");
+    if (heading) resizeObserver.observe(heading);
+    if (contextBar) resizeObserver.observe(contextBar);
   }
   const mutationObserver = typeof MutationObserver !== "undefined"
     ? new MutationObserver(scheduleMeasure)
     : null;
-  mutationObserver?.observe(gallery, { childList: true });
+  if (!gallery.hasAttribute("data-history-virtual")) mutationObserver?.observe(gallery, { childList: true });
 
   scheduleMeasure();
 

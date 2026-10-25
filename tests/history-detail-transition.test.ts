@@ -8,7 +8,7 @@ function detailMarkup(assetId: string, versionId: string, title: string, record:
     <div class="history-detail-back"><button data-page="history">${title} back</button></div>
     <section class="history-detail-hero">
       <div class="history-player" style="--video-aspect: 16 / 9" aria-label="${title}">
-        <video data-history-asset="${assetId}" data-history-version="${versionId}" src="${assetId}.mp4" loop playsinline></video>
+        <video data-history-asset="${assetId}" data-history-version="${versionId}" data-history-download-filename="${assetId}.mp4" src="${assetId}.mp4" loop playsinline></video>
         <div data-history-player-info><strong>${title}</strong></div>
         <div data-history-player-actions><button data-history-navigation="1">next</button></div>
         <div class="history-player-utility-group">
@@ -19,6 +19,7 @@ function detailMarkup(assetId: string, versionId: string, title: string, record:
       <aside class="history-detail-sidebar"><strong>${title} sidebar</strong></aside>
     </section>
     <div data-history-tags-root>${title} tags</div>
+    <article class="history-detail-prompt">${title} prompt</article>
     <section class="history-record-section"><strong>${record}</strong></section>
   `;
 }
@@ -61,6 +62,7 @@ describe("history detail fast transition", () => {
     expect(currentPlayer.querySelector("video")).toBe(currentVideo);
     expect(currentVideo.dataset.historyAsset).toBe("asset-2");
     expect(currentVideo.dataset.historyVersion).toBe("version-2");
+    expect(currentVideo.dataset.historyDownloadFilename).toBe("asset-2.mp4");
     expect(currentVideo.getAttribute("src")).toContain("asset-2.mp4");
     expect(currentVideo.volume).toBeCloseTo(0.36);
     expect(currentVideo.muted).toBe(true);
@@ -69,6 +71,7 @@ describe("history detail fast transition", () => {
     expect(document.querySelector(".history-detail-sidebar")?.textContent).toContain("Second sidebar");
     expect(document.querySelector("[data-history-tags-root]")?.textContent).toContain("Second tags");
     expect(document.querySelector(".history-record-section")?.textContent).toContain("second record");
+    expect(document.querySelector(".history-detail-prompt")?.textContent).toBe("Second prompt");
     expect(currentPlayer.querySelector("media-fullscreen-button")).not.toBeNull();
   });
 });

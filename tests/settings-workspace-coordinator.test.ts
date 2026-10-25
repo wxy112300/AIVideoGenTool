@@ -104,6 +104,7 @@ function createCoordinatorHarness() {
     dependencies,
     application,
     getState: () => currentState,
+    setPage: (page: Page) => { currentPage = page; },
     setComfyRuntime: (nextRuntime: ComfyRuntimeState) => {
       comfyRuntime = nextRuntime;
     }
@@ -116,6 +117,53 @@ afterEach(() => {
 });
 
 describe("settings workspace coordinator", () => {
+  it("opens cache inspection before clearing and submits only once after confirmation", async () => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const harness = createCoordinatorHarness();
+    const snapshot = { currentSessionBytes: 10, temporaryBytes: 20, temporaryDirectoryCount: 2, totalBytes: 30, scannedAt: "now" };
+    let finish!: (result: unknown) => void;
+    const clear = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    Object.assign(harness.application, { getAppCache: vi.fn(async () => snapshot), clearAppCache: clear });
+    harness.application.scanEnvironment.mockResolvedValue({ modelProfiles: [], customNodes: [], gpus: [], items: [], issues: [], comfyInstallations: [], pythonRuntimes: [] } as unknown as EnvironmentScanResult);
+    await harness.coordinator.runEnvironmentScan(harness.getState().settings);
+    harness.root.innerHTML = '<button data-settings-tab="system">System</button>';
+    let cleanup = harness.coordinator.bind(); harness.root.querySelector<HTMLButtonElement>("button")!.click(); cleanup?.();
+    harness.root.innerHTML = harness.coordinator.renderPage(); cleanup = harness.coordinator.bind();
+    await vi.waitFor(() => expect(harness.coordinator.renderPage()).toContain("30 B")); cleanup?.();
+    harness.root.innerHTML = harness.coordinator.renderPage(); cleanup = harness.coordinator.bind();
+    try {
+      harness.root.querySelector<HTMLButtonElement>("#clear-app-cache")!.click(); expect(clear).not.toHaveBeenCalled();
+      harness.dependencies.modalRoot.innerHTML = harness.coordinator.cacheDialogHtml(); harness.coordinator.bindCacheDialog();
+      const confirm = harness.dependencies.modalRoot.querySelector<HTMLButtonElement>("#confirm-clear-app-cache")!;
+      confirm.click(); confirm.click(); expect(clear).toHaveBeenCalledTimes(1);
+      expect(harness.coordinator.cacheDialogHtml()).toContain('id="settings-cache-close" disabled');
+      finish({ before: snapshot, after: snapshot, clearedBytes: 10, currentSessionCleared: true, skippedTemporaryDirectories: 0, errors: [] });
+      await vi.waitFor(() => expect(harness.coordinator.cacheDialogHtml()).toContain("已清理缓存"));
+    } finally { cleanup?.(); }
+  });
+  it.each(["history-detail", "image-history-detail"] as const)("keeps %s mounted while a scan finishes", async page => {
+    const harness = createCoordinatorHarness();
+    harness.setPage(page);
+    let finish!: (scan: EnvironmentScanResult) => void;
+    harness.application.scanEnvironment.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const pending = harness.coordinator.runEnvironmentScan(harness.getState().settings, "startup");
+    expect(harness.dependencies.render).not.toHaveBeenCalled();
+    finish({ scannedAt: "2026-10-23" } as EnvironmentScanResult);
+    await pending;
+    expect(harness.dependencies.render).not.toHaveBeenCalled();
+    expect(harness.coordinator.getEnvironmentScan()?.scannedAt).toBe("2026-10-23");
+    expect(harness.dependencies.showMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes an open upscale readiness overlay without rebuilding History detail", async () => {
+    const harness = createCoordinatorHarness();
+    harness.setPage("history-detail");
+    harness.dependencies.modalRoot.innerHTML = '<section class="upscale-dialog"></section>';
+    await harness.coordinator.runEnvironmentScan(harness.getState().settings);
+    expect(harness.dependencies.render).not.toHaveBeenCalled();
+    expect(harness.dependencies.renderOverlay).toHaveBeenCalledOnce();
+  });
+
   it("renders Settings through the page owner and keeps dirty state local", () => {
     const harness = createCoordinatorHarness();
     const markup = harness.coordinator.renderPage();

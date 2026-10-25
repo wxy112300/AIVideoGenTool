@@ -29,15 +29,15 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
   }, {
     name: "MiniMax H3 Learned 3D Latent Upscaler",
     badge: "H3 Native · 3D",
-    description: "H3 原生二次采样：720p/768p 使用 bilinear latent，1080p 使用 learned 3D whole-frame，1440p 使用 MMH3 12-tile learned 3D；1440p 还需要 MMH3 Ultimate Upscale 固定提交与应用补丁。"
+    description: "H3 原生音画数据放大；1440p 另需 MMH3 Ultimate Upscale。"
   }, {
     name: "MiniMax H3 Learned 3D Latent Upscaler",
     badge: "H3 Native · 3D",
-    description: "H3 native second sampling: 720p/768p use bilinear latent, 1080p uses whole-frame learned 3D, and 1440p uses MMH3 12-tile learned 3D with the pinned app patch."
+    description: "Native H3 audio/video latent upscaling; 1440p also requires MMH3 Ultimate Upscale."
   }, {
     name: "MiniMax H3 Learned 3D Latent Upscaler",
     badge: "H3 Native · 3D",
-    description: "H3 原生二次採樣：720p/768p 使用 bilinear latent，1080p 使用 learned 3D whole-frame，1440p 使用 MMH3 12-tile learned 3D；1440p 另需 MMH3 Ultimate Upscale 固定提交與應用程式補丁。"
+    description: "H3 原生音畫資料放大；1440p 另需 MMH3 Ultimate Upscale。"
   }),
   entry({ id: "seedvr2-native-int8", family: "seedvr2", category: "upscale", adapterId: "seedvr2-native-int8", order: 110, inputModes: ["video"], scan: {
     vram: "INT8 · 1 step · 512 tile · 长视频需时间分段",
@@ -72,17 +72,17 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
     {
       name: "SeedVR2 3B INT8 ConvRot · 原生",
       badge: "4090 原生",
-      description: "ComfyUI 原生 SeedVR2 单步超分路径，使用 INT8 ConvRot 与 FP16 EMA VAE；长视频按时间分段以控制显存。"
+      description: "原生单步视频放大；长视频需分段处理。"
     },
     {
       name: "SeedVR2 3B INT8 ConvRot · Native",
       badge: "Native 4090",
-      description: "Native ComfyUI one-step SeedVR2 path using INT8 ConvRot and an FP16 EMA VAE; segment long videos to bound VRAM."
+      description: "Native one-step video upscaling; segment long videos."
     },
     {
       name: "SeedVR2 3B INT8 ConvRot · 原生",
       badge: "4090 原生",
-      description: "ComfyUI 原生 SeedVR2 單步超分路徑，使用 INT8 ConvRot 與 FP16 EMA VAE；長影片按時間分段以控制顯存。"
+      description: "原生單步影片放大；長影片需分段處理。"
     }
   ),
   entry({ id: "seedvr2", family: "seedvr2", category: "upscale", adapterId: "seedvr2", order: 100, inputModes: ["video"], scan: { vram: "预计峰值 18–23 GB", components: [
@@ -112,15 +112,15 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
   }, {
     name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
     badge: "DLSS5 · 可混合",
-    description: "video2dlssnr 先做 DLSS SR 超分，再在输出分辨率执行时序 Neural enhancement；可选在同一任务中再用 DLSSG 补帧。"
+    description: "DLSS 视频放大与时序增强，可选补帧。"
   }, {
     name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
     badge: "DLSS5 · Composable",
-    description: "video2dlssnr performs DLSS SR upscaling first, then temporal Neural enhancement at the output resolution, with optional DLSSG frame interpolation in the same task."
+    description: "DLSS upscaling and temporal enhancement, with optional frame interpolation."
   }, {
     name: "Konohamaru DLSS5 Visual Enhancer · Temporal Neural",
     badge: "DLSS5 · 可混合",
-    description: "video2dlssnr 先執行 DLSS SR 超分，再在輸出分辨率執行時序 Neural enhancement；可選在同一任務中再使用 DLSSG 補幀。"
+    description: "DLSS 影片放大與時序增強，可選補幀。"
   }),
   entry({
     id: "dlss5-sr",

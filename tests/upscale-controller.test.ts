@@ -18,6 +18,17 @@ afterEach(() => {
 });
 
 describe("upscale controller", () => {
+  it("keeps the source thumbnail video across option updates but replaces it for a new source", () => {
+    const root = document.createElement("div");
+    const markup = (source: string) => `<section class="upscale-dialog"><div class="upscale-source"><video src="${source}"></video></div></section>`;
+    root.innerHTML = markup("studio-media://source-a");
+    const original = root.querySelector("video");
+    renderUpscaleOverlayPreservingScroll(root, () => { root.innerHTML = markup("studio-media://source-a"); });
+    expect(root.querySelector("video")).toBe(original);
+    renderUpscaleOverlayPreservingScroll(root, () => { root.innerHTML = markup("studio-media://source-b"); });
+    expect(root.querySelector("video")).not.toBe(original);
+    expect(root.querySelector("video")?.getAttribute("src")).toBe("studio-media://source-b");
+  });
   it("preserves the upscale dialog scroll position when an option rerenders the overlay", () => {
     const root = document.createElement("div");
     root.innerHTML = `<section class="upscale-dialog"></section>`;
@@ -28,6 +39,17 @@ describe("upscale controller", () => {
     });
 
     expect(root.querySelector<HTMLElement>(".upscale-dialog")?.scrollTop).toBe(240);
+  });
+
+  it("keeps an open picker reachable after readiness refresh", () => {
+    const root = document.createElement("div"); document.body.append(root);
+    root.innerHTML = '<section class="upscale-dialog"><button id="picker" role="combobox" aria-expanded="true"></button></section>';
+    renderUpscaleOverlayPreservingScroll(root, () => {
+      root.innerHTML = '<section class="upscale-dialog"><button id="picker" role="combobox" aria-expanded="false"></button></section>';
+      root.querySelector("button")!.addEventListener("click", event => (event.currentTarget as HTMLElement).setAttribute("aria-expanded", "true"));
+    });
+    expect(root.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(root.querySelector("button"));
   });
 
   it("enqueues a DLSS5 multiplier task with its actual output geometry", async () => {

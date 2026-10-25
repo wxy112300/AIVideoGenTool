@@ -64,6 +64,7 @@ import {
   validateLamaInpaintWorkflow
 } from "./legacy.js";
 import { modelCatalog } from "../catalog/index.js";
+import { mossImageAdapter, mossNsfwAdapter } from "./moss-image.js";
 
 const parseOutputs = parseImageOutputs;
 
@@ -168,6 +169,8 @@ export const birefnetBackgroundRemovalAdapter: ImageModelAdapter = {
 };
 
 export const imageModelAdapters: Record<string, ImageModelAdapter> = {
+  [mossImageAdapter.id]: mossImageAdapter,
+  [mossNsfwAdapter.id]: mossNsfwAdapter,
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
   [qwenImage21Adapter.id]: qwenImage21Adapter,
   [qwenImage21TurboAdapter.id]: qwenImage21TurboAdapter,

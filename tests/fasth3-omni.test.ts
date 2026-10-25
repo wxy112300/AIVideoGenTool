@@ -12,7 +12,7 @@ import { modelCoreVersionBlockReason } from "../src/core/model-core-requirements
 import { evaluateModelProfiles } from "../electron/services/environment";
 import { registerWorkflowIpc } from "../electron/workflow-ipc";
 import { submitTask } from "../electron/services/comfy-ui";
-import { generationSafetyForTask, h3WorkflowPathForInput, isMiniMaxH3Model, isMiniMaxH3R2vModel, renderWorkflow, validateApiWorkflow } from "../src/core/workflow";
+import { generationSafetyForTask, h3WorkflowPathForInput, isMiniMaxH3Model, isMiniMaxH3R2vModel, outputDimensions, renderWorkflow, validateApiWorkflow } from "../src/core/workflow";
 
 const template = (name = filename) => JSON.parse(readFileSync(path.resolve("workflows", name), "utf8"));
 function fixture() {
@@ -45,7 +45,7 @@ describe("FastH3 Omni independent H3 integration", () => {
   it("freezes reference identity, eight steps, native FPS and an independent acceleration policy", () => {
     const { state, task } = fixture();
     expect(task).toMatchObject({ modelId, steps: 8, fps: 24, frameInterpolation: "off", spectrumMode: "off", videoLoras: [],
-      h3SparseAttentionMode: "sol-attn", h3ExecutionPolicy: { turboProfile: "h3-fasth3-omni", sparseAttentionMode: "off", spectrumEnabled: false } });
+      h3SparseAttentionMode: "sol-attn", h3ExecutionPolicy: { turboProfile: "h3-fasth3-omni", attentionMode: "comfy-kitchen", sparseAttentionMode: "vsa", spectrumEnabled: false } });
     state.draft.h3ReferenceSlots[0]!.mediaPath = "changed.png";
     state.draft.modelId = "minimax_h3_ref2va";
     expect(task.h3ReferenceSlots?.map(slot => slot.mediaPath)).toEqual(["face.png", "motion.mp4"]);
@@ -67,7 +67,16 @@ describe("FastH3 Omni independent H3 integration", () => {
     expect(nodes.find(n => n.class_type === "BasicScheduler")?.inputs).toMatchObject({ steps: 8, scheduler: "simple" });
     expect(nodes.filter(n => n.class_type === "MiniMaxH3SigmaShift")).toHaveLength(1);
     expect(nodes.find(n => n.class_type === "MiniMaxH3SigmaShift")?.inputs).toMatchObject({ shift_video: 12, shift_audio: 3 });
-    expect(nodes.some(n => ["LoraLoaderModelOnly", "SpectrumApplyMiniMaxH3", "BlockSparseAttention"].includes(n.class_type))).toBe(false);
+    expect(nodes.some(n => ["LoraLoaderModelOnly", "SpectrumApplyMiniMaxH3", "PathchSageAttentionKJ"].includes(n.class_type))).toBe(false);
+    const sparse = Object.entries(graph).filter(([, n]) => n.class_type === "BlockSparseAttention");
+    expect(sparse).toHaveLength(1);
+    expect(sparse[0]![1].inputs).toMatchObject({ selection: "vsa", "selection.keep_percent": 10,
+      start_percent: 0, end_percent: 1, min_tokens: 12288, extra_tokens: 256, sink_conditioning: "exact_kv_and_rows" });
+    const backend = graph[String((sparse[0]![1].inputs.model as unknown[])[0])]!;
+    expect(backend).toMatchObject({ class_type: "ModelAttentionBackend", inputs: { attention: "comfy kitchen attention" } });
+    for (const n of nodes.filter(n => ["BasicScheduler", "BasicGuider"].includes(n.class_type))) {
+      expect(n.inputs.model).toEqual([sparse[0]![0], 0]);
+    }
     expect(JSON.stringify(graph)).not.toContain("{{");
     // All remaining links target real nodes after empty reference loaders were removed.
     for (const node of nodes) for (const input of Object.values(node.inputs)) {
@@ -76,6 +85,29 @@ describe("FastH3 Omni independent H3 integration", () => {
     const base = renderWorkflow(template("minimax_h3_r2v_api.json"), { ...task, modelId: "minimax_h3_ref2va", steps: 20 }, {}) as typeof graph;
     expect(Object.values(base).find(n => n.class_type === "KSamplerSelect")?.inputs.sampler_name).toBe("res_multistep");
     expect(Object.values(base).find(n => n.class_type === "BasicScheduler")?.inputs.steps).toBe(20);
+  });
+
+  it("follows Picture 1 for portrait and square 768p tasks without changing explicit ratios or queued inputs", () => {
+    const { state } = fixture();
+    for (const [width, height, expected] of [[900, 1600, [768, 1376]], [1024, 1024, [768, 768]]] as const) {
+      state.draft = { ...state.draft, ratio: "source", resolution: 768, sourceWidth: 0, sourceHeight: 0,
+        h3ReferenceSlots: [{ id: "picture", mediaType: "image", mediaPath: "face.png", role: "subject", note: "", width, height }] };
+      const task = queueTaskFromDraft(state.draft, state);
+      expect(task).toMatchObject({ sourceWidth: width, sourceHeight: height, steps: 8 });
+      expect(outputDimensions(task)).toEqual(expected);
+      const graph = renderWorkflow(template(), task) as Record<string, { inputs: Record<string, unknown> }>;
+      expect(graph["14"]!.inputs).toMatchObject({ width: expected[0], height: expected[1] });
+      expect(outputDimensions({ ...task, ratio: "16:9" })).toEqual([1376, 768]);
+      state.draft.h3ReferenceSlots[0]!.width = 1600;
+      expect(outputDimensions(task)).toEqual(expected);
+    }
+  });
+
+  it("retains VSA for an older Omni task with missing policy fields", () => {
+    const { task } = fixture();
+    const graph = renderWorkflow(template(), { ...task, h3ExecutionPolicy: undefined, h3SparseAttentionMode: undefined,
+      h3RuntimeMode: undefined, h3ComfyCompilerMode: undefined }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(Object.values(graph).find(n => n.class_type === "BlockSparseAttention")?.inputs.selection).toBe("vsa");
   });
 
   it("serves a dedicated versioned bundled workflow and refuses to offer it for Extend", async () => {

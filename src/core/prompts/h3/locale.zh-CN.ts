@@ -25,7 +25,7 @@ export const uiLocale: PromptUiLocale = {
   manualEditVersion: "手动编辑",
   expandedVersion: "扩写 {count}",
   wordCount: "当前 {count} 词",
-  wordCountGuidance: "当前 {count} 词 · 参考范围 {min}–{max} 词，复杂场景可继续扩写",
+  wordCountGuidance: "当前 {count} 词 · 参考范围 {min}–{max} 词",
   imageWordCount: "当前 {count} 词",
   promptCheckTitle: "H3 提示词检查"
 };

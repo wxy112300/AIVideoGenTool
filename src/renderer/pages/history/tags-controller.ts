@@ -1,11 +1,13 @@
 import {
   historyTagKey,
   historyTagNames,
+  historyFrequentTagNames,
   normalizeHistoryTags
 } from "../../../core/history-filter";
 import type { AppState, HistoryMetadataPatch } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { renderIcons } from "../../shared/icons";
+import { mountInlineTagSuggestions } from "./tag-suggestions";
 
 export type HistoryTagEditorOperation =
   | { kind: "add"; tag: string }
@@ -61,6 +63,8 @@ export function mountHistoryTagEditor(
   const events = new AbortController();
   const signal = events.signal;
   let editingTag: string | null = null;
+  const inline = tagsRoot.hasAttribute("data-history-tags-inline");
+  let inlineSuggestions: ReturnType<typeof mountInlineTagSuggestions> | undefined;
   let updateChain: Promise<void> = Promise.resolve();
 
   const chipOptions: HistoryTagChipMarkupOptions = {
@@ -79,6 +83,7 @@ export function mountHistoryTagEditor(
     renderIcons(list);
   };
   const renderSuggestions = (query = ""): void => {
+    if (inline) { inlineSuggestions?.refresh(); return; }
     const suggestionsRoot = tagsRoot.querySelector<HTMLElement>("[data-history-tag-suggestions]");
     if (!suggestionsRoot) return;
     const assigned = new Set(options.getTags().map(historyTagKey));
@@ -94,9 +99,12 @@ export function mountHistoryTagEditor(
   const closeEditor = (): void => {
     editingTag = null;
     const target = editor();
-    if (target) target.hidden = true;
+    if (target) target.hidden = !inline;
+    const cancel = tagsRoot.querySelector<HTMLElement>("[data-history-tag-cancel]");
+    if (inline && cancel) cancel.hidden = true;
     const field = input();
     if (field) field.value = "";
+    inlineSuggestions?.close();
   };
   const openEditor = (value = ""): void => {
     const target = editor();
@@ -104,6 +112,8 @@ export function mountHistoryTagEditor(
     if (!target || !field) return;
     target.hidden = false;
     field.value = value;
+    const cancel = tagsRoot.querySelector<HTMLElement>("[data-history-tag-cancel]");
+    if (inline && cancel) cancel.hidden = editingTag === null;
     renderSuggestions(value);
     field.focus();
     field.select();
@@ -154,9 +164,15 @@ export function mountHistoryTagEditor(
     }
   };
 
+  const inlineField = input();
+  if (inline && inlineField) inlineSuggestions = mountInlineTagSuggestions(tagsRoot, inlineField, {
+    getTags: options.getTags, getChoices: options.getAvailableTags,
+    choose: value => { inlineField.value = value; void commitInput(); }
+  });
+
   tagsRoot.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
+    if (!(target instanceof Element)) return;
     const add = target.closest<HTMLElement>("[data-history-tag-add]");
     if (add) {
       stop(event);
@@ -174,7 +190,8 @@ export function mountHistoryTagEditor(
     if (suggestion) {
       stop(event);
       const value = suggestion.dataset.historyTagSuggestion;
-      if (value) void commitOperation({ kind: "add", tag: value });
+      if (value && inlineField && inline) { inlineField.value = value; void commitInput(); }
+      else if (value) void commitOperation({ kind: "add", tag: value });
       return;
     }
     const remove = target.closest<HTMLElement>("[data-history-tag-remove]");
@@ -200,6 +217,7 @@ export function mountHistoryTagEditor(
   }, { signal });
   input()?.addEventListener("input", () => renderSuggestions(input()?.value ?? ""), { signal });
   input()?.addEventListener("keydown", (event) => {
+    if (event.isComposing) return;
     if (event.key === "Enter") {
       stop(event);
       void commitInput();
@@ -211,7 +229,7 @@ export function mountHistoryTagEditor(
   renderList();
   renderSuggestions();
 
-  return () => events.abort();
+  return () => { inlineSuggestions?.dispose(); events.abort(); };
 }
 
 export interface HistoryTagsControllerOptions {
@@ -244,7 +262,8 @@ export function mountHistoryTagsController(
     getTags: () => currentTags(context, assetId),
     getAvailableTags: () => {
       const state = context.getState();
-      return state ? historyTagNames(state.history, state.imageHistory, isImageDetail(context.root) ? "image" : "video") : [];
+      const names = tagsRoot.hasAttribute("data-history-tags-inline") ? historyFrequentTagNames : historyTagNames;
+      return state ? names(state.history, state.imageHistory, isImageDetail(context.root) ? "image" : "video") : [];
     },
     escapeHtml: options.escapeHtml,
     icon: options.icon,

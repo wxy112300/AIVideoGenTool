@@ -85,6 +85,7 @@ function runtimeFixture(
     restartLocalService,
     freeMemory,
     getPerformanceMetrics,
+    readComfyRuntimeMemory: async () => ({ devices: [{ allocatedBytes: 1024 ** 3, totalBytes: 16 * 1024 ** 3 }] }),
     scanEnvironment,
     settingsForTask: (_task, currentSettings) => currentSettings,
     sleep: async () => undefined,
@@ -105,6 +106,41 @@ function runtimeFixture(
 }
 
 describe("QueueRuntimeService", () => {
+  it("does not restart LoRA isolation tasks because another GPU application is busy", async () => {
+    const state = createDefaultState(); state.settings = settings({ queueIsolationMode: "lora" });
+    const current = runtimeFixture(state, {
+      getPerformanceMetrics: async () => ({ vramUsedBytes: 12 * 1024 ** 3, vramTotalBytes: 24 * 1024 ** 3, gpuPercent: 90 } as never),
+      readComfyRuntimeMemory: async () => ({ devices: [{ allocatedBytes: 0, totalBytes: 24 * 1024 ** 3 }] })
+    });
+    for (let i = 0; i < 3; i++) expect(await current.service.stabilizeH3RuntimeBetweenTasks(`task-${i}`, "minimax_h3_fl2va", state.settings, false, true)).toBe(true);
+    expect(current.restartLocalService).not.toHaveBeenCalled();
+    expect(current.freeMemory).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not infer a process leak from missing telemetry or a zero adapter sample", async () => {
+    const state = createDefaultState(); state.settings = settings();
+    const current = runtimeFixture(state, {
+      getPerformanceMetrics: async () => ({ vramUsedBytes: 12 * 1024 ** 3, vramTotalBytes: 24 * 1024 ** 3, gpuPercent: 90 } as never),
+      readComfyRuntimeMemory: async () => null
+    });
+    expect(await current.service.stabilizeH3RuntimeBetweenTasks("unknown", "minimax_h3_fl2va", state.settings, false, true)).toBe(true);
+    expect(current.restartLocalService).not.toHaveBeenCalled();
+    const zero = runtimeFixture(state, { readComfyRuntimeMemory: async () => null, getPerformanceMetrics: async () => ({ vramUsedBytes: 0, vramTotalBytes: 24 * 1024 ** 3, gpuPercent: 0 } as never) });
+    expect(await zero.service.stabilizeH3RuntimeBetweenTasks("zero", "minimax_h3_fl2va", state.settings, false, true)).toBe(true);
+    expect(zero.restartLocalService).not.toHaveBeenCalled();
+  });
+
+  it("preserves recovery for measured process retention and failed unload, with remote endpoints connection-only", async () => {
+    const state = createDefaultState(); state.settings = settings();
+    const current = runtimeFixture(state, { readComfyRuntimeMemory: async () => ({ devices: [{ allocatedBytes: 12 * 1024 ** 3, totalBytes: 24 * 1024 ** 3 }] }) });
+    expect(await current.service.stabilizeH3RuntimeBetweenTasks("retained", "minimax_h3_fl2va", state.settings, false, true)).toBe(true);
+    expect(current.restartLocalService).toHaveBeenCalledOnce();
+    const failed = runtimeFixture(state, { freeMemory: async () => { throw new Error("unload failed"); } });
+    expect(await failed.service.stabilizeH3RuntimeBetweenTasks("failed", "minimax_h3_fl2va", state.settings, false, true)).toBe(true);
+    expect(failed.restartLocalService).toHaveBeenCalledOnce();
+    expect(await failed.service.stabilizeH3RuntimeBetweenTasks("remote", "minimax_h3_fl2va", settings({ comfyUrl: "https://remote.invalid" }), false, true)).toBe(false);
+    expect(failed.restartLocalService).toHaveBeenCalledOnce();
+  });
   it("aligns the task profile and starts a local ComfyUI when the endpoint is unavailable", async () => {
     const state = createDefaultState();
     state.settings = settings();

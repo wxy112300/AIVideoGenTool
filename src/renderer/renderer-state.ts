@@ -1,5 +1,7 @@
 import type { AppState } from "../types";
 import type { CreationMode, HistoryKind, Page } from "./contracts";
+import { applyAppearance } from "./shared/ui/appearance";
+import { normalizeUiLocale } from "../core/i18n";
 
 export let state: AppState;
 export let page: Page = "create";
@@ -8,6 +10,8 @@ export let historyKind: HistoryKind = "video";
 
 export function setRendererState(nextState: AppState): AppState {
   state = nextState;
+  if (typeof document !== "undefined") document.documentElement.lang = normalizeUiLocale(state.settings.uiLocale);
+  applyAppearance(state.settings.appearance);
   return state;
 }
 

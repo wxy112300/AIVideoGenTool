@@ -315,6 +315,33 @@ describe("History application services", () => {
     expect(result.reason).toContain("audio shape");
   });
 
+  it("restores actual sizes on unified AV aliases and Continuum references without changing their identities", async () => {
+    const root = await temporaryRoot();
+    const file = (filename: string) => ({ filename, subfolder: "", type: "output", absolutePath: path.join(root, filename) });
+    const owner = file("owner.safetensors"), alias = file("alias.safetensors");
+    const manifest = file("manifest.json"), chunk = file("chunk.safetensors");
+    const missing = file("missing.safetensors");
+    await fs.writeFile(owner.absolutePath, "owner");
+    await fs.writeFile(alias.absolutePath, "alias-data");
+    await fs.writeFile(manifest.absolutePath, "{}");
+    await fs.writeFile(chunk.absolutePath, "chunk-payload");
+    const version = videoVersion("original", []);
+    version.h3AvAsset = { ownerPath: owner, aliasPaths: [alias, missing], continuumChunk: { runStorageRoot: manifest, manifest: { ...manifest } } } as unknown as NonNullable<AssetVersion["h3AvAsset"]>;
+    version.h3ContinuumReceipt = { runStorageRoot: { ...manifest }, chunkRecords: [{ payloadPath: chunk }] } as unknown as NonNullable<AssetVersion["h3ContinuumReceipt"]>;
+    const state = createDefaultState();
+    state.history = [videoAsset("asset-sizes", [version])];
+    const store = repository(state);
+    await queryFor(store, root).restoreHistoryFileSizes();
+    const restored = store.get().history[0].versions[0];
+    expect(restored.h3AvAsset?.ownerPath).toEqual({ ...owner, sizeBytes: 5 });
+    expect(restored.h3AvAsset?.aliasPaths).toEqual([{ ...alias, sizeBytes: 10 }, missing]);
+    expect(restored.h3AvAsset?.continuumChunk?.manifest.sizeBytes).toBe(2);
+    expect(restored.h3AvAsset?.continuumChunk?.runStorageRoot.sizeBytes).toBe(2);
+    expect(restored.h3ContinuumReceipt?.runStorageRoot.sizeBytes).toBe(2);
+    expect(restored.h3ContinuumReceipt?.chunkRecords[0].payloadPath).toEqual({ ...chunk, sizeBytes: 13 });
+    expect(restored.files).toEqual([]);
+  });
+
   it("restores recorded output paths through the query service", async () => {
     const root = await temporaryRoot();
     const output = path.join(root, "output");

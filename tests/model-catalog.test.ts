@@ -64,15 +64,17 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "qwen-image-2-1",
+      "moss-image-sft",
+      "moss-image-pornmaster",
       "qwen-image-2-1-turbo",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
-      "omnigen2",
       "hidream-o1-image",
+      "z-image-turbo",
       "z-image",
       "flux2-klein-4b",
+      "omnigen2",
       "qwen-image-edit-2511",
-      "z-image-turbo",
       "birefnet-background-removal",
       "lama-inpaint"
     ]);
@@ -131,7 +133,7 @@ describe("model catalog", () => {
       adapterId: "qwen-image-2-1-turbo",
       variant: "turbo",
       promptPackId: "qwen-image-2-1",
-      order: 999,
+      order: 997,
       capabilities: { maxReferenceImages: 10 }
     });
     expect(modelCatalog.get("qwen-image-2-1-turbo")?.definition.scan?.requiredCustomNodeIds)
@@ -308,7 +310,7 @@ describe("model catalog", () => {
     ]);
   });
 
-  it("sorts scanned image profiles by catalog capability order", () => {
+  it("sorts scanned image profiles by catalog recommendation order", () => {
     const profiles = [
       { id: "lama-inpaint" },
       { id: "unknown-image-model" },
@@ -319,9 +321,9 @@ describe("model catalog", () => {
 
     expect(sortProfilesByCatalogOrder(profiles, modelCatalog, "image").map((profile) => profile.id))
       .toEqual([
-        "omnigen2",
         "z-image",
         "flux2-klein-4b",
+        "omnigen2",
         "lama-inpaint",
         "unknown-image-model"
       ]);

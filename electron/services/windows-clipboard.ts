@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+let clipboardWrite: Promise<void> = Promise.resolve();
 
 export async function resolveExistingHistoryFile(
   filename: string,
@@ -85,7 +86,19 @@ export async function copyFileToWindowsClipboard(
   await copyFilesToWindowsClipboard([filename], stagingRoot);
 }
 
-export async function copyFilesToWindowsClipboard(
+export function copyFilesToWindowsClipboard(
+  filenames: string[],
+  stagingRoot: string
+): Promise<void> {
+  // Staging, the native write and pruning form one transaction. Otherwise two
+  // overlapping requests can delete the files currently in the clipboard.
+  const requested = [...filenames];
+  const operation = clipboardWrite.then(() => writeFilesToWindowsClipboard(requested, stagingRoot));
+  clipboardWrite = operation.catch(() => undefined);
+  return operation;
+}
+
+async function writeFilesToWindowsClipboard(
   filenames: string[],
   stagingRoot: string
 ): Promise<void> {
@@ -98,7 +111,7 @@ export async function copyFilesToWindowsClipboard(
     // Hand-building a DataObject can make same-volume Explorer paste behave
     // like a move, removing the source video from ComfyUI's output directory.
     "$files = $env:AIVIDEO_CLIPBOARD_FILES_JSON | ConvertFrom-Json",
-    "for ($attempt = 1; $attempt -le 5; $attempt++) { try { Set-Clipboard -LiteralPath $files; break } catch { if ($attempt -eq 5) { throw }; Start-Sleep -Milliseconds 120 } }"
+    "for ($attempt = 1; $attempt -le 8; $attempt++) { try { Set-Clipboard -LiteralPath $files; $copied = @(Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }); if (@(Compare-Object @($files) $copied).Count -ne 0) { throw 'Clipboard file list did not persist' }; break } catch { if ($attempt -eq 8) { throw }; Start-Sleep -Milliseconds 120 } }"
   ].join("; ");
 
   try {

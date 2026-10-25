@@ -47,6 +47,7 @@ import {
 } from "../../core/konohamaru-dlss5";
 import { versionVideoIndex } from "../pages/history/helpers";
 import { uiKeys } from "../../core/i18n-keys";
+import { paintRangeFill } from "../shared/ui/runtime";
 
 export interface UpscaleControllerOptions {
   root: HTMLElement;
@@ -103,13 +104,24 @@ export function renderUpscaleOverlayPreservingScroll(
   renderOverlay: () => void
 ): void {
   const currentDialog = root.querySelector<HTMLElement>(".upscale-dialog");
+  const sourceVideo = currentDialog?.querySelector<HTMLVideoElement>(".upscale-source video");
   const scrollTop = currentDialog?.scrollTop;
+  const openPickerId = currentDialog?.querySelector<HTMLElement>('[role="combobox"][aria-expanded="true"]')?.id;
   renderOverlay();
+  const nextVideo = root.querySelector<HTMLVideoElement>(".upscale-source video");
+  if (sourceVideo && nextVideo && sourceVideo.getAttribute("src") === nextVideo.getAttribute("src")) {
+    nextVideo.removeAttribute("src");
+    nextVideo.replaceWith(sourceVideo);
+  }
   if (scrollTop === undefined) return;
 
   const restoreScroll = () => {
     const nextDialog = root.querySelector<HTMLElement>(".upscale-dialog");
     if (nextDialog) nextDialog.scrollTop = scrollTop;
+    const picker = openPickerId ? document.getElementById(openPickerId) : null;
+    if (picker instanceof HTMLButtonElement && root.contains(picker) && !picker.disabled && picker.getAttribute("aria-expanded") !== "true") {
+      picker.focus({ preventScroll: true }); picker.click();
+    }
   };
   restoreScroll();
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -279,6 +291,17 @@ export function mountUpscaleController(
     options.rememberModalControlFocus(event.currentTarget as HTMLElement);
     options.setDialog({ ...dialog, konohamaruFrameInterpolation: fps });
     renderUpscaleOverlay();
+  }, { signal });
+  root.querySelector<HTMLInputElement>("#upscale-konohamaru-intensity-value")?.addEventListener("change", (event) => {
+    const dialog = options.getDialog();
+    if (!dialog) return;
+    const input = event.currentTarget as HTMLInputElement;
+    const value = Number(input.value);
+    const intensity = Number.isFinite(value) ? Math.round(Math.max(0, Math.min(2, value)) * 10) / 10 : 1;
+    options.setDialog({ ...dialog, konohamaruNrIntensity: intensity });
+    input.value = intensity.toFixed(1);
+    const slider = root.querySelector<HTMLInputElement>("#upscale-konohamaru-intensity");
+    if (slider) { slider.value = String(intensity); paintRangeFill(slider); }
   }, { signal });
   root.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
     const dialog = options.getDialog();

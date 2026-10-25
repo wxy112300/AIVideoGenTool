@@ -434,7 +434,7 @@ export async function scanCustomNodes(
   runtimeBaseUrl = "",
   latestMotionContextVersion = "",
   latestNodeVersions: Readonly<Record<string, string>> = {},
-  runtimeEvidence?: { nodeIds: Set<string> | null }
+  runtimeEvidence?: { nodeIds: Set<string> | null; latestVersionSources?: Readonly<Record<string, string>> }
 ): Promise<CustomNodeStatus[]> {
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
@@ -661,10 +661,10 @@ export async function scanCustomNodes(
         ? latestSpectrumVersion
         : definition.id === "h3-motion-context"
           ? latestMotionContextVersion
-          : "") || definition.latestVersion || "";
+          : "") || (definition.releaseSource === "github-release" ? "" : definition.latestVersion || "");
     const latestVersion = versionMode === "release" && /^v?\d+(?:[.-]\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u.test(remoteVersion)
       ? normalizeReleaseVersion(remoteVersion)
-      : versionMode === "release" ? definition.latestVersion ?? "" : "";
+      : "";
     if (directory && definition.installRevision &&
         detectedRevision.toLowerCase() !== definition.installRevision.toLowerCase()) {
       const detectedLabel = detectedRevision || "未读取到";
@@ -756,6 +756,8 @@ export async function scanCustomNodes(
       minimumVersion: definition.minimumVersion ?? "",
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
+      ...(runtimeEvidence?.latestVersionSources?.[definition.id]
+        ? { latestVersionSource: runtimeEvidence.latestVersionSources[definition.id] } : {}),
       detectedRevision,
       installRevision: definition.installRevision ?? "",
       sourceRemote,

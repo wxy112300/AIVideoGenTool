@@ -314,8 +314,15 @@ export function mountHistoryActionsController(
       stopAction(event);
       const filename = button.dataset.copyFile;
       if (!filename) return;
+      if (button.getAttribute("aria-busy") === "true") return;
       context.reportUserAction("history-copy-file");
-      await options.copyHistoryFile(filename);
+      const previousBusy = button.getAttribute("aria-busy");
+      button.setAttribute("aria-busy", "true");
+      try { await options.copyHistoryFile(filename); }
+      finally {
+        if (previousBusy === null) button.removeAttribute("aria-busy");
+        else button.setAttribute("aria-busy", previousBusy);
+      }
     }, { signal });
   });
 

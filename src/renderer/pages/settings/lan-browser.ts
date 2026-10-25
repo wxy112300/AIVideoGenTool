@@ -12,8 +12,8 @@ function addressRow(url: string, t: Translate, escape: (text: string) => string)
 
 export function renderLanBrowserSettings(settings: Settings, t: Translate, escape: (text: string) => string): string {
   const k = uiKeys.lanBrowser;
-  return `<section class="panel settings-section" data-lan-panel>
-    <div class="section-heading"><div><h2>${t(k.title)}</h2><span class="muted">${t(k.description)}</span></div></div>
+  return `<section class="panel settings-section settings-form-card" data-lan-panel>
+    <div class="section-heading"><div><h2>${t(k.title)}</h2></div></div>
     <div class="settings-grid two">
       <label class="ios-switch-field"><span class="policy-copy"><strong>${t(k.enabled)}</strong><small>${t(k.unprotected)}</small></span><input id="lan-browser-enabled" type="checkbox" ${settings.lanBrowserEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
       <label>${t(k.port)}<input id="lan-browser-port" type="number" min="1024" max="65535" step="1" value="${settings.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT}"></label>

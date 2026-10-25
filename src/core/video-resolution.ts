@@ -1,5 +1,13 @@
 /** Shared base presets for standard H3 generation and continuation. */
 export const H3_BASE_RESOLUTIONS = [360, 480, 540, 640, 720, 768] as const;
+export const H3_CUSTOM_RESOLUTION_RANGE = { min: 256, max: 1080, step: 16 } as const;
+export interface VideoResolutionRange { min: number; max: number; step: number; }
+export function isCustomVideoResolution(value: number, range: VideoResolutionRange | undefined): boolean {
+  return Boolean(range && Number.isFinite(value) && value >= range.min && value <= range.max && (value - range.min) % range.step === 0);
+}
+export function clampCustomVideoResolution(value: number, range: VideoResolutionRange): number {
+  return Math.max(range.min, Math.min(range.max, range.min + Math.round((value - range.min) / range.step) * range.step));
+}
 
 /**
  * Pick the resolution option that best preserves a source video's requested
@@ -13,8 +21,10 @@ export const H3_BASE_RESOLUTIONS = [360, 480, 540, 640, 720, 768] as const;
 export function nearestSupportedVideoResolution(
   requested: number,
   supported: readonly number[],
-  fallback: number
+  fallback: number,
+  custom?: VideoResolutionRange
 ): number {
+  if (isCustomVideoResolution(requested, custom)) return requested;
   const options = [...new Set(supported)]
     .filter((value) => Number.isFinite(value) && value > 0)
     .sort((left, right) => left - right);

@@ -18,7 +18,7 @@ export function showFilters(filter: HistoryFilterState, info: BrowseLibraryInfo,
       <label>${text("sort")}<select name="sort">${sortOptions(value.sort)}</select></label>
       <div class="field-pair"><label>${text("minRating")}<select name="minRating">${ratings(value.minRating)}</select></label><label>${text("maxRating")}<select name="maxRating">${ratings(value.maxRating)}</select></label></div>
       <label>${text("minDuration")}<input name="minDuration" type="number" min="0" step="1" value="${value.minDuration ?? ""}"></label>
-      <label>${text("model")}<select name="model"><option value="">${text("all")}</option>${info.models.map((model) => `<option value="${escape(model.id)}" ${model.id === value.modelId ? "selected" : ""}>${escape(model.name)}</option>`).join("")}</select></label>
+      <label>${text("model")}<select name="model" multiple>${info.models.map((model) => `<option value="${escape(model.id)}" ${value.modelIds.includes(model.id) ? "selected" : ""}>${escape(model.name)}</option>`).join("")}</select></label>
       <section><h3>${text("includeTags")}</h3><div data-tags="include"></div></section><section><h3>${text("excludeTags")}</h3><div data-tags="exclude"></div></section>
       <footer><button type="button" data-reset>${text("reset")}</button><button type="submit" class="primary">${text("apply")}</button></footer></form>`;
     const include = tagInput(dialog.querySelector<HTMLElement>('[data-tags="include"]')!, value.tags, info.tags);
@@ -29,7 +29,7 @@ export function showFilters(filter: HistoryFilterState, info: BrowseLibraryInfo,
       event.preventDefault();
       const data = new FormData(event.currentTarget as HTMLFormElement);
       const numeric = (name: string) => data.get(name) === "" ? null : Number(data.get(name));
-      apply(normalizeHistoryFilter({ favoriteOnly: data.has("favorite"), sort: data.get("sort") as HistorySort, minRating: numeric("minRating") as HistoryFilterState["minRating"], maxRating: numeric("maxRating") as HistoryFilterState["maxRating"], minDuration: numeric("minDuration"), modelId: String(data.get("model")), tags: include.values(), excludedTags: exclude.values() }));
+      apply(normalizeHistoryFilter({ favoriteOnly: data.has("favorite"), sort: data.get("sort") as HistorySort, minRating: numeric("minRating") as HistoryFilterState["minRating"], maxRating: numeric("maxRating") as HistoryFilterState["maxRating"], minDuration: numeric("minDuration"), modelIds: data.getAll("model").map(String), tags: include.values(), excludedTags: exclude.values() }));
       dialog.close();
     });
     renderIcons(dialog);

@@ -710,7 +710,8 @@ function normalizedLineagePath(value: string | undefined): string {
  */
 export function findImageProjectLineage(
   projects: readonly ImageHistoryProject[],
-  basePicture: Pick<ImageReference, "absolutePath" | "originalPath" | "contentHash">
+  basePicture: Pick<ImageReference, "absolutePath" | "originalPath" | "contentHash">,
+  preferred?: ImageProjectLineageMatch
 ): ImageProjectLineageMatch | undefined {
   const hash = basePicture.contentHash?.trim().toLowerCase();
   const paths = new Set(
@@ -718,8 +719,19 @@ export function findImageProjectLineage(
       .map(normalizedLineagePath)
       .filter(Boolean)
   );
-  for (const project of projects) {
-    for (const version of project.versions) {
+  // Explicit History selection wins only when the actual input still matches it.
+  const selected = preferred?.parentVersionId
+    ? projects.find(project => project.id === preferred.projectId && project.versions.some(version => version.id === preferred.parentVersionId))
+    : undefined;
+  const ordered = selected ? [selected, ...projects.filter(project => project !== selected)] : projects;
+  for (const project of ordered) {
+    const selectedVersion = project === selected
+      ? project.versions.find(version => version.id === preferred?.parentVersionId)
+      : undefined;
+    const versions = selectedVersion
+      ? [selectedVersion, ...project.versions.filter(version => version !== selectedVersion)]
+      : project.versions;
+    for (const version of versions) {
       const sourceHash = version.kind === "source"
         ? version.references[0]?.contentHash?.trim().toLowerCase()
         : undefined;

@@ -13,7 +13,7 @@ export interface HistoryFilterState {
   minRating: HistoryRating | null;
   maxRating: HistoryRating | null;
   minDuration: number | null;
-  modelId: string;
+  modelIds: string[];
   /** Tags are matched as an intersection; every selected tag must be present. */
   tags: string[];
   /** Items containing any excluded tag are removed from the result. */
@@ -28,7 +28,7 @@ export const defaultHistoryFilter: HistoryFilterState = {
   minRating: null,
   maxRating: null,
   minDuration: null,
-  modelId: "",
+  modelIds: [],
   tags: [],
   excludedTags: [],
   sort: "newest"
@@ -86,7 +86,9 @@ function normalizedNumber(value: unknown): number | null {
   return null;
 }
 
-export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null | undefined): HistoryFilterState {
+export type HistoryFilterInput = Partial<HistoryFilterState> & { modelId?: string };
+
+export function normalizeHistoryFilter(value: HistoryFilterInput | null | undefined): HistoryFilterState {
   let minRating = isHistoryRating(value?.minRating) ? value!.minRating : null;
   let maxRating = isHistoryRating(value?.maxRating) ? value!.maxRating : null;
   if (minRating !== null && maxRating !== null && minRating > maxRating) {
@@ -101,18 +103,22 @@ export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null
     minRating,
     maxRating,
     minDuration: normalizedNumber(value?.minDuration),
-    modelId: typeof value?.modelId === "string" ? value.modelId.trim() : "",
+    modelIds: [...new Set((Array.isArray(value?.modelIds)
+      ? value.modelIds
+      : typeof value?.modelId === "string" ? [value.modelId] : [])
+      .filter((id): id is string => typeof id === "string")
+      .map((id) => id.trim()).filter(Boolean))],
     tags,
     excludedTags,
     sort: validSort(value?.sort) ? value!.sort : "newest"
   };
 }
 
-export function historyFilterSignature(value: Partial<HistoryFilterState> | null | undefined): string {
+export function historyFilterSignature(value: HistoryFilterInput | null | undefined): string {
   const filter = normalizeHistoryFilter(value);
   const tags = filter.tags.map((tag) => historyTagKey(tag)).sort();
   const excludedTags = filter.excludedTags.map((tag) => historyTagKey(tag)).sort();
-  return JSON.stringify({ ...filter, tags, excludedTags });
+  return JSON.stringify({ ...filter, modelIds: [...filter.modelIds].sort(), tags, excludedTags });
 }
 
 export function historyFilterIsActive(filter: HistoryFilterState): boolean {
@@ -120,10 +126,16 @@ export function historyFilterIsActive(filter: HistoryFilterState): boolean {
     filter.minRating !== null ||
     filter.maxRating !== null ||
     filter.minDuration !== null ||
-    Boolean(filter.modelId) ||
+    filter.modelIds.length > 0 ||
     filter.tags.length > 0 ||
     filter.excludedTags.length > 0 ||
     filter.sort !== "newest";
+}
+
+/** Image browsing ignores video-only conditions without erasing the video selection. */
+export function historyFilterForKind(value: HistoryFilterInput, kind: "video" | "image"): HistoryFilterState {
+  const filter = normalizeHistoryFilter(value);
+  return kind === "video" ? filter : { ...filter, minDuration: null, sort: filter.sort.startsWith("duration-") ? "newest" : filter.sort };
 }
 
 export function isHistoryTimeSort(sort: HistorySort): boolean {
@@ -179,7 +191,7 @@ function matchesCommon(
   const rating = ratingValue(item.rating);
   if (filter.minRating !== null && rating < filter.minRating) return false;
   if (filter.maxRating !== null && (rating === 0 || rating > filter.maxRating)) return false;
-  if (filter.modelId && item.modelId !== filter.modelId) return false;
+  if (filter.modelIds.length && !filter.modelIds.includes(item.modelId ?? "")) return false;
   if (filter.tags.length > 0 || filter.excludedTags.length > 0) {
     const itemTags = new Set(normalizeHistoryTags(item.tags).map(historyTagKey));
     if (filter.tags.length > 0 && !filter.tags.every((tag) => itemTags.has(historyTagKey(tag)))) return false;
@@ -190,7 +202,7 @@ function matchesCommon(
 
 export function filterHistoryAssets(
   history: ReadonlyArray<HistoryAsset>,
-  rawFilter?: Partial<HistoryFilterState>
+  rawFilter?: HistoryFilterInput
 ): HistoryAsset[] {
   const filter = normalizeHistoryFilter(rawFilter);
   return history
@@ -201,14 +213,14 @@ export function filterHistoryAssets(
 
 export function filterImageHistoryProjects(
   projects: ReadonlyArray<ImageHistoryProject>,
-  rawFilter?: Partial<HistoryFilterState>
+  rawFilter?: HistoryFilterInput
 ): ImageHistoryProject[] {
-  const filter = normalizeHistoryFilter(rawFilter);
+  const filter = historyFilterForKind(rawFilter ?? {}, "image");
   return projects
     .filter((project) => {
-      if (!matchesCommon({ favorite: project.favorite, rating: project.rating, tags: project.tags }, filter)) return false;
-      return !filter.modelId || project.versions.some((version) =>
-        version.kind !== "source" && version.modelId === filter.modelId
+      if (!matchesCommon({ favorite: project.favorite, rating: project.rating, tags: project.tags }, { ...filter, modelIds: [] })) return false;
+      return !filter.modelIds.length || project.versions.some((version) =>
+        version.kind !== "source" && filter.modelIds.includes(version.modelId)
       );
     })
     .sort((left, right) => compareHistoryItems({
@@ -239,6 +251,23 @@ export function historyTagNames(
     if (tag && key && !byKey.has(key)) byKey.set(key, tag);
   }
   return [...byKey.values()].sort((left, right) => left.localeCompare(right, "zh-CN"));
+}
+
+/** Rank by how many works use a tag, with stable name ordering for ties. */
+export function historyFrequentTagNames(
+  history: ReadonlyArray<HistoryAsset>,
+  imageHistory: ReadonlyArray<ImageHistoryProject>,
+  kind: "video" | "image"
+): string[] {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const item of kind === "video" ? history : imageHistory) {
+    for (const tag of normalizeHistoryTags(item.tags ?? [])) {
+      const key = historyTagKey(tag), current = counts.get(key);
+      if (current) current.count += 1;
+      else counts.set(key, { name: tag, count: 1 });
+    }
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "zh-CN")).map(item => item.name);
 }
 
 export function historyFilterModelIds(

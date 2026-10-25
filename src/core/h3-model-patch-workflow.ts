@@ -85,7 +85,9 @@ function requiredModelLink(value: unknown, locale: UiLocale): ModelLink {
 function attentionOwnerForNode(node: H3ModelPatchWorkflowNode): ReturnType<typeof h3AttentionOwnerFor> | null {
   if (node.class_type === "PathchSageAttentionKJ" || node.class_type === "LocalVideoStudioH3ManagedSageAttention") return "sage";
   if (node.class_type === "H3SLAAttention") return "sla";
-  if (node.class_type === "H3SparseAttention" || node.class_type === "H3SparseAttentionAdvanced" || node.class_type === "BlockSparseAttention") return "h3-sparse";
+  // Native sparse attention wraps a dense fallback; that pair is one policy,
+  // not two competing dense backends. Legacy attention patches stay exclusive.
+  if (node.class_type === "H3SparseAttention" || node.class_type === "H3SparseAttentionAdvanced") return "h3-sparse";
   if (node.class_type === "ModelAttentionBackend") {
     return node.inputs?.attention === "comfy kitchen attention" ? "comfy-kitchen" : "pytorch";
   }
@@ -220,13 +222,14 @@ function sparseInputs(model: ModelLink, mode: "sol-attn" | "native-sla" | "vsa")
     ...(mode === "sol-attn"
       ? { "selection.tau": 1.3 }
       : { "selection.keep_percent": 10 }),
-    start_percent: 0.2,
+    start_percent: mode === "vsa" ? 0 : 0.2,
     end_percent: 1.0,
     dense_blocks: "",
     min_tokens: 12288,
     extra_tokens: 256,
     sink_conditioning: "exact_kv_and_rows",
-    verbose: false
+    // Log the actual producer path (or dense fallback reason), once per shape.
+    verbose: mode === "vsa"
   };
 }
 

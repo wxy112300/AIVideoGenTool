@@ -1,0 +1,92 @@
+.history-image-detail .image-history-detail-layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 16px; align-items: start; }
+.image-history-main { display: grid; gap: 10px; min-width: 0; }
+.image-history-viewer-panel { min-width: 0; padding: 12px; overflow: hidden; }
+.image-history-viewer-grid { display: grid; grid-template-columns: 76px minmax(0,1fr); gap: 12px; min-width: 0; }
+.image-history-version-rail { display: grid; grid-template-rows: auto minmax(0,1fr); gap: 8px; min-width: 0; min-height: 0; padding: 2px; }
+.image-history-version-rail h2 { margin: 0; font-size: var(--fs-12); font-weight: var(--fw-semibold); }
+.image-history-version-rail p { margin: 1px 0 0; font-size: var(--fs-11); color: var(--text-3); }
+.image-history-version-list { display: grid; align-content: start; gap: 8px; min-height: 0; overflow-y: auto; padding: 3px; overscroll-behavior: contain; scrollbar-width: none; }
+.image-history-version-list::-webkit-scrollbar { display: none; }
+.image-history-version-thumb { position: relative; width: 100%; aspect-ratio: 1; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); transition: box-shadow var(--dur-2), transform var(--dur-1); }
+.image-history-version-thumb:hover { transform: translateY(-1px); }
+.image-history-version-thumb[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface-1),0 0 0 3.5px var(--accent); }
+.image-history-version-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.image-history-version-thumb > span { position: absolute; left: 4px; bottom: 4px; height: 16px; padding: 0 4px; border-radius: 4px; background: rgb(0 0 0 / .55); color: #fff; font: var(--fw-semibold) 10px/16px var(--font-mono); }
+.image-history-version-thumb > .ui-icon { position: absolute; right: 3px; top: 3px; width: 16px; height: 16px; padding: 3px; border-radius: 50%; background: rgb(0 0 0 / .55); color: #fff; }
+.image-history-stage-panel { display: grid; grid-template-rows: auto minmax(0,1fr) auto; gap: 8px; min-width: 0; }
+.image-history-stage-toolbar { min-width: 0; display: flex; }
+.image-history-stage-toolbar > div { min-width: 0; }
+.image-history-stage-toolbar strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: var(--fs-12)/1.5 var(--font-mono); }
+.image-history-stage-toolbar p { margin: 1px 0 0; color: var(--text-3); font-size: var(--fs-11); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.image-history-stage { position: relative; display: grid; place-items: center; width: 100%; min-width: 0; height: clamp(360px,62vh,640px); overflow: hidden; border: 0; border-radius: var(--r-md); cursor: zoom-in; background: conic-gradient(var(--n2) 25%,var(--n3) 0 50%,var(--n2) 0 75%,var(--n3) 0) 0 0 / 16px 16px; }
+.image-history-stage img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.image-history-stage-controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.image-history-stage-controls .ui-button { min-height: 32px; height: 32px; padding: 0 10px; font-size: var(--fs-12); }
+.image-history-stage-controls .icon-button { width: 32px; min-width: 32px; padding: 0; }
+.image-history-version-position { min-width: 88px; color: var(--text-3); font-size: var(--fs-11); text-align: center; font-variant-numeric: tabular-nums; }
+.history-image-detail .image-history-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.image-history-facts > div { display: grid; gap: 1px; min-width: 0; padding: 7px 10px; border-radius: var(--r-md); background: var(--surface-2); }
+.image-history-facts span { color: var(--text-3); font-size: var(--fs-11); }
+.image-history-facts strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-1); font-size: var(--fs-12); font-weight: var(--fw-medium); }
+.image-history-file-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.image-history-file-actions .ui-button { min-width: 0; padding: 0 6px; font-size: var(--fs-12); }
+.image-history-version-note { margin: 0; color: var(--text-3); font-size: var(--fs-12); }
+.history-media-detail .history-image-output .output-file { grid-template-columns: 18px minmax(0,1fr) auto 64px 28px; }
+.history-image-output pre { max-height: 220px; margin: 8px 0 0; font: var(--fs-11)/1.6 var(--font-mono); background: var(--surface-2); }
+.history-image-output summary { color: var(--text-3); font-size: var(--fs-12); }
+.history-image-detail .status-line .badge { padding: 3px 7px; border: 0; border-radius: 5px; background: var(--surface-3); color: var(--text-2); font-size: var(--fs-11); }
+.history-image-detail .status-line .badge.ok { color: var(--accent); }
+.history-image-detail .status-line .badge.ok::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); }
+.history-reference-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(120px,1fr)); gap: 10px; align-items: end; }
+.history-reference-grid figure { display: grid; gap: 4px; min-width: 0; margin: 0; }
+.history-reference-media { position: relative; display: block; width: 100%; max-height: 220px; min-width: 0; padding: 0; border: 0; overflow: hidden; border-radius: var(--r-md); background: var(--surface-2); }
+.history-reference-media > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.history-reference-media > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.history-reference-open { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; }
+.history-reference-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; color: var(--text-3); background: var(--surface-2); font-size: var(--fs-12); }
+.history-reference-fallback[hidden] { display: none; }
+.history-reference-viewer { width: min(1100px,94vw); max-width: 94vw; max-height: 94vh; padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-1); color: var(--text-1); }
+.history-reference-viewer::backdrop { background: rgb(0 0 0 / .8); }
+.history-reference-viewer > header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.history-reference-viewer > header > strong { flex: 1; min-width: 0; font-size: var(--fs-12); }
+.history-reference-viewer-stage { position: relative; display: grid; place-items: center; min-height: 160px; background: var(--n0); }
+.history-reference-viewer-stage > img, .history-reference-viewer-stage > video { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; }
+.history-reference-viewer-stage > p { padding: 16px; color: var(--text-3); font-size: var(--fs-12); }
+.history-reference-grid figcaption { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-3); font-size: var(--fs-11); }
+.history-reference-badges { position: absolute; left: 6px; bottom: 6px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+.history-reference-badges > span { padding: 2px 5px; border-radius: 4px; background: rgb(0 0 0 / .7); color: #fff; font-size: var(--fs-10); }
+
+body.image-lightbox-open { overflow: hidden; }
+.image-lightbox { position: fixed; inset: 0; z-index: 120; background: rgb(0 0 0 / .94); }
+.image-lightbox[hidden] { display: none; }
+.image-lightbox-backdrop { display: none; }
+.image-lightbox-dialog { display: grid; grid-template-rows: auto minmax(0,1fr); width: 100%; height: 100%; min-height: 0; outline: none; }
+.image-lightbox-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 12px; padding: 10px 16px; color: #fff; }
+.image-lightbox-toolbar > div:first-child { display: grid; gap: 1px; min-width: 0; }
+.image-lightbox-toolbar strong, .image-lightbox-toolbar span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.image-lightbox-toolbar strong { font-size: var(--fs-13); font-weight: var(--fw-semibold); }
+.image-lightbox-toolbar span { color: rgb(255 255 255 / .72); font-size: var(--fs-12); }
+.image-lightbox-toolbar .button-row { flex-wrap: nowrap; justify-content: flex-end; gap: 4px; min-width: 0; }
+.image-lightbox-toolbar .ui-button { border: 0; background: transparent; color: rgb(255 255 255 / .85); min-height: 28px; height: 28px; padding: 0 8px; font-size: var(--fs-12); box-shadow: none; }
+.image-lightbox-toolbar .icon-button { width: 32px; min-width: 32px; height: 32px; }
+.image-lightbox-toolbar .ui-button:hover { color: #fff; background: rgb(255 255 255 / .12); }
+.image-lightbox-version-controls { display: flex; align-items: center; gap: 6px; }
+.image-lightbox-version-controls > span { min-width: 52px; text-align: center; }
+.image-lightbox-zoom { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+.image-lightbox-stage { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; touch-action: none; }
+.image-lightbox-stage img { display: block; max-width: 100%; max-height: 100%; user-select: none; transform-origin: center; will-change: transform; box-shadow: 0 12px 40px rgb(0 0 0 / .5); }
+.image-lightbox-stage.is-zoomed { cursor: grab; }
+.image-lightbox-stage.is-panning { cursor: grabbing; }
+@media (max-width:1120px) {
+  .history-image-detail .image-history-detail-layout { grid-template-columns: minmax(0,1fr); }
+  .history-image-detail .history-detail-sidebar { position: static; }
+}
+@media (max-width:760px) {
+  .image-history-viewer-grid { grid-template-columns: minmax(0,1fr); }
+  .image-history-version-rail { grid-template-rows: auto auto; }
+  .image-history-version-list { display: flex; overflow-x: auto; overflow-y: hidden; }
+  .image-history-version-thumb { flex: 0 0 64px; }
+  .image-lightbox-toolbar { grid-template-columns: minmax(0,1fr) auto; gap: 6px; padding: 8px; }
+  .image-lightbox-version-controls { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
+}
+@media (prefers-reduced-motion:reduce) { .image-history-version-thumb { transition: none; } }

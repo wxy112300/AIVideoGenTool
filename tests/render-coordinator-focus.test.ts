@@ -7,7 +7,7 @@ import { createRendererUiState } from "../src/renderer/ui-state";
 
 function createCoordinator(
   root: HTMLElement,
-  currentPage: "settings" | "history-detail" | "create" = "settings",
+  currentPage: "settings" | "history" | "history-detail" | "create" = "settings",
   renderCreate: () => string = () => ""
 ) {
   const state = createDefaultState();
@@ -49,10 +49,50 @@ function createCoordinator(
     icon: () => "",
     escapeHtml: (value: unknown) => String(value)
   };
-  return { coordinator: createRenderCoordinator(options), renderOverlay, renderSettings };
+  return { coordinator: createRenderCoordinator(options), renderOverlay, renderSettings, options };
 }
 
 describe("render coordinator focus preservation", () => {
+  it("preserves an open History picker across an unrelated refresh and appends new facets", async () => {
+    const root = document.createElement("div"); document.body.append(root);
+    const panel = (extra = "", locale = "zh-CN") => `<div data-history-filter-panel data-history-filter-context="video:${locale}"><div data-history-picker="models"><div class="history-picker-list"><label><input data-history-model="old">Old</label>${extra}</div></div><div data-history-picker="tags" hidden><div class="history-picker-list"><div data-history-tag-row="scene">Scene</div></div></div></div>`;
+    root.innerHTML = panel();
+    const previous = root.firstElementChild, input = root.querySelector<HTMLInputElement>("input")!; input.focus();
+    const { coordinator, options } = createCoordinator(root, "history");
+    options.renderPages.history = () => panel('<label><input data-history-model="new">New</label>');
+    coordinator.render(); await vi.waitFor(() => expect(root.querySelector('[data-history-model="new"]')).not.toBeNull());
+    expect(root.querySelector("[data-history-filter-panel]")).toBe(previous);
+    expect(root.querySelector("[data-history-model=old]")).toBe(input); expect(document.activeElement).toBe(input);
+    expect([...root.querySelectorAll<HTMLElement>("[data-history-model]")].map(e => e.dataset.historyModel)).toEqual(["old", "new"]);
+    options.renderPages.history = () => panel("", "en-US");
+    coordinator.render(); await vi.waitFor(() => expect(root.querySelector('[data-history-filter-context="video:en-US"]')).not.toBeNull());
+    expect(root.querySelector("[data-history-filter-panel]")).not.toBe(previous); root.remove();
+  });
+  it("keeps a composing rich editor attached until composition ends, then applies the deferred refresh", async () => {
+    const root = document.createElement("div"); document.body.append(root);
+    root.innerHTML = '<div id="rich-composing" data-rich-composing contenteditable="true" tabindex="0">你好</div>';
+    const editor = root.firstElementChild!;
+    const render = vi.fn(() => '<div id="after-compose">你好</div>');
+    const { coordinator } = createCoordinator(root, "create", render);
+    coordinator.render(); coordinator.render();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(root.firstElementChild).toBe(editor); expect(render).not.toHaveBeenCalled();
+    editor.removeAttribute("data-rich-composing");
+    editor.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(render).toHaveBeenCalledOnce(); expect(root.querySelector("#after-compose")).not.toBeNull();
+    root.remove();
+  });
+  it("restores a keyboard-focusable info host after an unrelated refresh", async () => {
+    const root = document.createElement("div"); document.body.append(root);
+    const markup = '<span id="info-host" tabindex="0">Info</span>';
+    root.innerHTML = markup;
+    root.querySelector<HTMLElement>("#info-host")!.focus();
+    const { coordinator } = createCoordinator(root, "create", () => markup);
+    coordinator.render(); await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(root.querySelector("#info-host"));
+    root.remove();
+  });
   it("coalesces event refreshes in one frame while keeping explicit renders immediate", async () => {
     const root = document.createElement("div");
     document.body.append(root);
@@ -82,6 +122,9 @@ describe("render coordinator focus preservation", () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
     expect(renderSettings).toHaveBeenCalledTimes(2);
+    requestAnimationFrame.mockRestore();
+    cancelAnimationFrame.mockRestore();
+    root.remove();
   });
 
   it("restores an edited input and its selection after a full page render", async () => {
@@ -126,7 +169,10 @@ describe("render coordinator focus preservation", () => {
 
     const { coordinator } = createCoordinator(root, "history-detail");
     coordinator.render();
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      expect(root.querySelector("video")).not.toBe(previous);
+      expect(root.dataset.pagePresenting).toBeUndefined();
+    });
 
     const restored = root.querySelector<HTMLVideoElement>("video");
     if (!restored) throw new Error("restored video was not created");
@@ -135,7 +181,7 @@ describe("render coordinator focus preservation", () => {
       duration: { configurable: true, value: 60 }
     });
     restored.dispatchEvent(new Event("loadedmetadata"));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(play).toHaveBeenCalled());
 
     expect(restored.volume).toBeCloseTo(0.42);
     expect(restored.muted).toBe(true);

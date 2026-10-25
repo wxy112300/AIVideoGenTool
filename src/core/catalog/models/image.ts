@@ -25,7 +25,7 @@ export const imageModelEntries: CatalogModelEntry[] = [
     { name: "H3 · reference edit (REF2VA)", description: "Removed; historical model identity only." },
     { name: "H3 · 參考編輯（REF2VA）", description: "已移除；保留歷史模型名稱。" }),
   entry({
-    id: "omnigen2", family: "omnigen2", category: "image", adapterId: "omnigen2", order: 900, inputModes: ["image"],
+    id: "omnigen2", family: "omnigen2", category: "image", adapterId: "omnigen2", order: 550, inputModes: ["image"],
     capabilities: { maxReferenceImages: 2, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
     scan: { managedBy: "comfyui", vram: "FP16 · 4090 24GB · 20–50 步 · 约 1MP 参考编码", integrated: true, runtimeNodeTypes: omnigen2RequiredNodeTypes, components: [
       component(
@@ -73,7 +73,7 @@ export const imageModelEntries: CatalogModelEntry[] = [
     name: "OmniGen2 · 文生圖／參考編輯", badge: "原生 · 20/50 步 · 最多 2 圖", description: "OmniGen2 原生多模態圖片工作流；無參考圖走文生圖，有參考圖走 instruction edit／多圖組合，支援標註引導、Mask 區域回填和裁剪輸入。"
   }),
   entry({
-    id: "hidream-o1-image", family: "hidream-o1", category: "image", adapterId: "hidream-o1-image", order: 800, inputModes: ["image"],
+    id: "hidream-o1-image", family: "hidream-o1", category: "image", adapterId: "hidream-o1-image", order: 900, inputModes: ["image"],
     capabilities: { maxReferenceImages: 1, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
     scan: { managedBy: "comfyui", vram: "FP8 scaled · 4090 24GB · Full 50 步", integrated: true, runtimeNodeTypes: hidreamO1RequiredNodeTypes, components: [
       component(
@@ -128,7 +128,7 @@ export const imageModelEntries: CatalogModelEntry[] = [
     ] }
   }, { name: "LaMa · 局部移除", badge: "单图 + Mask · 原图尺寸", description: "涂抹需要移除的区域，使用 Big LaMa 自动修复背景；不读取 Prompt。" }, { name: "LaMa · object removal", badge: "One image + mask · source size", description: "Remove masked content and reconstruct the background with Big LaMa. No prompt is sent." }, { name: "LaMa · 局部移除", badge: "單圖 + Mask · 原圖尺寸", description: "塗抹需要移除的區域，使用 Big LaMa 自動修復背景；不讀取 Prompt。" }),
   entry({
-    id: "z-image-turbo", family: "z-image", variant: "turbo", category: "image", adapterId: "z-image-turbo", order: 400, inputModes: ["image"],
+    id: "z-image-turbo", family: "z-image", variant: "turbo", category: "image", adapterId: "z-image-turbo", order: 800, inputModes: ["image"],
     capabilities: { maxReferenceImages: 1, resolutions: [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] },
     scan: { managedBy: "comfyui", vram: "BF16 · 4090 24GB · 8 步", integrated: true, runtimeNodeTypes: zImageTurboRequiredNodeTypes, components: [
       component("Z-Image-Turbo 扩散模型", "diffusion_models/z_image_turbo_bf16.safetensors", /diffusion_models[\\/]z_image_turbo_bf16\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors", "diffusion_models", "z_image_turbo_bf16.safetensors")),
@@ -156,7 +156,7 @@ export const imageModelEntries: CatalogModelEntry[] = [
     ] }
   }, { name: "Qwen Image 2.1 · 官方文生图/图片编辑", badge: "原生 · T2I + 最多 10 图 · 25/40 步", description: "Qwen Image 2.1 官方 ComfyUI 统一路径：无参考图时走原生 T2I，有参考图时走最多 10 个图像输入的编辑路径；Paint 标注作为额外视觉引导，不是 Mask-conditioned inpaint。" }, { name: "Qwen Image 2.1 · official T2I/editing", badge: "Native · T2I + up to 10 images · 25/40 steps", description: "Unified official ComfyUI path for Qwen Image 2.1: text-only prompts use native T2I, while supplied images use the edit path with up to 10 image inputs. Paint annotations are visual guides, not mask-conditioned inpainting." }, { name: "Qwen Image 2.1 · 官方文生圖/圖片編輯", badge: "原生 · T2I + 最多 10 圖 · 25/40 步", description: "Qwen Image 2.1 官方 ComfyUI 統一路徑：無參考圖時走原生 T2I，有參考圖時走最多 10 個圖像輸入的編輯路徑；Paint 標註是額外視覺引導，不是 Mask-conditioned inpaint。" }),
   entry({
-    id: "qwen-image-2-1-turbo", family: "qwen-image", variant: "turbo", category: "image", adapterId: "qwen-image-2-1-turbo", promptPackId: "qwen-image-2-1", order: 999, inputModes: ["image"],
+    id: "qwen-image-2-1-turbo", family: "qwen-image", variant: "turbo", category: "image", adapterId: "qwen-image-2-1-turbo", promptPackId: "qwen-image-2-1", order: 997, inputModes: ["image"],
     capabilities: { maxReferenceImages: 10 },
     scan: { managedBy: "comfyui", vram: "Turbo INT8 ConvRot + BF16 VAE · RTX 4090 24GB · 官方 8 步", integrated: true, runtimeNodeTypes: qwenImage21TurboRequiredNodeTypes, components: [
       component("Qwen Image 2.1 Turbo 扩散模型", "diffusion_models/qwen_image_2.1_turbo_{bf16|int8_convrot}.safetensors", /diffusion_models[\\/]qwen_image_2\.1_turbo_(?:bf16|int8_convrot)\.safetensors$/i, guide("Comfy-Org / Qwen-Image-2.1 (Turbo)", "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors?download=true", "diffusion_models", "qwen_image_2.1_turbo_int8_convrot.safetensors", "官方 Qwen Image 2.1 Turbo 完整扩散权重；固定使用官方 8 步采样，不需要另装 Turbo LoRA。4090 优先 INT8 ConvRot，BF16 作为可选精度变体。")),

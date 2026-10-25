@@ -352,5 +352,35 @@ export function mountVideoExtensionController(
   startInput.addEventListener("input", () => updateTrim("start"), { signal });
   endInput.addEventListener("input", () => updateTrim("end"), { signal });
 
+  // Two native range thumbs overlap. Own pointer capture on their shared track
+  // so a drag remains continuous across both inputs and outside the thumb.
+  let trimDrag: { pointer: number; active: "start" | "end" } | undefined;
+  const moveTrim = (event: PointerEvent) => {
+    if (!trimDrag || event.pointerId !== trimDrag.pointer) return;
+    const bounds = editor.getBoundingClientRect(), duration = getDraft()?.sourceVideoDuration ?? 0;
+    const value = Math.round(Math.max(0, Math.min(1, (event.clientX - bounds.left - 6) / Math.max(1, bounds.width - 12))) * duration * 10) / 10;
+    (trimDrag.active === "start" ? startInput : endInput).value = String(value);
+    updateTrim(trimDrag.active);
+  };
+  editor.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    const bounds = editor.getBoundingClientRect(), duration = getDraft()?.sourceVideoDuration ?? 0;
+    if (!duration) return;
+    const at = (event.clientX - bounds.left) / bounds.width * duration;
+    const active = event.target === startInput ? "start" : event.target === endInput ? "end" :
+      Math.abs(at - Number(startInput.value)) < Math.abs(at - Number(endInput.value)) ? "start" : "end";
+    trimDrag = { pointer: event.pointerId, active };
+    editor.setPointerCapture(event.pointerId); event.preventDefault();
+    (active === "start" ? startInput : endInput).focus({ preventScroll: true }); moveTrim(event);
+  }, { signal });
+  editor.addEventListener("pointermove", moveTrim, { signal });
+  const finishTrim = (event: PointerEvent) => {
+    if (trimDrag?.pointer !== event.pointerId) return;
+    if (editor.hasPointerCapture(event.pointerId)) editor.releasePointerCapture(event.pointerId);
+    trimDrag = undefined;
+  };
+  editor.addEventListener("pointerup", finishTrim, { signal });
+  editor.addEventListener("pointercancel", finishTrim, { signal });
+
   return () => events.abort();
 }

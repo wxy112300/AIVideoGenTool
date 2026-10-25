@@ -4,6 +4,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { icon } from "../../shared/icons";
 import { mountQueueActionMenu, type QueueMenuAction } from "./action-menu";
 import { mountQueueDragSort } from "./drag-sort";
+import { mountQueuePrompts } from "./prompt";
 
 export type QueueConfirmationAction = "remove" | "cancel";
 
@@ -29,6 +30,7 @@ export function mountQueueController(
   const root = context.root;
   const t = context.t;
   const dragSortCleanup = mountQueueDragSort(context, options.setState);
+  const promptsCleanup = mountQueuePrompts(context);
 
   const startQueue = async (): Promise<void> => {
     context.reportUserAction("queue-start");
@@ -92,6 +94,10 @@ export function mountQueueController(
         if (task.status !== "waiting") return;
         context.reportUserAction("queue-set-pause-boundary", { taskId });
         options.setState(await context.application.setQueuePauseBoundaryAfterTask(taskId));
+      } else if (action === "remove") {
+        context.reportUserAction("queue-remove", { taskId });
+        options.requestConfirmation(taskId, "remove");
+        return;
       } else {
         if (task.status !== "waiting" || task.taskType === "image-generation") return;
         context.reportUserAction("queue-randomize-seed", { taskId });
@@ -218,5 +224,6 @@ export function mountQueueController(
     events.abort();
     queueActionMenuCleanup();
     dragSortCleanup();
+    promptsCleanup();
   };
 }

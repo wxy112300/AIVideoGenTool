@@ -370,22 +370,22 @@ describe("History accessibility markup", () => {
     });
     const continuumPanel = continuumRoot.querySelector(".history-continuum-panel")!;
     const continuumSidebar = continuumRoot.querySelector(".history-detail-sidebar")!;
-    expect(continuumPanel.parentElement).toBe(continuumRoot);
+    expect(continuumPanel.parentElement?.hasAttribute("data-history-record-flow")).toBe(true);
     expect(continuumSidebar.contains(continuumPanel)).toBe(false);
     expect(continuumRoot.querySelector(".history-detail-hero")!.compareDocumentPosition(continuumPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(continuumPanel.compareDocumentPosition(continuumRoot.querySelector(".history-record-section")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(continuumRoot.querySelector(".history-record-section")!.contains(continuumPanel)).toBe(true);
     expect(continuumPanel.querySelector("h2")?.id).toBe("history-continuum-title");
     expect(continuumPanel.querySelectorAll("dl > div")).toHaveLength(4);
     expect(continuumPanel.textContent).toContain("fixture-run");
     expect(continuumPanel.textContent).toContain("fixture-take");
     expect(continuumPanel.textContent).toContain("fixture-branch");
-    expect(continuumPanel.querySelector('[data-continuum-action="Regenerate Current"]')?.getAttribute("data-source-version")).toBe(videoVersion.id);
-    expect(continuumPanel.querySelector('[data-continuum-action="Continue From Here"]')?.getAttribute("data-continue-history")).toBe(videoAsset.id);
+    expect(continuumSidebar.querySelector('[data-continuum-action="Regenerate Current"]')?.getAttribute("data-source-version")).toBe(videoVersion.id);
+    expect(continuumSidebar.querySelector('[data-continuum-action="Continue From Here"]')?.getAttribute("data-continue-history")).toBe(videoAsset.id);
     expect(continuumRoot.textContent).toContain("manifest.json");
     expect(continuumRoot.textContent).toContain("chunk-1.safetensors");
     expect(continuumRoot.textContent).toContain("chunk-2.safetensors");
     expect(continuumSidebar.querySelector('[data-continuum-action="Continue / Next"]')).not.toBeNull();
-    expect(continuumSidebar.querySelector('[data-continuum-action="Regenerate Current"]')).toBeNull();
+    expect(continuumSidebar.querySelector('[data-continuum-action="Regenerate Current"]')).not.toBeNull();
     expect(videoPage).not.toContain("history-continuum-panel");
 
     const artifactVersion = {
@@ -507,10 +507,10 @@ describe("History accessibility markup", () => {
       /<article\b[^>]*data-open-image-history="image-project-detail"[^>]*>/
     )?.[0];
 
-    expect(videoPage).toContain('class="history-detail-quick-actions"');
+    expect(videoPage).toContain('history-side-action-pair');
     expect(videoPage.match(/00:05/g)).toHaveLength(2);
     expect(videoPage).not.toContain("5.166666666666667");
-    expect(videoPage).toContain('class="history-detail-action-primary"');
+    expect(videoPage).toContain('history-side-create');
     expect(videoPage).not.toContain('class="history-detail-more"');
     expect(videoPage).toContain('data-open-upscale');
     expect(videoPage).toContain('data-continue-history="video-asset-detail"');
@@ -525,9 +525,9 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain("sol-attn");
     expect(videoPage).not.toContain('<dt>history.page.motion</dt>');
     expect(videoPage).not.toContain('class="history-joint-av-indicator"');
-    expect(artifactPage).toContain('class="history-joint-av-indicator">history.page.nativeAvBadge</span>');
+    expect(artifactPage).toContain('+ history.page.avFile</span>');
     expect(artifactPage).not.toContain('data-h3-av-artifact');
-    expect(artifactPage).toContain('history.page.nativeAvTitle');
+    expect(artifactPage).toContain('history.page.avFile');
     expect(artifactPage).toContain('data-history-av-visible-status');
     expect(artifactPage).toContain("h3av_artifact-001.safetensors");
     expect(artifactPage).toContain("h3av_artifact-001.json");
@@ -546,7 +546,7 @@ describe("History accessibility markup", () => {
     expect(artifactPage).toContain("2048 B");
     expect(artifactPage.match(/class="output-file"/g)).toHaveLength(5);
     expect(videoPage).toContain('<media-controller id="history-player"');
-    expect(videoPage).toContain('autohide="1"');
+    expect(videoPage).toContain('autohide="2"');
     expect(videoPage).toContain('fullscreenelement="history-player"');
     expect(videoPage).toContain('hotkeys="noarrowleft noarrowright"');
     expect(videoPage).toContain('data-history-player-info');
@@ -572,7 +572,7 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain('data-history-download-filename=');
     expect(videoPage).toContain('data-history-player-menu-action="download"');
     expect(videoPage).toContain('data-history-player-menu-action="pip"');
-    expect(videoPage).not.toContain('slot="icon"');
+    expect(videoPage).toContain('data-lucide="settings"');
     expect(videoPage.indexOf('media-time-range')).toBeLessThan(videoPage.indexOf('media-mute-button'));
     expect(videoPage.indexOf('media-mute-button')).toBeLessThan(videoPage.indexOf('data-history-player-utility'));
     expect(videoPage.indexOf('data-history-player-utility')).toBeLessThan(videoPage.indexOf('media-fullscreen-button'));
@@ -584,8 +584,14 @@ describe("History accessibility markup", () => {
     expect(imageCardStart).toBeDefined();
     expect(imageCardStart).not.toContain("title=");
     expect(imageCardStart).toContain('aria-label="Image detail fixture，history.card.openDetailsContext"');
-    expect(imagePage).toContain('class="history-detail-quick-actions"');
-    expect(imagePage).toContain('class="history-detail-action-primary"');
+    expect(imagePage).toContain('class="history-side-zone history-side-create"');
+    expect(imagePage).toContain('class="history-side-action-pair"');
+    expect(imagePage).toContain('class="history-side-zone history-side-files"');
+    expect(imagePage).toContain('class="history-side-zone history-side-versions"');
+    expect(imagePage).toContain('data-history-tags-inline');
+    expect(imagePage).toContain('data-history-record-flow');
+    expect(imagePage).toContain('data-image-stage="fit" role="button" tabindex="0"');
+    expect(imagePage.indexOf('class="panel history-detail-prompt"')).toBeLessThan(imagePage.indexOf('class="history-record-section"'));
     expect(imagePage).not.toContain('class="history-detail-more"');
     expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(1);
     expect(imagePage.match(/data-image-continue-edit-project=/g)).toHaveLength(1);
@@ -594,5 +600,7 @@ describe("History accessibility markup", () => {
     expect(imagePage).toContain('data-image-version-id="image-edit-detail"');
     expect(imagePage).not.toContain('class="history-detail-compact-actions"');
     expect(imagePage).toContain('class="history-record-section"');
+    const highResolutionPage = renderHistoryDetailPage(videoViewModel, { ...detailOptions, versionShortEdge: () => 2160 });
+    expect(highResolutionPage).toMatch(/data-open-upscale\s*>/);
   });
 });

@@ -4,6 +4,11 @@
 
 ## 当前任务
 
+- [Motion Context 推荐线升级](2026-10-25-motion-context-upgrade/TASK.md)
+- [设置安装控件与版本检测回归](2026-10-25-settings-release-check/TASK.md)
+- [历史虚拟列表](2026-10-25-history-virtualization/TASK.md)
+- [无 LoRA 重启与历史文件复制回归](2026-10-25-runtime-isolation-clipboard/TASK.md)
+- [MOSS 主模型与社区 NSFW 图片模型接入](2026-10-21-moss-integration/TASK.md)
 - [本次 Prompt 输出语言覆盖](2026-10-21-prompt-language/TASK.md)
 - [H3 写实画质知识与快捷插入](2026-10-21-h3-visual-quality/TASK.md)
 - [FastH3 Omni 独立 H3 模型接入](2026-10-21-fasth3-omni/TASK.md)

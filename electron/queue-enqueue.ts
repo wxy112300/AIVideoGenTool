@@ -207,7 +207,9 @@ async function resolveImageProjectLineage(
 ): Promise<{ projectId: string; parentVersionId?: string } | undefined> {
   const basePicture = draft.pictures[0];
   if (!basePicture?.absolutePath || !basePicture.contentHash) return undefined;
-  const known = findImageProjectLineage(state.imageHistory, basePicture);
+  const known = findImageProjectLineage(state.imageHistory, basePicture, draft.projectId
+    ? { projectId: draft.projectId, parentVersionId: draft.parentVersionId }
+    : undefined);
   if (known) return known;
   const queuedMatch = state.queue.find((item) =>
     isImageGenerationQueueTask(item) && item.pictures[0]?.contentHash === basePicture.contentHash

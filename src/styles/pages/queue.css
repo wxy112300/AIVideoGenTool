@@ -1,0 +1,150 @@
+/* M5: queue layout. Runtime state and controls retain their existing identities. */
+.app-shell:has(.queue-page-heading) { container: queue-page / inline-size; }
+.queue-page-heading { position: sticky; top: var(--topbar-h, 64px); z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; margin: 0 calc(-1 * var(--shell-gutter, 32px)) 16px; padding: 8px var(--shell-gutter, 32px); border: 0; background: color-mix(in srgb, var(--canvas) 92%, transparent); backdrop-filter: blur(14px); }
+.queue-page-heading-main { min-width: 0; display: grid; gap: 2px; }
+.queue-page-heading h1 { margin: 0; color: var(--text-1); font: var(--fw-semibold) var(--fs-20)/var(--lh-tight) var(--font-sans); letter-spacing: normal; }
+.queue-heading-line, .queue-run-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; color: var(--text-3); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+.queue-heading-line > :not(:first-child)::before, .queue-run-elapsed:not(:has(> span:empty)) + .queue-run-metric::before { content: "·"; color: var(--text-4); margin-right: 6px; }
+.queue-run-summary { display: inline-flex; }
+.queue-run-summary[hidden] { display: none; }
+.queue-run-metric { display: inline-flex; align-items: baseline; gap: 6px; }
+.queue-run-elapsed:has(> span:empty) { display: none; }
+.queue-run-metric strong, .queue-run-elapsed > span { color: var(--text-1); font-weight: var(--fw-medium); }
+.queue-runtime-status { display: inline-flex; align-items: center; }
+.queue-runtime-status-value::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--warning); }
+.queue-runtime-status-value[data-status=connected]::before { background: var(--success); }
+.queue-runtime-status-value[data-status=error]::before { background: var(--danger); }
+.queue-runtime-status-value:is([data-status=starting], [data-status=initializing], [data-status=cleaning])::before { background: var(--accent); animation: queue-pulse 1.6s ease-in-out infinite; }
+.queue-heading-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; flex-shrink: 0; }
+.queue-preview-toggle { display: inline-flex; align-items: center; gap: 10px; min-height: 0; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; font-size: var(--fs-12); color: var(--text-2); }
+.queue-preview-toggle .ios-switch { width: 36px; height: 20px; border: 0; background: var(--n6); box-shadow: none; }
+.queue-preview-toggle .ios-switch::after { width: 16px; height: 16px; top: 2px; left: 2px; box-shadow: 0 1px 2px rgb(0 0 0 / .4); }
+.queue-preview-toggle input:checked + .ios-switch { background: var(--accent); }
+.queue-preview-toggle input:checked + .ios-switch::after { transform: translateX(16px); }
+.queue-preview-toggle input:focus-visible + .ios-switch { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.queue-primary-action { border-left-color: var(--line); }
+.queue-operation-status { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--text-2); background: var(--surface-1); font-size: var(--fs-12); }
+.queue-operation-status[hidden] { display: none; }
+.queue-operation-indicator { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); animation: queue-pulse 1.6s ease-in-out infinite; }
+.queue-operation-status[data-tone=error] { color: var(--danger); }
+.queue-operation-status[data-tone=error] .queue-operation-indicator { background: var(--danger); animation: none; }
+.queue-performance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 10px 0; margin-bottom: 16px; gap: 0; }
+.queue-performance-grid .performance-card { min-width: 0; display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 4px 10px; padding: 0 16px; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
+.queue-performance-grid .performance-card:first-child { border-left: 0; }
+.performance-card > span { grid-column: 1; color: var(--text-3); font-size: var(--fs-11); }
+.performance-card small { grid-column: 2; grid-row: 1; justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
+.performance-card strong { grid-column: 1; grid-row: 2; color: var(--text-1); font-size: var(--fs-16); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.metric-bar { grid-column: 2; grid-row: 2; align-self: center; height: 3px; overflow: hidden; border-radius: 99px; background: var(--n5); }
+.metric-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--dur-4) var(--ease-out); }
+.performance-card[data-pressure=hot] .metric-bar i { background: var(--warning); }
+.queue-section { display: grid; gap: 8px; margin-bottom: 16px; }
+.queue-section-heading { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+.queue-section-heading h2 { margin: 0; font-size: var(--fs-14); }
+.queue-section-heading > span { color: var(--text-3); font-size: var(--fs-12); }
+.queue-section .task-list { position: relative; display: grid; gap: 6px; }
+.queue-active-task { min-width: 0; }
+.queue-section-empty { min-height: 120px; padding: 24px; }
+.queue-empty-state { display: grid; justify-items: center; gap: 8px; padding: 40px 20px; }
+.queue-empty-state h2, .queue-empty-state p { margin: 0; }
+.task-card { display: grid; grid-template-columns: 20px 28px 88px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 10px 10px 4px; margin: 0; min-width: 0; user-select: none; }
+.queue-rank { align-self: start; padding-top: 4px; color: var(--text-3); font: var(--fw-medium) var(--fs-14)/1 var(--font-mono); text-align: center; }
+.queue-rank strong { font: inherit; }
+.queue-rank.running { display: grid; justify-items: center; gap: 6px; color: var(--accent-text); }
+.queue-rank.attention { color: var(--danger); }
+.queue-run-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: queue-pulse 1.6s ease-in-out infinite; }
+.task-main { display: flex; flex-direction: column; align-self: stretch; gap: 4px; min-width: 0; }
+.queue-task-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.queue-task-title h3 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-13); font-weight: var(--fw-semibold); }
+.queue-task-title .status, .queue-retry-status { flex: none; margin: 0; padding: 0 6px; border-radius: var(--r-xs); height: 18px; background: var(--surface-3); color: var(--text-2); font-size: var(--fs-11); line-height: 18px; }
+.queue-task-title .status.failed { color: var(--danger); background: var(--danger-soft); }
+.queue-task-title .status.deferred, .queue-retry-status { color: var(--warning); background: var(--warning-soft); }
+.task-meta { display: flex; flex-wrap: wrap; gap: 0 6px; min-width: 0; margin-top: auto; padding-top: 2px; color: var(--text-3); font-size: var(--fs-11); line-height: 1.6; }
+.task-meta > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.task-meta > span:nth-child(-n+4) { color: var(--text-2); }
+.task-meta > span + span::before { content: "·"; margin-right: 6px; color: var(--text-4); }
+.task-main .error { margin: 0; color: var(--danger); font-size: var(--fs-12); overflow-wrap: anywhere; user-select: text; }
+.queue-task-actions { display: flex; align-self: start; align-items: center; flex-wrap: wrap; gap: 2px; }
+.queue-task-actions .ui-button { min-height: 28px; padding-inline: 8px; font-size: var(--fs-12); }
+.queue-task-actions .ui-button.icon-button { width: 28px; min-width: 28px; padding: 0; }
+.queue-action-primary.ui-button { background: transparent; border-color: transparent; color: var(--text-2); }
+.queue-action-reset.ui-button { background: var(--accent-soft); color: var(--accent-text); }
+.queue-reorder-controls { align-self: stretch; display: grid; align-content: start; }
+.queue-drag-handle, .queue-pause-boundary-handle { display: grid; place-items: center; width: 20px; height: 26px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-4); cursor: grab; touch-action: none; }
+.queue-drag-handle:hover, .queue-drag-handle:focus-visible, .queue-pause-boundary-handle:hover { background: var(--hover-wash); color: var(--text-2); }
+.queue-drag-handle .ui-icon, .queue-pause-boundary-handle .ui-icon { width: 16px; height: 16px; }
+.queue-drag-handle:focus-visible, .queue-pause-boundary-handle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.task-input-preview { position: relative; display: grid; place-items: center; align-self: start; width: 88px; height: 88px; border-radius: var(--r-md); overflow: hidden; background: var(--surface-2); color: var(--text-3); }
+.task-input-preview img, .task-input-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.task-input-preview [data-queue-input-empty] { display: grid; justify-items: center; text-align: center; gap: 4px; font-size: var(--fs-11); }
+.task-input-preview [data-queue-input-empty][hidden] { display: none; }
+.task-input-preview [data-queue-input-empty] small { font-size: var(--fs-11); }
+.task-card.running { grid-template-columns: 20px 28px auto minmax(0, 1fr) auto; align-items: start; padding-block: 14px; background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.running-copy { gap: 8px; }
+.queue-preview-box { max-width: 100%; }
+.live-preview { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: var(--r-md); background: #000; }
+.live-preview img, .live-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.live-preview > div { display: grid; justify-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-12); }
+.live-preview > div[hidden] { display: none; }
+.live-preview-live-dot { position: absolute; z-index: 2; right: 6px; top: 6px; width: 16px; height: 16px; border: 5px solid rgb(0 0 0 / .45); border-radius: 50%; background: var(--danger); background-clip: padding-box; }
+.live-preview-spinner { position: absolute; z-index: 2; width: 18px; height: 18px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: queue-spin .8s linear infinite; }
+.queue-run-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.queue-run-progress strong { min-width: 3.2em; text-align: right; color: var(--text-1); font-size: var(--fs-20); font-weight: var(--fw-semibold); line-height: 1; font-variant-numeric: tabular-nums; }
+.queue-run-progress .progress, .seedvr2-local-progress { height: 4px; margin: 0; border-radius: 99px; overflow: hidden; background: var(--n5); }
+.queue-run-progress .progress > span, .seedvr2-local-progress > span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-4) var(--ease-out); }
+.running-stage-summary { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--text-3); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+.running-stage-summary #running-stage { color: var(--text-1); }
+.running-controls { flex-direction: column; align-items: stretch; gap: 6px; }
+.seedvr2-segment-progress { display: grid; gap: 6px; }
+.seedvr2-segment-progress[hidden] { display: none; }
+.seedvr2-segment-progress-copy { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; color: var(--text-3); font-size: var(--fs-12); }
+.seedvr2-segment-progress-copy strong { color: var(--text-2); font-weight: var(--fw-medium); }
+.queue-prompt { display: grid; gap: 2px; min-width: 0; }
+.queue-source-summary { margin: 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.queue-prompt .task-description { display: -webkit-box; -webkit-line-clamp: var(--prompt-lines, 2); -webkit-box-orient: vertical; min-height: 0; max-height: none; margin: 0; padding: 0; overflow: hidden; white-space: normal; color: var(--text-2); font-size: var(--fs-12); line-height: 1.5; user-select: text; }
+.queue-prompt.open .task-description { display: block; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--r-md); background: color-mix(in srgb, var(--canvas) 55%, transparent); white-space: pre-wrap; }
+.queue-prompt-tools { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
+.queue-prompt-tools .ui-button.icon-button { width: 24px; min-width: 24px; min-height: 24px; margin-left: -6px; }
+.queue-prompt-toggle.ui-button { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--text-3); font-size: var(--fs-11); line-height: 1.6; }
+.queue-prompt-toggle[hidden] { display: none; }
+.queue-prompt-toggle .ui-icon { width: 12px; height: 12px; }
+.queue-pause-boundary { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 2px 6px 2px 4px; user-select: none; }
+.queue-pause-boundary::before { content: ""; position: absolute; left: 34px; right: 44px; top: 50%; border-top: 1px dashed var(--accent-glow); }
+.queue-pause-boundary > * { position: relative; }
+.queue-pause-boundary-copy { justify-self: center; padding: 0 10px; background: var(--canvas); color: var(--accent-text); font-size: var(--fs-12); }
+.queue-pause-boundary-copy strong { font-weight: var(--fw-medium); }
+.queue-pause-boundary-clear.ui-button { background: var(--canvas); width: 26px; min-width: 26px; min-height: 26px; }
+.queue-pause-boundary-handle { color: var(--accent-text); }
+.queue-task-deferred { opacity: .55; }
+.queue-task-deferred:hover, .queue-task-deferred:focus-within { opacity: 1; }
+.queue-drag-active, .queue-drag-active * { cursor: grabbing; user-select: none; }
+.task-card.queue-dragging { z-index: 60; pointer-events: none; box-shadow: var(--shadow-lift); background: var(--surface-2); }
+.queue-pause-boundary-dragging { z-index: 60; pointer-events: none; }
+.queue-drag-placeholder, .queue-boundary-drag-placeholder { border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--hover-wash); }
+.queue-action-menu { width: max-content; min-width: 200px; max-width: calc(100vw - 16px); padding: 4px; }
+.queue-action-menu button { grid-template-columns: 16px minmax(0, 1fr); gap: 8px; padding: 0 8px; min-height: 30px; }
+.queue-action-menu button strong { font-size: var(--fs-12); font-weight: var(--fw-medium); }
+.queue-action-menu .context-icon, .queue-action-menu .ui-icon { width: 14px; height: 14px; }
+.queue-menu-separator { height: 1px; margin: 4px 0; background: var(--line); }
+.queue-action-menu button.destructive { color: var(--danger); }
+.queue-action-menu button.destructive:hover { background: var(--danger-soft); }
+@keyframes queue-pulse { 50% { opacity: .4; } }
+@keyframes queue-spin { to { transform: rotate(360deg); } }
+@container queue-page (max-width: 1120px) {
+  .queue-performance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
+  .queue-performance-grid .performance-card:nth-child(3) { border-left: 0; }
+  .task-card.running { grid-template-columns: 20px 28px auto minmax(0, 1fr); }
+  .task-card.running .running-controls { grid-column: 4; flex-direction: row; }
+}
+@container queue-page (max-width: 900px) {
+  .task-card { grid-template-columns: 20px 28px 72px minmax(0, 1fr); }
+  .task-card .queue-task-actions { grid-column: 4; }
+  .task-input-preview { width: 72px; height: 72px; }
+  .task-card.running { grid-template-columns: 20px 28px minmax(0, 1fr); }
+  .task-card.running .queue-preview-box, .task-card.running .task-main, .task-card.running .running-controls { grid-column: 3; }
+}
+@media (max-width: 760px) {
+  .queue-page-heading { flex-wrap: wrap; gap: 8px; }
+  .queue-heading-actions { gap: 10px; }
+  .queue-task-title { flex-wrap: wrap; gap: 4px; }
+  .queue-task-title h3 { flex-basis: 100%; }
+}

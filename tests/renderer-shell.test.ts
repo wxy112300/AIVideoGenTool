@@ -6,6 +6,8 @@ import { createTranslator } from "../src/core/i18n";
 import type { Page } from "../src/renderer/contracts";
 import { mountShellController } from "../src/renderer/shell/controller";
 import { renderShell } from "../src/renderer/shell/page";
+import { createNotification } from "../src/renderer/notifications";
+import { createNotificationStack } from "../src/renderer/shared/ui/notify";
 
 function render(page: "create" | "history-detail" | "settings") {
   const translator = createTranslator("zh-CN");
@@ -57,11 +59,14 @@ describe("renderer shell navigation semantics", () => {
       escapeHtml: (value) => String(value)
     });
 
-    expect(html).toContain('id="dismiss-app-flash"');
-    expect(html).toContain('aria-label="关闭通知"');
-    expect(html).toContain('data-flash-message>扫描失败</span>');
-    expect(html).toContain('data-notification-action="open-settings"');
-    expect(html).toContain(">打开设置</button>");
+    expect(html).not.toContain('id="app-flash"');
+    const stack = createNotificationStack({ dismissLabel: () => "关闭通知", changed: () => {}, action: () => {} });
+    stack.push(createNotification(1, "扫描失败", "error", undefined, [{ id: "open-settings", label: "打开设置", run: () => {} }]));
+    const close = document.querySelector<HTMLButtonElement>('.ui-notice [aria-label="关闭通知"]')!;
+    close.focus(); expect(document.activeElement).toBe(close);
+    expect(document.querySelector('.ui-notice[role="alert"]')?.textContent).toContain("扫描失败");
+    expect(document.querySelector('[data-notification-action="open-settings"]')?.textContent).toBe("打开设置");
+    stack.dispose();
   });
 
   it("does not let a stale navigation frame reset a newly entered History page", () => {
@@ -99,6 +104,24 @@ describe("renderer shell navigation semantics", () => {
     frames.shift()?.(0);
 
     expect(scrollTo).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("ignores another return click while history is already requested, preserving its saved anchor", () => {
+    document.body.innerHTML = '<button class="history-detail-back-button" data-page="history">Back</button>';
+    const capture = vi.fn(), render = vi.fn();
+    const cleanup = mountShellController({
+      getPage: () => "history", settingsHaveUnsavedChanges: () => false,
+      rememberModalFocus: vi.fn(), requestDiscardSettings: vi.fn(),
+      returnToHistory: vi.fn(), returnToLastHistoryDetail: vi.fn(),
+      navigateHistoryDetail: vi.fn(), navigateImageHistoryDetail: vi.fn(),
+      captureHistoryScrollPosition: capture, setHistoryScrollRestorePending: vi.fn(),
+      clearHistoryForwardTarget: vi.fn(), setPage: vi.fn(), dismissNotification: vi.fn(),
+      runNotificationAction: vi.fn(), reportUserAction: vi.fn(), render
+    });
+    document.querySelector<HTMLButtonElement>("button")!.click();
+    expect(capture).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
     cleanup();
   });
 });

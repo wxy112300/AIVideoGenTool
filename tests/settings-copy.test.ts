@@ -34,9 +34,9 @@ describe("Settings localized copy", () => {
   it("localizes no-prompt direction descriptions without changing unknown fallbacks", () => {
     const fallback = "ORIGINAL MODEL INSTRUCTION";
 
-    expect(settingsH3AutoPromptSeedDescription("zh-CN", "visible-affordance", fallback)).toContain("利用画面");
-    expect(settingsH3AutoPromptSeedDescription("zh-TW", "visible-affordance", fallback)).toContain("利用畫面");
-    expect(settingsH3AutoPromptSeedDescription("en-US", "visible-affordance", fallback)).toContain("visible, actionable");
+    expect(settingsH3AutoPromptSeedDescription("zh-CN", "visible-affordance", fallback)).toContain("已有物体");
+    expect(settingsH3AutoPromptSeedDescription("zh-TW", "visible-affordance", fallback)).toContain("既有物體");
+    expect(settingsH3AutoPromptSeedDescription("en-US", "visible-affordance", fallback)).toContain("visible objects");
     expect(settingsH3AutoPromptSeedDescription("zh-CN", "custom-direction", fallback)).toBe(fallback);
   });
 

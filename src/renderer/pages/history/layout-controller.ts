@@ -1,4 +1,5 @@
 import type { HistoryKind, RendererCleanup, RendererContext } from "../../contracts";
+import { reducedMotion } from "../../shared/ui/motion";
 import {
   assignHistoryMasonryColumns,
   estimateHistoryCardHeight,
@@ -8,6 +9,7 @@ import {
   historyMasonryColumnCount
 } from "./helpers";
 import { scheduleHistoryBatches } from "./media-scheduler";
+import { refreshVirtualHistory, virtualHistoryBox } from "./virtual-gallery";
 
 export type HistoryLayout = "masonry" | "album";
 type HistoryAnchor = { assetId: string; offsetFromCenter: number };
@@ -167,6 +169,12 @@ export function createHistoryLayoutController(
     if (!anchor?.assetId) return;
     layoutRestoreFrame = window.requestAnimationFrame(() => {
       layoutRestoreFrame = null;
+      const gallery = context.root.querySelector<HTMLElement>("[data-history-virtual]");
+      const box = virtualHistoryBox(gallery, anchor.assetId);
+      if (gallery && box) {
+        window.scrollBy({ top: gallery.getBoundingClientRect().top + box.top + box.height / 2 - (window.innerHeight / 2 + anchor.offsetFromCenter), behavior: "auto" });
+        refreshVirtualHistory(gallery); return;
+      }
       const card = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")]
         .find((item) => item.dataset.history === anchor.assetId);
       if (!card) return;
@@ -216,23 +224,35 @@ export function createHistoryLayoutController(
       window.scrollTo({ top: position, behavior: "auto" });
       return position;
     };
+    const correctSnapshotAnchor = () => {
+      if (context.getRoute().page !== "history" || !snapshot.assetId) return;
+      const gallery = context.root.querySelector<HTMLElement>("[data-history-virtual]");
+      const box = virtualHistoryBox(gallery, snapshot.assetId);
+      if (gallery && box && historyScrollAnchorIsValid(snapshot, context.getRoute().historyKind, layout, getHistoryFilterSignature(), true)) {
+        window.scrollBy({ top: gallery.getBoundingClientRect().top + box.top + box.height / 2 - (window.innerHeight / 2 + snapshot.offsetFromViewportCenter), behavior: "auto" });
+        refreshVirtualHistory(gallery); return;
+      }
+      const target = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")]
+        .find(item => item.dataset.history === snapshot.assetId);
+      if (!target || !historyScrollAnchorIsValid(snapshot, context.getRoute().historyKind,
+        layout, getHistoryFilterSignature(), true)) return;
+      // Reading the restored card materializes its content-visibility layout.
+      // Correct before View Transition captures, rather than revealing a list
+      // that still needs two frames of scroll adjustment.
+      const rect = target.getBoundingClientRect();
+      const delta = rect.top + rect.height / 2 -
+        (window.innerHeight / 2 + snapshot.offsetFromViewportCenter);
+      if (Math.abs(delta) >= 1) window.scrollBy({ top: delta, behavior: "auto" });
+    };
     restorePosition();
+    correctSnapshotAnchor();
     scrollRestoreFrame = window.requestAnimationFrame(() => {
       scrollRestoreFrame = null;
       if (context.getRoute().page !== "history") {
         scrollRestorePending = false;
         return;
       }
-      const documentHeight = Math.max(
-        document.documentElement?.scrollHeight ?? 0,
-        document.body?.scrollHeight ?? 0
-      );
-      const position = clampHistoryScrollPosition(
-        snapshot?.scrollY ?? scrollPosition,
-        documentHeight,
-        window.innerHeight
-      );
-      window.scrollTo({ top: position, behavior: "auto" });
+      correctSnapshotAnchor();
       scrollRestoreFrame = window.requestAnimationFrame(() => {
         scrollRestoreFrame = null;
         if (context.getRoute().page !== "history") {
@@ -302,7 +322,10 @@ export function createHistoryLayoutController(
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
     const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
     const cardWidth = Math.max(1, (gallery.clientWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
-    const copyHeight = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
+    const copy = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy");
+    // Offscreen content-visibility descendants can report placeholder geometry.
+    // The two-line caption has an explicit CSS height; use that for reservation.
+    const copyHeight = copy ? Number.parseFloat(getComputedStyle(copy).height) || copy.getBoundingClientRect().height : 47;
     const cardHeights = cards.map((card) => {
       const mediaRatio = historyMediaAspectRatio(
         card.querySelector<HTMLElement>(".history-media")?.style.getPropertyValue("--media-ratio") ?? ""
@@ -345,7 +368,8 @@ export function createHistoryLayoutController(
     if (!columnCount) return;
     const cardWidth = Math.max(1, (availableWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
     const firstCard = gallery.querySelector<HTMLElement>(".history-gallery-item");
-    const copyHeight = firstCard?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
+    const copy = firstCard?.querySelector<HTMLElement>(".history-gallery-copy");
+    const copyHeight = copy ? Number.parseFloat(getComputedStyle(copy).height) || copy.getBoundingClientRect().height : 47;
     const cardHeight = estimateHistoryCardHeight(cardWidth, 1, copyHeight, "album");
     // Album cards share one aspect ratio and fixed copy height. Keep the
     // content-visibility fallback on the gallery instead of writing the same
@@ -360,6 +384,7 @@ export function createHistoryLayoutController(
   const bindMasonry = () => {
     const gallery = document.querySelector<HTMLElement>(".history-gallery.masonry");
     if (!gallery) return;
+    if (gallery.hasAttribute("data-history-virtual")) { refreshVirtualHistory(gallery); return; }
     const currentWidth = gallery.clientWidth;
     const reusesLayout = gallery.dataset.historyLayoutReady === "masonry" &&
       gallery.dataset.historyLayoutWidth === String(currentWidth);
@@ -382,6 +407,7 @@ export function createHistoryLayoutController(
   const bindAlbum = () => {
     const gallery = document.querySelector<HTMLElement>(".history-gallery.album");
     if (!gallery) return;
+    if (gallery.hasAttribute("data-history-virtual")) { refreshVirtualHistory(gallery); return; }
     const update = () => layoutAlbum(gallery);
     update();
     if (typeof ResizeObserver === "undefined") return;
@@ -414,6 +440,10 @@ export function createHistoryLayoutController(
   };
 
   const bindTitleMarquees = () => {
+    titleEvents?.abort(); titleResizeObserver?.disconnect(); titleViewportObserver?.disconnect();
+    cancelTitleObserverSetup?.();
+    if (titleMeasureFrame !== null) window.cancelAnimationFrame(titleMeasureFrame);
+    titleMeasureFrame = null;
     const titles = [...document.querySelectorAll<HTMLElement>(".history-card-title, .history-detail-title")];
     if (!titles.length) return;
     const events = new AbortController();
@@ -582,11 +612,27 @@ export function createHistoryLayoutController(
       const update = (capturePosition = true) => {
         if (capturePosition && context.getRoute().page === "history") scrollPosition = window.scrollY;
         backTop?.classList.toggle("visible", window.scrollY > 260);
+        if (backTop) {
+          backTop.tabIndex = window.scrollY > 260 ? 0 : -1;
+          backTop.setAttribute("aria-hidden", String(window.scrollY <= 260));
+        }
       };
       window.addEventListener("scroll", () => update(), { passive: true, signal: events.signal });
+      const takeScrollControl = () => {
+        if (context.getRoute().page !== "history") return;
+        cancelPendingScrollRestore();
+        if (layoutRestoreFrame !== null) window.cancelAnimationFrame(layoutRestoreFrame);
+        layoutRestoreFrame = null;
+        scrollRestorePending = false;
+      };
+      window.addEventListener("pointerdown", takeScrollControl, { capture: true, signal: events.signal });
+      window.addEventListener("wheel", takeScrollControl, { passive: true, capture: true, signal: events.signal });
+      window.addEventListener("keydown", (event) => {
+        if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) takeScrollControl();
+      }, { capture: true, signal: events.signal });
       backTop?.addEventListener("click", () => {
         reportUserAction(context.getRoute().page === "history" ? "history-scroll-top" : "page-scroll-top");
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        window.scrollTo({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" });
       }, { signal: events.signal });
       update(false);
       return () => {
@@ -622,7 +668,9 @@ export function createHistoryLayoutController(
       gallery.style.removeProperty("--history-album-card-height");
       delete gallery.dataset.historyLayoutReady;
       delete gallery.dataset.historyLayoutWidth;
-      if (nextLayout === "album") {
+      if (gallery.hasAttribute("data-history-virtual")) {
+        refreshVirtualHistory(gallery);
+      } else if (nextLayout === "album") {
         const cards = historyCardsByOrder(gallery);
         if (cards.length) {
           gallery.replaceChildren(...cards);

@@ -172,6 +172,7 @@ export function createHistoryAssembly(
       const historyFilterTagMode = viewModel.historyFilterTagMode ?? "include";
       const uiLocale = viewModel.state.settings.uiLocale;
       if (
+        !cachedList?.markup.includes("data-history-virtual=") &&
         cachedList?.state === viewModel.state &&
         cachedList.historyKind === viewModel.historyKind &&
         cachedList.historyLayout === viewModel.historyLayout &&

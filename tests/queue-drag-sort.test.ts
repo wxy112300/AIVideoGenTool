@@ -234,11 +234,18 @@ describe("queue drag selection cleanup", () => {
     const { cleanup, handle, reorderTask } = createQueueFixture();
 
     handle.dispatchEvent(pointerEvent("pointerdown", { pointerId: 1, clientX: 20, clientY: 20 }));
+    expect(document.activeElement).toBe(handle);
     window.dispatchEvent(pointerEvent("pointermove", { pointerId: 1, clientX: 20, clientY: 140 }));
     expect(document.body.classList.contains("queue-drag-active")).toBe(true);
 
+    const lifted = document.querySelector<HTMLElement>(".queue-dragging")!;
+    const left = lifted.style.left;
+    expect(lifted.style.position).toBe("absolute");
+    window.dispatchEvent(pointerEvent("pointermove", { pointerId: 1, clientX: 180, clientY: 140 }));
+    expect(lifted.style.left).toBe(left);
+
     window.dispatchEvent(pointerEvent("pointerup", { pointerId: 1, clientX: 20, clientY: 140 }));
-    await vi.advanceTimersByTimeAsync(220);
+    await vi.advanceTimersByTimeAsync(300);
 
     expect(reorderTask).toHaveBeenCalledWith("first", 1);
     expect(document.body.classList.contains("queue-drag-active")).toBe(false);
@@ -267,7 +274,7 @@ describe("queue drag selection cleanup", () => {
     expect(document.body.classList.contains("queue-drag-active")).toBe(true);
 
     window.dispatchEvent(pointerEvent("pointerup", { pointerId: 3, clientX: 20, clientY: 280 }));
-    await vi.advanceTimersByTimeAsync(220);
+    await vi.advanceTimersByTimeAsync(300);
 
     expect(setQueuePauseBoundary).toHaveBeenCalledWith(2);
     expect(requestRender).toHaveBeenCalled();
@@ -282,7 +289,7 @@ describe("queue drag selection cleanup", () => {
     taskHandle.dispatchEvent(pointerEvent("pointerdown", { pointerId: 6, clientX: 20, clientY: 220 }));
     window.dispatchEvent(pointerEvent("pointermove", { pointerId: 6, clientX: 20, clientY: 120 }));
     window.dispatchEvent(pointerEvent("pointerup", { pointerId: 6, clientX: 20, clientY: 120 }));
-    await vi.advanceTimersByTimeAsync(220);
+    await vi.advanceTimersByTimeAsync(300);
 
     expect(reorderTask).toHaveBeenCalledWith("second", 1, 2);
     expect(document.body.classList.contains("queue-drag-active")).toBe(false);
@@ -307,7 +314,7 @@ describe("queue drag selection cleanup", () => {
     handle.dispatchEvent(pointerEvent("pointerdown", { pointerId: 4, clientX: 20, clientY: 120 }));
     window.dispatchEvent(pointerEvent("pointermove", { pointerId: 4, clientX: 20, clientY: -20 }));
     window.dispatchEvent(pointerEvent("pointerup", { pointerId: 4, clientX: 20, clientY: -20 }));
-    await vi.advanceTimersByTimeAsync(220);
+    await vi.advanceTimersByTimeAsync(300);
 
     expect(setQueuePauseBoundary).toHaveBeenCalledWith(1);
     expect(requestRender).toHaveBeenCalled();
@@ -321,7 +328,7 @@ describe("queue drag selection cleanup", () => {
     handle.dispatchEvent(pointerEvent("pointerdown", { pointerId: 5, clientX: 20, clientY: 220 }));
     window.dispatchEvent(pointerEvent("pointermove", { pointerId: 5, clientX: 20, clientY: 105 }));
     window.dispatchEvent(pointerEvent("pointerup", { pointerId: 5, clientX: 20, clientY: 105 }));
-    await vi.advanceTimersByTimeAsync(220);
+    await vi.advanceTimersByTimeAsync(300);
 
     expect(setQueuePauseBoundary).toHaveBeenCalledWith(0);
     expect(requestRender).toHaveBeenCalled();

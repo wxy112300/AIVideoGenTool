@@ -5,6 +5,11 @@ import type { RendererUiState } from "./ui-state";
 import type { HistoryPlaybackSnapshot } from "./pages/history/page-controller";
 import { renderShell } from "./shell/page";
 import { renderIcons } from "./shared/icons";
+import { refreshSharedUi, replaceSharedUiMarkup } from "./shared/ui/runtime";
+import { createPagePresentation, mountShellGeometry, yieldPresentationTurn } from "./shell/presentation";
+import { reuseHistoryCovers } from "./pages/history/retained-covers";
+import { prepareVirtualHistory, retainVirtualHistoryCovers } from "./pages/history/virtual-gallery";
+import { uiKeys } from "../core/i18n-keys";
 
 export interface RenderCoordinatorOptions {
   root: HTMLElement;
@@ -42,16 +47,12 @@ export interface RenderCoordinatorOptions {
 }
 
 export interface RenderCoordinator {
-  render(): void;
+  render(beforeCommit?: () => void): void;
   /** Coalesce event-driven refresh requests until the next paint opportunity. */
   requestRender(): void;
 }
 
-type RestorableFocusElement =
-  | HTMLInputElement
-  | HTMLTextAreaElement
-  | HTMLSelectElement
-  | HTMLButtonElement;
+type RestorableFocusElement = HTMLElement;
 
 interface FocusSnapshot {
   id: string;
@@ -124,7 +125,7 @@ function deferHistoryDetailPlayer(content: string): DeferredHistoryDetailPlayer 
 }
 
 function nextAnimationFrame(): Promise<void> {
-  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  return yieldPresentationTurn();
 }
 
 async function mountDeferredHistoryPlayer(
@@ -139,6 +140,7 @@ async function mountDeferredHistoryPlayer(
 
   const detachedPlayer = document.createElement("div");
   detachedPlayer.innerHTML = playerMarkup;
+  renderIcons(detachedPlayer);
   const player = detachedPlayer.firstElementChild;
   if (!(player instanceof HTMLElement)) return false;
 
@@ -194,23 +196,27 @@ function isRestorableFocusElement(
   return element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement ||
     element instanceof HTMLSelectElement ||
-    element instanceof HTMLButtonElement;
+    element instanceof HTMLButtonElement || element instanceof HTMLElement && element.hasAttribute("tabindex");
 }
 
 function captureFocus(root: HTMLElement): FocusSnapshot | null {
-  const activeElement = document.activeElement;
+  let activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && activeElement.dataset.richSource) {
+    const source = document.getElementById(activeElement.dataset.richSource);
+    if (source instanceof HTMLTextAreaElement) activeElement = source;
+  }
   if (!isRestorableFocusElement(activeElement) || !root.contains(activeElement)) return null;
-  if (!activeElement.id && !activeElement.name) return null;
+  if (!activeElement.id && !activeElement.getAttribute("name")) return null;
 
   const isTextControl = activeElement instanceof HTMLInputElement ||
     activeElement instanceof HTMLTextAreaElement;
   return {
     id: activeElement.id,
-    name: activeElement.name,
+    name: activeElement.getAttribute("name") ?? "",
     tagName: activeElement.tagName.toLowerCase(),
-    selectionStart: isTextControl ? activeElement.selectionStart : null,
-    selectionEnd: isTextControl ? activeElement.selectionEnd : null,
-    selectionDirection: isTextControl ? activeElement.selectionDirection : null,
+    selectionStart: isTextControl ? (activeElement as HTMLInputElement | HTMLTextAreaElement).selectionStart : null,
+    selectionEnd: isTextControl ? (activeElement as HTMLInputElement | HTMLTextAreaElement).selectionEnd : null,
+    selectionDirection: isTextControl ? (activeElement as HTMLInputElement | HTMLTextAreaElement).selectionDirection : null,
     scrollLeft: activeElement.scrollLeft,
     scrollTop: activeElement.scrollTop
   };
@@ -231,10 +237,10 @@ function findFocusTarget(
   }
   if (!snapshot.name) return null;
   return Array.from(root.querySelectorAll<RestorableFocusElement>(
-    "input, textarea, select, button"
+    "input, textarea, select, button, [tabindex]"
   )).find((candidate) =>
     candidate.tagName.toLowerCase() === snapshot.tagName &&
-    candidate.name === snapshot.name
+    candidate.getAttribute("name") === snapshot.name
   ) ?? null;
 }
 
@@ -441,6 +447,9 @@ export function createRenderCoordinator(
   let scheduledFrame: number | null = null;
   let scheduledToken = 0;
   let preservedHistoryList: PreservedHistoryList | null = null;
+  let awaitingComposition = false;
+  const presentation = createPagePresentation(options.root, () => options.t(uiKeys.lanBrowser.loading));
+  let beforeCommitCleanup = () => undefined as void;
 
   const cancelScheduledRender = (): void => {
     scheduledToken += 1;
@@ -449,7 +458,15 @@ export function createRenderCoordinator(
     scheduledFrame = null;
   };
 
-  const renderNow = (): void => {
+  const renderNow = (beforeCommit?: () => void): void => {
+    if (beforeCommit) beforeCommitCleanup = beforeCommit;
+    if (options.getPage() === "create" && options.root.querySelector("[data-rich-composing]")) {
+      if (!awaitingComposition) {
+        awaitingComposition = true;
+        options.root.addEventListener("compositionend", () => { awaitingComposition = false; renderNow(); }, { once: true });
+      }
+      return;
+    }
     // An explicit command render supersedes an event refresh that has not
     // reached the frame boundary yet. This keeps command ordering immediate.
     cancelScheduledRender();
@@ -461,126 +478,179 @@ export function createRenderCoordinator(
       }
       if (request !== renderRequest) return;
 
-      const previousPage = options.getPage();
-      const enteringHistoryDetail = isHistoryDetailPage(previousPage) && hasHistoryList(options.root);
-      const returningFromHistoryDetail = previousPage === "history" && hasHistoryDetail(options.root);
-      options.beforeRenderHistory();
-      if (previousPage === "queue") options.beforeRenderQueue();
-      const playback = captureHistoryPlayback(options.root, previousPage);
-      const createVideoPlayback = captureCreateVideoPlayback(options.root, previousPage);
-      if (!createVideoPlayback) stopRenderedVideoPlayback(options.root);
-      if (enteringHistoryDetail) {
-        const mainContent = takeHistoryMainContent(options.root);
-        if (mainContent) {
-          preservedHistoryList = {
-            state: options.getState(),
-            mainContent
-          };
+      await presentation.update(requestedPage, async () => {
+        if (request !== renderRequest) return;
+        beforeCommitCleanup();
+        const previousPage = options.getPage();
+        const createScroll = previousPage === "create" && options.root.querySelector(".create-workspace") ? Number(options.root.dataset.createScrollTop ?? window.scrollY) : undefined;
+        const mediaScroll = options.root.querySelector<HTMLElement>(".create-video-media")?.scrollTop;
+        delete options.root.dataset.createScrollTop;
+        const enteringHistoryDetail = isHistoryDetailPage(previousPage) && hasHistoryList(options.root);
+        const returningFromHistoryDetail = previousPage === "history" && hasHistoryDetail(options.root);
+        options.beforeRenderHistory();
+        if (previousPage === "queue") options.beforeRenderQueue();
+        const playback = captureHistoryPlayback(options.root, previousPage);
+        const createVideoPlayback = captureCreateVideoPlayback(options.root, previousPage);
+        if (!createVideoPlayback) stopRenderedVideoPlayback(options.root);
+        if (enteringHistoryDetail) {
+          const mainContent = takeHistoryMainContent(options.root);
+          if (mainContent) {
+            preservedHistoryList = {
+              state: options.getState(),
+              mainContent
+            };
+          }
+        } else if (!isHistoryDetailPage(previousPage) && !returningFromHistoryDetail) {
+          preservedHistoryList = null;
         }
-      } else if (!isHistoryDetailPage(previousPage) && !returningFromHistoryDetail) {
-        preservedHistoryList = null;
-      }
-      options.closeAppLogContextMenu();
+        options.closeAppLogContextMenu();
 
-      const page = options.getPage();
-      const state = options.getState();
-      const preservedList = preservedHistoryList;
-      const restorePreservedHistory = page === "history" &&
-        returningFromHistoryDetail &&
-        preservedList?.state === state;
-      if (page === "history" && returningFromHistoryDetail && !restorePreservedHistory) {
-        preservedHistoryList = null;
-      }
-      let content = restorePreservedHistory ? "" : previousPage === "create" ? options.renderPages.create() :
-        previousPage === "queue" ? options.renderPages.queue() :
-        previousPage === "history" ? options.renderPages.history() :
-        previousPage === "history-detail" ? options.renderPages.historyDetail() :
-        previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
-        options.renderPages.settings();
-      let deferredHistoryPlayerMarkup: string | null = null;
-      if (isHistoryDetailPage(page)) {
-        const deferredPlayer = deferHistoryDetailPlayer(content);
-        if (deferredPlayer) {
-          content = deferredPlayer.content;
-          deferredHistoryPlayerMarkup = deferredPlayer.playerMarkup;
+        const page = options.getPage();
+        const state = options.getState();
+        const preservedList = preservedHistoryList;
+        const restorePreservedHistory = page === "history" &&
+          returningFromHistoryDetail &&
+          preservedList?.state === state;
+        if (page === "history" && returningFromHistoryDetail && !restorePreservedHistory) {
+          preservedHistoryList = null;
         }
-      }
-      const ui = options.getUiState();
-      const focus = captureFocus(options.root);
-      let shellBound = false;
-      const historyNavigationCleanup: { current: RendererCleanup | null } = { current: null };
-      const bindShellController = (): void => {
-        if (shellBound) return;
-        options.bindShell();
-        options.addPageCleanup(options.bindHistoryViewportControls());
-        shellBound = true;
-      };
+        let content = restorePreservedHistory ? "" : previousPage === "create" ? options.renderPages.create() :
+          previousPage === "queue" ? options.renderPages.queue() :
+          previousPage === "history" ? options.renderPages.history() :
+          previousPage === "history-detail" ? options.renderPages.historyDetail() :
+          previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
+          options.renderPages.settings();
+        let deferredHistoryPlayerMarkup: string | null = null;
+        if (isHistoryDetailPage(page)) {
+          const deferredPlayer = deferHistoryDetailPlayer(content);
+          if (deferredPlayer) {
+            content = deferredPlayer.content;
+            deferredHistoryPlayerMarkup = deferredPlayer.playerMarkup;
+          }
+        }
+        const ui = options.getUiState();
+        const focus = captureFocus(options.root);
+        let shellBound = false;
+        const historyNavigationCleanup: { current: RendererCleanup | null } = { current: null };
+        const bindShellController = (): void => {
+          if (shellBound) return;
+          options.bindShell();
+          options.addPageCleanup(mountShellGeometry());
+          options.addPageCleanup(options.bindHistoryViewportControls());
+          shellBound = true;
+        };
 
-      options.root.innerHTML = renderShell({
-        page,
-        appVersion: ui.appVersion,
-        queueCount: state.queue.length,
-        performanceMetrics: options.getPerformanceMetrics(),
-        flashMessage: ui.flashMessage,
-        flashKind: ui.flashNotification?.kind ?? "info",
-        flashActions: ui.flashNotification?.actions ?? [],
-        content,
-        t: options.t,
-        icon: options.icon,
-        escapeHtml: options.escapeHtml
+        const existingFilter = page === "history" ? options.root.querySelector<HTMLElement>("[data-history-filter-panel]") : null;
+        const filterContext = existingFilter?.dataset.historyFilterContext;
+        const preservedFilter = existingFilter && (options.root.dataset.historyPreserveFilter === "true" || filterContext && content.includes(`data-history-filter-context="${filterContext}"`)) ? existingFilter : null;
+        delete options.root.dataset.historyPreserveFilter;
+        const preservedFilterFocus = preservedFilter?.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+        preservedFilter?.remove();
+        const previousGallery = options.root.querySelector<HTMLElement>(".history-gallery");
+        replaceSharedUiMarkup(options.root, renderShell({
+          page,
+          appVersion: ui.appVersion,
+          queueCount: state.queue.length,
+          performanceMetrics: options.getPerformanceMetrics(),
+          flashMessage: ui.flashMessage,
+          flashKind: ui.flashNotification?.kind ?? "info",
+          flashActions: ui.flashNotification?.actions ?? [],
+          content,
+          t: options.t,
+          icon: options.icon,
+          escapeHtml: options.escapeHtml
+        }));
+        if (page === "history" && returningFromHistoryDetail && !restorePreservedHistory && preservedList) {
+          reuseHistoryCovers(options.root, preservedList.mainContent);
+          retainVirtualHistoryCovers(options.root, preservedList.mainContent);
+        } else if (page === "history" && previousGallery) {
+          reuseHistoryCovers(options.root, previousGallery);
+          retainVirtualHistoryCovers(options.root, previousGallery);
+        }
+        prepareVirtualHistory(options.root);
+        if (preservedFilter) {
+          const freshFilter = options.root.querySelector<HTMLElement>("[data-history-filter-panel]");
+          const batchPressed = freshFilter?.querySelector("[data-history-batch-toggle]")?.getAttribute("aria-pressed");
+          if (batchPressed) preservedFilter.querySelector("[data-history-batch-toggle]")?.setAttribute("aria-pressed", batchPressed);
+          // Keep open pickers stable across unrelated scan/queue refreshes. New
+          // facets append without moving a row from underneath the pointer.
+          for (const kind of ["models", "tags"]) {
+            const oldPicker = preservedFilter.querySelector<HTMLElement>(`[data-history-picker="${kind}"]`);
+            const freshPicker = freshFilter?.querySelector<HTMLElement>(`[data-history-picker="${kind}"]`);
+            const selector = kind === "models" ? "[data-history-model]" : "[data-history-tag-row]";
+            const key = (node: HTMLElement) => kind === "models" ? node.dataset.historyModel ?? "" : (node.dataset.historyTagRow ?? "").normalize("NFKC").toLowerCase();
+            const oldRows = [...(oldPicker?.querySelectorAll<HTMLElement>(selector) ?? [])];
+            const freshRows = [...(freshPicker?.querySelectorAll<HTMLElement>(selector) ?? [])];
+            const keys = new Set(oldRows.map(key)), freshKeys = new Set(freshRows.map(key));
+            const list = oldPicker?.querySelector(".history-picker-list");
+            for (const row of freshRows) if (!keys.has(key(row))) list?.append(kind === "models" ? row.closest("label")! : row);
+            if (oldPicker?.hidden) for (const row of oldRows) if (!freshKeys.has(key(row))) (kind === "models" ? row.closest("label") : row)?.remove();
+          }
+          freshFilter?.replaceWith(preservedFilter);
+        }
+        // Decorate all controls before any geometry reads can start legacy-to-new
+        // transitions on the remaining buttons in this newly inserted tree.
+        refreshSharedUi(document.body);
+        if (createVideoPlayback) {
+          restoreCreateVideoPlayback(options.root, createVideoPlayback);
+          restoreCreateVideoPlayerFullscreen(options.root, createVideoPlayback);
+        }
+        if (restorePreservedHistory && preservedList) {
+          const renderedMain = options.root.querySelector<HTMLElement>(".app-shell.history-shell > main");
+          renderedMain?.append(preservedList.mainContent);
+          preservedHistoryList = null;
+        }
+        // Restored sticky navigation must exist before geometry observation.
+        if (page === "history" || isHistoryDetailPage(page)) bindShellController();
+        if (restorePreservedHistory) {
+          historyNavigationCleanup.current = options.bindHistoryNavigation();
+          options.addPageCleanup(historyNavigationCleanup.current);
+          options.restoreHistoryScrollPosition();
+        } else if (page === "history") {
+          historyNavigationCleanup.current = options.bindHistoryNavigation();
+          options.addPageCleanup(historyNavigationCleanup.current);
+        }
+        if (deferredHistoryPlayerMarkup) {
+          const mounted = await mountDeferredHistoryPlayer(
+            options.root,
+            deferredHistoryPlayerMarkup,
+            () => request === renderRequest && options.getPage() === page
+          );
+          if (!mounted) return;
+        }
+        if (page === "history" && !preservedFilter) {
+          // History can contain hundreds of cards. Let the browser commit the
+          // shell/list DOM before mounting controllers and media observers so a
+          // return click does not keep all work in one input task.
+          await yieldPresentationTurn();
+          if (request !== renderRequest || options.getPage() !== page) {
+            return;
+          }
+        }
+        const earlyHistoryNavigationCleanup = historyNavigationCleanup.current;
+        historyNavigationCleanup.current = null;
+        earlyHistoryNavigationCleanup?.();
+        renderIcons(options.root);
+        bindShellController();
+        if (page === "create") options.bindCreate();
+        else if (page === "queue") options.bindQueue();
+        else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
+          options.bindHistory(playback);
+        } else if (page === "settings") {
+          options.bindSettings();
+        }
+        options.renderOverlay();
+        options.syncAppLogPolling();
+        if (page === "queue" && previousPage === "queue") options.restoreQueueScrollPosition();
+        if (page === "history" && !restorePreservedHistory) options.restoreHistoryScrollPosition();
+        if (playback) restoreHistoryPlayerFullscreen(options.root, playback);
+        restoreHistoryPlayback(options.root, playback);
+        refreshSharedUi(document.body);
+        restoreFocus(options.root, focus);
+        if (preservedFilterFocus?.isConnected) preservedFilterFocus.focus({ preventScroll: true });
+        const mediaColumn = options.root.querySelector<HTMLElement>(".create-video-media"); if (mediaColumn && mediaScroll !== undefined) mediaColumn.scrollTop = mediaScroll;
+        if (createScroll !== undefined && window.scrollY !== createScroll) window.scrollTo({ top: createScroll, behavior: "instant" });
       });
-      if (createVideoPlayback) {
-        restoreCreateVideoPlayback(options.root, createVideoPlayback);
-        restoreCreateVideoPlayerFullscreen(options.root, createVideoPlayback);
-      }
-      if (page === "history" || isHistoryDetailPage(page)) bindShellController();
-      if (restorePreservedHistory && preservedList) {
-        const renderedMain = options.root.querySelector<HTMLElement>(".app-shell.history-shell > main");
-        renderedMain?.append(preservedList.mainContent);
-        preservedHistoryList = null;
-        historyNavigationCleanup.current = options.bindHistoryNavigation();
-        options.addPageCleanup(historyNavigationCleanup.current);
-        options.restoreHistoryScrollPosition();
-      } else if (page === "history") {
-        historyNavigationCleanup.current = options.bindHistoryNavigation();
-        options.addPageCleanup(historyNavigationCleanup.current);
-      }
-      if (deferredHistoryPlayerMarkup) {
-        const mounted = await mountDeferredHistoryPlayer(
-          options.root,
-          deferredHistoryPlayerMarkup,
-          () => request === renderRequest && options.getPage() === page
-        );
-        if (!mounted) return;
-      }
-      if (page === "history") {
-        // History can contain hundreds of cards. Let the browser commit the
-        // shell/list DOM before mounting controllers and media observers so a
-        // return click does not keep all work in one input task.
-        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-        if (request !== renderRequest || options.getPage() !== page) {
-          return;
-        }
-      }
-      const earlyHistoryNavigationCleanup = historyNavigationCleanup.current;
-      historyNavigationCleanup.current = null;
-      earlyHistoryNavigationCleanup?.();
-      renderIcons(options.root);
-      bindShellController();
-      if (page === "create") options.bindCreate();
-      else if (page === "queue") options.bindQueue();
-      else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
-        options.bindHistory(playback);
-      } else if (page === "settings") {
-        options.bindSettings();
-      }
-      options.renderOverlay();
-      options.syncAppLogPolling();
-      if (page === "queue" && previousPage === "queue") options.restoreQueueScrollPosition();
-      if (page === "history" && !restorePreservedHistory) options.restoreHistoryScrollPosition();
-      if (playback) restoreHistoryPlayerFullscreen(options.root, playback);
-      restoreHistoryPlayback(options.root, playback);
-      restoreFocus(options.root, focus);
     })().catch((error) => {
       console.error("Failed to render page dependencies", error);
     });

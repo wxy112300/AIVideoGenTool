@@ -62,7 +62,7 @@ export function mountH3ReferencesController(
       )
     });
   };
-  const addSlot = () => {
+  const addSlot = (mediaPath = "", mediaType?: "image" | "video") => {
     const draft = options.getDraft();
     if (!draft) return;
     const slots = options.lockedFirstVideo
@@ -70,14 +70,31 @@ export function mountH3ReferencesController(
       : draft.h3ReferenceSlots;
     const counts = h3ReferenceSlotCounts(slots);
     if (counts.total >= 12) return;
+    const nextType = mediaType ?? (counts.imageCount < 9 ? "image" : "video");
+    if (nextType === "image" && counts.imageCount >= 9) { options.notify(t(uiKeys.create.interaction.r2vMaxImages)); return; }
+    if (nextType === "video" && counts.videoCount >= 3) { options.notify(t(uiKeys.create.interaction.r2vMaxVideos)); return; }
     options.patchDraft({
-      h3ReferenceSlots: [...slots, newH3ReferenceSlot("", counts.imageCount < 9 ? "image" : "video")]
+      h3ReferenceSlots: [...slots, newH3ReferenceSlot(mediaPath, nextType)]
     });
     options.requestRender();
   };
 
-  root.querySelector("#add-h3-reference-slot")?.addEventListener("click", addSlot, { signal });
-  root.querySelector("#add-h3-reference-slot-empty")?.addEventListener("click", addSlot, { signal });
+  root.querySelectorAll<HTMLElement>("[data-add-h3-slot]").forEach(tile => {
+    tile.addEventListener("click", () => addSlot(), { signal });
+    tile.addEventListener("dragover", event => { event.preventDefault(); tile.classList.add("drag-over"); }, { signal });
+    tile.addEventListener("dragleave", () => tile.classList.remove("drag-over"), { signal });
+    tile.addEventListener("drop", event => {
+      event.preventDefault(); event.stopPropagation(); tile.classList.remove("drag-over");
+      const file = event.dataTransfer?.files.item(0);
+      if (!file) return;
+      const video = file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|mkv|gif)$/i.test(file.name);
+      const image = file.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+      if (!video && !image) { options.notify(t(uiKeys.create.interaction.invalidImageDrop)); return; }
+      const filename = context.hostCapabilities.getDroppedFilePath(file);
+      if (!filename) { options.notify(t(uiKeys.create.interaction.imagePathFailed)); return; }
+      addSlot(filename, video ? "video" : "image");
+    }, { signal });
+  });
   root.querySelectorAll<HTMLElement>("[data-remove-h3-slot]").forEach((button) => {
     button.addEventListener("click", () => {
       const draft = options.getDraft();

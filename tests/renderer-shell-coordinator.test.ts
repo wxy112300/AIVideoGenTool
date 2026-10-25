@@ -223,8 +223,8 @@ describe("renderer shell coordinator", () => {
 
     expect(ui.flashMessage).toBe("扫描失败");
     expect(ui.flashNotification?.kind).toBe("error");
-    expect(ui.flashNotificationQueue).toHaveLength(1);
-    expect(application.reportNotification).toHaveBeenCalledTimes(2);
+    expect(ui.flashNotificationQueue).toHaveLength(2);
+    expect(application.reportNotification).toHaveBeenCalledTimes(3);
 
     coordinator.dismissNotification();
 

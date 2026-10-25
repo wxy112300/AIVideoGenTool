@@ -7,6 +7,10 @@ import type { AppState, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } 
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
+import { mountPromptInsertMenu } from "./insert-menu";
+import { mountImageOutput } from "./image-output";
+import { mountLoraMenu } from "./lora-menu";
+import { paintRangeFill } from "../../shared/ui/runtime";
 
 export interface ImageEditControllerOptions {
   setState(nextState: AppState): void;
@@ -117,6 +121,18 @@ export function mountImageEditController(
   root.querySelectorAll<HTMLElement>("[data-image-picture-pick]").forEach((button) => {
     bindImageDropZone(button, button.dataset.imagePicturePick);
   });
+  root.querySelectorAll<HTMLElement>("[data-clear-image-picture]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.stopImmediatePropagation();
+      const draft = getDraft(), id = button.dataset.clearImagePicture;
+      if (!draft || !id) return;
+      options.patchImageDraft({ pictures: draft.pictures.map(picture => picture.id === id
+        ? { ...picture, absolutePath: "", width: 0, height: 0, crop: undefined, markup: undefined, mask: undefined,
+          contentHash: undefined, managedRelativePath: undefined, originalPath: undefined }
+        : picture) });
+      context.requestRender();
+    }, { signal });
+  });
   root.querySelectorAll<HTMLElement>("[data-remove-image-picture]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopImmediatePropagation();
@@ -124,34 +140,23 @@ export function mountImageEditController(
       const draft = getDraft();
       const picture = draft?.pictures.find((item) => item.id === pictureId);
       if (!draft || !pictureId || !picture) return;
-      const deletingBaseSlot = picture.pictureNumber === 1;
       const remainingPictures = draft.pictures.filter((item) => item.id !== pictureId);
-      const pictures = deletingBaseSlot
-        ? draft.pictures.map((item) =>
-            item.id === pictureId
-              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, crop: undefined, markup: undefined, mask: undefined }
-              : item
-          )
-        : renumberImageReferences(remainingPictures);
+      const pictures = renumberImageReferences(remainingPictures);
       const pictureNumberMap = new Map<number, number>();
-      if (!deletingBaseSlot) {
-        const nextPictureNumberById = new Map(pictures.map((item) => [item.id, item.pictureNumber]));
-        for (const item of remainingPictures) {
-          const nextPictureNumber = nextPictureNumberById.get(item.id);
-          if (nextPictureNumber !== undefined) pictureNumberMap.set(item.pictureNumber, nextPictureNumber);
-        }
+      const nextPictureNumberById = new Map(pictures.map((item) => [item.id, item.pictureNumber]));
+      for (const item of remainingPictures) {
+        const nextPictureNumber = nextPictureNumberById.get(item.id);
+        if (nextPictureNumber !== undefined) pictureNumberMap.set(item.pictureNumber, nextPictureNumber);
       }
-      const promptVersions = deletingBaseSlot
-        ? draft.promptVersions
-        : draft.promptVersions.map((version) => ({
-            ...version,
-            text: remapPromptPictureReferences(
-              version.text,
-              pictureNumberMap,
-              new Set([picture.pictureNumber])
-            )
-          }));
-      if (!deletingBaseSlot) options.invalidatePromptEditHistory();
+      const promptVersions = draft.promptVersions.map((version) => ({
+        ...version,
+        text: remapPromptPictureReferences(
+          version.text,
+          pictureNumberMap,
+          new Set([picture.pictureNumber])
+        )
+      }));
+      options.invalidatePromptEditHistory();
       options.patchImageDraft({
         pictures,
         nextPictureNumber: Math.max(1, pictures.length + 1),
@@ -427,7 +432,7 @@ export function mountImageEditController(
     });
     const range = root.querySelector<HTMLInputElement>("[data-image-lora-strength=\"" + CSS.escape(id) + "\"]");
     const number = root.querySelector<HTMLInputElement>("[data-image-lora-strength-number=\"" + CSS.escape(id) + "\"]");
-    if (range) range.value = String(strength);
+    if (range) { range.value = String(strength); paintRangeFill(range); }
     if (number) number.value = String(strength);
   };
   root.querySelectorAll<HTMLInputElement>("[data-image-lora-strength]").forEach((input) => {
@@ -470,7 +475,9 @@ export function mountImageEditController(
                   }
                   : { seed: value ? Number(value) : null }
       );
-      if (id !== "image-edit-seed") context.requestRender();
+      options.syncEnqueueUi();
+      if (["image-edit-model", "image-edit-quality"].includes(id)) context.requestRender();
+      else root.dispatchEvent(new Event("image-controls-updated"));
     }, { signal });
   }
 
@@ -480,16 +487,23 @@ export function mountImageEditController(
     options.patchImageDraft({ outputCount });
     const countValue = root.querySelector("#image-edit-count-value");
     if (countValue) countValue.textContent = t(uiKeys.create.imageEdit.outputCountValue, { count: outputCount });
+    root.dispatchEvent(new Event("image-controls-updated"));
+  }, { signal });
+  root.querySelector<HTMLInputElement>("[data-image-count-number]")?.addEventListener("change", event => {
+    if (!countInput) return;
+    const input = event.currentTarget as HTMLInputElement;
+    countInput.value = String(Math.min(imageOutputCountMax, Math.max(1, input.valueAsNumber || 1)));
+    countInput.dispatchEvent(new Event("input", { bubbles: true })); paintRangeFill(countInput);
   }, { signal });
   root.querySelector("#random-image-edit-seed")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
     options.patchImageDraft({ seed: options.randomSeedValue() });
-    context.requestRender();
+    const input = root.querySelector<HTMLInputElement>("#image-edit-seed"); if (input) input.value = String(getDraft()?.seed ?? "");
   }, { signal });
   root.querySelector("#clear-image-edit-seed")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
     options.patchImageDraft({ seed: null });
-    context.requestRender();
+    const input = root.querySelector<HTMLInputElement>("#image-edit-seed"); if (input) input.value = "";
   }, { signal });
   root.querySelector("#clear-image-edit-draft")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
@@ -521,5 +535,14 @@ export function mountImageEditController(
     }
   }, { signal });
 
-  return () => events.abort();
+  const disposeInsertMenu = mountPromptInsertMenu(root, id => {
+    if (!snippetSelect || !insertSnippet) return;
+    snippetSelect.value = id; syncSnippetButton(); insertSnippet.click();
+  }, true);
+  const disposeOutput = mountImageOutput(root, getDraft, t);
+  const disposeLoraMenu = mountLoraMenu(root, async id => {
+    const source = root.querySelector<HTMLSelectElement>("#image-lora-to-add");
+    if (source) { source.value = id; root.querySelector<HTMLButtonElement>("#add-image-lora")?.click(); }
+  }, true);
+  return () => { disposeLoraMenu(); disposeOutput(); disposeInsertMenu(); events.abort(); };
 }

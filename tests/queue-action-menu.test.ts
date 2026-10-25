@@ -69,7 +69,7 @@ describe("queue action menu", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect([...menu!.querySelectorAll<HTMLButtonElement>("[role=menuitem]")].map((item) =>
       item.dataset.queueMenuAction
-    )).toEqual(["duplicate", "promote", "render-through-here", "randomize-seed"]);
+    )).toEqual(["duplicate", "promote", "render-through-here", "randomize-seed", "remove"]);
 
     menu!.querySelector<HTMLButtonElement>("[data-queue-menu-action=randomize-seed]")!.click();
     await Promise.resolve();
@@ -92,5 +92,17 @@ describe("queue action menu", () => {
     expect(document.querySelector(".queue-action-menu")).not.toBeNull();
     cleanup();
     expect(document.querySelector(".queue-action-menu")).toBeNull();
+  });
+
+  it("keeps remove last, separated, and delegates to the existing confirmation path", async () => {
+    const { cleanup, onAction, trigger } = createFixture();
+    trigger.click();
+    const remove = document.querySelector<HTMLButtonElement>('[data-queue-menu-action="remove"]')!;
+    expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
+    remove.click();
+    await Promise.resolve();
+    expect(onAction).toHaveBeenCalledWith("remove", "queue-task");
+    expect(document.querySelector(".queue-action-menu")).toBeNull();
+    cleanup();
   });
 });

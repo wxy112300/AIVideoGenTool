@@ -146,7 +146,7 @@ describe("queue work progress", () => {
     expect(queueWorkProgressText({ ...task, workProgress: undefined }, (key) => key)).toBe("");
   });
 
-  it("groups live work, stage elapsed, and ETA above the progress bar", () => {
+  it("groups live work, stage elapsed, and ETA between progress and task metadata", () => {
     const task = queueFixtureTask(createDefaultState(), "running-metrics");
     task.status = "running";
     task.workProgress = {
@@ -173,11 +173,11 @@ describe("queue work progress", () => {
     const progressBarIndex = markup.indexOf('<div class="progress"');
     const taskMetaIndex = markup.indexOf('<div class="task-meta"');
 
-    expect(markup).toContain('class="running-stage-metrics"');
-    expect(markup.indexOf('id="running-work-progress"')).toBeLessThan(progressBarIndex);
-    expect(markup.indexOf('id="running-stage-elapsed"')).toBeLessThan(progressBarIndex);
-    expect(markup.indexOf('id="running-eta"')).toBeLessThan(progressBarIndex);
-    expect(markup.slice(taskMetaIndex, markup.indexOf('<div class="running-controls"'))).not.toContain("id=\"running-");
+    expect(markup).toContain('class="running-stage-summary"');
+    expect(markup.indexOf('id="running-work-progress"')).toBeGreaterThan(progressBarIndex);
+    expect(markup.indexOf('id="running-stage-elapsed"')).toBeGreaterThan(progressBarIndex);
+    expect(markup.indexOf('id="running-eta"')).toBeGreaterThan(progressBarIndex);
+    expect(markup.indexOf('id="running-eta"')).toBeLessThan(taskMetaIndex);
   });
 });
 

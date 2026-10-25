@@ -151,8 +151,8 @@ describe("dependency catalog", () => {
     });
     expect(customNodeDefinition("h3-motion-context")).toMatchObject({
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.6.2",
-      latestVersion: "0.6.2",
+      recommendedVersion: "0.7.1",
+      latestVersion: "0.7.1",
       runtimeRequirement: expect.stringContaining("ComfyUI 0.34.0+"),
       compatibilityEvidence: expect.arrayContaining([expect.objectContaining({
         comfyUi: "0.34.0",

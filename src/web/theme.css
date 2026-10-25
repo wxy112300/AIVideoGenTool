@@ -1,0 +1,171 @@
+/* Standalone LAN theme, independent of desktop appearance. */
+/*
+ * Semantic UX/UI token map.
+ *
+ * P02 intentionally aliases the current renderer values instead of changing
+ * them. P03 migrates shared selectors to these roles one surface family at a
+ * time; page selectors should not create a second theme source.
+ */
+:root {
+  /* Surfaces and separators. These roles retain the current renderer palette
+   * while P03 moves ownership out of selector-local color literals. */
+  --ux-canvas: var(--bg);
+  --ux-surface-base: var(--panel);
+  --ux-surface-object: var(--panel-2);
+  --ux-surface-raised: var(--panel-3, var(--panel-2));
+  --ux-separator-subtle: var(--border);
+  --ux-separator-strong: var(--border-strong, var(--border));
+
+  /* Content. Secondary is readable supporting copy; tertiary is muted/meta;
+   * technical is reserved for paths, code and compact evidence. */
+  --ux-content-primary: var(--text, #eef2f8);
+  --ux-content-heading: #f5f7fb;
+  --ux-content-secondary: #c3cad5;
+  --ux-content-tertiary: var(--muted);
+  --ux-content-technical: #c9d9f1;
+  --ux-content-inverse: #07111f;
+
+  /* Shared action states. L12 keeps the current renderer values while
+   * moving interaction ownership out of shared selector-local literals. */
+  --ux-action-primary: var(--primary);
+  --ux-action-primary-strong: var(--primary-strong);
+  --ux-action-primary-surface: var(--primary-surface, transparent);
+  --ux-action-primary-text: var(--ux-content-inverse);
+  --ux-action-primary-fill: linear-gradient(180deg, #9cc1ff, #76a8fb);
+  --ux-action-primary-hover-text: #050c16;
+  --ux-action-primary-hover-fill: linear-gradient(180deg, #b0ceff, #8db8ff);
+  --ux-action-primary-shadow: 0 7px 18px rgba(60, 119, 218, .18);
+  --ux-action-primary-hover-shadow: 0 9px 24px rgba(60, 119, 218, .25);
+  --ux-action-secondary-border: #353e4c;
+  --ux-action-secondary-text: #e3e8ef;
+  --ux-action-secondary-hover-border: #526073;
+  --ux-action-secondary-hover-surface: #272e3a;
+  --ux-action-ghost-text: #aeb7c4;
+  --ux-action-ghost-hover-text: var(--ux-content-primary);
+  --ux-action-ghost-hover-surface: rgba(255, 255, 255, .045);
+  --ux-action-icon-text: #bdc6d2;
+  --ux-action-pressed-transform: translateY(1px);
+
+  /* Brand and navigation roles. L14 keeps selected/hover feedback but
+   * removes decorative glow from the shell and reuses action surfaces. */
+  --ux-brand-mark-text: var(--ux-content-inverse);
+  --ux-brand-mark-surface: var(--ux-action-primary-fill);
+  --ux-brand-hover-surface: var(--ux-action-ghost-hover-surface);
+  --ux-nav-shell-border: color-mix(in srgb, var(--ux-separator-strong) 48%, transparent);
+  --ux-nav-shell-surface: color-mix(in srgb, var(--ux-surface-object) 72%, transparent);
+  --ux-nav-text: var(--ux-content-tertiary);
+  --ux-nav-hover-text: var(--ux-content-primary);
+  --ux-nav-hover-surface: var(--ux-action-ghost-hover-surface);
+  --ux-nav-active-text: var(--ux-content-heading);
+  --ux-nav-active-surface: var(--ux-surface-raised);
+  --ux-nav-active-border: color-mix(in srgb, var(--ux-status-info) 18%, transparent);
+  --ux-nav-active-indicator: var(--ux-action-primary);
+
+  /* Shared status and badge states. L13 keeps the current renderer values
+   * while moving success/warning/danger/info ownership out of selectors. */
+  --ux-status-info: var(--primary);
+  --ux-status-success: var(--success);
+  --ux-status-warning: var(--warning, #f4bd6a);
+  --ux-status-danger: var(--danger);
+
+  --ux-status-badge-text: #09111e;
+  --ux-status-info-text: #a9c9ff;
+  --ux-status-info-surface: rgba(105,157,243,.12);
+  --ux-status-info-surface-soft: rgba(105,157,243,.08);
+  --ux-status-info-border: rgba(112,159,237,.25);
+  --ux-status-danger-text: #ff9a9d;
+  --ux-status-danger-surface: rgba(255,120,124,.09);
+  --ux-status-warning-text: #f1cb89;
+  --ux-status-warning-surface: rgba(150,101,27,.14);
+  --ux-status-warning-border: rgba(244,189,106,.5);
+  --ux-status-warning-badge-border: rgba(244,189,106,.3);
+  --ux-status-warning-badge-surface: rgba(244,189,106,.08);
+  --ux-status-success-ring: rgba(114,214,160,.09);
+  --ux-status-warning-border-soft: rgba(244,189,106,.35);
+  --ux-status-warning-ring-soft: rgba(244,189,106,.1);
+
+  /* Notice variants retain their current four-state contrast and icon
+   * treatment. Component-specific badges can use the inline roles above. */
+  --ux-status-info-notice-border: rgba(116,165,244,.5);
+  --ux-status-info-notice-text: #e8f1ff;
+  --ux-status-info-notice-surface: rgba(29,49,76,.97);
+  --ux-status-info-notice-icon-text: #0c1625;
+  --ux-status-info-notice-icon: #83b6ff;
+  --ux-status-info-notice-border-soft: rgba(116,165,244,.45);
+  --ux-status-info-notice-surface-soft: rgba(29,49,76,.95);
+  --ux-status-warning-notice-border: rgba(244,189,106,.58);
+  --ux-status-warning-notice-text: #fff3d9;
+  --ux-status-warning-notice-surface: rgba(69,49,21,.97);
+  --ux-status-warning-notice-icon-text: #2b1b05;
+  --ux-status-warning-notice-icon: #f4bd6a;
+  --ux-status-danger-notice-border: rgba(255,112,112,.62);
+  --ux-status-danger-notice-text: #ffe9e9;
+  --ux-status-danger-notice-surface: rgba(75,29,33,.97);
+  --ux-status-danger-notice-icon-text: #321015;
+  --ux-status-danger-notice-icon: #ff7d82;
+  --ux-status-success-notice-border: rgba(83,211,150,.58);
+  --ux-status-success-notice-text: #e3fff1;
+  --ux-status-success-notice-surface: rgba(22,65,47,.97);
+  --ux-status-success-notice-icon-text: #0c291c;
+  --ux-status-success-notice-icon: #62d99d;
+  --ux-status-info-complete-border: rgba(133,180,255,.64);
+  --ux-status-info-complete-text: #eef5ff;
+  --ux-status-info-complete-surface: rgba(28,54,88,.98);
+  --ux-status-info-complete-icon-text: #10233d;
+  --ux-status-info-complete-icon: #9ac4ff;
+  --ux-status-info-complete-icon-shadow: 3px 0 0 rgba(154,196,255,.42);
+
+  /* Focus and elevation. L15 keeps ordinary content surfaces flat; overlays
+   * own their elevation so dialogs and popovers remain visually above them. */
+  --ux-focus-ring: rgba(138, 180, 255, .9);
+  --ux-focus-ring-width: 2px;
+  --ux-focus-ring-offset: 2px;
+  --ux-focus-control-border: #6d9ce8;
+  --ux-focus-control-glow: rgba(101, 151, 255, .12);
+  --ux-elevation-panel: none;
+
+  /* P04/L16 type scale: seven roles are declared first; L17 maps the shared
+   * heading selectors and L18 maps shared text selectors to final current-
+   * renderer values. The label role is 12px because that is the effective
+   * value of the current visual-refresh cascade. */
+  --ux-type-page: clamp(20px, 1.65vw, 23px);
+  --ux-type-section: 17px;
+  --ux-type-object: 15px;
+  --ux-type-body: 14px;
+  --ux-type-label: 12px;
+  --ux-type-meta: 11px;
+  --ux-type-technical: .86em;
+
+  /* P04/L20 space and radius roles: selectors migrate in focused component
+   * families while retaining the effective current-renderer values. */
+  --ux-space-1: 4px;
+  --ux-space-2: 8px;
+  --ux-space-3: 12px;
+  --ux-space-4: 16px;
+  --ux-space-5: 20px;
+  --ux-space-6: 24px;
+  --ux-space-7: 32px;
+  --ux-radius-control: 10px;
+  --ux-radius-object: 12px;
+  --ux-radius-panel: 13px;
+  --ux-radius-modal: 16px;
+
+  /* P05 shared shell geometry: page sticky headings align to the 72px
+   * current-renderer topbar; responsive overrides zero this when the topbar
+   * becomes part of normal flow. */
+  --ux-topbar-height: 72px;
+  --ux-page-sticky-offset: 72px;
+}
+
+/* Shared base palette for the desktop workspace and standalone browser. */
+:root {
+  --bg: #121315;
+  --panel: #1c1e22;
+  --panel-2: #24272c;
+  --border: #33373e;
+  --muted: #9ca2ad;
+  --primary: #7cb8ff;
+  --primary-strong: #4198ff;
+  --danger: #ff8b72;
+  --success: #75d69c;
+}

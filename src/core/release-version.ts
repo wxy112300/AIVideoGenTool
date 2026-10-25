@@ -3,8 +3,8 @@ export function normalizeReleaseVersion(value: string): string {
 }
 
 export function compareReleaseVersions(left: string, right: string): number {
-  const a = normalizeReleaseVersion(left).split(/[.-]/u).map((part) => Number(part) || 0);
-  const b = normalizeReleaseVersion(right).split(/[.-]/u).map((part) => Number(part) || 0);
+  const a = normalizeReleaseVersion(left).split("+")[0]!.split(/[.-]/u).map((part) => Number(part) || 0);
+  const b = normalizeReleaseVersion(right).split("+")[0]!.split(/[.-]/u).map((part) => Number(part) || 0);
   for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
     if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
   }

@@ -22,6 +22,8 @@ import {
   videoPromptForLoras
 } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
+import { h3ReferenceImageDimensions } from "./h3-reference.js";
+import { isCustomVideoResolution } from "./video-resolution.js";
 import { FASTH3_OMNI_MODEL_ID, FASTH3_OMNI_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_omni/definition.js";
 import {
   H3_MAX_DURATION_SECONDS,
@@ -1415,7 +1417,8 @@ export function generationSafetyForTask(
   if (
     task.resolution !== undefined &&
     profile.resolutions?.length &&
-    !profile.resolutions.includes(task.resolution)
+    !profile.resolutions.includes(task.resolution) &&
+    !isCustomVideoResolution(task.resolution, modelCatalog.get(task.modelId)?.definition.capabilities?.customResolution)
   ) {
     return {
       safe: false,
@@ -1929,7 +1932,7 @@ const ratios: Record<string, [number, number]> = {
 type DimensionTask = Pick<
   GenerationQueueTask | ExtensionQueueTask,
   "ratio" | "sourceWidth" | "sourceHeight"
-> & { resolution: Draft["resolution"] };
+> & { resolution: Draft["resolution"]; h3ReferenceSlots?: Draft["h3ReferenceSlots"]; inputMode?: Draft["inputMode"] };
 
 function baseGenerationDimensions(task: DimensionTask): [number, number] {
   const [rw, rh] =
@@ -2000,7 +2003,10 @@ export function outputDimensions(
   task: DimensionTask & Pick<GenerationQueueTask, "modelId">
 ): [number, number] {
   if (isMiniMaxH3Model(task.modelId)) {
-    return miniMaxH3Dimensions(task);
+    const reference = isMiniMaxH3R2vModel(task.modelId) && task.inputMode !== "video"
+      ? h3ReferenceImageDimensions(task.h3ReferenceSlots ?? []) : undefined;
+    return miniMaxH3Dimensions(reference
+      ? { ...task, sourceWidth: reference.width, sourceHeight: reference.height } : task);
   }
   const [width, height] = baseGenerationDimensions(task);
   if (task.modelId !== "hunyuan15_sr") return [width, height];
@@ -2275,7 +2281,7 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
-  const usesUpgradedH3ExecutionPolicy = task.h3ExecutionPolicy !== undefined ||
+  const usesUpgradedH3ExecutionPolicy = task.modelId === FASTH3_OMNI_MODEL_ID || task.h3ExecutionPolicy !== undefined ||
     task.h3SparseAttentionMode !== undefined ||
     task.h3RuntimeMode !== undefined ||
     task.h3ComfyCompilerMode !== undefined;

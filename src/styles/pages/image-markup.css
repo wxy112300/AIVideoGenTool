@@ -1,0 +1,75 @@
+.image-markup-overlay {
+  z-index: var(--z-dialog); grid-template-rows: auto minmax(0, 1fr);
+  color: var(--text-1); background: var(--canvas);
+  animation: markup-open var(--dur-2) var(--ease-out);
+}
+.image-markup-overlay [hidden] { display: none !important; }
+@keyframes markup-open { from { opacity: 0; } to { opacity: 1; } }
+.image-markup-header {
+  gap: 12px; padding: 10px 16px; border-color: var(--line); background: var(--canvas);
+}
+.image-markup-header > div:first-child { gap: 2px; }
+.image-markup-header strong { font-size: var(--fs-13); font-weight: var(--fw-medium); }
+.image-markup-header span { color: var(--text-3); font-size: var(--fs-11); }
+.image-markup-header .ui-button { min-height: 28px; font-size: var(--fs-12); }
+.image-markup-body { position: relative; grid-template-columns: 52px minmax(0, 1fr) 280px; }
+.image-markup-tools { align-items: center; gap: 4px; padding: 10px 0; border-color: var(--line); background: var(--canvas); }
+.image-markup-tools .ui-button {
+  width: 36px; min-width: 36px; min-height: 36px; height: 36px; padding: 0; border: 0;
+  border-radius: var(--r-md); color: var(--text-2); background: transparent;
+}
+.image-markup-tools .ui-button:hover { border: 0; color: var(--text-1); background: var(--hover-wash); }
+.image-markup-tools .ui-button[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); }
+.image-markup-overlay svg { width: 16px; height: 16px; }
+.markup-tool-divider { flex: none; width: 24px; height: 1px; margin: 4px 0; background: var(--line); }
+.image-markup-stage {
+  padding: 32px; background: repeating-conic-gradient(var(--n2) 0 25%, var(--n1) 0 50%) 0 0 / 20px 20px;
+}
+.image-markup-canvas-shell { border-radius: 4px; box-shadow: 0 20px 60px rgb(0 0 0 / .6); }
+.image-markup-overlay .markup-zoom {
+  position: absolute; bottom: 14px; left: calc(52px + (100% - 332px) / 2);
+  gap: 4px; padding: 4px; border: 0; border-radius: 10px; background: var(--surface-3); box-shadow: var(--shadow-float);
+}
+.image-markup-overlay .markup-zoom .ui-button { min-height: 28px; height: 28px; padding: 0 8px; font-size: var(--fs-12); }
+.image-markup-overlay .markup-zoom .icon-button { width: 28px; min-width: 28px; padding: 0; }
+.image-markup-overlay .markup-zoom span { min-width: 42px; color: var(--text-3); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
+.image-markup-inspector {
+  grid-template-rows: none; align-content: start; gap: 14px; padding: 14px;
+  overflow: auto; border-color: var(--line); background: var(--canvas);
+}
+.markup-inspector-heading { display: flex; align-items: center; gap: 4px; }
+.markup-inspector-heading strong { font-size: var(--fs-13); font-weight: var(--fw-medium); }
+.markup-inspector-heading .ui-button { width: 18px; min-width: 18px; min-height: 18px; height: 18px; padding: 0; color: var(--text-3); }
+.markup-inspector-heading svg { width: 14px; height: 14px; }
+.markup-note-list { gap: 8px; overflow: visible; }
+.markup-note-card { grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.markup-note-card > span { width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 500; color: #fff; background: #bd3037; }
+.markup-note-card textarea { min-height: 32px; height: 32px; padding: 6px 8px; font-size: var(--fs-12); font-weight: 400; line-height: 18px; border-color: var(--line); background: var(--surface-1); color: var(--text-1); }
+.markup-note-empty { padding: 0; border: 0; color: var(--text-3); font-size: var(--fs-12); text-align: left; }
+.markup-style-controls { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 0; border: 0; }
+.markup-color-field, .markup-width-field { display: grid; gap: 8px; }
+.markup-color-field > span, .markup-width-field > span { color: var(--text-2); font-size: var(--fs-12); }
+.markup-swatches { display: flex; align-items: center; gap: 10px; padding: 2px; }
+.markup-swatches button { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--swatch); cursor: pointer; }
+.markup-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--swatch); }
+.markup-style-controls .markup-custom-color { width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 50%; overflow: hidden; }
+.markup-style-controls input[type="color"] { width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; border-radius: 50%; cursor: pointer; }
+.markup-style-controls input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.markup-style-controls input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.markup-width-field > div { display: flex; align-items: center; gap: 8px; }
+.markup-width-field input[type="range"] { min-width: 0; flex: 1; }
+.markup-width-number { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-11); }
+.markup-width-number input { width: 48px; min-height: 28px; padding: 4px; text-align: center; }
+.image-cropper-dialog { inset: 0; padding: 24px; background: rgb(0 0 0 / .65); }
+.image-cropper-panel { min-height: 0; border-color: var(--line-strong); border-radius: var(--r-lg); background: var(--surface-1); box-shadow: var(--shadow-float); }
+.image-cropper-panel > header, .image-cropper-panel > footer { padding: 12px 16px; gap: 12px; border-color: var(--line); }
+.image-cropper-panel > header strong { font-size: var(--fs-13); }
+.image-cropper-panel > footer { flex-wrap: wrap; }
+.image-cropper-panel > footer label, .image-cropper-size { color: var(--text-2); font-size: var(--fs-12); }
+.image-cropper-stage { background: repeating-conic-gradient(var(--n2) 0 25%, var(--n1) 0 50%) 0 0 / 20px 20px; }
+@media (max-width: 900px) {
+  .image-markup-body { grid-template-columns: 52px minmax(0, 1fr) 240px; }
+  .image-markup-inspector { padding: 14px; }
+  .image-markup-overlay .markup-zoom { left: calc(52px + (100% - 292px) / 2); }
+}
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="standard"]) .image-markup-overlay { animation: none; } }

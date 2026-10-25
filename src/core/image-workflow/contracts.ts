@@ -32,6 +32,8 @@ export interface ImageModelCapability {
   supportsCustomOutputSize?: boolean;
   /** Alignment multiple for that custom reference-image canvas. */
   customOutputMultiple?: number;
+  /** Alignment for every canvas, including text-only generation. */
+  outputMultiple?: number;
   /** Allows the image page to submit a prompt without a reference Picture. */
   supportsTextOnly?: boolean;
   /** The model can consume a saved binary mask when a reference Picture exists. */

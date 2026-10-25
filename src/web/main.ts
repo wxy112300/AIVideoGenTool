@@ -1,5 +1,4 @@
-import "../styles/00-tokens.css";
-import "../styles/palette.css";
+import "./theme.css";
 import "./style.css";
 import { defaultHistoryFilter, historyFilterIsActive, normalizeHistoryFilter, type HistoryFilterState, type HistorySort } from "../core/history-filter";
 import type { BrowseLibraryInfo, BrowseVideo } from "../core/lan-browser";

@@ -1,0 +1,30 @@
+.ui-lit-static { position: relative; }
+.ui-lit { isolation: isolate; }
+.ui-lit::after {
+  content: ""; position: absolute; inset: -1px; padding: 1px; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(160px circle at var(--ui-pointer-x, 50%) var(--ui-pointer-y, 50%), var(--edge-light), transparent 70%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  opacity: 0; transition: opacity var(--dur-2) var(--ease-out);
+}
+.ui-lit:hover::after { opacity: 1; }
+.ui-button.ui-stable-label { min-inline-size: var(--ui-label-width, 0px); }
+.ui-progress-button { position: relative; overflow: hidden; font-variant-numeric: tabular-nums; }
+.ui-progress-button::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: var(--ui-progress, 0%);
+  background: var(--accent-soft); pointer-events: none; transition: width var(--dur-3) var(--ease-out);
+}
+.ui-progress-button[data-ui-indeterminate]::before { width: 35%; animation: ui-progress-sweep 1.4s ease-in-out infinite; }
+.ui-button[data-ui-queued] { border-style: dashed; color: var(--text-3); background: var(--surface-1); }
+.ui-button[data-ui-queued]:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+@keyframes ui-progress-sweep { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+.ui-sort-dragging { position: relative; z-index: var(--z-card-open); box-shadow: var(--shadow-lift); }
+[data-sortable-handle] { cursor: grab; touch-action: none; }
+.ui-sort-dragging [data-sortable-handle] { cursor: grabbing; }
+.ui-masonry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); align-items: start; }
+.ui-masonry-column { display: grid; min-width: 0; gap: var(--sp-3); }
+.ui-skeleton { background: linear-gradient(100deg, var(--surface-2) 25%, var(--surface-3) 45%, var(--surface-2) 65%); background-size: 200% 100%; animation: ui-skeleton-sweep 1.6s ease-in-out infinite; border-radius: var(--r-sm); }
+@keyframes ui-skeleton-sweep { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="standard"]) .ui-skeleton, :root:not([data-motion="standard"]) .ui-progress-button::before { animation: none; }
+}
+:root[data-motion="reduced"] .ui-skeleton, :root[data-motion="reduced"] .ui-progress-button::before { animation: none; }

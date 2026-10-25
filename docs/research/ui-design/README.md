@@ -3,7 +3,7 @@
 - 类型：Research / Evidence
 - 状态：设计阶段已完成（2026-10-21）；结论已写入 [DESIGN.md](../../../DESIGN.md)，迁移由 [UI 迁移 TASK](../../tasks/2026-10-21-ui-migration/TASK.md) 负责
 - 适用范围：renderer 视觉层与动效层；LAN 浏览器（`src/web/`）保持独立设计
-- 权威顺序：用户决定（[设计 TASK](../../tasks/2026-10-20-ui-design-system/TASK.md) “用户决定”第 1–41 条）→ DESIGN.md → `prototypes/` → 本目录证据
+- 权威顺序：用户决定（[设计 TASK](../../tasks/2026-10-20-ui-design-system/TASK.md) “用户决定”第 1–45 条）→ DESIGN.md → `prototypes/` → 本目录证据
 
 ## 内容
 

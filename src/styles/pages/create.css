@@ -1,0 +1,26 @@
+/* M4a owns the Create frame; material cards migrate in subsequent M4 slices. */
+.app-shell:has(.create-workspace) { container: create-page / inline-size; }
+.create-page-heading { position: sticky; top: var(--topbar-h, 64px); z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 calc(-1 * var(--shell-gutter, 32px)) 16px; padding: 8px var(--shell-gutter, 32px); min-height: 52px; background: color-mix(in srgb, var(--canvas) 92%, transparent); backdrop-filter: blur(14px); letter-spacing: normal; }
+.create-page-heading h1 { margin: 0; color: var(--text-1); font: var(--fw-semibold) var(--fs-20)/var(--lh-tight) var(--font-sans); letter-spacing: normal; }
+.input-mode-switch { position: relative; display: inline-flex; align-items: center; width: auto; min-width: 0; margin: 0; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-1); }
+.input-mode-switch button { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 30px; min-height: 0; padding: 0 16px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); font: var(--fw-medium) var(--fs-13)/1 var(--font-sans); letter-spacing: normal; white-space: nowrap; transform: none; cursor: pointer; transition: color var(--dur-2); }
+.input-mode-switch button:hover, .input-mode-switch button[aria-pressed="true"] { color: var(--text-1); }
+.input-mode-switch:not([data-segment-ready]) button[aria-pressed="true"] { background: var(--surface-3); }
+.input-mode-switch::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: 0; width: var(--segment-width, 0px); transform: translateX(var(--segment-left, 0px)); border-radius: var(--r-sm); background: var(--surface-3); box-shadow: 0 1px 2px rgb(0 0 0 / .35), inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent); }
+.input-mode-switch .ui-icon { width: 14px; height: 14px; }
+.input-mode-switch button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.create-workspace { display: grid; grid-template-columns: minmax(350px, .82fr) minmax(540px, 1.18fr); align-items: start; gap: 18px; }
+.create-workspace > .media-panel, .create-workspace > .composer { margin-bottom: 0; }
+.create-workspace > .media-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.create-workspace > .media-panel { position: sticky; top: calc(var(--topbar-h, 64px) + var(--create-heading-h, 52px) + 12px); max-height: calc(100vh - var(--topbar-h, 64px) - var(--create-heading-h, 52px) - 24px); min-width: 0; margin-bottom: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding-right: 0; }
+.create-workspace > .media-panel::-webkit-scrollbar { width: 0; height: 0; }
+.composer.create-editor { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+@container create-page (max-width: 1120px) {
+  .create-workspace { grid-template-columns: minmax(0, 1fr); }
+  .create-workspace > .media-panel { position: static; max-height: none; overflow: visible; padding-right: 0; }
+}
+@media (max-width: 760px) {
+  .create-page-heading { flex-wrap: wrap; gap: 10px; }
+  .input-mode-switch { max-width: 100%; }
+  .input-mode-switch button { padding-inline: 10px; }
+}

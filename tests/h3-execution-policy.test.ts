@@ -89,6 +89,13 @@ describe("native H3 0.35 execution policy", () => {
     expect(policy.reasons).toContain("vsa-requires-validated-fast-h3");
   });
 
+  it.each(["off", "sol-attn", "native-sla", "vsa"])("keeps Omni on its official VSA recipe despite global %s", sparseAttentionMode => {
+    expect(resolveH3ExecutionPolicy({ modelId: "minimax_h3_omni", inputMode: "image",
+      attentionMode: "sage-triton", sparseAttentionMode })).toMatchObject({
+      attentionMode: "comfy-kitchen", sparseAttentionMode: "vsa", allowed: true
+    });
+  });
+
   it("preserves the Motion Context Spectrum-off boundary", () => {
     const policy = resolveH3ExecutionPolicy({
       modelId: "minimax_h3_ref2va",

@@ -253,18 +253,19 @@ export function resolveH3ExecutionPolicy(
   const isH3 = definition?.family === "minimax-h3";
   const isR2v = definition?.variant === "r2v";
   const motionContext = input.inputMode === "video" && isR2v;
+  const omni = input.modelId === FASTH3_OMNI_MODEL_ID;
   const normalizedFrom: string[] = [];
-  const attentionMode = normalizeH3AttentionMode(input.attentionMode);
+  // The official OmniRef graph pairs VSA10 with Kitchen's dense fallback.
+  // Global H3 choices must not turn this trained VSA model into dense/SLA/Sol.
+  const attentionMode = omni ? "comfy-kitchen" : normalizeH3AttentionMode(input.attentionMode);
   const attentionOwner = h3AttentionOwnerFor(attentionMode, normalizedFrom);
   const sparseRequested = normalizeH3SparseAttentionMode(input.sparseAttentionMode);
-  const omniSparseNormalized = input.modelId === FASTH3_OMNI_MODEL_ID && sparseRequested !== "off";
-  if (omniSparseNormalized) normalizedFrom.push(`sparse:${sparseRequested}->off`);
+  if (omni && sparseRequested !== "vsa") normalizedFrom.push(`sparse:${sparseRequested}->vsa`);
   const turboProfile = h3TurboProfileFor(input);
   const motionContextSparseNormalized = motionContext && sparseRequested === "sol-attn";
   if (motionContextSparseNormalized) normalizedFrom.push("sparse:sol-attn->off");
-  const sparseAttentionMode = motionContextSparseNormalized || omniSparseNormalized
-    ? "off"
-    : effectiveSparseMode(sparseRequested, turboProfile, isR2v);
+  const sparseAttentionMode = omni ? "vsa" : motionContextSparseNormalized
+    ? "off" : effectiveSparseMode(sparseRequested, turboProfile, isR2v);
   const runtimeMode = normalizeH3RuntimeMode(input.runtimeMode);
   const comfyCompilerMode = normalizeH3ComfyCompilerMode(input.comfyCompilerMode);
   const spectrumRequested = input.spectrumMode === "balanced";
@@ -288,9 +289,8 @@ export function resolveH3ExecutionPolicy(
     if (sparseAttentionMode === "native-sla" && turboProfile !== "h3-turbo-sla") {
       reasons.push("native-sla-requires-turbo-sla");
     }
-    if (sparseAttentionMode === "vsa") {
-      // The 0.35 schema gates VSA to MiniMaxH3, but this app has no confirmed
-      // FastH3 weight/kernel pairing yet. Do not present a false-ready route.
+    if (sparseAttentionMode === "vsa" && !omni) {
+      // Only the pinned Omni checkpoint has an authoritative VSA recipe.
       reasons.push("vsa-requires-validated-fast-h3");
     }
   }

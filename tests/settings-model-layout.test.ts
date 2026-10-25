@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { ModelScanProfile } from "../src/types";
+import { settingsNodePurpose } from "../src/renderer/pages/settings/copy";
 import {
   renderSettingsInstallGuideDialog,
   renderSettingsModelScanCard,
@@ -32,6 +34,25 @@ const component = (label = "Model file", found = true) => ({
 });
 
 describe("Settings model card layout", () => {
+  it("uses the current language instead of stale scan descriptions and keeps unknown node purposes", () => {
+    const profile: ModelScanProfile = { id: "strata/qwen3.8-flash-next-iq3_xxs", name: "旧中文名称", category: "prompt", badge: "", description: "旧中文扫描缓存", vram: "24 GB", available: true, integrated: true, components: [] };
+    const root = document.createElement("div"); root.innerHTML = renderSettingsModelScanCard(profile, { ...options, locale: "en-US" });
+    expect(root.querySelector(".settings-model-description")?.textContent).toBe("Multimodal prompt model with image understanding and MTP acceleration.");
+    expect(root.textContent).not.toContain("旧中文");
+    expect(root.querySelector(".model-meta-line")?.textContent).toBe("24 GB");
+    expect(profile.description).toBe("旧中文扫描缓存");
+    expect(settingsNodePurpose("en-US", "h3-continuum", "旧描述")).toContain("continuation");
+    expect(settingsNodePurpose("zh-TW", "h3-motion-context", "旧描述")).toContain("來源影片");
+    expect(settingsNodePurpose("en-US", "future-node", "Future purpose")).toBe("Future purpose");
+  });
+  it.each(["zh-CN", "zh-TW", "en-US"] as const)("shows located files without download instructions for an installed component (%s)", locale => {
+    const markup = renderSettingsInstallGuideDialog({ configuredModelDirectory: "C:\\models", selectedInstallGuide: { profileName: "Video", component: component() } }, { ...options, locale });
+    const root = document.createElement("div"); root.innerHTML = markup;
+    expect(markup).not.toContain("settings.system.installGuideDownloadInstruction");
+    expect(root.querySelector("#open-install-download")?.textContent).toBe(locale === "en-US" ? "View source" : locale === "zh-TW" ? "檢視來源" : "查看来源");
+    expect(root.querySelectorAll(".install-guide-fields code").length).toBeGreaterThanOrEqual(3);
+    expect(root.querySelector("#open-install-directory")?.hasAttribute("disabled")).toBe(false);
+  });
   it("does not attach ComfyUI TextGenerate dependencies to Strata preparation", () => {
     const markup = renderSettingsModelScanCard({ id: "strata/example", name: "Strata", category: "prompt", managedBy: "strata", badge: "Preparation", description: "Independent runtime", vram: "24GB", available: true, integrated: false, components: [component()] }, options);
     expect(markup).not.toContain("TextGenerate");
@@ -54,8 +75,10 @@ describe("Settings model card layout", () => {
 
     expect(markup).toContain("A useful model description.");
     expect(markup).toContain("model-meta-line");
-    expect(markup).toContain("settings.system.scanCardResourcePolicy");
-    expect(markup).toContain("settings.system.scanCardRecommendedHardware");
+    expect(markup).not.toContain("settings.system.scanCardResourcePolicy");
+    const root = document.createElement("div"); root.innerHTML = markup;
+    expect(root.querySelector(".model-meta-line")?.textContent).toBe("24 GB");
+    expect(root.querySelector(".model-hardware-recommendation")).toBeNull();
     expect(markup).toContain("settings.system.scanCardFileComplete");
     expect(markup).not.toContain("settings.system.scanCardEvidence");
     expect(markup).not.toContain("settings.system.scanCardNodeNotRequired");
@@ -64,7 +87,7 @@ describe("Settings model card layout", () => {
     expect(markup).not.toContain("model.meta.workflowPending");
   });
 
-  it("puts prompt backend dependencies in the model description instead of a scan-status line", () => {
+  it("keeps the localized prompt description free of redundant backend and scan-status copy", () => {
     const profile: ModelScanProfile = {
       id: "community/gemma-4-e4b-unconcerned-q5",
       name: "Gemma 4 E4B",
@@ -84,7 +107,9 @@ describe("Settings model card layout", () => {
       isGemmaPromptModel: () => true
     });
 
-    expect(markup).toContain("<p class=\"muted\">A multimodal prompt model. · 通过 ComfyUI Prompt Writer 处理视频和图片提示词</p>");
+    const root = document.createElement("div"); root.innerHTML = markup;
+    expect(root.querySelector(".settings-model-description")?.textContent).toContain("多模态");
+    expect(root.querySelector(".settings-model-description")?.textContent).not.toContain("通过 ComfyUI Prompt Writer");
     expect(markup).not.toContain("model.meta.gemmaReady");
     expect(markup).not.toContain("settings.system.scanCardEvidence");
   });
@@ -107,12 +132,14 @@ describe("Settings model card layout", () => {
 
     const markup = renderSettingsModelScanCard(profile, options);
 
-    expect(markup).toContain("<p class=\"muted\">A model that needs a runtime node. · 缺少运行节点：UpscaleNode</p>");
+    const root = document.createElement("div"); root.innerHTML = markup;
+    expect(root.querySelector(".settings-model-blocker")?.textContent).toBe("缺少运行节点：UpscaleNode");
+    expect(root.querySelector(".settings-model-blocker")?.closest("details")).toBeNull();
     expect(markup).not.toContain("settings.system.scanCardEvidence");
     expect(markup).not.toContain("settings.system.scanCardRuntimeNotRequired");
   });
 
-  it("exposes an accessible icon-only download action for missing model components", () => {
+  it("starts files collapsed and exposes the prototype's labeled download action for missing components", () => {
     const profile: ModelScanProfile = {
       id: "minimax_h3_fl2va",
       name: "MiniMax H3 FL2VA",
@@ -126,14 +153,15 @@ describe("Settings model card layout", () => {
     };
 
     const markup = renderSettingsModelScanCard(profile, options);
-    const action = markup.match(/<button class="component-info"[^>]*>.*?<\/button>/s)?.[0];
-
-    expect(action).toContain('data-install-profile="minimax_h3_fl2va"');
-    expect(action).toContain('data-install-component="0"');
-    expect(action).toContain('title="下载与安装"');
-    expect(action).toContain('data-lucide="download"');
-    expect(action).not.toContain("<span");
-    expect(action).not.toContain(">下载与安装<");
+    const root = document.createElement("div"); root.innerHTML = markup;
+    const action = root.querySelector<HTMLButtonElement>("[data-install-profile]")!;
+    expect(action.dataset.installProfile).toBe("minimax_h3_fl2va");
+    expect(action.dataset.installComponent).toBe("0");
+    expect(action.getAttribute("aria-label")).toContain("H3 base model");
+    expect(action.textContent).toBe("下载");
+    expect(action.querySelector('[data-lucide="download"]')).not.toBeNull();
+    expect(root.querySelector<HTMLDetailsElement>(".settings-model-files")?.open).toBe(false);
+    expect(root.querySelector(".settings-files-collapsed")?.textContent).toContain("模型文件 0/1");
   });
 
   it("shows pinned revision, size, and hash in the install guide", () => {

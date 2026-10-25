@@ -99,6 +99,14 @@ describe("secondary dialog markup", () => {
     expect(markup).toContain('<option value="minimax_h3_latent_upscaler"');
     expect(markup).toContain("H3 Latent Upscale");
     expect(markup).toContain('id="upscale-model"');
+    const lower = renderUpscaleDialog({ ...renderOptions, dialog: { ...renderOptions.dialog!, targetHeight: 720 } });
+    expect(lower).toContain('id="enqueue-upscale" disabled');
+    expect(lower).toContain(uiKeys.upscale.targetUnavailable);
+    const missing = renderUpscaleDialog({ ...renderOptions, environment: {
+      modelProfiles: [{ id: "seedvr2", category: "upscale", name: "SeedVR2", available: false }]
+    } as unknown as NonNullable<typeof renderOptions.environment> });
+    expect(missing).toContain('id="enqueue-upscale" disabled');
+    expect(missing).toContain(uiKeys.upscale.modelUnavailable);
   });
 
   it("offers every H3 target before runtime readiness and displays aligned output pixels", () => {
@@ -255,7 +263,8 @@ describe("secondary dialog markup", () => {
 
     expect(markup).not.toContain(uiKeys.upscale.dlss5Name);
     expect(markup).not.toContain(uiKeys.upscale.aetherscaleName);
-    expect(markup).toContain('class="upscale-provider-controls upscale-konohamaru-settings-row"');
+    expect(markup.match(/class="upscale-row"/g)).toHaveLength(5);
+    expect(markup).toContain('data-ui-segmented="upscale-konohamaru"');
     expect(markup).toContain('class="upscale-konohamaru-range-row"');
     expect(markup).toContain('class="field-label-row"');
     expect(markup).not.toContain(uiKeys.upscale.konohamaruDescription);
@@ -387,7 +396,7 @@ describe("secondary dialog markup", () => {
     expect(markup).toContain(uiKeys.upscale.dlss5Retired);
     expect(markup).toContain('id="enqueue-upscale" disabled');
     expect(markup).toContain(uiKeys.upscale.dlss5BenchmarkPending);
-    expect(markup).toContain(uiKeys.upscale.estimatedDisk);
+    expect(markup).toContain(uiKeys.upscale.disk);
   });
 
   it("shows only the supported AetherScale modes and avoids repeated pending copy", () => {
@@ -442,7 +451,8 @@ describe("secondary dialog markup", () => {
     expect(markup).not.toContain('data-aetherscale-mode="balanced_1_724x"');
     expect(markup).not.toContain(uiKeys.upscale.aetherscaleExperimental);
     expect(markup).not.toContain(uiKeys.upscale.aetherscaleAdvancedPending);
-    expect(markup.split(uiKeys.upscale.aetherscaleBenchmarkPending)).toHaveLength(2);
+    // One tooltip source plus its accessible name; no repeated visible paragraph.
+    expect(markup.split(uiKeys.upscale.aetherscaleBenchmarkPending)).toHaveLength(3);
     expect(markup).toContain("864");
     expect(markup).toContain("1728");
     expect(markup).toContain(uiKeys.upscale.aetherscaleRetired);

@@ -1,13 +1,11 @@
 import type { Settings, LlamaCppPythonStatus } from "../../src/types.js";
 import { pythonProbeCache } from "./python-probe-cache.js";
+import { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
+export { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
 
 export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.5";
 export const LLAMA_CPP_PYTHON_WHEEL_ROOT =
   "https://abetlen.github.io/llama-cpp-python/whl";
-
-/** Pinned Windows wheel with dynamically loaded CUDA and CPU backends. */
-export const LLAMA_CPP_PYTHON_JAMEPENG_VERSION = "0.4.2";
-export const LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE = "20261003";
 
 const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu124",

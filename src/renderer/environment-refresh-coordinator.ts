@@ -44,7 +44,8 @@ export function environmentScanScopeForReason(
 export function environmentScanOptionsForReason(
   reason: EnvironmentRefreshReason
 ): EnvironmentScanOptions | undefined {
-  return reason === "runtime-verification" ? { forcePythonProbe: true } : undefined;
+  return reason === "runtime-verification" ? { forcePythonProbe: true }
+    : reason === "manual" ? { refreshReleaseVersions: true } : undefined;
 }
 
 export class EnvironmentRefreshCoordinator {
@@ -60,7 +61,7 @@ export class EnvironmentRefreshCoordinator {
     this.dependencies.reportScan(reason);
     this.dependencies.setScanning(true);
     this.dependencies.setError("");
-    this.dependencies.notify(this.dependencies.scanningMessage(), { durationMs: 300_000 });
+    this.dependencies.notify(this.dependencies.scanningMessage(), { key: "environment-scan", durationMs: 300_000 });
     this.dependencies.requestRender();
 
     try {
@@ -72,14 +73,14 @@ export class EnvironmentRefreshCoordinator {
       if (requestId === this.latestRequestId) {
         this.dependencies.commit(scan);
         this.dependencies.afterCommit(scan);
-        this.dependencies.notify(this.dependencies.completedMessage());
+        this.dependencies.notify(this.dependencies.completedMessage(), { key: "environment-scan" });
       }
       return scan;
     } catch (error) {
       if (requestId === this.latestRequestId) {
         const message = this.dependencies.failedMessage(error, reason);
         this.dependencies.setError(message);
-        this.dependencies.notify(message, { kind: "error" });
+        this.dependencies.notify(message, { key: "environment-scan", kind: "error" });
       }
       return null;
     } finally {

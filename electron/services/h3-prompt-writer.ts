@@ -1,5 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { isMossImageModel } from "../../src/core/moss-image-spec.js";
+import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
 import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
 import { managedPromptModel } from "../../src/core/prompt-models.js";
 import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
@@ -256,11 +258,12 @@ function promptWriterModeForRequest(
   return targetMode;
 }
 
-export function extractImageEditPromptFromWriter(value: string): string {
+export function extractImageEditPromptFromWriter(value: string, targetModelId?: string): string {
   const field = value.match(
     /(?:^|\n)\s*(?:[*#\s]*)(?:detailed_description|integrated_multimodal_description)\s*:\s*([\s\S]*?)(?=\n\s*(?:[*#\s]*)(?:subject_definitions|summary|retention_analysis|overall_soundscape|non_diegetic_music)\s*:|$)/iu
   );
   const extracted = field?.[1]?.trim() || value.trim();
+  if (isMossImageModel(targetModelId)) return normalizeMossImagePromptOutput(extracted);
   return normalizeQwenImageEditPromptOutput(extracted);
 }
 
@@ -481,7 +484,10 @@ export async function enhancePromptWithH3PromptWriter(
     });
     onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
-    if (imageEdit) return stripPromptAnnotations(extractImageEditPromptFromWriter(result.prompt));
+    if (imageEdit) {
+      const extracted = extractImageEditPromptFromWriter(result.prompt, request.imageTargetModelId);
+      return isMossImageModel(request.imageTargetModelId) ? extracted : stripPromptAnnotations(extracted);
+    }
     if (targetedRevision) return applyPromptRevision(request.prompt, result.prompt);
     const normalizeWriterResult = (promptText: string): string => normalizeH3PromptOutput(
       promptText.trim(),

@@ -13,7 +13,9 @@ describe("Settings install cancellation", () => {
     const root = document.createElement("main");
     root.innerHTML = renderDependencyActionSplit('<button data-install-node="example">Install</button>', { ...options, cancellation: { id: "custom-node:example", queued: Boolean(queued), pending: Boolean(pending) } });
     const button = root.querySelector<HTMLButtonElement>("[data-cancel-dependency-install]")!;
-    expect(button.textContent).toBe(label); expect(button.disabled).toBe(Boolean(pending));
+    expect(button.getAttribute("aria-label")).toBe(label); expect(button.disabled).toBe(Boolean(pending));
+    expect(button.querySelector(".node-cancel-label")?.textContent ?? button.textContent).toBe(label);
+    expect(Boolean(button.querySelector(".settings-progress-ring"))).toBe(!queued);
     expect(root.querySelector("[data-install-node], summary")).toBeNull();
   });
 

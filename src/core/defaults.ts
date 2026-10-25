@@ -137,6 +137,7 @@ export function createDefaultSettings(): Settings {
     vramStallWatchdogMinutes: 0,
     queueIsolationMode: "lora",
     uiLocale: "zh-CN",
+    appearance: { accent: "azure", palette: "graphite", depth: "1", motion: "system" },
     promptLanguage: "auto",
     promptCreativity: 0.7,
     defaultUpscaleModel: "seedvr2",

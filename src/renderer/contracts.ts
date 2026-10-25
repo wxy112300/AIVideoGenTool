@@ -14,6 +14,7 @@ export type Page =
 export type HistoryKind = "video" | "image";
 export type CreationMode = "image-to-video" | "video-extension" | "image-edit";
 export type SettingsTab =
+  | "appearance"
   | "comfyui"
   | "system"
   | "acceleration"
@@ -32,6 +33,8 @@ export interface RendererRouteState {
 }
 
 export interface RendererNotifyOptions {
+  /** Replace an earlier transient status for the same operation. */
+  key?: string;
   renderPage?: boolean;
   kind?: NotificationKind;
   durationMs?: number;

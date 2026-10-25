@@ -23,6 +23,7 @@ import type { ComfyRuntimeStateController } from "../../src/infrastructure/comfy
 import { safeLogErrorMessage, type AppLogger } from "../../src/infrastructure/app-logger.js";
 import type { QueueIsolationReason } from "./queue-execution-side-effects.js";
 import { terminateAetherScaleWorker } from "./aetherscale-runtime.js";
+import type { ComfyRuntimeMemory } from "./comfy-runtime-memory.js";
 
 export interface QueueRuntimeProfileAlignmentResult {
   ok: boolean;
@@ -49,6 +50,7 @@ export interface QueueRuntimeServiceDependencies {
   restartLocalService(kind: "comfy", settings: Settings): Promise<ConnectionResult>;
   freeMemory(settings: Settings): Promise<void>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
+  readComfyRuntimeMemory(settings: Settings): Promise<ComfyRuntimeMemory | null>;
   scanEnvironment(
     settings: Settings,
     scope: EnvironmentScanScope
@@ -175,24 +177,34 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       const deadline = Date.now() + 20_000;
       let stableSamples = 0;
       let lastSample = before;
-      while (Date.now() < deadline) {
+      let processMemory: ComfyRuntimeMemory | null = null;
+      let highProcessSamples = 0;
+      let unknownSamples = 0;
+      for (let attempt = 0; attempt < 20 && Date.now() < deadline; attempt++) {
         await (this.deps.sleep?.(1_000) ?? defaultSleep(1_000));
-        const sample = await this.deps.getPerformanceMetrics(settings).catch(() => null);
-        if (!sample?.vramUsedBytes || !sample.vramTotalBytes) continue;
-        lastSample = sample;
-        const idleVramLimit = Math.min(5 * gib, sample.vramTotalBytes * 0.2);
-        const gpuIdle = sample.gpuPercent == null || sample.gpuPercent < 10;
-        stableSamples = gpuIdle && sample.vramUsedBytes <= idleVramLimit
-          ? stableSamples + 1
-          : 0;
+        const [sample, memory] = await Promise.all([
+          this.deps.getPerformanceMetrics(settings).catch(() => null),
+          this.deps.readComfyRuntimeMemory(settings).catch(() => null)
+        ]);
+        if (sample) lastSample = sample;
+        processMemory = memory;
+        const processIdle = memory?.devices.every(device => device.allocatedBytes <= Math.min(5 * gib, device.totalBytes * 0.2));
+        const adapterIdle = sample?.vramUsedBytes != null && sample.vramTotalBytes != null && sample.vramTotalBytes > 0 &&
+          sample.vramUsedBytes <= Math.min(5 * gib, sample.vramTotalBytes * 0.2) && (sample.gpuPercent == null || sample.gpuPercent < 10);
+        // Unknown process telemetry cannot turn another application's VRAM into
+        // evidence of a ComfyUI leak. Low adapter usage remains a legacy fallback.
+        stableSamples = (processIdle ?? adapterIdle) ? stableSamples + 1 : 0;
+        highProcessSamples = processIdle === false ? highProcessSamples + 1 : 0;
+        unknownSamples = memory ? 0 : unknownSamples + 1;
         if (stableSamples >= requiredSamples) {
-          return { verified: true, lastSample, idleVramLimit };
+          return { verified: true, lastSample, idleVramLimit: sample?.vramTotalBytes ? Math.min(5 * gib, sample.vramTotalBytes * 0.2) : null, processMemory, processLeak: false };
         }
+        if (unknownSamples >= 3) break;
       }
       const idleVramLimit = lastSample?.vramTotalBytes
         ? Math.min(5 * gib, lastSample.vramTotalBytes * 0.2)
         : null;
-      return { verified: false, lastSample, idleVramLimit };
+      return { verified: false, lastSample, idleVramLimit, processMemory, processLeak: highProcessSamples >= 2 };
     };
 
     const requestRelease = async (phase: "initial" | "lora-final") => {
@@ -213,12 +225,12 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
     let release = await requestRelease("initial");
     let result = release
       ? await waitForIdleRelease(2)
-      : { verified: false, lastSample: before, idleVramLimit: null };
+      : { verified: false, lastSample: before, idleVramLimit: null, processMemory: null, processLeak: false };
     if (result.verified && hasVideoLoras) {
       release = await requestRelease("lora-final");
       result = release
         ? await waitForIdleRelease(3)
-        : { verified: false, lastSample: result.lastSample, idleVramLimit: result.idleVramLimit };
+        : { verified: false, lastSample: result.lastSample, idleVramLimit: result.idleVramLimit, processMemory: null, processLeak: false };
     }
 
     if (result.verified) {
@@ -236,10 +248,18 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       return true;
     }
 
+    if (release && !result.processLeak) {
+      this.deps.logger.warn("comfy", "h3-release-telemetry-unavailable", "ComfyUI accepted model unload; adapter-wide usage cannot establish a process leak, continuing without an unrequested restart", {
+        taskId, modelId, hasVideoLoras, vramUsedBytes: result.lastSample?.vramUsedBytes ?? null
+      });
+      return true;
+    }
+
     this.deps.logger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; applying endpoint-appropriate recovery", {
       taskId,
       modelId,
       hasVideoLoras,
+      processMemory: result.processMemory,
       vramBeforeBytes: before?.vramUsedBytes ?? null,
       vramAfterBytes: result.lastSample?.vramUsedBytes ?? null,
       vramTotalBytes: result.lastSample?.vramTotalBytes ?? null,

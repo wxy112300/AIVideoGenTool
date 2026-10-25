@@ -1,5 +1,5 @@
 import type { CatalogModelEntry } from "../../types.js";
-import { H3_BASE_RESOLUTIONS } from "../../../video-resolution.js";
+import { H3_BASE_RESOLUTIONS, H3_CUSTOM_RESOLUTION_RANGE } from "../../../video-resolution.js";
 import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3LivePreviewTae, h3Nvfp4TextEncoder } from "../minimax_h3_shared.js";
 
 export const FASTH3_OMNI_MODEL_ID = "minimax_h3_omni";
@@ -26,6 +26,7 @@ export const minimaxH3Omni: CatalogModelEntry = {
       maxReferenceImages: 9,
       maxDurationSeconds: 15.1,
       maxGeneratedFrames: 362,
+      customResolution: H3_CUSTOM_RESOLUTION_RANGE,
       resolutions: H3_BASE_RESOLUTIONS,
       generationSteps: [8],
       defaultGenerationSteps: 8,
@@ -35,7 +36,7 @@ export const minimaxH3Omni: CatalogModelEntry = {
       vram: "INT8 ConvRot · 22.2 GB 权重 · DynamicVRAM / RAM offload",
       integrated: true,
       minimumComfyVersion: FASTH3_OMNI_MINIMUM_COMFY_VERSION,
-      runtimeNodeTypes: ["UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3ReferenceToVideo", "MiniMaxH3SigmaShift", "KSamplerSelect", "BasicScheduler", "BasicGuider", "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo", "SaveVideo"],
+      runtimeNodeTypes: ["UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3ReferenceToVideo", "MiniMaxH3SigmaShift", "ModelAttentionBackend", "BlockSparseAttention", "KSamplerSelect", "BasicScheduler", "BasicGuider", "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo", "SaveVideo"],
       components: [
         {
           label: "FastH3 Omni INT8 模型",

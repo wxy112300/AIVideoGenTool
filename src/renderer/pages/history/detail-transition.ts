@@ -29,10 +29,12 @@ export function swapHistoryDetailFragments(
   const nextSidebar = nextRoot.querySelector<HTMLElement>(".history-detail-sidebar");
   const currentRecord = currentRoot.querySelector<HTMLElement>(".history-record-section");
   const nextRecord = nextRoot.querySelector<HTMLElement>(".history-record-section");
+  const currentPrompt = currentRoot.querySelector<HTMLElement>(".history-detail-prompt");
+  const nextPrompt = nextRoot.querySelector<HTMLElement>(".history-detail-prompt");
   if (!currentVideo || !nextVideo || !currentInfo || !nextInfo ||
     !currentActions || !nextActions || !currentUtility || !nextUtility ||
     !currentBack || !nextBack || !currentSidebar || !nextSidebar ||
-    !currentRecord || !nextRecord) {
+    !currentRecord || !nextRecord || Boolean(currentPrompt) !== Boolean(nextPrompt)) {
     return false;
   }
 
@@ -47,6 +49,7 @@ export function swapHistoryDetailFragments(
   else currentVideo.removeAttribute("src");
   currentVideo.dataset.historyAsset = nextVideo.dataset.historyAsset ?? "";
   currentVideo.dataset.historyVersion = nextVideo.dataset.historyVersion ?? "";
+  currentVideo.dataset.historyDownloadFilename = nextVideo.dataset.historyDownloadFilename ?? "";
   currentVideo.loop = nextVideo.loop;
   currentVideo.playsInline = nextVideo.playsInline;
   currentVideo.load();
@@ -59,6 +62,7 @@ export function swapHistoryDetailFragments(
   currentBack.replaceWith(nextBack);
   currentSidebar.replaceWith(nextSidebar);
   currentRecord.replaceWith(nextRecord);
+  if (currentPrompt && nextPrompt) currentPrompt.replaceWith(nextPrompt);
 
   const currentTags = currentRoot.querySelector<HTMLElement>("[data-history-tags-root]");
   const nextTags = nextRoot.querySelector<HTMLElement>("[data-history-tags-root]");

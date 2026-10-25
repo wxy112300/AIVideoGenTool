@@ -1,3 +1,4 @@
+import { reducedMotion } from "../../shared/ui/motion";
 import type { AppState } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
 import { activeQueueTaskIds, activeQueueTasks } from "../../../core/queue";
@@ -51,7 +52,9 @@ interface QueueBoundaryDragState {
 }
 
 const dragThreshold = 5;
-const dragAnimationMs = 170;
+function dragAnimationMs(): number {
+  return reducedMotion() ? 0 : parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-3")) || 240;
+}
 const cardAnimationTokens = new WeakMap<HTMLElement, number>();
 
 function pendingTaskIds(context: RendererContext): string[] {
@@ -159,13 +162,13 @@ function animateCardsIntoPlace(
     card.style.transform = `translate3d(0, ${delta}px, 0)`;
     window.requestAnimationFrame(() => {
       if (!card.isConnected || cardAnimationTokens.get(card) !== animationToken) return;
-      card.style.transition = `transform ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1)`;
+      card.style.transition = `transform ${dragAnimationMs()}ms cubic-bezier(.2,.8,.2,1)`;
       card.style.transform = "none";
       window.setTimeout(() => {
         if (cardAnimationTokens.get(card) !== animationToken) return;
         card.style.transition = "";
         card.style.transform = "";
-      }, dragAnimationMs + 30);
+      }, dragAnimationMs() + 30);
     });
   }
 }
@@ -339,12 +342,17 @@ function updateDraggedRank(
   );
 }
 
+function positionWithinList(element: HTMLElement, list: HTMLElement, viewportTop: number): void {
+  const rect = list.getBoundingClientRect();
+  const top = viewportTop - rect.top + list.scrollTop;
+  element.style.top = `${Math.max(0, Math.min(Math.max(0, list.scrollHeight - element.getBoundingClientRect().height), top))}px`;
+}
+
 function updateDragVisuals(
   context: RendererContext,
   drag: QueueDragState
 ): void {
-  drag.sourceCard.style.left = `${drag.pointerX - drag.offsetX}px`;
-  drag.sourceCard.style.top = `${drag.pointerY - drag.offsetY}px`;
+  positionWithinList(drag.sourceCard, drag.list, drag.pointerY - drag.offsetY);
   const position = resolveDropPosition(context, drag);
   if (!position) {
     drag.target = null;
@@ -359,8 +367,7 @@ function updateBoundaryDragVisuals(
   context: RendererContext,
   drag: QueueBoundaryDragState
 ): void {
-  drag.sourceMarker.style.left = `${drag.pointerX - drag.offsetX}px`;
-  drag.sourceMarker.style.top = `${drag.pointerY - drag.offsetY}px`;
+  positionWithinList(drag.sourceMarker, drag.list, drag.pointerY - drag.offsetY);
   const targetIndex = resolveBoundaryDropIndex(context, drag);
   if (targetIndex == null) {
     drag.targetIndex = null;
@@ -521,15 +528,14 @@ export function mountQueueDragSort(
     }
     current.phase = "dropping";
     const placeholderRect = current.placeholder.getBoundingClientRect();
-    current.sourceCard.style.transition = `left ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), top ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), box-shadow ${dragAnimationMs}ms ease`;
+    current.sourceCard.style.transition = `left ${dragAnimationMs()}ms cubic-bezier(.2,.8,.2,1), top ${dragAnimationMs()}ms cubic-bezier(.2,.8,.2,1), box-shadow ${dragAnimationMs()}ms ease`;
     window.requestAnimationFrame(() => {
-      current.sourceCard.style.left = `${placeholderRect.left}px`;
-      current.sourceCard.style.top = `${placeholderRect.top}px`;
+      positionWithinList(current.sourceCard, current.list, placeholderRect.top);
     });
     window.setTimeout(() => {
       if (drag !== current) return;
       void commitDrag(current, targetIndex, pauseBoundaryTarget);
-    }, dragAnimationMs + 20);
+    }, dragAnimationMs() + 20);
   };
 
   const dropBoundaryDrag = (): void => {
@@ -543,15 +549,14 @@ export function mountQueueDragSort(
     }
     current.phase = "dropping";
     const placeholderRect = current.placeholder.getBoundingClientRect();
-    current.sourceMarker.style.transition = `left ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), top ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), box-shadow ${dragAnimationMs}ms ease`;
+    current.sourceMarker.style.transition = `left ${dragAnimationMs()}ms cubic-bezier(.2,.8,.2,1), top ${dragAnimationMs()}ms cubic-bezier(.2,.8,.2,1), box-shadow ${dragAnimationMs()}ms ease`;
     window.requestAnimationFrame(() => {
-      current.sourceMarker.style.left = `${placeholderRect.left}px`;
-      current.sourceMarker.style.top = `${placeholderRect.top}px`;
+      positionWithinList(current.sourceMarker, current.list, placeholderRect.top);
     });
     window.setTimeout(() => {
       if (boundaryDrag !== current) return;
       void commitBoundaryDrag(current, targetIndex);
-    }, dragAnimationMs + 20);
+    }, dragAnimationMs() + 20);
   };
 
   const activateDrag = (current: QueueDragState): void => {
@@ -562,9 +567,10 @@ export function mountQueueDragSort(
     placeholder.style.height = `${Math.max(48, rect.height)}px`;
     current.placeholder = placeholder;
     current.list.insertBefore(placeholder, current.sourceCard);
-    current.sourceCard.style.position = "fixed";
-    current.sourceCard.style.left = `${rect.left}px`;
-    current.sourceCard.style.top = `${rect.top}px`;
+    const listRect = current.list.getBoundingClientRect();
+    current.sourceCard.style.position = "absolute";
+    current.sourceCard.style.left = `${rect.left - listRect.left}px`;
+    current.sourceCard.style.top = `${rect.top - listRect.top + current.list.scrollTop}px`;
     current.sourceCard.style.width = `${rect.width}px`;
     current.sourceCard.style.margin = "0";
     current.sourceCard.style.zIndex = "60";
@@ -583,12 +589,13 @@ export function mountQueueDragSort(
     const placeholder = document.createElement("div");
     placeholder.className = "queue-boundary-drag-placeholder";
     placeholder.setAttribute("aria-hidden", "true");
-    placeholder.style.height = `${Math.max(56, rect.height)}px`;
+    placeholder.style.height = `${Math.max(26, rect.height)}px`;
     current.placeholder = placeholder;
     current.list.insertBefore(placeholder, current.sourceMarker);
-    current.sourceMarker.style.position = "fixed";
-    current.sourceMarker.style.left = `${rect.left}px`;
-    current.sourceMarker.style.top = `${rect.top}px`;
+    const listRect = current.list.getBoundingClientRect();
+    current.sourceMarker.style.position = "absolute";
+    current.sourceMarker.style.left = `${rect.left - listRect.left}px`;
+    current.sourceMarker.style.top = `${rect.top - listRect.top + current.list.scrollTop}px`;
     current.sourceMarker.style.width = `${rect.width}px`;
     current.sourceMarker.style.margin = "0";
     current.sourceMarker.style.zIndex = "60";
@@ -744,6 +751,7 @@ export function mountQueueDragSort(
       if (!taskId || !sourceCard || !list || !reorderableTaskIds(context).includes(taskId)) return;
       event.preventDefault();
       const rankValue = sourceCard.querySelector<HTMLElement>("[data-queue-rank-value]");
+      handle.focus({ preventScroll: true });
       const rankLabel = sourceCard.querySelector<HTMLElement>("[data-queue-rank-label]");
       drag = {
         taskId,
@@ -786,6 +794,7 @@ export function mountQueueDragSort(
       const list = handle.closest<HTMLElement>("[data-queue-drop-list]");
       if (!sourceMarker || !list || context.getState()?.queuePauseBoundary === undefined) return;
       event.preventDefault();
+      handle.focus({ preventScroll: true });
       boundaryDrag = {
         handle,
         sourceMarker,

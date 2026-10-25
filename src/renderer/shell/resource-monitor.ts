@@ -1,4 +1,5 @@
 import type { PerformanceMetrics } from "../../types";
+import { tweenText } from "../shared/ui/tween";
 
 function percent(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : `${Math.round(value)}%`;
@@ -49,7 +50,7 @@ export function resourceMonitorValues(metrics: PerformanceMetrics | null): Resou
 
 export function renderResourceMonitor(metrics: PerformanceMetrics | null, ariaLabel: string): string {
   const value = resourceMonitorValues(metrics);
-  return `<div class="topbar-resource-monitor" aria-label="${ariaLabel}" role="status">
+  return `<div class="topbar-resource-monitor" aria-label="${ariaLabel}" role="status" aria-live="off">
     <span class="topbar-resource-item"><b>CPU</b><span data-resource-metric="cpu">${value.cpu}</span></span>
     <i class="resource-separator-after-cpu" aria-hidden="true"></i>
     <span class="topbar-resource-item topbar-resource-memory" data-resource-pressure="${value.memoryPressure}"><b>RAM</b><span data-resource-metric="memory">${value.memory}</span><small data-resource-metric="memoryUsage">${value.memoryUsage}</small></span>
@@ -66,7 +67,7 @@ export function patchResourceMonitor(metrics: PerformanceMetrics): void {
   const value = resourceMonitorValues(metrics);
   for (const key of ["cpu", "memory", "memoryUsage", "gpu", "gpuTemperature", "vram", "vramUsage"] as const) {
     const target = root.querySelector<HTMLElement>(`[data-resource-metric="${key}"]`);
-    if (target) target.textContent = value[key];
+    if (target) tweenText(target, value[key]);
   }
   root.querySelector<HTMLElement>(".topbar-resource-memory")
     ?.setAttribute("data-resource-pressure", value.memoryPressure);

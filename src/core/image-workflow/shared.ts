@@ -33,6 +33,14 @@ export function cachedImageProfileAllowsEnqueue(
 }
 export const imageOutputCountMax = 6;
 export const imageTargetResolutionValues = [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] as const;
+export const imageTargetResolutionRange = { min: 480, max: 2160 } as const;
+
+export function clampCustomImageResolution(value: number, multiple = 8): number {
+  const { min, max } = imageTargetResolutionRange;
+  if (!Number.isFinite(value)) return min;
+  const step = Number.isInteger(multiple) && multiple > 0 ? multiple : 8;
+  return Math.max(min, Math.min(max, Math.round(value / step) * step));
+}
 export const imageAspectRatioValues = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const satisfies readonly Exclude<ImageAspectRatio, "source">[];
 
 export interface ImageResolutionOption {
@@ -61,9 +69,8 @@ export function normalizeImageTargetResolution(
 ): ImageTargetResolution {
   if (value === "source") return "source";
   const numeric = typeof value === "number" ? value : Number(value);
-  const isSupported = imageTargetResolutionValues.some((candidate) => candidate === numeric);
-  if (!isSupported) return "source";
-  return numeric as ImageTargetResolution;
+  if (!Number.isInteger(numeric) || numeric < imageTargetResolutionRange.min || numeric > imageTargetResolutionRange.max) return "source";
+  return numeric;
 }
 
 function ratioValue(value: Exclude<ImageAspectRatio, "source">): number {

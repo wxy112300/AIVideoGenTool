@@ -25,6 +25,8 @@ The LAN adapter projects video browsing DTOs, facets, fixed-order paginated quer
 
 Desktop and LAN share filtering, preferred-version selection, range streaming and the existing revision-guarded `history-covers/v3` cache. Cache hits are served directly; misses use a bounded serial CPU FFmpeg producer with the same candidate/scoring rules. No GPU generation or whole-library cover regeneration is involved. The desktop process remains the only state writer.
 
+The canonical filter shape uses `modelIds: string[]` (empty means all). Normalization accepts legacy `modelId` when `modelIds` is absent; explicit empty `modelIds` wins. New LAN query URLs and responses use the canonical shape. This does not add desktop filter persistence or change history/queue asset identities.
+
 ## Ownership Map
 
 | Area | Primary owner | Contract |
@@ -107,7 +109,7 @@ Application methods must retain their receiver across the composition boundary. 
 - An environment scan snapshot is immutable renderer evidence with its own `scannedAt`. Live ComfyUI connectivity remains separate runtime state; Settings may combine both through a pure display selector but must not rewrite API items, model evidence, or timestamps in the stored scan snapshot.
 - Settings information architecture separates `ComfyUI environment` ownership (selected installation, core/data directories, Python binding, service lifecycle, core compatibility/update and safe repair) from `nodes & dependencies` ownership (custom nodes and installable Python/runtime packages). The `Performance & acceleration` surface owns H3 Attention and final video VAE selection; H3 VAE changes apply to the next not-yet-started H3 task and never rewrite a running task. Its selectors and persisted settings must not be duplicated or migrated during the environment-page extraction.
 - ComfyUI core repair, dependency repair, and H3 acceleration dependency installation are separate operations even when they share scan evidence. A new aggregate environment summary or repair plan may orchestrate these operations only through explicit, additive contracts; it must not turn an acceleration installer into an unbounded ComfyUI repair.
-- Settings persistence is owned by one save coordinator. Every save source uses the same output-directory migration gate and the same post-save model, workflow, locale, and environment-refresh effects; UI controllers must not call the save IPC directly.
+- Settings persistence is owned by one save coordinator. Normal saves use the same output-directory migration gate and post-save model, workflow, locale, and environment-refresh effects; UI controllers must not call the save IPC directly. Desktop appearance uses its dedicated coordinator branch and `appearance` save mode: merge only normalized visual preferences into the current persisted state, preserve the settings draft/native dirty guard, and skip path, model, queue-policy and environment effects. Older settings without this optional field use Azure/Graphite/deep/system defaults.
 - Settings templates render semantic view state; prompt runtime, core/custom-node status, acceleration runtime, derived directories, GPU policy, and dependency-action availability are computed by pure selectors instead of reinterpreting raw scan fields in markup.
 - Settings service lifecycle, environment repair, and node/workflow package actions are mounted by dedicated controllers. The page composition layer supplies shared state callbacks to each independent controller; no controller owns another controller's listener or option contract.
 

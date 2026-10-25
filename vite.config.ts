@@ -1,8 +1,10 @@
-import { defineConfig } from "vite";
+import { defineConfig, configDefaults } from "vitest/config";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
 export default defineConfig({
+  // Temporary repository snapshots are evidence, never a second test suite.
+  test: { exclude: [...configDefaults.exclude, "temp/**", "dist/**"] },
   base: "./",
   plugins: [{
     name: "typescript-source-imports",
@@ -26,6 +28,20 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
+            {
+              name: "shared-ui",
+              test: /[\\/]src[\\/]renderer[\\/]shared[\\/]ui[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "shell",
+              test: /[\\/]src[\\/]renderer[\\/]shell[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
             {
               name: (moduleId) => {
                 const match = moduleId.match(/[\\/]src[\\/]core[\\/]locales[\\/]([^\\/]+)\.ts$/);

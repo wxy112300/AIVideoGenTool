@@ -69,8 +69,9 @@ describe("H3 Ref2VA FaceSwap", () => {
     const h = journey = await createJourney({ modelId: "minimax_h3_ref2va", workflowPath: "workflows/minimax_h3_r2v_api.json", h3ReferenceSlots: [image], videoLoras: [], duration: 2, spectrumMode: "off" });
     expect(h.element<HTMLSelectElement>("#video-lora-to-add").querySelector(`option[value="${id}"]`)).toBeNull();
     h.scan.modelProfiles.push({ id, name: lora.name, category: "lora", available: true, integrated: true, components: [{ matches: [`C:/fixture/models/loras/${filename}`] }] } as typeof h.scan.modelProfiles[number]);
-    h.render(); h.input("#video-lora-to-add", id, "change");
-    h.element("#add-video-lora").click(); await settle();
+    h.render();
+    h.element("#add-video-lora").click();
+    document.querySelector<HTMLButtonElement>(`[data-add-lora="${id}"]`)!.click(); await settle();
     h.input("#prompt-input", "Replace the face using Picture 1, keep the motion from Video 1.");
     expect(h.element("#enqueue").disabled).toBe(true);
     expect(h.root.textContent).toContain("H3 FaceSwap 需要至少一张参考人脸");

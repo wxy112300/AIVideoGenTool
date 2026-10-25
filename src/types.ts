@@ -79,7 +79,8 @@ export type H3ReferenceRole =
 export type H3ReferenceMediaType = "image" | "video";
 
 /** Base H3 short-edge presets that are currently executed by ComfyUI. */
-export type H3BaseResolution = (typeof H3_BASE_RESOLUTIONS)[number];
+/** Numeric short edge; presets remain in H3_BASE_RESOLUTIONS, custom values are capability-validated. */
+export type H3BaseResolution = number;
 /** Final short-edge targets for the separate H3 native second-sampling path. */
 export type H3HighResolution = 1080 | 1440;
 /** Resolutions accepted by the H3 creation draft; high resolutions are gated. */
@@ -198,7 +199,8 @@ export interface H3ReferenceSlot {
 }
 
 export type ImageOutputFormat = "png" | "jpeg" | "webp";
-export type ImageTargetResolution = "source" | 2160 | 1536 | 1152 | 1080 | 1024 | 768 | 720 | 640 | 480;
+/** Requested short edge; numeric values are normalized at the image workflow boundary. */
+export type ImageTargetResolution = "source" | number;
 export type ImageAspectRatio = "source" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3";
 export type ImageReferenceRole =
   | "base"
@@ -523,6 +525,8 @@ export interface Settings {
   vramStallWatchdogMinutes: VramStallWatchdogMinutes;
   queueIsolationMode: "never" | "lora" | "model-change" | "always";
   uiLocale?: UiLocale;
+  /** Optional for settings written before the desktop appearance controls. */
+  appearance?: import("./core/appearance.js").UiAppearance;
   promptLanguage: "auto" | "zh" | "en";
   promptCreativity: number;
   defaultUpscaleModel: string;
@@ -1836,6 +1840,8 @@ export interface CustomNodeStatus {
   minimumVersion: string;
   recommendedVersion: string;
   latestVersion: string;
+  /** Origin of the observed upstream value, distinct from the recommended install line. */
+  latestVersionSource?: string;
   updateAvailable: boolean;
   /** Other custom_nodes directories that appear to contain the same patch/node pack. */
   duplicateDirectories?: string[];
@@ -1889,6 +1895,8 @@ export interface PythonProbeEvidence {
 }
 
 export interface EnvironmentScanOptions {
+  /** User-requested refresh of upstream releases, independent of Python runtime probes. */
+  refreshReleaseVersions?: boolean;
   /** Bypass the short-lived native Python evidence cache. */
   forcePythonProbe?: boolean;
 }
@@ -2351,7 +2359,7 @@ export type WindowCloseResponse =
   | "finish-tasks"
   | "force-exit";
 
-export type SettingsSaveMode = "apply" | "migrate-video-history";
+export type SettingsSaveMode = "apply" | "migrate-video-history" | "appearance";
 
 export type HistoryMigrationPhase =
   | "scanning"

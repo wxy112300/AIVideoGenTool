@@ -56,6 +56,7 @@ import {
   konohamaruOutputGeometry
 } from "../../core/konohamaru-dlss5";
 import { fieldLabelWithTip } from "../shared/markup";
+import { versionVideoIndex } from "../../core/history-video";
 
 type IconRenderer = (name: string, className?: string) => string;
 type HtmlEscaper = (value: unknown) => string;
@@ -657,10 +658,9 @@ export function renderImageAssetLibraryDialog(
     </label>`).join("") ?? "";
   return `
     <div class="dialog-backdrop confirm-backdrop" id="image-asset-library-backdrop">
-      <section class="confirm-dialog image-asset-library-dialog" role="dialog" aria-modal="true" aria-labelledby="image-asset-library-title" tabindex="-1">
+      <section class="confirm-dialog image-asset-library-dialog settings-maintenance-dialog settings-assets-dialog" role="dialog" aria-modal="true" aria-labelledby="image-asset-library-title" tabindex="-1">
         <div class="confirm-copy">
-          <span class="eyebrow">${t(uiKeys.assetLibrary.eyebrow)}</span>
-          <h2 id="image-asset-library-title">${t(uiKeys.assetLibrary.title)}</h2>
+          <div class="settings-maintenance-head"><span class="settings-maintenance-icon">${options.icon("package-open")}</span><div><span class="eyebrow">${t(uiKeys.assetLibrary.eyebrow)}</span><h2 id="image-asset-library-title">${t(uiKeys.assetLibrary.title)}</h2></div></div>
           <p id="image-assets-progress-message">${dialog.busy ? options.escapeHtml(progress?.message || t(uiKeys.assetLibrary.busyMessage)) : t(uiKeys.assetLibrary.idleMessage)}</p>
           ${scan ? `<code class="asset-library-path">${options.escapeHtml(scan.libraryDirectory)}</code>` : ""}
           ${dialog.busy ? `<div class="progress" id="image-assets-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressValue}"><span style="width:${progressValue}%"></span></div>` : ""}
@@ -678,10 +678,10 @@ export function renderImageAssetLibraryDialog(
           ${dialog.confirmCleanup ? `<div class="confirm-warning"><strong>${t(uiKeys.assetLibrary.confirmDelete)}</strong><span>${t(uiKeys.assetLibrary.confirmDeleteDescription)}</span></div>` : ""}` : ""}
         </div>
         <div class="dialog-actions">
-          <button class="secondary button-with-icon" id="image-assets-rescan" ${dialog.busy ? "disabled" : ""}>${options.icon("scan-search")}${t(uiKeys.assetLibrary.rescan)}</button>
-          <button class="primary button-with-icon" id="image-assets-organize" ${dialog.busy || !scan?.archiveCandidates ? "disabled" : ""}>${options.icon("folder-open")}${t(uiKeys.assetLibrary.organize)}</button>
-          ${scan?.orphanFiles.length ? `<button class="secondary destructive button-with-icon" id="image-assets-cleanup" ${dialog.busy ? "disabled" : ""}>${options.icon("trash-2")}${dialog.confirmCleanup ? t(uiKeys.assetLibrary.cleanupConfirm) : t(uiKeys.assetLibrary.cleanupSelected)}</button>` : ""}
           <button class="ghost button-with-icon" id="image-assets-close" ${dialog.busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.assetLibrary.close)}</button>
+          <button class="secondary button-with-icon" id="image-assets-rescan" ${dialog.busy ? "disabled" : ""}>${options.icon("scan-search")}${t(uiKeys.assetLibrary.rescan)}</button>
+          ${scan?.orphanFiles.length ? `<button class="secondary destructive button-with-icon" id="image-assets-cleanup" ${dialog.busy ? "disabled" : ""}>${options.icon("trash-2")}${dialog.confirmCleanup ? t(uiKeys.assetLibrary.cleanupConfirm) : t(uiKeys.assetLibrary.cleanupSelected)}</button>` : ""}
+          <button class="primary button-with-icon" id="image-assets-organize" ${dialog.busy || !scan?.archiveCandidates ? "disabled" : ""}>${options.icon("folder-open")}${t(uiKeys.assetLibrary.organize)}</button>
         </div>
       </section>
     </div>`;
@@ -822,19 +822,12 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   });
   const formatEstimateGb = (value: number) =>
     `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} GB`;
-  const estimatedVram = isDlss5Selected
-    ? options.t(uiKeys.upscale.dlss5BenchmarkPending)
-    : isAetherScaleSelected
-      ? "—"
-      : isKonohamaruSelected
-        ? options.t(uiKeys.upscale.konohamaruBenchmarkPending)
-      : `${formatEstimateGb(estimate.vramMinGb)}-${formatEstimateGb(estimate.vramMaxGb)}`;
-  const estimatedTime = isDlss5Selected
-    ? options.t(uiKeys.upscale.dlss5BenchmarkPending)
-    : isAetherScaleSelected
-      ? "—"
-      : isKonohamaruSelected
-        ? options.t(uiKeys.upscale.konohamaruBenchmarkPending)
+  const needsBenchmark = isDlss5Selected || isAetherScaleSelected || isKonohamaruSelected;
+  const estimatedVram = needsBenchmark
+    ? options.t(uiKeys.upscale.benchmarkPending)
+    : `${formatEstimateGb(estimate.vramMinGb)}-${formatEstimateGb(estimate.vramMaxGb)}`;
+  const estimatedTime = needsBenchmark
+    ? options.t(uiKeys.upscale.benchmarkPending)
     : options.formatUpscaleEstimateRange(estimate.secondsMin, estimate.secondsMax);
   const detectedVramBytes = options.environment?.gpus?.[0]?.vramTotalBytes ??
     options.performance?.vramTotalBytes ??
@@ -857,6 +850,8 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     })) ?? fallbackProfiles;
   const profiles: UpscaleModelProfileOption[] = [
     ...pixelProfiles,
+    ...(isDlss5Selected ? [{ id: DLSS5_MODEL_ID, name: options.t(uiKeys.upscale.dlss5Name), available: false }] : []),
+    ...(isAetherScaleSelected ? [{ id: AETHERSCALE_MODEL_ID, name: options.t(uiKeys.upscale.aetherscaleName), available: false }] : []),
     { id: "minimax_h3_latent_upscaler", name: "H3 Latent Upscale", available: h3Available },
     { id: KONOHAMARU_MODEL_ID, name: options.t(uiKeys.upscale.konohamaruName), available: konohamaruStatus.available }
   ];
@@ -877,7 +872,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     ? estimateUpscaleDiskBytes(version, targetWidth, outputHeight)
     : null;
   const targetMarkup = isKonohamaruSelected
-    ? `<div><label>${fieldLabelWithTip(options.t(uiKeys.upscale.konohamaruMode), options.t(uiKeys.upscale.konohamaruModeTip))}</label><div class="upscale-resolution upscale-scale-resolution konohamaru-mode-options">
+    ? `<div class="upscale-row"><span class="upscale-label">${fieldLabelWithTip(options.t(uiKeys.upscale.modeShort), options.t(uiKeys.upscale.konohamaruModeTip))}</span><div class="upscale-resolution upscale-scale-resolution konohamaru-mode-options" data-ui-segmented="upscale-konohamaru">
             ${konohamaruModeOptions.map(({ spec, geometry }) => {
               const label = spec.mode === "native_1x"
                 ? options.t(uiKeys.upscale.konohamaruModeNative)
@@ -889,11 +884,11 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
                       ? options.t(uiKeys.upscale.konohamaruModePerformance)
                       : options.t(uiKeys.upscale.konohamaruModeUltra);
               const title = `${geometry.width} × ${geometry.height}`;
-              return `<button class="${spec.mode === selectedKonohamaruMode ? "primary" : "secondary"}" data-konohamaru-mode="${spec.mode}" aria-label="${options.escapeHtml(`${label} · ${title}`)}" title="${options.escapeHtml(title)}"${busy || !konohamaruStatus.available ? " disabled" : ""}>${options.escapeHtml(label)}</button>`;
+              return `<button class="${spec.mode === selectedKonohamaruMode ? "primary" : "secondary"}" id="upscale-kono-${spec.mode}" aria-pressed="${spec.mode === selectedKonohamaruMode}" data-konohamaru-mode="${spec.mode}" aria-label="${options.escapeHtml(`${label} · ${title}`)}" title="${options.escapeHtml(title)}"${busy || !konohamaruStatus.available ? " disabled" : ""}><b>${options.escapeHtml(label.split(" ")[0]!)}</b><small>${spec.mode === "native_1x" ? "DLAA" : spec.mode === "quality_1_5x" ? "Quality" : spec.mode === "balanced_1_724x" ? "Balanced" : spec.mode === "performance_2x" ? "Performance" : "Ultra"}</small></button>`;
             }).join("")}
           </div></div>`
     : isAetherScaleSelected
-    ? `<div><label>${options.t(uiKeys.upscale.aetherscaleMode)}</label><div class="upscale-resolution upscale-scale-resolution aetherscale-mode-options">
+    ? `<div class="upscale-row"><span class="upscale-label">${options.t(uiKeys.upscale.aetherscaleMode)}</span><div class="upscale-resolution upscale-scale-resolution aetherscale-mode-options" data-ui-segmented="upscale-aetherscale">
             ${aetherModeOptions.map(({ spec, geometry }) => {
               const disabled = busy || !aetherStatus.available;
               const label = spec.mode === "native_1x"
@@ -906,48 +901,49 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
                       ? options.t(uiKeys.upscale.aetherscaleModePerformance)
                       : options.t(uiKeys.upscale.aetherscaleModeUltra);
               const title = `${geometry.width} × ${geometry.height}`;
-              return `<button class="${spec.mode === selectedAetherMode ? "primary" : "secondary"}" data-aetherscale-mode="${spec.mode}" aria-label="${options.escapeHtml(`${label} · ${title}`)}" title="${options.escapeHtml(title)}"${disabled ? " disabled" : ""}>${options.escapeHtml(label)}</button>`;
+              return `<button class="${spec.mode === selectedAetherMode ? "primary" : "secondary"}" id="upscale-aether-${spec.mode}" aria-pressed="${spec.mode === selectedAetherMode}" data-aetherscale-mode="${spec.mode}" aria-label="${options.escapeHtml(`${label} · ${title}`)}" title="${options.escapeHtml(title)}"${disabled ? " disabled" : ""}>${options.escapeHtml(label)}</button>`;
             }).join("")}
           </div></div>`
     : isDlss5Selected
-    ? `<div><label>${options.t(uiKeys.upscale.scale)}</label><div class="upscale-resolution upscale-scale-resolution">
+    ? `<div class="upscale-row"><span class="upscale-label">${options.t(uiKeys.upscale.scale)}</span><div class="upscale-resolution upscale-scale-resolution" data-ui-segmented="upscale-scale">
             ${DLSS5_SCALE_VALUES.map((scale) => {
               const [width, height] = dlss5OutputDimensions(version.width, version.height, scale);
-              return `<button class="${scale === selectedScale ? "primary" : "secondary"}" data-upscale-scale="${scale}" aria-label="${scale}× · ${width} × ${height}" title="${width} × ${height}"${busy || !dlss5Status.available ? " disabled" : ""}>${scale}×</button>`;
+              return `<button class="${scale === selectedScale ? "primary" : "secondary"}" id="upscale-scale-${scale}" aria-pressed="${scale === selectedScale}" data-upscale-scale="${scale}" aria-label="${scale}× · ${width} × ${height}" title="${width} × ${height}"${busy || !dlss5Status.available ? " disabled" : ""}>${scale}×</button>`;
             }).join("")}
           </div></div>`
-    : `<div><label>${options.t(uiKeys.upscale.targetResolution)}</label><div class="upscale-resolution">
-            ${targetOptions.map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}"${busy || height <= sourceShortEdge || (dialog.h3Provider === "bilinear" && height >= 1080) || (dialog.h3Provider === "learned-3d" && height < 1080) ? " disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+    : `<div class="upscale-row"><span class="upscale-label">${options.t(uiKeys.upscale.targetResolution)}</span><div class="upscale-resolution" data-ui-segmented="upscale-height">
+            ${targetOptions.map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" id="upscale-height-${height}" aria-pressed="${height === selectedTargetHeight}" data-upscale-height="${height}"${busy || height <= sourceShortEdge || (dialog.h3Provider === "bilinear" && height >= 1080) || (dialog.h3Provider === "learned-3d" && height < 1080) ? " disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
           </div></div>`;
+  const row = (label: string, control: string) => `<div class="upscale-row"><span class="upscale-label">${label}</span>${control}</div>`;
   const methodMarkup = isKonohamaruSelected
-    ? `<div class="upscale-provider-controls upscale-konohamaru-settings-row">
-        <label class="upscale-konohamaru-style-field">${fieldLabelWithTip(options.t(uiKeys.upscale.konohamaruStyle), options.t(uiKeys.upscale.konohamaruStyleTip))}<select id="upscale-konohamaru-style" ${busy || !konohamaruStatus.available ? "disabled" : ""}>${KONOHAMARU_NR_STYLES.map((style) => `<option value="${style}" ${style === selectedKonohamaruStyle ? "selected" : ""}>${options.t(style === "Default" ? uiKeys.upscale.konohamaruStyleDefault : style === "Natural" ? uiKeys.upscale.konohamaruStyleNatural : uiKeys.upscale.konohamaruStyleCinematic)}</option>`).join("")}</select></label>
-        <label class="upscale-konohamaru-intensity-field">${fieldLabelWithTip(options.t(uiKeys.upscale.konohamaruNrIntensity), options.t(uiKeys.upscale.konohamaruNrIntensityTip))}<span class="upscale-konohamaru-range-row"><input id="upscale-konohamaru-intensity" type="range" min="0" max="2" step="0.1" value="${selectedKonohamaruIntensity}" ${busy || !konohamaruStatus.available ? "disabled" : ""}><output id="upscale-konohamaru-intensity-value">${selectedKonohamaruIntensity.toFixed(1)}</output></span></label>
-        <label class="upscale-konohamaru-frame-field">${fieldLabelWithTip(options.t(uiKeys.upscale.konohamaruFrameInterpolation), options.t(uiKeys.upscale.konohamaruFrameInterpolationTip))}<select id="upscale-konohamaru-fps" ${busy || !konohamaruStatus.available ? "disabled" : ""}>${konohamaruFrameOptions.map((fps) => `<option value="${fps}" ${String(selectedKonohamaruFrame) === String(fps) ? "selected" : ""}>${fps === "off" ? options.t(uiKeys.upscale.konohamaruFrameOff) : fps === 60 ? options.t(uiKeys.upscale.konohamaruFrame60) : options.t(uiKeys.upscale.konohamaruFrame120)}</option>`).join("")}</select></label>
-      </div>`
+    ? row(options.t(uiKeys.upscale.styleShort), `<select id="upscale-konohamaru-style" aria-label="${options.t(uiKeys.upscale.konohamaruStyle)}" ${busy || !konohamaruStatus.available ? "disabled" : ""}>${KONOHAMARU_NR_STYLES.map(style => `<option value="${style}" ${style === selectedKonohamaruStyle ? "selected" : ""}>${options.t(style === "Default" ? uiKeys.upscale.konohamaruStyleDefault : style === "Natural" ? uiKeys.upscale.konohamaruStyleNatural : uiKeys.upscale.konohamaruStyleCinematic)}</option>`).join("")}</select>`)
+      + row(fieldLabelWithTip(options.t(uiKeys.upscale.konohamaruNrIntensity), options.t(uiKeys.upscale.konohamaruNrIntensityTip)), `<span class="upscale-konohamaru-range-row"><input id="upscale-konohamaru-intensity" aria-label="${options.t(uiKeys.upscale.konohamaruNrIntensity)}" type="range" min="0" max="2" step="0.1" value="${selectedKonohamaruIntensity}" ${busy || !konohamaruStatus.available ? "disabled" : ""}><input id="upscale-konohamaru-intensity-value" aria-label="${options.t(uiKeys.upscale.konohamaruNrIntensity)}" type="number" min="0" max="2" step="0.1" value="${selectedKonohamaruIntensity.toFixed(1)}" ${busy || !konohamaruStatus.available ? "disabled" : ""}></span>`)
+      + row(options.t(uiKeys.upscale.konohamaruFrameInterpolation), `<select id="upscale-konohamaru-fps" aria-label="${options.t(uiKeys.upscale.konohamaruFrameInterpolation)}" ${busy || !konohamaruStatus.available ? "disabled" : ""}>${konohamaruFrameOptions.map(fps => `<option value="${fps}" ${String(selectedKonohamaruFrame) === String(fps) ? "selected" : ""}>${fps === "off" ? options.t(uiKeys.upscale.konohamaruFrameOff) : fps === 60 ? options.t(uiKeys.upscale.konohamaruFrame60) : options.t(uiKeys.upscale.konohamaruFrame120)}</option>`).join("")}</select>`)
     : isAetherScaleSelected
-    ? `<label>${options.t(uiKeys.upscale.aetherscaleStyle)}<select id="upscale-aetherscale-style" ${busy || !aetherStatus.available ? "disabled" : ""}><option value="faithful" ${selectedAetherStyle === "faithful" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleFaithful)}</option><option value="enhanced" ${selectedAetherStyle === "enhanced" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleEnhanced)}</option></select></label>`
+      ? row(options.t(uiKeys.upscale.aetherscaleStyle), `<select id="upscale-aetherscale-style" aria-label="${options.t(uiKeys.upscale.aetherscaleStyle)}" ${busy || !aetherStatus.available ? "disabled" : ""}><option value="faithful" ${selectedAetherStyle === "faithful" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleFaithful)}</option><option value="enhanced" ${selectedAetherStyle === "enhanced" ? "selected" : ""}>${options.t(uiKeys.upscale.aetherscaleStyleEnhanced)}</option></select>`)
     : isDlss5Selected
-    ? `<label>${options.t(uiKeys.upscale.quality)}<select id="upscale-dlss-quality" ${busy || !dlss5Status.available ? "disabled" : ""}><option value="quality" ${selectedQuality === "quality" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityQuality)}</option><option value="balanced" ${selectedQuality === "balanced" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityBalanced)}</option><option value="performance" ${selectedQuality === "performance" ? "selected" : ""}>${options.t(uiKeys.upscale.qualityPerformance)}</option></select></label>`
-    : `<label>${options.t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile" ${busy ? "disabled" : ""}><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${options.t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${options.t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${options.t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${options.t(uiKeys.upscale.nodeFixed)}</span>`}</label>`;
+      ? row(options.t(uiKeys.upscale.quality), `<select id="upscale-dlss-quality" aria-label="${options.t(uiKeys.upscale.quality)}" ${busy || !dlss5Status.available ? "disabled" : ""}>${["quality", "balanced", "performance"].map(quality => `<option value="${quality}" ${quality === selectedQuality ? "selected" : ""}>${options.t(quality === "quality" ? uiKeys.upscale.qualityQuality : quality === "balanced" ? uiKeys.upscale.qualityBalanced : uiKeys.upscale.qualityPerformance)}</option>`).join("")}</select>`)
+      : row(options.t(uiKeys.upscale.memoryPolicy), supportsTileMode ? `<select id="upscale-tile" aria-label="${options.t(uiKeys.upscale.memoryPolicy)}" ${busy ? "disabled" : ""}><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${options.t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${options.t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${options.t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${options.t(uiKeys.upscale.nodeFixed)}</span>`);
   const dlss5StatusMarkup = isDlss5Selected
     ? `<div class="upscale-dlss-status ${dlss5Status.tone}" role="${dlss5Status.tone === "missing" ? "alert" : "status"}"><strong>${options.t(uiKeys.upscale.dlss5Experimental)}</strong><span>${dlss5Status.message}</span><small>${options.t(uiKeys.upscale.dlss5SettingsHint)}</small></div>`
     : "";
   const aetherStatusMarkup = isAetherScaleSelected && !aetherStatus.available
     ? `<div class="upscale-dlss-status ${aetherStatus.tone}" role="${aetherStatus.tone === "missing" ? "alert" : "status"}"><span>${aetherStatus.message}</span>${aetherGeometryError ? `<small>${options.escapeHtml(aetherGeometryError)}</small>` : ""}</div>`
     : "";
-  const konohamaruStatusMarkup = isKonohamaruSelected
+  const konohamaruStatusMarkup = isKonohamaruSelected && (!konohamaruStatus.available || konohamaruGeometryError)
     ? `<div class="upscale-dlss-status ${konohamaruStatus.tone}" role="${konohamaruStatus.tone === "missing" ? "alert" : "status"}"><strong>${options.t(uiKeys.upscale.konohamaruExperimental)}</strong><span>${konohamaruStatus.message}</span><small>${options.t(uiKeys.upscale.konohamaruSettingsHint)}</small>${konohamaruGeometryError ? `<small>${options.escapeHtml(konohamaruGeometryError)}</small>` : ""}</div>`
     : "";
-  const enqueueDisabled = busy ||
+  const targetUnavailable = !isDlss5Selected && !isAetherScaleSelected && !isKonohamaruSelected && (
+    legacyTargetHeight <= sourceShortEdge || !targetOptions.some(height => height === legacyTargetHeight) ||
+    (dialog.h3Provider === "bilinear" && legacyTargetHeight >= 1080) || (dialog.h3Provider === "learned-3d" && legacyTargetHeight < 1080)
+  );
+  const pixelModelUnavailable = !h3Selected && !isDlss5Selected && !isAetherScaleSelected && !isKonohamaruSelected && !pixelProfiles.some(profile => profile.id === dialog.modelId && profile.available);
+  const enqueueDisabled = busy || targetUnavailable || pixelModelUnavailable ||
     (h3Selected && !h3Available) ||
     (isDlss5Selected && !dlss5Status.available) ||
     (isAetherScaleSelected && (!aetherStatus.available || !aetherGeometry || (!aetherAdvancedReady && selectedAetherMode !== "performance_2x" && selectedAetherMode !== "ultra_performance_3x"))) ||
     (isKonohamaruSelected && (!konohamaruStatus.available || !konohamaruGeometry || !konohamaruFrameOptions.includes(selectedKonohamaruFrame)));
   const t = options.t;
-  const descriptionMarkup = isKonohamaruSelected
-    ? ""
-    : `<p class="muted">${isAetherScaleSelected ? t(uiKeys.upscale.aetherscaleDescription) : isDlss5Selected ? t(uiKeys.upscale.dlss5Description) : h3Selected ? t(uiKeys.upscale.h3NativeDescription) : t(uiKeys.upscale.pixelVideoDescription)}</p>`;
   const estimateNote = isKonohamaruSelected
     ? `${t(uiKeys.upscale.konohamaruOutputNote, { fps: konohamaruOutputFps, frames: konohamaruOutputFrames })} ${t(uiKeys.upscale.konohamaruBenchmarkPending)} · ${t(uiKeys.upscale.actualImpact)}`
     : isAetherScaleSelected
@@ -958,22 +954,19 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
       <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title" aria-busy="${busy}" tabindex="-1">
-        <div class="upscale-dialog-head">
-          <div><span class="eyebrow">${t(uiKeys.upscale.eyebrow)}</span><h2 id="upscale-title">${t(uiKeys.upscale.title)}</h2></div>
-          <button class="dialog-close" id="close-upscale" aria-label="${t(uiKeys.upscale.close)}" ${busy ? "disabled" : ""}>${options.icon("x")}</button>
-        </div>
+        <div class="upscale-dialog-head"><span class="upscale-dialog-icon">${options.icon("maximize-2")}</span><div><h2 id="upscale-title">${t(uiKeys.upscale.title)}</h2><span>${t(uiKeys.upscale.newVersionHint)}</span></div><button class="ghost icon-button" id="close-upscale" aria-label="${t(uiKeys.upscale.close)}" ${busy ? "disabled" : ""}>${options.icon("x")}</button></div>
         <div class="upscale-dialog-body">
-          <div class="upscale-source"><div><strong>${options.escapeHtml(asset.title)}</strong><code>${options.escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${options.formatVideoDuration(version.duration)}</span></div>
-          ${targetMarkup}
-          <div class="settings-grid two">
-            <label>${t(uiKeys.upscale.model)}<select id="upscale-model" ${busy ? "disabled" : ""}>${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select></label>
-            ${methodMarkup}
+          <div class="upscale-source"><div class="upscale-source-thumb">${options.icon("film")}<video aria-hidden="true" tabindex="-1" muted playsinline preload="metadata" src="studio-media://history/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.id)}/${Math.max(0, versionVideoIndex(version))}"></video></div><div><strong title="${options.escapeHtml(asset.title)}">${options.escapeHtml(asset.title)}</strong><code title="${options.escapeHtml(version.outputFilename)}">${options.escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${options.formatVideoDuration(version.duration)} · ${version.fps} FPS</span></div>
+          <div class="upscale-form">
+            ${row(t(uiKeys.history.page.model), `<select id="upscale-model" aria-label="${t(uiKeys.upscale.model)}" ${busy ? "disabled" : ""}>${profiles.map(profile => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select>`)}
+            ${targetMarkup}${methodMarkup}
           </div>
-          ${descriptionMarkup}${h3Selected && !h3Available ? `<p class="upscale-estimate-note warning">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}${dlss5StatusMarkup}${aetherStatusMarkup}${konohamaruStatusMarkup}
-          <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>${t(uiKeys.upscale.estimatedPeak, { value: estimatedVram })}</span><span>${t(uiKeys.upscale.estimatedTime, { value: estimatedTime })}</span>${isDlss5Selected || isAetherScaleSelected || isKonohamaruSelected ? `<span>${estimatedDiskBytes ? t(uiKeys.upscale.estimatedDisk, { value: options.formatBytes(estimatedDiskBytes) }) : t(uiKeys.upscale.diskEstimatePending)}</span>` : ""}</div></div>
-          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">${estimateNote}</p>
+          ${targetUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.targetUnavailable)}</p>` : ""}${pixelModelUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.modelUnavailable)}</p>` : ""}
+          ${h3Selected && !h3Available ? `<p class="upscale-warning" role="alert">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}${dlss5StatusMarkup}${aetherStatusMarkup}${konohamaruStatusMarkup}
+          <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code title="${options.escapeHtml(outputFilename)}">${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><div><span>${t(uiKeys.history.detail.vramPeak)}</span><b>${estimatedVram}</b></div><div><span>${t(uiKeys.history.page.elapsed)}</span><b>${estimatedTime}</b></div>${isDlss5Selected || isAetherScaleSelected || isKonohamaruSelected ? `<div><span>${t(uiKeys.upscale.disk)}</span><b>${estimatedDiskBytes ? options.formatBytes(estimatedDiskBytes) : "—"}</b></div>` : ""}</div><span class="upscale-output-info">${fieldLabelWithTip("", estimateNote)}</span></div>
+          ${vramWarning && !isKonohamaruSelected && !isAetherScaleSelected && !isDlss5Selected ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.vramWarning, { vram: options.formatBytes(detectedVramBytes) })}</p>` : ""}
         </div>
-        <div class="dialog-actions" aria-live="polite"><button class="secondary button-with-icon" id="cancel-upscale" ${busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale" ${enqueueDisabled ? "disabled" : ""}>${options.icon(busy ? "refresh-cw" : dialog.taskId ? "save" : "plus")}${busy ? t(uiKeys.runtime.enqueueing) : dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
+        <div class="dialog-actions" aria-live="polite"><button class="ghost" id="cancel-upscale" ${busy ? "disabled" : ""}>${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale" ${enqueueDisabled ? "disabled" : ""}>${options.icon(busy ? "refresh-cw" : dialog.taskId ? "save" : "plus")}${busy ? t(uiKeys.runtime.enqueueing) : dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
       </section>
     </div>`;
 }

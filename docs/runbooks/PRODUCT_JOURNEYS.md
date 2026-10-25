@@ -74,9 +74,10 @@ flowchart TD
 
 - `h3PromptModeForDraft` 决定提示词模式；`h3WorkflowPathForInput` 决定执行工作流。两个都要核对。FL2VA 清空所有图可退到 T2VA；**R2V 空槽仍是 R2V 缺输入**，不能借此绕开校验。
 - R2V 使用 Slots，而非首尾帧面板；图/视频、role、note、标签必须进入 prompt 请求及任务副本。增删/替换参考图也要测，不只测选模型。
+- R2V“跟随输入比例”读取 Picture 1；用竖图/方图核对预览、任务和最终图尺寸，显式比例及 Motion Context 源视频不被参考脸覆盖。FastH3 Omni 对照官方 VSA10/Kitchen 工作流，并以运行日志的 sparse producer 或 dense 回退原因确认实际路径，不能只看八步或节点存在。
 - H3 FaceSwap：设置页手动补齐 UntMods 专用权重 → 普通 INT8 Ref2VA → 添加 FaceSwap 1.0 → Picture 1 参考脸 / Video 1 原片 → 缺脸/缺视频/多原视频可见阻塞 → 补齐后实际按钮入队 → 有序参考及 LoRA 冻结 → 原生 R2V 执行/History。触发词自动去重，提示词增强保留身份与表演来源分工；不自动选八步加速，不以旧续写入口代替原片编辑。权重/真实生成证据见 [FaceSwap TASK](../tasks/2026-10-20-face-swap-lora/TASK.md)。
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
-- H3请求时长严格>15.1秒时，原时长标题旁显示三语言警告tooltip；15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
+- H3原生模式将时长锁在15.1秒；必须显式选择原生解锁后才能输入更长时长。解锁后严格>15.1时显示三语言警告tooltip，15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
 - 模型切换是异步的（获取 bundled workflow）；要测快速切换和返回另一 Create 模式，避免旧返回值覆盖新草稿。
 
 | 用户选项 | 影响链 | 最小反例 |
@@ -175,7 +176,7 @@ flowchart TD
 
 模式由 `h3ContinuumModeForSource` 判定：已有 accepted chunks 优先 managed；显式 bootstrap 或配对 artifact 走 bootstrap；否则根据 managed 标记/工作流。不是单凭“选了 Continuum”就能知道执行路线。
 
-H3 Extend警告按新增段请求时长严格>15.1秒触发，不按来源、拼接总长或完整采样帧数。长来源加短片段仍不显示；warning不替代来源检查或阻塞提交。新Continuum草稿可至30秒，旧managed Run沿用冻结chunkSeconds；实际长时输出与末段质量另验。
+H3 Extend保留原生/原生解锁的含义：以15.1/30秒采样窗口为上限，按各分支重叠帧及时间网格换算可见新增时长；Motion Context隐藏Continuum多段选项。原生不能靠数字输入自动解锁。警告按换算后的推荐上限触发，不按来源或成片总长；warning不替代来源检查。草稿与队列duration仍是可见新增秒数，不重复扣减前缀；旧managed Run沿用冻结chunkSeconds。Continuum多段仍为本地UI演示；实际长时输出与末段质量另验。
 
 **路由不等于入队资格**。`history-artifact-service.ts` 的 `inspectExtensionSource` 会阻止无 sequence 或 acceptedChunks=0 的 managed 输入。不能因任务工厂/旧队列分支能构造空 sequence，就宣称普通用户能新建 managed Run；不要添加模式开关或绕过门槛来让测试变绿。bootstrap 输出的 canonical AV 不会自动变成 accepted managed prefix。已有合成 receipt 的单测也不代表真实 run 已生成。
 
@@ -317,6 +318,8 @@ Prompt 最小设置闭环见 [操作配方](../AGENT_ELECTRON_API_RUNBOOK.md#set
 H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑草稿转Qwen2.1，旧队列/历史保持身份，重新编辑保留父版本。融合使用现有Qwen2.1 LoRA入口；旧Mask sidecar保留，不自动作为Paint输入。
 
 现有 `guide image` 定位 capability/adapter 与校验；用户旅程应覆盖增删图、Paint/Mask 保存、切模型、prompt 完成回流、实际按钮、结果重编辑及版本 lineage。
+
+MOSS SFT / PornMaster 为无参考图的文生图路径：缺提示词阻塞 → 填入自然语言或 JSON → 选择 25/50 步与尺寸 → 实际点击入队。复用提示词版本、增强、Seed 和批量；不显示上传、Paint/Mask 或编辑快捷项。从编辑模型带来的原图需显式移除后提交；增强走 MOSS 合约并保留 JSON 布局。验证区分文件/schema/UI task 与真实出图，来源和边界见 [MOSS 任务](../tasks/2026-10-21-moss-integration/TASK.md)。
 
 BFS 换脸/整头：设置页来源链接手动补齐 Qwen 2.1 专用 LoRA → 离线扫描 → 图片编辑选择普通 Qwen 2.1 → 添加 BFS → 空 Prompt 填入可编辑作者指令（已有文本保留）→ Picture 1 目标底图 / Picture 2 参考头部 → 缺图阻塞与补齐恢复 → 实际按钮入队 → 冻结有序图片/LoRA/Prompt → 原图片工作流与 History。整头包含头发；Paint 会添加额外模型输入，应先清除；普通无 LoRA、其他图片 LoRA 和历史身份保持。详见 [BFS 任务证据](../tasks/2026-10-20-face-swap-lora/TASK.md)，未出图不宣称效果已验。
 

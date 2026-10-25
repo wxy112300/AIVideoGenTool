@@ -1,9 +1,12 @@
+import { renderQueuePrompt } from "./prompt";
+import { localizeImageOptionLabel } from "../../shared/image-option-label";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import {
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   normalizeH3Steps
 } from "../../../core/workflow";
+import { outputDimensions, extensionOutputDimensions } from "../../../core/workflow";
 import { normalizeH3FrameSettings } from "../../../core/video-draft-normalization";
 import { upscaleOutputDimensions } from "../../../core/upscale";
 import type {
@@ -255,7 +258,7 @@ export function renderQueueTaskCard(
     ? normalizeH3FrameSettings(task)
     : undefined;
   const metadata = task.taskType === "image-generation"
-    ? `<span>${t(uiKeys.queue.card.imageProcessing)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}</span><span>${options.escapeHtml(imageQueueQuality?.label ?? task.qualityProfile)}${imageQueueQuality ? ` · ${imageQueueQuality.steps} ${t(uiKeys.queue.card.steps)} · CFG ${imageQueueQuality.cfg}` : ""}</span>${imageQueueQuality?.lightning ? `<span>${t(uiKeys.queue.card.lightningLora)}</span>` : ""}<span>${t(uiKeys.queue.card.pictureCanvas, { pictures: task.pictures.length, markings: task.pictures.reduce((count, picture) => count + (picture.markup?.objectCount ?? 0), 0) })}</span><span>${t(uiKeys.queue.card.pngIntermediate)}</span>`
+    ? `<span>${t(uiKeys.queue.card.imageProcessing)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}</span><span>${options.escapeHtml(localizeImageOptionLabel(imageQueueQuality?.label ?? task.qualityProfile, t))}${imageQueueQuality ? ` · ${imageQueueQuality.steps} ${t(uiKeys.queue.card.steps)} · CFG ${imageQueueQuality.cfg}` : ""}</span>${imageQueueQuality?.lightning ? `<span>${t(uiKeys.queue.card.lightningLora)}</span>` : ""}<span>${t(uiKeys.queue.card.pictureCanvas, { pictures: task.pictures.length, markings: task.pictures.reduce((count, picture) => count + (picture.markup?.objectCount ?? 0), 0) })}</span><span>${t(uiKeys.queue.card.pngIntermediate)}</span>`
     : task.taskType === "generation"
     ? `<span>${options.escapeHtml(options.modelName(task.modelId))}</span>${loraSummary}<span>${task.h3DeliveryResolution ?? task.resolution}p</span><span>${task.duration}${t(uiKeys.queue.card.seconds)}</span><span>${options.frameRateSummary(frameSettings!.fps, frameSettings!.frameInterpolation)}</span>${h3ComputeSummary}${h3LatentSaveSummary}<span>Seed ${options.escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
@@ -277,8 +280,8 @@ export function renderQueueTaskCard(
     ? ` data-queue-rank-label="${options.escapeHtml(task.id)}"`
     : "";
   const rankMarkup = queuePosition > 0
-    ? `<strong${rankValueAttributes}>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.rank)}</small>`
-    : `<strong>!</strong><small>${t(uiKeys.queue.card.needsAttention)}</small>`;
+    ? `<strong${rankValueAttributes}>${String(queuePosition).padStart(2, "0")}</strong>`
+    : `<strong>!</strong>`;
   if (task.status === "running") {
     const seedVrProgress = seedVr2ProgressView(task, t);
     const preview = options.taskPreviews[task.id] ?? "";
@@ -298,26 +301,29 @@ export function renderQueueTaskCard(
             ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
             <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span>${inputPlaceholder ? `<small>${options.escapeHtml(inputPlaceholder)}</small>` : ""}</div>
           </div>`;
+    const [sourceWidth, sourceHeight] = task.taskType === "generation" ? outputDimensions(task)
+      : task.taskType === "extension" ? extensionOutputDimensions(task)
+      : task.taskType === "upscale" ? upscaleOutput!
+      : [task.outputWidth ?? task.pictures[0]?.width, task.outputHeight ?? task.pictures[0]?.height];
+    const ratio = sourceWidth && sourceHeight ? sourceWidth / sourceHeight : 16 / 9;
+    const previewWidth = Math.round(Math.min(260, Math.max(160, 220 * ratio)));
+    const previewHeight = Math.round(Math.min(220, previewWidth / ratio));
     return `
       <article class="task-card panel running expanded" data-queue-task-id="${options.escapeHtml(task.id)}">
-        <div class="expanded-task-head">
-          <div class="queue-task-heading"><div class="queue-rank running" aria-label="${t(uiKeys.queue.card.queuePosition, { count: queuePosition })}"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.current)}</small></div><div><div class="running-status-line"><span class="status running">${t(uiKeys.queue.card.running)}</span><span class="running-elapsed-prominent" id="running-elapsed">${options.elapsedText(task.startedAt)}</span></div><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
-          <div class="running-progress-value"><span>${t(uiKeys.queue.card.totalProgress)}</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
+        <span class="queue-grip-space" aria-hidden="true"></span>
+        <div class="queue-rank running" aria-label="${t(uiKeys.queue.card.queuePosition, { count: queuePosition })}"><strong>${String(queuePosition).padStart(2, "0")}</strong><i class="queue-run-dot" aria-hidden="true"></i></div>
+        <div class="queue-preview-box" style="width:${previewWidth}px;height:${previewHeight}px">${livePreviewMarkup}</div>
+        <div class="task-main running-copy">
+          <div class="queue-task-title"><h3 title="${options.escapeHtml(task.outputFilename)}">${options.escapeHtml(task.outputFilename)}</h3>${!options.queueRunning ? `<span class="status deferred">${t(uiKeys.queue.pauseAfterCurrent)}</span>` : ""}</div>
+          <div class="queue-run-progress"><div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.taskProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
+          <div class="running-stage-summary"><span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span><span id="running-work-progress"${queueWorkProgressText(task, t) ? "" : " hidden"}>${queueWorkProgressText(task, t)}</span><span id="running-stage-elapsed">${options.queueStageElapsedText(task)}</span><span id="running-elapsed" title="${t(uiKeys.queue.card.running)}">${options.elapsedText(task.startedAt)}</span><span id="running-eta">${t(uiKeys.queue.card.eta, { time: options.queueEstimateText(options.queueTaskRemainingSeconds(task)) })}</span></div>
+          ${task.taskType === "upscale" && task.modelId === "seedvr2-native-int8" ? `<div id="seedvr2-segment-progress" class="seedvr2-segment-progress" ${seedVrProgress.visible ? "" : "hidden"}><div class="seedvr2-segment-progress-copy"><strong id="seedvr2-segment-label">${options.escapeHtml(seedVrProgress.label)}</strong><span id="seedvr2-segment-detail">${options.escapeHtml(seedVrProgress.detail)}</span></div><div class="progress seedvr2-local-progress" role="progressbar" aria-label="${t(uiKeys.queue.card.seedVrLocalProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(seedVrProgress.localProgress)}"><span id="seedvr2-segment-progress-bar" style="width:${seedVrProgress.localProgress}%"></span></div></div>` : ""}
+          ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon)}
+          <div class="task-meta">${metadata}${retrySummary}</div>
         </div>
-        <div class="running-layout">
-          <div class="running-copy">
-            <div class="running-stage-summary"><span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span><span class="running-stage-metrics"><span id="running-work-progress"${queueWorkProgressText(task, t) ? "" : " hidden"}>${queueWorkProgressText(task, t)}</span><span id="running-stage-elapsed">${options.queueStageElapsedText(task)}</span><span id="running-eta">${t(uiKeys.queue.card.eta, { time: options.queueEstimateText(options.queueTaskRemainingSeconds(task)) })}</span></span></div>
-            <div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.taskProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
-            ${task.taskType === "upscale" && task.modelId === "seedvr2-native-int8" ? `<div id="seedvr2-segment-progress" class="seedvr2-segment-progress" ${seedVrProgress.visible ? "" : "hidden"}><div class="seedvr2-segment-progress-copy"><strong id="seedvr2-segment-label">${options.escapeHtml(seedVrProgress.label)}</strong><span id="seedvr2-segment-detail">${options.escapeHtml(seedVrProgress.detail)}</span></div><div class="progress seedvr2-local-progress" role="progressbar" aria-label="${t(uiKeys.queue.card.seedVrLocalProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(seedVrProgress.localProgress)}"><span id="seedvr2-segment-progress-bar" style="width:${seedVrProgress.localProgress}%"></span></div></div>` : ""}
-            <p class="task-description">${options.escapeHtml(description)}</p>
-            <div class="task-meta">${metadata}</div>
-            <div class="running-controls">
-              <button class="secondary button-with-icon" id="${options.queueRunning ? "pause-queue" : "continue-queue"}">${options.icon(options.queueRunning ? "pause" : "play")}${options.queueRunning ? t(uiKeys.queue.pauseAfterCurrent) : t(uiKeys.queue.card.continueTasks)}</button>
-              <button class="danger secondary button-with-icon" data-cancel="${task.id}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("ban")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "cancel" ? t(uiKeys.queue.card.cancelling) : t(uiKeys.queue.card.cancelCurrent)}</button>
-            </div>
-            <p class="control-hint">${options.queueRunning ? t(uiKeys.queue.card.pauseHint) : t(uiKeys.queue.card.runningHint)}</p>
-          </div>
-          ${livePreviewMarkup}
+        <div class="task-actions queue-task-actions running-controls">
+          <button class="secondary button-with-icon" id="${options.queueRunning ? "pause-queue" : "continue-queue"}" title="${t(options.queueRunning ? uiKeys.queue.card.pauseHint : uiKeys.queue.card.runningHint)}">${options.icon(options.queueRunning ? "pause" : "play")}${options.queueRunning ? t(uiKeys.queue.pauseAfterCurrent) : t(uiKeys.queue.card.continueTasks)}</button>
+          <button class="danger ghost button-with-icon" data-cancel="${task.id}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("ban")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "cancel" ? t(uiKeys.queue.card.cancelling) : t(uiKeys.queue.card.cancelCurrent)}</button>
         </div>
       </article>`;
   }
@@ -325,7 +331,7 @@ export function renderQueueTaskCard(
   const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
   const inputPreview = input
     ? `<div class="task-input-preview${input.kind === "image" ? " task-input-preview-image" : ""}" data-queue-input-preview="${options.escapeHtml(task.id)}">${input.kind === "image" ? `<img data-queue-input-image="${options.escapeHtml(task.id)}" alt="${t(uiKeys.queue.card.inputImage)}" style="display:none">` : input.kind === "video" ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}"></video>` : ""}<div data-queue-input-empty><span>${options.icon(input.kind === "image" ? "image" : "film")}</span><small>${input.kind === "image" ? t(uiKeys.queue.card.inputImage) : input.kind === "video" ? t(uiKeys.queue.card.sourceVideo) : t(uiKeys.queue.card.noReferenceImage)}</small></div></div>`
-    : "";
+    : `<div class="task-input-preview" aria-hidden="true">${options.icon("film")}</div>`;
   const reorderControls = task.status === "waiting"
     ? options.canDrag === false
       ? ""
@@ -333,15 +339,16 @@ export function renderQueueTaskCard(
     : "";
   return `
     <article class="task-card panel ${task.status}${deferredTask ? " queue-task-deferred" : ""}${inputPreview ? " task-card-with-preview" : ""}" data-queue-task-id="${options.escapeHtml(task.id)}"${deferredTask ? ` data-queue-task-deferred="true"` : ""}>
+      ${reorderControls || `<span class="queue-grip-space" aria-hidden="true"></span>`}
+      <div class="queue-rank ${attentionTask ? "attention" : task.status}"${rankLabelAttributes} aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div>
       ${inputPreview}
       <div class="task-main">
-        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}"${rankLabelAttributes} aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div><div><span class="status ${deferredTask ? "deferred" : task.status}">${deferredTask ? t(uiKeys.task.deferred) : statusLabel(task.status, t)}</span><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
-        <p class="task-description">${options.escapeHtml(description)}</p>
-        <div class="task-meta">${metadata}${retrySummary}</div>
+        <div class="queue-task-title"><h3 title="${options.escapeHtml(task.outputFilename)}">${options.escapeHtml(task.outputFilename)}</h3>${deferredTask || attentionTask ? `<span class="status ${deferredTask ? "deferred" : task.status}">${deferredTask ? t(uiKeys.task.deferred) : statusLabel(task.status, t)}</span>` : ""}${retrySummary}</div>
+        ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon)}
+        <div class="task-meta">${metadata}</div>
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions queue-task-actions">
-        ${reorderControls}
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
             ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
@@ -349,7 +356,7 @@ export function renderQueueTaskCard(
           : ""}
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" ${queueCleanupActive ? "disabled" : ""} title="${t(recoveryCheckpointAvailable ? uiKeys.queue.card.resumeTitle : uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(recoveryCheckpointAvailable ? uiKeys.queue.card.resume : uiKeys.queue.card.reset)}</span></button>` : ""}
         <button type="button" class="ghost icon-button queue-action-quiet queue-action-more" data-queue-menu-trigger="${options.escapeHtml(task.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="${t(uiKeys.queue.card.moreActions)}" title="${t(uiKeys.queue.card.moreActions)}">${options.icon("ellipsis")}</button>
-        <button class="ghost danger button-with-icon queue-action-quiet" data-remove="${task.id}" aria-label="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" title="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("trash-2")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}</span></button>
+
       </div>
     </article>`;
 }

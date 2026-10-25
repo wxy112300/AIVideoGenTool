@@ -2,6 +2,7 @@
 (() => {
   const { ic } = window.DS;
   const $ = (selector, scope = document) => scope.querySelector(selector);
+  const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   const ROOT = "C:\\Users\\Studio\\Documents\\ComfyUI";
   const esc = (value) => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
@@ -139,41 +140,134 @@
     { name: "Real-ESRGAN x4plus", badge: "快速", desc: "占用较低，适合快速检查和非人像内容。", facts: ["预计峰值 6–9 GB"], hw: "RTX 2060/3060 6GB", parts: [["Real-ESRGAN x4 模型", "upscale_models/RealESRGAN_x4plus.safetensors", "ok", "Real-ESRGAN 官方 Releases", ""]] }
   ];
 
-  /* ---------- Nodes ---------- */
-  // [name, badge, purpose, dir, local, recommended, latest, state]
-  const nodes = [
-    ["ComfyUI-MiniMax-H3", "项目必需", "H3 采样、Continuum 续接与音画解码节点。", "ComfyUI-MiniMax-H3", "v3.9.1", "v3.9.1", "v3.9.1"],
-    ["Spectrum MiniMax H3", "项目必需", "H3 稀疏注意力后端。", "spectrum-minimax-h3", "v0.2.29", "v0.2.29", "v0.2.31"],
-    ["H3 Motion Context", "可选", "H3 Continuum 运动条件。", "ComfyUI-H3-MotionContext", "v0.6.2", "v0.6.2", "v0.6.2"],
-    ["H3 Latent Upscaler", "可选", "H3 原生 latent 放大。", "ComfyUI-H3-LatentUpscaler", "v0.1.0", "v0.1.0", "v0.1.0"],
-    ["ComfyUI-GGUF", "图片 / 提示词", "GGUF 模型加载（Qwen、Sulphur）。", "ComfyUI-GGUF", "v2.0.0", "v2.0.0", "v2.0.0"],
-    ["Inpaint Nodes", "图片", "LaMa 修复与 Mask 操作。", "comfyui-inpaint-nodes", "v1.4.4", "v1.4.4", "v1.4.4"],
-    ["Video Helper Suite", "视频", "视频读写与合成工具节点。", "ComfyUI-VideoHelperSuite", "v1.7.9", "v1.7.9", "v1.7.9"],
-    ["Frame Interpolation", "视频 · 插帧", "RIFE 插帧。", "ComfyUI-Frame-Interpolation", "v1.0.11", "v1.0.11", "v1.0.11"],
-    ["SeedVR2", "分辨率提升", "视频超分。", "ComfyUI-SeedVR2_VideoUpscaler", "v2.5.24", "v2.5.24", "v2.5.24"],
-    ["FlashVSR", "分辨率提升", "FlashVSR 超分。", "ComfyUI-FlashVSR_Ultra_Fast", "v1.1.1", "v1.1.1", "v1.1.1"],
-    ["Konohamaru DLSS5", "分辨率提升", "NVIDIA DLSS5 视觉增强。", "ComfyUI-Konohamaru-DLSS5", "v0.3.0", "v0.3.0", "v0.3.0"],
-    ["MultiModal Prompt Nodes", "提示词扩写", "本地多模态提示词扩写。", "ComfyUI-MultiModal-Prompt-Nodes", "v1.8.2", "v1.8.2", "v1.8.2"]
-  ];
-  const nodeCard = ([name, badge, purpose, dir, local, recommended, latest]) => {
-    const newer = latest !== local;
-    return `<article class="card set-card lit">
-      <div class="set-head">
-        <div><div class="set-title"><h3>${name}</h3><span class="badge plain">${badge}</span></div><p class="set-desc">${purpose}</p>
-          <div class="version-line"><span>本机 <b>${local}</b></span><span>推荐 <b>${recommended}</b></span><span>最新 <b class="${newer ? "newer" : ""}">${latest}</b></span><code data-tip="${esc(`${ROOT}\\custom_nodes\\${dir}`)}">custom_nodes\\${dir}</code></div></div>
-        <div class="set-actions"><span class="status success">${ic("circle-check")}${newer ? "可更新" : "已就绪"}</span>${split(newer ? `${ic("arrow-up-circle")}更新` : `${ic("refresh-cw")}重新安装`, { kind: newer ? "btn-tinted" : "btn-gray" })}</div>
-      </div>
+  /* ---------- Shared item card: title row (status right) → one-line purpose → optional body → footer (meta left, actions right) ---------- */
+  const tip = (title, text) => `<span class="info" data-tip-title="${esc(title)}" data-tip="${esc(text)}">${ic("info")}</span>`;
+  const depMenu = (items) => `<span class="menu-anchor"><button class="btn btn-gray btn-sm btn-more" type="button" data-menu-trigger aria-expanded="false" aria-label="更多操作">${ic("chevron-down")}</button><div class="menu right" role="menu">${items}</div></span>`;
+  const menuItem = (icon, label, danger = false) => `${danger ? '<div class="menu-sep"></div>' : ""}<button class="menu-item${danger ? " destructive" : ""}" type="button">${ic(icon)}${label}</button>`;
+  const statusChip = (tone, icon, label, detail = "") => `<span class="status ${tone}"${detail ? ` data-tip="${esc(detail)}"` : ""}>${ic(icon)}${label}</span>`;
+  // Requirement: every item shows current / recommended / latest so updates are visible at a glance.
+  const versionMeta = (local, recommended = local, latest = recommended, behind = local !== recommended) =>
+    `<span>当前 <b class="${behind ? "behind" : ""}">${local}</b></span><span>推荐 <b>${recommended}</b></span><span>最新 <b class="${latest !== local ? "newer" : ""}">${latest}</b></span>`;
+  const itemCard = ({ name, nameTip = "", badge = "", note = "", status, desc = "", body = "", meta = "", actions, extra = "", cls = "", kind = "node", update = false }) => `
+    <article class="card set-card lit item-card ${cls}" data-kind="${kind}" data-name="${esc(name)}"${update ? " data-update" : ""}>
+      <div class="item-top"><div class="set-title"><h3${nameTip ? ` data-tip="${esc(nameTip)}"` : ""}>${name}</h3>${badge ? `<span class="badge plain">${badge}</span>` : ""}${note}</div><span class="item-status">${status}</span></div>
+      ${desc ? `<p class="set-desc">${desc}</p>` : ""}${body}
+      <div class="item-foot"><div class="version-line">${meta}</div><div class="item-actions">${actions}</div></div>${extra}
     </article>`;
-  };
 
+  /* ---------- Nodes: the 21 active entries of src/core/catalog/dependencies/nodes.ts, grouped by area ---------- */
+  // [name, required, short purpose, catalog purpose, dir, version, install note, runtime line]; version "a>b" = update available
+  const RUN_NOTE = "安装或更新后需重启 ComfyUI，并通过 /object_info 校验。";
+  const nodeGroups = [
+    ["H3 视频与续写", [
+      ["Spectrum MiniMax H3", false, "预测部分 H3 采样步骤，加速生成", "预测部分 H3 采样步骤；支持标准 FL2VA / R2V、LightX2V Turbo，并可选互操作 H3 Continuum、Diff-Aid 与 Untwisting RoPE", "ComfyUI-Spectrum-MiniMax-H3", "0.2.27|0.2.29|0.2.31", "运行时固定使用系统内存，不额外下载模型。"],
+      ["ComfyUI H3 Continuum", false, "分块长视频与 Continuum 接续", "使用 H3 Continuum 3.9.1 的 V3.8 兼容 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态", "ComfyUI-H3-Continuum", "3.9.1", "要求 ComfyUI >=0.34.0；固定 package 3.9.1，保留 V3.8 兼容节点。旧 v5 Take 可读，但不能复用为新 v6 接续前缀。"],
+      ["Local Video Studio H3 AV Serializer", false, "保存 / 加载 H3 AV latent，衔接 Continuum 与 Run Storage", "保存/加载 H3 AV artifact，桥接 legacy Continuum state，并为官方 Run Storage 路径输出可审计的 managed receipt", "LocalVideoStudio-H3", "0.3.6", "应用原创节点；委托已加载的 ComfyUI-H3-Continuum，不复制采样逻辑。"],
+      ["H3 Motion Context", false, "R2V 续写继承运动方向、速度与音频", "让 H3 R2V 续写继承上一段的运动方向、速度和 32 kHz 音频，并保存 latent 供下一次无损接续", "ComfyUI-H3-Motion-Context", "0.6.2", "需要 ComfyUI 0.34.0+；0.32/0.33 保留 v0.3.1 回退线。"],
+      ["ComfyUI-PlagueKind H3 SLA Attention", false, "H3 SLA 旧工作流兼容", "提供 H3 SLA 旧工作流兼容节点；应用当前 Turbo-SLA 使用 ComfyUI 核心 BlockSparseAttention。", "ComfyUI-PlagueKind-Nodes", "1.5.6", "需要支持 comfy_api.latest 的 ComfyUI。"],
+      ["ComfyUI-KJNodes", false, "模型补丁、显存调试与 H3 实时预览", "模型补丁、显存调试与 MiniMax H3 TAE 实时预览", "comfyui-kjnodes", "1.5.2|1.5.2|1.6.0"],
+      ["ComfyUI-GGUF H3", false, "H3 Q3 低显存实验档的 GGUF 加载", "为 MiniMax H3 Q3 3080 实验档加载 H3 GGUF 扩散模型和文本编码器", "ComfyUI-GGUF-H3", "26.09.04", "与通用 ComfyUI-GGUF 并存；Q3_K 扩散模型仍需 CPU/RAM offload。"],
+      ["ComfyUI-LTXVideo", false, "Sulphur 2 视频续写与分阶段卸载", "Sulphur 2 原生视频续写、低显存加载与分阶段卸载", "ComfyUI-LTXVideo", "rolling:2026-08-11|2026-10-02"],
+      ["VideoHelperSuite", true, "视频读写、编码与音频封装", "视频读取、合成、编码和音频封装", "ComfyUI-VideoHelperSuite", "1.7.9"]
+    ]],
+    ["H3 二次采样与分辨率提升", [
+      ["ComfyUI H3 Latent Upscaler", false, "H3 二次采样的 latent 拆分与拼接", "拆分/拼接 H3 joint AV latent，并分别处理二次采样的 video/audio noise 与 sigma", "h3-latent-upscaler", "0.1.0", "固定到登记 commit。"],
+      ["MiniMax H3 Learned Latent Upscaler", false, "H3 learned 3D latent 放大", "加载 H3 learned 3D latent upscaler 权重并放大分离后的 24 通道 video latent", "Comfyui_Minimax_h3_latent_Upscaler", "pinned:4c1e9b2", "权重由用户按来源链接下载。"],
+      ["MMH3 Ultimate Upscale", false, "1440p 分块二次采样，降低峰值显存", "通过时间分块和空间 tile 逐块二次采样 H3 joint AV latent，降低 1440p 峰值显存", "Comfyui-MMH3-UltimateUpscale", "pinned:d91be5a", "固定 d91be5a，附应用管理的首块 source-anchor 与进度补丁。"],
+      ["SeedVR2 Video Upscaler", true, "SeedVR2 视频超分", "SeedVR2 视频超分工作流", "ComfyUI-SeedVR2_VideoUpscaler", "2.5.24"],
+      ["ComfyUI-FlashVSR", true, "FlashVSR 视频超分", "FlashVSR 视频超分工作流", "ComfyUI-FlashVSR", "1.1.1"],
+      ["ComfyUI NVIDIA DLSS 5 Visual Enhancer · Temporal Neural", false, "DLSS5 超分、时序增强与补帧", "Konohamaru04 的 DLSS5 视频超分、时序 Neural enhancement 与 DLSSG 补帧节点", "ComfyUI-NVIDIA-DLSS-Frame-Interpolation", "pinned:v0.3.0", "需要 FFmpeg/FFprobe、NVIDIA RTX 与兼容驱动；runtime 文件由应用固定下载并校验 SHA-256。", "DLSS5 runtime 已就绪"],
+      ["ComfyUI Frame Interpolation", false, "RIFE / FILM 插帧到 24 或 30 FPS", "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS", "ComfyUI-Frame-Interpolation", "1.0.11"]
+    ]],
+    ["提示词扩写", [
+      ["MiniMax H3 Prompt Writer", false, "用 Gemma 4 生成 H3 官方格式提示词", "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词", "ComfyUI-MiniMaxH3-Prompt-Writer", "0.4.7", "依赖 llama-cpp-python CUDA 后端（见上方运行时依赖）；旧版 0.3.x 可用修复流程回补。不要重复安装第二个版本。"],
+      ["ComfyUI MultiModal Prompt Nodes", false, "用 Qwen3.6 / 3.8 GGUF 看图写提示词", "在 ComfyUI 内运行 Qwen3.6/Qwen3.8 GGUF 与 vision 投影文件，按参考图片和文字生成提示词", "ComfyUI-MultiModal-Prompt-Nodes", "1.0.16", "与 Prompt Writer 共用 llama-cpp-python GPU 后端；安装后必须通过 CUDA 自检。"],
+      ["ComfyUI Qwen-VL LoRA", false, "Qwen3-VL + Prompt LoRA 输出 H3 提示词", "在 ComfyUI 内加载 Qwen3-VL 基座与 PEFT Prompt LoRA，输出 H3 提示词文本", "comfyui_qwenvl_lora", "rolling:2026-09-30", "需要 transformers、peft、accelerate、bitsandbytes 等；4090 建议 4-bit + SDPA。"]
+    ]],
+    ["图片与通用", [
+      ["ComfyUI-GGUF", true, "GGUF 扩散模型加载（Qwen Image 2.1 等）", "加载原生 ComfyUI GGUF 扩散模型，包括 Qwen Image 2.1 和历史视频模型", "ComfyUI-GGUF", "2.0.0", "维护版 fork；需要 gguf>=0.13.0、sentencepiece、protobuf。"],
+      ["ComfyUI Inpaint Nodes", false, "LaMa 局部修补与 Mask", "加载 LaMa 局部修补模型、扩张 Mask 并移除目标", "comfyui-inpaint-nodes", "1.4.4"]
+    ]]
+  ];
+  const nodes = nodeGroups.flatMap(([, list]) => list);
+  const nodeCard = ([name, required, short, purpose, dir, version, note, runtime]) => {
+    // version: "current|recommended|latest" (omitted parts repeat the previous) ; "rolling:current|latest" ; "pinned:commit|latest"
+    const [mode, spec] = /^(rolling|pinned):/.test(version) ? version.split(/:(.*)/s) : ["release", version];
+    const parts = spec.split("|");
+    const local = parts[0];
+    const recommended = mode === "rolling" ? "跟随上游" : mode === "pinned" ? local : parts[1] ?? local;
+    const latest = mode === "release" ? parts[2] ?? parts[1] ?? local : parts[1] ?? local;
+    const pendingUpdate = mode === "release" && local !== recommended;
+    const meta = versionMeta(local, recommended, latest, pendingUpdate);
+    return itemCard({
+      name, badge: required ? "必需" : "", nameTip: `${purpose}\n${ROOT}\\custom_nodes\\${dir}`, update: pendingUpdate,
+      note: note ? tip("运行 / 安装说明", `${note} ${RUN_NOTE}`) : "",
+      status: pendingUpdate ? statusChip("warning", "circle-alert", "可更新") : statusChip("success", "circle-check", "已就绪", "文件与版本检查通过"),
+      desc: short,
+      meta: `${meta}${mode === "rolling" ? '<span class="soft">滚动版</span>' : mode === "pinned" ? '<span class="soft">固定版</span>' : ""}${runtime ? `<span class="ok-text">${ic("circle-check")}${runtime}</span>` : ""}`,
+      actions: split(pendingUpdate ? `${ic("arrow-up-circle")}更新` : `${ic("refresh-cw")}重新安装`, { kind: pendingUpdate ? "btn-tinted" : "btn-gray" })
+    });
+  };
+  const nodeSections = nodeGroups.map(([title, list]) => `<div class="group-title"><h3>${title}</h3><span class="caption num">${list.length}</span></div><div class="card-grid">${list.map(nodeCard).join("")}</div>`).join("");
+
+  /* ---------- Runtime dependencies ---------- */
+  const PY = `${ROOT}\\.venv\\Scripts\\python.exe`;
+  // Tile: label, main value, one short detail; the long values (paths, wheel names) live in the hover tip.
+  const tile = (label, value, detail, hover) => `<div data-tip-title="${esc(label)}" data-tip="${esc(hover)}"><span class="caption">${label}</span><strong class="num">${value}</strong><span class="tile-detail">${detail}</span></div>`;
+  const depCards = [
+    itemCard({
+      name: "Strata", badge: "独立运行环境", cls: "dep-card", kind: "strata",
+      note: tip("安装校验", "固定源码、引擎 SHA-256 与独立 Python 包；首次加载模型时生成 pack/tokenizer 缓存。需要 CUDA 13 与 NVIDIA 驱动 580+。"),
+      status: statusChip("success", "circle-check", "已安装"),
+      desc: "提示词模型的独立运行环境，不改动 ComfyUI 的 Python 包",
+      meta: `${versionMeta("0.1.45")}<button class="link-toggle" type="button" aria-expanded="false" data-disclosure="strata-advanced">${ic("chevron-right", 'class="chev"')}高级设置</button>`,
+      actions: `<div class="split"><button class="btn btn-gray btn-sm" type="button">${ic("refresh-cw")}重新安装</button>${depMenu(menuItem("folder-open", "打开位置") + menuItem("trash-2", "卸载", true))}</div>`,
+      extra: `<div class="disclosure" id="strata-advanced"><div><div class="adv-grid">
+          <label class="field"><span class="label">运行目录</span><div class="input-group"><input placeholder="由应用管理" aria-label="运行目录"><button class="btn btn-icon btn-sm" type="button" data-tip="选择目录" aria-label="选择目录">${ic("folder-open")}</button></div></label>
+          <label class="field"><span class="label">预留端口${tip("预留端口", "默认 43127，禁止 8080；启动接入时检查占用。")}</span><input class="input num" type="number" value="43127" min="1024" max="65535" aria-label="预留端口"></label>
+        </div></div></div>`
+    }),
+    itemCard({
+      name: "H3 加速运行时", badge: "ComfyUI Python", cls: "dep-card", kind: "h3",
+      status: statusChip("success", "circle-check", "已就绪", "已实时验证 · 21:03"),
+      desc: "H3 所需的 PyTorch、SageAttention 与 Triton；只影响 H3 工作流",
+      body: `<div class="runtime-grid">
+        ${tile("Python", "3.12.11", ".venv", PY)}
+        ${tile("PyTorch", "2.10.0+cu130", "CUDA 13.0 · SM 8.9", "comfy-kitchen 0.2.39 · cuda、triton、hip、ascend、eager")}
+        ${tile("SageAttention", "2.2.0", "cu130 · torch 2.10", "sageattention-2.2.0+cu130torch2.10-cp312-cp312-win_amd64.whl\n缺失时可回退到 Triton 或 PyTorch")}
+        ${tile("Triton", "3.6.0", "KJNodes 补丁可用", "triton 3.6.0.post26；KJNodes 还提供 H3 实时预览节点")}
+      </div>`,
+      meta: `<span class="desktop-note" data-tip-title="ComfyUI Desktop" data-tip="最低支持 PyTorch 2.10/cu130，2.10.0 是稳定回退。更高版本不会被静默降级；SageAttention 需要官方发布的精确匹配 wheel，没有时请改用 PyTorch Attention。">${ic("monitor-cog")}ComfyUI Desktop · PyTorch ≥ 2.10</span>`,
+      actions: `<div class="split"><button class="btn btn-gray btn-sm" type="button" data-tip-title="升级会临时停止 ComfyUI" data-tip="低于最低要求的组件修复到 PyTorch 2.10/cu130；更高版本保留。升级前保存包快照，自检后恢复服务。">${ic("wand-sparkles")}升级 / 修复</button>${depMenu(menuItem("scan-search", "重新验证运行环境") + menuItem("folder-open", "打开位置"))}</div>`
+    }),
+    itemCard({
+      name: "llama-cpp-python", badge: "ComfyUI Python", cls: "dep-card", kind: "llama",
+      status: statusChip("success", "circle-check", "已验证", "运行时已验证 · 21:03\nPython 3.12.11 · PyTorch 2.10.0+cu130 · CUDA 13.0"),
+      desc: "本地 GGUF 提示词模型的后端；Prompt Writer 与 MultiModal 节点依赖它",
+      meta: `${versionMeta("0.3.16")}<span>CUDA 后端</span>`,
+      actions: `<div class="split"><button class="btn btn-gray btn-sm" type="button">${ic("refresh-cw")}重新安装</button>${depMenu(menuItem("folder-open", "打开位置") + menuItem("trash-2", "卸载", true))}</div>`
+    })
+  ].join("");
   /* ---------- Render ---------- */
   const fill = (id, html) => { const element = document.getElementById(id); if (element) element.innerHTML = html; };
   fill("video-cards", video.map(modelCard).join(""));
-  fill("lora-cards", loras.map(loraCard).join(""));
+  // LoRA only works with its own base model, so cards are grouped by base model (R2V-only ones get their own group).
+  const loraGroups = [
+    ["MiniMax H3", "FL2VA · Turbo · 通用", (lora) => lora[0].startsWith("MiniMax H3") || lora[0].startsWith("LightX2V Turbo") ? !/R2V/.test(lora[1]) : false],
+    ["MiniMax H3 R2V", "只用于多参考 R2V", (lora) => /R2V/.test(lora[1])],
+    ["Qwen Image 2.1", "图片模型", (lora) => lora[0].startsWith("Qwen Image 2.1")]
+  ];
+  const loraSections = loraGroups.map(([title, caption, match]) => {
+    const list = loras.filter(match);
+    return `<div class="group-title"><h3>${title}</h3><span class="caption num">${caption} · 已安装 ${list.filter((lora) => lora[5] === "ok").length} / ${list.length}</span></div><div class="card-grid">${list.map(loraCard).join("")}</div>`;
+  }).join("");
+  fill("lora-cards", loraSections);
   fill("image-cards", image.map(modelCard).join(""));
   fill("prompt-cards", prompt.map(modelCard).join(""));
   fill("upscale-cards", upscale.map(modelCard).join(""));
-  fill("node-cards", nodes.map(nodeCard).join(""));
+  fill("node-cards", nodeSections);
+  fill("dep-cards", depCards);
+  fill("node-count", `${nodes.length}`);
 
   const readyCount = (list) => list.filter((item) => !(item.parts ?? []).some((part) => part[2] === "bad")).length;
   const counts = {
@@ -182,7 +276,7 @@
     image: `${readyCount(image)}/${image.length}`,
     prompt: `${readyCount(prompt)}/${prompt.length}`,
     upscale: `${readyCount(upscale)}/${upscale.length}`,
-    nodes: `${nodes.length}/${nodes.length}`
+    nodes: `${nodes.length + 2}/${nodes.length + 2}`
   };
   for (const [tab, value] of Object.entries(counts)) {
     const meta = document.querySelector(`[data-tab="${tab}"] .meta-count`);
@@ -193,6 +287,12 @@
   /* ---------- Interactions ---------- */
   const DS = window.DS;
   document.addEventListener("click", (event) => {
+    const linked = event.target.closest("[data-disclosure]");
+    if (linked) {
+      const open = linked.getAttribute("aria-expanded") !== "true";
+      linked.setAttribute("aria-expanded", String(open));
+      document.getElementById(linked.dataset.disclosure)?.toggleAttribute("data-open", open);
+    }
     const toggle = event.target.closest(".set-toggle");
     if (toggle) {
       const open = toggle.getAttribute("aria-expanded") !== "true";
@@ -220,6 +320,198 @@
       DS.openDialog(dialog);
     }
   });
+
+  /* ---------- Install / update / reinstall: one job at a time, others wait; progress button + live console ---------- */
+  const steps = {
+    node: (name, update, batch) => [
+      ["拉取源码", 30, ["$ git fetch --tags origin", update ? "$ git checkout v0.2.31" : "$ git checkout --force HEAD", `HEAD is now at ${update ? "a3f9c21 release 0.2.31" : "e81b07d"}`]],
+      ["安装依赖", batch ? 100 : 70, ["$ python -m pip install -r requirements.txt", "Requirement already satisfied: torch>=2.4 (2.10.0+cu130)", "Successfully installed 2 packages"]],
+      ...(batch ? [] : [["重启 ComfyUI", 88, ["Stopping ComfyUI (pid 18244)…", "Starting ComfyUI on 127.0.0.1:8188…", "Server ready in 6.2 s"]], ["复检", 100, [`GET /object_info · ${name} 已注册`, "✓ 文件与版本检查通过"]]])
+    ],
+    strata: () => [
+      ["下载引擎", 45, ["GET strata-engine-0.1.45-win-cuda13.zip", "665.0 MB · 41.2 MB/s"]],
+      ["校验引擎", 55, ["SHA-256 7f3c9a1e…0f1d ✓"]],
+      ["解压引擎", 65, ["Extracting 312 files…"]],
+      ["创建 Python 环境", 78, ["$ python -m venv strata\\.venv"]],
+      ["安装依赖", 92, ["$ pip install -r requirements.lock", "Successfully installed 38 packages"]],
+      ["检查运行组件", 100, ["engine --version → 0.1.45", "✓ 运行组件已安装"]]
+    ],
+    h3: () => [
+      ["停止 ComfyUI", 12, ["Stopping ComfyUI (pid 18244)…"]],
+      ["保存包快照", 22, ["Snapshot saved: pip-freeze-20261021-210311.txt"]],
+      ["安装组件", 72, ["PyTorch 2.10.0+cu130 满足要求，保留", "$ pip install sageattention-2.2.0+cu130torch2.10-cp312-cp312-win_amd64.whl", "$ pip install triton-windows==3.6.0.post26"]],
+      ["自检", 92, ["SageAttention CUDA kernel ✓", "Triton JIT ✓ · KJNodes patch ✓"]],
+      ["恢复服务", 100, ["Starting ComfyUI on 127.0.0.1:8188…", "✓ 已就绪"]]
+    ],
+    llama: () => [
+      ["下载 wheel", 50, ["GET llama_cpp_python-0.3.16-cp312-cp312-win_amd64.whl (cu130)"]],
+      ["安装", 80, ["$ pip install --force-reinstall --no-deps llama_cpp_python-0.3.16-…whl"]],
+      ["CUDA 自检", 100, ["llama_supports_gpu_offload() → True", "✓ 运行时已验证"]]
+    ]
+  };
+  const queue = [];
+  let current = null;
+  const controls = new WeakMap();
+  const mainButton = (card) => card.querySelector(".item-actions .split > .btn:first-child");
+  const controlOf = (button) => {
+    if (!controls.has(button)) controls.set(button, DS.progressButton(button, { labels: ["准备中", "100%", "等待 9", "移出队列", "已完成"] }));
+    return controls.get(button);
+  };
+  // A waiting job's button shows its place in line; hovering offers removal, clicking removes it.
+  const markQueued = (card, position) => {
+    const button = mainButton(card);
+    controlOf(button);
+    const label = button.querySelector(".btn-label .live");
+    if (!button.hasAttribute("data-queued")) button.firstElementChild.outerHTML = ic("clock-3");
+    button.setAttribute("data-queued", "");
+    button.dataset.position = `等待 ${position}`;
+    label.textContent = button.matches(":hover") ? "移出队列" : button.dataset.position;
+    button.dataset.tip = "点击移出安装队列";
+    DS.icons();
+  };
+  const unmarkQueued = (card) => {
+    const button = mainButton(card);
+    if (!button.hasAttribute("data-queued")) return;
+    button.removeAttribute("data-queued");
+    controlOf(button).reset();
+  };
+  document.addEventListener("pointerover", (event) => {
+    const button = event.target.closest?.(".btn[data-queued]");
+    if (button) button.querySelector(".btn-label .live").textContent = "移出队列";
+  });
+  document.addEventListener("pointerout", (event) => {
+    const button = event.target.closest?.(".btn[data-queued]");
+    if (button && !button.contains(event.relatedTarget)) button.querySelector(".btn-label .live").textContent = button.dataset.position;
+  });
+  const clock = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const setStatus = (card, html) => { const slot = card.querySelector(".item-status"); slot.dataset.idle ??= slot.innerHTML; slot.innerHTML = html; DS.icons(); };
+  const restoreStatus = (card) => { const slot = card.querySelector(".item-status"); if (slot.dataset.idle) slot.innerHTML = slot.dataset.idle; delete slot.dataset.idle; DS.icons(); };
+  const renderQueueBar = () => {
+    const bar = $("#install-queue");
+    bar.hidden = !current && !queue.length;
+    if (bar.hidden) return;
+    $("#install-queue-text").textContent = current ? `正在处理 ${current.card.dataset.name}${queue.length ? ` · 等待 ${queue.length} 个` : ""}` : `等待 ${queue.length} 个`;
+    $("#install-queue-cancel").hidden = !queue.length;
+    queue.forEach((job, index) => { setStatus(job.card, `<span class="status">${ic("clock-3")}等待第 ${index + 1} 位</span>`); markQueued(job.card, index + 1); });
+  };
+  const openConsole = (card) => {
+    card.querySelector(".install-console")?.remove();
+    const box = Object.assign(document.createElement("div"), { className: "install-console" });
+    box.innerHTML = `<div class="console-head"><span>安装日志</span><span class="caption num" data-elapsed>00:00</span></div><pre></pre>`;
+    card.append(box);
+    DS.animateIn(box);
+    return box;
+  };
+  const finishConsole = (box, label) => {
+    const lines = box.querySelector("pre").textContent;
+    const elapsed = box.querySelector("[data-elapsed]").textContent;
+    box.outerHTML = `<details class="node-log install-done"><summary>安装日志 · ${label} · ${elapsed}</summary><pre>${esc(lines)}</pre></details>`;
+  };
+  const runNext = () => {
+    if (current || !queue.length) { renderQueueBar(); return; }
+    const job = queue.shift();
+    current = job;
+    const { card } = job;
+    unmarkQueued(card);
+    const button = mainButton(card);
+    const control = controlOf(button);
+    const more = card.querySelector(".item-actions .btn-more");
+    if (more) more.disabled = true;
+    const plan = steps[card.dataset.kind](card.dataset.name, card.hasAttribute("data-update"), job.batch);
+    const box = openConsole(card);
+    const pre = box.querySelector("pre");
+    const started = performance.now();
+    let stage = 0, line = 0, value = 0;
+    control.set(null, "准备中");
+    setStatus(card, `<span class="status running">${ic("loader-circle")}准备中</span>`);
+    renderQueueBar();
+    const tick = () => {
+      if (current !== job) return;
+      box.querySelector("[data-elapsed]").textContent = clock(Math.round((performance.now() - started) / 1000));
+      const [label, end, lines] = plan[stage];
+      if (line < lines.length) {
+        pre.textContent += `${pre.textContent ? "\n" : ""}${lines[line++]}`;
+        pre.scrollTop = pre.scrollHeight;
+      }
+      value = Math.min(end, value + 3 + Math.random() * 5);
+      control.set(value, `${Math.round(value)}%`);
+      setStatus(card, `<span class="status running">${ic("loader-circle")}${label}</span>`);
+      if (value >= end && line >= lines.length) { stage += 1; line = 0; }
+      if (stage < plan.length) { job.timer = setTimeout(tick, 220); return; }
+      control.done("已完成");
+      finishConsole(box, "已完成");
+      current = null;
+      if (more) more.disabled = false;
+      const name = card.dataset.name;
+      setTimeout(() => {
+        control.reset();
+        if (card.hasAttribute("data-update")) {
+          const entry = nodes.find((node) => node[0] === name);
+          if (entry) {
+            const [, recommended, latest = recommended] = entry[5].split("|");
+            entry[5] = `${recommended}|${recommended}|${latest}`;
+            const log = card.querySelector(".install-done")?.outerHTML ?? "";
+            card.outerHTML = nodeCard(entry).replace(/<\/article>\s*$/, `${log}</article>`);
+            DS.icons();
+            updateBulk();
+            return;
+          }
+        }
+        restoreStatus(card);
+      }, 1400);
+      if (!job.batch) DS.toast(`${name} 已${card.hasAttribute("data-update") ? "更新" : "重新安装"}`);
+      if (job.batch && !queue.some((next) => next.batch)) finishBatch(job.batchSize);
+      runNext();
+    };
+    job.timer = setTimeout(tick, 600);
+  };
+  const enqueue = (card, batch = false, batchSize = 1) => {
+    if (current?.card === card || queue.some((job) => job.card === card)) return;
+    queue.push({ card, batch, batchSize });
+    if (current) controlOf(mainButton(card));
+    runNext();
+  };
+  const cancel = (card) => {
+    if (current?.card === card) {
+      clearTimeout(current.timer);
+      const box = card.querySelector(".install-console");
+      if (box) { box.querySelector("pre").textContent += "\n已取消，已回滚到安装前状态"; finishConsole(box, "已取消"); }
+      controlOf(mainButton(card)).reset();
+      card.querySelector(".item-actions .btn-more")?.removeAttribute("disabled");
+      restoreStatus(card);
+      current = null;
+      DS.toast(`已取消 ${card.dataset.name}`, { kind: "info" });
+      runNext();
+      return;
+    }
+    const index = queue.findIndex((job) => job.card === card);
+    if (index >= 0) { queue.splice(index, 1); unmarkQueued(card); restoreStatus(card); renderQueueBar(); }
+  };
+  const finishBatch = (count) => {
+    $("#install-queue").hidden = false;
+    $("#install-queue-text").textContent = `重启 ComfyUI 并复检 ${count} 个节点`;
+    $("#install-queue-cancel").hidden = true;
+    setTimeout(() => { renderQueueBar(); DS.toast(`${count} 个节点已更新 · ComfyUI 已重启`); updateBulk(); }, 1800);
+  };
+  const updateBulk = () => {
+    const pending = $$(".item-card[data-update]").length;
+    $("[data-bulk-label]").textContent = pending ? "更新节点" : "已是推荐版本";
+    $("[data-bulk-count]").textContent = pending ? String(pending) : "";
+    $("#nodes-bulk").disabled = !pending;
+  };
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".item-card .item-actions .split > .btn:first-child");
+    if (!button) return;
+    const card = button.closest(".item-card");
+    if (current?.card === card || queue.some((job) => job.card === card)) cancel(card);
+    else enqueue(card);
+  });
+  $("#nodes-bulk").addEventListener("click", () => {
+    const cards = $$(".item-card[data-update]");
+    cards.forEach((card) => enqueue(card, true, cards.length));
+  });
+  $("#install-queue-cancel").addEventListener("click", () => { [...queue].forEach((job) => cancel(job.card)); });
+  updateBulk();
 
   /* ---------- Unsaved changes: floating bar, discard / leave confirmation ---------- */
   const changes = new Map();

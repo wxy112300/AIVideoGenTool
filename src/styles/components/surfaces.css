@@ -1,0 +1,41 @@
+.ui-tooltip {
+  position: fixed; z-index: var(--z-tooltip); width: max-content; max-width: min(360px, calc(100vw - 16px));
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: var(--surface-3); color: var(--text-1); box-shadow: var(--shadow-float);
+  font: var(--fs-12)/var(--lh-body) var(--font-sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: none;
+}
+[data-ui-tooltip-source][hidden] { display: none !important; }
+.ui-tooltip > span, .ui-tooltip > strong, .ui-tooltip > small { display: block; }
+.ui-tooltip b { margin-right: var(--sp-2); }
+.ui-notifications {
+  position: fixed; z-index: var(--z-notice); top: var(--sp-3); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: var(--sp-2); width: max-content;
+  max-width: min(560px, calc(100vw - 32px)); pointer-events: none;
+}
+.ui-notice {
+  display: flex; align-items: center; gap: var(--sp-2); min-height: var(--control-lg);
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  background: var(--surface-3); color: var(--text-1); box-shadow: var(--shadow-float); pointer-events: auto;
+  font: var(--fs-13)/var(--lh-body) var(--font-sans); overflow: hidden;
+}
+.ui-notice-message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ui-notice-icon { display: inline-flex; flex: none; align-items: center; color: var(--info); }
+.ui-notice-icon .ui-icon { width: 14px; height: 14px; }
+.ui-notice-error .ui-notice-icon { color: var(--danger); }
+.ui-notice-warning .ui-notice-icon { color: var(--warning); }
+.ui-notice-task-complete .ui-notice-icon, .ui-notice-queue-complete .ui-notice-icon { color: var(--success); }
+.ui-notice-error { border-color: var(--danger); }
+.ui-notice-warning { border-color: var(--warning); }
+.ui-notice-task-complete, .ui-notice-queue-complete { border-color: var(--success); }
+.ui-notice-close { flex: none; width: var(--control-sm); padding: 0; font-size: var(--fs-20); }
+.ui-notice-action { color: var(--accent-text); }
+/* Existing menu/dialog controllers retain focus, keyboard and destructive semantics. */
+.history-context-menu, .node-action-menu-popover, .app-log-context-menu {
+  border-color: var(--line-strong); border-radius: var(--r-lg); background: var(--surface-3); box-shadow: var(--shadow-float);
+}
+.history-context-menu button, .node-action-menu-popover button, .app-log-context-menu button {
+  color: var(--text-1); font-size: var(--fs-13); min-height: 30px; border-radius: var(--r-sm);
+}
+.history-context-menu button:hover:not(:disabled), .node-action-menu-popover button:hover:not(:disabled), .app-log-context-menu button:hover:not(:disabled) { background: var(--hover-wash); }
+.dialog-backdrop { background: var(--scrim); backdrop-filter: blur(6px); }
+.dialog { border-color: var(--line-strong); border-radius: var(--r-xl); background: var(--surface-2); box-shadow: var(--shadow-float); }

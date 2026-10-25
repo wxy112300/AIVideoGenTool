@@ -143,6 +143,18 @@ export class CustomNodeInstallQueue {
     return { ok: false, message: "该安装已结束或尚未开始。" };
   }
 
+  /** Remove only waiting work atomically; never route these IDs to active cancellation. */
+  cancelWaiting(): number {
+    const waiting = this.queuedItems.splice(0);
+    for (const { nodeId } of waiting) {
+      const index = this.batchNodeIds.indexOf(nodeId);
+      if (index >= 0) this.batchNodeIds.splice(index, 1);
+      this.appendLog(nodeId, this.dependencies.removedMessage ?? "已移出安装队列。");
+    }
+    if (waiting.length) this.emit();
+    return waiting.length;
+  }
+
   private appendLog(nodeId: string, message: string): void {
     this.dependencies.setLog(
       nodeId,

@@ -218,5 +218,14 @@
 
   window.App = { $, $$, ic, state, setState, appearance, setAppearance, accents };
   // Page scripts after app.js have also run by DOMContentLoaded; reveal the finished page in one paint.
-  addEventListener("DOMContentLoaded", () => delete root.dataset.booting);
+  addEventListener("DOMContentLoaded", () => {
+    // Two-column card lists become two fixed columns (masonry), filled alternately to keep reading order.
+    $$(".card-grid, .record-flow").forEach((grid) => {
+      const columns = [0, 1].map(() => Object.assign(document.createElement("div"), { className: "masonry-col" }));
+      [...grid.children].forEach((card, index) => columns[index % 2].append(card));
+      grid.classList.add("masonry");
+      grid.replaceChildren(...columns);
+    });
+    delete root.dataset.booting;
+  });
 })();

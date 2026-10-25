@@ -43,7 +43,8 @@ import {
   h3ContinuumModeForSource,
   h3ContinuumWorkflowPathForInput,
   isMiniMaxH3R2vModel,
-  motionContextMaxDurationSeconds
+  motionContextMaxDurationSeconds,
+  outputDimensions
 } from "../../../core/workflow";
 import { modelCatalog } from "../../../core/catalog";
 import { shouldEnableSpectrumByDefault } from "../../../core/video-policy";
@@ -52,11 +53,13 @@ import { bundledWorkflowModelId } from "../../../core/video-loras";
 import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
+import { imageOutputSummary } from "./image-output";
 import { videoLoraInfoButton } from "../../shared/markup";
 import { videoLoraPurposeLabel } from "../../shared/labels";
 import { formatTrimTime } from "../../shared/formatters";
 import { loadImagePreview, imageFileIsSupported, imageReferenceRolePromptLabels, h3ReferenceRolePromptLabels, h3TimelineDurationForDraft, resizePromptInput, updateImagePromptWordCounter } from "./helpers";
 import { mountCreateAssembly } from "./assembly";
+import { uiKeys } from "../../../core/i18n-keys";
 import { mountH3ReferencesController } from "./references-controller";
 import { renderCreatePage, renderImageEditPage, type CreatePageOptions } from "./page";
 import { buildImageEditPageViewModel, buildVideoCreatePageViewModel, imageEditEnqueueBlockReason, type CreateViewModelDependencies } from "./view-model";
@@ -68,6 +71,7 @@ export interface CreateWorkspaceCoordinatorDependencies {
   getCreationMode(): CreationMode;
   setCreationMode(mode: CreationMode): void;
   getEnvironmentScan(): EnvironmentScanResult | null;
+  isEnvironmentScanning?(): boolean;
   getPerformanceMetrics(): PerformanceMetrics | null;
   bundledWorkflows: Record<string, BundledWorkflow>;
   workflowCapabilities: Record<string, WorkflowCapabilities>;
@@ -145,14 +149,19 @@ export function videoExtensionSourceInspectionKey(draft: Draft, settings: Settin
   if (draft.inputMode !== "video" ||
       (!isMiniMaxH3ContinuumModel(draft.modelId) && !isMiniMaxH3R2vModel(draft.modelId)) ||
       !draft.sourceVideoPath) return "";
+  const source = [draft.modelId, draft.sourceVideoPath, draft.sourceWidth, draft.sourceHeight];
+  if (isMiniMaxH3R2vModel(draft.modelId)) {
+    // Only an explicitly selected context file needs output-geometry validation.
+    return JSON.stringify([...source, draft.h3ContextLatentPath,
+      draft.h3ContextLatentPath?.trim() ? outputDimensions(draft) : undefined,
+      Boolean(draft.h3MotionContextAsset)]);
+  }
+  // Continuum inspects the source artifact/Run, not the requested new output.
   return JSON.stringify([
-    draft.modelId, draft.sourceVideoPath, draft.sourceAssetId, draft.sourceVersionId,
-    draft.sourceWidth, draft.sourceHeight, draft.resolution, draft.ratio,
-    draft.h3ContinuumMode, draft.workflowPath,
-    draft.h3ContextLatentPath, draft.h3MotionContextAsset,
+    ...source, draft.sourceAssetId, draft.sourceVersionId, h3ContinuumModeForSource(draft),
     draft.h3ContinuumArtifactPath, draft.h3ContinuumArtifact, draft.h3ContinuumSequence,
     draft.h3ContinuumTakeAction, draft.h3ContinuumTakeGroup, draft.h3ContinuumTakeRevisionId,
-    settings.outputDirectory, settings.comfyUrl
+    settings.outputDirectory, settings.comfyUrl, settings.comfyInstallDirectory
   ]);
 }
 
@@ -178,12 +187,16 @@ export function createCreateWorkspaceCoordinator(
   let draftRevision = 0;
   let draftSaveInFlight = 0;
   let draftDirty = false;
+  let draftSaveFailed = false;
+  let clearUndoSequence = 0;
   let imageDraftSaveTimer: number | undefined;
   let imageDraftRevision = 0;
   let imageDraftSaveInFlight = 0;
   let imageDraftDirty = false;
+  let imageDraftSaveFailed = false;
   let enqueueBusy = deps.getEnqueueBusy();
   let extensionInspectionKey = "";
+  let extensionInspectionRevision = 0;
   let extensionSourceInspection: VideoExtensionSourceInspection | undefined;
 
   const getState = () => deps.getState();
@@ -288,12 +301,14 @@ export function createCreateWorkspaceCoordinator(
       durationSeconds: h3TimelineDurationForDraft(state.draft),
       videoLoras
     });
-    element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
-    element.innerHTML = `<div class="h3-prompt-check-heading"><strong>${uiText("runtime.h3PromptCheck")}</strong><span>${escapeHtml(result.summary)}</span></div>
-      ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
+    element.className = `create-prompt-check ${result.valid ? "valid" : "warning"}`;
+    element.dataset.uiTooltip = [result.summary, ...result.items.map(item => item.message)].join("\n");
+    element.innerHTML = `${icon(result.valid ? "shield-check" : "alert-triangle")}<span>${uiText(result.valid ? "create.editor.checkPassed" : "create.editor.checkReview")}</span>`;
+    renderIcons(element);
   }
 
   function extensionSourceKey(): string {
+    if (deps.getPage() !== "create" || deps.getCreationMode() !== "video-extension") return "";
     const { draft, settings } = getState();
     return videoExtensionSourceInspectionKey(draft, settings);
   }
@@ -302,6 +317,7 @@ export function createCreateWorkspaceCoordinator(
     const key = extensionSourceKey();
     if (key === extensionInspectionKey) return;
     extensionInspectionKey = key;
+    const revision = ++extensionInspectionRevision;
     extensionSourceInspection = undefined;
     if (!key) return;
     const draft = structuredClone(getState().draft);
@@ -310,7 +326,7 @@ export function createCreateWorkspaceCoordinator(
       status: "invalid" as const,
       reason: error instanceof Error ? error.message : String(error)
     })).then((inspection) => {
-      if (extensionInspectionKey !== key || extensionSourceKey() !== key) return;
+      if (revision !== extensionInspectionRevision || extensionInspectionKey !== key || extensionSourceKey() !== key) return;
       extensionSourceInspection = inspection;
       syncVideoEnqueueUi();
     });
@@ -325,6 +341,7 @@ export function createCreateWorkspaceCoordinator(
       t: uiText,
       state: getState(),
       environmentScan: deps.getEnvironmentScan(),
+      environmentScanning: deps.isEnvironmentScanning?.() ?? false,
       performanceMetrics: deps.getPerformanceMetrics(),
       workflowCapabilities: deps.workflowCapabilities,
       bundledWorkflows: deps.bundledWorkflows,
@@ -349,6 +366,14 @@ export function createCreateWorkspaceCoordinator(
       : renderCreatePage(buildVideoCreatePageViewModel(createViewModelDependencies()), createPageOptions);
   }
 
+  function syncDraftSaveStatus(): void {
+    const alert = deps.context.root.querySelector<HTMLElement>("[data-draft-save-error]");
+    const imageMode = deps.getCreationMode() === "image-edit";
+    if (alert) alert.hidden = !(imageMode ? imageDraftSaveFailed : draftSaveFailed);
+    const retry = alert?.querySelector<HTMLButtonElement>("[data-retry-draft-save]");
+    if (retry) retry.disabled = (imageMode ? imageDraftSaveInFlight : draftSaveInFlight) > 0;
+  }
+
   function scheduleDraftSave(): void {
     window.clearTimeout(draftSaveTimer);
     draftSaveTimer = window.setTimeout(async () => {
@@ -356,14 +381,18 @@ export function createCreateWorkspaceCoordinator(
       const state = getState();
       const draftToSave = state.draft;
       draftSaveInFlight += 1;
+      syncDraftSaveStatus();
       try {
         await deps.context.application.saveDraft(draftToSave, {
           imageToVideoDraft: state.imageToVideoDraft,
           videoExtensionDraft: state.videoExtensionDraft
         });
-        if (revision === draftRevision) draftDirty = false;
+        if (revision === draftRevision) { draftDirty = false; draftSaveFailed = false; }
+      } catch {
+        if (revision === draftRevision) draftSaveFailed = true;
       } finally {
         draftSaveInFlight -= 1;
+        syncDraftSaveStatus();
       }
     }, 350);
   }
@@ -375,15 +404,18 @@ export function createCreateWorkspaceCoordinator(
       const state = getState();
       const draftToSave = state.imageDraft;
       imageDraftSaveInFlight += 1;
+      syncDraftSaveStatus();
       try {
         await deps.context.application.saveImageDraft(draftToSave);
         if (revision === imageDraftRevision) {
           imageDraftDirty = false;
+          imageDraftSaveFailed = false;
         }
-      } catch (error) {
-        deps.context.notify(error instanceof Error ? error.message : uiText("runtime.imageDraftSaveFailed"), { kind: "error" });
+      } catch {
+        if (revision === imageDraftRevision) imageDraftSaveFailed = true;
       } finally {
         imageDraftSaveInFlight -= 1;
+        syncDraftSaveStatus();
       }
     }, 350);
   }
@@ -436,9 +468,10 @@ export function createCreateWorkspaceCoordinator(
         imageToVideoDraft: state.imageToVideoDraft,
         videoExtensionDraft: state.videoExtensionDraft
       });
-      if (revision === draftRevision) draftDirty = false;
+      if (revision === draftRevision) { draftDirty = false; draftSaveFailed = false; }
     } finally {
       draftSaveInFlight -= 1;
+      syncDraftSaveStatus();
     }
   }
 
@@ -565,7 +598,8 @@ export function createCreateWorkspaceCoordinator(
         sourceDataUrl,
         existingDocument,
         existingCrop: picture.crop,
-        mode: maskMode ? "mask" : "annotation"
+        mode: maskMode ? "mask" : "annotation",
+        t: deps.context.t
       });
       if (!result) return;
       const cropChanged = !sameImageCrop(picture.crop, result.crop);
@@ -601,7 +635,7 @@ export function createCreateWorkspaceCoordinator(
         });
         deps.render();
         void loadImageEditPreviews();
-        deps.context.notify(mask ? `Mask 已保存 · ${mask.regionCount} 个区域` : "Mask 已清除");
+        deps.context.notify(mask ? uiText("create.finish.maskSaved", { count: mask.regionCount }) : uiText("create.finish.maskCleared"));
         return;
       }
       const markup = result.objectCount > 0
@@ -845,7 +879,8 @@ export function createCreateWorkspaceCoordinator(
               modelCatalog.get(selectedModelId)?.definition.capabilities?.resolutions ??
                 modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
                 H3_BASE_RESOLUTIONS,
-              state.draft.resolution
+              state.draft.resolution,
+              modelCatalog.get(selectedModelId)?.definition.capabilities?.customResolution
             ) as Draft["resolution"]
           }
         : {}),
@@ -875,11 +910,51 @@ export function createCreateWorkspaceCoordinator(
     button.setAttribute("aria-busy", String(busy));
     const buttonIcon = button.querySelector<HTMLElement>(".enqueue-spinner");
     if (buttonIcon) {
-      buttonIcon.outerHTML = icon(busy ? "refresh-cw" : "plus", "enqueue-spinner");
+      buttonIcon.outerHTML = icon(busy ? "refresh-cw" : "list-plus", "enqueue-spinner");
       renderIcons(button);
     }
     const label = button.querySelector<HTMLElement>("[data-enqueue-label]");
     if (label) label.textContent = busy ? uiText("runtime.enqueueing") : uiText("runtime.enqueue");
+  }
+
+  function refreshVideoControls(): void {
+    const root = deps.context.root;
+    if (deps.getPage() !== "create" || deps.getCreationMode() === "image-edit") return;
+    const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
+    if (getState().draft.resolution !== viewModel.selectedResolution) patchDraft({ resolution: viewModel.selectedResolution });
+    const template = document.createElement("template"); template.innerHTML = renderPage();
+    for (const selector of ["#resolution", "#steps", "#spectrum-mode", "#video-lora-to-add"]) {
+      const current = root.querySelector<HTMLSelectElement>(selector), next = template.content.querySelector<HTMLSelectElement>(selector);
+      if (!current || !next) continue;
+      if (current.innerHTML !== next.innerHTML) current.innerHTML = next.innerHTML;
+      current.disabled = next.disabled; current.value = next.value;
+      if (next.hasAttribute("title")) current.title = next.title;
+      else current.removeAttribute("title");
+    }
+    const currentPanel = root.querySelector<HTMLElement>("[data-custom-resolution-panel]");
+    const nextPanel = template.content.querySelector<HTMLElement>("[data-custom-resolution-panel]");
+    if (currentPanel && nextPanel) { currentPanel.dataset.range = nextPanel.dataset.range; currentPanel.toggleAttribute("data-continuous", nextPanel.hasAttribute("data-continuous")); }
+    const segment = root.querySelector(".create-resolution-segment");
+    const values = (scope: ParentNode) => [...scope.querySelectorAll<HTMLElement>("[data-video-resolution]")].map(button => button.dataset.videoResolution).join();
+    if (segment && values(root) !== values(template.content)) {
+      segment.querySelectorAll("[data-video-resolution]").forEach(button => button.remove());
+      for (const button of template.content.querySelectorAll("[data-video-resolution]")) segment.insertBefore(button, segment.querySelector("[data-custom-resolution]"));
+    }
+    const list = root.querySelector<HTMLElement>(".create-lora-list"), nextList = template.content.querySelector<HTMLElement>(".create-lora-list");
+    const ids = (scope: ParentNode) => [...scope.querySelectorAll<HTMLElement>("[data-video-lora-id]")].map(row => row.dataset.videoLoraId).join();
+    if (list && nextList) { if (ids(list) !== ids(nextList)) list.innerHTML = nextList.innerHTML; list.hidden = nextList.hidden; }
+    for (const selector of [".create-lora-heading > span", ".create-workflow-row code", "[data-output-dimensions]", "[data-steps-help] .field-info-tip", ".settings-spectrum .field-info-tip"]) {
+      const current = root.querySelector(selector), next = template.content.querySelector(selector);
+      if (current && next) { if (current.textContent !== next.textContent) current.textContent = next.textContent; if (next.hasAttribute("title")) current.setAttribute("title", next.getAttribute("title")!); }
+    }
+    for (const selector of ["[data-steps-help] .field-info", ".settings-spectrum .field-info"]) {
+      const current = root.querySelector(selector), next = template.content.querySelector(selector);
+      if (current && next) current.setAttribute("aria-label", next.getAttribute("aria-label") ?? "");
+    }
+    root.querySelector(".create-lora-issues")?.remove();
+    const issues = template.content.querySelector(".create-lora-issues"); if (issues) root.querySelector(".create-lora-card")?.append(issues);
+    renderIcons(root); root.dispatchEvent(new Event("create-controls-updated"));
+    syncVideoEnqueueUi();
   }
 
   function syncVideoEnqueueUi(): void {
@@ -899,12 +974,17 @@ export function createCreateWorkspaceCoordinator(
     }
     const status = document.querySelector<HTMLElement>("[data-continuum-source-status]");
     if (status) {
-      status.dataset.tone = "info";
-      const label = status.querySelector("strong");
-      const detail = status.querySelector("span");
-      if (label) label.textContent = viewModel.continuumDependencyRoute;
+      status.dataset.tone = viewModel.continuumFileStatus.tone;
+      const glyph = viewModel.continuumFileStatus.tone === "success" ? "circle-check" : viewModel.continuumFileStatus.tone === "error" ? "circle-alert" : "info";
+      const statusIcon = status.querySelector<HTMLElement>("[data-continuum-status-icon]");
+      if (statusIcon && statusIcon.dataset.statusIcon !== glyph) { statusIcon.dataset.statusIcon = glyph; statusIcon.innerHTML = icon(glyph); renderIcons(statusIcon); }
+      const label = status.querySelector("[data-continuum-status-label]");
+      const detail = status.querySelector("[data-continuum-progress]");
+      if (label) label.textContent = viewModel.continuumFileStatus.label;
       if (detail) detail.textContent = viewModel.continuumDependencyProgress;
     }
+    const routeLabel = document.querySelector("[data-continuum-route]");
+    if (routeLabel) routeLabel.textContent = viewModel.continuumDependencyRoute;
     const dependencyStatusLabel = (statusValue: typeof viewModel.continuumDependencyFiles[number]["status"]): string => {
       if (statusValue === "available") return uiText("create.continuumArtifact.dependencyAvailable");
       if (statusValue === "checking") return uiText("create.continuumArtifact.dependencyChecking");
@@ -933,21 +1013,33 @@ export function createCreateWorkspaceCoordinator(
     }
     const motionStatus = document.querySelector<HTMLElement>("[data-motion-context-status]");
     if (motionStatus) {
+      motionStatus.hidden = !viewModel.motionContextLatentReady || viewModel.motionContextStatusTone === "success";
       motionStatus.dataset.tone = viewModel.motionContextStatusTone;
       const label = motionStatus.querySelector("strong");
       const detail = motionStatus.querySelector("span");
       if (label) label.textContent = viewModel.motionContextStatusLabel;
       if (detail) detail.textContent = viewModel.motionContextStatusDetail;
     }
-    const reason = viewModel.enqueueBlockReason;
+    const preview = document.querySelector<HTMLSelectElement>("#generation-mode")?.value === "preview";
+    const reason = preview ? uiText("create.editor.preview") : viewModel.enqueueBlockReason;
+    const summary = document.querySelector<HTMLElement>("[data-submit-summary]");
+    if (summary) {
+      summary.hidden = Boolean(reason);
+      summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · ${viewModel.draft.duration.toFixed(1)}s · ${viewModel.draft.fps} FPS`;
+    }
     button.dataset.enqueueBlockReason = reason;
     button.disabled = Boolean(reason) || enqueueBusy;
     button.title = reason || button.dataset.enqueueReadyTitle || uiText("runtime.enqueue");
     const tokenEstimate = document.querySelector<HTMLElement>("[data-h3-token-estimate]");
-    if (tokenEstimate) tokenEstimate.textContent = viewModel.h3TokenEstimate == null ? "" : `${Math.trunc(viewModel.h3TokenEstimate)} tokens`;
+    if (tokenEstimate) {
+      tokenEstimate.hidden = preview;
+      tokenEstimate.textContent = viewModel.h3TokenEstimate == null ? "" : `${Math.trunc(viewModel.h3TokenEstimate)} tokens`;
+    }
     const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
     if (feedback) {
       feedback.hidden = !reason;
+      feedback.classList.toggle("pending", Boolean(viewModel.enqueuePending));
+      feedback.classList.toggle("error", !viewModel.enqueuePending);
       const message = feedback.querySelector<HTMLElement>("span");
       if (message) message.textContent = reason;
     }
@@ -956,10 +1048,13 @@ export function createCreateWorkspaceCoordinator(
   function syncImageEditEnqueueUi(): void {
     const state = getState();
     const draft = state.imageDraft;
+    const summary = deps.context.root.querySelector("[data-image-submit-summary]");
+    if (summary) summary.textContent = imageOutputSummary(draft, uiText, modelCatalog.localized(draft.modelId, state.settings.uiLocale)?.name);
     const tokenEstimate = document.querySelector<HTMLElement>("[data-image-token-estimate]");
     if (tokenEstimate) tokenEstimate.textContent = `${estimatePromptTextTokens(draft.promptVersions[draft.activePromptVersion]?.text ?? "")} tokens`;
     const imageProfile = deps.getEnvironmentScan()?.modelProfiles.find((profile) => profile.id === draft.modelId);
-    const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
+    const pending = Boolean(deps.isEnvironmentScanning?.() && !deps.getEnvironmentScan());
+    const reason = pending ? uiText(uiKeys.create.finish.scanning) : imageEditEnqueueBlockReason(draft, imageProfile, uiText);
     const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
     if (button) {
       button.disabled = Boolean(reason) || enqueueBusy;
@@ -969,12 +1064,17 @@ export function createCreateWorkspaceCoordinator(
     const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
     if (feedback) {
       feedback.hidden = !reason;
+      feedback.classList.toggle("pending", pending);
+      feedback.classList.toggle("error", !pending);
       const message = feedback.querySelector<HTMLElement>("span");
       if (message) message.textContent = reason;
     }
   }
 
   function bind(): void {
+    syncDraftSaveStatus();
+    const retry = deps.context.root.querySelector<HTMLButtonElement>("[data-retry-draft-save]");
+    if (retry) retry.onclick = () => deps.getCreationMode() === "image-edit" ? scheduleImageDraftSave() : scheduleDraftSave();
     refreshExtensionSource();
     deps.addPageCleanup(mountCreateAssembly(deps.context, {
       clipboard: {
@@ -993,6 +1093,7 @@ export function createCreateWorkspaceCoordinator(
       patchDraftForMode,
       patchImageDraft,
       syncEnqueueUi: syncVideoEnqueueUi,
+      refreshVideoControls,
       enableSpectrumByDefaultIfAvailable,
       selectDraftVideo: (filename) => selectDraftVideo(filename),
       formatTrimTime,
@@ -1004,7 +1105,7 @@ export function createCreateWorkspaceCoordinator(
         imageReferenceRoleLabel: (role) => imagePromptPackForTarget(getState().settings.uiLocale, getState().imageDraft.modelId).referenceRoleLabels[role],
         imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
         resizePromptInput,
-        updateImagePromptWordCounter,
+        updateImagePromptWordCounter: text => updateImagePromptWordCounter(text, h3PromptPackFor(getState().settings.uiLocale).ui),
         syncEnqueueUi: syncImageEditEnqueueUi,
         getPromptEnhanceMode: () => activeCreationModeUiState().promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
         setPromptEnhanceMode: (mode) => {
@@ -1025,7 +1126,7 @@ export function createCreateWorkspaceCoordinator(
           deps.setEnqueueBusy(value);
         },
         setEnqueueBusyUi,
-        requestClearDraftConfirmation: () => deps.requestClearDraftConfirmation("image-edit")
+        requestClearDraftConfirmation: () => clearDraftWithUndo("image-edit")
       },
       createPrompt: {
         h3ReferenceRoleLabels: h3PromptPackFor(getState().settings.uiLocale).referenceRoleLabels,
@@ -1055,7 +1156,7 @@ export function createCreateWorkspaceCoordinator(
         deps.setEnqueueBusy(value);
       },
       setEnqueueBusyUi,
-      requestClearDraftConfirmation: () => deps.requestClearDraftConfirmation(deps.getCreationMode())
+      requestClearDraftConfirmation: () => clearDraftWithUndo(deps.getCreationMode())
     }));
 
     if (deps.getCreationMode() === "image-edit") {
@@ -1109,6 +1210,27 @@ export function createCreateWorkspaceCoordinator(
   function clearDraft(mode: CreationMode): void {
     if (mode === "image-edit") patchImageDraft(createClearedImageDraft(getState().imageDraft));
     else patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+  }
+
+  function clearDraftWithUndo(mode: CreationMode): void {
+    const state = getState();
+    const before = structuredClone(mode === "image-edit" ? state.imageDraft :
+      creationDraftForMode(state, mode === "video-extension" ? "video" : "image") ?? state.draft);
+    const signature = (value: Draft | ImageEditDraft) => JSON.stringify({ ...value, promptVersions: value.promptVersions.map(version => version.text), ...("extensionPromptVersions" in value ? { extensionPromptVersions: value.extensionPromptVersions?.map(version => version.text) } : {}) });
+    const cleared = mode === "image-edit" ? createClearedImageDraft(before as ImageEditDraft) : createClearedDraft(before as Draft);
+    if (signature(before) === signature(cleared)) return;
+    clearDraft(mode);
+    const after = mode === "image-edit" ? state.imageDraft : creationDraftForMode(state, mode === "video-extension" ? "video" : "image") ?? state.draft;
+    deps.context.requestRender();
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    deps.context.notify(uiText("create.editor.cleared"), {
+      key: `clear-draft:${mode}:${++clearUndoSequence}`, kind: "info", durationMs: 6000, renderPage: false,
+      actions: [{ id: "undo-clear-draft", label: uiText("create.editor.undo"), run: () => {
+        if (mode === "image-edit") patchImageDraft(structuredClone(before) as ImageEditDraft);
+        else patchDraftForMode(mode, () => structuredClone(before) as Draft);
+        deps.context.requestRender();
+      } }]
+    });
   }
 
   function enableSpectrumByDefaultIfAvailable(mode?: Exclude<CreationMode, "image-edit">): void {

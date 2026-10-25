@@ -1,53 +1,403 @@
 {
-  "phase": "P00-renderer-rebase",
+  "phase": "M9-ui-migration-closeout",
   "title": "Current renderer UX/UI baseline",
-  "sourceCommit": "f4653727004e6d4cc2be1ceb7d8b4d0e749bf560",
-  "sourceVersion": "0.30.2",
+  "sourceCommit": "ae25c113b107f1ea10b4c1f39824305767387784",
+  "sourceVersion": "0.66.6",
   "locale": "zh-CN",
   "sourceKind": "renderer",
-  "sourceState": "working tree after P02 token aliases, P03/L10 shared surface, P03/L11 text/separator, P03/L12 action/focus, P03/L13 status/badge, P03/L14 brand/nav, and P03/L15 panel/elevation migrations, P05 nav semantics, and P08 Image Edit narrow-window rules; L14 removes decorative shell glow while retaining active-nav border and underline feedback, and L15 flattens ordinary panels while retaining overlay elevation",
+  "sourceState": "Uncommitted working tree after M0–M9 UI migration; desktop token/structure/component/page layers, standalone LAN theme, current model capabilities retained. Source commit identifies the checkout, not a clean release.",
   "rendererEntry": "dist/renderer/index.html",
-  "captureOutputRoot": "temp/ux-ui-baseline/renderer",
+  "captureOutputRoot": "temp/ui-m9/baseline",
   "stateFixture": "isolated synthetic state; no user data is read or changed",
   "viewportGroups": {
-    "standard": ["1440x900", "1280x800", "900x800", "760x800"],
-    "breakpoints": ["1121x800", "1120x800", "901x800", "761x800", "900x800", "760x800"]
+    "standard": [
+      "1440x900",
+      "1120x800",
+      "900x800",
+      "820x800"
+    ],
+    "breakpoints": [
+      "1121x800",
+      "901x800",
+      "761x800",
+      "760x800"
+    ]
   },
   "viewports": [
-    { "id": "1440x900", "width": 1440, "height": 900 },
-    { "id": "1280x800", "width": 1280, "height": 800 },
-    { "id": "1121x800", "width": 1121, "height": 800 },
-    { "id": "1120x800", "width": 1120, "height": 800 },
-    { "id": "901x800", "width": 901, "height": 800 },
-    { "id": "900x800", "width": 900, "height": 800 },
-    { "id": "761x800", "width": 761, "height": 800 },
-    { "id": "760x800", "width": 760, "height": 800 }
+    {
+      "id": "1440x900",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "id": "1280x800",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "id": "1121x800",
+      "width": 1121,
+      "height": 800
+    },
+    {
+      "id": "1120x800",
+      "width": 1120,
+      "height": 800
+    },
+    {
+      "id": "901x800",
+      "width": 901,
+      "height": 800
+    },
+    {
+      "id": "900x800",
+      "width": 900,
+      "height": 800
+    },
+    {
+      "id": "761x800",
+      "width": 761,
+      "height": 800
+    },
+    {
+      "id": "760x800",
+      "width": 760,
+      "height": 800
+    },
+    {
+      "id": "820x800",
+      "width": 820,
+      "height": 800
+    },
+    {
+      "id": "547x800",
+      "width": 547,
+      "height": 800
+    }
   ],
   "fixtures": [
-    { "id": "create-image-to-video", "route": "create", "setup": { "kind": "create-mode", "value": "image" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "create-video-extension", "route": "create", "setup": { "kind": "create-mode", "value": "video" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "create-image-edit", "route": "create", "setup": { "kind": "create-mode", "value": "image-edit" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "queue-mixed", "route": "queue", "setup": { "kind": "queue-state", "value": "mixed" }, "viewportGroups": ["standard", "breakpoints"], "notes": "Synthetic waiting + failed queue; live running state remains a separate runtime smoke." },
-    { "id": "history-video-masonry", "route": "history", "setup": { "kind": "history", "historyKind": "video", "layout": "masonry" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "history-video-album", "route": "history", "setup": { "kind": "history", "historyKind": "video", "layout": "album" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "history-image-masonry", "route": "history", "setup": { "kind": "history", "historyKind": "image", "layout": "masonry" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "history-image-album", "route": "history", "setup": { "kind": "history", "historyKind": "image", "layout": "album" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "video-detail", "route": "history-detail", "setup": { "kind": "history-detail", "historyKind": "video" }, "viewportGroups": ["standard"] },
-    { "id": "image-detail", "route": "image-history-detail", "setup": { "kind": "history-detail", "historyKind": "image" }, "viewportGroups": ["standard"] },
-    { "id": "settings-system", "route": "settings", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard", "breakpoints"], "notes": "Historical fixture id; now captures the ComfyUI environment page." },
-    { "id": "settings-acceleration", "route": "settings", "setup": { "kind": "settings-tab", "value": "acceleration" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-video", "route": "settings", "setup": { "kind": "settings-tab", "value": "video" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-image", "route": "settings", "setup": { "kind": "settings-tab", "value": "image" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-nodes", "route": "settings", "setup": { "kind": "settings-tab", "value": "nodes" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-prompt", "route": "settings", "setup": { "kind": "settings-tab", "value": "prompt" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-upscale", "route": "settings", "setup": { "kind": "settings-tab", "value": "upscale" }, "viewportGroups": ["standard", "breakpoints"] },
-    { "id": "settings-logs", "route": "settings", "setup": { "kind": "settings-tab", "value": "logs" }, "viewportGroups": ["standard", "breakpoints"] }
+    {
+      "id": "create-image-to-video",
+      "route": "create",
+      "setup": {
+        "kind": "create-mode",
+        "value": "image"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "create-video-extension",
+      "route": "create",
+      "setup": {
+        "kind": "create-mode",
+        "value": "video"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "create-image-edit",
+      "route": "create",
+      "setup": {
+        "kind": "create-mode",
+        "value": "image-edit"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "queue-mixed",
+      "route": "queue",
+      "setup": {
+        "kind": "queue-state",
+        "value": "mixed"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ],
+      "notes": "Synthetic waiting + failed queue; live running state remains a separate runtime smoke."
+    },
+    {
+      "id": "history-video-masonry",
+      "route": "history",
+      "setup": {
+        "kind": "history",
+        "historyKind": "video",
+        "layout": "masonry"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "history-video-album",
+      "route": "history",
+      "setup": {
+        "kind": "history",
+        "historyKind": "video",
+        "layout": "album"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "history-image-masonry",
+      "route": "history",
+      "setup": {
+        "kind": "history",
+        "historyKind": "image",
+        "layout": "masonry"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "history-image-album",
+      "route": "history",
+      "setup": {
+        "kind": "history",
+        "historyKind": "image",
+        "layout": "album"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "video-detail",
+      "route": "history-detail",
+      "setup": {
+        "kind": "history-detail",
+        "historyKind": "video"
+      },
+      "viewportGroups": [
+        "standard"
+      ]
+    },
+    {
+      "id": "image-detail",
+      "route": "image-history-detail",
+      "setup": {
+        "kind": "history-detail",
+        "historyKind": "image"
+      },
+      "viewportGroups": [
+        "standard"
+      ]
+    },
+    {
+      "id": "settings-system",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "comfyui"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ],
+      "notes": "Historical fixture id; now captures the ComfyUI environment page."
+    },
+    {
+      "id": "settings-acceleration",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "acceleration"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-video",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "video"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-image",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "image"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-nodes",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "nodes"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-prompt",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "prompt"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-upscale",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "upscale"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-logs",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "logs"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-application",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "system"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-lora",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "lora"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    },
+    {
+      "id": "settings-appearance",
+      "route": "settings",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "appearance"
+      },
+      "viewportGroups": [
+        "standard",
+        "breakpoints"
+      ]
+    }
   ],
   "settingsStateFixtures": [
-    { "id": "settings-state-offline", "route": "settings", "settingsState": "offline", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Offline scan complete: ComfyUI stopped; file/service evidence remains neutral." },
-    { "id": "settings-state-scanning", "route": "settings", "settingsState": "scanning", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Environment scan remains pending to expose the loading state." },
-    { "id": "settings-state-installing", "route": "settings", "settingsState": "installing", "setup": { "kind": "settings-tab", "value": "nodes" }, "viewportGroups": ["standard"], "notes": "A missing custom node is held in the real install queue's installing phase." },
-    { "id": "settings-state-partial", "route": "settings", "settingsState": "partial", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Partial scan: multiple installations, ready/missing model evidence, optional warning and repairable issue." },
-    { "id": "settings-state-error", "route": "settings", "settingsState": "error", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Confirmed environment/compatibility error with repair and update recovery; synthetic evidence, not a ComfyUI runtime claim." }
+    {
+      "id": "settings-state-offline",
+      "route": "settings",
+      "settingsState": "offline",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "comfyui"
+      },
+      "viewportGroups": [
+        "standard"
+      ],
+      "notes": "Offline scan complete: ComfyUI stopped; file/service evidence remains neutral."
+    },
+    {
+      "id": "settings-state-scanning",
+      "route": "settings",
+      "settingsState": "scanning",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "comfyui"
+      },
+      "viewportGroups": [
+        "standard"
+      ],
+      "notes": "Environment scan remains pending to expose the loading state."
+    },
+    {
+      "id": "settings-state-installing",
+      "route": "settings",
+      "settingsState": "installing",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "nodes"
+      },
+      "viewportGroups": [
+        "standard"
+      ],
+      "notes": "A missing custom node is held in the real install queue's installing phase."
+    },
+    {
+      "id": "settings-state-partial",
+      "route": "settings",
+      "settingsState": "partial",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "comfyui"
+      },
+      "viewportGroups": [
+        "standard"
+      ],
+      "notes": "Partial scan: multiple installations, ready/missing model evidence, optional warning and repairable issue."
+    },
+    {
+      "id": "settings-state-error",
+      "route": "settings",
+      "settingsState": "error",
+      "setup": {
+        "kind": "settings-tab",
+        "value": "comfyui"
+      },
+      "viewportGroups": [
+        "standard"
+      ],
+      "notes": "Confirmed environment/compatibility error with repair and update recovery; synthetic evidence, not a ComfyUI runtime claim."
+    }
   ]
 }

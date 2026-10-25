@@ -99,6 +99,19 @@ function syncBatchTagsPanel(
       : `<span class="history-tags-empty">${context.t("history.batch.noCommonTags")}</span>`;
     renderIcons(list);
   }
+  const partial = panel.querySelector<HTMLElement>("[data-history-partial-tags]");
+  if (partial) {
+    const counts = new Map<string, { tag: string; count: number }>();
+    for (const item of items) for (const tag of new Set(item.tags ?? [])) {
+      const key = tag.normalize("NFKC").trim().toLowerCase();
+      const entry = counts.get(key) ?? { tag, count: 0 }; entry.count++; counts.set(key, entry);
+    }
+    const chip = batchTagChipOptions(context);
+    partial.innerHTML = [...counts.values()].filter(entry => entry.count < items.length).map(entry =>
+      `<span class="history-partial-tag"><span>${chip.escapeHtml(entry.tag)} <small>${entry.count}/${items.length}</small></span><button type="button" data-history-partial-add="${chip.escapeHtml(entry.tag)}" aria-label="${chip.escapeHtml(entry.tag)} · ${context.t("history.tags.add")}">+</button><button type="button" data-history-tag-remove="${chip.escapeHtml(entry.tag)}" aria-label="${chip.escapeHtml(entry.tag)} · ${context.t("history.tags.remove")}">×</button></span>`
+    ).join("");
+    partial.parentElement!.hidden = !partial.childElementCount;
+  }
   if (!items.length) panel.hidden = true;
 }
 
@@ -110,12 +123,13 @@ function syncSelectionDom(
   const visibleIds = new Set(visible.map((item) => item.id));
   const selectedIds = options.getSelectedIds().filter((id) => visibleIds.has(id));
   const allSelected = visible.length > 0 && selectedIds.length === visible.length;
+  const selected = new Set(options.getSelectedIds());
   context.root.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
     const id = card.dataset.history;
-    const selected = Boolean(id && options.getSelectedIds().includes(id));
-    card.classList.toggle("history-batch-selected", selected);
+    const isSelected = Boolean(id && selected.has(id));
+    card.classList.toggle("history-batch-selected", isSelected);
     const checkbox = card.querySelector<HTMLInputElement>("[data-history-batch-select]");
-    if (checkbox) checkbox.checked = selected;
+    if (checkbox) checkbox.checked = isSelected;
   });
   const count = context.root.querySelector<HTMLElement>("[data-history-batch-count]");
   if (count) count.textContent = context.t("history.batch.selected", {
@@ -143,6 +157,7 @@ export function mountHistoryBatchController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  root.addEventListener("history-window-change", () => { if (options.isBatchMode()) syncSelectionDom(context, options); }, { signal });
   let selectionAnchorId: string | null = null;
   let pendingCheckboxClick: { assetId: string; shiftKey: boolean } | null = null;
 
@@ -150,7 +165,6 @@ export function mountHistoryBatchController(
     if (enabled === options.isBatchMode()) return;
     options.setBatchMode(enabled);
     options.setTagsPanelOpen(false);
-    options.setFilterPanelOpen(false);
     selectionAnchorId = null;
     pendingCheckboxClick = null;
     if (!enabled) options.clearSelection();
@@ -190,6 +204,7 @@ export function mountHistoryBatchController(
       const tagsRoot = root.querySelector<HTMLElement>("[data-history-batch-tags-root]");
       if (tagsRoot) {
         tagsRoot.hidden = false;
+        if (tagsRoot instanceof HTMLDialogElement && typeof tagsRoot.showModal === "function" && !tagsRoot.open) tagsRoot.showModal();
         syncBatchTagsPanel(context, options);
         openHistoryTagEditor(tagsRoot);
       } else {
@@ -327,12 +342,32 @@ export function mountHistoryBatchController(
   const closeTagsPanel = (): void => {
     options.setTagsPanelOpen(false);
     const panel = root.querySelector<HTMLElement>("[data-history-batch-tags-root]");
+    if (panel instanceof HTMLDialogElement && panel.open) panel.close();
     if (panel) panel.hidden = true;
+    root.querySelector<HTMLElement>('[data-history-batch-action="tags"]')?.focus({ preventScroll: true });
   };
-  tagsRoot?.querySelector<HTMLElement>("[data-history-batch-tags-close]")?.addEventListener("click", (event) => {
+  tagsRoot?.addEventListener("cancel", (event) => { event.preventDefault(); closeTagsPanel(); }, { signal });
+  tagsRoot?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { stop(event); closeTagsPanel(); }
+  }, { capture: true, signal });
+  tagsRoot?.addEventListener("click", (event) => { if (event.target === tagsRoot) closeTagsPanel(); }, { signal });
+  const applyOperation = async (operation: HistoryBatchTagOperation): Promise<void> => {
+    const items = selectedItems(context, options);
+    const updates: HistoryMetadataBatchUpdate[] = items.map(item => ({ assetId: item.id, patch: { tags: applyHistoryBatchTagOperation(item.tags, operation) } }))
+      .filter((update, index) => JSON.stringify(items[index]?.tags ?? []) !== JSON.stringify(update.patch.tags));
+    if (updates.length) options.setState(await context.application.updateHistoryMetadataBatch(updates));
+  };
+  tagsRoot?.addEventListener("click", (event) => {
+    const button = (event.target as Element)?.closest<HTMLElement>("[data-history-partial-add]");
+    const tag = button?.dataset.historyPartialAdd;
+    if (!tag) return;
+    stop(event);
+    void applyOperation({ kind: "add", tag }).then(() => syncSelectionDom(context, options)).catch(error => context.notify(String(error), { renderPage: false, kind: "error" }));
+  }, { signal });
+  tagsRoot?.querySelectorAll<HTMLElement>("[data-history-batch-tags-close]").forEach(button => button.addEventListener("click", (event) => {
     stop(event);
     closeTagsPanel();
-  }, { signal });
+  }, { signal }));
   const tagEditorCleanup = tagsRoot
     ? mountHistoryTagEditor(context, tagsRoot, {
         getTags: () => historyBatchCommonTags(selectedItems(context, options)),
@@ -357,19 +392,7 @@ export function mountHistoryBatchController(
         duplicateText: context.t("history.tags.duplicate"),
         updateFailedText: context.t("history.tags.updateFailed"),
         isDuplicateTag: () => false,
-        applyOperation: async (operation: HistoryBatchTagOperation) => {
-          const items = selectedItems(context, options);
-          const updates: HistoryMetadataBatchUpdate[] = items.map((item) => ({
-            assetId: item.id,
-            patch: {
-              tags: applyHistoryBatchTagOperation(item.tags, operation)
-            }
-          })).filter((update, index) => {
-            const original = items[index]?.tags ?? [];
-            return JSON.stringify(original) !== JSON.stringify(update.patch.tags);
-          });
-          if (updates.length) options.setState(await context.application.updateHistoryMetadataBatch(updates));
-        },
+        applyOperation,
         onCommitted: () => {
           syncBatchTagsPanel(context, options);
           syncSelectionDom(context, options);
@@ -378,6 +401,9 @@ export function mountHistoryBatchController(
     : () => undefined;
 
   syncSelectionDom(context, options);
+  if (tagsRoot instanceof HTMLDialogElement && !tagsRoot.hidden && !tagsRoot.open && typeof tagsRoot.showModal === "function") {
+    tagsRoot.showModal(); openHistoryTagEditor(tagsRoot);
+  }
   return () => {
     events.abort();
     tagEditorCleanup();

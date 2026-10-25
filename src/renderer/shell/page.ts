@@ -23,18 +23,15 @@ export function renderShell(options: ShellPageOptions): string {
   const historyShell = options.page === "history" ||
     options.page === "history-detail" ||
     options.page === "image-history-detail";
-  const flashActions = (options.flashActions ?? []).map((action) =>
-    `<button class="${action.tone ?? "secondary"} flash-action" type="button" data-notification-action="${options.escapeHtml(action.id)}">${options.escapeHtml(action.label)}</button>`
-  ).join("");
   return `
     <div class="app-shell ${historyShell ? "history-shell" : ""}">
       <header class="topbar">
-        <button class="brand" data-page="create" aria-label="${options.escapeHtml(options.t(uiKeys.app.backToCreate))}">
+        <button class="brand" id="app-brand" data-page="create" aria-label="${options.escapeHtml(options.t(uiKeys.app.backToCreate))}">
           <span class="brand-mark">${options.icon("play")}</span><span>${options.escapeHtml(options.t(uiKeys.app.brand))}</span><span class="brand-version">${options.appVersion ? `v${options.escapeHtml(options.appVersion)}` : ""}</span>
         </button>
         <div class="topbar-tools">
           ${renderResourceMonitor(options.performanceMetrics, options.escapeHtml(options.t(uiKeys.queue.performance)))}
-          <nav aria-label="${options.escapeHtml(options.t(uiKeys.nav.ariaLabel))}">
+          <nav class="app-nav" aria-label="${options.escapeHtml(options.t(uiKeys.nav.ariaLabel))}">
           ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail" | "image-history-detail">>)
             .map((item) => {
               const labels = {
@@ -49,14 +46,14 @@ export function renderShell(options: ShellPageOptions): string {
               const active = options.page === item ||
                 (item === "history" && historyShell);
               const current = active ? ` aria-current="page"` : "";
-              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}"${current}>${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
+              const icons = { create: "wand-sparkles", queue: "list-video", history: "images", settings: "settings-2" };
+              return `<button id="app-nav-${item}" class="nav-button ${active ? "active" : ""}" data-page="${item}"${current}>${options.icon(icons[item])}${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
             })
             .join("")}
           </nav>
         </div>
       </header>
-      <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}"><span class="flash-message" data-flash-message>${options.escapeHtml(options.flashMessage)}</span><span class="flash-actions" data-flash-actions>${flashActions}</span><button class="icon-button flash-dismiss" id="dismiss-app-flash" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}" title="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}">${options.icon("x")}</button></div>
-      <main>${options.content}</main>
+      <main data-route="${options.page}">${options.content}</main>
     </div>
-    <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>`;
+    <button class="history-back-top" id="history-back-top" type="button" tabindex="-1" aria-hidden="true" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>`;
 }

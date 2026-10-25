@@ -85,6 +85,23 @@ afterEach(() => {
 });
 
 describe("Continuum draft safety routing", () => {
+  it("keeps a trim drag captured across overlapping thumbs and seeks the actual retained boundary", () => {
+    const h = createVideoHarness("minimax_h3_ref2va", 10);
+    const track = h.root.querySelector<HTMLElement>("#trim-editor")!;
+    Object.assign(track, { setPointerCapture: vi.fn(), hasPointerCapture: () => true, releasePointerCapture: vi.fn() });
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({ left: 0, width: 112 } as DOMRect);
+    const pointer = (type: string, x: number) => {
+      const event = new MouseEvent(type, { clientX: x, button: 0, bubbles: true, cancelable: true });
+      Object.defineProperty(event, "pointerId", { value: 1 }); return event;
+    };
+    h.root.querySelector("#trim-end")!.dispatchEvent(pointer("pointerdown", 106));
+    track.dispatchEvent(pointer("pointermove", 66));
+    expect(h.state.draft.trimEndSeconds).toBe(6); expect(h.getCurrentTime()).toBe(6);
+    track.dispatchEvent(pointer("pointerup", 66));
+    track.dispatchEvent(pointer("pointermove", 36));
+    expect(h.state.draft.trimEndSeconds).toBe(6);
+    expect(track.releasePointerCapture).toHaveBeenCalledWith(1); h.cleanup();
+  });
   it.each([
     ["minimax_h3_fl2va", 736],
     ["minimax_h3_ref2va", 770],

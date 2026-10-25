@@ -33,6 +33,11 @@ body { min-height: 100vh; }
 main { display: grid; gap: 16px; padding-top: 16px; animation: page-in var(--dur-2) var(--ease-out) both; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } }
 [data-motion="reduced"] main { animation-name: fade; }
+/* Masonry: two-column card lists are two independent columns; a card that grows only pushes its own column. */
+.masonry { display: flex !important; align-items: flex-start; gap: 12px; columns: auto !important; }
+.masonry-col { flex: 1 1 0; min-width: 0; display: grid; gap: 12px; align-content: start; }
+.masonry-col > * { margin: 0 !important; }
+@container app (max-width: 900px) { .masonry { flex-direction: column; align-items: stretch; } }
 [data-booting] .app-shell { visibility: hidden; }
 [data-booting] main { animation: none; }
 /* Same-origin (http) navigation cross-fades natively; the top bar stays put. */

@@ -9,6 +9,7 @@ export interface NotificationAction {
 }
 
 export interface AppNotification {
+  sourceKey?: string;
   id: number;
   message: string;
   kind: NotificationKind;
@@ -19,11 +20,11 @@ export interface AppNotification {
 }
 
 export const notificationDuration: Record<NotificationKind, number> = {
-  info: 6_000,
-  warning: 7_500,
+  info: 3_000,
+  warning: 6_000,
   error: Number.POSITIVE_INFINITY,
-  "task-complete": 8_000,
-  "queue-complete": 9_000
+  "task-complete": 3_000,
+  "queue-complete": 3_000
 };
 
 export const notificationPersistent: Record<NotificationKind, boolean> = {

@@ -28,3 +28,4 @@ export {
 } from "./qwen-image-2-1/index.js";
 export type { H3PromptPack, ImagePromptPack, LocalizedPromptSnippet, PromptPresetLocale, PromptSnippetDefinition, PromptSnippetLocale } from "./types.js";
 export type { H3LoraPromptProfile } from "./h3/index.js";
+export { mossImagePromptPackFor } from "./moss-image.js";

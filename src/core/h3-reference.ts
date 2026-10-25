@@ -63,6 +63,14 @@ export function h3ReferenceSlotCounts(slots: H3ReferenceSlot[]): {
   return { imageCount, videoCount, total: imageCount + videoCount };
 }
 
+/** Picture 1 supplies the source aspect ratio for reference-image generation. */
+export function h3ReferenceImageDimensions(slots: readonly H3ReferenceSlot[]): { width: number; height: number } | undefined {
+  const picture = slots.find(slot => slot.mediaType === "image" && slot.mediaPath.trim());
+  const width = normalizedDimension(picture?.width);
+  const height = normalizedDimension(picture?.height);
+  return width && height ? { width, height } : undefined;
+}
+
 /**
  * Motion Context reserves the first reference slot for the source video.
  * Older drafts may have started with an image slot, so prepend a source slot

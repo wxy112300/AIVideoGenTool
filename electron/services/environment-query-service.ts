@@ -93,6 +93,7 @@ export class EnvironmentQueryService {
     const options: EnvironmentScanOptions = forcePythonProbe
       ? { forcePythonProbe: true }
       : {};
+    if (requestedOptions?.refreshReleaseVersions === true) options.refreshReleaseVersions = true;
     const startedAt = Date.now();
     this.logger.info(
       "environment",

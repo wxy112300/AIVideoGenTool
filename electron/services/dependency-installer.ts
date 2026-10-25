@@ -721,6 +721,7 @@ async function installCustomNodePackageUnlocked(
             git,
             [
               "clone",
+              "--progress",
               "--depth",
               "1",
               ...(definition.installRevision ? ["--no-checkout"] : []),
@@ -843,7 +844,7 @@ async function installCustomNodePackageUnlocked(
       ) {
         report(`更新 ${definition.repositoryUrl}`);
         try {
-          const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
+          const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--progress", "--ff-only"], {
             timeoutMs: 300_000,
             env: commandEnvironment,
             onLog: report
@@ -882,6 +883,7 @@ async function installCustomNodePackageUnlocked(
         git,
         [
           "clone",
+          "--progress",
           "--depth",
           "1",
           ...(definition.installRevision ? ["--no-checkout"] : []),

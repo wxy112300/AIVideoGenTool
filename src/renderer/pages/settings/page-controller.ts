@@ -10,6 +10,9 @@ import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 
+// UI-only disclosure state survives a scan/remount without entering persisted settings.
+const modelDisclosures = new WeakMap<HTMLElement, Map<string, boolean>>();
+
 export interface SettingsPageControllerOptions {
   context: RendererContext;
   formSettings(): Settings;
@@ -39,6 +42,16 @@ export function mountSettingsPageController(
   const events = new AbortController();
   const signal = events.signal;
   const root = options.context.root;
+  root.querySelector("[data-pick-environment-comfy]")?.addEventListener("click", () => {
+    root.querySelector<HTMLButtonElement>("#pick-comfy-install-directory")?.click();
+  }, { signal });
+  const disclosures = modelDisclosures.get(root) ?? new Map<string, boolean>();
+  modelDisclosures.set(root, disclosures);
+  root.querySelectorAll<HTMLDetailsElement>("[data-settings-disclosure-key]").forEach(details => {
+    const key = details.dataset.settingsDisclosureKey!;
+    details.open = disclosures.get(key) ?? false;
+    details.addEventListener("toggle", () => { disclosures.set(key, details.open); }, { signal });
+  });
 
   root.querySelector("#release-prompt-model")?.addEventListener("click", () => {
     void options.togglePromptModel();
@@ -134,6 +147,20 @@ export function mountSettingsPageController(
     const opened = await options.context.hostCapabilities.openDirectory(directory);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
   }, { signal });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-settings-open-path]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const input = root.querySelector<HTMLInputElement>(`#${button.dataset.settingsOpenPath}`);
+      const directory = input?.value.trim();
+      if (!directory) return;
+      try {
+        const opened = await options.context.hostCapabilities.openDirectory(directory);
+        if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
+      } catch (error) {
+        options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      }
+    }, { signal });
+  });
 
   root.querySelectorAll<HTMLButtonElement>("[data-open-environment-download]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -312,5 +339,10 @@ export function mountSettingsPageController(
     }, { signal });
   });
 
-  return () => events.abort();
+  return () => {
+    root.querySelectorAll<HTMLDetailsElement>("[data-settings-disclosure-key]").forEach(details => {
+      disclosures.set(details.dataset.settingsDisclosureKey!, details.open);
+    });
+    events.abort();
+  };
 }

@@ -24,12 +24,13 @@ function printHelp() {
 Options:
   --help       Show this help.
   --dry-run    Print the capture matrix without starting Electron.
-  --output     Override the output directory (default: temp/ux-ui-baseline/renderer).
+  --output     Override the output directory (default: ${manifest.captureOutputRoot}).
   --fixture     Capture only the named fixture.
-  --viewport    Capture only the named viewport.
+  --viewport    Capture only the named viewport, or a custom WIDTHxHEIGHT (320–7680).
   --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
   --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
+  --style-metrics Save layout and computed-style metrics beside each PNG.
   --smoke       Run the isolated Create, Queue, History, or History detail interaction smoke check.
   --history-count Capture History fixtures with 1 or 8 mixed-ratio records (default: 1).
   --queue-state Override a queue-state fixture: mixed, running, paused, failed, recoverable, empty, or multiple-pending.
@@ -38,12 +39,13 @@ Options:
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false, historyCount: 1, queueState: null, settingsStates: false };
+  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, styleMetrics: false, smoke: false, historyCount: 1, queueState: null, settingsStates: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") options.help = true;
     else if (argument === "--dry-run") options.dryRun = true;
     else if (argument === "--diagnose") options.diagnose = true;
+    else if (argument === "--style-metrics") options.styleMetrics = true;
     else if (argument === "--smoke") options.smoke = true;
     else if (argument === "--output") {
       options.output = argv[++index];
@@ -91,6 +93,24 @@ function captureEntries(options = {}) {
 }
 
 function selectedEntries(options) {
+  if (options.viewport && !manifest.viewports.some((viewport) => viewport.id === options.viewport)) {
+    const dimensions = /^(\d+)x(\d+)$/.exec(options.viewport);
+    const width = Number(dimensions?.[1]);
+    const height = Number(dimensions?.[2]);
+    if (!dimensions || width < 320 || height < 320 || width > 7680 || height > 7680) {
+      throw new Error("--viewport must name a known viewport or WIDTHxHEIGHT within 320–7680");
+    }
+    const viewport = { id: options.viewport, width, height };
+    const fixtures = options.settingsStates ? (manifest.settingsStateFixtures ?? []) : manifest.fixtures;
+    return fixtures.filter((fixture) => !options.fixture || fixture.id === options.fixture)
+      .map((fixture) => ({ fixture, viewport }));
+  }
+  if (options.viewport) {
+    const viewport = manifest.viewports.find((entry) => entry.id === options.viewport);
+    const fixtures = options.settingsStates ? (manifest.settingsStateFixtures ?? []) : manifest.fixtures;
+    return fixtures.filter((fixture) => !options.fixture || fixture.id === options.fixture)
+      .map((fixture) => ({ fixture, viewport }));
+  }
   return captureEntries(options).filter(({ fixture, viewport }) =>
     (!options.fixture || fixture.id === options.fixture) &&
     (!options.viewport || viewport.id === options.viewport)
@@ -131,7 +151,12 @@ async function waitForWindow() {
 async function waitForDom(window, expression, label) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      if (await executeJavaScript(window, expression)) return;
+      if (await executeJavaScript(window, expression)) {
+        // History commits markup before controller binding; its detail player
+        // mounts over three frames. DOM presence alone is not action readiness.
+        await executeJavaScript(window, "new Promise(resolve => { let frames = 4; const tick = () => --frames ? requestAnimationFrame(tick) : resolve(); requestAnimationFrame(tick); })");
+        if (await executeJavaScript(window, expression)) return;
+      }
     } catch (error) {
       if (attempt === 0) console.error(`[renderer-capture] ${label} first DOM check: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1136,7 +1161,7 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
     active.dispatchEvent(event);
     return event.defaultPrevented;
   })()`);
-  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-logs[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-logs'", `${fixture.id} settings end`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-appearance[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-appearance'", `${fixture.id} settings end`);
   await executeJavaScript(window, `(() => {
     const active = document.querySelector('[role="tab"][aria-selected="true"]');
     if (!active) return false;
@@ -1156,7 +1181,7 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
   })`);
   const compact = viewport.width <= 900;
   const checks = {
-    semantics: initial.tabCount === 10 && initial.tabStops === 1 && initial.selectedCount === 1 && initial.panelLabel === initial.activeId,
+    semantics: initial.tabCount === 11 && initial.tabStops === 1 && initial.selectedCount === 1 && initial.panelLabel === initial.activeId,
     compactSingleRow: !compact || (initial.sidebarDisplay === 'flex' && initial.sidebarWrap !== 'wrap' && initial.rows.length === 1),
     actionContext: !initial.scanInEnvironment && initial.scanInHeading,
     arrow: arrow.found && arrow.defaultPrevented,
@@ -1457,6 +1482,10 @@ const setSettingsFixture = (kind) => {
 };
 const emptyLibraryScan = { libraryDirectory: "", totalReferences: 0, managedReferences: 0, archiveCandidates: 0, missingReferences: [], orphanFiles: [], archiveBytes: 0, orphanBytes: 0 };
 const api = {
+  // These pages lazily reload while their snapshot is null; a generic null
+  // fallback would cause an endless render loop when navigating in a smoke.
+  getAppCache: async () => ({ currentSessionBytes: 0, temporaryBytes: 0, temporaryDirectoryCount: 0, totalBytes: 0, scannedAt: new Date().toISOString() }),
+  readAppLogs: async () => ({ directory: "", retentionDays: 7, records: [], text: "" }),
   getState: async () => clone(currentState), getComfyRuntimeState: async () => clone(runtimeState), getPromptRuntimeState: async () => clone(promptRuntimeState), getAppVersion: async () => ${JSON.stringify(packageJson.version)}, setSettingsDirty: async () => {}, respondWindowClose: async () => {},
   getFixtureQueueState: () => currentQueueFixture, setQueueFixture, emitFixtureRunningSmoke, setSettingsFixture,
   saveDraft: async (draft) => { currentState.draft = clone(draft); emitState(); return clone(currentState); }, saveImageDraft: async (draft) => { currentState.imageDraft = clone(draft); emitState(); return clone(currentState); }, saveSettings: async (settings) => { currentState.settings = clone(settings); emitState(); return clone(currentState); }, setQueueH3LivePreview: async (enabled) => { currentState.settings.h3LivePreview = enabled; emitState(); return clone(currentState); },
@@ -1476,12 +1505,13 @@ async function captureAll(options, preloadPath) {
   const entries = selectedEntries(options);
   const root = outputRoot(options);
   await fsp.mkdir(root, { recursive: true });
-  for (const viewport of manifest.viewports) {
+  for (const viewport of [...new Map(entries.map((entry) => [entry.viewport.id, entry.viewport])).values()]) {
     const viewportEntries = entries.filter((entry) => entry.viewport.id === viewport.id);
     if (!viewportEntries.length) continue;
     const window = new BrowserWindow({
       width: viewport.width,
       height: viewport.height,
+      useContentSize: true,
       show: options.smoke,
       webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: false }
     });
@@ -1518,10 +1548,25 @@ async function captureAll(options, preloadPath) {
           if (nodeAction) console.log(`[renderer-node-action] ${fixture.id} ${viewport.id} ${JSON.stringify(nodeAction)}`);
         }
         if (options.smoke) await runInteractionSmoke(window, fixture, viewport);
+        // Static baselines capture the settled state; motion is audited separately.
+        await executeJavaScript(window, `Promise.race([
+          Promise.allSettled(document.getAnimations().filter(animation => animation.playState === "running" && animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished)),
+          new Promise(resolve => setTimeout(resolve, 700))
+        ])`);
         const screenshot = await window.webContents.capturePage();
         const target = outputPath(root, fixture, viewport);
         await fsp.mkdir(path.dirname(target), { recursive: true });
         await fsp.writeFile(target, screenshot.toPNG());
+        if (options.styleMetrics) {
+          const metrics = await window.webContents.executeJavaScript(`(() => {
+            const properties = ["display","position","overflow","overflow-x","overflow-y","color","background-color","background-image","font-family","font-size","font-weight","line-height","letter-spacing","border-top-width","border-top-style","border-top-color","border-radius","box-shadow","padding","margin","gap","grid-template-columns","grid-template-rows","flex-direction","align-items","justify-content","opacity","visibility","z-index","min-width","max-width","min-height","max-height","transform","text-align","white-space"];
+            return Array.from(document.querySelectorAll("body, .app-shell *, #modal-root *, .notification-stack *"), element => {
+              const style = getComputedStyle(element), box = element.getBoundingClientRect();
+              return { tag: element.tagName, id: element.id, class: typeof element.className === "string" ? element.className : "", box: [box.x,box.y,box.width,box.height].map(n => Math.round(n*100)/100), styles: Object.fromEntries(properties.map(p => [p,style.getPropertyValue(p)])) };
+            });
+          })()`);
+          await fsp.writeFile(target.replace(/\.png$/, ".styles.json"), JSON.stringify(metrics));
+        }
         console.log(`${fixture.id} ${viewport.id} -> ${path.relative(workspace, target)}`);
       }
     } finally {

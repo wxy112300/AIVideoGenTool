@@ -10,6 +10,7 @@ import type {
   StrataInstallProgress
 } from "../../../types";
 import type { SettingsTab } from "../../contracts";
+import { settingsChangedKeys } from "../../../core/settings-changes";
 import { promptModelStatus } from "../../shared/status";
 import type { SettingsPageViewModel } from "./page";
 import type { CustomNodeInstallPhase } from "./node-install-queue";
@@ -73,6 +74,8 @@ export function buildSettingsPageViewModel(
   return {
     settings,
     settingsDirty: options.settingsHaveUnsavedChanges(),
+    settingsChangeCount: settingsChangedKeys(options.state.settings, options.settingsDraft).length,
+    settingsChangeKeys: settingsChangedKeys(options.state.settings, options.settingsDraft),
     settingsSaving: options.settingsSaving,
     environmentScan: options.environmentScan,
     comfyConnected: options.comfyConnected,

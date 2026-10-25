@@ -10,6 +10,7 @@ import type {
 } from "../../../types";
 import type { RendererCleanup, RendererContext, SettingsTab } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { paintRangeFill } from "../../shared/ui/runtime";
 
 export interface SettingsFieldsControllerOptions {
   formSettings(): Settings;
@@ -28,6 +29,31 @@ export function mountSettingsFieldsController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const reserve = root.querySelector<HTMLSelectElement>("#vram-reserve");
+  const reasoning = root.querySelector<HTMLSelectElement>("#strata-reasoning-effort");
+  root.querySelectorAll<HTMLButtonElement>("[data-settings-reasoning]").forEach(button => {
+    button.addEventListener("click", () => {
+      if (!reasoning) return;
+      reasoning.value = button.dataset.settingsReasoning!;
+      root.querySelectorAll<HTMLButtonElement>("[data-settings-reasoning]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+      reasoning.dispatchEvent(new Event("change", { bubbles: true }));
+    }, { signal });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-settings-reserve]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!reserve) return;
+      reserve.value = button.dataset.settingsReserve!;
+      root.querySelectorAll<HTMLButtonElement>("[data-settings-reserve]").forEach((item) => {
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+      reserve.dispatchEvent(new Event("change", { bubbles: true }));
+    }, { signal });
+  });
+  document.addEventListener("keydown", event => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s" || context.getRoute().page !== "settings") return;
+    event.preventDefault();
+    root.querySelector<HTMLButtonElement>("#save-settings:not(:disabled)")?.click();
+  }, { signal });
 
   root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
     ".settings-content input, .settings-content textarea, .settings-content select"
@@ -41,6 +67,27 @@ export function mountSettingsFieldsController(
   });
 
   const imageCountRange = root.querySelector<HTMLInputElement>("#image-output-count");
+  const creativityRange = root.querySelector<HTMLInputElement>("#prompt-creativity");
+  const creativityNumber = root.querySelector<HTMLInputElement>("#prompt-creativity-number");
+  if (creativityRange && creativityNumber) {
+    for (const input of [creativityRange, creativityNumber]) {
+      const sync = () => {
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) return;
+        const other = input === creativityRange ? creativityNumber : creativityRange;
+        other.value = input.value;
+        paintRangeFill(creativityRange);
+        options.setSettingsDraft(options.formSettings());
+        options.syncSettingsDirtyUi();
+      };
+      input.addEventListener("input", sync, { signal });
+      input.addEventListener("change", () => {
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
+          input.value = input === creativityNumber ? creativityRange.value : creativityNumber.value;
+        }
+        sync();
+      }, { signal });
+    }
+  }
   const imageCountNumber = root.querySelector<HTMLInputElement>("#image-output-count-number");
   const syncImageCount = (value: string) => {
     const count = Math.min(imageOutputCountMax, Math.max(1, Number(value) || 1));
@@ -140,7 +187,6 @@ export function mountSettingsFieldsController(
     select?.addEventListener("change", () => {
       const description = select.selectedOptions.item(0)?.dataset.description;
       if (!description) return;
-      select.title = description;
       if (descriptionElement) descriptionElement.textContent = description;
     }, { signal });
   };

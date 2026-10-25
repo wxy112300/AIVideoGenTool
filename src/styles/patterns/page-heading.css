@@ -1,0 +1,17 @@
+/* One title baseline for all four workspaces; secondary rows wrap naturally. */
+.app-shell > main:is([data-route="create"], [data-route="queue"], [data-route="history"], [data-route="settings"]) { padding-top: 0; }
+.app-shell :is(.create-page-heading, .queue-page-heading, .history-heading, .settings-heading) {
+  min-height: 56px;
+  margin: 0 calc(-1 * var(--shell-gutter,32px)) 16px;
+  padding: 10px var(--shell-gutter,32px);
+  align-items: center;
+}
+.app-shell :is(.create-page-heading, .queue-page-heading, .history-heading, .settings-heading) h1 {
+  margin: 0;
+  color: var(--text-1);
+  font: var(--fw-semibold) var(--fs-20)/28px var(--font-sans);
+  letter-spacing: normal;
+}
+.app-shell .queue-page-heading { flex-direction: row; }
+.queue-page-heading .queue-page-heading-main { display: flex; align-items: center; flex-wrap: wrap; min-height: 36px; gap: 4px 10px; }
+.app-shell .history-heading { grid-template-rows: minmax(36px,auto); }

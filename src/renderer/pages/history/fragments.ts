@@ -22,6 +22,8 @@ export interface HistoryFragmentRenderOptions {
 export function renderHistoryHeading(
   viewModel: {
     activeCount: number;
+    totalCount?: number;
+    filtered?: boolean;
     historyKind: HistoryKind;
     historyLayout: "masonry" | "album";
     description: string;
@@ -29,17 +31,17 @@ export function renderHistoryHeading(
   },
   options: Pick<HistoryFragmentRenderOptions, "t" | "icon" | "escapeHtml">
 ): string {
-  const { activeCount, description, historyKind, historyLayout } = viewModel;
+  const { activeCount, historyKind, historyLayout } = viewModel;
   return `
     <section class="history-heading">
-      <div class="history-heading-title"><div class="heading-line"><h1>${options.t(uiKeys.history.title)}</h1><span class="badge">${options.t(historyKind === "video" ? uiKeys.history.videoCount : uiKeys.history.imageProjectCount, { count: activeCount })}</span></div><p>${options.escapeHtml(description)}</p></div>
-      <div class="history-kind-tabs" role="tablist" aria-label="${options.t(uiKeys.history.kindTabsLabel)}">
+      <div class="history-heading-title"><div class="heading-line"><h1>${options.t(uiKeys.history.title)}</h1><span class="history-heading-count">${viewModel.filtered ? `${activeCount} / ` : ""}${options.t(historyKind === "video" ? uiKeys.history.videoCount : uiKeys.history.imageProjectCount, { count: viewModel.totalCount ?? activeCount })}</span></div></div>
+      <div class="history-kind-tabs" data-ui-segmented="history-kind" role="tablist" aria-label="${options.t(uiKeys.history.kindTabsLabel)}">
         <button id="history-tab-video" class="${historyKind === "video" ? "active" : ""}" role="tab" aria-selected="${historyKind === "video"}" aria-controls="history-panel-video" tabindex="${historyKind === "video" ? "0" : "-1"}" data-history-kind="video">${options.icon("film")}${options.t(uiKeys.history.video)}</button>
         <button id="history-tab-image" class="${historyKind === "image" ? "active" : ""}" role="tab" aria-selected="${historyKind === "image"}" aria-controls="history-panel-image" tabindex="${historyKind === "image" ? "0" : "-1"}" data-history-kind="image">${options.icon("image")}${options.t(uiKeys.history.image)}</button>
       </div>
       <div class="history-view-tools">
         ${viewModel.historyFilter ?? ""}
-        <div class="button-row" role="group" aria-label="${options.t(uiKeys.history.layoutMasonry)} / ${options.t(uiKeys.history.layoutAlbum)}"><button type="button" class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "masonry"}" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button type="button" class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "album"}" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
+        <div class="button-row history-layout-tabs" data-ui-segmented="history-layout" role="group" aria-label="${options.t(uiKeys.history.layoutMasonry)} / ${options.t(uiKeys.history.layoutAlbum)}"><button type="button" class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "masonry"}" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button type="button" class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "album"}" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
       </div>
     </section>`;
 }
@@ -52,12 +54,13 @@ export function renderHistoryTimeline(
   if (!groups.length) return "";
   const historyLabel = options.t(uiKeys.history.title);
   const markers = groups.map((group) => `
-        <button type="button" class="history-timeline-marker" data-history-timeline-marker data-history-timeline-target="${options.escapeHtml(group.targetId)}" data-history-timeline-date-key="${options.escapeHtml(group.dateKey)}" data-history-timeline-label="${options.escapeHtml(group.label)}" style="--history-timeline-position:0" aria-label="${options.escapeHtml(group.label)}" title="${options.escapeHtml(group.label)}">${options.escapeHtml(group.label)}</button>`).join("");
+        <button type="button" class="history-timeline-marker" data-history-timeline-marker data-history-timeline-target="${options.escapeHtml(group.targetId)}" data-history-timeline-date-key="${options.escapeHtml(group.dateKey)}" data-history-timeline-count="${group.ids.length}" data-history-timeline-label="${options.escapeHtml(group.label)}" style="--history-timeline-position:0" aria-label="${options.escapeHtml(group.label)}" title="${options.escapeHtml(group.label)}">${options.escapeHtml(group.label)}</button>`).join("");
   return `
     <aside class="history-timeline" data-history-timeline data-history-timeline-locale="${options.escapeHtml(locale ?? "")}" aria-label="${options.escapeHtml(historyLabel)}">
       <div class="history-timeline-track" data-history-timeline-track>
         <span class="history-timeline-line" aria-hidden="true"><span class="history-timeline-line-fill" data-history-timeline-line-fill></span></span>
         <span class="history-timeline-current" data-history-timeline-current aria-live="polite"></span>
+        <span class="history-timeline-hover" data-history-timeline-hover aria-hidden="true"></span>
         <button type="button" class="history-timeline-thumb" data-history-timeline-thumb role="slider" tabindex="0" aria-orientation="vertical" aria-label="${options.escapeHtml(historyLabel)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0%"></button>
         ${markers}
       </div>
@@ -165,6 +168,17 @@ export function renderVideoLoraSnapshotMarkup(
   }).join("")}</div>`;
 }
 
+function referenceThumbnail(path: string, label: string, width: number | undefined, height: number | undefined,
+  options: Pick<HistoryFragmentRenderOptions, "escapeHtml" | "t">, video = false): string {
+  const e = options.escapeHtml;
+  const ratio = width && height && width > 0 && height > 0 ? `${width}/${height}` : "16/9";
+  const url = `studio-media://draft/reference-video?source=${encodeURIComponent(path)}`;
+  return `<figure><button type="button" class="history-reference-media" data-history-reference-open="${e(path)}" data-history-reference-kind="${video ? "video" : "image"}" aria-label="${e(`${options.t(uiKeys.history.page.viewLarge)} · ${label}`)}" style="aspect-ratio:${ratio}">
+    ${video ? `<video data-history-reference-video="${e(url)}" muted playsinline preload="none" aria-label="${e(label)}"></video>` : `<img data-history-reference-preview="${e(path)}" alt="${e(label)}" loading="lazy">`}
+    <span class="history-reference-fallback" hidden>${options.t(uiKeys.history.page.currentFileUnavailable)}</span>
+  </button><figcaption title="${e(path)}">${e(label)}${width && height ? ` · ${width} × ${height}` : ""}</figcaption></figure>`;
+}
+
 export function renderVideoInputSnapshotMarkup(
   asset: HistoryAsset,
   options: Pick<HistoryFragmentRenderOptions, "escapeHtml" | "h3ReferenceRoleLabel" | "t">
@@ -199,17 +213,31 @@ export function renderVideoInputSnapshotMarkup(
     if (asset.endImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.lastFrame)}</dt><dd><code>${options.escapeHtml(asset.endImagePath)}</code><br><span>${resolutionLabel(asset.endImageWidth, asset.endImageHeight)}</span></dd>`);
     (asset.h3ReferenceSlots ?? []).forEach((slot, index) => items.push(renderReferenceSlot(slot, index)));
   }
-  return `<dl>${items.join("")}</dl>`;
+  const previews: string[] = [];
+  if (asset.sourceVideoPath) previews.push(referenceThumbnail(asset.sourceVideoPath, options.t(uiKeys.history.detail.sourceVideo), asset.sourceWidth, asset.sourceHeight, options, true));
+  if (asset.startImagePath) previews.push(referenceThumbnail(asset.startImagePath, options.t(uiKeys.history.detail.firstFrame), asset.sourceWidth, asset.sourceHeight, options));
+  if (asset.endImagePath) previews.push(referenceThumbnail(asset.endImagePath, options.t(uiKeys.history.detail.lastFrame), asset.endImageWidth, asset.endImageHeight, options));
+  (asset.h3ReferenceSlots ?? []).forEach((slot, index) => {
+    if (!slot.mediaPath || slot.mediaPath === asset.sourceVideoPath) return;
+    previews.push(referenceThumbnail(slot.mediaPath, `${options.t(uiKeys.history.detail.slot, { index: index + 1 })} · ${options.h3ReferenceRoleLabel(slot.role)}`, slot.width, slot.height, options, slot.mediaType === "video"));
+  });
+  const metadata = `<details class="history-record-disclosure"><summary>${options.t(uiKeys.history.page.submittedSnapshot)}</summary><dl>${items.join("")}</dl></details>`;
+  if (!previews.length) return `<p class="history-empty-note">${options.t(uiKeys.history.detail.noInputSnapshot)}</p>${asset.inputMode === "video" ? metadata : ""}`;
+  return `<div class="history-reference-grid">${previews.join("")}</div>${metadata}`;
 }
 
 export function renderImageReferenceSnapshotMarkup(
   version: ImageAssetVersion,
-  options: Pick<HistoryFragmentRenderOptions, "escapeHtml" | "imageReferenceRoleLabel" | "t">
+  options: Pick<HistoryFragmentRenderOptions, "escapeHtml" | "imageReferenceRoleLabel" | "t" | "icon">
 ): string {
   if (!version.references.length) return `<p class="history-empty-note">${options.t(uiKeys.history.detail.noInputSnapshot)}</p>`;
-  return `<div class="history-snapshot-list">${version.references.map((picture) => `
-    <div class="history-snapshot-item image-reference-snapshot">
-      <span class="history-snapshot-index">${picture.pictureNumber}</span>
-      <div><strong>Picture ${picture.pictureNumber} · ${options.escapeHtml(options.imageReferenceRoleLabel(picture.role ?? "auto"))}</strong><p>${picture.width || "?"} × ${picture.height || "?"}</p><code>${options.escapeHtml(picture.absolutePath || options.t(uiKeys.history.detail.legacyNotSaved))}</code>${picture.crop ? `<div class="history-markup-snapshot"><strong>裁剪输入 · ${picture.crop.width} × ${picture.crop.height}</strong><p>x ${picture.crop.x} · y ${picture.crop.y} · 原图 ${picture.crop.sourceWidth} × ${picture.crop.sourceHeight}</p></div>` : ""}${picture.mask?.regionCount ? `<div class="history-markup-snapshot"><strong>移除 Mask · ${picture.mask.regionCount} 个区域</strong><p>${options.escapeHtml(picture.mask.maskPath)}</p></div>` : picture.markup?.objectCount ? `<div class="history-markup-snapshot"><strong>${options.t(uiKeys.history.detail.canvasMarkup, { count: picture.markup.objectCount })}</strong><p>${options.escapeHtml(picture.markup.summary || options.t(uiKeys.history.detail.legacyNotSaved))}</p></div>` : `<span class="history-unmarked">${options.t(uiKeys.history.detail.noMarkup)}</span>`}</div>
-    </div>`).join("")}</div>`;
+  return `<div class="history-reference-grid">${version.references.map((picture) => {
+    const previewPath = picture.markup?.renderedPath || picture.crop?.croppedPath || picture.absolutePath;
+    const metadata = [picture.absolutePath, picture.crop ? `${picture.crop.x}, ${picture.crop.y} · ${picture.crop.width} × ${picture.crop.height}` : "", picture.markup?.summary, picture.mask?.maskPath].filter(Boolean).join(" · ");
+    return `<figure><div class="history-reference-media image-media-loading" data-image-media data-image-media-surface="reference" data-image-media-source="${options.escapeHtml(picture.absolutePath)}" style="aspect-ratio:${picture.crop?.width || picture.width || 1}/${picture.crop?.height || picture.height || 1}">
+      <img data-history-reference-preview="${options.escapeHtml(previewPath)}" data-image-media-image alt="Picture ${picture.pictureNumber}" loading="lazy">
+      ${renderImageMediaStatus(options)}
+      <div class="history-reference-badges">${picture.crop ? `<span>${options.t(uiKeys.create.markup.crop)}</span>` : ""}${picture.markup?.objectCount ? `<span>${options.t(uiKeys.history.detail.canvasMarkup, { count: picture.markup.objectCount })}</span>` : ""}${picture.mask?.regionCount ? `<span>Mask · ${picture.mask.regionCount}</span>` : ""}</div>
+    <button type="button" class="history-reference-open" data-history-reference-open="${options.escapeHtml(previewPath)}" data-history-reference-original="${options.escapeHtml(picture.absolutePath)}" data-history-reference-kind="image" aria-label="${options.t(uiKeys.history.page.viewLarge)} · Picture ${picture.pictureNumber}"></button></div><figcaption title="${options.escapeHtml(metadata)}">Picture ${picture.pictureNumber} · ${picture.width || "?"} × ${picture.height || "?"} · ${options.escapeHtml(options.imageReferenceRoleLabel(picture.role ?? "auto"))}</figcaption></figure>`;
+  }).join("")}</div>`;
 }

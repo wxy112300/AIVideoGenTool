@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { normalizeAppearance } from "../src/core/appearance.js";
 import { normalizeStrataSettings } from "../src/core/strata-preparation.js";
 import { isRetiredImageModelId } from "../src/core/image-workflow.js";
 import type {
@@ -793,6 +794,7 @@ export class JsonStore implements StateRepository {
       const savedUiLocale = (saved.settings as { uiLocale?: unknown } | undefined)?.uiLocale;
       const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
       this.state.settings.uiLocale = normalizedUiLocale;
+      this.state.settings.appearance = normalizeAppearance(savedSettings.appearance);
       let needsPersist = saved.queueRunning === true ||
         savedSettings.strataInstallDirectory !== this.state.settings.strataInstallDirectory ||
         savedSettings.strataModelDirectory !== this.state.settings.strataModelDirectory ||

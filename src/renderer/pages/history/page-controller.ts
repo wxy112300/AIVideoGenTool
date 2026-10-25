@@ -29,6 +29,14 @@ import {
   type HistoryBatchControllerOptions
 } from "./batch-controller";
 import { mountHistoryTimelineController } from "./timeline-controller";
+import { reducedMotion } from "../../shared/ui/motion";
+import { mountTwoColumnMasonry } from "../../shared/ui/masonry";
+import { mountHistoryReferencePreviews } from "./reference-previews";
+import { mountVideoLoading } from "../../shared/video-loading";
+import { mountVirtualHistory } from "./virtual-gallery";
+import { uiKeys } from "../../../core/i18n-keys";
+
+const presentedHistoryKinds = new WeakMap<HTMLElement, string>();
 
 export interface HistoryPlaybackSnapshot {
   assetId: string;
@@ -233,16 +241,36 @@ function contextMenuPoint(trigger: HTMLElement): { clientX: number; clientY: num
 export function mountHistoryPageController(
   options: HistoryPageControllerOptions
 ): RendererCleanup {
-  const cleanups: RendererCleanup[] = [
-    ...(options.batch ? [mountHistoryBatchController(options.context, options.batch)] : []),
-    mountHistoryNavigationController(options.context, options.navigation),
-    mountHistoryFilterController(options.context, options.filter),
-    mountHistoryMediaController(options.context, options.media),
-    mountImageHistoryMediaController(options.context, {
+  const virtual = Boolean(options.context.root.querySelector("[data-history-virtual]"));
+  const virtualCleanup = mountVirtualHistory(options.context.root, card => {
+    const context = { ...options.context, root: card };
+    const media = mountHistoryMediaController(context, { ...options.media, stopHistoryCoverWarmup: () => undefined });
+    const image = mountImageHistoryMediaController(context, {
       loadImageHistoryThumbnail: options.media.loadImageHistoryThumbnail,
       subscribeImageHistoryThumbnail: options.media.subscribeImageHistoryThumbnail,
       invalidateImageHistoryThumbnail: options.media.invalidateImageHistoryThumbnail
+    });
+    return () => {
+      media(); image();
+      card.querySelectorAll<HTMLElement>("[data-history-media]").forEach(surface => {
+        options.media.cancelHistoryCoverWarmup(surface); options.media.releaseHistoryCardVideo(surface);
+      });
+    };
+  });
+  const cleanups: RendererCleanup[] = [
+    virtualCleanup,
+    mountVideoLoading(options.context.root, options.context.t(uiKeys.create.videoMedia.loadingVideo), {
+      label: options.context.t(uiKeys.history.page.videoUnavailable), retry: options.context.t(uiKeys.create.editor.retry)
     }),
+    ...(options.batch ? [mountHistoryBatchController(options.context, options.batch)] : []),
+    mountHistoryNavigationController(options.context, options.navigation),
+    mountHistoryFilterController(options.context, options.filter),
+    ...(!virtual ? [mountHistoryMediaController(options.context, options.media), mountImageHistoryMediaController(options.context, {
+      loadImageHistoryThumbnail: options.media.loadImageHistoryThumbnail,
+      subscribeImageHistoryThumbnail: options.media.subscribeImageHistoryThumbnail,
+      invalidateImageHistoryThumbnail: options.media.invalidateImageHistoryThumbnail
+    })] : []),
+    mountHistoryReferencePreviews(options.context),
     mountHistoryActionsController(options.context, options.actions),
     mountHistoryTagsController(options.context, options.tags),
     mountImageHistoryLightbox(options.context, options.imageLightbox)
@@ -250,6 +278,18 @@ export function mountHistoryPageController(
   const events = new AbortController();
   const signal = events.signal;
   const root = options.context.root;
+  root.addEventListener("history-window-change", options.bindHistoryTitleMarquees, { signal });
+
+  const videoDetail = root.querySelector<HTMLElement>(".history-media-detail");
+  const recordFlow = videoDetail?.querySelector<HTMLElement>("[data-history-record-flow]");
+  if (recordFlow) cleanups.push(mountTwoColumnMasonry(recordFlow, "balanced"));
+  const detailBar = videoDetail?.querySelector<HTMLElement>(".history-detail-back");
+  if (videoDetail && detailBar) {
+    const measure = () => videoDetail.style.setProperty("--history-detail-bar-height", `${detailBar.getBoundingClientRect().height}px`);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(detailBar); measure();
+    cleanups.push(() => observer?.disconnect());
+  }
 
   if (options.historyLayout === "album") options.bindHistoryAlbum();
   else options.bindHistoryMasonry();
@@ -257,6 +297,14 @@ export function mountHistoryPageController(
   options.bindHistoryTitleMarquees();
   options.restoreHistoryLayoutAnchor();
   cleanups.push(mountHistoryTimelineController(options.context));
+  const gallery = root.querySelector<HTMLElement>(".history-gallery");
+  const kind = options.context.getRoute().historyKind;
+  if (gallery && presentedHistoryKinds.get(root) !== kind) {
+    presentedHistoryKinds.set(root, kind);
+    const visible = [...gallery.querySelectorAll<HTMLElement>("[data-history]")].filter(card => card.getBoundingClientRect().top < window.innerHeight);
+    const animations = visible.map((card, index) => card.animate?.(reducedMotion() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(8px) scale(.985)" }, { opacity: 1, transform: "none" }], { duration: reducedMotion() ? 120 : 260, delay: reducedMotion() ? 0 : Math.min(index, 12) * 28, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }));
+    cleanups.push(() => animations.forEach(animation => animation?.cancel()));
+  }
 
   const detailVideo = document.querySelector<HTMLVideoElement>(".history-player video");
   const detailPlayer = detailVideo?.closest<HTMLElement>(".history-player");

@@ -588,7 +588,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("ignores non-version GitHub release names and keeps the catalog fallback", async () => {
+  it("does not present catalog versions as an observed latest release after invalid or failed checks", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-release-name-scan-"));
     temporaryDirectories.push(comfyRoot);
     await fs.mkdir(path.join(comfyRoot, "custom_nodes", "ComfyUI-Frame-Interpolation"), {
@@ -604,7 +604,8 @@ describe("dependency scanner", () => {
       { "frame-interpolation": "models" }
     );
 
-    expect(statuses.find((status) => status.id === "frame-interpolation")?.latestVersion).toBe("1.0.11");
+    expect(statuses.find((status) => status.id === "frame-interpolation")?.latestVersion).toBe("");
+    expect(statuses.find((status) => status.id === "kjnodes")?.latestVersion).toBe("");
   });
 
   it("keeps an installed node with an unreadable version in a warning state without a false update", async () => {
@@ -665,8 +666,8 @@ describe("dependency scanner", () => {
       directory: primaryDirectory,
       version: "0.3.0",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.6.2",
-      latestVersion: "0.6.2",
+      recommendedVersion: "0.7.1",
+      latestVersion: "",
       updateAvailable: true,
       compatibilityState: "error",
       duplicateDirectories: [duplicateDirectory]
@@ -674,7 +675,7 @@ describe("dependency scanner", () => {
     expect(motionContext?.compatibilityNotice).toContain("2 个 H3 Motion Context 副本");
   });
 
-  it("surfaces the v0.6.2 recommendation without rejecting the v0.3.1 fallback", async () => {
+  it("surfaces the v0.7.1 recommendation without rejecting the v0.3.1 fallback", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-motion-context-recommendation-"));
     temporaryDirectories.push(comfyRoot);
     const directory = path.join(comfyRoot, "custom_nodes", "ComfyUI-H3-Motion-Context");
@@ -695,11 +696,11 @@ describe("dependency scanner", () => {
       installed: true,
       version: "0.3.1",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.6.2",
-      latestVersion: "0.6.2",
+      recommendedVersion: "0.7.1",
+      latestVersion: "",
       updateAvailable: true,
       compatibilityState: "warning",
-      updateNotice: expect.stringContaining("当前 v0.3.1，推荐 v0.6.2")
+      updateNotice: expect.stringContaining("当前 v0.3.1，推荐 v0.7.1")
     });
   });
 

@@ -3,6 +3,30 @@ import { readSettingsFromForm } from "../src/renderer/pages/settings/form";
 import { createDefaultSettings } from "../src/core/defaults";
 
 describe("settings form", () => {
+  it("retains a saved model while its select has no scanned options, but accepts an explicit empty option", () => {
+    const previousDocument = globalThis.document;
+    const base = createDefaultSettings();
+    const model = { value: "", tagName: "SELECT", selectedIndex: -1 };
+    globalThis.document = { querySelector: vi.fn((id: string) => id === "#default-upscale-model" ? model : null) } as unknown as Document;
+    try {
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").defaultUpscaleModel).toBe(base.defaultUpscaleModel);
+      model.selectedIndex = 0;
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").defaultUpscaleModel).toBe("");
+    } finally { globalThis.document = previousDocument; }
+  });
+  it("keeps detected ComfyUI paths automatic on browse, but reads an actual edit", () => {
+    const previousDocument = globalThis.document;
+    const base = { ...createDefaultSettings(), comfyInstallDirectory: "", comfyPythonPath: "" };
+    const install = { value: "C:\\Detected\\ComfyUI", dataset: { autoDirectory: "C:\\Detected\\ComfyUI" } };
+    const python = { value: "C:\\Detected\\python.exe", dataset: { autoDirectory: "C:\\Detected\\python.exe" } };
+    globalThis.document = { querySelector: vi.fn((id: string) => id === "#comfy-install-directory" ? install : id === "#comfy-python-path" ? python : null) } as unknown as Document;
+    try {
+      const unchanged = readSettingsFromForm(base, "official-storyboard", "faithful");
+      expect(unchanged).toEqual(base);
+      python.value = "D:\\Other\\python.exe";
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").comfyPythonPath).toBe(python.value);
+    } finally { globalThis.document = previousDocument; }
+  });
   it("reads reasoning effort and retains it when the Strata control is hidden", () => {
     const previous = globalThis.document, base = { ...createDefaultSettings(), strataReasoningEffort: "high" as const };
     globalThis.document = { querySelector: vi.fn(() => null) } as unknown as Document;

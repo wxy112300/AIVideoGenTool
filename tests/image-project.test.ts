@@ -268,6 +268,19 @@ describe("image project pure functions", () => {
     })).toBeUndefined();
   });
 
+  it("preserves an explicitly selected version when multiple outputs share content", () => {
+    const existing = project();
+    existing.versions.forEach(version => { version.contentHash = "5".repeat(64); });
+    const input = { absolutePath: "C:/copied.png", contentHash: "5".repeat(64) };
+    const selected = existing.versions[1]!;
+    expect(findImageProjectLineage([existing], input, { projectId: existing.id, parentVersionId: selected.id }))
+      .toEqual({ projectId: existing.id, parentVersionId: selected.id });
+    expect(findImageProjectLineage([existing], { absolutePath: "C:/unrelated.png", contentHash: "6".repeat(64) }, { projectId: existing.id, parentVersionId: selected.id }))
+      .toBeUndefined();
+    expect(findImageProjectLineage([existing], input, { projectId: existing.id, parentVersionId: "deleted" }))
+      .toEqual({ projectId: existing.id, parentVersionId: existing.versions[0]!.id });
+  });
+
   it("restores a failed image queue task into the image draft", () => {
     const currentDraft = normalizeImageEditDraft({});
     const task: ImageGenerationQueueTask = {

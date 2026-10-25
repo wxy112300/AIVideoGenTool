@@ -1,0 +1,72 @@
+/* Shared controls. Page layout and model-specific states remain with their pages. */
+.ui-button {
+  position: relative; isolation: isolate; user-select: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--control-md); padding: 0 var(--sp-3); border: 1px solid var(--line);
+  border-radius: var(--r-md); background: var(--surface-2); color: var(--text-1);
+  font-family: var(--font-sans); font-size: var(--fs-13); font-weight: var(--fw-medium);
+  line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1), color var(--dur-1), transform var(--dur-1), box-shadow var(--dur-2), opacity var(--dur-2);
+}
+.ui-button:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); }
+.ui-button:active:not(:disabled) { transform: scale(.97); }
+.ui-button:disabled { opacity: .4; cursor: not-allowed; }
+.ui-button.primary { background: linear-gradient(180deg, var(--accent-fill), color-mix(in srgb, #000 8%, var(--accent-fill))); color: var(--on-accent); border-color: transparent; box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent), 0 1px 2px rgb(0 0 0 / .4); }
+.ui-button.primary:hover:not(:disabled) { background: linear-gradient(180deg, var(--accent-fill-hover), color-mix(in srgb, #000 8%, var(--accent-fill-hover))); color: var(--on-accent); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 32%, transparent), 0 8px 24px -8px var(--accent-glow); }
+.ui-button.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.ui-button.ghost:hover:not(:disabled) { background: var(--hover-wash); color: var(--text-1); }
+.ui-button.icon-button { width: var(--control-md); min-width: var(--control-md); padding: 0; }
+.ui-button.icon-button:not(.primary):not(.secondary) { background: transparent; border-color: transparent; color: var(--text-2); }
+.ui-button.icon-button:not(.primary):not(.secondary):hover:not(:disabled) { background: var(--hover-wash); color: var(--text-1); }
+.ui-button.icon-button.secondary { background: var(--surface-2); border-color: var(--line); color: var(--text-1); }
+.ui-button.danger, .ui-button.destructive { color: var(--danger); }
+.ui-button.danger:hover:not(:disabled), .ui-button.destructive:hover:not(:disabled) { background: var(--danger-soft); }
+.danger { color: var(--danger); }
+.ui-button.primary.destructive, .ui-button.primary.danger { color: var(--n1); background: var(--danger); }
+.ui-button:focus-visible, .ui-select-trigger:focus-visible, .ui-field:focus-visible, .ui-range:focus-visible {
+  outline: 2px solid var(--focus-ring); outline-offset: 2px;
+}
+.ui-field {
+  min-width: 0; min-height: var(--control-md); padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-1);
+  color: var(--text-1); font-family: var(--font-sans); font-size: var(--fs-13); box-shadow: none;
+  transition: border-color var(--dur-1), background-color var(--dur-1);
+}
+.ui-field:hover:not(:disabled), .ui-select-trigger:hover:not(:disabled) { border-color: var(--line-strong); }
+.ui-field:focus { border-color: var(--n9); background: var(--surface-2); }
+.ui-field:disabled { opacity: .4; cursor: not-allowed; }
+textarea.ui-field { min-height: 112px; padding: var(--sp-2) var(--sp-3); line-height: 1.75; resize: vertical; }
+.ui-select { display: grid; position: relative; min-width: 0; width: 100%; }
+.ui-select > select[hidden] { display: none; }
+.ui-select-trigger {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-width: 0;
+  min-height: var(--control-md); padding: var(--sp-1) var(--sp-2); margin: 0;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-1);
+  color: var(--text-1); font: var(--fw-medium) var(--fs-13)/var(--lh-body) var(--font-sans); text-align: left; cursor: pointer;
+}
+.ui-select-trigger:disabled { opacity: .4; cursor: not-allowed; }
+.ui-select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-caret { color: var(--text-3); flex: none; }
+.ui-select[data-open] .ui-select-trigger { border-color: var(--n9); background: var(--surface-2); }
+.ui-select-list {
+  position: fixed; z-index: var(--z-menu); width: max-content;
+  max-width: min(360px, calc(100vw - 16px)); overflow: auto; padding: var(--sp-1);
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  background: var(--surface-3); color: var(--text-1); box-shadow: var(--shadow-float);
+  font: var(--fs-13)/var(--lh-body) var(--font-sans); overscroll-behavior: contain;
+}
+.ui-select-list.ui-in-dialog { z-index: calc(var(--z-dialog) + 1); }
+.ui-select-option { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; column-gap: 8px; min-height: 30px; padding: 6px 10px 6px 6px; border-radius: var(--r-sm); white-space: nowrap; cursor: pointer; }
+.ui-select-option:hover:not([aria-disabled="true"]), .ui-select-option[data-active] { background: var(--hover-wash); }
+.ui-select-option[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.ui-select-check { display: grid; place-items: center; width: 16px; color: var(--accent); }
+.ui-select-option small { grid-column: 2; color: var(--text-3); font-size: var(--fs-11); white-space: normal; line-height: 1.5; }
+.ui-select-group { padding: var(--sp-1) var(--sp-2); color: var(--text-3); font-size: var(--fs-11); }
+.ui-range { appearance: none; min-width: 0; height: 4px; min-height: 4px; padding: 0; margin: 10px 0; border: 0; border-radius: var(--r-pill); --ui-range-stop: calc(9px + (100% - 18px) * var(--ui-range-ratio, 0)); background: linear-gradient(to right, var(--accent) var(--ui-range-stop), var(--n5) var(--ui-range-stop)); accent-color: var(--accent); }
+.ui-range::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--n12); cursor: pointer; }
+.ui-check { accent-color: var(--accent); width: 16px; height: 16px; }
+.ui-check:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* Existing segmented controls retain their current roles, selection and handlers. */
+.create-mode-switch, .history-kind-tabs, .history-layout-switch { border-color: var(--line); background: var(--surface-1); }
+.create-mode-switch button, .history-kind-tabs button, .history-layout-switch button { color: var(--text-2); transition: color var(--dur-2), background-color var(--dur-2); }
+.create-mode-switch button.active, .history-kind-tabs button[aria-selected="true"], .history-layout-switch button[aria-pressed="true"] { color: var(--text-1); background: var(--surface-3); border-color: var(--line-strong); }

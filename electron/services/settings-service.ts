@@ -11,6 +11,7 @@ import type {
   SettingsSaveMode
 } from "../../src/types.js";
 import { normalizeUiLocale } from "../../src/core/i18n.js";
+import { normalizeAppearance } from "../../src/core/appearance.js";
 import {
   applyH3AccelerationSettingsToWaitingTask,
   normalizeH3GlobalSparseAttentionMode
@@ -119,6 +120,17 @@ export class SettingsService {
     input: Settings,
     mode: SettingsSaveMode = "apply"
   ): Promise<AppState> {
+    // Immediate visual preferences must never apply an unrelated settings draft,
+    // clear the native dirty guard, scan files, or touch queued execution policy.
+    if (mode === "appearance") {
+      if (this.historyMigrationRunning) throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
+      await this.deps.store.update((state) => {
+        state.settings.appearance = normalizeAppearance(input.appearance);
+      });
+      const state = this.deps.store.get();
+      this.deps.sendState(state);
+      return state;
+    }
     if (mode !== "apply" && mode !== "migrate-video-history") {
       throw new Error("未知的设置保存模式。");
     }
@@ -146,7 +158,7 @@ export class SettingsService {
     if (input.strataUncensoredMode !== undefined && !isStrataUncensoredMode(input.strataUncensoredMode)) {
       throw new Error("Strata uncensored 模式无效，请选择关闭、自带或社区向量。");
     }
-    let settings = { ...input, ...normalizeStrataSettings(input) };
+    let settings = { ...input, ...normalizeStrataSettings(input), appearance: normalizeAppearance(input.appearance ?? this.deps.store.get().settings.appearance) };
     settings.lanBrowserEnabled = input.lanBrowserEnabled === true;
     settings.lanBrowserPort = input.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT;
     if (!settings.imageInputLibraryDirectory.trim()) {

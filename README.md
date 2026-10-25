@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.66.6**。本次对齐 ComfyUI 0.42.3 与 comfy-kitchen 0.2.39 推荐线，加入 FastH3 Omni 接入、H3 写实画质提示词与单次输出语言覆盖，并改进 History 关联删除确认。新 UI 设计系统、原型与合成数据基线已整理，renderer 视觉迁移仍待按计划实施。FastH3 Omni 真实成片及画质、速度收益仍待实测，各项验证范围见 [CHANGELOG.md](CHANGELOG.md)。此前的 Strata 思考强度与资源保护、图片编辑、长视频和局域网浏览能力保留。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.67.0**。本次完成创建、队列、历史详情和设置的 UI 重构，统一控件、动效、加载反馈与主题；历史列表加入虚拟化，设置补齐节点版本来源、安装进度与双列独立排版。同时纳入 MOSS 图片模型接入，并修复无 LoRA 任务重启、文件复制和 Continuum 单独删除等问题。原有模型差异、草稿、队列与历史兼容保留；FastH3 Omni 和 MOSS 的真实成片／出图及质量、速度收益仍待实测，各项验证边界见 [CHANGELOG.md](CHANGELOG.md)。本次只更新代码版本，不提供新安装包或 GitHub Release。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 同时保留可脱离 Studio 使用的 [Strata Agent 启动器](Tools/Strata-Agent/README.md)，入口为 `Tools/Strata-Agent/Start.cmd`。独立工具的 localhost GUI/CLI 闭环已实测，其 LAN 尚未开放；H3 长稿稳定性仍未完成验收，蓝屏根因未定，文件页释放候选保持关闭。原默认模型、工作流、队列、作品历史与共享权重保留。
 
@@ -26,7 +26,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 类别 | 当前主要支持 |
 | --- | --- |
 | 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、MiniMax H3 Continuum（Extend，依赖 Native AV）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
-| 图片处理 | Qwen Image 2.1（原生/GGUF、图片 LoRA）、Qwen-Image-Edit-2511、OmniGen2、HiDream-O1-Image、Z-Image / Z-Image-Turbo、FLUX.2 Klein Base 4B；另保留抠图与 LaMa 局部移除 |
+| 图片处理 | Qwen Image 2.1（原生/GGUF、图片 LoRA）、Qwen-Image-Edit-2511、MOSS 官方 SFT / PornMaster V1 INT8 文生图、OmniGen2、HiDream-O1-Image、Z-Image / Z-Image-Turbo、FLUX.2 Klein Base 4B；另保留抠图与 LaMa 局部移除 |
 | 视频增强 | H3 committed JointAV 原生二次采样（720p/768p bilinear；runtime-ready 时 1080p/1440p learned 3D）、SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.2（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Cinema、Better Human Motion、Camera Motion、Equirectangular 360°、VR180 SBS、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF、Strata / Qwen3.8-Flash-Next |

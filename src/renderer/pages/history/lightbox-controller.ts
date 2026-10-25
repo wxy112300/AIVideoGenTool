@@ -2,6 +2,7 @@ import type { RendererCleanup, RendererContext } from "../../contracts";
 import { icon, renderIcons } from "../../shared/icons";
 import { imageHistoryMediaUrl } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
+import { reducedMotion } from "../../shared/ui/motion";
 
 export interface ImageHistoryLightboxControllerOptions {
   getSelectedHistoryAssetId(): string;
@@ -124,6 +125,7 @@ export function mountImageHistoryLightbox(
   let activePointerId: number | null = null;
   let lastPointerX = 0;
   let lastPointerY = 0;
+  let panned = false;
   let lightboxVersionChanged = false;
   let releaseBackgroundInert: (() => void) | null = null;
   let resizeObserver: ResizeObserver | null = null;
@@ -170,8 +172,8 @@ export function mountImageHistoryLightbox(
     const fittedSize = imageLightboxFitSize(
       image.naturalWidth,
       image.naturalHeight,
-      size.width,
-      size.height
+      Math.max(1, size.width - 48),
+      Math.max(1, size.height - 24)
     );
     if (!fittedSize.width || !fittedSize.height) {
       clearImageFitSizing();
@@ -277,6 +279,7 @@ export function mountImageHistoryLightbox(
   const open = () => {
     options.rememberModalFocus();
     lightbox.hidden = false;
+    lightbox.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: reducedMotion() ? 120 : 180, easing: "ease-out" });
     document.body.classList.add("image-lightbox-open");
     releaseBackgroundInert?.();
     releaseBackgroundInert = inertLightboxBackground(dialog, root);
@@ -291,6 +294,16 @@ export function mountImageHistoryLightbox(
 
   options.bindModalFocus(dialog, close, "button[data-image-lightbox-close]", false);
   openButton.addEventListener("click", open, { signal });
+  const preview = root.querySelector<HTMLElement>("[data-image-stage]");
+  preview?.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (!openButton.disabled) open();
+  }, { signal });
+  preview?.addEventListener("keydown", (event) => {
+    if (event.target !== preview || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault(); event.stopPropagation();
+    if (!openButton.disabled) open();
+  }, { signal });
   versionControls.querySelectorAll<HTMLButtonElement>("[data-image-lightbox-version-navigation]").forEach((button) => {
     button.addEventListener("click", () => {
       const direction = Number(button.dataset.imageLightboxVersionNavigation);
@@ -333,6 +346,7 @@ export function mountImageHistoryLightbox(
     updateTransform();
   }, { passive: false, signal });
   stage.addEventListener("pointerdown", (event) => {
+    panned = false;
     if (lightbox.hidden || event.button !== 0 || scale <= 1) return;
     activePointerId = event.pointerId;
     lastPointerX = event.clientX;
@@ -343,6 +357,7 @@ export function mountImageHistoryLightbox(
   }, { signal });
   stage.addEventListener("pointermove", (event) => {
     if (event.pointerId !== activePointerId) return;
+    if (Math.abs(event.clientX - lastPointerX) + Math.abs(event.clientY - lastPointerY) > 3) panned = true;
     offsetX += event.clientX - lastPointerX;
     offsetY += event.clientY - lastPointerY;
     lastPointerX = event.clientX;
@@ -357,12 +372,17 @@ export function mountImageHistoryLightbox(
   };
   stage.addEventListener("pointerup", stopPanning, { signal });
   stage.addEventListener("pointercancel", stopPanning, { signal });
+  stage.addEventListener("click", (event) => {
+    if (event.target === stage && !panned) close();
+  }, { signal });
   stage.addEventListener("dblclick", (event) => {
     event.preventDefault();
     reset();
   }, { signal });
   document.addEventListener("keydown", (event) => {
     if (lightbox.hidden) return;
+    if (!["Escape", "0", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
     if (event.key === "Escape") close();
     else if (event.key === "0") reset();
     else if (event.key === "ArrowLeft") navigateVersion(-1);

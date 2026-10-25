@@ -2,6 +2,9 @@ import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { GitHubReleaseVersionLookup } from "./github-release-version.js";
+import { readNodeVersionSources } from "./node-version-sources.js";
+import { createProcessOutputReporter } from "./process-output.js";
 import { renameWithRetry, retryableRenameError } from "./filesystem-retry.js";
 export { renameWithRetry } from "./filesystem-retry.js";
 import { scanStrataPreparation } from "./strata-preparation.js";
@@ -247,13 +250,27 @@ const h3TorchRuntime = {
 const llamaServerReleaseApiUrl =
   "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
 const llamaServerCudaVariants = ["12.4", "13.3"] as const;
-const githubReleaseCache = new Map<string, {
-  version: string;
-  checkedAt: number;
-}>();
-const githubReleaseRequests = new Map<string, Promise<string>>();
-const githubReleaseCacheTtlMs = 6 * 60 * 60 * 1000;
-const githubReleaseFailureCacheTtlMs = 60 * 1000;
+const githubReleaseLookup = new GitHubReleaseVersionLookup((repository, proxy) => readNodeVersionSources(repository, async (url, redirectOnly) => {
+  const curl = await findExecutable("curl.exe");
+  if (curl) {
+    const result = await execFileAsync(curl, ["-fsSL", "--max-time", "12", ...(proxy ? ["--proxy", proxy] : []),
+      ...(redirectOnly ? ["--output", process.platform === "win32" ? "NUL" : "/dev/null", "--write-out", "%{url_effective}"] : []), url], { windowsHide: true });
+    return result.stdout.trim();
+  }
+  if (proxy) throw new Error("curl unavailable");
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!response.ok) throw new Error(`GitHub release check: HTTP ${response.status}`);
+  if (redirectOnly) { await response.body?.cancel(); return response.url; }
+  return response.text();
+}));
+
+function latestCatalogNodeVersionSources(settings: Settings): Record<string, string> {
+  const connectionKey = settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl) : "";
+  return Object.fromEntries(customNodeCatalog.map(node => [node.id, githubReleaseLookup.source(
+    node.repositoryUrl.replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, ""), connectionKey)]));
+}
 
 function formatGpuMemory(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -267,66 +284,8 @@ async function latestGitHubReleaseVersion(
   settings: Settings,
   repository: string
 ): Promise<string> {
-  const cacheKey = repository.trim().toLowerCase();
-  const cached = githubReleaseCache.get(cacheKey);
-  const cacheTtl = cached?.version
-    ? githubReleaseCacheTtlMs
-    : githubReleaseFailureCacheTtlMs;
-  if (cached && Date.now() - cached.checkedAt < cacheTtl) return cached.version;
-  const pending = githubReleaseRequests.get(cacheKey);
-  if (pending) return pending;
-
-  const request = (async () => {
-    const url = "https://api.github.com/repos/" + repository + "/releases/latest";
-    try {
-      let payload: { tag_name?: unknown };
-      if (settings.proxyEnabled && settings.proxyUrl.trim()) {
-        const curl = await findExecutable("curl.exe");
-        if (!curl) {
-          githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
-          return "";
-        }
-        const args = [
-          "-fsSL",
-          "--max-time",
-          "5",
-          "--proxy",
-          normalizeProxyUrl(settings.proxyUrl),
-          "-H",
-          "Accept: application/vnd.github+json",
-          url
-        ];
-        const result = await execFileAsync(curl, args, {
-          windowsHide: true
-        });
-        payload = JSON.parse(result.stdout) as { tag_name?: unknown };
-      } else {
-        const response = await fetch(url, {
-          headers: { Accept: "application/vnd.github+json" },
-          signal: AbortSignal.timeout(3500)
-        });
-        if (!response.ok) {
-          githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
-          return "";
-        }
-        payload = await response.json() as { tag_name?: unknown };
-      }
-      const version = typeof payload.tag_name === "string"
-        ? normalizeReleaseVersion(payload.tag_name)
-        : "";
-      githubReleaseCache.set(cacheKey, { version, checkedAt: Date.now() });
-      return version;
-    } catch {
-      githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
-      return "";
-    }
-  })();
-  githubReleaseRequests.set(cacheKey, request);
-  try {
-    return await request;
-  } finally {
-    githubReleaseRequests.delete(cacheKey);
-  }
+  return githubReleaseLookup.latest(repository.trim(),
+    settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl) : "");
 }
 
 async function latestCatalogNodeReleaseVersions(
@@ -4630,6 +4589,8 @@ export async function runLoggedProcess(
   signal?.throwIfAborted();
   return new Promise<string>((resolve, reject) => {
     const output: string[] = [];
+    const stdoutReporter = createProcessOutputReporter(options.onLog);
+    const stderrReporter = createProcessOutputReporter(options.onLog);
     let settled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const child = spawn(executable, args, {
@@ -4641,9 +4602,6 @@ export async function runLoggedProcess(
     const append = (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       output.push(text);
-      for (const line of text.split(/\r?\n/).filter(Boolean)) {
-        options.onLog?.(line);
-      }
     };
     const removeAbortListener = () => {
       if (signal && abortListener) {
@@ -4668,11 +4626,12 @@ export async function runLoggedProcess(
         child.kill("SIGTERM");
       }
     };
-    child.stdout?.on("data", append);
-    child.stderr?.on("data", append);
+    child.stdout?.on("data", (chunk: Buffer) => { append(chunk); stdoutReporter.append(chunk); });
+    child.stderr?.on("data", (chunk: Buffer) => { append(chunk); stderrReporter.append(chunk); });
     const finishReject = (error: Error) => {
       if (settled) return;
       settled = true;
+      stdoutReporter.flush(); stderrReporter.flush();
       if (timeout) clearTimeout(timeout);
       removeAbortListener();
       reject(Object.assign(error, { stdout: output.join("").trim() }));
@@ -4680,6 +4639,7 @@ export async function runLoggedProcess(
     const finishResolve = (text: string) => {
       if (settled) return;
       settled = true;
+      stdoutReporter.flush(); stderrReporter.flush();
       if (timeout) clearTimeout(timeout);
       removeAbortListener();
       resolve(text);
@@ -5360,7 +5320,7 @@ async function scanFullEnvironment(
         runtimeComfyBaseUrl || settings.comfyUrl,
         latestNodeVersions["h3-motion-context"] ?? "",
         latestNodeVersions,
-        { nodeIds: runtimeNodeIds ?? null }
+        { nodeIds: runtimeNodeIds ?? null, latestVersionSources: latestCatalogNodeVersionSources(settings) }
       )
     ),
     scanPythonRuntimeProbes(
@@ -5662,7 +5622,9 @@ async function scanEnvironmentDependencies(
         runtimeComfyBaseUrl || settings.comfyUrl,
         latestNodeVersions["h3-motion-context"] ?? "",
         latestNodeVersions,
-        { nodeIds: runtimeNodeIds ?? null }
+        { nodeIds: runtimeNodeIds ?? null, latestVersionSources: runtimeOnly
+          ? Object.fromEntries(previous.customNodes.map(node => [node.id, node.latestVersionSource || ""]))
+          : latestCatalogNodeVersionSources(settings) }
       )
     ),
     runtimeOnly
@@ -5944,12 +5906,13 @@ export function scanEnvironment(
 ): Promise<EnvironmentScanResult> {
   // Capture settings before queued work starts; later draft edits are unrelated.
   const snapshot = structuredClone(settings);
+  if (options.refreshReleaseVersions === true) githubReleaseLookup.invalidate();
   const forcePythonProbe = options.forcePythonProbe === true;
   const effectiveScope = scope === "runtime" && forcePythonProbe ? "dependencies" : scope;
   const validation = forcePythonProbe || effectiveScope === "dependencies"
     ? "live"
     : defaultEnvironmentScanValidation(effectiveScope);
-  const fresh = effectiveScope !== "full" || forcePythonProbe;
+  const fresh = effectiveScope !== "full" || forcePythonProbe || options.refreshReleaseVersions === true;
   return environmentScanCoordinator.run(
     environmentScanCacheKey(snapshot),
     effectiveScope,

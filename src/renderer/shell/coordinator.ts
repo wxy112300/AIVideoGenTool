@@ -22,7 +22,8 @@ import { projectPromptRuntimeView, type PromptRuntimeViewProjection } from "../.
 import { isStrataPromptModel } from "../../core/prompt-models";
 import { uiKeys } from "../../core/i18n-keys";
 import type { Translate, TranslationParams } from "../../core/i18n";
-import { createNotification, notificationAlreadyPending, notificationShouldPreserveError } from "../notifications";
+import { createNotification, notificationAlreadyPending, type NotificationAction } from "../notifications";
+import { createNotificationStack } from "../shared/ui/notify";
 import type { RendererNotifyOptions, Page, CreationMode, HistoryKind, SettingsTab } from "../contracts";
 import type { RendererUiState } from "../ui-state";
 import type {
@@ -43,6 +44,7 @@ import {
 import { renderConfirmationDialog, renderWindowCloseDialog } from "./dialogs";
 import { appLogTerminalHtml, visibleAppLogText } from "../shared/logs";
 import { renderIcons } from "../shared/icons";
+import { refreshSharedUi, replaceSharedUiMarkup } from "../shared/ui/runtime";
 import { promptModelStatus } from "../shared/status";
 
 type ShellApplicationApi = Pick<RendererApplicationApi,
@@ -111,6 +113,7 @@ export interface RendererShellCoordinatorDependencies {
 }
 
 export interface RendererShellCoordinator {
+  dispose(): void;
   showMessage(message: string, legacyOrOptions?: boolean | RendererNotifyOptions): void;
   dismissNotification(id?: number): void;
   runNotificationAction(actionId: string): void;
@@ -279,60 +282,25 @@ export function createRendererShellCoordinator(
     }
   }
 
-  function syncFlashMessage(): void {
-    const flash = document.querySelector<HTMLElement>("#app-flash");
-    if (!flash) return;
-    const message = flash.querySelector<HTMLElement>("[data-flash-message]");
-    if (message) message.textContent = deps.ui.flashMessage;
-    else flash.textContent = deps.ui.flashMessage;
-    const actionContainer = flash.querySelector<HTMLElement>("[data-flash-actions]");
-    if (actionContainer) {
-      actionContainer.replaceChildren(...(deps.ui.flashNotification?.actions ?? []).map((action) => {
-        const button = document.createElement("button");
-        button.className = `${action.tone ?? "secondary"} flash-action`;
-        button.type = "button";
-        button.dataset.notificationAction = action.id;
-        button.textContent = action.label;
-        return button;
-      }));
-    }
-    const kind = deps.ui.flashNotification?.kind ?? "info";
-    flash.dataset.kind = kind;
-    flash.className = `flash flash-${kind}${deps.ui.flashMessage ? " visible" : ""}`;
-    flash.setAttribute("role", kind === "error" ? "alert" : "status");
-    flash.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
-    flash.classList.toggle("visible", Boolean(deps.ui.flashMessage));
+  const notificationStack = createNotificationStack({
+    dismissLabel: () => deps.t(uiKeys.app.dismissNotification),
+    changed: (visible, pending) => {
+      // Compatibility projections for existing callers; the stack owns timers/state.
+      const primary = visible.find((notice) => notice.persistent) ?? visible[0] ?? null;
+      deps.ui.flashNotification = primary;
+      deps.ui.flashMessage = primary?.message ?? "";
+      deps.ui.flashNotificationQueue = [...visible.filter((notice) => notice !== primary), ...pending];
+    },
+    action: (_notice, action) => invokeNotificationAction(action)
+  });
+  const disposeNotifications = () => notificationStack.dispose();
+  window.addEventListener("beforeunload", disposeNotifications, { once: true });
+
+  function dismissNotification(id = deps.ui.flashNotification?.id): void {
+    if (id !== undefined) notificationStack.dismiss(id);
   }
 
-  function displayNextNotification(): void {
-    const next = deps.ui.flashNotificationQueue.shift() ?? null;
-    deps.ui.flashNotification = next;
-    deps.ui.flashMessage = next?.message ?? "";
-    window.clearTimeout(deps.ui.flashMessageTimer);
-    deps.ui.flashMessageTimer = undefined;
-    syncFlashMessage();
-    if (!next || next.persistent) return;
-    deps.ui.flashMessageTimer = window.setTimeout(() => {
-      if (deps.ui.flashNotification?.id !== next.id) return;
-      displayNextNotification();
-    }, next.durationMs);
-  }
-
-  function dismissNotification(id?: number): void {
-    if (id !== undefined && deps.ui.flashNotification?.id !== id) return;
-    window.clearTimeout(deps.ui.flashMessageTimer);
-    deps.ui.flashMessageTimer = undefined;
-    deps.ui.flashNotification = null;
-    deps.ui.flashMessage = "";
-    syncFlashMessage();
-    displayNextNotification();
-  }
-
-  function runNotificationAction(actionId: string): void {
-    const notification = deps.ui.flashNotification;
-    const action = notification?.actions.find((candidate) => candidate.id === actionId);
-    if (!notification || !action) return;
-    if (action.dismissOnInvoke !== false) dismissNotification(notification.id);
+  function invokeNotificationAction(action: NotificationAction): void {
     try {
       void Promise.resolve(action.run()).catch((error) => {
         showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -342,42 +310,23 @@ export function createRendererShellCoordinator(
     }
   }
 
-  function showMessage(
-    message: string,
-    legacyOrOptions?: boolean | RendererNotifyOptions
-  ): void {
+  function runNotificationAction(actionId: string): void {
+    const notification = deps.ui.flashNotification;
+    const action = notification?.actions.find((candidate) => candidate.id === actionId);
+    if (!notification || !action) return;
+    if (action.dismissOnInvoke !== false) dismissNotification(notification.id);
+    invokeNotificationAction(action);
+  }
+
+  function showMessage(message: string, legacyOrOptions?: boolean | RendererNotifyOptions): void {
     const options = typeof legacyOrOptions === "object" ? legacyOrOptions : undefined;
     const kind = options?.kind ?? "info";
-    const notification = createNotification(
-      deps.ui.nextFlashNotificationId++,
-      message,
-      kind,
-      options?.durationMs,
-      options?.actions
-    );
+    const notification = createNotification(deps.ui.nextFlashNotificationId++, message, kind, options?.durationMs, options?.actions);
+    notification.sourceKey = options?.key;
+    if (options?.key) notification.dedupeKey += `\u0000${options.key}`;
     if (notificationAlreadyPending(notification, deps.ui.flashNotification, deps.ui.flashNotificationQueue)) return;
-    if (notificationShouldPreserveError(deps.ui.flashNotification, kind)) {
-      if (kind === "info") return;
-      deps.ui.flashNotificationQueue.push(notification);
-      void deps.application.reportNotification(kind, message).catch(() => undefined);
-      return;
-    }
     void deps.application.reportNotification(kind, message).catch(() => undefined);
-    if (kind === "task-complete" || kind === "queue-complete") {
-      deps.ui.flashNotificationQueue.push(notification);
-      if (!deps.ui.flashNotification) displayNextNotification();
-      return;
-    }
-    deps.ui.flashNotificationQueue = [];
-    deps.ui.flashNotification = notification;
-    deps.ui.flashMessage = message;
-    window.clearTimeout(deps.ui.flashMessageTimer);
-    syncFlashMessage();
-    if (notification.persistent) return;
-    deps.ui.flashMessageTimer = window.setTimeout(() => {
-      if (deps.ui.flashNotification?.id !== notification.id) return;
-      displayNextNotification();
-    }, notification.durationMs);
+    notificationStack.push(notification);
   }
 
   function directoryMigrationDialog(): string {
@@ -862,7 +811,7 @@ export function createRendererShellCoordinator(
     preserveModalControlFocus();
     overlayCleanup?.();
     overlayCleanup = null;
-    deps.modalRoot.innerHTML = [
+    replaceSharedUiMarkup(deps.modalRoot, [
       renderConfirmationDialog({
         request: deps.ui.pendingConfirmation,
         confirmationBusy: deps.ui.confirmationBusy,
@@ -870,6 +819,9 @@ export function createRendererShellCoordinator(
           ? deps.getCustomNodeLog(deps.ui.pendingConfirmation.nodeId)
           : "",
         imageHistoryIds: new Set(deps.getState().imageHistory.map((item) => item.id)),
+        historyItems: deps.ui.pendingConfirmation?.kind === "delete-history-batch"
+          ? [...deps.getState().history, ...deps.getState().imageHistory].filter(item => deps.ui.pendingConfirmation?.kind === "delete-history-batch" && deps.ui.pendingConfirmation.assetIds.includes(item.id)).map(item => ({ id: item.id, title: item.title, thumbnail: [...document.querySelectorAll<HTMLElement>(".history-gallery-item[data-history]")].find(card => card.dataset.history === item.id)?.querySelector<HTMLImageElement>(".history-cover-image, [data-image-media-image]")?.src }))
+          : undefined,
         t: deps.t,
         icon: deps.icon,
         escapeHtml: deps.escapeHtml
@@ -884,8 +836,9 @@ export function createRendererShellCoordinator(
         escapeHtml: deps.escapeHtml
       }),
       deps.renderAdditionalOverlays?.() ?? ""
-    ].join("");
+    ].join(""));
     renderIcons(deps.modalRoot);
+    refreshSharedUi(deps.modalRoot);
     bindConfirmationDialog();
     bindDirectoryMigrationDialog();
     bindImageAssetLibraryDialog();
@@ -1025,6 +978,7 @@ export function createRendererShellCoordinator(
   }
 
   return {
+    dispose: () => { window.removeEventListener("beforeunload", disposeNotifications); notificationStack.dispose(); },
     showMessage,
     dismissNotification,
     runNotificationAction,

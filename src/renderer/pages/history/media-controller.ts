@@ -1,4 +1,6 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { reducedMotion } from "../../shared/ui/motion";
+import { historyCardVideo } from "./card-video";
 import {
   scheduleHistoryBatches,
   type HistoryMediaTaskPriority
@@ -85,7 +87,7 @@ export function mountHistoryMediaController(
 
   const confirmHover = (media: HTMLElement): void => {
     clearHoverTimer(media);
-    if (!media.isConnected) return;
+    if (!media.isConnected || reducedMotion()) return;
     if (retainedHoverMedia) {
       if (retainedHoverMedia !== media) releaseHoverMedia(retainedHoverMedia, false);
       clearRetainedHover();
@@ -100,6 +102,7 @@ export function mountHistoryMediaController(
   };
 
   const requestHover = (media: HTMLElement): void => {
+    if (reducedMotion()) return;
     if (activeHoverMedia === media) return;
     clearHoverTimer();
     hoverTarget = media;
@@ -124,11 +127,11 @@ export function mountHistoryMediaController(
 
   const historyMediaCards = [...root.querySelectorAll<HTMLElement>("[data-history-media]")];
   const initializedMediaCards = new WeakSet<HTMLElement>();
-  const setupMediaCard = (media: HTMLElement) => {
+  const setupMediaCard = (media: HTMLElement, createVideo = false) => {
     if (initializedMediaCards.has(media)) return;
-    initializedMediaCards.add(media);
-    const video = media.querySelector<HTMLVideoElement>("video");
+    const video = historyCardVideo(media, createVideo);
     if (!video) return;
+    initializedMediaCards.add(media);
     video.addEventListener("error", () => {
       media.classList.remove("playing");
       media.classList.remove("media-loading", "media-ready");
@@ -275,7 +278,7 @@ export function mountHistoryMediaController(
   const setupMediaCardFromEvent = (event: Event): void => {
     const target = event.target instanceof Element ? event.target : null;
     const media = target?.closest<HTMLElement>("[data-history-media]");
-    if (media && root.contains(media)) setupMediaCard(media);
+    if (media && root.contains(media)) setupMediaCard(media, true);
   };
   root.addEventListener("mouseover", setupMediaCardFromEvent, { signal });
   root.addEventListener("focusin", setupMediaCardFromEvent, { signal });
@@ -368,7 +371,22 @@ export function mountHistoryMediaController(
     window.addEventListener("resize", updateVisiblePriorities, { passive: true, signal });
   }
 
+  const stopAutomaticPreview = () => {
+    if (!reducedMotion()) return;
+    clearHoverTimer();
+    if (retainedHoverMedia) releaseHoverMedia(retainedHoverMedia, false);
+    clearRetainedHover();
+    if (activeHoverMedia) releaseHoverMedia(activeHoverMedia, false);
+    activeHoverMedia = null;
+  };
+  const motionPreference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  motionPreference?.addEventListener?.("change", stopAutomaticPreview);
+  const motionObserver = new MutationObserver(stopAutomaticPreview);
+  motionObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
+
   return () => {
+    motionPreference?.removeEventListener?.("change", stopAutomaticPreview);
+    motionObserver.disconnect();
     cancelSetup();
     events.abort();
     if (fallbackWarmupFrame !== null) {

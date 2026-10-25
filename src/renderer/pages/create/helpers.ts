@@ -36,8 +36,31 @@ import {
 import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
+import { icon } from "../../shared/icons";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { h3FrameCountForSeconds, h3MaxDurationForFrameBudget } from "../../../core/h3-temporal";
+import { generationSafetyForTask } from "../../../core/workflow";
+
+/** UI limits are visible new seconds; persisted duration already excludes the prefix. */
+export function videoDurationLimitsForDraft(draft: Draft, settings: Settings): { nativeMax: number; unlockedMax: number } {
+  const extending = draft.inputMode === "video";
+  const safety = extending ? extensionSafetyForDraft(draft, settings) : generationSafetyForTask({ ...draft, resolution: draft.resolution === 1080 ? 720 : draft.resolution }, settings.uiLocale);
+  if (!isMiniMaxH3Model(draft.modelId)) return { nativeMax: safety.maxDurationSeconds, unlockedMax: safety.maxDurationSeconds };
+  if (!extending) return { nativeMax: Math.min(15.1, safety.maxDurationSeconds), unlockedMax: safety.maxDurationSeconds };
+  if (isMiniMaxH3ContinuumModel(draft.modelId) && draft.h3ContinuumSequence && h3ContinuumModeForSource(draft) === "managed") {
+    return { nativeMax: draft.h3ContinuumSequence.chunkSeconds, unlockedMax: draft.h3ContinuumSequence.chunkSeconds };
+  }
+  const plan = (seconds: number) => h3TemporalPlanForTask({ ...draft, duration: seconds });
+  const overlapSeconds = plan(1).prefixFrames / 24;
+  const minimum = isMiniMaxH3ContinuumModel(draft.modelId) ? 4 : 1;
+  const limit = (sampleSeconds: number) => h3MaxDurationForFrameBudget(
+    seconds => plan(seconds).sampledFrames,
+    h3FrameCountForSeconds(sampleSeconds),
+    Math.min(safety.maxDurationSeconds, Math.floor((sampleSeconds - overlapSeconds) * 10) / 10), minimum
+  );
+  return { nativeMax: limit(15.1), unlockedMax: limit(30) };
+}
 import type { RendererContext } from "../../contracts";
 import { countPromptWords, h3PromptWordRange } from "../../../core/prompt-count";
 import { modelCatalog } from "../../../core/catalog";
@@ -204,7 +227,8 @@ export function createModelOptionViewModels(
   environmentScan: EnvironmentScanResult | null,
   workflowCapabilities: Readonly<Record<string, WorkflowCapabilities>>,
   bundledWorkflows: Readonly<Record<string, BundledWorkflow>>,
-  t: Translate
+  t: Translate,
+  locale: UiLocale = "zh-CN"
 ): CreateModelOptionViewModel[] {
   const scanned = environmentScan
     ? orderVideoProfiles(
@@ -219,7 +243,7 @@ export function createModelOptionViewModels(
       .filter((entry) => entry.definition.role !== "guide")
       .map((entry) => ({
         id: entry.definition.id,
-        name: modelCatalog.localized(entry.definition.id)?.name ?? entry.definition.id,
+        name: modelCatalog.localized(entry.definition.id, locale)?.name ?? entry.definition.id,
         available: true,
         integrated: true
       }));
@@ -264,11 +288,14 @@ export function createModelOptionViewModels(
         : "";
       return {
         id: profile.id,
-        name: profile.name,
+        name: modelCatalog.localized(profile.id, locale)?.name ?? profile.name,
         selected,
         unavailable,
         modeLabel,
-        suffix
+        suffix,
+        group: t(catalogCapabilities?.supportsReferenceSlots ? uiKeys.create.r2vReferencesTitle :
+          catalogCapabilities?.supportsEndFrame ? uiKeys.create.editor.frameModels : uiKeys.create.editor.otherModels),
+        description: modelCatalog.localized(profile.id, locale)?.badge ?? modelCatalog.localized(profile.id, locale)?.description ?? ""
       };
     });
 }
@@ -337,7 +364,7 @@ export function updatePromptWordCounter(
     return;
   }
   const range = h3PromptWordRange(mode, durationSeconds, preset);
-  counter.className = "prompt-word-counter";
+  counter.className = `prompt-word-counter${count > range.max ? " over" : ""}`;
   counter.textContent = ui.t("wordCountGuidance", {
     count,
     min: range.min,
@@ -379,7 +406,8 @@ export function h3PromptCheckMarkup(
   durationSeconds: number,
   escapeHtml: (value: unknown) => string,
   ui: PromptUi = h3PromptPackFor("zh-CN").ui,
-  videoLoras: readonly VideoLoraSelection[] = []
+  videoLoras: readonly VideoLoraSelection[] = [],
+  t?: Translate
 ): string {
   const result = checkH3Prompt(promptText, {
     hasEndImage,
@@ -389,10 +417,16 @@ export function h3PromptCheckMarkup(
     durationSeconds,
     videoLoras
   });
+  if (t) return renderH3PromptCheckBadge(result, t);
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
     <div class="h3-prompt-check-heading"><strong>${ui.t("promptCheckTitle")}</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}
   </div>`;
+}
+
+export function renderH3PromptCheckBadge(result: ReturnType<typeof checkH3Prompt>, t: Translate): string {
+  const detail = [result.summary, ...result.items.map(item => item.message)].join("\n");
+  return `<span id="h3-prompt-check" class="create-prompt-check ${result.valid ? "valid" : "warning"}" tabindex="0" data-ui-tooltip="${escapeHtml(detail)}" aria-live="polite">${icon(result.valid ? "shield-check" : "alert-triangle")}<span>${t(result.valid ? uiKeys.create.editor.checkPassed : uiKeys.create.editor.checkReview)}</span></span>`;
 }
 
 export function h3PromptPresetOptions(

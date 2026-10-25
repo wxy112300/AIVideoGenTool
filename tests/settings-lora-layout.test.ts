@@ -39,14 +39,14 @@ describe("Settings LoRA card layout", () => {
   it("separates the decision summary from progressive usage details", () => {
     const markup = renderSettingsModelScanCard(missingLora, options);
 
-    expect(markup).toContain("model-profile missing lora-profile");
-    expect(markup).toContain("lora-profile-summary");
-    expect(markup).toContain("lora-profile-hardware");
+    expect(markup).toContain("settings-model-card missing lora-profile");
+    expect(markup).toContain("settings-model-description");
+    expect(markup).not.toContain("model-hardware-recommendation");
     expect(markup).toContain("lora-profile-guide");
     expect(markup).toContain("model-profile-guide");
     expect(markup).toContain("component-row missing");
     expect(markup).toContain("component-state");
-    expect(markup).toContain("circle-alert");
+    expect(markup).toContain("circle-dashed");
     expect(markup).toContain("<strong>Camera Motion LoRA</strong>");
     expect(markup).toContain("settings.system.scanCardMissing");
     expect(markup).toContain("loras/camera_motion_h3_lora_v1_3000_pruned.safetensors");

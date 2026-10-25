@@ -1,18 +1,20 @@
 import { vi } from "vitest";
 import path from "node:path";
 import { createDefaultState } from "../../src/core/defaults";
-import { createTranslator } from "../../src/core/i18n";
+import { createTranslator, loadUiLocale } from "../../src/core/i18n";
 import { createCreateWorkspaceCoordinator, type CreateWorkspaceCoordinatorDependencies } from "../../src/renderer/pages/create/coordinator";
 import { loadPromptPacks } from "../../src/renderer/prompt-packs";
 import { queueTaskFromDraft, extensionTaskFromDraft, imageTaskFromDraft } from "../../src/core/queue-task-factory";
-import type { AppState, Draft, ImageEditDraft, EnvironmentScanResult, VideoExtensionSourceInspection } from "../../src/types";
+import type { AppState, Draft, ImageEditDraft, EnvironmentScanResult, VideoExtensionSourceInspection, UiLocale } from "../../src/types";
 import type { RendererCleanup, RendererContext } from "../../src/renderer/contracts";
 
 // Real page -> coordinator -> controllers -> snapshot factory. Only external ports
 // are fixtures; this is NOT Electron IPC, filesystem preflight, or GPU evidence.
-export async function createJourney(initial: Partial<Draft> = {}) {
+export async function createJourney(initial: Partial<Draft> = {}, locale: UiLocale = "zh-CN") {
   await loadPromptPacks();
+  await loadUiLocale(locale);
   let state = createDefaultState();
+  state.settings.uiLocale = locale;
   state.draft = { ...state.draft, workflowPath: path.resolve("workflows/minimax_h3_i2v_api.json"), spectrumModeUserSet: true, ...initial };
   let mode: ReturnType<CreateWorkspaceCoordinatorDependencies["getCreationMode"]> = state.draft.inputMode === "video" ? "video-extension" : "image-to-video";
   let cleanups: RendererCleanup[] = [];
@@ -21,7 +23,7 @@ export async function createJourney(initial: Partial<Draft> = {}) {
   let busy = false;
   const root = document.createElement("main");
   document.body.append(root);
-  const t = createTranslator("zh-CN").t;
+  const t = createTranslator(locale).t;
   let inspection: VideoExtensionSourceInspection = { route: "bootstrap", status: "missing", reason: "Fixture: paired AV missing" };
   const scan = {
     modelProfiles: ["minimax_h3_fl2va", "minimax_h3_ref2va", "minimax_h3_continuum"].map(id => ({

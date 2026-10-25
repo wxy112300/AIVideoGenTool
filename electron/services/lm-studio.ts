@@ -1,5 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { isMossImageModel } from "../../src/core/moss-image-spec.js";
+import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
 import type {
   EnhanceRequest,
   H3PromptMode,
@@ -535,7 +537,9 @@ export async function enhancePrompt(
     .replace(/^```(?:text|markdown)?\s*/iu, "")
     .replace(/\s*```$/u, "")
     .trim();
-  if (mode === "image-edit") return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(normalized));
+  if (mode === "image-edit") return isMossImageModel(request.imageTargetModelId)
+    ? normalizeMossImagePromptOutput(normalized)
+    : normalizeQwenImageEditPromptOutput(stripPromptAnnotations(normalized));
   if (mode !== "h3-vision") return stripPromptAnnotations(normalized);
   if (request.promptStrategy === "targeted-revision") {
     return applyPromptRevision(request.prompt, normalized);

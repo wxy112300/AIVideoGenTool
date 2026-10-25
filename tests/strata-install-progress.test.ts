@@ -29,10 +29,15 @@ describe("Strata installation progress", () => {
     expect(bar.getAttribute("aria-valuenow")).toBe("25");
     expect(bar.querySelector<HTMLElement>("span")?.style.width).toBe("25%");
     expect(bar.classList.contains("indeterminate")).toBe(false);
+    const button = document.querySelector<HTMLButtonElement>("[data-install-active]")!;
+    expect(button.dataset.installPercent).toBe("25");
+    expect(button.style.getPropertyValue("--dependency-progress")).toBe("25");
+    expect(button.querySelector(".node-running-label")?.textContent).toBe("25%");
     expect(document.querySelector("#strata-install-stage")?.textContent).toBe("下载引擎 · 25% · 25.0 / 100.0 MB");
     updateStrataInstallProgress({ stage: "packages" }, "zh-CN");
     expect(bar.classList.contains("indeterminate")).toBe(true);
     expect(bar.hasAttribute("aria-valuenow")).toBe(false);
+    expect(button.dataset.installPercent).toBe("indeterminate");
     expect(bar.querySelector<HTMLElement>("span")?.style.width).toBe("");
     expect(document.querySelector("#strata-install-stage")?.textContent).toBe("安装 Python 依赖");
     updateStrataInstallProgress({ stage: "assets" }, "zh-CN");

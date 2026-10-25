@@ -135,5 +135,5 @@ export function performanceCard(
 ): string {
   const available = value != null && Number.isFinite(value);
   const normalized = available ? Math.max(0, Math.min(100, value)) : 0;
-  return `<article class="panel performance-card"><span>${label}</span><strong id="${id}">${available ? `${Math.round(value)}${suffix}` : "—"}</strong><small id="${id}-detail">${escapeHtml(detail)}</small><div class="metric-bar"><i id="${id}-bar" style="width:${normalized}%"></i></div></article>`;
+  return `<article class="performance-card" data-pressure="${available && value >= 90 ? "hot" : "normal"}"><span>${label}</span><strong id="${id}">${available ? `${Math.round(value)}${suffix}` : "—"}</strong><small id="${id}-detail">${escapeHtml(detail)}</small><div class="metric-bar"><i id="${id}-bar" style="width:${normalized}%"></i></div></article>`;
 }

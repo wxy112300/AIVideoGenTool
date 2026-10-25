@@ -18,11 +18,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("renderer notifications", () => {
   it("uses longer semantic durations for warnings, errors and completions", () => {
-    expect(notificationDuration.info).toBeGreaterThan(3_500);
+    expect(notificationDuration.info).toBe(3_000);
     expect(notificationDuration.warning).toBeGreaterThan(notificationDuration.info);
     expect(notificationDuration.error).toBeGreaterThan(notificationDuration.warning);
-    expect(notificationDuration["task-complete"]).toBeGreaterThan(notificationDuration.info);
-    expect(notificationDuration["queue-complete"]).toBeGreaterThan(notificationDuration.info);
+    expect(notificationDuration["task-complete"]).toBe(3_000);
+    expect(notificationDuration["queue-complete"]).toBe(3_000);
   });
 
   it("keeps errors persistent while allowing other notices to auto-dismiss", () => {

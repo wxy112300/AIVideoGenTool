@@ -40,6 +40,8 @@ import {
 } from "../../src/core/h3-latent-save.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
+import { isMossImageModel } from "../../src/core/moss-image-spec.js";
+import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
 import {
   imageEditPromptContractForTarget,
   imageEditPromptUserContentForTarget
@@ -511,6 +513,7 @@ export async function enhancePromptWithComfyUi(
     return applyPromptRevision(request.prompt, output);
   }
   if (request.mode === "image-edit") {
+    if (isMossImageModel(request.imageTargetModelId)) return normalizeMossImagePromptOutput(output);
     return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(output));
   }
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);

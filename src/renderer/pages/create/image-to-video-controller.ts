@@ -18,6 +18,7 @@ function bindFrameDrop(
   const t = context.t;
   const clearDragState = () => zone.classList.remove("drag-over");
   zone.addEventListener("dragenter", (event) => {
+    if (zone instanceof HTMLButtonElement && zone.disabled) return;
     event.preventDefault();
     zone.classList.add("drag-over");
   }, { signal });
@@ -35,6 +36,7 @@ function bindFrameDrop(
     event.preventDefault();
     event.stopImmediatePropagation();
     clearDragState();
+    if (zone instanceof HTMLButtonElement && zone.disabled) return;
     const file = event.dataTransfer?.files.item(0);
     if (!file) return;
     if (!file.type.startsWith("image/") && !/\.(png|jpe?g|webp|bmp)$/i.test(file.name)) {
@@ -90,6 +92,8 @@ export function mountImageToVideoController(
 
   bindFramePicker(context, root, "#pick-start", "startImagePath", options, signal);
   bindFramePicker(context, root, "#pick-end", "endImagePath", options, signal);
+  bindFramePicker(context, root, '[data-replace-frame="start"]', "startImagePath", options, signal);
+  bindFramePicker(context, root, '[data-replace-frame="end"]', "endImagePath", options, signal);
 
   root.querySelector("#toggle-end")?.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
@@ -124,7 +128,7 @@ export function mountImageToVideoController(
   });
 
   bindFrameDrop(context, "#pick-start", "startImagePath", options, signal);
-  bindFrameDrop(context, "#pick-end", "endImagePath", options, signal);
+  bindFrameDrop(context, "#pick-end, #toggle-end", "endImagePath", options, signal);
 
   return () => events.abort();
 }

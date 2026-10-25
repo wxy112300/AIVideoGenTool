@@ -5,7 +5,10 @@ import { normalizeStrataUncensoredMode, strataUncensoredMode } from "../../../co
 import { normalizeStrataReasoningEffort } from "../../../core/strata-reasoning";
 
 function value(id: string, fallback: string): string {
-  return document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
+  const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`);
+  // A model list may still be waiting for its first scan. It is not a user clear.
+  if (input?.tagName === "SELECT" && (input as HTMLSelectElement).selectedIndex < 0) return fallback;
+  return input?.value.trim() ?? fallback;
 }
 
 function directoryValue(id: string, fallback: string): string {
@@ -44,11 +47,12 @@ export function readSettingsFromForm(
   }
   const uncensoredMode = normalizeStrataUncensoredMode(value("strata-uncensored", strataUncensoredMode(base)));
   return {
+    appearance: base.appearance,
     lanBrowserEnabled: checked("lan-browser-enabled", base.lanBrowserEnabled ?? false),
     lanBrowserPort: Number(value("lan-browser-port", String(base.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT))),
     comfyUrl: value("comfy-url", base.comfyUrl),
-    comfyInstallDirectory: value("comfy-install-directory", base.comfyInstallDirectory),
-    comfyPythonPath: value("comfy-python-path", base.comfyPythonPath),
+    comfyInstallDirectory: directoryValue("comfy-install-directory", base.comfyInstallDirectory),
+    comfyPythonPath: directoryValue("comfy-python-path", base.comfyPythonPath),
     lmStudioUrl: value("lm-url", base.lmStudioUrl),
     lmStudioModel: value("lm-model", base.lmStudioModel),
     lmStudioInstallDirectory: value("lm-install-directory", base.lmStudioInstallDirectory),

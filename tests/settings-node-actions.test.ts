@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { createDefaultSettings } from "../src/core/defaults";
 import type { RendererContext } from "../src/renderer/contracts";
 import { renderDependencyActionSplit } from "../src/renderer/pages/settings/dependency-actions";
+import { renderDependencyFeedback, updateDependencyGitProgress } from "../src/renderer/pages/settings/dependency-presentation";
+import { createStableLabels } from "../src/renderer/shared/ui/feedback";
 import { mountSettingsNodeDependencyController } from "../src/renderer/pages/settings/node-dependency-controller";
 import { renderStrataPreparationPanel } from "../src/renderer/pages/settings/strata-preparation";
 import type { StrataPreparationStatus } from "../src/types";
@@ -26,6 +28,70 @@ function mount(root: HTMLElement, showItemInFolder = vi.fn(async () => true)) {
 }
 
 describe("dependency action menus", () => {
+  it("patches Git progress in place and restores waiting animation for the next stage", () => {
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    const root = document.createElement("div"); document.body.append(root);
+    root.innerHTML = renderDependencyActionSplit("", { ...renderOptions, cancellation: { id: "custom-node:example" } }) + renderDependencyFeedback(settings.uiLocale, "custom-node:example", "", true);
+    const button = root.querySelector<HTMLElement>("[data-install-active]")!;
+    const rail = root.querySelector<HTMLElement>(".settings-install-rail")!;
+    const label = button.querySelector(".node-running-label")!;
+    const runningText = label.textContent;
+    try {
+      updateDependencyGitProgress("custom-node:example", "Receiving objects: 47% (47/100)");
+      expect(button.dataset.installPercent).toBe("47");
+      expect(label.textContent).toBe("47%");
+      expect(rail.firstElementChild?.getAttribute("style")).toContain("47%");
+      updateDependencyGitProgress("custom-node:example", "正在检查运行环境");
+      expect(button.dataset.installPercent).toBe("indeterminate");
+      expect(label.textContent).toBe(runningText);
+      expect(root.querySelector("[data-install-active]")).toBe(button);
+      expect(rail.classList.contains("determinate")).toBe(false);
+    } finally { root.remove(); vi.unstubAllGlobals(); }
+  });
+  it("does not keep a dependency's queued width after returning to update", () => {
+    const reserve = createStableLabels();
+    const button = document.createElement("button");
+    button.className = "node-action-main ui-stable-label";
+    button.dataset.installNode = "example";
+    button.style.setProperty("--ui-label-width", "180px");
+    button.textContent = "更新";
+    reserve(button);
+    expect(button.style.getPropertyValue("--ui-label-width")).toBe("");
+    expect(button.classList.contains("ui-stable-label")).toBe(false);
+  });
+  it.each(["settings-node-grid", "settings-lora-grid"])("mounts independent columns with retained cards and original narrow order for %s", (className) => {
+    let listener = () => {};
+    const media = { matches: false, addEventListener: vi.fn((_name, callback) => { listener = callback; }), removeEventListener: vi.fn() };
+    vi.stubGlobal("matchMedia", vi.fn(() => media));
+    const host = document.createElement("main");
+    const root = document.createElement("div"); root.className = className; host.append(root);
+    root.innerHTML = '<article id="a"></article><article id="b"></article><article id="c"></article><article id="d"></article>';
+    const cards = Array.from(root.children);
+    const { cleanup } = mount(host);
+    try {
+      expect(window.matchMedia).toHaveBeenCalledWith("(max-width: 1100px)");
+      expect(Array.from(root.children[0]!.children)).toEqual([cards[0], cards[2]]);
+      expect(Array.from(root.children[1]!.children)).toEqual([cards[1], cards[3]]);
+      media.matches = true; listener();
+      expect(Array.from(root.children)).toEqual(cards);
+      media.matches = false; listener();
+      expect(root.children[0]!.firstElementChild).toBe(cards[0]);
+    } finally { cleanup(); vi.unstubAllGlobals(); }
+    expect(Array.from(root.children)).toEqual(cards);
+    expect(media.removeEventListener).toHaveBeenCalled();
+  });
+
+  it("shows an indeterminate rail before the first log and collapses only completed logs", () => {
+    const root = document.createElement("div");
+    root.innerHTML = renderDependencyFeedback(settings.uiLocale, "custom-node:example", "", true);
+    expect(root.querySelector(".settings-install-rail")).not.toBeNull();
+    expect(root.querySelector("[data-dependency-install-log]")).not.toBeNull();
+    root.innerHTML = renderDependencyFeedback(settings.uiLocale, "custom-node:example", "done", false);
+    expect(root.querySelector(".settings-install-rail")).toBeNull();
+    expect(root.querySelector("details")?.open).toBe(false);
+    root.innerHTML = renderDependencyFeedback(settings.uiLocale, "strata", "download", true, false);
+    expect(root.querySelector(".settings-install-rail")).toBeNull();
+  });
   it.each([false, true])("puts Strata uninstall inside the existing menu only for app-owned software (owned=%s)", (owned) => {
     const root = document.createElement("main");
     const status = { configuredInstallDirectory: "", installDirectory: "D:\\managed-strata", sourcePresent: true, enginePresent: true, managedInstalled: true, managedUninstallable: owned } as StrataPreparationStatus;
@@ -58,11 +124,12 @@ describe("dependency action menus", () => {
     expect(button.classList.contains("secondary")).toBe(false);
     expect(button.parentElement?.classList.contains("node-action-menu-popover")).toBe(true);
     expect(root.querySelector("summary")?.getAttribute("aria-label")).toBe("更多节点操作");
+    expect(root.querySelector("summary")?.hasAttribute("title")).toBe(false);
     expect(root.querySelector("[data-uninstall-node]")).toBeNull();
   });
 
   it("hides the entire popup on collapse, uses an existing opaque surface token and keeps labels on one line", () => {
-    const css = readFileSync("src/styles/06-settings-layout.css", "utf8");
+    const css = readFileSync("src/styles/structure.css", "utf8");
     const style = document.createElement("style");
     style.textContent = [...css.matchAll(/^\.node-action-menu[^\n]+/gm)].map(([rule]) => rule).join("\n");
     document.head.append(style);
@@ -76,7 +143,7 @@ describe("dependency action menus", () => {
       expect(getComputedStyle(popup).display).toBe("grid");
       expect(getComputedStyle(button).whiteSpace).toBe("nowrap");
       expect(getComputedStyle(popup).width).toBe("max-content");
-      expect(style.textContent).toContain("background: var(--ux-surface-raised)");
+      expect(style.textContent).toContain("background: var(--surface-3)");
       expect(style.textContent).not.toContain("var(--raised)");
       menu.open = false;
       expect(getComputedStyle(popup).display).toBe("none");

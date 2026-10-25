@@ -98,6 +98,7 @@ async function flushPromises(): Promise<void> {
 }
 
 afterEach(() => {
+  delete document.documentElement.dataset.motion;
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -224,7 +225,9 @@ describe("history media controller scheduling", () => {
     cleanup();
   });
 
-  it("initializes a deep video card after the hover intent delay", async () => {
+  it.each(["standard", "reduced", "system"])("respects %s motion when hovering a deep video card", async (motion) => {
+    document.documentElement.dataset.motion = motion;
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
     vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
     vi.useFakeTimers();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
@@ -253,8 +256,13 @@ describe("history media controller scheduling", () => {
     deepCard.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await vi.advanceTimersByTimeAsync(120);
 
-    expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
-    expect(loadHistoryCardVideo).toHaveBeenCalledWith(deepCard);
+    if (motion === "standard") {
+      expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
+      expect(loadHistoryCardVideo).toHaveBeenCalledWith(deepCard);
+      document.documentElement.dataset.motion = "reduced";
+      await Promise.resolve();
+      expect(deepCard.classList.contains("playing")).toBe(false);
+    } else expect(loadHistoryCardVideo).not.toHaveBeenCalled();
     cleanup();
   });
 

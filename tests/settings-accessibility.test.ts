@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import type { EnvironmentScanResult, ModelScanProfile } from "../src/types";
@@ -8,6 +9,11 @@ import {
 } from "../src/renderer/pages/settings/page";
 
 const state = createDefaultState();
+function markupRoot(markup: string): HTMLElement {
+  const root = document.createElement("div");
+  root.innerHTML = markup;
+  return root;
+}
 const translate: SettingsPageOptions["t"] = (key) => key;
 const renderOptions = {
   t: translate,
@@ -84,6 +90,87 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 }
 
 describe("Settings accessibility markup", () => {
+  it("shows detected GPU names and total VRAM, including multiple GPUs, without a model or budget fallback", () => {
+    const scan = { items: [], modelProfiles: [], customNodes: [], issues: [], gpus: [
+      { index: 0, name: "Detected GPU A", driverVersion: "test", vramTotalBytes: 12 * 1024 ** 3 },
+      { index: 1, name: "Detected GPU B", driverVersion: "test", vramTotalBytes: 48 * 1024 ** 3 }
+    ] } as unknown as EnvironmentScanResult;
+    const options = { ...renderOptions, formatBytes: (bytes: number) => `${bytes / 1024 ** 3} GB` };
+    const root = markupRoot(renderSettingsPage(viewModel({ environmentScan: scan, settings: { ...state.settings, vramReserveGb: 1 } }), options));
+    const badge = root.querySelector("[data-settings-hardware]")!;
+    expect(badge.textContent).toContain("Detected GPU A · 12 GB");
+    expect(badge.textContent).toContain("Detected GPU B · 48 GB");
+    expect(badge.getAttribute("title")).toBe(badge.textContent);
+    expect(badge.textContent).not.toContain("11 GB");
+    const waiting = markupRoot(renderSettingsPage(viewModel({ environmentScan: null }), options));
+    expect(waiting.querySelector("[data-settings-hardware]")).toBeNull();
+    const noGpu = markupRoot(renderSettingsPage(viewModel({ environmentScan: { ...scan, gpus: [] } }), options));
+    expect(noGpu.querySelector("[data-settings-hardware]")).toBeNull();
+  });
+  it("keeps detected tools compact, with path actions and a real ComfyUI picker", () => {
+    const environmentScan = {
+      scannedAt: "2026-10-25T00:00:00Z", userHome: "C:\\Users\\Test",
+      items: [
+        { id: "ffmpeg", label: "FFmpeg", ok: true, optional: true, detail: "ffmpeg version 8.0-full_build Copyright lengthy build configuration", path: "D:\\tools\\ffmpeg.exe" },
+        { id: "comfyui", label: "ComfyUI", ok: true, detail: "Desktop", path: "D:\\ComfyUI" }
+      ], modelProfiles: [], customNodes: [], issues: []
+    } as unknown as EnvironmentScanResult;
+    const root = markupRoot(renderSettingsPage(viewModel({ settingsTab: "comfyui", environmentScan }), renderOptions));
+    const overview = root.querySelector("#settings-environment-section")!;
+    expect(overview.querySelector(".environment-summary")?.textContent).not.toContain("C:\\Users\\Test");
+    expect(overview.querySelector(".environment-evidence-detail p")?.textContent).toBe("8.0-full_build");
+    expect(overview.querySelectorAll("[data-open-node-location]")).toHaveLength(2);
+    expect(overview.querySelector("[data-pick-environment-comfy]")).not.toBeNull();
+  });
+  it("keeps the llama runtime card compact while leaving repair failures visible", () => {
+    for (const ready of [true, false]) {
+      const environmentScan = { comfyRoot: "fixture", customNodes: [], items: [], modelProfiles: [], issues: [],
+        llamaCppPython: { installed: true, ready, packageVersion: "0.4.2+cu130", pythonPath: "fixture/python.exe",
+          pythonVersion: "3.12.11", torchVersion: "2.10.0+cu130", cudaVersion: "13.0", detail: ready ? "CUDA ready" : "CUDA backend failed; reinstall to repair",
+          probeEvidence: { source: "cache", state: "valid", verifiedAt: "2026-10-25T12:00:00Z" } }
+      } as unknown as EnvironmentScanResult;
+      const root = markupRoot(renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions));
+      const card = root.querySelector('[data-settings-runtime="llama"]')!;
+      expect(card.querySelector('.component-list,.component-row,.probe-evidence,[data-settings-disclosure]')).toBeNull();
+      expect(card.querySelector('.model-availability')?.getAttribute('title')).toContain('fixture/python.exe');
+      expect(card.textContent).not.toContain('已使用缓存验证');
+      expect(card.querySelector('[role="alert"]')?.textContent ?? "").toBe(ready ? "" : "CUDA backend failed; reinstall to repair");
+      expect(card.querySelector('#install-llama-cpp-python')).not.toBeNull();
+      expect(card.querySelector('.node-version-item:nth-child(3)')?.textContent).toContain('0.4.2');
+      expect(card.querySelector('.node-version-value.behind')).toBeNull();
+    }
+  });
+  it("does not announce installation absence before the first scan completes", () => {
+    const pending = markupRoot(renderSettingsPage(viewModel({ environmentScanning: true }), renderOptions));
+    const section = pending.querySelector(".settings-installations-card")!;
+    expect(section.textContent).not.toContain("settings.system.notFound");
+    expect(section.textContent).not.toContain("settings.system.noInstallFoundDescription");
+    const completed = markupRoot(renderSettingsPage(viewModel(), renderOptions));
+    expect(completed.querySelector(".settings-installations-card")!.textContent).toContain("settings.system.notFound");
+  });
+  it("keeps every scanned node reachable and distinguishes active consoles, waiting cancellation and completed logs", () => {
+    const customNodes = ["h3-motion-context", "comfyui-dlss5", "future-node"].map(id => ({
+      id, name: id, purpose: "Purpose", installed: true, loaded: false, runtimeVerified: false,
+      repositoryUrl: "https://example.invalid/node", directory: "C:\\nodes", required: false,
+      version: "1.0.0", recommendedVersion: "1.1.0", latestVersion: "1.2.0", updateAvailable: true, loadError: ""
+    }));
+    const environmentScan = { items: [], modelProfiles: [], customNodes, issues: [] } as unknown as EnvironmentScanResult;
+    const base = viewModel({ settingsTab: "nodes", environmentScan, customNodeInstalling: "h3-motion-context",
+      customNodeInstallQueue: ["comfyui-dlss5"], customNodeInstallBatch: ["h3-motion-context", "comfyui-dlss5"],
+      customNodeInstallPhase: "installing", customNodeLogs: { "future-node": "<finished>" } });
+    const root = markupRoot(renderSettingsPage(base, renderOptions));
+    expect(root.querySelectorAll("[data-settings-node]")).toHaveLength(3);
+    expect(root.querySelector('[data-settings-node="h3-motion-context"] .settings-install-console pre')).not.toBeNull();
+    expect(root.querySelector('[data-settings-node="comfyui-dlss5"] [data-install-queued]')?.getAttribute("aria-label")).toBe("移出队列");
+    expect(root.querySelector('[data-settings-node="future-node"] details')?.hasAttribute("open")).toBe(false);
+    expect(root.querySelector('[data-settings-node="future-node"] pre')?.textContent).toBe("<finished>");
+    expect(root.querySelector("#cancel-waiting-node-installs")).not.toBeNull();
+    expect(root.querySelector('[data-settings-node="future-node"] .behind')?.textContent).toBe("v1.0.0");
+    const finished = markupRoot(renderSettingsPage({ ...base, customNodeInstalling: "", customNodeInstallPhase: "idle", customNodeInstallQueue: [] }, renderOptions));
+    expect(finished.querySelector(".settings-install-queue")).toBeNull();
+    expect(finished.querySelector(".settings-install-console")).toBeNull();
+  });
+
   it("shows one three-way selector, keeps unsupported preference disabled and does not duplicate it on nodes", () => {
     const render = (modelId: string, tab: SettingsPageViewModel["settingsTab"] = "prompt") => renderSettingsPage(viewModel({ settingsTab: tab,
       settings: { ...state.settings, promptModelId: modelId, strataUncensored: true, strataUncensoredMode: "community" } }), renderOptions);
@@ -107,16 +194,17 @@ describe("Settings accessibility markup", () => {
     const render = (selected = settings) => renderSettingsPage(viewModel({ settings: selected, settingsTab: "prompt" }), renderOptions);
     const html = render();
     expect(html.match(/id="strata-reasoning-effort"/g)).toHaveLength(1);
-    const options = html.match(/id="strata-reasoning-effort">(.*?)<\/select>/s)![1];
+    const options = html.match(/id="strata-reasoning-effort"[^>]*>(.*?)<\/select>/s)![1];
     expect(options.match(/<option /g)).toHaveLength(4);
     expect(options).toContain('value="medium" selected');
     expect(html).toMatch(/settings-grid two">\s*<label>uncensored.*?id="strata-uncensored".*?id="strata-reasoning-effort"/s);
     for (const markup of [html, render({ ...settings, promptModelId: "strata/future" })]) {
       for (const id of ["strata-uncensored", "strata-reasoning-effort"]) {
-        const field = markup.match(new RegExp(`<label>[^<]*<select id="${id}"[^>]*>.*?</label>`, "s"))?.[0];
-        expect(field).toBeDefined();
-        expect(field).toMatch(/<\/select><\/label>$/);
+        expect(markupRoot(markup).querySelector(`#${id}`)?.closest(".settings-grid")).not.toBeNull();
       }
+      const root = markupRoot(markup);
+      expect(root.querySelectorAll("[data-settings-reasoning]")).toHaveLength(4);
+      expect(root.querySelector<HTMLSelectElement>("#strata-reasoning-effort")?.hidden).toBe(true);
     }
     expect(render({ ...settings, promptModelId: "qwen/qwen3.5-4b" })).not.toContain('id="strata-reasoning-effort"');
   });
@@ -125,13 +213,13 @@ describe("Settings accessibility markup", () => {
     expect(nodes).toContain('data-strata-preparation="runtime"');
     expect(nodes).toContain('id="strata-port"');
     expect(nodes).toContain('class="primary button-with-icon node-action-main" id="install-strata"');
-    expect(nodes).not.toContain('class="node-action-menu"');
+    expect(markupRoot(nodes).querySelector('[data-strata-preparation="runtime"] .node-action-menu')).toBeNull();
     expect(nodes).not.toContain('data-open-node-location=');
     expect(nodes).not.toContain('data-install-custom-node="strata"');
     const prompt = renderSettingsPage(viewModel({ settingsTab: "prompt" }), renderOptions);
     expect(prompt).not.toContain('data-strata-preparation="models"');
     expect(prompt).not.toContain('id="strata-model-directory"');
-    expect(prompt).toContain("512 个专家");
+    expect(prompt).toContain("图片理解");
     expect(prompt).not.toMatch(/量化任选一种|下载后扫描/);
     expect(prompt).toContain('data-install-profile="strata/qwen3.8-flash-next-iq3_xxs"');
     expect(prompt.indexOf('data-install-profile="strata/qwen3.8-flash-next-iq3_xxs"')).toBeLessThan(prompt.indexOf('data-install-profile="strata/qwen3.8-flash-next-iq2_xs"'));
@@ -160,8 +248,9 @@ describe("Settings accessibility markup", () => {
     expect(markup.match(/role="tab"[^>]*tabindex="0"/g)).toHaveLength(1);
     expect(markup).toContain('id="settings-tab-comfyui"');
     expect(markup.indexOf('id="settings-tab-comfyui"')).toBeLessThan(markup.indexOf('id="settings-tab-nodes"'));
-    expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-system"'));
-    expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
+    expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-nodes"'));
+    expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
+    expect(markup.indexOf('id="settings-tab-appearance"')).toBeLessThan(markup.indexOf('id="settings-tab-logs"'));
     expect(nodesMarkup).toContain("节点与依赖");
     expect(nodesMarkup).not.toContain('data-settings-h3-native-dependencies');
     expect(nodesMarkup).not.toContain("H3 原生高分辨率环境");
@@ -170,10 +259,10 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('aria-labelledby="settings-tab-comfyui"');
     expect(markup.match(/id="scan-environment"/g)).toHaveLength(1);
     expect(markup.indexOf('id="scan-environment"')).toBeLessThan(markup.indexOf('id="settings-environment-section"'));
-    expect(markup).toContain('class="button-row settings-heading-actions is-clean"');
+    expect(markup).toContain('class="settings-save-bar settings-heading-actions is-clean"');
     expect(markup).toContain('class="settings-tool-actions"');
-    expect(markup).toContain('class="settings-commit-actions"');
-    expect(markup.indexOf('class="settings-commit-actions"')).toBeLessThan(markup.indexOf('id="scan-environment"'));
+    expect(markup.indexOf('class="settings-save-bar')).toBeGreaterThan(markup.indexOf('id="scan-environment"'));
+    expect(markup).toContain('aria-label="settings.unsaved" hidden');
     expect(markup).not.toContain('>settings.saved</span>');
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');
@@ -185,8 +274,7 @@ describe("Settings accessibility markup", () => {
     expect(pathsMarkup).toContain('id="app-cache-total"');
     expect(pathsMarkup).toContain('id="refresh-app-cache"');
     expect(pathsMarkup).toContain('id="clear-app-cache"');
-    expect(pathsMarkup).toContain('id="app-cache-progress"');
-    expect(pathsMarkup).toContain('id="app-cache-progress-bar" class="app-cache-progress-bar indeterminate" role="progressbar"');
+    expect(pathsMarkup).not.toContain('id="app-cache-progress"');
   });
 
   it("keeps the ComfyUI environment page concise while preserving environment evidence", () => {
@@ -244,7 +332,9 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('class="muted comfy-installation-runtime" title="settings.system.revision · PyTorch 2.10.0+cu130 · CUDA 13.0"');
     expect(markup).toContain('<span class="model-badge">settings.system.installationCount</span>');
     expect(markup).not.toContain('<span class="model-availability warning">settings.system.installationCount</span>');
-    expect(markup).toContain('id="use-scanned-comfy"');
+    expect(markup).not.toContain('id="use-scanned-comfy"');
+    const otherInstall = renderSettingsPage(viewModel({ settingsTab: "comfyui", settings: { ...state.settings, comfyInstallDirectory: "C:\\Other" }, environmentScan }), renderOptions);
+    expect(otherInstall).toContain('id="use-scanned-comfy"');
     expect(markup).not.toContain('class="detected-path"');
 
     const pathsMarkup = renderSettingsPage(viewModel({ settingsTab: "system", environmentScan }), renderOptions);
@@ -280,9 +370,7 @@ describe("Settings accessibility markup", () => {
       environmentScan
     }), renderOptions);
 
-    const cardStart = markup.indexOf("h3-acceleration-card");
-    const cardEnd = markup.indexOf('<article class="panel custom-node-card missing">', cardStart);
-    const card = markup.slice(cardStart, cardEnd > cardStart ? cardEnd : undefined);
+    const card = markupRoot(markup).querySelector('[data-settings-runtime="attention"]')!.outerHTML;
     expect(card).toContain("检测未完成，请重新扫描");
     expect(card).toContain("3.12.8");
     expect(card).toContain("2.2.0+cu130torch2.10");
@@ -420,13 +508,14 @@ describe("Settings accessibility markup", () => {
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
     expect(markup).toContain('id="install-llama-cpp-python"');
     expect(markup).toContain('id="install-attention-acceleration"');
-    expect(markup).not.toContain('class="node-action-menu"');
+    expect(markupRoot(markup).querySelector('[data-settings-runtime="llama"] .node-action-menu')).toBeNull();
+    expect(markupRoot(markup).querySelector('[data-settings-runtime="attention"] #verify-python-runtime')).not.toBeNull();
     expect(markup).not.toContain('data-open-node-location=');
   });
 
   it("exposes descriptions for no-prompt drafting directions", () => {
     const instruction = "Animate a grounded interaction with the visible subject.";
-    const description = "利用画面中已经出现且可操作的物体设计自然动作，例如打开、旋转、触碰、拿起或展开；不要凭空添加物体。";
+    const description = "围绕已有物体设计动作。";
     const markup = renderSettingsPage(viewModel({
       settingsTab: "prompt",
       settings: {
@@ -450,18 +539,26 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="h3-auto-prompt-seed-setting"');
     expect(markup).toContain(`data-description="${description}"`);
     expect(markup).toContain(`title="${description}"`);
-    expect(markup).toContain('class="field-info"');
+    expect(markup).toContain('class="settings-row-copy"');
     expect(markup).toContain(instruction);
   });
 
   it("marks the local save state without changing the save selector", () => {
     const markup = renderSettingsPage(viewModel({ settingsDirty: true, settingsSaving: true }), renderOptions);
 
-    expect(markup).toContain('class="button-row settings-heading-actions is-dirty"');
-    expect(markup).toContain('class="save-state dirty" role="status" aria-live="polite" aria-atomic="true">settings.saving</span>');
+    expect(markup).toContain('class="settings-save-bar settings-heading-actions is-dirty"');
+    expect(markup).toContain('class="save-state" role="status" aria-live="polite" aria-atomic="true">settings.saving</strong>');
     expect(markup).toContain('id="save-settings" aria-busy="true"');
     expect(markup).toContain('id="settings-panel-comfyui" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-busy="true"');
+  });
+
+  it("preserves existing creativity precision when mounting the new range", () => {
+    const root = markupRoot(renderSettingsPage(viewModel({ settingsTab: "prompt", settings: { ...state.settings, promptCreativity: 0.75 } }), renderOptions));
+    const range = root.querySelector<HTMLInputElement>("#prompt-creativity")!;
+    expect(range.step).toBe("any");
+    expect(range.value).toBe("0.75");
+    expect(root.querySelector<HTMLInputElement>("#prompt-creativity-number")?.value).toBe("0.75");
   });
 
   it("keeps an icon attached to the yellow service restart status", () => {
@@ -486,7 +583,7 @@ describe("Settings accessibility markup", () => {
   it("keeps the primary save action after the discard action in the commit group", () => {
     const markup = renderSettingsPage(viewModel({ settingsDirty: true }), renderOptions);
 
-    const commitStart = markup.indexOf('class="settings-commit-actions"');
+    const commitStart = markup.indexOf('class="settings-save-bar');
     const discardIndex = markup.indexOf('id="discard-settings"');
     const saveIndex = markup.indexOf('id="save-settings"');
 
@@ -568,7 +665,7 @@ describe("Settings accessibility markup", () => {
       ...environmentScan, customNodes: environmentScan.customNodes.map((node) => ({ ...node, installed: false }))
     } }), renderOptions);
     expect(missing).not.toContain('data-open-node-location="C:\\ComfyUI\\custom_nodes\\PromptWriter"');
-    expect(missing).not.toContain('class="node-action-menu"');
+    expect(missing).toContain('data-open-node-source="https://example.invalid/prompt-writer.git"');
     expect(missing).not.toContain('data-uninstall-node="minimax-h3-prompt-writer"');
     const manual = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan: {
       ...environmentScan, customNodes: environmentScan.customNodes.map((node) => ({ ...node, appInstallable: false }))
@@ -719,19 +816,20 @@ describe("Settings accessibility markup", () => {
     } as unknown as EnvironmentScanResult;
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
-    const nodeCardsMarkup = markup.replace(/<article\b[^>]*data-strata-preparation="runtime"[\s\S]*?<\/article>/u, "");
-    const versionMarkup = nodeCardsMarkup.match(/<p class="node-version-line"[\s\S]*?<\/p>/u)?.[0] ?? "";
+    const root = markupRoot(markup);
+    const versionMarkup = root.querySelector('[data-settings-node] .node-version-line')?.outerHTML ?? "";
 
     expect(versionMarkup).toContain('class="node-version-line"');
     expect(versionMarkup).toContain("固定版");
     expect(versionMarkup).not.toContain("本机");
-    expect(versionMarkup).not.toContain("推荐");
+    expect(versionMarkup).toContain("推荐");
     expect(versionMarkup).not.toContain("最新");
     expect(versionMarkup).not.toContain("0.0.6");
     expect(markup).not.toContain("验证依据");
     expect(markup).not.toContain("扫描来源");
     expect(markup).not.toContain("检查级别");
-    expect(markup).not.toContain("d91be5ac41797a3789b4765cdb6eb6d9129a4a4d");
+    expect(root.textContent).not.toContain("d91be5ac41797a3789b4765cdb6eb6d9129a4a4d");
+    expect(root.textContent).toContain("d91be5ac");
     expect(markup).not.toContain("1274.815 seconds");
   });
 
@@ -784,16 +882,16 @@ describe("Settings accessibility markup", () => {
 
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
 
-    const nodeCardsMarkup = markup.replace(/<article\b[^>]*data-strata-preparation="runtime"[\s\S]*?<\/article>/u, "");
-    expect(nodeCardsMarkup.match(/class="node-version-line"/g)).toHaveLength(2);
-    expect(markup.match(/class="node-version-line"/g)).toHaveLength(3); // Strata uses the same row independently.
+    const root = markupRoot(markup);
+    expect(root.querySelectorAll('[data-settings-node] .node-version-line')).toHaveLength(2);
+    expect(root.querySelectorAll('.settings-runtime-stack .node-version-line')).toHaveLength(2);
     expect(markup).toContain("滚动版");
     expect(markup).toContain("提交日期");
     expect(markup).toContain("2026-09-19");
     expect(markup).toContain("固定版");
   });
 
-  it("orders node and runtime dependency cards by product priority", () => {
+  it("places runtimes first and keeps product priority within node groups", () => {
     const environmentScan = {
       scannedAt: "2026-08-26T00:00:00.000Z",
       userHome: "C:\\Users\\Test",
@@ -858,14 +956,13 @@ describe("Settings accessibility markup", () => {
     const videoIndex = markup.indexOf(">VideoHelperSuite</h3>");
     const ggufIndex = markup.indexOf(">ComfyUI-GGUF</h3>");
     const h3AccelerationIndex = markup.indexOf(">H3 加速运行时</h3>");
-    const llamaIndex = markup.indexOf(">llama-cpp-python</strong>");
+    const llamaIndex = markup.indexOf('data-settings-runtime="llama"');
     const inpaintIndex = markup.indexOf(">ComfyUI Inpaint Nodes</h3>");
 
     expect(videoIndex).toBeGreaterThan(-1);
     expect(videoIndex).toBeLessThan(ggufIndex);
-    expect(ggufIndex).toBeLessThan(llamaIndex);
-    expect(ggufIndex).toBeLessThan(h3AccelerationIndex);
     expect(h3AccelerationIndex).toBeLessThan(llamaIndex);
-    expect(llamaIndex).toBeLessThan(inpaintIndex);
+    expect(llamaIndex).toBeLessThan(videoIndex);
+    expect(ggufIndex).toBeLessThan(inpaintIndex);
   });
 });

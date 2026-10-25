@@ -111,6 +111,22 @@ afterEach(() => {
 });
 
 describe("create workspace coordinator", () => {
+  it.each(["image-to-video", "video-extension", "image-edit"] as const)("shows first scan as pending rather than missing dependencies in %s", async mode => {
+    await loadPromptPacks();
+    const { coordinator, dependencies } = createCoordinatorHarness();
+    dependencies.setCreationMode(mode);
+    dependencies.isEnvironmentScanning = () => true;
+    const root = dependencies.context.root;
+    root.innerHTML = coordinator.renderPage();
+    const feedback = root.querySelector<HTMLElement>("[data-enqueue-feedback]")!;
+    expect(feedback.classList.contains("error")).toBe(false);
+    expect(feedback.classList.contains("pending")).toBe(true);
+    expect(feedback.textContent).toContain("扫描");
+    expect(root.querySelector<HTMLButtonElement>(mode === "image-edit" ? "#enqueue-image-edit" : "#enqueue")!.disabled).toBe(true);
+    dependencies.isEnvironmentScanning = () => false;
+    root.innerHTML = coordinator.renderPage();
+    expect(root.querySelector("[data-enqueue-feedback]")!.classList.contains("error")).toBe(true);
+  });
   it("keeps the image submit controls outside the empty LoRA select", async () => {
     await loadPromptPacks();
     const { coordinator, dependencies, getState } = createCoordinatorHarness();
@@ -124,10 +140,10 @@ describe("create workspace coordinator", () => {
     const submit = context.root.querySelector<HTMLButtonElement>("#enqueue-image-edit")!;
     expect(submit).not.toBeNull();
     expect(submit.closest("select, option")).toBeNull();
-    expect(submit.closest(".composer-submit-row")).not.toBeNull();
+    expect(submit.closest(".create-submit-bar")).not.toBeNull();
   });
 
-  it("invalidates extension source inspection when output geometry changes", () => {
+  it("invalidates selected Motion Context inspection when output geometry changes", () => {
     const state = createDefaultState();
     const draft = {
       ...state.draft,
@@ -136,6 +152,7 @@ describe("create workspace coordinator", () => {
       sourceVideoPath: "C:/history/source.mp4",
       sourceWidth: 864,
       sourceHeight: 480,
+      h3ContextLatentPath: "context.safetensors",
       resolution: 480 as const,
       ratio: "source" as const
     };
@@ -143,6 +160,13 @@ describe("create workspace coordinator", () => {
 
     expect(videoExtensionSourceInspectionKey({ ...draft, resolution: 720 }, state.settings)).not.toBe(initial);
     expect(videoExtensionSourceInspectionKey({ ...draft, ratio: "9:16" }, state.settings)).not.toBe(initial);
+    const withoutLatent = { ...draft, h3ContextLatentPath: undefined };
+    expect(videoExtensionSourceInspectionKey({ ...withoutLatent, resolution: 720 }, state.settings)).toBe(videoExtensionSourceInspectionKey(withoutLatent, state.settings));
+    const continuum = { ...draft, modelId: "minimax_h3_continuum", h3ContinuumArtifactPath: "av.safetensors" };
+    const continuumKey = videoExtensionSourceInspectionKey(continuum, state.settings);
+    expect(videoExtensionSourceInspectionKey({ ...continuum, resolution: 720, ratio: "9:16", seed: 42, duration: 10, steps: 30 }, state.settings)).toBe(continuumKey);
+    expect(videoExtensionSourceInspectionKey({ ...continuum, sourceWidth: 1280 }, state.settings)).not.toBe(continuumKey);
+    expect(videoExtensionSourceInspectionKey({ ...continuum, h3ContinuumArtifactPath: "other.safetensors" }, state.settings)).not.toBe(continuumKey);
   });
 
   it("keeps draft mutations local until the debounced owner persists them", async () => {

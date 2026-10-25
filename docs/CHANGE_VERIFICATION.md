@@ -41,6 +41,7 @@ Use the smallest tier that gives credible evidence; increase it when risk crosse
 For UI work, "looks better" is not an acceptance criterion. Use [UX_CONTRACT.md](UX_CONTRACT.md) and verify:
 
 - hierarchy, alignment, density, and primary-action priority;
+- copy necessity under [AGENTS.md](../AGENTS.md#ui-restraint) and [DESIGN.md §9.1](../DESIGN.md#91-说明文字什么时候加加在哪怎么写): inspect the normal screen without optional explanations; labels, values, state, and the next action must remain clear. For each added subtitle, helper sentence, badge, or summary, identify the decision or error it prevents; remove it if it only repeats the control, another visible fact, or implementation details. Keep necessary labels, consequences, and recovery actions;
 - loading, empty, unavailable, success, and error states;
 - keyboard/focus behavior and controls that remain reachable on long pages;
 - both waterfall/gallery or image/video variants when sharing a component;

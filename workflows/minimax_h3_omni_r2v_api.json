@@ -151,17 +151,31 @@
     }
   },
   "16": {
-    "class_type": "PathchSageAttentionKJ",
+    "class_type": "ModelAttentionBackend",
     "inputs": {
       "model": ["30", 0],
-      "sage_attention": "sageattn_qk_int8_pv_fp16_cuda",
-      "allow_compile": false
+      "attention": "comfy kitchen attention"
+    }
+  },
+  "31": {
+    "class_type": "BlockSparseAttention",
+    "inputs": {
+      "model": ["16", 0],
+      "selection": "vsa",
+      "selection.keep_percent": 10,
+      "start_percent": 0,
+      "end_percent": 1,
+      "dense_blocks": "",
+      "min_tokens": 12288,
+      "extra_tokens": 256,
+      "sink_conditioning": "exact_kv_and_rows",
+      "verbose": false
     }
   },
   "17": {
     "class_type": "BasicScheduler",
     "inputs": {
-      "model": ["16", 0],
+      "model": ["31", 0],
       "scheduler": "simple",
       "steps": 8,
       "denoise": 1
@@ -176,7 +190,7 @@
   "19": {
     "class_type": "BasicGuider",
     "inputs": {
-      "model": ["16", 0],
+      "model": ["31", 0],
       "conditioning": ["14", 0]
     }
   },

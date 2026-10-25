@@ -4,12 +4,42 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import { createHistoryActions, type HistoryActionsOptions } from "../src/renderer/pages/history/actions";
-import type { AssetVersion, HistoryAsset, NativeAvContinuationArtifact } from "../src/types";
+import type { AssetVersion, HistoryAsset, ImageAssetVersion, ImageHistoryProject, NativeAvContinuationArtifact } from "../src/types";
 import type { RendererContext } from "../src/renderer/contracts";
 
 const translator = createTranslator("zh-CN");
 
 describe("history actions", () => {
+  it("coalesces repeated file-copy clicks until the native clipboard operation finishes", async () => {
+    let finish!: (result: { ok: boolean; message: string }) => void;
+    const copyFile = vi.fn(() => new Promise<{ ok: boolean; message: string }>(resolve => { finish = resolve; }));
+    const notify = vi.fn();
+    const context = { t: translator.t, notify, hostCapabilities: { copyFile } } as unknown as RendererContext;
+    const actions = createHistoryActions({ context } as HistoryActionsOptions);
+    const first = actions.copyHistoryFile("fixture.mp4"), repeated = actions.copyHistoryFile("fixture.mp4");
+    expect(copyFile).toHaveBeenCalledTimes(1);
+    finish({ ok: true, message: "copied" }); await Promise.all([first, repeated]);
+    expect(notify).toHaveBeenCalledTimes(1);
+    const retry = actions.copyHistoryFile("fixture.mp4");
+    expect(copyFile).toHaveBeenCalledTimes(2);
+    finish({ ok: false, message: "clipboard busy" }); await retry;
+    expect(notify).toHaveBeenLastCalledWith("clipboard busy", { renderPage: false });
+  });
+  it.each(["moss-image-sft", "moss-image-pornmaster"])("edits a %s result through a reference-capable model and preserves lineage", async modelId => {
+    const state = createDefaultState();
+    state.imageDraft.modelId = modelId; state.settings.defaultImageModel = modelId;
+    const version = { id: "moss-version", kind: "edit", modelId, width: 1024, height: 1024, prompt: "A teapot.", seed: 42,
+      references: [], file: { filename: "moss.png", absolutePath: "C:/fixture/moss.png" } } as unknown as ImageAssetVersion;
+    const project = { id: "moss-project", versions: [version] } as ImageHistoryProject;
+    const saveImageDraft = vi.fn(async () => undefined), navigateToCreationMode = vi.fn();
+    const context = { getState: () => state, application: { saveImageDraft }, t: translator.t } as unknown as RendererContext;
+    const actions = createHistoryActions({ context, setState: vi.fn(), navigateToCreationMode, reportUserAction: vi.fn() } as unknown as HistoryActionsOptions);
+    await actions.continueImageEdit(project, version);
+    expect(saveImageDraft).toHaveBeenCalledWith(expect.objectContaining({ modelId: "qwen-image-2-1", projectId: project.id,
+      parentVersionId: version.id, seed: 42, pictures: [expect.objectContaining({ absolutePath: "C:/fixture/moss.png" })] }));
+    expect(navigateToCreationMode).toHaveBeenCalledWith("image-edit");
+    expect(version.modelId).toBe(modelId);
+  });
   it("opens the active Konohamaru provider for sources above the legacy short-edge ceiling", () => {
     const version = {
       id: "version-4k",
@@ -58,6 +88,7 @@ describe("history actions", () => {
       getSelectedHistoryVersionId: () => version.id,
       setSelectedHistoryAssetId: vi.fn(),
       setDialog,
+      renderOverlay: vi.fn(),
       rememberModalFocus: vi.fn(),
       saveDraftImmediately: vi.fn(async () => undefined),
       selectDraftVideo: vi.fn(async () => undefined),
@@ -67,6 +98,8 @@ describe("history actions", () => {
     } as unknown as HistoryActionsOptions;
 
     createHistoryActions(options).openUpscaleDialog();
+    expect(options.renderOverlay).toHaveBeenCalledOnce();
+    expect(context.requestRender).not.toHaveBeenCalled();
 
     expect(setDialog).toHaveBeenCalledWith({
       assetId: asset.id,

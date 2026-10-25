@@ -247,9 +247,9 @@ export function imageTaskFromDraft(
     adapter?.supportsCustomOutputSize !== true &&
     basePicture
   );
-  const outputAlignmentMultiple = basePicture && adapter?.supportsCustomOutputSize === true
+  const outputAlignmentMultiple = adapter.outputMultiple ?? (basePicture && adapter?.supportsCustomOutputSize === true
     ? adapter.customOutputMultiple
-    : 8;
+    : 8);
   const aspectRatio = sourceResolutionOnly
     ? "source" as const
     : normalizeImageAspectRatio(draft.aspectRatio ?? "source");

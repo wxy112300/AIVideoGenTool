@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import {
   EnvironmentRefreshCoordinator,
+  environmentScanOptionsForReason,
   environmentScanScopeForReason
 } from "../src/renderer/environment-refresh-coordinator";
 import type { EnvironmentScanResult } from "../src/types";
@@ -11,6 +12,12 @@ function scanResult(scannedAt: string): EnvironmentScanResult {
 }
 
 describe("EnvironmentRefreshCoordinator", () => {
+  it("refreshes releases only for an explicit manual scan", () => {
+    expect(environmentScanOptionsForReason("manual")).toEqual({ refreshReleaseVersions: true });
+    expect(environmentScanOptionsForReason("startup")).toBeUndefined();
+    expect(environmentScanOptionsForReason("dependency-change")).toBeUndefined();
+    expect(environmentScanOptionsForReason("runtime-verification")).toEqual({ forcePythonProbe: true });
+  });
   it("maps refresh reasons to the narrowest safe scan scope", () => {
     expect(environmentScanScopeForReason("startup")).toBe("full");
     expect(environmentScanScopeForReason("manual")).toBe("full");
@@ -59,7 +66,7 @@ describe("EnvironmentRefreshCoordinator", () => {
     expect(commit).toHaveBeenCalledOnce();
     expect(commit).toHaveBeenCalledWith(expect.objectContaining({ scannedAt: "new" }));
     expect(setScanning).toHaveBeenLastCalledWith(false);
-    expect(scan).toHaveBeenNthCalledWith(1, settings, "full");
+    expect(scan).toHaveBeenNthCalledWith(1, settings, "full", { refreshReleaseVersions: true });
     expect(scan).toHaveBeenNthCalledWith(2, settings, "full");
   });
 });

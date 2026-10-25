@@ -1,4 +1,6 @@
 import type { RendererContext } from "../../contracts";
+import { historyCardVideo } from "./card-video";
+import { presentDecodedImage } from "./decoded-presentation";
 import type {
   HistoryCoverLookup,
   HistoryCoverSaveResult
@@ -68,7 +70,7 @@ function mediaRefForVideo(media: HTMLElement): MediaRef {
     key: media.dataset.coverKey?.trim() || "",
     kind: "video",
     sourcePath: media.dataset.coverSource?.trim() || "",
-    sourceUrl: video?.dataset.historySrc?.trim() || "",
+    sourceUrl: media.dataset.historySrc?.trim() || video?.dataset.historySrc?.trim() || "",
     coverTime: Number(media.dataset.coverTime) || 0,
     duration: Number(media.dataset.previewDuration) || undefined,
     seed: Number(media.dataset.coverSeed) || 0
@@ -80,6 +82,7 @@ function imagePresentationLoad(
   url: string,
   signal: AbortSignal
 ): Promise<boolean> {
+  if (typeof image.decode === "function") return presentDecodedImage(image, url, signal);
   if (signal.aborted || !image.isConnected) return Promise.resolve(false);
   if (image.currentSrc === url && image.complete && image.naturalWidth > 0) {
     return Promise.resolve(true);
@@ -352,7 +355,7 @@ export function createHistoryMediaRuntime(
   };
 
   const loadHistoryCardVideo = (media: HTMLElement): HTMLVideoElement | null => {
-    const video = media.querySelector<HTMLVideoElement>("video");
+    const video = historyCardVideo(media, true);
     const source = video?.dataset.historySrc;
     if (!video || !source) return video ?? null;
     if (video.dataset.historyLoaded === "true") return video;

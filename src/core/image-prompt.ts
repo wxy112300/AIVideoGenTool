@@ -1,4 +1,6 @@
 import type { EnhanceRequest, ImagePromptPreset } from "../types.js";
+import { isMossImageModel } from "./moss-image-spec.js";
+import { mossImagePromptContract, mossImagePromptUserContent } from "./moss-image-prompt.js";
 import {
   qwenImageEditPromptContract,
   qwenImageEditPromptUserContent
@@ -53,6 +55,7 @@ export function imageEditPromptContractForTarget(
   presetText = "",
   outputMode: "plain" | "writer" = "plain"
 ): string {
+  if (isMossImageModel(modelId)) return mossImagePromptContract(preset, presetText, outputMode);
   if (isOmniGen2TargetModel(modelId)) {
     return omnigen2PromptContract(preset, presetText, outputMode);
   }
@@ -72,7 +75,9 @@ export function imageEditPromptUserContentForTarget(request: EnhanceRequest): st
   const sourceRequest = parsedPrompt.annotations.length
     ? { ...request, prompt: parsedPrompt.prompt }
     : request;
-  const content = isOmniGen2TargetModel(request.imageTargetModelId)
+  const content = isMossImageModel(request.imageTargetModelId)
+    ? mossImagePromptUserContent(sourceRequest)
+    : isOmniGen2TargetModel(request.imageTargetModelId)
     ? omnigen2PromptUserContent(sourceRequest)
     : isHiDreamO1TargetModel(request.imageTargetModelId)
       ? hidreamO1PromptUserContent(sourceRequest)

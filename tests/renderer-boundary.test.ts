@@ -203,6 +203,36 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+describe("appearance state broadcasts", () => {
+  it("skips acknowledged local drafts while still rendering a genuinely replaced external draft", () => {
+    const harness = createEventHarness("create");
+    harness.emit("state:changed", clone(harness.state));
+    expect(harness.requestRender).not.toHaveBeenCalled();
+    harness.draftDirty = true;
+    const stale = clone(harness.state); stale.draft.seed = 123;
+    harness.emit("state:changed", stale);
+    expect(harness.requestRender).not.toHaveBeenCalled();
+    harness.draftDirty = false;
+    const external = clone(harness.state); external.draft.seed = 456;
+    harness.emit("state:changed", external);
+    expect(harness.requestRender).toHaveBeenCalledOnce();
+  });
+  it("preserves the settings DOM for appearance-only updates but still renders other changes", () => {
+    const harness = createEventHarness("settings");
+    const button = document.createElement("button");
+    harness.root.append(button); button.focus();
+    const next = clone(harness.state);
+    next.settings.appearance = { accent: "green", palette: "sand", depth: "2", motion: "reduced" };
+    harness.emit("state:changed", next);
+    expect(harness.state.settings.appearance).toEqual(next.settings.appearance);
+    expect(harness.requestRender).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(button);
+    const changed = clone(next); changed.settings.outputDirectory = "new-directory";
+    harness.emit("state:changed", changed);
+    expect(harness.requestRender).toHaveBeenCalledOnce();
+  });
+});
+
 function runningTask(id = "running-task"): QueueTask {
   return {
     id,
@@ -614,7 +644,7 @@ describe("renderer boundary characterization", () => {
     };
 
     createRenderCoordinator(options).render();
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(bindHistory).toHaveBeenCalled());
 
     const restoredInput = root.querySelector<HTMLInputElement>("#history-detail-title");
     const restoredVideo = root.querySelector<HTMLVideoElement>(".history-player video");
@@ -650,7 +680,7 @@ describe("renderer boundary characterization", () => {
       playbackRate: { configurable: true, writable: true, value: 1 }
     });
     restoredVideo.dispatchEvent(new Event("loadedmetadata"));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(play).toHaveBeenCalled());
     expect(restoredVideo.volume).toBeCloseTo(0.42);
     expect(restoredVideo.muted).toBe(true);
     expect(restoredVideo.currentTime).toBeCloseTo(12);

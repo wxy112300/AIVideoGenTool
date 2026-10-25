@@ -11,6 +11,7 @@ import { sulphur2 } from "./models/sulphur2/definition.js";
 import { promptModelEntries } from "./models/prompt.js";
 import { strataModelEntries } from "./models/strata.js";
 import { imageModelEntries } from "./models/image.js";
+import { mossImageModelEntries } from "./models/moss-image.js";
 import { legacyVideoModelEntries } from "./models/legacy-video.js";
 import { postProcessModelEntries } from "./models/post-process.js";
 import { depthAnythingModelEntries } from "./models/depth-anything.js";
@@ -29,6 +30,7 @@ export const modelCatalog = createModelCatalog([
   ...promptModelEntries,
   ...strataModelEntries,
   ...imageModelEntries,
+  ...mossImageModelEntries,
   ...legacyVideoModelEntries,
   ...postProcessModelEntries,
   ...depthAnythingModelEntries,

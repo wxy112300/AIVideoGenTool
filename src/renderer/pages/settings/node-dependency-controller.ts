@@ -10,6 +10,8 @@ import type { EnvironmentRefreshReason } from "../../environment-refresh-coordin
 import { customNodeIdsForBulkAction } from "./node-install-queue";
 import { settingsText } from "./copy";
 import { strataPreparationMatchesSettings } from "../../../core/strata-preparation";
+import { animateUi } from "../../shared/ui/motion";
+import { mountTwoColumnMasonry } from "../../shared/ui/masonry";
 
 export interface SettingsNodeDependencyControllerOptions {
   formSettings(): Settings;
@@ -34,6 +36,7 @@ export interface SettingsNodeDependencyControllerOptions {
   getStrataLog?(): string;
   setStrataLog?(log: string): void;
   cancelCustomNodeInstall?(nodeId: string): Promise<import("../../../types").ConnectionResult>;
+  cancelWaitingCustomNodes?(): number;
   setDependencyInstallCancelling?(id: string, value: boolean): void;
 }
 
@@ -44,6 +47,21 @@ export function mountSettingsNodeDependencyController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const masonryCleanups = Array.from(root.querySelectorAll<HTMLElement>(".settings-node-grid, .settings-lora-grid"),
+    grid => mountTwoColumnMasonry(grid, "alternating", 1100));
+  root.querySelectorAll<HTMLButtonElement>("[data-settings-disclosure]").forEach(button => {
+    button.addEventListener("click", () => {
+      const content = root.ownerDocument.getElementById(button.dataset.settingsDisclosure!);
+      if (!content || !root.contains(content)) return;
+      const open = button.getAttribute("aria-expanded") !== "true";
+      button.setAttribute("aria-expanded", String(open));
+      content.hidden = !open;
+      if (open) animateUi(content, [{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "translateY(0)" }], 220);
+    }, { signal });
+  });
+  root.querySelector<HTMLButtonElement>("#cancel-waiting-node-installs")?.addEventListener("click", () => {
+    options.cancelWaitingCustomNodes?.();
+  }, { signal });
   const nodeActionMenus = [
     ...root.querySelectorAll<HTMLDetailsElement>(".node-action-menu")
   ];
@@ -52,6 +70,14 @@ export function mountSettingsNodeDependencyController(
       if (menu !== except) menu.removeAttribute("open");
     });
   };
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const open = nodeActionMenus.find(menu => menu.open);
+    if (!open) return;
+    event.preventDefault();
+    closeNodeActionMenus();
+    open.querySelector<HTMLElement>("summary")?.focus();
+  }, { signal });
   const requestSettingsRender = () => {
     if (context.getRoute().page === "settings") context.requestRender();
   };
@@ -280,5 +306,5 @@ export function mountSettingsNodeDependencyController(
     }
   }, { signal });
 
-  return () => events.abort();
+  return () => { events.abort(); masonryCleanups.forEach(dispose => dispose()); };
 }

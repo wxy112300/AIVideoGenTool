@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
+import { mountVirtualHistory, prepareVirtualHistory } from "../src/renderer/pages/history/virtual-gallery";
 import type {
   AssetVersion,
   HistoryAsset,
@@ -213,6 +214,33 @@ afterEach(() => {
 });
 
 describe("history workspace coordinator", () => {
+  it("creates a fresh mount plan when the same large list is parsed again", () => {
+    const harness = createCoordinatorHarness();
+    harness.getState().history = Array.from({ length: 1500 }, (_, i) => videoAsset(`virtual-${i}`, "2026-08-31T10:00:00.000Z"));
+    const root = document.createElement("div"); document.body.append(root);
+    for (let i = 0; i < 2; i++) {
+      root.innerHTML = harness.coordinator.renderList();
+      const gallery = root.querySelector<HTMLElement>("[data-history-virtual]")!;
+      Object.defineProperty(gallery, "clientWidth", { value: 1100 });
+      prepareVirtualHistory(root);
+      const cleanup = mountVirtualHistory(root, () => () => undefined);
+      expect(gallery.children.length).toBeGreaterThan(0);
+      expect(gallery.children.length).toBeLessThan(80);
+      expect(gallery.dataset.historyVirtualCount).toBe("1500");
+      cleanup();
+    }
+    root.remove();
+  });
+  it("does not reset the outgoing list to its first page before the detail DOM is committed", () => {
+    const harness = createCoordinatorHarness();
+    harness.getState().history = [videoAsset("asset", "2026-08-30T10:00:00.000Z")];
+    document.body.innerHTML = '<div class="history-gallery">saved list position</div>';
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+    harness.coordinator.openHistoryDetail("asset");
+    while (frames.length) frames.shift()!(0);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
   it("selects a video detail version and navigates through filtered history", () => {
     const harness = createCoordinatorHarness();
     harness.getState().history = [

@@ -31,6 +31,14 @@ Local Video Studio is a Windows Electron image/video studio backed by ComfyUI. T
 
 For model/node/setup work follow [WORKFLOW_CONTRACT](docs/WORKFLOW_CONTRACT.md) and [DEPENDENCIES_AND_SETUP](docs/DEPENDENCIES_AND_SETUP.md): selected core/data/Python, catalog files, actual node schema, API graph, queue validation and real output. Weights remain user-managed unless the UI implements downloading them.
 
+## UI restraint
+
+- Avoid unnecessary secondary labels, descriptions, supporting text, and redundant UI microcopy. Let the layout do the explaining: use grouping, alignment, spacing, and clear controls before adding prose. Follow [DESIGN.md §9.1](DESIGN.md#91-说明文字什么时候加加在哪怎么写).
+- Preserve the approved layout and existing component patterns. A feature addition does not authorize a page redesign or new explanatory cards. Do not automatically add a subtitle, helper paragraph, badge, or summary to every section or control; labels, controls, and current values are the default.
+- Before adding supporting text, identify the specific decision, mistake, or blocker it addresses. If removing it leaves the task clear and correct, omit it. Fix unclear labels or grouping first. Delete dispensable copy instead of moving all of it into tooltips or adding an info icon to every field; disclose useful advanced detail on demand.
+- Keep necessary labels, units, accessible names, non-obvious consequences, and actionable error/disabled reasons. Show contextual guidance when needed, keep it brief and close to the affected action, and state each fact once. Essential warnings and recovery actions must not depend on hover.
+- Before delivery, review the normal screen without optional explanations: the next action, selected values, and current state must remain understandable. If they do not, fix the interaction or hierarchy before adding more copy. Do not expose implementation details merely to demonstrate completeness.
+
 ## Changes and ownership
 
 - Proceed with reversible choices within authorization. Do not repeat approvals already given; ask for unresolved product choices, unapproved persisted/public contract changes or destructive user-data operations.

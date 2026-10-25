@@ -25,7 +25,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement ||
-    target.isContentEditable;
+    target.isContentEditable || target.matches('[role="combobox"]');
 }
 
 export function mountShellController(
@@ -38,6 +38,9 @@ export function mountShellController(
     button.addEventListener("click", () => {
       const nextPage = button.dataset.page as Page;
       const previousPage = options.getPage();
+      // A return can still be departing when another click arrives. Do not
+      // capture the detail's scroll as the already-requested list's anchor.
+      if (nextPage === previousPage) return;
       if (previousPage === "settings" && nextPage !== "settings" && options.settingsHaveUnsavedChanges()) {
         options.rememberModalFocus();
         options.requestDiscardSettings(nextPage);
@@ -54,14 +57,6 @@ export function mountShellController(
       options.reportUserAction("navigate-panel", { from: previousPage, to: nextPage });
       options.setPage(nextPage);
       options.render();
-      if (nextPage !== "history") {
-        window.requestAnimationFrame(() => {
-          // A render can be superseded before this frame runs. Do not let a
-          // stale navigation callback reset a newly entered History page.
-          if (options.getPage() !== nextPage) return;
-          window.scrollTo({ top: 0, behavior: "auto" });
-        });
-      }
     }, { signal });
   });
 

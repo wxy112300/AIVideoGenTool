@@ -3,7 +3,7 @@ import type { H3StepCount, UiLocale } from "../../types.js";
 export type CatalogModelCategory = "video" | "image" | "upscale" | "interpolation" | "prompt" | "lora";
 export type CatalogModelInputMode = "image" | "video";
 export type CatalogModelVariant = "fl2va" | "r2v" | "turbo" | "continuum";
-export type CatalogPromptPackId = "h3" | "qwen-image-edit" | "qwen-image-2-1";
+export type CatalogPromptPackId = "h3" | "qwen-image-edit" | "qwen-image-2-1" | "moss-image";
 /** Catalog entries can describe a generator or an auxiliary workflow guide. */
 export type CatalogModelRole = "generation" | "guide";
 
@@ -56,6 +56,7 @@ export interface CatalogModelCapabilities {
   maxDurationSeconds?: number;
   maxGeneratedFrames?: number;
   resolutions?: readonly number[];
+  customResolution?: { min: number; max: number; step: number };
   generationSteps?: readonly H3StepCount[];
   defaultGenerationSteps?: H3StepCount;
   maxGenerationSteps?: H3StepCount;

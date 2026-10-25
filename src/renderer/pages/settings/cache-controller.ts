@@ -37,19 +37,18 @@ export function mountSettingsCacheController(
   };
 
   const updateProgressDom = (progress: AppCacheProgress): void => {
-    const panel = root.querySelector<HTMLElement>("#app-cache-progress");
-    if (!panel) return;
-    panel.hidden = false;
+    const panel = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress");
+    if (!panel || panel.hidden) return;
     const startedAtMilliseconds = Date.parse(progress.startedAt);
     const elapsedMilliseconds = Number.isFinite(startedAtMilliseconds)
       ? Math.max(0, Date.now() - startedAtMilliseconds)
       : 0;
-    const stage = root.querySelector<HTMLElement>("#app-cache-progress-stage");
-    const elapsed = root.querySelector<HTMLElement>("#app-cache-progress-elapsed");
-    const count = root.querySelector<HTMLElement>("#app-cache-progress-count");
-    const bytes = root.querySelector<HTMLElement>("#app-cache-progress-bytes");
-    const remaining = root.querySelector<HTMLElement>("#app-cache-progress-remaining");
-    const bar = root.querySelector<HTMLElement>("#app-cache-progress-bar");
+    const stage = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-stage");
+    const elapsed = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-elapsed");
+    const count = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-count");
+    const bytes = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-bytes");
+    const remaining = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-remaining");
+    const bar = root.ownerDocument.querySelector<HTMLElement>("#app-cache-progress-bar");
     const fill = bar?.querySelector<HTMLElement>("span");
     const determinate = progress.phase === "clearing-temporary" && progress.total > 0;
     const progressPercent = determinate

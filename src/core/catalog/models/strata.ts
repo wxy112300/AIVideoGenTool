@@ -66,7 +66,6 @@ export const strataModelEntries: CatalogModelEntry[] = ([
   ["IQ2_XS", 39225954592, "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7"]
 ] as const).map(([quant, bytes, sha256], index) => {
   const name = `Qwen3.8-Flash-Next · Strata · ${quant}`;
-  const downloadGb = quant === "IQ3_XXS" ? "75.84" : "68.03";
   return entry({
     id: `strata/qwen3.8-flash-next-${quant.toLowerCase()}`,
     family: "strata-qwen3.8-flash-next", category: "prompt",
@@ -83,13 +82,13 @@ export const strataModelEntries: CatalogModelEntry[] = ([
     }
   }, {
     name, badge: "Strata · GSQ-RCO",
-    description: `多模态 MoE 模型，512 个专家、约 6B 激活参数，支持文本与图像输入。采用 Gated DeltaNet 与 QSA 混合注意力；GSQ-RCO ${quant} 分片共 ${downloadGb} GB，视觉投影约 0.91 GB。配套 MTP Q2_0 权重约 0.89 GB，用于多 Token 预测加速。`
+    description: "多模态提示词模型，支持图片理解与 MTP 加速。"
   }, {
     name, badge: "Strata · GSQ-RCO",
-    description: `Multimodal MoE with 512 experts and about 6B active parameters, supporting text and image inputs. Uses hybrid Gated DeltaNet and QSA attention. GSQ-RCO ${quant} shards total ${downloadGb} GB, with a 0.91 GB vision projector. The companion MTP Q2_0 weights (0.89 GB) accelerate multi-token prediction.`
+    description: "Multimodal prompt model with image understanding and MTP acceleration."
   }, {
     name, badge: "Strata · GSQ-RCO",
-    description: `多模態 MoE 模型，512 個專家、約 6B 啟用參數，支援文字與圖像輸入。採用 Gated DeltaNet 與 QSA 混合注意力；GSQ-RCO ${quant} 分片共 ${downloadGb} GB，視覺投影約 0.91 GB。配套 MTP Q2_0 權重約 0.89 GB，用於多 Token 預測加速。`
+    description: "多模態提示詞模型，支援圖片理解與 MTP 加速。"
   });
 });
 
@@ -110,11 +109,11 @@ strataModelEntries.push(entry({
   }
 }, {
   name: q4Name, badge: "Strata · Unsloth Q4",
-  description: "多模态 MoE 模型，512 个专家、约 6B 激活参数，采用 Gated DeltaNet 与 QSA 混合注意力。Unsloth 混合精度 UD-Q4_K_XL 四分片共 111.33 GB，专家权重约 71.7 GiB；支持文本与图像输入，共用原版视觉投影与 MTP。"
+  description: "多模态提示词模型，支持图片理解与 MTP 加速。"
 }, {
   name: q4Name, badge: "Strata · Unsloth Q4",
-  description: "Multimodal MoE with 512 experts and about 6B active parameters, using hybrid Gated DeltaNet and QSA attention. Unsloth mixed-precision UD-Q4_K_XL has four shards totaling 111.33 GB and about 71.7 GiB of expert weights. Supports text and images with the original vision projector and MTP."
+  description: "Multimodal prompt model with image understanding and MTP acceleration."
 }, {
   name: q4Name, badge: "Strata · Unsloth Q4",
-  description: "多模態 MoE 模型，512 個專家、約 6B 啟用參數，採用 Gated DeltaNet 與 QSA 混合注意力。Unsloth 混合精度 UD-Q4_K_XL 四分片共 111.33 GB，專家權重約 71.7 GiB；支援文字與圖像輸入，共用原版視覺投影與 MTP。"
+  description: "多模態提示詞模型，支援圖片理解與 MTP 加速。"
 }));
