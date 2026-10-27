@@ -37,6 +37,7 @@ export function mountVideoExtensionController(
       trimEndSeconds: 0,
       sourceAssetId: undefined,
       sourceVersionId: undefined,
+      longVideoRunSource: undefined,
       h3ContextLatentPath: undefined,
       h3MotionContextAsset: undefined,
       h3ContinuumArtifactPath: undefined,

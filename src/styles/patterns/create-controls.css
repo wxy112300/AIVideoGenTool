@@ -105,6 +105,7 @@
 .create-long-editor textarea { width: 100%; min-height: 132px; resize: none; font-size: var(--fs-13); line-height: 1.85; }
 .create-long-tabs { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px; border-radius: var(--r-md); background: var(--surface-2); }
 .create-long-tabs [role=tablist] { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.create-long-tabs [role=tablist]::-webkit-scrollbar { display: none; }
 .create-long-tabs > .ui-select { width: 108px; flex: none; }
 .create-long-tabs .ui-select-trigger { min-height: 28px; height: 28px; padding: 0 8px; font-size: var(--fs-12); }
 .create-tabs-separator { flex: none; width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
@@ -117,6 +118,7 @@
 .create-long-tabs [aria-selected=true] { background: var(--surface-3); color: var(--text-1); }
 .create-long-tabs .ui-button { height: 28px; min-height: 28px; font-size: var(--fs-12); }
 .create-long-tabs .ui-button.icon-button { width: 26px; min-width: 26px; height: 22px; min-height: 22px; }
+.create-long-tabs .ui-button.create-page-arrow { flex: none; width: 18px; min-width: 18px; height: 28px; min-height: 28px; padding: 0; }
 .create-long-tabs [aria-pressed=true] { color: var(--accent-text); background: var(--accent-soft); }
 .create-script-view .ui-button[aria-pressed=true] { color: var(--text-1); background: var(--surface-3); }
 .create-preview-actions .prompt-runtime-button { border-color: var(--line); background: var(--surface-2); }

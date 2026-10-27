@@ -19,7 +19,7 @@ describe("node upstream version sources", () => {
       : "https://github.com/owner/package/releases/tag/v1.8.0");
     expect(await readNodeVersionSources(repository, read)).toEqual({ tag_name: "1.9.0", version_source: "Comfy Registry" });
     read.mockImplementation(async url => url.includes("raw.githubusercontent") ? project : url.includes("api.comfy.org") ? JSON.stringify(node) : "https://github.com/owner/package/releases");
-    expect(await readNodeVersionSources(repository, read)).toEqual({ tag_name: "1.9.0", version_source: "Comfy Registry" });
+    expect(await readNodeVersionSources(repository, read)).toEqual({ tag_name: "1.9.0", version_source: "Comfy Registry", cacheable: false });
   });
   it("keeps a newer official release and tolerates unavailable registry/source endpoints", async () => {
     expect(await readNodeVersionSources(repository, async (url) => {
@@ -31,8 +31,18 @@ describe("node upstream version sources", () => {
   it("labels a source-only version explicitly and never substitutes a same-name fork", async () => {
     expect(await readNodeVersionSources(repository, async url => url.includes("raw.githubusercontent") ? project
       : url.includes("api.comfy.org") ? JSON.stringify({ ...node, repository: "https://github.com/fork/package" }) : ""))
-      .toEqual({ tag_name: "2.0.0", version_source: "pyproject.toml · HEAD" });
+      .toEqual({ tag_name: "2.0.0", version_source: "pyproject.toml · HEAD", cacheable: false });
     expect(await readNodeVersionSources(repository, async () => { throw new Error("offline"); }))
-      .toEqual({ tag_name: "", version_source: "" });
+      .toEqual({ tag_name: "", version_source: "", cacheable: false });
+  });
+  it("reads GitHub API hotfixes ahead of Registry even when the website redirect is unavailable", async () => {
+    const read = vi.fn(async (url: string) => {
+      if (url.includes("raw.githubusercontent")) return project;
+      if (url.includes("api.comfy.org")) return JSON.stringify(node);
+      if (url.includes("api.github.com")) return JSON.stringify({ tag_name: "v3.10.2", draft: false, prerelease: false });
+      throw new Error("website unavailable");
+    });
+    expect(await readNodeVersionSources(repository, read)).toEqual({ tag_name: "3.10.2", version_source: "GitHub Release" });
+    expect(read.mock.calls.some(([url]) => url.startsWith("https://github.com/"))).toBe(false);
   });
 });

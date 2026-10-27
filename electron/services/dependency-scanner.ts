@@ -670,8 +670,11 @@ export async function scanCustomNodes(
       const detectedLabel = detectedRevision || "未读取到";
       if (definition.installRevisionPolicy === "recommended") {
         optionalUpdateRecommended = true;
-        updateNotice = joinUniqueNotices(updateNotice,
-          `发现项目推荐 revision 更新：当前 ${detectedLabel}，推荐 ${definition.installRevision}`);
+        if (!belowRecommendedVersion) {
+          const shortRevision = (value: string) => /^[a-f0-9]{40}$/i.test(value) ? value.slice(0, 8) : value;
+          updateNotice = joinUniqueNotices(updateNotice,
+            `发现项目推荐 revision 更新：当前 ${shortRevision(detectedLabel)}，推荐 ${shortRevision(definition.installRevision)}`);
+        }
       } else {
         compatibilityError = compatibilityError ||
           `节点 revision 不匹配：当前 ${detectedLabel}，要求 ${definition.installRevision}`;

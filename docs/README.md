@@ -13,6 +13,7 @@
 | 研究 prompt 增强 | [Prompt Pack 边界](PROMPT_PACK_DESIGN.md) | [对照实验](development/WORKFLOW.md#prompt) |
 | Extend、长视频 | [当前 Extend 分支图](runbooks/PRODUCT_JOURNEYS.md#extend) + 工作流契约；历史实验按需追溯 | [探索方案](development/WORKFLOW.md#extension) |
 | 资产库检查、路径、转移、删除 | [资产生命周期图](runbooks/ASSET_LIFECYCLE.md) → `harness:app -- guide assets` | 区分记录/媒体/辅助 owner，使用隔离资产验收 |
+| Documents 资料库迁移 / NAS 自动发布与恢复 | [资料库/NAS 手册](runbooks/LIBRARY_STORAGE_AND_NAS.md) → `harness:app -- guide library-storage` | 完整副本、提交校验、隔离迁移；现场配置单独核对 |
 | 继续被卡方案 | [任务入口](tasks/README.md) → 对应 TASK | [阻塞恢复](development/WORKFLOW.md#blocked) |
 | 整理开发文档 | [文档职责](development/DOCUMENT_POLICY.md) + [全量旧文档盘点](development/DOCUMENT_INVENTORY.md) | 有界迁移、保留证据 |
 

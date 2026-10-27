@@ -108,6 +108,7 @@ export function createDefaultSettings(): Settings {
     h3PromptPresets: createDefaultH3PromptPresets(),
     imagePromptPresets: createDefaultImagePromptPresets(),
     outputDirectory: "",
+    libraryDirectory: "",
     imageOutputDirectory: "",
     imageInputLibraryDirectory: "",
     modelDirectory: "",

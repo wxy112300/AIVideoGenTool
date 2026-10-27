@@ -1,6 +1,6 @@
 {
   "name": "ai-video-gen-tool",
-  "version": "0.67.0",
+  "version": "0.67.1",
   "private": true,
   "description": "Local image and video creation studio powered by ComfyUI",
   "main": "dist/electron/electron/main.js",
@@ -22,8 +22,8 @@
     "capture:c04": "node --experimental-strip-types scripts/capture-c04-electron-evidence.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "npm run test:unit",
-    "test:unit": "vitest run --config vite.config.ts --exclude \"dist/**\" --exclude \"tests/bundled-assets.test.ts\" --exclude \"tests/history-performance.test.ts\" --exclude \"tests/dependency-installer.test.ts\" --exclude \"tests/dlss5-runtime.test.ts\" --exclude \"tests/aetherscale-runtime.test.ts\" --exclude \"tests/konohamaru-runtime.test.ts\" --reporter=dot --silent=passed-only",
-    "test:integration": "vitest run --config vite.config.ts --exclude \"dist/**\" tests/bundled-assets.test.ts tests/history-performance.test.ts tests/dependency-installer.test.ts tests/dlss5-runtime.test.ts tests/aetherscale-runtime.test.ts tests/konohamaru-runtime.test.ts --reporter=dot",
+    "test:unit": "vitest run --config vite.config.ts --exclude \"dist/**\" --exclude \"tests/library-storage.test.ts\" --exclude \"tests/bundled-assets.test.ts\" --exclude \"tests/history-performance.test.ts\" --exclude \"tests/dependency-installer.test.ts\" --exclude \"tests/dlss5-runtime.test.ts\" --exclude \"tests/aetherscale-runtime.test.ts\" --exclude \"tests/konohamaru-runtime.test.ts\" --reporter=dot --silent=passed-only",
+    "test:integration": "vitest run --config vite.config.ts --exclude \"dist/**\" tests/library-storage.test.ts tests/bundled-assets.test.ts tests/history-performance.test.ts tests/dependency-installer.test.ts tests/dlss5-runtime.test.ts tests/aetherscale-runtime.test.ts tests/konohamaru-runtime.test.ts --reporter=dot",
     "test:all": "npm run test:unit && npm run test:integration",
     "test:verbose": "vitest run --config vite.config.ts --exclude \"dist/**\" --reporter=default",
     "verify": "npm run test:all && npm run build && npm run verify:ux-ui-contrast",

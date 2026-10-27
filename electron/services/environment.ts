@@ -8,6 +8,7 @@ import { createProcessOutputReporter } from "./process-output.js";
 import { renameWithRetry, retryableRenameError } from "./filesystem-retry.js";
 export { renameWithRetry } from "./filesystem-retry.js";
 import { scanStrataPreparation } from "./strata-preparation.js";
+import { EnvironmentScanProgressHub } from "./environment-scan-progress.js";
 import { installStrataRuntime, uninstallStrataRuntime } from "./strata-installation.js";
 import { withDownloadFileProgress } from "./download-file-progress.js";
 import { downloadWithResume } from "./resumable-download.js";
@@ -28,6 +29,7 @@ import type {
   EnvironmentItemId,
   EnvironmentScanResult,
   EnvironmentScanOptions,
+  EnvironmentScanProgress,
   EnvironmentScanScope,
   EnvironmentScanTelemetry,
   EnvironmentScanValidation,
@@ -2684,7 +2686,9 @@ async function scanPythonRuntimeProbes(
   installation: ComfyInstallation | null,
   pythonPath: string,
   validation: EnvironmentScanValidation,
-  forceReason: NonNullable<PythonProbeEvidence["reason"]> = "forced"
+  forceReason: NonNullable<PythonProbeEvidence["reason"]> = "forced",
+  onAttention?: (active: boolean) => void,
+  onRetry?: () => void
 ): Promise<PythonRuntimeProbeScan> {
   const candidateIdentity = probeIdentityFor(comfyRoot, installation, pythonPath);
   const resolvedIdentity = candidateIdentity.pythonPath.trim() &&
@@ -2728,7 +2732,8 @@ async function scanPythonRuntimeProbes(
     : undefined;
   const runAttention = async (): Promise<PythonProbeCacheResult<AttentionPythonProbe>> => {
     if (!cacheableIdentity) {
-      const probe = await inspectAttentionPython(pythonPath);
+      onAttention?.(true);
+      const probe = await inspectAttentionPython(pythonPath, { onRetry });
       return {
         value: probe,
         evidence: {
@@ -2749,7 +2754,8 @@ async function scanPythonRuntimeProbes(
       "attention",
       mode,
       async () => {
-        const probe = await inspectAttentionPython(pythonPath);
+        onAttention?.(true);
+        const probe = await inspectAttentionPython(pythonPath, { onRetry });
         return {
           value: probe,
           cacheable: attentionProbeCanCache(probe),
@@ -2793,7 +2799,9 @@ async function scanPythonRuntimeProbes(
       cycle ? { cycle } : {}
     );
   };
-  const [attentionResult, llamaResult] = await Promise.all([runAttention(), runLlama()]);
+  const [attentionResult, llamaResult] = await Promise.all([
+    runAttention().finally(() => onAttention?.(false)), runLlama()
+  ]);
   const attentionEvidence = attentionResult.evidence;
   const llamaEvidence = llamaResult.evidence;
   const attention = await inspectAttentionAcceleration(
@@ -3252,6 +3260,7 @@ export function sharedComfyOutputRoot(
   const videoDirectory = settings.outputDirectory.trim();
   const imageDirectory = settings.imageOutputDirectory?.trim() ?? "";
   if (videoDirectory && imageDirectory) {
+    if (path.resolve(videoDirectory).toLowerCase() === path.resolve(imageDirectory).toLowerCase()) return configuredComfyOutputRoot(videoDirectory);
     const videoParent = path.dirname(path.resolve(videoDirectory));
     const imageParent = path.dirname(path.resolve(imageDirectory));
     if (videoParent.toLowerCase() === imageParent.toLowerCase()) {
@@ -5262,8 +5271,10 @@ function buildDlss5ProviderStatuses(
 
 async function scanFullEnvironment(
   settings: Settings,
-  validation: EnvironmentScanValidation = "auto"
+  validation: EnvironmentScanValidation = "auto",
+  progress: (progress: EnvironmentScanProgress) => void = () => undefined
 ): Promise<EnvironmentScanResult> {
+  progress({ stage: "environment", completed: 0, total: 4 });
   const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const userHome = os.homedir();
   const [comfyRoot, comfyInstallations] = await Promise.all([
@@ -5291,6 +5302,7 @@ async function scanFullEnvironment(
   const outputDirectory = directories.outputDirectory;
   const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
   const desktopComfyBaseUrl = "http://127.0.0.1:8000";
+  progress({ stage: "files", completed: 1, total: 4 });
   const [modelFiles, { dlss5Runtime, depthAnything, aetherScaleRuntime }, runtimeEvidence, pythonRuntimes, strata] = await Promise.all([
     environmentModelFiles(settings, comfyRoot, modelDirectory),
     scanManagedGuideAssets(settings, comfyRoot),
@@ -5311,6 +5323,7 @@ async function scanFullEnvironment(
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
+  progress({ stage: "dependencies", completed: 2, total: 4 });
   const [customNodes, pythonProbes] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
@@ -5328,10 +5341,14 @@ async function scanFullEnvironment(
       comfyRoot,
       comfyInstallation,
       selectedPython?.path ?? "",
-      validation
+      validation,
+      "forced",
+      (active) => progress({ stage: active ? "attention" : "dependencies", completed: 2, total: 4 }),
+      () => progress({ stage: "retry", completed: 2, total: 4 })
     )
   ]);
   const attentionAcceleration = pythonProbes.attention;
+  progress({ stage: "system", completed: 3, total: 4 });
   const llamaCppPython = pythonProbes.llama;
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
@@ -5487,6 +5504,7 @@ async function scanFullEnvironment(
 
 const environmentScanCache = new Map<string, EnvironmentScanResult>();
 const environmentScanCoordinator = new EnvironmentScanCoordinator<EnvironmentScanResult>();
+const environmentScanProgress = new EnvironmentScanProgressHub();
 
 function cacheEnvironmentScan(key: string, scan: EnvironmentScanResult): void {
   environmentScanCache.delete(key);
@@ -5571,7 +5589,8 @@ async function scanEnvironmentDependencies(
   settings: Settings,
   previous: EnvironmentScanResult,
   scope: Exclude<EnvironmentScanScope, "full">,
-  validation: EnvironmentScanValidation
+  validation: EnvironmentScanValidation,
+  progress: (progress: EnvironmentScanProgress) => void = () => undefined
 ): Promise<EnvironmentScanResult | null> {
   const [comfyRoot, comfyInstallations] = await Promise.all([
     findComfyRoot(settings),
@@ -5613,6 +5632,7 @@ async function scanEnvironmentDependencies(
           .map((node) => [node.id, node.latestVersion])
       ))
     : latestCatalogNodeReleaseVersions(settings);
+  progress({ stage: "dependencies", completed: 1, total: 3 });
   const [customNodes, pythonProbes] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
@@ -5650,10 +5670,14 @@ async function scanEnvironmentDependencies(
           comfyRoot,
           comfyInstallation,
           selectedPython?.path ?? "",
-          validation
+          validation,
+          "forced",
+          (active) => progress({ stage: active ? "attention" : "dependencies", completed: 1, total: 3 }),
+          () => progress({ stage: "retry", completed: 1, total: 3 })
         )
   ]);
   const attentionAcceleration = pythonProbes.attention;
+  progress({ stage: "system", completed: 2, total: 3 });
   const llamaCppPython = pythonProbes.llama;
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
@@ -5781,6 +5805,8 @@ async function runEnvironmentScan(
   spec: EnvironmentScanSpec,
   requestedScope: EnvironmentScanScope = spec.scope
 ): Promise<EnvironmentScanResult> {
+  const progress = (value: EnvironmentScanProgress) => environmentScanProgress.publish(environmentScanCacheKey(settings), value);
+  progress({ stage: "environment", completed: 0, total: spec.scope === "full" ? 4 : 3 });
   const startedAt = Date.now();
   const scope = spec.scope;
   const recordDiagnostics = (result: EnvironmentScanResult): EnvironmentScanResult => {
@@ -5859,7 +5885,8 @@ async function runEnvironmentScan(
         settings,
         previous,
         scope,
-        spec.pythonValidation
+        spec.pythonValidation,
+        progress
       );
       if (partial) {
         partial.scanTelemetry = {
@@ -5881,7 +5908,7 @@ async function runEnvironmentScan(
     }
     fullFallback = true;
   }
-  const full = await scanFullEnvironment(settings, spec.pythonValidation);
+  const full = await scanFullEnvironment(settings, spec.pythonValidation, progress);
   full.scanTelemetry = {
     requestedScope,
     effectiveScope: "full",
@@ -5902,7 +5929,8 @@ async function runEnvironmentScan(
 export function scanEnvironment(
   settings: Settings,
   scope: EnvironmentScanScope = "full",
-  options: EnvironmentScanOptions = {}
+  options: EnvironmentScanOptions = {},
+  onProgress?: (progress: EnvironmentScanProgress) => void
 ): Promise<EnvironmentScanResult> {
   // Capture settings before queued work starts; later draft edits are unrelated.
   const snapshot = structuredClone(settings);
@@ -5913,10 +5941,11 @@ export function scanEnvironment(
     ? "live"
     : defaultEnvironmentScanValidation(effectiveScope);
   const fresh = effectiveScope !== "full" || forcePythonProbe || options.refreshReleaseVersions === true;
+  const unsubscribe = onProgress ? environmentScanProgress.subscribe(environmentScanCacheKey(snapshot), onProgress) : undefined;
   return environmentScanCoordinator.run(
     environmentScanCacheKey(snapshot),
     effectiveScope,
     (mergedSpec) => runEnvironmentScan(snapshot, mergedSpec, scope),
     { fresh, validation }
-  );
+  ).finally(() => unsubscribe?.());
 }

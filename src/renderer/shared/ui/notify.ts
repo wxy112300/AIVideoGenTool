@@ -24,6 +24,7 @@ export function createNotificationStack(options: NotificationStackOptions) {
   container.className = "ui-notifications";
   const entries: NoticeEntry[] = [];
   const pending: AppNotification[] = [];
+  const dismissedProgress = new Set<string>();
   const animations = new Set<Animation>();
   let disposed = false;
   const track = (animation: Animation | undefined) => {
@@ -41,12 +42,27 @@ export function createNotificationStack(options: NotificationStackOptions) {
     entry.started = Date.now();
     entry.timer = window.setTimeout(() => dismiss(entry.notice.id), entry.remaining);
   };
+  const syncProgress = (element: HTMLElement, notice: AppNotification) => {
+    element.classList.toggle("ui-notice-has-progress", Boolean(notice.progress));
+    let bar = element.querySelector<HTMLProgressElement>(".ui-notice-progress");
+    if (!notice.progress) { bar?.remove(); return; }
+    if (!bar) {
+      bar = document.createElement("progress");
+      bar.className = "ui-notice-progress";
+      element.append(bar);
+    }
+    bar.max = Math.max(1, notice.progress.total);
+    bar.value = Math.max(0, Math.min(bar.max, notice.progress.completed));
+    bar.setAttribute("aria-label", notice.message);
+    bar.setAttribute("aria-valuetext", `${bar.value}/${bar.max}`);
+  };
   const display = (notice: AppNotification) => {
     if (!container.isConnected) document.body.append(container);
     const before = captureLayout(entries.map((entry) => entry.element));
     const element = document.createElement("div");
     element.className = `ui-notice ui-notice-${notice.kind}`;
     element.dataset.notificationId = String(notice.id);
+    element.dataset.kind = notice.kind;
     element.setAttribute("role", notice.kind === "error" ? "alert" : "status");
     const status = document.createElement("span");
     status.className = "ui-notice-icon";
@@ -56,6 +72,7 @@ export function createNotificationStack(options: NotificationStackOptions) {
     const message = document.createElement("span");
     message.className = "ui-notice-message"; message.textContent = notice.message;
     element.append(status, message);
+    syncProgress(element, notice);
     const entry: NoticeEntry = { notice, element, remaining: notice.durationMs, started: 0, hovered: false, focused: false, events: new AbortController() };
     const { signal } = entry.events;
     for (const action of notice.actions) {
@@ -95,6 +112,7 @@ export function createNotificationStack(options: NotificationStackOptions) {
     const before = captureLayout(entries.map((entry) => entry.element));
     const [entry] = entries.splice(index, 1);
     if (!entry) return;
+    if (entry.notice.sourceKey && entry.notice.progress) dismissedProgress.add(entry.notice.sourceKey);
     pause(entry); entry.events.abort();
     entry.element.setAttribute("aria-hidden", "true"); entry.element.removeAttribute("role"); entry.element.style.pointerEvents = "none";
     const finish = () => { entry.element.remove(); if (!disposed) animateLayout(before).forEach(track); };
@@ -110,6 +128,28 @@ export function createNotificationStack(options: NotificationStackOptions) {
     push(notice: AppNotification) {
       if (disposed || [...entries.map((entry) => entry.notice), ...pending].some((item) => item.dedupeKey === notice.dedupeKey)) return;
       if (notice.sourceKey) {
+        if (notice.progress && dismissedProgress.has(notice.sourceKey)) return;
+        if (!notice.progress) dismissedProgress.delete(notice.sourceKey);
+        const existing = entries.find((entry) => entry.notice.sourceKey === notice.sourceKey &&
+          !entry.notice.persistent && !entry.notice.actions.length && !notice.actions.length);
+        if (existing) {
+          pause(existing);
+          // Retain the DOM node/id so progress does not replay enter/exit motion,
+          // replace focused controls, or invalidate action/close listeners.
+          existing.notice = { ...notice, id: existing.notice.id };
+          existing.remaining = notice.durationMs;
+          existing.element.className = `ui-notice ui-notice-${notice.kind}`;
+          existing.element.setAttribute("role", notice.kind === "error" ? "alert" : "status");
+          existing.element.querySelector(".ui-notice-message")!.textContent = notice.message;
+          const status = existing.element.querySelector<HTMLElement>(".ui-notice-icon")!;
+          if (existing.element.dataset.kind !== notice.kind) {
+            status.innerHTML = icon(notice.kind === "error" ? "circle-alert" : notice.kind === "warning" ? "alert-triangle" : notice.kind === "info" ? "info" : "circle-check");
+            renderIcons(status);
+          }
+          existing.element.dataset.kind = notice.kind;
+          syncProgress(existing.element, existing.notice);
+          arm(existing); changed(); return;
+        }
         for (let index = pending.length - 1; index >= 0; index--) {
           const previous = pending[index]!;
           if (previous.sourceKey === notice.sourceKey && !previous.persistent && !previous.actions.length) pending.splice(index, 1);

@@ -16,6 +16,9 @@ import { fileURLToPath } from "node:url";
 import type { WindowCloseRequest } from "../src/types.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import { JsonStore } from "./store.js";
+import { NasPublisher } from "./services/nas-publisher.js";
+import { recoverLibraryLocation } from "./services/library-location-recovery.js";
+import { LibraryStartupWindow } from "./library-startup-window.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import { registerDraftIpc } from "./draft-ipc.js";
 import { registerEnvironmentIpc } from "./environment-ipc.js";
@@ -101,6 +104,9 @@ let rendererHasUnsavedSettings = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let applicationRuntime: ApplicationRuntime | null = null;
 let lanBrowserHost: ReturnType<typeof registerLanBrowserHost> | null = null;
+let nasPublisher: NasPublisher | null = null;
+let libraryStartupWindow: LibraryStartupWindow | null = null;
+let startupInProgress = true;
 
 function activeApplicationRuntime(): ApplicationRuntime {
   if (!applicationRuntime) throw new Error("Application runtime is not initialized");
@@ -235,7 +241,7 @@ if (!hasSingleInstanceLock) {
 }
 
 app.on("second-instance", () => {
-  if (!mainWindow) return;
+  if (!mainWindow) { libraryStartupWindow?.focus(); return; }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
@@ -319,6 +325,8 @@ async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
   await lanBrowserHost?.dispose();
   await activeApplicationRuntime().stop();
+  await nasPublisher?.close();
+  await store.close?.();
   rendererHasUnsavedSettings = false;
   pendingWindowCloseRequest = null;
   allowWindowClose = true;
@@ -332,7 +340,7 @@ async function handleWindowClose(): Promise<void> {
     await dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "目录迁移正在进行",
-      message: "请等待历史视频迁移完成后再退出应用。",
+      message: "请等待数据迁移完成后再退出应用。",
       buttons: ["知道了"],
       noLink: true
     });
@@ -450,12 +458,14 @@ function createWindow(): void {
       spellcheck: true
     }
   });
+  startupInProgress = false;
   appLogger.info("window", "created", "Main window created");
   mainWindow.webContents.once("dom-ready", () => {
     appLogger.info("renderer", "dom-ready", "Renderer DOM is ready");
   });
   mainWindow.webContents.once("did-finish-load", () => {
     appLogger.info("renderer", "did-finish-load", "Renderer document finished loading");
+    void activeApplicationRuntime().waitForInitialState().then(() => libraryStartupWindow?.close()).catch(() => undefined);
   });
   mainWindow.setMenuBarVisibility(false);
   try {
@@ -656,7 +666,27 @@ app.whenReady().then(async () => {
   });
   Menu.setApplicationMenu(null);
   const studioPaths = createStudioPaths(app.getPath("userData"));
-  const stateRepository = new JsonStore(studioPaths.stateFile);
+  libraryStartupWindow = new LibraryStartupWindow(path.join(currentDirectory, "..", "..", "renderer", "assets"), error =>
+    appLogger.warn("storage", "startup-progress-failed", error instanceof Error ? error.message : String(error)));
+  // Alternate profiles (including harness fixtures) must never migrate into
+  // the primary user's Documents library.
+  const documents = app.commandLine.hasSwitch("user-data-dir")
+    ? path.join(studioPaths.userDataDirectory, "Documents")
+    : app.getPath("documents");
+  nasPublisher = new NasPublisher({
+    stateFile: studioPaths.stateFile,
+    coversDirectory: studioPaths.historyCoverDirectory,
+    resolveOutputRoot: (settings) => resolveComfyOutputDirectory(settings),
+    onError: (error) => appLogger.warn("storage", "nas-publish-failed", error instanceof Error ? error.message : String(error))
+  });
+  const stateRepository = new JsonStore(studioPaths.stateFile, {
+    libraryDirectory: path.join(documents, "Local Video Studio", "Library"),
+    beforeLibraryMove: () => nasPublisher!.prepareLibraryMove(),
+    onMoveProgress: progress => studioEventBus.publish("history-migration:progress", progress),
+    onProgress: progress => libraryStartupWindow?.update(progress),
+    onCommitted: (state) => nasPublisher?.schedule(state),
+    onWarning: (error) => appLogger.warn("storage", "backup-maintenance-failed", error instanceof Error ? error.message : String(error))
+  });
   store = stateRepository;
   const queueRuntime = new QueueRuntimeService({
     store: stateRepository,
@@ -689,6 +719,7 @@ app.whenReady().then(async () => {
     waitForWorker: waitWithTimeout,
     settings: {
       videoHistoryMigrationJournal: studioPaths.videoHistoryMigrationJournal,
+      stateFile: studioPaths.stateFile,
       resolveComfyOutputDirectory,
       clearRendererDirty: () => {
         rendererHasUnsavedSettings = false;
@@ -735,11 +766,32 @@ app.whenReady().then(async () => {
       }
     });
   } catch (error) {
+    libraryStartupWindow?.close();
     appLogger.error(
       "app",
       "startup-failed",
       error instanceof Error ? error.message : String(error)
     );
+    const result = await dialog.showMessageBox({
+      type: "error",
+      title: "Local Video Studio — 启动失败",
+      message: "无法安全打开应用资料，已停止启动。",
+      detail: `${error instanceof Error ? error.message : String(error)}\n\n请保留原文件和备份。检查磁盘与目录权限后重试；也可打开资料目录检查恢复文件。`,
+      buttons: ["退出", "打开资料目录", "重试启动", "选择资料库位置"],
+      defaultId: 0,
+      cancelId: 0
+    });
+    if (result.response === 1) await shell.openPath(path.dirname(studioPaths.stateFile));
+    if (result.response === 2) app.relaunch();
+    if (result.response === 3) {
+      const selection = await dialog.showOpenDialog({ title: "选择原资料库；首次迁移请选择空目录", properties: ["openDirectory"] });
+      if (!selection.canceled && selection.filePaths[0]) {
+        try { await recoverLibraryLocation(studioPaths.stateFile, selection.filePaths[0]); app.relaunch(); }
+        catch (recoveryError) { dialog.showErrorBox("资料库恢复未完成", recoveryError instanceof Error ? recoveryError.message : String(recoveryError)); }
+      }
+    }
+    app.quit();
+    return;
   }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -747,9 +799,10 @@ app.whenReady().then(async () => {
 });
 
 app.once("will-quit", () => {
+  libraryStartupWindow?.close();
   removeStudioEventBridge();
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (!startupInProgress && process.platform !== "darwin") app.quit();
 });

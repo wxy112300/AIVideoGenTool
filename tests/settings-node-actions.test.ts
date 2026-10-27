@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createDefaultSettings } from "../src/core/defaults";
 import type { RendererContext } from "../src/renderer/contracts";
-import { renderDependencyActionSplit } from "../src/renderer/pages/settings/dependency-actions";
+import { renderDependencyActionSplit, renderDependencyVersions } from "../src/renderer/pages/settings/dependency-actions";
 import { renderDependencyFeedback, updateDependencyGitProgress } from "../src/renderer/pages/settings/dependency-presentation";
 import { createStableLabels } from "../src/renderer/shared/ui/feedback";
 import { mountSettingsNodeDependencyController } from "../src/renderer/pages/settings/node-dependency-controller";
@@ -28,6 +28,14 @@ function mount(root: HTMLElement, showItemInFolder = vi.fn(async () => true)) {
 }
 
 describe("dependency action menus", () => {
+  it("labels a Registry-only version by its source instead of claiming it is the latest GitHub release", () => {
+    const markup = renderDependencyVersions(settings.uiLocale, escapeHtml, {
+      current: "3.9.1", recommended: "3.10.2", latest: "3.10.0", latestSource: "Comfy Registry", currentFallback: "—", fallback: "—"
+    });
+    const root = document.createElement("div"); root.innerHTML = markup;
+    expect(root.querySelectorAll(".node-version-label")[2].textContent).toBe("Registry");
+    expect(root.querySelectorAll(".node-version-value")[2].textContent).toBe("v3.10.0");
+  });
   it("patches Git progress in place and restores waiting animation for the next stage", () => {
     vi.stubGlobal("CSS", { escape: (value: string) => value });
     const root = document.createElement("div"); document.body.append(root);

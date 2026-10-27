@@ -99,9 +99,16 @@
 .seedvr2-segment-progress-copy { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; color: var(--text-3); font-size: var(--fs-12); }
 .seedvr2-segment-progress-copy strong { color: var(--text-2); font-weight: var(--fw-medium); }
 .queue-prompt { display: grid; gap: 2px; min-width: 0; }
+.queue-local-progress { display: grid; gap: 4px; margin: 4px 0 8px; }
+.queue-local-progress[hidden] { display: none; }
+.queue-local-progress-copy { display: flex; justify-content: space-between; color: var(--text-2); font-size: var(--fs-11); }
+.queue-prompt-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.queue-prompt-pages .ui-button { min-height: 24px; padding: 2px 7px; font-size: var(--fs-11); }
+.queue-prompt-pages [aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); }
 .queue-source-summary { margin: 0; color: var(--text-2); font-size: var(--fs-12); line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
 .queue-prompt .task-description { display: -webkit-box; -webkit-line-clamp: var(--prompt-lines, 2); -webkit-box-orient: vertical; min-height: 0; max-height: none; margin: 0; padding: 0; overflow: hidden; white-space: normal; color: var(--text-2); font-size: var(--fs-12); line-height: 1.5; user-select: text; }
 .queue-prompt.open .task-description { display: block; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--r-md); background: color-mix(in srgb, var(--canvas) 55%, transparent); white-space: pre-wrap; }
+.queue-prompt .task-description[hidden] { display: none; }
 .queue-prompt-tools { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
 .queue-prompt-tools .ui-button.icon-button { width: 24px; min-width: 24px; min-height: 24px; margin-left: -6px; }
 .queue-prompt-toggle.ui-button { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--text-3); font-size: var(--fs-11); line-height: 1.6; }

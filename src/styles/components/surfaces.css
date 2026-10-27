@@ -19,6 +19,12 @@
   font: var(--fs-13)/var(--lh-body) var(--font-sans); overflow: hidden;
 }
 .ui-notice-message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ui-notice-has-progress { position: relative; min-width: min(320px, calc(100vw - 32px)); }
+.ui-notice-progress { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; border: 0; appearance: none; background: var(--line); }
+.ui-notice-progress::-webkit-progress-bar { background: var(--line); }
+.ui-notice-progress::-webkit-progress-value { background: var(--accent); transition: width var(--dur-4) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .ui-notice-progress::-webkit-progress-value { transition: none; } }
+[data-motion="reduced"] .ui-notice-progress::-webkit-progress-value { transition: none; }
 .ui-notice-icon { display: inline-flex; flex: none; align-items: center; color: var(--info); }
 .ui-notice-icon .ui-icon { width: 14px; height: 14px; }
 .ui-notice-error .ui-notice-icon { color: var(--danger); }

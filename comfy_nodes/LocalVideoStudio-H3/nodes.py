@@ -1295,6 +1295,9 @@ class LocalVideoStudioH3AnchorConditioning:
         return (anchored,)
 
 
+from .group_receipt import LocalVideoStudioH3ContinuumGroupReceipt
+
+
 NODE_CLASS_MAPPINGS = {
     "LocalVideoStudioH3SaveJointAV": LocalVideoStudioH3SaveJointAV,
     "LocalVideoStudioH3LoadJointAV": LocalVideoStudioH3LoadJointAV,
@@ -1302,6 +1305,7 @@ NODE_CLASS_MAPPINGS = {
     "LocalVideoStudioH3ContinuumSamplerV38": LocalVideoStudioH3ContinuumSamplerV38,
     "LocalVideoStudioH3ContinuumDiagnostics": LocalVideoStudioH3ContinuumDiagnostics,
     "LocalVideoStudioH3ContinuumManagedReceipt": LocalVideoStudioH3ContinuumManagedReceipt,
+    "LocalVideoStudioH3ContinuumGroupReceipt": LocalVideoStudioH3ContinuumGroupReceipt,
     "LocalVideoStudioH3ManagedSageAttention": LocalVideoStudioH3ManagedSageAttention,
     "LocalVideoStudioRequireGpuVAE": LocalVideoStudioRequireGpuVAE,
     "LocalVideoStudioH3RequireGpuVAE": LocalVideoStudioRequireGpuVAE,
@@ -1315,6 +1319,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LocalVideoStudioH3ContinuumSamplerV38": "H3 Continuum V3.8 Native State (Local Video Studio)",
     "LocalVideoStudioH3ContinuumDiagnostics": "H3 Continuum Extend Diagnostics (Local Video Studio)",
     "LocalVideoStudioH3ContinuumManagedReceipt": "H3 Continuum Managed Run Receipt (Local Video Studio)",
+    "LocalVideoStudioH3ContinuumGroupReceipt": "H3 Continuum Group Checkpoint (Local Video Studio)",
     "LocalVideoStudioH3ManagedSageAttention": "H3 Managed Observable Sage (Local Video Studio)",
     "LocalVideoStudioRequireGpuVAE": "Require GPU VAE (Local Video Studio)",
     "LocalVideoStudioH3RequireGpuVAE": "H3 Require GPU VAE (Local Video Studio)",

@@ -1,5 +1,5 @@
 import type { HistoryRating, UiLocale } from "../types.js";
-import type { HistoryFilterState } from "./history-filter.js";
+import { normalizeHistoryFilter, type HistoryFilterInput, type HistoryFilterState } from "./history-filter.js";
 
 export const LAN_BROWSER_DEFAULT_PORT = 8790;
 export interface LanBrowserStatus {
@@ -38,11 +38,19 @@ export interface BrowsePage {
 }
 
 export interface BrowseLibraryInfo {
+  /** Independent replicas never expose desktop metadata mutations. Absent means desktop behavior. */
+  readOnly?: boolean;
   revision: string;
   count: number;
   locale: UiLocale;
   tags: string[];
   models: Array<{ id: string; name: string }>;
+}
+
+export function normalizeBrowseFilter(value: HistoryFilterInput | null | undefined, readOnly = false): HistoryFilterState {
+  const filter = normalizeHistoryFilter(value);
+  return readOnly ? { ...filter, favoriteOnly: false, minRating: null, maxRating: null,
+    sort: filter.sort.startsWith("rating-") ? "newest" : filter.sort } : filter;
 }
 
 /** Loaded only when the viewer opens its read-only information panel. */

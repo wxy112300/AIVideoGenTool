@@ -10,6 +10,7 @@ import {
   H3_AFTER_MIDNIGHT_LORA_ID,
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
+  H3_TURBO_8STEP_V1_LORA_ID,
   isH3Ref2vTurboEnabled,
   isH3PddLoraId,
   isH3SlaTurboLoraId,
@@ -291,7 +292,7 @@ export function isMiniMaxH3LivePreviewSupported(modelId: string): boolean {
   return modelCatalog.get(modelId)?.definition.capabilities?.supportsLivePreview !== false;
 }
 
-function applyMiniMaxH3Spectrum(
+export function applyMiniMaxH3Spectrum(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
   locale: UiLocale = "zh-CN",
   modelAwareMode: GenerationQueueTask["spectrumModelAwareMode"] = "off"
@@ -386,9 +387,9 @@ function applyMiniMaxH3LivePreview(
   for (const node of consumers) node.inputs!.model = [nodeId, 0];
 }
 
-function applyVideoLoraStack(
+export function applyVideoLoraStack(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  task: GenerationQueueTask | ExtensionQueueTask,
+  task: Pick<GenerationQueueTask | ExtensionQueueTask, "taskType" | "modelId" | "videoLoras" | "h3ReferenceSlots" | "spectrumMode" | "attentionMode">,
   locale: UiLocale = "zh-CN"
 ): void {
   const selected = task.videoLoras ?? [];
@@ -582,14 +583,16 @@ function applyMiniMaxH3SlaAttention(
  * 6–8-step shift contract. This keeps old persisted tasks renderable without
  * allowing one Turbo variant's settings to leak into another path.
  */
-function applyMiniMaxH3Ref2vTurboSampling(
+export function applyMiniMaxH3Ref2vTurboSampling(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  task: GenerationQueueTask | ExtensionQueueTask
+  task: Pick<GenerationQueueTask | ExtensionQueueTask, "taskType" | "modelId" | "videoLoras">
 ): void {
   if (task.taskType === "generation" && task.videoLoras?.some((lora) =>
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   )) return;
   const ref2vTurbo = isH3Ref2vTurboEnabled(task);
+  const fl2vaEightStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) && Boolean(task.videoLoras?.some(lora =>
+    lora.id === H3_TURBO_8STEP_V1_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)));
   const fl2vaFourStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
     Boolean(task.videoLoras?.some((lora) =>
       isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
@@ -606,7 +609,7 @@ function applyMiniMaxH3Ref2vTurboSampling(
   const afterMidnight = Boolean(task.videoLoras?.some((lora) =>
     lora.id === H3_AFTER_MIDNIGHT_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)
   ));
-  if (!ref2vTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo && !afterMidnight) return;
+  if (!ref2vTurbo && !fl2vaEightStepTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo && !afterMidnight) return;
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
@@ -614,9 +617,9 @@ function applyMiniMaxH3Ref2vTurboSampling(
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
-  sampler.inputs.sampler_name = "euler";
+  sampler.inputs.sampler_name = fl2vaEightStepTurbo ? "er_sde" : "euler";
   for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
-  if (!ref2vTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo) return;
+  if (!ref2vTurbo && !fl2vaEightStepTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo) return;
   upsertMiniMaxH3SamplingShift(workflow, consumers, {
     shiftVideo: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 6 : 12,
     shiftAudio: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
@@ -738,9 +741,9 @@ function upsertMiniMaxH3SamplingShift(
  * uses the stock loader and only changes the sampler contract around the
  * loaded model: Euler + Simple, eight steps, and the native H3 sigma shift.
  */
-function applyMiniMaxH3PddSampling(
+export function applyMiniMaxH3PddSampling(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  task: GenerationQueueTask | ExtensionQueueTask
+  task: Pick<GenerationQueueTask | ExtensionQueueTask, "taskType" | "modelId" | "videoLoras">
 ): void {
   if (task.taskType !== "generation") return;
   const pdd = task.videoLoras?.find((lora) =>

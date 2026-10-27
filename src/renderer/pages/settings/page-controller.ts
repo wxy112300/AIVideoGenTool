@@ -8,6 +8,8 @@ import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
+import { outputDirectoryWithinRoot } from "./helpers";
+import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 
 // UI-only disclosure state survives a scan/remount without entering persisted settings.
@@ -42,6 +44,13 @@ export function mountSettingsPageController(
   const events = new AbortController();
   const signal = events.signal;
   const root = options.context.root;
+  const acceptsOutputDirectory = (directory: string): boolean => {
+    const scan = options.getEnvironmentScan();
+    const outputRoot = scan?.comfyRoot ? `${scan.comfyRoot}/output` : scan?.outputDirectory || "";
+    if (outputDirectoryWithinRoot(directory, outputRoot)) return true;
+    options.context.notify(options.context.t(uiKeys.settings.system.outputWithinComfy), { kind: "error", renderPage: false });
+    return false;
+  };
   root.querySelector("[data-pick-environment-comfy]")?.addEventListener("click", () => {
     root.querySelector<HTMLButtonElement>("#pick-comfy-install-directory")?.click();
   }, { signal });
@@ -175,7 +184,7 @@ export function mountSettingsPageController(
   root.querySelector("#scan-environment")?.addEventListener("click", () => {
     const settings = options.formSettings();
     options.setSettingsDraft(settings);
-    void options.runEnvironmentScan(settings);
+    void options.runEnvironmentScan(settings, "manual");
   }, { signal });
 
   root.querySelector("#verify-python-runtime")?.addEventListener("click", () => {
@@ -191,7 +200,10 @@ export function mountSettingsPageController(
     try {
       await options.requestSaveSettings(nextSettings);
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error), { renderPage: false, kind: "error" });
+      const message = error instanceof Error ? error.message : String(error);
+      const key = message.includes(LIBRARY_DESTINATION_OCCUPIED) ? uiKeys.settings.system.libraryDestinationOccupied
+        : message.includes(LIBRARY_DESTINATION_CONFLICT) ? uiKeys.settings.system.libraryDestinationConflict : undefined;
+      options.context.notify(key ? options.context.t(key) : message.replace(/^Error invoking remote method ['"][^'"]+['"]: (?:StateRecoveryError: )?/, ""), { renderPage: false, kind: "error" });
     }
   }, { signal });
 
@@ -266,6 +278,7 @@ export function mountSettingsPageController(
     const input = root.querySelector<HTMLInputElement>("#output-directory");
     const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
     if (!directory || !input) return;
+    if (!acceptsOutputDirectory(directory)) return;
     input.value = directory;
     const settings = options.formSettings();
     options.setSettingsDraft(settings);
@@ -276,6 +289,7 @@ export function mountSettingsPageController(
     const input = root.querySelector<HTMLInputElement>("#image-output-directory");
     const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
     if (!directory || !input) return;
+    if (!acceptsOutputDirectory(directory)) return;
     input.value = directory;
     options.setSettingsDraft(options.formSettings());
     options.syncSettingsDirtyUi();
@@ -289,6 +303,17 @@ export function mountSettingsPageController(
     options.setSettingsDraft(options.formSettings());
     options.syncSettingsDirtyUi();
   }, { signal });
+
+  for (const field of ["library-directory"]) {
+    root.querySelector(`#pick-${field}`)?.addEventListener("click", async () => {
+      const input = root.querySelector<HTMLInputElement>(`#${field}`);
+      const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
+      if (!directory || !input) return;
+      input.value = directory;
+      options.setSettingsDraft(options.formSettings());
+      options.syncSettingsDirtyUi();
+    }, { signal });
+  }
 
   root.querySelector("#open-image-asset-library")?.addEventListener("click", () => {
     if (options.settingsHaveUnsavedChanges()) {

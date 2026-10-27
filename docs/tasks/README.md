@@ -4,6 +4,22 @@
 
 ## 当前任务
 
+- [0.67.1 Windows Release](2026-10-28-release-0.67.1/TASK.md)
+
+- [文档目录资料库、可靠迁移与 NAS 自动同步](2026-10-27-library-storage/TASK.md)
+
+- [NAS 独立只读浏览服务](2026-10-27-nas-browser/TASK.md)
+
+- [初始化扫描阶段通知](2026-10-27-environment-scan-progress/TASK.md)
+
+- [Attention 扫描超时与失败恢复](2026-10-27-attention-scan-recovery/TASK.md)
+
+- [历史文件复制标志与暂存生命周期](2026-10-27-history-file-clipboard/TASK.md)
+
+- [历史单独删除 AV 后的显示清理](2026-10-27-history-av-removal/TASK.md)
+
+- [历史 hover 预览防黑屏](2026-10-26-history-hover-preview/TASK.md)
+
 - [Motion Context 推荐线升级](2026-10-25-motion-context-upgrade/TASK.md)
 - [设置安装控件与版本检测回归](2026-10-25-settings-release-check/TASK.md)
 - [历史虚拟列表](2026-10-25-history-virtualization/TASK.md)

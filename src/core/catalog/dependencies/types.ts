@@ -77,6 +77,7 @@ export interface DependencyBadRange {
 }
 
 export type CatalogCustomNodeFeatureId =
+  | "h3-continuum-groups"
   | "h3-sage-attention"
   | "h3-sla-attention"
   | "h3-live-preview"

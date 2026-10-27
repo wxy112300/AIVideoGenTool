@@ -114,6 +114,7 @@ export type ApplicationRuntimeQueueDependencies = {
 export type ApplicationRuntimeSettingsDependencies = Pick<
   SettingsServiceDependencies,
   | "videoHistoryMigrationJournal"
+  | "stateFile"
   | "resolveComfyOutputDirectory"
   | "clearRendererDirty"
 >;
@@ -245,6 +246,7 @@ export class ApplicationRuntime {
       store: this.deps.store,
       logger: this.deps.logger,
       videoHistoryMigrationJournal: this.deps.settings.videoHistoryMigrationJournal,
+      stateFile: this.deps.settings.stateFile,
       resolveComfyOutputDirectory: this.deps.settings.resolveComfyOutputDirectory,
       sendState: this.deps.sendState,
       sendHistoryMigrationProgress: (progress: HistoryMigrationProgress) => {
@@ -348,7 +350,7 @@ export class ApplicationRuntime {
     const environmentQuery = new EnvironmentQueryService({
       logger: this.deps.logger,
       errorMeta: this.deps.errorMeta,
-      scanEnvironment: (settings, scope, options) => scanEnvironment(settings, scope, options)
+      scanEnvironment: (settings, scope, options, onProgress) => scanEnvironment(settings, scope, options, onProgress)
     });
     const mediaReadService = new MediaReadService({
       store: this.deps.store,

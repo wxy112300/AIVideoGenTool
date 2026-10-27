@@ -28,6 +28,7 @@ export interface QueueTaskProgressPatch {
   stage?: string;
   workProgress?: QueueWorkProgress;
   seedVr2Progress?: SeedVr2UpscaleProgress;
+  longVideoGroupProgress?: number;
 }
 
 export class QueueTaskStateService {
@@ -54,6 +55,8 @@ export class QueueTaskStateService {
         (Object.prototype.hasOwnProperty.call(patch, "stage") && patch.stage !== task.stage) ||
         (Object.prototype.hasOwnProperty.call(patch, "workProgress") &&
           JSON.stringify(patch.workProgress) !== JSON.stringify(task.workProgress)) ||
+        (Object.prototype.hasOwnProperty.call(patch, "longVideoGroupProgress") &&
+          patch.longVideoGroupProgress !== (task.taskType !== "image-generation" ? task.longVideoGroupProgress : undefined)) ||
         (Object.prototype.hasOwnProperty.call(patch, "seedVr2Progress") &&
           JSON.stringify(patch.seedVr2Progress) !== JSON.stringify(
             task.taskType === "upscale" ? task.seedVr2Progress : undefined
@@ -74,6 +77,8 @@ export class QueueTaskStateService {
     const previous = this.pendingProgress.get(taskId);
     const eventPatch = {
       ...patch,
+      ...(Object.prototype.hasOwnProperty.call(patch, "longVideoGroupProgress")
+        ? { longVideoGroupProgress: patch.longVideoGroupProgress ?? null } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "workProgress")
         ? { workProgress: patch.workProgress ?? null }
         : {}),

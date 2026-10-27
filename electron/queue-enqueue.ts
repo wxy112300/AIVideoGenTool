@@ -59,6 +59,8 @@ import {
 import { adaptH3AvAsset } from "../src/core/h3-av-adapters.js";
 import { validateContinuumSequence } from "../src/core/h3-av-asset.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
+import { isLongVideoDraftActive, longVideoBlockReason, longVideoDependencyBlockReason } from "../src/core/long-video/capability.js";
+import { enqueueLongVideoExtension } from "./services/long-video-enqueue.js";
 import {
   isH3TurboEnabled,
   isH3PddLoraId,
@@ -648,6 +650,11 @@ export class QueueEnqueueService {
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeVideoDraft(draft));
+    const longVideo = isLongVideoDraftActive(draft);
+    if (longVideo) {
+      const reason = longVideoBlockReason(draft, enqueueSettings);
+      if (reason) throw new Error(reason);
+    }
     if (draft.inputMode !== "image") throw new Error("视频续写必须使用独立的 extension 队列任务");
     if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
       throw new Error("当前模型不支持图像输入生成。");
@@ -661,7 +668,7 @@ export class QueueEnqueueService {
     if (isR2V && (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))) {
       throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
     }
-    if (!promptOf(draft)) throw new Error("提示词不能为空");
+    if (!longVideo && !promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
     const resolvedWorkflowPath = h3WorkflowPathForInput(
       draft.workflowPath,
@@ -672,7 +679,7 @@ export class QueueEnqueueService {
       ...draft,
       resolution: isH3NativeHighResolution(draft.resolution) ? 720 : draft.resolution
     }, enqueueSettings.uiLocale);
-    if (!safety.safe) throw new Error(safety.message);
+    if (!longVideo && !safety.safe) throw new Error(safety.message);
     if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
       throw new Error("H3 Q3 GGUF 3080 实验档不支持 LoRA，请先移除 LoRA。");
     }
@@ -717,6 +724,10 @@ export class QueueEnqueueService {
     const dependencyScan = dependencyScanRequired
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
+    if (longVideo) {
+      const reason = longVideoDependencyBlockReason(dependencyScan, enqueueSettings);
+      if (reason) throw new Error(reason);
+    }
     if (dependencyScan) {
       const coreBlockReason = modelCoreVersionBlockReason(draft.modelId, dependencyScan.comfyCompatibility.version, enqueueSettings.uiLocale);
       if (coreBlockReason) throw new Error(coreBlockReason);
@@ -827,10 +838,13 @@ export class QueueEnqueueService {
       }
     }
     hydrateVideoInputImageDimensions(preparedDraft, deps.imageInspection);
+    const longVideoRoot = longVideo ? path.join(await deps.resolveTaskOutputDirectory(), ".lvs-long-video") : undefined;
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
-      state.queue.push(queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode }));
+      const task = queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode });
+      if (longVideoRoot) task.longVideoRoot = longVideoRoot;
+      state.queue.push(task);
       activateCreationDraft(state, preparedDraft);
     });
     const task = next.queue.at(-1);
@@ -977,6 +991,7 @@ export class QueueEnqueueService {
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeVideoDraft(draft));
+    if (isLongVideoDraftActive(draft)) return enqueueLongVideoExtension(deps, draft);
     if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
     if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
       throw new Error("当前模型不支持视频续写。");

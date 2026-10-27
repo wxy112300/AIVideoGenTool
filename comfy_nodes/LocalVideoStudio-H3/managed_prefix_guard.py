@@ -36,7 +36,9 @@ def _expectation(controller):
     graph = controller.prompt_graph or {}
     matches = []
     for node in graph.values():
-        if not isinstance(node, dict) or node.get("class_type") != "LocalVideoStudioH3ContinuumManagedReceipt":
+        if not isinstance(node, dict) or node.get("class_type") not in {
+            "LocalVideoStudioH3ContinuumManagedReceipt", "LocalVideoStudioH3ContinuumGroupReceipt"
+        }:
             continue
         inputs = node.get("inputs") or {}
         if inputs.get("status") == [controller.sampler_node_id, 3]:
@@ -67,6 +69,16 @@ def install_managed_prefix_guard(module):
     @wraps(original)
     def guarded(controller, contract, *, resume_safe):
         expected = _expectation(controller)
+        group_inputs = [node.get("inputs") or {} for node in (controller.prompt_graph or {}).values()
+                        if isinstance(node, dict) and node.get("class_type") == "LocalVideoStudioH3ContinuumGroupReceipt"
+                        and (node.get("inputs") or {}).get("status") == [controller.sampler_node_id, 3]]
+        if group_inputs:
+            inputs = group_inputs[0]
+            planned = inputs.get("planned_chunks")
+            if type(planned) is not int or not 1 <= planned <= 16 or planned != contract.get("chunk_count"):
+                raise ValueError("Continuum group guard: frozen planned layout changed")
+            if expected[0] == 0 and (controller.run_root / "project.json").exists():
+                raise ValueError("Continuum group guard: new Run identity already exists")
         if expected:
             logging.info("Local Video Studio prefix guard: sampler=%s accepted=%s", controller.sampler_node_id, expected[0])
         if expected and expected[0] > 0:
@@ -75,6 +87,8 @@ def install_managed_prefix_guard(module):
             if project.get("canonical_storage_revision_id") != head:
                 raise ValueError("Continuum managed prefix guard: selected History head is no longer current; reopen the latest accepted version")
         prefix = original(controller, contract, resume_safe=resume_safe)
+        if expected and expected[0] == 0 and group_inputs and prefix.records:
+            raise ValueError("Continuum group guard: new Run unexpectedly reused a prefix")
         if expected and expected[0] > 0:
             count, head = expected
             candidate = controller.review_head or {}

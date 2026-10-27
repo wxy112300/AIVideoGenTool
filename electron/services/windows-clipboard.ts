@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 let clipboardWrite: Promise<void> = Promise.resolve();
+const clipboardStagingRetentionMs = 24 * 60 * 60 * 1000;
 
 export async function resolveExistingHistoryFile(
   filename: string,
@@ -107,11 +108,20 @@ async function writeFilesToWindowsClipboard(
     await stageFilesForWindowsClipboard(filenames, stagingRoot);
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    // Let the Windows-owned cmdlet create CF_HDROP and Preferred DropEffect.
-    // Hand-building a DataObject can make same-volume Explorer paste behave
-    // like a move, removing the source video from ComfyUI's output directory.
-    "$files = $env:AIVIDEO_CLIPBOARD_FILES_JSON | ConvertFrom-Json",
-    "for ($attempt = 1; $attempt -le 8; $attempt++) { try { Set-Clipboard -LiteralPath $files; $copied = @(Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }); if (@(Compare-Object @($files) $copied).Count -ne 0) { throw 'Clipboard file list did not persist' }; break } catch { if ($attempt -eq 8) { throw }; Start-Sleep -Milliseconds 120 } }"
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$files = [string[]]@($env:AIVIDEO_CLIPBOARD_FILES_JSON | ConvertFrom-Json)",
+    "$list = New-Object System.Collections.Specialized.StringCollection",
+    "$list.AddRange($files)",
+    "$data = New-Object System.Windows.Forms.DataObject",
+    "$data.SetFileDropList($list)",
+    // Set-Clipboard -LiteralPath does not set Preferred DropEffect on Windows
+    // PowerShell 5.1. Without COPY (DWORD 1), the Shell chooses the operation.
+    "$effect = New-Object System.IO.MemoryStream",
+    "$effect.Write([BitConverter]::GetBytes([uint32]1), 0, 4)",
+    "$effect.Position = 0",
+    "$data.SetData('Preferred DropEffect', $effect)",
+    // copy=true flushes OLE data so the file list survives this helper's exit.
+    "for ($attempt = 1; $attempt -le 8; $attempt++) { try { [System.Windows.Forms.Clipboard]::SetDataObject($data, $true); $read = [System.Windows.Forms.Clipboard]::GetDataObject(); $copied = [string[]]@($read.GetData('FileDrop', $false)); $copyEffect = $read.GetData('Preferred DropEffect', $false); if ($copied.Count -ne $files.Count -or @(Compare-Object $files $copied).Count -ne 0 -or $copyEffect -isnot [System.IO.MemoryStream] -or $copyEffect.Length -ne 4 -or [BitConverter]::ToUInt32($copyEffect.ToArray(), 0) -ne 1) { throw 'Clipboard copy data did not persist' }; break } catch { if ($attempt -eq 8) { throw }; Start-Sleep -Milliseconds 120 } }"
   ].join("; ");
 
   try {
@@ -131,10 +141,15 @@ async function writeFilesToWindowsClipboard(
   }
 
   const entries = await fs.readdir(stagingRoot, { withFileTypes: true }).catch(() => []);
+  // Explorer may already be using the previous data object when another copy
+  // arrives. Keep recent staging files alive instead of invalidating that paste.
+  const expiresBefore = Date.now() - clipboardStagingRetentionMs;
   await Promise.all(entries
     .filter((entry) => entry.isDirectory() && entry.name !== path.basename(stagingDirectory))
-    .map((entry) => fs.rm(path.join(stagingRoot, entry.name), {
-      recursive: true,
-      force: true
-    }).catch(() => undefined)));
+    .map(async (entry) => {
+      const directory = path.join(stagingRoot, entry.name);
+      const stat = await fs.stat(directory).catch(() => null);
+      if (!stat || stat.mtimeMs >= expiresBefore) return;
+      await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    }));
 }

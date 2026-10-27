@@ -10,7 +10,7 @@ afterEach(async () => {
   const parent = path.resolve("temp");
   for (const root of roots.splice(0)) { if (path.dirname(root) !== parent) throw new Error("Unexpected test cleanup root"); await fs.rm(root, { recursive: true, force: true }); }
 });
-it("serializes clipboard writes through pruning so the latest file-drop paths remain present", async () => {
+it("serializes writes and retains previous file-drop paths for an in-progress paste", async () => {
   const root = await fs.mkdtemp(path.resolve("temp", "clipboard-test-")); roots.push(root);
   const file = path.join(root, "source.txt"); await fs.writeFile(file, "original");
   const staging = path.join(root, "staging");
@@ -22,7 +22,21 @@ it("serializes clipboard writes through pruning so the latest file-drop paths re
   native.calls[1]!.done(null, ""); await second;
   expect(await fs.readFile(native.calls[1]!.paths[0]!, "utf8")).toBe("original");
   expect(await fs.readFile(file, "utf8")).toBe("original");
-  expect(await fs.readdir(staging)).toHaveLength(1);
+  expect(await fs.readFile(native.calls[0]!.paths[0]!, "utf8")).toBe("original");
+  expect(await fs.readdir(staging)).toHaveLength(2);
+});
+it("prunes expired staging without removing recent or current clipboard files", async () => {
+  const root = await fs.mkdtemp(path.resolve("temp", "clipboard-test-")); roots.push(root);
+  const file = path.join(root, "source.txt"); await fs.writeFile(file, "original");
+  const staging = path.join(root, "staging");
+  const expired = path.join(staging, "expired"); await fs.mkdir(expired, { recursive: true });
+  await fs.writeFile(path.join(expired, "old.txt"), "old");
+  const old = new Date(Date.now() - 48 * 60 * 60 * 1000); await fs.utimes(expired, old, old);
+  const copying = copyFilesToWindowsClipboard([file], staging);
+  await vi.waitFor(() => expect(native.calls).toHaveLength(1));
+  native.calls[0]!.done(null, ""); await copying;
+  expect(await fs.readdir(staging)).toEqual([path.basename(path.dirname(native.calls[0]!.paths[0]!))]);
+  expect(await fs.readFile(file, "utf8")).toBe("original");
 });
 it("does not poison the clipboard queue after a failed native write", async () => {
   const root = await fs.mkdtemp(path.resolve("temp", "clipboard-test-")); roots.push(root);

@@ -74,6 +74,7 @@ export function readSettingsFromForm(
     imagePromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: directoryValue("output-directory", base.outputDirectory),
+    libraryDirectory: directoryValue("library-directory", base.libraryDirectory ?? ""),
     imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),
     imageInputLibraryDirectory: directoryValue("image-input-library-directory", base.imageInputLibraryDirectory),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),

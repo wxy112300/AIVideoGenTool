@@ -7,6 +7,7 @@ import type {
   EnvironmentScanResult,
   HistoryAsset,
   HistoryMigrationProgress,
+  Settings,
   ImageAssetLibraryProgress,
   ImageAssetLibraryResult,
   ImageAssetLibraryScan,
@@ -68,6 +69,8 @@ type UpscaleTileMode = "auto" | "safe" | "fast";
 export interface DirectoryMigrationDialogRequest {
   oldDirectory: string;
   newDirectory: string;
+  previousSettings?: Settings;
+  nextSettings?: Settings;
 }
 
 export interface DirectoryMigrationDialogOptions {
@@ -619,6 +622,17 @@ export function renderDirectoryMigrationDialog(
   if (!request) return "";
   const progressValue = directoryMigrationProgressValue(options.progress);
   const t = options.t;
+  const directoryFields = [
+    ["libraryDirectory", uiKeys.settings.system.libraryDirectory],
+    ["outputDirectory", uiKeys.settings.system.videoOutputDirectory],
+    ["imageOutputDirectory", uiKeys.settings.system.imageOutputDirectory]
+  ] as const;
+  const changedDirectories = request.previousSettings && request.nextSettings
+    ? directoryFields.filter(([field]) => request.previousSettings![field] !== request.nextSettings![field])
+    : [];
+  const directorySummary = changedDirectories.length ? changedDirectories.map(([field, label]) =>
+    `<div class="directory-migration-path"><strong>${t(label)}</strong><code>${options.escapeHtml(request.previousSettings![field] || t(uiKeys.migration.autoDirectory))}</code><code>→ ${options.escapeHtml(request.nextSettings![field] || t(uiKeys.migration.autoDirectory))}</code></div>`).join("")
+    : `<strong>${t(uiKeys.migration.currentDirectory)}</strong><code>${options.escapeHtml(request.oldDirectory || t(uiKeys.migration.autoDirectory))}</code><strong>${t(uiKeys.migration.newDirectory)}</strong><code>${options.escapeHtml(request.newDirectory)}</code>`;
   return `
     <div class="dialog-backdrop confirm-backdrop" id="directory-migration-backdrop">
       <section class="confirm-dialog directory-migration-dialog" role="alertdialog" aria-modal="true" aria-labelledby="directory-migration-title" aria-describedby="directory-migration-description" tabindex="-1">
@@ -627,13 +641,12 @@ export function renderDirectoryMigrationDialog(
           <span class="eyebrow">${options.busy ? t(uiKeys.migration.processingDirectory) : t(uiKeys.migration.outputChanged)}</span>
           <h2 id="directory-migration-title">${t(uiKeys.migration.applyTitle)}</h2>
           <p id="directory-migration-description">${options.busy ? options.escapeHtml(options.progress?.message || t(uiKeys.migration.preparing)) : t(uiKeys.migration.chooseExisting)}</p>
-          <div class="confirm-warning"><strong>${t(uiKeys.migration.currentDirectory)}</strong><code>${options.escapeHtml(request.oldDirectory || t(uiKeys.migration.autoDirectory))}</code><strong>${t(uiKeys.migration.newDirectory)}</strong><code>${options.escapeHtml(request.newDirectory)}</code></div>
+          <div class="confirm-warning">${directorySummary}</div>
           ${options.busy
             ? `<div class="progress" role="progressbar" aria-label="${t(uiKeys.migration.progressLabel)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressValue)}"><span style="width:${progressValue}%"></span></div><p class="muted">${options.progress ? `${t(uiKeys.migration.fileCount, { current: options.progress.current, total: options.progress.total })}${options.progress.warningCount ? ` · ${t(uiKeys.migration.warningCount, { count: options.progress.warningCount })}` : ""}` : t(uiKeys.migration.preparing)}</p>`
             : `<p class="muted">${t(uiKeys.migration.applyInfo)}</p>`}
         </div>
         <div class="dialog-actions">
-          <button class="secondary button-with-icon" id="directory-apply" ${options.busy ? "disabled" : ""}>${options.icon("check")}${t(uiKeys.migration.apply)}</button>
           <button class="primary button-with-icon" id="directory-apply-migrate" ${options.busy ? "disabled" : ""}>${options.icon("folder-open")}${t(uiKeys.migration.applyAndMigrate)}</button>
           <button class="ghost button-with-icon" id="directory-cancel" ${options.busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.migration.cancel)}</button>
         </div>

@@ -11,6 +11,8 @@ import type {
 } from "../../../types";
 import type { RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { longVideoDraftFields } from "../../../core/long-video/draft";
+import { longVideoContinuationDraft } from "../../../core/long-video/continuation-draft";
 import {
   imageEditPicturesForVersion,
   normalizeImageEditDraft
@@ -189,6 +191,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const videoLoras = videoLorasForCreation(asset.videoLoras);
     const draft: Draft = {
       ...state.draft,
+      ...longVideoDraftFields(version.longVideoExecution?.script, asset.modelId),
       inputMode: isExtension ? "video" : "image",
       modelId: asset.modelId,
       workflowPath: asset.workflowPath ?? state.draft.workflowPath,
@@ -396,6 +399,16 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       ? h3LatentSaveModeFor(version, isMiniMaxH3R2vModel(sourceModelId))
       : undefined;
     try {
+      if (version.longVideoExecution) {
+        if (action !== "Continue / Next") throw new Error("Group Run take branching is not connected");
+        await options.selectDraftVideo(filename, { assetId: asset.id, versionId: version.id, duration: version.duration,
+          width: version.width, height: version.height, modelId: "minimax_h3_continuum", resetSeed: false, resetPrompt: true }, false);
+        const currentDraft = context.getState()?.draft;
+        if (!currentDraft) throw new Error("Missing continuation draft");
+        await options.saveDraftImmediately(longVideoContinuationDraft(currentDraft, asset.id, version, filename, () => crypto.randomUUID()));
+        options.navigateToCreationMode("video-extension");
+        return;
+      }
       await options.selectDraftVideo(filename, {
         assetId: asset.id,
         versionId: version.id,

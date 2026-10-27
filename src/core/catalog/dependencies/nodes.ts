@@ -55,10 +55,10 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.3.6";
+export const H3_AV_SERIALIZER_REVISION = "0.4.0";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
-export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.9.1";
-export const H3_CONTINUUM_REVISION = "94eaf70d674a58244e1cb139f021290d63fb2e6c";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.10.2";
+export const H3_CONTINUUM_REVISION = "308653cff108061a94381cef446fef985384b214";
 
 type NodeVersionDefaults = Pick<
   CatalogCustomNodeDefinition,
@@ -93,7 +93,7 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "mmh3-ultimate-upscale": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
   "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: SPECTRUM_RECOMMENDED_VERSION, latestVersion: SPECTRUM_RECOMMENDED_VERSION },
   "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION, latestVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION },
-  "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.09.04", latestVersion: "26.09.04" },
+  "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.10.21", latestVersion: "26.10.21" },
   "comfyui-dlss5": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.2", latestVersion: "0.2.2" },
   "comfyui-aetherscale": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.5.5", latestVersion: "0.5.5" },
   "h3-optimizations": { versionMode: "release", recommendedVersion: "0.2.20", latestVersion: "0.2.20" }
@@ -158,6 +158,8 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   directoryName: "ComfyUI-GGUF-H3",
   aliases: ["comfyui-gguf-h3"],
   releaseSource: "github-release",
+  installRevision: "61843db580f8549a85b0a1ed850d550079fadfee",
+  installRevisionPolicy: "recommended",
   nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
   runtimeRequirement: "只注册 H3 专用 loader 名称，与通用 ComfyUI-GGUF 并存；Q3_K 扩散模型仍需 CPU/RAM offload。",
   required: false
@@ -457,12 +459,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "h3-continuum",
   priority: 142,
   name: "ComfyUI H3 Continuum",
-  purpose: "使用 H3 Continuum 3.9.1 的 V3.8 兼容 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
+  purpose: "使用 H3 Continuum 3.10.2 的 V3.8 兼容 state 引擎和 Finalize 进行分块长视频与接续；History JointAV 通过应用 bridge 恢复为连续状态",
   repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
   directoryName: "ComfyUI-H3-Continuum",
   aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
   releaseSource: "github-release",
   installRevision: H3_CONTINUUM_REVISION,
+  installRevisionPolicy: "recommended",
   license: "MIT",
   nodeTypes: [
     "H3ContinuumSamplerV38",
@@ -474,11 +477,11 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
   bulkInstall: false,
   appInstallable: true,
-  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum package 3.9.1，保留 V3.8 兼容节点。旧 v5 Take 可读，但不能复用为新 v6 接续前缀；需要新 Run 或恢复兼容运行环境。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
+  runtimeRequirement: "要求 ComfyUI >=0.34.0；当前固定 H3 Continuum package 3.10.2（GitHub stable），保留 V3.8 兼容节点。旧 v5 Take 可读，但不能复用为新 v6 接续前缀；需要新 Run 或恢复兼容运行环境。公开运行面为 Sampler V3.8 + Core Video/Audio Decode + Finalize；安装后必须重启并通过 /object_info 与真实 H3 smoke 验证。旧 V3.7 Join/Finish/SaveState 图不属于当前支持路径。",
   compatibilityEvidence: [{
-    verifiedAt: "2026-10-09",
-    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.9.1",
-    note: "固定stable3.9.1，保留应用的SamplerV38兼容面与Finalize；Sampling Contract v6/Graph v4强化CFG/wrapper/closure复用资格，旧v5 Take仅可读，不复用为新v6前缀。应用managed保护仍挂到官方Run锁内前缀验证，不能将上游CPU/GPU证据当成本机全部组合通过。",
+    verifiedAt: "2026-10-26",
+    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.10.2",
+    note: "固定 stable 3.10.2，修复续接中断隐藏已完成 Take、Review 不可达重做目标及 Second Pass 张量驻留。保持 Run Storage v3 / Sampling v6 / Graph v4 与 V38 兼容面；AV 实文件读写、官方尾状态、facade schema 和注册类守卫 CPU 探针通过。旧 v5/unsafe v6 不提升复用资格；正式实例升级后的 schema/GPU 仍须验证。",
     comfyUi: "0.34.0",
     commit: H3_CONTINUUM_REVISION,
     checks: ["static"]
@@ -634,6 +637,8 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
   source: "bundled",
   installRevision: H3_AV_SERIALIZER_REVISION,
+  installRevisionPolicy: "recommended",
+  minimumVersion: "0.3.6",
   license: "MIT",
   nodeTypes: [
     "LocalVideoStudioH3SaveJointAV",
@@ -647,7 +652,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     "LocalVideoStudioH3RequireGpuVAE",
     "LocalVideoStudioH3AnchorConditioning"
   ],
-  runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 3.9.1，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
+  features: [{
+    id: "h3-continuum-groups",
+    name: "Continuum 分组检查点",
+    nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"],
+    description: "长视频内部执行使用的独立分组收据；需要应用H3节点0.4.0+，旧AV与managed路径保留0.3.6兼容。"
+  }],
+  runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 3.10.2，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
   required: false
 }, {
   id: "spectrum-minimax-h3",

@@ -54,12 +54,14 @@ export class SettingsSaveCoordinator {
     const scannedOutputDirectory = this.dependencies.getEnvironmentScan()?.outputDirectory || "";
     const oldDirectory = previousSettings.outputDirectory || scannedOutputDirectory;
     const newDirectory = nextSettings.outputDirectory || scannedOutputDirectory;
-    if (directoryComparisonKey(oldDirectory) !== directoryComparisonKey(newDirectory)) {
+    const directoryFields = ["libraryDirectory", "outputDirectory", "imageOutputDirectory"] as const;
+    const changes = directoryFields.filter(field => directoryComparisonKey(previousSettings[field] ?? "") !== directoryComparisonKey(nextSettings[field] ?? ""));
+    if (changes.length || directoryComparisonKey(oldDirectory) !== directoryComparisonKey(newDirectory)) {
       this.dependencies.requestDirectoryMigration(
         previousSettings,
         nextSettings,
-        oldDirectory,
-        newDirectory
+        changes.map(field => previousSettings[field] || (field === "outputDirectory" ? oldDirectory : "")).join("\n") || oldDirectory,
+        changes.map(field => nextSettings[field] || (field === "outputDirectory" ? newDirectory : "")).join("\n") || newDirectory
       );
       return "migration-required";
     }

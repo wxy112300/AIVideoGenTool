@@ -30,6 +30,7 @@ import {
   type VideoHistoryMigrationPlan
 } from "../../src/infrastructure/video-history-migration.js";
 import type { StudioPaths } from "./studio-paths.js";
+import { migrateStorageSettings, validateMediaDirectories } from "./settings-storage-migration.js";
 
 export interface SettingsHistoryMigrationPort {
   plan(
@@ -63,6 +64,7 @@ export interface SettingsServiceDependencies {
   store: StateRepository;
   logger: AppLogger;
   videoHistoryMigrationJournal: string;
+  stateFile?: string;
   resolveComfyOutputDirectory(settings: Settings): Promise<string>;
   sendState(state: AppState): void;
   sendHistoryMigrationProgress(progress: HistoryMigrationProgress): void;
@@ -123,7 +125,7 @@ export class SettingsService {
     // Immediate visual preferences must never apply an unrelated settings draft,
     // clear the native dirty guard, scan files, or touch queued execution policy.
     if (mode === "appearance") {
-      if (this.historyMigrationRunning) throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
+      if (this.historyMigrationRunning) throw new Error("当前正在迁移数据，请等待本次操作完成。");
       await this.deps.store.update((state) => {
         state.settings.appearance = normalizeAppearance(input.appearance);
       });
@@ -131,11 +133,11 @@ export class SettingsService {
       this.deps.sendState(state);
       return state;
     }
-    if (mode !== "apply" && mode !== "migrate-video-history") {
+    if (mode !== "apply" && mode !== "migrate-video-history" && mode !== "migrate-storage") {
       throw new Error("未知的设置保存模式。");
     }
     if (this.historyMigrationRunning) {
-      throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
+      throw new Error("当前正在迁移数据，请等待本次操作完成。");
     }
 
     if (input.lanBrowserEnabled !== undefined && typeof input.lanBrowserEnabled !== "boolean") {
@@ -174,9 +176,12 @@ export class SettingsService {
     };
 
     const previous = this.deps.store.get().settings;
+    const storageChanged = (["libraryDirectory", "outputDirectory", "imageOutputDirectory"] as const).some(key =>
+      (previous[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase() !== (settings[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase());
+    if (storageChanged && mode === "apply") throw new Error("数据目录更改必须确认后迁移，不能仅保存新路径。");
     const outputDirectoryChanged =
       previous.outputDirectory.trim() !== settings.outputDirectory.trim();
-    const directories = outputDirectoryChanged || mode === "migrate-video-history"
+    const directories = mode !== "migrate-storage" && (outputDirectoryChanged || mode === "migrate-video-history")
       ? await this.validateVideoOutputDirectoryChange(previous, settings)
       : { oldDirectory: "", newDirectory: "" };
     const shouldMigrate = Boolean(
@@ -203,6 +208,20 @@ export class SettingsService {
         updatedH3TaskCount += 1;
       }
     };
+
+    if (mode === "migrate-storage" || (mode === "migrate-video-history" && this.deps.stateFile)) {
+      if (!this.deps.stateFile) throw new Error("迁移状态文件未配置。");
+      this.historyMigrationRunning = true;
+      try {
+        const changes = await validateMediaDirectories(previous, settings, this.deps.resolveComfyOutputDirectory);
+        const next = await migrateStorageSettings({
+          store: this.deps.store, stateFile: this.deps.stateFile, settings, changes,
+          progress: this.deps.sendHistoryMigrationProgress, commit: commitSettings, sendState: this.deps.sendState
+        });
+        this.deps.clearRendererDirty();
+        return next;
+      } finally { this.historyMigrationRunning = false; }
+    }
 
     if (shouldMigrate) {
       this.historyMigrationRunning = true;

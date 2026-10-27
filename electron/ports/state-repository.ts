@@ -20,4 +20,6 @@ export interface StateRepository {
   mutateTransient?(mutator: StateMutator): void;
   /** Persist the current in-memory state without producing a snapshot. */
   flush?(): Promise<void>;
+  /** Release storage writer leases after durable work has settled. */
+  close?(): Promise<void>;
 }

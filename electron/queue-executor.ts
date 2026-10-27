@@ -29,6 +29,7 @@ import {
   waitForTask
 } from "./services/comfy-ui.js";
 import { executeNativeSeedVr2Upscale } from "./services/seedvr2-upscale.js";
+import { executeQueuedLongVideo, LongVideoPausedError } from "./services/long-video-queue.js";
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
 import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
@@ -889,7 +890,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         }
       };
       try {
-        if (isMiniMaxH3Model(task.modelId)) {
+        if (isMiniMaxH3Model(task.modelId) && !(task.longVideoExecution || task.longVideoRunSource)) {
           const h3VideoVaeMode = await resolveH3VideoVaeModeForTask(
             task,
             settingsAtClaim ?? store.get().settings
@@ -909,10 +910,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             h3VideoVaeMode
           });
         }
-        if (task.taskType === "generation") {
+        if (task.taskType === "generation" && !task.longVideoPlan) {
           const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
           if (!safety.safe) throw new Error(safety.message);
-        } else if (task.taskType === "extension") {
+        } else if (task.taskType === "extension" && !task.longVideoPlan) {
           const safety = extensionSafetyForTask(task, store.get().settings.uiLocale);
           if (!safety.safe) throw new Error(safety.message);
         }
@@ -1179,6 +1180,18 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const h3CompositeTask = task.taskType === "generation" && task.h3DeliveryResolution === 1080
           ? task
           : undefined;
+        if ((task.taskType === "generation" || task.taskType === "extension") && task.longVideoPlan) {
+          await executeQueuedLongVideo(task, comfyUiSettingsForQueueTask(task, store.get().settings), deps, activeController.signal);
+          sideEffects.markTaskSubmitted(task, false);
+          const completed = store.get();
+          const stable = await sideEffects.stabilizeRuntime(task.id, task.modelId, comfyUiSettingsForQueueTask(task, completed.settings),
+            Boolean(task.videoLoras?.length), completed.queueRunning && Boolean(nextQueueWaitingTask(completed.queue, completed.queuePauseBoundary)));
+          if (!stable) {
+            const stopped = await store.update(state => { state.queueRunning = false; });
+            sendState(stopped);
+          }
+          continue;
+        }
         let h3FirstPassCheckpoint = h3CompositeTask?.h3FirstPassCheckpoint;
         let executionTask: Exclude<QueueTask, ImageGenerationQueueTask> = h3CompositeTask
           ? h3FirstPassCheckpoint
@@ -1619,8 +1632,19 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
       } catch (error) {
+        if (error instanceof LongVideoPausedError) {
+          await updateTask(task.id, { status: "waiting", stage: error.message });
+          continue;
+        }
         const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
         const aborted = activeController.signal.aborted && !watchdogFailure;
+        if ((task.taskType === "generation" || task.taskType === "extension") && task.longVideoPlan) {
+          logger.error("queue", "long-video-failed", safeLogErrorMessage(error), { taskId: task.id, aborted, ...errorLogMeta(error) });
+          await updateTask(task.id, { status: aborted ? "cancelled" : "failed", error: error instanceof Error ? error.message : String(error) });
+          const stopped = await store.update(state => { state.queueRunning = false; });
+          sendState(stopped);
+          continue;
+        }
         const stalled = error instanceof TaskStalledError;
         logH3PreviewOutcome(aborted ? "cancelled" : "failed");
         if (!taskPerformanceStats && taskPerformanceMonitor) {

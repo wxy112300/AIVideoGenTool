@@ -195,11 +195,16 @@ function imageFormatFromFilename(filename: string): ImageOutputFormat {
   return "png";
 }
 
+function unknownImageFields(source: object, known: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(source).filter(([key]) => !known.includes(key)));
+}
+
 function normalizeImageFile(value: unknown): ImageAssetVersion["file"] | null {
   if (!value || typeof value !== "object") return null;
   const source = value as Partial<ImageAssetVersion["file"]>;
   if (typeof source.filename !== "string" || !source.filename.trim()) return null;
   return {
+    ...unknownImageFields(source, ["filename", "subfolder", "type", "format", "absolutePath"]),
     filename: source.filename,
     subfolder: typeof source.subfolder === "string" ? source.subfolder : "",
     type: typeof source.type === "string" && source.type.trim() ? source.type : "output",
@@ -226,6 +231,7 @@ function normalizeImageCrop(value: unknown): ImageCropData | undefined {
   if (typeof source.documentPath !== "string" || !source.documentPath.trim() ||
       typeof source.croppedPath !== "string" || !source.croppedPath.trim()) return undefined;
   return {
+    ...unknownImageFields(source, ["x", "y", "width", "height", "sourceWidth", "sourceHeight", "documentPath", "croppedPath", "revision", "updatedAt"]),
     x,
     y,
     width,
@@ -254,6 +260,7 @@ function normalizeImageAssetVersion(
   const modelId = typeof source.modelId === "string" ? source.modelId : "";
   const imageLoras = normalizeImageLoras(source.imageLoras, modelId);
   return {
+    ...source,
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     versionNumber: normalizedInteger(source.versionNumber, 0, 0),
     kind: kind === "source" && generatedVersion ? "edit" : kind,
@@ -352,6 +359,7 @@ function normalizeImageHistoryProject(value: unknown): ImageHistoryProject | nul
   const coverMode = source.coverMode === "pinned" ? "pinned" : "auto";
   const updatedAt = normalizedTimestamp(source.updatedAt, orderedVersions[0]!.createdAt);
   return {
+    ...source,
     mediaKind: "image",
     id,
     title: typeof source.title === "string" && source.title.trim()
@@ -391,6 +399,7 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
     typeof markupSource.documentPath === "string" && markupSource.documentPath.trim() &&
     typeof markupSource.renderedPath === "string" && markupSource.renderedPath.trim()
     ? {
+        ...unknownImageFields(markupSource, ["documentPath", "renderedPath", "summary", "revision", "objectCount", "updatedAt"]),
         documentPath: markupSource.documentPath.trim(),
         renderedPath: markupSource.renderedPath.trim(),
         summary: typeof markupSource.summary === "string" ? markupSource.summary.trim() : "",
@@ -408,6 +417,7 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
     typeof maskSource.documentPath === "string" && maskSource.documentPath.trim() &&
     typeof maskSource.maskPath === "string" && maskSource.maskPath.trim()
     ? {
+        ...unknownImageFields(maskSource, ["documentPath", "maskPath", "revision", "regionCount", "updatedAt"]),
         documentPath: maskSource.documentPath.trim(),
         maskPath: maskSource.maskPath.trim(),
         revision: normalizedInteger(maskSource.revision, 1, 1),
@@ -419,6 +429,7 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
       : undefined;
   const crop = normalizeImageCrop(source.crop);
   return {
+    ...unknownImageFields(source, ["id", "pictureNumber", "absolutePath", "width", "height", "role", "crop", "markup", "mask", "contentHash", "managedRelativePath", "originalPath", "note"]),
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     pictureNumber: normalizedInteger(source.pictureNumber, index + 1, 1),
     absolutePath,

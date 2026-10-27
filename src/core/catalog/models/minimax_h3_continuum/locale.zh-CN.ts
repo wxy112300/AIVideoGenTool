@@ -1,8 +1,8 @@
 import type { CatalogModelLocale } from "../../types.js";
 
 export const localeZhCN: CatalogModelLocale = {
-  name: "MiniMax H3 Continuum · JointAV 接续",
+  name: "MiniMax H3 Continuum",
   shortName: "MiniMax H3 Continuum",
-  badge: "Continuum · AV 接续",
-  description: "使用 H3 原生 JointAV latent 续写上一段视频；History 会自动带入，也可选择兼容的 safetensors artifact。"
+  badge: "Continuum",
+  description: "使用 Continuum Run Storage 分段生成和续接，保留兼容 JointAV artifact 的接入路径。"
 };

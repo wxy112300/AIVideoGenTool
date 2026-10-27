@@ -235,6 +235,8 @@ function applyQueueTaskProgress(
     ...current,
     ...(update.progress !== undefined ? { progress: update.progress } : {}),
     ...(update.stage !== undefined ? { stage: update.stage } : {}),
+    ...("longVideoGroupProgress" in update
+      ? { longVideoGroupProgress: update.longVideoGroupProgress ?? undefined } : {}),
     ...("workProgress" in update
       ? { workProgress: update.workProgress ?? undefined }
       : {}),

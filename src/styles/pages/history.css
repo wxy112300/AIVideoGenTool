@@ -133,6 +133,14 @@
 .image-project-kind { left: 6px; bottom: 8px; height: 18px; padding: 0 6px; font-size: 10px; border-radius: 5px; background: rgb(0 0 0 / .65); color: #fff; }
 .history-preview-progress { height: 3px; }
 .history-preview-progress:hover { height: 6px; }
+.history-media.has-history-cover video { z-index: 2; opacity: 0; transition: none; }
+.history-media.has-history-cover.playing.preview-ready video { opacity: 1; transition: opacity 140ms var(--ease-out); }
+.history-media.has-history-cover .history-media-loading { background: transparent; padding: 10px; place-content: end center; justify-items: center; opacity: 0; visibility: hidden; transition: none; }
+.history-media.has-history-cover.playing.preview-pending .history-media-loading { opacity: 1; visibility: visible; }
+.history-media.has-history-cover .history-media-loading small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.history-media.has-history-cover .history-media-loading .history-loading-spinner { width: 16px; height: 16px; }
+:root[data-motion="reduced"] .history-media.has-history-cover.playing.preview-ready video { transition: none; }
+@media (prefers-reduced-motion:reduce) { :root:not([data-motion="standard"]) .history-media.has-history-cover.playing.preview-ready video { transition: none; } }
 .history-media.media-loading, .image-history-media.image-media-loading { background: var(--surface-3); }
 .history-media.media-loading::after, .image-history-media.image-media-loading::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg,transparent 20%,rgb(255 255 255 / .035) 45%,transparent 70%); background-size: 200% 100%; animation: history-shimmer 1.6s linear infinite; }
 @keyframes history-shimmer { to { background-position: -200% 0; } }

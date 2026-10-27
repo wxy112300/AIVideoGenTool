@@ -33,6 +33,7 @@ export interface RendererRouteState {
 }
 
 export interface RendererNotifyOptions {
+  progress?: { completed: number; total: number };
   /** Replace an earlier transient status for the same operation. */
   key?: string;
   renderPage?: boolean;

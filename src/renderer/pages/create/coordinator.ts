@@ -37,6 +37,7 @@ import {
 } from "../../../core/image-workflow";
 import { nextImagePictureNumber, normalizeImageEditDraft } from "../../../core/image-project";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
+import { longVideoBlockReason, longVideoDependencyBlockReason } from "../../../core/long-video/capability";
 import { PromptEditHistory, type PromptHistoryScope, type PromptHistorySnapshot } from "../../../core/prompt-edit-history";
 import {
   isMiniMaxH3ContinuumModel,
@@ -833,6 +834,7 @@ export function createCreateWorkspaceCoordinator(
       trimEndSeconds: source?.duration ?? 0,
       sourceAssetId: source?.assetId,
       sourceVersionId: source?.versionId,
+      longVideoRunSource: undefined,
       h3LatentSaveMode: source?.h3LatentSaveMode,
       h3ContextLatentPath: source?.h3ContextLatentPath,
       h3MotionContextAsset: source?.h3MotionContextAsset
@@ -1021,11 +1023,11 @@ export function createCreateWorkspaceCoordinator(
       if (detail) detail.textContent = viewModel.motionContextStatusDetail;
     }
     const preview = document.querySelector<HTMLSelectElement>("#generation-mode")?.value === "preview";
-    const reason = preview ? uiText("create.editor.preview") : viewModel.enqueueBlockReason;
+    const reason = preview ? longVideoBlockReason(getState().draft, getState().settings) ?? longVideoDependencyBlockReason(deps.getEnvironmentScan(), getState().settings) ?? "" : viewModel.enqueueBlockReason;
     const summary = document.querySelector<HTMLElement>("[data-submit-summary]");
     if (summary) {
       summary.hidden = Boolean(reason);
-      summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · ${viewModel.draft.duration.toFixed(1)}s · ${viewModel.draft.fps} FPS`;
+      summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · ${(preview ? getState().draft.longVideoScript?.layout.requestedSeconds ?? viewModel.draft.duration : viewModel.draft.duration).toFixed(1)}s · ${viewModel.draft.fps} FPS`;
     }
     button.dataset.enqueueBlockReason = reason;
     button.disabled = Boolean(reason) || enqueueBusy;

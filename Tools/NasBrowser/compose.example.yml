@@ -1,0 +1,17 @@
+version: "3.7"
+services:
+  browser:
+    image: local-video-studio-nas:local
+    restart: unless-stopped
+    ports:
+      - "8790:8790"
+    volumes:
+      # Replace with the actual destination of the Drive upload task.
+      - /volume1/video/Output:/media:ro
+      - /volume1/documents/LocalVideoStudio/Library:/library:ro
+      - ./config.json:/config/config.json:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

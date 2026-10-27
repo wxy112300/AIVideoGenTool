@@ -312,7 +312,7 @@ export function normalizeMiniMaxH3ModelPatchChain(
       ? { class_type: "ModelAttentionBackend", inputs: { model: output, attention: "comfy kitchen attention" } }
         : { class_type: consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")
           ? "LocalVideoStudioH3ManagedSageAttention" : "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode,
-          policy.comfyCompilerMode === "disabled" && consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
+          consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
     output = [nodeId, 0];
   }
   if (policy.sparseAttentionMode !== "off") {

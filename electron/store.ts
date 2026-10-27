@@ -1,5 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { StateFileSafety, StateRecoveryError, durableCandidate, readOptionalFile, stateDigest, validateStateFile, withStateFileLock } from "./services/state-file-safety.js";
+import { LibraryStateStorage } from "./services/library-state-storage.js";
+import type { LibraryStorageProgress } from "../src/core/library-storage-progress.js";
+import { recoverRelocations, type RelocationProgress } from "./services/file-relocation.js";
 import { normalizeAppearance } from "../src/core/appearance.js";
 import { normalizeStrataSettings } from "../src/core/strata-preparation.js";
 import { isRetiredImageModelId } from "../src/core/image-workflow.js";
@@ -109,8 +113,6 @@ export async function replaceStateFile(
   const attempts = Math.max(1, options.attempts ?? 8);
   const retryDelayMs = Math.max(0, options.retryDelayMs ?? 40);
   const rename = options.rename ?? fs.rename;
-  const copyFile = options.copyFile ?? fs.copyFile;
-  const remove = options.remove ?? fs.rm;
   const wait =
     options.wait ??
     ((milliseconds: number) =>
@@ -128,19 +130,8 @@ export async function replaceStateFile(
     }
   }
 
-  // Antivirus scanners and indexers can deny an atomic replacement on Windows
-  // while still allowing the completed temporary file to be copied over it.
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      await copyFile(temporary, destination);
-      await remove(temporary, { force: true });
-      return;
-    } catch (error) {
-      if (!retryableStateFileError(error)) throw error;
-      lastError = error;
-      if (attempt < attempts) await wait(retryDelayMs * attempt);
-    }
-  }
+  // Never truncate a last-good state to work around a lock. Keep the candidate
+  // and fail visibly; retrying after the lock clears is safe.
   throw lastError;
 }
 
@@ -647,12 +638,34 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
 export class JsonStore implements StateRepository {
   private state: AppState = createDefaultState();
   private writeChain: Promise<void> = Promise.resolve();
+  private updateChain: Promise<void> = Promise.resolve();
+  private loadFailed = false;
+  private lastRaw?: string;
+  private readonly safety: StateFileSafety;
+  private library?: LibraryStateStorage;
 
-  constructor(private readonly filename: string) {}
+  constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
+    this.safety = new StateFileSafety(filename);
+    if (options.libraryDirectory) this.library = new LibraryStateStorage(filename, options.libraryDirectory, options.onProgress, options.onMoveProgress, options.onWarning);
+  }
 
   async load(): Promise<AppState> {
     try {
-      const raw = await fs.readFile(this.filename, "utf8");
+      let raw = await this.safety.read();
+      this.lastRaw = raw;
+      this.loadFailed = false;
+      if (raw === undefined) {
+        this.state = createDefaultState();
+        await this.persist();
+        await this.safety.backup(JSON.stringify(this.state, null, 2));
+        if (!this.library) return this.snapshot();
+        raw = await fs.readFile(this.filename, "utf8");
+      }
+      await this.safety.backup(raw);
+      await recoverRelocations(this.filename, JSON.parse(raw) as AppState);
+      const locator = (JSON.parse(raw) as AppState).libraryStorage;
+      if (!this.library && locator) this.library = new LibraryStateStorage(this.filename, locator.directory, this.options.onProgress, this.options.onMoveProgress, this.options.onWarning);
+      if (this.library) raw = await this.library.hydrate(raw);
       const saved = JSON.parse(raw) as Partial<Omit<AppState, "queue" | "history" | "imageHistory">> & {
         queue?: Array<QueueTask | LegacyQueueTask>;
         history?: Array<HistoryAsset | LegacyHistoryAsset>;
@@ -691,6 +704,11 @@ export class JsonStore implements StateRepository {
         ? saved.settings.h3AutoPromptSeedId
         : "";
       const imageHistory = normalizeImageHistory(saved.imageHistory);
+      const savedImages = Array.isArray(saved.imageHistory) ? saved.imageHistory as Array<{ id: string; versions?: Array<{ id: string }> }> : [];
+      if (savedImages.length !== imageHistory.length || savedImages.some(project => {
+        const restored = imageHistory.find(item => item.id === project.id);
+        return !restored || (project.versions ?? []).some(version => !restored.versions.some(item => item.id === version.id));
+      })) throw new StateRecoveryError("Image history normalization would discard records or versions; recovery is required");
       const history = (saved.history ?? []).map(migrateHistoryAsset);
       const savedDraft = saved.draft;
       const migratedSavedDraft = migrateDraftH3LatentSaveMode(savedDraft);
@@ -1077,14 +1095,14 @@ export class JsonStore implements StateRepository {
         this.state.settings.ltxExtensionTimeoutMinutes = 20;
         needsPersist = true;
       }
-      if (needsPersist) await this.persist();
+      if (needsPersist || this.library?.pendingMigration) await this.persist();
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        await this.backupCorruptFile();
-      }
-      this.state = createDefaultState();
-      await this.persist();
+      this.loadFailed = true;
+      await this.library?.close();
+      throw new StateRecoveryError(`Unable to open ${this.filename}. Existing data has not been replaced with defaults. ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
+    this.notifyCommitted();
+    this.library?.finishStartup();
     return this.snapshot();
   }
 
@@ -1111,8 +1129,14 @@ export class JsonStore implements StateRepository {
   }
 
   async updateWithoutSnapshot(mutator: (state: AppState) => void): Promise<void> {
-    mutator(this.state);
-    await this.persist();
+    const update = this.updateChain.catch(() => undefined).then(async () => {
+      this.assertWritable();
+      const previous = structuredClone(this.state);
+      try { mutator(this.state); await this.persist(); }
+      catch (error) { this.state = previous; throw error; }
+    });
+    this.updateChain = update;
+    return update;
   }
 
   mutateTransient(mutator: (state: AppState) => void): void {
@@ -1128,21 +1152,54 @@ export class JsonStore implements StateRepository {
   }
 
   private async persist(): Promise<void> {
-    const write = this.writeChain.catch(() => undefined).then(async () => {
-      await fs.mkdir(path.dirname(this.filename), { recursive: true });
-      const temporary = `${this.filename}.${process.pid}.tmp`;
-      await fs.writeFile(temporary, JSON.stringify(this.state, null, 2), "utf8");
+    this.assertWritable();
+    const snapshot = structuredClone(this.state);
+    let resumePublication: void | (() => void);
+    const write = this.writeChain.catch(() => undefined).then(() => withStateFileLock(this.filename, async () => {
+      this.assertWritable();
+      const previous = await readOptionalFile(this.filename);
+      if (previous !== this.lastRaw) throw new StateRecoveryError("State changed outside this writer; reopen it before saving");
+      const requestedLibrary = snapshot.settings.libraryDirectory?.trim() || this.options.libraryDirectory || snapshot.libraryStorage?.directory;
+      if (snapshot.libraryStorage && requestedLibrary && path.resolve(requestedLibrary).toLowerCase() !== path.resolve(snapshot.libraryStorage.directory).toLowerCase()) resumePublication = await this.options.beforeLibraryMove?.();
+      const prepared = this.library && snapshot.libraryStorage ? await this.library.prepare(snapshot) : undefined;
+      const raw = prepared?.raw ?? JSON.stringify(snapshot, null, 2);
+      validateStateFile(raw);
+      if (previous === raw) return;
+      if (previous !== undefined) await this.safety.backup(previous);
+      const temporary = await durableCandidate(this.filename, raw);
       await replaceStateFile(temporary, this.filename);
-    });
+      this.lastRaw = raw;
+      if (prepared) {
+        this.state.libraryStorage = prepared.pointer;
+        this.state.settings.libraryDirectory = prepared.pointer.directory;
+        await this.library!.committed(prepared.pointer);
+      }
+      // The primary is committed. A failed secondary backup is reported without
+      // pretending the successful user edit failed or rolling back its memory.
+      await this.safety.backup(raw).catch(error => this.warn(error));
+      // Retention is maintenance after a successful commit. A cleanup failure
+      // cannot turn a committed write into a reported save failure.
+      await this.safety.prune(stateDigest(raw)).catch(error => this.warn(error));
+      this.notifyCommitted();
+    })).catch(async error => {
+      try { await this.library?.abortPrepare(); }
+      catch (recoveryError) { resumePublication = undefined; throw recoveryError; }
+      throw error;
+    }).finally(() => { if (resumePublication) { try { resumePublication(); } catch (error) { this.warn(error); } } });
     this.writeChain = write;
     return write;
   }
 
-  private async backupCorruptFile(): Promise<void> {
-    try {
-      await fs.rename(this.filename, `${this.filename}.corrupt-${Date.now()}`);
-    } catch {
-      // The original read error is more useful than a failed best-effort backup.
-    }
+  private assertWritable(): void {
+    if (this.loadFailed) throw new StateRecoveryError("State recovery is required before saving; original files have been preserved");
   }
+
+  private notifyCommitted(): void {
+    // Background projection must never reject or roll back a durable user edit.
+    try { this.options.onCommitted?.(this.snapshot()); } catch { /* Publisher owns reporting/retry. */ }
+  }
+
+  private warn(error: unknown): void { try { this.options.onWarning?.(error); } catch { /* A committed write stays committed. */ } }
+
+  async close(): Promise<void> { await this.updateChain.catch(() => undefined); await this.writeChain.catch(() => undefined); await this.library?.close(); }
 }

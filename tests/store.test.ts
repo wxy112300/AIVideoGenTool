@@ -49,23 +49,23 @@ describe("Windows state file replacement", () => {
     expect(waits).toEqual([10, 20]);
   });
 
-  it("falls back to copying a complete temporary file when rename stays locked", async () => {
+  it("preserves the primary and candidate when rename stays locked", async () => {
     const rename = vi.fn().mockRejectedValue(fileError("EPERM"));
     const copyFile = vi.fn().mockResolvedValue(undefined);
     const remove = vi.fn().mockResolvedValue(undefined);
 
-    await replaceStateFile("state.tmp", "state.json", {
+    await expect(replaceStateFile("state.tmp", "state.json", {
       attempts: 2,
       retryDelayMs: 0,
       rename,
       copyFile,
       remove,
       wait: async () => undefined
-    });
+    })).rejects.toMatchObject({ code: "EPERM" });
 
     expect(rename).toHaveBeenCalledTimes(2);
-    expect(copyFile).toHaveBeenCalledWith("state.tmp", "state.json");
-    expect(remove).toHaveBeenCalledWith("state.tmp", { force: true });
+    expect(copyFile).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it("does not hide non-locking filesystem failures", async () => {
@@ -337,6 +337,7 @@ describe("queue lock recovery", () => {
     task.attentionMode = "sage-2-plus-plus" as never;
     state.queue = [task];
     state.history = [{
+      id: "attention-migration-asset",
       taskId: task.id,
       title: "Migration test",
       outputFilename: task.outputFilename,

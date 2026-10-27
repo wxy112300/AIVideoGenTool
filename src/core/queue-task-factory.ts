@@ -11,6 +11,10 @@ import type {
   UpscaleRequest
 } from "../types.js";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
+import { freezeLongVideoScript } from "./long-video/script.js";
+import { commitScriptText } from "./long-video/script-buffers.js";
+import { isLongVideoDraftActive, longVideoBlockReason } from "./long-video/capability.js";
+import { continuumRuntimeSettings } from "./long-video/group-workflow.js";
 import { createOutputFilename } from "./filename.js";
 import { expandImageSeeds } from "./image-project.js";
 import {
@@ -115,6 +119,11 @@ export function queueTaskFromDraft(
   options: QueueTaskFactoryOptions = {}
 ): GenerationQueueTask {
   draft = normalizeVideoDraft(draft);
+  const longVideo = isLongVideoDraftActive(draft);
+  if (longVideo) {
+    const reason = longVideoBlockReason(draft, state.settings);
+    if (reason) throw new Error(reason);
+  }
   if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
     throw new Error("当前模型不支持图像输入生成。");
   }
@@ -141,7 +150,7 @@ export function queueTaskFromDraft(
     ...state.queue.map((item) => item.outputFilename),
     ...state.history.map((item) => item.outputFilename)
   ];
-  const h3LatentSaveMode = h3SharedLatentSaveModeFor(draft);
+  const h3LatentSaveMode = longVideo ? "none" : h3SharedLatentSaveModeFor(draft);
   const h3DeliveryResolution = draft.modelId === "minimax_h3_fl2va" &&
     draft.videoLoras.length === 0 &&
     h3SaveJointAvForLatentSaveMode(h3LatentSaveMode) &&
@@ -149,6 +158,7 @@ export function queueTaskFromDraft(
     ? 1080
     : undefined;
   const firstPassResolution = firstPassResolutionFor(draft);
+  const longVideoPlan = longVideo ? freezeLongVideoScript(commitScriptText(draft.longVideoScript!, () => clock.id())) : undefined;
   return {
     id: clock.id(),
     taskType: "generation",
@@ -158,10 +168,10 @@ export function queueTaskFromDraft(
     outputFilename: createOutputFilename(
       draft.modelId,
       draft.resolution,
-      draft.duration,
+      longVideoPlan?.layout.requestedSeconds ?? draft.duration,
       names
     ),
-    prompt: promptOf(draft),
+    prompt: longVideoPlan ? longVideoPlan.pages.map(page => page.text).join("\n\n") : promptOf(draft),
     promptVersion: activePromptIndexForDraft(draft) + 1,
     h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
     startImagePath: draft.startImagePath,
@@ -180,7 +190,7 @@ export function queueTaskFromDraft(
     ratio: draft.ratio,
     resolution: firstPassResolution,
     ...(h3DeliveryResolution ? { h3DeliveryResolution } : {}),
-    duration: draft.duration,
+    duration: longVideo ? draft.longVideoScript!.layout.requestedSeconds : draft.duration,
     steps: draft.steps,
     fps: draft.fps,
     frameInterpolation: draft.frameInterpolation,
@@ -208,7 +218,8 @@ export function queueTaskFromDraft(
     h3AvOutputPolicy: isMiniMaxH3Model(draft.modelId) ? "shared" : undefined,
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: "off",
-    progress: 0
+    progress: 0,
+    ...(longVideoPlan ? { longVideoPlan } : {})
   };
 }
 
@@ -311,6 +322,14 @@ export function extensionTaskFromDraft(
   options: QueueTaskFactoryOptions = {}
 ): ExtensionQueueTask {
   draft = normalizeVideoDraft(draft);
+  const longVideo = isLongVideoDraftActive(draft);
+  const source = longVideo ? draft.longVideoRunSource : undefined;
+  if (longVideo) {
+    const reason = longVideoBlockReason(draft, state.settings);
+    if (reason || !source) throw new Error(reason ?? "Missing group Run source");
+    state = { ...state, settings: { ...state.settings, ...continuumRuntimeSettings(source.profile) } };
+    options = { ...options, h3VideoVaeMode: source.profile.videoVae.includes("int8_convrot") ? "int8-convrot" : "fp16" };
+  }
   if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
     throw new Error("当前模型不支持视频续写。");
   }
@@ -328,8 +347,8 @@ export function extensionTaskFromDraft(
   const spectrumMode = isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode;
   const h3ExecutionPolicy = isMiniMaxH3Model(draft.modelId)
     ? h3ExecutionPolicySnapshotFor({
-        modelId: draft.modelId,
-        inputMode: "video",
+        modelId: source?.profile.h3?.modelId ?? draft.modelId,
+        inputMode: source ? "image" : "video",
         attentionMode: state.settings.h3AttentionMode,
         sparseAttentionMode: state.settings.h3SparseAttentionMode,
         runtimeMode: state.settings.h3RuntimeMode,
@@ -339,11 +358,12 @@ export function extensionTaskFromDraft(
         h3LivePreview: state.settings.h3LivePreview
       })
     : undefined;
-  const h3LatentSaveMode = h3SharedLatentSaveModeFor(
+  const h3LatentSaveMode = source ? "none" : h3SharedLatentSaveModeFor(
     draft,
     isMiniMaxH3R2vModel(draft.modelId),
     isMiniMaxH3ContinuumModel(draft.modelId) && draft.h3ContinuumMode === "managed"
   );
+  const longVideoPlan = source ? freezeLongVideoScript(commitScriptText(draft.longVideoScript!, () => clock.id())) : undefined;
   return {
     id: clock.id(),
     taskType: "extension",
@@ -353,10 +373,10 @@ export function extensionTaskFromDraft(
     outputFilename: createOutputFilename(
       draft.modelId,
       resolution,
-      draft.duration,
+      longVideoPlan?.layout.requestedSeconds ?? draft.duration,
       outputNames(state)
     ),
-    prompt: promptOf(draft),
+    prompt: longVideoPlan ? longVideoPlan.pages.map(page => page.text).join("\n\n") : promptOf(draft),
     promptVersion: activePromptIndexForDraft(draft) + 1,
     sourceVideoPath: draft.sourceVideoPath,
     sourceVideoDuration: draft.sourceVideoDuration,
@@ -401,13 +421,13 @@ export function extensionTaskFromDraft(
     modelId: draft.modelId,
     videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
     workflowPath: isMiniMaxH3ContinuumModel(draft.modelId)
-      ? draft.h3ContinuumMode === "managed"
+      ? source || draft.h3ContinuumMode === "managed"
         ? h3ContinuumManagedWorkflowPathForInput(draft.workflowPath)
         : h3ContinuumWorkflowPathForInput(draft.workflowPath)
       : draft.workflowPath,
     ratio: "source",
     resolution,
-    duration: draft.duration,
+    duration: longVideoPlan?.layout.requestedSeconds ?? draft.duration,
     steps: draft.steps,
     fps: draft.fps,
     frameInterpolation: draft.frameInterpolation,
@@ -432,7 +452,8 @@ export function extensionTaskFromDraft(
       ? 22
       : state.settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: state.settings.ltxExtensionUnloadBetweenStages,
-    progress: 0
+    progress: 0,
+    ...(source ? { longVideoPlan, longVideoRunSource: structuredClone(source) } : {})
   };
 }
 

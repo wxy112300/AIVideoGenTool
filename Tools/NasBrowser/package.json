@@ -1,0 +1,12 @@
+{
+  "name": "local-video-studio-nas-browser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:browser": "node smoke.mjs",
+    "start": "node dist/runtime/server.mjs",
+    "export": "node dist/runtime/export.mjs"
+  }
+}

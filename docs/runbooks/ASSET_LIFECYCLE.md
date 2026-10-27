@@ -35,7 +35,8 @@ flowchart TD
 
 | 内容 | 当前路径/来源 | 影响与修改入口 |
 | --- | --- | --- |
-| 草稿、queue、History、settings | U/studio-state.json | 身份与引用数据库；`electron/services/studio-paths.ts`、state repository |
+| 草稿、queue、settings、资料库定位 | U/studio-state.json | 当前提交定位；`electron/services/studio-paths.ts`、state repository |
+| 视频/图片 History 完整记录与长文本 | 系统 Documents/Local Video Studio/Library（可选位置） | 分作品不可变记录/提交；迁移不移动媒体，见[迁移与 NAS 手册](LIBRARY_STORAGE_AND_NAS.md) |
 | 视频成片 | settings.outputDirectory；实际文件看 HistoryFile.absolutePath | `comfy-output-service.ts`、`core/comfy-output-paths.ts`；输出根和视频子目录不是同一概念 |
 | 图片生成结果 | settings.imageOutputDirectory / 环境解析 | 图片 project 的 generated version；不能当输入孤儿文件清理 |
 | 图片输入/绘制参考图 | L/sources/&lt;sha256&gt;.&lt;ext&gt; | L 优先 settings.imageInputLibraryDirectory；默认由 O 的父目录推导 input/LocalVideoStudio，见 SettingsService resolver |
@@ -44,7 +45,7 @@ flowchart TD
 | Continuum managed | O/h3-continuum/runs/...，及 h3-continuum-assets 的登记 manifest | official run/chunk owner、receipt/序列指针；不能从一个 History 版本推断整个 run 都属于它 |
 | 封面 | U/history-covers/v3 | 可重建缓存，删除/刷新由服务管理，不能代表原视频 |
 | 绘制与临时输入 | U/image-guides、image-masks、image-crops、clipboard-inputs/files；任务 temp/checkpoint | 各自生命周期；不能用“临时目录”标签推断可无条件删除 |
-| 迁移 journal | U/video-history-migration.json | 保存迁移事务阶段，不是资产本体或完整备份 |
+| 迁移 journal | U/studio-state.json.relocation-*.json；旧兼容路径 video-history-migration.json | 用户确认目录变更的移动/回滚恢复依据；完成后移除，不是资产本体或完整备份 |
 
 同级视频/图片目录可以共同推导 O；环境 fallback 也可能使用选中 Comfy data 的 output。具体规则在 `electron/services/environment.ts` 的 sharedComfyOutputRoot/resolveComfyOutputDirectory。查文件先走应用 resolver，不能机械拼接“设置目录 + filename”。
 

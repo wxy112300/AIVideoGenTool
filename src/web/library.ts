@@ -19,7 +19,7 @@ export class Library {
   private pagingFailed = false;
   private covers = new CoverLoader();
   private releaseCovers = new Map<number, () => void>();
-  constructor(private root: HTMLElement, private status: HTMLElement, private open: (item: BrowseVideo, index: number) => void) {
+  constructor(private root: HTMLElement, private status: HTMLElement, private open: (item: BrowseVideo, index: number) => void, private readOnly = false) {
     new ResizeObserver(() => this.relayout()).observe(root);
     window.addEventListener("scroll", () => this.schedule(), { passive: true });
     window.addEventListener("resize", () => this.schedule(), { passive: true });
@@ -103,7 +103,7 @@ export class Library {
         const control = document.createElement("button"); control.type = "button";
         element = control; element.className = "media-tile";
         element.dataset.index = String(tile.index); element.setAttribute("aria-label", item.title || text("play"));
-        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async"><span class="tile-meta"><span>${item.favorite ? icon("heart") : ""}${item.rating ? `★ ${item.rating}` : ""}</span><span>${escape(duration(item.duration))}</span></span>`;
+        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async"><span class="tile-meta"><span>${!this.readOnly && item.favorite ? icon("heart") : ""}${!this.readOnly && item.rating ? `★ ${item.rating}` : ""}</span><span>${escape(duration(item.duration))}</span></span>`;
         const image = element.querySelector("img")!;
         const placeholder = element.querySelector<HTMLElement>(".cover-placeholder")!;
         image.addEventListener("load", () => { placeholder.hidden = true; image.classList.add("loaded"); });

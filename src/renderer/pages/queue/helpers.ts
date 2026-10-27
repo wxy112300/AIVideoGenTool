@@ -16,6 +16,7 @@ const volatileTaskFields = new Set([
   "stage",
   "stageStartedAt",
   "workProgress",
+  "longVideoGroupProgress",
   "updatedAt",
   "comfyPromptId",
   "performanceStats",

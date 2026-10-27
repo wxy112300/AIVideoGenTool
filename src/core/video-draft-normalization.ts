@@ -36,7 +36,8 @@ export function normalizeVideoDraft(draft: Draft): Draft {
   const ratio = !modelCatalog.isFamily(modelId, "minimax-h3") && draft.ratio === "21:9"
     ? "source"
     : draft.ratio;
-  const compatibleVideoLoras = normalizeVideoLoras(draft.videoLoras, legacyModelId)
+  const inheritedGroup = modelId === "minimax_h3_continuum" && draft.longVideoRunSource && draft.longVideoEditor?.active;
+  const compatibleVideoLoras = inheritedGroup ? structuredClone(draft.videoLoras) : normalizeVideoLoras(draft.videoLoras, legacyModelId)
     .filter((lora) => videoLoraCompatibleWithDraft(lora, modelId, draft.inputMode));
   const videoLoras = modelCatalog.get(modelId)?.definition.runtimeProfile === "h3-q3-3080"
     ? []
@@ -48,7 +49,7 @@ export function normalizeVideoDraft(draft: Draft): Draft {
     spectrumMode: draft.spectrumMode,
     videoLoras
   });
-  const spectrumMode = policy.spectrum.allowed ? draft.spectrumMode : "off";
+  const spectrumMode = inheritedGroup || policy.spectrum.allowed ? draft.spectrumMode : "off";
   const spectrumAutomaticallyDisabled = draft.spectrumMode !== "off" && spectrumMode === "off";
   const h3LatentSaveMode = h3LatentSaveModeFor(
     draft,
@@ -68,7 +69,7 @@ export function normalizeVideoDraft(draft: Draft): Draft {
       : draft.duration,
     ratio,
     videoLoras,
-    steps: policy.isH3 ? normalizeVideoSteps(draft.steps, policy) : draft.steps,
+    steps: inheritedGroup ? draft.steps : policy.isH3 ? normalizeVideoSteps(draft.steps, policy) : draft.steps,
     ...normalizeH3FrameSettings({ ...draft, modelId }),
     spectrumMode,
     spectrumModeUserSet: spectrumAutomaticallyDisabled ? false : draft.spectrumModeUserSet,

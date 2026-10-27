@@ -2,6 +2,7 @@ import type {
   ConnectionKind,
   ConnectionResult,
   EnvironmentScanOptions,
+  EnvironmentScanProgress,
   EnvironmentScanResult,
   EnvironmentScanScope,
   Settings
@@ -17,7 +18,8 @@ export interface EnvironmentQueryServiceDependencies {
   scanEnvironment?: (
     settings: Settings,
     scope: EnvironmentScanScope,
-    options?: EnvironmentScanOptions
+    options?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
   ) => Promise<EnvironmentScanResult>;
 }
 
@@ -34,7 +36,8 @@ export class EnvironmentQueryService {
   private readonly scanService: (
     settings: Settings,
     scope: EnvironmentScanScope,
-    options?: EnvironmentScanOptions
+    options?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
   ) => Promise<EnvironmentScanResult>;
 
   constructor(deps: EnvironmentQueryServiceDependencies) {
@@ -85,7 +88,8 @@ export class EnvironmentQueryService {
   async scan(
     settings: Settings,
     requestedScope: unknown,
-    requestedOptions?: EnvironmentScanOptions
+    requestedOptions?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
   ): Promise<EnvironmentScanResult> {
     const requested = normalizeScope(requestedScope);
     const forcePythonProbe = requestedOptions?.forcePythonProbe === true;
@@ -102,7 +106,9 @@ export class EnvironmentQueryService {
       { requestedScope: requested, effectiveScope: scope, forcePythonProbe }
     );
     try {
-      const result = await this.scanService(settings, scope, options);
+      const result = onProgress
+        ? await this.scanService(settings, scope, options, onProgress)
+        : await this.scanService(settings, scope, options);
       this.logger.info(
         "environment",
         "scan-finished",

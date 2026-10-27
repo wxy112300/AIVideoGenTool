@@ -1657,6 +1657,9 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
           );
           await fs.writeFile(path.join(cloneDirectory, "__init__.py"), "");
         }
+        if (args.includes("rev-parse") && args.at(-1) === "HEAD") {
+          return "61843db580f8549a85b0a1ed850d550079fadfee";
+        }
         return "";
       }
     };

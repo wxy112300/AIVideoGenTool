@@ -11,6 +11,7 @@ import type {
   EnhanceRequest,
   EnvironmentIssue,
   EnvironmentScanOptions,
+  EnvironmentScanProgress,
   EnvironmentScanScope,
   HistoryMigrationProgress,
   HistoryCoverLookup,
@@ -113,8 +114,17 @@ const api: AppApi = {
   scanEnvironment: (
     settings: Settings,
     scope?: EnvironmentScanScope,
-    options?: EnvironmentScanOptions
-  ) => ipcRenderer.invoke("environment:scan", settings, scope, options),
+    options?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
+  ) => {
+    const id = onProgress ? globalThis.crypto.randomUUID() : undefined;
+    const listener = (_event: Electron.IpcRendererEvent, payload: { id: string; progress: EnvironmentScanProgress }) => {
+      if (payload.id === id) onProgress?.(payload.progress);
+    };
+    if (onProgress) ipcRenderer.on("environment:scan-progress", listener);
+    return ipcRenderer.invoke("environment:scan", settings, scope, options, ...(id ? [id] : []))
+      .finally(() => { if (onProgress) ipcRenderer.removeListener("environment:scan-progress", listener); });
+  },
   startLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>

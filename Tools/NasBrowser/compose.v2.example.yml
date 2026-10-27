@@ -1,0 +1,20 @@
+version: "3.7"
+services:
+  browser:
+    image: local-video-studio-nas:local
+    restart: unless-stopped
+    ports:
+      - "8790:8790"
+    volumes:
+      # Destination of the PC ComfyUI output-root upload task (not only Videos).
+      - /volume1/video/Output:/media:ro
+      # Destination of the PC Library upload task, configured in Drive Client.
+      - /volume1/documents/LocalVideoStudio/Library:/library:ro
+      # Local NAS data, never a Drive-synchronized folder. Grant UID 1000 write access.
+      - /volume1/docker/local-video-studio/data:/data:rw
+      - ./config.json:/config/config.json:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

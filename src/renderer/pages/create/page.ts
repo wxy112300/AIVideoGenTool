@@ -418,7 +418,7 @@ export function renderCreatePage(
               t
             })
           : renderVideoFrames(viewModel, options)}
-      ${viewModel.extending && viewModel.isContinuum ? `<section class="continuum-artifact-panel continuum-source-check" aria-labelledby="continuum-dependency-title">
+        ${viewModel.extending && viewModel.isContinuum && !viewModel.draft.longVideoRunSource ? `<section class="continuum-artifact-panel continuum-source-check" aria-labelledby="continuum-dependency-title">
         <div class="continuum-dependency-heading"><h3 id="continuum-dependency-title">${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}</h3><span class="continuum-route-value" data-continuum-route>${escapeHtml(viewModel.continuumDependencyRoute)}</span></div>
 <div class="continuum-status continuum-dependency-summary" data-continuum-source-status data-tone="${viewModel.continuumFileStatus.tone}" role="status"><strong><span class="continuum-source-state-icon" data-continuum-status-icon aria-hidden="true">${icon(viewModel.continuumFileStatus.tone === "success" ? "circle-check" : viewModel.continuumFileStatus.tone === "error" ? "circle-alert" : "info")}</span><span data-continuum-status-label>${escapeHtml(viewModel.continuumFileStatus.label)}</span></strong><span data-continuum-progress>${escapeHtml(viewModel.continuumDependencyProgress)}</span></div>
         ${viewModel.continuumDependencyFiles.length > 0 ? `<div class="continuum-dependency-files" aria-label="${escapeHtml(t(uiKeys.create.continuumArtifact.dependencyTitle))}">${continuumDependencyFilesMarkup}</div>` : ""}

@@ -1,4 +1,5 @@
 import { renderQueuePrompt } from "./prompt";
+import { compileLongVideoPrompts } from "../../../core/long-video/script";
 import { localizeImageOptionLabel } from "../../shared/image-option-label";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import {
@@ -65,6 +66,12 @@ export interface SeedVr2ProgressView {
   label: string;
   detail: string;
   localProgress: number;
+}
+
+export function longVideoGroupProgressView(task: QueueTask): number | null {
+  if ((task.taskType !== "generation" && task.taskType !== "extension") || !task.longVideoPlan ||
+      !Number.isFinite(task.longVideoGroupProgress)) return null;
+  return Math.max(0, Math.min(100, task.longVideoGroupProgress!));
 }
 
 export function seedVr2ProgressView(task: QueueTask, t: Translate): SeedVr2ProgressView {
@@ -191,7 +198,7 @@ export function queueWorkProgressText(task: QueueTask, t: Translate): string {
 }
 
 export function queueTaskHasRecoveryCheckpoint(task: QueueTask): boolean {
-  if (task.taskType === "generation") return Boolean(task.h3FirstPassCheckpoint);
+  if (task.taskType === "generation" || task.taskType === "extension") return Boolean(task.longVideoExecution || (task.taskType === "generation" && task.h3FirstPassCheckpoint));
   if (task.taskType === "upscale") return Boolean(task.seedVr2Checkpoint?.completed.length);
   return false;
 }
@@ -218,6 +225,11 @@ export function renderQueueTaskCard(
     : task.taskType === "image-generation"
       ? task.prompt
       : "";
+  const promptPlan = task.taskType === "generation" || task.taskType === "extension"
+    ? task.longVideoExecution?.script ?? task.longVideoPlan : undefined;
+  const samplingPrompts = promptPlan && (task.taskType === "generation" || task.taskType === "extension")
+    ? task.longVideoExecution?.profile.prompts.slice(promptPlan.layout.prefixChunks) ?? compileLongVideoPrompts(promptPlan).map(p => videoPromptForLoras(p, task.videoLoras))
+    : undefined;
   const description = task.taskType === "image-generation"
     ? `${executionPrompt} · ${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}`
     : task.taskType === "generation"
@@ -236,7 +248,7 @@ export function renderQueueTaskCard(
         ? `<span title="${t(uiKeys.queue.card.spectrumOnTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOn)}${task.spectrumModelAwareMode && task.spectrumModelAwareMode !== "off" ? ` · ${t(uiKeys.queue.card.modelAware, { mode: task.spectrumModelAwareMode })}` : ""}</span>`
         : `<span title="${t(uiKeys.queue.card.spectrumOffTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOff)}</span>`
     : "";
-  const h3LatentSaveSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
+  const h3LatentSaveSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && !task.longVideoPlan && isMiniMaxH3Model(task.modelId)
     ? (() => {
         const mode = h3LatentSaveModeFor(
           task,
@@ -262,10 +274,11 @@ export function renderQueueTaskCard(
     : task.taskType === "generation"
     ? `<span>${options.escapeHtml(options.modelName(task.modelId))}</span>${loraSummary}<span>${task.h3DeliveryResolution ?? task.resolution}p</span><span>${task.duration}${t(uiKeys.queue.card.seconds)}</span><span>${options.frameRateSummary(frameSettings!.fps, frameSettings!.frameInterpolation)}</span>${h3ComputeSummary}${h3LatentSaveSummary}<span>Seed ${options.escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
-      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${extensionRetainSummary}${h3ComputeSummary}${h3LatentSaveSummary}`
+      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span>${task.longVideoPlan ? `<span>${task.longVideoPlan.layout.chunks} × ${task.longVideoPlan.layout.chunkSeconds.toFixed(1)}s</span>` : `<span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>`}${extensionRetainSummary}${h3ComputeSummary}${h3LatentSaveSummary}`
       : `<span>${t(uiKeys.queue.card.upscale)}</span><span>${task.upscaleMode === "h3-native" ? t(uiKeys.upscale.h3NativeMethod) : options.escapeHtml(options.modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>${t(uiKeys.queue.card.batchUnload)}</span>`;
   const attentionTask = task.status === "failed" || task.status === "cancelled";
   const recoveryCheckpointAvailable = queueTaskHasRecoveryCheckpoint(task);
+  const frozenLongVideo = (task.taskType === "generation" || task.taskType === "extension") && Boolean(task.longVideoExecution);
   const deferredTask = task.status === "waiting" && options.deferred === true;
   const queueCleanupActive =
     options.queueLifecycleTaskId === task.id &&
@@ -284,6 +297,7 @@ export function renderQueueTaskCard(
     : `<strong>!</strong>`;
   if (task.status === "running") {
     const seedVrProgress = seedVr2ProgressView(task, t);
+    const groupProgress = longVideoGroupProgressView(task);
     const preview = options.taskPreviews[task.id] ?? "";
     const livePreviewRequested =
       (task.taskType === "generation" || task.taskType === "extension") &&
@@ -318,7 +332,8 @@ export function renderQueueTaskCard(
           <div class="queue-run-progress"><div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.taskProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
           <div class="running-stage-summary"><span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span><span id="running-work-progress"${queueWorkProgressText(task, t) ? "" : " hidden"}>${queueWorkProgressText(task, t)}</span><span id="running-stage-elapsed">${options.queueStageElapsedText(task)}</span><span id="running-elapsed" title="${t(uiKeys.queue.card.running)}">${options.elapsedText(task.startedAt)}</span><span id="running-eta">${t(uiKeys.queue.card.eta, { time: options.queueEstimateText(options.queueTaskRemainingSeconds(task)) })}</span></div>
           ${task.taskType === "upscale" && task.modelId === "seedvr2-native-int8" ? `<div id="seedvr2-segment-progress" class="seedvr2-segment-progress" ${seedVrProgress.visible ? "" : "hidden"}><div class="seedvr2-segment-progress-copy"><strong id="seedvr2-segment-label">${options.escapeHtml(seedVrProgress.label)}</strong><span id="seedvr2-segment-detail">${options.escapeHtml(seedVrProgress.detail)}</span></div><div class="progress seedvr2-local-progress" role="progressbar" aria-label="${t(uiKeys.queue.card.seedVrLocalProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(seedVrProgress.localProgress)}"><span id="seedvr2-segment-progress-bar" style="width:${seedVrProgress.localProgress}%"></span></div></div>` : ""}
-          ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon)}
+          ${promptPlan ? `<div id="continuum-group-progress" class="queue-local-progress"${groupProgress === null ? " hidden" : ""}><div class="queue-local-progress-copy"><span>${t(uiKeys.queue.card.continuumGroupProgress)}</span><strong id="continuum-group-progress-label">${Math.round(groupProgress ?? 0)}%</strong></div><div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.continuumGroupProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(groupProgress ?? 0)}"><span id="continuum-group-progress-bar" style="width:${groupProgress ?? 0}%"></span></div></div>` : ""}
+          ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon, promptPlan, samplingPrompts)}
           <div class="task-meta">${metadata}${retrySummary}</div>
         </div>
         <div class="task-actions queue-task-actions running-controls">
@@ -344,7 +359,7 @@ export function renderQueueTaskCard(
       ${inputPreview}
       <div class="task-main">
         <div class="queue-task-title"><h3 title="${options.escapeHtml(task.outputFilename)}">${options.escapeHtml(task.outputFilename)}</h3>${deferredTask || attentionTask ? `<span class="status ${deferredTask ? "deferred" : task.status}">${deferredTask ? t(uiKeys.task.deferred) : statusLabel(task.status, t)}</span>` : ""}${retrySummary}</div>
-        ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon)}
+        ${task.taskType === "upscale" ? `<p class="queue-source-summary">${options.escapeHtml(description)}</p>` : renderQueuePrompt(executionPrompt, t, options.escapeHtml, options.icon, promptPlan, samplingPrompts)}
         <div class="task-meta">${metadata}</div>
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
       </div>
@@ -352,7 +367,7 @@ export function renderQueueTaskCard(
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
             ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
-            : `<button class="secondary button-with-icon queue-action-primary" data-edit-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
+            : `<button class="secondary button-with-icon queue-action-primary" data-edit-task="${task.id}" ${frozenLongVideo || (options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit") ? "disabled" : ""} title="${t(frozenLongVideo ? uiKeys.queue.card.resumeTitle : uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
           : ""}
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" ${queueCleanupActive ? "disabled" : ""} title="${t(recoveryCheckpointAvailable ? uiKeys.queue.card.resumeTitle : uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(recoveryCheckpointAvailable ? uiKeys.queue.card.resume : uiKeys.queue.card.reset)}</span></button>` : ""}
         <button type="button" class="ghost icon-button queue-action-quiet queue-action-more" data-queue-menu-trigger="${options.escapeHtml(task.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="${t(uiKeys.queue.card.moreActions)}" title="${t(uiKeys.queue.card.moreActions)}">${options.icon("ellipsis")}</button>

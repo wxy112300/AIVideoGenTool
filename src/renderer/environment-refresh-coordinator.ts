@@ -1,5 +1,6 @@
 import type {
   EnvironmentScanOptions,
+  EnvironmentScanProgress,
   EnvironmentScanResult,
   EnvironmentScanScope,
   Settings
@@ -18,7 +19,8 @@ export interface EnvironmentRefreshCoordinatorDependencies {
   scan(
     settings: Settings,
     scope: EnvironmentScanScope,
-    options?: EnvironmentScanOptions
+    options?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
   ): Promise<EnvironmentScanResult>;
   setScanning(scanning: boolean): void;
   setError(message: string): void;
@@ -26,6 +28,7 @@ export interface EnvironmentRefreshCoordinatorDependencies {
   afterCommit(scan: EnvironmentScanResult): void;
   notify(message: string, options?: RendererNotifyOptions): void;
   scanningMessage(): string;
+  progressMessage?(progress: EnvironmentScanProgress): string;
   completedMessage(): string;
   failedMessage(error: unknown, reason: EnvironmentRefreshReason): string;
   requestRender(): void;
@@ -50,6 +53,7 @@ export function environmentScanOptionsForReason(
 
 export class EnvironmentRefreshCoordinator {
   private latestRequestId = 0;
+  private lastScan: EnvironmentScanResult | null = null;
 
   constructor(private readonly dependencies: EnvironmentRefreshCoordinatorDependencies) {}
 
@@ -58,19 +62,35 @@ export class EnvironmentRefreshCoordinator {
     reason: EnvironmentRefreshReason = "manual"
   ): Promise<EnvironmentScanResult | null> {
     const requestId = ++this.latestRequestId;
+    let active = true;
     this.dependencies.reportScan(reason);
     this.dependencies.setScanning(true);
     this.dependencies.setError("");
-    this.dependencies.notify(this.dependencies.scanningMessage(), { key: "environment-scan", durationMs: 300_000 });
+    this.dependencies.notify(this.dependencies.progressMessage?.({ stage: "environment", completed: 0, total: 4 }) ?? this.dependencies.scanningMessage(), {
+      key: "environment-scan", durationMs: 300_000,
+      ...(this.dependencies.progressMessage ? { progress: { completed: 0, total: 4 } } : {})
+    });
     this.dependencies.requestRender();
 
     try {
-      const scope = environmentScanScopeForReason(reason);
+      // Runtime-only scans intentionally reuse Python evidence. A failed native
+      // probe needs a dependency scan when the service changes so it can recover.
+      const scope = reason === "service-change" && this.lastScan?.attentionAcceleration?.probeState === "failed"
+        ? "dependencies"
+        : environmentScanScopeForReason(reason);
       const options = environmentScanOptionsForReason(reason);
-      const scan = options
+      const scan = this.dependencies.progressMessage
+        ? await this.dependencies.scan(settings, scope, options, (progress) => {
+          if (!active || requestId !== this.latestRequestId) return;
+          this.dependencies.notify(this.dependencies.progressMessage!(progress), {
+            key: "environment-scan", durationMs: 300_000, progress, renderPage: false
+          });
+        })
+        : options
         ? await this.dependencies.scan(settings, scope, options)
         : await this.dependencies.scan(settings, scope);
       if (requestId === this.latestRequestId) {
+        this.lastScan = scan;
         this.dependencies.commit(scan);
         this.dependencies.afterCommit(scan);
         this.dependencies.notify(this.dependencies.completedMessage(), { key: "environment-scan" });
@@ -84,6 +104,7 @@ export class EnvironmentRefreshCoordinator {
       }
       return null;
     } finally {
+      active = false;
       if (requestId === this.latestRequestId) {
         this.dependencies.setScanning(false);
         this.dependencies.requestRender();

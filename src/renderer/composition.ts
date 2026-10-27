@@ -3,6 +3,7 @@ import {
 } from "../core/image-project";
 import { ensureMotionContextSourceSlot } from "../core/h3-reference";
 import { uiKeys } from "../core/i18n-keys";
+import { longVideoDraftFields } from "../core/long-video/draft";
 import { normalizeVideoDraft } from "../core/video-draft-normalization";
 import { DLSS5_MODEL_ID, requireLegacyUpscaleTargetHeight } from "../core/dlss5";
 import { AETHERSCALE_DEFAULT_MODE, AETHERSCALE_DEFAULT_STYLE_PROFILE, AETHERSCALE_MODEL_ID, isAetherScaleMode, isAetherScaleStyleProfile } from "../core/aetherscale";
@@ -113,6 +114,7 @@ function draftFromQueueTask(
   const videoLoras = videoLorasForCreation(task.videoLoras);
   return normalizeVideoDraft({
     ...currentDraft,
+    ...longVideoDraftFields(task.longVideoPlan, task.modelId, task.longVideoRunSource),
     inputMode: extension ? "video" : "image",
     startImagePath: extension ? "" : task.startImagePath,
     sourceWidth: task.sourceWidth,
@@ -258,7 +260,7 @@ export function createQueueWorkspaceCoordinator(
 
   const editTask = async (taskId: string): Promise<void> => {
     const task = deps.getState().queue.find((item) => item.id === taskId);
-    if (!task || task.status === "running") return;
+    if (!task || task.status === "running" || (task.taskType !== "image-generation" && task.longVideoExecution)) return;
     setActionBusy({ taskId, action: "edit" });
     deps.render();
     try {

@@ -6,7 +6,7 @@ import {
   readLocalNodeVersion,
   scanCustomNodes
 } from "../electron/services/dependency-scanner";
-import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog/dependencies/nodes.js";
+import { customNodeDefinition, H3_AV_SERIALIZER_REVISION } from "../src/core/catalog/dependencies/nodes.js";
 import { createDefaultState } from "../src/core/defaults";
 
 const temporaryDirectories: string[] = [];
@@ -21,6 +21,31 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("keeps app H3 0.3.6 usable while recommending optional group-checkpoint support", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-optional-group-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "LocalVideoStudio-H3");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, "VERSION"), "0.3.6\n");
+    const statuses = await scanCustomNodes(root, { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" }, "", "", "", {}, {
+      nodeIds: new Set(customNodeDefinition("local-video-studio-h3-av")!.nodeTypes)
+    });
+    expect(statuses.find(node => node.id === "local-video-studio-h3-av")).toMatchObject({
+      version: "0.3.6", loaded: true, updateAvailable: true, compatibilityState: "warning", loadError: ""
+    });
+  });
+  it("offers a Continuum release update without treating the old recommended commit as incompatible", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-continuum-update-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "ComfyUI-H3-Continuum");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, "pyproject.toml"), '[project]\nversion = "3.9.1"\n');
+    const statuses = await scanCustomNodes(root, { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" });
+    const continuum = statuses.find(node => node.id === "h3-continuum")!;
+    expect(continuum).toMatchObject({ version: "3.9.1", recommendedVersion: "3.10.2", updateAvailable: true, compatibilityState: "warning", loadError: "" });
+    expect(continuum.updateNotice).toContain("当前 v3.9.1，推荐 v3.10.2");
+    expect(continuum.updateNotice).not.toContain("revision");
+  });
   it("offers offline Writer repair for the old shared-runtime upper bound and clears it after adaptation", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-writer-runtime-bound-"));
     temporaryDirectories.push(root);

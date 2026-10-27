@@ -5,13 +5,13 @@ export function versionVideoIndex(version: AssetVersion): number {
   return version.files.findIndex((file) => /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename));
 }
 
-export function versionShortEdge(version: AssetVersion): number {
+export function versionShortEdge(version: Pick<AssetVersion, "width" | "height">): number {
   const width = Number.isFinite(version.width) && version.width > 0 ? version.width : 0;
   const height = Number.isFinite(version.height) && version.height > 0 ? version.height : 0;
   return Math.max(0, Math.round(Math.min(width || height, height || width)));
 }
 
-export function preferredVersion(asset: HistoryAsset): AssetVersion {
+export function preferredVersion<T extends Pick<AssetVersion, "id" | "width" | "height">>(asset: { defaultVersionId?: string; versions: T[] }): T {
   return asset.versions.find((version) => version.id === asset.defaultVersionId) ??
     [...asset.versions].sort((left, right) => versionShortEdge(right) - versionShortEdge(left))[0]!;
 }

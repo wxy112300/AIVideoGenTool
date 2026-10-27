@@ -254,7 +254,7 @@ export function createSettingsWorkspaceCoordinator(
   );
 
   const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
-    scan: (settings, scope, options) => deps.context.application.scanEnvironment(settings, scope, options),
+    scan: (settings, scope, options, onProgress) => deps.context.application.scanEnvironment(settings, scope, options, onProgress),
     setScanning: (value) => {
       environmentScanning = value;
     },
@@ -267,6 +267,7 @@ export function createSettingsWorkspaceCoordinator(
     afterCommit: () => deps.enableSpectrumByDefaultIfAvailable(),
     notify: deps.showMessage,
     scanningMessage: () => uiText(uiKeys.runtime.environmentScanning),
+    progressMessage: (progress) => uiText(uiKeys.runtime.environmentScanProgress[progress.stage]),
     completedMessage: () => uiText(uiKeys.runtime.environmentScanCompleted),
     failedMessage: (error, reason) => uiText(
       reason === "startup" ? uiKeys.runtime.startupScanFailed : uiKeys.runtime.environmentScanFailed,
@@ -370,6 +371,7 @@ export function createSettingsWorkspaceCoordinator(
     refreshEnvironment: (settings) => runEnvironmentScan(settings, "settings-change"),
     requestDirectoryMigration: deps.requestDirectoryMigration,
     notifySaved: (proxyChanged, mode) => {
+      if (mode === "migrate-storage" && !proxyChanged) return;
       deps.showMessage(proxyChanged
         ? uiText(uiKeys.runtime.settingsProxySaved)
         : mode === "migrate-video-history"

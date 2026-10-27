@@ -814,6 +814,9 @@ describe("History application services", () => {
     expect(store.get().history[0]?.versions[0]?.h3ContinuationData).toMatchObject({
       status: "missing"
     });
+    await query.restoreHistoryOutputPaths();
+    expect(store.get().history[0]?.versions[0]?.files.map(file => file.filename)).toEqual(["original.mp4"]);
+    expect(store.get().history[0]?.versions[0]?.h3AvAsset).toBeUndefined();
   });
 
   it("downgrades availability when JointAV deletion removes only part of the pair", async () => {

@@ -1,0 +1,7 @@
+{
+  "stateFile": "C:/Users/YOUR_USER/AppData/Roaming/ai-video-gen-tool/studio-state.json",
+  "outputRoot": "D:/Output",
+  "libraryRoot": "C:/Users/YOUR_USER/Documents/Local Video Studio/Library",
+  "libraryDirectory": "StudioLibrary",
+  "intervalSeconds": 30
+}

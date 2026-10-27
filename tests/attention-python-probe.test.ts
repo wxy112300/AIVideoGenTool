@@ -20,6 +20,37 @@ function runnerFor(
 }
 
 describe("inspectAttentionPython", () => {
+  it("recovers a cold Kitchen timeout with one fresh bounded probe", async () => {
+    const budgets: number[] = [];
+    const result = await inspectAttentionPython("python.exe", {
+      runner: async (_python, _args, options) => {
+        budgets.push(options.timeout);
+        return budgets.length === 1
+          ? { stdout: line({ probeStage: "kitchen", probeState: "running" }), timedOut: true }
+          : { stdout: line({ probeStage: "kitchen", probeState: "complete", sageNativeReady: true }), exitCode: 0 };
+      }
+    });
+    expect(budgets).toEqual([30_000, 60_000]);
+    expect(result.probeState).toBe("complete");
+    expect(result.sageNativeReady).toBe(true);
+    expect(result.probeError).toBeUndefined();
+    expect(result.errors).toBeUndefined();
+  });
+
+  it("stops after the second timeout and keeps the final stage uncertain", async () => {
+    const budgets: number[] = [];
+    const result = await inspectAttentionPython("python.exe", {
+      runner: async (_python, _args, options) => {
+        budgets.push(options.timeout);
+        return { stdout: line({ probeStage: "kitchen", probeState: "running", sageNativeReady: true }), timedOut: true };
+      }
+    });
+    expect(budgets).toEqual([30_000, 60_000]);
+    expect(result.probeState).toBe("failed");
+    expect(result.probeError).toContain("60s during kitchen");
+    expect(result.sageNativeReady).toBe(false);
+  });
+
   it("ignores noisy stdout and accepts the final valid complete checkpoint", async () => {
     const result = await inspectAttentionPython("python.exe", {
       runner: runnerFor({

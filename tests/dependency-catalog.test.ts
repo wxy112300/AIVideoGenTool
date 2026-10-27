@@ -146,6 +146,9 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
       repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF-H3",
+      recommendedVersion: "26.10.21",
+      installRevision: "61843db580f8549a85b0a1ed850d550079fadfee",
+      installRevisionPolicy: "recommended",
       nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
       required: false
     });
@@ -221,8 +224,8 @@ describe("dependency catalog", () => {
         "H3ContinuumAssembleSeamV35"
       ],
       minimumVersion: "3.8.0",
-      recommendedVersion: "3.9.1",
-      latestVersion: "3.9.1",
+      recommendedVersion: "3.10.2",
+      latestVersion: "3.10.2",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{
@@ -278,6 +281,8 @@ describe("dependency catalog", () => {
       source: "bundled",
       directoryName: "LocalVideoStudio-H3",
       installRevision: H3_AV_SERIALIZER_REVISION,
+      installRevisionPolicy: "recommended",
+      minimumVersion: "0.3.6",
       license: "MIT",
       nodeTypes: [
         "LocalVideoStudioH3SaveJointAV",
@@ -291,6 +296,7 @@ describe("dependency catalog", () => {
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"
       ],
+      features: [{ id: "h3-continuum-groups", nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"] }],
       required: false
     });
   });

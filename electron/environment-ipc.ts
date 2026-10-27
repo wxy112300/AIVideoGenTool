@@ -33,8 +33,11 @@ export function registerEnvironmentIpc(deps: EnvironmentIpcDependencies): void {
   );
   deps.ipc.handle(
     "environment:scan",
-    (_event, settings: Settings, requestedScope: unknown, options?: EnvironmentScanOptions) =>
-      deps.query.scan(settings, requestedScope, options)
+    (event, settings: Settings, requestedScope: unknown, options?: EnvironmentScanOptions, id?: string) =>
+      typeof id === "string"
+        ? deps.query.scan(settings, requestedScope, options,
+          (progress) => sendIfAlive(event, "environment:scan-progress", { id, progress }))
+        : deps.query.scan(settings, requestedScope, options)
   );
   deps.ipc.handle(
     "service:start",

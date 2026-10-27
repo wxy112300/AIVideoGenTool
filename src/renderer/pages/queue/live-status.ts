@@ -13,7 +13,7 @@ import {
   queueTaskRemainingSeconds
 } from "./helpers";
 import type { Page } from "../../contracts";
-import { queueWorkProgressText, seedVr2ProgressView } from "./card";
+import { longVideoGroupProgressView, queueWorkProgressText, seedVr2ProgressView } from "./card";
 import { patchResourceMonitor } from "../../shell/resource-monitor";
 import { tweenText } from "../../shared/ui/tween";
 import type { RendererApplicationApi } from "../../studio-client";
@@ -313,6 +313,17 @@ export function patchQueueLiveDom(
   progressContainer?.setAttribute("aria-valuenow", String(Math.round(progress)));
   const stage = document.querySelector<HTMLElement>("#running-stage");
   if (stage) stage.textContent = running.stage ?? t(uiKeys.queue.card.preparing);
+  if ((running.taskType === "generation" || running.taskType === "extension") && running.longVideoPlan) {
+    const container = document.querySelector<HTMLElement>("#continuum-group-progress");
+    const label = document.querySelector<HTMLElement>("#continuum-group-progress-label");
+    const bar = document.querySelector<HTMLElement>("#continuum-group-progress-bar");
+    if (!container || !label || !bar) return false;
+    const local = longVideoGroupProgressView(running);
+    container.hidden = local === null;
+    label.textContent = `${Math.round(local ?? 0)}%`;
+    bar.style.width = `${local ?? 0}%`;
+    bar.closest<HTMLElement>("[role=progressbar]")?.setAttribute("aria-valuenow", String(Math.round(local ?? 0)));
+  }
   if (running.taskType === "upscale" && running.modelId === "seedvr2-native-int8") {
     const container = document.querySelector<HTMLElement>("#seedvr2-segment-progress");
     const label = document.querySelector<HTMLElement>("#seedvr2-segment-label");

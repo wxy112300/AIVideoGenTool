@@ -92,6 +92,24 @@ class ManagedPrefixGuardTests(unittest.TestCase):
         guard.install_managed_prefix_guard(self.module)
         self.assertIs(self.module.RunStorageController._load_validated_review_prefix, wrapped)
 
+    def test_group_receipt_keeps_the_same_guard_and_frozen_layout(self):
+        self.c.prompt_graph["24"]["class_type"] = "LocalVideoStudioH3ContinuumGroupReceipt"
+        self.c.prompt_graph["24"]["inputs"]["planned_chunks"] = 4
+        self.assertIs(self.c._load_validated_review_prefix({"chunk_count": 4}, resume_safe=True), self.c.prefix)
+        with self.assertRaisesRegex(ValueError, "layout changed"):
+            self.c._load_validated_review_prefix({"chunk_count": 5}, resume_safe=True)
+
+    def test_new_group_run_refuses_an_existing_identity_and_any_reused_prefix(self):
+        self.c.prompt_graph["24"]["class_type"] = "LocalVideoStudioH3ContinuumGroupReceipt"
+        self.c.prompt_graph["24"]["inputs"].update(planned_chunks=3, expected_prefix_chunks=0, expected_parent_revision_id="")
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            self.c._load_validated_review_prefix({"chunk_count": 3}, resume_safe=True)
+        self.project.unlink()
+        with self.assertRaisesRegex(ValueError, "unexpectedly reused"):
+            self.c._load_validated_review_prefix({"chunk_count": 3}, resume_safe=True)
+        self.c.prefix = SimpleNamespace(records=())
+        self.assertIs(self.c._load_validated_review_prefix({"chunk_count": 3}, resume_safe=True), self.c.prefix)
+
     def test_schema_probe_imports_the_registered_sampler_namespace_before_wrapping(self):
         sampler = type("RegisteredSampler", (), {})
         sampler.__module__ = "custom_nodes.official_continuum.v3.driving_nodes"

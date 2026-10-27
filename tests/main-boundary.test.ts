@@ -338,6 +338,7 @@ describe("main/preload boundary characterization", () => {
       "window:close-requested",
       "attention-acceleration:log",
       "dependency-install:log",
+      "environment:scan-progress",
       "history-migration:progress",
       "image-assets:progress"
     ]);
@@ -377,6 +378,7 @@ describe("main/preload boundary characterization", () => {
     expect(senderChannels).toEqual(new Set([
       "attention-acceleration:log",
       "dependency-install:log",
+      "environment:scan-progress",
       "cache:progress"
     ]));
     expect(bridgeChannels).toEqual(new Set([

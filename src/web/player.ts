@@ -42,6 +42,9 @@ export class Player {
       <div class="watch-bottom watch-chrome"><span class="watch-time">0:00</span><div class="watch-seek" data-seek><input class="watch-progress" type="range" min="0" max="1000" step="0.1" value="0" aria-label="${escape(text("seek"))}"></div><span class="watch-duration">0:00</span></div>
       <div class="watch-nav watch-chrome">${button("previous", icon("arrow-up"), text("previous"))}${button("next", icon("chevron-down"), text("next"))}</div><div class="speed-indicator" hidden>2×</div>`;
     this.video = root.querySelector("video")!;
+    if (this.info().readOnly) {
+      root.querySelectorAll('[data-action="favorite"], [data-action="rating"], [data-action="tags"]').forEach((control) => control.remove());
+    }
     this.stage = root.querySelector(".watch-stage")!;
     this.seek = mountSeek(root.querySelector(".watch-progress")!, this.video,
       (time) => { root.querySelector(".watch-time")!.textContent = root.classList.contains("scrubbing") ? `${Math.floor(time / 60)}:${(time % 60).toFixed(1).padStart(4, "0")}` : duration(time); },
@@ -167,13 +170,15 @@ export class Player {
   private paint(): void {
     if (!this.item) return;
     this.root.querySelector(".watch-count")!.textContent = `${this.index + 1} / ${this.total}`;
-    const favorite = this.root.querySelector<HTMLButtonElement>('[data-action="favorite"]')!;
-    favorite.classList.toggle("selected", this.item.favorite); favorite.setAttribute("aria-pressed", String(this.item.favorite));
-    favorite.setAttribute("aria-label", text(this.item.favorite ? "unfavorite" : "favorite"));
-    this.root.querySelector(".watch-rating")!.textContent = this.item.rating ? String(this.item.rating) : "";
-    const rating = this.root.querySelector<HTMLButtonElement>('[data-action="rating"]')!;
-    rating.title = `${text("rating")}${this.item.rating ? ` ${this.item.rating}` : ""}`;
-    rating.setAttribute("aria-label", rating.title);
+    const favorite = this.root.querySelector<HTMLButtonElement>('[data-action="favorite"]');
+    if (favorite) {
+      favorite.classList.toggle("selected", this.item.favorite); favorite.setAttribute("aria-pressed", String(this.item.favorite));
+      favorite.setAttribute("aria-label", text(this.item.favorite ? "unfavorite" : "favorite"));
+      this.root.querySelector(".watch-rating")!.textContent = this.item.rating ? String(this.item.rating) : "";
+      const rating = this.root.querySelector<HTMLButtonElement>('[data-action="rating"]')!;
+      rating.title = `${text("rating")}${this.item.rating ? ` ${this.item.rating}` : ""}`;
+      rating.setAttribute("aria-label", rating.title);
+    }
     this.root.querySelector(".watch-caption")!.textContent = this.item.title;
     this.root.querySelector(".watch-tags")!.textContent = this.item.tags.map((tag) => `#${tag}`).join("  ");
     this.root.querySelector<HTMLButtonElement>('[data-action="previous"]')!.disabled = this.index <= 0;
@@ -242,7 +247,7 @@ export class Player {
     finally { this.changing = false; }
   }
   private async save(patch: HistoryMetadataPatch): Promise<boolean> {
-    if (!this.item || this.saving) return false;
+    if (this.info().readOnly || !this.item || this.saving) return false;
     this.saving = true; const original = this.item;
     this.root.querySelectorAll<HTMLButtonElement>(".watch-actions button").forEach((button) => { button.disabled = true; });
     try {
@@ -259,7 +264,7 @@ export class Player {
     } finally { this.saving = false; this.root.querySelectorAll<HTMLButtonElement>(".watch-actions button").forEach((button) => { button.disabled = false; }); }
   }
   private edit(kind: "rating" | "tags"): void {
-    if (!this.item || this.saving || this.dialog?.open) return;
+    if (this.info().readOnly || !this.item || this.saving || this.dialog?.open) return;
     const resume = !this.video.paused; this.video.pause(); this.speed(false);
     const dialog = document.createElement("dialog"); dialog.className = kind === "rating" ? "sheet rating-popover" : "sheet";
     dialog.innerHTML = `<form method="dialog"><header><h2>${text(kind)}</h2>${button("close", icon("x"), text("close"))}</header><div class="edit-body"></div><footer><button type="button" data-cancel>${text("cancel")}</button><button class="primary" type="submit">${text("save")}</button></footer><p class="edit-status" role="status"></p></form>`;

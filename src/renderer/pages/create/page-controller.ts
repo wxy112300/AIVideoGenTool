@@ -29,6 +29,7 @@ import { resolutionAfterJointAvPreference } from "./view-model";
 import { mountLoraMenu } from "./lora-menu";
 import { mountSortable, moveListItem } from "../../shared/ui/sortable";
 import { isLongVideoPreview, mountGenerationMode } from "./generation-mode";
+import { longVideoBlockReason } from "../../../core/long-video/capability";
 import { mountResolutionControl } from "./resolution-control";
 
 let creationModeTransitionRevision = 0;
@@ -649,7 +650,11 @@ export function mountCreatePageController(
   const range = root.querySelector<HTMLInputElement>("#duration");
   childCleanups.push(mountResolutionControl(root, () => getState()?.draft));
   const number = root.querySelector<HTMLInputElement>("#duration-number");
-  childCleanups.push(mountGenerationMode(root, t, options.syncEnqueueUi, options.context.notify));
+  childCleanups.push(mountGenerationMode(root, t, options.syncEnqueueUi, options.context.notify, {
+    getDraft: () => getState()?.draft,
+    patchDraft: options.patchDraft,
+    context: options.context
+  }));
   const updateDuration = (source: HTMLInputElement, commit = false) => {
     const state = getState();
     if (!state) return;
@@ -694,7 +699,7 @@ export function mountCreatePageController(
   }, { signal });
   root.querySelector("#enqueue")?.addEventListener("click", async () => {
     const state = getState();
-    if (!state || options.isEnqueueBusy() || isLongVideoPreview(root)) return;
+    if (!state || options.isEnqueueBusy() || (isLongVideoPreview(root) && longVideoBlockReason(state.draft, state.settings))) return;
     options.setEnqueueBusy(true);
     options.setEnqueueBusyUi(true);
     try {

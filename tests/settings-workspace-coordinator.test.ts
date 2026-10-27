@@ -117,6 +117,19 @@ afterEach(() => {
 });
 
 describe("settings workspace coordinator", () => {
+  it("clicking rescan all requests a full scan with fresh upstream release versions", async () => {
+    const harness = createCoordinatorHarness();
+    harness.root.innerHTML = harness.coordinator.renderPage();
+    const cleanup = harness.coordinator.bind();
+    try {
+      const button = harness.root.querySelector<HTMLButtonElement>("#scan-environment")!;
+      expect(button.disabled).toBe(false);
+      button.click();
+      await vi.waitFor(() => expect(harness.application.scanEnvironment).toHaveBeenCalledWith(
+        harness.getState().settings, "full", { refreshReleaseVersions: true }, expect.any(Function)
+      ));
+    } finally { cleanup?.(); }
+  });
   it("opens cache inspection before clearing and submits only once after confirmation", async () => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     const harness = createCoordinatorHarness();

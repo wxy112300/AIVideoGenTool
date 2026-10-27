@@ -148,6 +148,10 @@ flowchart TD
   MODEL -->|Continuum| C{source mode}
   C -->|bootstrap| AV[配对 MP4 + JointAV payload/manifest]
   C -->|managed| PREFIX{已有 accepted Run 前缀?}
+  C -->|已完成group Run| GROUP[LongVideoRunSource: 原profile + 当前head + 完整prefix文件]
+  GROUP --> FUTURE[保持共同段长与原seed，只编译未来页]
+  FUTURE --> GROUPQ[独立group enqueue与首个POST前复核]
+  GROUPQ --> GUARD
   PREFIX -->|是| SEQ[sequence + canonical head + chunks / run storage]
   PREFIX -->|否| BLOCK[阻止入队并显示原因]
   AV & SEQ --> INSPECT[inspectVideoExtensionSource: checking / missing / invalid / available]
@@ -173,12 +177,13 @@ flowchart TD
 | Motion Context | 源 Slot 1 不可删除/改类型，额外图片/视频 Slots；独立 latent 面板 | 新标准任务新增段至30秒，含上下文实际预算770帧；Spectrum 关闭；无 latent 可以视频上下文；有 latent 必须来源检查，结束 trim 对齐源尾部 |
 | Continuum bootstrap | 配对 AV 文件与状态面板；使用整个源尾边界 | 文件名非空不代表可用；payload/manifest/几何等预检失败须阻塞且可恢复 |
 | Continuum managed | 已接受序列/chunk/依赖状态；延续或重生成当前片段 | 必须有 acceptedChunks > 0；没有前缀不能新建 Run 冒充续写。另需原始首帧来源、当前 canonical head 与 run 文件一致；timeline prompt、强制 AV 保存和 duration 按生产校验 |
+| Continuum group Run | 已完成group History版本→Continue→Extend未来页 | 独立LongVideoRunSource；原profile/seed/段长和prefix不变，head/全部payload入队及POST前检查；真实按钮通过，额外组GPU待验 |
 
-模式由 `h3ContinuumModeForSource` 判定：已有 accepted chunks 优先 managed；显式 bootstrap 或配对 artifact 走 bootstrap；否则根据 managed 标记/工作流。不是单凭“选了 Continuum”就能知道执行路线。
+旧AV/Sequence模式由 `h3ContinuumModeForSource` 判定：已有accepted chunks优先managed；显式bootstrap或配对artifact走bootstrap。新group Run通过独立`LongVideoRunSource`及选中History版本资格进入，不解释成旧AV/Sequence。不是单凭“选了Continuum”就能知道路线。
 
-H3 Extend保留原生/原生解锁的含义：以15.1/30秒采样窗口为上限，按各分支重叠帧及时间网格换算可见新增时长；Motion Context隐藏Continuum多段选项。原生不能靠数字输入自动解锁。警告按换算后的推荐上限触发，不按来源或成片总长；warning不替代来源检查。草稿与队列duration仍是可见新增秒数，不重复扣减前缀；旧managed Run沿用冻结chunkSeconds。Continuum多段仍为本地UI演示；实际长时输出与末段质量另验。
+H3原生/解锁保留15.1/30秒采样窗口及各路线的前缀扣除/网格对齐，不能靠数字输入自动解锁，Motion Context隐藏Continuum多段。group Run保留原段长和完整source区间；Draft/Queue时长是新增秒数，最终媒体必须覆盖完整Run。全局创作意图/每段共享约束显式区分，分页不是切镜；分组模式隐藏独立AV导出开关，必需Run Storage仍保存。Create已实际通过三组15秒/组后恢复/单History播放。已有group Run的Continue→Extend、详稿恢复、旧head拒收恢复和真实按钮通过；Queue单卡可浏览冻结的整片/全局/未来段并复制当前页，实际段号继承Run偏移。GPU额外组、双进度、Strata与完整P2仍待完成。`probe-long-video-queue.mjs <fixture> prepare|pause|resume --port <port>`验证Create；`probe-long-video-extend.mjs <fixture> prepare|finish --port <port>`复用已完成的物理隔离Run验证新增段；`probe-long-video-queue-pages.mjs <fixture> --port <port>`只读验证现有Queue分页。prepare不采样，执行步骤仅在归属明确和GPU空闲时运行，不自动重提不明任务。测试入口见`harness:app -- guide extend`。
 
-**路由不等于入队资格**。`history-artifact-service.ts` 的 `inspectExtensionSource` 会阻止无 sequence 或 acceptedChunks=0 的 managed 输入。不能因任务工厂/旧队列分支能构造空 sequence，就宣称普通用户能新建 managed Run；不要添加模式开关或绕过门槛来让测试变绿。bootstrap 输出的 canonical AV 不会自动变成 accepted managed prefix。已有合成 receipt 的单测也不代表真实 run 已生成。
+**路由不等于入队资格**。旧managed的`history-artifact-service.ts`检查仍拒绝无sequence/acceptedChunks=0，bootstrap AV不自动变成managed prefix；不能构造空sequence或模式开关绕过。新group Create是独立new-run入口；已有group Run必须通过其独立完整receipt/profile/head/文件检查，不能把旧AV或不完整前缀当作它。合成端口/单测不代替真实生成。
 
 真实边界探针：从新的 `--asset-source-state` 隔离副本运行 `probe-managed-entry-smoke.mjs <fixture-dir> --port <port> --output <report.json>`。AppApi 仅准备无前缀的 managed 输入；缺视频→补视频仍因无前缀阻止→真实键盘改选 Motion Context→真实鼠标入队。报告的 task 是 **Motion Context**，没有 managed/GPU 成功结论。完整 managed 验收需要真实 accepted sequence、receipt、run 文件及原始来源的完整物理副本。新版检查实际 manifest v6/hash/resume_safe 与所选 head，旧 v5 Run 保留只读、不能直接作为 v6 前缀。独立 Native AV 仍走兼容模式。
 
@@ -220,6 +225,13 @@ flowchart TD
 ## 资产保存、检查、转移与删除
 
 见 [资产生命周期地图](ASSET_LIFECYCLE.md)：一条任务的媒体/参数/AV 保存清单、userData/输出/输入库/缓存分工、图片素材库检查与视频目录迁移的区别，以及共享引用/单版本/辅助删除边界。运行 `harness:app -- guide assets` 定位最小代码和测试；不要把 History 卡片、MP4、AV owner 当成同一个可删除对象。
+
+<a id="library-storage"></a>
+首次迁移/耗时打开时，在主界面前显示只读启动小窗；计数来自实际记录写入/读回，完成自动交接，进度故障不影响存储。用 `node scripts/harness/library-startup-progress-smoke.mjs` 验证可见进度、中断保留原件、重启完整恢复及窗口关闭。
+
+资料库路线（`guide library-storage`）：旧 AppData state → 校验/完整备份 → Documents 分作品候选 → 独立读回 → 原子切换定位 → History/Settings 原有入口 → 已提交变更后台发布 → Drive 乱序校验 → NAS 本地 SQLite → 只读浏览。位置冲突/缺库/写失败必须保留原件且可恢复，不落空库；旧媒体和队列快照保持。操作与异常路径见[资料库/NAS 手册](LIBRARY_STORAGE_AND_NAS.md)，隔离 UI 复现用 `node scripts/harness/library-storage-smoke.mjs`，NAS v2 用 `node Tools/NasBrowser/smoke.mjs --v2`。
+
+保存位置变更：历史数据/视频/图片路径 → 保存 → 新旧位置确认（可取消）→ 实际移动与校验进度 → 持久提交路径 → 源文件移走后完成。视频和图片不得越出当前 ComfyUI output，选择器及后端都检查；运行队列阻止迁移。无确认不能仅改路径；失败/中断从日志恢复，保留作品、版本、草稿与队列身份。独立输入归档与 Run/AV/Motion 不被当作普通输出误搬。
 
 <a id="upscale"></a>
 ## Upscale：结果驱动的独立任务

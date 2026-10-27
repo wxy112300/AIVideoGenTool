@@ -498,6 +498,28 @@ describe("History accessibility markup", () => {
       preferredVersion: () => artifactVersion,
       currentHistoryVersion: () => artifactVersion
     });
+    for (const continuation of [undefined, {
+      status: "missing", reason: "JointAV 文件已由用户从详情页删除。"
+    }] as const) {
+      const deletedVersion = { ...artifactVersion, h3AvAsset: undefined, h3ContinuationData: continuation } as AssetVersion;
+      const deletedPage = renderHistoryDetailPage({
+        ...artifactViewModel,
+        state: { ...state, history: [{ ...artifactAsset, versions: [deletedVersion] }] },
+        historyArtifactInspection: { status: "available", artifact: artifactVersion.h3ContinuationData!.artifact }
+      }, {
+        ...detailOptions,
+        preferredVersion: () => deletedVersion,
+        currentHistoryVersion: () => deletedVersion
+      });
+      expect(deletedPage).not.toContain('class="history-joint-av-indicator"');
+      expect(deletedPage).not.toContain('data-history-av-summary');
+      expect(deletedPage).not.toContain("JointAV 文件已由用户从详情页删除。");
+      expect(deletedPage).not.toContain("h3av_artifact-001");
+      expect(deletedPage).not.toContain("h3av_alias");
+      expect(deletedPage.match(/class="output-file"/g)).toHaveLength(deletedVersion.files.length);
+      expect(deletedPage).toContain("clip_00001.safetensors");
+      expect(deletedPage).toContain('data-open-upscale');
+    }
     const videoGalleryPage = renderHistoryPage(videoViewModel, detailOptions);
     const imageGalleryPage = renderImageHistoryPage(imageViewModel, detailOptions);
     const videoCardStart = videoGalleryPage.match(

@@ -200,10 +200,10 @@ function matchesCommon(
   return true;
 }
 
-export function filterHistoryAssets(
-  history: ReadonlyArray<HistoryAsset>,
+export function filterHistoryAssets<T extends Pick<HistoryAsset, "id" | "updatedAt" | "createdAt" | "favorite" | "rating" | "modelId" | "tags" | "duration">>(
+  history: ReadonlyArray<T>,
   rawFilter?: HistoryFilterInput
-): HistoryAsset[] {
+): T[] {
   const filter = normalizeHistoryFilter(rawFilter);
   return history
     .filter((asset) => matchesCommon(asset, filter))

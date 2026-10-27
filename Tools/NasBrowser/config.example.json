@@ -1,0 +1,9 @@
+{
+  "mediaRoot": "/media",
+  "libraryRoot": "/library",
+  "libraryDirectory": "StudioLibrary",
+  "host": "0.0.0.0",
+  "port": 8790,
+  "pollSeconds": 10,
+  "allowedOrigins": ["http://192.168.1.10:8790"]
+}

@@ -1,6 +1,6 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { reducedMotion } from "../../shared/ui/motion";
-import { historyCardVideo } from "./card-video";
+import { historyCardVideo, historyPreviewPresentation } from "./card-video";
 import {
   scheduleHistoryBatches,
   type HistoryMediaTaskPriority
@@ -51,6 +51,7 @@ export function mountHistoryMediaController(
   let retainedHoverMedia: HTMLElement | null = null;
   let retainedHoverTimer: number | null = null;
   const previewStarts = new Map<HTMLElement, () => void>();
+  const previewStops = new Map<HTMLElement, () => void>();
   const warmupPriorities = new Map<HTMLElement, HistoryMediaTaskPriority>();
 
   const resumeBackgroundWarmup = (): void => {
@@ -74,6 +75,7 @@ export function mountHistoryMediaController(
   };
 
   const releaseHoverMedia = (media: HTMLElement, scheduleWarmup: boolean): void => {
+    previewStops.get(media)?.();
     const video = media.querySelector<HTMLVideoElement>("video");
     if (video) {
       video.pause();
@@ -113,6 +115,7 @@ export function mountHistoryMediaController(
     clearHoverTimer(media);
     if (activeHoverMedia !== media) return;
     activeHoverMedia = null;
+    previewStops.get(media)?.();
     media.classList.remove("playing");
     media.querySelector<HTMLVideoElement>("video")?.pause();
     clearRetainedHover();
@@ -132,6 +135,8 @@ export function mountHistoryMediaController(
     const video = historyCardVideo(media, createVideo);
     if (!video) return;
     initializedMediaCards.add(media);
+    const presentation = historyPreviewPresentation(media, video, signal);
+    previewStops.set(media, presentation.stop);
     video.addEventListener("error", () => {
       media.classList.remove("playing");
       media.classList.remove("media-loading", "media-ready");
@@ -222,6 +227,7 @@ export function mountHistoryMediaController(
       resumeAfterSeek = !video.paused;
       video.pause();
       media.classList.add("playing");
+      presentation.start();
       progress.setPointerCapture?.(event.pointerId);
       seekToPointer(event.clientX);
     }, { signal });
@@ -264,7 +270,12 @@ export function mountHistoryMediaController(
       options.loadHistoryCardVideo(media);
       seekToRatio(0);
       media.classList.add("playing");
-      void video.play().catch(() => undefined);
+      const attempt = presentation.start();
+      void video.play().catch(() => {
+        if (activeHoverMedia !== media || !presentation.isCurrent(attempt)) return;
+        presentation.stop();
+        media.classList.remove("playing");
+      });
     };
     previewStarts.set(media, startPreview);
     media.addEventListener("mouseenter", () => requestHover(media), { signal });
@@ -405,5 +416,6 @@ export function mountHistoryMediaController(
     activeHoverMedia = null;
     warmupPriorities.clear();
     previewStarts.clear();
+    previewStops.clear();
   };
 }

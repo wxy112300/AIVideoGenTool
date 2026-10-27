@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 export const ATTENTION_PROBE_PREFIX = "__LOCAL_VIDEO_STUDIO_ATTENTION_PROBE__";
 
 const PROBE_TIMEOUT_MS = 30_000;
+const PROBE_RETRY_TIMEOUT_MS = 60_000;
 const PROBE_MAX_BUFFER = 2 * 1024 * 1024;
 const MAX_ERROR_LENGTH = 600;
 
@@ -60,6 +61,7 @@ export type AttentionPythonProbeRunner = (
 export interface InspectAttentionPythonOptions {
   runner?: AttentionPythonProbeRunner;
   now?: () => number;
+  onRetry?: () => void;
 }
 
 interface ProbeCheckpoint {
@@ -227,20 +229,30 @@ export async function inspectAttentionPython(
     };
   }
 
-  let execution: AttentionPythonProbeExecution;
-  try {
-    execution = await (options.runner ?? defaultRunner)(
-      python,
-      ["-c", makeProbeScript()],
-      {
-        encoding: "utf8",
-        timeout: PROBE_TIMEOUT_MS,
-        windowsHide: true,
-        maxBuffer: PROBE_MAX_BUFFER
-      }
-    );
-  } catch (error) {
-    execution = { error: readErrorMessage(error) };
+  const run = async (timeout: number): Promise<AttentionPythonProbeExecution> => {
+    try {
+      return await (options.runner ?? defaultRunner)(
+        python,
+        ["-c", makeProbeScript()],
+        {
+          encoding: "utf8",
+          timeout,
+          windowsHide: true,
+          maxBuffer: PROBE_MAX_BUFFER
+        }
+      );
+    } catch (error) {
+      return { error: readErrorMessage(error) };
+    }
+  };
+  let timeout = PROBE_TIMEOUT_MS;
+  let execution = await run(timeout);
+  // Cold Torch/CUDA imports can consume the shared budget before Kitchen.
+  // Retry a timeout once with a fresh process; never retry import errors/crashes.
+  if (execution.timedOut) {
+    options.onRetry?.();
+    timeout = PROBE_RETRY_TIMEOUT_MS;
+    execution = await run(timeout);
   }
 
   const checkpoints = checkpointJsonLines(execution.stdout ?? "");
@@ -264,7 +276,7 @@ export async function inspectAttentionPython(
     errors.push("result: no valid prefixed checkpoint was returned");
   }
   if (timedOut) {
-    probeError = `Attention probe timed out after ${PROBE_TIMEOUT_MS / 1000}s during ${stage}.`;
+    probeError = `Attention probe timed out after ${timeout / 1000}s during ${stage}.`;
     errors.push(`process: timeout during ${stage}`);
   } else if (hasNonZeroExit) {
     probeError = `Attention probe exited with code ${execution.exitCode} during ${stage}.`;

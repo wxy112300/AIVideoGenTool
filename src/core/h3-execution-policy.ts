@@ -168,6 +168,7 @@ export function applyH3AccelerationSettingsToWaitingTask(
   settings: H3AccelerationSettings
 ): boolean {
   if (task.status !== "waiting" || task.taskType === "image-generation") return false;
+  if (task.longVideoExecution || task.longVideoRunSource) return false;
   const patch = h3AccelerationTaskPatchForSettings(task, settings);
   if (!patch) return false;
 

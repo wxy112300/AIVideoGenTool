@@ -1,7 +1,7 @@
 import "./theme.css";
 import "./style.css";
 import { defaultHistoryFilter, historyFilterIsActive, normalizeHistoryFilter, type HistoryFilterState, type HistorySort } from "../core/history-filter";
-import type { BrowseLibraryInfo, BrowseVideo } from "../core/lan-browser";
+import { normalizeBrowseFilter, type BrowseLibraryInfo, type BrowseVideo } from "../core/lan-browser";
 import { api } from "./api";
 import { showFilters, sortOptions } from "./filters";
 import { Library } from "./library";
@@ -45,10 +45,12 @@ async function boot(): Promise<void> {
   root.innerHTML = `<div class="boot-status">${escape(text("loading"))}</div>`;
   try {
     info = await api.info(); await setLocale(info.locale);
+    filter = normalizeBrowseFilter(filter, info.readOnly);
     root.innerHTML = `<main id="library-shell"><header class="library-header"><h1>${text("library")}</h1><div class="library-tools"><label class="sort-control"><span class="sr-only">${text("sort")}</span><select id="sort">${sortOptions(filter.sort)}</select></label>${button("filter", icon("sliders-horizontal"), text("filter"))}${button("layout", icon("columns-3"), text("album"))}${button("refresh", icon("refresh-cw"), text("refresh"))}</div></header><button id="new-content" hidden>${text("newContent")}</button><div id="media-wall"></div><div id="library-status" role="status"></div>${button("top", icon("arrow-up"), text("returnTop"), "return-top")}</main><section id="watch" aria-label="${text("play")}" tabindex="-1" hidden></section><div id="toast" role="status" hidden></div>`;
+    root.querySelector("#sort")!.innerHTML = sortOptions(filter.sort, info.readOnly);
     library = new Library(root.querySelector("#media-wall")!, root.querySelector("#library-status")!, (item, index) => {
       history.pushState({ viewer: true }, "", updateUrl(item)); void player.show(item, index, library.total, library.queryId);
-    });
+    }, info.readOnly);
     player = new Player(root.querySelector("#watch")!, () => info, (item) => library.update(item), () => {
       if (history.state?.viewer) history.back(); else { history.replaceState({}, "", updateUrl()); closePlayer(); }
     }, (item) => history.replaceState(history.state, "", updateUrl(item)));
@@ -69,6 +71,7 @@ async function boot(): Promise<void> {
     root.querySelector("#new-content")!.addEventListener("click", () => { void refreshAll(); });
     window.addEventListener("popstate", () => {
       try { filter = normalizeHistoryFilter(JSON.parse(new URL(location.href).searchParams.get("q") ?? "null")); } catch { filter = { ...defaultHistoryFilter }; }
+      filter = normalizeBrowseFilter(filter, info.readOnly);
       void openFromUrl();
     });
     renderIcons(root); await refresh(); await openFromUrl();

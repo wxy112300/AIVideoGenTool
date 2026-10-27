@@ -9,6 +9,7 @@ export interface NotificationAction {
 }
 
 export interface AppNotification {
+  progress?: { completed: number; total: number };
   sourceKey?: string;
   id: number;
   message: string;

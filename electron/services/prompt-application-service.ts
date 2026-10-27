@@ -73,6 +73,8 @@ import { PromptRuntimeManager } from "./prompt-runtime-manager.js";
 import { enhancePromptWithStrata, strataPromptPolicy, StrataPromptValidationError } from "./strata-prompt.js";
 import type { StrataChatRequest } from "./strata-service.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
+import { enhanceLongVideoWithStrata } from "./long-video-prompt.js";
+import { assertLongVideoPromptRequest } from "../../src/core/long-video/enhancement.js";
 
 type PromptBackend = Exclude<ReturnType<typeof promptModelBackend>, null>;
 type PromptWorker = Promise<unknown>;
@@ -283,7 +285,12 @@ export class PromptApplicationService {
           : "image-to-video"
     );
     validateH3ReferenceAutoPrompt(request);
-    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
+    if (request.longVideo) {
+      assertLongVideoPromptRequest(request.longVideo);
+      if (promptBackend !== "strata" || request.mode !== "h3-vision" || request.modelId !== "minimax_h3_fl2va" ||
+          request.h3PromptMode !== "I2VA" || !request.imagePath || request.extensionSource || (request.imagePaths?.length ?? 1) !== 1) throw new Error("长视频增强目前需要 Strata 与单首帧图生视频，原选择保持不变。");
+    }
+    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request) && !request.longVideo) {
       throw new Error("请先输入需要扩写的提示词");
     }
     if (this.deps.isQueueBusy()) {
@@ -812,7 +819,7 @@ export class PromptApplicationService {
       this.deps.promptRuntimeManager.setOperationPhase(operationId, "warming-model");
       // Strata has no ComfyUI prompt ID. Keep it null, with running feedback in PromptProgress.
       const result = await withPromptExtensionMedia(request, operationId, controller.signal, (prepared) =>
-        enhancePromptWithStrata(prepared, settings, this.deps.strata!, controller.signal, onProgress, async (chat) => {
+        (prepared.longVideo ? enhanceLongVideoWithStrata : enhancePromptWithStrata)(prepared, settings, this.deps.strata!, controller.signal, onProgress, async (chat) => {
           await this.ensureStrataReady(settings, controller.signal, onProgress, chat);
           this.retainedPromptRuntime = { backend: promptBackend, modelId: settings.promptModelId };
           this.deps.promptRuntimeManager.setOperationPhase(operationId, "submitting");

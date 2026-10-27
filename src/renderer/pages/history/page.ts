@@ -605,8 +605,13 @@ export function renderHistoryDetailPage(
   const videoIndex = options.versionVideoIndex(version);
   const mediaUrl = options.historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
-  const jointAvArtifact = viewModel.historyArtifactInspection?.artifact ??
-    version.h3ContinuationData?.artifact;
+  // A missing record without an artifact is the deletion boundary. Inspection
+  // results from before that deletion must not bring its file badge back.
+  const hasNativeAvDetails = Boolean(version.h3AvAsset || (version.h3ContinuationData &&
+    (version.h3ContinuationData.status !== "missing" || version.h3ContinuationData.artifact)));
+  const jointAvArtifact = hasNativeAvDetails
+    ? viewModel.historyArtifactInspection?.artifact ?? version.h3ContinuationData?.artifact
+    : undefined;
   const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ??
     version.h3ContinuationData?.status ?? "not-supported";
   const nativeAvStatusLabel = artifactInspectionStatus === "available"
@@ -624,7 +629,7 @@ export function renderHistoryDetailPage(
   const nativeAvScope = version.h3AvAsset?.sampleScope ??
     (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);
   const nativeAvContextFrames = version.h3AvAsset?.contextFrames ?? jointAvArtifact?.contextFrames;
-  const nativeAvSummaryMarkup = version.h3ContinuationData || version.h3AvAsset
+  const nativeAvSummaryMarkup = hasNativeAvDetails
     ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
         <details class="history-av-details"><summary><span>${options.icon("database")}${options.t(uiKeys.history.page.avFile)}</span><span class="history-file-badge ${artifactInspectionStatus === "available" ? "" : "warning"}" data-history-av-visible-status>${options.escapeHtml(nativeAvStatusLabel)}</span>${options.icon("chevron-down")}</summary>
         <dl class="history-native-av-facts">

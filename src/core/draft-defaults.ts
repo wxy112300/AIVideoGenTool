@@ -43,6 +43,9 @@ export function createClearedImageDraft(current: ImageEditDraft): ImageEditDraft
 export function createClearedDraft(current: Draft): Draft {
   return {
     ...current,
+    longVideoScript: undefined,
+    longVideoRunSource: undefined,
+    longVideoEditor: undefined,
     startImagePath: "",
     sourceWidth: 0,
     sourceHeight: 0,

@@ -35,6 +35,7 @@ import type {
 import { createRendererUiState } from "../src/renderer/ui-state";
 import type { HistoryPlaybackSnapshot } from "../src/renderer/pages/history/page-controller";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance";
+import { completedGroupVersion } from "./harness/long-video-source";
 
 type EventListener = (payload: unknown) => void;
 
@@ -364,12 +365,15 @@ describe("renderer boundary characterization", () => {
   it("patches stable Queue volatility in place and protects active input/draft saves", () => {
     const queue = createEventHarness("queue");
     const task = configureRunningQueue(queue);
+    if (task.taskType === "generation") task.longVideoPlan = completedGroupVersion().longVideoExecution!.script;
     mountQueueLiveShell(queue.root);
+    queue.root.insertAdjacentHTML("beforeend", '<div id="continuum-group-progress" hidden><span id="continuum-group-progress-label"></span><div role="progressbar"><span id="continuum-group-progress-bar"></span></div></div>');
     queue.emit("queue-task:progress", {
       taskId: task.id,
       revision: 1,
       updatedAt: "2026-08-31T00:00:02.000Z",
       progress: 67,
+      longVideoGroupProgress: 42,
       stage: "渲染关键帧",
       workProgress: {
       value: 4,
@@ -387,6 +391,9 @@ describe("renderer boundary characterization", () => {
     expect(queue.root.querySelector("#running-work-progress")?.textContent).toBe(uiKeys.queue.card.workProgress);
     expect(queue.root.querySelector<HTMLElement>("#running-work-progress")?.hidden).toBe(false);
     expect(queue.root.querySelector("#running-progress-bar")?.style.width).toBe("67%");
+    expect(queue.root.querySelector("#continuum-group-progress-label")?.textContent).toBe("42%");
+    expect(queue.root.querySelector<HTMLElement>("#continuum-group-progress")?.hidden).toBe(false);
+    expect(queue.root.querySelector<HTMLElement>("#continuum-group-progress-bar")?.style.width).toBe("42%");
     expect(queue.state.queue[0]?.id).toBe(task.id);
 
     const input = document.createElement("textarea");

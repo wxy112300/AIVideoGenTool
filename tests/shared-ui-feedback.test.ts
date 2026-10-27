@@ -36,7 +36,33 @@ describe("notification stack", () => {
     expect(document.querySelector(".ui-notice")?.textContent).toContain("Complete");
     stack.push({ ...createNotification(3, "Failed", "error"), sourceKey: "scan" });
     stack.push({ ...createNotification(4, "Retrying", "info"), sourceKey: "scan" });
-    expect(document.querySelector('[data-notification-id="3"]')).not.toBeNull();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Failed");
+  });
+  it("updates scan progress in place, preserves focus and stops its timer on completion", () => {
+    const { stack } = setup();
+    stack.push({ ...createNotification(1, "Checking files", "info", 300000), sourceKey: "scan", progress: { completed: 1, total: 4 } });
+    const notice = document.querySelector<HTMLElement>(".ui-notice")!;
+    const close = notice.querySelector<HTMLButtonElement>(".ui-notice-close")!;
+    close.focus();
+    const icon = notice.querySelector("svg");
+    stack.push({ ...createNotification(2, "Checking acceleration", "info", 300000), sourceKey: "scan", progress: { completed: 2, total: 4 } });
+    expect(document.querySelector(".ui-notice")).toBe(notice);
+    expect(document.activeElement).toBe(close);
+    expect(notice.querySelector("svg")).toBe(icon);
+    expect(notice.querySelector("progress")?.value).toBe(2);
+    expect(document.querySelectorAll(".ui-notice")).toHaveLength(1);
+    stack.push({ ...createNotification(3, "Complete", "info"), sourceKey: "scan" });
+    expect(notice.querySelector("progress")).toBeNull();
+    close.blur();
+    vi.advanceTimersByTime(3001);
+    expect(notice.isConnected).toBe(false);
+  });
+  it("does not reopen a dismissed scan on the next progress event", () => {
+    const { stack } = setup();
+    stack.push({ ...createNotification(1, "Checking files", "info", 300000), sourceKey: "scan", progress: { completed: 1, total: 4 } });
+    document.querySelector<HTMLButtonElement>(".ui-notice-close")!.click();
+    stack.push({ ...createNotification(2, "Checking nodes", "info", 300000), sourceKey: "scan", progress: { completed: 2, total: 4 } });
+    expect(document.querySelector(".ui-notice")).toBeNull();
   });
   it("keeps four errors visible and queues overflow until a dismissal", () => {
     const { stack, changed } = setup();

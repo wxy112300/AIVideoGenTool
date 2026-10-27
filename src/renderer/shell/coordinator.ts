@@ -21,6 +21,7 @@ import {
 import { projectPromptRuntimeView, type PromptRuntimeViewProjection } from "../../core/prompt-runtime-view";
 import { isStrataPromptModel } from "../../core/prompt-models";
 import { uiKeys } from "../../core/i18n-keys";
+import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../core/library-storage-errors";
 import type { Translate, TranslationParams } from "../../core/i18n";
 import { createNotification, notificationAlreadyPending, type NotificationAction } from "../notifications";
 import { createNotificationStack } from "../shared/ui/notify";
@@ -323,6 +324,8 @@ export function createRendererShellCoordinator(
     const kind = options?.kind ?? "info";
     const notification = createNotification(deps.ui.nextFlashNotificationId++, message, kind, options?.durationMs, options?.actions);
     notification.sourceKey = options?.key;
+    notification.progress = options?.progress;
+    if (notification.progress) notification.dedupeKey += `\u0000${notification.progress.completed}/${notification.progress.total}`;
     if (options?.key) notification.dedupeKey += `\u0000${options.key}`;
     if (notificationAlreadyPending(notification, deps.ui.flashNotification, deps.ui.flashNotificationQueue)) return;
     void deps.application.reportNotification(kind, message).catch(() => undefined);
@@ -346,7 +349,9 @@ export function createRendererShellCoordinator(
     if (mode === "cancel") {
       deps.setSettingsDraft({
         ...request.nextSettings,
-        outputDirectory: request.previousSettings.outputDirectory
+        outputDirectory: request.previousSettings.outputDirectory,
+        imageOutputDirectory: request.previousSettings.imageOutputDirectory,
+        libraryDirectory: request.previousSettings.libraryDirectory
       });
       deps.ui.pendingDirectoryMigration = null;
       deps.ui.historyMigrationProgress = null;
@@ -366,7 +371,7 @@ export function createRendererShellCoordinator(
       deps.ui.historyMigrationProgress = null;
       deps.render();
       restoreModalFocus();
-      if (mode === "migrate-video-history") {
+      if (mode === "migrate-video-history" || mode === "migrate-storage") {
         showMessage(
           warningCount
             ? deps.t(uiKeys.runtime.migrationCompletedWarnings, { count: warningCount })
@@ -376,18 +381,18 @@ export function createRendererShellCoordinator(
       }
     } catch (error) {
       deps.ui.directoryMigrationBusy = false;
-      showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
+      const message = error instanceof Error ? error.message : String(error);
+      const key = message.includes(LIBRARY_DESTINATION_OCCUPIED) ? uiKeys.settings.system.libraryDestinationOccupied
+        : message.includes(LIBRARY_DESTINATION_CONFLICT) ? uiKeys.settings.system.libraryDestinationConflict : undefined;
+      showMessage(key ? deps.t(key) : message.replace(/^Error invoking remote method ['"][^'"]+['"]: (?:Error: )?/, ""), { kind: "error" });
       renderOverlay();
     }
   }
 
   function bindDirectoryMigrationDialog(): void {
     if (!deps.ui.pendingDirectoryMigration) return;
-    deps.modalRoot.querySelector("#directory-apply")?.addEventListener("click", () => {
-      void chooseDirectoryMigration("apply");
-    });
     deps.modalRoot.querySelector("#directory-apply-migrate")?.addEventListener("click", () => {
-      void chooseDirectoryMigration("migrate-video-history");
+      void chooseDirectoryMigration("migrate-storage");
     });
     deps.modalRoot.querySelector("#directory-cancel")?.addEventListener("click", () => {
       void chooseDirectoryMigration("cancel");

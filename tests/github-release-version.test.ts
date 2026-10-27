@@ -2,6 +2,44 @@ import { describe, expect, it, vi } from "vitest";
 import { GitHubReleaseVersionLookup, githubReleaseTagFromUrl } from "../electron/services/github-release-version";
 
 describe("upstream release lookup", () => {
+  it.each([true, false])("manual invalidation starts a new request and ignores an older response (old finishes first: %s)", async oldFirst => {
+    let finishOld!: (value: unknown) => void, finishNew!: (value: unknown) => void;
+    const read = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve; }));
+    const lookup = new GitHubReleaseVersionLookup(read);
+    const old = lookup.latest("owner/repo");
+    lookup.invalidate();
+    const fresh = lookup.latest("owner/repo");
+    expect(read).toHaveBeenCalledTimes(2);
+    if (oldFirst) {
+      finishOld({ tag_name: "3.10.0", version_source: "Comfy Registry" });
+      await old;
+      expect(lookup.source("owner/repo")).toBe("");
+      const joined = lookup.latest("owner/repo");
+      expect(read).toHaveBeenCalledTimes(2);
+      finishNew({ tag_name: "3.10.2", version_source: "GitHub Release" });
+      expect(await joined).toBe("3.10.2");
+    } else {
+      finishNew({ tag_name: "3.10.2", version_source: "GitHub Release" });
+      await fresh;
+      finishOld({ tag_name: "3.10.0", version_source: "Comfy Registry" });
+      await old;
+    }
+    expect(await fresh).toBe("3.10.2");
+    expect(await lookup.latest("owner/repo")).toBe("3.10.2");
+    expect(lookup.source("owner/repo")).toBe("GitHub Release");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("retries a partial Registry observation instead of caching it for six hours", async () => {
+    const read = vi.fn().mockResolvedValueOnce({ tag_name: "3.10.0", version_source: "Comfy Registry", cacheable: false })
+      .mockResolvedValueOnce({ tag_name: "3.10.2", version_source: "GitHub Release" });
+    const lookup = new GitHubReleaseVersionLookup(read);
+    expect(await lookup.latest("owner/repo")).toBe("3.10.0");
+    expect(lookup.source("owner/repo")).toBe("Comfy Registry");
+    expect(await lookup.latest("owner/repo")).toBe("3.10.2");
+    expect(lookup.source("owner/repo")).toBe("GitHub Release");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
   it("bounds simultaneous upstream connections and releases slots after failures", async () => {
     let active = 0, peak = 0;
     const lookup = new GitHubReleaseVersionLookup(async repository => {

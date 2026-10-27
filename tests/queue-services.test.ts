@@ -97,7 +97,7 @@ describe("queue command services", () => {
       });
 
       await service.updateTaskProgress(queued.id, { progress: 10, stage: "sampling" });
-      await service.updateTaskProgress(queued.id, { progress: 11, stage: "sampling" });
+      await service.updateTaskProgress(queued.id, { progress: 11, stage: "sampling", longVideoGroupProgress: 42 });
 
       expect(sendState).not.toHaveBeenCalled();
       expect(sendProgress).not.toHaveBeenCalled();
@@ -108,7 +108,8 @@ describe("queue command services", () => {
       expect(sendProgress).toHaveBeenCalledWith(expect.objectContaining({
         taskId: queued.id,
         progress: 11,
-        stage: "sampling"
+        stage: "sampling",
+        longVideoGroupProgress: 42
       }));
       expect(flush).not.toHaveBeenCalled();
 

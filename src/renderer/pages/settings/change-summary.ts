@@ -20,6 +20,7 @@ export function settingsChangeSummary(keys: readonly (keyof Settings)[], t: Tran
     promptLlamaServerPath: s("nodes.llamaTitle"), promptLlamaPort: s("nodes.llamaTitle"),
     h3PromptPresets: s("prompt.videoPresetTitle"), imagePromptPresets: s("prompt.imagePresetTitle"),
     outputDirectory: t(k.videoOutputDirectory), imageOutputDirectory: t(k.imageOutputDirectory),
+    libraryDirectory: t(k.libraryDirectory),
     imageInputLibraryDirectory: t(k.inputLibrary), modelDirectory: t(k.modelDirectory),
     defaultVideoModel: `${s("video.title")} · ${s("video.defaultModel")}`, defaultExtensionModel: s("video.defaultExtensionModel"),
     defaultImageModel: s("image.defaultModel"), defaultImageQualityProfile: s("image.defaultQuality"),

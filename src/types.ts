@@ -376,6 +376,20 @@ export interface ImageGenerationRun {
 }
 
 export interface Draft {
+  /** Optional structured editing state; old drafts retain native behavior when absent. */
+  longVideoScript?: import("./core/long-video/script.js").LongVideoScript;
+  longVideoRunSource?: import("./core/long-video/run-source.js").LongVideoRunSource;
+  /** Pending controls remain separate from the last confirmed layout. */
+  longVideoEditor?: {
+    key: string;
+    active: boolean;
+    seconds: number;
+    count: number;
+    confirmed: boolean;
+    seeded?: boolean;
+    nativeMode?: string;
+    preset?: string;
+  };
   inputMode: "image" | "video";
   startImagePath: string;
   sourceWidth: number;
@@ -490,6 +504,8 @@ export interface Settings {
   h3PromptPresets: Record<H3PromptPreset, string>;
   imagePromptPresets: Record<ImagePromptPreset, string>;
   outputDirectory: string;
+  /** Metadata library; media and runtime payloads remain at their existing paths. */
+  libraryDirectory?: string;
   imageOutputDirectory: string;
   imageInputLibraryDirectory: string;
   modelDirectory: string;
@@ -570,6 +586,12 @@ export interface QueueWorkProgress {
 }
 
 interface VideoQueueTaskBase extends QueueTaskBase {
+  /** Actual current physical-group progress; independent of parent completion. */
+  longVideoGroupProgress?: number;
+  longVideoPlan?: ReturnType<typeof import("./core/long-video/script.js").freezeLongVideoScript>;
+  longVideoExecution?: import("./core/long-video/execution.js").LongVideoExecutionSnapshot;
+  longVideoRoot?: string;
+  longVideoRunSource?: import("./core/long-video/run-source.js").LongVideoRunSource;
   taskType: "generation" | "extension" | "upscale";
   duration: number;
   steps?: H3StepCount;
@@ -1359,6 +1381,8 @@ export interface VideoExtensionSourceInspection extends NativeAvArtifactInspecti
 }
 
 export interface AssetVersion {
+  longVideoExecution?: import("./core/long-video/execution.js").LongVideoExecutionSnapshot;
+  longVideoReceipt?: import("./core/long-video/group-checkpoint.js").ContinuumGroupReceipt;
   id: string;
   taskId?: string;
   kind: "original" | "upscale";
@@ -1574,6 +1598,7 @@ export interface HistoryBatchCopyResult extends ConnectionResult {
 
 export interface AppState {
   schemaVersion: number;
+  libraryStorage?: { format: 1; directory: string; libraryId: string; commit: string };
   /** Currently visible video-creation draft. */
   draft: Draft;
   /** Complete image-to-video composer snapshot, independent from extension. */
@@ -1901,6 +1926,12 @@ export interface EnvironmentScanOptions {
   forcePythonProbe?: boolean;
 }
 
+export interface EnvironmentScanProgress {
+  stage: "environment" | "files" | "dependencies" | "attention" | "retry" | "system";
+  completed: number;
+  total: number;
+}
+
 export type EnvironmentScanValidation = "reuse" | "auto" | "live";
 
 export interface EnvironmentScanTelemetry {
@@ -2143,6 +2174,8 @@ export interface PromptExtensionSource {
 }
 
 export interface EnhanceRequest {
+  /** Separate structured planner path; ordinary single-prompt string behavior is unchanged. */
+  longVideo?: import("./core/long-video/enhancement.js").LongVideoPromptRequest;
   prompt: string;
   modelId: string;
   /** Selected image model; modelId remains the prompt/vision runtime model. */
@@ -2359,7 +2392,7 @@ export type WindowCloseResponse =
   | "finish-tasks"
   | "force-exit";
 
-export type SettingsSaveMode = "apply" | "migrate-video-history" | "appearance";
+export type SettingsSaveMode = "apply" | "migrate-video-history" | "migrate-storage" | "appearance";
 
 export type HistoryMigrationPhase =
   | "scanning"
@@ -2437,6 +2470,7 @@ export interface QueueTaskProgressUpdate {
   workProgress?: QueueWorkProgress | null;
   /** null explicitly clears a previously displayed SeedVR2 progress value. */
   seedVr2Progress?: SeedVr2UpscaleProgress | null;
+  longVideoGroupProgress?: number | null;
 }
 
 export type HistoryCoverLookup =
@@ -2513,7 +2547,8 @@ export interface AppApi {
   scanEnvironment(
     settings: Settings,
     scope?: EnvironmentScanScope,
-    options?: EnvironmentScanOptions
+    options?: EnvironmentScanOptions,
+    onProgress?: (progress: EnvironmentScanProgress) => void
   ): Promise<EnvironmentScanResult>;
   startLocalService(
     kind: LocalServiceKind,

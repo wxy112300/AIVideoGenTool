@@ -425,7 +425,7 @@ export function randomizeQueuedTaskSeed(
 ): QueueTask[] {
   const updatedAt = clock.now().toISOString();
   return queue.map((task) => {
-    if (task.id !== taskId || task.status !== "waiting" || isImageGenerationQueueTask(task)) {
+    if (task.id !== taskId || task.status !== "waiting" || isImageGenerationQueueTask(task) || task.longVideoExecution || task.longVideoRunSource) {
       return task;
     }
     const seedLimit = task.taskType === "upscale"
@@ -494,11 +494,13 @@ export function duplicateQueueTask(
   return [...state.queue, {
     ...source,
     id: clock.id(),
+    ...(source.longVideoPlan ? { longVideoPlan: structuredClone(source.longVideoPlan), longVideoExecution: undefined } : {}),
+    longVideoGroupProgress: undefined,
     status: h3AvOutputPolicyError ? "failed" : "waiting",
     createdAt: now,
     updatedAt: now,
     outputFilename,
-    seed: source.keepSeedOnCopy
+    seed: source.keepSeedOnCopy || source.longVideoRunSource
       ? source.seed
       : Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     comfyPromptId: undefined,
@@ -543,6 +545,7 @@ export function resetQueueTask(
       stage: undefined,
       startedAt: undefined,
       automaticRetryAttempt: undefined,
+      longVideoGroupProgress: undefined,
       ...(task.taskType === "upscale" ? { seedVr2Progress: undefined } : {})
     };
   });

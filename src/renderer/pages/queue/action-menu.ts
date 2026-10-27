@@ -58,7 +58,7 @@ export function mountQueueActionMenu(
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", context.t(uiKeys.queue.card.moreActions));
     const waiting = task.status === "waiting";
-    const hasSeed = waiting && task.taskType !== "image-generation";
+    const hasSeed = waiting && task.taskType !== "image-generation" && !task.longVideoExecution && !task.longVideoRunSource;
     menu.innerHTML = [
       menuButton(options.icon("copy"), context.t(uiKeys.queue.card.duplicate), "duplicate"),
       waiting
