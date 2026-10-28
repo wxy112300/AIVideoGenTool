@@ -43,6 +43,16 @@ node Tools/NasBrowser/dist/runtime/server.mjs --config Tools/NasBrowser/config.j
 
 ## 4. 构建并传送 Docker 镜像
 
+Windows 可以直接双击本目录的 [Build-Tar.bat](Build-Tar.bat)。需要 Node.js 22.13 或以上，以及已启动的 Linux Docker 引擎（例如 Docker Desktop 的 Linux 容器模式）。脚本不安装 Docker；缺少工具、引擎未启动或使用 Windows 容器时会提示并停止。
+
+脚本自动定位仓库根目录，必要时安装根依赖，然后构建服务、构建 `linux/amd64` 镜像、运行容器内 SQLite 检查，最后导出本目录下的 `local-video-studio-nas.tar`。任何一步失败立即停止，导出先写 `.tar.partial`，完整成功后才替换旧 tar；不会启动服务或挂载历史资料。首次构建需要联网下载依赖/基础镜像；容器内检查不代表 DSM 6 实机兼容已验证。
+
+从终端或自动化调用可关闭结束暂停：
+
+```powershell
+& .\Tools\NasBrowser\Build-Tar.bat --no-pause
+```
+
 在装有 Docker 的构建机，从仓库根运行；DS418play 使用 linux/amd64 镜像：
 
 ```powershell

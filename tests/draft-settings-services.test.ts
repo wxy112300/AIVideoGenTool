@@ -233,6 +233,18 @@ describe("DraftService", () => {
 });
 
 describe("SettingsService", () => {
+  it("migrates legacy model download preferences and persists explicit sources without changing drafts", async () => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial), service = createSettingsService(repository);
+    await service.save({ ...initial.settings, hfMirrorEnabled: true });
+    expect(repository.snapshot().settings.modelDownloadSource).toBe("hf-mirror");
+    await service.save({ ...repository.snapshot().settings, modelDownloadSource: "huggingface" });
+    expect(repository.snapshot().settings.hfMirrorEnabled).toBe(false);
+    await service.save({ ...repository.snapshot().settings, modelDownloadSource: "custom", modelDownloadCustomUrl: "https://mirror.example/" });
+    expect(repository.snapshot().settings.modelDownloadCustomUrl).toBe("https://mirror.example");
+    await expect(service.save({ ...repository.snapshot().settings, modelDownloadCustomUrl: "https://mirror.example/path" })).rejects.toThrow("MODEL_DOWNLOAD_INVALID");
+    expect(repository.snapshot().draft).toEqual(initial.draft);
+  });
   it("saves the opt-in Strata backend without changing drafts or the legacy runtime fields", async () => {
     const initial = createDefaultState();
     const repository = createRepository(initial);

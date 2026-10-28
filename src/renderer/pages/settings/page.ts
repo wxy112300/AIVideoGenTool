@@ -45,6 +45,7 @@ import { renderAppearanceSettings } from "./appearance";
 import { renderSettingsPathField } from "./path-field";
 import { groupSettingsLoras, sharedSettingsComponentPaths } from "./model-presentation";
 import { settingsChangeSummary } from "./change-summary";
+import { modelDownloadSource, modelDownloadSources } from "../../../core/download-url";
 import {
   customNodeBulkActionMode,
   customNodeIdsForBulkAction,
@@ -156,6 +157,12 @@ export function renderSettingsPage(
 ): string {
   const settings = viewModel.settings;
   const t = options.t;
+  const downloadDescriptions = {
+    huggingface: uiKeys.settings.system.downloadOfficial,
+    "hf-mirror": uiKeys.settings.system.downloadMirror,
+    "hf-mirror-net": uiKeys.settings.system.downloadMirrorNet,
+    gitee: uiKeys.settings.system.downloadGitee
+  };
   const s = (key: Parameters<typeof settingsText>[1], params?: Record<string, string | number>) =>
     settingsText(settings.uiLocale, key, params);
   const environmentScan = viewModel.environmentScan;
@@ -567,7 +574,8 @@ export function renderSettingsPage(
         <div class="settings-grid two">
           <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.enableProxy)}</strong><small>${t(uiKeys.settings.system.proxyResourceDescription)}</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label>${t(uiKeys.settings.system.proxyAddress)}<input id="proxy-url" value="${escape(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
-          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.useHfMirror)}</strong></span><input id="hf-mirror-enabled" type="checkbox" ${settings.hfMirrorEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label>${t(uiKeys.settings.system.useHfMirror)}<select id="model-download-source">${modelDownloadSources.map(source => `<option value="${source.id}" ${modelDownloadSource(settings) === source.id ? "selected" : ""} data-description="${escape(source.id === "custom" ? "" : t(downloadDescriptions[source.id]))}">${escape(source.id === "custom" ? t(uiKeys.settings.system.downloadCustom) : source.label)}</option>`).join("")}</select></label>
+          <label data-model-download-custom ${modelDownloadSource(settings) === "custom" ? "" : "hidden"}>${t(uiKeys.settings.system.downloadCustom)}<input id="model-download-custom-url" type="url" value="${escape(settings.modelDownloadCustomUrl ?? "")}" placeholder="https://hf.example.com" ${modelDownloadSource(settings) === "custom" ? "required" : ""}></label>
         </div>
       </section>
       <section class="panel settings-section settings-form-card">

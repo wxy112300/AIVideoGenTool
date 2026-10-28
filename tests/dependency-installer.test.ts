@@ -1655,8 +1655,11 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
             path.join(cloneDirectory, "nodes.py"),
             'NODE_CLASS_MAPPINGS = {"UnetLoaderGGUFAdvanced": object, "CLIPLoaderGGUF": object}\n'
           );
+          await fs.mkdir(path.join(cloneDirectory, ".git"), { recursive: true });
           await fs.writeFile(path.join(cloneDirectory, "__init__.py"), "");
         }
+        if (args.includes("get-url")) return "https://github.com/molbal/ComfyUI-GGUF.git";
+        if (args.includes("status")) return " M __init__.py\n";
         if (args.includes("rev-parse") && args.at(-1) === "HEAD") {
           return "61843db580f8549a85b0a1ed850d550079fadfee";
         }
@@ -1679,6 +1682,11 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(await exists(h3Directory)).toBe(true);
     expect(await fs.readFile(path.join(h3Directory, "__init__.py"), "utf8"))
       .toContain("H3UnetLoaderGGUFAdvanced");
+    expect(await exists(path.join(h3Directory, ".git"))).toBe(true);
+    const repeated = await installCustomNodePackage("comfyui-gguf-h3", createDefaultState().settings, runtime);
+    expect(repeated.ok).toBe(true);
+    expect(processCalls.filter(args => args[0] === "clone")).toHaveLength(1);
+    expect(await exists(path.join(legacyDirectory, "legacy.txt"))).toBe(true);
   });
 
   it.each(["molbal", "city96"])("backs up the %s GGUF fork and installs the pinned maintained package", async (owner) => {

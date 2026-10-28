@@ -6,7 +6,7 @@ import type {
 import type { EnvironmentRefreshReason } from "../../environment-refresh-coordinator";
 import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
-import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
+import { MODEL_DOWNLOAD_INVALID, rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
 import { outputDirectoryWithinRoot } from "./helpers";
 import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
@@ -145,7 +145,7 @@ export function mountSettingsPageController(
     if (!guide) return;
     const url = rewriteHuggingFaceDownloadUrl(
       guide.downloadUrl,
-      options.formSettings().hfMirrorEnabled
+      options.formSettings()
     );
     const opened = await options.context.hostCapabilities.openExternal(url);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
@@ -175,7 +175,7 @@ export function mountSettingsPageController(
     button.addEventListener("click", async () => {
       const sourceUrl = button.dataset.openEnvironmentDownload?.trim();
       if (!sourceUrl) return;
-      const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings().hfMirrorEnabled);
+      const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings());
       const opened = await options.context.hostCapabilities.openExternal(url);
       if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
     }, { signal });
@@ -194,6 +194,8 @@ export function mountSettingsPageController(
   }, { signal });
 
   root.querySelector("#save-settings")?.addEventListener("click", async () => {
+    const customUrl = root.querySelector<HTMLInputElement>("#model-download-custom-url");
+    if (customUrl?.required && !customUrl.reportValidity()) return;
     const state = options.context.getState();
     if (!state) return;
     const nextSettings = options.formSettings();
@@ -202,7 +204,8 @@ export function mountSettingsPageController(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const key = message.includes(LIBRARY_DESTINATION_OCCUPIED) ? uiKeys.settings.system.libraryDestinationOccupied
-        : message.includes(LIBRARY_DESTINATION_CONFLICT) ? uiKeys.settings.system.libraryDestinationConflict : undefined;
+        : message.includes(LIBRARY_DESTINATION_CONFLICT) ? uiKeys.settings.system.libraryDestinationConflict
+        : message.includes(MODEL_DOWNLOAD_INVALID) ? uiKeys.settings.system.downloadInvalid : undefined;
       options.context.notify(key ? options.context.t(key) : message.replace(/^Error invoking remote method ['"][^'"]+['"]: (?:StateRecoveryError: )?/, ""), { renderPage: false, kind: "error" });
     }
   }, { signal });

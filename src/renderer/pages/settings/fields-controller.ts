@@ -11,6 +11,7 @@ import type {
 import type { RendererCleanup, RendererContext, SettingsTab } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { paintRangeFill } from "../../shared/ui/runtime";
+import { modelDownloadOrigin } from "../../../core/download-url";
 
 export interface SettingsFieldsControllerOptions {
   formSettings(): Settings;
@@ -29,6 +30,19 @@ export function mountSettingsFieldsController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const downloadSource = root.querySelector<HTMLSelectElement>("#model-download-source");
+  const customDownload = root.querySelector<HTMLInputElement>("#model-download-custom-url");
+  const syncDownloadSource = () => {
+    if (!customDownload || !downloadSource) return;
+    const custom = downloadSource.value === "custom";
+    const row = root.querySelector<HTMLElement>("[data-model-download-custom]");
+    if (row) row.hidden = !custom;
+    customDownload.required = custom;
+    customDownload.setCustomValidity(custom && !modelDownloadOrigin(customDownload.value.trim()) ? context.t(uiKeys.settings.system.downloadInvalid) : "");
+  };
+  downloadSource?.addEventListener("change", syncDownloadSource, { signal });
+  customDownload?.addEventListener("input", syncDownloadSource, { signal });
+  syncDownloadSource();
   const reserve = root.querySelector<HTMLSelectElement>("#vram-reserve");
   const reasoning = root.querySelector<HTMLSelectElement>("#strata-reasoning-effort");
   root.querySelectorAll<HTMLButtonElement>("[data-settings-reasoning]").forEach(button => {

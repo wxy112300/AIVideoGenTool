@@ -91,16 +91,16 @@ const zhCN: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
     guide: {
-      summary: "官方当前 LightX2V v1.2 FL2VA Turbo LoRA，针对 768p 四步路径更新。",
-      recommendedStrength: "默认 1.0；按官方路径使用。先固定 4 步、video shift 6、audio shift 3 和 Euler 做基准。",
-      effects: "在 768p 下减少采样步数；四步对 Prompt、Seed、运动连续性和音频稳定性更敏感。",
-      stacking: "性能 LoRA 放在人物或内容 LoRA 前面；不要与 8-step 或其他 Turbo 同时叠加。",
-      compatibility: "仅 MiniMax H3 FL2VA 图生视频的 768p 路径；不适用于 Ref2VA 或视频续写。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 v1.2 ComfyUI 权重"
+      summary: "官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。",
+      recommendedStrength: "默认 1.0；官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。",
+      effects: "少步数生成；运动、参考保真与音频需和基础模型对照。",
+      stacking: "不要叠加其他 Turbo；内容 LoRA 与稀疏 attention 有上游退化反馈，组合需独立验证。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频；不适用于 Ref2VA 或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.3 4-step 768p"
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
-      turboSpectrum: "v1.2 768p Turbo 与 Spectrum 的组合需要同 Seed 对照；出现画面退化时先关闭 Spectrum。",
+      turboSpectrum: "Spectrum 需同 Seed 独立对照；质量退化时先关闭。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
     }
   },
@@ -205,8 +205,8 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     guide: {
       summary: "社区 MiniMax H3 Turbo v4 step600 EMA pruned 转换，面向 6–8 步质量优先路径。",
       recommendedStrength: "默认 1.0；建议 6–8 步，优先 8 步；Euler + Beta、video shift 12、audio shift 6（作者给出 4–6）。",
-      effects: "相比 4-step 更重视细节、运动连续性和同步音频；仍需与官方 v1.2 做同 Seed 对照。",
-      stacking: "作为独立 Turbo 变体，不要与官方 v1.2、8-step v1.0 或其他 Turbo 同时叠加；建议放在人物或内容 LoRA 前。",
+      effects: "相比 4-step 更重视细节、运动连续性和同步音频；仍需与官方 v1.3 做同 Seed 对照。",
+      stacking: "作为独立 Turbo 变体，不要与官方 v1.3、8-step v1.1 或其他 Turbo 同时叠加；建议放在人物或内容 LoRA 前。",
       compatibility: "仅当前已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；暂不开放 R2V、INT4、Q3 或视频续写。",
       source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
     },
@@ -218,31 +218,31 @@ const zhCN: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路线；当前没有对应的 8-step v1.1，保留作质量与音频稳定性备选；4 步路线请使用当前 v1.2。",
-      recommendedStrength: "默认 0.75；建议 8 步、0.65–0.85。综合首选优先尝试 v4。",
-      effects: "相比 4 步路线更保守地保留运动、细节和音频稳定性，但版本较旧、速度较慢。",
-      stacking: "性能 LoRA 放在内容或人物 LoRA 前面；不要与其他 Turbo LoRA 同时叠加。",
-      compatibility: "仅 MiniMax H3 FL2VA 图生视频；需要 ER-SDE、Beta 和 Sigma Shift Turbo 工作流。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
+      summary: "官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。",
+      recommendedStrength: "默认 1.0；官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。",
+      effects: "少步数生成；运动、参考保真与音频需和基础模型对照。",
+      stacking: "不要叠加其他 Turbo；内容 LoRA 与稀疏 attention 有上游退化反馈，组合需独立验证。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频；不适用于 Ref2VA 或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.1 8-step 768p"
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
-      turboSpectrum: "Turbo v1.0 可与 Spectrum v0.2.6+ 叠加；遇到质量退化时先关闭 Spectrum 对照。",
+      turboSpectrum: "Spectrum 需同 Seed 独立对照；质量退化时先关闭。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
     }
   },
   "minimax-h3-ref2v-turbo-4step-v01": {
     guide: {
-      summary: "官方 Ref2VA 多参考图 Turbo LoRA，把 H3 R2V 路径压缩到 4 步。",
-      recommendedStrength: "默认 0.75；建议 0.65–0.85。首次使用应和标准 20 步 R2V 做同 Seed 对照。",
-      effects: "减少 R2V 采样时间，但多参考图一致性、动作和音频对四步更敏感。",
-      stacking: "放在 R2V 内容或人物 LoRA 前面；不要与 FL2VA Turbo 变体叠加。",
-      compatibility: "仅 MiniMax H3 Ref2VA 多参考图图生视频；不适用于 FL2VA 首帧或视频续写。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
+      summary: "官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。",
+      recommendedStrength: "默认 1.0；官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。",
+      effects: "少步数生成；运动、参考保真与音频需和基础模型对照。",
+      stacking: "不要叠加其他 Turbo；内容 LoRA 与稀疏 attention 有上游退化反馈，组合需独立验证。",
+      compatibility: "仅 MiniMax H3 Ref2VA；不适用于 FL2VA 或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo · Ref2VA v1.0 4-step 768p"
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
-      turboSpectrum: "Ref2V Turbo 与 Spectrum 的组合需要逐任务验证；若出现时序退化，先关闭 Spectrum。",
+      turboSpectrum: "Spectrum 需同 Seed 独立对照；质量退化时先关闭。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
     }
   },
@@ -414,16 +414,16 @@ const enUS: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
     guide: {
-      summary: "The current official LightX2V v1.2 FL2VA Turbo LoRA for the dedicated 768p four-step path.",
-      recommendedStrength: "Default 1.0; start with four steps, video shift 6, audio shift 3, and Euler as the baseline.",
-      effects: "Reduces the 768p sampling budget, while four steps are more sensitive to Prompt, Seed, temporal motion, and audio stability.",
-      stacking: "Load it before people or content LoRAs; do not stack it with the eight-step or another Turbo variant.",
-      compatibility: "MiniMax H3 FL2VA image-to-video 768p only; not for Ref2VA or video extension.",
-      source: "Official LightX2V / Minimax-h3-Turbo v1.2 ComfyUI weight"
+      summary: "Official FL2VA v1.3 four-step 768p, Euler + Simple, video/audio shifts 6/3.",
+      recommendedStrength: "Default 1.0; Official FL2VA v1.3 four-step 768p, Euler + Simple, video/audio shifts 6/3.",
+      effects: "Few-step generation; validate motion, reference fidelity, and audio against the base model.",
+      stacking: "Do not stack Turbo variants. Content LoRAs and sparse attention have upstream regression reports; validate combinations separately.",
+      compatibility: "MiniMax H3 FL2VA image-to-video only; no Ref2VA or extension.",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.3 4-step 768p"
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
-      turboSpectrum: "The v1.2 768p Turbo path needs a same-Seed comparison with Spectrum; disable Spectrum first if image quality drops.",
+      turboSpectrum: "Validate Spectrum separately with the same seed; disable it first if quality drops.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
     }
   },
@@ -528,8 +528,8 @@ const enUS: Record<string, CatalogLoraLocale> = {
     guide: {
       summary: "A community MiniMax H3 Turbo v4 step600 EMA pruned conversion for a quality-first six-to-eight-step path.",
       recommendedStrength: "Default 1.0; use six to eight steps, preferably eight, with Euler + Beta, video shift 12, and audio shift 6 (the author reports 4–6 for audio shift).",
-      effects: "Prioritizes detail, temporal continuity, and synchronized audio over the four-step path; compare it with the official v1.2 using the same Seed.",
-      stacking: "Treat it as a standalone Turbo variant; do not stack it with official v1.2, eight-step v1.0, or another Turbo variant. Load it before people or content LoRAs.",
+      effects: "Prioritizes detail, temporal continuity, and synchronized audio over the four-step path; compare it with the official v1.3 using the same Seed.",
+      stacking: "Treat it as a standalone Turbo variant; do not stack it with official v1.3, eight-step v1.1, or another Turbo variant. Load it before people or content LoRAs.",
       compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; R2V, INT4, Q3, and video extension remain disabled.",
       source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
     },
@@ -541,31 +541,31 @@ const enUS: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "The official LightX2V v1.0 FL2VA eight-step Turbo path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback while the four-step path uses current v1.2.",
-      recommendedStrength: "Default 0.75; use eight steps at 0.65–0.85. Prefer v4 as the overall starting point.",
-      effects: "More conservatively preserves motion, detail, and audio stability than the four-step paths, but it is older and slower.",
-      stacking: "Load performance LoRAs before content or people LoRAs; never stack multiple Turbo variants together.",
-      compatibility: "MiniMax H3 FL2VA image-to-video only; requires the ER-SDE, Beta, and Sigma Shift Turbo workflow.",
-      source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
+      summary: "Official FL2VA v1.1 eight-step 768p, Euler + Simple, video/audio shifts 6/3.",
+      recommendedStrength: "Default 1.0; Official FL2VA v1.1 eight-step 768p, Euler + Simple, video/audio shifts 6/3.",
+      effects: "Few-step generation; validate motion, reference fidelity, and audio against the base model.",
+      stacking: "Do not stack Turbo variants. Content LoRAs and sparse attention have upstream regression reports; validate combinations separately.",
+      compatibility: "MiniMax H3 FL2VA image-to-video only; no Ref2VA or extension.",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.1 8-step 768p"
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
-      turboSpectrum: "Turbo v1.0 can stack with Spectrum v0.2.6+; disable Spectrum for a baseline if quality drops.",
+      turboSpectrum: "Validate Spectrum separately with the same seed; disable it first if quality drops.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
     }
   },
   "minimax-h3-ref2v-turbo-4step-v01": {
     guide: {
-      summary: "Official Ref2VA multi-reference Turbo LoRA that compresses the H3 R2V path to four steps.",
-      recommendedStrength: "Default 0.75; start around 0.65–0.85. Compare against standard 20-step R2V with the same Seed first.",
-      effects: "Reduces R2V sampling time, while multi-reference consistency, motion, and audio are more sensitive at four steps.",
-      stacking: "Load it before R2V content or people LoRAs; do not combine it with FL2VA Turbo variants.",
-      compatibility: "MiniMax H3 Ref2VA multi-reference image-to-video only; not for FL2VA first-frame or video extension.",
-      source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
+      summary: "Official Ref2VA v1.0 four-step 768p, Euler + Simple, video/audio shifts 12/3.",
+      recommendedStrength: "Default 1.0; Official Ref2VA v1.0 four-step 768p, Euler + Simple, video/audio shifts 12/3.",
+      effects: "Few-step generation; validate motion, reference fidelity, and audio against the base model.",
+      stacking: "Do not stack Turbo variants. Content LoRAs and sparse attention have upstream regression reports; validate combinations separately.",
+      compatibility: "MiniMax H3 Ref2VA only; no FL2VA or extension.",
+      source: "LightX2V / Minimax-h3-Turbo · Ref2VA v1.0 4-step 768p"
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
-      turboSpectrum: "Ref2V Turbo with Spectrum needs per-task validation; disable Spectrum first if temporal quality drops.",
+      turboSpectrum: "Validate Spectrum separately with the same seed; disable it first if quality drops.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
     }
   },

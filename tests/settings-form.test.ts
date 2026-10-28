@@ -103,12 +103,12 @@ describe("settings form", () => {
     }
   });
 
-  it("reads the Hugging Face mirror toggle", () => {
+  it("reads the model download source and keeps the legacy mirror flag in sync", () => {
     const previousDocument = globalThis.document;
     globalThis.document = {
       querySelector: vi.fn((selector: string) =>
-        selector === "#hf-mirror-enabled"
-          ? { checked: true }
+        selector === "#model-download-source"
+          ? { value: "gitee" }
           : null
       )
     } as unknown as Document;
@@ -120,6 +120,7 @@ describe("settings form", () => {
         "faithful"
       );
       expect(settings.hfMirrorEnabled).toBe(true);
+      expect(settings.modelDownloadSource).toBe("gitee");
     } finally {
       globalThis.document = previousDocument;
     }

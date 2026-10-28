@@ -4,7 +4,7 @@
 
 Studio 负责创作流程与作品管理，ComfyUI 负责模型推理。主要面向 NVIDIA GPU；所需显存、内存和依赖随模型而异。
 
-**当前版本：0.67.1** · [更新记录](CHANGELOG.md) · [下载与发布](https://github.com/wxy112300/AIVideoGenTool/releases)
+**当前版本：0.67.2** · [更新记录](CHANGELOG.md) · [下载与发布](https://github.com/wxy112300/AIVideoGenTool/releases)
 
 ## 开始使用
 

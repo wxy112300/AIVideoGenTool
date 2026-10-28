@@ -31,7 +31,7 @@ describe("shared H3 options in Continuum", () => {
     if (attention === "sage-triton") expect(chain[2]!.inputs).toMatchObject({ sage_attention: "sageattn_qk_int8_pv_fp16_triton", allow_compile: true });
     expect(continuumRuntimeSettings(frozen)).toMatchObject({ h3RuntimeMode: "native", h3ComfyCompilerMode: "auto" });
   });
-  it.each([[H3_TURBO_LORA_ID, "euler", "beta", 6, 3], [H3_TURBO_V4_LORA_ID, "euler", "beta", 12, 6], [H3_TURBO_8STEP_V1_LORA_ID, "er_sde", "beta", 12, 3], [H3_SLA_TURBO_LORA_ID, "euler", "beta", 6, 3], [H3_PDD_FL2VA_LORA_ID, "euler", "simple", 12, 3]])("uses the shared %s sampling recipe", (id, sampler, scheduler, video, audio) => {
+  it.each([[H3_TURBO_LORA_ID, "euler", "simple", 6, 3], [H3_TURBO_V4_LORA_ID, "euler", "beta", 12, 6], [H3_TURBO_8STEP_V1_LORA_ID, "euler", "simple", 6, 3], [H3_SLA_TURBO_LORA_ID, "euler", "beta", 6, 3], [H3_PDD_FL2VA_LORA_ID, "euler", "simple", 12, 3]])("uses the shared %s sampling recipe", (id, sampler, scheduler, video, audio) => {
     const p=profile(); p.spectrumMode="off";p.h3!.videoLoras=[videoLoraSelection(BUILTIN_VIDEO_LORAS.find(l=>l.id===id)!)];p.h3!.sparseAttentionMode="off";
     const graph=compileContinuumGroupWorkflow(template,request,p);
     expect(graph["6"].inputs.sampler_name).toBe(sampler);expect(graph["7"].inputs.scheduler).toBe(scheduler);

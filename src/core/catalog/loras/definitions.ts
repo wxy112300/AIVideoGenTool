@@ -42,13 +42,14 @@ export interface CatalogImageLoraDefinition extends ImageLoraSelection {
   scan: CatalogModelScanDefinition;
 }
 
-/** The current default FL2VA Turbo adapter. */
+/** Product IDs stay stable for persisted tasks; filenames identify the sampling revision. */
+export const H3_LIGHTX2V_REVISION = "30f485ed874aa44c8183348ad361c5eabad318da";
 export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.2";
 export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
 export const LEGACY_H3_REF2V_TURBO_MODEL_ID = "minimax_h3_ref2va_turbo";
 export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME =
-  "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors";
+  "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors";
 export const H3_SLA_TURBO_LORA_ID = "minimax-h3-turbo-sla-4step";
 export const H3_SLA_TURBO_LORA_FILENAME =
   "minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors";
@@ -77,10 +78,10 @@ export const H3_TURBO_V4_LORA_FILENAME =
   "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors";
 export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
 export const H3_TURBO_8STEP_V1_LORA_FILENAME =
-  "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors";
+  "minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors";
 export const H3_REF2V_TURBO_LORA_ID = "minimax-h3-ref2v-turbo-4step-v01";
 export const H3_REF2V_TURBO_LORA_FILENAME =
-  "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors";
+  "minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors";
 export const H3_PDD_COMFY_REVISION = "f94b1bcc9442e531b73e0ee819ddfc3656072648";
 export const H3_PDD_FL2VA_LORA_ID = "h3-pdd-fl2va-8step";
 export const H3_PDD_FL2VA_LORA_FILENAME =
@@ -273,7 +274,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   }
 }, {
   id: H3_TURBO_LORA_ID,
-  name: "LightX2V Turbo 4-Step v1.2 · 768p",
+  name: "LightX2V Turbo 4-Step v1.3 · 768p",
   filename: H3_TURBO_LORA_FILENAME,
   strength: 1,
   modelFamily: "minimax-h3",
@@ -290,18 +291,18 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     workflowRequirement: "h3-turbo-sampling"
   },
   scan: {
-    vram: "LoRA · v1.2 · 4 steps · 768p · strength 1.0",
+    vram: "LoRA · v1.3 · 4 steps · 768p · strength 1.0",
     integrated: true,
     components: [{
-      label: "MiniMax H3 LightX2V Turbo 4-Step v1.2 768p LoRA",
+      label: "MiniMax H3 LightX2V Turbo 4-Step v1.3 768p LoRA",
       expected: `loras/${H3_TURBO_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.2_768p_comfyui_bf16\.safetensors$/i],
+      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.3_768p_comfyui_bf16\.safetensors$/i],
       installGuide: {
         sourceLabel: "LightX2V / Minimax-h3-Turbo",
-        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_LORA_FILENAME}`,
+        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/${H3_LIGHTX2V_REVISION}/${H3_TURBO_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_LORA_FILENAME,
-        notes: "官方当前 FL2VA v1.2 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
+        notes: "官方 FL2VA v1.3 四步 768p，Euler + Simple、video/audio shift 6/3。文件 1,956,193,000 bytes，SHA-256 70103fd0d80a947ed4e7fe6f88915863d54ef22c5cab03bd5d2fd649385ffe1e。不要与其他 Turbo 叠加；叠加内容 LoRA 或稀疏 attention 有上游退化反馈，需独立验证。"
       }
     }]
   }
@@ -632,9 +633,9 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   }
 }, {
   id: H3_TURBO_8STEP_V1_LORA_ID,
-  name: "LightX2V Turbo 8-Step v1.0",
+  name: "LightX2V Turbo 8-Step v1.1 · 768p",
   filename: H3_TURBO_8STEP_V1_LORA_FILENAME,
-  strength: 0.75,
+  strength: 1,
   modelFamily: "minimax-h3",
   compatibleModelIds: [H3_FL2VA_MODEL_ID],
   compatibleInputModes: ["image"],
@@ -649,26 +650,26 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     workflowRequirement: "h3-turbo-sampling"
   },
   scan: {
-    vram: "LoRA · v1.0 · 8 steps · strength 0.75",
+    vram: "LoRA · v1.1 · 8 steps · 768p · strength 1.0",
     integrated: true,
     components: [{
-      label: "MiniMax H3 LightX2V Turbo 8-Step v1.0 LoRA",
+      label: "MiniMax H3 LightX2V Turbo 8-Step v1.1 768p LoRA",
       expected: `loras/${H3_TURBO_8STEP_V1_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_fl2v_turbo_8step_v1\.0_comfyui_bf16\.safetensors$/i],
+      patterns: [/loras\/minimax_h3_fl2v_turbo_8step_v1\.1_768p_comfyui_bf16\.safetensors$/i],
       installGuide: {
         sourceLabel: "LightX2V / Minimax-h3-Turbo",
-        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_8STEP_V1_LORA_FILENAME}`,
+        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/${H3_LIGHTX2V_REVISION}/${H3_TURBO_8STEP_V1_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_8STEP_V1_LORA_FILENAME,
-        notes: "官方 v1.0 FL2VA 8 步权重。目前没有对应的 8-step v1.1；保留作为 8 步质量与音频稳定性备选。综合首选使用 v4，极速 4 步使用当前 v1.2 或 Turbo-SLA。不要与其他 Turbo 变体叠加。"
+        notes: "官方 FL2VA v1.1 八步 768p，Euler + Simple、video/audio shift 6/3、强度 1.0。文件 1,956,193,000 bytes，SHA-256 fb4c00361c94bad47f878d5e096c6cab2f45063b0968bd5756dcb7da6936f53e。不要与其他 Turbo 同时叠加；旧队列保留旧文件和采样配方。"
       }
     }]
   }
 }, {
   id: H3_REF2V_TURBO_LORA_ID,
-  name: "LightX2V Ref2V Turbo 4-Step v0.1",
+  name: "LightX2V Ref2V Turbo 4-Step v1.0 · 768p",
   filename: H3_REF2V_TURBO_LORA_FILENAME,
-  strength: 0.75,
+  strength: 1,
   modelFamily: "minimax-h3",
   compatibleModelIds: ["minimax_h3_ref2va", "minimax_h3_ref2va_int4"],
   compatibleInputModes: ["image"],
@@ -683,18 +684,18 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     workflowRequirement: "h3-turbo-sampling"
   },
   scan: {
-    vram: "LoRA · Ref2VA · v0.1 · 4 steps · strength 0.75",
+    vram: "LoRA · Ref2VA · v1.0 · 4 steps · 768p · strength 1.0",
     integrated: true,
     components: [{
-      label: "MiniMax H3 Ref2V Turbo 4-Step v0.1 LoRA",
+      label: "MiniMax H3 Ref2V Turbo 4-Step v1.0 768p LoRA",
       expected: `loras/${H3_REF2V_TURBO_LORA_FILENAME}`,
-      patterns: [/loras\/minimax_h3_ref2v_turbo_4step_v0\.1_comfyui_bf16\.safetensors$/i],
+      patterns: [/loras\/minimax_h3_ref2v_turbo_4step_v1\.0_768p_comfyui_bf16\.safetensors$/i],
       installGuide: {
         sourceLabel: "LightX2V / Minimax-h3-Turbo",
-        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_REF2V_TURBO_LORA_FILENAME}`,
+        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/${H3_LIGHTX2V_REVISION}/${H3_REF2V_TURBO_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_REF2V_TURBO_LORA_FILENAME,
-        notes: "官方 Ref2VA Turbo 4 步版本，仅用于 R2V 多参考图路径，不适用于 FL2VA 首帧流程。"
+        notes: "官方 Ref2VA v1.0 四步 768p，Euler + Simple、video/audio shift 12/3、强度 1.0；不要套用 FL2V 的 shift 6。文件 1,956,193,000 bytes，SHA-256 b4da466e43588004097dfbcde245ccc439c34a26bc997cb76a0b53a1d549ea0d。仅用于 R2V；上游有参考保真/语音退化反馈，需独立质量验证。"
       }
     }]
   }

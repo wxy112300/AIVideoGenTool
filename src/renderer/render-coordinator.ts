@@ -10,6 +10,7 @@ import { createPagePresentation, mountShellGeometry, yieldPresentationTurn } fro
 import { reuseHistoryCovers } from "./pages/history/retained-covers";
 import { prepareVirtualHistory, retainVirtualHistoryCovers } from "./pages/history/virtual-gallery";
 import { uiKeys } from "../core/i18n-keys";
+import { captureSettingsScroll, restoreSettingsScroll } from "./pages/settings/scroll-position";
 
 export interface RenderCoordinatorOptions {
   root: HTMLElement;
@@ -480,6 +481,7 @@ export function createRenderCoordinator(
 
       await presentation.update(requestedPage, async () => {
         if (request !== renderRequest) return;
+        const settingsScroll = requestedPage === "settings" ? captureSettingsScroll(options.root) : null;
         beforeCommitCleanup();
         const previousPage = options.getPage();
         const createScroll = previousPage === "create" && options.root.querySelector(".create-workspace") ? Number(options.root.dataset.createScrollTop ?? window.scrollY) : undefined;
@@ -647,6 +649,7 @@ export function createRenderCoordinator(
         restoreHistoryPlayback(options.root, playback);
         refreshSharedUi(document.body);
         restoreFocus(options.root, focus);
+        if (page === "settings") restoreSettingsScroll(options.root, settingsScroll);
         if (preservedFilterFocus?.isConnected) preservedFilterFocus.focus({ preventScroll: true });
         const mediaColumn = options.root.querySelector<HTMLElement>(".create-video-media"); if (mediaColumn && mediaScroll !== undefined) mediaColumn.scrollTop = mediaScroll;
         if (createScroll !== undefined && window.scrollY !== createScroll) window.scrollTo({ top: createScroll, behavior: "instant" });

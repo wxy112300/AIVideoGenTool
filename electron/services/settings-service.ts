@@ -12,6 +12,7 @@ import type {
 } from "../../src/types.js";
 import { normalizeUiLocale } from "../../src/core/i18n.js";
 import { normalizeAppearance } from "../../src/core/appearance.js";
+import { MODEL_DOWNLOAD_INVALID, modelDownloadOrigin, modelDownloadSource, modelDownloadSources } from "../../src/core/download-url.js";
 import {
   applyH3AccelerationSettingsToWaitingTask,
   normalizeH3GlobalSparseAttentionMode
@@ -160,7 +161,12 @@ export class SettingsService {
     if (input.strataUncensoredMode !== undefined && !isStrataUncensoredMode(input.strataUncensoredMode)) {
       throw new Error("Strata uncensored 模式无效，请选择关闭、自带或社区向量。");
     }
+    if (input.modelDownloadSource !== undefined && !modelDownloadSources.some(source => source.id === input.modelDownloadSource)) throw new Error(MODEL_DOWNLOAD_INVALID);
+    if (modelDownloadSource(input) === "custom" && !modelDownloadOrigin(input.modelDownloadCustomUrl ?? "")) throw new Error(MODEL_DOWNLOAD_INVALID);
     let settings = { ...input, ...normalizeStrataSettings(input), appearance: normalizeAppearance(input.appearance ?? this.deps.store.get().settings.appearance) };
+    settings.modelDownloadSource = modelDownloadSource(input);
+    settings.hfMirrorEnabled = settings.modelDownloadSource !== "huggingface";
+    if (settings.modelDownloadSource === "custom") settings.modelDownloadCustomUrl = modelDownloadOrigin(input.modelDownloadCustomUrl!)!;
     settings.lanBrowserEnabled = input.lanBrowserEnabled === true;
     settings.lanBrowserPort = input.lanBrowserPort ?? LAN_BROWSER_DEFAULT_PORT;
     if (!settings.imageInputLibraryDirectory.trim()) {

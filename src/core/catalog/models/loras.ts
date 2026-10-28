@@ -26,9 +26,9 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "en-US": { name: "MiniMax H3 Turbo-SLA · four-step", badge: "H3 only · fastest", description: "Official 768p four-step sparse-attention Turbo LoRA requiring the H3 SLA Attention node; prioritize it for the fastest path." }
   },
   "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
-    "zh-CN": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 专属 · 4 步快速", description: "官方当前 v1.2 FL2VA Turbo LoRA，配套 4 步、video shift 6 和 audio shift 3；无需 SLA 节点。" },
-    "zh-TW": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 專屬 · 4 步快速", description: "官方目前 v1.2 FL2VA Turbo LoRA，搭配 4 步、video shift 6 與 audio shift 3；不需要 SLA 節點。" },
-    "en-US": { name: "LightX2V Turbo 4-Step v1.2 · 768p", badge: "H3 only · fast four-step", description: "The current official v1.2 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path; no SLA node required." }
+    "zh-CN": { name: "LightX2V Turbo 4-Step v1.3 · 768p", badge: "H3 专属 · 4 步快速", description: "官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。" },
+    "zh-TW": { name: "LightX2V Turbo 4-Step v1.3 · 768p", badge: "H3 專屬 · 4 步快速", description: "官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。" },
+    "en-US": { name: "LightX2V Turbo 4-Step v1.3 · 768p", badge: "H3 only · fast four-step", description: "Official FL2VA v1.3 four-step 768p, Euler + Simple, video/audio shifts 6/3." }
   },
   "minimax-h3-camera-motion-v1": {
     "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动；可配合提示词表达光学景深、镜头衰减和克制的手持微抖。" },
@@ -66,14 +66,14 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "en-US": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 only · overall pick", description: "A community v4 step600 EMA pruned Turbo and the current overall pick for quality, stability, and speed." }
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {
-    "zh-CN": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 专属 · 8 步质量备选", description: "官方 v1.0 FL2VA 8 步路线；目前没有对应的 8-step v1.1，保留作质量与音频稳定性备选，综合首选请用 v4。" },
-    "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 8 步品質備選", description: "官方 v1.0 FL2VA 8 步路線；目前沒有對應的 8-step v1.1，保留作品質與音訊穩定性備選，綜合首選請用 v4。" },
-    "en-US": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 only · eight-step fallback", description: "The official v1.0 FL2VA eight-step path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback." }
+    "zh-CN": { name: "LightX2V Turbo 8-Step v1.1 · 768p", badge: "H3 专属 · 8 步质量备选", description: "官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。" },
+    "zh-TW": { name: "LightX2V Turbo 8-Step v1.1 · 768p", badge: "H3 專屬 · 8 步品質備選", description: "官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。" },
+    "en-US": { name: "LightX2V Turbo 8-Step v1.1 · 768p", badge: "H3 only · eight-step fallback", description: "Official FL2VA v1.1 eight-step 768p, Euler + Simple, video/audio shifts 6/3." }
   },
   "minimax-h3-ref2v-turbo-4step-v01": {
-    "zh-CN": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 专属 · 性能", description: "官方 Ref2VA 多参考图 Turbo LoRA，仅用于 R2V 四步路径。" },
-    "zh-TW": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 專屬 · 效能", description: "官方 Ref2VA 多參考圖 Turbo LoRA，僅用於 R2V 四步路徑。" },
-    "en-US": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V only · performance", description: "Official Ref2VA multi-reference Turbo LoRA for the dedicated four-step R2V path." }
+    "zh-CN": { name: "LightX2V Ref2V Turbo 4-Step v1.0 · 768p", badge: "H3 R2V 专属 · 性能", description: "官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。" },
+    "zh-TW": { name: "LightX2V Ref2V Turbo 4-Step v1.0 · 768p", badge: "H3 R2V 專屬 · 效能", description: "官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。" },
+    "en-US": { name: "LightX2V Ref2V Turbo 4-Step v1.0 · 768p", badge: "H3 R2V only · performance", description: "Official Ref2VA v1.0 four-step 768p, Euler + Simple, video/audio shifts 12/3." }
   },
   "minimax-h3-after-midnight-ref2va-nsfw": {
     "zh-CN": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V 专属 · NSFW", description: "当前确认的 AfterMidnight v1.2 内容 LoRA，仅适用于 MiniMax H3 Ref2VA。" },

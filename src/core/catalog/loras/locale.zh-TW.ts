@@ -79,16 +79,16 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
 
   "minimax-h3-lightx2v-turbo-4step-768p-v1.2": {
     guide: {
-      summary: "官方目前 LightX2V v1.2 FL2VA Turbo LoRA，針對 768p 四步路徑更新。",
-      recommendedStrength: "預設 1.0；依官方路徑使用。先固定 4 步、video shift 6、audio shift 3 與 Euler 做基準。",
-      effects: "在 768p 下減少取樣步數；四步對 Prompt、Seed、運動連續性與音訊穩定性更敏感。",
-      stacking: "效能 LoRA 放在人物或內容 LoRA 前面；不要與 8-step 或其他 Turbo 同時疊加。",
-      compatibility: "僅 MiniMax H3 FL2VA 圖生影片的 768p 路徑；不適用於 Ref2VA 或影片續寫。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 v1.2 ComfyUI 權重"
+      summary: "官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。",
+      recommendedStrength: "預設 1.0；官方 FL2VA v1.3 四步 768p，Euler + Simple，video/audio shift 6/3。",
+      effects: "少步數生成；運動、參考保真與音訊需和基礎模型對照。",
+      stacking: "不要疊加其他 Turbo；內容 LoRA 與稀疏 attention 有上游退化回報，組合需獨立驗證。",
+      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；不適用於 Ref2VA 或影片續寫。",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.3 4-step 768p"
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
-      turboSpectrum: "v1.2 768p Turbo 與 Spectrum 的組合需要同 Seed 對照；出現畫面退化時先關閉 Spectrum。",
+      turboSpectrum: "Spectrum 需同 Seed 獨立對照；品質退化時先關閉。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
     }
   },
@@ -196,8 +196,8 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
     guide: {
       summary: "社群 MiniMax H3 Turbo v4 step600 EMA pruned 轉換，面向 6–8 步品質優先路徑。",
       recommendedStrength: "預設 1.0；建議 6–8 步，優先 8 步；Euler + Beta、video shift 12、audio shift 6（作者給出 4–6）。",
-      effects: "相比 4-step 更重視細節、運動連續性與同步音訊；仍需與官方 v1.2 做同 Seed 對照。",
-      stacking: "作為獨立 Turbo 變體，不要與官方 v1.2、8-step v1.0 或其他 Turbo 同時疊加；建議放在人物或內容 LoRA 前。",
+      effects: "相比 4-step 更重視細節、運動連續性與同步音訊；仍需與官方 v1.3 做同 Seed 對照。",
+      stacking: "作為獨立 Turbo 變體，不要與官方 v1.3、8-step v1.1 或其他 Turbo 同時疊加；建議放在人物或內容 LoRA 前。",
       compatibility: "僅目前已驗證的 MiniMax H3 FL2VA INT8 pruned ConvRot 圖生影片；暫不開放 R2V、INT4、Q3 或影片續寫。",
       source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
     },
@@ -210,31 +210,31 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
 
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路線；目前沒有對應的 8-step v1.1，保留作品質與音訊穩定性備選；4 步路線請使用目前 v1.2。",
-      recommendedStrength: "預設 0.75；建議 8 步、0.65–0.85。綜合首選優先嘗試 v4。",
-      effects: "相比 4 步路線更保守地保留運動、細節與音訊穩定性，但版本較舊、速度較慢。",
-      stacking: "效能 LoRA 放在內容或人物 LoRA 前面；不要與其他 Turbo LoRA 同時疊加。",
-      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；需要 ER-SDE、Beta 與 Sigma Shift Turbo 工作流。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"
+      summary: "官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。",
+      recommendedStrength: "預設 1.0；官方 FL2VA v1.1 八步 768p，Euler + Simple，video/audio shift 6/3。",
+      effects: "少步數生成；運動、參考保真與音訊需和基礎模型對照。",
+      stacking: "不要疊加其他 Turbo；內容 LoRA 與稀疏 attention 有上游退化回報，組合需獨立驗證。",
+      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；不適用於 Ref2VA 或影片續寫。",
+      source: "LightX2V / Minimax-h3-Turbo · FL2VA v1.1 8-step 768p"
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
-      turboSpectrum: "Turbo v1.0 可與 Spectrum v0.2.6+ 疊加；遇到品質退化時先關閉 Spectrum 對照。",
+      turboSpectrum: "Spectrum 需同 Seed 獨立對照；品質退化時先關閉。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
     }
   },
   "minimax-h3-ref2v-turbo-4step-v01": {
     guide: {
-      summary: "官方 Ref2VA 多參考圖 Turbo LoRA，把 H3 R2V 路徑壓縮到 4 步。",
-      recommendedStrength: "預設 0.75；建議 0.65–0.85。首次使用應和標準 20 步 R2V 做同 Seed 對照。",
-      effects: "減少 R2V 取樣時間，但多參考圖一致性、動作與音訊對四步更敏感。",
-      stacking: "放在 R2V 內容或人物 LoRA 前面；不要與 FL2VA Turbo 變體疊加。",
-      compatibility: "僅 MiniMax H3 Ref2VA 多參考圖圖生影片；不適用於 FL2VA 首幀或影片續寫。",
-      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"
+      summary: "官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。",
+      recommendedStrength: "預設 1.0；官方 Ref2VA v1.0 四步 768p，Euler + Simple，video/audio shift 12/3。",
+      effects: "少步數生成；運動、參考保真與音訊需和基礎模型對照。",
+      stacking: "不要疊加其他 Turbo；內容 LoRA 與稀疏 attention 有上游退化回報，組合需獨立驗證。",
+      compatibility: "僅 MiniMax H3 Ref2VA；不適用於 FL2VA 或影片續寫。",
+      source: "LightX2V / Minimax-h3-Turbo · Ref2VA v1.0 4-step 768p"
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
-      turboSpectrum: "Ref2V Turbo 與 Spectrum 的組合需要逐任務驗證；若出現時序退化，先關閉 Spectrum。",
+      turboSpectrum: "Spectrum 需同 Seed 獨立對照；品質退化時先關閉。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
     }
   },

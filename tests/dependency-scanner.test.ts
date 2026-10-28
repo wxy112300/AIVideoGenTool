@@ -8,6 +8,7 @@ import {
 } from "../electron/services/dependency-scanner";
 import { customNodeDefinition, H3_AV_SERIALIZER_REVISION } from "../src/core/catalog/dependencies/nodes.js";
 import { createDefaultState } from "../src/core/defaults";
+import { prepareH3Gguf } from "../src/infrastructure/dependency-node-adapters";
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +22,28 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("keeps the verified H3 GGUF commit readable after adaptation and still detects a different commit", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-gguf-revision-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "ComfyUI-GGUF-H3");
+    await fs.mkdir(path.join(directory, ".git", "objects"), { recursive: true });
+    await fs.mkdir(path.join(directory, ".git", "refs"));
+    const definition = customNodeDefinition("comfyui-gguf-h3")!;
+    await fs.writeFile(path.join(directory, ".git", "HEAD"), `${definition.installRevision}\n`);
+    await fs.writeFile(path.join(directory, "pyproject.toml"), `[project]\nversion = "${definition.recommendedVersion}"\n`);
+    await fs.writeFile(path.join(directory, "nodes.py"), 'NODE_CLASS_MAPPINGS = {"UnetLoaderGGUFAdvanced": object, "CLIPLoaderGGUF": object}\n');
+    await prepareH3Gguf(directory, () => {});
+    const scan = async () => (await scanCustomNodes(root, { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" }, "", "", "", {}, {
+      nodeIds: new Set(definition.nodeTypes)
+    })).find(node => node.id === definition.id)!;
+    expect(await scan()).toMatchObject({
+      version: definition.recommendedVersion, detectedRevision: definition.installRevision,
+      updateAvailable: false, updateNotice: "", loaded: true, loadError: ""
+    });
+    await fs.writeFile(path.join(directory, ".git", "HEAD"), `${"a".repeat(40)}\n`);
+    expect(await scan()).toMatchObject({ detectedRevision: "a".repeat(40), updateAvailable: true });
+  });
+
   it("keeps app H3 0.3.6 usable while recommending optional group-checkpoint support", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-optional-group-"));
     temporaryDirectories.push(root);

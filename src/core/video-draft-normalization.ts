@@ -5,6 +5,7 @@ import { normalizeH3MemoryOptions } from "./h3-memory-policy.js";
 import {
   baseVideoModelId,
   normalizeVideoLoras,
+  videoLorasForCreation,
   videoLoraCompatibleWithDraft
 } from "./video-loras.js";
 import {
@@ -37,7 +38,7 @@ export function normalizeVideoDraft(draft: Draft): Draft {
     ? "source"
     : draft.ratio;
   const inheritedGroup = modelId === "minimax_h3_continuum" && draft.longVideoRunSource && draft.longVideoEditor?.active;
-  const compatibleVideoLoras = inheritedGroup ? structuredClone(draft.videoLoras) : normalizeVideoLoras(draft.videoLoras, legacyModelId)
+  const compatibleVideoLoras = inheritedGroup ? structuredClone(draft.videoLoras) : videoLorasForCreation(normalizeVideoLoras(draft.videoLoras, legacyModelId))
     .filter((lora) => videoLoraCompatibleWithDraft(lora, modelId, draft.inputMode));
   const videoLoras = modelCatalog.get(modelId)?.definition.runtimeProfile === "h3-q3-3080"
     ? []

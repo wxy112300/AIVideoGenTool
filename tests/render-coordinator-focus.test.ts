@@ -53,6 +53,31 @@ function createCoordinator(
 }
 
 describe("render coordinator focus preservation", () => {
+  it("restores the same Settings panel after installation rebuilds collapse the document", async () => {
+    const root = document.createElement("div"); document.body.append(root);
+    const { coordinator, options } = createCoordinator(root);
+    options.renderPages.settings = () => '<div id="settings-panel-nodes" class="settings-content"><article data-settings-node="lower-node">Install</article></div>';
+    coordinator.render(); await new Promise(resolve => setTimeout(resolve, 0));
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 1600 });
+    const card = root.querySelector<HTMLElement>("[data-settings-node]")!;
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({ top: 120, bottom: 360 } as DOMRect);
+    options.bindSettings = () => {
+      // In Chromium replacing a long tree can clamp scrollY to zero.
+      Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+      vi.spyOn(root.querySelector<HTMLElement>("[data-settings-node]")!, "getBoundingClientRect")
+        .mockReturnValue({ top: 1840, bottom: 2080 } as DOMRect);
+    };
+    coordinator.render(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(scroll).toHaveBeenLastCalledWith({ top: 1720, behavior: "instant" });
+    scroll.mockClear();
+    options.renderPages.settings = () => '<div id="settings-panel-models" class="settings-content"></div>';
+    options.bindSettings = () => undefined;
+    coordinator.render(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(scroll).not.toHaveBeenCalled();
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+    scroll.mockRestore(); root.remove();
+  });
   it("preserves an open History picker across an unrelated refresh and appends new facets", async () => {
     const root = document.createElement("div"); document.body.append(root);
     const panel = (extra = "", locale = "zh-CN") => `<div data-history-filter-panel data-history-filter-context="video:${locale}"><div data-history-picker="models"><div class="history-picker-list"><label><input data-history-model="old">Old</label>${extra}</div></div><div data-history-picker="tags" hidden><div class="history-picker-list"><div data-history-tag-row="scene">Scene</div></div></div></div>`;

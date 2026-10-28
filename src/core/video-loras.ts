@@ -36,6 +36,7 @@ import {
   H3_TURBO_LORA_ID,
   H3_TURBO_LORA_IDS,
   H3_TURBO_8STEP_V1_LORA_ID,
+  H3_TURBO_8STEP_V1_LORA_FILENAME,
   LEGACY_H3_TURBO_MODEL_ID,
   LEGACY_H3_REF2V_TURBO_MODEL_ID,
   VIDEO_LORA_DEFINITIONS
@@ -189,6 +190,14 @@ export function isH3TurboV4LoraId(id: string): boolean {
 
 export function isH3Ref2vTurboLoraId(id: string): boolean {
   return id === H3_REF2V_TURBO_LORA_ID;
+}
+
+/** Match the executed weight, not the stable product ID or its display name. */
+export function usesCurrentH3LightX2vSampling(lora: VideoLoraSelection): boolean {
+  const filename = lora.filename.replaceAll("\\", "/").split("/").at(-1);
+  return (lora.id === H3_TURBO_LORA_ID && filename === H3_TURBO_LORA_FILENAME) ||
+    (lora.id === H3_TURBO_8STEP_V1_LORA_ID && filename === H3_TURBO_8STEP_V1_LORA_FILENAME) ||
+    (lora.id === H3_REF2V_TURBO_LORA_ID && filename === H3_REF2V_TURBO_LORA_FILENAME);
 }
 
 export function isH3PddLoraId(id: string): boolean {
@@ -553,7 +562,20 @@ export function normalizeHistoryVideoLoras(
 export function videoLorasForCreation(
   value: readonly VideoLoraSelection[] | undefined
 ): VideoLoraSelection[] {
-  return normalizeVideoLoras(value);
+  return normalizeVideoLoras(value).map((lora) => {
+    const filename = lora.filename.replaceAll("\\", "/").split("/").at(-1) ?? "";
+    const replacedWeight = (lora.id === H3_TURBO_LORA_ID &&
+      /^minimax_h3_fl2v_turbo_4step_v1\.[12]_768p_comfyui_bf16\.safetensors$/i.test(filename)) ||
+      (lora.id === H3_TURBO_8STEP_V1_LORA_ID &&
+        filename === "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors") ||
+      (lora.id === H3_REF2V_TURBO_LORA_ID &&
+        filename === "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors");
+    if (!replacedWeight) return lora;
+    const current = requiredBuiltinVideoLora(lora.id);
+    const strength = lora.id !== H3_TURBO_LORA_ID && lora.strength === 0.75
+      ? current.strength : lora.strength;
+    return videoLoraSelection(current, strength);
+  });
 }
 
 export function videoLoraCompatibleWithModel(

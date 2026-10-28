@@ -17,6 +17,7 @@ import {
   isH3TurboFourStepLoraId,
   isH3TurboV4LoraId,
   isH3TurboLoraId,
+  usesCurrentH3LightX2vSampling,
   videoLoraCompatibleWithModel,
   videoLoraConfigurationIssues,
   videoLoraFilename,
@@ -578,7 +579,7 @@ function applyMiniMaxH3SlaAttention(
 /**
  * The bundled H3 graphs are kept as conservative baselines and receive the
  * model-specific Turbo sampler patch at render time. Ref2VA Turbo uses the
- * original v0.1 shift, the current official FL2VA v1.2 768p LoRA uses the
+ * original v0.1 shift, the current official FL2VA 768p LoRAs use the
  * updated shift, and the optional v4 step600 quality variant uses its own
  * 6–8-step shift contract. This keeps old persisted tasks renderable without
  * allowing one Turbo variant's settings to leak into another path.
@@ -591,6 +592,9 @@ export function applyMiniMaxH3Ref2vTurboSampling(
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   )) return;
   const ref2vTurbo = isH3Ref2vTurboEnabled(task);
+  const currentLightX2v = task.videoLoras?.some((lora) =>
+    usesCurrentH3LightX2vSampling(lora) && videoLoraCompatibleWithModel(lora, task.modelId)
+  ) === true;
   const fl2vaEightStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) && Boolean(task.videoLoras?.some(lora =>
     lora.id === H3_TURBO_8STEP_V1_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)));
   const fl2vaFourStepTurbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
@@ -617,11 +621,11 @@ export function applyMiniMaxH3Ref2vTurboSampling(
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
-  sampler.inputs.sampler_name = fl2vaEightStepTurbo ? "er_sde" : "euler";
-  for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
+  sampler.inputs.sampler_name = fl2vaEightStepTurbo && !currentLightX2v ? "er_sde" : "euler";
+  for (const scheduler of schedulers) scheduler.inputs!.scheduler = currentLightX2v ? "simple" : "beta";
   if (!ref2vTurbo && !fl2vaEightStepTurbo && !fl2vaFourStepTurbo && !fl2vaV4Turbo && !fl2vaSlaTurbo) return;
   upsertMiniMaxH3SamplingShift(workflow, consumers, {
-    shiftVideo: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 6 : 12,
+    shiftVideo: fl2vaFourStepTurbo || fl2vaSlaTurbo || (currentLightX2v && fl2vaEightStepTurbo) ? 6 : 12,
     shiftAudio: fl2vaFourStepTurbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
   });
 }
@@ -847,9 +851,18 @@ export function workflowSupportsH3TurboSampling(
   options: {
     modelId?: string;
     videoLoras?: GenerationQueueTask["videoLoras"];
+    /** Enqueue checks an uncompiled template; execute checks the patched graph. */
+    applySamplingRecipe?: boolean;
   } = {}
 ): boolean {
   if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  if (options.applySamplingRecipe) {
+    const prepared = structuredClone(source) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>;
+    applyMiniMaxH3Ref2vTurboSampling(prepared, {
+      taskType: "generation", modelId: options.modelId ?? "", videoLoras: options.videoLoras
+    });
+    return workflowSupportsH3TurboSampling(prepared, { ...options, applySamplingRecipe: false });
+  }
   const nodes = Object.values(source as Record<string, unknown>).filter(
     (node): node is Record<string, unknown> =>
       Boolean(node) && typeof node === "object" && !Array.isArray(node)
@@ -861,6 +874,23 @@ export function workflowSupportsH3TurboSampling(
       return Boolean(inputs) && typeof inputs === "object" && !Array.isArray(inputs) &&
         predicate(inputs as Record<string, unknown>);
     });
+  const currentLightX2v = options.videoLoras?.find((lora) =>
+    usesCurrentH3LightX2vSampling(lora) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")
+  );
+  const currentRef2v = currentLightX2v && isH3Ref2vTurboEnabled({
+    modelId: options.modelId ?? "", videoLoras: [currentLightX2v]
+  });
+  if (currentLightX2v &&
+    (!currentRef2v || hasNode("MiniMaxH3ReferenceToVideo", () => true)) &&
+    hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
+    hasNode("BasicScheduler", (inputs) => inputs.scheduler === "simple") &&
+    nodes.some((node) =>
+      (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+      Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
+      (node.inputs as Record<string, unknown>).shift_video === (currentRef2v ? 12 : 6) &&
+      (node.inputs as Record<string, unknown>).shift_audio === 3
+    )) return true;
+  if (currentLightX2v) return false;
   const nativeTurbo = hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "er_sde") &&
     hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
     nodes.some((node) =>

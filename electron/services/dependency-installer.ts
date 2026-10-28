@@ -33,6 +33,7 @@ import {
   prepareH3PromptWriter,
   prepareMmh3UltimateUpscale,
   prepareH3Gguf,
+  h3GgufInitSource,
   prepareLtxVideo,
   prepareMultimodalPromptNodes,
   prepareQwenVlComfyDesktopLogging,
@@ -194,6 +195,8 @@ async function nodeHasOnlyAppPatch(
 ): Promise<boolean> {
   const patchFiles: readonly string[] = nodeId === "minimax-h3-prompt-writer"
     ? h3PromptWriterPatchFiles
+    : nodeId === "comfyui-gguf-h3"
+      ? ["__init__.py"]
     : nodeId === "comfyui-multimodal-prompt-nodes"
       ? multimodalPromptPatchFiles
       : nodeId === "comfyui-qwenvl-lora"
@@ -223,7 +226,9 @@ async function nodeHasOnlyAppPatch(
     const current = await fs.readFile(path.join(targetDirectory, filename), "utf8").catch(() => null);
     if (current === null) return false;
     let expected = "";
-    if (nodeId === DLSS5_NODE_ID && filename !== "nodes.py") {
+    if (nodeId === "comfyui-gguf-h3") {
+      expected = h3GgufInitSource;
+    } else if (nodeId === DLSS5_NODE_ID && filename !== "nodes.py") {
       expected = depthAnythingBuiltinMetadataFile(path.basename(filename));
     } else if (
       nodeId === KONOHAMARU_NODE_ID &&
@@ -649,6 +654,7 @@ async function installCustomNodePackageUnlocked(
           if (repositoryDirty) {
             const appPatchOnly = [
               "minimax-h3-prompt-writer",
+              "comfyui-gguf-h3",
               "comfyui-multimodal-prompt-nodes",
               "comfyui-qwenvl-lora",
               "mmh3-ultimate-upscale",

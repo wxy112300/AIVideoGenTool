@@ -568,7 +568,7 @@ export function createSettingsWorkspaceCoordinator(
       const state = deps.getState();
       const url = rewriteHuggingFaceDownloadUrl(
         guide.downloadUrl,
-        (settingsDraft ?? state.settings).hfMirrorEnabled
+        settingsDraft ?? state.settings
       );
       const opened = await deps.context.hostCapabilities.openExternal(url);
       if (!opened) deps.showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });

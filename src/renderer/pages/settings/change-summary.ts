@@ -36,7 +36,7 @@ export function settingsChangeSummary(keys: readonly (keyof Settings)[], t: Tran
     uiLocale: t(uiKeys.settings.localeTitle), promptLanguage: s("prompt.language"), promptCreativity: s("prompt.creativity"),
     defaultUpscaleModel: `${s("upscale.title")} · ${s("upscale.defaultModel")}`, upscaleTileMode: t(uiKeys.history.page.tileMode),
     upscaleFaceRestore: t(uiKeys.history.page.faceRestore), seedVr2Model: "SeedVR2", realEsrganModel: "Real-ESRGAN",
-    proxyEnabled: t(k.enableProxy), proxyUrl: t(k.proxyAddress), hfMirrorEnabled: t(k.useHfMirror)
+    proxyEnabled: t(k.enableProxy), proxyUrl: t(k.proxyAddress), hfMirrorEnabled: t(k.useHfMirror), modelDownloadSource: t(k.useHfMirror), modelDownloadCustomUrl: t(k.useHfMirror)
   };
   return [...new Set(keys.map(key => labels[key]).filter(Boolean))].join(s("shared.listSeparator"));
 }

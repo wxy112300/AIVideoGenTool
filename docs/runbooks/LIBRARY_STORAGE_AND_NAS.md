@@ -68,7 +68,9 @@
 | allowedOrigins | 实际访问地址及端口，例如 `http://192.168.1.10:8790`；反向代理地址也要显式加入 |
 | /data 权限 | 容器以 UID/GID 1000 运行；在 DSM 给这个独立目录所需写权限，不开放媒体写权限 |
 
-在开发/Windows 电脑执行：
+Windows 可直接双击 [Tools/NasBrowser/Build-Tar.bat](../../Tools/NasBrowser/Build-Tar.bat)，自动完成服务构建、linux/amd64 镜像构建、容器内 SQLite 检查与 tar 导出；输出在工具目录。需已安装 Node.js 22.13+ 和已启动的 Linux Docker 引擎，缺少 Docker 时脚本会提示并停止，不自动安装。
+
+手动构建可在开发/Windows 电脑执行：
 
 ```powershell
 node Tools/NasBrowser/build.mjs

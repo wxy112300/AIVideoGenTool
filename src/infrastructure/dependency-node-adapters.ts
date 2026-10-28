@@ -1803,7 +1803,7 @@ export async function prepareH3PromptWriter(
   );
 }
 
-const h3GgufInitSource = `WEB_DIRECTORY = "./web"
+export const h3GgufInitSource = `WEB_DIRECTORY = "./web"
 
 try:
     import comfy.utils
@@ -1834,12 +1834,6 @@ export async function prepareH3Gguf(
     );
   }
   await fs.writeFile(path.join(targetDirectory, "__init__.py"), h3GgufInitSource, "utf8");
-  await fs.rm(path.join(targetDirectory, ".git"), {
-    recursive: true,
-    force: true,
-    maxRetries: 5,
-    retryDelay: 200
-  });
   report("已将 H3 GGUF loader 重命名为独立节点，保留通用 GGUF 包不变");
 }
 

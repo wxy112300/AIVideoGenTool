@@ -2,6 +2,7 @@ import type { RendererContext } from "../../contracts";
 import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
 import { uiKeys } from "../../../core/i18n-keys";
+import { mountPromptHeight } from "./prompt-height";
 
 interface Edit { text: string; start: number; end: number; }
 interface EditorState { current: Edit; undo: Edit[]; redo: Edit[]; scroll: number; }
@@ -199,7 +200,9 @@ export function mountRichPrompt(source: HTMLTextAreaElement, context: RendererCo
   observer.observe(source, { attributes: true, attributeFilter: ["disabled", "readonly", "hidden"] });
   original.setSelectionRange.call(source, state.current.start, state.current.end);
   paint(); editor.scrollTop = state.scroll;
+  const disposeHeight = mountPromptHeight(editor);
   return () => {
+    disposeHeight();
     const focused = document.activeElement === editor;
     rememberSelection(); state.scroll = editor.scrollTop; events.abort(); observer.disconnect();
     delete (source as unknown as Record<string, unknown>).value;

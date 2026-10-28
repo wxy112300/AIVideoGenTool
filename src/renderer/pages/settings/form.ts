@@ -3,6 +3,7 @@ import { imageOutputCountMax } from "../../../core/image-workflow";
 import { LAN_BROWSER_DEFAULT_PORT } from "../../../core/lan-browser";
 import { normalizeStrataUncensoredMode, strataUncensoredMode } from "../../../core/strata-uncensored";
 import { normalizeStrataReasoningEffort } from "../../../core/strata-reasoning";
+import { modelDownloadSource, modelDownloadSources } from "../../../core/download-url";
 
 function value(id: string, fallback: string): string {
   const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`);
@@ -29,6 +30,9 @@ export function readSettingsFromForm(
   h3PromptPreset: H3PromptPreset,
   imagePromptPreset: ImagePromptPreset
 ): Settings {
+  const selectedSource = value("model-download-source", modelDownloadSource(base));
+  const downloadSource = modelDownloadSources.find(source => source.id === selectedSource)?.id ?? modelDownloadSource(base);
+  const customDownloadUrl = value("model-download-custom-url", base.modelDownloadCustomUrl ?? "");
   const h3PromptPresets = {
     ...base.h3PromptPresets,
     [h3PromptPreset]: value("h3-prompt-preset-text", base.h3PromptPresets[h3PromptPreset])
@@ -112,6 +116,8 @@ export function readSettingsFromForm(
     realEsrganModel: value("realesrgan-model", base.realEsrganModel),
     proxyEnabled: checked("proxy-enabled", base.proxyEnabled),
     proxyUrl: value("proxy-url", base.proxyUrl),
-    hfMirrorEnabled: checked("hf-mirror-enabled", base.hfMirrorEnabled)
+    ...(base.modelDownloadSource !== undefined || downloadSource !== modelDownloadSource(base) ? { modelDownloadSource: downloadSource } : {}),
+    ...(base.modelDownloadCustomUrl !== undefined || customDownloadUrl ? { modelDownloadCustomUrl: customDownloadUrl } : {}),
+    hfMirrorEnabled: downloadSource !== "huggingface"
   };
 }

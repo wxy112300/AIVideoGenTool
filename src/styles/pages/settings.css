@@ -1,4 +1,5 @@
 /* Settings navigation, commit controls, and migrated form cards. */
+.settings-grid [data-model-download-custom][hidden] { display: none; }
 .settings-content .settings-form-card .settings-preset-rule { grid-template-columns: minmax(0,1fr); gap: 8px; }
 .settings-preset-rule > textarea { width: 100%; min-height: 132px; resize: vertical; background: var(--surface-2); color: var(--text-1); font: var(--fs-12)/1.7 var(--font-mono); }
 .settings-sulphur-details { margin: 0; padding: 10px 0 12px; border-top: 1px solid var(--line); }

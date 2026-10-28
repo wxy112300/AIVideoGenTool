@@ -553,6 +553,9 @@ export interface Settings {
   proxyEnabled: boolean;
   proxyUrl: string;
   hfMirrorEnabled: boolean;
+  /** Absent in older settings; hfMirrorEnabled remains the compatibility fallback. */
+  modelDownloadSource?: "huggingface" | "hf-mirror" | "hf-mirror-net" | "gitee" | "custom";
+  modelDownloadCustomUrl?: string;
 }
 
 interface QueueTaskBase {

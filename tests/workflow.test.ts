@@ -337,7 +337,7 @@ describe("renderWorkflow", () => {
       class_type: "LoraLoaderModelOnly",
       inputs: {
         model: ["1", 0],
-        lora_name: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+        lora_name: "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
         strength_model: 1
       }
     });
@@ -352,7 +352,7 @@ describe("renderWorkflow", () => {
     expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
     expect(rendered["8"]?.inputs).toMatchObject({
       model: ["21", 0],
-      scheduler: "beta",
+      scheduler: "simple",
       steps: 4,
       denoise: 1
     });
@@ -390,7 +390,7 @@ describe("renderWorkflow", () => {
     expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
-  it("renders the official H3 FL2VA v1.2 Turbo sampler contract", () => {
+  it("renders the official H3 FL2VA v1.3 Turbo sampler contract", () => {
     const source = JSON.parse(
       readFileSync(
         new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
@@ -415,6 +415,7 @@ describe("renderWorkflow", () => {
       inputs?: Record<string, unknown>;
     }>;
     currentContract["7"]!.inputs!.sampler_name = "euler";
+    currentContract["8"]!.inputs!.scheduler = "simple";
     currentContract["21"]!.inputs!.shift_video = 6;
     expect(workflowSupportsH3TurboSampling(currentContract, {
       modelId: "minimax_h3_fl2va",
@@ -422,7 +423,7 @@ describe("renderWorkflow", () => {
     })).toBe(true);
 
     expect(rendered["20"]?.inputs).toMatchObject({
-      lora_name: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+      lora_name: "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
       strength_model: 1
     });
     expect(rendered["21"]?.inputs).toMatchObject({
@@ -432,7 +433,7 @@ describe("renderWorkflow", () => {
     expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
     expect(rendered["8"]?.inputs).toMatchObject({
       model: ["21", 0],
-      scheduler: "beta",
+      scheduler: "simple",
       steps: 4
     });
   });

@@ -18,6 +18,8 @@ import {
   isH3TurboFourStepLoraId,
   isH3TurboV4LoraId,
   isH3TurboEnabled,
+  H3_TURBO_8STEP_V1_LORA_ID,
+  usesCurrentH3LightX2vSampling,
   videoLoraCompatibleWithModel,
   videoLoraConfigurationIssues
 } from "./video-loras.js";
@@ -70,10 +72,15 @@ export function resolveVideoGenerationPolicy(
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)
   ) === true;
   const lowStepPathEnabled = turboEnabled || pddEnabled;
+  const currentEightStepEnabled = input.videoLoras?.some((lora) =>
+    lora.id === H3_TURBO_8STEP_V1_LORA_ID && usesCurrentH3LightX2vSampling(lora) &&
+    videoLoraCompatibleWithModel(lora, input.modelId)
+  ) === true;
   const ref2vTurboEnabled = isH3Ref2vTurboEnabled({
     modelId: input.modelId,
     videoLoras: input.videoLoras
   });
+  const currentRef2vFourStepEnabled = ref2vTurboEnabled && input.videoLoras?.some(usesCurrentH3LightX2vSampling) === true;
   const fl2vaFourStepTurboEnabled = input.videoLoras?.some((lora) =>
     isH3TurboFourStepLoraId(lora.id) && videoLoraCompatibleWithModel(lora, input.modelId)
   ) === true;
@@ -95,13 +102,15 @@ export function resolveVideoGenerationPolicy(
     turboEnabled: lowStepPathEnabled,
     steps: {
       mode: lowStepPathEnabled ? "turbo" : "standard",
-      options: pddEnabled
+      options: pddEnabled || currentEightStepEnabled
         ? [8]
+        : currentRef2vFourStepEnabled
+        ? [4]
         : h3TurboV4Enabled
         ? [6, 8]
         : definition?.capabilities?.generationSteps ??
           (fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled ? [4] : turboEnabled ? turboStepOptions : standardStepOptions),
-      defaultValue: pddEnabled
+      defaultValue: pddEnabled || currentEightStepEnabled
         ? 8
         : fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled || ref2vTurboEnabled
         ? 4
@@ -109,9 +118,9 @@ export function resolveVideoGenerationPolicy(
           ? 8
           : definition?.capabilities?.defaultGenerationSteps ??
             (turboEnabled ? 8 : 20),
-      maxValue: pddEnabled
+      maxValue: pddEnabled || currentEightStepEnabled
         ? 8
-        : fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled
+        : fl2vaFourStepTurboEnabled || fl2vaSlaTurboEnabled || currentRef2vFourStepEnabled
         ? 4
         : h3TurboV4Enabled
           ? 8

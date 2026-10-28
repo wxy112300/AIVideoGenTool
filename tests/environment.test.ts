@@ -1127,13 +1127,13 @@ describe("ComfyUI environment candidates", () => {
     expect(missing?.available).toBe(false);
   });
 
-  it("detects the current MiniMax H3 LightX2V v1.2 Turbo profile only with its recommended LoRA", () => {
+  it("detects the current MiniMax H3 LightX2V v1.3 Turbo profile only with its recommended LoRA", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "vae\\minimax_h3_video_vae_fp16.safetensors",
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
-      "loras\\minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+      "loras\\minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors"
     ]);
     const turbo = profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.2");
 
@@ -1145,7 +1145,7 @@ describe("ComfyUI environment candidates", () => {
     });
     expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
       targetSubdirectory: "loras",
-      recommendedFilename: "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+      recommendedFilename: "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors"
     });
 
     const legacyOnly = evaluateModelProfiles([

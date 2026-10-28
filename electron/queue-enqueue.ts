@@ -804,9 +804,10 @@ export class QueueEnqueueService {
     }
     if (isH3TurboEnabled(draft) && !workflowSupportsH3TurboSampling(workflow, {
       modelId: draft.modelId,
-      videoLoras: draft.videoLoras
+      videoLoras: draft.videoLoras,
+      applySamplingRecipe: true
     })) {
-      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.2/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；v4 使用 Euler、Beta、video shift 12、audio shift 6；8-step 路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
+      throw new Error("当前工作流无法应用所选 Turbo 的采样配方；请使用对应的内置工作流。R2V 还需要标准 MiniMaxH3ReferenceToVideo 节点。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");
