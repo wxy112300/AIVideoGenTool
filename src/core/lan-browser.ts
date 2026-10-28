@@ -47,10 +47,8 @@ export interface BrowseLibraryInfo {
   models: Array<{ id: string; name: string }>;
 }
 
-export function normalizeBrowseFilter(value: HistoryFilterInput | null | undefined, readOnly = false): HistoryFilterState {
-  const filter = normalizeHistoryFilter(value);
-  return readOnly ? { ...filter, favoriteOnly: false, minRating: null, maxRating: null,
-    sort: filter.sort.startsWith("rating-") ? "newest" : filter.sort } : filter;
+export function normalizeBrowseFilter(value: HistoryFilterInput | null | undefined): HistoryFilterState {
+  return normalizeHistoryFilter(value);
 }
 
 /** Loaded only when the viewer opens its read-only information panel. */

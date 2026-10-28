@@ -16,7 +16,6 @@ input[type=checkbox],input[type=radio] { width: 20px; min-height: 20px; accent-c
 .library-header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 4px 0; background: color-mix(in srgb,var(--bg) 94%,transparent); backdrop-filter: blur(16px); }
 h1 { font-size: 19px; font-weight: 600; margin: 0 5px; letter-spacing: -.03em; white-space: nowrap; }
 .library-tools { display: flex; gap: 0; align-items: center; }
-.sort-control select { max-width: 130px; border: 0; background: transparent; padding-inline: 5px; font-size: 12px; color: var(--ux-content-secondary); }
 .library-tools .active { color: var(--primary); background: var(--ux-action-primary-surface); }
 #media-wall { position: relative; width: 100%; }
 .media-tile { position: absolute; inset: 0 auto auto 0; min-height: 0; padding: 0; border-radius: 9px; overflow: hidden; background: var(--ux-surface-base); text-align: left; contain: layout paint; }
@@ -63,6 +62,7 @@ body.watching { overflow: hidden; }
 .watch-actions .selected .ui-icon { fill: currentColor; }
 .watch-rating { font-size: 11px; }
 .watch-actions .rating-button { height: auto; min-height: 52px; flex-direction: column; gap: 2px; padding: 6px; border-radius: 14px; }
+.watch-actions .metadata-readonly:disabled { opacity: 1; }
 .watch-rating:empty { display: none; }
 .watch-bottom { position: absolute; inset: auto 0 var(--watch-safe-bottom); padding: 28px max(16px,env(safe-area-inset-right)) 18px max(16px,env(safe-area-inset-left)); display: flex; align-items: center; gap: 10px; background: transparent; }
 .watch-bottom span { font-size: 10px; min-width: 28px; }

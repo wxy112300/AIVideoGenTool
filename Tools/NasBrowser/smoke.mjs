@@ -34,7 +34,7 @@ for (let i = 0; i < 18; i++) {
   const file = { filename, absolutePath, subfolder: "", type: "output" };
   const version = { id: `v${i}`, createdAt, width, height, duration: 4, files: [file] };
   state.history.push({ id: `a${i}`, title: `Fixture ${i}`, createdAt, updatedAt: createdAt, modelId: "minimax_h3_fl2va", tags: [i % 2 ? "city" : "nature"], duration: 4,
-    defaultVersionId: version.id, versions: [version], prompt: "<script>window.__nasPromptExecuted=true</script>\n" + "A scene in natural light.\n".repeat(20), favorite: true, rating: 5 });
+    defaultVersionId: version.id, versions: [version], prompt: "<script>window.__nasPromptExecuted=true</script>\n" + "A scene in natural light.\n".repeat(20), favorite: i % 2 === 0, rating: i % 2 === 0 ? 4.5 : 2 });
   const key = ["history-cover-v3", `a${i}`, version.id, createdAt, filename, absolutePath].join(":"), stat = await fs.stat(absolutePath);
   await fs.copyFile(path.join(directory, `${name}.jpg`), path.join(cache, `${sha(key)}.jpg`));
   await fs.writeFile(path.join(cache, `${sha(key)}.json`), JSON.stringify({ sourceSize: stat.size, sourceMtimeMs: stat.mtimeMs }));
@@ -53,7 +53,7 @@ const report = { ok: false, directory, protocol: v2 ? 2 : 1, physicalDevices: fa
 let browser;
 const wait = (expression, label) => pollUntil(() => browser.evaluate(expression), Boolean, 15000, label, 80);
 async function click(selector) {
-  const p = await browser.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled||!e.getClientRects().length)throw Error('Unavailable: '+${JSON.stringify(selector)});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+  const p = await browser.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled||!e.getClientRects().length)throw Error('Unavailable: '+${JSON.stringify(selector)});e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
   await browser.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...p });
   await browser.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...p });
 }
@@ -86,7 +86,8 @@ try {
   await click("#boot-retry");
   await wait('document.querySelectorAll(".media-tile").length>0&&document.querySelector(".media-tile img").naturalWidth>0', "Warm cached cover");
   assert.equal(await browser.evaluate("typeof window.studio"), "undefined");
-  assert.equal(await browser.evaluate('document.querySelectorAll("#sort option[value^=rating]").length'), 0);
+  assert.equal(await browser.evaluate('document.querySelectorAll(".library-header select").length'), 0);
+  assert.ok(await browser.evaluate('document.querySelector(".media-tile .tile-meta").textContent.includes("4.5")'));
   assert.equal(await browser.evaluate('(()=>{const es=[...document.querySelectorAll(".media-tile")];return new Set(es.slice(0,2).map(e=>e.style.transform)).size})()'), 2);
   const ratio = await browser.evaluate('(()=>{const e=document.querySelector(".media-tile");return e.offsetHeight/e.offsetWidth})()');
   assert.ok(Math.abs(ratio - 640 / 360) < .03);
@@ -94,7 +95,15 @@ try {
   report.checks.push("independent Documents/media roots on PC/NAS; missing index → actual retry → sync completes → cached covers; original-ratio phone masonry");
   await click('[data-action="filter"]');
   await wait('!!document.querySelector("dialog[open]")', "Filters");
-  assert.equal(await browser.evaluate('document.querySelectorAll("dialog [name=favorite],dialog [name=minRating],dialog [name=maxRating],dialog option[value^=rating]").length'), 0);
+  assert.equal(await browser.evaluate('document.querySelectorAll("dialog [name=favorite],dialog [name=minRating],dialog [name=maxRating],dialog option[value^=rating]").length'), 5);
+  await click('dialog [name="favorite"]');
+  await browser.evaluate('document.querySelector("dialog [name=minRating]").value="4";document.querySelector("dialog [name=sort]").value="rating-desc"');
+  await click('dialog button[type="submit"]');
+  await wait('document.querySelectorAll(".media-tile").length>0&&new URL(location.href).searchParams.get("q")?.includes("rating-desc")', "Favorite/rating filter applied");
+  const filtered = await browser.evaluate('fetch("/api/v1/videos?q="+encodeURIComponent(new URL(location.href).searchParams.get("q"))).then(r=>r.json())');
+  assert.equal(filtered.total, 9); assert.ok(filtered.items.every(item => item.favorite && item.rating === 4.5));
+  await click('[data-action="filter"]');
+  await screenshot("phone-filters");
   await browser.evaluate('document.querySelector("dialog [name=minDuration]").value="9"');
   await click('dialog button[type="submit"]'); await wait('document.querySelectorAll(".media-tile").length===0', "No results");
   await click('[data-action="filter"]'); await click("dialog [data-reset]"); await click('dialog button[type="submit"]');
@@ -105,7 +114,13 @@ try {
   assert.equal(albumColumns, 4); await screenshot("phone-album");
   await click('.media-tile[data-index="0"]');
   await wait('document.querySelector("#watch video").videoWidth>0&&!document.querySelector("#watch video").paused', "Decoded playback");
-  assert.equal(await browser.evaluate('document.querySelectorAll(".watch-actions [data-action=favorite],.watch-actions [data-action=rating],.watch-actions [data-action=tags]").length'), 0);
+  assert.equal(await browser.evaluate('document.querySelectorAll(".watch-actions [data-action=favorite]:disabled,.watch-actions [data-action=rating]:disabled").length'), 2);
+  assert.equal(await browser.evaluate('document.querySelectorAll(".watch-actions [data-action=tags]").length'), 0);
+  assert.equal(await browser.evaluate('document.querySelector(".watch-actions [data-action=favorite]").getAttribute("aria-pressed")'), "true");
+  assert.equal(await browser.evaluate('document.querySelector(".watch-rating").textContent'), "4.5");
+  assert.ok(await browser.evaluate('document.querySelector(".watch-tags").textContent.includes("nature")'));
+  await browser.evaluate('document.querySelector(".watch-actions [data-action=favorite]").click();document.querySelector(".watch-actions [data-action=rating]").click()');
+  assert.equal(await browser.evaluate('document.querySelectorAll("dialog[open]").length'), 0);
   assert.equal(await browser.evaluate('getComputedStyle(document.querySelector("#watch video")).objectFit'), "contain");
   const frames = await browser.evaluate('document.querySelector("#watch video").getVideoPlaybackQuality().totalVideoFrames');
   await wait(`document.querySelector("#watch video").getVideoPlaybackQuality().totalVideoFrames>${frames+3}`, "Frames advance");
@@ -125,8 +140,17 @@ try {
     const columns = await browser.evaluate('(()=>{const wall=document.querySelector("#media-wall"),tile=wall.querySelector(".media-tile");return Math.round((wall.clientWidth+6)/(parseFloat(tile.style.width)+6))})()');
     assert.ok(columns >= 3); await screenshot(label);
   }
-  report.checks.push("actual filters empty/reset; four-column album; contain playback with advancing frames; safe area; plain-text Prompt; return; iPad orientations; no editing controls");
+  report.checks.push("actual favorite/rating filters and rating sort in Filter only; empty/reset; favorite/rating badges and disabled player status; tags visible with no editing; four-column album; contain playback with advancing frames; safe area; plain-text Prompt; return; iPad orientations");
   report.ok = true;
+} catch (error) {
+  report.error = error.stack;
+  if (browser) {
+    try {
+      report.diagnostic = await browser.evaluate('(()=>{const v=document.querySelector("#watch video");return {url:location.href,watchHidden:document.querySelector("#watch")?.hidden,video:v&&{src:v.currentSrc,readyState:v.readyState,networkState:v.networkState,paused:v.paused,error:v.error?.message},body:document.body.innerText.slice(-1200)}})()');
+      await screenshot("failure");
+    } catch { /* Preserve the original failure if the browser has exited. */ }
+  }
+  throw error;
 } finally {
   if (browser) { try { await browser.send("Browser.close"); } catch {} browser.close(); }
   for (const child of processes.reverse()) {

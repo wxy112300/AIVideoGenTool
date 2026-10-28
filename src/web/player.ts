@@ -43,7 +43,8 @@ export class Player {
       <div class="watch-nav watch-chrome">${button("previous", icon("arrow-up"), text("previous"))}${button("next", icon("chevron-down"), text("next"))}</div><div class="speed-indicator" hidden>2×</div>`;
     this.video = root.querySelector("video")!;
     if (this.info().readOnly) {
-      root.querySelectorAll('[data-action="favorite"], [data-action="rating"], [data-action="tags"]').forEach((control) => control.remove());
+      root.querySelectorAll<HTMLButtonElement>('[data-action="favorite"], [data-action="rating"]').forEach((control) => { control.disabled = true; control.classList.add("metadata-readonly"); });
+      root.querySelector('[data-action="tags"]')!.remove();
     }
     this.stage = root.querySelector(".watch-stage")!;
     this.seek = mountSeek(root.querySelector(".watch-progress")!, this.video,
@@ -173,7 +174,7 @@ export class Player {
     const favorite = this.root.querySelector<HTMLButtonElement>('[data-action="favorite"]');
     if (favorite) {
       favorite.classList.toggle("selected", this.item.favorite); favorite.setAttribute("aria-pressed", String(this.item.favorite));
-      favorite.setAttribute("aria-label", text(this.item.favorite ? "unfavorite" : "favorite"));
+      favorite.setAttribute("aria-label", text(!this.info().readOnly && this.item.favorite ? "unfavorite" : "favorite"));
       this.root.querySelector(".watch-rating")!.textContent = this.item.rating ? String(this.item.rating) : "";
       const rating = this.root.querySelector<HTMLButtonElement>('[data-action="rating"]')!;
       rating.title = `${text("rating")}${this.item.rating ? ` ${this.item.rating}` : ""}`;

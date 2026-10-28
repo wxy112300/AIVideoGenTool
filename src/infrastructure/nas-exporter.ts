@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { AppState } from "../types.js";
 import { modelCatalog } from "../core/catalog/index.js";
-import { normalizeHistoryTags } from "../core/history-filter.js";
+import { isHistoryRating, normalizeHistoryTags } from "../core/history-filter.js";
 import { createHistoryCoverCacheKey } from "../core/history-cover.js";
 import { versionVideoIndex } from "../core/history-video.js";
 import { videoPromptForLoras } from "../core/video-loras.js";
@@ -71,6 +71,7 @@ export async function exportLibrary(config: ExportConfig, snapshot?: AppState, c
     if (!versions.length) continue;
     catalog.assets.push({ id: asset.id, title: asset.title, createdAt: asset.createdAt, updatedAt: asset.updatedAt,
       modelId: asset.modelId, tags: normalizeHistoryTags(asset.tags), duration: asset.duration,
+      favorite: asset.favorite === true, rating: isHistoryRating(asset.rating) ? asset.rating : null,
       defaultVersionId: asset.defaultVersionId, versions });
   }
   catalog.models = [...new Set(catalog.assets.map((a) => a.modelId))].map((id) => ({ id, name: modelCatalog.localized(id, locale)?.name ?? id }));

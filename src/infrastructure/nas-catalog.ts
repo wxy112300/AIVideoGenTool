@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import type { UiLocale } from "../types.js";
+import type { HistoryRating, UiLocale } from "../types.js";
+import { isHistoryRating } from "../core/history-filter.js";
 
 export interface PortableFile { path: string; size: number }
 export interface PortableVersion {
@@ -11,6 +12,8 @@ export interface PortableVersion {
 export interface PortableAsset {
   id: string; title: string; createdAt: string; updatedAt: string; modelId: string;
   tags: string[]; duration: number; defaultVersionId?: string; versions: PortableVersion[];
+  /** Optional for projections published before read-only curation was supported. */
+  favorite?: boolean; rating?: HistoryRating | null;
 }
 export interface PortableCatalog {
   schemaVersion: 1; locale: UiLocale; models: Array<{ id: string; name: string }>; assets: PortableAsset[];
@@ -58,6 +61,8 @@ export function parseCatalog(raw: string): PortableCatalog {
   for (const a of value.assets) {
     if (!object(a) || !string(a.id) || !a.id || ids.has(a.id) || !string(a.title) || !string(a.createdAt) || !string(a.updatedAt) ||
         !string(a.modelId) || !number(a.duration) || !Array.isArray(a.tags) || !a.tags.every(string) ||
+        (a.favorite !== undefined && typeof a.favorite !== "boolean") ||
+        (a.rating !== undefined && a.rating !== null && !isHistoryRating(a.rating)) ||
         (a.defaultVersionId !== undefined && !string(a.defaultVersionId)) || !Array.isArray(a.versions) || !a.versions.length) throw new Error("Invalid catalog asset");
     ids.add(a.id);
     const versions = new Set<string>();

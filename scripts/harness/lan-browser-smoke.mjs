@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { AppCdpClient, connectApp, pollUntil } from "../app-harness.mjs";
 import { createDefaultState } from "../../dist/electron/src/core/defaults.js";
 const root = path.resolve(import.meta.dirname, "../..");
+const browserOnly = process.argv.includes("--browser-only");
 const execute = promisify(execFile);
 const electron = createRequire(import.meta.url)("electron");
 async function freePort() {
@@ -20,6 +21,7 @@ await fs.mkdir(path.join(root,"temp"),{recursive:true});
 const directory = await fs.mkdtemp(path.join(root, "temp", "lan-smoke-"));
 const port = await freePort(), webPort = await freePort(), browserPort = await freePort();
 const state = createDefaultState();
+state.settings.libraryDirectory = path.join(directory,"library");
 Object.assign(state.settings, { comfyUrl: "http://192.0.2.1:9", comfyDirectory: "", comfyPythonPath: "", uiLocale: "zh-CN", lanBrowserEnabled: false, lanBrowserPort: webPort, autoRetryFailedTasks: false, outputDirectory: path.join(directory,"video"), imageOutputDirectory: path.join(directory,"images"), imageInputLibraryDirectory: path.join(directory,"inputs") });
 await fs.mkdir(state.settings.outputDirectory,{ recursive:true });
 for (const [name,size] of [["landscape","640x360"],["portrait","360x640"],["square","480x480"]]) {
@@ -73,7 +75,7 @@ try {
   await wait(()=>studio.evaluate('!document.querySelector("[data-lan-open]").disabled'),"Open URL control");
   report.settings=await studio.evaluate('({enabled:document.querySelector("#lan-browser-enabled").checked,addresses:[...document.querySelectorAll("[data-lan-address]")].map(o=>o.value),copyEnabled:!document.querySelector("[data-lan-copy]").disabled,openEnabled:!document.querySelector("[data-lan-open]").disabled})');
   report.settingsLayout=[];
-  for(const [width,height] of [[1280,800],[1440,900]]){
+  for(const [width,height] of browserOnly ? [] : [[1280,800],[1440,900]]){
     await studio.send("Emulation.setDeviceMetricsOverride",{width,height,deviceScaleFactor:1,mobile:false});
     await studio.evaluate('document.querySelector("[data-lan-panel]").scrollIntoView({block:"center"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
     const layout=await studio.evaluate('(()=>{const p=document.querySelector("[data-lan-panel]"),grid=p.querySelector(".settings-grid.two"),a=grid.children[0].getBoundingClientRect(),b=grid.children[1].getBoundingClientRect();const rows=[...p.querySelectorAll("[data-lan-address-row]")].map(row=>{const input=row.querySelector("input"),copy=row.querySelector("[data-lan-copy]"),open=row.querySelector("[data-lan-open]"),r=input.getBoundingClientRect(),c=copy.getBoundingClientRect(),o=open.getBoundingClientRect();return{readonly:input.readOnly,type:input.type,inputWidth:r.width,inline:Math.abs(r.y+r.height/2-c.y-c.height/2)<2&&Math.abs(c.y+c.height/2-o.y-o.height/2)<2,right:o.right}});return{width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,afterCache:p.previousElementSibling.classList.contains("app-cache-panel"),beforeProxy:!!p.nextElementSibling.querySelector("#proxy-enabled"),twoColumns:b.x>=a.right&&Math.abs(a.y-b.y)<2,rows}})()');
@@ -166,6 +168,8 @@ try {
   await click(browser,'.watch-top [data-action="back"]');
   await wait(()=>browser.evaluate('document.querySelector("#watch").hidden'),"Back to wall");
   await click(browser,'.library-tools [data-action="filter"]');
+  assert.equal(await browser.evaluate('document.querySelectorAll(".library-header select").length'),0);
+  assert.equal(await browser.evaluate('document.querySelectorAll("dialog [name=sort] option[value^=rating]").length'),2);
   await click(browser,'dialog input[name="favorite"]'); await click(browser,'dialog [type="submit"]');
   await wait(()=>browser.evaluate('document.querySelector("#library-status").textContent===""&&document.querySelectorAll(".media-tile").length>0'),"Filtered wall");
   await click(browser,'.media-tile[data-index="0"]');
@@ -201,7 +205,10 @@ try {
   await pollUntil(()=>studio.evaluate("window.studio.getLanBrowserStatus()"),v=>v.state==="off",30000,"Switch stops listener");
   await assert.rejects(fetch(local)); report.stop=true;
   await click(studio,"#lan-browser-enabled"); await pollUntil(()=>studio.evaluate("window.studio.getLanBrowserStatus()"),v=>v.state==="running",30000,"Restart listener");
-  const persisted=JSON.parse(await fs.readFile(statePath,"utf8"));
+  const locator=JSON.parse(await fs.readFile(statePath,"utf8"));
+  const { LibraryRecordStore }=await import("../../dist/electron/electron/services/library-record-store.js");
+  const collections=await (await LibraryRecordStore.open(locator.libraryStorage)).load(locator.libraryStorage.commit);
+  const persisted={...locator,...collections};
   assert.equal(persisted.history[0].rating,3.5); assert.equal(persisted.history[0].favorite,false); assert(persisted.history[0].tags.includes("LAN checked")); assert.equal(persisted.queue.length,0);
   report.persisted=true;
   // Leave the owned app available for an explicit native-close verification step.

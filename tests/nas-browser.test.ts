@@ -70,7 +70,8 @@ describe("NAS portable read-only library", () => {
     const catalog = parseCatalog(raw), stat = await fs.stat(filename);
     expect(catalog.assets[0]?.versions[0]?.media).toEqual({ path: "clip.mp4", size: 10 });
     expect(catalog.assets[0]?.tags).toEqual(["Nature"]);
-    expect(raw).not.toMatch(/absolutePath|private-setting|private-graph|private-queue|favorite|rating/);
+    expect(raw).not.toMatch(/absolutePath|private-setting|private-graph|private-queue/);
+    expect(catalog.assets[0]).toMatchObject({ favorite: true, rating: 4.5 });
     expect(raw).not.toContain(f.root);
     expect(catalog.assets[0]?.versions[0]?.prompt).toBe(f.state.history[0]!.prompt);
     expect((await exportLibrary(f.config)).changed).toBe(false);
@@ -85,8 +86,8 @@ describe("NAS portable read-only library", () => {
     const library = new NasLibrary(f.nas); await library.reload(); expect(library.info().count).toBe(0);
     await fs.writeFile(path.join(f.nas, "clip.mp4"), "012"); await library.reload(); expect(library.info().count).toBe(0);
     await f.sync(); await library.reload(); expect(library.info().count).toBe(1);
-    const query = library.createQuery({ tags: ["nature"], favoriteOnly: true, minRating: 5, sort: "rating-desc" });
-    expect(query.total).toBe(1); expect(query.filter).toMatchObject({ favoriteOnly: false, minRating: null, sort: "newest" });
+    const query = library.createQuery({ tags: ["nature"], favoriteOnly: true, minRating: 4, sort: "rating-desc" });
+    expect(query.total).toBe(1); expect(query.filter).toMatchObject({ favoriteOnly: true, minRating: 4, sort: "rating-desc" });
     await fs.writeFile(path.join(f.nas, "StudioLibrary/catalog.json"), "{");
     await expect(library.reload()).rejects.toThrow(); expect(library.info().count).toBe(1);
     expect(library.page(query.queryId, 0, 1).items[0]?.id).toBe("asset1");
@@ -132,6 +133,7 @@ describe("NAS portable read-only library", () => {
     const page = await pageResponse.json();
     expect(JSON.stringify(page)).not.toMatch(/prompt|absolutePath|mediaRoot|clip\.mp4/);
     const item = page.items[0];
+    expect(item).toMatchObject({ favorite: true, rating: 4.5, tags: ["Nature"] });
     const response = await get(item.mediaUrl, { headers: { Range: "bytes=2-5" } });
     expect(response.status).toBe(206); expect(await response.text()).toBe("2345");
     expect(response.headers.get("content-range")).toBe("bytes 2-5/10");
@@ -146,9 +148,30 @@ describe("NAS portable read-only library", () => {
     expect((await get("/api/v1/library", { headers: { "Sec-Fetch-Site": "cross-site" } })).status).toBe(403);
     expect((await (await get("/healthz")).json()).ready).toBe(true);
   });
-  it("only removes curation filter conditions for read-only services", () => {
+  it("preserves all browse conditions independently of metadata write permission", () => {
     const input = { favoriteOnly: true, minRating: 4 as const, sort: "rating-desc" as const, tags: ["Nature"] };
     expect(normalizeBrowseFilter(input).favoriteOnly).toBe(true);
-    expect(normalizeBrowseFilter(input, true)).toMatchObject({ favoriteOnly: false, minRating: null, sort: "newest", tags: ["Nature"] });
+    expect(normalizeBrowseFilter(input)).toMatchObject({ favoriteOnly: true, minRating: 4, sort: "rating-desc", tags: ["Nature"] });
+  });
+  it("filters and sorts synchronized favorites and half-star ratings, while accepting older projections", async () => {
+    const f = await fixture();
+    f.state.history.push({ ...f.state.history[0]!, id: "asset2", favorite: false, rating: 2 });
+    await fs.writeFile(f.config.stateFile, JSON.stringify(f.state));
+    await exportLibrary(f.config); await f.sync();
+    const library = new NasLibrary(f.nas); await library.reload();
+    expect(library.createQuery({ favoriteOnly: true }).items.map(item => item.id)).toEqual(["asset1"]);
+    expect(library.createQuery({ minRating: 4 }).items.map(item => item.id)).toEqual(["asset1"]);
+    expect(library.createQuery({ maxRating: 2 }).items.map(item => item.id)).toEqual(["asset2"]);
+    expect(library.createQuery({ sort: "rating-desc" }).items.map(item => item.id)).toEqual(["asset1", "asset2"]);
+    expect(library.createQuery({ sort: "rating-asc" }).items.map(item => item.id)).toEqual(["asset2", "asset1"]);
+    const filename = path.join(f.nas, "StudioLibrary/catalog.json"), catalog = parseCatalog(await fs.readFile(filename, "utf8"));
+    for (const asset of catalog.assets) { delete asset.favorite; delete asset.rating; }
+    await fs.writeFile(filename, JSON.stringify(catalog)); await library.reload();
+    expect(library.detail("asset1")).toMatchObject({ favorite: false, rating: null });
+    expect(library.createQuery({}).total).toBe(2);
+    expect(library.createQuery({ favoriteOnly: true }).total).toBe(0);
+    for (const invalid of [{ favorite: "yes" }, { rating: 4.2 }, { rating: 6 }]) {
+      expect(() => parseCatalog(JSON.stringify({ ...catalog, assets: [{ ...catalog.assets[0], ...invalid }] }))).toThrow();
+    }
   });
 });

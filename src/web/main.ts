@@ -1,9 +1,9 @@
 import "./theme.css";
 import "./style.css";
-import { defaultHistoryFilter, historyFilterIsActive, normalizeHistoryFilter, type HistoryFilterState, type HistorySort } from "../core/history-filter";
+import { defaultHistoryFilter, historyFilterIsActive, normalizeHistoryFilter, type HistoryFilterState } from "../core/history-filter";
 import { normalizeBrowseFilter, type BrowseLibraryInfo, type BrowseVideo } from "../core/lan-browser";
 import { api } from "./api";
-import { showFilters, sortOptions } from "./filters";
+import { showFilters } from "./filters";
 import { Library } from "./library";
 import { Player } from "./player";
 import { button, escape, icon, renderIcons, setLocale, text, toast } from "./ui";
@@ -23,7 +23,6 @@ const updateUrl = (item?: BrowseVideo) => {
 };
 async function refresh(preserve = false): Promise<void> {
   await library.load(filter, preserve);
-  root.querySelector<HTMLSelectElement>("#sort")!.value = filter.sort;
   root.querySelector('[data-action="filter"]')!.classList.toggle("active", historyFilterIsActive(filter));
 }
 function apply(next: HistoryFilterState): void { filter = next; history.replaceState({}, "", updateUrl()); void refresh(); }
@@ -45,16 +44,14 @@ async function boot(): Promise<void> {
   root.innerHTML = `<div class="boot-status">${escape(text("loading"))}</div>`;
   try {
     info = await api.info(); await setLocale(info.locale);
-    filter = normalizeBrowseFilter(filter, info.readOnly);
-    root.innerHTML = `<main id="library-shell"><header class="library-header"><h1>${text("library")}</h1><div class="library-tools"><label class="sort-control"><span class="sr-only">${text("sort")}</span><select id="sort">${sortOptions(filter.sort)}</select></label>${button("filter", icon("sliders-horizontal"), text("filter"))}${button("layout", icon("columns-3"), text("album"))}${button("refresh", icon("refresh-cw"), text("refresh"))}</div></header><button id="new-content" hidden>${text("newContent")}</button><div id="media-wall"></div><div id="library-status" role="status"></div>${button("top", icon("arrow-up"), text("returnTop"), "return-top")}</main><section id="watch" aria-label="${text("play")}" tabindex="-1" hidden></section><div id="toast" role="status" hidden></div>`;
-    root.querySelector("#sort")!.innerHTML = sortOptions(filter.sort, info.readOnly);
+    filter = normalizeBrowseFilter(filter);
+    root.innerHTML = `<main id="library-shell"><header class="library-header"><h1>${text("library")}</h1><div class="library-tools">${button("filter", icon("sliders-horizontal"), text("filter"))}${button("layout", icon("columns-3"), text("album"))}${button("refresh", icon("refresh-cw"), text("refresh"))}</div></header><button id="new-content" hidden>${text("newContent")}</button><div id="media-wall"></div><div id="library-status" role="status"></div>${button("top", icon("arrow-up"), text("returnTop"), "return-top")}</main><section id="watch" aria-label="${text("play")}" tabindex="-1" hidden></section><div id="toast" role="status" hidden></div>`;
     library = new Library(root.querySelector("#media-wall")!, root.querySelector("#library-status")!, (item, index) => {
       history.pushState({ viewer: true }, "", updateUrl(item)); void player.show(item, index, library.total, library.queryId);
-    }, info.readOnly);
+    });
     player = new Player(root.querySelector("#watch")!, () => info, (item) => library.update(item), () => {
       if (history.state?.viewer) history.back(); else { history.replaceState({}, "", updateUrl()); closePlayer(); }
     }, (item) => history.replaceState(history.state, "", updateUrl(item)));
-    root.querySelector("#sort")!.addEventListener("change", (event) => apply({ ...filter, sort: (event.target as HTMLSelectElement).value as HistorySort }));
     root.querySelector('[data-action="filter"]')!.addEventListener("click", () => showFilters(filter, info, apply));
     const top = root.querySelector<HTMLButtonElement>('[data-action="top"]')!;
     const showTop = () => { top.hidden = scrollY < innerHeight * .65; };
@@ -71,7 +68,7 @@ async function boot(): Promise<void> {
     root.querySelector("#new-content")!.addEventListener("click", () => { void refreshAll(); });
     window.addEventListener("popstate", () => {
       try { filter = normalizeHistoryFilter(JSON.parse(new URL(location.href).searchParams.get("q") ?? "null")); } catch { filter = { ...defaultHistoryFilter }; }
-      filter = normalizeBrowseFilter(filter, info.readOnly);
+      filter = normalizeBrowseFilter(filter);
       void openFromUrl();
     });
     renderIcons(root); await refresh(); await openFromUrl();

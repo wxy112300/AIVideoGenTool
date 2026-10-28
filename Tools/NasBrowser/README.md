@@ -2,7 +2,9 @@
 
 类型：部署手册；状态：基础实现；日期：2026-10-27。适用：已有 Docker 的群晖及本机 Node.js；当前验收与限制见 [TASK](../../docs/tasks/2026-10-27-nas-browser/TASK.md)。
 
-电脑创作 → 导出浏览资料 → Drive 单向上传 → NAS 独立提供网页。复用现有手机优先界面、筛选/排序、瀑布流/相册、完整视频播放和按需 Prompt；NAS 不提供收藏、评分或 Tag 编辑，也不会写回 App 状态。
+电脑创作 → 自动发布浏览资料 → Drive 单向上传 → NAS 独立提供网页。复用现有手机优先界面、完整筛选/排序、收藏/评分/Tag 显示、瀑布流/相册、完整视频播放和按需 Prompt；NAS 只读，不能修改收藏、评分或 Tag，也不会写回 App 状态。排序在 Filter 菜单内。
+
+已部署服务使用[2026-10-29 程序更新包](NAS-Browser-Update-2026-10-29.zip)，按[更新手册](UPDATE.md)替换程序、构建新镜像并重建容器，保留 config/data 和原路径。旧浏览资料没有收藏/评分字段：还需在 PC 运行更新后的 App，后台重新发布并经 Drive 同步；不需要手动导出或删除 NAS 索引。
 
 新版 App 已提供分作品资料库和后台 v2 发布，自动维护 `Library/StudioLibrary/<libraryId>`，无需在 App 中配置 NAS 发布目录，上传路径由 Drive Client 设置。新配置请使用[资料库迁移与 NAS 自动发布手册](../../docs/runbooks/LIBRARY_STORAGE_AND_NAS.md)、`config.v2.example.json` 和 `compose.v2.example.yml`；NAS 的 `/data` 保存本地 SQLite，资料与媒体分别只读挂载。下面的 `catalog.json`/CLI 流程作为旧格式兼容路径保留，不能直接读取迁移后省略 history 数组的 AppData 主配置。
 
@@ -25,7 +27,7 @@ node Tools/NasBrowser/dist/runtime/export.mjs --config Tools/NasBrowser/export.c
 node Tools/NasBrowser/dist/runtime/export.mjs --config Tools/NasBrowser/export.config.json --watch
 ```
 
-导出写入 `<libraryRoot>/StudioLibrary/catalog.json` 和 `covers/`，只包含 outputRoot 内实际存在的视频；原 state 和视频保持只读。索引保留 asset/version 身份及相对路径，不包含设置、队列、工作流、Windows 绝对路径或收藏/评分。Prompt 是用户授权的导出内容。文件在媒体根目录以外会计入 skipped，不会搬移或复制原视频。省略 libraryRoot 的旧配置仍写到 outputRoot，无需重新生成已有索引；媒体路径相对 outputRoot，封面路径相对 libraryRoot。
+导出写入 `<libraryRoot>/StudioLibrary/catalog.json` 和 `covers/`，只包含 outputRoot 内实际存在的视频；原 state 和视频保持只读。索引保留 asset/version 身份、相对路径、收藏、评分及 Tag，不包含设置、队列、工作流或 Windows 绝对路径。Prompt 是用户授权的导出内容。文件在媒体根目录以外会计入 skipped，不会搬移或复制原视频。省略 libraryRoot 的旧配置仍写到 outputRoot，无需重新生成已有索引；媒体路径相对 outputRoot，封面路径相对 libraryRoot。
 
 封面只复用通过源大小/时间校验的 v3 缓存；不存在时显示占位，不启动 FFmpeg。封面按内容命名，未变的索引和图片不重写；先写封面，再原子替换索引。旧导出封面暂不自动删除。确认 Drive 未排除 StudioLibrary、JSON 或 JPG；NAS 每次轮询核对媒体大小，索引先到、视频后到会自动恢复。
 

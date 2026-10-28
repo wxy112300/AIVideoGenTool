@@ -73,7 +73,8 @@ describe("committed automatic NAS projection", () => {
     expect(before).not.toContain("prompt");
     const records = await fs.readdir(path.join(f.source, "records"));
     const record = await fs.readFile(path.join(f.source, "records", records[0]), "utf8");
-    expect(record).not.toMatch(/absolutePath|comfyOutputs|workflowPath|favorite|rating/);
+    expect(record).not.toMatch(/absolutePath|comfyOutputs|workflowPath/);
+    expect(JSON.parse(record)).toMatchObject({ favorite: f.asset.favorite, rating: f.asset.rating ?? null });
     expect(record).not.toContain(f.asset.prompt);
     await f.store.update(state => { state.draft.seed = 12345; }); await f.publisher.flush();
     expect((await fs.stat(current)).mtimeMs).toBe(stat.mtimeMs);
@@ -82,6 +83,23 @@ describe("committed automatic NAS projection", () => {
     await f.sync(); const library = f.open(); await library.reload();
     expect(library.detail(f.asset.id).title).toBe("New title");
     expect(library.prompt(f.asset.id, f.asset.versions[0].id).prompt).toBe(f.asset.prompt.trim());
+  });
+
+  it("publishes favorite/rating edits to the read-only replica and keeps them across index restart", async () => {
+    const f = await fixture(); await f.sync(); let library = f.open(); await library.reload();
+    const before = library.info().revision;
+    await f.store.update(state => { state.history[0].favorite = true; state.history[0].rating = 4.5; state.history[0].tags = ["Synced"]; });
+    await f.publisher.flush(); await f.sync(); await library.reload();
+    expect(library.info().revision).not.toBe(before);
+    expect(library.detail(f.asset.id)).toMatchObject({ favorite: true, rating: 4.5, tags: ["Synced"] });
+    expect(library.createQuery({ favoriteOnly: true, minRating: 4.5, tags: ["Synced"], sort: "rating-desc" }).total).toBe(1);
+    expect(library.createQuery({ minRating: 5 }).total).toBe(0);
+    library.clear(); library = f.open(); await library.reload();
+    expect(library.detail(f.asset.id)).toMatchObject({ favorite: true, rating: 4.5, tags: ["Synced"] });
+    await f.store.update(state => { state.history[0].favorite = false; state.history[0].rating = null; });
+    await f.publisher.flush(); await f.sync(); await library.reload();
+    expect(library.createQuery({ favoriteOnly: true }).total).toBe(0);
+    expect(library.detail(f.asset.id)).toMatchObject({ favorite: false, rating: null });
   });
 
   it("preserves the last committed generation during out-of-order upload, truncation and process restart", async () => {

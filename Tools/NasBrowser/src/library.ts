@@ -73,8 +73,8 @@ export class NasLibrary {
   }
   createQuery(raw: HistoryFilterInput): BrowsePage {
     this.prune();
-    const snapshot = this.current(), filter = normalizeBrowseFilter(raw, true);
-    const assets = filterHistoryAssets(snapshot.catalog.assets.map((a) => ({ ...a, favorite: false, rating: null })), filter);
+    const snapshot = this.current(), filter = normalizeBrowseFilter(raw);
+    const assets = filterHistoryAssets(snapshot.catalog.assets.map((a) => ({ ...a, favorite: a.favorite ?? false, rating: a.rating ?? null })), filter);
     const id = randomUUID();
     this.queries.set(id, { snapshot, filter, entries: assets.map((a) => ({ id: a.id, versionId: preferredVersion(a).id })), expires: Date.now() + 30 * 60_000 });
     return this.page(id, 0, 48);
@@ -99,7 +99,7 @@ export class NasLibrary {
     const base = `/api/v1/videos/${encodeURIComponent(id)}/versions/${encodeURIComponent(version.id)}`;
     return { id, versionId: version.id, title: asset.title, createdAt: asset.createdAt, updatedAt: asset.updatedAt,
       modelId: asset.modelId, width: version.width, height: version.height, duration: version.duration, tags: asset.tags,
-      favorite: false, rating: null, revision: snapshot.revision, mediaUrl: `${base}/media`, coverUrl: version.cover ? `${base}/cover` : "" };
+      favorite: asset.favorite ?? false, rating: asset.rating ?? null, revision: snapshot.revision, mediaUrl: `${base}/media`, coverUrl: version.cover ? `${base}/cover` : "" };
   }
   detail(id: string, versionId?: string): BrowseVideo { return this.dto(this.current(), id, versionId); }
   prompt(id: string, versionId: string): BrowseVideoPrompt {

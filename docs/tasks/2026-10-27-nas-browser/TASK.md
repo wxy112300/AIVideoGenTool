@@ -1,12 +1,14 @@
 # NAS 独立只读浏览服务
 
-- Status: done（前置与本机验收；未部署 NAS）
-- Updated / Owner: 2026-10-27 / 当前 agent
-- Scope / Authority: 用户要求在 Tools 建立服务并准备前置；DS418play、DSM 6.x、已有 Docker、Drive 单向上传；NAS 纯浏览，收藏/评分去掉，Tag 只读，PC/NAS 路径独立。
+- Status: done（完整只读修正及本机验收；新容器待用户更新）
+- Updated / Owner: 2026-10-29 / 当前 agent
+- Scope / Authority: 用户要求在 Tools 建立服务；DS418play、DSM 6.2.4、Docker 20.10.3、Drive 单向上传。最新要求：NAS 与普通浏览功能一致，显示收藏/评分/Tag，保留完整筛选排序，唯独禁止修改；排序收进 Filter，PC/NAS 路径独立。
 - Baseline: 0.67.0；大量其他任务 dirty，保留全部。执行 direct，children=0。
 
 ## Resume
 
+- 2026-10-29 提交上传：用户授权将本次完整只读修正、普通版排序入口同步、验证脚本和 NAS 程序更新包一起提交推送；版本保持 0.67.2，复用下方同一生产文件状态的验证证据，Git 提交及远端结果以实际命令为准。
+- 2026-10-29 完整只读修正已完成：用户已成功打开旧版 NAS，healthz ready=true/count=1258，Windows Chrome 刷新后显示。本轮修正 PC 导出丢弃收藏/评分、NAS 固定 false/null 及前端隐藏筛选/状态的问题；旧投影兼容，PC 更新后自动补发。普通版与 NAS 共用网页，排序都移入 Filter，只在元数据编辑能力上区分。仅程序更新 ZIP 与保留 config/data、旧容器回退的步骤已准备，未提交推送或连接 NAS。
 - 2026-10-29：用户要求推送兼容资料，同时询问升级 Docker。已核对官方 20.10.3-0554 SPK 的 INFO（x86_64、最低 DSM 6.1-15163），教程补充套件中心更新与手动安装路径，DS418play 不承诺官方支持；不升级 DSM、不操作 NAS。legacy 基础镜像压缩为 80461710 bytes，随仓库上传，解压 SHA256 与已验证 tar 一致；版本保持 0.67.2。
 - 2026-10-28 NAS 现场遇到 Docker 17.05 拉取 Node 的 missing signature key：官方当前 tag 与 amd64 子镜像均为 OCI，已核对并转换官方 Linux amd64 Node 22.23.4 为 legacy load tar，存 Tools/NasBrowser 供离线导入。未改服务源码或 NAS 系统；后续由用户 load/SQLite probe，旧内核能否运行尚未验证。
 - 2026-10-28 统一上传：用户授权仓库全部提交推送并保持版本号；本轮版本为 0.67.2，版本文件不改。纳入 NAS zip/首次安装教程与当前局域网设置修正；具体提交/远端同步结果以 Git 为准。
@@ -29,6 +31,10 @@
 
 ## Evidence / handoff
 
+- 2026-10-29 只读修正：聚焦 NAS/commit/LAN 27 项通过；全部单元 2797、集成 104 项通过，typechecked clean build 与 440 对比度检查通过。首次默认 verify 遇共享临时日志 EPERM 和并行 NAS 迁移超时，随后独立临时目录/4 workers 重跑；E 盘临时目录下 1200 条迁移超时，系统临时盘单独重跑 library-storage 全 13 项通过。未修改应用日志清理或测试超时阈值。
+- 真实浏览器证据：`temp/nas-browser-smoke-1793207488299/report.json` 为 v2 同步链，实际收藏/评分筛选、评分排序、列表标记、只读播放器、四列相册/双列原比例、解码帧推进、安全区、Prompt 与返回/iPad 均通过；手机播放器/Filter/相册截图已查看。早期 smoke 有按钮在滚动区域外导致未应用筛选、一次播放等待超时；已让真实点击先滚到按钮并保留失败诊断，随后同一生产代码通过，未放宽生产行为。
+- 普通版 `node scripts/harness/lan-browser-smoke.mjs --browser-only` / `temp/lan-smoke-nZ0UVb/report.json` 通过：实际收藏、半星评分、标签写回并独立读取持久库；排序仅在 Filter、完整播放/返回、手机/iPad/桌面无溢出。原默认 harness 在未改动 Settings 的 1280 双列断言处失败（当前该宽度实际单列）；保留默认断言，以 browser-only 跳过无关设置布局检查，未改设置生产样式。harness 资料库明确放隔离目录，并兼容当前分作品持久格式。两个 LAN fixture 均经 native close 正常退出，cleanup.json 确认监听关闭；NAS fixture 自有服务/浏览器也已回收。
+- 程序更新包 `Tools/NasBrowser/NAS-Browser-Update-2026-10-29.zip`：262473 bytes，11 条程序/教程文件，无 config/data/用户资料或基础镜像，SHA256 `9b10a9f9b9ace7fa91be6c5a5bca8351cc7124bfb8da1d3cf80015040235faad`。工具独立 build/typecheck 通过；SQLite 结构不变，旧元数据字段缺省兼容，原容器可保留回退。版本 0.67.2 不变，未制作 Windows 安装包；真机 NAS/Safari 本轮待用户更新后验证。children=0。
 - 2026-10-29 上传前检查：压缩镜像 SHA256 `2d44d6d6878823ea34240adb3be4f0f806f49d765083266e19461ad58d1ece7f`，完整流式解压后的 SHA256 与下方原 tar 一致；文档相对链接、diff check、版本 0.67.2 核对通过。本轮仅文档/离线基础镜像，不重复 App verify，未运行 Docker 或连接 NAS。
 - legacy 基础镜像：官方 amd64 manifest `sha256:9f0dde62d10e7ff7a310ecaebd66225f6b46c17e6cb778449a77b05d3541bea2`，config `sha256:c469fbffcbb0086ddfb92598192d3e09eab25f2d81b9750a00f77f0910fed744`；crane v0.22.1 Windows 官方归档 SHA256 `0e073ea8192c3b8442ec8aaf44d53c1050a09084669fae3a6ceb0f2026cf8b21`。生成的 `Tools/NasBrowser/node-22-bookworm-slim-amd64-legacy.tar` 为 232454144 bytes，SHA256 `e2fb38c744615537b53f58972c6763cd280b48cd22f7dcef7ef7c6a636f56bc2`；RepoTag、linux/amd64、官方 config digest 与全部 5 层 DiffID 独立复核通过。报告 `temp/nas-image-compat-20261028/archive-verification.json`；tar 保持 Git 忽略，不上传到远端仓库。来源/格式验证不等于 Docker17 导入或旧 DSM 的运行时验证，未连接 NAS。
 - 2026-10-28 统一上传前检查：完整 verify 通过（2795 unit + 104 integration、clean typechecked build、440 对比度检查）；另有设置聚焦 15 项/typecheck 通过。复用 `temp/lan-settings-ui-T4XNnV/report.json` 的真实 UI 证据：1440/1280/600 无溢出、开启失败回退保存与再次开启成功；该夹具中 LAN 设置 TS/CSS 与当前文件逐项内容 hash 一致，截图已复核。未改动或停止其他任务的 Vite/Node 进程。ZIP SHA256 与首次包一致，已确认无版本文件差异。
