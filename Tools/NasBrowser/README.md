@@ -43,6 +43,10 @@ node Tools/NasBrowser/dist/runtime/server.mjs --config Tools/NasBrowser/config.j
 
 ## 4. 构建并传送 Docker 镜像
 
+电脑未安装 Docker、但群晖已有 Docker 时，按 [DSM 6 首次部署教程](DSM6-QUICKSTART.md)在 NAS 上构建并运行。教程涵盖上传构建文件、首次 SSH、SQLite 兼容检查、两个数据路径、权限与日常管理，不要求在电脑安装 Docker Desktop。
+
+可直接上传的 [2026-10-28 部署包](NAS-Browser-Deploy-2026-10-28.zip)保存在本目录并随源码提交；它包含已编译服务和教程，不包含历史或视频。源码更新后需重新构建部署包，此快照不代表 DSM 实机已验收。
+
 Windows 可以直接双击本目录的 [Build-Tar.bat](Build-Tar.bat)。需要 Node.js 22.13 或以上，以及已启动的 Linux Docker 引擎（例如 Docker Desktop 的 Linux 容器模式）。脚本不安装 Docker；缺少工具、引擎未启动或使用 Windows 容器时会提示并停止。
 
 脚本自动定位仓库根目录，必要时安装根依赖，然后构建服务、构建 `linux/amd64` 镜像、运行容器内 SQLite 检查，最后导出本目录下的 `local-video-studio-nas.tar`。任何一步失败立即停止，导出先写 `.tar.partial`，完整成功后才替换旧 tar；不会启动服务或挂载历史资料。首次构建需要联网下载依赖/基础镜像；容器内检查不代表 DSM 6 实机兼容已验证。

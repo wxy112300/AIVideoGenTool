@@ -7,6 +7,8 @@
 
 ## Resume
 
+- 2026-10-28 统一上传：用户授权仓库全部提交推送并保持版本号；本轮版本为 0.67.2，版本文件不改。纳入 NAS zip/首次安装教程与当前局域网设置修正；具体提交/远端同步结果以 Git 为准。
+- 2026-10-28 首次安装指导：用户电脑无 Docker，采用电脑编译文件、NAS Docker 构建运行；新增 DSM6-QUICKSTART.md 并准备不含私有数据的上传 zip。按用户要求已移至 `Tools/NasBrowser/NAS-Browser-Deploy-2026-10-28.zip` 供稍后一起提交推送，SHA256 与原包一致；本轮未提交/推送。仅构建独立工具与文档/归档验收，NAS 执行仍由用户进行；未连接或操作 NAS，不声称 DSM 实机兼容。
 - 2026-10-28：按用户要求新增 Build-Tar.bat，自动检查 Node/Linux Docker、构建服务与 amd64 镜像、验证镜像内 SQLite、先导出 partial 再替换 tar；缺依赖时提示，支持 --no-pause。Windows 调用与失败保护已验；本机缺少 Docker CLI，真实镜像构建不可据此宣称通过。
 - 本轮补充已完成：服务 libraryRoot 与 mediaRoot 分开配置，导出器 libraryRoot 与 outputRoot 分开；两条 Drive 上传任务分别映射资料/媒体挂载，省略 libraryRoot 保持旧同根行为。独立目录导出、封面/媒体边界、真实浏览器恢复与播放均通过本机验证。
 - 后续资料库迁移与自动发布的计划已独立建立：[资料库 TASK](../2026-10-27-library-storage/TASK.md) / [PLAN](../2026-10-27-library-storage/PLAN.md)。本任务已完成的单 catalog 前置与本机证据继续保留，不代表后续分作品存储或自动迁移已实现。
@@ -25,6 +27,8 @@
 
 ## Evidence / handoff
 
+- 2026-10-28 统一上传前检查：完整 verify 通过（2795 unit + 104 integration、clean typechecked build、440 对比度检查）；另有设置聚焦 15 项/typecheck 通过。复用 `temp/lan-settings-ui-T4XNnV/report.json` 的真实 UI 证据：1440/1280/600 无溢出、开启失败回退保存与再次开启成功；该夹具中 LAN 设置 TS/CSS 与当前文件逐项内容 hash 一致，截图已复核。未改动或停止其他任务的 Vite/Node 进程。ZIP SHA256 与首次包一致，已确认无版本文件差异。
+- 2026-10-28 首次 NAS 部署包：`node Tools/NasBrowser/build.mjs` 通过；[部署包](../../../Tools/NasBrowser/NAS-Browser-Deploy-2026-10-28.zip)为 265350 bytes，12 个条目，含 Dockerfile/.dockerignore/dist/v2 示例及教程；核对无 state、视频、SQLite、凭据或 node_modules。SHA256 为 90A9E04A85B319AB2D6C143AFE1D93BB92A3092D5C30B4E7BE9374014B36EA04。构建入口语法、文档链接及 scoped diff 检查通过。用户不在数据电脑，教程使用可替换路径；未连接 NAS，真实构建/SQLite 运行/播放仍需现场执行。上传目录教程使用 NAS 登录账号 UID/GID 运行，避免为默认 UID 1000 改动用户资料 ACL。
 - 2026-10-28 bat 入口验收：真实缺 Docker 时 exit=1 并显示恢复提示，没有构建/安装；隔离的中文、空格、`&`/`!` 路径下，以 mock Docker 验证成功及 web/build/run/save/empty/daemon/windows 共 8 个场景，失败均保留旧完整 tar，成功才替换。证据在 `temp/nas-build-bat-1793171328436/report.json`；它仅证明 Windows 控制流与文件保护，不是镜像或 DSM 验收。仅改脚本/说明，未重复 App build/verify/GPU，无常驻进程；tar/partial 保持忽略，未访问用户资料。
 - 双目录增量验收：NAS focused 7 项、工具 typecheck、主项目 typecheck、工具 build 通过；`temp/nas-browser-smoke-1793095590213/report.json` 的浏览器旅程通过，PC/NAS 各自独立的文档/媒体根目录。自有服务端口 11382 已检查回收。首次 smoke 在进入动画尚未完成时测安全区过早，已改为等待边界稳定；生产 UI 未改动。此次未重复运行先前完整 verify，先前数字仅对应上一轮状态；本轮仍未实际构建 Docker 镜像或部署 NAS。
 - local-video-studio Skill、guide lan-browser、架构 LAN/History、UX LAN、CHANGE_VERIFICATION 已读。

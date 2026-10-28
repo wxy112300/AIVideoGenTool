@@ -199,7 +199,16 @@
 .settings-choice-segment .ui-button[aria-pressed="true"] { color: var(--text-1); }
 .settings-choice-segment:not([data-segment-ready]) .ui-button[aria-pressed="true"] { background: var(--surface-3); }
 .settings-choice-segment[data-segment-ready]::before { content: ""; position: absolute; z-index: 0; left: var(--segment-left); top: 2px; bottom: 2px; width: var(--segment-width); border-radius: var(--r-sm); background: var(--surface-3); pointer-events: none; }
-.settings-form-card .lan-browser-addresses:has(input:disabled) { display: none; }
+.settings-form-card [data-lan-status-row] { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.settings-form-card [data-lan-status] { flex: 1; min-width: 0; margin: 0; color: var(--text-3); font-size: var(--fs-12); }
+.settings-form-card .lan-browser-addresses { min-width: 0; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.settings-form-card .lan-browser-addresses .input-action { display: grid; grid-template-columns: minmax(0,1fr) auto auto; min-width: 0; gap: 8px; }
+.settings-form-card .lan-browser-addresses input { width: 100%; min-width: 0; }
+.settings-form-card[data-lan-panel] [hidden] { display: none; }
+@media (max-width:640px) {
+  .settings-form-card .lan-browser-addresses .input-action { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .settings-form-card .lan-browser-addresses input { grid-column: 1 / -1; }
+}
 .settings-form-card .comfy-directory-map { display: block; margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .settings-form-card .comfy-directory-row { grid-template-columns: minmax(0,1fr); gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); background: transparent; }
 .settings-form-card .comfy-directory-label { color: var(--text-1); font-size: var(--fs-13); font-weight: var(--fw-medium); }
