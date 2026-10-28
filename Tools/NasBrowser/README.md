@@ -45,6 +45,8 @@ node Tools/NasBrowser/dist/runtime/server.mjs --config Tools/NasBrowser/config.j
 
 电脑未安装 Docker、但群晖已有 Docker 时，按 [DSM 6 首次部署教程](DSM6-QUICKSTART.md)在 NAS 上构建并运行。教程涵盖上传构建文件、首次 SSH、SQLite 兼容检查、两个数据路径、权限与日常管理，不要求在电脑安装 Docker Desktop。
 
+Docker 17.05 可先按教程更新 DSM 6 的 Docker 套件至 20.10.3-0554；已核对官方安装包的 x86_64 / DSM 6.1 最低要求，DS418play 实际安装仍需验证。报 `missing signature key` 时，也可下载本目录随仓库保存的 [legacy 基础镜像压缩包](node-22-bookworm-slim-amd64-legacy.tar.gz)，按教程解压并 `docker load`，随后先检查 SQLite，再离线构建服务；不关闭校验、不降低 Node 版本，NAS 实机运行仍需验证。
+
 可直接上传的 [2026-10-28 部署包](NAS-Browser-Deploy-2026-10-28.zip)保存在本目录并随源码提交；它包含已编译服务和教程，不包含历史或视频。源码更新后需重新构建部署包，此快照不代表 DSM 实机已验收。
 
 Windows 可以直接双击本目录的 [Build-Tar.bat](Build-Tar.bat)。需要 Node.js 22.13 或以上，以及已启动的 Linux Docker 引擎（例如 Docker Desktop 的 Linux 容器模式）。脚本不安装 Docker；缺少工具、引擎未启动或使用 Windows 容器时会提示并停止。

@@ -7,6 +7,8 @@
 
 ## Resume
 
+- 2026-10-29：用户要求推送兼容资料，同时询问升级 Docker。已核对官方 20.10.3-0554 SPK 的 INFO（x86_64、最低 DSM 6.1-15163），教程补充套件中心更新与手动安装路径，DS418play 不承诺官方支持；不升级 DSM、不操作 NAS。legacy 基础镜像压缩为 80461710 bytes，随仓库上传，解压 SHA256 与已验证 tar 一致；版本保持 0.67.2。
+- 2026-10-28 NAS 现场遇到 Docker 17.05 拉取 Node 的 missing signature key：官方当前 tag 与 amd64 子镜像均为 OCI，已核对并转换官方 Linux amd64 Node 22.23.4 为 legacy load tar，存 Tools/NasBrowser 供离线导入。未改服务源码或 NAS 系统；后续由用户 load/SQLite probe，旧内核能否运行尚未验证。
 - 2026-10-28 统一上传：用户授权仓库全部提交推送并保持版本号；本轮版本为 0.67.2，版本文件不改。纳入 NAS zip/首次安装教程与当前局域网设置修正；具体提交/远端同步结果以 Git 为准。
 - 2026-10-28 首次安装指导：用户电脑无 Docker，采用电脑编译文件、NAS Docker 构建运行；新增 DSM6-QUICKSTART.md 并准备不含私有数据的上传 zip。按用户要求已移至 `Tools/NasBrowser/NAS-Browser-Deploy-2026-10-28.zip` 供稍后一起提交推送，SHA256 与原包一致；本轮未提交/推送。仅构建独立工具与文档/归档验收，NAS 执行仍由用户进行；未连接或操作 NAS，不声称 DSM 实机兼容。
 - 2026-10-28：按用户要求新增 Build-Tar.bat，自动检查 Node/Linux Docker、构建服务与 amd64 镜像、验证镜像内 SQLite、先导出 partial 再替换 tar；缺依赖时提示，支持 --no-pause。Windows 调用与失败保护已验；本机缺少 Docker CLI，真实镜像构建不可据此宣称通过。
@@ -27,6 +29,8 @@
 
 ## Evidence / handoff
 
+- 2026-10-29 上传前检查：压缩镜像 SHA256 `2d44d6d6878823ea34240adb3be4f0f806f49d765083266e19461ad58d1ece7f`，完整流式解压后的 SHA256 与下方原 tar 一致；文档相对链接、diff check、版本 0.67.2 核对通过。本轮仅文档/离线基础镜像，不重复 App verify，未运行 Docker 或连接 NAS。
+- legacy 基础镜像：官方 amd64 manifest `sha256:9f0dde62d10e7ff7a310ecaebd66225f6b46c17e6cb778449a77b05d3541bea2`，config `sha256:c469fbffcbb0086ddfb92598192d3e09eab25f2d81b9750a00f77f0910fed744`；crane v0.22.1 Windows 官方归档 SHA256 `0e073ea8192c3b8442ec8aaf44d53c1050a09084669fae3a6ceb0f2026cf8b21`。生成的 `Tools/NasBrowser/node-22-bookworm-slim-amd64-legacy.tar` 为 232454144 bytes，SHA256 `e2fb38c744615537b53f58972c6763cd280b48cd22f7dcef7ef7c6a636f56bc2`；RepoTag、linux/amd64、官方 config digest 与全部 5 层 DiffID 独立复核通过。报告 `temp/nas-image-compat-20261028/archive-verification.json`；tar 保持 Git 忽略，不上传到远端仓库。来源/格式验证不等于 Docker17 导入或旧 DSM 的运行时验证，未连接 NAS。
 - 2026-10-28 统一上传前检查：完整 verify 通过（2795 unit + 104 integration、clean typechecked build、440 对比度检查）；另有设置聚焦 15 项/typecheck 通过。复用 `temp/lan-settings-ui-T4XNnV/report.json` 的真实 UI 证据：1440/1280/600 无溢出、开启失败回退保存与再次开启成功；该夹具中 LAN 设置 TS/CSS 与当前文件逐项内容 hash 一致，截图已复核。未改动或停止其他任务的 Vite/Node 进程。ZIP SHA256 与首次包一致，已确认无版本文件差异。
 - 2026-10-28 首次 NAS 部署包：`node Tools/NasBrowser/build.mjs` 通过；[部署包](../../../Tools/NasBrowser/NAS-Browser-Deploy-2026-10-28.zip)为 265350 bytes，12 个条目，含 Dockerfile/.dockerignore/dist/v2 示例及教程；核对无 state、视频、SQLite、凭据或 node_modules。SHA256 为 90A9E04A85B319AB2D6C143AFE1D93BB92A3092D5C30B4E7BE9374014B36EA04。构建入口语法、文档链接及 scoped diff 检查通过。用户不在数据电脑，教程使用可替换路径；未连接 NAS，真实构建/SQLite 运行/播放仍需现场执行。上传目录教程使用 NAS 登录账号 UID/GID 运行，避免为默认 UID 1000 改动用户资料 ACL。
 - 2026-10-28 bat 入口验收：真实缺 Docker 时 exit=1 并显示恢复提示，没有构建/安装；隔离的中文、空格、`&`/`!` 路径下，以 mock Docker 验证成功及 web/build/run/save/empty/daemon/windows 共 8 个场景，失败均保留旧完整 tar，成功才替换。证据在 `temp/nas-build-bat-1793171328436/report.json`；它仅证明 Windows 控制流与文件保护，不是镜像或 DSM 验收。仅改脚本/说明，未重复 App build/verify/GPU，无常驻进程；tar/partial 保持忽略，未访问用户资料。
