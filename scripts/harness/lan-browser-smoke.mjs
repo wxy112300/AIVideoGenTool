@@ -72,7 +72,7 @@ try {
   assert.equal((await studio.evaluate("window.studio.getLanBrowserStatus()")).state,"off");
   await click(studio,"#lan-browser-enabled");
   report.service=await pollUntil(()=>studio.evaluate("window.studio.getLanBrowserStatus()"),v=>v.state==="running",30000,"Switch starts LAN service");
-  await wait(()=>studio.evaluate('!document.querySelector("[data-lan-open]").disabled'),"Open URL control");
+  await wait(()=>studio.evaluate('(()=>{const control=document.querySelector("[data-lan-open]");return control&&!control.disabled})()'),"Open URL control");
   report.settings=await studio.evaluate('({enabled:document.querySelector("#lan-browser-enabled").checked,addresses:[...document.querySelectorAll("[data-lan-address]")].map(o=>o.value),copyEnabled:!document.querySelector("[data-lan-copy]").disabled,openEnabled:!document.querySelector("[data-lan-open]").disabled})');
   report.settingsLayout=[];
   for(const [width,height] of browserOnly ? [] : [[1280,800],[1440,900]]){
@@ -170,6 +170,7 @@ try {
   await click(browser,'.library-tools [data-action="filter"]');
   assert.equal(await browser.evaluate('document.querySelectorAll(".library-header select").length'),0);
   assert.equal(await browser.evaluate('document.querySelectorAll("dialog [name=sort] option[value^=rating]").length'),2);
+  assert.equal(await browser.evaluate('(()=>{const d=document.querySelector(".filter-sheet"),b=d.querySelector(".filter-fields"),f=d.querySelector("footer");const top=f.getBoundingClientRect().top;b.scrollTop=b.scrollHeight;return Math.abs(f.getBoundingClientRect().top-top)<1&&[...f.querySelectorAll("button")].every(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})})()'),true);
   await click(browser,'dialog input[name="favorite"]'); await click(browser,'dialog [type="submit"]');
   await wait(()=>browser.evaluate('document.querySelector("#library-status").textContent===""&&document.querySelectorAll(".media-tile").length>0'),"Filtered wall");
   await click(browser,'.media-tile[data-index="0"]');

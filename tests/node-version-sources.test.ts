@@ -6,6 +6,23 @@ const project = '[build-system]\nversion = "99.0"\n[project]\nname = "Package"\n
 const node = { id: "package", repository: "https://github.com/owner/package.git", latest_version: { version: "1.9.0", node_id: "package" } };
 
 describe("node upstream version sources", () => {
+  it("reads the selected llama wheel provider's CUDA release tag without substituting Registry or HEAD", async () => {
+    const read = vi.fn(async (_url: string) => JSON.stringify({ tag_name: "v0.4.5-cu131-win-20261025", draft: false, prerelease: false }));
+    expect(await readNodeVersionSources("JamePeng/llama-cpp-python", read)).toEqual({ tag_name: "0.4.5", version_source: "GitHub Release" });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read.mock.calls[0]?.[0]).toBe("https://api.github.com/repos/JamePeng/llama-cpp-python/releases/latest");
+  });
+  it("falls back to the official llama release redirect and leaves latest unknown when both sources fail", async () => {
+    const repository="JamePeng/llama-cpp-python";
+    expect(await readNodeVersionSources(repository, async (_url, redirect) => {
+      if (!redirect) throw new Error("rate limited");
+      return `https://github.com/${repository}/releases/tag/v0.4.5-cu130-win-20261025`;
+    })).toEqual({ tag_name: "0.4.5", version_source: "GitHub Release" });
+    expect(await readNodeVersionSources(repository, async () => { throw new Error("offline"); }))
+      .toEqual({ tag_name: "", version_source: "", cacheable: false });
+    expect(await readNodeVersionSources(repository, async (_url, redirect) => redirect ? "https://github.com/other/fork/releases/tag/v9.9.9-cu130-win-20261025" : JSON.stringify({tag_name:"v9.9.9-cu130-win-20261025",prerelease:true})))
+      .toEqual({ tag_name: "", version_source: "", cacheable: false });
+  });
   it("reads the project table only and checks registry package and repository identity", () => {
     expect(upstreamProject(project)).toEqual({ name: "package", version: "2.0.0" });
     expect(registryVersion(node, repository, "package")).toBe("1.9.0");

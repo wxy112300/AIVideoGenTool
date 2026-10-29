@@ -12,6 +12,8 @@ The external viewer always contains the full video proportionally in the availab
 
 Sorting lives inside the Filter sheet, without a separate header select. The NAS replica retains the same favorite/rating/tag display, favorite-only and rating-range filters, rating sorts, layouts and playback. Its favorite/rating indicators cannot submit changes, tags cannot be edited, and the server rejects writes. Read-only access does not remove browse conditions or hide existing metadata.
 
+The Filter header and Reset/Apply footer stay visible while the fields scroll independently. The footer respects the iOS bottom safe area, and its actions remain reachable at every scroll position on phone, tablet and desktop. This layout is shared by the editable LAN browser and read-only NAS replica.
+
 On iOS the progress slider's entire 44px touch target stays above `safe-area-inset-bottom` with an additional 18px clearance; landscape also respects left/right insets. The Home indicator region is outside playback taps/holds/feed gestures. Video may still occupy the full viewport; thumbnail fill rules never crop the playing video.
 
 The progress row has a transparent background. One rating button combines the star and current score; it opens a compact floating rating dialog. A separate i information button opens read-only prompt text on demand. Long prompts preserve line breaks, scroll and render as plain text; empty/error states remain dismissible. Opening either dialog pauses playback and closing restores the prior play/pause intent without changing the current video.

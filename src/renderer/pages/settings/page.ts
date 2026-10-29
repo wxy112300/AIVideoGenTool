@@ -698,10 +698,13 @@ export function renderSettingsPage(
     </section>`;
 
   const llamaCppPython = environmentScan?.llamaCppPython;
+  const llamaPythonUpdateAvailable = Boolean(llamaCppPython?.installed && llamaCppPython.packageVersion &&
+    compareReleaseVersions(llamaCppPython.packageVersion, LLAMA_CPP_PYTHON_JAMEPENG_VERSION) < 0);
+  const llamaPythonOperation = !llamaCppPython?.installed ? "install" : llamaPythonUpdateAvailable ? "update" : "reinstall";
   const llamaPythonTone = !environmentScan
     ? "warning"
     : llamaCppPython?.ready
-      ? "available"
+      ? llamaPythonUpdateAvailable ? "warning" : "available"
       : llamaCppPython?.nativeCrash
         ? "missing"
         : llamaCppPython?.installed
@@ -710,7 +713,7 @@ export function renderSettingsPage(
   const llamaPythonStatus = !environmentScan
     ? s("nodes.notChecked")
     : llamaCppPython?.ready
-      ? s("nodes.runtimeVerified")
+      ? s(llamaPythonUpdateAvailable ? "nodes.needsUpdate" : "nodes.runtimeVerified")
       : llamaCppPython?.installed
         ? s("nodes.installedRepair")
         : s("nodes.notInstalled");
@@ -756,8 +759,8 @@ export function renderSettingsPage(
 
       </div>
       ${llamaCppPython?.installed && !llamaCppPython.ready && !viewModel.llamaCppPythonInstalling ? `<p class="node-error" role="alert">${escape(llamaPythonDetail)}</p>` : ""}
-      <div class="settings-node-footer">${renderDependencyVersions(settings.uiLocale, escape, { current: llamaCppPython?.packageVersion || "", recommended: LLAMA_CPP_PYTHON_JAMEPENG_VERSION, latest: "", currentFallback: llamaCppPython?.installed === false ? s("nodes.notInstalled") : "—", fallback: "—" })}<div class="custom-node-actions">
-        ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>`, {
+      <div class="settings-node-footer">${renderDependencyVersions(settings.uiLocale, escape, { current: llamaCppPython?.packageVersion || "", recommended: LLAMA_CPP_PYTHON_JAMEPENG_VERSION, latest: llamaCppPython?.latestVersion || "", latestSource: llamaCppPython?.latestVersion ? "GitHub Release · JamePeng" : undefined, currentFallback: llamaCppPython?.installed === false ? s("nodes.notInstalled") : "—", fallback: "—" })}<div class="custom-node-actions">
+        ${renderDependencyActionSplit(`<button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" data-node-operation="${llamaPythonOperation}" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}${llamaPythonActionBlocked && (viewModel.hasRunningQueueTask || viewModel.queueRunning) ? ` title="${escape(t(uiKeys.settings.actions.runningTaskBlocked))}"` : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaPythonUpdateAvailable ? "circle-arrow-up" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaPythonUpdateAvailable ? s("nodes.update") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>`, {
           locale: settings.uiLocale, escapeHtml: escape, icon,
           location: llamaCppPython?.packageDirectory || "", locationAvailable: Boolean(llamaCppPython?.installed && llamaCppPython.packageDirectory),
           cancellation: viewModel.llamaCppPythonInstalling ? { id: "python-runtime:llama-cpp-python", pending: viewModel.dependencyInstallCancelling?.includes("python-runtime:llama-cpp-python") } : undefined,

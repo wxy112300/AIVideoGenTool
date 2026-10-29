@@ -1291,7 +1291,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
     expect(processCalls.some((args) => args.includes("nvcc"))).toBe(false);
     expect(processCalls.some((args) => args.some((arg) => arg.includes("git+https://github.com/JamePeng"))))
       .toBe(false);
-    expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.4.2-cu128-win-20261003"))))
+    expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.4.5-cu128-win-20261025"))))
       .toBe(process.platform === "win32");
     expect(result.log).toContain("共用的 JamePeng llama-cpp-python 后端");
   });

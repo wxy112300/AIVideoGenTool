@@ -1,5 +1,5 @@
 import { build } from "vite";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,3 +17,11 @@ await build({ configFile: false, root, publicDir: false,
   build: { ssr: true, target: "node22", outDir: path.join(directory, "dist/runtime"), emptyOutDir: true,
     rolldownOptions: { input: { server: path.join(directory, "src/server-cli.ts"), export: path.join(directory, "src/export-cli.ts") },
       output: { entryFileNames: "[name].mjs", chunkFileNames: "chunks/[name]-[hash].mjs" } } } });
+
+const html = readFileSync(path.join(directory, "dist/web/index.html"), "utf8");
+const webEntry = /src="\.\/(assets\/[^"\s]+\.js)"/.exec(html)?.[1];
+if (!webEntry) throw new Error("Built web entry is missing");
+writeFileSync(path.join(directory, "dist/deployment.json"), JSON.stringify({
+  version: JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version,
+  builtAt: new Date().toISOString(), webEntry
+}, null, 2) + "\n");

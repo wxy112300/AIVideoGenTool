@@ -95,6 +95,13 @@ try {
   report.checks.push("independent Documents/media roots on PC/NAS; missing index → actual retry → sync completes → cached covers; original-ratio phone masonry");
   await click('[data-action="filter"]');
   await wait('!!document.querySelector("dialog[open]")', "Filters");
+  const footerPosition = await browser.evaluate('(()=>{const d=document.querySelector(".filter-sheet"),f=d.querySelector("footer"),b=d.querySelector(".filter-fields");return {top:f.getBoundingClientRect().top,bottom:f.getBoundingClientRect().bottom,dialogBottom:d.getBoundingClientRect().bottom,scrollable:b.scrollHeight>b.clientHeight,paddingBottom:parseFloat(getComputedStyle(f).paddingBottom)}})()');
+  assert.ok(footerPosition.scrollable); assert.ok(footerPosition.bottom <= 844); assert.ok(footerPosition.paddingBottom >= 54);
+  for (const fraction of [0, .5, 1]) {
+    const pinned = await browser.evaluate(`(()=>{const d=document.querySelector('.filter-sheet'),b=d.querySelector('.filter-fields');b.scrollTop=(b.scrollHeight-b.clientHeight)*${fraction};const r=d.querySelector('footer').getBoundingClientRect();return {top:r.top,buttons:[...d.querySelectorAll('footer button')].every(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))})}})()`);
+    assert.ok(Math.abs(pinned.top-footerPosition.top)<1); assert.ok(pinned.buttons);
+  }
+  await screenshot("phone-filter-actions");
   assert.equal(await browser.evaluate('document.querySelectorAll("dialog [name=favorite],dialog [name=minRating],dialog [name=maxRating],dialog option[value^=rating]").length'), 5);
   await click('dialog [name="favorite"]');
   await browser.evaluate('document.querySelector("dialog [name=minRating]").value="4";document.querySelector("dialog [name=sort]").value="rating-desc"');
@@ -133,12 +140,15 @@ try {
   await click('.watch-top [data-action="back"]'); await wait('document.querySelector("#watch").hidden', "Return to album");
   assert.equal(await browser.evaluate('!!document.querySelector(".media-tile.album")'), true);
   await click('[data-action="layout"]');
-  for (const [width, height, label] of [[768, 1024, "ipad-portrait"], [1024, 768, "ipad-landscape"]]) {
+  for (const [width, height, label] of [[768, 1024, "ipad-portrait"], [1024, 768, "ipad-landscape"], [1440, 900, "desktop"]]) {
     await browser.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
     await wait('document.querySelector("#media-wall").clientWidth>600', label);
     await browser.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
     const columns = await browser.evaluate('(()=>{const wall=document.querySelector("#media-wall"),tile=wall.querySelector(".media-tile");return Math.round((wall.clientWidth+6)/(parseFloat(tile.style.width)+6))})()');
     assert.ok(columns >= 3); await screenshot(label);
+    await click('[data-action="filter"]');
+    const footerVisible = await browser.evaluate('(()=>{const d=document.querySelector(".filter-sheet"),b=d.querySelector(".filter-fields");b.scrollTop=b.scrollHeight;return [...d.querySelectorAll("footer button")].every(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})})()');
+    assert.ok(footerVisible); await click('dialog [data-action="cancel"]');
   }
   report.checks.push("actual favorite/rating filters and rating sort in Filter only; empty/reset; favorite/rating badges and disabled player status; tags visible with no editing; four-column album; contain playback with advancing frames; safe area; plain-text Prompt; return; iPad orientations");
   report.ok = true;

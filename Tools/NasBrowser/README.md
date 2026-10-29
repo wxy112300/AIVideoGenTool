@@ -4,7 +4,7 @@
 
 电脑创作 → 自动发布浏览资料 → Drive 单向上传 → NAS 独立提供网页。复用现有手机优先界面、完整筛选/排序、收藏/评分/Tag 显示、瀑布流/相册、完整视频播放和按需 Prompt；NAS 只读，不能修改收藏、评分或 Tag，也不会写回 App 状态。排序在 Filter 菜单内。
 
-已部署服务使用[2026-10-29 程序更新包](NAS-Browser-Update-2026-10-29.zip)，按[更新手册](UPDATE.md)替换程序、构建新镜像并重建容器，保留 config/data 和原路径。旧浏览资料没有收藏/评分字段：还需在 PC 运行更新后的 App，后台重新发布并经 Drive 同步；不需要手动导出或删除 NAS 索引。
+首次部署和更新都使用唯一的[完整部署包](NAS-Browser-Deploy.zip)。已部署服务按[更新手册](UPDATE.md)直接替换程序并重建容器，保留 config/data 和原路径，不保留旧容器。旧浏览资料没有收藏/评分字段：还需在 PC 运行更新后的 App，后台重新发布并经 Drive 同步；不需要手动导出或删除 NAS 索引。
 
 新版 App 已提供分作品资料库和后台 v2 发布，自动维护 `Library/StudioLibrary/<libraryId>`，无需在 App 中配置 NAS 发布目录，上传路径由 Drive Client 设置。新配置请使用[资料库迁移与 NAS 自动发布手册](../../docs/runbooks/LIBRARY_STORAGE_AND_NAS.md)、`config.v2.example.json` 和 `compose.v2.example.yml`；NAS 的 `/data` 保存本地 SQLite，资料与媒体分别只读挂载。下面的 `catalog.json`/CLI 流程作为旧格式兼容路径保留，不能直接读取迁移后省略 history 数组的 AppData 主配置。
 
@@ -47,9 +47,9 @@ node Tools/NasBrowser/dist/runtime/server.mjs --config Tools/NasBrowser/config.j
 
 电脑未安装 Docker、但群晖已有 Docker 时，按 [DSM 6 首次部署教程](DSM6-QUICKSTART.md)在 NAS 上构建并运行。教程涵盖上传构建文件、首次 SSH、SQLite 兼容检查、两个数据路径、权限与日常管理，不要求在电脑安装 Docker Desktop。
 
-Docker 17.05 可先按教程更新 DSM 6 的 Docker 套件至 20.10.3-0554；已核对官方安装包的 x86_64 / DSM 6.1 最低要求，DS418play 实际安装仍需验证。报 `missing signature key` 时，也可下载本目录随仓库保存的 [legacy 基础镜像压缩包](node-22-bookworm-slim-amd64-legacy.tar.gz)，按教程解压并 `docker load`，随后先检查 SQLite，再离线构建服务；不关闭校验、不降低 Node 版本，NAS 实机运行仍需验证。
+Docker 17.05 先按教程更新 DSM 6 的 Docker 套件至 20.10.3-0554，再构建和检查 SQLite；不再随仓库分发 Node 基础镜像归档。基础镜像已在 NAS 时可离线构建，首次拉取仍需能访问 Docker Hub。
 
-可直接上传的 [2026-10-28 部署包](NAS-Browser-Deploy-2026-10-28.zip)保存在本目录并随源码提交；它包含已编译服务和教程，不包含历史或视频。源码更新后需重新构建部署包，此快照不代表 DSM 实机已验收。
+可直接上传的[完整部署包](NAS-Browser-Deploy.zip)保存在本目录并随源码提交；包含已编译服务、Dockerfile、v2 示例配置、Compose 示例、部署及更新教程，不包含实际 config/data、历史、视频或 Node 基础镜像。源码更新后重建并替换这个包，不再保留按日期区分的部署/更新包。
 
 Windows 可以直接双击本目录的 [Build-Tar.bat](Build-Tar.bat)。需要 Node.js 22.13 或以上，以及已启动的 Linux Docker 引擎（例如 Docker Desktop 的 Linux 容器模式）。脚本不安装 Docker；缺少工具、引擎未启动或使用 Windows 容器时会提示并停止。
 

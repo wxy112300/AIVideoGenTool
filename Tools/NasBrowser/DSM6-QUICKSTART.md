@@ -17,7 +17,7 @@
 
 ## 2. 上传部署包
 
-在 File Station 打开 docker 共享文件夹，将部署 zip 上传，然后右键解压到当前位置，得到 local-video-studio 文件夹。首次部署应使用新的空目录，不覆盖已有同名服务的数据/配置。
+在 File Station 打开 docker 共享文件夹，将唯一的 NAS-Browser-Deploy.zip 上传，然后右键解压到当前位置，得到 local-video-studio 文件夹。首次部署应使用新的空目录；已有服务按 UPDATE.md 更新，保留实际 config/data。
 
 解压后内容应是：
 
@@ -80,29 +80,7 @@ sudo docker ps -a
 
 服务端应显示 20.10.3，并检查原有容器是否正常。本次不需要升级整个 DSM，也不使用通用 Linux Docker 安装脚本替换群晖二进制。手动安装入口见[群晖操作说明](https://kb.synology.com/en-global/DSM/tutorial/How_to_install_applications_with_Package_Center)。
 
-升级可解决旧引擎的一部分镜像兼容问题；联网拉取仍需能访问 Docker Hub，且 Node/SQLite 仍须按第 5 步验证。已有离线基础镜像时可直接沿用下面的导入流程。
-
-### Docker 17.05 报 missing signature key
-
-2026-10-28 实际确认官方 node:22-bookworm-slim 的索引及 amd64 子镜像均为 OCI media type；旧 Docker 可因不识别格式而报 missing signature key，不等同于用户缺少登录/签名私钥。不要以关闭校验或降 Node 绕过；可以用官方内容生成的 Docker legacy load 归档，避开注册表 manifest 协商，再单独验证运行时。
-
-已准备的 [node-22-bookworm-slim-amd64-legacy.tar.gz](node-22-bookworm-slim-amd64-legacy.tar.gz) 为官方 Linux amd64 Node 22.23.4 的离线导入归档，压缩包约 77 MiB，随仓库保存；旁边 .sha256 保存完整校验。未压缩 tar 按既有规则不纳入 Git。生成使用 Google 官方 crane v0.22.1 的 `pull --platform linux/amd64 --format legacy node:22-bookworm-slim`；工具下载摘要、官方镜像配置摘要及全部层 DiffID 已核对。这里仅验证了来源、格式和内容，不代表旧 Docker/kernel 已运行通过。
-
-上传该基础镜像 .tar.gz 到当前 NAS 部署目录后，流式解压并导入（已有未压缩 tar 时也可用 `sudo docker load -i node-22-bookworm-slim-amd64-legacy.tar`）：
-
-```sh
-cd /volume1/docker/local-video-studio
-gzip -dc node-22-bookworm-slim-amd64-legacy.tar.gz | sudo docker load
-sudo docker run --rm --network none --entrypoint node node:22-bookworm-slim -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE ready (id INTEGER)');db.close();console.log('SQLite OK')"
-```
-
-导入应得到 node:22-bookworm-slim 标签。看到 SQLite OK 后再构建服务：
-
-```sh
-sudo docker build --pull=false -t local-video-studio-nas:local .
-```
-
-此流程使用本地基础镜像，当前 Dockerfile 仅复制 dist，不需再联网。若此前只为下载开启临时 Docker 代理，可先用 `initctl stop pkg-Docker-dockerd` 再普通 `initctl start pkg-Docker-dockerd` 恢复（需要 sudo，会重启 Docker）；无需在服务配置中保留代理。导入/运行失败保留完整错误，不自动升级 DSM 或替换 Docker 二进制。
+升级可解决旧引擎的一部分镜像兼容问题；联网拉取仍需能访问 Docker Hub，且 Node/SQLite 仍须按第 5 步验证。仓库不再分发 Node 离线基础镜像。NAS 已有基础镜像时，构建可加 `--pull=false` 复用本地镜像；服务日常运行不需要代理。
 
 ## 5. 检查 DSM 能否运行 Node/SQLite
 
@@ -205,6 +183,6 @@ sudo docker save -o local-video-studio-nas.tar local-video-studio-nas:local
 
 ## 从源码重新准备部署目录
 
-在仓库根运行 `node Tools/NasBrowser/build.mjs`，复制本工具 Dockerfile、.dockerignore、dist、本文以及 config.v2.example.json（命名为 config.example.json）到新的 local-video-studio 目录后打 zip；不打包历史、视频、config.json、node_modules 或 SQLite。上传后从第 2 步继续。
+在仓库根运行 `node Tools/NasBrowser/build.mjs`，复制本工具 Dockerfile、.dockerignore、dist、本文、UPDATE.md、config.v2.example.json（命名为 config.example.json）及 compose.v2.example.yml（命名为 compose.example.yml）到新的 local-video-studio 目录，打包并替换 NAS-Browser-Deploy.zip；不打包历史、视频、实际 config/data、node_modules 或 SQLite。dist/deployment.json 会记录本次构建标识。上传后从第 2 步继续。
 
 官方参考：[DSM 6 终端机设置](https://kb.synology.com/en-global/DSM/help/DSM/AdminCenter/system_terminal_snmp_desc?version=6)、[DSM 6 Docker 使用说明](https://kb.synology.com/th-th/DSM/help/Docker/Docker?version=6)。

@@ -97,6 +97,12 @@ body.watching { overflow: hidden; }
 .switch-field input:focus-visible + .switch-track { outline: 2px solid var(--primary); outline-offset: 3px; }
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .sheet footer { display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px; }
+.sheet.filter-sheet { padding: 0; overflow: hidden; }
+.filter-sheet form { max-height: calc(88dvh - 2px); gap: 0; }
+.filter-sheet header { flex-shrink: 0; padding: 22px 20px 16px; }
+.filter-fields { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 18px; padding: 0 20px 18px; }
+.filter-sheet footer { flex-shrink: 0; padding: 14px 20px calc(20px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+@media(min-width:600px) { .filter-sheet header { padding: 26px 26px 18px; } .filter-fields { padding-inline: 26px; } .filter-sheet footer { padding-inline: 26px; } }
 .primary { background: var(--primary); color: var(--ux-content-inverse); font-weight: 600; }
 .primary:hover { background: var(--primary-strong); }
 .tag-tokens,.tag-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }

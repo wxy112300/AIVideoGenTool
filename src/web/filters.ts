@@ -12,15 +12,15 @@ const ratings = (selected: number | null) => `<option value="">${escape(text("al
 
 export function showFilters(filter: HistoryFilterState, info: BrowseLibraryInfo, apply: (filter: HistoryFilterState) => void): void {
   const dialog = document.createElement("dialog");
-  dialog.className = "sheet";
+  dialog.className = "sheet filter-sheet";
   const render = (value: HistoryFilterState) => {
     dialog.innerHTML = `<form method="dialog"><header><h2>${text("filter")}</h2>${button("cancel", icon("x"), text("close"))}</header>
-      <label class="check switch-field"><span>${text("favorite")}</span><input name="favorite" type="checkbox" role="switch" ${value.favoriteOnly ? "checked" : ""}><span class="switch-track" aria-hidden="true"></span></label>
+      <div class="filter-fields"><label class="check switch-field"><span>${text("favorite")}</span><input name="favorite" type="checkbox" role="switch" ${value.favoriteOnly ? "checked" : ""}><span class="switch-track" aria-hidden="true"></span></label>
       <label>${text("sort")}<select name="sort">${sortOptions(value.sort)}</select></label>
       <div class="field-pair"><label>${text("minRating")}<select name="minRating">${ratings(value.minRating)}</select></label><label>${text("maxRating")}<select name="maxRating">${ratings(value.maxRating)}</select></label></div>
       <label>${text("minDuration")}<input name="minDuration" type="number" min="0" step="1" value="${value.minDuration ?? ""}"></label>
       <label>${text("model")}<select name="model" multiple>${info.models.map((model) => `<option value="${escape(model.id)}" ${value.modelIds.includes(model.id) ? "selected" : ""}>${escape(model.name)}</option>`).join("")}</select></label>
-      <section><h3>${text("includeTags")}</h3><div data-tags="include"></div></section><section><h3>${text("excludeTags")}</h3><div data-tags="exclude"></div></section>
+      <section><h3>${text("includeTags")}</h3><div data-tags="include"></div></section><section><h3>${text("excludeTags")}</h3><div data-tags="exclude"></div></section></div>
       <footer><button type="button" data-reset>${text("reset")}</button><button type="submit" class="primary">${text("apply")}</button></footer></form>`;
     const include = tagInput(dialog.querySelector<HTMLElement>('[data-tags="include"]')!, value.tags, info.tags);
     const exclude = tagInput(dialog.querySelector<HTMLElement>('[data-tags="exclude"]')!, value.excludedTags, info.tags);

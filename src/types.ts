@@ -1654,6 +1654,8 @@ export interface LlamaServerStatus {
 /** Runtime dependency shared by the Gemma H3 Prompt Writer and optional vision nodes. */
 export interface LlamaCppPythonStatus {
   packageName: "llama-cpp-python";
+  /** Observed stable release of the app-selected wheel provider; not an install target. */
+  latestVersion?: string;
   pythonPath: string;
   /** Actual package directory discovered in the selected Python; absent in old scans. */
   packageDirectory?: string;

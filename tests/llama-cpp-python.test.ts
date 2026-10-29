@@ -131,7 +131,7 @@ describe("llama-cpp-python runtime", () => {
 
   it("builds a pinned JamePeng dynamic-backend repair wheel for Python 3.12 / CUDA 12.9", () => {
     expect(llamaCppJamePengRepairWheel("12.9", "3.12.11", "win32"))
-      .toContain("v0.4.2-cu128-win-20261003/llama_cpp_python-0.4.2%2Bcu128-cp312-cp312-win_amd64.whl");
+      .toContain("v0.4.5-cu128-win-20261025/llama_cpp_python-0.4.5%2Bcu128-cp312-cp312-win_amd64.whl");
   });
 
   it("rejects unpublished Python ABIs instead of constructing a wheel URL that will 404", () => {
@@ -279,7 +279,7 @@ describe("llama-cpp-python runtime", () => {
       "--no-cache-dir",
       "--no-deps",
       "--progress-bar=raw",
-      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.2-cu130-win-20261003/llama_cpp_python-0.4.2%2Bcu130-cp312-cp312-win_amd64.whl"
+      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.5-cu130-win-20261025/llama_cpp_python-0.4.5%2Bcu130-cp312-cp312-win_amd64.whl"
     ]));
     expect(result.log).toContain("自检通过");
   });
@@ -330,7 +330,7 @@ describe("llama-cpp-python runtime", () => {
       "--no-cache-dir",
       "--no-deps",
       "--progress-bar=raw",
-      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.2-cu128-win-20261003/llama_cpp_python-0.4.2%2Bcu128-cp312-cp312-win_amd64.whl"
+      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.5-cu128-win-20261025/llama_cpp_python-0.4.5%2Bcu128-cp312-cp312-win_amd64.whl"
     ]));
     expect(result.log).toContain("动态 CUDA/CPU 后端");
   });

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { GitHubReleaseVersionLookup } from "./github-release-version.js";
 import { readNodeVersionSources } from "./node-version-sources.js";
+import { LLAMA_CPP_PYTHON_REPOSITORY } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
 import { createProcessOutputReporter } from "./process-output.js";
 import { renameWithRetry, retryableRenameError } from "./filesystem-retry.js";
 export { renameWithRetry } from "./filesystem-retry.js";
@@ -302,7 +303,8 @@ async function latestCatalogNodeReleaseVersions(
       .replace(/\.git$/i, "")
       .replace(/\/+$/u, "");
     return [definition.id, await latestGitHubReleaseVersion(settings, repository)] as const;
-  }), latestGitHubReleaseVersion(settings, STRATA_REPOSITORY).then((version) => ["strata", version] as const)]);
+  }), latestGitHubReleaseVersion(settings, STRATA_REPOSITORY).then((version) => ["strata", version] as const),
+  latestGitHubReleaseVersion(settings, LLAMA_CPP_PYTHON_REPOSITORY).then((version) => ["llama-cpp-python", version] as const)]);
   return Object.fromEntries(versions.filter(([, version]) => version));
 }
 
@@ -5476,7 +5478,7 @@ async function scanFullEnvironment(
     modelDirectory,
     outputDirectory,
     llamaServer,
-    llamaCppPython,
+    llamaCppPython: { ...llamaCppPython, latestVersion: (await latestNodeVersionsPromise)["llama-cpp-python"] || "" },
     comfyCompatibility,
     attentionAcceleration,
     items,
@@ -5774,7 +5776,7 @@ async function scanEnvironmentDependencies(
     comfyInstallType: comfyInstallation?.type ?? previous.comfyInstallType,
     comfyInstallations,
     pythonRuntimes,
-    llamaCppPython,
+    llamaCppPython: { ...llamaCppPython, latestVersion: runtimeOnly ? previous.llamaCppPython.latestVersion || "" : (await latestNodeVersionsPromise)["llama-cpp-python"] || "" },
     comfyCompatibility,
     attentionAcceleration,
     items,

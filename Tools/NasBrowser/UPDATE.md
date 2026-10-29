@@ -10,19 +10,21 @@
 
 ## 2. 上传程序更新包
 
-使用本目录的 NAS-Browser-Update-2026-10-29.zip。在 File Station 上传到 docker 共享文件夹并解压到当前位置，合并已有 local-video-studio 文件夹，覆盖程序文件。包内只有 Dockerfile、.dockerignore、dist 和本文，不包含 config、data、视频、资料库或基础镜像。原配置与本地索引保持原位。
+首次部署和更新统一使用 NAS-Browser-Deploy.zip。在 File Station 将包解压到临时文件夹，再把其中 local-video-studio 里的 dist、Dockerfile 等程序文件复制到现有项目目录，合并并覆盖同名文件。不多套一层 local-video-studio 或 dist。包内示例配置名为 config.example.json，不包含实际 config/data、视频、资料库或 Node 基础镜像；原配置与本地索引保持原位。
 
 ## 3. 构建并验证新镜像
 
-以下命令在 NAS SSH 执行，每步成功再继续。目录不是 /volume1/docker/local-video-studio 时替换 cd 路径。基础镜像已导入，无需代理或重新下载。
+以下命令在 NAS SSH 执行，每步成功再继续。目录不是 /volume1/docker/local-video-studio 时替换 cd 路径。先查看构建标识，确认复制的 dist 来自新包；基础镜像已在 NAS 时无需重新下载。
 
 ```sh
 cd /volume1/docker/local-video-studio
-sudo docker build --pull=false -t local-video-studio-nas:update-20261029 .
-sudo docker run --rm --network none --entrypoint node local-video-studio-nas:update-20261029 -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE ready (id INTEGER)');db.close();console.log('SQLite OK')"
+cat dist/deployment.json
+sudo docker build --no-cache --pull=false -t local-video-studio-nas:local .
+sudo docker run --rm --network none --entrypoint cat local-video-studio-nas:local /app/dist/deployment.json
+sudo docker run --rm --network none --entrypoint node local-video-studio-nas:local -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE ready (id INTEGER)');db.close();console.log('SQLite OK')"
 ```
 
-出现 SQLite OK 后继续。下列命令从现有容器读取媒体/资料目录和运行身份，不必重填路径；引号会保留路径中的空格。确认 ls 成功，并且 SERVICE_USER 非空。
+两个 deployment.json 的 builtAt/webEntry 应一致，出现 SQLite OK 后继续。下列命令从现有容器读取媒体/资料目录和运行身份，不必重填路径；引号会保留路径中的空格。确认 ls 成功，并且 SERVICE_USER 非空。保持同一个 SSH 窗口完成后续步骤。
 
 ```sh
 MEDIA_ROOT=$(sudo docker inspect --format '{{range .Mounts}}{{if eq .Destination "/media"}}{{.Source}}{{end}}{{end}}' local-video-studio)
@@ -34,11 +36,14 @@ ls -ld "$MEDIA_ROOT" "$LIBRARY_ROOT" "$PWD/data" "$PWD/config/config.json"
 
 ## 4. 切换容器
 
-旧容器停止后保留，便于回退；镜像使用新标签。若备份名已存在或任一步报错，先停止本次更新，不删除旧容器、data 或 config。
+直接移除本服务当前容器及上一次教程留下的备份容器，再创建新容器；不保留旧容器，不删除 config/data。先完成上方镜像验证及路径读取，任一步报错先停止。
 
 ```sh
-sudo docker stop local-video-studio
-sudo docker rename local-video-studio local-video-studio-backup-20261029
+for CONTAINER_NAME in local-video-studio local-video-studio-backup-20261029; do
+  if sudo docker inspect --type container "$CONTAINER_NAME" >/dev/null 2>&1; then
+    sudo docker rm -f "$CONTAINER_NAME"
+  fi
+done
 sudo docker run -d \
   --name local-video-studio \
   --restart unless-stopped \
@@ -49,21 +54,19 @@ sudo docker run -d \
   -v "$LIBRARY_ROOT:/library:ro" \
   -v "$PWD/data:/data:rw" \
   -v "$PWD/config:/config:ro" \
-  local-video-studio-nas:update-20261029
+  local-video-studio-nas:local
 sudo docker logs --tail=80 local-video-studio
 ```
 
 浏览器打开原地址并强制刷新（Windows Chrome：Ctrl+F5）。Filter 应包含收藏、评分范围和评分排序；列表和播放器显示同步值，播放器不能修改收藏/评分/标签。布局、视频播放和 Prompt 仍可用。Drive 完成前可能继续显示旧数据，等待轮询并刷新；无需删除 data 重建。
 
-## 5. 必要时回退
+## 5. 确认网页已更新
 
-新容器已创建但启动失败时，保留它的日志，再执行：
+用自己的 NAS 地址检查实际提供的网页；示例 IP 请替换。assets 中的 JS 文件名应与 deployment.json 的 webEntry 一致。
 
 ```sh
-sudo docker stop local-video-studio
-sudo docker rename local-video-studio local-video-studio-failed-20261029
-sudo docker rename local-video-studio-backup-20261029 local-video-studio
-sudo docker start local-video-studio
+sudo docker exec local-video-studio cat /app/dist/deployment.json
+curl -fsS http://你的NAS_IP:8790/ | grep 'assets/index-'
 ```
 
-如果新容器根本没有创建，只需执行最后两行。旧镜像能继续读取新增收藏/评分字段，SQLite 结构未改变；本步骤不删除容器、镜像或持久数据。
+若部署目录中的标识还是旧值，重新覆盖 dist；镜像标识旧则重新构建；运行中容器标识旧则重新创建容器。标识都正确后用无痕窗口或 Ctrl+F5 打开页面。新版 Filter 的重置/应用固定在底部，筛选字段独立滚动。

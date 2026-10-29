@@ -1,6 +1,6 @@
 import type { Settings, LlamaCppPythonStatus } from "../../src/types.js";
 import { pythonProbeCache } from "./python-probe-cache.js";
-import { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
+import { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE, LLAMA_CPP_PYTHON_REPOSITORY } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
 export { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
 
 export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.5";
@@ -15,7 +15,7 @@ const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu131"
 ]);
 
-// Verified against the published v0.4.2 Windows release assets. Reject an
+// Verified against the published v0.4.5 Windows release assets. Reject an
 // unknown ABI before pip starts so another computer gets an actionable error
 // instead of a long download followed by a GitHub 404.
 export const LLAMA_CPP_PYTHON_JAMEPENG_PYTHON_ABIS = [
@@ -228,7 +228,7 @@ export function llamaCppJamePengRepairWheel(
   if (!selection || !LLAMA_CPP_PYTHON_JAMEPENG_ABI_SET.has(abi)) return null;
   const tag = `v${LLAMA_CPP_PYTHON_JAMEPENG_VERSION}-${selection.wheelKey}-win-${LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE}`;
   const filename = `llama_cpp_python-${LLAMA_CPP_PYTHON_JAMEPENG_VERSION}+${selection.wheelKey}-${abi}-${abi}-win_amd64.whl`;
-  return `https://github.com/JamePeng/llama-cpp-python/releases/download/${tag}/${encodeURIComponent(filename)}`;
+  return `https://github.com/${LLAMA_CPP_PYTHON_REPOSITORY}/releases/download/${tag}/${encodeURIComponent(filename)}`;
 }
 
 export function statusFromLlamaCppProbe(
