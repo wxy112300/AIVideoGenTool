@@ -52,8 +52,8 @@ export const journeys = [
   {
     id: "upscale", title: "成功视频版本 → 放大对话框 → 独立队列 → 新版本",
     section: "upscale",
-    paths: ["src/renderer/shell/upscale-controller.ts", "src/renderer/shell/secondary-dialogs.ts", "src/core/upscale.ts", "electron/queue-enqueue.ts", "electron/queue-executor.ts"],
-    tests: ["tests/upscale-controller.test.ts", "tests/upscale.test.ts", "tests/queue-executor.test.ts", "tests/queue-history.test.ts"],
+    paths: ["src/renderer/shell/upscale-controller.ts", "src/renderer/shell/secondary-dialogs.ts", "src/core/upscale.ts", "src/core/h3-refiner.ts", "comfy_nodes/LocalVideoStudio-H3/refiner.py", "electron/queue-enqueue.ts", "electron/queue-executor.ts"],
+    tests: ["tests/upscale-controller.test.ts", "tests/upscale.test.ts", "tests/h3-refiner.test.ts", "tests/secondary-dialogs.test.ts", "tests/queue-services.test.ts", "tests/queue-executor.test.ts", "tests/queue-history.test.ts"],
     checks: ["源 asset/version 固定；换 provider 同步选项和资格；不能把 Create 1080p 当此流程", "H3 原生 AV 路径与 SeedVR2 像素路径分别验证；当前可选 provider 以 catalog/对话框为准", "分段进度、重启 checkpoint、合并/清理与输出可播放性需运行证据", "最小真实路线：隔离 --asset-source-state → upscale-smoke.mjs → 应用启动 ComfyUI/队列 → verify-video-smoke → --audit/重启；具体命令见 runbook"]
   },
   {

@@ -10,11 +10,18 @@ import { installStrataGgufPython } from "./strata-gguf-python.js";
 import { STRATA_COMMUNITY_VECTOR } from "../../src/core/strata-uncensored.js";
 import { verifyStrataControlVector } from "./strata-uncensored.js";
 import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-update-cleanup.js";
+import { gitSoftwareFiles } from "./software-git-files.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
-import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_ENGINE_VERSION, STRATA_ENGINE_MANIFEST_SHA256, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
 const receiptName = "lvs-strata-install.json";
 const vectorDirectories = ["data/lvs-control-vectors", "data/experimental-speed-projection"];
+async function preserveStrataUserData(source: string, destination: string) {
+  const head = (await fs.readFile(path.join(source, ".git", "HEAD"), "utf8").catch(() => "")).trim();
+  const release = strataInstalledRelease(source, false) ?? STRATA_RELEASES.find(release => release.revision === head);
+  const downloadable = release ? await gitSoftwareFiles(source, { repository: "https://github.com/Niko1221/Strata", revision: release.revision }) : new Set<string>();
+  await preserveSoftwareUserData(source, destination, vectorDirectories, undefined, [...downloadable]);
+}
 export function managedStrataDirectory(release?: { version: string; revision: string }): string {
   return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", release ? `v${release.version}-${release.revision.slice(0, 8)}` : "runtime");
 }
@@ -182,13 +189,17 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
       log("已清理校验失败的引擎包；再次更新将重新下载");
       throw error;
     }
-    const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
-    const expandScript = `$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath ${literal(archive)} -DestinationPath ${literal(path.join(staging, "engine"))} -Force`;
     stage("extract");
-    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(expandScript, "utf16le").toString("base64")], staging);
-    for (const name of ["strata.exe", "strata-vision.exe", "BUILD.json"]) {
-      if (!(await fs.stat(path.join(staging, "engine", name))).size) throw new Error(`引擎缺少 ${name}`);
+    await fs.mkdir(path.join(staging, "engine"), { recursive: true });
+    await run("tar.exe", ["-xzf", archive, "-C", path.join(staging, "engine")], staging);
+    for (const name of STRATA_ENGINE_FILES) {
+      if (!(await fs.stat(path.join(staging, name))).size) throw new Error(`引擎缺少 ${name}`);
     }
+    // The archive hash pins the package; also check its independently published component identity.
+    const manifestBytes = await fs.readFile(path.join(staging, "engine", "engine-component.json"));
+    const manifest = JSON.parse(manifestBytes.toString("utf8"));
+    if (createHash("sha256").update(manifestBytes).digest("hex") !== STRATA_ENGINE_MANIFEST_SHA256
+      || manifest.version !== STRATA_ENGINE_VERSION || manifest.platform !== "windows-x86_64" || manifest.backend !== "cuda") throw new Error("Strata 引擎组件清单校验失败。");
     checkInstallationCancelled();
     const vector = STRATA_COMMUNITY_VECTOR;
     stage("assets");
@@ -207,7 +218,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     // A crash during pip must remain app-owned/retryable, but never installed.
     await fs.writeFile(path.join(staging, receiptName), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256 }), "utf8");
     if (await strataManagedReceipt(root, false)) {
-      await preserveSoftwareUserData(root, staging, vectorDirectories);
+      await preserveStrataUserData(root, staging);
       const candidate = `${root}.backup-${Date.now()}`;
       await renameWithRetry(root, candidate);
       backup = candidate;
@@ -219,10 +230,10 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run(python, ["-m", "venv", "--copies", path.join(root, ".venv")], root);
     const isolatedPython = path.join(root, ".venv", "Scripts", "python.exe");
     stage("packages");
-    await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(root, "requirements.txt"), "nvidia-cublas==13.0.2.14", "nvidia-cuda-runtime==13.0.96"], root, 1_800_000);
+    await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(root, "requirements.txt")], root, 1_800_000);
     log("检查 Python 包及 CUDA DLL 文件（不加载 GPU）");
     stage("check");
-    await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil; import pathlib,sys; p=pathlib.Path(sys.prefix)/'Lib/site-packages/nvidia'; assert list(p.rglob('cublas64_13.dll')) and list(p.rglob('cudart64_13.dll')), 'CUDA DLL files missing'"], root);
+    await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path('engine')),full=True)"], root);
     checkInstallationCancelled();
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
     log(`运行组件安装完成：${root}`);
@@ -256,7 +267,7 @@ async function cleanupStrataSoftware(settings: Settings, root: string, log: (mes
     if (/^(?:v\d+\.\d+\.\d+(?:\.\d+)?-[a-f0-9]{8}|runtime)(?:\.(?:backup|failed)-\d+)?$/iu.test(entry.name) && await strataManagedReceipt(candidate, false)) {
       try {
         await checkedUninstallRoot({ ...settings, strataInstallDirectory: candidate }, { managedDirectory: candidate });
-        await preserveSoftwareUserData(candidate, root, vectorDirectories);
+        await preserveStrataUserData(candidate, root);
         await removeSoftwareArtifact(parent, candidate, log);
       } catch (error) { log(`旧软件未清理：${candidate}；${String(error)}`); }
     } else if (/^\.install-[a-z0-9]+$/iu.test(entry.name)) {
@@ -269,7 +280,7 @@ async function cleanupStrataSoftware(settings: Settings, root: string, log: (mes
           owned = /\[remote "origin"\][^[]*?url\s*=\s*https:\/\/github\.com\/Niko1221\/Strata(?:\.git)?\s*(?:\r?\n|$)/u.test(config) && /^[a-f0-9]{40}$/u.test(head);
         }
         if (owned) {
-          await preserveSoftwareUserData(candidate, root, vectorDirectories);
+          await preserveStrataUserData(candidate, root);
           await removeSoftwareArtifact(parent, candidate, log);
         }
       } catch (error) { log(`旧安装暂存未清理：${candidate}；${String(error)}`); }

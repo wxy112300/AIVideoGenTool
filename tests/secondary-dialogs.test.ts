@@ -11,6 +11,31 @@ import { uiKeys } from "../src/core/i18n-keys";
 import { versionShortEdge } from "../src/renderer/pages/history/helpers";
 
 describe("secondary dialog markup", () => {
+  it("opens Refiner 4K for ordinary video, blocks missing files and long clips, and recovers without JointAV", () => {
+    const version = { id: "v-refiner", outputFilename: "source.mp4", width: 1280, height: 720, duration: 5, fps: 30,
+      files: [{ filename: "source.mp4", absolutePath: "C:/source.mp4", type: "output", subfolder: "" }] } as AssetVersion;
+    const asset = { id: "a-refiner", title: "Source", versions: [version] } as HistoryAsset;
+    const options: Parameters<typeof renderUpscaleDialog>[0] = {
+      dialog: { assetId: asset.id, versionId: version.id, modelId: "minimax_h3_kijai_refiner", targetHeight: 2160, tileMode: "safe" },
+      history: [asset], environment: { modelProfiles: [{ id: "minimax_h3_kijai_refiner", name: "H3 Refiner · Kijai", category: "upscale", available: true }] } as never,
+      performance: null, icon: () => "", escapeHtml: String, formatBytes: String, formatVideoDuration: String,
+      formatUpscaleEstimateRange: () => "", createUpscaleFilename, upscaleDimensions, versionShortEdge,
+      estimateUpscaleResources: () => ({ frameCount: 120, vramMinGb: 0, vramMaxGb: 0, secondsMin: 0, secondsMax: 0, internalScale: 2 }),
+      t: key => key
+    };
+    const ready = renderUpscaleDialog(options);
+    expect(ready).toContain('data-upscale-height="2160"');
+    expect(ready).toContain("3840 × 2160");
+    expect(ready).toContain("h3-refiner-4K");
+    expect(ready).not.toContain('id="enqueue-upscale" disabled');
+    expect(ready).not.toContain(uiKeys.h3Native.reasonArtifactMissing);
+    expect(ready).toContain(uiKeys.upscale.benchmarkPending);
+    const unavailable = renderUpscaleDialog({ ...options, environment: { modelProfiles: [] } as never });
+    expect(unavailable).toContain('id="enqueue-upscale" disabled');
+    version.duration = 16;
+    expect(renderUpscaleDialog(options)).toContain(uiKeys.upscale.refinerDuration);
+    expect(renderUpscaleDialog(options)).toContain('id="enqueue-upscale" disabled');
+  });
   it("renders a preview target for each cleanable image asset", () => {
     const sourcePath = "C:\\ComfyUI\\input\\LocalVideoStudio\\sources\\sample.png";
     const markup = renderImageAssetLibraryDialog({

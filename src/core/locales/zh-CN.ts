@@ -735,6 +735,7 @@ export const zhCNCatalog = {
     [uiKeys.upscale.modeShort]: "超分模式",
     [uiKeys.upscale.styleShort]: "风格",
     [uiKeys.upscale.benchmarkPending]: "待首次基准",
+    [uiKeys.upscale.refinerDuration]: "H3 Refiner 当前支持不超过 15 秒的视频，输出为 24 FPS。",
     [uiKeys.upscale.targetUnavailable]: "请选择高于源视频且当前模型支持的分辨率。",
     [uiKeys.upscale.modelUnavailable]: "当前模型缺少组件，请更换模型或前往设置补齐。",
     [uiKeys.upscale.disk]: "磁盘",

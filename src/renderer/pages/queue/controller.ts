@@ -5,6 +5,7 @@ import { icon } from "../../shared/icons";
 import { mountQueueActionMenu, type QueueMenuAction } from "./action-menu";
 import { mountQueueDragSort } from "./drag-sort";
 import { mountQueuePrompts } from "./prompt";
+import { applyQueueOrderState } from "./order-update";
 
 export type QueueConfirmationAction = "remove" | "cancel";
 
@@ -89,11 +90,13 @@ export function mountQueueController(
       } else if (action === "promote") {
         if (!canPromote(taskId)) return;
         context.reportUserAction("queue-promote", { taskId, targetIndex: 0 });
-        options.setState(await context.application.reorderTask(taskId, 0));
+        applyQueueOrderState(context, options.setState, await context.application.reorderTask(taskId, 0));
+        return;
       } else if (action === "render-through-here") {
         if (task.status !== "waiting") return;
         context.reportUserAction("queue-set-pause-boundary", { taskId });
-        options.setState(await context.application.setQueuePauseBoundaryAfterTask(taskId));
+        applyQueueOrderState(context, options.setState, await context.application.setQueuePauseBoundaryAfterTask(taskId));
+        return;
       } else if (action === "remove") {
         context.reportUserAction("queue-remove", { taskId });
         options.requestConfirmation(taskId, "remove");

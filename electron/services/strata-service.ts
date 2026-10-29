@@ -103,7 +103,7 @@ export async function prepareStrataLaunch(
   configPath: string,
   options: { adaptive?: boolean; readResources?: typeof readStrataResources } = {}
 ): Promise<StrataLaunchPlan> {
-  if (!validStrataPort(settings.strataPort)) throw new Error("Strata 端口无效（不能使用 8080）。");
+  if (!validStrataPort(settings.strataPort)) throw new Error("Strata 端口应为 1024–65535 的整数。");
   const cwd = path.resolve(resolvedStrataDirectory(settings));
   if (!await strataManagedReceipt(cwd)) throw new Error("Strata 管理安装未完成，请重新扫描或重装。");
   const executable = path.join(cwd, ".venv", "Scripts", "python.exe");

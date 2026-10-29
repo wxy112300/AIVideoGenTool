@@ -262,7 +262,13 @@ describe("SettingsService", () => {
     expect(repository.snapshot().queue).toEqual(initial.queue);
   });
 
-  it.each([8080, 80, NaN, 65536, 43127.5])("rejects invalid Strata port %s before persistence", async (strataPort) => {
+  it("persists an explicitly chosen Strata port 8080", async () => {
+    const initial = createDefaultState();
+    const repository = createRepository(initial);
+    await createSettingsService(repository).save({ ...initial.settings, strataPort: 8080 });
+    expect(repository.snapshot().settings.strataPort).toBe(8080);
+  });
+  it.each([80, NaN, 65536, 43127.5])("rejects invalid Strata port %s before persistence", async (strataPort) => {
     const initial = createDefaultState();
     const repository = createRepository(initial);
     await expect(createSettingsService(repository).save({ ...initial.settings, strataPort })).rejects.toThrow("Strata");

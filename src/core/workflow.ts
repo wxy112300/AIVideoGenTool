@@ -1506,7 +1506,7 @@ export function activityTimeoutMinutesForTask(
   task: Pick<QueueTask, "taskType" | "modelId">,
   ltxExtensionTimeoutMinutes: number
 ): number {
-  if (isMiniMaxH3Model(task.modelId)) return 90;
+  if (isMiniMaxH3Model(task.modelId) || modelCatalog.isFamily(task.modelId, "h3-refiner")) return 90;
   if (task.modelId === "seedvr2-native-int8") return 90;
   if (task.modelId === "dlss5-sr" || task.modelId === "dlss5-konohamaru") return 90;
   if (task.taskType === "extension") return ltxExtensionTimeoutMinutes;

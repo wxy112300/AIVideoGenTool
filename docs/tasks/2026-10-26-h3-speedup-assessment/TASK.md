@@ -1,6 +1,6 @@
 # H3 加速方案更新评估
 
-- 类型：TASK；日期：2026-10-26；更新：2026-10-28；状态：complete（已授权的推荐线及 LoRA 入口替换完成，权重实跑未验）。
+- 类型：TASK；日期：2026-10-26；更新：2026-10-30；状态：complete（推荐线及 LoRA 入口更新完成，本机新运行组合实跑未验）。
 - 范围：初始为 RTX 5090 五方案评估；10 月 28 日追加授权 H3 GGUF 推荐线及已接入旧加速 LoRA 替换。权重仍由用户管理，不删除旧文件或改写旧执行快照。
 - 执行：当前 agent 直接完成，无子 agent。
 
@@ -13,6 +13,9 @@
 
 ## Resume
 
+- 10 月 30 日已授权推荐更新：ComfyUI 0.43.0（官方 Latest）、KJNodes 1.5.3、Prompt Writer 固定 0.4.8；Kitchen 安装目标 0.2.40，保留旧 0.2.39 CUDA backend。Writer 新版七文件补丁回放/幂等/语法、KJ 三节点公开输入及 mask 回退、managed raw 委托、196 项相邻回归与类型检查通过；隔离生产构建及对比度通过。本机安装、权重和 GPU 未改；[升级范围与兼容证据](evidence/core-kj-writer-update.md) 记录源码边界及全量回归结果。
+- 核心更新复核（2026-10-30）：官方远端最新 tag 为 0.43.1（`086099f5d8886163ef77dc354f8382cb7431582a`），发布首页 Latest 仍为 0.43.0；两者均尚不含 Sol VAE。主分支 `fd7639f477050e5c25b68fc38a9c2a6b6d988211` 已含 Sol 与原生 H3 latent upscaler。0.42.3→0.43.1 主要收益为内存/卸载修复、FLUX.2 VAE、Qwen/MOSS 更新；PDD LoRA 修复已在 0.42.3，不能重复计入。见 [核心更新复核](evidence/comfy-core-043-review.md)。仅研究，未升级本机或推荐线。
+- Sol VAE 研究：建议以可选最终解码器接入 Sol INT8 / FP16，编码保持原版；现有 FP16 默认、Auto 语义、旧任务与 Continuum/Refiner 配方先保持。区分启动前候选选择和运行中失败，OOM 不向 Sol FP16 回退。官方权重已发布，当前推荐核心 0.42.3 尚缺支持；实施前须固定包含 PR 的核心和权重完整身份，并验证实际帧数/编码。见 [新增方案及回退顺序](evidence/sol-vae-proposal.md)。本阶段仅研究，未安装或改产品行为。
 - GGUF 更新后误报已修复（patch）：H3 适配保留 `.git`，安装器识别自身 loader 补丁。本机逐项核对 54 个上游跟踪文件及适配入口后仅恢复 Git 元数据；实际扫描得到 26.10.21 / `61843db5`、`updateAvailable=false`。本轮 306 文件 / 2895 项测试、类型检查、隔离生产构建与 440 项对比度通过；详情及验证边界见 [GGUF 修复证据](evidence/gguf-revision-repair.md)。
 - 本次交付：三个 LightX2V 入口原位更新，不新增重复旧版卡片。文件分别为 FL2VA 四步 v1.3、FL2VA 八步 768p v1.1、Ref2VA 四步 768p v1.0；产品 ID 保持稳定，具体权重文件决定新旧采样配方。新草稿/继续创作升级已知旧文件，通用快照归一化不改队列/History 的 filename/strength；已有 Continuum 分组保留冻结配置。来源与验收见 [新版接入证据](evidence/lightx2v-replacement.md)。
 - 新版采用 Euler/Simple，FL2VA shift 6/3、Ref2VA 12/3，四/八步与文件匹配，默认强度 1。原队列保留 Euler/Beta 或 ER-SDE/Beta。Larry v4、Turbo-SLA、PDD 未发现对应的新权重，本轮保持；不新增 DMAD 等独立方案。

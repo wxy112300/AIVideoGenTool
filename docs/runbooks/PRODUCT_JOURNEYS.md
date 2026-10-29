@@ -242,11 +242,12 @@ flowchart TD
   D --> P{当前 provider}
   P --> H3[H3 native: AV 资格 / latent 二次采样]
   P --> SEED[SeedVR2: 像素视频 / 目标尺寸 / 分段策略]
+    P --> REF[H3 Refiner: 普通视频 / 1080至4K / 最长15秒]
   SEED --> SWITCH{provider 切换}
   SWITCH --> CLASSIC[普通 SeedVR2: 显存策略选择]
   SWITCH --> NATIVE[原生 INT8: 节点固定低显存分批]
   P --> OTHER[其他当前可选 provider: 专用参数与依赖]
-  H3 & CLASSIC & NATIVE & OTHER --> Q[enqueueUpscale → source identity + options snapshot]
+    H3 & CLASSIC & NATIVE & OTHER & REF --> Q[enqueueUpscale → source identity + options snapshot]
   Q --> GPU[同一重 GPU 队列]
   GPU --> SEG[必要时逐段 checkpoint → 合并 → 清理中间段]
   SEG --> VER[同一资产的新 version，保留 lineage]

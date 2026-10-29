@@ -116,9 +116,9 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.4.7",
+      recommendedVersion: "0.4.8",
       compatibilityEvidence: [{
-        commit: "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e",
+        commit: "47514b86c573167f5d0cae2b9d5184c009e332e1",
         checks: ["static"]
       }],
       required: false
@@ -296,7 +296,10 @@ describe("dependency catalog", () => {
         "LocalVideoStudioH3RequireGpuVAE",
         "LocalVideoStudioH3AnchorConditioning"
       ],
-      features: [{ id: "h3-continuum-groups", nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"] }],
+      features: [
+        { id: "h3-continuum-groups", nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"] },
+        { id: "h3-refiner", nodeTypes: ["LocalVideoStudioH3RefinerPrepare", "LocalVideoStudioH3RefinerOutput", "LocalVideoStudioH3RefinerLoraGuard"] }
+      ],
       required: false
     });
   });

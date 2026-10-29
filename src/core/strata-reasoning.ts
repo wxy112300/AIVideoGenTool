@@ -1,4 +1,4 @@
-/** Strata 0.1.45 maps high and xhigh to the same template level. */
+/** Supported Strata baselines map high and xhigh to the same template level. */
 export const strataReasoningEfforts = ["off", "low", "medium", "high"] as const;
 export type StrataReasoningEffort = typeof strataReasoningEfforts[number];
 export const STRATA_DEFAULT_REASONING_EFFORT: StrataReasoningEffort = "medium";

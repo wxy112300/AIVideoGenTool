@@ -1,4 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../contracts";
+import { H3_REFINER_ID, h3RefinerGeometry, h3RefinerSourceFilename } from "../../core/h3-refiner";
 import type { UpscaleDialogState } from "./secondary-dialogs";
 import type {
   AetherScaleCarrierMode,
@@ -214,8 +215,11 @@ export function mountUpscaleController(
     options.setDialog({
       ...dialog,
       modelId,
+      h3Provider: h3Selected ? dialog.h3Provider : undefined,
       targetHeight: h3Selected
         ? (dialog.targetHeight === 768 ? 768 : 720)
+        : modelId === H3_REFINER_ID
+          ? (dialog.targetHeight === 1440 || dialog.targetHeight === 2160 ? dialog.targetHeight : 1080)
         : aetherScaleSelected || konohamaruSelected
           ? undefined
           : (dialog.targetHeight === 768 ? 1080 : dialog.targetHeight ?? 1080),
@@ -382,7 +386,9 @@ export function mountUpscaleController(
                 version.height,
                 legacyTargetHeight === 2160 ? 1440 : legacyTargetHeight!
               )
-            : upscaleDimensions(version.width, version.height, legacyTargetHeight!);
+            : dialog.modelId === H3_REFINER_ID
+              ? (() => { const g = h3RefinerGeometry(version.width, version.height, legacyTargetHeight!); return [g.outputWidth, g.outputHeight]; })()
+              : upscaleDimensions(version.width, version.height, legacyTargetHeight!);
       const h3Artifact = version.h3ContinuationData?.status === "available"
         ? version.h3ContinuationData.artifact
         : undefined;
@@ -467,7 +473,7 @@ export function mountUpscaleController(
               : `builtin:upscale/${dialog.modelId}`,
             tileMode: dialog.tileMode,
             faceRestore: false,
-            outputFilename: createUpscaleFilename(sourceFile.filename, legacyTargetHeight!)
+            outputFilename: createUpscaleFilename(dialog.modelId === H3_REFINER_ID ? h3RefinerSourceFilename(sourceFile.filename) : sourceFile.filename, legacyTargetHeight!)
           };
       if (dialog.taskId || dialog.replaceTaskId) {
         const nextState = await context.application.updateUpscaleTask(

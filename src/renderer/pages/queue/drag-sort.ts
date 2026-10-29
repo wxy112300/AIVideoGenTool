@@ -3,6 +3,7 @@ import type { AppState } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
 import { activeQueueTaskIds, activeQueueTasks } from "../../../core/queue";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { applyQueueOrderState } from "./order-update";
 
 type QueueDropSide = "before" | "after";
 
@@ -490,8 +491,7 @@ export function mountQueueDragSort(
       const nextState = pauseBoundaryTarget === undefined
         ? await context.application.reorderTask(current.taskId, targetIndex)
         : await context.application.reorderTask(current.taskId, targetIndex, pauseBoundaryTarget);
-      setState(nextState);
-      context.requestRender();
+      applyQueueOrderState(context, setState, nextState);
     } catch (error) {
       updateDraggedRank(context, current, null);
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -508,8 +508,7 @@ export function mountQueueDragSort(
     boundaryDrag = null;
     try {
       context.reportUserAction("queue-boundary-drag", { targetIndex });
-      setState(await context.application.setQueuePauseBoundary(targetIndex));
-      context.requestRender();
+      applyQueueOrderState(context, setState, await context.application.setQueuePauseBoundary(targetIndex));
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
       context.requestRender();
@@ -698,8 +697,7 @@ export function mountQueueDragSort(
     event.preventDefault();
     context.reportUserAction("queue-keyboard-reorder", { taskId, targetIndex });
     try {
-      setState(await context.application.reorderTask(taskId, targetIndex));
-      context.requestRender();
+      applyQueueOrderState(context, setState, await context.application.reorderTask(taskId, targetIndex));
       focusHandleAfterRender(taskId);
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -731,8 +729,7 @@ export function mountQueueDragSort(
     event.preventDefault();
     context.reportUserAction("queue-keyboard-boundary", { targetIndex });
     try {
-      setState(await context.application.setQueuePauseBoundary(targetIndex));
-      context.requestRender();
+      applyQueueOrderState(context, setState, await context.application.setQueuePauseBoundary(targetIndex));
       focusBoundaryAfterRender();
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });

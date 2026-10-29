@@ -62,6 +62,17 @@ describe("resumable software download", () => {
 
 describe("asset-keyed Strata software cache", () => {
   const asset = { url: "https://example.invalid/fixed.zip", bytes: 20, sha256: "a".repeat(64), revision: "b".repeat(40) };
+  it("resumes tar.gz components in their own cache without adopting a legacy ZIP", async () => {
+    const { root } = await fixture(), stage = path.join(root, ".install-legacy"); await fs.mkdir(stage);
+    await fs.writeFile(path.join(stage, "engine.zip"), Buffer.from([0x50, 0x4b, 3, 4]));
+    const run = vi.fn(), expected = { ...asset, url: "https://example.invalid/engine.tar.gz" };
+    const archive = await prepareStrataDownloadCache(root, { run, log: vi.fn() }, expected);
+    expect(archive).toMatch(/engine\.tar\.gz$/u);
+    expect(run).not.toHaveBeenCalled();
+    await fs.writeFile(archive, "partial tar");
+    expect(await prepareStrataDownloadCache(root, { run, log: vi.fn() }, expected)).toBe(archive);
+    expect(await fs.readFile(archive, "utf8")).toBe("partial tar");
+  });
   it("copies only a pinned official Git-stage partial, preserves it and reuses the cache on later clicks", async () => {
     const { root } = await fixture(), stage = path.join(root, ".install-legacy"); await fs.mkdir(stage);
     const source = path.join(stage, "engine.zip"); await fs.writeFile(source, Buffer.from([0x50, 0x4b, 3, 4, 1, 2]));

@@ -4,6 +4,8 @@
 
 ## 当前任务
 
+- [H3 Refiner 视频 Upscale（Kijai，至 4K）](2026-10-29-h3-refiner-upscale/TASK.md)
+
 - [0.67.1 Windows Release](2026-10-28-release-0.67.1/TASK.md)
 
 - [文档目录资料库、可靠迁移与 NAS 自动同步](2026-10-27-library-storage/TASK.md)

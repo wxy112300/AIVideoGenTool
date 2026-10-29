@@ -9,6 +9,7 @@ import type { RendererCleanup, RendererContext } from "../../contracts";
 import { MODEL_DOWNLOAD_INVALID, rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
 import { outputDirectoryWithinRoot } from "./helpers";
+import { modelComponentWithLocations, openModelComponentLocation } from "./model-location";
 import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 
@@ -104,7 +105,12 @@ export function mountSettingsPageController(
         ? status!.modelDirectory
         : settings.modelDirectory.trim() ? strataModelRoot(settings) : "", profile.id);
       const selection: SettingsInstallGuideSelection = {
-        profileName: profile.name, component,
+        profileName: profile.name,
+        component: modelComponentWithLocations(component, {
+          modelDirectory: options.getEnvironmentScan()?.modelDirectory || settings.modelDirectory,
+          promptModelDirectory: settings.promptModelDirectory,
+          comfyRoot: options.getEnvironmentScan()?.comfyRoot || ""
+        }),
         ...(profile.managedBy === "strata" ? { targetRoot } : {})
       };
       options.setInstallGuide(selection);
@@ -151,9 +157,8 @@ export function mountSettingsPageController(
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
   }, { signal });
   root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
-    const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
-    if (!directory) return;
-    const opened = await options.context.hostCapabilities.openDirectory(directory);
+    const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim() || "";
+    const opened = await openModelComponentLocation(options.context.hostCapabilities, options.getInstallGuide()?.component, directory);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
   }, { signal });
 

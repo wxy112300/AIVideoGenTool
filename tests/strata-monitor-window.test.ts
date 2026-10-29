@@ -68,7 +68,13 @@ describe("Strata official read-only monitor", () => {
     expect(f.error).toHaveBeenCalledOnce();
     expect(f.state.service).toMatchObject({ backend: "strata", phase: "starting" });
   });
-  it.each(["https://127.0.0.1:43127", "http://localhost:43127", "http://127.0.0.1:8080", "http://127.0.0.1", "http://127.0.0.1:43127/other", "http://x@127.0.0.1:43127", "http://127.0.0.1:43127/?key=x"])("rejects unsafe capability origin %s", (origin) => {
+  it("uses an explicitly selected 8080 for the same authenticated read-only monitor", () => {
+    const connection = { ...target, origin: "http://127.0.0.1:8080" };
+    expect(strataMonitorOrigin(connection)).toBe(connection.origin);
+    expect(strataMonitorRequestAllowed(connection, `${connection.origin}/v1/status`, "GET")).toBe(true);
+    expect(strataMonitorRequestAllowed(connection, `${connection.origin}/v1/chat/completions`, "POST")).toBe(false);
+  });
+  it.each(["https://127.0.0.1:43127", "http://localhost:43127", "http://127.0.0.1", "http://127.0.0.1:43127/other", "http://x@127.0.0.1:43127", "http://127.0.0.1:43127/?key=x"])("rejects unsafe capability origin %s", (origin) => {
     expect(strataMonitorOrigin({ ...target, origin })).toBeNull();
   });
   it("allows only GET monitor assets/status/records, never inference, control, configuration or foreign URLs", () => {

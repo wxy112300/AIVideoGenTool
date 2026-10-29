@@ -68,6 +68,27 @@ async function fixture(index = 0) {
 }
 
 describe("Strata CPU preparation and config", () => {
+  it.each([0, 1, 2])("migrates the audited 0.1.45 pack and CUDA layout for Qwen profile %i without hashing or packing again", async index => {
+    const f = await fixture(index), old = STRATA_RELEASES[1];
+    const installationReceipt = path.join(f.install, "lvs-strata-install.json");
+    await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
+    const prepared = await f.prepare();
+    expect(JSON.parse(await fs.readFile(prepared.configPath, "utf8")).lib_dirs[0]).toContain("site-packages");
+    const artifacts = JSON.parse(await fs.readFile(prepared.receiptPath, "utf8")).artifacts;
+    const calls = [f.verifyAsset.mock.calls.length, f.run.mock.calls.length];
+    await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[0], installedAt: "fixture" }));
+    await expect(validatePreparedStrataRuntime(prepared.configPath, f.install)).rejects.toThrow("准备记录无效");
+    const onLog = vi.fn();
+    expect(await validatePreparedStrataRuntime(prepared.configPath, f.install, { upgradeLegacyConfig: true, onLog })).toBe(f.entry.id);
+    expect(JSON.parse(await fs.readFile(prepared.configPath, "utf8")).lib_dirs).toEqual([path.join(f.install, "engine")]);
+    const receipt = JSON.parse(await fs.readFile(prepared.receiptPath, "utf8"));
+    expect(receipt).toMatchObject({ sourceRevision: STRATA_REVISION, packSourceRevision: old.revision, artifacts });
+    expect([f.verifyAsset.mock.calls.length, f.run.mock.calls.length]).toEqual(calls);
+    expect(onLog).toHaveBeenCalledWith(expect.stringContaining("未重新哈希"));
+    expect(await validatePreparedStrataRuntime(prepared.configPath, f.install)).toBe(f.entry.id);
+    await fs.appendFile(path.join(prepared.packDirectory, "dense.bin"), "changed");
+    await expect(validatePreparedStrataRuntime(prepared.configPath, f.install, { upgradeLegacyConfig: true })).rejects.toThrow("pack/tokenizer 在准备后改变");
+  });
   it("reuses a verified same-revision pack when its versioned managed software path becomes the shared runtime", async () => {
     const root = await rootFixture(); vi.stubEnv("LOCALAPPDATA", root);
     const former = managedStrataDirectory(STRATA_RELEASES[0]), current = managedStrataDirectory(), config = path.join(root, "pack", "runtime.json");
@@ -127,12 +148,35 @@ describe("Strata CPU preparation and config", () => {
     const f = await fixture(), old = STRATA_RELEASES[1];
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
+    for (const name of ["engine-component.json", "strata_kq.dll", "cublas64_13.dll", "cublasLt64_13.dll"])
+      await fs.unlink(path.join(f.install, "engine", name));
     const prepared = await f.prepare();
     expect(JSON.parse(await fs.readFile(prepared.receiptPath, "utf8")).sourceRevision).toBe(old.revision);
     expect(await validatePreparedStrataRuntime(prepared.configPath, f.install)).toBe(f.entry.id);
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[0], installedAt: "fixture" }));
     await expect(validatePreparedStrataRuntime(prepared.configPath, f.install)).rejects.toThrow("准备记录无效");
     expect(await fs.stat(prepared.packDirectory)).toBeTruthy();
+  });
+  it("does not migrate a modified old config, unrecognized source or unsupported pack format", async () => {
+    const f = await fixture(), old = STRATA_RELEASES[1];
+    const installationReceipt = path.join(f.install, "lvs-strata-install.json");
+    await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
+    const prepared = await f.prepare(), originalReceipt = await fs.readFile(prepared.receiptPath, "utf8"), originalConfig = await fs.readFile(prepared.configPath, "utf8");
+    await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[0], installedAt: "fixture" }));
+    await fs.writeFile(prepared.configPath, JSON.stringify({ ...JSON.parse(originalConfig), lib_dirs: ["unverified"] }));
+    await expect(validatePreparedStrataRuntime(prepared.configPath, f.install, { upgradeLegacyConfig: true })).rejects.toThrow("不一致");
+    expect(await fs.readFile(prepared.receiptPath, "utf8")).toBe(originalReceipt);
+    await fs.writeFile(prepared.configPath, originalConfig);
+    await fs.writeFile(prepared.receiptPath, JSON.stringify({ ...JSON.parse(originalReceipt), sourceRevision: "f".repeat(40) }));
+    await expect(validatePreparedStrataRuntime(prepared.configPath, f.install, { upgradeLegacyConfig: true })).rejects.toThrow("准备记录无效");
+    await fs.writeFile(prepared.receiptPath, originalReceipt);
+    const { strataPackArtifactFacts } = await import("../electron/services/strata-model-preparation.js");
+    await fs.writeFile(path.join(prepared.packDirectory, "native_experts.txt"), "# strata native experts v5: unsupported old pack");
+    const unsupported = JSON.stringify({ ...JSON.parse(originalReceipt), artifacts: await strataPackArtifactFacts(prepared.packDirectory, f.entry.id) });
+    await fs.writeFile(prepared.receiptPath, unsupported);
+    await expect(validatePreparedStrataRuntime(prepared.configPath, f.install, { upgradeLegacyConfig: true })).rejects.toThrow("格式不在本次升级兼容范围");
+    expect(await fs.readFile(prepared.receiptPath, "utf8")).toBe(unsupported);
+    expect(await fs.readFile(prepared.configPath, "utf8")).toBe(originalConfig);
   });
   it("uses official complement residency without a fixed RAM cap, retaining a no-MTP base path", async () => {
     const f = await fixture();
@@ -318,7 +362,8 @@ describe("Strata CPU preparation and config", () => {
   it("does not silently invent runtime/GPU policy or force long-context KV at short context", () => {
     const input = { installDirectory: "software", packDirectory: "pack", shards: ["first", "second"], pleShard: "second", projector: "projector", modelId: "model", port: 43127, policy };
     expect(buildStrataRuntimeConfig({ ...input, policy: { ...policy, maxContext: 8192 } }).args).not.toContain("--kv");
-    expect(() => buildStrataRuntimeConfig({ ...input, port: 8080 })).toThrow("端口");
+    expect(buildStrataRuntimeConfig({ ...input, port: 8080 }).port).toBe(8080);
+    expect(() => buildStrataRuntimeConfig({ ...input, port: 80 })).toThrow("端口");
     expect(() => buildStrataRuntimeConfig({ ...input, pleShard: "foreign" })).toThrow("分片");
   });
 });

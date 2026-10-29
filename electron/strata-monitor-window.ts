@@ -11,7 +11,7 @@ export function strataMonitorOrigin(connection: StrataMonitorConnection | null):
   try {
     const url = new URL(connection.origin);
     return url.protocol === "http:" && url.hostname === "127.0.0.1" &&
-      Boolean(url.port) && url.port !== "8080" && url.pathname === "/" &&
+      Boolean(url.port) && url.pathname === "/" &&
       !url.username && !url.password && !url.search && !url.hash ? url.origin : null;
   } catch { return null; }
 }

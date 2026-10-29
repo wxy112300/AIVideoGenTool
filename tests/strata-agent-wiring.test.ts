@@ -48,7 +48,7 @@ describe("local Agent wiring without starting any service or CLI", () => {
     expect(route.env.CLAUDE_CODE_OAUTH_TOKEN).toBe(""); expect(route.env.CLAUDE_CODE_USE_BEDROCK).toBe("0"); expect(route.env.HTTPS_PROXY).toBe("");
     expect(route.env.CLAUDE_CONFIG_DIR).toBe(parent.CLAUDE_CONFIG_DIR); expect(route.env.HOME).toBe(parent.HOME); expect(route.env.OPENAI_API_KEY).toBe(parent.OPENAI_API_KEY);
     expect(route.settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("claude-sonnet-4-6");
-    expect(() => localClaudeRoute(parent, "x", 8080, "m")).toThrow();
+    expect(localClaudeRoute(parent, "x", 8080, "m").env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:8080");
     expect(localClaudeRoute(parent, 'local', 43127, 'm', 65536).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('65536');
     expect(localClaudeRoute(parent, 'local', 43127, 'm', 262144).env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000');
     expect(() => localClaudeRoute(parent, 'local', 43127, 'm', 999999)).toThrow('上下文');

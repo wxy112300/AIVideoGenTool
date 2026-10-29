@@ -454,6 +454,7 @@ export function persistVideoHistoryResult(
     comfyOutputs: result.comfyOutputs, files: result.files,
     tileMode: task.tileMode, faceRestore: task.faceRestore, startedAt: task.startedAt,
     sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
+    ...(task.h3Refiner ? { h3Refiner: structuredClone(task.h3Refiner), upscaleProvider: "kijai-h3-refiner", upscaleOperation: "latent-refine" } : {}),
     ...(task.modelId === "dlss5-sr" && task.dlss5
       ? {
           upscaleProvider: "dlss5",

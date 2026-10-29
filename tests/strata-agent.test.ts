@@ -147,10 +147,11 @@ describe("standalone Agent safety boundaries (no GPU inference)", () => {
     expect(await readAgentPreferences(directory)).toEqual(saved);
     expect(await fs.readFile(path.join(directory, "preferences.json"), "utf8")).not.toContain("must-not-persist");
   });
-  it("rejects catalog bypass, LAN before first-use validation, duplicate/8080 ports and relative paths", () => {
+  it("allows explicit 8080 but rejects catalog bypass, unvalidated LAN, duplicate ports and relative paths", () => {
     expect(() => normalizeAgentPreferences({ ...agentDefaults(), modelId: "random.gguf" })).toThrow("catalog");
     expect(() => normalizeAgentPreferences({ ...agentDefaults(), lan: true })).toThrow("首次安全验收");
-    expect(() => normalizeAgentPreferences({ ...agentDefaults(), strataPort: 8080 })).toThrow("8080");
+    expect(normalizeAgentPreferences({ ...agentDefaults(), strataPort: 8080 }).strataPort).toBe(8080);
+    expect(normalizeAgentPreferences({ ...agentDefaults(), guiPort: 8080 }).guiPort).toBe(8080);
     expect(() => normalizeAgentPreferences({ ...agentDefaults(), guiPort: 43127 })).toThrow("同一端口");
     expect(() => normalizeAgentPreferences({ ...agentDefaults(), modelDirectory: "../models" })).toThrow("完整路径");
   });

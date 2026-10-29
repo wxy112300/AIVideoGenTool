@@ -586,6 +586,7 @@ export const uiKeys = {
     modeShort: "upscale.modeShort",
     styleShort: "upscale.styleShort",
     benchmarkPending: "upscale.benchmarkPending",
+    refinerDuration: "upscale.refinerDuration",
     targetUnavailable: "upscale.targetUnavailable",
     modelUnavailable: "upscale.modelUnavailable",
     disk: "upscale.disk",

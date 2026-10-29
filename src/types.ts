@@ -879,6 +879,7 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   tileMode: "auto" | "safe" | "fast";
   faceRestore: boolean;
   h3NativeInput?: H3NativeUpscaleInputSnapshot;
+  h3Refiner?: import("./core/h3-refiner.js").H3RefinerSnapshot;
   /**
    * Runtime checkpoint for the native SeedVR2 long-video adapter. It is
    * deliberately separate from the immutable upscale parameters so a failed
@@ -1429,6 +1430,7 @@ export interface AssetVersion {
   tileMode?: UpscaleQueueTask["tileMode"];
   faceRestore?: boolean;
   /** Lineage and provider metadata for derived video versions. */
+  h3Refiner?: import("./core/h3-refiner.js").H3RefinerSnapshot;
   sourceAssetId?: string;
   sourceVersionId?: string;
   upscaleProvider?: string;

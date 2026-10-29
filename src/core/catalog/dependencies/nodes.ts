@@ -37,11 +37,11 @@ export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
 export const SPECTRUM_PDD_MINIMUM_VERSION = "0.2.21";
 export const SPECTRUM_RECOMMENDED_VERSION = "0.2.29";
-export const H3_COMFY_KITCHEN_VERSION = "0.2.39";
+export const H3_COMFY_KITCHEN_VERSION = "0.2.40";
 export const COMFYUI_GGUF_REVISION = "373048b8403a7820620065210a691263d4da0a61";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
-export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.7";
-export const MINIMAX_H3_PROMPT_WRITER_REVISION = "8c0d71fc37fb96f4012ecba5eae75b6f3d755a0e";
+export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.8";
+export const MINIMAX_H3_PROMPT_WRITER_REVISION = "47514b86c573167f5d0cae2b9d5184c009e332e1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.7.1";
@@ -55,7 +55,7 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.4.0";
+export const H3_AV_SERIALIZER_REVISION = "0.4.1";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
 export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.10.2";
 export const H3_CONTINUUM_REVISION = "308653cff108061a94381cef446fef985384b214";
@@ -75,7 +75,7 @@ type NodeVersionDefaults = Pick<
 const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "video-helper-suite": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.7.9", latestVersion: "1.7.9" },
   "comfyui-gguf": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.0.0", latestVersion: "2.0.0" },
-  kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.2", latestVersion: "1.5.2" },
+  kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.3", latestVersion: "1.5.3" },
   "ltx-video": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
   "minimax-h3-prompt-writer": { versionMode: "release", releaseSource: "github-release", recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION, latestVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION },
   "comfyui-multimodal-prompt-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.16", latestVersion: "1.0.16" },
@@ -385,9 +385,9 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION,
   recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
-    verifiedAt: "2026-10-09",
-    sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.7",
-    note: "固定 stable0.4.7，保留应用 /h3studio 接口；移除上游brief硬上限、校验丢失参考标签，并将projector加入驻留身份。Gemma模板、n_batch=256与共享llama后端兼容层回放/幂等通过；Sequence与第三方UI不代表本应用已接入。",
+    verifiedAt: "2026-10-30",
+    sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/releases/tag/v0.4.8",
+    note: "固定 stable0.4.8，保留应用 /h3studio 接口；原生abort取消和旧后端回退保留。Gemma模板、n_batch=256与共享llama后端兼容层在新版七个文件回放/幂等及语法通过；未代表本机模型推理与取消已验。",
     commit: MINIMAX_H3_PROMPT_WRITER_REVISION,
     checks: ["static"]
   }],
@@ -657,6 +657,11 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     name: "Continuum 分组检查点",
     nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"],
     description: "长视频内部执行使用的独立分组收据；需要应用H3节点0.4.0+，旧AV与managed路径保留0.3.6兼容。"
+  }, {
+    id: "h3-refiner",
+    name: "H3 Refiner 视频桥接",
+    nodeTypes: ["LocalVideoStudioH3RefinerPrepare", "LocalVideoStudioH3RefinerOutput", "LocalVideoStudioH3RefinerLoraGuard"],
+    description: "Refiner 的24 FPS重采样、H3时间网格补齐与交付帧数/尺寸恢复；需要应用H3节点0.4.1+。"
   }],
   runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 3.10.2，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
   required: false

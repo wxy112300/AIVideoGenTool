@@ -252,7 +252,8 @@ describe("SageAttention environment selection", () => {
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.35" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.38" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.37" })).toBe(false);
-    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.40" })).toBe(false);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.40" })).toBe(true);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.41" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, cudaVersion: "12.9" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.33" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenBackends: ["cpu"] })).toBe(false);

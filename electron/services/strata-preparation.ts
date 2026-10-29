@@ -3,7 +3,7 @@ import path from "node:path";
 import { canUninstallStrata, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import type { Settings, StrataPreparationStatus } from "../../src/types.js";
 import { strataModelRoot, strataModelScanRoots, strataPreparationProfiles } from "../../src/core/strata-preparation.js";
-import { STRATA_ENGINE_FILES, STRATA_SOURCE_FILES } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_FILES, STRATA_LEGACY_ENGINE_FILES, STRATA_SOURCE_FILES } from "../../src/core/catalog/dependencies/strata.js";
 
 export interface StrataFileEvidence { size: number; header: string }
 export type StrataFileInspector = (filename: string) => Promise<StrataFileEvidence | null>;
@@ -29,7 +29,9 @@ export async function scanStrataPreparation(
 ) {
   const installDirectory = resolvedStrataDirectory(settings);
   const modelDirectory = strataModelRoot(settings, resolvedModelDirectory);
-  const files = await Promise.all([...STRATA_SOURCE_FILES, ...STRATA_ENGINE_FILES].map(async (relativePath) => ({
+  const release = strataInstalledRelease(installDirectory);
+  const engineFiles = release?.bundledLibraries === false ? STRATA_LEGACY_ENGINE_FILES : STRATA_ENGINE_FILES;
+  const files = await Promise.all([...STRATA_SOURCE_FILES, ...engineFiles].map(async (relativePath) => ({
     relativePath,
     present: Boolean(installDirectory && (await inspect(path.join(installDirectory, relativePath)))?.size)
   })));

@@ -55,7 +55,7 @@ try {
       $mode=if($prefs.uncensoredMode -in @('off','builtin','community')){[string]$prefs.uncensoredMode}elseif($prefs.uncensored -eq $true){'builtin'}else{'off'}
       $preferences=@{contextTokens=$null; uncensored=($mode -ne 'off'); uncensoredMode=$mode; strataPort=$null; guiPort=$null}
       if($prefs.contextTokens -is [int] -and $prefs.contextTokens -in @(32768,65536,131072,262144)){$preferences.contextTokens=$prefs.contextTokens}
-      foreach($port in @('strataPort','guiPort')){if($prefs.$port -is [int] -and $prefs.$port -ge 1024 -and $prefs.$port -le 65535 -and $prefs.$port -ne 8080){$preferences[$port]=$prefs.$port}}
+      foreach($port in @('strataPort','guiPort')){if($prefs.$port -is [int] -and $prefs.$port -ge 1024 -and $prefs.$port -le 65535){$preferences[$port]=$prefs.$port}}
     }
   } catch {$issues.Add('偏好摘要不可读；未复制原配置。')}
   Add-Type -TypeDefinition @'

@@ -174,11 +174,11 @@ describe("dependency scanner", () => {
       loaded: true,
       loadError: "",
       updateAvailable: true,
-      updateNotice: expect.stringContaining("推荐 v0.4.7"),
+      updateNotice: expect.stringContaining("推荐 v0.4.8"),
       compatibilityState: "warning",
       runtimeNotice: expect.stringContaining("发现 1 个模型")
     });
-    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.7");
+    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.8");
   });
 
   it("uses Prompt Writer runtime endpoints when object_info is temporarily unavailable", async () => {

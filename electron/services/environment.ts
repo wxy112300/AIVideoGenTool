@@ -2480,7 +2480,8 @@ export function comfyKitchenConvRotCudaOptimized(cudaVersion: string): boolean {
 export function h3ComfyKitchenCudaBackendReady(
   probe: Pick<AttentionPythonProbe, "cudaVersion" | "comfyKitchenVersion" | "comfyKitchenBackends">
 ): boolean {
-  return probe.comfyKitchenVersion === H3_COMFY_KITCHEN_VERSION &&
+  // Keep the previous core's verified backend usable while new installs follow the recommendation.
+  return (probe.comfyKitchenVersion === H3_COMFY_KITCHEN_VERSION || probe.comfyKitchenVersion === "0.2.39") &&
     comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
     (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
 }

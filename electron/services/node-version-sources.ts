@@ -1,6 +1,7 @@
 import { compareReleaseVersions } from "../../src/core/release-version.js";
 import { githubReleaseTagFromUrl } from "./github-release-version.js";
 import { LLAMA_CPP_PYTHON_REPOSITORY } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
+import { STRATA_REPOSITORY } from "../../src/core/catalog/dependencies/strata.js";
 
 const version = (value: unknown): string => typeof value === "string" && /^v?\d+(?:[.-]\d+)+$/.test(value.trim())
   ? value.trim().replace(/^v/i, "") : "";
@@ -29,6 +30,12 @@ export async function readNodeVersionSources(repository: string,
 ): Promise<{ tag_name: string; version_source: string; cacheable?: boolean }> {
   const safeRead = (url: string, redirectOnly = false) => read(url, redirectOnly).catch(() => "");
   const wheelProvider = repository.toLowerCase() === LLAMA_CPP_PYTHON_REPOSITORY.toLowerCase();
+  const strataProvider = repository.toLowerCase() === STRATA_REPOSITORY.toLowerCase();
+  // Strata publishes small Control hotfixes under the preceding app's release tag.
+  const strataReleaseName = (name: unknown, tag: string) => {
+    const named = typeof name === "string" ? name.match(/^Strata\s+v?(\d+\.\d+\.\d+(?:\.\d+)?)(?:\s|:|$)/iu)?.[1] : "";
+    return named && named.startsWith(`${tag}.`) && compareReleaseVersions(named, tag) > 0 ? named : tag;
+  };
   const releaseVersion = (tag: unknown): string => {
     if (wheelProvider && typeof tag === "string") {
       const wheel = /^v?(\d+\.\d+\.\d+)-cu\d+-win-\d{8}$/i.exec(tag.trim());
@@ -39,14 +46,20 @@ export async function readNodeVersionSources(repository: string,
   const readRelease = async () => {
     try {
       const payload = JSON.parse(await safeRead(`https://api.github.com/repos/${repository}/releases/latest`));
-      if (!payload.draft && !payload.prerelease && releaseVersion(payload.tag_name)) return releaseVersion(payload.tag_name);
+      if (!payload.draft && !payload.prerelease && releaseVersion(payload.tag_name)) {
+        const tag = releaseVersion(payload.tag_name);
+        return strataProvider ? strataReleaseName(payload.name, tag) : tag;
+      }
     } catch { /* Rate limits and unavailable API routes can use the official redirect. */ }
-    return releaseVersion(githubReleaseTagFromUrl(repository,
+    const tag = releaseVersion(githubReleaseTagFromUrl(repository,
       await safeRead(`https://github.com/${repository}/releases/latest`, true)));
+    if (!strataProvider || !tag) return tag;
+    const page = await safeRead(`https://github.com/${repository}/releases/tag/v${tag}`);
+    return strataReleaseName(page.match(/<title>Release\s+([^<]+)<\/title>/iu)?.[1], tag);
   };
   // This Python wheel provider is not a Comfy Registry node. Do not present
   // source HEAD or a similarly named registry/PyPI package as its latest release.
-  if (wheelProvider) {
+  if (wheelProvider || strataProvider) {
     const release = await readRelease();
     return { tag_name: release, version_source: release ? "GitHub Release" : "", ...(!release ? { cacheable: false } : {}) };
   }

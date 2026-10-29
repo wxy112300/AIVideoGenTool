@@ -451,15 +451,24 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     await expect(prepareStrataLaunch(settings, config)).rejects.toThrow("启动文件缺失");
   });
 
-  it.each([8080, 0, 65536, 43127.5])("rejects invalid port %s before spawn or probing", async (port) => {
+  it("launches and probes the explicitly selected 8080 without falling back to the default", async () => {
+    const f = fixture();
+    try {
+      expect(await f.service.start({ ...plan(), port: 8080 })).toMatchObject({ phase: "ready", port: 8080 });
+      expect(f.portInUse).toHaveBeenCalledWith(8080);
+      expect(f.launch).toHaveBeenCalledWith(expect.objectContaining({ port: 8080 }), expect.any(Function));
+      expect(String(f.fetchMock.mock.calls[0]![0])).toBe("http://127.0.0.1:8080/health");
+    } finally { await f.service.stop(); }
+  });
+  it.each([0, 65536, 43127.5])("rejects invalid port %s before spawn or probing", async (port) => {
     const f = fixture();
     await expect(f.service.start({ ...plan(), port })).rejects.toThrow("端口");
     expect(f.launch).not.toHaveBeenCalled(); expect(f.portInUse).not.toHaveBeenCalled();
   });
 
-  it("refuses an occupied port without adopting, probing or terminating its owner", async () => {
+  it.each([43127, 8080])("refuses occupied port %s without adopting, probing or terminating its owner", async (port) => {
     const f = fixture(); f.portInUse.mockResolvedValue(true);
-    await expect(f.service.start(plan())).rejects.toThrow("已占用");
+    await expect(f.service.start({ ...plan(), port })).rejects.toThrow("已占用");
     expect(f.launch).not.toHaveBeenCalled(); expect(f.fetchMock).not.toHaveBeenCalled(); expect(f.child.stop).not.toHaveBeenCalled();
   });
 

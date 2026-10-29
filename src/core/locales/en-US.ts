@@ -735,6 +735,7 @@ export const enUSCatalog: Record<string, string> = {
     [uiKeys.upscale.modeShort]: "Upscale mode",
     [uiKeys.upscale.styleShort]: "Style",
     [uiKeys.upscale.benchmarkPending]: "Awaiting benchmark",
+    [uiKeys.upscale.refinerDuration]: "H3 Refiner supports videos up to 15 seconds and outputs at 24 FPS.",
     [uiKeys.upscale.targetUnavailable]: "Choose a supported resolution higher than the source video.",
     [uiKeys.upscale.modelUnavailable]: "Required components are missing. Choose another model or install them in Settings.",
     [uiKeys.upscale.disk]: "Disk",

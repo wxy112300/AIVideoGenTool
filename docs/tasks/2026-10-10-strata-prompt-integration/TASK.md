@@ -1,12 +1,16 @@
 # Strata 提示词增强：更新调查与接入计划
 
-- 类型：Task；Status: partial-runtime-validated（新版MTP＋显式预算模式四类后端真实生成完成；通用关键词误拒已移除并回放通过，长稿慢、运镜后处理与UI预算策略仍未收尾）
-- Updated / Owner: 2026-10-20 / 当前 agent；Execution: direct，新增子 agent 0
+- 类型：Task；Status: basic-native-validated（0.2.7.1 / 原生引擎0.1.52的IQ3+MTP真实基本图文与连续调用已验；带图思考耗时偏长，长上下文及其他组合仍待验证）
+- Updated / Owner: 2026-10-29 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 2026-10-29 用户释放资源后真实基本实测完成：生产Owner/Service与原生IQ3+MTP，沿用medium/自动思考、builtin向量、32K，未改产品代码或正式设置。冷加载149.934s；READY 1.543s，H3文字33.654s（58.3tok/s），真实丰富街景I2VA 143.624s（45.4tok/s，思考21674字符），再文字27.460s（60.3tok/s）。四次同PID70372，均正常stop且归一化通过，无OOM/强停；显存采样最低余4.385GiB。加载RAM曾瞬时约79MiB，提交全轮最低余78.49GiB，不泛化为任意压力稳定。独立工具实际偏好解析到同一新版runtime，重新准备运行文件，并通过其编译profile+guard启动原生lazy服务、401/认证/网页检查后退出（不重复加载GPU或跑Claude/GUI）。双方自有进程/端口退出、租约释放、正式state未变。详见[基本实测](evidence/0271-basic-real.md)；15秒/完整长输入/其他量化/社区向量/神经卸载重载与长压未验，不宣称带图已足够快。
+
+- 2026-10-29 已完成授权软件升级（direct，子 agent 0，patch未bump/提交/推送）：推荐及本机均0.2.7.1 / 46c152a，Windows Qwen CUDA13引擎0.1.52。适配tar.gz、固定组件清单、自带CUDA库（去掉重复pip NVIDIA包）；修复官方未修改config被误当用户数据阻止更新，成功后旧软件/暂存/下载缓存无残留，620MB调查副本也已删除。主应用与独立启动器启动均可迁移完整0.1.45 pack，真实IQ3+MTP缓存及三模式计划约1.9秒，未重hash/repack/下载权重。官方mock+真实模型tokenizer六次同PID、四档思考/自动预算、认证、监控、溢出后恢复、取消清理和重启通过；真实Electron监控与隔离设置三栏/选项显示通过，设置不保存、正式state不变。完整门禁以unit通过项+并行H3枚举单文件修复focused+剩余integration/build/contrast退出0组成；未重复已通过单元。独立工具编译通过，自有模型服务/监控及测试端口已释放。不接DeepSeek；用户明确GPU实测稍后，未加载神经模型，不能宣称新版图片/长稿质量、神经连续调用或速度已验。下一步仅在用户安排后做真实GPU验收；详见[evidence/0271-upgrade.md](evidence/0271-upgrade.md)。
 
 - 0.66.5收尾（2026-10-20，用户授权patch提交推送）：仅提交本任务累计Strata编译复用/自动思考及诊断、资源准入与预警、主应用四档热切换设置及独立工具共享资源策略。原生页面已有Thinking与Use for other apps too，不额外增加启动器思考控件；客户端明确参数优先。package/lockfile/README/CHANGELOG对齐0.66.5；另一任务换脸LoRA/长视频代码和共享文档段落保留未暂存，不包含权重/素材/私有日志。不打包、创建tag或GitHub Release。复用上一阶段最终verify、真实后端三次连续增强和真实设置UI/重启证据；仅含待提交索引的隔离导出树完整verify通过（229文件2290单元＋6文件91集成、类型/构建/20对比度，temp/strata-0.66.5-index-verify-final.log）；首轮一个未改动缓存用例发生5秒IO超时，原参数单独31项通过后原样全量复验通过，不改断言/超时。其他任务工作区内容保留，版本与暂存范围核对完成；提交/远端身份以Git记录及本轮最终推送核对为准。
 

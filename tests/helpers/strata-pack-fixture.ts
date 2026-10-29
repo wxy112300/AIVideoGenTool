@@ -7,7 +7,7 @@ import { strataModelGeometry } from "../../src/core/catalog/models/strata.js";
 export const strataFixturePolicy: StrataRuntimePolicy = { maxContext: 32768, kv: "k8v4", visionTokens: 1024, visionGpu: true, vramReserveMiB: 2048 };
 export async function writeStrataPackFixture(directory: string, modelId = ""): Promise<void> {
   const files: Record<string, string> = {
-    "native_experts.txt": "synthetic expert table", "index.txt": "synthetic index", "dense.bin": "synthetic dense",
+    "native_experts.txt": "# strata native experts v3: synthetic expert table", "index.txt": "synthetic index", "dense.bin": "synthetic dense",
     "tokenizer/vocab.json": JSON.stringify({ a: 0, b: 1, ab: 2 }), "tokenizer/merges.txt": "a b",
     "tokenizer/token_type.json": "[1,1,1]", "tokenizer/tokenizer.json": '{"vocab_size":3}', "tokenizer/chat_template.jinja": "synthetic template"
   };

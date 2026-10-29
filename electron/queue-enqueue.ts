@@ -2,6 +2,7 @@ import type { IpcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { H3_REFINER_ID, validateH3RefinerSource } from "../src/core/h3-refiner.js";
 import { modelCoreVersionBlockReason } from "../src/core/model-core-requirements.js";
 import { FASTH3_OMNI_MODEL_ID } from "../src/core/catalog/models/minimax_h3_omni/definition.js";
 import { fileURLToPath } from "node:url";
@@ -1357,6 +1358,20 @@ export class QueueEnqueueService {
     const isDlss5 = !isKonohamaru && !isAetherScale && (request.modelId === DLSS5_MODEL_ID ||
       request.targetScale !== undefined || request.dlss5 !== undefined);
     let preparedRequest = request;
+    if (request.modelId === H3_REFINER_ID) {
+      if (request.upscaleMode === "h3-native") throw new Error("H3 Refiner 使用视频输入，请新建独立任务。");
+      const source = version.files.find(file => file.absolutePath && path.resolve(file.absolutePath) === path.resolve(request.sourceFilePath));
+      if (!source || !/\.(mp4|webm|mov|mkv|m4v)$/i.test(source.filename)) throw new Error("H3 Refiner 输入与选中的源视频版本不一致。");
+      validateH3RefinerSource(version.duration, version.fps);
+      preparedRequest = { ...request, upscaleMode: "pixel", sourceWidth: version.width, sourceHeight: version.height,
+        duration: version.duration, fps: version.fps, sourceFilename: version.outputFilename,
+        targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined, h3NativeInput: undefined };
+      const environment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings);
+      const profile = environment?.modelProfiles.find(item => item.id === H3_REFINER_ID);
+      if (environment && (!profile?.available || profile.missingCustomNodeNames?.length || profile.customNodeCompatibility === "error")) {
+        throw new Error("H3 Refiner 组件或节点尚未就绪，请在设置中补齐模型与依赖后重试。");
+      }
+    }
     if (isKonohamaru) {
       preparedRequest = this.validateKonohamaruEnqueuePreflight(request);
       await this.checkKonohamaruEnqueueEnvironment(preparedRequest, current.settings);

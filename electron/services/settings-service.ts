@@ -150,10 +150,10 @@ export class SettingsService {
 
     if (input.strataPort !== undefined && !validStrataPort(input.strataPort)) {
       throw new Error(input.uiLocale === "en-US"
-        ? "Strata port must be an integer from 1024 to 65535, excluding 8080."
+        ? "Strata port must be an integer from 1024 to 65535."
         : input.uiLocale === "zh-TW"
-          ? "Strata 連接埠須為 1024–65535 的整數，不能使用 8080。"
-          : "Strata 端口须为 1024–65535 的整数，不能使用 8080。");
+          ? "Strata 連接埠須為 1024–65535 的整數。"
+          : "Strata 端口须为 1024–65535 的整数。");
     }
     if (input.strataUncensored !== undefined && typeof input.strataUncensored !== "boolean") {
       throw new Error("Strata uncensored 设置必须为布尔值。");

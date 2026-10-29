@@ -30,6 +30,7 @@ import { modelCatalog } from "../../../core/catalog";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { settingsChangedKeys } from "../../../core/settings-changes";
 import { settingsChangeSummary } from "./change-summary";
+import { openModelComponentLocation } from "./model-location";
 import { animateUi } from "../../shared/ui/motion";
 import { BUILTIN_VIDEO_LORAS } from "../../../core/video-loras";
 import { h3AutoPromptSeeds } from "../../../core/prompts/h3/auto-seeds";
@@ -574,9 +575,8 @@ export function createSettingsWorkspaceCoordinator(
       if (!opened) deps.showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
     });
     deps.modalRoot.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
-      const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
-      if (!directory) return;
-      const opened = await deps.context.hostCapabilities.openDirectory(directory);
+      const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim() || "";
+      const opened = await openModelComponentLocation(deps.context.hostCapabilities, selectedInstallGuide?.component, directory);
       if (!opened) deps.showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
     });
     const dialog = deps.modalRoot.querySelector<HTMLElement>(".install-guide-dialog");

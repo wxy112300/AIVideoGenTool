@@ -11,6 +11,7 @@ import type {
   UpscaleRequest
 } from "../types.js";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
+import { H3_REFINER_ID, createH3RefinerSnapshot, h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } from "./h3-refiner.js";
 import { freezeLongVideoScript } from "./long-video/script.js";
 import { commitScriptText } from "./long-video/script-buffers.js";
 import { isLongVideoDraftActive, longVideoBlockReason } from "./long-video/capability.js";
@@ -593,6 +594,24 @@ export function upscaleTaskFromRequest(
   }
   // Keep existing pixel/H3 queue snapshots strict and unchanged.
   const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight);
+  if (request.modelId === H3_REFINER_ID) {
+    validateH3RefinerSource(request.duration, request.fps);
+    const geometry = h3RefinerGeometry(request.sourceWidth, request.sourceHeight, targetHeight);
+    const sourceAsset = state.history.find(asset => asset.id === request.sourceAssetId);
+    if (!sourceAsset?.versions.some(version => version.id === request.sourceVersionId)) throw new Error("H3 Refiner 源版本已不存在。");
+    return {
+      id: clock.id(), taskType: "upscale", status: "waiting", createdAt: now, updatedAt: now,
+      outputFilename: uniqueUpscaleFilename(h3RefinerSourceFilename(request.sourceFilename), targetHeight, outputNames(state)),
+      modelId: H3_REFINER_ID, workflowPath: `builtin:upscale/${H3_REFINER_ID}`,
+      duration: request.duration, fps: 24, seed: Math.floor(clock.random() * 0xffffffff), keepSeedOnCopy: true,
+      sourceAssetId: request.sourceAssetId, sourceVersionId: request.sourceVersionId,
+      sourceFilePath: request.sourceFilePath, sourceFilename: request.sourceFilename,
+      sourceWidth: request.sourceWidth, sourceHeight: request.sourceHeight,
+      targetWidth: geometry.outputWidth, targetHeight, targetOutputHeight: geometry.outputHeight,
+      upscaleMode: "pixel", tileMode: "safe", faceRestore: false, progress: 0,
+      h3Refiner: createH3RefinerSnapshot(sourceAsset.prompt, request.fps)
+    };
+  }
   const h3Native = request.upscaleMode === "h3-native";
   if (h3Native && !request.h3NativeInput) {
     throw new Error("H3 原生二次采样缺少已提交的 JointAV 输入快照。");

@@ -81,6 +81,7 @@ describe("model catalog", () => {
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
       "dlss5-konohamaru",
       "seedvr2-native-int8",
+      "minimax_h3_kijai_refiner",
       "minimax_h3_latent_upscaler",
       "seedvr2",
       "flashvsr",

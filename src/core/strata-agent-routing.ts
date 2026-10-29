@@ -1,7 +1,7 @@
 /** Process-local routing; no user/project settings or caller environment writes. */
 export function localClaudeRoute(parent: Record<string, string | undefined>, token: string, port: number, model: string, contextTokens = 32768) {
   if (![32768, 65536, 131072, 262144].includes(contextTokens)) throw new Error("本地 Agent 上下文档位无效。");
-  if (!token || /[\r\n]/u.test(token) || !Number.isInteger(port) || port < 1024 || port > 65535 || port === 8080 || !model) throw new Error("本地 Claude 路由无效。");
+  if (!token || /[\r\n]/u.test(token) || !Number.isInteger(port) || port < 1024 || port > 65535 || !model) throw new Error("本地 Claude 路由无效。");
   const env = { ...parent };
   const routing: Record<string, string> = {};
   for (const key of Object.keys(parent)) {

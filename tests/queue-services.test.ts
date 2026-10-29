@@ -75,6 +75,34 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
 }
 
 describe("queue command services", () => {
+  it("queues Refiner from authoritative video identity after dependency recovery, without JointAV", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-refiner-enqueue-"));
+    try {
+      const videoPath = path.join(root, "source.mp4");
+      const otherPath = path.join(root, "other.mp4");
+      await Promise.all([fs.writeFile(videoPath, "video"), fs.writeFile(otherPath, "other")]);
+      const state = createDefaultState();
+      state.history = [{ id: "a", prompt: "source prompt", versions: [{ id: "v", outputFilename: "source.mp4",
+        width: 1280, height: 720, duration: 5, fps: 30,
+        files: [{ filename: "source.mp4", absolutePath: videoPath, type: "output", subfolder: "" }] }] }] as AppState["history"];
+      const profile = { id: "minimax_h3_kijai_refiner", available: false, components: [], missingCustomNodeNames: [] };
+      const store = repository(state);
+      const service = new QueueEnqueueService({ store, logger: logger(), sendState: vi.fn(),
+        getCachedEnvironmentScanForQueue: () => ({ modelProfiles: [profile] }) as never } as never);
+      const request = { sourceAssetId: "a", sourceVersionId: "v", sourceFilePath: videoPath,
+        sourceFilename: "wrong.mp4", sourceWidth: 1, sourceHeight: 1, duration: 999, fps: 999,
+        modelId: "minimax_h3_kijai_refiner", targetHeight: 2160 as const, tileMode: "auto" as const, faceRestore: false };
+      await expect(service.enqueueUpscale(request)).rejects.toThrow("尚未就绪");
+      expect(store.get().queue).toHaveLength(0);
+      profile.available = true;
+      await expect(service.enqueueUpscale({ ...request, sourceFilePath: otherPath })).rejects.toThrow("不一致");
+      const next = await service.enqueueUpscale(request);
+      expect(next.queue[0]).toMatchObject({ taskType: "upscale", sourceWidth: 1280, sourceHeight: 720,
+        duration: 5, fps: 24, targetWidth: 3840, targetOutputHeight: 2160,
+        h3Refiner: { sourceFps: 30, prompt: "source prompt" } });
+      expect(next.queue[0]!.id).toBeTruthy();
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
   it("coalesces live progress without broadcasting full state and checkpoints it later", async () => {
     vi.useFakeTimers();
     try {

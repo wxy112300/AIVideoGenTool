@@ -6,6 +6,18 @@ const project = '[build-system]\nversion = "99.0"\n[project]\nname = "Package"\n
 const node = { id: "package", repository: "https://github.com/owner/package.git", latest_version: { version: "1.9.0", node_id: "package" } };
 
 describe("node upstream version sources", () => {
+  it("reports Strata's release hotfix separately from its older app tag without using source HEAD", async () => {
+    const read = vi.fn(async () => JSON.stringify({ tag_name: "v0.2.7", name: "Strata 0.2.7.1: fixes", draft: false, prerelease: false }));
+    expect(await readNodeVersionSources("Niko1221/Strata", read)).toEqual({ tag_name: "0.2.7.1", version_source: "GitHub Release" });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(await readNodeVersionSources("Niko1221/Strata", async (url, redirect) => {
+      if (redirect) return "https://github.com/Niko1221/Strata/releases/tag/v0.2.7";
+      if (url.includes("api.github.com")) throw new Error("rate limited");
+      return "<title>Release Strata 0.2.7.1: NVIDIA · Niko1221/Strata · GitHub</title>";
+    })).toEqual({ tag_name: "0.2.7.1", version_source: "GitHub Release" });
+    expect(await readNodeVersionSources("Niko1221/Strata", async () => JSON.stringify({ tag_name: "v0.2.7", name: "Strata 99.0.0: unrelated" })))
+      .toEqual({ tag_name: "0.2.7", version_source: "GitHub Release" });
+  });
   it("reads the selected llama wheel provider's CUDA release tag without substituting Registry or HEAD", async () => {
     const read = vi.fn(async (_url: string) => JSON.stringify({ tag_name: "v0.4.5-cu131-win-20261025", draft: false, prerelease: false }));
     expect(await readNodeVersionSources("JamePeng/llama-cpp-python", read)).toEqual({ tag_name: "0.4.5", version_source: "GitHub Release" });

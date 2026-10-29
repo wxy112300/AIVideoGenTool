@@ -59,7 +59,6 @@ export function renderStrataPreparationPanel(
   operation: { installing?: boolean; cancelling?: boolean; progress?: StrataInstallProgress; log?: string; blocked?: boolean; icon?: (name: string) => string } = {}
 ): string {
   const s = (key: Parameters<typeof settingsText>[1]) => escape(settingsText(settings.uiLocale, key));
-  const directoryField = (id: string, label: string, value: string) => `<label>${label}<div class="input-action"><input id="${id}" type="text" value="${escape(value)}" /><button class="secondary" type="button" data-pick-strata-directory="${id}">${s("strata.choose")}</button></div></label>`;
   const current = strataPreparationMatchesSettings(settings, status) ? status : undefined;
   const installed = isStrataRuntimeInstalled(settings, current);
   const needsUpdate = installed && current?.installedVersion && compareReleaseVersions(current.installedVersion, STRATA_VERSION) < 0;
@@ -83,11 +82,14 @@ export function renderStrataPreparationPanel(
       cancellation: operation.installing ? { id: "python-runtime:strata", pending: operation.cancelling, percent: progress.percent, statusLabel: progress.percent === null ? s("nodes.installing") : `${progress.percent}%` } : undefined
     })}</div></div>
     <div class="settings-runtime-details settings-strata-advanced" id="strata-advanced" hidden>
-    ${current ? `<code>${escape(current.installDirectory)}</code>` : ""}
-    <div class="settings-runtime-advanced-grid">
-    ${directoryField("strata-install-directory", s("strata.root"), settings.strataInstallDirectory)}
-    <label>${s("strata.port")}<input id="strata-port" type="number" min="1024" max="65535" step="1" value="${settings.strataPort}" /></label>
-    </div><p class="muted">${s("strata.portNote")}</p>
+      <div class="settings-strata-row">
+        <label for="strata-install-directory">${s("strata.root")}</label>
+        <div class="input-action"><input id="strata-install-directory" type="text" value="${escape(settings.strataInstallDirectory)}" placeholder="${escape(current?.installDirectory || "")}" title="${escape(current?.installDirectory || "")}" /><button class="secondary" type="button" data-pick-strata-directory="strata-install-directory">${s("strata.choose")}</button></div>
+      </div>
+      <div class="settings-strata-row">
+        <label for="strata-port">${s("strata.port")}</label>
+        <div class="settings-strata-port"><input id="strata-port" type="number" min="1024" max="65535" step="1" value="${settings.strataPort}" /></div>
+      </div>
     </div>
     ${renderDependencyFeedback(settings.uiLocale, "python-runtime:strata", operation.log || "", Boolean(operation.installing), false)}
   </article>`;

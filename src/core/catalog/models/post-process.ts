@@ -2,7 +2,9 @@ import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 import {
   h3LearnedLatentUpscaler,
+  h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae,
 } from "./minimax_h3_shared.js";
+import { H3_REFINER_ID, H3_REFINER_FILENAME, H3_REFINER_REVISION, H3_REFINER_TURBO_FILENAME, H3_REFINER_TURBO_REVISION, H3_REFINER_NODES } from "../../h3-refiner.js";
 import {
   seedVr2NativeModelFilename,
   seedVr2NativeRequiredNodes,
@@ -11,6 +13,28 @@ import {
 import { KONOHAMARU_NODE_ID } from "../dependencies/konohamaru.js";
 
 export const postProcessModelEntries: CatalogModelEntry[] = [
+  entry({
+    id: H3_REFINER_ID, family: "h3-refiner", category: "upscale", adapterId: "h3-kijai-refiner",
+    order: 106, inputModes: ["video"], capabilities: { resolutions: [1080, 1440, 2160], maxDurationSeconds: 15 },
+    scan: {
+      integrated: true, vram: "INT8 · tiled · 本机基准待完成", minimumComfyVersion: "0.36.0",
+      requiredCustomNodeIds: ["local-video-studio-h3-av", "mmh3-ultimate-upscale", "minimax-h3-learned-upscaler", "kjnodes", "video-helper-suite"],
+      runtimeNodeTypes: H3_REFINER_NODES,
+      components: [h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LearnedLatentUpscaler,
+        component("Kijai Open-H3 Refiner rank 384", `loras/${H3_REFINER_FILENAME}`,
+          /loras\/minimax_h3_open_regenerate_2k_refiner_rank_384_bf16\.safetensors$/i,
+          { ...guide("Kijai / MiniMax-H3-experimental", `https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/${H3_REFINER_REVISION}/loras/${H3_REFINER_FILENAME}`, "loras", H3_REFINER_FILENAME,
+            "仅 Refiner，不含 Turbo/LMS；本模式另配固定 Turbo v1.2，不等同 NV 完整 SoL/LMS 流程。"), revision: H3_REFINER_REVISION,
+            sha256: "4bf30291343eef5e51ee867ba37dd31bce3133d1da1ace1a245a7130b88818c2" }),
+        component("LightX2V Turbo v1.2 · Refiner 配套", `loras/${H3_REFINER_TURBO_FILENAME}`,
+          /loras\/minimax_h3_fl2v_turbo_4step_v1\.2_768p_comfyui_bf16\.safetensors$/i,
+          { ...guide("LightX2V / Minimax-h3-Turbo", `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/${H3_REFINER_TURBO_REVISION}/${H3_REFINER_TURBO_FILENAME}`, "loras", H3_REFINER_TURBO_FILENAME,
+            "此精修配方固定 v1.2；不要用 Create 当前的 v1.3 或其他蒸馏 LoRA 替换。"), revision: H3_REFINER_TURBO_REVISION,
+            sha256: "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8" })]
+    }
+  }, { name: "H3 Refiner · Kijai", description: "视频精修放大至 4K；最长 15 秒，输出 24 FPS。" },
+  { name: "H3 Refiner · Kijai", description: "Video refinement up to 4K; up to 15 seconds, output at 24 FPS." },
+  { name: "H3 Refiner · Kijai", description: "影片精修放大至 4K；最長 15 秒，輸出 24 FPS。" }),
   entry({
     id: "minimax_h3_latent_upscaler",
     family: "minimax-h3",

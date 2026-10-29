@@ -18,6 +18,7 @@ import { assertSharedPackagesIdle } from "./strata-agent-npm.js";
 import { findComfyRoot } from "./comfy-discovery.js";
 import { managedStrataDirectory, physicalPath, containsPath, resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
 import { removeSoftwareArtifact } from "./software-update-cleanup.js";
+import { gitSoftwareFiles } from "./software-git-files.js";
 import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
 import { GpuResourceLease } from "./gpu-resource-lease.js";
 import { withSoftwareMaintenance } from "./installation-cancellation.js";
@@ -49,19 +50,6 @@ async function smallText(filename: string) {
 async function sourceMatches(directory: string, url: string) {
   try { return repository(/\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(await smallText(path.join(directory, ".git/config")))?.[1] ?? "") === repository(url); }
   catch { return false; }
-}
-async function gitSoftwareFiles(directory: string): Promise<Set<string>> {
-  try {
-    if ((await fs.lstat(path.join(directory, ".git"))).isSymbolicLink()) return new Set();
-    const args = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=NUL", "-C", directory];
-    const options = { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 };
-    const [tracked, modified] = await Promise.all([
-      exec("git.exe", [...args, "ls-files", "-z"], options),
-      exec("git.exe", [...args, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", "--"], options)
-    ]);
-    const changed = new Set(modified.stdout.split("\0"));
-    return new Set(tracked.stdout.split("\0").filter(name => name && !changed.has(name)));
-  } catch { return new Set(); }
 }
 /** Unknown local data blocks deletion of that copy; cache cleanup never imports old data into live software. */
 async function assertDisposable(candidate: Candidate) {

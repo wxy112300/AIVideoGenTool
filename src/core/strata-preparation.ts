@@ -5,7 +5,7 @@ import { strataUncensoredMode } from "./strata-uncensored.js";
 import { normalizeStrataReasoningEffort } from "./strata-reasoning.js";
 
 export function validStrataPort(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535 && value !== 8080;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
 }
 /** Reuse the selected ComfyUI model root; software installation remains independent. */
 export function strataModelRoot(

@@ -735,6 +735,7 @@ export const zhTWCatalog = {
     [uiKeys.upscale.modeShort]: "超解析模式",
     [uiKeys.upscale.styleShort]: "風格",
     [uiKeys.upscale.benchmarkPending]: "等待首次基準",
+    [uiKeys.upscale.refinerDuration]: "H3 Refiner 目前支援不超過 15 秒的影片，輸出為 24 FPS。",
     [uiKeys.upscale.targetUnavailable]: "請選擇高於來源影片且目前模型支援的解析度。",
     [uiKeys.upscale.modelUnavailable]: "目前模型缺少元件，請更換模型或前往設定補齊。",
     [uiKeys.upscale.disk]: "磁碟",

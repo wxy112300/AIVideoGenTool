@@ -26,6 +26,7 @@ import {
   seedVr2NativeRequiredNodes,
   seedVr2NativeVaeFilename
 } from "./seedvr2-native.js";
+import { H3_REFINER_ID, buildH3RefinerWorkflow } from "./h3-refiner.js";
 
 type ApiNode = {
   class_type: string;
@@ -68,7 +69,7 @@ export interface NativeSeedVr2WorkflowSegment {
 }
 
 export interface UpscaleResourceEstimateInput {
-  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID;
+  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID | typeof H3_REFINER_ID;
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
@@ -87,6 +88,10 @@ export interface UpscaleResourceEstimate {
 }
 
 const upscaleEstimateProfiles = {
+  [H3_REFINER_ID]: {
+    baseVramMinGb: 0, baseVramMaxGb: 0, vramPerAreaMinGb: 0, vramPerAreaMaxGb: 0,
+    secondsPerFrameMin: 0, secondsPerFrameMax: 0
+  },
   "dlss5-sr": {
     // DLSS5 has not passed a local benchmark yet. Keep this profile explicit
     // so the UI can render a pending benchmark state instead of inventing a
@@ -798,6 +803,7 @@ export function renderUpscaleWorkflow(
   objectInfo?: unknown,
   nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment
 ): Record<string, ApiNode> {
+  if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo);
   if (task.modelId === KONOHAMARU_MODEL_ID) {
     return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo);
   }

@@ -13,7 +13,7 @@ import { readReliableStrataResources } from "./strata-resources.js";
 import { planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
 import { AgentResourcePressure } from "../../src/core/strata-agent-resources.js";
 import { isLocalPortInUse, localEndpoint } from "./local-service-process.js";
-import { prepareStrataModelRuntime } from "./strata-model-preparation.js";
+import { findPreparedStrataRuntime, prepareStrataModelRuntime } from "./strata-model-preparation.js";
 import { installStrata, runLoggedProcess } from "./environment.js";
 import { InstallationCancellation } from "./installation-cancellation.js";
 import { STRATA_ENGINE_BYTES, STRATA_VERSION } from "../../src/core/catalog/dependencies/strata.js";
@@ -296,10 +296,15 @@ export class AgentController {
       if (commitTrial) this.log("用户授权Agent实测：本次不叠加整卡容量作为提交硬门槛，实时RAM/提交/显存及低资源停止仍启用；不影响H3默认策略。");
       this.emit({ event: "resources", resources, limits });
       let packConfig = doctor.pack;
+      const packPolicy = { maxContext: 32768, kv: "k8v4" as const, visionTokens: 1024, visionGpu: true, vramReserveMiB: 2048 };
+      if (!packConfig) {
+        this.log("检查可复用的已验证 pack 与升级兼容记录");
+        packConfig = await findPreparedStrataRuntime(settings, preferences.modelId, packPolicy,
+          { signal, run: runLoggedProcess, onLog: message => this.log(message) }) ?? "";
+      }
       if (!packConfig) {
         this.log("未发现完成 pack：开始唯一一次官方离线准备，可取消；不下载权重");
-        packConfig = (await prepareStrataModelRuntime(settings, preferences.modelId,
-          { maxContext: 32768, kv: "k8v4", visionTokens: 1024, visionGpu: true, vramReserveMiB: 2048 },
+        packConfig = (await prepareStrataModelRuntime(settings, preferences.modelId, packPolicy,
           { run: runLoggedProcess }, { signal, onLog: (message) => this.log(message) })).configPath;
       }
       signal.throwIfAborted();

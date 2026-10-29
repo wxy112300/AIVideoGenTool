@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults";
-import { STRATA_ENGINE_URL, STRATA_REVISION, STRATA_ENGINE_BYTES, STRATA_RELEASES, STRATA_LLAMA_REVISION } from "../src/core/catalog/dependencies/strata";
+import { STRATA_ENGINE_URL, STRATA_REVISION, STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_RELEASES, STRATA_LLAMA_REVISION } from "../src/core/catalog/dependencies/strata";
 import { installStrataRuntime, strataManagedReceipt, verifyStrataEngineArchive, managedStrataDirectory, resolvedStrataDirectory, strataInstalledRelease, canUninstallStrata } from "../electron/services/strata-installation";
 import { InstallationCancellation, installationSignal } from "../electron/services/installation-cancellation";
 import * as vectorTools from "../electron/services/strata-uncensored";
 import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
+import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
 
 const fixtures: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const folder of fixtures.splice(0)) await fs.rm(folder, { recursive: true, force: true }); });
@@ -25,12 +26,12 @@ async function fixture() {
         await fs.mkdir(path.join(options.cwd,"gguf-py/gguf"),{recursive:true});
         await fs.writeFile(path.join(options.cwd,"gguf-py/gguf/__init__.py"),"fixture");
       }
-      if (args.includes("-EncodedCommand")) {
-        const script = Buffer.from(args.at(-1)!, "base64").toString("utf16le");
-        expect(script).toContain("Expand-Archive -LiteralPath '");
-        expect(script).toContain("$ErrorActionPreference='Stop'");
+      if (args.includes("-xzf")) {
+        expect(_exe).toBe("tar.exe");
+        expect(args.at(-1)).toBe(path.join(options.cwd!, "engine"));
         await fs.mkdir(path.join(options.cwd!, "engine"), { recursive: true });
-        for (const name of ["strata.exe", "strata-vision.exe", "BUILD.json"]) await fs.writeFile(path.join(options.cwd!, "engine", name), "fixture");
+        for (const name of STRATA_ENGINE_FILES) await fs.writeFile(path.join(options.cwd!, name),
+          name.endsWith("engine-component.json") ? strataEngineManifestFixture() : "fixture");
       }
       return "";
     })
@@ -38,6 +39,21 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("retains old software if a mismatched component is extracted despite a successful transfer", async () => {
+    const { root, runtime } = await fixture();
+    expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
+    await fs.writeFile(path.join(root, "keep.txt"), "old runtime");
+    const original = runtime.run.getMockImplementation()!;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      const result = await original(exe, args, options);
+      if (args.includes("-xzf")) await fs.writeFile(path.join(options.cwd!, "engine", "engine-component.json"), '{}');
+      return result;
+    });
+    const result = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining("组件清单") });
+    expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old runtime");
+    expect(await strataManagedReceipt(root)).toBe(true);
+  });
   it("updates to one shared runtime and removes receipt-owned legacy versions, backups and successful downloads", async () => {
     const { folder, runtime } = await fixture(); vi.stubEnv("LOCALAPPDATA", folder);
     const root = managedStrataDirectory(), parent = path.dirname(root), old = managedStrataDirectory(STRATA_RELEASES[1]);
@@ -91,7 +107,7 @@ describe("Strata software installer", () => {
     };
     await write(oldRoot, old, true);
     expect(resolvedStrataDirectory(createDefaultSettings())).toBe(oldRoot);
-    expect(strataInstalledRelease(oldRoot)?.version).toBe("0.1.44.1");
+    expect(strataInstalledRelease(oldRoot)?.version).toBe(old.version);
     expect(await canUninstallStrata(createDefaultSettings())).toBe(true);
     await write(newRoot, current, false);
     expect(resolvedStrataDirectory(createDefaultSettings())).toBe(oldRoot);
@@ -179,7 +195,10 @@ describe("Strata software installer", () => {
     const commands = runtime.run.mock.calls.map(([exe, args]) => `${exe} ${args.join(" ")}`).join("\n");
     expect(commands).toContain(`fetch --depth=1 origin ${STRATA_REVISION}`);
     expect(commands).toContain(".venv");
-    expect(commands).toContain("nvidia-cublas==13.0.2.14");
+    expect(commands).not.toContain("nvidia-cublas");
+    expect(commands).not.toContain("nvidia-cuda-runtime");
+    expect(commands).toContain("verify(read_manifest(Path('engine')),full=True)");
+    expect(runtime.download.mock.calls[0][1]).toMatch(/engine\.tar\.gz$/u);
     expect(commands).toContain(`fetch --depth=1 --filter=blob:none origin ${STRATA_LLAMA_REVISION}`);
     expect(commands).toContain("sparse-checkout set gguf-py");
     expect(commands).not.toMatch(/setup\.py|--serve|START-HERE|huggingface|8080/);

@@ -41,7 +41,6 @@ type SettingsCopyKey =
   | "strata.note"
   | "strata.root"
   | "strata.port"
-  | "strata.portNote"
   | "strata.source"
   | "strata.engine"
   | "strata.choose"
@@ -415,7 +414,6 @@ const zhCN: SettingsCopyCatalog = {
   "strata.note": "提示词模型的独立运行环境，不改动 ComfyUI 的 Python 包",
   "strata.root": "自定义运行目录（留空由应用管理）",
   "strata.port": "预留本机端口",
-  "strata.portNote": "默认 43127；不支持 8080。",
   "strata.source": "下载源码 ZIP",
   "strata.engine": "下载 NVIDIA 引擎 ZIP",
   "strata.choose": "选择目录",
@@ -795,7 +793,6 @@ const zhTW: SettingsCopyCatalog = {
   "strata.note": "提示詞模型的獨立執行環境，不改動 ComfyUI 的 Python 套件",
   "strata.root": "自訂執行目錄（留空由應用管理）",
   "strata.port": "預留本機連接埠",
-  "strata.portNote": "預設 43127；不支援 8080。",
   "strata.source": "下載原始碼 ZIP",
   "strata.engine": "下載 NVIDIA 引擎 ZIP",
   "strata.choose": "選擇目錄",
@@ -1152,7 +1149,6 @@ const enUS: SettingsCopyCatalog = {
   "strata.note": "Independent prompt model runtime; keeps ComfyUI Python packages unchanged",
   "strata.root": "Custom runtime directory (leave empty for app management)",
   "strata.port": "Reserved local port",
-  "strata.portNote": "Default: 43127. Port 8080 is not supported.",
   "strata.source": "Download source ZIP",
   "strata.engine": "Download NVIDIA engine ZIP",
   "strata.choose": "Choose directory",

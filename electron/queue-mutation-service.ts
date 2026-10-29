@@ -1,4 +1,5 @@
 import type { AppState, UpscaleQueueTask } from "../src/types.js";
+import { H3_REFINER_ID, h3RefinerGeometry } from "../src/core/h3-refiner.js";
 import { applyH3AccelerationSettingsToWaitingTask } from "../src/core/h3-execution-policy.js";
 import {
   activeQueueTaskIds,
@@ -71,6 +72,20 @@ export class QueueMutationService {
       throw new Error("待编辑的 Upscale 任务不存在。");
     }
     const currentMode = current.upscaleMode ?? "pixel";
+    if (current.modelId === H3_REFINER_ID || patch.modelId === H3_REFINER_ID) {
+      if (current.modelId !== H3_REFINER_ID || patch.modelId !== H3_REFINER_ID || !current.h3Refiner) {
+        throw new Error("已排队的 Refiner 任务不能切换提升方案，请新建任务。");
+      }
+      const g = h3RefinerGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!);
+      const next = await store.update(state => {
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch,
+          upscaleMode: "pixel", modelId: H3_REFINER_ID, workflowPath: `builtin:upscale/${H3_REFINER_ID}`,
+          targetWidth: g.outputWidth, targetOutputHeight: g.outputHeight,
+          tileMode: "safe", faceRestore: false, targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined });
+      });
+      sendState(next);
+      return next;
+    }
     const currentIsKonohamaru = current.modelId === KONOHAMARU_MODEL_ID ||
       current.konohamaru !== undefined;
     const currentIsAetherScale = !currentIsKonohamaru && (current.modelId === AETHERSCALE_MODEL_ID ||

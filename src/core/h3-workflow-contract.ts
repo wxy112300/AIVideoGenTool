@@ -899,6 +899,9 @@ function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void
 export function h3ComfyAvWorkflowKind(source: unknown): H3ComfyAvWorkflowKind | null {
   const nodes = graphNodes(source);
   const classes = classTypes(nodes);
+  // Pixel-video Refiner has its own shape/time bridge and does not import or
+  // publish a JointAV continuation artifact, even when it uses a learned upscale.
+  if (classes.has("LocalVideoStudioH3RefinerPrepare")) return null;
   if (
     classes.has("H3ContinuumSamplerV38") &&
     !classes.has("LocalVideoStudioH3LoadJointAV") &&

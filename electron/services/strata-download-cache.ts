@@ -22,7 +22,8 @@ export async function prepareStrataDownloadCache(parent: string, runtime: Runtim
     || !Number.isSafeInteger(expected.bytes) || expected.bytes <= 0) throw new Error("引擎下载身份无效。");
   const cacheRoot = await childDirectory(parent, "downloads");
   const directory = await childDirectory(cacheRoot, `engine-${expected.revision}-${expected.sha256}`);
-  const metadata = path.join(directory, "download.json"), archive = path.join(directory, "engine.zip");
+  const archiveName = new URL(expected.url).pathname.endsWith(".tar.gz") ? "engine.tar.gz" : "engine.zip";
+  const metadata = path.join(directory, "download.json"), archive = path.join(directory, archiveName);
   const identity = { owner: "local-video-studio", ...expected };
   const stat = await fs.lstat(metadata).catch(error => { if (error.code === "ENOENT") return null; throw error; });
   if (stat) {
@@ -31,6 +32,7 @@ export async function prepareStrataDownloadCache(parent: string, runtime: Runtim
   }
   if ((await fs.readdir(directory)).length) throw new Error("下载缓存目录已有未知文件，未覆盖原文件。");
   await fs.writeFile(metadata, JSON.stringify(identity), { flag: "wx" });
+  if (archiveName !== "engine.zip") return archive;
   // Pre-resume installers left no download receipt. Import at most one matching Git stage.
   const candidates = (await fs.readdir(parent, { withFileTypes: true })).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && /^\.install-[a-z0-9]+$/iu.test(entry.name)).slice(-20).reverse();
   for (const entry of candidates) {

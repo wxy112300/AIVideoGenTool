@@ -43,7 +43,7 @@ export function normalizeAgentPreferences(value: unknown): AgentPreferences {
   result.uncensoredMode = normalizeStrataUncensoredMode(input.uncensoredMode, input.uncensored);
   result.uncensored = result.uncensoredMode !== "off";
   for (const key of ["strataPort", "guiPort"] as const) {
-    if (!validStrataPort(input[key])) throw new Error("端口应为 1024–65535，不能使用 8080。");
+    if (!validStrataPort(input[key])) throw new Error("端口应为 1024–65535 的整数。");
     result[key] = input[key];
   }
   if (result.strataPort === result.guiPort) throw new Error("Strata 与 GUI 不能使用同一端口。");

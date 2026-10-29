@@ -25,6 +25,7 @@ import { queueCompletionChange } from "./notifications";
 import type { RendererNotifyOptions } from "./contracts";
 import { queueLayoutSignature } from "./pages/queue/helpers";
 import { patchQueueLiveDom } from "./pages/queue/live-status";
+import { patchQueueOrderDom } from "./pages/queue/order-update";
 import type { PromptRuntimeState } from "../core/prompt-runtime-state";
 import {
   promptOperationBelongsTo,
@@ -358,7 +359,9 @@ export function registerRendererEvents(
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }
-      if (queueStructureStable && patchQueueLiveDom(
+      const queueOrderPatched = !queueStructureStable && options.getPage() === "queue" && previousState &&
+        patchQueueOrderDom(document, previousState, nextState, options.t);
+      if ((queueStructureStable || queueOrderPatched) && patchQueueLiveDom(
         nextState,
         options.t,
         options.getComfyRuntimeState(),
