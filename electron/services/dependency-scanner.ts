@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import { multimodalPromptSupportsLeanLogits } from "../../src/infrastructure/multimodal-prompt-logits.js";
@@ -115,7 +118,7 @@ async function directoryContainsMotionContextNodes(directory: string): Promise<b
   ].some((nodeType) => combined.includes(nodeType));
 }
 
-async function konohamaruRuntimeProblems(directory: string): Promise<string[]> {
+async function konohamaruRuntimeProblems(directory: string, t: Translate): Promise<string[]> {
   const problems: string[] = [];
   for (const relativeFilename of KONOHAMARU_RUNTIME_FILES) {
     if (relativeFilename === `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}`) continue;
@@ -124,14 +127,14 @@ async function konohamaruRuntimeProblems(directory: string): Promise<string[]> {
       const bytes = await fs.readFile(filename);
       const header = bytes.subarray(0, 160).toString("utf8");
       if (!bytes.byteLength || header.startsWith("version https://git-lfs.github.com/spec/v1")) {
-        problems.push(`${relativeFilename}${header.startsWith("version ") ? "（Git LFS pointer）" : "（空文件）"}`);
+        problems.push(t(header.startsWith("version ") ? uiKeys.konohamaruRuntime.lfs : uiKeys.konohamaruRuntime.empty, { file: relativeFilename }));
       }
     } catch {
-      problems.push(`${relativeFilename}（缺失）`);
+      problems.push(t(uiKeys.konohamaruRuntime.missing, { file: relativeFilename }));
     }
   }
-  problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(directory));
-  problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(directory));
+  problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(directory, t));
+  problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(directory, t));
   return problems;
 }
 
@@ -181,13 +184,14 @@ function compatibilityForNode(
   runtimeVerified: boolean,
   loadError: string,
   updateAvailable: boolean,
-  compatibilityNotice: string
+  compatibilityNotice: string,
+  requiresRestart: boolean,
+  t: Translate = createNativeTranslator(undefined).t
 ): Pick<CustomNodeStatus, "compatibilityState" | "compatibilityNotice"> {
   if (!installed) return { compatibilityState: "unknown", compatibilityNotice: "" };
   if (loadError) {
-    const pendingRestart = /尚未加载|重启/u.test(loadError);
     return {
-      compatibilityState: pendingRestart ? "warning" : "error",
+      compatibilityState: requiresRestart ? "warning" : "error",
       compatibilityNotice
     };
   }
@@ -196,7 +200,7 @@ function compatibilityForNode(
   );
   if (knownBad) return { compatibilityState: "error", compatibilityNotice: knownBad.reason };
   if (!version && definition.minimumVersion) {
-    const versionNotice = `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请在 Git 元数据可用时重新扫描。`;
+    const versionNotice = t(uiKeys.nodeScan.versionUnknownGit, { minimum: definition.minimumVersion });
     return {
       compatibilityState: "warning",
       compatibilityNotice: joinUniqueNotices(versionNotice, compatibilityNotice)
@@ -206,7 +210,7 @@ function compatibilityForNode(
       compareReleaseVersions(version, definition.minimumVersion) < 0) {
     return {
       compatibilityState: "error",
-      compatibilityNotice: `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}。`
+      compatibilityNotice: t(uiKeys.nodeScan.versionBelowSentence, { current: version, minimum: definition.minimumVersion })
     };
   }
   if (updateAvailable || compatibilityNotice) {
@@ -218,7 +222,7 @@ function compatibilityForNode(
     // version checks are enough for a green static pass. Runtime registration
     // remains a separate pending evidence axis until ComfyUI is available.
     compatibilityNotice: runtimeVerified
-      ? "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
+      ? t(uiKeys.nodeScan.runtimeCheckPending)
       : ""
   };
 }
@@ -333,21 +337,21 @@ interface H3PromptWriterRuntimeDiagnostics {
  * authoritative check used before a Gemma/Qwen GGUF request).
  */
 function promptWriterDiagnosticNotice(
-  diagnostics: H3PromptWriterRuntimeDiagnostics | undefined
+  diagnostics: H3PromptWriterRuntimeDiagnostics | undefined, t: Translate = createNativeTranslator(undefined).t
 ): string {
   if (!diagnostics || String(diagnostics.status ?? "").toLowerCase() !== "ok") return "";
   const backend = typeof diagnostics.backend === "string"
     ? diagnostics.backend.trim()
     : "";
   if (diagnostics.gpu_offload === false && !backend) {
-    return "节点自带诊断探针未加载 CUDA 后端；应用侧共享 llama-cpp-python 自检作为最终运行依据，不代表当前生成接口失败。";
+    return t(uiKeys.nodeScan.writerDiagnostic);
   }
   return "";
 }
 
 export async function inspectH3PromptWriterRuntime(
   serviceRoot: string,
-  runtimeEndpoint: string
+  runtimeEndpoint: string, t: Translate = createNativeTranslator(undefined).t
 ): Promise<H3PromptWriterRuntimeProbe> {
   if (!serviceRoot || !runtimeEndpoint) {
     return { loaded: null, error: "", notice: "" };
@@ -359,7 +363,7 @@ export async function inspectH3PromptWriterRuntime(
     if (!statusResponse.ok) {
       return {
         loaded: false,
-        error: `MiniMax H3 Prompt Writer 运行接口不可用（HTTP ${statusResponse.status}）`,
+        error: t(uiKeys.nodeScan.writerStatusUnavailable, { status: statusResponse.status }),
         notice: ""
       };
     }
@@ -369,7 +373,7 @@ export async function inspectH3PromptWriterRuntime(
     if (!modelsResponse.ok) {
       return {
         loaded: false,
-        error: `MiniMax H3 Prompt Writer 模型接口不可用（HTTP ${modelsResponse.status}）`,
+        error: t(uiKeys.nodeScan.writerModelsUnavailable, { status: modelsResponse.status }),
         notice: ""
       };
     }
@@ -399,19 +403,19 @@ export async function inspectH3PromptWriterRuntime(
         .join("：");
       const code = String(diagnostics?.return_code_hex ?? "").toUpperCase();
       if (status === "crashed" && (code === "0XC000001D" || /illegal instruction|非法指令/iu.test(detail))) {
-        error = `H3 Prompt Writer GGUF 运行库崩溃：${code || "0xC000001D"}${detail ? `（${detail}）` : ""}`;
+        error = t(uiKeys.nodeScan.writerCrash, { code: code || "0xC000001D", detail: detail ? `（${detail}）` : "" });
       } else if (["crashed", "timeout", "invalid_response"].includes(status)) {
-        error = `H3 Prompt Writer 运行时自检失败：${detail || status}`;
+        error = t(uiKeys.nodeScan.writerTestFailed, { reason: detail || status });
       }
-      diagnosticNotice = promptWriterDiagnosticNotice(diagnostics);
+      diagnosticNotice = promptWriterDiagnosticNotice(diagnostics, t);
     }
     return {
       loaded: !error,
       error,
       notice: [
         modelCount
-          ? `H3 Prompt Writer 运行接口已响应，发现 ${modelCount} 个模型`
-          : "H3 Prompt Writer 节点已加载，但当前没有发现 GGUF 模型；节点本身无需重复安装",
+          ? t(uiKeys.nodeScan.writerModelsFound, { count: modelCount })
+          : t(uiKeys.nodeScan.writerNoModels),
         diagnosticNotice
       ].filter(Boolean).join("；")
     };
@@ -436,6 +440,7 @@ export async function scanCustomNodes(
   latestNodeVersions: Readonly<Record<string, string>> = {},
   runtimeEvidence?: { nodeIds: Set<string> | null; latestVersionSources?: Readonly<Record<string, string>> }
 ): Promise<CustomNodeStatus[]> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
     : "";
@@ -462,7 +467,7 @@ export async function scanCustomNodes(
   )?.runtimeEndpoint;
   const h3PromptWriterRuntime = await inspectH3PromptWriterRuntime(
     promptWriterEndpoint ? serviceRoot : "",
-    promptWriterEndpoint || ""
+    promptWriterEndpoint || "", t
   );
 
   const revisionCache = new Map<string, Promise<string>>();
@@ -501,10 +506,10 @@ export async function scanCustomNodes(
     let updateNotice = "";
     let optionalUpdateRecommended = false;
     if (definition.id === KONOHAMARU_NODE_ID && directory) {
-      const problems = await konohamaruRuntimeProblems(directory);
+      const problems = await konohamaruRuntimeProblems(directory, t);
       if (problems.length) {
-        compatibilityError = `Konohamaru DLSS5 runtime 未通过完整性复检：${problems.join("、")}`;
-        compatibilityNotice = "请安装 Git LFS 后执行一键安装/更新；运行时 DLL/EXE/addon 不接受 pointer、错误哈希或旧 addon 混载。";
+        compatibilityError = t(uiKeys.konohamaruRuntime.scanFailed, { problems: problems.join(t(uiKeys.nodeInstaller.listSeparator)) });
+        compatibilityNotice = t(uiKeys.konohamaruRuntime.scanRepair);
         updateNotice = compatibilityNotice;
         optionalUpdateRecommended = true;
       }
@@ -520,18 +525,18 @@ export async function scanCustomNodes(
         .then(([utilsSource, nodesSource, loadVideoSource]) =>
           videoHelperBatchCompatible(utilsSource, nodesSource, loadVideoSource)
             ? ""
-            : "版本过旧：不兼容当前 ComfyUI 的分批视频队列，请更新节点"
+            : t(uiKeys.nodeScan.vhsOld)
         )
-        .catch(() => "无法读取 VideoHelperSuite 版本文件");
+        .catch(() => t(uiKeys.nodeScan.vhsUnreadable));
     } else if (definition.id === "ltx-video" && directory) {
       compatibilityError = await fs
         .readFile(path.join(directory, "low_vram_loaders.py"), "utf8")
         .then((source) =>
           ltxAudioVaeCompatible(source)
             ? ""
-            : "AudioVAE 加载接口过旧：不兼容当前 ComfyUI，请修复/更新节点"
+            : t(uiKeys.nodeScan.ltxOld)
         )
-        .catch(() => "无法读取 ComfyUI-LTXVideo 版本文件");
+        .catch(() => t(uiKeys.nodeScan.ltxUnreadable));
     } else if (definition.id === "seedvr2" && directory) {
       compatibilityError = await Promise.all([
         fs.readFile(path.join(directory, "src", "interfaces", "dit_model_loader.py"), "utf8"),
@@ -539,7 +544,7 @@ export async function scanCustomNodes(
         fs.readFile(path.join(directory, "src", "interfaces", "video_upscaler.py"), "utf8")
       ])
         .then(() => "")
-        .catch(() => "旧版 SeedVR2 单体节点已不再支持；请更新到 2.5.24+ 模块化节点");
+        .catch(() => t(uiKeys.nodeScan.seedVrOld));
     } else if (definition.id === "kjnodes" && directory) {
       const previewSourceAvailable = await fs
         .readFile(path.join(directory, "nodes", "preview_override_node.py"), "utf8")
@@ -547,9 +552,9 @@ export async function scanCustomNodes(
         .catch(() => false);
       optionalUpdateRecommended = !previewSourceAvailable;
       updateNotice = !previewSourceAvailable
-        ? "当前 KJNodes 缺少可选的 H3 TAE 实时预览节点；更新后可启用实时预览"
+        ? t(uiKeys.nodeScan.taeMissing)
         : serviceNodeIds !== null && !serviceNodeIds.has("ModelPreviewOverrideKJ")
-          ? "H3 TAE 实时预览文件已安装，但当前服务尚未加载；重启 ComfyUI 后可用"
+          ? t(uiKeys.nodeScan.taeRestart)
           : "";
     } else if (definition.id === "comfyui-qwenvl-lora" && directory) {
       const source = await fs
@@ -561,10 +566,10 @@ export async function scanCustomNodes(
         // later on ComfyUI Desktop, and gives the installer a deterministic
         // repair target for every machine/data directory.
         const notice = [
-          qwenVlNeedsComfyDesktopLoggingShim(source) ? "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor" : "",
-          qwenVlNeedsCooperativeInterrupt(source) ? "节点缺少提示词生成的协作式中断支持；取消可能无法及时生效" : "",
-          !qwenVlSupportsLongOutput(source) ? "节点尚未适配长时间线的 16K 输出与实际上下文预检" : "",
-          "请执行一键修复并重启服务"
+          qwenVlNeedsComfyDesktopLoggingShim(source) ? t(uiKeys.nodeScan.qwenLogging) : "",
+          qwenVlNeedsCooperativeInterrupt(source) ? t(uiKeys.nodeScan.qwenCancellation) : "",
+          !qwenVlSupportsLongOutput(source) ? t(uiKeys.nodeScan.qwenOutput) : "",
+          t(uiKeys.nodeScan.repairRestart)
         ].filter(Boolean).join("；");
         compatibilityNotice = notice;
         updateNotice = notice;
@@ -575,7 +580,7 @@ export async function scanCustomNodes(
         "backend/models/gguf_adapters.py", "backend/runtime_diagnostics.py"
       ].map((filename) => fs.readFile(path.join(directory, filename), "utf8").catch(() => "")));
       if (sources.some((source) => patchH3PromptWriterLlamaCppCompatibility(source) !== source)) {
-        const notice = "节点尚未适配共享 llama-cpp-python 0.4.x；请执行一键修复并重启 ComfyUI";
+        const notice = t(uiKeys.nodeScan.writerApiOld);
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;
@@ -597,10 +602,10 @@ export async function scanCustomNodes(
       const leanLogitsCompatible = !visionSource || multimodalPromptSupportsLeanLogits(visionSource);
       if (!qwen38Compatible || !projectorDiscoveryCompatible || !adaptiveGenerationCompatible || !leanLogitsCompatible) {
         const notice = !qwen38Compatible || !projectorDiscoveryCompatible
-          ? "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI"
+          ? t(uiKeys.nodeScan.projectorOld)
           : !adaptiveGenerationCompatible
-            ? "节点尚未适配长时间线的按需 32K 上下文/16K 输出预算与安全诊断；请执行一键修复并重启 ComfyUI"
-            : "节点尚未适配 Qwen MTMD 精简 logits；请执行一键修复并重启 ComfyUI，旧视觉后端行为保持不变";
+            ? t(uiKeys.nodeScan.contextOld)
+            : t(uiKeys.nodeScan.logitsOld);
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;
@@ -628,9 +633,9 @@ export async function scanCustomNodes(
     if (definition.id === "comfyui-gguf" && directory &&
         normalizedRepositoryUrl(sourceRemote) !== normalizedRepositoryUrl(definition.repositoryUrl)) {
       compatibilityError = sourceRemote
-        ? "GGUF 来源不匹配：当前不是项目推荐的 leejet 维护版，不能以相同版本号确认 Qwen Image 2.1 支持。"
-        : "GGUF 来源未确认：无法读取 Git origin，不能以版本号确认 Qwen Image 2.1 支持。";
-      updateNotice = "请安装/更新通用 GGUF；应用会备份旧目录并安装固定维护版，保留 H3 专用 GGUF。";
+        ? t(uiKeys.nodeScan.ggufWrongOrigin)
+        : t(uiKeys.nodeScan.ggufUnknownOrigin);
+      updateNotice = t(uiKeys.nodeScan.ggufUpdate);
     }
     const belowRecommendedVersion = Boolean(
       versionMode === "release" && directory && version && definition.recommendedVersion &&
@@ -639,7 +644,7 @@ export async function scanCustomNodes(
     if (belowRecommendedVersion) {
       updateNotice = joinUniqueNotices(
         updateNotice,
-        `发现项目推荐版本更新：当前 v${version}，推荐 v${definition.recommendedVersion}`
+        t(uiKeys.nodeScan.recommendedVersion, { current: version, recommended: String(definition.recommendedVersion) })
       );
     }
     const belowMinimumVersion = Boolean(
@@ -648,11 +653,11 @@ export async function scanCustomNodes(
     );
     if (!compatibilityError && belowMinimumVersion) {
       compatibilityError = version
-        ? `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}`
+        ? t(uiKeys.nodeScan.versionBelow, { current: version, minimum: String(definition.minimumVersion) })
         : "";
       compatibilityNotice = version
         ? ""
-        : `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请重新扫描确认。`;
+        : t(uiKeys.nodeScan.versionUnknown, { minimum: String(definition.minimumVersion) });
     }
     // Keep the two positional values for callers from older builds while all
     // catalog entries can now receive the same cached GitHub release lookup.
@@ -667,17 +672,17 @@ export async function scanCustomNodes(
       : "";
     if (directory && definition.installRevision &&
         detectedRevision.toLowerCase() !== definition.installRevision.toLowerCase()) {
-      const detectedLabel = detectedRevision || "未读取到";
+      const detectedLabel = detectedRevision || t(uiKeys.nodeScan.unread);
       if (definition.installRevisionPolicy === "recommended") {
         optionalUpdateRecommended = true;
         if (!belowRecommendedVersion) {
           const shortRevision = (value: string) => /^[a-f0-9]{40}$/i.test(value) ? value.slice(0, 8) : value;
           updateNotice = joinUniqueNotices(updateNotice,
-            `发现项目推荐 revision 更新：当前 ${shortRevision(detectedLabel)}，推荐 ${shortRevision(definition.installRevision)}`);
+            t(uiKeys.nodeScan.recommendedRevision, { current: shortRevision(detectedLabel), recommended: shortRevision(definition.installRevision) }));
         }
       } else {
         compatibilityError = compatibilityError ||
-          `节点 revision 不匹配：当前 ${detectedLabel}，要求 ${definition.installRevision}`;
+          t(uiKeys.nodeScan.revisionMismatch, { current: detectedLabel, required: definition.installRevision });
       }
     }
     const requiredNodeTypes = definition.nodeTypes;
@@ -705,17 +710,22 @@ export async function scanCustomNodes(
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
       requiredNodeTypes && runtimeVerified && !registered
       ? runtimeRepairable
-        ? `节点文件已安装，但当前服务未注册任何基础节点：${runtimeMissingNodeTypes.join("、")}。请执行修复/更新以重新安装节点依赖并重启复检；若仍失败，请查看本次 ComfyUI 启动日志中的节点导入错误`
-        : `节点文件已安装，但当前服务未注册：${runtimeMissingNodeTypes.join("、")}。重复安装通常无效，请查看本次 ComfyUI 启动日志中的节点导入错误`
+        ? t(uiKeys.nodeScan.registrationRepair, { nodes: runtimeMissingNodeTypes.join(t(uiKeys.nodeInstaller.listSeparator)) })
+        : t(uiKeys.nodeScan.registrationRestart, { nodes: runtimeMissingNodeTypes.join(t(uiKeys.nodeInstaller.listSeparator)) })
       : "";
     const duplicateNotice = duplicateDirectories.length
       ? definition.id === "h3-motion-context"
-        ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
+        ? t(uiKeys.nodeScan.motionDuplicates, { count: duplicateDirectories.length + 1 })
           : ""
       : "";
-    const loadError = compatibilityError ||
-      (definition.id === "minimax-h3-prompt-writer" && directory ? h3PromptWriterRuntime.error : "") ||
-      pendingRestartError;
+    const writerLoadError = definition.id === "minimax-h3-prompt-writer" && directory
+      ? h3PromptWriterRuntime.error : "";
+    const loadError = compatibilityError || writerLoadError || pendingRestartError;
+    // App-owned restart state follows the branch that produced the error.
+    // Preserve matching of unmodified native Writer diagnostics.
+    const requiresRestart = !compatibilityError && (writerLoadError
+      ? /尚未加载|重启/u.test(writerLoadError)
+      : Boolean(pendingRestartError) && runtimeRepairable);
     const updateAvailable = Boolean(
       compatibilityError || optionalUpdateRecommended ||
       belowRecommendedVersion
@@ -733,7 +743,9 @@ export async function scanCustomNodes(
         updateNotice,
         pendingRestartError,
         duplicateNotice
-      )
+      ),
+      requiresRestart,
+      t
     );
     return {
       id: definition.id,

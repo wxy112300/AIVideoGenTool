@@ -38,6 +38,19 @@ async function fixture() {
   return { root, output, video, image, oldVideo, stateFile, library, store, service, progress, options };
 }
 describe("confirmed settings storage migration", () => {
+  it("uses the selected language through output relocation and retains record identity", async () => {
+    const f = await fixture(), before = f.store.get();
+    const originalBytes = await fs.readFile(before.history[0].files[0].absolutePath!);
+    const next = await f.service.save({
+      ...before.settings, uiLocale:"en-US", outputDirectory:path.join(f.output,"English Videos")
+    }, "migrate-storage");
+    expect(next.history[0].id).toBe(before.history[0].id);
+    expect(next.history[0].title).toBe(before.history[0].title);
+    expect(f.progress.some(value => value.phase === "moving" && value.message.startsWith("Moving file "))).toBe(true);
+    expect(f.progress.at(-1)?.message).toBe("Data migration complete. Source files have been moved.");
+    await expect(fs.stat(f.oldVideo)).rejects.toMatchObject({code:"ENOENT"});
+    expect(await fs.readFile(next.history[0].files[0].absolutePath!)).toEqual(originalBytes);
+  });
   it("moves metadata, video and image bytes, remaps consumers and survives restart", async () => {
     const f = await fixture(), before = f.store.get(), inode = (await fs.stat(f.oldVideo)).ino;
     const settings = { ...before.settings, libraryDirectory: path.join(f.root, "Moved Library"), outputDirectory: path.join(f.output, "Videos New"), imageOutputDirectory: path.join(f.output, "Images New") };

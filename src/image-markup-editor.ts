@@ -15,6 +15,7 @@ import {
 } from "fabric/es";
 import Cropper from "cropperjs";
 import { createTranslator, type Translate } from "./core/i18n";
+import { uiKeys } from "./core/i18n-keys";
 import { renderMarkupEditor } from "./renderer/pages/create/markup-view";
 import { renderIcons } from "./renderer/shared/icons";
 import { primeSharedUi, paintRangeFill } from "./renderer/shared/ui/runtime";
@@ -126,23 +127,23 @@ function isFullCrop(crop: ImageCropSelection): boolean {
     crop.width === crop.sourceWidth && crop.height === crop.sourceHeight;
 }
 
-function cropDataUrl(source: HTMLImageElement, crop: ImageCropSelection): string {
+function cropDataUrl(source: HTMLImageElement, crop: ImageCropSelection, t: Translate): string {
   const canvas = document.createElement("canvas");
   canvas.width = crop.width;
   canvas.height = crop.height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前环境无法创建裁剪画布");
+  if (!context) throw new Error(t(uiKeys.uiError.cropCanvas));
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
   return canvas.toDataURL("image/png");
 }
 
-async function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+async function imageFromDataUrl(dataUrl: string, t: Translate): Promise<HTMLImageElement> {
   const image = document.createElement("img");
   image.src = dataUrl;
   await image.decode();
-  if (!image.naturalWidth || !image.naturalHeight) throw new Error("无法读取裁剪结果尺寸");
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error(t(uiKeys.uiError.cropDimensions));
   return image;
 }
 
@@ -161,7 +162,7 @@ export async function openImageMarkupEditor(
   originalSourceElement.src = options.sourceDataUrl;
   await originalSourceElement.decode();
   if (!originalSourceElement.naturalWidth || !originalSourceElement.naturalHeight) {
-    throw new Error("无法读取 Picture 尺寸");
+    throw new Error(t(uiKeys.uiError.pictureDimensions));
   }
   let storedDocumentCrop: ImageCropSelection | null = null;
   if (!options.existingCrop && options.existingDocument) {
@@ -180,10 +181,10 @@ export async function openImageMarkupEditor(
     : null;
   let currentCrop = originalCrop && !isFullCrop(originalCrop) ? originalCrop : null;
   let currentSourceDataUrl = currentCrop
-    ? cropDataUrl(originalSourceElement, currentCrop)
+    ? cropDataUrl(originalSourceElement, currentCrop, t)
     : options.sourceDataUrl;
   let sourceElement = currentCrop
-    ? await imageFromDataUrl(currentSourceDataUrl)
+    ? await imageFromDataUrl(currentSourceDataUrl, t)
     : originalSourceElement;
 
   const overlay = document.createElement("div");
@@ -308,10 +309,10 @@ export async function openImageMarkupEditor(
     });
     currentCrop = next;
     currentSourceDataUrl = currentCrop
-      ? cropDataUrl(originalSourceElement, currentCrop)
+      ? cropDataUrl(originalSourceElement, currentCrop, t)
       : options.sourceDataUrl;
     sourceElement = currentCrop
-      ? await imageFromDataUrl(currentSourceDataUrl)
+      ? await imageFromDataUrl(currentSourceDataUrl, t)
       : originalSourceElement;
     canvas.remove(sourceImage);
     sourceImage = new FabricImage(sourceElement, {
@@ -869,7 +870,7 @@ export async function openImageMarkupEditor(
         canvas.requestRenderAll();
       }
       const blob = await canvas.toBlob({ format: "png", multiplier: 1, enableRetinaScaling: false });
-      if (!blob) throw new Error("无法导出标注图片");
+      if (!blob) throw new Error(t(uiKeys.uiError.annotationExport));
       finish({
         document: JSON.stringify(document),
         renderedPng: await blob.arrayBuffer(),

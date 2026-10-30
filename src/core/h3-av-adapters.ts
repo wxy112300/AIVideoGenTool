@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   H3AvCapability,
   H3AvConsumerAdapter,
@@ -49,8 +51,8 @@ function transportFor(adapter: H3AvConsumerAdapter): H3AvAdapterTransport {
   }
 }
 
-function validatePath(file: HistoryFile, label: string): void {
-  if (!safeH3OutputRelativePath(file)) throw new Error(`${label} 不是安全的 output-root 相对路径`);
+function validatePath(file: HistoryFile, label: string, t: Translate): void {
+  if (!safeH3OutputRelativePath(file)) throw new Error(t(uiKeys.h3Adapter.path, { label }));
 }
 
 /**
@@ -62,32 +64,33 @@ function validatePath(file: HistoryFile, label: string): void {
  */
 export function adaptH3AvAsset(
   asset: H3AvLatentAsset,
-  adapter: H3AvConsumerAdapter
+  adapter: H3AvConsumerAdapter,
+  t: Translate = createTranslator().t
 ): H3AvAdapterView {
-  if (!isH3AvLatentAsset(asset)) throw new Error("H3 AV asset 未通过 canonical 校验");
+  if (!isH3AvLatentAsset(asset)) throw new Error(t(uiKeys.h3Adapter.invalid));
   const capability = requiredCapability(adapter);
   const canonicalMotionCompatibility = adapter === "motion-context" &&
     asset.storageKind === "app-canonical" &&
     asset.capabilities.includes("native-av");
   if (!asset.capabilities.includes(capability) && !canonicalMotionCompatibility) {
-    throw new Error(`H3 AV asset ${asset.assetId} 不具备 ${adapter} adapter 所需的 ${capability} capability`);
+    throw new Error(t(uiKeys.h3Adapter.capability, { id: asset.assetId, adapter, capability }));
   }
   if (adapter === "managed-continuum" && asset.storageKind !== "continuum-run-chunk") {
-    throw new Error("只有 Continuum Run Storage owner 才能进入 managed-continuum adapter");
+    throw new Error(t(uiKeys.h3Adapter.managedOwner));
   }
   if (adapter === "legacy-continuum" && asset.storageKind === "continuum-run-chunk") {
-    throw new Error("官方 Run Storage chunk 不得降级伪装为 legacy Continuum bootstrap");
+    throw new Error(t(uiKeys.h3Adapter.noDowngrade));
   }
   if (adapter !== "managed-continuum" && asset.storageKind === "continuum-run-chunk" &&
       adapter !== "native-joint-av" && adapter !== "motion-context") {
-    throw new Error("Continuum Run Storage chunk 只能由明确的 managed/native/motion adapter 消费");
+    throw new Error(t(uiKeys.h3Adapter.explicitAdapter));
   }
-  validatePath(asset.ownerPath, "H3 AV ownerPath");
+  validatePath(asset.ownerPath, "H3 AV ownerPath", t);
   const alias = asset.aliasPaths?.find((candidate) => safeH3OutputRelativePath(candidate));
   const payloadPath = adapter === "managed-continuum" || adapter === "motion-context"
     ? asset.ownerPath
     : (alias ?? asset.ownerPath);
-  validatePath(payloadPath, "H3 AV adapter payloadPath");
+  validatePath(payloadPath, "H3 AV adapter payloadPath", t);
   const physicalPayloadCount = asset.aliasMode === "copy-fallback" ? 2 : 1;
   return {
     adapter,

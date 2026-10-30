@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type {
   ExtensionQueueTask,
   GenerationQueueTask,
@@ -44,16 +46,17 @@ type H3ArtifactTask = GenerationQueueTask | ExtensionQueueTask | UpscaleQueueTas
 export function nativeAvArtifactMetadataForTask(
   task: H3ArtifactTask,
   outputDirectory: string,
-  createdAt: string
+  createdAt: string,
+  t: Translate = createTranslator().t
 ): NativeAvArtifactMetadata {
   const assets = miniMaxH3ModelAssetNames(task.modelId);
-  if (!assets) throw new Error(`H3 AV artifact 缺少 ${task.modelId} 的模型资产映射。`);
-  if (!task.h3VideoVaeMode) throw new Error("H3 AV artifact 缺少已解析的视频 VAE backend。" );
+  if (!assets) throw new Error(t(uiKeys.outputValidation.modelMapping, { model: task.modelId }));
+  if (!task.h3VideoVaeMode) throw new Error(t(uiKeys.outputValidation.vaeBackend) );
   const h3Upscale = task.taskType === "upscale" && task.upscaleMode === "h3-native"
     ? task.h3NativeInput
     : undefined;
   if (task.taskType === "upscale" && !h3Upscale) {
-    throw new Error("普通 Upscale 任务不能提交 H3 JointAV artifact。");
+    throw new Error(t(uiKeys.outputValidation.upscaleUnsupported));
   }
   const workflowBasename = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
   const firstPass = workflowBasename.includes("first_pass");
@@ -116,25 +119,26 @@ export function nativeAvArtifactMetadataForTask(
  */
 export function collectNativeAvProducedFile(
   completion: unknown,
-  expectedNodeId: string
+  expectedNodeId: string,
+  t: Translate = createTranslator().t
 ): NativeAvProducedFileCollection {
   if (!expectedNodeId.trim()) {
     return {
       status: "save-failed",
-      reason: "H3 AV serializer collector 缺少预期节点 ID。"
+      reason: t(uiKeys.outputValidation.collectorNode)
     };
   }
   const files = extractComfyNativeAvOutputFiles(completion, expectedNodeId);
   if (files.length === 0) {
     return {
       status: "missing",
-      reason: "本次 ComfyUI prompt 的预期 H3 AV serializer 节点没有返回文件。"
+      reason: t(uiKeys.outputValidation.collectorAbsent)
     };
   }
   if (files.length !== 1) {
     return {
       status: "save-failed",
-      reason: `H3 AV serializer 返回了 ${files.length} 个 payload，无法确定唯一 artifact。`
+      reason: t(uiKeys.outputValidation.collectorAmbiguous, { count: files.length })
     };
   }
   const file = files[0]!;
@@ -155,9 +159,10 @@ export class H3NativeAvArtifactCollector {
   async commitCompletion(
     completion: unknown,
     expectedNodeId: string,
-    metadata: NativeAvArtifactMetadata
+    metadata: NativeAvArtifactMetadata,
+    t: Translate = createTranslator().t
   ): Promise<NativeAvContinuationData> {
-    const collection = collectNativeAvProducedFile(completion, expectedNodeId);
+    const collection = collectNativeAvProducedFile(completion, expectedNodeId, t);
     if (!collection.producedFile) {
       return {
         status: collection.status,

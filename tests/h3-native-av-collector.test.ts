@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import { H3_AV_SERIALIZER_REVISION } from "../src/core/catalog";
 import type { ExtensionQueueTask, GenerationQueueTask, UpscaleQueueTask } from "../src/types";
 import type { NativeAvArtifactMetadata } from "../electron/services/native-av-artifact";
@@ -41,6 +42,18 @@ function completion(...files: Array<Record<string, unknown>>): unknown {
 }
 
 describe("H3 native AV completion collector", () => {
+  it("localizes collection failure without committing a missing or ambiguous payload", async () => {
+    const committer = { commitProducedFile: vi.fn() };
+    const collector = new H3NativeAvArtifactCollector(committer);
+    expect(await collector.commitCompletion(completion(), "20", metadata, createNativeTranslator("en-US").t))
+      .toEqual({ status: "missing", reason: "The expected H3 AV serializer node returned no files for this ComfyUI prompt." });
+    const descriptor = { filename: "h3av_fixture1.safetensors", subfolder: "h3-native-av", type: "output", format: "safetensors" };
+    expect(await collector.commitCompletion(completion(descriptor, {...descriptor,filename:"h3av_fixture2.safetensors"}),
+      "20", metadata, createNativeTranslator("zh-TW").t))
+      .toEqual({ status: "save-failed", reason: "H3 AV serializer 傳回 2 個 payload，無法確認唯一的 artifact。" });
+    expect(committer.commitProducedFile).not.toHaveBeenCalled();
+  });
+
   it("builds final artifact metadata from the immutable generation task", () => {
     const task = {
       id: "generation-001",

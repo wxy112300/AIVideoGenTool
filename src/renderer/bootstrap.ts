@@ -6,7 +6,8 @@ import type {
   Settings,
   WorkflowCapabilities
 } from "../types";
-import { loadUiLocale } from "../core/i18n";
+import { createTranslator, loadUiLocale } from "../core/i18n";
+import { uiKeys } from "../core/i18n-keys";
 import type { PromptRuntimeState } from "../core/prompt-runtime-state";
 import type { RendererApplicationApi } from "./studio-client";
 import type { CreationMode } from "./contracts";
@@ -85,9 +86,11 @@ function hydrateStartupRuntime(options: RendererBootstrapOptions): void {
 }
 
 export function bootstrapRenderer(options: RendererBootstrapOptions): void {
+  let startupLocale: Settings["uiLocale"];
   void Promise.resolve()
     .then(() => options.application.getState())
     .then(async (initialState) => {
+      startupLocale = initialState.settings.uiLocale;
       await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
       options.setState(initialState);
       options.setCreationMode(initialState.draft.inputMode === "video" ? "video-extension" : "image-to-video");
@@ -148,7 +151,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
         .finally(() => options.render());
     })
     .catch((error) => {
-      const message = `工作区初始化失败：${startupErrorMessage(error)}`;
+      const message = createTranslator(startupLocale).t(uiKeys.nativeDialog.workspaceFailed, { error: startupErrorMessage(error) });
       options.showStartupFailure?.(message);
       reportBootstrapError(options, "renderer-bootstrap", error);
     });

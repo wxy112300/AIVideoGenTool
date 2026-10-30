@@ -13,6 +13,18 @@ import { comfyUiSettingsForQueueTask } from "../src/infrastructure/comfy-runtime
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it("localizes missing-core errors without launching a process", async () => {
+    const launchDetached = vi.fn();
+    const dependencies = {
+      isPortInUse: async () => false, findComfyRoot: async () => "",
+      findComfyInstallation: async () => null, launchDetached
+    } as unknown as ComfyRuntimeServiceDependencies;
+    await expect(startComfyUiService({ ...createDefaultState().settings, uiLocale: "en-US" }, dependencies))
+      .rejects.toThrow("ComfyUI core folder not found.");
+    await expect(startComfyUiService({ ...createDefaultState().settings, uiLocale: "zh-TW" }, dependencies))
+      .rejects.toThrow("找不到 ComfyUI 核心程式目錄。");
+    expect(launchDetached).not.toHaveBeenCalled();
+  });
   it("binds Windows Python output to the visible ComfyUI console", () => {
     const args = comfyUiPythonEntryArgs("D:\\ComfyCore\\main.py", "win32");
     expect(args.slice(0, 3)).toEqual(["-s", "-c", expect.any(String)]);

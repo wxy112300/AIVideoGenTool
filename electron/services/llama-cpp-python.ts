@@ -1,4 +1,6 @@
-import type { Settings, LlamaCppPythonStatus } from "../../src/types.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { Settings, LlamaCppPythonStatus, UiLocale } from "../../src/types.js";
 import { pythonProbeCache } from "./python-probe-cache.js";
 import { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE, LLAMA_CPP_PYTHON_REPOSITORY } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
 export { LLAMA_CPP_PYTHON_JAMEPENG_VERSION, LLAMA_CPP_PYTHON_JAMEPENG_RELEASE_DATE } from "../../src/core/catalog/dependencies/llama-cpp-python.js";
@@ -101,6 +103,7 @@ export interface LlamaCppPythonRuntime {
     executable: string,
     args: string[],
     options: {
+      uiLocale?: UiLocale;
       cwd?: string;
       env?: NodeJS.ProcessEnv;
       timeoutMs?: number;
@@ -160,7 +163,8 @@ const probeScript = [
 // remains intentional when this probe is refactored.
 export const LLAMA_CPP_PYTHON_PROBE_SCRIPT = probeScript;
 
-export function emptyLlamaCppPythonStatus(pythonPath = ""): LlamaCppPythonStatus {
+export function emptyLlamaCppPythonStatus(pythonPath = "", locale: UiLocale = "zh-CN"): LlamaCppPythonStatus {
+  const t = createNativeTranslator(locale).t;
   return {
     packageName: "llama-cpp-python",
     pythonPath,
@@ -172,7 +176,7 @@ export function emptyLlamaCppPythonStatus(pythonPath = ""): LlamaCppPythonStatus
     importable: false,
     gpuOffload: null,
     ready: false,
-    detail: pythonPath ? "尚未安装 llama-cpp-python" : "未找到所选 ComfyUI Python",
+    detail: pythonPath ? t(uiKeys.llamaInstaller.notInstalled) : t(uiKeys.llamaInstaller.pythonMissing),
     error: ""
   };
 }
@@ -234,8 +238,10 @@ export function llamaCppJamePengRepairWheel(
 export function statusFromLlamaCppProbe(
   pythonPath: string,
   probe: LlamaCppPythonProbe,
-  error = ""
+  error = "",
+  locale: UiLocale = "zh-CN"
 ): LlamaCppPythonStatus {
+  const t = createNativeTranslator(locale).t;
   const packageVersion = probe.packageVersion?.trim() ?? "";
   const importable = probe.importable === true;
   const gpuOffload = typeof probe.gpuOffload === "boolean" ? probe.gpuOffload : null;
@@ -244,19 +250,19 @@ export function statusFromLlamaCppProbe(
   const crashCode = nativeCrashCodeFrom([importError, error].filter(Boolean).join("\n"));
   const nativeCrash = Boolean(crashCode);
   const installed = Boolean(packageVersion || importable || nativeCrash);
-  let detail = "尚未安装 llama-cpp-python";
+  let detail = t(uiKeys.llamaInstaller.notInstalled);
   if (nativeCrash) {
-    detail = `llama-cpp-python 原生运行库崩溃（${crashCode}，Windows 非法指令）。当前 wheel 与 CPU 指令集不兼容；请点击“重新安装/修复”切换兼容的动态 CPU 后端。`;
+    detail = t(uiKeys.llamaInstaller.nativeCrash, { code: crashCode });
   } else if (installed && !importable) {
-    detail = `llama-cpp-python 已安装，但无法导入${importError ? `：${importError}` : ""}`;
+    detail = t(uiKeys.llamaInstaller.importFailed, { error: importError ? `${locale === "en-US" ? ": " : "："}${importError}` : "" });
   } else if (importable && probe.dynamicBackend === false && process.platform === "win32") {
-    detail = `已安装旧版或不可用的 Windows 原生后端；请执行修复安装${backendError ? `：${backendError}` : ""}`;
+    detail = t(uiKeys.llamaInstaller.backendBroken, { error: backendError ? `${locale === "en-US" ? ": " : "："}${backendError}` : "" });
   } else if (importable && gpuOffload === false) {
-    detail = "已安装，但当前是 CPU 后端；Gemma 需要 CUDA 后端";
+    detail = t(uiKeys.llamaInstaller.cpuOnly);
   } else if (importable && gpuOffload === null) {
-    detail = "已导入，但无法确认 CUDA 后端；请执行修复安装";
+    detail = t(uiKeys.llamaInstaller.cudaUnknown);
   } else if (importable && gpuOffload === true) {
-    detail = `CUDA 后端已就绪${packageVersion ? ` · v${packageVersion}` : ""}`;
+    detail = t(uiKeys.llamaInstaller.ready, { version: packageVersion ? ` · v${packageVersion}` : "" });
   }
   return {
     packageName: "llama-cpp-python",
@@ -277,37 +283,58 @@ export function statusFromLlamaCppProbe(
   };
 }
 
+export interface LlamaCppPythonProbeResult {
+  probe: LlamaCppPythonProbe;
+  error: string;
+}
+
+export function llamaCppStatusFromInspection(
+  pythonPath: string,
+  result: LlamaCppPythonProbeResult,
+  locale: UiLocale = "zh-CN"
+): LlamaCppPythonStatus {
+  return pythonPath
+    ? statusFromLlamaCppProbe(pythonPath, result.probe, result.error, locale)
+    : emptyLlamaCppPythonStatus("", locale);
+}
+
 export async function inspectLlamaCppPython(
   pythonPath: string,
-  runLoggedProcess: LlamaCppPythonRuntime["runLoggedProcess"]
+  runLoggedProcess: LlamaCppPythonRuntime["runLoggedProcess"],
+  locale: UiLocale = "zh-CN"
 ): Promise<LlamaCppPythonStatus> {
-  if (!pythonPath) return emptyLlamaCppPythonStatus();
+  const result = await inspectLlamaCppPythonProbe(pythonPath, runLoggedProcess, locale);
+  return llamaCppStatusFromInspection(pythonPath, result, locale);
+}
+
+export async function inspectLlamaCppPythonProbe(
+  pythonPath: string,
+  runLoggedProcess: LlamaCppPythonRuntime["runLoggedProcess"],
+  locale: UiLocale = "zh-CN"
+): Promise<LlamaCppPythonProbeResult> {
+  if (!pythonPath) return { probe: {}, error: "" };
   try {
     const output = await runLoggedProcess(
       pythonPath,
       ["-c", probeScript],
-      { timeoutMs: 30_000 }
+      { timeoutMs: 30_000, uiLocale: locale }
     );
     const parsed = JSON.parse(lastJsonLine(output)) as LlamaCppPythonProbe;
-    return statusFromLlamaCppProbe(pythonPath, parsed);
+    return { probe: parsed, error: "" };
   } catch (error) {
     const processError = error as LlamaCppProcessError;
     const output = processError.stdout ?? "";
     try {
       const parsed = JSON.parse(lastJsonLine(output)) as LlamaCppPythonProbe;
-      return statusFromLlamaCppProbe(
-        pythonPath,
-        parsed,
-        processError.message
-      );
+      return { probe: parsed, error: processError.message };
     } catch {
-      return statusFromLlamaCppProbe(pythonPath, {
+      return { probe: {
         pythonVersion: "",
         packageVersion: "",
         importable: false,
         gpuOffload: null,
         importError: processError.message
-      }, processError.message);
+      }, error: processError.message };
     }
   }
 }
@@ -362,10 +389,11 @@ function sharedLlamaOperationLock(
   onLog: ((message: string) => void) | undefined,
   operation: () => Promise<LlamaCppInstallResult>
 ): Promise<LlamaCppInstallResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const key = sharedLlamaOperationKey(settings);
   const running = sharedLlamaOperationLocks.get(key);
   if (running) {
-    onLog?.("检测到同一 ComfyUI 的 llama-cpp-python 正在安装、修复或卸载，等待现有事务完成，不会并行修改运行库……");
+    onLog?.(t(uiKeys.llamaInstaller.waiting));
     return running;
   }
   const pending = operation();
@@ -383,6 +411,8 @@ async function installLlamaCppPythonPackageUnlocked(
   onLog?: (message: string) => void,
   options: { forceReinstall?: boolean } = {}
 ): Promise<LlamaCppInstallResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
+  const locale = settings.uiLocale;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -393,22 +423,22 @@ async function installLlamaCppPythonPackageUnlocked(
   try {
     const environment = runtime.downloadEnvironment(settings);
     report(runtime.proxyLogLabel(settings));
-    report("正在定位所选 ComfyUI Python，并检查 llama-cpp-python……");
+    report(t(uiKeys.llamaInstaller.locating));
     const comfyRoot = await runtime.findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    if (!comfyRoot) throw new Error(t(uiKeys.llamaInstaller.rootMissing));
     const python = await runtime.findComfyPython(settings, comfyRoot);
-    if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
-    const before = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    if (!python) throw new Error(t(uiKeys.llamaInstaller.pythonEnvironmentMissing));
+    const before = await inspectLlamaCppPython(python, runtime.runLoggedProcess, settings.uiLocale);
     if (before.ready) {
-      report(`当前探针显示 llama-cpp-python 已就绪：${before.detail}`);
+      report(t(uiKeys.llamaInstaller.alreadyReady, { detail: before.detail }));
       if (options.forceReinstall === false) {
         return {
           ok: true,
-          message: "llama-cpp-python 已经就绪，无需重复安装。",
+          message: t(uiKeys.llamaInstaller.skipInstall),
           log: log.join("\n\n")
         };
       }
-      report("这是一次显式的修复操作，将继续重装并在完成后重新自检……");
+      report(t(uiKeys.llamaInstaller.explicitRepair));
     }
     // Use the portable dynamic-backend wheel for every supported Windows
     // installation, not only after a known crash. The older static wheels can
@@ -426,28 +456,28 @@ async function installLlamaCppPythonPackageUnlocked(
       const abi = pythonAbiFromVersion(before.pythonVersion);
       if (abi && !LLAMA_CPP_PYTHON_JAMEPENG_ABI_SET.has(abi)) {
         throw new Error(
-          `当前 ComfyUI 使用 Python ${before.pythonVersion}（${abi}），固定的 Windows CUDA 后端只提供 Python 3.10–3.14。请切换到受支持的 ComfyUI Python 后再修复。`
+          t(uiKeys.llamaInstaller.abiUnsupported, { python: before.pythonVersion, abi })
         );
       }
       throw new Error(
-        `当前 ComfyUI Python 的 PyTorch CUDA 版本为 ${before.cudaVersion || "未知"}，固定的 Windows 后端没有匹配的预编译 wheel；已拒绝回退到 CPU 或源码编译。支持 CUDA 12.4/12.6/12.8/13.0/13.1，并兼容映射 12.5/12.7/12.9/13.2。`
+        t(uiKeys.llamaInstaller.cudaUnsupported, { cuda: before.cudaVersion || t(uiKeys.attentionInstaller.unknown) })
       );
     }
     if (repairWheel && before.nativeCrash) {
       report(
-        `检测到 ${before.nativeCrashCode || "Windows 非法指令"}：当前 llama-cpp-python wheel 在本机加载时崩溃；改用 JamePeng ${LLAMA_CPP_PYTHON_JAMEPENG_VERSION} 动态 CUDA/CPU 后端进行修复，不会启动独立 llama-server……`
+        t(uiKeys.llamaInstaller.crashRepair, { code: before.nativeCrashCode || "Windows illegal instruction", version: LLAMA_CPP_PYTHON_JAMEPENG_VERSION })
       );
     } else if (repairWheel) {
       report(
-        `安装 JamePeng ${LLAMA_CPP_PYTHON_JAMEPENG_VERSION} Windows CUDA 动态后端；下载大小取决于匹配的 CUDA / Python 安装包……`
+        t(uiKeys.llamaInstaller.dynamicInstall, { version: LLAMA_CPP_PYTHON_JAMEPENG_VERSION })
       );
     } else {
       report(
         wheelSelection && !wheelSelection.exact
-          ? `CUDA ${before.cudaVersion} 没有专用预编译 wheel，改用官方发布的 CUDA ${cudaVersionLabelFromWheelKey(wheelSelection.wheelKey)} 预编译后端并在安装后自检（不会启动独立 llama-server）……`
+          ? t(uiKeys.llamaInstaller.wheelFallback, { cuda: before.cudaVersion, fallback: cudaVersionLabelFromWheelKey(wheelSelection.wheelKey) })
           : wheelIndex
-          ? `安装 CUDA ${before.cudaVersion} 预编译后端（不会启动独立 llama-server）……`
-          : "安装 llama-cpp-python 后端……"
+          ? t(uiKeys.llamaInstaller.wheelInstall, { cuda: before.cudaVersion })
+          : t(uiKeys.llamaInstaller.installing)
       );
     }
     const args = [
@@ -477,23 +507,24 @@ async function installLlamaCppPythonPackageUnlocked(
       if (percent < 100 && percent < lastDownloadPercent + 2) return;
       lastDownloadPercent = percent;
       report(
-        `下载进度：${percent}% · ${(current / 1024 / 1024).toFixed(1)} / ${(total / 1024 / 1024).toFixed(1)} MB`
+        t(uiKeys.llamaInstaller.progress, { percent, current: (current / 1024 / 1024).toFixed(1), total: (total / 1024 / 1024).toFixed(1) })
       );
     };
     await runtime.runLoggedProcess(python, args, {
+      uiLocale: settings.uiLocale,
       timeoutMs: repairWheel ? 2_700_000 : 1_800_000,
       env: environment,
       onLog: reportPipOutput
     });
-    report("pip 安装完成，正在执行 import 与 CUDA 后端自检……");
-    const after = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    report(t(uiKeys.llamaInstaller.testing));
+    const after = await inspectLlamaCppPython(python, runtime.runLoggedProcess, settings.uiLocale);
     if (!after.ready) {
-      throw new Error(`安装后自检未通过：${after.detail}${after.error ? `（${after.error}）` : ""}`);
+      throw new Error(t(uiKeys.llamaInstaller.testFailed, { detail: after.detail, error: after.error ? (locale === "en-US" ? ` (${after.error})` : `（${after.error}）`) : "" }));
     }
-    report(`自检通过：${after.detail}`);
+    report(t(uiKeys.llamaInstaller.tested, { detail: after.detail }));
     return {
       ok: true,
-      message: "llama-cpp-python 已安装并通过 CUDA 自检。请重启 ComfyUI 后再使用 Gemma 扩写。",
+      message: t(uiKeys.llamaInstaller.installed),
       log: log.join("\n\n")
     };
   } catch (error) {
@@ -502,7 +533,7 @@ async function installLlamaCppPythonPackageUnlocked(
     report(details);
     return {
       ok: false,
-      message: processError.message || "llama-cpp-python 安装失败",
+      message: processError.message || t(uiKeys.llamaInstaller.installFailed),
       log: log.join("\n\n")
     };
   }
@@ -530,6 +561,8 @@ async function uninstallLlamaCppPythonPackageUnlocked(
   runtime: LlamaCppPythonRuntime,
   onLog?: (message: string) => void
 ): Promise<LlamaCppInstallResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
+  const locale = settings.uiLocale;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -540,21 +573,21 @@ async function uninstallLlamaCppPythonPackageUnlocked(
   try {
     const environment = runtime.downloadEnvironment(settings);
     report(runtime.proxyLogLabel(settings));
-    report("正在定位所选 ComfyUI Python，并检查 llama-cpp-python……");
+    report(t(uiKeys.llamaInstaller.locating));
     const comfyRoot = await runtime.findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    if (!comfyRoot) throw new Error(t(uiKeys.llamaInstaller.rootMissing));
     const python = await runtime.findComfyPython(settings, comfyRoot);
-    if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
-    const before = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    if (!python) throw new Error(t(uiKeys.llamaInstaller.pythonEnvironmentMissing));
+    const before = await inspectLlamaCppPython(python, runtime.runLoggedProcess, settings.uiLocale);
     if (!before.installed) {
-      report("当前环境没有安装 llama-cpp-python，无需卸载。");
+      report(t(uiKeys.llamaInstaller.absent));
       return {
         ok: true,
-        message: "llama-cpp-python 未安装，无需卸载。",
+        message: t(uiKeys.llamaInstaller.skipUninstall),
         log: log.join("\n\n")
       };
     }
-    report("正在卸载 llama-cpp-python……");
+    report(t(uiKeys.llamaInstaller.uninstalling));
     await runtime.runLoggedProcess(
       python,
       [
@@ -563,20 +596,21 @@ async function uninstallLlamaCppPythonPackageUnlocked(
         "llama-cpp-python"
       ],
       {
+        uiLocale: settings.uiLocale,
         timeoutMs: 600_000,
         env: environment,
         onLog: report
       }
     );
-    report("pip 卸载完成，正在确认运行库已移除……");
-    const after = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    report(t(uiKeys.llamaInstaller.checkingRemoved));
+    const after = await inspectLlamaCppPython(python, runtime.runLoggedProcess, settings.uiLocale);
     if (after.installed) {
-      throw new Error("卸载后仍检测到 llama-cpp-python，请查看安装日志。");
+      throw new Error(t(uiKeys.llamaInstaller.stillInstalled));
     }
-    report("已确认 llama-cpp-python 已移除。");
+    report(t(uiKeys.llamaInstaller.removed));
     return {
       ok: true,
-      message: "llama-cpp-python 已卸载。",
+      message: t(uiKeys.llamaInstaller.uninstalled),
       log: log.join("\n\n")
     };
   } catch (error) {
@@ -585,7 +619,7 @@ async function uninstallLlamaCppPythonPackageUnlocked(
     report(details);
     return {
       ok: false,
-      message: processError.message || "llama-cpp-python 卸载失败",
+      message: processError.message || t(uiKeys.llamaInstaller.uninstallFailed),
       log: log.join("\n\n")
     };
   }

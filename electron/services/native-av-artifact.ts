@@ -1,7 +1,11 @@
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import { createNativeTranslator } from "../ui-translator.js";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
   H3ContinuationDataStatus,
+  UiLocale,
   NativeAvArtifactInspection,
   NativeAvArtifactRole,
   NativeAvContinuationArtifact,
@@ -94,6 +98,7 @@ export interface NativeAvArtifactProducedFileCommitRequest extends NativeAvArtif
 
 export interface NativeAvArtifactServiceDependencies {
   fileSystem: NativeAvArtifactFileSystemPort;
+  getUiLocale?: () => UiLocale | undefined;
 }
 
 function isWithinDirectory(rootDirectory: string, candidate: string): boolean {
@@ -107,39 +112,40 @@ function isWithinDirectory(rootDirectory: string, candidate: string): boolean {
   );
 }
 
-function artifactDirectory(outputDirectory: string): string {
+function artifactDirectory(outputDirectory: string, t: Translate): string {
   const root = outputDirectory.trim();
-  if (!root) throw new Error("视频输出目录为空，无法保存 H3 AV artifact");
+  if (!root) throw new Error(t(uiKeys.nativeAv.outputEmpty));
   const directory = path.resolve(root, H3_CONTINUATION_ARTIFACT_SUBFOLDER);
-  if (!isWithinDirectory(root, directory)) throw new Error("H3 AV artifact 目录越界");
+  if (!isWithinDirectory(root, directory)) throw new Error(t(uiKeys.nativeAv.directoryOutside));
   return directory;
 }
 
-function safeArtifactPath(outputDirectory: string, filename: string): string {
-  const directory = artifactDirectory(outputDirectory);
+function safeArtifactPath(outputDirectory: string, filename: string, t: Translate): string {
+  const directory = artifactDirectory(outputDirectory, t);
   if (!filename || path.basename(filename) !== filename || filename.includes("..")) {
-    throw new Error("H3 AV artifact 文件名不安全");
+    throw new Error(t(uiKeys.nativeAv.filenameUnsafe));
   }
   const candidate = path.resolve(directory, filename);
-  if (!isWithinDirectory(directory, candidate)) throw new Error("H3 AV artifact 路径越界");
+  if (!isWithinDirectory(directory, candidate)) throw new Error(t(uiKeys.nativeAv.pathOutside));
   return candidate;
 }
 
 function safeProducedFilePath(
   outputDirectory: string,
-  descriptor: NativeAvArtifactProducedFileDescriptor
+  descriptor: NativeAvArtifactProducedFileDescriptor,
+  t: Translate
 ): string {
   if (
     descriptor.type !== "output" ||
     descriptor.subfolder !== H3_CONTINUATION_ARTIFACT_SUBFOLDER ||
     (descriptor.format !== undefined && descriptor.format !== H3_CONTINUATION_ARTIFACT_PAYLOAD_FORMAT)
   ) {
-    throw new Error("Comfy H3 AV output descriptor 不属于受管 output/h3-native-av safetensors");
+    throw new Error(t(uiKeys.nativeAv.descriptorOutside));
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.safetensors$/u.test(descriptor.filename)) {
-    throw new Error("Comfy H3 AV output descriptor 文件名不安全");
+    throw new Error(t(uiKeys.nativeAv.descriptorUnsafe));
   }
-  return safeArtifactPath(outputDirectory, descriptor.filename);
+  return safeArtifactPath(outputDirectory, descriptor.filename, t);
 }
 
 function sha256(payload: Uint8Array): string {
@@ -194,16 +200,16 @@ function expectedTensorBytes(descriptor: SafetensorsTensorDescriptor): number | 
   return elements * bytesPerElement;
 }
 
-function parseSafetensorsJointHeader(payload: Uint8Array): ParsedJointAvPayload {
-  if (payload.byteLength < 8) throw new Error("safetensors payload 截断：缺少 header length");
+function parseSafetensorsJointHeader(payload: Uint8Array, t: Translate): ParsedJointAvPayload {
+  if (payload.byteLength < 8) throw new Error(t(uiKeys.nativeAv.headerLengthMissing));
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const headerLengthBigInt = view.getBigUint64(0, true);
   if (headerLengthBigInt > BigInt(MAX_SAFETENSORS_HEADER_BYTES)) {
-    throw new Error("safetensors header 超出安全上限");
+    throw new Error(t(uiKeys.nativeAv.headerTooLarge));
   }
   const headerLength = Number(headerLengthBigInt);
   const dataStart = 8 + headerLength;
-  if (dataStart > payload.byteLength) throw new Error("safetensors payload 截断：header 不完整");
+  if (dataStart > payload.byteLength) throw new Error(t(uiKeys.nativeAv.headerIncomplete));
 
   let header: unknown;
   try {
@@ -211,81 +217,83 @@ function parseSafetensorsJointHeader(payload: Uint8Array): ParsedJointAvPayload 
     const headerText = new TextDecoder("utf-8", { fatal: true }).decode(headerBytes);
     header = JSON.parse(headerText) as unknown;
   } catch {
-    throw new Error("safetensors header 不是有效 JSON");
+    throw new Error(t(uiKeys.nativeAv.headerJson));
   }
   if (!header || typeof header !== "object" || Array.isArray(header)) {
-    throw new Error("safetensors header 格式无效");
+    throw new Error(t(uiKeys.nativeAv.headerInvalid));
   }
   const entries = Object.entries(header as Record<string, unknown>)
     .filter(([key]) => key !== "__metadata__");
   if (entries.length !== 2 || !entries.some(([key]) => key === "video") || !entries.some(([key]) => key === "audio")) {
-    throw new Error("safetensors 必须且只能包含 video/audio 两个 tensor");
+    throw new Error(t(uiKeys.nativeAv.tensorKeys));
   }
   const video = tensorDescriptor((header as Record<string, unknown>).video);
   const audio = tensorDescriptor((header as Record<string, unknown>).audio);
-  if (!video || !audio) throw new Error("video/audio tensor descriptor 无效");
+  if (!video || !audio) throw new Error(t(uiKeys.nativeAv.tensorDescriptor));
   return { video, audio, dataStart };
 }
 
 function validateSafetensorsPayloadLayout(
   payload: ParsedJointAvPayload,
-  payloadBytes: number
+  payloadBytes: number,
+  t: Translate
 ): void {
   if (!Number.isSafeInteger(payloadBytes) || payloadBytes < payload.dataStart) {
-    throw new Error("safetensors payload 截断：data 区域不完整");
+    throw new Error(t(uiKeys.nativeAv.dataIncomplete));
   }
   const dataBytes = payloadBytes - payload.dataStart;
   let maxDataOffset = 0;
   for (const [key, descriptor] of [["video", payload.video], ["audio", payload.audio]] as const) {
     const [start, end] = descriptor.dataOffsets;
-    if (start < 0 || end > dataBytes) throw new Error(`${key} tensor data_offsets 越界`);
+    if (start < 0 || end > dataBytes) throw new Error(t(uiKeys.nativeAv.offsetOutside, { key }));
     maxDataOffset = Math.max(maxDataOffset, end);
     const expectedBytes = expectedTensorBytes(descriptor);
     if (expectedBytes === null || expectedBytes !== end - start) {
-      throw new Error(`${key} tensor data size 与 shape/dtype 不匹配`);
+      throw new Error(t(uiKeys.nativeAv.tensorBytes, { key }));
     }
   }
   if (maxDataOffset !== dataBytes) {
-    throw new Error("safetensors data 区域长度与 header offsets 不匹配");
+    throw new Error(t(uiKeys.nativeAv.dataLength));
   }
 }
 
-function parseSafetensorsJointPayload(payload: Uint8Array): ParsedJointAvPayload {
-  const parsed = parseSafetensorsJointHeader(payload);
-  validateSafetensorsPayloadLayout(parsed, payload.byteLength);
+function parseSafetensorsJointPayload(payload: Uint8Array, t: Translate): ParsedJointAvPayload {
+  const parsed = parseSafetensorsJointHeader(payload, t);
+  validateSafetensorsPayloadLayout(parsed, payload.byteLength, t);
   return parsed;
 }
 
 function validateJointPayloadGeometry(
   payload: ParsedJointAvPayload,
-  request: Pick<NativeAvArtifactCommitRequest, "width" | "height" | "frameCount">
+  request: Pick<NativeAvArtifactCommitRequest, "width" | "height" | "frameCount">,
+  t: Translate
 ): void {
   if (payload.video.shape.length !== 5 || payload.video.shape[0] !== 1 || payload.video.shape[1] !== 24) {
-    throw new Error("video tensor 必须为 [1,24,T,H/16,W/16]");
+    throw new Error(t(uiKeys.nativeAv.videoShape));
   }
   const expectedVideoTemporal = ((request.frameCount - 5) / 17) * 5 + 2;
   if (payload.video.shape[2] !== expectedVideoTemporal) {
-    throw new Error(`video tensor 的时间 shape 必须为 ${expectedVideoTemporal}`);
+    throw new Error(t(uiKeys.nativeAv.videoTemporal, { frames: expectedVideoTemporal }));
   }
   if (
     payload.video.shape[3] !== request.height / 16 ||
     payload.video.shape[4] !== request.width / 16
   ) {
-    throw new Error("video tensor 的空间 shape 与 artifact 几何不匹配");
+    throw new Error(t(uiKeys.nativeAv.videoSpatial));
   }
   if (payload.audio.shape.length !== 4 || payload.audio.shape[0] !== 1 || payload.audio.shape[1] !== 32 || payload.audio.shape[2] !== 2) {
-    throw new Error("audio tensor 必须为 [1,32,2,T40]");
+    throw new Error(t(uiKeys.nativeAv.audioShape));
   }
   const expectedAudioTemporal = Math.round((request.frameCount / 24) * 40);
   if (payload.audio.shape[3] !== expectedAudioTemporal) {
-    throw new Error(`audio tensor 的时间 shape 必须为 ${expectedAudioTemporal}`);
+    throw new Error(t(uiKeys.nativeAv.audioTemporal, { frames: expectedAudioTemporal }));
   }
 }
 
-function frameCountFromJointPayload(payload: ParsedJointAvPayload): number {
+function frameCountFromJointPayload(payload: ParsedJointAvPayload, t: Translate): number {
   const temporal = payload.video.shape[2];
   if (!Number.isSafeInteger(temporal) || temporal < 2 || (temporal - 2) % 5 !== 0) {
-    throw new Error("video tensor 的时间 shape 不符合 H3 时间网格");
+    throw new Error(t(uiKeys.nativeAv.videoGrid));
   }
   return 5 + ((temporal - 2) / 5) * 17;
 }
@@ -351,10 +359,11 @@ function failure(status: H3ContinuationDataStatus, reason: string): NativeAvCont
 
 function artifactWithAbsolutePaths(
   artifact: NativeAvContinuationArtifact,
-  outputDirectory: string
+  outputDirectory: string,
+  t: Translate
 ): NativeAvContinuationArtifact {
-  const manifestPath = safeArtifactPath(outputDirectory, artifact.manifest.filename);
-  const payloadPath = safeArtifactPath(outputDirectory, artifact.payload.filename);
+  const manifestPath = safeArtifactPath(outputDirectory, artifact.manifest.filename, t);
+  const payloadPath = safeArtifactPath(outputDirectory, artifact.payload.filename, t);
   return {
     ...artifact,
     manifest: { ...artifact.manifest, absolutePath: manifestPath },
@@ -411,19 +420,21 @@ export class NativeAvArtifactService {
     referencePath: string,
     outputDirectory: string
   ): Promise<NativeAvArtifactInspection> {
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
     const requested = referencePath.trim();
-    if (!requested) return failure("invalid", "H3 AV artifact 路径为空");
-    const directory = artifactDirectory(outputDirectory);
+    if (!requested) return failure("invalid", t(uiKeys.nativeAv.pathEmpty));
+    const directory = artifactDirectory(outputDirectory, t);
     const candidate = path.resolve(path.isAbsolute(requested)
       ? requested
       : path.join(outputDirectory, requested));
     if (!isWithinDirectory(directory, candidate) || path.extname(candidate).toLowerCase() !== ".safetensors") {
-      return failure("invalid", "请选择当前 output/h3-native-av 目录下的 .safetensors artifact");
+      return failure("invalid", t(uiKeys.nativeAv.selectManaged));
     }
     const payloadFilename = path.basename(candidate);
     const manifestPath = safeArtifactPath(
       outputDirectory,
-      payloadFilename.replace(/\.safetensors$/iu, ".json")
+      payloadFilename.replace(/\.safetensors$/iu, ".json"),
+      t
     );
     const [payloadStat, manifestStat] = await Promise.all([
       this.deps.fileSystem.stat(candidate),
@@ -432,7 +443,7 @@ export class NativeAvArtifactService {
     if (!payloadStat?.isFile() || !manifestStat?.isFile()) {
       return {
         status: "missing",
-        reason: "所选 H3 AV 缺少相邻 manifest 或 payload 文件",
+        reason: t(uiKeys.nativeAv.adjacentMissing),
         payloadPath: candidate,
         manifestPath
       };
@@ -440,10 +451,10 @@ export class NativeAvArtifactService {
     try {
       const manifest = JSON.parse(await this.deps.fileSystem.readText(manifestPath)) as unknown;
       if (!isNativeAvContinuationArtifact(manifest)) {
-        return failure("invalid", `manifest 无效：${validateNativeAvContinuationArtifact(manifest) ?? "未知错误"}`);
+        return failure("invalid", t(uiKeys.nativeAv.manifestInvalid, { reason: validateNativeAvContinuationArtifact(manifest, t) ?? t(uiKeys.nativeAv.unknown) }));
       }
       if (manifest.payload.filename !== payloadFilename) {
-        return failure("invalid", "所选 payload 与相邻 manifest 不匹配");
+        return failure("invalid", t(uiKeys.nativeAv.selectedMismatch));
       }
       return this.inspect(manifest, outputDirectory);
     } catch (error) {
@@ -460,6 +471,7 @@ export class NativeAvArtifactService {
   async commitProducedFile(
     request: NativeAvArtifactProducedFileCommitRequest
   ): Promise<NativeAvContinuationData> {
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
     let payloadPath = "";
     let manifestPath = "";
     let payloadTemporary = "";
@@ -468,65 +480,65 @@ export class NativeAvArtifactService {
     let manifestCommitted = false;
     try {
       if (request.width <= 0 || request.height <= 0 || request.width % 32 !== 0 || request.height % 32 !== 0) {
-        return failure("save-failed", "H3 AV artifact 几何必须为正数且 32 对齐");
+        return failure("save-failed", t(uiKeys.nativeAv.geometry));
       }
       if (request.fps !== undefined && request.fps !== 24) {
-        return failure("save-failed", "H3 AV artifact 只接受 24 FPS");
+        return failure("save-failed", t(uiKeys.nativeAv.fps));
       }
       if (!Number.isSafeInteger(request.contextFrames) || request.contextFrames < 0) {
-        return failure("save-failed", "contextFrames 无效");
+        return failure("save-failed", t(uiKeys.nativeAv.context));
       }
       if (request.providerId !== "comfyui") {
-        return failure("save-failed", "新的 H3 AV artifact 只能由 ComfyUI provider 提交");
+        return failure("save-failed", t(uiKeys.nativeAv.provider));
       }
       for (const [key, value] of [
         ["producerNodeId", request.producerNodeId],
         ["producerNodeVersion", request.producerNodeVersion],
         ["workflowId", request.workflowId]
       ] as const) {
-        if (!value.trim()) return failure("save-failed", `缺少 ${key}`);
+        if (!value.trim()) return failure("save-failed", t(uiKeys.nativeAv.missingField, { key }));
       }
 
-      const sourcePath = safeProducedFilePath(request.outputDirectory, request.producedFile);
+      const sourcePath = safeProducedFilePath(request.outputDirectory, request.producedFile, t);
       const sourceStat = await this.deps.fileSystem.stat(sourcePath);
       if (!sourceStat?.isFile() || sourceStat.size <= 0) {
-        return failure("missing", "Comfy H3 AV serializer 没有产出可提交的 safetensors 文件");
+        return failure("missing", t(uiKeys.nativeAv.noOutput));
       }
       const artifactId = request.artifactId ?? randomUUID();
       if (request.sharedOutput && !request.artifactId) {
-        return failure("save-failed", "shared H3 AV serializer descriptor 不是规范 h3av_<id>.safetensors，拒绝复制 payload");
+        return failure("save-failed", t(uiKeys.nativeAv.sharedFilename));
       }
-      const filenames = continuationArtifactFilenames(artifactId);
-      const directory = artifactDirectory(request.outputDirectory);
-      payloadPath = safeArtifactPath(request.outputDirectory, filenames.payload);
-      manifestPath = safeArtifactPath(request.outputDirectory, filenames.manifest);
+      const filenames = continuationArtifactFilenames(artifactId, t);
+      const directory = artifactDirectory(request.outputDirectory, t);
+      payloadPath = safeArtifactPath(request.outputDirectory, filenames.payload, t);
+      manifestPath = safeArtifactPath(request.outputDirectory, filenames.manifest, t);
       if (request.sharedOutput && sourcePath !== payloadPath) {
-        return failure("save-failed", "shared H3 AV payload 不在 canonical owner 路径，拒绝复制 payload");
+        return failure("save-failed", t(uiKeys.nativeAv.sharedOwner));
       }
       const existingManifest = await this.deps.fileSystem.stat(manifestPath);
       const existingPayload = await this.deps.fileSystem.stat(payloadPath);
       if (existingManifest || (existingPayload && sourcePath !== payloadPath)) {
-        return failure("save-failed", `artifact ${artifactId} 已存在，拒绝覆盖旧结果`);
+        return failure("save-failed", t(uiKeys.nativeAv.exists, { id: artifactId }));
       }
 
       const header = parseSafetensorsJointHeader(await this.deps.fileSystem.readFilePrefix(
         sourcePath,
         8 + MAX_SAFETENSORS_HEADER_BYTES
-      ));
-      validateSafetensorsPayloadLayout(header, sourceStat.size);
+      ), t);
+      validateSafetensorsPayloadLayout(header, sourceStat.size, t);
       // Comfy nodes may quantize a requested pixel-frame length to the H3 VAE
       // grid. The serialized tensor is the authoritative artifact timeline;
       // derive its frame count from the validated header instead of persisting
       // a pre-render estimate that can be off-grid (notably Motion Context).
       const committedRequest = {
         ...request,
-        frameCount: frameCountFromJointPayload(header)
+        frameCount: frameCountFromJointPayload(header, t)
       };
-      validateJointPayloadGeometry(header, committedRequest);
+      validateJointPayloadGeometry(header, committedRequest, t);
       const digest = await hashFileStream(this.deps.fileSystem, sourcePath);
       const afterStat = await this.deps.fileSystem.stat(sourcePath);
       if (digest.bytes !== sourceStat.size || !afterStat?.isFile() || afterStat.size !== digest.bytes) {
-        return failure("save-failed", "Comfy H3 AV payload 在校验期间发生变化，拒绝提交");
+        return failure("save-failed", t(uiKeys.nativeAv.producedChanged));
       }
 
       const baseArtifact = buildArtifactManifest(
@@ -537,7 +549,7 @@ export class NativeAvArtifactService {
         digest.sha256,
         digest.bytes
       );
-      const artifactError = validateNativeAvContinuationArtifact(baseArtifact);
+      const artifactError = validateNativeAvContinuationArtifact(baseArtifact, t);
       if (artifactError) return failure("save-failed", artifactError);
 
       await this.deps.fileSystem.makeDirectory(directory);
@@ -555,7 +567,7 @@ export class NativeAvArtifactService {
           copiedDigest.bytes !== digest.bytes ||
           copiedDigest.sha256 !== digest.sha256
         ) {
-          throw new Error("复制 H3 AV payload 后的字节数或 SHA-256 不匹配");
+          throw new Error(t(uiKeys.nativeAv.copyMismatch));
         }
         await this.deps.fileSystem.rename(payloadTemporary, payloadPath);
         payloadCopied = true;
@@ -567,7 +579,7 @@ export class NativeAvArtifactService {
       );
       await this.deps.fileSystem.rename(manifestTemporary, manifestPath);
       manifestCommitted = true;
-      return { status: "available", artifact: artifactWithAbsolutePaths(baseArtifact, request.outputDirectory) };
+      return { status: "available", artifact: artifactWithAbsolutePaths(baseArtifact, request.outputDirectory, t) };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return failure("save-failed", reason);
@@ -583,6 +595,7 @@ export class NativeAvArtifactService {
   }
 
   async commit(request: NativeAvArtifactCommitRequest): Promise<NativeAvContinuationData> {
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
     let payloadPath = "";
     let manifestPath = "";
     let payloadTemporary = "";
@@ -591,31 +604,31 @@ export class NativeAvArtifactService {
     let manifestCommitted = false;
     try {
       if (request.width <= 0 || request.height <= 0 || request.width % 32 !== 0 || request.height % 32 !== 0) {
-        return failure("save-failed", "H3 AV artifact 几何必须为正数且 32 对齐");
+        return failure("save-failed", t(uiKeys.nativeAv.geometry));
       }
       if (request.fps !== undefined && request.fps !== 24) {
-        return failure("save-failed", "H3 AV artifact 只接受 24 FPS");
+        return failure("save-failed", t(uiKeys.nativeAv.fps));
       }
       if (!Number.isSafeInteger(request.frameCount) || request.frameCount <= 0 || (request.frameCount - 5) % 17 !== 0) {
-        return failure("save-failed", "frameCount 不符合 H3 时间网格");
+        return failure("save-failed", t(uiKeys.nativeAv.frameGrid));
       }
       if (!Number.isSafeInteger(request.contextFrames) || request.contextFrames < 0) {
-        return failure("save-failed", "contextFrames 无效");
+        return failure("save-failed", t(uiKeys.nativeAv.context));
       }
       const artifactId = request.artifactId ?? randomUUID();
-      const filenames = continuationArtifactFilenames(artifactId);
-      const directory = artifactDirectory(request.outputDirectory);
-      payloadPath = safeArtifactPath(request.outputDirectory, filenames.payload);
-      manifestPath = safeArtifactPath(request.outputDirectory, filenames.manifest);
+      const filenames = continuationArtifactFilenames(artifactId, t);
+      const directory = artifactDirectory(request.outputDirectory, t);
+      payloadPath = safeArtifactPath(request.outputDirectory, filenames.payload, t);
+      manifestPath = safeArtifactPath(request.outputDirectory, filenames.manifest, t);
       payloadTemporary = path.join(directory, `.${filenames.payload}.${randomUUID()}.partial`);
       manifestTemporary = path.join(directory, `.${filenames.manifest}.${randomUUID()}.tmp`);
       if (await this.deps.fileSystem.stat(payloadPath) || await this.deps.fileSystem.stat(manifestPath)) {
-        return failure("save-failed", `artifact ${artifactId} 已存在，拒绝覆盖旧结果`);
+        return failure("save-failed", t(uiKeys.nativeAv.exists, { id: artifactId }));
       }
 
       const payload = new Uint8Array(request.payload);
-      const parsedPayload = parseSafetensorsJointPayload(payload);
-      validateJointPayloadGeometry(parsedPayload, request);
+      const parsedPayload = parseSafetensorsJointPayload(payload, t);
+      validateJointPayloadGeometry(parsedPayload, request, t);
       const payloadHash = sha256(payload);
       const baseArtifact = buildArtifactManifest(
         request,
@@ -625,7 +638,7 @@ export class NativeAvArtifactService {
         payloadHash,
         payload.byteLength
       );
-      const artifactError = validateNativeAvContinuationArtifact(baseArtifact);
+      const artifactError = validateNativeAvContinuationArtifact(baseArtifact, t);
       if (artifactError) return failure("save-failed", artifactError);
 
       await this.deps.fileSystem.makeDirectory(directory);
@@ -638,7 +651,7 @@ export class NativeAvArtifactService {
       payloadCommitted = true;
       await this.deps.fileSystem.rename(manifestTemporary, manifestPath);
       manifestCommitted = true;
-      return { status: "available", artifact: artifactWithAbsolutePaths(baseArtifact, request.outputDirectory) };
+      return { status: "available", artifact: artifactWithAbsolutePaths(baseArtifact, request.outputDirectory, t) };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return failure("save-failed", reason);
@@ -659,14 +672,15 @@ export class NativeAvArtifactService {
     reference: NativeAvContinuationArtifact,
     outputDirectory: string
   ): Promise<NativeAvArtifactInspection> {
-    const referenceError = validateNativeAvContinuationArtifact(reference);
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
+    const referenceError = validateNativeAvContinuationArtifact(reference, t);
     if (referenceError) return failure("invalid", referenceError);
     let manifestPath = "";
     let payloadPath = "";
     try {
       manifestPath = resolveNativeAvArtifactFilePath(outputDirectory, reference.manifest) ?? "";
       payloadPath = resolveNativeAvArtifactFilePath(outputDirectory, reference.payload) ?? "";
-      if (!manifestPath || !payloadPath) throw new Error("H3 AV artifact 路径无效");
+      if (!manifestPath || !payloadPath) throw new Error(t(uiKeys.nativeAv.pathInvalid));
     } catch (error) {
       return failure("invalid", error instanceof Error ? error.message : String(error));
     }
@@ -677,7 +691,7 @@ export class NativeAvArtifactService {
     if (!manifestStat?.isFile() || !payloadStat?.isFile()) {
       return {
         status: "missing",
-        reason: "manifest 或 payload 文件不存在",
+        reason: t(uiKeys.nativeAv.filesMissing),
         manifestPath,
         payloadPath
       };
@@ -685,7 +699,7 @@ export class NativeAvArtifactService {
     try {
       const manifest = JSON.parse(await this.deps.fileSystem.readText(manifestPath)) as unknown;
       if (!isNativeAvContinuationArtifact(manifest)) {
-        return failure("invalid", `manifest 无效：${validateNativeAvContinuationArtifact(manifest) ?? "未知错误"}`);
+        return failure("invalid", t(uiKeys.nativeAv.manifestInvalid, { reason: validateNativeAvContinuationArtifact(manifest, t) ?? t(uiKeys.nativeAv.unknown) }));
       }
       // Hydrate from the files actually inspected, never from cached paths inside the manifest.
       const manifestArtifact = {
@@ -694,16 +708,16 @@ export class NativeAvArtifactService {
         payload: { ...manifest.payload, absolutePath: payloadPath }
       };
       if (!sameArtifactReference(reference, manifestArtifact)) {
-        return failure("invalid", "持久化引用与 manifest 不匹配");
+        return failure("invalid", t(uiKeys.nativeAv.referenceMismatch));
       }
       if (payloadStat.size !== manifestArtifact.payloadBytes) {
-        return failure("invalid", "payload 字节数与 manifest 不匹配");
+        return failure("invalid", t(uiKeys.nativeAv.bytesMismatch));
       }
       const parsedPayload = parseSafetensorsJointHeader(await this.deps.fileSystem.readFilePrefix(
         payloadPath,
         8 + MAX_SAFETENSORS_HEADER_BYTES
-      ));
-      validateSafetensorsPayloadLayout(parsedPayload, payloadStat.size);
+      ), t);
+      validateSafetensorsPayloadLayout(parsedPayload, payloadStat.size, t);
       const payloadDigest = await hashFileStream(this.deps.fileSystem, payloadPath);
       const payloadAfterStat = await this.deps.fileSystem.stat(payloadPath);
       if (
@@ -711,19 +725,19 @@ export class NativeAvArtifactService {
         payloadDigest.bytes !== payloadStat.size ||
         payloadAfterStat.size !== payloadDigest.bytes
       ) {
-        return failure("invalid", "payload 在校验期间发生变化");
+        return failure("invalid", t(uiKeys.nativeAv.payloadChanged));
       }
       if (!sha256Pattern.test(payloadDigest.sha256) || payloadDigest.sha256 !== manifestArtifact.payloadSha256) {
-        return failure("invalid", "payload SHA-256 校验失败");
+        return failure("invalid", t(uiKeys.nativeAv.hashMismatch));
       }
-      validateJointPayloadGeometry(parsedPayload, manifestArtifact);
+      validateJointPayloadGeometry(parsedPayload, manifestArtifact, t);
       if (
         JSON.stringify(parsedPayload.video.shape) !== JSON.stringify(manifestArtifact.videoShape) ||
         parsedPayload.video.dtype !== manifestArtifact.videoDtype ||
         JSON.stringify(parsedPayload.audio.shape) !== JSON.stringify(manifestArtifact.audioShape) ||
         parsedPayload.audio.dtype !== manifestArtifact.audioDtype
       ) {
-        return failure("invalid", "payload tensor shape/dtype 与 manifest 不匹配");
+        return failure("invalid", t(uiKeys.nativeAv.tensorMismatch));
       }
       return {
         status: "available",

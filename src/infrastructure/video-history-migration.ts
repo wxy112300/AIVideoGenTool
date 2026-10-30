@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createTranslator, type Translate } from "../core/i18n.js";
+import { uiKeys } from "../core/i18n-keys.js";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import type {
@@ -197,7 +199,8 @@ function addFileReference(
   oldDirectory: string,
   newDirectory: string,
   missing: string[],
-  conflicts: string[]
+  conflicts: string[],
+  t: Translate
 ): void {
   if (!fileIsManagedVideoOutput(file)) return;
   const sourcePath = file.absolutePath?.trim()
@@ -205,11 +208,11 @@ function addFileReference(
     : safeOutputPath(oldDirectory, file.subfolder, file.filename);
   const targetPath = safeOutputPath(newDirectory, file.subfolder, file.filename);
   if (!sourcePath) {
-    missing.push(`${asset.id}:${versionId ?? "asset"}:${file.filename}（缺少可解析的旧路径）`);
+    missing.push(t(uiKeys.storageMigration.oldPathMissing, { reference: `${asset.id}:${versionId ?? "asset"}:${file.filename}` }));
     return;
   }
   if (!targetPath) {
-    conflicts.push(`${file.filename}（目标路径越界）`);
+    conflicts.push(t(uiKeys.storageMigration.targetOutside, { path: file.filename }));
     return;
   }
   const key = normalizedPath(sourcePath);
@@ -223,7 +226,7 @@ function addFileReference(
   const existing = entries.get(key);
   if (existing) {
     if (normalizedPath(existing.targetPath) !== normalizedPath(targetPath)) {
-      conflicts.push(`${sourcePath}（同一源文件对应多个目标路径）`);
+      conflicts.push(t(uiKeys.storageMigration.multipleTargets, { path: sourcePath }));
       return;
     }
     existing.references.push(reference);
@@ -282,7 +285,8 @@ function addQueueReference(
   history: HistoryAsset[],
   oldDirectory: string,
   newDirectory: string,
-  conflicts: string[]
+  conflicts: string[],
+  t: Translate
 ): void {
   const source = queueVideoSource(task);
   if (!source?.path.trim()) return;
@@ -302,7 +306,7 @@ function addQueueReference(
   const relative = path.relative(path.resolve(oldDirectory), sourcePath);
   const targetPath = path.resolve(newDirectory, relative);
   if (!isPathWithinDirectory(newDirectory, targetPath)) {
-    conflicts.push(`${sourcePath}（队列目标路径越界）`);
+    conflicts.push(t(uiKeys.storageMigration.queueTargetOutside, { path: sourcePath }));
     return;
   }
   entries.set(normalizedPath(sourcePath), {
@@ -320,7 +324,8 @@ export async function planVideoHistoryMigration(
   history: HistoryAsset[],
   oldDirectory: string,
   newDirectory: string,
-  queue: QueueTask[] = []
+  queue: QueueTask[] = [],
+  t: Translate = createTranslator().t
 ): Promise<VideoHistoryMigrationPlan> {
   const entries = new Map<string, VideoHistoryMigrationEntry>();
   const missing: string[] = [];
@@ -338,7 +343,8 @@ export async function planVideoHistoryMigration(
         oldDirectory,
         newDirectory,
         missing,
-        conflicts
+        conflicts,
+        t
       );
     }
     for (const version of asset.versions) {
@@ -354,7 +360,8 @@ export async function planVideoHistoryMigration(
           oldDirectory,
           newDirectory,
           missing,
-          conflicts
+          conflicts,
+          t
         );
       }
       for (const [artifactIndex, file] of h3ArtifactFiles(version).entries()) {
@@ -369,13 +376,14 @@ export async function planVideoHistoryMigration(
           oldDirectory,
           newDirectory,
           missing,
-          conflicts
+          conflicts,
+          t
         );
       }
     }
   }
   for (const task of queue) {
-    addQueueReference(entries, task, history, oldDirectory, newDirectory, conflicts);
+    addQueueReference(entries, task, history, oldDirectory, newDirectory, conflicts, t);
   }
 
   let totalBytes = 0;
@@ -391,14 +399,14 @@ export async function planVideoHistoryMigration(
     const targetStat = await fs.stat(entry.targetPath).catch(() => null);
     if (!targetStat) continue;
     if (!targetStat.isFile()) {
-      conflicts.push(`${entry.targetPath}（目标不是文件）`);
+      conflicts.push(t(uiKeys.storageMigration.targetNotFile, { path: entry.targetPath }));
       continue;
     }
     const targetHash = await hashFile(entry.targetPath);
     if (targetStat.size === entry.size && targetHash === entry.hash) {
       entry.targetReady = true;
     } else {
-      conflicts.push(`${entry.targetPath}（目标文件内容不同）`);
+      conflicts.push(t(uiKeys.storageMigration.contentDifferent, { path: entry.targetPath }));
     }
   }
   return {
@@ -425,11 +433,12 @@ function progress(
 export async function prepareVideoHistoryMigration(
   plan: VideoHistoryMigrationPlan,
   journalFilename: string,
-  onProgress: (value: HistoryMigrationProgress) => void
+  onProgress: (value: HistoryMigrationProgress) => void,
+  t: Translate = createTranslator().t
 ): Promise<PreparedVideoHistoryMigration> {
   if (plan.missing.length || plan.conflicts.length) {
     throw new Error(
-      `迁移预检未通过：${plan.missing.length} 个文件缺失，${plan.conflicts.length} 个目标冲突。`
+      t(uiKeys.storageMigration.preflightFailed, { missing: plan.missing.length, conflicts: plan.conflicts.length })
     );
   }
   const journal: MigrationJournal = {
@@ -448,7 +457,7 @@ export async function prepareVideoHistoryMigration(
         "moving",
         index,
         total,
-        `正在准备第 ${index + 1} / ${total} 个视频文件`,
+        t(uiKeys.storageMigration.preparing, { current: index + 1, total }),
         migratedFiles
       ));
       if (normalizedPath(entry.sourcePath) === normalizedPath(entry.targetPath) || entry.targetReady) {
@@ -458,7 +467,7 @@ export async function prepareVideoHistoryMigration(
           "moving",
           index + 1,
           total,
-          `已准备第 ${index + 1} / ${total} 个视频文件`,
+          t(uiKeys.storageMigration.prepared, { current: index + 1, total }),
           migratedFiles
         ));
         continue;
@@ -470,7 +479,7 @@ export async function prepareVideoHistoryMigration(
         const copiedStat = await fs.stat(temporary);
         const copiedHash = await hashFile(temporary);
         if (copiedStat.size !== entry.size || copiedHash !== entry.hash) {
-          throw new Error(`复制后校验失败：${entry.sourcePath}`);
+          throw new Error(t(uiKeys.storageMigration.copyMismatch, { path: entry.sourcePath }));
         }
         await fs.rename(temporary, entry.targetPath);
         entry.targetReady = true;
@@ -484,23 +493,23 @@ export async function prepareVideoHistoryMigration(
         "moving",
         index + 1,
         total,
-        `已准备第 ${index + 1} / ${total} 个视频文件`,
+        t(uiKeys.storageMigration.prepared, { current: index + 1, total }),
         migratedFiles
       ));
     }
     journal.phase = "verifying";
     await writeJournal(journalFilename, journal);
-    onProgress(progress("verifying", 0, total, "正在复核目标视频文件", migratedFiles));
+    onProgress(progress("verifying", 0, total, t(uiKeys.storageMigration.verifying), migratedFiles));
     for (const [index, entry] of plan.entries.entries()) {
       const targetStat = await fs.stat(entry.targetPath).catch(() => null);
       if (!targetStat?.isFile() || targetStat.size !== entry.size || await hashFile(entry.targetPath) !== entry.hash) {
-        throw new Error(`目标视频复核失败：${entry.targetPath}`);
+        throw new Error(t(uiKeys.storageMigration.targetMismatch, { path: entry.targetPath }));
       }
       onProgress(progress(
         "verifying",
         index + 1,
         total,
-        `已复核第 ${index + 1} / ${total} 个目标文件`,
+        t(uiKeys.storageMigration.verified, { current: index + 1, total }),
         migratedFiles
       ));
     }
@@ -524,7 +533,8 @@ export async function markVideoHistoryMigrationCommitted(
 
 export async function cleanupVideoHistoryMigration(
   preparation: PreparedVideoHistoryMigration,
-  onProgress: (value: HistoryMigrationProgress) => void
+  onProgress: (value: HistoryMigrationProgress) => void,
+  t: Translate = createTranslator().t
 ): Promise<string[]> {
   const { plan, journalFilename } = preparation;
   await writeJournal(journalFilename, {
@@ -541,7 +551,7 @@ export async function cleanupVideoHistoryMigration(
       "cleaning",
       cleaned,
       total,
-      `正在清理旧文件 ${cleaned + 1} / ${total}`,
+      t(uiKeys.storageMigration.cleaning, { current: cleaned + 1, total }),
       total,
       warnings.length
     ));
@@ -552,7 +562,7 @@ export async function cleanupVideoHistoryMigration(
     try {
       await removeSourceWithRetry(entry.sourcePath);
     } catch (error) {
-      warnings.push(`${entry.sourcePath}：${error instanceof Error ? error.message : String(error)}`);
+      warnings.push(t(uiKeys.storageMigration.fileWarning, { path: entry.sourcePath, message: error instanceof Error ? error.message : String(error) }));
     }
     cleaned += 1;
   }

@@ -8,10 +8,22 @@ import {
 import { uiKeys } from "../src/core/i18n-keys";
 import { zhCNCatalog } from "../src/core/locales/zh-CN";
 import { enUSCatalog } from "../src/core/locales/en-US";
+import { zhTWCatalog } from "../src/core/locales/zh-TW";
+import { historyDiagnosticForDisplay } from "../src/core/history-diagnostic";
 import { uiKeys as runtimeUiKeys } from "../src/core/i18n-keys.js";
 import { zhCNCatalog as runtimeZhCNCatalog } from "../src/core/locales/zh-CN.js";
 
 describe("UI locale foundation", () => {
+  it("translates known legacy history diagnostics and preserves unknown technical details", () => {
+    const { t } = createTranslator("en-US", { "zh-CN": zhCNCatalog, "en-US": enUSCatalog });
+    expect(historyDiagnosticForDisplay("JointAV 文件已由用户从详情页删除。", t))
+      .toBe("JointAV files were deleted from the details page.");
+    const detail = "OSError: 路径\\模型.safetensors: EACCES";
+    expect(historyDiagnosticForDisplay(detail, t)).toBe(detail);
+    expect(historyDiagnosticForDisplay("toString", t)).toBe("toString");
+    expect(historyDiagnosticForDisplay(`辅助文件删除不完整，需重新检查：${detail}`, t))
+      .toBe(`Auxiliary file deletion is incomplete. Recheck the files: ${detail}`);
+  });
   it("keeps Chinese as the default and normalizes unknown values", () => {
     expect(defaultUiLocale).toBe("zh-CN");
     expect(normalizeUiLocale("en-US")).toBe("en-US");
@@ -84,6 +96,40 @@ describe("UI locale foundation", () => {
 
   it("keeps the English catalog key-complete with the default catalog", () => {
     expect(Object.keys(enUSCatalog).sort()).toEqual(Object.keys(zhCNCatalog).sort());
+  });
+
+  it("preserves every translated message parameter in both non-default catalogs", () => {
+    const placeholders = (value: string) => [...new Set(value.match(/\{[A-Za-z0-9_.-]+\}/gu) ?? [])].sort();
+    for (const [locale, catalog] of [["en-US", enUSCatalog], ["zh-TW", zhTWCatalog]] as const) {
+      expect(Object.keys(catalog).sort(), locale).toEqual(Object.keys(zhCNCatalog).sort());
+      for (const [key, value] of Object.entries(zhCNCatalog)) {
+        expect.soft(placeholders(catalog[key as keyof typeof catalog]), `${locale}: ${key}`)
+          .toEqual(placeholders(value));
+      }
+    }
+  });
+
+  it("shows language names in their own languages in every interface locale", async () => {
+    for (const locale of ["zh-CN", "zh-TW", "en-US"] as const) {
+      await loadUiLocale(locale);
+      const { t } = createTranslator(locale);
+      expect(t(uiKeys.settings.localeChinese)).toBe("简体中文");
+      expect(t(uiKeys.settings.localeTraditionalChinese)).toBe("繁體中文（台灣）");
+      expect(t(uiKeys.settings.localeEnglish)).toBe("English");
+    }
+  });
+
+  it("translates the native edit menu for each interface language", async () => {
+    for (const [locale, copy, selectAll] of [
+      ["zh-CN", "复制", "全选"],
+      ["zh-TW", "複製", "全選"],
+      ["en-US", "Copy", "Select All"]
+    ] as const) {
+      await loadUiLocale(locale);
+      const { t } = createTranslator(locale);
+      expect(t(uiKeys.nativeEditMenu.copy)).toBe(copy);
+      expect(t(uiKeys.nativeEditMenu.selectAll)).toBe(selectAll);
+    }
   });
 
   it("keeps the Traditional Chinese catalog key-complete with the default catalog", async () => {

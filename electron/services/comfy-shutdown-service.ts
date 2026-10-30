@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
 import type { Settings } from "../../src/types.js";
@@ -174,7 +176,7 @@ export async function forceStopComfyProcesses(
   dependencies: ComfyShutdownDependencies
 ): Promise<{ ok: boolean; message: string }> {
   if (process.platform !== "win32") {
-    return { ok: false, message: "强制终止目前只支持 Windows。" };
+    return { ok: false, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.stopWindowsOnly) };
   }
   const processes = await allComfyProcessInfo(settings, dependencies);
   let listenerProcessId: number | null = null;
@@ -264,14 +266,14 @@ export async function forceStopComfyProcesses(
     });
     return {
       ok: false,
-      message: `强制终止 ComfyUI 失败：进程 PID ${[...survivingIds].join("、")} 仍在运行。`
+      message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.processesSurvived, { pids: [...survivingIds].join(settings.uiLocale === "en-US" ? ", " : "、") })
     };
   }
   return {
     ok: true,
     message: processIds.size
-      ? `已强制终止 ${processIds.size} 个 ComfyUI 进程树。`
-      : "未发现正在运行的 ComfyUI 进程。"
+      ? createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.processesStopped, { count: processIds.size })
+      : createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.noProcess)
   };
 }
 
@@ -289,11 +291,11 @@ export async function stopComfyUiService(
 ): Promise<void> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
-    throw new Error("重启只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
+    throw new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restartLocalOnly));
   }
   const ownedProcessIds = dependencies.ownedProcessIds?.() ?? [];
   if (dependencies.ownedOnly && !ownedProcessIds.length) {
-    throw new Error("当前 ComfyUI 由外部进程管理，应用不会自动终止它。");
+    throw new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.externallyManaged));
   }
   const initialProcesses = await allComfyProcessInfo(settings, dependencies);
   const ownedProcessSet = collectOwnedComfyProcessIds(initialProcesses, ownedProcessIds);
@@ -329,7 +331,7 @@ export async function stopComfyUiService(
       continue;
     }
     if (dependencies.ownedOnly && !ownedProcessSet.has(pid)) {
-      throw new Error("检测到外部 ComfyUI 正在占用端口，应用不会自动终止它。");
+      throw new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.externalPortBusy));
     }
     portClearSince = 0;
     appLogger.warn("comfy", "listener-reappeared", "ComfyUI listener is still present during shutdown", {
@@ -383,5 +385,5 @@ export async function stopComfyUiService(
     processNames: remaining.map((item) => item.name),
     commandLines: remaining.map((item) => item.commandLine)
   });
-  throw new Error(`端口 ${endpoint.port} 的 ComfyUI 进程仍未退出。`);
+  throw new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.portNotStopped, { port: endpoint.port }));
 }

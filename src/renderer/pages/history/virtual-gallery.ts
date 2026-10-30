@@ -1,4 +1,5 @@
 import type { RendererCleanup } from "../../contracts";
+import { normalizeAppearance } from "../../../core/appearance";
 import { primeSharedUi, refreshSharedUi } from "../../shared/ui/runtime";
 import { renderIcons } from "../../shared/icons";
 import { reuseHistoryCovers } from "./retained-covers";
@@ -12,6 +13,7 @@ interface State extends Plan {
   mounted: Map<number, RendererCleanup>;
   width: number;
   mode: string;
+  preferredColumns?: number;
   source?: ParentNode;
   update?: () => void;
 }
@@ -43,9 +45,12 @@ function stateFor(gallery: HTMLElement): State | undefined {
 function calculate(gallery: HTMLElement, state: State): void {
   const width = gallery.clientWidth || 1;
   const mode = gallery.classList.contains("album") ? "album" : "masonry";
-  if (state.width === width && state.mode === mode) return;
+  const appearance = normalizeAppearance(document.documentElement.dataset);
+  const columns = mode === "album" ? appearance.historyAlbumColumns : appearance.historyMasonryColumns;
+  if (state.width === width && state.mode === mode && state.preferredColumns === columns) return;
   state.width = width; state.mode = mode;
-  state.layout = layoutHistoryWindow(state.items, width, mode);
+  state.preferredColumns = columns;
+  state.layout = layoutHistoryWindow(state.items, width, mode, 47, columns);
   gallery.style.height = `${state.layout.height}px`;
   gallery.dispatchEvent(new Event("history-virtual-layout", { bubbles: true }));
 }
@@ -84,6 +89,7 @@ export function mountVirtualHistory(root: HTMLElement, mountCard: (card: HTMLEle
   if (!gallery || !state) return () => undefined;
   const events = new AbortController(), { signal } = events;
   let frame = 0;
+  let paintedLayout: HistoryVirtualLayout | undefined;
   const update = () => {
     frame = 0;
     calculate(gallery, state);
@@ -124,6 +130,7 @@ export function mountVirtualHistory(root: HTMLElement, mountCard: (card: HTMLEle
     }
     // A bounded detached cache keeps decoded covers warm without retaining the library DOM.
     for (const [index, card] of state.cache) if (state.cache.size > 100 && !state.mounted.has(index)) { card.remove(); state.cache.delete(index); }
+    paintedLayout = state.layout;
     if (changed) gallery.dispatchEvent(new Event("history-window-change", { bubbles: true }));
   };
   const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
@@ -131,10 +138,13 @@ export function mountVirtualHistory(root: HTMLElement, mountCard: (card: HTMLEle
   update();
   window.addEventListener("scroll", schedule, { signal, passive: true });
   const resize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => {
-    if (gallery.clientWidth === state.width) return;
+    if (gallery.clientWidth === state.width && paintedLayout === state.layout) return;
     const origin = gallery.getBoundingClientRect().top;
-    const anchor = [...state.mounted.keys()].find(i => { const b = state.layout.boxes[i]!; return b.top + origin >= 0; });
-    const oldTop = anchor === undefined ? 0 : state.layout.boxes[anchor]!.top + origin;
+    // Timeline measurement can calculate the new boxes before this observer runs.
+    // Anchor and repaint against the geometry actually applied to the cards.
+    const previous = paintedLayout ?? state.layout;
+    const anchor = [...state.mounted.keys()].find(i => { const b = previous.boxes[i]!; return b.top + origin >= 0; });
+    const oldTop = anchor === undefined ? 0 : previous.boxes[anchor]!.top + origin;
     update();
     if (anchor !== undefined) { window.scrollBy({ top: state.layout.boxes[anchor]!.top + gallery.getBoundingClientRect().top - oldTop, behavior: "auto" }); update(); }
   });

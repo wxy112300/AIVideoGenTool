@@ -1,4 +1,5 @@
-import type { EnhanceRequest, H3PromptMode, H3PromptPreset } from "../types.js";
+import type { EnhanceRequest, H3PromptMode, H3PromptPreset, UiLocale } from "../types.js";
+import { workflowMessage } from "./runtime/workflow-messages.js";
 import {
   h3EffectiveDurationSeconds,
   h3ShotPolicyForPrompt,
@@ -54,13 +55,13 @@ export function isH3ReferenceAutoPrompt(request: EnhanceRequest): boolean {
   return request.promptStrategy === "reference-auto";
 }
 
-export function validateH3ReferenceAutoPrompt(request: EnhanceRequest): void {
+export function validateH3ReferenceAutoPrompt(request: EnhanceRequest, locale: UiLocale = "zh-CN"): void {
   if (!isH3ReferenceAutoPrompt(request)) return;
   if (request.mode !== "h3-vision") {
-    throw new Error("参考图自动起稿仅支持 H3 视觉提示词模式。");
+    throw new Error(workflowMessage("referenceAutoMode", {}, locale));
   }
   if (!hasH3ReferenceMedia(request)) {
-    throw new Error("参考图自动起稿需要至少一份参考图片或视频。");
+    throw new Error(workflowMessage("referenceAutoMedia", {}, locale));
   }
 }
 

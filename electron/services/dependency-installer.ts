@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import crypto from "node:crypto";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { promises as fs } from "node:fs";
@@ -93,7 +96,8 @@ export function withWindowsGitLongPaths(
 export async function removeTemporaryNodeCheckout(
   directory: string,
   report: (message: string) => void,
-  remove: typeof fs.rm = fs.rm
+  remove: typeof fs.rm = fs.rm,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   try {
     await remove(directory, {
@@ -105,14 +109,14 @@ export async function removeTemporaryNodeCheckout(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? "unknown";
     if (!["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) throw error;
-    report(`临时更新目录仍被 Windows 占用，已保留供后续清理：${directory}（${code}）`);
+    report(t(uiKeys.nodeInstaller.temporaryLocked, { directory: directory, code: code }));
   }
 }
 
-function installationFailureMessage(error: unknown, details: string): string {
+function installationFailureMessage(error: unknown, details: string, t: Translate): string {
   const fallback = error instanceof Error ? error.message : String(error);
   if (/filename too long|unable to create file|unable to checkout/iu.test(details)) {
-    return `${fallback}（检测到 Windows Git 长路径错误；安装器已自动启用进程级 longpaths。若仍失败，请启用系统长路径支持后重试。）`;
+    return t(uiKeys.nodeInstaller.longPathFailed, { reason: fallback });
   }
   return fallback;
 }
@@ -299,7 +303,8 @@ async function validateH3PromptWriterPythonSyntax(
   targetDirectory: string,
   python: string,
   runtime: DependencyInstallerRuntime,
-  commandEnvironment: NodeJS.ProcessEnv
+  commandEnvironment: NodeJS.ProcessEnv,
+  t: Translate
 ): Promise<void> {
   const filenames = (
     await Promise.all(h3PromptWriterPatchFiles.map(async (filename) => {
@@ -308,7 +313,7 @@ async function validateH3PromptWriterPythonSyntax(
     }))
   ).filter(Boolean);
   if (!filenames.length) {
-    throw new Error("MiniMax H3 Prompt Writer 没有可校验的 Python 源码文件。");
+    throw new Error(t(uiKeys.nodeInstaller.pythonSourcesMissing));
   }
   await runtime.runLoggedProcess(
     python,
@@ -388,11 +393,12 @@ async function ensurePinnedGitRevision(
   revision: string,
   runtime: DependencyInstallerRuntime,
   commandEnvironment: NodeJS.ProcessEnv,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate
 ): Promise<void> {
   const expectedRevision = normalizedGitRevision(revision);
-  if (!expectedRevision) throw new Error("节点 catalog 缺少有效的 installRevision。");
-  report(`正在固定节点 revision：${expectedRevision}`);
+  if (!expectedRevision) throw new Error(t(uiKeys.nodeInstaller.pinMissing));
+  report(t(uiKeys.nodeInstaller.pinning, { revision: expectedRevision }));
   await runtime.runLoggedProcess(
     git,
     ["-C", targetDirectory, "fetch", "--depth", "1", "origin", expectedRevision],
@@ -410,10 +416,10 @@ async function ensurePinnedGitRevision(
   ));
   if (actualRevision !== expectedRevision) {
     throw new Error(
-      `节点 revision 校验失败：实际 ${actualRevision || "未读取到"}，要求 ${expectedRevision}`
+      t(uiKeys.nodeInstaller.pinMismatch, { actual: actualRevision || t(uiKeys.nodeInstaller.unread), expected: expectedRevision })
     );
   }
-  report(`节点 revision 已校验：${actualRevision}`);
+  report(t(uiKeys.nodeInstaller.pinVerified, { revision: actualRevision }));
 }
 
 function isGitLfsPointer(bytes: Buffer): boolean {
@@ -429,7 +435,8 @@ function isGitLfsPointer(bytes: Buffer): boolean {
  * files and the ComfyUI node only fails much later during execution.
  */
 export async function verifyKonohamaruRuntimeArtifacts(
-  targetDirectory: string
+  targetDirectory: string,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const problems: string[] = [];
   for (const relativeFilename of KONOHAMARU_RUNTIME_FILES) {
@@ -441,13 +448,12 @@ export async function verifyKonohamaruRuntimeArtifacts(
         problems.push(`${relativeFilename}（Git LFS pointer）`);
       }
     } catch {
-      problems.push(`${relativeFilename}（缺失）`);
+      problems.push(t(uiKeys.nodeInstaller.fileMissing, { file: relativeFilename }));
     }
   }
   if (problems.length) {
     throw new Error(
-      `Konohamaru DLSS5 runtime 文件未完成 Git LFS hydration：${problems.join("、")}。` +
-      "请安装 Git LFS 后在设置中重新安装/更新该节点。"
+      t(uiKeys.nodeInstaller.lfsIncomplete, { files: problems.join(t(uiKeys.nodeInstaller.listSeparator)) })
     );
   }
 }
@@ -458,7 +464,8 @@ async function installBundledNodePackage(
   targetDirectory: string,
   comfyRoot: string,
   runtime: DependencyInstallerRuntime,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate
 ): Promise<string> {
   const sourceDirectory = await runtime.resolveBundledNodeDirectory?.(
     nodeId,
@@ -466,13 +473,13 @@ async function installBundledNodePackage(
   ) ?? path.resolve(process.cwd(), "comfy_nodes", definition.directoryName);
   const packageMarker = path.join(sourceDirectory, "__init__.py");
   if (!await runtime.exists(packageMarker)) {
-    throw new Error(`应用内置节点包不存在：${sourceDirectory}`);
+    throw new Error(t(uiKeys.nodeInstaller.bundledMissing, { path: sourceDirectory }));
   }
   const packageRevision = (await fs.readFile(path.join(sourceDirectory, "VERSION"), "utf8"))
     .trim();
   if (definition.installRevision && packageRevision !== definition.installRevision) {
     throw new Error(
-      `应用内置节点包 revision 不匹配：当前 ${packageRevision || "未读取到"}，要求 ${definition.installRevision}`
+      t(uiKeys.nodeInstaller.bundledMismatch, { actual: packageRevision || t(uiKeys.nodeInstaller.unread), expected: definition.installRevision })
     );
   }
 
@@ -482,7 +489,7 @@ async function installBundledNodePackage(
     backupRoot,
     `${definition.directoryName}-${Date.now()}`
   );
-  report(`复制应用内置节点包：${sourceDirectory}`);
+  report(t(uiKeys.nodeInstaller.bundledCopy, { path: sourceDirectory }));
   let targetExists = false;
   let targetMovedToBackup = false;
   try {
@@ -496,7 +503,7 @@ async function installBundledNodePackage(
     if (targetExists) {
       const files = (await fs.readdir(sourceDirectory, { recursive: true, withFileTypes: true }))
         .filter(entry => entry.isFile()).map(entry => path.relative(sourceDirectory, path.join(entry.parentPath, entry.name)).replaceAll("\\", "/"));
-      await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, files);
+      await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, files, t);
     }
     checkInstallationCancelled();
     if (targetExists) {
@@ -507,14 +514,14 @@ async function installBundledNodePackage(
       await runtime.renameWithRetry(replacementDirectory, targetDirectory);
     } catch (error) {
       if (!runtime.retryableRenameError(error)) throw error;
-      report("Windows 持续占用内置节点目录，自动改用文件复制完成替换");
+      report(t(uiKeys.nodeInstaller.bundledCopyFallback));
       await fs.cp(replacementDirectory, targetDirectory, {
         recursive: true,
         force: false,
         errorOnExist: true
       });
     }
-    report(`应用内置节点包已安装：${definition.name}`);
+    report(t(uiKeys.nodeInstaller.bundledInstalled, { name: definition.name }));
     return targetExists ? backupDirectory : "";
   } catch (error) {
     if (targetMovedToBackup) {
@@ -527,7 +534,7 @@ async function installBundledNodePackage(
     }
     throw error;
   } finally {
-    await removeTemporaryNodeCheckout(replacementDirectory, report);
+    await removeTemporaryNodeCheckout(replacementDirectory, report, undefined, t);
   }
 }
 
@@ -538,24 +545,25 @@ async function installCustomNodePackageUnlocked(
   onLog?: (message: string) => void,
   mode: CustomNodeInstallMode = "install"
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const definition = customNodeDefinition(nodeId);
-  if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
+  if (!definition) return { ok: false, message: t(uiKeys.nodeInstaller.unknownInstall) };
   if (definition.retired) {
     return {
       ok: false,
-      message: `${definition.name} 已归档，当前不再提供安装、更新或修复。`
+      message: t(uiKeys.nodeInstaller.archived, { name: definition.name })
     };
   }
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会安装或修改本地节点。"
+      message: t(uiKeys.nodeInstaller.remoteInstall)
     };
   }
   if (definition.appInstallable === false) {
     return {
       ok: false,
-      message: `${definition.name} 仅支持手动安装；应用不会下载、更新或修改该节点。请打开项目源码页后安装并重启 ComfyUI。`
+      message: t(uiKeys.nodeInstaller.manualInstall, { name: definition.name })
     };
   }
 
@@ -570,11 +578,11 @@ async function installCustomNodePackageUnlocked(
   try {
     report(runtime.proxyLogLabel(settings));
     if (process.platform === "win32") {
-      report("Windows Git 长路径兼容已启用（仅限本次安装进程）");
+      report(t(uiKeys.nodeInstaller.longPaths));
     }
-    report("正在定位所选 ComfyUI 的数据目录和 Python 环境……");
+    report(t(uiKeys.nodeInstaller.locating));
     const comfyRoot = await runtime.findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    if (!comfyRoot) throw new Error(t(uiKeys.nodeInstaller.dataMissing));
     const commandEnvironment = withWindowsGitLongPaths(
       runtime.downloadEnvironment(settings, comfyRoot)
     );
@@ -598,14 +606,15 @@ async function installCustomNodePackageUnlocked(
         targetDirectory,
         comfyRoot,
         runtime,
-        report
+        report,
+        t
       );
       if (backup) replaced.push({ parent: comfyRoot, backup, target: targetDirectory });
     } else {
       const git = await runtime.findExecutable("git.exe");
-      if (!git) throw new Error("缺少 Git，无法下载节点包。");
+      if (!git) throw new Error(t(uiKeys.nodeInstaller.gitMissing));
       if (definition.requiresGitLfs) {
-        report("正在检查 Git LFS……");
+        report(t(uiKeys.nodeInstaller.checkingLfs));
         await runtime.runLoggedProcess(
           git,
           ["lfs", "version"],
@@ -637,7 +646,7 @@ async function installCustomNodePackageUnlocked(
             normalizedGitRevision(definition.installRevision);
           if (!pinnedRevisionMatches) {
             report(
-              `当前节点 revision 与 catalog pin 不符，将安全替换为 ${definition.installRevision}`
+              t(uiKeys.nodeInstaller.pinReplace, { revision: definition.installRevision })
             );
           }
         }
@@ -683,25 +692,25 @@ async function installCustomNodePackageUnlocked(
                 reuseAppPatchedRepository = true;
                 report(
                   definition.installRevision
-                    ? "检测到的修改仅是本程序兼容层，且 catalog 固定 revision 仍匹配；保留当前目录，不重复克隆"
-                    : "检测到的修改仅是本程序兼容层，且上游没有新提交；保留当前目录，不重复克隆"
+                    ? t(uiKeys.nodeInstaller.keepPinnedPatch)
+                    : t(uiKeys.nodeInstaller.keepCurrentPatch)
                 );
               } else if (upstreamUnchanged === false) {
                 report(
                   definition.installRevision
-                    ? "检测到节点 revision 已偏离 catalog pin，将替换为固定版本，验证后清理旧软件"
-                    : "检测到 H3 Prompt Writer 上游有新提交，将替换更新，验证后清理旧软件"
+                    ? t(uiKeys.nodeInstaller.replacePinCleanup)
+                    : t(uiKeys.nodeInstaller.writerUpdateCleanup)
                 );
               } else {
                 report(
                   definition.installRevision
-                    ? "无法确认节点 catalog pin；将安装并校验固定版本，成功后清理旧软件"
-                    : "无法确认 H3 Prompt Writer 上游提交；将安装并校验新副本，成功后清理旧软件"
+                    ? t(uiKeys.nodeInstaller.unknownPinCleanup)
+                    : t(uiKeys.nodeInstaller.unknownWriterCleanup)
                 );
               }
             } else {
               report(
-                "检测到节点目录存在本地修改（可能来自兼容补丁）；重新安装源码与兼容层，保留本地模型和配置，成功后清理旧软件"
+                t(uiKeys.nodeInstaller.localChangesCleanup)
               );
             }
           }
@@ -710,7 +719,7 @@ async function installCustomNodePackageUnlocked(
           // A status probe failure must never turn into an in-place pull. The
           // replacement path below is copy/backup based and is recoverable.
           report(
-            "无法读取节点仓库的本地状态；使用新副本验证更新，保留本地模型和配置，成功后清理旧软件"
+            t(uiKeys.nodeInstaller.unknownStateCleanup)
           );
         }
       }
@@ -740,7 +749,7 @@ async function installCustomNodePackageUnlocked(
               onLog: report
             }
           );
-          if (!gitOutput) report("Git：克隆完成");
+          if (!gitOutput) report(t(uiKeys.nodeInstaller.cloned));
           if (definition.installRevision) {
             await ensurePinnedGitRevision(
               git,
@@ -748,45 +757,47 @@ async function installCustomNodePackageUnlocked(
               definition.installRevision,
               runtime,
               commandEnvironment,
-              report
+              report,
+              t
             );
           }
           if (definition.id === "comfyui-gguf-h3") {
-            report("正在应用 H3 GGUF 独立节点适配层……");
-            await prepareH3Gguf(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.applyH3));
+            await prepareH3Gguf(replacementDirectory, report, t);
             h3GgufPrepared = true;
           } else if (definition.id === "video-helper-suite") {
-            report("正在应用 Video Helper Suite 兼容补丁……");
-            await prepareVideoHelperSuite(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.applyVhs));
+            await prepareVideoHelperSuite(replacementDirectory, report, t);
             videoHelperPrepared = true;
           } else if (definition.id === "minimax-h3-prompt-writer") {
-            report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
-            await prepareH3PromptWriter(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.checkWriter));
+            await prepareH3PromptWriter(replacementDirectory, report, t);
             const python = await runtime.findComfyPython(settings, comfyRoot);
-            if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-            report("正在校验 H3 Prompt Writer 的 Python 源码语法……");
+            if (!python) throw new Error(t(uiKeys.nodeInstaller.pythonMissing));
+            report(t(uiKeys.nodeInstaller.validateWriter));
             await validateH3PromptWriterPythonSyntax(
               replacementDirectory,
               python,
               runtime,
-              commandEnvironment
+              commandEnvironment,
+              t
             );
             h3PromptWriterPrepared = true;
           } else if (definition.id === "mmh3-ultimate-upscale") {
-            report("正在应用 MMH3 1440p 兼容补丁……");
-            await prepareMmh3UltimateUpscale(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.applyMmh3));
+            await prepareMmh3UltimateUpscale(replacementDirectory, report, t);
           } else if (definition.id === DLSS5_NODE_ID) {
-            report("正在应用 DLSS5 Depth Anything 本地模型适配层……");
-            await prepareDlss5DepthAnything(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.applyDepth));
+            await prepareDlss5DepthAnything(replacementDirectory, report, t);
             dlss5Prepared = true;
           } else if (definition.id === AETHERSCALE_NODE_ID) {
-            report("正在应用 AetherScale carrier 注册表回收适配层……");
-            await prepareAetherScaleCarrier(replacementDirectory, report);
+            report(t(uiKeys.nodeInstaller.applyCarrier));
+            await prepareAetherScaleCarrier(replacementDirectory, report, t);
             aetherScalePrepared = true;
           }
           await fs.mkdir(backupRoot, { recursive: true });
           checkInstallationCancelled();
-          await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, await downloadableNodeFiles(git, targetDirectory, runtime, commandEnvironment));
+          await preserveSoftwareUserData(targetDirectory, replacementDirectory, [], undefined, await downloadableNodeFiles(git, targetDirectory, runtime, commandEnvironment), t);
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
           try {
             try {
@@ -794,7 +805,7 @@ async function installCustomNodePackageUnlocked(
             } catch (error) {
               if (!runtime.retryableRenameError(error)) throw error;
               report(
-                "Windows 持续占用新目录，自动改用文件复制完成替换"
+                t(uiKeys.nodeInstaller.copyFallback)
               );
               await fs.cp(replacementDirectory, targetDirectory, {
                 recursive: true,
@@ -817,14 +828,14 @@ async function installCustomNodePackageUnlocked(
             throw error;
           }
           replaced.push({ parent: comfyRoot, backup: backupDirectory, target: targetDirectory });
-          report("旧软件仅在本次安装验证期间暂存，成功后清理");
+          report(t(uiKeys.nodeInstaller.stagedOld));
         } finally {
-          await removeTemporaryNodeCheckout(replacementDirectory, report);
+          await removeTemporaryNodeCheckout(replacementDirectory, report, undefined, t);
         }
       };
       if (mode === "reinstall") {
         await replaceExistingCheckout(
-          "正在执行干净重装：验证上游副本，成功后清理旧软件"
+          t(uiKeys.nodeInstaller.cleanReinstall)
         );
       } else if (reuseAppPatchedRepository) {
         // The directory already contains the exact app-managed compatibility
@@ -839,7 +850,7 @@ async function installCustomNodePackageUnlocked(
         repositoryStatusChecked &&
         !repositoryDirty
       ) {
-        report(`节点已固定在 catalog revision ${definition.installRevision}，跳过更新`);
+        report(t(uiKeys.nodeInstaller.pinnedSkip, { revision: definition.installRevision }));
       } else if (
         isGitDirectory &&
         repositoryMatches &&
@@ -848,14 +859,14 @@ async function installCustomNodePackageUnlocked(
         definition.id !== "seedvr2" &&
         (!definition.installRevision || pinnedRevisionMatches)
       ) {
-        report(`更新 ${definition.repositoryUrl}`);
+        report(t(uiKeys.nodeInstaller.updating, { url: definition.repositoryUrl }));
         try {
           const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--progress", "--ff-only"], {
             timeoutMs: 300_000,
             env: commandEnvironment,
             onLog: report
           });
-          if (!gitOutput) report("Git：已是最新版本");
+          if (!gitOutput) report(t(uiKeys.nodeInstaller.upToDate));
         } catch (error) {
           const processError = error as Error & { stdout?: string; stderr?: string };
           const details = [processError.message, processError.stdout, processError.stderr]
@@ -865,26 +876,26 @@ async function installCustomNodePackageUnlocked(
             throw error;
           }
           await replaceExistingCheckout(
-            "检测到本地分支与上游已分叉，无法安全快进；安装干净副本，成功后清理旧软件"
+            t(uiKeys.nodeInstaller.divergedCleanup)
           );
         }
       } else {
         await replaceExistingCheckout(
           repositoryDirty
-            ? "检测到节点仓库有本地修改，保留模型和配置并安装干净副本，成功后清理旧软件"
+            ? t(uiKeys.nodeInstaller.dirtyCleanup)
             : isGitDirectory && repositoryMatches && !repositoryStatusChecked
-            ? "无法确认节点仓库状态，保留模型和配置并安装干净副本，成功后清理旧软件"
+            ? t(uiKeys.nodeInstaller.uncheckedCleanup)
             : definition.installRevision && isGitDirectory && repositoryMatches && !pinnedRevisionMatches
-            ? `当前节点 revision 不符合 catalog pin，将替换为 ${definition.installRevision}，成功后清理旧软件`
+            ? t(uiKeys.nodeInstaller.mismatchedPinCleanup, { revision: definition.installRevision })
             : !repositoryMatches && isGitDirectory
-            ? `检测到节点仓库已切换，将替换为 ${definition.repositoryUrl}，成功后清理旧软件`
+            ? t(uiKeys.nodeInstaller.repositoryChanged, { url: definition.repositoryUrl })
             : definition.id === "seedvr2"
-            ? "SeedVR2 使用新版接口：下载干净上游副本并替换，成功后清理旧软件"
-            : "目录由 ComfyUI Manager 管理，下载上游副本后替换，成功后清理旧软件"
+            ? t(uiKeys.nodeInstaller.seedvrClean)
+            : t(uiKeys.nodeInstaller.managerClean)
         );
       }
     } else {
-      report(`克隆 ${definition.repositoryUrl}`);
+      report(t(uiKeys.nodeInstaller.cloning, { url: definition.repositoryUrl }));
       const gitOutput = await runtime.runLoggedProcess(
         git,
         [
@@ -902,7 +913,7 @@ async function installCustomNodePackageUnlocked(
           onLog: report
         }
       );
-      if (!gitOutput) report("Git：克隆完成");
+      if (!gitOutput) report(t(uiKeys.nodeInstaller.cloned));
       if (definition.installRevision) {
         await ensurePinnedGitRevision(
           git,
@@ -910,27 +921,28 @@ async function installCustomNodePackageUnlocked(
           definition.installRevision,
           runtime,
           commandEnvironment,
-          report
+          report,
+          t
         );
       }
       }
     }
 
     if (definition.id === KONOHAMARU_NODE_ID) {
-      report("正在下载 Konohamaru DLSS5 的 Git LFS runtime 文件……");
+      report(t(uiKeys.nodeInstaller.lfsDownloading));
       const git = await runtime.findExecutable("git.exe");
-      if (!git) throw new Error("缺少 Git，无法完成 Konohamaru DLSS5 runtime 下载。");
+      if (!git) throw new Error(t(uiKeys.nodeInstaller.lfsGitMissing));
       await runtime.runLoggedProcess(
         git,
         ["-C", targetDirectory, "lfs", "pull"],
         { timeoutMs: 600_000, env: commandEnvironment, onLog: report }
       );
-      await verifyKonohamaruRuntimeArtifacts(targetDirectory);
-      report("Konohamaru DLSS5 runtime 文件已通过 Git LFS 完整性校验");
+      await verifyKonohamaruRuntimeArtifacts(targetDirectory, t);
+      report(t(uiKeys.nodeInstaller.lfsVerified));
       if (!runtime.installKonohamaruNeuralUpstreamRuntime) {
-        throw new Error("Konohamaru neural-upstream runtime 安装器未接入当前应用运行时。");
+        throw new Error(t(uiKeys.nodeInstaller.neuralUnavailable));
       }
-      report("正在安装 Konohamaru neural-upstream DLSS5 addon（固定 SHA-256）……");
+      report(t(uiKeys.nodeInstaller.neuralInstalling));
       const upstreamRuntimeResult = await runtime.installKonohamaruNeuralUpstreamRuntime(
         settings,
         comfyRoot,
@@ -940,9 +952,9 @@ async function installCustomNodePackageUnlocked(
       if (upstreamRuntimeResult.log) report(upstreamRuntimeResult.log);
       if (!upstreamRuntimeResult.ok) throw new Error(upstreamRuntimeResult.message);
       if (!runtime.installKonohamaruVideo2dlssnrRuntime) {
-        throw new Error("Konohamaru video2dlssnr runtime 安装器未接入当前应用运行时。");
+        throw new Error(t(uiKeys.nodeInstaller.temporalUnavailable));
       }
-      report("正在安装 Konohamaru video2dlssnr temporal feature-18 runtime（固定 SHA-256）……");
+      report(t(uiKeys.nodeInstaller.temporalInstalling));
       const video2dlssnrRuntimeResult = await runtime.installKonohamaruVideo2dlssnrRuntime(
         settings,
         comfyRoot,
@@ -954,59 +966,60 @@ async function installCustomNodePackageUnlocked(
     }
 
     if (definition.id === "comfyui-gguf-h3" && !h3GgufPrepared) {
-      report("正在检查 H3 GGUF 独立节点适配层……");
-      await prepareH3Gguf(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkH3));
+      await prepareH3Gguf(targetDirectory, report, t);
     }
     if (definition.id === "video-helper-suite" && !videoHelperPrepared) {
-      report("正在应用 Video Helper Suite 兼容补丁……");
-      await prepareVideoHelperSuite(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.applyVhs));
+      await prepareVideoHelperSuite(targetDirectory, report, t);
     }
     if (definition.id === "ltx-video") {
-      report("正在检查 LTX Video 兼容层……");
-      await prepareLtxVideo(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkLtx));
+      await prepareLtxVideo(targetDirectory, report, t);
     }
     if (definition.id === "mmh3-ultimate-upscale") {
-      report("正在检查 MMH3 1440p 兼容补丁……");
-      await prepareMmh3UltimateUpscale(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkMmh3));
+      await prepareMmh3UltimateUpscale(targetDirectory, report, t);
     }
     if (definition.id === DLSS5_NODE_ID && !dlss5Prepared) {
-      report("正在检查 DLSS5 Depth Anything 本地模型适配层……");
-      await prepareDlss5DepthAnything(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkDepth));
+      await prepareDlss5DepthAnything(targetDirectory, report, t);
     }
     if (definition.id === AETHERSCALE_NODE_ID && !aetherScalePrepared) {
-      report("正在检查 AetherScale carrier 注册表回收适配层……");
-      await prepareAetherScaleCarrier(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkCarrier));
+      await prepareAetherScaleCarrier(targetDirectory, report, t);
     }
     if (definition.id === KONOHAMARU_NODE_ID) {
-      report("正在检查 Konohamaru video2dlssnr + neural-upstream 源码兼容层……");
-      await prepareKonohamaruNeuralUpstream(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkKonohamaru));
+      await prepareKonohamaruNeuralUpstream(targetDirectory, report, t);
     }
     if (definition.id === "minimax-h3-prompt-writer" && !h3PromptWriterPrepared) {
-      report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
-      await prepareH3PromptWriter(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkWriter));
+      await prepareH3PromptWriter(targetDirectory, report, t);
       const python = await runtime.findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      report("正在校验 H3 Prompt Writer 的 Python 源码语法……");
+      if (!python) throw new Error(t(uiKeys.nodeInstaller.pythonMissing));
+      report(t(uiKeys.nodeInstaller.validateWriter));
       await validateH3PromptWriterPythonSyntax(
         targetDirectory,
         python,
         runtime,
-        commandEnvironment
+        commandEnvironment,
+        t
       );
     }
     if (isMultimodalPromptNodes) {
-      report("正在检查 MultiModal Prompt Nodes 的 GGUF 上下文配置……");
-      await prepareMultimodalPromptNodes(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkMultimodal));
+      await prepareMultimodalPromptNodes(targetDirectory, report, t);
     }
     if (isQwenVlPeftNode) {
-      report("正在检查 Qwen-VL LoRA 的 ComfyUI Desktop 日志兼容层……");
-      await prepareQwenVlComfyDesktopLogging(targetDirectory, report);
+      report(t(uiKeys.nodeInstaller.checkQwen));
+      await prepareQwenVlComfyDesktopLogging(targetDirectory, report, t);
     }
 
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await runtime.exists(requirements)) {
       const python = await runtime.findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+      if (!python) throw new Error(t(uiKeys.nodeInstaller.pythonMissing));
       if (usesSharedLlamaRuntime) {
         const requirementSource = await fs.readFile(requirements, "utf8");
         const filtered = sharedLlamaRequirementPackages(requirementSource);
@@ -1018,17 +1031,17 @@ async function installCustomNodePackageUnlocked(
         ).values()];
         if (filtered.skippedLlama > 0) {
           report(
-            `已跳过节点 requirements.txt 中的 ${filtered.skippedLlama} 项 llama-cpp-python 要求，避免覆盖共享后端`
+            t(uiKeys.nodeInstaller.skipLlama, { count: filtered.skippedLlama })
           );
         }
         if (filtered.skippedOptions > 0) {
-          report(`已跳过 ${filtered.skippedOptions} 项节点级 pip 参数；共享运行时不接管全局索引设置`);
+          report(t(uiKeys.nodeInstaller.skipPipOptions, { count: filtered.skippedOptions }));
         }
         if (packages.length > 0) {
           report(
             isMultimodalPromptNodes
-              ? "安装 MultiModal Prompt Nodes 的轻量依赖（llama-cpp-python 由共享运行时统一管理）"
-              : "安装 H3 Prompt Writer 的非 llama Python 依赖（共享 llama-cpp-python 由统一运行时管理）"
+              ? t(uiKeys.nodeInstaller.multimodalLight)
+              : t(uiKeys.nodeInstaller.writerLight)
           );
           const pipOutput = await runtime.runLoggedProcess(
             python,
@@ -1039,16 +1052,16 @@ async function installCustomNodePackageUnlocked(
               onLog: report
             }
           );
-          if (!pipOutput) report("pip：依赖已满足");
+          if (!pipOutput) report(t(uiKeys.nodeInstaller.pipSatisfied));
         } else {
           report(
             isMultimodalPromptNodes
-              ? "MultiModal Prompt Nodes 没有额外 Python 依赖，使用共享 llama-cpp-python 后端"
-              : "H3 Prompt Writer 的 requirements.txt 为空；不会因更新节点改动共享 llama-cpp-python"
+              ? t(uiKeys.nodeInstaller.multimodalNoExtra)
+              : t(uiKeys.nodeInstaller.writerNoExtra)
           );
         }
       } else {
-        report(`安装 Python 依赖 ${requirements}`);
+        report(t(uiKeys.nodeInstaller.pipInstalling, { path: requirements }));
         const pipOutput = await runtime.runLoggedProcess(
           python,
           ["-m", "pip", "install", "-r", requirements],
@@ -1058,13 +1071,13 @@ async function installCustomNodePackageUnlocked(
             onLog: report
           }
         );
-        if (!pipOutput) report("pip：依赖已满足");
+        if (!pipOutput) report(t(uiKeys.nodeInstaller.pipSatisfied));
       }
     } else {
       if (isMultimodalPromptNodes) {
         const python = await runtime.findComfyPython(settings, comfyRoot);
-        if (!python) throw new Error("MultiModal Prompt Nodes 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-        report("节点没有 requirements.txt，直接安装 MultiModal 的轻量依赖（不安装普通 llama-cpp-python）");
+        if (!python) throw new Error(t(uiKeys.nodeInstaller.multimodalPythonMissing));
+        report(t(uiKeys.nodeInstaller.multimodalNoRequirements));
         await runtime.runLoggedProcess(
           python,
           ["-m", "pip", "install", "dashscope>=1.20.0", "pillow>=10.0.0", "numpy>=1.24.0"],
@@ -1075,29 +1088,29 @@ async function installCustomNodePackageUnlocked(
           }
         );
       } else {
-        report("未发现 requirements.txt，无需安装额外 Python 依赖");
+        report(t(uiKeys.nodeInstaller.noRequirements));
       }
     }
     if (isMultimodalPromptNodes) {
-      report("正在安装并验证提示词模型共用的 JamePeng llama-cpp-python 后端……");
+      report(t(uiKeys.nodeInstaller.sharedBackendInstalling));
       const backend = await installLlamaCppPythonPackage(settings, runtime, report, {
         forceReinstall: false
       });
       if (!backend.ok) throw new Error(backend.message);
-      report("多模态提示词后端已通过自检；请重启 ComfyUI，设置页会继续验证 VisionLLMNode。");
+      report(t(uiKeys.nodeInstaller.sharedBackendReady));
     }
     if (definition.id === "minimax-h3-prompt-writer") {
-      report("正在安装并验证 H3 Prompt Writer 共用的 llama-cpp-python 后端……");
+      report(t(uiKeys.nodeInstaller.writerBackendInstalling));
       const backend = await installLlamaCppPythonPackage(settings, runtime, report, {
         forceReinstall: false
       });
       if (!backend.ok) throw new Error(backend.message);
-      report("H3 Prompt Writer 的 llama-cpp-python 后端已通过自检。");
+      report(t(uiKeys.nodeInstaller.writerBackendReady));
     }
     if (isQwenVlPeftNode) {
       const python = await runtime.findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("Qwen-VL LoRA 节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      report("正在补齐 Qwen-VL LoRA 的运行依赖（不安装 llama-cpp-python）……");
+      if (!python) throw new Error(t(uiKeys.nodeInstaller.qwenPythonMissing));
+      report(t(uiKeys.nodeInstaller.qwenDependencies));
       const pipOutput = await runtime.runLoggedProcess(
         python,
         ["-m", "pip", "install", "transformers>=4.57.1", "peft>=0.18.0", "accelerate>=1.10.0", "safetensors>=0.5.0", "pillow>=10.0.0", "bitsandbytes"],
@@ -1107,14 +1120,14 @@ async function installCustomNodePackageUnlocked(
           onLog: report
         }
       );
-      if (!pipOutput) report("Qwen-VL LoRA 依赖已满足");
-      report("Qwen-VL LoRA 依赖处理完成；请重启 ComfyUI 后重新扫描节点。 ");
+      if (!pipOutput) report(t(uiKeys.nodeInstaller.qwenSatisfied));
+      report(t(uiKeys.nodeInstaller.qwenReady));
     }
     if (definition.id === DLSS5_NODE_ID) {
       if (!runtime.installDlss5Runtime) {
-        throw new Error("DLSS5 runtime 安装器未接入当前应用运行时。");
+        throw new Error(t(uiKeys.nodeInstaller.dlssUnavailable));
       }
-      report("正在安装 DLSS5 SR runtime（固定 VapourKit manifest）……");
+      report(t(uiKeys.nodeInstaller.dlssInstalling));
       const runtimeResult = await runtime.installDlss5Runtime(
         settings,
         comfyRoot,
@@ -1126,9 +1139,9 @@ async function installCustomNodePackageUnlocked(
     }
     if (definition.id === AETHERSCALE_NODE_ID) {
       if (!runtime.installAetherScaleRuntime) {
-        throw new Error("AetherScale carrier runtime 安装器未接入当前应用运行时。");
+        throw new Error(t(uiKeys.nodeInstaller.carrierUnavailable));
       }
-      report("正在安装 AetherScale carrier runtime（固定六文件白名单）……");
+      report(t(uiKeys.nodeInstaller.carrierInstalling));
       const runtimeResult = await runtime.installAetherScaleRuntime(
         settings,
         comfyRoot,
@@ -1138,12 +1151,12 @@ async function installCustomNodePackageUnlocked(
       if (runtimeResult.log) report(runtimeResult.log);
       if (!runtimeResult.ok) throw new Error(runtimeResult.message);
     }
-    for (const previous of replaced) await removeSoftwareArtifact(previous.parent, previous.backup, report);
+    for (const previous of replaced) await removeSoftwareArtifact(previous.parent, previous.backup, report, undefined, t);
     replaced.length = 0; // The new installation is verified; cleanup must never trigger rollback.
     // Clear historical software-only copies for this node, not unrelated node/user backups.
     const backupRoot = path.join(comfyRoot, "node-backups");
     const backupStat = await fs.lstat(backupRoot).catch(() => null);
-    const backups = backupStat?.isDirectory() && !backupStat.isSymbolicLink() ? await fs.readdir(backupRoot, { withFileTypes: true }).catch(error => { report(`旧软件清理未完成：${String(error)}`); return []; }) : [];
+    const backups = backupStat?.isDirectory() && !backupStat.isSymbolicLink() ? await fs.readdir(backupRoot, { withFileTypes: true }).catch(error => { report(t(uiKeys.nodeInstaller.cleanupFailed, { reason: String(error) })); return []; }) : [];
     for (const entry of backups) {
       if (!entry.isDirectory() || entry.isSymbolicLink() || !entry.name.startsWith(`${definition.directoryName}-`) || !/^\d+$/u.test(entry.name.slice(definition.directoryName.length + 1))) continue;
       const candidate = path.join(backupRoot, entry.name);
@@ -1151,19 +1164,19 @@ async function installCustomNodePackageUnlocked(
         const config = await fs.readFile(path.join(candidate, ".git", "config"), "utf8");
         const origin = /\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(config)?.[1] ?? "";
         if (normalizedRepositoryUrl(origin) !== normalizedRepositoryUrl(definition.repositoryUrl)) continue;
-        await preserveSoftwareUserData(candidate, targetDirectory, [], undefined, await downloadableNodeFiles("git.exe", candidate, runtime, commandEnvironment));
-        await removeSoftwareArtifact(comfyRoot, candidate, report);
-      } catch (error) { report(`旧节点副本未清理：${candidate}；${String(error)}`); }
+        await preserveSoftwareUserData(candidate, targetDirectory, [], undefined, await downloadableNodeFiles("git.exe", candidate, runtime, commandEnvironment), t);
+        await removeSoftwareArtifact(comfyRoot, candidate, report, undefined, t);
+      } catch (error) { report(t(uiKeys.nodeInstaller.copyNotRemoved, { path: candidate, reason: String(error) })); }
     }
     return {
       ok: true,
-      message: `${definition.name} 已安装或更新。请重启 ComfyUI 后复检。`,
+      message: t(uiKeys.nodeInstaller.installed, { name: definition.name }),
       log: installLog.join("\n\n")
     };
   } catch (error) {
     for (const previous of replaced.reverse()) {
-      if (await removeSoftwareArtifact(previous.parent, previous.target, report)) {
-        await runtime.renameWithRetry(previous.backup, previous.target).catch(restoreError => report(`恢复旧节点失败：${String(restoreError)}；位置：${previous.backup}`));
+      if (await removeSoftwareArtifact(previous.parent, previous.target, report, undefined, t)) {
+        await runtime.renameWithRetry(previous.backup, previous.target).catch(restoreError => report(t(uiKeys.nodeInstaller.restoreFailed, { reason: String(restoreError), path: previous.backup })));
       }
     }
     const processError = error as Error & { stdout?: string; stderr?: string };
@@ -1175,7 +1188,7 @@ async function installCustomNodePackageUnlocked(
     report(details);
     return {
       ok: false,
-      message: installationFailureMessage(error, details),
+      message: installationFailureMessage(error, details, t),
       log: installLog.join("\n\n")
     };
   }
@@ -1203,26 +1216,27 @@ async function uninstallCustomNodePackageUnlocked(
   runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "uninstallAetherScaleRuntime">,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const definition = customNodeDefinition(nodeId);
-  if (!definition) return { ok: false, message: "未知的节点包，已拒绝卸载。" };
+  if (!definition) return { ok: false, message: t(uiKeys.nodeInstaller.unknownUninstall) };
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会卸载或修改本地节点。"
+      message: t(uiKeys.nodeInstaller.remoteUninstall)
     };
   }
   if (definition.appInstallable === false) {
     return {
       ok: false,
-      message: `${definition.name} 仅支持手动安装；应用不会卸载或移动该节点目录。`
+      message: t(uiKeys.nodeInstaller.manualUninstall, { name: definition.name })
     };
   }
   try {
-    onLog?.(`正在查找 ${definition.name} 的安装目录……`);
+    onLog?.(t(uiKeys.nodeInstaller.locatingNode, { name: definition.name }));
     const comfyRoot = await runtime.findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    if (!comfyRoot) throw new Error(t(uiKeys.nodeInstaller.dataMissing));
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
-    onLog?.("正在检查节点是否存在……");
+    onLog?.(t(uiKeys.nodeInstaller.checkingNode));
     const entries = await fs.readdir(customNodesDirectory, { withFileTypes: true }).catch(() => []);
     const knownNames = new Set([
       definition.directoryName,
@@ -1232,7 +1246,7 @@ async function uninstallCustomNodePackageUnlocked(
       .filter((entry) => entry.isDirectory() && knownNames.has(entry.name.toLowerCase()))
       .map((entry) => path.join(customNodesDirectory, entry.name));
     if (!installedDirectories.length) {
-      return { ok: false, message: `${definition.name} 未安装，无需卸载。` };
+      return { ok: false, message: t(uiKeys.nodeInstaller.notInstalled, { name: definition.name }) };
     }
     for (const directory of installedDirectories) {
       if (definition.id === AETHERSCALE_NODE_ID && runtime.uninstallAetherScaleRuntime) {
@@ -1245,7 +1259,7 @@ async function uninstallCustomNodePackageUnlocked(
         if (carrierResult.log) onLog?.(carrierResult.log);
         if (!carrierResult.ok) throw new Error(carrierResult.message);
       }
-      onLog?.(`正在删除节点目录：${directory}`);
+      onLog?.(t(uiKeys.nodeInstaller.removing, { path: directory }));
       if (definition.id === DLSS5_NODE_ID) {
         await removeDirectoryTreeWithoutAsar(directory);
       } else {
@@ -1256,12 +1270,12 @@ async function uninstallCustomNodePackageUnlocked(
           retryDelay: 200
         });
       }
-      onLog?.(`节点目录已删除：${directory}`);
+      onLog?.(t(uiKeys.nodeInstaller.removed, { path: directory }));
     }
     return {
       ok: true,
-      message: `${definition.name} 已卸载。需要时可通过一键安装重新下载。`,
-      log: installedDirectories.map((directory) => `已删除：${directory}`).join("\n")
+      message: t(uiKeys.nodeInstaller.uninstalled, { name: definition.name }),
+      log: installedDirectories.map((directory) => t(uiKeys.nodeInstaller.deleted, { path: directory })).join("\n")
     };
   } catch (error) {
     return {

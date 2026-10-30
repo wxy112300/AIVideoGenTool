@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { createTranslator, loadUiLocale } from "../src/core/i18n";
+import { uiKeys } from "../src/core/i18n-keys";
+import type { UiLocale } from "../src/types";
 import {
   EnvironmentRefreshCoordinator,
   environmentScanOptionsForReason,
@@ -12,6 +15,46 @@ function scanResult(scannedAt: string): EnvironmentScanResult {
 }
 
 describe("EnvironmentRefreshCoordinator", () => {
+  it("relabels only the active keyed scan on language change without rescanning or rerendering", async () => {
+    let locale: UiLocale = "zh-CN";
+    let progress!: (value: EnvironmentScanProgress) => void;
+    let finish!: (result: EnvironmentScanResult) => void;
+    const scan = vi.fn((_settings, _scope, _options, callback) => {
+      progress = callback;
+      return new Promise<EnvironmentScanResult>(resolve => { finish = resolve; });
+    });
+    const notify = vi.fn(), requestRender = vi.fn();
+    const coordinator = new EnvironmentRefreshCoordinator({
+      scan, notify, requestRender, setScanning: vi.fn(), setError: vi.fn(), commit: vi.fn(), afterCommit: vi.fn(),
+      scanningMessage: () => "scanning",
+      progressMessage: value => createTranslator(locale).t(uiKeys.runtime.environmentScanProgress[value.stage]),
+      completedMessage: () => "complete", failedMessage: () => "failed", reportScan: vi.fn()
+    });
+    const pending = coordinator.refresh(createDefaultState().settings, "startup");
+    progress({stage:"dependencies",completed:2,total:4});
+    expect(notify).toHaveBeenLastCalledWith("正在检查节点与依赖…", expect.any(Object));
+    for (const [nextLocale, expected] of [
+      ["en-US", "Checking nodes and dependencies…"],
+      ["zh-TW", "正在檢查節點與相依項目…"]
+    ] as const) {
+      await loadUiLocale(nextLocale); locale = nextLocale;
+      coordinator.refreshProgressMessage();
+      expect(notify).toHaveBeenLastCalledWith(expected, {
+        key:"environment-scan",durationMs:300000,renderPage:false,
+        progress:{stage:"dependencies",completed:2,total:4}
+      });
+      const count = notify.mock.calls.length;
+      coordinator.refreshProgressMessage();
+      expect(notify).toHaveBeenCalledTimes(count);
+    }
+    expect(scan).toHaveBeenCalledTimes(1);
+    expect(requestRender).toHaveBeenCalledTimes(1);
+    finish(scanResult("done")); await pending;
+    const count = notify.mock.calls.length;
+    locale = "zh-CN"; coordinator.refreshProgressMessage();
+    expect(notify).toHaveBeenCalledTimes(count);
+  });
+
   it("updates only the current scan's keyed notice and ignores events after completion", async () => {
     const callbacks: Array<(progress: EnvironmentScanProgress) => void> = [];
     const finishes: Array<(result: EnvironmentScanResult) => void> = [];

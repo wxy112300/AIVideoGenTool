@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import path from "node:path";
 import type {
   HistoryFile,
@@ -39,10 +41,12 @@ export class ComfyOutputService {
     result: unknown,
     alternateRoots: string[] = []
   ): Promise<HistoryFile[]> {
+    const translator = createNativeTranslator(this.deps.store.get().settings.uiLocale);
+    const t = translator.t;
     const outputDirectory = await this.resolveTaskOutputDirectory();
     if (!outputDirectory) {
       throw new Error(
-        "ComfyUI 已返回完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
+        t(uiKeys.outputValidation.videoDirectory)
       );
     }
 
@@ -63,11 +67,11 @@ export class ComfyOutputService {
       }
     }
 
-    const returnedNames = lastFiles.map((file) => file.filename).join("、");
+    const returnedNames = lastFiles.map((file) => file.filename).join(translator.locale === "en-US" ? ", " : "、");
     throw new Error(
       returnedNames
-        ? `ComfyUI 已返回完成状态，但输出视频不存在或为空：${returnedNames}`
-        : "ComfyUI 已返回完成状态，但工作流没有返回任何视频文件。任务不会写入历史。"
+        ? t(uiKeys.outputValidation.videoMissing, { files: returnedNames })
+        : t(uiKeys.outputValidation.videoAbsent)
     );
   }
 
@@ -76,14 +80,16 @@ export class ComfyOutputService {
     expectedNodeId: string,
     alternateRoots: string[] = []
   ): Promise<HistoryFile[]> {
+    const translator = createNativeTranslator(this.deps.store.get().settings.uiLocale);
+    const t = translator.t;
     const outputDirectory = await this.resolveTaskOutputDirectory();
     if (!outputDirectory) {
       throw new Error(
-        "ComfyUI 已返回完成状态，但无法确定 H3 AV 输出目录。请在设置中确认 ComfyUI 目录后重试。"
+        t(uiKeys.outputValidation.avDirectory)
       );
     }
     if (!expectedNodeId.trim()) {
-      throw new Error("H3 AV serializer 输出校验缺少预期节点 ID，任务不会写入历史。");
+      throw new Error(t(uiKeys.outputValidation.avNodeMissing));
     }
 
     const reportedFiles = extractComfyNativeAvOutputFiles(result, expectedNodeId);
@@ -105,11 +111,11 @@ export class ComfyOutputService {
       if (validFiles.length) return validFiles;
     }
 
-    const returnedNames = lastFiles.map((file) => file.filename).join("、");
+    const returnedNames = lastFiles.map((file) => file.filename).join(translator.locale === "en-US" ? ", " : "、");
     throw new Error(
       returnedNames
-        ? `ComfyUI 已返回完成状态，但 H3 AV serializer 输出不存在或为空：${returnedNames}`
-        : "ComfyUI 已返回完成状态，但预期 serializer 节点没有返回 H3 AV 文件。任务不会写入历史。"
+        ? t(uiKeys.outputValidation.avMissing, { files: returnedNames })
+        : t(uiKeys.outputValidation.avAbsent)
     );
   }
 
@@ -159,9 +165,11 @@ export class ComfyOutputService {
     outputRoot: string,
     alternateRoots: string[] = []
   ): Promise<HistoryFile[]> {
+    const translator = createNativeTranslator(this.deps.store.get().settings.uiLocale);
+    const t = translator.t;
     if (!outputRoot) {
       throw new Error(
-        "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
+        t(uiKeys.outputValidation.imageDirectory)
       );
     }
     const reportedFiles = extractComfyOutputFiles(result).filter(isPersistentComfyOutputFile);
@@ -184,11 +192,11 @@ export class ComfyOutputService {
         if (stat?.isFile() && stat.size > 0) return this.attachExistingSizes(files);
       }
     }
-    const returnedNames = lastFiles.map((file) => file.filename).join("、");
+    const returnedNames = lastFiles.map((file) => file.filename).join(translator.locale === "en-US" ? ", " : "、");
     throw new Error(
       returnedNames
-        ? `ComfyUI 已返回完成状态，但图片输出不存在或为空：${returnedNames}`
-        : "ComfyUI 已返回完成状态，但图片工作流没有返回任何图片文件。"
+        ? t(uiKeys.outputValidation.imageMissing, { files: returnedNames })
+        : t(uiKeys.outputValidation.imageAbsent)
     );
   }
 

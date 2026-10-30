@@ -2,6 +2,21 @@ import type { UiLocale } from "../../types.js";
 import { zhTWWorkflowMessages } from "./workflow-messages.zh-TW.js";
 
 export type WorkflowMessageKey =
+  | "h3OutputBudget"
+  | "h3ContinuationTimelineMissing"
+  | "h3ContinuationBodyOnly"
+  | "h3ExpansionTimelineMissing"
+  | "revisionPrecedingMissing"
+  | "revisionAnnotationMissing"
+  | "revisionReservedMarker"
+  | "revisionAdjacent"
+  | "revisionAnchorMissing"
+  | "revisionOverlap"
+  | "revisionResultMissing"
+  | "revisionResultInvalid"
+  | "revisionUnchanged"
+  | "referenceAutoMode"
+  | "referenceAutoMedia"
   | "h3ExpansionWordsWarning"
   | "h3ExpansionSourceLengthWarning"
   | "spectrumConsumersMissing"
@@ -77,6 +92,21 @@ type RuntimeParams = Record<string, string | number>;
 export type WorkflowLocale = Record<WorkflowMessageKey, string>;
 
 const zhCN: WorkflowLocale = {
+  h3OutputBudget: "{backend} 当前节点最多输出 {maximum} token，本次需要 {requested}。请在设置中更新对应节点并重启服务，或手动选择容量足够的增强模型。",
+  h3ContinuationTimelineMissing: "Continuum 提示词增强未返回 integrated_multimodal_description 主时间线，无法确认单镜头接续；结果没有保存，原提示词已保持不变。",
+  h3ContinuationBodyOnly: "Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。",
+  h3ExpansionTimelineMissing: "影视细节扩写未返回 {section} 主时间线；原提示词已保持不变。",
+  revisionPrecedingMissing: "批注前没有可修订的文字。请把批注放在需要修改的句子后面。",
+  revisionAnnotationMissing: "批注修订需要至少一条带标签的批注，例如（批注：把这里改成……）。",
+  revisionReservedMarker: "原提示词包含批注修订内部标记，请先移除 EDIT_TARGET 标签。",
+  revisionAdjacent: "同一句存在相邻或重叠批注，请合并成一条批注后再修订。",
+  revisionAnchorMissing: "无法定位第 {id} 条批注对应的原文，请把批注紧跟在需要修改的完整句子后面。",
+  revisionOverlap: "多条批注指向了重叠文字，请合并批注或分别标注不同句子。",
+  revisionResultMissing: "提示词模型没有按要求返回第 {id} 条局部修订；原提示词已保持不变。",
+  revisionResultInvalid: "第 {id} 条局部修订为空或格式无效；原提示词已保持不变。",
+  revisionUnchanged: "第 {id} 条批注没有产生修改；原提示词已保持不变。",
+  referenceAutoMode: "参考图自动起稿仅支持 H3 视觉提示词模式。",
+  referenceAutoMedia: "参考图自动起稿需要至少一份参考图片或视频。",
   h3ExpansionWordsWarning: "影视细节扩写的主时间线只有 {actualWords} 词，低于建议的至少 {minimumWords} 词；已保留结果，可按画面复杂度决定是否补充。",
   h3ExpansionSourceLengthWarning: "影视细节扩写的有效正文短于原始提示词；已保留结果，请核对关键内容是否完整。",
   spectrumConsumersMissing: "Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。",
@@ -148,7 +178,22 @@ const zhCN: WorkflowLocale = {
   seedPlaceholderMissing: "缺少 {{SEED}}，任务 Seed 不会传入工作流",
   filenamePlaceholderMissing: "缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名",
 };
-const enUS: Partial<WorkflowLocale> = {
+const enUS: WorkflowLocale = {
+  h3OutputBudget: "The current {backend} node supports up to {maximum} output tokens; this request needs {requested}. Update the node in Settings and restart the service, or select a prompt model with sufficient capacity.",
+  h3ContinuationTimelineMissing: "Continuum prompt enhancement returned no integrated_multimodal_description timeline, so single-shot continuity cannot be verified. The result was not saved; the original prompt is unchanged.",
+  h3ContinuationBodyOnly: "Continuum prompt enhancement must return only the current Chunk body and cannot rewrite the entire Timeline.",
+  h3ExpansionTimelineMissing: "Cinematic detail expansion returned no {section} timeline; the original prompt is unchanged.",
+  revisionPrecedingMissing: "There is no text to revise before the annotation. Place it after the sentence you want to change.",
+  revisionAnnotationMissing: "Targeted revision needs at least one labeled annotation, such as (note: change this to…).",
+  revisionReservedMarker: "The original prompt contains internal revision markers. Remove the EDIT_TARGET tags first.",
+  revisionAdjacent: "The same sentence has adjacent or overlapping annotations. Merge them into one annotation before revising.",
+  revisionAnchorMissing: "Could not locate the text for annotation {id}. Place the annotation directly after the complete sentence you want to change.",
+  revisionOverlap: "Multiple annotations target overlapping text. Merge them or annotate separate sentences.",
+  revisionResultMissing: "The prompt model did not return the required replacement for target {id}; the original prompt is unchanged.",
+  revisionResultInvalid: "Replacement {id} is empty or has an invalid format; the original prompt is unchanged.",
+  revisionUnchanged: "Annotation {id} produced no change; the original prompt is unchanged.",
+  referenceAutoMode: "Reference-based auto-creation supports H3 vision prompt mode only.",
+  referenceAutoMedia: "Reference-based auto-creation requires at least one image or video.",
   h3ExpansionWordsWarning: "The detailed timeline has {actualWords} words, below the recommended {minimumWords}. The result is saved; review whether the scene needs more detail.",
   h3ExpansionSourceLengthWarning: "The detailed result is shorter than the original prompt. The result is saved; check that key details are complete.",
   spectrumConsumersMissing: "Spectrum acceleration must connect to the H3 BasicScheduler / BasicGuider model input.",
@@ -220,7 +265,7 @@ const enUS: Partial<WorkflowLocale> = {
   seedPlaceholderMissing: "Missing {{SEED}}; the task Seed will not be passed into the workflow",
   filenamePlaceholderMissing: "Missing {{OUTPUT_FILENAME}}; ComfyUI will choose the output filename"
 };
-const catalogs: Record<UiLocale, Partial<WorkflowLocale>> = {
+const catalogs: Record<UiLocale, WorkflowLocale> = {
   "zh-CN": zhCN,
   "zh-TW": zhTWWorkflowMessages,
   "en-US": enUS

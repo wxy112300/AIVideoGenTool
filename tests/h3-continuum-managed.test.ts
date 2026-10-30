@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { createNativeTranslator } from "../electron/ui-translator.js";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, H3ContinuumReceipt, HistoryFile } from "../src/types.js";
@@ -18,6 +19,7 @@ import {
 import {
   type H3ContinuumManagedReceiptRaw,
   extractH3ContinuumManagedReceipt,
+  parseH3ContinuumManagedReceipt,
   validateH3ContinuumManagedReceipt
 } from "../src/core/h3-continuum-managed-receipt.js";
 import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract.js";
@@ -132,6 +134,68 @@ function emptySequence() {
 }
 
 describe("managed Continuum contracts", () => {
+  it("localizes read-only registry failures without changing files", async () => {
+    const root = await mkdtemp(path.join(process.cwd(), "tmp-h3-localized-registry-"));
+    let locale: "en-US" | "zh-TW" = "en-US";
+    const registry = new H3ContinuumAssetRegistry({
+      fileSystem: nativeAvArtifactFileSystem, getUiLocale: () => locale
+    });
+    try {
+      const directory = path.join(root, "h3-native-av");
+      await mkdir(directory);
+      const filename = path.join(directory, "使用者.safetensors");
+      const bytes = Buffer.from([1, 2]);
+      await writeFile(filename, bytes);
+      for (const [language, reason] of [
+        ["en-US", "Continuum chunk safetensors is missing the header length."],
+        ["zh-TW", "Continuum chunk safetensors 缺少 header length"]
+      ] as const) {
+        locale = language;
+        const result = await registry.inventoryOutputRoot(root);
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0]).toMatchObject({
+          referenceId: "payload:h3-native-av/使用者.safetensors", status: "corrupt", reason
+        });
+        expect(await readFile(filename)).toEqual(bytes);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("shows nested sampling errors in the saved language without changing sequence evidence", async () => {
+    const root = await mkdtemp(path.join(process.cwd(), "tmp-h3-localized-"));
+    try {
+      const sourceVideoPath = path.join(root, "source.mp4");
+      await writeFile(sourceVideoPath, "video");
+      for (const [locale, expected] of [
+        ["en-US", "Managed sampling contract hash is invalid."],
+        ["zh-TW", "managed sampling contract hash 無效"],
+        ["zh-CN", "managed sampling contract hash 无效"]
+      ] as const) {
+        const state = createDefaultState();
+        state.settings.uiLocale = locale;
+        const sequence = { ...emptySequence(), acceptedChunks: 1, samplingContractVersion: 6, contractSha256: "bad", resumeSafe: true };
+        const before = structuredClone(sequence);
+        const t = createNativeTranslator(locale).t;
+        expect(validateContinuumSequence(sequence, t)).toBe(expected);
+        const inspector = new HistoryArtifactService({
+          store: { get: () => state } as unknown as StateRepository,
+          artifactService: new NativeAvArtifactService({ fileSystem: nativeAvArtifactFileSystem }),
+          resolveVideoOutputDirectory: async () => root
+        });
+        const draft = { ...state.draft, inputMode: "video" as const, modelId: "minimax_h3_continuum",
+          sourceVideoPath, h3ContinuumMode: "managed" as const, h3ContinuumSequence: sequence };
+        expect(await inspector.inspectExtensionSource(draft))
+          .toMatchObject({ route: "managed", status: "invalid", reason: expected });
+        expect(sequence).toEqual(before);
+        expect(validateContinuumSequence({ ...sequence, contractSha256: "a".repeat(64) }, t)).toBeNull();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses an unguarded runtime and binds the queued prefix only to the downstream receipt", () => {
     const task = { h3ContinuumSequence: { ...emptySequence(), acceptedChunks: 3 }, h3ContinuumParentRevisionId: "queued-head" } as ExtensionQueueTask;
     const snapshot = structuredClone(task);
@@ -468,6 +532,18 @@ describe("managed Continuum contracts", () => {
     expect(validateH3ContinuumManagedReceipt(raw)).toBeNull();
     expect(validateH3ContinuumManagedReceipt({ ...raw, package_version: "3.9.1" })).toContain("缺少真实采样契约");
     const modern = { ...raw, package_version: "3.9.1", sampling_contract_version: 6, contract_sha256: "a".repeat(64), resume_safe: true };
+    const snapshot = structuredClone(modern);
+    for (const [locale, error] of [
+      ["en-US", "Managed sampling contract hash is invalid."],
+      ["zh-TW", "managed sampling contract hash 無效"],
+      ["zh-CN", "managed sampling contract hash 无效"]
+    ] as const) {
+      const t = createNativeTranslator(locale).t;
+      expect(validateH3ContinuumManagedReceipt({ ...modern, contract_sha256: "bad" }, t)).toBe(error);
+      expect(() => parseH3ContinuumManagedReceipt({ ...modern, contract_sha256: "bad" }, t)).toThrow(error);
+      expect(parseH3ContinuumManagedReceipt(modern, t)).toEqual(modern);
+    }
+    expect(modern).toEqual(snapshot);
     expect(validateH3ContinuumManagedReceipt(modern)).toBeNull();
     for (const plannedChunks of [3, 12]) {
       expect(validateH3ContinuumManagedReceipt({ ...modern, requested_chunks: plannedChunks })).toContain("计数与最终 Chunk 总数不一致");

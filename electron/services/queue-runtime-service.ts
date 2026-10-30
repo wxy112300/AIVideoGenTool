@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type {
   AppState,
   ConnectionResult,
@@ -72,10 +74,11 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
   async ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise<void> {
     const throwIfCancelled = (): void => {
       if (!signal?.aborted) return;
-      throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
+      throw signal.reason instanceof Error ? signal.reason : new Error(createNativeTranslator(this.deps.store.get().settings.uiLocale).t(uiKeys.runtimeService.queueCancelled));
     };
     throwIfCancelled();
     const settings = this.deps.store.get().settings;
+    const t = createNativeTranslator(settings.uiLocale).t;
     const queuedTask = this.deps.store.get().queue.find((item) => item.id === taskId);
     const serviceSettings = this.settingsForTask(queuedTask, settings);
     let profile: QueueRuntimeProfileAlignmentResult;
@@ -87,7 +90,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
     }
     throwIfCancelled();
     if (!profile.ok) {
-      throw new Error(`ComfyUI 运行配置切换失败：${profile.message}`);
+      throw new Error(t(uiKeys.runtimeService.profileFailed, { message: profile.message }));
     }
     if (profile.restarted) {
       this.deps.logger.info("service", "runtime-profile-aligned", "ComfyUI runtime profile was aligned for the queue task", {
@@ -110,11 +113,10 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       });
       if (!this.deps.isLocalComfyUrl(settings.comfyUrl)) {
         throw new Error(
-          `无法连接 ComfyUI（${settings.comfyUrl}）：${
-            connectionError instanceof Error
+          t(uiKeys.runtimeService.connectionFailed, { url: settings.comfyUrl, message: connectionError instanceof Error
               ? connectionError.message
               : String(connectionError)
-          }`
+          })
         );
       }
     }
@@ -122,7 +124,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
     throwIfCancelled();
     await this.deps.updateTask(taskId, {
       progress: 1,
-      stage: "正在启动 ComfyUI，等待服务就绪"
+      stage: t(uiKeys.runtimeService.starting)
     });
     this.deps.logger.info("service", "auto-start-requested", "Queue requested automatic ComfyUI startup", {
       taskId
@@ -135,7 +137,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       { taskId, ok: started.ok }
     );
     if (!started.ok) {
-      throw new Error(`ComfyUI 自动启动失败：${started.message}`);
+      throw new Error(t(uiKeys.runtimeService.autoStartFailed, { message: started.message }));
     }
     throwIfCancelled();
     await this.deps.testComfyUi(serviceSettings);
@@ -305,7 +307,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
 
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }> {
     if (!this.deps.isLocalComfyUrl(settings.comfyUrl)) {
-      return Promise.resolve({ ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" });
+      return Promise.resolve({ ok: false, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.remoteNoRestart) });
     }
     return this.deps.restartLocalService("comfy", settings);
   }
@@ -382,7 +384,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       },
       restartComfyUi: async (kind, currentSettings) => {
         if (!this.deps.isLocalComfyUrl(currentSettings.comfyUrl)) {
-          return { ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" };
+          return { ok: false, message: createNativeTranslator(currentSettings.uiLocale).t(uiKeys.runtimeService.remoteNoRestart) };
         }
         return this.deps.restartLocalService(kind, currentSettings);
       },
@@ -398,7 +400,7 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       terminateAetherScaleWorker: async (currentTaskId, currentSettings) => {
         const task = this.deps.store.get().queue.find((item) => item.id === currentTaskId);
         if (task?.modelId !== AETHERSCALE_MODEL_ID) {
-          return { ok: true, message: "当前取消任务不是 AetherScale。" };
+          return { ok: true, message: createNativeTranslator(currentSettings.uiLocale).t(uiKeys.runtimeService.notAetherScale) };
         }
         const scan = await this.deps.scanEnvironment(currentSettings, "dependencies");
         const nodeDirectory = scan.customNodes.find((node) => node.id === "comfyui-aetherscale")?.directory ?? "";
@@ -406,10 +408,10 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
           return {
             ok: false,
             verified: false,
-            message: "未找到当前选中 ComfyUI 的 AetherScale 节点目录，未执行本机 worker 终止。"
+            message: createNativeTranslator(currentSettings.uiLocale).t(uiKeys.runtimeService.aetherScaleNodeMissing)
           };
         }
-        return terminateAetherScaleWorker(scan.comfyRoot, nodeDirectory);
+        return terminateAetherScaleWorker(scan.comfyRoot, nodeDirectory, undefined, createNativeTranslator(currentSettings.uiLocale).t);
       }
     };
     return cleanupCancelledQueueTask(recoveryDependencies, taskId, settings, worker);

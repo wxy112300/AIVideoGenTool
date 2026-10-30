@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import crypto from "node:crypto";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { createReadStream } from "node:fs";
@@ -134,46 +137,46 @@ export function safeRelativePath(value: string): string | null {
 }
 
 export function validateDlss5ArchiveEntries(
-  entries: readonly string[]
+  entries: readonly string[], t: Translate = createNativeTranslator(undefined).t
 ): string[] {
   const normalized = entries.map((entry) => safeRelativePath(entry));
   if (normalized.some((entry) => !entry)) {
-    throw new Error("DLSS5 runtime 归档包含不安全路径，已拒绝解压。");
+    throw new Error(t(uiKeys.dlssRuntime.unsafeArchive));
   }
   const result = [...new Set(normalized as string[])];
-  if (!result.length) throw new Error("DLSS5 runtime 归档为空，已拒绝安装。");
+  if (!result.length) throw new Error(t(uiKeys.dlssRuntime.emptyArchive));
   return result;
 }
 
 export function validateDlss5ArtifactContents(
   entries: readonly string[],
-  expectedFiles: readonly string[]
+  expectedFiles: readonly string[], t: Translate = createNativeTranslator(undefined).t
 ): string[] {
-  const normalized = validateDlss5ArchiveEntries(entries);
+  const normalized = validateDlss5ArchiveEntries(entries, t);
   const basenames = new Set(normalized.map((entry) => path.basename(entry).toLowerCase()));
   const missing = expectedFiles.filter((filename) => !basenames.has(filename.toLowerCase()));
   if (missing.length) {
     const desktopPackage = basenames.has("app.asar") ||
       normalized.some((entry) => entry.toLowerCase().startsWith("resources/app.asar"));
     const detail = desktopPackage
-      ? "该固定资产是 VapourKit 桌面应用包，不是 ComfyUI-DLSS5 所需的便携 runtime"
-      : "固定资产内容与 catalog manifest 不一致";
+      ? t(uiKeys.dlssRuntime.desktopPackage)
+      : t(uiKeys.dlssRuntime.manifestMismatch);
     throw new Error(
-      `DLSS5 runtime 归档缺少预期文件：${missing.join("、")}；${detail}。` +
-      "安装已在解压前停止；需要上游发布包含这些文件的合法 runtime 后才能继续。"
+      t(uiKeys.dlssRuntime.missingArchiveDetails, { files: missing.join(t(uiKeys.nodeInstaller.listSeparator)), detail: detail }) +
+      t(uiKeys.dlssRuntime.extractionStopped)
     );
   }
   return normalized;
 }
 
-async function assertNoLinks(root: string): Promise<void> {
+async function assertNoLinks(root: string, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   const pending = [root];
   while (pending.length) {
     const current = pending.pop()!;
     const entries = await fs.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isSymbolicLink()) {
-        throw new Error(`DLSS5 runtime 归档包含符号链接：${entry.name}，已拒绝安装。`);
+        throw new Error(t(uiKeys.dlssRuntime.archiveLink, { file: entry.name }));
       }
       if (entry.isDirectory()) pending.push(path.join(current, entry.name));
     }
@@ -246,7 +249,7 @@ export async function removeDirectoryTreeWithoutAsar(
 async function removeStaleDlss5RuntimeStaging(
   nodeDirectory: string,
   currentStagingRoot: string,
-  report: (message: string) => void
+  report: (message: string) => void, t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const entries = await fs.readdir(nodeDirectory, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
@@ -259,9 +262,9 @@ async function removeStaleDlss5RuntimeStaging(
     if (path.resolve(stagingRoot) === path.resolve(currentStagingRoot)) continue;
     try {
       await removeDirectoryTreeWithoutAsar(stagingRoot);
-      report(`已清理上一次失败的 DLSS5 runtime 暂存目录：${entry.name}`);
+      report(t(uiKeys.dlssRuntime.stagingRemoved, { directory: entry.name }));
     } catch (error) {
-      report(`上一次 DLSS5 runtime 暂存目录暂时无法清理，将继续使用新的暂存目录：${entry.name}（${error instanceof Error ? error.message : String(error)}）`);
+      report(t(uiKeys.dlssRuntime.stagingRetained, { directory: entry.name, reason: error instanceof Error ? error.message : String(error) }));
     }
   }
 }
@@ -378,20 +381,20 @@ function stringConfigValue(config: Dlss5RuntimeConfig, key: keyof Dlss5RuntimeCo
 function resolveOwnedConfigPath(
   runtimeDirectory: string,
   config: Dlss5RuntimeConfig,
-  key: "python" | "sr_plugin" | "sr_runtime" | "temp_dir" | "nr_plugin" | "nr_runtime"
+  key: "python" | "sr_plugin" | "sr_runtime" | "temp_dir" | "nr_plugin" | "nr_runtime", t: Translate = createNativeTranslator(undefined).t
 ): { value: string; error: string } {
   const raw = stringConfigValue(config, key);
-  if (!raw) return { value: "", error: `${key} 未配置` };
+  if (!raw) return { value: "", error: t(uiKeys.dlssRuntime.unconfigured, { key: key }) };
   const value = path.resolve(raw);
   if (!isPathInsideDirectory(runtimeDirectory, value)) {
-    return { value: "", error: `${key} 路径超出 DLSS5 runtime 目录，已拒绝使用` };
+    return { value: "", error: t(uiKeys.dlssRuntime.outsideRuntime, { key: key }) };
   }
   return { value, error: "" };
 }
 
 export async function scanDlss5Runtime(
   comfyRoot: string,
-  nodeDirectory = ""
+  nodeDirectory = "", t: Translate = createNativeTranslator(undefined).t
 ): Promise<Dlss5RuntimeStatus> {
   const runtimeDirectory = dlss5RuntimeDirectory(comfyRoot, nodeDirectory);
   if (!comfyRoot) return blankDlss5RuntimeStatus(runtimeDirectory, "missing");
@@ -406,7 +409,7 @@ export async function scanDlss5Runtime(
   status.source = manifest ? "app-managed" : "manual";
   status.nodeRevision = manifest?.nodeRevision ?? "";
   if (manifestValue && !manifest) {
-    status.error = "install-manifest.json 无效或与当前 catalog runtime 不匹配";
+    status.error = t(uiKeys.dlssRuntime.manifestInvalid);
   }
   const ownedFiles = manifest?.ownedFiles ?? [];
   status.unexpectedFiles = manifest
@@ -415,13 +418,13 @@ export async function scanDlss5Runtime(
 
   const config = await readJson<Dlss5RuntimeConfig>(status.configPath);
   if (!config || typeof config !== "object" || Array.isArray(config)) {
-    status.error = status.error || "runtime/config.json 缺失或不是有效 JSON";
+    status.error = status.error || t(uiKeys.dlssRuntime.configInvalid);
     status.missingFiles = [...REQUIRED_RUNTIME_FILES, DLSS5_RUNTIME_CONFIG_FILENAME];
     return status;
   }
 
   const resolved = Object.fromEntries(
-    SHARED_CONFIG_KEYS.map((key) => [key, resolveOwnedConfigPath(runtimeDirectory, config, key)])
+    SHARED_CONFIG_KEYS.map((key) => [key, resolveOwnedConfigPath(runtimeDirectory, config, key, t)])
   ) as Record<typeof SHARED_CONFIG_KEYS[number], { value: string; error: string }>;
   const configErrors = SHARED_CONFIG_KEYS
     .map((key) => resolved[key].error)
@@ -429,26 +432,26 @@ export async function scanDlss5Runtime(
   const optionalSrPlugin = stringConfigValue(config, "sr_plugin");
   const optionalSrRuntime = stringConfigValue(config, "sr_runtime");
   const srPlugin = optionalSrPlugin
-    ? resolveOwnedConfigPath(runtimeDirectory, config, "sr_plugin")
+    ? resolveOwnedConfigPath(runtimeDirectory, config, "sr_plugin", t)
     : { value: "", error: "" };
   const srRuntime = optionalSrRuntime
-    ? resolveOwnedConfigPath(runtimeDirectory, config, "sr_runtime")
+    ? resolveOwnedConfigPath(runtimeDirectory, config, "sr_runtime", t)
     : { value: "", error: "" };
   const srConfigErrors = srPlugin.error || srRuntime.error ||
     Boolean(optionalSrPlugin) !== Boolean(optionalSrRuntime)
-    ? ["SR runtime 配置必须同时提供且路径必须位于 managed runtime 内"]
+    ? [t(uiKeys.dlssRuntime.srConfig)]
     : [];
   const optionalNrPlugin = stringConfigValue(config, "nr_plugin");
   const optionalNrRuntime = stringConfigValue(config, "nr_runtime");
   const nrPlugin = optionalNrPlugin
-    ? resolveOwnedConfigPath(runtimeDirectory, config, "nr_plugin")
+    ? resolveOwnedConfigPath(runtimeDirectory, config, "nr_plugin", t)
     : { value: "", error: "" };
   const nrRuntime = optionalNrRuntime
-    ? resolveOwnedConfigPath(runtimeDirectory, config, "nr_runtime")
+    ? resolveOwnedConfigPath(runtimeDirectory, config, "nr_runtime", t)
     : { value: "", error: "" };
   const nrConfigErrors = nrPlugin.error || nrRuntime.error ||
     Boolean(optionalNrPlugin) !== Boolean(optionalNrRuntime)
-    ? ["NR runtime 配置必须同时提供且路径必须位于 managed runtime 内"]
+    ? [t(uiKeys.dlssRuntime.nrConfig)]
     : [];
 
   status.configValid = configErrors.length === 0;
@@ -486,13 +489,13 @@ export async function scanDlss5Runtime(
   return status;
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
+function throwIfAborted(signal?: AbortSignal, t: Translate = createNativeTranslator(undefined).t): void {
   checkInstallationCancelled();
   if (!signal?.aborted) return;
-  throw new Error("DLSS5 安装已取消。");
+  throw new Error(t(uiKeys.dlssRuntime.cancelled));
 }
 
-function parseJsonLine<T>(output: string): T {
+function parseJsonLine<T>(output: string, t: Translate = createNativeTranslator(undefined).t): T {
   for (const line of output.split(/\r?\n/u).reverse()) {
     const candidate = line.trim();
     if (!candidate) continue;
@@ -502,7 +505,7 @@ function parseJsonLine<T>(output: string): T {
       // Continue until the command's final JSON line is found.
     }
   }
-  throw new Error("DLSS5 runtime 归档清单不是有效 JSON。");
+  throw new Error(t(uiKeys.dlssRuntime.invalidJson));
 }
 
 const DLSS5_SEVEN_ZIP_COMMANDS = ["7z.exe", "7zz.exe"] as const;
@@ -575,20 +578,20 @@ async function extractDlss5ArchiveWithPython(
   environment: NodeJS.ProcessEnv,
   deps: Dlss5RuntimeInstallerDependencies,
   expectedFiles: readonly string[],
-  options: { signal?: AbortSignal; onLog?: (message: string) => void }
+  options: { signal?: AbortSignal; onLog?: (message: string) => void }, t: Translate = createNativeTranslator(undefined).t
 ): Promise<readonly string[]> {
-  throwIfAborted(options.signal);
+  throwIfAborted(options.signal, t);
   const listed = await deps.runLoggedProcess(
     python,
     ["-c", PY7ZR_SCRIPT, "check", archive, ...expectedFiles],
     { env: environment, timeoutMs: 300_000, onLog: options.onLog }
   );
-  const parsedEntries = parseJsonLine<unknown>(listed);
+  const parsedEntries = parseJsonLine<unknown>(listed, t);
   if (!Array.isArray(parsedEntries) || parsedEntries.some((entry) => typeof entry !== "string")) {
-    throw new Error("DLSS5 runtime 归档清单不是字符串数组，已拒绝解压。");
+    throw new Error(t(uiKeys.dlssRuntime.invalidListing));
   }
-  const entries = validateDlss5ArtifactContents(parsedEntries, expectedFiles);
-  throwIfAborted(options.signal);
+  const entries = validateDlss5ArtifactContents(parsedEntries, expectedFiles, t);
+  throwIfAborted(options.signal, t);
   await deps.runLoggedProcess(
     python,
     ["-c", PY7ZR_SCRIPT, "extract", archive, destination],
@@ -604,9 +607,9 @@ async function extractDlss5ArchiveWithSevenZip(
   environment: NodeJS.ProcessEnv,
   deps: Dlss5RuntimeInstallerDependencies,
   expectedFiles: readonly string[],
-  options: { signal?: AbortSignal; onLog?: (message: string) => void }
+  options: { signal?: AbortSignal; onLog?: (message: string) => void }, t: Translate = createNativeTranslator(undefined).t
 ): Promise<readonly string[]> {
-  throwIfAborted(options.signal);
+  throwIfAborted(options.signal, t);
   const listed = await deps.runLoggedProcess(
     sevenZip,
     ["l", "-slt", "-ba", "-sccUTF-8", archive],
@@ -614,9 +617,9 @@ async function extractDlss5ArchiveWithSevenZip(
   );
   const entries = validateDlss5ArtifactContents(
     parseSevenZipArchiveEntries(listed),
-    expectedFiles
+    expectedFiles, t
   );
-  throwIfAborted(options.signal);
+  throwIfAborted(options.signal, t);
   await deps.runLoggedProcess(
     sevenZip,
     ["x", "-y", "-aoa", "-sccUTF-8", `-o${destination}`, archive],
@@ -632,9 +635,9 @@ async function extractDlss5Archive(
   environment: NodeJS.ProcessEnv,
   deps: Dlss5RuntimeInstallerDependencies,
   expectedFiles: readonly string[],
-  options: { signal?: AbortSignal; onLog?: (message: string) => void }
+  options: { signal?: AbortSignal; onLog?: (message: string) => void }, t: Translate = createNativeTranslator(undefined).t
 ): Promise<readonly string[]> {
-  options.onLog?.("使用当前 ComfyUI Python 的 py7zr 检查并解压 runtime……");
+  options.onLog?.(t(uiKeys.dlssRuntime.py7zrExtracting));
   try {
     return await extractDlss5ArchiveWithPython(
       archive,
@@ -643,13 +646,13 @@ async function extractDlss5Archive(
       environment,
       deps,
       expectedFiles,
-      options
+      options, t
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     const sevenZip = await findDlss5SevenZip(deps);
-    if (!sevenZip) throw new Error(`py7zr 解压 DLSS5 runtime 失败：${detail}`);
-    options.onLog?.(`py7zr 不可用，回退到原生 7-Zip：${sevenZip}`);
+    if (!sevenZip) throw new Error(t(uiKeys.dlssRuntime.py7zrFailed, { reason: detail }));
+    options.onLog?.(t(uiKeys.dlssRuntime.sevenZipFallback, { path: sevenZip }));
     return extractDlss5ArchiveWithSevenZip(
       archive,
       destination,
@@ -657,7 +660,7 @@ async function extractDlss5Archive(
       environment,
       deps,
       expectedFiles,
-      options
+      options, t
     );
   }
 }
@@ -671,7 +674,8 @@ async function downloadDlss5Archive(
   deps: Dlss5RuntimeInstallerDependencies,
   options: { signal?: AbortSignal; onLog?: (message: string) => void }
 ): Promise<void> {
-  throwIfAborted(options.signal);
+  const t = createNativeTranslator(settings.uiLocale).t;
+  throwIfAborted(options.signal, t);
   if (deps.downloadFile) {
     await deps.downloadFile(artifact.url, partialDestination, settings, {
       comfyRoot,
@@ -681,7 +685,7 @@ async function downloadDlss5Archive(
     return;
   }
   const curl = await deps.findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法下载 DLSS5 runtime。");
+  if (!curl) throw new Error(t(uiKeys.dlssRuntime.curlMissing));
   const args = [
     "-fL",
     "--retry", "2",
@@ -698,14 +702,14 @@ async function downloadDlss5Archive(
     args,
     { env: environment, timeoutMs: 1_800_000, onLog: options.onLog }
   );
-  throwIfAborted(options.signal);
+  throwIfAborted(options.signal, t);
 }
 
 async function copyUnownedFiles(
   existingRuntime: string,
   stagedRuntime: string,
   ownedFiles: readonly string[],
-  report: (message: string) => void
+  report: (message: string) => void, t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const owned = new Set(ownedFiles);
   const existingFiles = await listFiles(existingRuntime);
@@ -718,7 +722,7 @@ async function copyUnownedFiles(
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.copyFile(source, destination);
     stagedFiles.add(relative);
-    report(`保留 runtime 未知文件：${relative}`);
+    report(t(uiKeys.dlssRuntime.preserved, { file: relative }));
   }
 }
 
@@ -761,6 +765,7 @@ async function installPinnedDlss5NrRuntime(
   onLog?: (message: string) => void,
   signal?: AbortSignal
 ): Promise<Dlss5RuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -769,10 +774,10 @@ async function installPinnedDlss5NrRuntime(
     onLog?.(normalized);
   };
   const artifactMap = pinnedNrArtifacts(artifacts);
-  if (!artifactMap) return { ok: false, message: "DLSS5 catalog 的 NR runtime manifest 不完整。" };
+  if (!artifactMap) return { ok: false, message: t(uiKeys.dlssRuntime.nrManifestMissing) };
   const unavailable = artifacts.find((artifact) => artifact.unavailableReason);
   if (unavailable) {
-    return { ok: false, message: `DLSS5 runtime 当前无法自动安装：${unavailable.unavailableReason}` };
+    return { ok: false, message: t(uiKeys.dlssRuntime.unavailable, { reason: String(unavailable.unavailableReason) }) };
   }
 
   const runtimeDirectory = dlss5RuntimeDirectory(comfyRoot, nodeDirectory);
@@ -788,24 +793,24 @@ async function installPinnedDlss5NrRuntime(
   let backupDirectory = "";
 
   try {
-    throwIfAborted(signal);
-    await removeStaleDlss5RuntimeStaging(nodeDirectory, stagingRoot, report);
+    throwIfAborted(signal, t);
+    await removeStaleDlss5RuntimeStaging(nodeDirectory, stagingRoot, report, t);
     const comfyPython = await deps.findComfyPython(settings, comfyRoot);
-    if (!comfyPython) throw new Error("没有找到当前选中 ComfyUI 的 Python，无法安装 DLSS5 runtime。");
-    report(`使用当前选中的 ComfyUI Python执行安全解压：${comfyPython}`);
+    if (!comfyPython) throw new Error(t(uiKeys.dlssRuntime.pythonMissing));
+    report(t(uiKeys.dlssRuntime.safeExtracting, { path: comfyPython }));
     await fs.mkdir(archiveDirectory, { recursive: true });
     await fs.mkdir(extractedDirectory, { recursive: true });
     await fs.mkdir(path.join(stagedRuntime, DLSS5_RUNTIME_DOWNLOAD_DIRECTORY), { recursive: true });
 
     for (const artifact of artifacts) {
-      throwIfAborted(signal);
+      throwIfAborted(signal, t);
       const safeAssetName = safeRelativePath(artifact.assetName);
       if (!safeAssetName || safeAssetName.includes("/")) {
-        throw new Error(`DLSS5 runtime artifact 文件名不安全：${artifact.assetName}`);
+        throw new Error(t(uiKeys.dlssRuntime.unsafeArtifact, { file: artifact.assetName }));
       }
       const partialArchive = path.join(archiveDirectory, `${artifact.id}-${safeAssetName}.partial`);
       const archive = path.join(archiveDirectory, `${artifact.id}-${safeAssetName}`);
-      report(`下载固定 runtime 组件：${artifact.releaseTag} · ${artifact.assetName}`);
+      report(t(uiKeys.dlssRuntime.componentDownload, { release: artifact.releaseTag, file: artifact.assetName }));
       await downloadDlss5Archive(
         artifact,
         partialArchive,
@@ -817,21 +822,21 @@ async function installPinnedDlss5NrRuntime(
       );
       const archiveStat = await fs.stat(partialArchive).catch(() => null);
       if (!archiveStat?.isFile() || archiveStat.size <= 0) {
-        throw new Error(`${artifact.assetName} 下载未生成完整文件。`);
+        throw new Error(t(uiKeys.dlssRuntime.fileIncomplete, { file: artifact.assetName }));
       }
       if (artifact.bytes !== undefined && archiveStat.size !== artifact.bytes) {
         throw new Error(
-          `${artifact.assetName} 下载疑似截断：收到 ${archiveStat.size} bytes，要求 ${artifact.bytes} bytes。`
+          t(uiKeys.dlssRuntime.fileTruncated, { file: artifact.assetName, actual: archiveStat.size, expected: artifact.bytes })
         );
       }
       const actualSha256 = await sha256File(partialArchive);
       if (actualSha256.toLowerCase() !== artifact.sha256.toLowerCase()) {
         throw new Error(
-          `${artifact.assetName} SHA-256 校验失败：要求 ${artifact.sha256}，实际 ${actualSha256}。`
+          t(uiKeys.dlssRuntime.fileHashFailed, { file: artifact.assetName, expected: artifact.sha256, actual: actualSha256 })
         );
       }
       await deps.renameWithRetry(partialArchive, archive);
-      report(`${artifact.assetName} SHA-256 已校验：${actualSha256}`);
+      report(t(uiKeys.dlssRuntime.fileHashVerified, { file: artifact.assetName, digest: actualSha256 }));
 
       const destination = path.join(extractedDirectory, artifact.id);
       await fs.mkdir(destination, { recursive: true });
@@ -844,10 +849,10 @@ async function installPinnedDlss5NrRuntime(
             environment,
             deps,
             artifact.expectedFiles,
-            { signal, onLog: report }
+            { signal, onLog: report }, t
           ));
-      validateDlss5ArtifactContents(entries, artifact.expectedFiles);
-      await assertNoLinks(destination);
+      validateDlss5ArtifactContents(entries, artifact.expectedFiles, t);
+      await assertNoLinks(destination, t);
       extractedRoots.set(artifact.id, destination);
       await fs.copyFile(
         archive,
@@ -861,7 +866,7 @@ async function installPinnedDlss5NrRuntime(
     const isolatedPython = await findFileByBasename(isolatedPythonRoot, "python.exe");
     const pythonPathFile = await findFileByBasename(isolatedPythonRoot, "python313._pth");
     if (!isolatedPython || !pythonPathFile) {
-      throw new Error("Python 3.13 embeddable 组件缺少 python.exe 或 python313._pth。");
+      throw new Error(t(uiKeys.dlssRuntime.embeddedPythonMissing));
     }
     const sitePackages = path.join(isolatedPythonRoot, "Lib", "site-packages");
     await fs.mkdir(sitePackages, { recursive: true });
@@ -871,7 +876,7 @@ async function installPinnedDlss5NrRuntime(
       vapourSynthRoot,
       "vapoursynth-79-cp312-abi3-win_amd64.whl"
     );
-    if (!vapourSynthWheel) throw new Error("VapourSynth R79 归档缺少 ABI3 wheel。");
+    if (!vapourSynthWheel) throw new Error(t(uiKeys.dlssRuntime.vapourSynthWheelMissing));
     const vapourSynthEntries = await (deps.extractArchive
       ? deps.extractArchive(
           vapourSynthWheel.absolute,
@@ -887,16 +892,16 @@ async function installPinnedDlss5NrRuntime(
           environment,
           deps,
           ["vapoursynth.pyd"],
-          { signal, onLog: report }
+          { signal, onLog: report }, t
         ));
-    validateDlss5ArtifactContents(vapourSynthEntries, ["vapoursynth.pyd"]);
+    validateDlss5ArtifactContents(vapourSynthEntries, ["vapoursynth.pyd"], t);
     await copyDirectoryFiles(extractedRoots.get("numpy")!, sitePackages);
 
     const pluginDirectory = path.join(stagedRuntime, "plugins");
     await fs.mkdir(pluginDirectory, { recursive: true });
     const nrPlugin = await findFileByBasename(extractedRoots.get("vapourkit")!, "vsdlssnr.dll");
     const nrRuntime = await findFileByBasename(extractedRoots.get("dlss-nr")!, "nvngx_dlssnr.dll");
-    if (!nrPlugin || !nrRuntime) throw new Error("NR wrapper 或 NVIDIA runtime 未通过组装检查。");
+    if (!nrPlugin || !nrRuntime) throw new Error(t(uiKeys.dlssRuntime.nrAssemblyFailed));
     const stagedNrPlugin = path.join(pluginDirectory, "vsdlssnr.dll");
     const stagedNrRuntime = path.join(pluginDirectory, "nvngx_dlssnr.dll");
     await fs.copyFile(nrPlugin.absolute, stagedNrPlugin);
@@ -946,15 +951,15 @@ async function installPinnedDlss5NrRuntime(
       ["-c", pluginSelfCheck, stagedNrPlugin],
       { cwd: isolatedPythonRoot, env: environment, timeoutMs: 120_000, onLog: report }
     );
-    report("隔离 Python、NumPy、VapourSynth 与 vsdlssnr plugin 注册自检通过。");
+    report(t(uiKeys.dlssRuntime.pluginTestPassed));
 
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     const previousManifest = await readJson<unknown>(
       path.join(runtimeDirectory, DLSS5_RUNTIME_MANIFEST_FILENAME)
     );
     const previousOwnedFiles = validManifest(previousManifest) ? previousManifest.ownedFiles : [];
     const newOwnedFiles = await listFiles(stagedRuntime);
-    await copyUnownedFiles(runtimeDirectory, stagedRuntime, previousOwnedFiles, report);
+    await copyUnownedFiles(runtimeDirectory, stagedRuntime, previousOwnedFiles, report, t);
     const ownedFiles = [...new Set([
       ...newOwnedFiles,
       DLSS5_RUNTIME_MANIFEST_FILENAME
@@ -977,11 +982,11 @@ async function installPinnedDlss5NrRuntime(
       const backupRoot = path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY);
       backupDirectory = path.join(backupRoot, `${Date.now()}-${id}`);
       await fs.mkdir(backupRoot, { recursive: true });
-      report("正在备份现有 DLSS5 runtime，以便失败时恢复……");
+      report(t(uiKeys.dlssRuntime.backingUp));
       await deps.renameWithRetry(runtimeDirectory, backupDirectory);
       previousMovedToBackup = true;
     }
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     try {
       await deps.renameWithRetry(stagedRuntime, runtimeDirectory);
       promoted = true;
@@ -991,21 +996,21 @@ async function installPinnedDlss5NrRuntime(
         await deps.renameWithRetry(backupDirectory, runtimeDirectory).catch(() => undefined);
         backupDirectory = "";
         throw new Error(
-          `DLSS5 runtime 原子替换失败，已尝试回滚：${error instanceof Error ? error.message : String(error)}`
+          t(uiKeys.dlssRuntime.replaceFailed, { reason: error instanceof Error ? error.message : String(error) })
         );
       }
       throw error;
     }
-    const status = await scanDlss5Runtime(comfyRoot, nodeDirectory);
+    const status = await scanDlss5Runtime(comfyRoot, nodeDirectory, t);
     if (!status.nrReady) {
-      throw new Error(`DLSS5 NR runtime 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
+      throw new Error(t(uiKeys.dlssRuntime.nrRecheckFailed, { reason: status.error || status.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
-    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
-    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report);
-    report("DLSS5 基础 NR runtime 已原子安装；SR 与 guided NR 继续按独立能力检查。");
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report, undefined, t); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report, t);
+    report(t(uiKeys.dlssRuntime.nrInstalledLog));
     return {
       ok: true,
-      message: "DLSS5 基础 NR runtime 已安装并通过隔离 Python/plugin 自检；请重启 ComfyUI 后复检节点。",
+      message: t(uiKeys.dlssRuntime.nrInstalled),
       log: log.join("\n\n"),
       status
     };
@@ -1032,6 +1037,7 @@ export async function installDlss5Runtime(
   onLog?: (message: string) => void,
   signal?: AbortSignal
 ): Promise<Dlss5RuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -1040,13 +1046,13 @@ export async function installDlss5Runtime(
     onLog?.(normalized);
   };
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    return { ok: false, message: "远程 ComfyUI 仅支持连接，应用不会安装本地 DLSS5 runtime。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.remoteInstall) };
   }
   if (platformFor(deps) !== "win32") {
-    return { ok: false, message: "DLSS5 runtime 当前仅支持 Windows。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.windowsOnly) };
   }
   if (!comfyRoot || !nodeDirectory || !isPathInsideDirectory(comfyRoot, nodeDirectory)) {
-    return { ok: false, message: "DLSS5 runtime 安装目标不是当前 ComfyUI 数据目录，已拒绝操作。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.wrongInstallTarget) };
   }
   const artifacts = deps.artifacts ?? DLSS5_RUNTIME_ARTIFACTS;
   if (pinnedNrArtifacts(artifacts)) {
@@ -1061,16 +1067,16 @@ export async function installDlss5Runtime(
     );
   }
   const artifact = artifacts.find((item) => item.id === "vapourkit");
-  if (!artifact) return { ok: false, message: "DLSS5 catalog 缺少 VapourKit runtime manifest。" };
+  if (!artifact) return { ok: false, message: t(uiKeys.dlssRuntime.srManifestMissing) };
   if (artifact.unavailableReason) {
     return {
       ok: false,
-      message: `DLSS5 runtime 当前无法自动安装：${artifact.unavailableReason}`
+      message: t(uiKeys.dlssRuntime.unavailable, { reason: artifact.unavailableReason })
     };
   }
   const safeAssetName = safeRelativePath(artifact.assetName);
   if (!safeAssetName || safeAssetName.includes("/")) {
-    return { ok: false, message: "DLSS5 runtime artifact 文件名不安全，已拒绝安装。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.unsafeArtifactRejected) };
   }
 
   const runtimeDirectory = dlss5RuntimeDirectory(comfyRoot, nodeDirectory);
@@ -1085,13 +1091,13 @@ export async function installDlss5Runtime(
   let previousMovedToBackup = false;
   let backupDirectory = "";
   try {
-    throwIfAborted(signal);
-    await removeStaleDlss5RuntimeStaging(nodeDirectory, stagingRoot, report);
+    throwIfAborted(signal, t);
+    await removeStaleDlss5RuntimeStaging(nodeDirectory, stagingRoot, report, t);
     const python = await deps.findComfyPython(settings, comfyRoot);
-    if (!python) throw new Error("没有找到当前选中 ComfyUI 的 Python，无法安装 DLSS5 runtime。");
-    report(`使用当前选中的 ComfyUI Python：${python}`);
+    if (!python) throw new Error(t(uiKeys.dlssRuntime.pythonMissing));
+    report(t(uiKeys.dlssRuntime.pythonPath, { path: python }));
     await fs.mkdir(archiveDirectory, { recursive: true });
-    report(`下载固定 VapourKit runtime：${artifact.releaseTag} · ${artifact.assetName}`);
+    report(t(uiKeys.dlssRuntime.srDownloading, { release: artifact.releaseTag, file: artifact.assetName }));
     await downloadDlss5Archive(
       artifact,
       partialArchive,
@@ -1103,27 +1109,27 @@ export async function installDlss5Runtime(
     );
     const archiveStat = await fs.stat(partialArchive).catch(() => null);
     if (!archiveStat?.isFile() || archiveStat.size <= 0) {
-      throw new Error("DLSS5 runtime 下载未生成完整归档文件。");
+      throw new Error(t(uiKeys.dlssRuntime.downloadIncomplete));
     }
     if (artifact.bytes !== undefined && archiveStat.size !== artifact.bytes) {
       throw new Error(
-        `DLSS5 runtime 下载疑似截断：收到 ${archiveStat.size} bytes，要求 ${artifact.bytes} bytes。`
+        t(uiKeys.dlssRuntime.downloadTruncated, { actual: archiveStat.size, expected: artifact.bytes })
       );
     }
     const actualSha256 = await sha256File(partialArchive);
     if (actualSha256.toLowerCase() !== artifact.sha256.toLowerCase()) {
       throw new Error(
-        `DLSS5 runtime SHA-256 校验失败：要求 ${artifact.sha256}，实际 ${actualSha256}。`
+        t(uiKeys.dlssRuntime.hashFailed, { expected: artifact.sha256, actual: actualSha256 })
       );
     }
     await deps.renameWithRetry(partialArchive, archive);
-    report(`VapourKit SHA-256 已校验：${actualSha256}`);
+    report(t(uiKeys.dlssRuntime.vapourKitHashVerified, { digest: actualSha256 }));
 
     // Extract directly into the staged runtime. Electron's patched fs.cp walks
     // any file named `app.asar` as an ASAR package and rejects the valid
     // VapourKit payload before it can be promoted.
     await fs.mkdir(stagedRuntime, { recursive: true });
-    report("使用当前 ComfyUI Python 解压并检查 runtime 归档……");
+    report(t(uiKeys.dlssRuntime.extracting));
     const archiveEntries = await (deps.extractArchive
       ? deps.extractArchive(archive, stagedRuntime, python, environment, { signal, onLog: report })
       : extractDlss5Archive(
@@ -1133,10 +1139,10 @@ export async function installDlss5Runtime(
           environment,
           deps,
               artifact.expectedFiles,
-          { signal, onLog: report }
+          { signal, onLog: report }, t
         ));
-            validateDlss5ArtifactContents(archiveEntries, artifact.expectedFiles);
-    await assertNoLinks(stagedRuntime);
+            validateDlss5ArtifactContents(archiveEntries, artifact.expectedFiles, t);
+    await assertNoLinks(stagedRuntime, t);
     await fs.mkdir(path.join(stagedRuntime, DLSS5_RUNTIME_DOWNLOAD_DIRECTORY), { recursive: true });
     await fs.copyFile(archive, path.join(stagedRuntime, DLSS5_RUNTIME_DOWNLOAD_DIRECTORY, artifact.assetName));
 
@@ -1145,7 +1151,7 @@ export async function installDlss5Runtime(
     );
     if (foundRequired.some((match) => !match)) {
       const missing = artifact.expectedFiles.filter((_filename, index) => !foundRequired[index]);
-      throw new Error(`DLSS5 runtime 归档缺少预期文件：${missing.join("、")}`);
+      throw new Error(t(uiKeys.dlssRuntime.archiveMissingFiles, { files: missing.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
     const pythonFile = foundRequired[0]!;
     const srPluginFile = foundRequired[1]!;
@@ -1170,11 +1176,11 @@ export async function installDlss5Runtime(
       "utf8"
     );
 
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     const previousManifest = await readJson<unknown>(path.join(runtimeDirectory, DLSS5_RUNTIME_MANIFEST_FILENAME));
     const previousOwnedFiles = validManifest(previousManifest) ? previousManifest.ownedFiles : [];
     const newOwnedFiles = await listFiles(stagedRuntime);
-    await copyUnownedFiles(runtimeDirectory, stagedRuntime, previousOwnedFiles, report);
+    await copyUnownedFiles(runtimeDirectory, stagedRuntime, previousOwnedFiles, report, t);
     const ownedFiles = [...new Set([
       ...newOwnedFiles,
       DLSS5_RUNTIME_MANIFEST_FILENAME
@@ -1198,11 +1204,11 @@ export async function installDlss5Runtime(
       const backupRoot = path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY);
       backupDirectory = path.join(backupRoot, `${Date.now()}-${id}`);
       await fs.mkdir(backupRoot, { recursive: true });
-      report("正在备份现有 DLSS5 runtime，以便失败时恢复……");
+      report(t(uiKeys.dlssRuntime.backingUp));
       await deps.renameWithRetry(runtimeDirectory, backupDirectory);
       previousMovedToBackup = true;
     }
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     try {
       await deps.renameWithRetry(stagedRuntime, runtimeDirectory);
       promoted = true;
@@ -1212,19 +1218,19 @@ export async function installDlss5Runtime(
         await deps.renameWithRetry(backupDirectory, runtimeDirectory).catch(() => undefined);
         backupDirectory = "";
         throw new Error(
-          `DLSS5 runtime 原子替换失败，已尝试回滚：${error instanceof Error ? error.message : String(error)}`
+          t(uiKeys.dlssRuntime.replaceFailed, { reason: error instanceof Error ? error.message : String(error) })
         );
       }
       throw error;
     }
-    report("DLSS5 SR runtime 已原子安装；NR 未随本阶段下载或启用。");
-    const status = await scanDlss5Runtime(comfyRoot, nodeDirectory);
-    if (!status.srReady) throw new Error(`DLSS5 runtime 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
-    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
-    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report);
+    report(t(uiKeys.dlssRuntime.srInstalledLog));
+    const status = await scanDlss5Runtime(comfyRoot, nodeDirectory, t);
+    if (!status.srReady) throw new Error(t(uiKeys.dlssRuntime.srRecheckFailed, { reason: status.error || status.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator)) }));
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report, undefined, t); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, DLSS5_RUNTIME_BACKUP_DIRECTORY), DLSS5_RUNTIME_MANIFEST_FILENAME, validManifest, runtimeDirectory, report, t);
     return {
       ok: true,
-      message: "DLSS5 SR runtime 已安装并通过离线文件/config 检查；请重启 ComfyUI 后再做运行时复检。",
+      message: t(uiKeys.dlssRuntime.srInstalled),
       log: log.join("\n\n"),
       status
     };
@@ -1253,11 +1259,12 @@ export async function uninstallDlss5Runtime(
   nodeDirectory = "",
   onLog?: (message: string) => void
 ): Promise<Dlss5RuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    return { ok: false, message: "远程 ComfyUI 仅支持连接，应用不会卸载本地 DLSS5 runtime。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.remoteUninstall) };
   }
   if (!comfyRoot || (nodeDirectory && !isPathInsideDirectory(comfyRoot, nodeDirectory))) {
-    return { ok: false, message: "DLSS5 runtime 卸载目标不是当前 ComfyUI 数据目录，已拒绝操作。" };
+    return { ok: false, message: t(uiKeys.dlssRuntime.wrongUninstallTarget) };
   }
   const runtimeDirectory = dlss5RuntimeDirectory(comfyRoot, nodeDirectory);
   const manifestPath = path.join(runtimeDirectory, DLSS5_RUNTIME_MANIFEST_FILENAME);
@@ -1265,7 +1272,7 @@ export async function uninstallDlss5Runtime(
   if (!validManifest(manifestValue)) {
     return {
       ok: false,
-      message: "未找到有效的 DLSS5 app-owned install manifest；为保护手工文件，未执行卸载。"
+      message: t(uiKeys.dlssRuntime.uninstallUnowned)
     };
   }
   const manifest = manifestValue;
@@ -1277,12 +1284,12 @@ export async function uninstallDlss5Runtime(
     for (const relative of owned.sort((left, right) => depthOf(right) - depthOf(left))) {
       const filename = path.join(runtimeDirectory, relative);
       if (!isPathInsideDirectory(runtimeDirectory, filename)) {
-        throw new Error(`install manifest 路径超出 runtime 目录：${relative}`);
+        throw new Error(t(uiKeys.dlssRuntime.manifestOutside, { file: relative }));
       }
       try {
         await fs.unlink(filename);
         removed.push(relative);
-        onLog?.(`已删除 app-owned runtime 文件：${relative}`);
+        onLog?.(t(uiKeys.dlssRuntime.deleted, { file: relative }));
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "ENOENT") continue;
@@ -1313,8 +1320,8 @@ export async function uninstallDlss5Runtime(
     return {
       ok: true,
       message: removed.length
-        ? "DLSS5 app-owned runtime 文件已卸载；未登记的手工文件已保留。"
-        : "DLSS5 app-owned runtime 已不存在；未登记的手工文件已保留。",
+        ? t(uiKeys.dlssRuntime.uninstalled)
+        : t(uiKeys.dlssRuntime.alreadyAbsent),
       log: removed.join("\n")
     };
   } catch (error) {

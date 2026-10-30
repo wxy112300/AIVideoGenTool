@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { UiLocale } from "../../src/types.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import {
   createPromptRuntimeState,
   promptOperationIsActive,
@@ -43,13 +46,17 @@ export class PromptRuntimeManager {
   private backend: "comfyui" | "strata" = "comfyui";
   private strataRevision = 0;
 
-  constructor(service: PromptRuntimeServiceFacts) {
+  constructor(service: PromptRuntimeServiceFacts, private readonly getUiLocale: () => UiLocale | undefined = () => undefined) {
     this.comfyService = service;
     this.state = createPromptRuntimeState(service);
   }
 
   snapshot(): PromptRuntimeState {
     return structuredClone(this.state);
+  }
+
+  private text(key: string): string {
+    return createNativeTranslator(this.getUiLocale()).t(key);
   }
 
   subscribe(listener: PromptRuntimeListener): () => void {
@@ -63,8 +70,8 @@ export class PromptRuntimeManager {
     this.transition({ type: "service-updated", service });
     if ((service.phase === "stopped" || service.phase === "error") && this.activeController) {
       this.activeController.abort(new Error(service.phase === "stopped"
-        ? "ComfyUI 已退出。"
-        : "ComfyUI 运行状态异常。"));
+        ? this.text(uiKeys.promptService.runtimeExited)
+        : this.text(uiKeys.promptService.runtimeError)));
       this.activeController = null;
     }
   }
@@ -73,7 +80,7 @@ export class PromptRuntimeManager {
     if (this.backend === backend) return;
     this.backend = backend;
     if (backend === "comfyui") this.transition({ type: "service-updated", service: this.comfyService });
-    else this.strataService("starting", port ?? 43127, "正在准备 Strata");
+    else this.strataService("starting", port ?? 43127, this.text(uiKeys.promptService.strataPreparing));
   }
 
   strataService(phase: PromptRuntimeServiceFacts["phase"], port: number, message: string): void {
@@ -90,7 +97,7 @@ export class PromptRuntimeManager {
     phase?: PromptRuntimePreSubmissionPhase
   ): PromptOperationLease {
     if (promptOperationIsActive(this.state)) {
-      throw new Error("当前已有提示词任务正在运行。");
+      throw new Error(this.text(uiKeys.promptService.alreadyRunning));
     }
     if (this.state.operation.phase === "terminal") {
       this.transition({
@@ -132,7 +139,7 @@ export class PromptRuntimeManager {
   requestCancellation(): PromptCancellationRequest {
     const operation = this.state.operation;
     if (operation.phase === "idle" || operation.phase === "terminal") {
-      throw new Error("当前没有正在运行的提示词任务。");
+      throw new Error(this.text(uiKeys.promptService.noActiveTask));
     }
     if (operation.phase === "cancel-requested") {
       return {
@@ -147,7 +154,7 @@ export class PromptRuntimeManager {
       phase: operation.phase
     };
     this.transition({ type: "cancel-requested", operationId: operation.operationId });
-    this.activeController?.abort(new Error("提示词任务已取消。"));
+    this.activeController?.abort(new Error(this.text(uiKeys.promptService.cancelledReason)));
     return request;
   }
 

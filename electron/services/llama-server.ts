@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import os from "node:os";
@@ -131,7 +134,7 @@ function appendServerOutput(chunk: Buffer | string): void {
   lastServerOutput = `${lastServerOutput}${chunk.toString()}`.slice(-8_000);
 }
 
-async function waitForServer(port: number): Promise<void> {
+async function waitForServer(port: number, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < healthTimeoutMs) {
     try {
@@ -142,7 +145,7 @@ async function waitForServer(port: number): Promise<void> {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`llama-server 启动超时。${lastServerOutput ? `最后日志：${lastServerOutput}` : "请检查 llama-server.exe、模型文件和显卡运行库。"}`);
+  throw new Error(t(uiKeys.promptBackend.llamaTimeout, { detail: lastServerOutput ? t(uiKeys.promptBackend.lastLog, { detail: lastServerOutput }) : t(uiKeys.promptBackend.llamaCheckFiles) }));
 }
 
 async function runningServerModelMatches(
@@ -167,9 +170,10 @@ async function runningServerModelMatches(
 }
 
 export async function startLlamaPromptModel(settings: Settings): Promise<ConnectionResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const definition = managedPromptModel(settings.promptModelId);
   if (!definition || !isManagedPromptModel(settings.promptModelId)) {
-    return { ok: false, message: "当前提示词模型不属于应用自管理的 llama-server 模型。" };
+    return { ok: false, message: t(uiKeys.promptBackend.llamaModelRequired) };
   }
   if (startPromise) return startPromise;
   startPromise = (async () => {
@@ -180,14 +184,14 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
     if (!executable) {
       return {
         ok: false,
-        message: "找不到 llama-server.exe。请下载 llama.cpp 的 Windows CUDA 版本，并在设置中填写 llama-server.exe 的完整路径。"
+        message: t(uiKeys.promptBackend.llamaExecutableMissing)
       };
     }
     const assets = await resolvePromptAssets(settings, definition);
     if (!assets.model || !assets.mmproj) {
       return {
         ok: false,
-        message: `缺少 ${definition.name} 的模型文件。请把 ${definition.modelFilename} 和匹配的 ${definition.mmprojFilename} 放在同一子目录后重新扫描。`
+        message: t(uiKeys.promptBackend.llamaAssetsMissing, { model: definition.name, file: definition.modelFilename, projector: definition.mmprojFilename })
       };
     }
     const port = portForSettings(settings);
@@ -195,11 +199,11 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
       const existing = await fetch(`${serverUrl(port)}/health`, { signal: AbortSignal.timeout(1_500) });
       if (existing.ok) {
         if (ownedServerModelId === definition.id || await runningServerModelMatches(port, definition)) {
-          return { ok: true, message: `已连接已有 ${definition.name} llama-server（${serverUrl(port)}）。` };
+          return { ok: true, message: t(uiKeys.promptBackend.llamaConnected, { model: definition.name, url: serverUrl(port) }) };
         }
         return {
           ok: false,
-          message: `端口 ${port} 已有 llama-server，但加载的不是 ${definition.name}。请先停止旧提示词服务或更换端口。`
+          message: t(uiKeys.promptBackend.llamaPortOccupied, { port: port, model: definition.name })
         };
       }
     } catch {}
@@ -230,8 +234,8 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
     ownedServerPort = port;
     ownedServerModelId = definition.id;
     try {
-      await waitForServer(port);
-      return { ok: true, message: `${definition.name} 已由应用启动（${serverUrl(port)}）。` };
+      await waitForServer(port, t);
+      return { ok: true, message: t(uiKeys.promptBackend.llamaStarted, { model: definition.name, url: serverUrl(port) }) };
     } catch (error) {
       await stopOwnedServer();
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -271,6 +275,7 @@ export async function enhancePromptWithLlamaServer(
   request: EnhanceRequest,
   settings: Settings
 ): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const started = await startLlamaPromptModel(settings);
   if (!started.ok) throw new Error(started.message);
   const port = ownedServerPort || portForSettings(settings);
@@ -287,13 +292,13 @@ export async function enhancePromptWithLlamaServer(
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`llama-server 返回 HTTP ${response.status}${detail ? `：${detail}` : ""}`);
+    throw new Error(t(uiKeys.promptBackend.llamaHttp, { status: response.status, detail: detail ? t(uiKeys.promptBackend.detailSuffix, { detail }) : "" }));
   }
   const result = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = result.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("llama-server 没有返回提示词文本");
+  if (!content) throw new Error(t(uiKeys.promptBackend.llamaEmpty));
   const normalizedContent = content
     .replace(/<think>[\s\S]*?<\/think>/giu, "")
     .replace(/^```(?:text|markdown)?\s*/iu, "")
@@ -301,7 +306,7 @@ export async function enhancePromptWithLlamaServer(
     .trim();
   if (request.mode === "image-edit") return stripPromptAnnotations(normalizedContent);
   if (request.promptStrategy === "targeted-revision") {
-    return applyPromptRevision(request.prompt, normalizedContent);
+    return applyPromptRevision(request.prompt, normalizedContent, settings.uiLocale);
   }
   const sourcePrompt = stripPromptAnnotations(request.prompt);
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
@@ -317,7 +322,8 @@ export async function enhancePromptWithLlamaServer(
     nativeStateContinuation,
     nativeStateContinuation,
     request.continuumPreviousChunk,
-    request.h3PromptPreset
+    request.h3PromptPreset,
+    settings.uiLocale
   );
 }
 

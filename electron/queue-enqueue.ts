@@ -1,4 +1,6 @@
 import type { IpcMain } from "electron";
+import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -1049,7 +1051,9 @@ export class QueueEnqueueService {
       workflowPath: extensionWorkflowPath
     });
     if (motionContext && preparedDraft.h3MotionContextAsset) {
-      const adapted = adaptH3AvAsset(preparedDraft.h3MotionContextAsset, "motion-context");
+      const adapted = adaptH3AvAsset(
+        preparedDraft.h3MotionContextAsset, "motion-context", createNativeTranslator(enqueueSettings.uiLocale).t
+      );
       const ownerPath = adapted.payloadPath.absolutePath ??
         path.resolve(enqueueSettings.outputDirectory, adapted.payloadPath.subfolder, adapted.payloadPath.filename);
       const selectedPath = preparedDraft.h3ContextLatentPath?.trim();
@@ -1080,10 +1084,11 @@ export class QueueEnqueueService {
         sequence = undefined;
       }
       if (sequence) {
-        const sequenceError = validateContinuumSequence(sequence);
-        if (sequenceError) throw new Error(`Continuum managed sequence 无效：${sequenceError}`);
+        const t = createNativeTranslator(enqueueSettings.uiLocale).t;
+        const sequenceError = validateContinuumSequence(sequence, t);
+        if (sequenceError) throw new Error(t(uiKeys.sequenceValidation.invalid, { reason: sequenceError }));
         if (sequence.fps !== 24 || sequence.chunkSeconds <= 0) {
-          throw new Error("Continuum managed sequence 的 FPS/Seconds per Chunk 已被冻结，不能在续写时修改。");
+          throw new Error(t(uiKeys.sequenceValidation.frozenSampling));
         }
       } else {
         const sequenceId = randomUUID();

@@ -4,6 +4,9 @@ import path from "node:path";
 import type { IpcMain } from "electron";
 import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-logger.js";
 import type { StudioPaths } from "./services/studio-paths.js";
+import type { UiLocale } from "../src/types.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
+import { createNativeTranslator } from "./ui-translator.js";
 
 type NativeFileSystem = Pick<typeof nodeFs, "mkdir" | "stat" | "writeFile">;
 type NativeDialog = Pick<Electron.Dialog, "showOpenDialog">;
@@ -17,20 +20,23 @@ export interface NativeHostIpcDependencies {
   logger: Pick<AppLogger, "directory" | "info" | "warn">;
   paths: Pick<StudioPaths, "clipboardInputsDirectory">;
   getCrashDumpsDirectory: () => string;
+  getUiLocale?: () => UiLocale | undefined;
 }
 
 export function registerNativeHostIpc(deps: NativeHostIpcDependencies): void {
+  const t: ReturnType<typeof createNativeTranslator>["t"] = (...args) =>
+    createNativeTranslator(deps.getUiLocale?.()).t(...args);
   deps.ipc.handle("file:pick-image", async () => {
     const result = await deps.dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
+      filters: [{ name: t(uiKeys.nativeDialog.images), extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   deps.ipc.handle("file:pick-video", async () => {
     const result = await deps.dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "视频", extensions: ["mp4", "webm", "mov", "m4v", "mkv"] }]
+      filters: [{ name: t(uiKeys.nativeDialog.videos), extensions: ["mp4", "webm", "mov", "m4v", "mkv"] }]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
@@ -44,14 +50,14 @@ export function registerNativeHostIpc(deps: NativeHostIpcDependencies): void {
   deps.ipc.handle("file:pick-workflow", async () => {
     const result = await deps.dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "ComfyUI API 工作流", extensions: ["json"] }]
+      filters: [{ name: t(uiKeys.nativeDialog.workflow), extensions: ["json"] }]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   deps.ipc.handle("file:pick-python", async () => {
     const result = await deps.dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "Python 解释器", extensions: ["exe"] }]
+      filters: [{ name: t(uiKeys.nativeDialog.python), extensions: ["exe"] }]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
@@ -106,12 +112,12 @@ export function registerNativeHostIpc(deps: NativeHostIpcDependencies): void {
         "image/bmp": ".bmp"
       };
       const extension = extensions[mimeType.toLowerCase()];
-      if (!extension) throw new Error("剪贴板内容不是支持的图片格式");
+      if (!extension) throw new Error(t(uiKeys.mediaAction.clipboardFormat));
       if (!(data instanceof ArrayBuffer) || data.byteLength === 0) {
-        throw new Error("剪贴板图片为空");
+        throw new Error(t(uiKeys.mediaAction.clipboardEmpty));
       }
       if (data.byteLength > 50 * 1024 * 1024) {
-        throw new Error("剪贴板图片不能超过 50 MB");
+        throw new Error(t(uiKeys.mediaAction.clipboardTooLarge));
       }
       const directory = deps.paths.clipboardInputsDirectory;
       await deps.fileSystem.mkdir(directory, { recursive: true });

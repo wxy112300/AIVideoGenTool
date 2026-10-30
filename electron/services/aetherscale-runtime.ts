@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import crypto from "node:crypto";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { execFile } from "node:child_process";
@@ -278,7 +281,7 @@ async function listFiles(root: string): Promise<string[]> {
   return result.sort((left, right) => left.localeCompare(right));
 }
 
-async function assertNoLinks(root: string): Promise<void> {
+async function assertNoLinks(root: string, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   if (!(await fileExists(root))) return;
   const pending = [root];
   while (pending.length) {
@@ -286,7 +289,7 @@ async function assertNoLinks(root: string): Promise<void> {
     const entries = await fs.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isSymbolicLink()) {
-        throw new Error(`AetherScale carrier 归档包含符号链接：${entry.name}，已拒绝安装。`);
+        throw new Error(t(uiKeys.aetherRuntime.symlink, { file: entry.name }));
       }
       if (entry.isDirectory()) pending.push(path.join(current, entry.name));
     }
@@ -396,7 +399,7 @@ function validCarrierManifest(value: unknown): value is AetherScaleCarrierInstal
   });
 }
 
-function parseJsonLine<T>(output: string): T {
+function parseJsonLine<T>(output: string, t: Translate = createNativeTranslator(undefined).t): T {
   for (const line of output.split(/\r?\n/u).reverse()) {
     const candidate = line.trim();
     if (!candidate) continue;
@@ -406,21 +409,22 @@ function parseJsonLine<T>(output: string): T {
       // Keep looking for the final machine-readable line after Python logs.
     }
   }
-  throw new Error("AetherScale carrier 归档清单不是有效 JSON。");
+  throw new Error(t(uiKeys.aetherRuntime.invalidJson));
 }
 
 export function validateAetherScaleArchiveEntries(
-  entries: readonly string[]
+  entries: readonly string[],
+  t: Translate = createNativeTranslator(undefined).t
 ): string[] {
   const normalized = entries.map((entry) => safeRelativePath(entry));
   if (normalized.some((entry) => !entry)) {
-    throw new Error("AetherScale carrier 归档包含不安全路径，已拒绝解压。");
+    throw new Error(t(uiKeys.aetherRuntime.unsafeArchive));
   }
   const unique = [...new Set(normalized as string[])];
   const expected = AETHERSCALE_CARRIER_RUNTIME_FILES_MANIFEST.map((file) => file.archiveMember);
   const missing = expected.filter((member) => !unique.includes(member));
   if (missing.length) {
-    throw new Error(`AetherScale carrier 归档缺少固定白名单成员：${missing.join("、")}`);
+    throw new Error(t(uiKeys.aetherRuntime.missingMembers, { files: missing.join(t(uiKeys.nodeInstaller.listSeparator)) }));
   }
   return unique;
 }
@@ -479,9 +483,10 @@ async function extractAetherScaleArchive(
   options: {
     signal?: AbortSignal;
     onLog?: (message: string) => void;
-  }
+  },
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<readonly string[]> {
-  if (options.signal?.aborted) throw new Error("AetherScale carrier 安装已取消。");
+  if (options.signal?.aborted) throw new Error(t(uiKeys.aetherRuntime.cancelled));
   const output = await deps.runLoggedProcess(
     python,
     [
@@ -493,11 +498,11 @@ async function extractAetherScaleArchive(
     ],
     { env: environment, timeoutMs: 900_000, onLog: options.onLog, signal: options.signal }
   );
-  const entries = parseJsonLine<unknown>(output);
+  const entries = parseJsonLine<unknown>(output, t);
   if (!Array.isArray(entries) || entries.some((entry) => typeof entry !== "string")) {
-    throw new Error("AetherScale carrier 归档清单不是字符串数组，已拒绝安装。");
+    throw new Error(t(uiKeys.aetherRuntime.invalidListing));
   }
-  return validateAetherScaleArchiveEntries(entries);
+  return validateAetherScaleArchiveEntries(entries, t);
 }
 
 const AETHERSCALE_ALLOWED_CARRIER_DOWNLOAD_HOSTS = new Set([
@@ -528,7 +533,8 @@ async function downloadAetherScaleArchive(
   deps: AetherScaleRuntimeInstallerDependencies,
   options: { signal?: AbortSignal; onLog?: (message: string) => void }
 ): Promise<void> {
-  if (options.signal?.aborted) throw new Error("AetherScale carrier 安装已取消。");
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (options.signal?.aborted) throw new Error(t(uiKeys.aetherRuntime.cancelled));
   if (deps.downloadFile) {
     const finalUrl = await deps.downloadFile(AETHERSCALE_CARRIER_DOWNLOAD_URL, partialDestination, settings, {
       comfyRoot,
@@ -536,12 +542,12 @@ async function downloadAetherScaleArchive(
       onLog: options.onLog
     });
     if (typeof finalUrl === "string" && !isAllowedAetherScaleCarrierDownloadUrl(finalUrl)) {
-      throw new Error(`AetherScale carrier 下载重定向到未允许的地址：${finalUrl}`);
+      throw new Error(t(uiKeys.aetherRuntime.redirectDenied, { url: finalUrl }));
     }
     return;
   }
   const curl = await deps.findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法下载 AetherScale carrier runtime。");
+  if (!curl) throw new Error(t(uiKeys.aetherRuntime.curlMissing));
   const args = [
     "-fL",
     "--retry", "2",
@@ -561,10 +567,10 @@ async function downloadAetherScaleArchive(
   const finalUrl = output.match(/LVS_FINAL_URL:(https?:\/\/[^\s]+)/iu)?.[1] ?? "";
   if (!finalUrl || !isAllowedAetherScaleCarrierDownloadUrl(finalUrl)) {
     throw new Error(
-      `AetherScale carrier 下载最终地址未通过 HTTPS/GitHub host allowlist 校验：${finalUrl || "未读取到"}`
+      t(uiKeys.aetherRuntime.finalUrlDenied, { url: finalUrl || t(uiKeys.konohamaruRuntime.unread) })
     );
   }
-  if (options.signal?.aborted) throw new Error("AetherScale carrier 安装已取消。");
+  if (options.signal?.aborted) throw new Error(t(uiKeys.aetherRuntime.cancelled));
 }
 
 export function isAetherScaleRuntimeMutationAllowed(
@@ -628,7 +634,8 @@ async function verifyCarrierFiles(
 async function copyUnownedCarrierFiles(
   existingCarrier: string,
   stagedCarrier: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const owned = new Set([
     AETHERSCALE_CARRIER_MANIFEST_FILENAME,
@@ -642,7 +649,7 @@ async function copyUnownedCarrierFiles(
     if (!stat.isFile()) continue;
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.copyFile(source, destination);
-    report(`保留 carrier 未登记文件：${relative}`);
+    report(t(uiKeys.aetherRuntime.preserved, { file: relative }));
   }
 }
 
@@ -677,15 +684,16 @@ function carrierManifest(
   };
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
+function throwIfAborted(signal?: AbortSignal, t: Translate = createNativeTranslator(undefined).t): void {
   checkInstallationCancelled();
-  if (signal?.aborted) throw new Error("AetherScale carrier 安装已取消。");
+  if (signal?.aborted) throw new Error(t(uiKeys.aetherRuntime.cancelled));
 }
 
 async function removeStaleStaging(
   nodeDirectory: string,
   currentStagingRoot: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const entries = await fs.readdir(nodeDirectory, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
@@ -694,8 +702,8 @@ async function removeStaleStaging(
     const stagingRoot = path.join(nodeDirectory, entry.name);
     if (path.resolve(stagingRoot) === path.resolve(currentStagingRoot)) continue;
     await removeDirectoryTreeWithoutAsar(stagingRoot).then(
-      () => report(`已清理上一次失败的 AetherScale carrier 暂存目录：${entry.name}`),
-      (error) => report(`旧 AetherScale carrier 暂存目录暂时无法清理：${error instanceof Error ? error.message : String(error)}`)
+      () => report(t(uiKeys.aetherRuntime.stagingRemoved, { directory: entry.name })),
+      (error) => report(t(uiKeys.aetherRuntime.stagingRetained, { reason: error instanceof Error ? error.message : String(error) }))
     );
   }
 }
@@ -704,7 +712,8 @@ export async function scanAetherScaleRuntime(
   comfyRoot: string,
   nodeDirectory = "",
   pythonPath = "",
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<AetherScaleRuntimeStatus> {
   const carrierDirectory = aetherScaleCarrierDirectory(comfyRoot, nodeDirectory);
   const runtimeDirectory = aetherScaleCarrierRuntimeDirectory(comfyRoot, nodeDirectory);
@@ -715,7 +724,7 @@ export async function scanAetherScaleRuntime(
     return emptyAetherScaleRuntimeStatus(
       runtimeDirectory,
       "offline",
-      "AetherScale carrier 当前仅支持 Windows。",
+      t(uiKeys.aetherRuntime.scanWindowsOnly),
       manifestPath,
       workerPath
     );
@@ -756,15 +765,15 @@ export async function scanAetherScaleRuntime(
   } else if (!status.carrierReady) {
     status.state = "invalid";
     const details = [
-      !status.manifestValid ? "carrier_manifest.json 缺失或与当前固定 bundle 不匹配" : "",
-      status.missingFiles.length ? `缺少 ${status.missingFiles.join("、")}` : "",
-      status.incompatibleFiles.length ? `文件校验失败 ${status.incompatibleFiles.join("、")}` : ""
+      !status.manifestValid ? t(uiKeys.aetherRuntime.manifestInvalid) : "",
+      status.missingFiles.length ? t(uiKeys.aetherRuntime.missingFiles, { files: status.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator)) }) : "",
+      status.incompatibleFiles.length ? t(uiKeys.aetherRuntime.invalidFiles, { files: status.incompatibleFiles.join(t(uiKeys.nodeInstaller.listSeparator)) }) : ""
     ].filter(Boolean);
     status.error = details.join("；");
   } else {
     status.state = "ready";
     if (status.unexpectedFiles.length) {
-      status.error = `发现未登记 carrier 文件（不会被应用使用）：${status.unexpectedFiles.join("、")}`;
+      status.error = t(uiKeys.aetherRuntime.unregistered, { files: status.unexpectedFiles.join(t(uiKeys.nodeInstaller.listSeparator)) });
     }
   }
   return status;
@@ -867,17 +876,18 @@ async function clearAetherScaleWorkerState(
 export async function terminateAetherScaleWorker(
   comfyRoot: string,
   nodeDirectory = "",
-  onLog?: (message: string) => void
+  onLog?: (message: string) => void,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<AetherScaleWorkerCleanupResult> {
   if (!comfyRoot || (nodeDirectory && !isPathInsideDirectory(comfyRoot, nodeDirectory))) {
     return {
       ok: false,
       verified: false,
-      message: "AetherScale carrier worker 终止目标不是当前 ComfyUI 数据目录，未执行操作。"
+      message: t(uiKeys.aetherRuntime.workerWrongTarget)
     };
   }
   if (process.platform !== "win32") {
-    return { ok: false, message: "AetherScale carrier worker 受控终止目前只支持 Windows。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.workerWindowsOnly) };
   }
   const workerPath = aetherScaleCarrierWorkerPath(comfyRoot, nodeDirectory);
   const runtimeDirectory = aetherScaleCarrierRuntimeDirectory(comfyRoot, nodeDirectory);
@@ -892,10 +902,10 @@ export async function terminateAetherScaleWorker(
       return {
         ok: false,
         verified: false,
-        message: "检测到无法验证的 AetherScale carrier worker 状态，未执行终止操作。"
+        message: t(uiKeys.aetherRuntime.workerUnverified)
       };
     }
-    return { ok: true, message: "未发现可验证的 AetherScale carrier worker。" };
+    return { ok: true, message: t(uiKeys.aetherRuntime.workerAbsent) };
   }
   const inspection = await inspectAetherScaleWorkerProcess(state, workerPath);
   if (inspection.error) {
@@ -903,7 +913,7 @@ export async function terminateAetherScaleWorker(
       ok: false,
       verified: false,
       processId: state.processId,
-      message: `无法验证 AetherScale carrier worker PID ${state.processId}：${inspection.error}`
+      message: t(uiKeys.aetherRuntime.workerInspectFailed, { pid: state.processId, reason: inspection.error })
     };
   }
   if (!inspection.exists) {
@@ -913,12 +923,12 @@ export async function terminateAetherScaleWorker(
       runtimeDirectory,
       state.processId
     );
-    onLog?.(`已清理不存在的 AetherScale carrier worker 状态：PID ${state.processId}`);
+    onLog?.(t(uiKeys.aetherRuntime.workerStateRemoved, { pid: state.processId }));
     return {
       ok: true,
       verified: true,
       processId: state.processId,
-      message: `AetherScale carrier worker PID ${state.processId} 已退出。`
+      message: t(uiKeys.aetherRuntime.workerExited, { pid: state.processId })
     };
   }
   if (!inspection.verified) {
@@ -926,10 +936,10 @@ export async function terminateAetherScaleWorker(
       ok: false,
       verified: false,
       processId: state.processId,
-      message: `AetherScale carrier worker PID ${state.processId} 未通过路径/父进程/命令行所有权校验，未执行终止。`
+      message: t(uiKeys.aetherRuntime.workerOwnershipDenied, { pid: state.processId })
     };
   }
-  onLog?.(`正在终止已验证的 AetherScale carrier worker：PID ${state.processId}`);
+  onLog?.(t(uiKeys.aetherRuntime.workerTerminating, { pid: state.processId }));
   try {
     await execFileAsync(
       "taskkill.exe",
@@ -943,7 +953,7 @@ export async function terminateAetherScaleWorker(
         ok: false,
         verified: afterFailure.verified,
         processId: state.processId,
-        message: `终止 AetherScale carrier worker PID ${state.processId} 失败：${error instanceof Error ? error.message : String(error)}`
+        message: t(uiKeys.aetherRuntime.workerTerminateFailed, { pid: state.processId, reason: error instanceof Error ? error.message : String(error) })
       };
     }
   }
@@ -958,7 +968,7 @@ export async function terminateAetherScaleWorker(
       ok: false,
       verified: finalInspection.verified,
       processId: state.processId,
-      message: `AetherScale carrier worker PID ${state.processId} 在受控终止后仍存在。`
+      message: t(uiKeys.aetherRuntime.workerStillPresent, { pid: state.processId })
     };
   }
   await clearAetherScaleWorkerState(
@@ -971,7 +981,7 @@ export async function terminateAetherScaleWorker(
     ok: true,
     verified: true,
     processId: state.processId,
-    message: `AetherScale carrier worker PID ${state.processId} 已终止并确认退出。`
+    message: t(uiKeys.aetherRuntime.workerTerminated, { pid: state.processId })
   };
 }
 
@@ -979,7 +989,8 @@ async function ensureAetherScaleWorkerStopped(
   comfyRoot: string,
   nodeDirectory: string,
   platform: NodeJS.Platform,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const workerPath = aetherScaleCarrierWorkerPath(comfyRoot, nodeDirectory);
   const runtimeDirectory = aetherScaleCarrierRuntimeDirectory(comfyRoot, nodeDirectory);
@@ -991,20 +1002,20 @@ async function ensureAetherScaleWorkerStopped(
     runtimeDirectory
   );
   if (!state) {
-    throw new Error("检测到无法验证的 AetherScale carrier worker 状态；请先确认 worker 已退出并清理状态文件，再更新 runtime。");
+    throw new Error(t(uiKeys.aetherRuntime.updateUnverifiedWorker));
   }
   if (platform !== "win32") {
-    throw new Error("检测到 AetherScale carrier worker 状态；当前平台无法安全确认 worker 已停止。");
+    throw new Error(t(uiKeys.aetherRuntime.updateWorkerPlatform));
   }
   const inspection = await inspectAetherScaleWorkerProcess(state, workerPath);
   if (inspection.error) {
-    throw new Error(`无法确认 AetherScale carrier worker 是否已停止：${inspection.error}`);
+    throw new Error(t(uiKeys.aetherRuntime.updateWorkerInspect, { reason: inspection.error }));
   }
   if (inspection.exists) {
     throw new Error(
       inspection.verified
-        ? `AetherScale carrier worker PID ${state.processId} 仍在运行；请先取消任务并等待清理完成，再更新 runtime。`
-        : `AetherScale carrier worker PID ${state.processId} 未通过路径/父进程/命令行所有权校验，已拒绝更新 runtime。`
+        ? t(uiKeys.aetherRuntime.updateWorkerRunning, { pid: state.processId })
+        : t(uiKeys.aetherRuntime.updateOwnershipDenied, { pid: state.processId })
     );
   }
   await clearAetherScaleWorkerState(
@@ -1013,7 +1024,7 @@ async function ensureAetherScaleWorkerStopped(
     runtimeDirectory,
     state.processId
   );
-  report(`已清理已退出的 AetherScale carrier worker 状态：PID ${state.processId}`);
+  report(t(uiKeys.aetherRuntime.exitedStateRemoved, { pid: state.processId }));
 }
 
 export async function installAetherScaleRuntime(
@@ -1024,6 +1035,7 @@ export async function installAetherScaleRuntime(
   onLog?: (message: string) => void,
   signal?: AbortSignal
 ): Promise<AetherScaleRuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -1032,16 +1044,16 @@ export async function installAetherScaleRuntime(
     onLog?.(normalized);
   };
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    return { ok: false, message: "远程 ComfyUI 仅支持连接，应用不会安装本地 AetherScale carrier runtime。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.remoteInstall) };
   }
   if (platformFor(deps) !== "win32") {
-    return { ok: false, message: "AetherScale carrier runtime 当前仅支持 Windows。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.windowsOnly) };
   }
   if (!comfyRoot || !nodeDirectory || !isPathInsideDirectory(comfyRoot, nodeDirectory)) {
-    return { ok: false, message: "AetherScale carrier 安装目标不是当前 ComfyUI 数据目录，已拒绝操作。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.installWrongTarget) };
   }
   if (AETHERSCALE_CARRIER_RUNTIME_FILES_MANIFEST.length !== AETHERSCALE_CARRIER_RUNTIME_FILES.length) {
-    return { ok: false, message: "AetherScale catalog 缺少经审计的 carrier 六文件 manifest，已拒绝安装。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.manifestIncomplete) };
   }
   const id = deps.randomId?.() ?? crypto.randomUUID();
   const stagingRoot = path.join(nodeDirectory, `${AETHERSCALE_CARRIER_STAGING_PREFIX}${id}`);
@@ -1057,36 +1069,36 @@ export async function installAetherScaleRuntime(
   let previousMovedToBackup = false;
   let promoted = false;
   try {
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     await ensureAetherScaleWorkerStopped(
       comfyRoot,
       nodeDirectory,
       platformFor(deps),
-      report
+      report, t
     );
-    await removeStaleStaging(nodeDirectory, stagingRoot, report);
+    await removeStaleStaging(nodeDirectory, stagingRoot, report, t);
     const python = await deps.findComfyPython(settings, comfyRoot);
-    if (!python) throw new Error("没有找到当前选中 ComfyUI 的 Python，无法安装 AetherScale carrier runtime。");
-    report(`使用当前选中的 ComfyUI Python 解压 carrier：${python}`);
+    if (!python) throw new Error(t(uiKeys.aetherRuntime.pythonMissing));
+    report(t(uiKeys.aetherRuntime.extracting, { path: python }));
     await fs.mkdir(archiveDirectory, { recursive: true });
-    report(`下载固定 carrier：${AETHERSCALE_CARRIER_RELEASE} · ${AETHERSCALE_CARRIER_ARCHIVE}`);
+    report(t(uiKeys.aetherRuntime.downloading, { release: AETHERSCALE_CARRIER_RELEASE, archive: AETHERSCALE_CARRIER_ARCHIVE }));
     await downloadAetherScaleArchive(partialArchive, settings, comfyRoot, environment, deps, {
       signal,
       onLog: report
     });
     const archiveStat = await fs.stat(partialArchive).catch(() => null);
     if (!archiveStat?.isFile() || archiveStat.size <= 0) {
-      throw new Error("AetherScale carrier 下载未生成完整归档文件。");
+      throw new Error(t(uiKeys.aetherRuntime.downloadIncomplete));
     }
     if (archiveStat.size !== AETHERSCALE_CARRIER_ARCHIVE_BYTES) {
-      throw new Error(`AetherScale carrier 下载疑似截断：收到 ${archiveStat.size} bytes，要求 ${AETHERSCALE_CARRIER_ARCHIVE_BYTES} bytes。`);
+      throw new Error(t(uiKeys.aetherRuntime.truncated, { actual: archiveStat.size, expected: AETHERSCALE_CARRIER_ARCHIVE_BYTES }));
     }
     const archiveSha256 = await sha256File(partialArchive);
     if (archiveSha256.toLowerCase() !== AETHERSCALE_CARRIER_ARCHIVE_SHA256.toLowerCase()) {
-      throw new Error(`AetherScale carrier SHA-256 校验失败：要求 ${AETHERSCALE_CARRIER_ARCHIVE_SHA256}，实际 ${archiveSha256}。`);
+      throw new Error(t(uiKeys.aetherRuntime.hashFailed, { expected: AETHERSCALE_CARRIER_ARCHIVE_SHA256, actual: archiveSha256 }));
     }
     await deps.renameWithRetry(partialArchive, archive);
-    report(`carrier archive SHA-256 已校验：${archiveSha256}`);
+    report(t(uiKeys.aetherRuntime.hashVerified, { digest: archiveSha256 }));
     await fs.mkdir(stagedRuntime, { recursive: true });
     const archiveEntries = await (deps.extractArchive
       ? deps.extractArchive(archive, stagedRuntime, python, environment, {
@@ -1097,19 +1109,19 @@ export async function installAetherScaleRuntime(
       : extractAetherScaleArchive(archive, stagedRuntime, python, environment, deps, {
           signal,
           onLog: report
-    }));
-    validateAetherScaleArchiveEntries(archiveEntries);
-    await assertNoLinks(stagedCarrier);
+    }, t));
+    validateAetherScaleArchiveEntries(archiveEntries, t);
+    await assertNoLinks(stagedCarrier, t);
     const stagedFiles = await listFiles(stagedRuntime);
     const unexpectedStaged = findUnexpectedAetherScaleStagedFiles(stagedFiles);
     if (unexpectedStaged.length) {
-      throw new Error(`AetherScale carrier 解压产生白名单外文件：${unexpectedStaged.join("、")}`);
+      throw new Error(t(uiKeys.aetherRuntime.unexpectedStaged, { files: unexpectedStaged.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
     const stagedVerification = await verifyCarrierFiles(stagedRuntime);
     if (stagedVerification.missingFiles.length || stagedVerification.incompatibleFiles.length) {
-      throw new Error(`AetherScale carrier 文件校验失败：${[...stagedVerification.missingFiles, ...stagedVerification.incompatibleFiles].join("、")}`);
+      throw new Error(t(uiKeys.aetherRuntime.verificationFailed, { files: [...stagedVerification.missingFiles, ...stagedVerification.incompatibleFiles].join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
-    await copyUnownedCarrierFiles(carrierDirectory, stagedCarrier, report);
+    await copyUnownedCarrierFiles(carrierDirectory, stagedCarrier, report, t);
     const manifest = carrierManifest(deps.now?.() ?? new Date());
     await fs.writeFile(
       path.join(stagedCarrier, AETHERSCALE_CARRIER_MANIFEST_FILENAME),
@@ -1122,17 +1134,17 @@ export async function installAetherScaleRuntime(
       const backupRoot = path.join(comfyRoot, AETHERSCALE_CARRIER_BACKUP_DIRECTORY);
       backupDirectory = path.join(backupRoot, `${Date.now()}-${id}`);
       await fs.mkdir(backupRoot, { recursive: true });
-      report("正在备份现有 AetherScale carrier，以便失败时恢复……");
+      report(t(uiKeys.aetherRuntime.backingUp));
       await deps.renameWithRetry(carrierDirectory, backupDirectory);
       previousMovedToBackup = true;
     }
-    throwIfAborted(signal);
+    throwIfAborted(signal, t);
     try {
       await deps.renameWithRetry(stagedCarrier, carrierDirectory);
       promoted = true;
     } catch (error) {
       if (!deps.retryableRenameError(error)) throw error;
-      report("Windows 持续占用 carrier 目录，改用文件复制完成替换。");
+      report(t(uiKeys.aetherRuntime.copyFallback));
       await fs.cp(stagedCarrier, carrierDirectory, {
         recursive: true,
         force: false,
@@ -1140,16 +1152,16 @@ export async function installAetherScaleRuntime(
       });
       promoted = true;
     }
-    const status = await scanAetherScaleRuntime(comfyRoot, nodeDirectory, python, platformFor(deps));
+    const status = await scanAetherScaleRuntime(comfyRoot, nodeDirectory, python, platformFor(deps), t);
     if (!status.carrierReady) {
-      throw new Error(`AetherScale carrier 安装后复扫未通过：${status.error || status.missingFiles.join("、")}`);
+      throw new Error(t(uiKeys.aetherRuntime.recheckFailed, { reason: status.error || status.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
-    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report); backupDirectory = ""; }
-    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, AETHERSCALE_CARRIER_BACKUP_DIRECTORY), AETHERSCALE_CARRIER_MANIFEST_FILENAME, validCarrierManifest, carrierDirectory, report);
-    report("AetherScale carrier runtime 已原子安装；安装阶段未执行 nvngx.dll worker。");
+    if (backupDirectory) { await removeSoftwareArtifact(comfyRoot, backupDirectory, report, undefined, t); backupDirectory = ""; }
+    await cleanupManifestSoftwareBackups(comfyRoot, path.join(comfyRoot, AETHERSCALE_CARRIER_BACKUP_DIRECTORY), AETHERSCALE_CARRIER_MANIFEST_FILENAME, validCarrierManifest, carrierDirectory, report, t);
+    report(t(uiKeys.aetherRuntime.installedLog));
     return {
       ok: true,
-      message: "AetherScale carrier runtime 已按固定六文件白名单安装并通过离线校验；请重启 ComfyUI 后再做运行时复检。",
+      message: t(uiKeys.aetherRuntime.installed),
       log: log.join("\n\n"),
       status
     };
@@ -1178,11 +1190,12 @@ export async function uninstallAetherScaleRuntime(
   nodeDirectory = "",
   onLog?: (message: string) => void
 ): Promise<AetherScaleRuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    return { ok: false, message: "远程 ComfyUI 仅支持连接，应用不会卸载本地 AetherScale carrier runtime。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.remoteUninstall) };
   }
   if (!comfyRoot || (nodeDirectory && !isPathInsideDirectory(comfyRoot, nodeDirectory))) {
-    return { ok: false, message: "AetherScale carrier 卸载目标不是当前 ComfyUI 数据目录，已拒绝操作。" };
+    return { ok: false, message: t(uiKeys.aetherRuntime.uninstallWrongTarget) };
   }
   const carrierDirectory = aetherScaleCarrierDirectory(comfyRoot, nodeDirectory);
   const runtimeDirectory = aetherScaleCarrierRuntimeDirectory(comfyRoot, nodeDirectory);
@@ -1191,11 +1204,11 @@ export async function uninstallAetherScaleRuntime(
   if (!validCarrierManifest(manifestValue)) {
     return {
       ok: false,
-      message: "未找到有效的 AetherScale app-owned carrier manifest；为保护手工文件，未执行卸载。"
+      message: t(uiKeys.aetherRuntime.uninstallUnowned)
     };
   }
   if (process.platform === "win32") {
-    const worker = await terminateAetherScaleWorker(comfyRoot, nodeDirectory, onLog);
+    const worker = await terminateAetherScaleWorker(comfyRoot, nodeDirectory, onLog, t);
     if (!worker.ok) {
       return {
         ok: false,
@@ -1212,12 +1225,12 @@ export async function uninstallAetherScaleRuntime(
     for (const relative of owned.sort((left, right) => depthOf(right) - depthOf(left))) {
       const target = path.join(carrierDirectory, relative);
       if (!isPathInsideDirectory(carrierDirectory, target)) {
-        throw new Error(`carrier manifest 路径超出 runtime 目录：${relative}`);
+        throw new Error(t(uiKeys.aetherRuntime.manifestOutside, { file: relative }));
       }
       try {
         await fs.unlink(target);
         removed.push(relative);
-        onLog?.(`已删除 app-owned AetherScale carrier 文件：${relative}`);
+        onLog?.(t(uiKeys.aetherRuntime.deleted, { file: relative }));
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "ENOENT") continue;
@@ -1241,8 +1254,8 @@ export async function uninstallAetherScaleRuntime(
     return {
       ok: true,
       message: removed.length
-        ? "AetherScale app-owned carrier 文件已卸载；未登记的手工文件已保留。"
-        : "AetherScale app-owned carrier 已不存在；未登记的手工文件已保留。",
+        ? t(uiKeys.aetherRuntime.uninstalled)
+        : t(uiKeys.aetherRuntime.alreadyAbsent),
       log: removed.join("\n")
     };
   } catch (error) {

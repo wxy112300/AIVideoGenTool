@@ -38,6 +38,19 @@ function repository(initial = createDefaultState()): StateRepository {
   };
 }
 
+describe("localized batch copy errors", () => {
+  it.each([
+    ["en-US", "None of the selected files could be found. No files were copied."],
+    ["zh-TW", "找不到所選的歷史檔案，未複製任何檔案。"]
+  ] as const)("retains missing counts and reports the error in %s", async (locale, message) => {
+    const state = createDefaultState();
+    state.settings.uiLocale = locale;
+    const service = new MediaReadService({ store: repository(state), historyQuery: {} as HistoryQueryService });
+    expect(await service.copyHistoryFiles("video", ["missing", "missing"], "unused"))
+      .toEqual({ ok: false, message, requestedCount: 1, copiedCount: 0, missingCount: 1 });
+  });
+});
+
 function mediaQuery(overrides: Partial<HistoryQueryService> = {}): HistoryQueryService {
   return {
     coverPathFromDigest: vi.fn(),

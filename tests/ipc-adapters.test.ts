@@ -259,6 +259,30 @@ describe("extracted Electron IPC adapters", () => {
     expect(openPath).toHaveBeenLastCalledWith("C:\\crashes");
   });
 
+  it("uses the current interface language for file filters and clipboard validation after switching", async () => {
+    const { ipc, handlers } = fakeIpc();
+    let locale: "en-US" | "zh-TW" = "en-US";
+    const showOpenDialog = vi.fn(async (_options: unknown) => ({ canceled: true, filePaths: [] }));
+    registerNativeHostIpc({
+      ipc, dialog: { showOpenDialog } as never, shell: {} as never,
+      fileSystem: {} as never, logger: { directory: "unused", info: vi.fn(), warn: vi.fn() },
+      paths: { clipboardInputsDirectory: "unused" }, getCrashDumpsDirectory: () => "unused",
+      getUiLocale: () => locale
+    });
+    for (const [language, label, emptyError] of [
+      ["en-US", "Images", "The clipboard image is empty."],
+      ["zh-TW", "圖片", "剪貼簿圖片為空"]
+    ] as const) {
+      locale = language;
+      await invoke(handlers, "file:pick-image");
+      expect(showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({
+        filters: [{ name: label, extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
+      }));
+      await expect(invoke(handlers, "file:save-clipboard-image", new ArrayBuffer(0), "image/png"))
+        .rejects.toThrow(emptyError);
+    }
+  });
+
   it("keeps bundled workflow lookup rooted and model-profile aware", async () => {
     const { ipc, handlers } = fakeIpc();
     const call = <T>(channel: string, ...args: unknown[]) => invoke<T>(handlers, channel, ...args);

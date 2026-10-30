@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
@@ -11,16 +14,17 @@ import { STRATA_COMMUNITY_VECTOR } from "../../src/core/strata-uncensored.js";
 import { verifyStrataControlVector } from "./strata-uncensored.js";
 import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-update-cleanup.js";
 import { gitSoftwareFiles } from "./software-git-files.js";
+import { fetchStrataSource } from "./strata-source-fetch.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
 import { STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_ENGINE_VERSION, STRATA_ENGINE_MANIFEST_SHA256, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
 const receiptName = "lvs-strata-install.json";
 const vectorDirectories = ["data/lvs-control-vectors", "data/experimental-speed-projection"];
-async function preserveStrataUserData(source: string, destination: string) {
+async function preserveStrataUserData(source: string, destination: string, t: Translate = createNativeTranslator(undefined).t) {
   const head = (await fs.readFile(path.join(source, ".git", "HEAD"), "utf8").catch(() => "")).trim();
   const release = strataInstalledRelease(source, false) ?? STRATA_RELEASES.find(release => release.revision === head);
   const downloadable = release ? await gitSoftwareFiles(source, { repository: "https://github.com/Niko1221/Strata", revision: release.revision }) : new Set<string>();
-  await preserveSoftwareUserData(source, destination, vectorDirectories, undefined, [...downloadable]);
+  await preserveSoftwareUserData(source, destination, vectorDirectories, undefined, [...downloadable], t);
 }
 export function managedStrataDirectory(release?: { version: string; revision: string }): string {
   return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", release ? `v${release.version}-${release.revision.slice(0, 8)}` : "runtime");
@@ -65,14 +69,14 @@ interface InstallationRuntime {
   managedDirectory?: string;
   verifyArchive?(filename: string): Promise<void>;
 }
-export async function verifyStrataEngineArchive(filename: string): Promise<void> {
+export async function verifyStrataEngineArchive(filename: string, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   const digest = createHash("sha256");
   for await (const chunk of createReadStream(filename)) { checkInstallationCancelled(); digest.update(chunk); }
-  if ((await fs.stat(filename)).size !== STRATA_ENGINE_BYTES || digest.digest("hex") !== STRATA_ENGINE_SHA256) throw new Error("Strata 引擎大小或 SHA-256 校验失败，未安装。");
+  if ((await fs.stat(filename)).size !== STRATA_ENGINE_BYTES || digest.digest("hex") !== STRATA_ENGINE_SHA256) throw new Error(t(uiKeys.strataRuntime.archiveInvalid));
 }
 let installing = false;
 
-type StrataUninstallSettings = Pick<Settings, "strataInstallDirectory" | "modelDirectory" | "strataModelDirectory" | "comfyInstallDirectory">;
+type StrataUninstallSettings = Pick<Settings, "strataInstallDirectory" | "modelDirectory" | "strataModelDirectory" | "comfyInstallDirectory"> & Partial<Pick<Settings, "uiLocale">>;
 interface StrataUninstallOptions { managedDirectory?: string; protectedDirectories?: string[] }
 const pathIdentity = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
 export async function physicalPath(filename: string): Promise<string> {
@@ -89,16 +93,17 @@ export function containsPath(parent: string, child: string): boolean {
   return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 async function checkedUninstallRoot(settings: StrataUninstallSettings, options: StrataUninstallOptions): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const root = path.resolve(options.managedDirectory ?? resolvedStrataDirectory(settings));
   if (!options.managedDirectory && !isManagedStrataPath(root)) {
-    throw new Error("手动安装目录不由应用卸载，原文件未修改。");
+    throw new Error(t(uiKeys.strataRuntime.manualUninstall));
   }
   if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && pathIdentity(path.resolve(settings.strataInstallDirectory.trim())) !== pathIdentity(root)) {
-    throw new Error("手动安装目录不由应用卸载，原文件未修改。");
+    throw new Error(t(uiKeys.strataRuntime.manualUninstall));
   }
   const stat = await fs.lstat(root).catch(() => null);
   if (!stat?.isDirectory() || stat.isSymbolicLink() || !await strataManagedReceipt(root, false)) {
-    throw new Error("未找到可卸载的应用管理 Strata 安装，请重新扫描。原文件未修改。");
+    throw new Error(t(uiKeys.strataRuntime.uninstallMissing));
   }
   const actualRoot = await physicalPath(root);
   const protectedDirectories = [settings.modelDirectory, settings.strataModelDirectory,
@@ -107,7 +112,7 @@ async function checkedUninstallRoot(settings: StrataUninstallSettings, options: 
   for (const directory of protectedDirectories) {
     const actualModels = await physicalPath(directory);
     if (containsPath(actualRoot, actualModels) || containsPath(actualModels, actualRoot)) {
-      throw new Error("Strata 安装目录与模型目录重叠，拒绝卸载以保护共享模型。请先调整目录并重新扫描。");
+      throw new Error(t(uiKeys.strataRuntime.modelOverlap));
     }
   }
   return root;
@@ -117,16 +122,17 @@ export async function canUninstallStrata(settings: StrataUninstallSettings, opti
 }
 /** Only the exact app-owned runtime; never remove siblings, shared weights or manual installs. */
 export async function uninstallStrataRuntime(settings: StrataUninstallSettings, onProgress?: (message: string) => void, options: StrataUninstallOptions = {}): Promise<ConnectionResult> {
-  if (installing) return { ok: false, message: "Strata 正在安装或卸载，请等待当前操作完成。" };
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (installing) return { ok: false, message: t(uiKeys.strataRuntime.busy) };
   installing = true;
   const logs: string[] = [];
   const log = (message: string) => { logs.push(message); onProgress?.(message); };
   try {
     const root = await checkedUninstallRoot(settings, options);
-    log(`卸载 Strata 运行组件：${root}`);
+    log(t(uiKeys.strataRuntime.uninstalling, { path: root }));
     await fs.rm(root, { recursive: true, force: false });
-    log("Strata 已卸载，共享模型与独立用户数据保留。");
-    return { ok: true, message: "Strata 已卸载，共享模型文件保留。", log: logs.join("\n") };
+    log(t(uiKeys.strataRuntime.uninstalledLog));
+    return { ok: true, message: t(uiKeys.strataRuntime.uninstalled), log: logs.join("\n") };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(message);
@@ -136,7 +142,8 @@ export async function uninstallStrataRuntime(settings: StrataUninstallSettings, 
 
 /** Software only. Never execute setup.py, a native engine or download weights. */
 export async function installStrataRuntime(settings: Settings, runtime: InstallationRuntime, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
-  if (installing) return { ok: false, message: "Strata 正在安装，请等待当前操作完成。" };
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (installing) return { ok: false, message: t(uiKeys.strataRuntime.installBusy) };
   installing = true;
   const logs: string[] = [];
   const log = (message: string) => { logs.push(message); onProgress?.(message); };
@@ -155,55 +162,55 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     checkInstallationCancelled();
     stage("prepare");
     env = runtime.environment(settings);
-    if (process.platform !== "win32") throw new Error("Strata 一键安装目前仅支持 Windows NVIDIA 版本。");
+    if (process.platform !== "win32") throw new Error(t(uiKeys.strataRuntime.windowsOnly));
     if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {
-      throw new Error("当前选择的是手动安装目录。清空高级设置中的运行目录后，可使用应用管理安装；原目录不会被修改。");
+      throw new Error(t(uiKeys.strataRuntime.manualSelected));
     }
     const targetStat = await fs.lstat(root).catch(() => null);
-    if (targetStat?.isSymbolicLink() || (targetStat && !await strataManagedReceipt(root, false))) throw new Error("安装目标已有非应用管理文件，拒绝覆盖。请在详情中检查目录。");
+    if (targetStat?.isSymbolicLink() || (targetStat && !await strataManagedReceipt(root, false))) throw new Error(t(uiKeys.strataRuntime.unknownTarget));
     const python = await runtime.findPython(settings);
-    if (!python) throw new Error("未找到 Python。请在运行时设置中选择支持 venv 的 Python 3.10+，然后重试。");
+    if (!python) throw new Error(t(uiKeys.strataRuntime.pythonMissing));
     await fs.mkdir(path.dirname(root), { recursive: true });
     try { await run(python, ["-c", "import sys, venv; assert sys.version_info >= (3,10), 'Python 3.10+ required'"], path.dirname(root)); }
-    catch { checkInstallationCancelled(); throw new Error("当前 Python 不支持独立 venv。请在运行时设置中选择标准 Python 3.10+（不要选择 Portable embedded Python）后重试。"); }
+    catch { checkInstallationCancelled(); throw new Error(t(uiKeys.strataRuntime.venvMissing)); }
     staging = await fs.mkdtemp(path.join(path.dirname(root), ".install-"));
     await fs.writeFile(path.join(staging, "lvs-strata-stage.json"), JSON.stringify({ owner: "local-video-studio" }));
-    log(`获取 Strata v${STRATA_VERSION} 固定源码（不下载模型）`);
+    log(t(uiKeys.strataRuntime.source, { version: STRATA_VERSION }));
     stage("source");
     await run("git.exe", ["init", staging], staging);
     await run("git.exe", ["remote", "add", "origin", "https://github.com/Niko1221/Strata.git"], staging);
-    await run("git.exe", ["fetch", "--depth=1", "origin", STRATA_REVISION], staging);
+    await fetchStrataSource(staging, ["--depth=1", "origin", STRATA_REVISION], run, log, t);
     await run("git.exe", ["checkout", "--detach", "FETCH_HEAD"], staging);
     const revision = (await run("git.exe", ["rev-parse", "HEAD"], staging)).trim();
-    if (revision !== STRATA_REVISION) throw new Error("Strata 源码提交校验失败。");
-    await installStrataGgufPython(staging, run, log);
-    log("下载并校验 NVIDIA 引擎");
+    if (revision !== STRATA_REVISION) throw new Error(t(uiKeys.strataRuntime.revisionMismatch));
+    await installStrataGgufPython(staging, run, log, t);
+    log(t(uiKeys.strataRuntime.downloadEngine));
     stage("download", 0);
-    archive = await prepareStrataDownloadCache(path.dirname(root), { run, log });
+    archive = await prepareStrataDownloadCache(path.dirname(root), { run, log }, undefined, t);
     await runtime.download(STRATA_ENGINE_URL, archive, settings, (receivedBytes) => stage("download", receivedBytes), log);
     stage("verify");
-    try { await (runtime.verifyArchive ?? verifyStrataEngineArchive)(archive); }
+    try { await (runtime.verifyArchive ? runtime.verifyArchive(archive) : verifyStrataEngineArchive(archive, t)); }
     catch (error) {
       checkInstallationCancelled();
-      await removeSoftwareArtifact(path.dirname(root), archive, log);
-      log("已清理校验失败的引擎包；再次更新将重新下载");
+      await removeSoftwareArtifact(path.dirname(root), archive, log, undefined, t);
+      log(t(uiKeys.strataRuntime.badArchiveRemoved));
       throw error;
     }
     stage("extract");
     await fs.mkdir(path.join(staging, "engine"), { recursive: true });
     await run("tar.exe", ["-xzf", archive, "-C", path.join(staging, "engine")], staging);
     for (const name of STRATA_ENGINE_FILES) {
-      if (!(await fs.stat(path.join(staging, name))).size) throw new Error(`引擎缺少 ${name}`);
+      if (!(await fs.stat(path.join(staging, name))).size) throw new Error(t(uiKeys.strataRuntime.engineFileMissing, { name: name }));
     }
     // The archive hash pins the package; also check its independently published component identity.
     const manifestBytes = await fs.readFile(path.join(staging, "engine", "engine-component.json"));
     const manifest = JSON.parse(manifestBytes.toString("utf8"));
     if (createHash("sha256").update(manifestBytes).digest("hex") !== STRATA_ENGINE_MANIFEST_SHA256
-      || manifest.version !== STRATA_ENGINE_VERSION || manifest.platform !== "windows-x86_64" || manifest.backend !== "cuda") throw new Error("Strata 引擎组件清单校验失败。");
+      || manifest.version !== STRATA_ENGINE_VERSION || manifest.platform !== "windows-x86_64" || manifest.backend !== "cuda") throw new Error(t(uiKeys.strataRuntime.manifestMismatch));
     checkInstallationCancelled();
     const vector = STRATA_COMMUNITY_VECTOR;
     stage("assets");
-    log(`准备社区控制向量 ${vector.id}（${vector.bytes} bytes，不下载模型）`);
+    log(t(uiKeys.strataRuntime.vectorPreparing, { id: vector.id, bytes: vector.bytes }));
     const vectorFile = path.join(staging, vector.relativePath);
     await fs.mkdir(path.dirname(vectorFile), { recursive: true });
     await runtime.download(vector.source, vectorFile, settings, undefined, log, vector.bytes);
@@ -212,46 +219,46 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await verifyStrataControlVector(staging, "builtin");
     await fs.writeFile(path.join(path.dirname(vectorFile), "NOTICE.txt"),
       `Community vector by sergqwer, derived from Qwen3.8-Flash-Next. Qwen Community License 1.0 applies.\nSource and license notice: ${vector.notice}\nRevision: ${vector.revision}\nSHA-256: ${vector.sha256}\nExperimental refusal-reduction projection; not a guarantee of output quality or refusal-free behavior.\n`, "utf8");
-    log(`控制向量 SHA-256 校验通过：${vector.id}，作用层 ${vector.firstLayer}..${vector.lastLayer}`);
+    log(t(uiKeys.strataRuntime.vectorVerified, { id: vector.id, first: vector.firstLayer, last: vector.lastLayer }));
     // Publish before creating venv: Windows scripts retain their absolute paths.
     checkInstallationCancelled();
     // A crash during pip must remain app-owned/retryable, but never installed.
     await fs.writeFile(path.join(staging, receiptName), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256 }), "utf8");
     if (await strataManagedReceipt(root, false)) {
-      await preserveStrataUserData(root, staging);
+      await preserveStrataUserData(root, staging, t);
       const candidate = `${root}.backup-${Date.now()}`;
       await renameWithRetry(root, candidate);
       backup = candidate;
     }
     checkInstallationCancelled();
     await renameWithRetry(staging, root); staging = ""; published = true;
-    log("创建独立 Python 环境（不修改 ComfyUI Python 包）");
+    log(t(uiKeys.strataRuntime.venvCreating));
     stage("python");
     await run(python, ["-m", "venv", "--copies", path.join(root, ".venv")], root);
     const isolatedPython = path.join(root, ".venv", "Scripts", "python.exe");
     stage("packages");
     await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(root, "requirements.txt")], root, 1_800_000);
-    log("检查 Python 包及 CUDA DLL 文件（不加载 GPU）");
+    log(t(uiKeys.strataRuntime.checking));
     stage("check");
     await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path('engine')),full=True)"], root);
     checkInstallationCancelled();
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
-    log(`运行组件安装完成：${root}`);
+    log(t(uiKeys.strataRuntime.installedLog, { path: root }));
     stage("complete");
     // The temporary old copy exists only until installation validation succeeds.
-    if (backup) { await removeSoftwareArtifact(path.dirname(root), backup, log); backup = ""; }
-    await cleanupStrataSoftware(settings, root, log).catch(error => log(`旧软件清理未完成：${String(error)}；新版安装保持可用。`));
-    return { ok: true, message: "Strata 运行组件已安装。模型文件齐备后，可通过现有提示词按钮完成首次准备与加载。", log: logs.join("\n") };
+    if (backup) { await removeSoftwareArtifact(path.dirname(root), backup, log, undefined, t); backup = ""; }
+    await cleanupStrataSoftware(settings, root, log).catch(error => log(t(uiKeys.strataRuntime.cleanupFailed, { reason: String(error) })));
+    return { ok: true, message: t(uiKeys.strataRuntime.installed), log: logs.join("\n") };
   } catch (error) {
     stage("recovery");
     const message = error instanceof Error ? error.message : String(error);
     log(message);
     if (published) {
-      await removeSoftwareArtifact(path.dirname(root), root, log);
+      await removeSoftwareArtifact(path.dirname(root), root, log, undefined, t);
     }
-    if (backup) await renameWithRetry(backup, root).catch((restoreError) => log(`旧安装保留在 ${backup}；恢复失败：${String(restoreError)}`));
-    if (staging) await removeSoftwareArtifact(path.dirname(root), staging, log);
-    if (archive) log(`引擎下载缓存保留在：${archive}`);
+    if (backup) await renameWithRetry(backup, root).catch((restoreError) => log(t(uiKeys.strataRuntime.restoreFailed, { path: backup, reason: String(restoreError) })));
+    if (staging) await removeSoftwareArtifact(path.dirname(root), staging, log, undefined, t);
+    if (archive) log(t(uiKeys.strataRuntime.cacheRetained, { path: archive }));
     return { ok: false, message, log: logs.join("\n") };
   } finally {
     installing = false;
@@ -260,6 +267,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
 
 /** Called after a verified install only; never walk shared models or private Agent/GUI data. */
 async function cleanupStrataSoftware(settings: Settings, root: string, log: (message: string) => void) {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const parent = path.dirname(root);
   for (const entry of await fs.readdir(parent, { withFileTypes: true })) {
     const candidate = path.join(parent, entry.name);
@@ -267,9 +275,9 @@ async function cleanupStrataSoftware(settings: Settings, root: string, log: (mes
     if (/^(?:v\d+\.\d+\.\d+(?:\.\d+)?-[a-f0-9]{8}|runtime)(?:\.(?:backup|failed)-\d+)?$/iu.test(entry.name) && await strataManagedReceipt(candidate, false)) {
       try {
         await checkedUninstallRoot({ ...settings, strataInstallDirectory: candidate }, { managedDirectory: candidate });
-        await preserveStrataUserData(candidate, root);
-        await removeSoftwareArtifact(parent, candidate, log);
-      } catch (error) { log(`旧软件未清理：${candidate}；${String(error)}`); }
+        await preserveStrataUserData(candidate, root, t);
+        await removeSoftwareArtifact(parent, candidate, log, undefined, t);
+      } catch (error) { log(t(uiKeys.strataRuntime.oldSoftwareRetained, { path: candidate, reason: String(error) })); }
     } else if (/^\.install-[a-z0-9]+$/iu.test(entry.name)) {
       try {
         const marker = await fs.readFile(path.join(candidate, "lvs-strata-stage.json"), "utf8").catch(() => "{}");
@@ -280,10 +288,10 @@ async function cleanupStrataSoftware(settings: Settings, root: string, log: (mes
           owned = /\[remote "origin"\][^[]*?url\s*=\s*https:\/\/github\.com\/Niko1221\/Strata(?:\.git)?\s*(?:\r?\n|$)/u.test(config) && /^[a-f0-9]{40}$/u.test(head);
         }
         if (owned) {
-          await preserveStrataUserData(candidate, root);
-          await removeSoftwareArtifact(parent, candidate, log);
+          await preserveStrataUserData(candidate, root, t);
+          await removeSoftwareArtifact(parent, candidate, log, undefined, t);
         }
-      } catch (error) { log(`旧安装暂存未清理：${candidate}；${String(error)}`); }
+      } catch (error) { log(t(uiKeys.strataRuntime.oldStageRetained, { path: candidate, reason: String(error) })); }
     }
   }
   const downloads = path.join(parent, "downloads");
@@ -292,7 +300,7 @@ async function cleanupStrataSoftware(settings: Settings, root: string, log: (mes
     const directory = path.join(downloads, entry.name);
     try {
       const receipt = JSON.parse(await fs.readFile(path.join(directory, "download.json"), "utf8"));
-      if (receipt.owner === "local-video-studio" && entry.name === `engine-${receipt.revision}-${receipt.sha256}`) await removeSoftwareArtifact(parent, directory, log);
+      if (receipt.owner === "local-video-studio" && entry.name === `engine-${receipt.revision}-${receipt.sha256}`) await removeSoftwareArtifact(parent, directory, log, undefined, t);
     } catch { /* Do not remove unknown downloads. */ }
   }
 }

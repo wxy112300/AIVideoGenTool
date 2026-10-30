@@ -1,12 +1,16 @@
 # Strata 提示词增强：更新调查与接入计划
 
 - 类型：Task；Status: basic-native-validated（0.2.7.1 / 原生引擎0.1.52的IQ3+MTP真实基本图文与连续调用已验；带图思考耗时偏长，长上下文及其他组合仍待验证）
-- Updated / Owner: 2026-10-29 / 当前 agent；Execution: direct，新增子 agent 0
+- Updated / Owner: 2026-10-30 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 2026-10-30 0.67.4提交收尾：用户授权全部仓库改动增加patch并提交推送；纳入本次Strata修复、现有本地化及历史列数等全部源码/文档，package/lockfile/README/CHANGELOG一致为0.67.4。本地化仍按其TASK标记进行中，不将阶段覆盖说成全部完成。全量`npm.cmd run verify`退出0：308个单元文件2963项、7个集成文件127项、双端类型、干净生产构建及440项对比度通过（忽略日志`temp/patch-0674-verify.log`）；独立启动器prepare同步通过。只推代码，不打包、创建tag或GitHub Release；未重跑GPU或改正式安装/偏好。最终提交与远端身份以Git记录和推送核对为准。
+
+- 2026-10-30 另一台更新失败修复（patch，未bump/提交/推送）：用户补充Git原始日志明确HTTP/2 curl92/CANCEL→early EOF→invalid index-pack→128，非模型加载问题；主源码和固定gguf-py解析器复用HTTP/1.1有界获取，3次/共享10分钟、取消等待，不重试任意128/鉴权/证书/无效ref，稀疏checkout的惰性blob获取也保持HTTP/1.1。另对官方`.github/ISSUE_TEMPLATE/config.yml`同名拦截补充真实Git跨owner回归：原实现会吞掉dubious ownership并把官方文件当本地数据；仅在要求校验origin/HEAD时提供当前命令精确realpath例外，兼容Windows短路径，不改全局safe.directory，用户修改/未知来源仍保留。这证明可触发路径，不确定另一台第一次同名拦截必为该原因。安装主/解析器故障恢复、3次上限/预算/取消、相邻清理卸载及三语言回归通过，最终双端typecheck与独立prepare通过；生产编译helper在隔离目录真实HTTP/1.1拉取46c152a约18.455秒，官方配置允许替换、用户JSON保留并清理全部临时源码（忽略报告`temp/strata-source-update-smoke-result.json`）。未下载引擎/模型、运行GPU或改正式安装/偏好；未重复全量verify/UI，未修改其他本地化在途内容。另一台需获取本次应用代码后重试，失败仍保留旧安装。
 
 - 2026-10-29 用户释放资源后真实基本实测完成：生产Owner/Service与原生IQ3+MTP，沿用medium/自动思考、builtin向量、32K，未改产品代码或正式设置。冷加载149.934s；READY 1.543s，H3文字33.654s（58.3tok/s），真实丰富街景I2VA 143.624s（45.4tok/s，思考21674字符），再文字27.460s（60.3tok/s）。四次同PID70372，均正常stop且归一化通过，无OOM/强停；显存采样最低余4.385GiB。加载RAM曾瞬时约79MiB，提交全轮最低余78.49GiB，不泛化为任意压力稳定。独立工具实际偏好解析到同一新版runtime，重新准备运行文件，并通过其编译profile+guard启动原生lazy服务、401/认证/网页检查后退出（不重复加载GPU或跑Claude/GUI）。双方自有进程/端口退出、租约释放、正式state未变。详见[基本实测](evidence/0271-basic-real.md)；15秒/完整长输入/其他量化/社区向量/神经卸载重载与长压未验，不宣称带图已足够快。
 

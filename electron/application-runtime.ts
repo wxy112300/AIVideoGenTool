@@ -1,3 +1,4 @@
+import { createNativeTranslator } from "./ui-translator.js";
 import type {
   AppState,
   HistoryMigrationProgress,
@@ -336,11 +337,13 @@ export class ApplicationRuntime {
       resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory()
     });
     const nativeAvArtifactService = new NativeAvArtifactService({
-      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem
+      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem,
+      getUiLocale: () => this.deps.store.get().settings.uiLocale
     });
     const nativeAvArtifactCollector = new H3NativeAvArtifactCollector(nativeAvArtifactService);
     const h3ContinuumAssetRegistry = new H3ContinuumAssetRegistry({
-      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem
+      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem,
+      getUiLocale: () => this.deps.store.get().settings.uiLocale
     });
     const historyArtifactService = new HistoryArtifactService({
       store: this.deps.store,
@@ -376,6 +379,7 @@ export class ApplicationRuntime {
       findExistingH3MotionContextOutput: (expectedPath) =>
         comfyOutputService.findExistingH3MotionContextOutput(expectedPath),
       commitH3NativeAvOutput: async (result, serializerNodeId, task, completedAt) => {
+        const t = createNativeTranslator(this.deps.store.get().settings.uiLocale).t;
         const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
         const continuation = await nativeAvArtifactCollector.commitCompletion(
           result,
@@ -383,8 +387,10 @@ export class ApplicationRuntime {
           nativeAvArtifactMetadataForTask(
             task,
             outputDirectory,
-            completedAt
-          )
+            completedAt,
+            t
+          ),
+          t
         );
         return registerSharedNativeAsset(
           continuation,
@@ -395,7 +401,9 @@ export class ApplicationRuntime {
       },
       registerH3ContinuumManagedOutput: async (result, receiptNodeId, task, completedAt) => {
         const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
-        const receipt = extractH3ContinuumManagedReceipt(result, receiptNodeId);
+        const receipt = extractH3ContinuumManagedReceipt(
+          result, receiptNodeId, createNativeTranslator(this.deps.store.get().settings.uiLocale).t
+        );
         const registered = await h3ContinuumAssetRegistry.registerManagedReceipt({
           outputDirectory,
           task: task as Extract<import("../src/types.js").QueueTask, { taskType: "extension" }>,

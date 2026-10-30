@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs, constants } from "node:fs";
 import path from "node:path";
 import { STRATA_ENGINE_BYTES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_REVISION } from "../../src/core/catalog/dependencies/strata.js";
@@ -7,30 +10,30 @@ const asset = { url: STRATA_ENGINE_URL, bytes: STRATA_ENGINE_BYTES, sha256: STRA
 type Asset = typeof asset;
 type Runtime = { run(exe: string, args: string[], cwd: string, timeoutMs: number): Promise<string>; log(message: string): void };
 
-async function childDirectory(parent: string, name: string): Promise<string> {
+async function childDirectory(parent: string, name: string, t: Translate = createNativeTranslator(undefined).t): Promise<string> {
   const directory = path.join(parent, name);
   await fs.mkdir(directory, { recursive: true });
   const stat = await fs.lstat(directory);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || path.dirname(await fs.realpath(directory)) !== await fs.realpath(parent)) throw new Error("下载缓存目录不是独立管理目录，未写入。");
+  if (!stat.isDirectory() || stat.isSymbolicLink() || path.dirname(await fs.realpath(directory)) !== await fs.realpath(parent)) throw new Error(t(uiKeys.strataRuntime.cacheDirectoryUnsafe));
   return directory;
 }
 
 /** Persistent, asset-keyed software cache. Legacy stages are copied, never moved/deleted. */
-export async function prepareStrataDownloadCache(parent: string, runtime: Runtime, expected: Asset = asset): Promise<string> {
+export async function prepareStrataDownloadCache(parent: string, runtime: Runtime, expected: Asset = asset, t: Translate = createNativeTranslator(undefined).t): Promise<string> {
   checkInstallationCancelled();
   if (!/^[a-f0-9]{40}$/u.test(expected.revision) || !/^[a-f0-9]{64}$/u.test(expected.sha256)
-    || !Number.isSafeInteger(expected.bytes) || expected.bytes <= 0) throw new Error("引擎下载身份无效。");
-  const cacheRoot = await childDirectory(parent, "downloads");
-  const directory = await childDirectory(cacheRoot, `engine-${expected.revision}-${expected.sha256}`);
+    || !Number.isSafeInteger(expected.bytes) || expected.bytes <= 0) throw new Error(t(uiKeys.strataRuntime.downloadIdentityInvalid));
+  const cacheRoot = await childDirectory(parent, "downloads", t);
+  const directory = await childDirectory(cacheRoot, `engine-${expected.revision}-${expected.sha256}`, t);
   const archiveName = new URL(expected.url).pathname.endsWith(".tar.gz") ? "engine.tar.gz" : "engine.zip";
   const metadata = path.join(directory, "download.json"), archive = path.join(directory, archiveName);
   const identity = { owner: "local-video-studio", ...expected };
   const stat = await fs.lstat(metadata).catch(error => { if (error.code === "ENOENT") return null; throw error; });
   if (stat) {
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 4096 || JSON.stringify(JSON.parse(await fs.readFile(metadata, "utf8"))) !== JSON.stringify(identity)) throw new Error("下载缓存来源记录不匹配，未覆盖原文件。");
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 4096 || JSON.stringify(JSON.parse(await fs.readFile(metadata, "utf8"))) !== JSON.stringify(identity)) throw new Error(t(uiKeys.strataRuntime.cacheIdentityMismatch));
     return archive;
   }
-  if ((await fs.readdir(directory)).length) throw new Error("下载缓存目录已有未知文件，未覆盖原文件。");
+  if ((await fs.readdir(directory)).length) throw new Error(t(uiKeys.strataRuntime.cacheUnknownFiles));
   await fs.writeFile(metadata, JSON.stringify(identity), { flag: "wx" });
   if (archiveName !== "engine.zip") return archive;
   // Pre-resume installers left no download receipt. Import at most one matching Git stage.
@@ -51,7 +54,7 @@ export async function prepareStrataDownloadCache(parent: string, runtime: Runtim
     } catch { checkInstallationCancelled(); continue; }
     checkInstallationCancelled();
     await fs.copyFile(source, archive, constants.COPYFILE_EXCL);
-    runtime.log(`复用上次保留的引擎半包 ${(file.size / 1_000_000).toFixed(1)} MB；原文件保留`);
+    runtime.log(t(uiKeys.strataRuntime.partialReused, { size: (file.size / 1_000_000).toFixed(1) }));
     break;
   }
   return archive;

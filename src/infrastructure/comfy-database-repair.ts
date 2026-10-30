@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "../core/i18n.js";
+import { uiKeys } from "../core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -63,7 +65,8 @@ export function extractComfyDatabasePath(logContent: string): string {
 
 export function diagnoseComfyDatabaseFailure(
   logContent: string,
-  fallbackDatabasePath = ""
+  fallbackDatabasePath = "",
+  t: Translate = createTranslator().t
 ): ComfyDatabaseDiagnosis | null {
   if (!databaseFailurePattern.test(logContent)) return null;
   const failureIndex = Math.max(
@@ -80,7 +83,7 @@ export function diagnoseComfyDatabaseFailure(
       kind: "locked",
       databasePath,
       explicitDatabasePath: Boolean(explicitDatabasePath),
-      summary: "数据库正被另一个 ComfyUI 进程占用。"
+      summary: t(uiKeys.environmentRepair.lockedSummary)
     };
   }
   if (
@@ -91,7 +94,7 @@ export function diagnoseComfyDatabaseFailure(
       kind: "missing-dependencies",
       databasePath,
       explicitDatabasePath: Boolean(explicitDatabasePath),
-      summary: "当前 ComfyUI Python 缺少数据库初始化依赖。"
+      summary: t(uiKeys.environmentRepair.dependenciesSummary)
     };
   }
   if (/unable to open database file|attempt to write a readonly database|disk I\/O error/iu.test(evidence)) {
@@ -99,7 +102,7 @@ export function diagnoseComfyDatabaseFailure(
       kind: "unavailable-path",
       databasePath,
       explicitDatabasePath: Boolean(explicitDatabasePath),
-      summary: "数据库目录不存在、不可写或存储设备不可用。"
+      summary: t(uiKeys.environmentRepair.pathSummary)
     };
   }
   if (/Can't locate revision identified by|No such index:|Error upgrading database|alembic/iu.test(evidence)) {
@@ -107,7 +110,7 @@ export function diagnoseComfyDatabaseFailure(
       kind: "migration",
       databasePath,
       explicitDatabasePath: Boolean(explicitDatabasePath),
-      summary: "数据库迁移版本与当前 ComfyUI 核心不一致。"
+      summary: t(uiKeys.environmentRepair.migrationSummary)
     };
   }
   if (/database disk image is malformed|file is not a database|database corruption/iu.test(evidence)) {
@@ -115,14 +118,14 @@ export function diagnoseComfyDatabaseFailure(
       kind: "corrupt",
       databasePath,
       explicitDatabasePath: Boolean(explicitDatabasePath),
-      summary: "SQLite 数据库文件已损坏。"
+      summary: t(uiKeys.environmentRepair.corruptSummary)
     };
   }
   return {
     kind: "unknown",
     databasePath,
     explicitDatabasePath: Boolean(explicitDatabasePath),
-    summary: "ComfyUI 数据库初始化失败，需要先进行无损检查。"
+    summary: t(uiKeys.environmentRepair.unknownSummary)
   };
 }
 

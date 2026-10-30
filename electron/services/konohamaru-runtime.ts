@@ -1,9 +1,12 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import crypto from "node:crypto";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { cleanupManifestSoftwareBackups, preserveSoftwareUserData, removeSoftwareArtifact } from "./software-update-cleanup.js";
-import type { Settings } from "../../src/types.js";
+import type { Settings, UiLocale } from "../../src/types.js";
 import {
   KONOHAMARU_NODE_REVISION,
   KONOHAMARU_NEURAL_UPSTREAM_ADDON,
@@ -33,6 +36,7 @@ const ALLOWED_DOWNLOAD_HOSTS = new Set([
 ]);
 
 export interface KonohamaruRuntimeProcessOptions {
+  uiLocale?: UiLocale;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
@@ -131,29 +135,30 @@ async function lstatIsPresent(filename: string): Promise<boolean> {
  * RenoDX backup as an active ReShade add-on.
  */
 export async function konohamaruNeuralUpstreamRuntimeProblems(
-  nodeDirectory: string
+  nodeDirectory: string,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<string[]> {
   const problems: string[] = [];
   const addon = konohamaruNeuralUpstreamAddonPath(nodeDirectory);
   const legacy = legacyRenoDxAddonPath(nodeDirectory);
   const addonStat = await fs.lstat(addon).catch(() => null);
   if (!addonStat) {
-    problems.push(`bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}（缺失）`);
+    problems.push(t(uiKeys.konohamaruRuntime.missing, { file: `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}` }));
   } else if (!addonStat.isFile()) {
-    problems.push(`bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}（不是普通文件）`);
+    problems.push(t(uiKeys.konohamaruRuntime.notFile, { file: `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}` }));
   } else if (addonStat.size === 0) {
-    problems.push(`bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}（空文件）`);
+    problems.push(t(uiKeys.konohamaruRuntime.empty, { file: `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}` }));
   } else {
     const digest = await sha256File(addon).catch(() => "");
     if (digest.toLowerCase() !== KONOHAMARU_NEURAL_UPSTREAM_SHA256) {
       problems.push(
-        `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}（SHA-256=${digest || "未读取到"}）`
+        t(uiKeys.konohamaruRuntime.digest, { file: `bin/runtime/host/${KONOHAMARU_NEURAL_UPSTREAM_ADDON}`, digest: digest || t(uiKeys.konohamaruRuntime.unread) })
       );
     }
   }
   if (await lstatIsPresent(legacy)) {
     problems.push(
-      `bin/runtime/host/${LEGACY_RENODX_ADDON}（旧 addon 仍处于 active host，不能与 neural-upstream 共存）`
+      t(uiKeys.konohamaruRuntime.legacyActive, { file: `bin/runtime/host/${LEGACY_RENODX_ADDON}` })
     );
   }
   return problems;
@@ -164,7 +169,8 @@ function video2dlssnrRelativeFilename(filename: string): string {
 }
 
 async function video2dlssnrRuntimeProblemsInDirectory(
-  runtimeDirectory: string
+  runtimeDirectory: string,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<string[]> {
   const problems: string[] = [];
   for (const artifact of KONOHAMARU_VIDEO2DLSSNR_RUNTIME_ARTIFACTS) {
@@ -172,30 +178,32 @@ async function video2dlssnrRuntimeProblemsInDirectory(
     const filename = path.join(runtimeDirectory, artifact.filename);
     const file = await fs.lstat(filename).catch(() => null);
     if (!file) {
-      problems.push(`${relativeFilename}（缺失）`);
+      problems.push(t(uiKeys.konohamaruRuntime.missing, { file: relativeFilename }));
       continue;
     }
     if (!file.isFile()) {
-      problems.push(`${relativeFilename}（不是普通文件）`);
+      problems.push(t(uiKeys.konohamaruRuntime.notFile, { file: relativeFilename }));
       continue;
     }
     if (file.size !== artifact.bytes) {
-      problems.push(`${relativeFilename}（bytes=${file.size}，要求 ${artifact.bytes}）`);
+      problems.push(t(uiKeys.konohamaruRuntime.size, { file: relativeFilename, actual: file.size, expected: artifact.bytes }));
       continue;
     }
     const header = await fs.readFile(filename).then((bytes) => bytes.subarray(0, 160)).catch(() => null);
     if (!header || isGitLfsPointer(header)) {
-      problems.push(`${relativeFilename}（Git LFS pointer 或不可读取）`);
+      problems.push(t(uiKeys.konohamaruRuntime.lfsUnreadable, { file: relativeFilename }));
     }
   }
   return problems;
 }
 
 export async function konohamaruVideo2dlssnrRuntimeProblems(
-  nodeDirectory: string
+  nodeDirectory: string,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<string[]> {
   return video2dlssnrRuntimeProblemsInDirectory(
-    konohamaruVideo2dlssnrRuntimeDirectory(nodeDirectory)
+    konohamaruVideo2dlssnrRuntimeDirectory(nodeDirectory),
+    t
   );
 }
 
@@ -211,7 +219,8 @@ async function downloadNeuralUpstreamAddon(
   deps: KonohamaruRuntimeInstallerDependencies,
   options: { signal?: AbortSignal; onLog?: (message: string) => void }
 ): Promise<void> {
-  if (options.signal?.aborted) throw new Error("Konohamaru neural-upstream 安装已取消。");
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (options.signal?.aborted) throw new Error(t(uiKeys.konohamaruRuntime.cancelled, { runtime: "neural-upstream" }));
   if (deps.downloadFile) {
     const finalUrl = await deps.downloadFile(
       KONOHAMARU_NEURAL_UPSTREAM_DOWNLOAD_URL,
@@ -220,12 +229,12 @@ async function downloadNeuralUpstreamAddon(
       { comfyRoot, signal: options.signal, onLog: options.onLog }
     );
     if (typeof finalUrl === "string" && !isAllowedDownloadUrl(finalUrl)) {
-      throw new Error(`neural-upstream 下载重定向到未允许的地址：${finalUrl}`);
+      throw new Error(t(uiKeys.konohamaruRuntime.redirectDenied, { runtime: "neural-upstream", url: finalUrl }));
     }
     return;
   }
   const curl = await deps.findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法下载 neural-upstream DLSS5 addon。");
+  if (!curl) throw new Error(t(uiKeys.konohamaruRuntime.curlMissing, { target: "neural-upstream DLSS5 addon" }));
   const args = [
     "-fL",
     "--retry", "2",
@@ -239,6 +248,7 @@ async function downloadNeuralUpstreamAddon(
     args.splice(1, 0, "--proxy", settings.proxyUrl.trim());
   }
   const output = await deps.runLoggedProcess(curl, args, {
+    uiLocale: settings.uiLocale,
     env: environment,
     timeoutMs: 1_800_000,
     onLog: options.onLog,
@@ -247,10 +257,10 @@ async function downloadNeuralUpstreamAddon(
   const finalUrl = output.match(/LVS_FINAL_URL:(https?:\/\/[^\s]+)/iu)?.[1] ?? "";
   if (!finalUrl || !isAllowedDownloadUrl(finalUrl)) {
     throw new Error(
-      `neural-upstream 下载最终地址未通过 HTTPS/GitHub host allowlist 校验：${finalUrl || "未读取到"}`
+      t(uiKeys.konohamaruRuntime.finalUrlDenied, { runtime: "neural-upstream", url: finalUrl || t(uiKeys.konohamaruRuntime.unread) })
     );
   }
-  if (options.signal?.aborted) throw new Error("Konohamaru neural-upstream 安装已取消。");
+  if (options.signal?.aborted) throw new Error(t(uiKeys.konohamaruRuntime.cancelled, { runtime: "neural-upstream" }));
 }
 
 async function downloadVideo2dlssnrArchive(
@@ -261,7 +271,8 @@ async function downloadVideo2dlssnrArchive(
   deps: KonohamaruRuntimeInstallerDependencies,
   options: { signal?: AbortSignal; onLog?: (message: string) => void }
 ): Promise<void> {
-  if (options.signal?.aborted) throw new Error("Konohamaru video2dlssnr 安装已取消。");
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (options.signal?.aborted) throw new Error(t(uiKeys.konohamaruRuntime.cancelled, { runtime: "video2dlssnr" }));
   if (deps.downloadFile) {
     const finalUrl = await deps.downloadFile(
       KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
@@ -270,12 +281,12 @@ async function downloadVideo2dlssnrArchive(
       { comfyRoot, signal: options.signal, onLog: options.onLog }
     );
     if (typeof finalUrl === "string" && !isAllowedDownloadUrl(finalUrl)) {
-      throw new Error(`video2dlssnr 下载重定向到未允许的地址：${finalUrl}`);
+      throw new Error(t(uiKeys.konohamaruRuntime.redirectDenied, { runtime: "video2dlssnr", url: finalUrl }));
     }
     return;
   }
   const curl = await deps.findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法下载 video2dlssnr runtime。");
+  if (!curl) throw new Error(t(uiKeys.konohamaruRuntime.curlMissing, { target: "video2dlssnr runtime" }));
   const args = [
     "-fL",
     "--retry", "2",
@@ -289,6 +300,7 @@ async function downloadVideo2dlssnrArchive(
     args.splice(1, 0, "--proxy", settings.proxyUrl.trim());
   }
   const output = await deps.runLoggedProcess(curl, args, {
+    uiLocale: settings.uiLocale,
     env: environment,
     timeoutMs: 1_800_000,
     onLog: options.onLog,
@@ -297,10 +309,10 @@ async function downloadVideo2dlssnrArchive(
   const finalUrl = output.match(/LVS_FINAL_URL:(https?:\/\/[^\s]+)/iu)?.[1] ?? "";
   if (!finalUrl || !isAllowedDownloadUrl(finalUrl)) {
     throw new Error(
-      `video2dlssnr 下载最终地址未通过 HTTPS/GitHub host allowlist 校验：${finalUrl || "未读取到"}`
+      t(uiKeys.konohamaruRuntime.finalUrlDenied, { runtime: "video2dlssnr", url: finalUrl || t(uiKeys.konohamaruRuntime.unread) })
     );
   }
-  if (options.signal?.aborted) throw new Error("Konohamaru video2dlssnr 安装已取消。");
+  if (options.signal?.aborted) throw new Error(t(uiKeys.konohamaruRuntime.cancelled, { runtime: "video2dlssnr" }));
 }
 
 async function restoreMovedFile(
@@ -325,21 +337,22 @@ export async function installKonohamaruNeuralUpstreamRuntime(
   deps: KonohamaruRuntimeInstallerDependencies,
   onLog?: (message: string) => void
 ): Promise<KonohamaruRuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if ((deps.platform ?? process.platform) !== "win32") {
     return {
       ok: false,
-      message: "Konohamaru neural-upstream runtime 当前只支持 Windows。"
+      message: t(uiKeys.konohamaruRuntime.windowsOnly, { runtime: "neural-upstream" })
     };
   }
   const host = hostDirectory(nodeDirectory);
   const addon = konohamaruNeuralUpstreamAddonPath(nodeDirectory);
   const legacy = legacyRenoDxAddonPath(nodeDirectory);
-  const existingProblems = await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory);
+  const existingProblems = await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory, t);
   if (!existingProblems.length) {
-    onLog?.(`neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} addon 已就绪（${KONOHAMARU_NEURAL_UPSTREAM_RUNTIME_BUNDLE_ID}）`);
+    onLog?.(t(uiKeys.konohamaruRuntime.readyLog, { runtime: "neural-upstream", version: KONOHAMARU_NEURAL_UPSTREAM_RELEASE, kind: "addon", bundle: KONOHAMARU_NEURAL_UPSTREAM_RUNTIME_BUNDLE_ID }));
     return {
       ok: true,
-      message: `neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} runtime 已就绪。`
+      message: t(uiKeys.konohamaruRuntime.ready, { runtime: "neural-upstream", version: KONOHAMARU_NEURAL_UPSTREAM_RELEASE })
     };
   }
 
@@ -350,43 +363,43 @@ export async function installKonohamaruNeuralUpstreamRuntime(
   let disabledLegacy: string | undefined;
   let installedAddon = false;
   try {
-    onLog?.(`正在下载 neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} addon……`);
+    onLog?.(t(uiKeys.konohamaruRuntime.downloading, { runtime: "neural-upstream", version: KONOHAMARU_NEURAL_UPSTREAM_RELEASE, kind: "addon" }));
     await downloadNeuralUpstreamAddon(partial, settings, comfyRoot, environment, deps, { onLog });
     const digest = await sha256File(partial);
     if (digest.toLowerCase() !== KONOHAMARU_NEURAL_UPSTREAM_SHA256) {
       throw new Error(
-        `neural-upstream addon SHA-256 校验失败：${digest}，要求 ${KONOHAMARU_NEURAL_UPSTREAM_SHA256}`
+        t(uiKeys.konohamaruRuntime.addonHashFailed, { actual: digest, expected: KONOHAMARU_NEURAL_UPSTREAM_SHA256 })
       );
     }
     const partialStat = await fs.stat(partial);
     if (!partialStat.isFile() || partialStat.size === 0) {
-      throw new Error("neural-upstream addon 下载结果为空，已拒绝安装。");
+      throw new Error(t(uiKeys.konohamaruRuntime.addonEmpty));
     }
 
     checkInstallationCancelled();
     if (await lstatIsPresent(addon)) {
       previousAddon = `${addon}.previous-${Date.now()}`;
       await deps.renameWithRetry(addon, previousAddon);
-      onLog?.(`已保留旧 neural-upstream addon 备份：${path.basename(previousAddon)}`);
+      onLog?.(t(uiKeys.konohamaruRuntime.addonBackup, { file: path.basename(previousAddon) }));
     }
     if (await lstatIsPresent(legacy)) {
       disabledLegacy = `${legacy}${DISABLED_RENODX_SUFFIX}-${Date.now()}`;
       await deps.renameWithRetry(legacy, disabledLegacy);
-      onLog?.(`已将旧 RenoDX addon 隔离为：${path.basename(disabledLegacy)}`);
+      onLog?.(t(uiKeys.konohamaruRuntime.legacyIsolated, { file: path.basename(disabledLegacy) }));
     }
     checkInstallationCancelled();
     await deps.renameWithRetry(partial, addon);
     installedAddon = true;
-    const finalProblems = await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory);
+    const finalProblems = await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory, t);
     if (finalProblems.length) {
-      throw new Error(`neural-upstream runtime 安装后复检失败：${finalProblems.join("、")}`);
+      throw new Error(t(uiKeys.konohamaruRuntime.addonRecheckFailed, { problems: finalProblems.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
-    if (previousAddon) await removeSoftwareArtifact(nodeDirectory, previousAddon, message => onLog?.(message));
-    if (disabledLegacy) await removeSoftwareArtifact(nodeDirectory, disabledLegacy, message => onLog?.(message));
-    onLog?.(`neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} addon 已安装并通过 SHA-256 复检`);
+    if (previousAddon) await removeSoftwareArtifact(nodeDirectory, previousAddon, message => onLog?.(message), undefined, t);
+    if (disabledLegacy) await removeSoftwareArtifact(nodeDirectory, disabledLegacy, message => onLog?.(message), undefined, t);
+    onLog?.(t(uiKeys.konohamaruRuntime.addonInstalledLog, { version: KONOHAMARU_NEURAL_UPSTREAM_RELEASE }));
     return {
       ok: true,
-      message: `neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} runtime 已安装并通过复检。`
+      message: t(uiKeys.konohamaruRuntime.addonInstalled, { version: KONOHAMARU_NEURAL_UPSTREAM_RELEASE })
     };
   } catch (error) {
     if (installedAddon && await lstatIsPresent(addon)) {
@@ -456,7 +469,8 @@ async function extractVideo2dlssnrArchive(
   environment: NodeJS.ProcessEnv,
   deps: KonohamaruRuntimeInstallerDependencies,
   onLog?: (message: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  locale: UiLocale = "zh-CN"
 ): Promise<void> {
   if (deps.extractArchive) {
     await deps.extractArchive(
@@ -478,7 +492,7 @@ async function extractVideo2dlssnrArchive(
       destination,
       JSON.stringify(KONOHAMARU_VIDEO2DLSSNR_RUNTIME_ARTIFACTS)
     ],
-    { env: environment, timeoutMs: 600_000, onLog, signal }
+    { uiLocale: locale, env: environment, timeoutMs: 600_000, onLog, signal }
   );
 }
 
@@ -505,18 +519,19 @@ export async function installKonohamaruVideo2dlssnrRuntime(
   deps: KonohamaruRuntimeInstallerDependencies,
   onLog?: (message: string) => void
 ): Promise<KonohamaruRuntimeOperationResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if ((deps.platform ?? process.platform) !== "win32") {
     return {
       ok: false,
-      message: "Konohamaru video2dlssnr runtime 当前只支持 Windows。"
+      message: t(uiKeys.konohamaruRuntime.windowsOnly, { runtime: "video2dlssnr" })
     };
   }
-  const existingProblems = await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory);
+  const existingProblems = await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory, t);
   if (!existingProblems.length) {
-    onLog?.(`video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime 已就绪（${KONOHAMARU_VIDEO2DLSSNR_RUNTIME_BUNDLE_ID}）`);
+    onLog?.(t(uiKeys.konohamaruRuntime.readyLog, { runtime: "video2dlssnr", version: KONOHAMARU_VIDEO2DLSSNR_RELEASE, kind: "runtime", bundle: KONOHAMARU_VIDEO2DLSSNR_RUNTIME_BUNDLE_ID }));
     return {
       ok: true,
-      message: `video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime 已就绪。`
+      message: t(uiKeys.konohamaruRuntime.ready, { runtime: "video2dlssnr", version: KONOHAMARU_VIDEO2DLSSNR_RELEASE })
     };
   }
 
@@ -555,7 +570,7 @@ export async function installKonohamaruVideo2dlssnrRuntime(
     await removeDirectoryTreeWithoutAsar(stagingRoot).catch(() => undefined);
     await fs.mkdir(path.join(stagingRoot, "downloads"), { recursive: true });
     await fs.mkdir(stagedRuntime, { recursive: true });
-    report(`正在下载 video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime……`);
+    report(t(uiKeys.konohamaruRuntime.downloading, { runtime: "video2dlssnr", version: KONOHAMARU_VIDEO2DLSSNR_RELEASE, kind: "runtime" }));
     await downloadVideo2dlssnrArchive(
       partialArchive,
       settings,
@@ -567,34 +582,36 @@ export async function installKonohamaruVideo2dlssnrRuntime(
     const archiveStat = await fs.stat(partialArchive);
     if (!archiveStat.isFile() || archiveStat.size !== KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_BYTES) {
       throw new Error(
-        `video2dlssnr 归档大小校验失败：实际 ${archiveStat.size} bytes，要求 ${KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_BYTES}。`
+        t(uiKeys.konohamaruRuntime.archiveSizeFailed, { actual: archiveStat.size, expected: KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_BYTES })
       );
     }
     const digest = await sha256File(partialArchive);
     if (digest.toLowerCase() !== KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_SHA256) {
       throw new Error(
-        `video2dlssnr 归档 SHA-256 校验失败：实际 ${digest}，要求 ${KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_SHA256}。`
+        t(uiKeys.konohamaruRuntime.archiveHashFailed, { actual: digest, expected: KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_SHA256 })
       );
     }
     await deps.renameWithRetry(partialArchive, archive);
-    report(`video2dlssnr 归档已校验：${digest}`);
+    report(t(uiKeys.konohamaruRuntime.archiveVerified, { digest }));
 
     const python = deps.findComfyPython
       ? await deps.findComfyPython(settings, comfyRoot)
       : await deps.findExecutable("python.exe");
-    if (!python) throw new Error("没有找到当前 ComfyUI Python，无法安全解压 video2dlssnr runtime。");
-    report("使用当前 ComfyUI Python 仅解压 video2dlssnr 所需的四个 runtime 文件……");
+    if (!python) throw new Error(t(uiKeys.konohamaruRuntime.pythonMissing));
+    report(t(uiKeys.konohamaruRuntime.extracting));
     await extractVideo2dlssnrArchive(
       archive,
       stagedRuntime,
       python,
       environment,
       deps,
-      report
+      report,
+      undefined,
+      settings.uiLocale
     );
-    const stagedProblems = await video2dlssnrRuntimeProblemsInDirectory(stagedRuntime);
+    const stagedProblems = await video2dlssnrRuntimeProblemsInDirectory(stagedRuntime, t);
     if (stagedProblems.length) {
-      throw new Error(`video2dlssnr 暂存 runtime 复检失败：${stagedProblems.join("、")}`);
+      throw new Error(t(uiKeys.konohamaruRuntime.stagingFailed, { problems: stagedProblems.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
     await fs.writeFile(
       path.join(stagedRuntime, "install-manifest.json"),
@@ -617,28 +634,28 @@ export async function installKonohamaruVideo2dlssnrRuntime(
 
     checkInstallationCancelled();
     if (await lstatIsPresent(runtimeDirectory)) {
-      await preserveSoftwareUserData(runtimeDirectory, stagedRuntime);
+      await preserveSoftwareUserData(runtimeDirectory, stagedRuntime, undefined, undefined, undefined, t);
       await fs.mkdir(backupDirectory, { recursive: true });
       await deps.renameWithRetry(runtimeDirectory, backup);
       movedExisting = true;
-      report(`已保留旧 video2dlssnr runtime 备份：${path.basename(backup)}`);
+      report(t(uiKeys.konohamaruRuntime.videoBackup, { file: path.basename(backup) }));
     }
     checkInstallationCancelled();
     await deps.renameWithRetry(stagedRuntime, runtimeDirectory);
     promoted = true;
-    const finalProblems = await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory);
+    const finalProblems = await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory, t);
     if (finalProblems.length) {
-      throw new Error(`video2dlssnr runtime 安装后复检失败：${finalProblems.join("、")}`);
+      throw new Error(t(uiKeys.konohamaruRuntime.videoRecheckFailed, { problems: finalProblems.join(t(uiKeys.nodeInstaller.listSeparator)) }));
     }
-    if (movedExisting) await removeSoftwareArtifact(nodeDirectory, backup, report);
+    if (movedExisting) await removeSoftwareArtifact(nodeDirectory, backup, report, undefined, t);
     await cleanupManifestSoftwareBackups(nodeDirectory, backupDirectory, "install-manifest.json", value => {
       const manifest = value as { schemaVersion?: number; bundleId?: string } | null;
       return manifest?.schemaVersion === 1 && manifest.bundleId === KONOHAMARU_VIDEO2DLSSNR_RUNTIME_BUNDLE_ID;
-    }, runtimeDirectory, report);
-    report(`video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime 已安装并通过完整性复检`);
+    }, runtimeDirectory, report, t);
+    report(t(uiKeys.konohamaruRuntime.videoInstalledLog, { version: KONOHAMARU_VIDEO2DLSSNR_RELEASE }));
     return {
       ok: true,
-      message: `video2dlssnr ${KONOHAMARU_VIDEO2DLSSNR_RELEASE} runtime 已安装并通过完整性复检。`,
+      message: t(uiKeys.konohamaruRuntime.videoInstalled, { version: KONOHAMARU_VIDEO2DLSSNR_RELEASE }),
       log: log.join("\n")
     };
   } catch (error) {

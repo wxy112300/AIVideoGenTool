@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isMossImageModel } from "../../src/core/moss-image-spec.js";
@@ -107,10 +110,11 @@ export interface LmStudioChatRequest {
 }
 
 async function lmStudioModelIds(settings: Settings): Promise<string[]> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const response = await fetch(`${cleanBaseUrl(settings.lmStudioUrl)}/models`, {
     signal: AbortSignal.timeout(5_000)
   });
-  if (!response.ok) throw new Error(`LM Studio 返回 HTTP ${response.status}`);
+  if (!response.ok) throw new Error(t(uiKeys.promptBackend.lmHttp, { status: response.status }));
   const body = (await response.json()) as LmStudioModelList;
   return (
     body.data
@@ -123,6 +127,7 @@ export async function unloadLmStudioModels(
   settings: Settings,
   fetchImpl: typeof fetch = fetch
 ): Promise<number> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const baseUrl = lmStudioNativeApiBase(settings.lmStudioUrl);
   let listResponse: Response;
   try {
@@ -134,7 +139,7 @@ export async function unloadLmStudioModels(
     return 0;
   }
   if (!listResponse.ok) {
-    throw new Error(`无法读取 LM Studio 已加载模型：HTTP ${listResponse.status}`);
+    throw new Error(t(uiKeys.promptBackend.lmListFailed, { status: listResponse.status }));
   }
   const instanceIds = loadedLmStudioInstanceIds(await listResponse.json());
   for (const instanceId of instanceIds) {
@@ -146,7 +151,7 @@ export async function unloadLmStudioModels(
     });
     if (!response.ok) {
       throw new Error(
-        `卸载 LM Studio 模型 ${instanceId} 失败：HTTP ${response.status}`
+        t(uiKeys.promptBackend.lmUnloadFailed, { id: instanceId, status: response.status })
       );
     }
   }
@@ -164,7 +169,7 @@ export async function unloadLmStudioModels(
       return instanceIds.length;
     }
   }
-  throw new Error("LM Studio 已接受卸载请求，但模型在 5 秒后仍占用内存");
+  throw new Error(t(uiKeys.promptBackend.lmUnloadTimeout));
 }
 
 export async function releasePromptModelRuntime(settings: Settings): Promise<number> {
@@ -281,13 +286,13 @@ function h3VisionSystemPrompt(mode: H3PromptMode, preset: H3PromptPreset): strin
   ].join("\n");
 }
 
-function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string {
+function h3VisionUserPrompt(request: EnhanceRequest, presetText: string, locale: Settings["uiLocale"] = "zh-CN"): string {
   const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
   if (request.promptStrategy === "targeted-revision") {
-    return promptRevisionInstruction(request.prompt, referenceContext, presetText);
+    return promptRevisionInstruction(request.prompt, referenceContext, presetText, locale);
   }
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
@@ -406,7 +411,8 @@ export async function buildLmStudioChatRequest(
           content: await nativeUserContent(
             h3VisionUserPrompt(
               request,
-              h3PromptPresetTextForRequest(h3Preset, settings.h3PromptPresets[h3Preset])
+              h3PromptPresetTextForRequest(h3Preset, settings.h3PromptPresets[h3Preset]),
+              settings.uiLocale
             ),
             imagePaths
           )
@@ -459,21 +465,23 @@ async function lmStudioErrorDetail(response: Response): Promise<string> {
 }
 
 export async function testLmStudio(settings: Settings): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const models = await lmStudioModelIds(settings);
   return models.length > 0
-    ? `已连接 · ${models.join(", ")}`
-    : "已连接 · 当前未加载模型";
+    ? t(uiKeys.promptBackend.lmConnected, { models: models.join(", ") })
+    : t(uiKeys.promptBackend.lmNoModels);
 }
 
 export async function enhancePrompt(
   request: EnhanceRequest,
   settings: Settings
 ): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!settings.promptUseLmStudio) {
-    throw new Error("当前已关闭 LM Studio；主应用会通过 ComfyUI 原生 TextGenerate 执行提示词扩写。你仍可以使用 H3 内置模板和结构化构建器。 ");
+    throw new Error(t(uiKeys.promptBackend.lmDisabled));
   }
-  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-  validateH3ReferenceAutoPrompt(request);
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error(t(uiKeys.promptBackend.promptRequired));
+  validateH3ReferenceAutoPrompt(request, settings.uiLocale);
   const mode: PromptEnhanceMode = request.mode ?? "sulphur-native";
   const availableModels = settings.lmStudioModel.trim()
     ? []
@@ -486,26 +494,26 @@ export async function enhancePrompt(
   if (!model) {
     if (mode === "h3-vision") {
       throw new Error(
-        "H3 视觉优化需要 Qwen3.5、Qwen3-VL 或其它支持图片输入的本地模型；请先在 LM Studio 加载视觉模型。"
+        t(uiKeys.promptBackend.lmVisionRequired)
       );
     }
     if (mode === "faithful") {
       throw new Error(
-        "忠实扩写需要普通 Instruct/Chat 语言模型；当前只有 Sulphur 创意增强器。请切换为“Sulphur 原生增强”，或在 LM Studio 中再加载一个 Instruct 模型。"
+        t(uiKeys.promptBackend.lmFaithfulRequired)
       );
     }
     throw new Error(
-      "提示词扩写失败：LM Studio 当前未加载生成模型，请在 Developer 页面加载提示词增强或聊天模型。"
+      t(uiKeys.promptBackend.lmGenerationModelMissing)
     );
   }
   if ((mode === "h3-vision" || mode === "image-edit") && /sulphur/i.test(model)) {
     throw new Error(
-      `${mode === "image-edit" ? "图片编辑优化" : "H3 视觉优化"}不能使用 Sulphur 模型；请在 LM Studio 中加载 Qwen3.5 或 Qwen3-VL。`
+      t(uiKeys.promptBackend.lmSulphurUnsupported, { mode: mode === "image-edit" ? t(uiKeys.promptBackend.imageEditMode) : t(uiKeys.promptBackend.h3VisionMode) })
     );
   }
   if (mode === "faithful" && /sulphur/i.test(model)) {
     throw new Error(
-      "Sulphur 提示词增强器会主动补充画面细节，无法保证忠实扩写。请切换为“Sulphur 原生增强”，或在设置中选择普通 Instruct/Chat 模型。"
+      t(uiKeys.promptBackend.lmSulphurFaithfulness)
     );
   }
   const response = await fetch(
@@ -522,16 +530,14 @@ export async function enhancePrompt(
   if (!response.ok) {
     const detail = await lmStudioErrorDetail(response);
     throw new Error(
-      `提示词扩写失败：LM Studio 返回 HTTP ${response.status}${
-        detail ? `：${detail}` : ""
-      }`
+      t(uiKeys.promptBackend.lmExpansionHttp, { status: response.status, detail: detail ? t(uiKeys.promptBackend.detailSuffix, { detail }) : "" })
     );
   }
   const body = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = body.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("LM Studio 没有返回扩写内容");
+  if (!content) throw new Error(t(uiKeys.promptBackend.lmEmpty));
   const normalized = content
     .replace(/<think>[\s\S]*?<\/think>/giu, "")
     .replace(/^```(?:text|markdown)?\s*/iu, "")
@@ -542,7 +548,7 @@ export async function enhancePrompt(
     : normalizeQwenImageEditPromptOutput(stripPromptAnnotations(normalized));
   if (mode !== "h3-vision") return stripPromptAnnotations(normalized);
   if (request.promptStrategy === "targeted-revision") {
-    return applyPromptRevision(request.prompt, normalized);
+    return applyPromptRevision(request.prompt, normalized, settings.uiLocale);
   }
   const h3Mode = h3PromptModeForRequest(request);
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
@@ -558,6 +564,7 @@ export async function enhancePrompt(
     nativeStateContinuation,
     nativeStateContinuation,
     request.continuumPreviousChunk,
-    request.h3PromptPreset
+    request.h3PromptPreset,
+    settings.uiLocale
   );
 }

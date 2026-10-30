@@ -1,3 +1,5 @@
+import type { UiLocale } from "../types.js";
+import { workflowMessage } from "./runtime/workflow-messages.js";
 export interface PromptAnnotation {
   text: string;
   raw: string;
@@ -242,10 +244,10 @@ function revisionCloseTag(id: number): string {
   return `</EDIT_TARGET_${id}>`;
 }
 
-function precedingClauseRange(source: string, annotationStart: number): { start: number; end: number } {
+function precedingClauseRange(source: string, annotationStart: number, locale: UiLocale): { start: number; end: number } {
   let end = annotationStart;
   while (end > 0 && /\s/u.test(source[end - 1] ?? "")) end -= 1;
-  if (end <= 0) throw new Error("批注前没有可修订的文字。请把批注放在需要修改的句子后面。");
+  if (end <= 0) throw new Error(workflowMessage("revisionPrecedingMissing", {}, locale));
 
   let cursor = end - 1;
   if (clauseBoundaryPattern.test(source[cursor] ?? "")) cursor -= 1;
@@ -256,26 +258,26 @@ function precedingClauseRange(source: string, annotationStart: number): { start:
     source.slice(start, end)
   )?.[0] ?? "";
   start += structuralPrefix.length;
-  if (start >= end) throw new Error("批注前没有可修订的文字。请把批注放在需要修改的句子后面。");
+  if (start >= end) throw new Error(workflowMessage("revisionPrecedingMissing", {}, locale));
   return { start, end };
 }
 
-export function buildPromptRevisionPlan(sourcePrompt: string): PromptRevisionPlan {
+export function buildPromptRevisionPlan(sourcePrompt: string, locale: UiLocale = "zh-CN"): PromptRevisionPlan {
   const parsed = parsePromptAnnotations(sourcePrompt);
   if (!parsed.annotations.length) {
-    throw new Error("批注修订需要至少一条带标签的批注，例如（批注：把这里改成……）。");
+    throw new Error(workflowMessage("revisionAnnotationMissing", {}, locale));
   }
   if (/<\/?EDIT_TARGET_\d+>/iu.test(sourcePrompt)) {
-    throw new Error("原提示词包含批注修订内部标记，请先移除 EDIT_TARGET 标签。");
+    throw new Error(workflowMessage("revisionReservedMarker", {}, locale));
   }
 
   const sourceTargets = parsed.annotations.map((annotation, index) => {
-    const range = precedingClauseRange(sourcePrompt, annotation.sourceStart);
+    const range = precedingClauseRange(sourcePrompt, annotation.sourceStart, locale);
     const overlapsAnnotation = parsed.annotations.some((candidate) =>
       candidate.sourceStart < range.end && candidate.sourceEnd > range.start
     );
     if (overlapsAnnotation) {
-      throw new Error("同一句存在相邻或重叠批注，请合并成一条批注后再修订。");
+      throw new Error(workflowMessage("revisionAdjacent", {}, locale));
     }
     return {
       id: index + 1,
@@ -300,7 +302,7 @@ export function buildPromptRevisionPlan(sourcePrompt: string): PromptRevisionPla
     const openAt = markedPrompt.indexOf(open, markedCursor);
     const closeAt = openAt < 0 ? -1 : markedPrompt.indexOf(close, openAt + open.length);
     if (openAt < 0 || closeAt < 0) {
-      throw new Error(`无法定位第 ${target.id} 条批注对应的原文，请把批注紧跟在需要修改的完整句子后面。`);
+      throw new Error(workflowMessage("revisionAnchorMissing", { id: target.id }, locale));
     }
     cleanPrompt += markedPrompt.slice(markedCursor, openAt);
     const original = markedPrompt.slice(openAt + open.length, closeAt);
@@ -320,7 +322,7 @@ export function buildPromptRevisionPlan(sourcePrompt: string): PromptRevisionPla
 
   for (let index = 1; index < targets.length; index += 1) {
     if ((targets[index]?.start ?? 0) < (targets[index - 1]?.end ?? 0)) {
-      throw new Error("多条批注指向了重叠文字，请合并批注或分别标注不同句子。");
+      throw new Error(workflowMessage("revisionOverlap", {}, locale));
     }
   }
 
@@ -330,9 +332,10 @@ export function buildPromptRevisionPlan(sourcePrompt: string): PromptRevisionPla
 export function promptRevisionInstruction(
   sourcePrompt: string,
   referenceContext = "",
-  revisionPolicy = ""
+  revisionPolicy = "",
+  locale: UiLocale = "zh-CN"
 ): string {
-  const plan = buildPromptRevisionPlan(sourcePrompt);
+  const plan = buildPromptRevisionPlan(sourcePrompt, locale);
   return [
     "Targeted prompt revision. The supplied draft is already approved except for the marked passages.",
     "Apply each revision note only to its matching EDIT_TARGET passage. Preserve the passage's role in the surrounding H3 structure and use attached reference media to resolve visible identity, action, position, contact, or scale when requested.",
@@ -348,29 +351,29 @@ export function promptRevisionInstruction(
   ].join("\n\n");
 }
 
-function revisionReplacement(output: string, target: PromptRevisionTarget): string {
+function revisionReplacement(output: string, target: PromptRevisionTarget, locale: UiLocale): string {
   const open = revisionOpenTag(target.id);
   const close = revisionCloseTag(target.id);
   const start = output.indexOf(open);
   const end = start < 0 ? -1 : output.indexOf(close, start + open.length);
   if (start < 0 || end < 0 || output.indexOf(open, start + open.length) >= 0) {
-    throw new Error(`提示词模型没有按要求返回第 ${target.id} 条局部修订；原提示词已保持不变。`);
+    throw new Error(workflowMessage("revisionResultMissing", { id: target.id }, locale));
   }
   const replacement = stripPromptAnnotations(output.slice(start + open.length, end).trim());
   if (!replacement || /<\/?EDIT_TARGET_\d+>/iu.test(replacement)) {
-    throw new Error(`第 ${target.id} 条局部修订为空或格式无效；原提示词已保持不变。`);
+    throw new Error(workflowMessage("revisionResultInvalid", { id: target.id }, locale));
   }
   if (replacement === target.original.trim()) {
-    throw new Error(`第 ${target.id} 条批注没有产生修改；原提示词已保持不变。`);
+    throw new Error(workflowMessage("revisionUnchanged", { id: target.id }, locale));
   }
   return replacement;
 }
 
-export function applyPromptRevision(sourcePrompt: string, modelOutput: string): string {
-  const plan = buildPromptRevisionPlan(sourcePrompt);
+export function applyPromptRevision(sourcePrompt: string, modelOutput: string, locale: UiLocale = "zh-CN"): string {
+  const plan = buildPromptRevisionPlan(sourcePrompt, locale);
   const replacements = plan.targets.map((target) => ({
     target,
-    text: revisionReplacement(modelOutput, target)
+    text: revisionReplacement(modelOutput, target, locale)
   }));
   let result = plan.cleanPrompt;
   for (const replacement of [...replacements].reverse()) {

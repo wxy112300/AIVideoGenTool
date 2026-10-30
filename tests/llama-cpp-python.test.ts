@@ -12,6 +12,77 @@ import {
 } from "../electron/services/llama-cpp-python";
 
 describe("llama-cpp-python runtime", () => {
+  it("localizes install/uninstall feedback while preserving wheel commands and raw logs", async () => {
+    let baseline: string[][] | undefined;
+    for (const [uiLocale, installed, uninstalled, progress] of [
+      ["en-US", "llama-cpp-python is installed and passed the CUDA self-test. Restart ComfyUI before using Gemma prompt expansion.", "llama-cpp-python uninstalled.", "Download: 100% · 1.0 / 1.0 MB"],
+      ["zh-TW", "llama-cpp-python 已安裝並通過 CUDA 自我檢測。請重新啟動 ComfyUI 後再使用 Gemma 擴寫。", "llama-cpp-python 已解除安裝。", "下載進度：100% · 1.0 / 1.0 MB"],
+      ["zh-CN", "llama-cpp-python 已安装并通过 CUDA 自检。请重启 ComfyUI 后再使用 Gemma 扩写。", "llama-cpp-python 已卸载。", "下载进度：100% · 1.0 / 1.0 MB"]
+    ] as const) {
+      let present = false;
+      const commands: string[][] = [];
+      const logs: string[] = [];
+      const runtime: LlamaCppPythonRuntime = {
+        downloadEnvironment: () => ({}), proxyLogLabel: () => "proxy diagnostic",
+        findComfyRoot: async () => "isolated-comfy", findComfyPython: async () => "isolated-python",
+        runLoggedProcess: async (_executable, args, options) => {
+          commands.push(args);
+          expect(options.uiLocale).toBe(uiLocale);
+          if (args[0] === "-c") return JSON.stringify({
+            pythonVersion: "3.12.11", packageVersion: present ? "0.4.5+cu130" : "",
+            importable: present, gpuOffload: present, dynamicBackend: true,
+            cudaVersion: "13.0", torchVersion: "2.10.0+cu130",
+            packageDirectory: "使用者套件/llama_cpp"
+          });
+          present = args.includes("install");
+          options.onLog?.("Progress 1048576 of 1048576");
+          options.onLog?.("external EACCES: 使用者檔案");
+          return "pip complete";
+        }
+      };
+      const settings = { ...createDefaultState().settings, uiLocale };
+      const install = await installLlamaCppPythonPackage(settings, runtime, line => logs.push(line));
+      expect(install).toMatchObject({ ok: true, message: installed });
+      expect(logs).toContain(progress);
+      expect(install.log).toContain("external EACCES: 使用者檔案");
+      const uninstall = await uninstallLlamaCppPythonPackage(settings, runtime);
+      expect(uninstall).toMatchObject({ ok: true, message: uninstalled });
+      expect(uninstall.log).toContain("external EACCES: 使用者檔案");
+      if (baseline) expect(commands).toEqual(baseline);
+      else baseline = commands;
+      expect(commands.filter(args => args.includes("pip"))).toHaveLength(2);
+    }
+  });
+
+  it.each([
+    ["en-US", "llama-cpp-python is installed but cannot be imported: DLL missing: 原文"],
+    ["zh-TW", "llama-cpp-python 已安裝，但無法匯入：DLL missing: 原文"]
+  ] as const)("preserves probe identity and raw diagnostics in %s", (locale, detail) => {
+    const probe = { packageVersion: "0.4.5", packageDirectory: "使用者/llama_cpp", importError: "DLL missing: 原文" };
+    const base = statusFromLlamaCppProbe("使用者/python.exe", probe);
+    const localized = statusFromLlamaCppProbe("使用者/python.exe", probe, "", locale);
+    expect(localized).toEqual({ ...base, detail });
+    const crash = statusFromLlamaCppProbe("使用者/python.exe", { importError: "Windows 0xc000001d: 原文" }, "", locale);
+    expect(crash).toMatchObject({ nativeCrash: true, nativeCrashCode: "0xC000001D", error: "Windows 0xc000001d: 原文" });
+    expect(crash.detail).toContain("0xC000001D");
+  });
+
+  it.each([
+    ["en-US", "The ComfyUI data directory was not found."],
+    ["zh-TW", "找不到 ComfyUI 資料目錄。"]
+  ] as const)("rejects missing data in %s before launching Python or pip", async (uiLocale, message) => {
+    let ran = false;
+    const runtime: LlamaCppPythonRuntime = {
+      downloadEnvironment: () => ({}), proxyLogLabel: () => "proxy diagnostic",
+      findComfyRoot: async () => "", findComfyPython: async () => { throw new Error("must not resolve Python"); },
+      runLoggedProcess: async () => { ran = true; throw new Error("must not launch"); }
+    };
+    const settings = { ...createDefaultState().settings, uiLocale };
+    expect(await installLlamaCppPythonPackage(settings, runtime)).toMatchObject({ ok: false, message });
+    expect(await uninstallLlamaCppPythonPackage(settings, runtime)).toMatchObject({ ok: false, message });
+    expect(ran).toBe(false);
+  });
+
   it("preserves the discovered package directory even when native import fails, without guessing from Python", () => {
     const pythonPath = "C:\\Selected\\Scripts\\python.exe";
     expect(statusFromLlamaCppProbe(pythonPath, {

@@ -1,8 +1,8 @@
 import type {
-  LlamaCppPythonStatus,
   PythonProbeEvidence,
   PythonProbeEvidenceReason
 } from "../../src/types.js";
+import type { LlamaCppPythonProbeResult } from "./llama-cpp-python.js";
 import type { AttentionPythonProbe } from "./attention-python-probe.js";
 import {
   createPythonProbeFingerprintReader,
@@ -19,7 +19,7 @@ export type ProbeMode = "auto" | "live";
 
 export interface PythonProbeFamilyMap {
   attention: AttentionPythonProbe;
-  llama: LlamaCppPythonStatus;
+  llama: LlamaCppPythonProbeResult;
 }
 
 export interface PythonProbeRunOutput<T> {
@@ -296,10 +296,11 @@ export class PythonProbeCache<
     return run;
   }
 
-  async projectPrevious<T extends { probeEvidence?: PythonProbeEvidence }>(
+  async projectPrevious<F extends ProbeFamily, T extends { probeEvidence?: PythonProbeEvidence }>(
     identity: ProbeIdentity,
-    family: ProbeFamily,
-    previous: T
+    family: F,
+    previous: T,
+    format?: (cached: FamilyMap[F], previous: T) => T
   ): Promise<PythonProbeCacheResult<T>> {
     const entry = this.entries.get(cacheKey(identity, family));
     if (!entry) {
@@ -312,7 +313,7 @@ export class PythonProbeCache<
     const ageMs = Math.max(0, this.now() - entry.completedAt);
     const valid = entry.epochToken === this.epochToken(entry.resourceKey) && ageMs < this.ttlMs;
     return {
-      value: clone(previous),
+      value: format ? format(clone(entry.value) as FamilyMap[F], clone(previous)) : clone(previous),
       evidence: evidence(
         "previous",
         valid ? "valid" : "expired",
@@ -323,10 +324,11 @@ export class PythonProbeCache<
     };
   }
 
-  projectPreviousSync<T extends { probeEvidence?: PythonProbeEvidence }>(
+  projectPreviousSync<F extends ProbeFamily, T extends { probeEvidence?: PythonProbeEvidence }>(
     identity: ProbeIdentity,
-    family: ProbeFamily,
-    previous: T
+    family: F,
+    previous: T,
+    format?: (cached: FamilyMap[F], previous: T) => T
   ): PythonProbeCacheResult<T> {
     const entry = this.entries.get(cacheKey(identity, family));
     if (!entry) {
@@ -339,7 +341,7 @@ export class PythonProbeCache<
     const ageMs = Math.max(0, this.now() - entry.completedAt);
     const valid = entry.epochToken === this.epochToken(entry.resourceKey) && ageMs < this.ttlMs;
     return {
-      value: clone(previous),
+      value: format ? format(clone(entry.value) as FamilyMap[F], clone(previous)) : clone(previous),
       evidence: evidence("previous", valid ? "valid" : "expired", valid ? "runtime-previous" : "expired", {
         verifiedAt: entry.verifiedAt,
         ageMs

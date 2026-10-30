@@ -19,12 +19,57 @@ it.each(["masonry", "album"] as const)("computes the full %s extent while select
   expect(historyWindowIndexes(layout, 30000, 31800, 0)).toContain(0);
 });
 
+it("recalculates a retained virtual gallery when the column preference changes at the same width", () => {
+  const previous = document.documentElement.dataset.historyMasonryColumns;
+  document.documentElement.dataset.historyMasonryColumns = "3";
+  const { root, gallery } = galleryFixture();
+  const cleanup = mountVirtualHistory(root, () => () => undefined);
+  try {
+    const before = virtualHistoryBox(gallery, "asset-0")!.width;
+    document.documentElement.dataset.historyMasonryColumns = "6";
+    refreshVirtualHistory(gallery);
+    expect(virtualHistoryBox(gallery, "asset-0")!.width).toBeLessThan(before);
+    expect(gallery.children.length).toBeLessThan(160);
+    const layout = layoutHistoryWindow(items, 1200, "album", 47, 10);
+    expect(new Set(layout.boxes.map(box => box.left)).size).toBe(10);
+  } finally {
+    cleanup();
+    if (previous === undefined) delete document.documentElement.dataset.historyMasonryColumns;
+    else document.documentElement.dataset.historyMasonryColumns = previous;
+  }
+});
+
+it("repaints cached cards after timeline measurement calculates a resized layout first", () => {
+  let notify: ResizeObserverCallback | undefined;
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { notify = callback; }
+    observe() {} disconnect() {}
+  });
+  const { root, gallery } = galleryFixture();
+  let width = 1100;
+  Object.defineProperty(gallery, "clientWidth", { get: () => width, configurable: true });
+  vi.spyOn(window, "scrollBy").mockImplementation(() => undefined);
+  const cleanup = mountVirtualHistory(root, () => () => undefined);
+  try {
+    const first = gallery.firstElementChild as HTMLElement;
+    const before = first.style.width;
+    width = 440;
+    const expected = virtualHistoryBox(gallery, "asset-0")!;
+    expect(first.style.width).toBe(before);
+    notify!([], {} as ResizeObserver);
+    expect(gallery.firstElementChild).toBe(first);
+    expect(first.style.width).toBe(`${expected.width}px`);
+    expect(first.style.width).not.toBe(before);
+    expect([...gallery.children].every(node => (node as HTMLElement).style.left === "0px")).toBe(true);
+  } finally { cleanup(); vi.unstubAllGlobals(); }
+});
+
 function galleryFixture() {
   const root = document.createElement("div"); document.body.append(root);
   const token = registerHistoryWindow(items, index => `<article class="history-gallery-item" data-history="asset-${index}" data-history-order="${index}" tabindex="0"><button>More</button></article>`);
   root.innerHTML = `<section class="history-gallery masonry" data-history-virtual="${token}"></section>`;
   const gallery = root.firstElementChild as HTMLElement;
-  Object.defineProperty(gallery, "clientWidth", { value: 1100 });
+  Object.defineProperty(gallery, "clientWidth", { value: 1100, configurable: true });
   gallery.getBoundingClientRect = () => ({ top: -window.scrollY, width: 1100 }) as DOMRect;
   vi.spyOn(window, "scrollTo").mockImplementation((options: ScrollToOptions | number) => { window.scrollY = typeof options === "number" ? options : options.top ?? 0; });
   prepareVirtualHistory(root);

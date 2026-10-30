@@ -15,6 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WindowCloseRequest } from "../src/types.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
+import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
 import { JsonStore } from "./store.js";
 import { NasPublisher } from "./services/nas-publisher.js";
 import { recoverLibraryLocation } from "./services/library-location-recovery.js";
@@ -107,6 +109,7 @@ let lanBrowserHost: ReturnType<typeof registerLanBrowserHost> | null = null;
 let nasPublisher: NasPublisher | null = null;
 let libraryStartupWindow: LibraryStartupWindow | null = null;
 let startupInProgress = true;
+let startupLocale: unknown;
 
 function activeApplicationRuntime(): ApplicationRuntime {
   if (!applicationRuntime) throw new Error("Application runtime is not initialized");
@@ -278,7 +281,7 @@ function sendState(state = store.get()): void {
   studioEventBus.publish("state:changed", state);
 }
 
-const promptRuntimeManager = new PromptRuntimeManager(comfyRuntimeState.snapshot());
+const promptRuntimeManager = new PromptRuntimeManager(comfyRuntimeState.snapshot(), () => store?.get().settings.uiLocale);
 
 promptRuntimeManager.subscribe((runtime) => {
   studioEventBus.publish("prompt-runtime:changed", runtime);
@@ -337,11 +340,12 @@ async function finishWindowClose(): Promise<void> {
 async function handleWindowClose(): Promise<void> {
   if (!mainWindow || closeFlowRunning) return;
   if (activeSettingsService().isHistoryMigrationRunning()) {
+    const t = createNativeTranslator(store.get().settings.uiLocale).t;
     await dialog.showMessageBox(mainWindow, {
       type: "info",
-      title: "目录迁移正在进行",
-      message: "请等待数据迁移完成后再退出应用。",
-      buttons: ["知道了"],
+      title: t(uiKeys.nativeDialog.migrationTitle),
+      message: t(uiKeys.nativeDialog.migrationWait),
+      buttons: [t(uiKeys.nativeDialog.acknowledge)],
       noLink: true
     });
     return;
@@ -481,6 +485,7 @@ function createWindow(): void {
   mainWindow.webContents.on("context-menu", (event, params) => {
     if (!params.isEditable) return;
     event.preventDefault();
+    const t = createNativeTranslator(store.get().settings.uiLocale).t;
     const menuItems: MenuItemConstructorOptions[] = [];
     const suggestions = (params.dictionarySuggestions ?? []).slice(0, 5);
     if (params.misspelledWord) {
@@ -492,18 +497,18 @@ function createWindow(): void {
           }))
         );
       } else {
-        menuItems.push({ label: "没有拼写建议", enabled: false });
+        menuItems.push({ label: t(uiKeys.nativeEditMenu.noSuggestions), enabled: false });
       }
       menuItems.push({ type: "separator" });
     }
     menuItems.push(
-      { label: "撤销", role: "undo", enabled: params.editFlags.canUndo },
-      { label: "重做", role: "redo", enabled: params.editFlags.canRedo },
+      { label: t(uiKeys.nativeEditMenu.undo), role: "undo", enabled: params.editFlags.canUndo },
+      { label: t(uiKeys.nativeEditMenu.redo), role: "redo", enabled: params.editFlags.canRedo },
       { type: "separator" },
-      { label: "剪切", role: "cut", enabled: params.editFlags.canCut },
-      { label: "复制", role: "copy", enabled: params.editFlags.canCopy },
-      { label: "粘贴", role: "paste", enabled: params.editFlags.canPaste },
-      { label: "全选", role: "selectAll", enabled: params.editFlags.canSelectAll }
+      { label: t(uiKeys.nativeEditMenu.cut), role: "cut", enabled: params.editFlags.canCut },
+      { label: t(uiKeys.nativeEditMenu.copy), role: "copy", enabled: params.editFlags.canCopy },
+      { label: t(uiKeys.nativeEditMenu.paste), role: "paste", enabled: params.editFlags.canPaste },
+      { label: t(uiKeys.nativeEditMenu.selectAll), role: "selectAll", enabled: params.editFlags.canSelectAll }
     );
     Menu.buildFromTemplate(menuItems).popup({ window: mainWindow! });
   });
@@ -585,7 +590,8 @@ function registerIpc(
     fileSystem: fs,
     logger: appLogger,
     paths: studioPaths,
-    getCrashDumpsDirectory: () => app.getPath("crashDumps")
+    getCrashDumpsDirectory: () => app.getPath("crashDumps"),
+    getUiLocale: () => store.get().settings.uiLocale
   });
   registerWorkflowIpc({
     ipc: ipcMain,
@@ -629,7 +635,8 @@ function registerIpc(
     protocol,
     service: applicationServices.media,
     logger: appLogger,
-    paths: studioPaths
+    paths: studioPaths,
+    getUiLocale: () => store.get().settings.uiLocale
   });
   registerPromptIpc({
     ipc: ipcMain,
@@ -683,7 +690,10 @@ app.whenReady().then(async () => {
     libraryDirectory: path.join(documents, "Local Video Studio", "Library"),
     beforeLibraryMove: () => nasPublisher!.prepareLibraryMove(),
     onMoveProgress: progress => studioEventBus.publish("history-migration:progress", progress),
-    onProgress: progress => libraryStartupWindow?.update(progress),
+    onProgress: progress => {
+      startupLocale = progress.locale;
+      libraryStartupWindow?.update(progress);
+    },
     onCommitted: (state) => nasPublisher?.schedule(state),
     onWarning: (error) => appLogger.warn("storage", "backup-maintenance-failed", error instanceof Error ? error.message : String(error))
   });
@@ -740,6 +750,7 @@ app.whenReady().then(async () => {
   try {
     await runtime.start({
       onServicesReady: (context) => {
+        startupLocale = store.get().settings.uiLocale;
         lanBrowserHost = registerLanBrowserHost({
           context, ipc: ipcMain, webRoot: path.join(currentDirectory, "..", "..", "web"),
           ready: runtime.waitForInitialState(), openExternal: (url) => shell.openExternal(url), logger: appLogger
@@ -767,6 +778,7 @@ app.whenReady().then(async () => {
     });
   } catch (error) {
     libraryStartupWindow?.close();
+    const t = createNativeTranslator(startupLocale).t;
     appLogger.error(
       "app",
       "startup-failed",
@@ -774,20 +786,20 @@ app.whenReady().then(async () => {
     );
     const result = await dialog.showMessageBox({
       type: "error",
-      title: "Local Video Studio — 启动失败",
-      message: "无法安全打开应用资料，已停止启动。",
-      detail: `${error instanceof Error ? error.message : String(error)}\n\n请保留原文件和备份。检查磁盘与目录权限后重试；也可打开资料目录检查恢复文件。`,
-      buttons: ["退出", "打开资料目录", "重试启动", "选择资料库位置"],
+      title: t(uiKeys.nativeDialog.startupTitle),
+      message: t(uiKeys.nativeDialog.startupMessage),
+      detail: `${error instanceof Error ? error.message : String(error)}\n\n${t(uiKeys.nativeDialog.startupRecovery)}`,
+      buttons: [t(uiKeys.nativeDialog.quit), t(uiKeys.nativeDialog.openData), t(uiKeys.nativeDialog.retry), t(uiKeys.nativeDialog.chooseLibrary)],
       defaultId: 0,
       cancelId: 0
     });
     if (result.response === 1) await shell.openPath(path.dirname(studioPaths.stateFile));
     if (result.response === 2) app.relaunch();
     if (result.response === 3) {
-      const selection = await dialog.showOpenDialog({ title: "选择原资料库；首次迁移请选择空目录", properties: ["openDirectory"] });
+      const selection = await dialog.showOpenDialog({ title: t(uiKeys.nativeDialog.chooseLibraryTitle), properties: ["openDirectory"] });
       if (!selection.canceled && selection.filePaths[0]) {
         try { await recoverLibraryLocation(studioPaths.stateFile, selection.filePaths[0]); app.relaunch(); }
-        catch (recoveryError) { dialog.showErrorBox("资料库恢复未完成", recoveryError instanceof Error ? recoveryError.message : String(recoveryError)); }
+        catch (recoveryError) { dialog.showErrorBox(t(uiKeys.nativeDialog.recoveryFailed), recoveryError instanceof Error ? recoveryError.message : String(recoveryError)); }
       }
     }
     app.quit();

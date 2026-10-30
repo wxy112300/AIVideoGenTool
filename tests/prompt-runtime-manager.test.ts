@@ -17,6 +17,19 @@ function service(
 }
 
 describe("PromptRuntimeManager", () => {
+  it("reads the selected language when cancelling and preserves operation identity", () => {
+    let locale: "en-US" | "zh-TW" = "en-US";
+    const manager = new PromptRuntimeManager(service(), () => locale);
+    const first = manager.beginOperation("image-to-video", true);
+    expect(manager.requestCancellation().operationId).toBe(first.operationId);
+    expect(first.signal.reason.message).toBe("Prompt task cancelled.");
+    manager.finishOperation(first.operationId, "cancelled");
+    locale = "zh-TW";
+    const second = manager.beginOperation("image-edit", true);
+    manager.requestCancellation();
+    expect(second.signal.reason.message).toBe("提示詞工作已取消。");
+    expect(manager.snapshot().operation.operationId).toBe(second.operationId);
+  });
   it("owns one operation and exposes the exact submitted prompt ID", () => {
     const manager = new PromptRuntimeManager(service());
     const lease = manager.beginOperation("image-to-video", true, "submitting");

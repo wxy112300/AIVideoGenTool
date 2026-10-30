@@ -300,6 +300,7 @@ export function createSettingsWorkspaceCoordinator(
   ): Promise<EnvironmentScanResult | null> => environmentRefreshCoordinator.refresh(settings, reason);
 
   const customNodeInstallManager = new CustomNodeInstallQueue({
+    getUiLocale: () => deps.getState().settings.uiLocale,
     cancelInstall: (id) => deps.context.application.cancelDependencyInstall(`custom-node:${id}`),
     install: (nodeId, settings, mode) => deps.context.application.installCustomNode(nodeId, settings, mode),
     restart: (settings) => deps.context.application.restartLocalService("comfy", settings),
@@ -338,7 +339,7 @@ export function createSettingsWorkspaceCoordinator(
       ),
       readyCheckFailed: (name, detail) => uiText(
         uiKeys.settings.actions.nodeBatchReadyCheckFailed,
-        { name, detail: detail || "节点未注册或运行时未返回详情" }
+        { name, detail: detail || uiText(uiKeys.uiError.nodeNotRegistered) }
       ),
       completed: (success, failed) => uiText(
         uiKeys.settings.actions.nodeBatchCompleted,
@@ -358,7 +359,10 @@ export function createSettingsWorkspaceCoordinator(
     saveImageDraft: (draft) => deps.context.application.saveImageDraft(draft),
     saveDraft: (draft) => deps.context.application.saveDraft(draft),
     getBundledWorkflow: (modelId, inputMode) => deps.context.application.getBundledWorkflow(modelId, inputMode),
-    setState: deps.setState,
+    setState: (state) => {
+      deps.setState(state);
+      environmentRefreshCoordinator.refreshProgressMessage();
+    },
     clearSettingsDraft: () => {
       settingsDraft = null;
     },

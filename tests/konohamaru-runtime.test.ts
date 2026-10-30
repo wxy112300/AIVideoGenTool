@@ -3,9 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { createNativeTranslator } from "../electron/ui-translator";
+import { scanCustomNodes } from "../electron/services/dependency-scanner";
+import { assertKonohamaruExecutionReady } from "../electron/services/comfy-ui";
+import type { UpscaleQueueTask } from "../src/types";
+import { KONOHAMARU_MODEL_ID } from "../src/core/konohamaru-dlss5";
 import {
   KONOHAMARU_NEURAL_UPSTREAM_DOWNLOAD_URL,
-  KONOHAMARU_NEURAL_UPSTREAM_SHA256
+  KONOHAMARU_NEURAL_UPSTREAM_SHA256,
+  KONOHAMARU_NODE_DIRECTORY,
+  KONOHAMARU_NODE_ID,
+  KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL,
+  KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_BYTES
 } from "../src/core/catalog/dependencies/konohamaru";
 import {
   patchKonohamaruNeuralUpstreamSource,
@@ -17,6 +26,7 @@ import {
 } from "../src/infrastructure/dependency-node-adapters";
 import {
   installKonohamaruNeuralUpstreamRuntime,
+  installKonohamaruVideo2dlssnrRuntime,
   konohamaruNeuralUpstreamAddonPath,
   konohamaruNeuralUpstreamRuntimeProblems,
   konohamaruVideo2dlssnrRuntimeDirectory,
@@ -30,6 +40,90 @@ import {
 import { konohamaruVideo2dlssnrSource } from "../src/infrastructure/konohamaru-video2dlssnr";
 
 const temporaryDirectories: string[] = [];
+
+describe("Konohamaru runtime localization", () => {
+  it.each([
+    ["en-US", "SHA-256 check failed", "Downloading neural-upstream"],
+    ["zh-TW", "SHA-256 驗證失敗", "正在下載 neural-upstream"],
+    ["zh-CN", "SHA-256 校验失败", "正在下载 neural-upstream"]
+  ] as const)("keeps existing addons intact after a %s checksum failure", async (uiLocale, failure, stage) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "konohamaru-locale-hash-"));
+    temporaryDirectories.push(root);
+    const addon = konohamaruNeuralUpstreamAddonPath(root);
+    const legacy = path.join(path.dirname(addon), "renodx-dlss5.addon64");
+    await fs.mkdir(path.dirname(addon), { recursive: true });
+    await fs.writeFile(addon, "existing addon");
+    await fs.writeFile(legacy, "existing legacy addon");
+    let ran = false;
+    const logs: string[] = [];
+    const result = await installKonohamaruNeuralUpstreamRuntime(
+      { ...createDefaultState().settings, uiLocale }, root, root, {
+        platform: "win32", downloadEnvironment: () => ({}), findExecutable: async () => "curl.exe",
+        runLoggedProcess: async () => { ran = true; return ""; },
+        renameWithRetry: fs.rename, retryableRenameError: () => false, randomId: () => "locale-test",
+        downloadFile: async (_url, destination) => {
+          await fs.writeFile(destination, "invalid checksum");
+          return KONOHAMARU_NEURAL_UPSTREAM_DOWNLOAD_URL;
+        }
+      }, line => logs.push(line)
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain(failure);
+    expect(result.message).toContain(KONOHAMARU_NEURAL_UPSTREAM_SHA256);
+    expect(logs.join("\n")).toContain(stage);
+    expect(await fs.readFile(addon, "utf8")).toBe("existing addon");
+    expect(await fs.readFile(legacy, "utf8")).toBe("existing legacy addon");
+    expect((await fs.readdir(path.dirname(addon))).sort()).toEqual(["nvngx.dll.addon64", "renodx-dlss5.addon64"]);
+    expect(ran).toBe(false);
+  });
+
+  it.each([
+    ["en-US", "video2dlssnr archive size check failed: received 1 bytes, expected "],
+    ["zh-TW", "video2dlssnr 封存檔大小驗證失敗：實際 1 bytes，要求 "]
+  ] as const)("rejects a truncated archive in %s before extraction", async (uiLocale, message) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "konohamaru-locale-size-"));
+    temporaryDirectories.push(root);
+    const runtime = konohamaruVideo2dlssnrRuntimeDirectory(root);
+    await fs.mkdir(runtime, { recursive: true });
+    const userFile = path.join(runtime, "使用者資料.txt");
+    await fs.writeFile(userFile, "user data");
+    let ran = false;
+    const result = await installKonohamaruVideo2dlssnrRuntime(
+      { ...createDefaultState().settings, uiLocale }, root, root, {
+        platform: "win32", downloadEnvironment: () => ({}), findExecutable: async () => "curl.exe",
+        runLoggedProcess: async () => { ran = true; return ""; },
+        renameWithRetry: fs.rename, retryableRenameError: () => false, randomId: () => "locale-test",
+        downloadFile: async (_url, destination) => {
+          await fs.writeFile(destination, "x");
+          return KONOHAMARU_VIDEO2DLSSNR_DOWNLOAD_URL;
+        }
+      }
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain(message + KONOHAMARU_VIDEO2DLSSNR_ARCHIVE_BYTES);
+    expect(result.log).toContain(result.message);
+    expect(await fs.readFile(userFile, "utf8")).toBe("user data");
+    expect((await fs.readdir(root)).some(name => name.startsWith(".konohamaru-video2dlssnr-staging-"))).toBe(false);
+    expect(ran).toBe(false);
+  });
+
+  it.each([
+    ["en-US", "Konohamaru DLSS5 runtime failed the integrity recheck:", " (missing)", "The Konohamaru DLSS5 task has no immutable provider/options snapshot. Execution refused."],
+    ["zh-TW", "Konohamaru DLSS5 runtime 未通過完整性複檢：", "（缺少）", "Konohamaru DLSS5 任務缺少不可變的 provider/options 快照，已拒絕執行。"]
+  ] as const)("passes %s into scan and execution guards", async (uiLocale, prefix, missing, execution) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "konohamaru-locale-scan-"));
+    temporaryDirectories.push(root);
+    const node = path.join(root, "custom_nodes", KONOHAMARU_NODE_DIRECTORY);
+    await fs.mkdir(node, { recursive: true });
+    const settings = { ...createDefaultState().settings, uiLocale };
+    const problems = await konohamaruVideo2dlssnrRuntimeProblems(node, createNativeTranslator(uiLocale).t);
+    expect(problems[0]).toContain(missing);
+    const statuses = await scanCustomNodes(root, settings, "", "", "", {}, { nodeIds: null });
+    expect(statuses.find(item => item.id === KONOHAMARU_NODE_ID)?.loadError).toContain(prefix);
+    await expect(assertKonohamaruExecutionReady({ modelId: KONOHAMARU_MODEL_ID } as UpscaleQueueTask, settings, {}))
+      .rejects.toThrow(execution);
+  });
+});
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) =>

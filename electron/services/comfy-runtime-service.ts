@@ -1,4 +1,6 @@
 import path from "node:path";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { Settings } from "../../src/types.js";
 import type { ComfyInstallation } from "./comfy-discovery.js";
 import {
@@ -130,9 +132,10 @@ async function startComfyUiServiceImpl(
   dependencies: ComfyRuntimeServiceDependencies,
   options: ComfyRuntimeStartOptions
 ): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
-    throw new Error("一键启动只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
+    throw new Error(t(uiKeys.runtimeService.localOnly));
   }
   if (await dependencies.isPortInUse(endpoint.port)) {
     appLogger.info("comfy", "startup-skipped-existing-listener", "ComfyUI startup skipped because the configured port is already in use", {
@@ -155,22 +158,22 @@ async function startComfyUiServiceImpl(
     return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
   }
   const sourceRoot = installation?.sourceDirectory || comfyRoot;
-  if (!sourceRoot) throw new Error("没有找到 ComfyUI 核心程序目录。");
+  if (!sourceRoot) throw new Error(t(uiKeys.runtimeService.coreMissing));
 
   const mainPy = path.join(sourceRoot, "main.py");
   if (!(await dependencies.exists(mainPy))) {
     throw new Error(
-      `找到了 ComfyUI 目录 ${sourceRoot}，但缺少 main.py；请先安装完整的 ComfyUI 程序。`
+      t(uiKeys.runtimeService.entryMissing, { directory: sourceRoot })
     );
   }
   const python = await dependencies.findComfyPython(settings, comfyRoot, installation);
   if (!python) {
-    throw new Error("找到了 ComfyUI main.py，但没有找到可用的 Python 运行环境。");
+    throw new Error(t(uiKeys.runtimeService.pythonMissing));
   }
   if (dependencies.preflightComfyCoreDependencies) {
     const preflight = await dependencies.preflightComfyCoreDependencies(sourceRoot, python);
     if (!preflight.ok) {
-      throw new Error(`ComfyUI 核心依赖检查未通过：${preflight.message}`);
+      throw new Error(t(uiKeys.runtimeService.coreDependenciesFailed, { message: preflight.message }));
     }
   }
 

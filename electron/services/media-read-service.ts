@@ -7,6 +7,8 @@ import type { StateRepository } from "../ports/state-repository.js";
 import { resolveExistingHistoryFile } from "./windows-clipboard.js";
 import { copyFilesToWindowsClipboard } from "./windows-clipboard.js";
 import type { HistoryQueryService } from "./history-query-service.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 
 export interface MediaProtocolHeaders {
   get(name: string): string | null;
@@ -54,11 +56,12 @@ export class MediaReadService {
     assetIds: string[],
     stagingRoot: string
   ): Promise<HistoryBatchCopyResult> {
+    const state = this.deps.store.get();
+    const t = createNativeTranslator(state.settings.uiLocale).t;
     if (kind !== "video" && kind !== "image") {
-      throw new Error("历史媒体类型无效。");
+      throw new Error(t(uiKeys.mediaAction.invalidKind));
     }
     const uniqueIds = [...new Set(assetIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))];
-    const state = this.deps.store.get();
     const resolvedFiles: string[] = [];
     let missingCount = 0;
     for (const assetId of uniqueIds) {
@@ -88,7 +91,7 @@ export class MediaReadService {
     if (!resolvedFiles.length) {
       return {
         ok: false,
-        message: "所选历史文件均无法定位，未复制任何文件。",
+        message: t(uiKeys.mediaAction.batchMissing),
         requestedCount: uniqueIds.length,
         copiedCount: 0,
         missingCount
@@ -98,8 +101,8 @@ export class MediaReadService {
     return {
       ok: true,
       message: missingCount
-        ? `已复制 ${resolvedFiles.length} 个文件，${missingCount} 个文件无法定位。`
-        : `已复制 ${resolvedFiles.length} 个文件，可在资源管理器中粘贴。`,
+        ? t(uiKeys.mediaAction.batchPartial, { count: resolvedFiles.length, missing: missingCount })
+        : t(uiKeys.mediaAction.batchCopied, { count: resolvedFiles.length }),
       requestedCount: uniqueIds.length,
       copiedCount: resolvedFiles.length,
       missingCount

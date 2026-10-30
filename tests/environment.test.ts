@@ -56,6 +56,32 @@ import { createDefaultSettings } from "../src/core/defaults.js";
 import type { ModelScanProfile } from "../src/types.js";
 
 describe("ComfyUI remote operation boundary", () => {
+  it.each([
+    ["en-US", "Command exited with code 7", "Unrecognized PyTorch version: unknown", "Automatic installation does not yet support PyTorch 2.12.0"],
+    ["zh-TW", "命令結束，代碼 7", "無法識別 PyTorch 版本：未知", "目前自動安裝尚不支援 PyTorch 2.12.0"]
+  ] as const)("preserves raw process output with %s errors", async (uiLocale, message, unknown, unsupported) => {
+    await expect(runLoggedProcess(process.execPath,
+      ["-e", "console.error('EACCES: 使用者檔案'); process.exitCode=7"],
+      { uiLocale, timeoutMs: 5000 }
+    )).rejects.toMatchObject({ message, stdout: "EACCES: 使用者檔案" });
+    expect(() => tritonRequirementForTorch("", uiLocale)).toThrow(unknown);
+    expect(() => tritonRequirementForTorch("2.12.0", uiLocale)).toThrow(unsupported);
+    expect(tritonRequirementForTorch("2.10.0+cu130", uiLocale)).toBe("triton-windows>=3.6,<3.7");
+  });
+
+  it.each([
+    ["en-US", "Remote ComfyUI supports connections only. The app will not update its core.", "Remote ComfyUI supports connections only. Environment repairs require the selected local instance."],
+    ["zh-TW", "遠端 ComfyUI 僅支援連線，應用程式不會更新遠端核心。", "遠端 ComfyUI 僅支援連線，環境修復必須在所選本機執行個體上執行。"]
+  ] as const)("localizes %s remote guards before any network operation", async (locale, update, repair) => {
+    const settings = {...createDefaultSettings(),uiLocale:locale,comfyUrl:"https://comfy.example.test"};
+    const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);
+    try {
+      await expect(updateComfyUi(settings)).resolves.toMatchObject({ok:false,message:update});
+      await expect(repairEnvironmentIssue("comfy-database",settings)).resolves.toMatchObject({ok:false,message:repair});
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("keeps core updates and environment repairs connection-only for remote endpoints", async () => {
     const settings = {
       ...createDefaultSettings(),
@@ -1584,6 +1610,32 @@ describe("ComfyUI environment candidates", () => {
 });
 
 describe("download proxy settings", () => {
+  it("localizes proxy validation while preserving accepted addresses and protocols", () => {
+    for(const [locale,empty,protocol] of [
+      ["en-US","Proxy is enabled, but its address is empty.","Unsupported proxy protocol: file:"],
+      ["zh-TW","已啟用代理伺服器，但代理位址為空。","不支援的代理通訊協定：file:"]
+    ] as const) {
+      expect(()=>normalizeProxyUrl("",locale)).toThrow(empty);
+      expect(()=>normalizeProxyUrl("file:///tmp/proxy",locale)).toThrow(protocol);
+      expect(normalizeProxyUrl("socks5://127.0.0.1:1080",locale)).toBe("socks5://127.0.0.1:1080");
+    }
+  });
+
+  it("localizes pip progress without changing counts, throttling or raw output", () => {
+    for(const [locale,label] of [["en-US","Download progress"],["zh-TW","下載進度"]] as const) {
+      let now=0;
+      const messages:string[]=[];
+      const report=createPipDownloadProgressReporter(message=>messages.push(message),()=>now,locale);
+      report("Progress 1048576 of 10485760");
+      now=500;report("Progress 2097152 of 10485760");
+      report("external pip 診斷");
+      now=1000;report("Progress 10485760 of 10485760");
+      expect(messages).toEqual([
+        label+": 10% · 1.0 / 10.0 MB","external pip 診斷",label+": 100% · 10.0 / 10.0 MB · 9.0 MB/s"
+      ].map(value=>locale==="zh-TW"?value.replace(label+": ",label+"："):value));
+    }
+  });
+
   it("selects the official Windows CUDA llama-server assets", () => {
     expect(selectLlamaServerReleaseAssets({
       assets: [

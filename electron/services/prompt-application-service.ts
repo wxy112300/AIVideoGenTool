@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { TranslationParams } from "../../src/core/i18n.js";
 import type {
   ConnectionResult,
   EnhanceRequest,
@@ -117,6 +120,10 @@ export class PromptApplicationService {
 
   constructor(private readonly deps: PromptApplicationServiceDependencies) {}
 
+  private message(settings: Settings, key: string, params?: TranslationParams): string {
+    return createNativeTranslator(settings.uiLocale).t(key, params);
+  }
+
   get activeController(): AbortController | null {
     return this.nativePromptController;
   }
@@ -184,17 +191,17 @@ export class PromptApplicationService {
       promptBackend
     });
     if (this.deps.isQueueBusy()) {
-      return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
+      return { ok: false, message: this.message(settings, uiKeys.promptService.startBlockedQueue) };
     }
     if (this.isPromptBusy()) {
-      return { ok: false, message: "提示词模型正在启动或使用中。" };
+      return { ok: false, message: this.message(settings, uiKeys.promptService.busy) };
     }
     if (this.retainedPromptRuntime !== null) {
       await this.releaseRuntime(settings);
     }
     this.activeBackend = promptBackend;
     this.deps.promptRuntimeManager.selectBackend(runtime, settings.strataPort);
-    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, "正在准备 Strata");
+    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, this.message(settings, uiKeys.promptService.strataPreparing));
     const startup = promptBackend === "strata" ? this.deps.promptRuntimeManager.beginOperation("image-to-video", true) : null;
     const controller = startup?.controller ?? new AbortController();
     const progress = startup ? this.createPromptProgressController(settings.promptModelId, startedAt, startup.operationId, "image-to-video") : null;
@@ -224,14 +231,14 @@ export class PromptApplicationService {
       return {
         ok: true,
         message: promptBackend === "strata"
-          ? "Strata 提示词模型已加载；退出模型或开始队列时释放。"
+          ? this.message(settings, uiKeys.promptService.loadedStrata)
           : promptBackend === "h3-prompt-writer"
-          ? "ComfyUI H3 Prompt Writer 已加载并保持驻留；手动退出或开始队列时释放。"
+          ? this.message(settings, uiKeys.promptService.loadedWriter)
           : promptBackend === "comfyui-multimodal"
-            ? "ComfyUI 多模态提示词模型已加载并保持驻留；手动退出或开始队列时释放。"
+            ? this.message(settings, uiKeys.promptService.loadedMultimodal)
           : promptBackend === "comfyui-qwenvl-lora"
-            ? "Qwen3-VL 8B + H3 Prompt Rewriter LoRA 已加载并保持驻留；手动退出或开始队列时释放。"
-          : "Qwen 提示词模型已启动并加载到 ComfyUI。"
+            ? this.message(settings, uiKeys.promptService.loadedQwenLora)
+          : this.message(settings, uiKeys.promptService.loadedQwen)
       };
     } catch (error) {
       this.retainedPromptRuntime = null;
@@ -284,27 +291,27 @@ export class PromptApplicationService {
           ? "video-extension"
           : "image-to-video"
     );
-    validateH3ReferenceAutoPrompt(request);
+    validateH3ReferenceAutoPrompt(request, settings.uiLocale);
     if (request.longVideo) {
       assertLongVideoPromptRequest(request.longVideo);
       if (promptBackend !== "strata" || request.mode !== "h3-vision" || request.modelId !== "minimax_h3_fl2va" ||
-          request.h3PromptMode !== "I2VA" || !request.imagePath || request.extensionSource || (request.imagePaths?.length ?? 1) !== 1) throw new Error("长视频增强目前需要 Strata 与单首帧图生视频，原选择保持不变。");
+          request.h3PromptMode !== "I2VA" || !request.imagePath || request.extensionSource || (request.imagePaths?.length ?? 1) !== 1) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
     }
     if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request) && !request.longVideo) {
-      throw new Error("请先输入需要扩写的提示词");
+      throw new Error(this.message(settings, uiKeys.promptService.promptRequired));
     }
     if (this.deps.isQueueBusy()) {
-      throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。");
+      throw new Error(this.message(settings, uiKeys.promptService.enhanceBlockedQueue));
     }
     if (this.isPromptBusy()) {
-      throw new Error("当前提示词任务正在运行或取消中，请稍候。");
+      throw new Error(this.message(settings, uiKeys.promptService.operationBusy));
     }
     if (!promptBackend) {
-      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
+      throw new Error(this.message(settings, uiKeys.promptService.adapterMissing));
     }
     if (promptBackend === "h3-prompt-writer") validateH3PromptWriterDuration(request, settings);
     this.deps.promptRuntimeManager.selectBackend(runtime, settings.strataPort);
-    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, "正在准备 Strata");
+    if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("starting", settings.strataPort, this.message(settings, uiKeys.promptService.strataPreparing));
     const operation = this.deps.promptRuntimeManager.beginOperation(promptOrigin, true);
     const operationId = operation.operationId;
     const controller = operation.controller;
@@ -352,7 +359,7 @@ export class PromptApplicationService {
       const result = await worker;
       controller.signal.throwIfAborted();
       if (promptBackend === "strata") this.deps.promptRuntimeManager.strataService("ready", settings.strataPort,
-        this.deps.strata?.snapshot().message || "Strata 模型已加载。");
+        this.deps.strata?.snapshot().message || this.message(settings, uiKeys.promptService.strataLoaded));
       this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
       this.deps.promptRuntimeManager.finishOperation(operationId, "completed");
       promptProgress.finish(
@@ -383,16 +390,16 @@ export class PromptApplicationService {
           this.publishStrataState(settings, Boolean(stopped), operationId);
           if (!stopped) {
             this.deps.promptRuntimeManager.finishOperation(operationId, "failed", "Strata cleanup unconfirmed");
-            promptProgress.finish("failed", "unloading", "Strata 清理未完成，请重试释放。");
-            throw new Error("Strata 清理未完成，请重试释放。");
+            promptProgress.finish("failed", "unloading", this.message(settings, uiKeys.promptService.cleanupIncomplete));
+            throw new Error(this.message(settings, uiKeys.promptService.cleanupIncomplete));
           }
         }
       }
       if (controller.signal.aborted) {
-        promptProgress.update("validating", null, "正在取消提示词任务");
+        promptProgress.update("validating", null, this.message(settings, uiKeys.promptService.cancelling));
         if (await this.waitForPromptCancellation()) {
           this.deps.promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
-          promptProgress.finish("cancelled", "validating", "提示词任务已取消");
+          promptProgress.finish("cancelled", "validating", this.message(settings, uiKeys.promptService.cancelled));
         }
         this.deps.logger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
           ...promptLogContext,
@@ -435,18 +442,18 @@ export class PromptApplicationService {
     try {
       const strata = this.activeBackend === "strata";
       if (strata && ["idle", "terminal"].includes(this.deps.promptRuntimeManager.snapshot().operation.phase) && this.nativePromptWorker) {
-        this.nativePromptController?.abort(new Error("提示词模型启动已取消。"));
+        this.nativePromptController?.abort(new Error(this.message(settings, uiKeys.promptService.startupCancelled)));
         await this.deps.strata?.stop();
         await this.nativePromptWorker.catch(() => undefined);
-        return { ok: true, message: "Strata 准备或加载已取消，自有服务已停止。" };
+        return { ok: true, message: this.message(settings, uiKeys.promptService.strataStartupCancelled) };
       }
       const result = await this.cancelActivePromptRuntime(settings);
       return {
         ok: true,
-        message: strata && result.settled ? "提示词任务已取消，Strata 服务已停止。"
+        message: strata && result.settled ? this.message(settings, uiKeys.promptService.strataCancelled)
           : result.settled
-          ? "提示词任务已取消，模型保持运行。"
-          : "已请求取消提示词任务；模型会在任务确认中止后保持运行。"
+          ? this.message(settings, uiKeys.promptService.cancelledResident)
+          : this.message(settings, uiKeys.promptService.cancelRequested)
       };
     } catch (error) {
       return {
@@ -459,10 +466,10 @@ export class PromptApplicationService {
   async releaseForUser(): Promise<ConnectionResult> {
     const settings = this.deps.store.get().settings;
     if (this.deps.externalRuntime?.isBusy() && !this.nativePromptWorker) {
-      return { ok: false, message: "Strata 操作正在进行，请先完成或通过对应操作的取消按钮中止。" };
+      return { ok: false, message: this.message(settings, uiKeys.promptService.strataOperationBusy) };
     }
     if (this.deps.isQueueBusy()) {
-      return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
+      return { ok: false, message: this.message(settings, uiKeys.promptService.releaseBlockedQueue) };
     }
     if (this.nativePromptWorker && this.activeBackend === "strata" &&
       ["idle", "terminal"].includes(this.deps.promptRuntimeManager.snapshot().operation.phase)) {
@@ -471,7 +478,7 @@ export class PromptApplicationService {
     } else if (this.nativePromptWorker || this.promptCancellationWorker) {
       const cancellation = await this.cancelActivePromptRuntime(settings);
       if (!cancellation.settled) {
-        return { ok: false, message: "提示词任务仍在中止中；确认停止后才能卸载模型。" };
+        return { ok: false, message: this.message(settings, uiKeys.promptService.cancellationPending) };
       }
     }
     try {
@@ -479,15 +486,15 @@ export class PromptApplicationService {
       return {
         ok: true,
         message: released
-          ? "已停止提示词模型并释放显存。"
-          : "当前没有已加载的提示词模型。"
+          ? this.message(settings, uiKeys.promptService.released)
+          : this.message(settings, uiKeys.promptService.notLoaded)
       };
     } catch (error) {
       if (this.deps.externalRuntime) {
-        return { ok: false, message: error instanceof Error ? error.message : "提示词运行组件释放失败，请重试停止。" };
+        return { ok: false, message: error instanceof Error ? error.message : this.message(settings, uiKeys.promptService.releaseFailed) };
       }
       this.deps.promptRuntimeManager.setModel("unloaded");
-      return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
+      return { ok: true, message: this.message(settings, uiKeys.promptService.comfyStopped) };
     }
   }
 
@@ -498,7 +505,7 @@ export class PromptApplicationService {
       catch (error) { this.publishStrataState(settings, false); throw error; }
       this.retainedPromptRuntime = null;
       this.deps.promptRuntimeManager.setModel("unloaded");
-      this.deps.promptRuntimeManager.strataService("stopped", settings.strataPort, "Strata 服务已停止。");
+      this.deps.promptRuntimeManager.strataService("stopped", settings.strataPort, this.message(settings, uiKeys.promptService.strataServiceStopped));
       return occupied ? 1 : 0;
     }
     await this.deps.externalRuntime?.stop();
@@ -638,7 +645,7 @@ export class PromptApplicationService {
     const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
     throwIfCancelled();
     if (!profile.ok) {
-      throw new Error(`ComfyUI 提示词运行配置切换失败：${profile.message}`);
+      throw new Error(this.message(settings, uiKeys.promptService.profileFailed, { message: profile.message }));
     }
     if (profile.restarted) {
       this.deps.logger.info("service", "prompt-runtime-profile-aligned", "ComfyUI runtime profile was aligned for prompt model residency", {
@@ -657,16 +664,17 @@ export class PromptApplicationService {
       });
       if (!this.isLocalComfyUrl(settings.comfyUrl)) {
         throw new Error(
-          `无法连接 ComfyUI（${settings.comfyUrl}）：${
-            connectionError instanceof Error ? connectionError.message : String(connectionError)
-          }`
+          this.message(settings, uiKeys.runtimeService.connectionFailed, {
+            url: settings.comfyUrl,
+            message: connectionError instanceof Error ? connectionError.message : String(connectionError)
+          })
         );
       }
     }
     throwIfCancelled();
     const started = await startLocalService("comfy", serviceSettings);
     throwIfCancelled();
-    if (!started.ok) throw new Error(`ComfyUI 自动启动失败：${started.message}`);
+    if (!started.ok) throw new Error(this.message(settings, uiKeys.runtimeService.autoStartFailed, { message: started.message }));
     await testComfyUi(serviceSettings);
     throwIfCancelled();
   }
@@ -690,7 +698,7 @@ export class PromptApplicationService {
         expected: error.expected,
         choices: error.choices
       });
-      throw new Error(`${error.message} 节点或模型刚更新后，请在设置中显式重启 ComfyUI；提示词任务不会自动重启服务。`);
+      throw new Error(this.message(settings, uiKeys.promptService.runtimeRefresh, { message: error.message }));
     }
   }
 
@@ -703,9 +711,16 @@ export class PromptApplicationService {
       const missing = profile?.components
         .filter((component) => !component.found)
         .map((component) => component.expected)
-        .join("、");
+        .join(settings.uiLocale === "en-US" ? ", " : "、");
       throw new Error(
-        `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isQwenVlPeftPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM/Qwen-VL/qwen3-vl-8b-instruct 与 ComfyUI/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b" : isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
+        this.message(settings, uiKeys.promptService.modelNotReady, {
+          missing: missing ? this.message(settings, uiKeys.promptService.missingFiles, { files: missing }) : "",
+          directory: isQwenVlPeftPromptModel(settings.promptModelId)
+            ? "ComfyUI/models/LLM/Qwen-VL/qwen3-vl-8b-instruct / ComfyUI/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b"
+            : isComfyMultimodalPromptModel(settings.promptModelId)
+              ? this.message(settings, uiKeys.promptService.multimodalDirectory)
+              : "ComfyUI/models/text_encoders"
+        })
       );
     }
     if (isGemmaPromptModel(settings.promptModelId)) {
@@ -715,24 +730,26 @@ export class PromptApplicationService {
       // before use. Runtime-scoped scans may project the previous snapshot,
       // but queue execution must never rely on that projection for this path.
       const runtime = pythonPath
-        ? await inspectLlamaCppPythonRuntime(pythonPath)
+        ? await inspectLlamaCppPythonRuntime(pythonPath, settings.uiLocale)
         : scan.llamaCppPython;
       if (!runtime.ready) {
-        const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
+        const detail = runtime.detail || runtime.error || this.message(settings, uiKeys.promptService.cudaCheckFailed);
         throw new Error(
-          `Gemma H3 Prompt Writer 的 llama-cpp-python 尚未就绪：${detail}。请在设置 → 节点与依赖中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
+          this.message(settings, uiKeys.promptService.writerRuntimeMissing, { detail })
         );
       }
     }
     if (isComfyMultimodalPromptModel(settings.promptModelId)) {
       if (profile.missingCustomNodeIds?.length) {
         throw new Error(
-          `多模态提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
+          this.message(settings, uiKeys.promptService.multimodalNodesMissing, {
+            nodes: (profile.missingCustomNodeNames?.length ? profile.missingCustomNodeNames : profile.missingCustomNodeIds).join(settings.uiLocale === "en-US" ? ", " : "、")
+          })
         );
       }
       if (profile.runtimeVerified && profile.runtimeReady === false) {
         throw new Error(
-          `多模态提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
+          this.message(settings, uiKeys.promptService.multimodalNodesUnloaded, { nodes: profile.runtimeMissingNodes?.join(settings.uiLocale === "en-US" ? ", " : "、") || "VisionLLMNode" })
         );
       }
       return;
@@ -740,12 +757,14 @@ export class PromptApplicationService {
     if (isQwenVlPeftPromptModel(settings.promptModelId)) {
       if (profile.missingCustomNodeIds?.length) {
         throw new Error(
-          `Qwen3-VL Prompt LoRA 缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
+          this.message(settings, uiKeys.promptService.qwenNodesMissing, {
+            nodes: (profile.missingCustomNodeNames?.length ? profile.missingCustomNodeNames : profile.missingCustomNodeIds).join(settings.uiLocale === "en-US" ? ", " : "、")
+          })
         );
       }
       if (profile.runtimeVerified && profile.runtimeReady === false) {
         throw new Error(
-          `Qwen3-VL Prompt LoRA 节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "QwenVLModelLoader / QwenVLLoRALoader / QwenVLCaption"}。请重启 ComfyUI 后重新扫描。`
+          this.message(settings, uiKeys.promptService.qwenNodesUnloaded, { nodes: profile.runtimeMissingNodes?.join(settings.uiLocale === "en-US" ? ", " : "、") || "QwenVLModelLoader / QwenVLLoRALoader / QwenVLCaption" })
         );
       }
       await this.validateQwenVlPromptNodeRuntime(settings);
@@ -755,9 +774,9 @@ export class PromptApplicationService {
       const missing = scan.comfyCompatibility.promptCoreNodes
         .filter((node) => !node.available)
         .map((node) => node.id)
-        .join("、");
+        .join(settings.uiLocale === "en-US" ? ", " : "、");
       throw new Error(
-        `当前 ComfyUI 核心缺少提示词节点：${missing || "TextGenerate"}。请更新 ComfyUI、重启服务后重试。`
+        this.message(settings, uiKeys.promptService.coreNodesMissing, { nodes: missing || "TextGenerate" })
       );
     }
   }
@@ -799,7 +818,7 @@ export class PromptApplicationService {
       return;
     }
     if (promptBackend !== "native-text-generate") {
-      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
+      throw new Error(this.message(settings, uiKeys.promptService.adapterMissing));
     }
     await prepareRuntime();
     await warmNativePromptModel(settings, signal);
@@ -942,7 +961,7 @@ export class PromptApplicationService {
   private async cancelActivePromptRuntime(settings: Settings): Promise<PromptCancellation> {
     if (this.promptCancellationWorker) return this.promptCancellationWorker;
     const worker = this.nativePromptWorker;
-    if (!worker) throw new Error("当前没有正在运行的提示词任务。");
+    if (!worker) throw new Error(this.message(settings, uiKeys.promptService.noActiveTask));
     const promptBackend = this.activeBackend ?? promptModelBackend(settings.promptModelId);
     const cancellation = this.deps.promptRuntimeManager.requestCancellation();
     this.promptCancellationWorker = (async () => {
@@ -1011,14 +1030,14 @@ export class PromptApplicationService {
   }
 
   private async ensureStrataReady(settings: Settings, signal: AbortSignal, onProgress?: PromptProgressReporter, request?: StrataChatRequest): Promise<void> {
-    if (!this.deps.strata) throw new Error("Strata 运行组件未接入。");
-    onProgress?.("checking", null, "正在离线检查 Strata 安装、共享模型与 GPU/驱动");
+    if (!this.deps.strata) throw new Error(this.message(settings, uiKeys.promptService.strataUnavailable));
+    onProgress?.("checking", null, this.message(settings, uiKeys.promptService.strataChecking));
     const scan = await scanEnvironment(settings, "runtime");
     signal.throwIfAborted();
-    if (!scan.strataPreparation?.managedInstalled) throw new Error("Strata 尚未安装完整；请在设置 → 节点与依赖中安装或修复。");
+    if (!scan.strataPreparation?.managedInstalled) throw new Error(this.message(settings, uiKeys.promptService.strataNotInstalled));
     if (scan.gpus?.length && !scan.gpus.some((gpu) =>
       Number.parseInt(gpu.driverVersion, 10) >= 580 && gpu.vramTotalBytes >= 22 * 1024 ** 3)) {
-      throw new Error("当前 Strata 配置需要约 24GB NVIDIA 显存和 580+ 驱动；不会自动切换 CPU。");
+      throw new Error(this.message(settings, uiKeys.promptService.strataHardware));
     }
     let stage: "checking" | "preparing" | "loading-model" = "checking";
     await this.deps.strata.ensurePromptReady(settings, strataPromptPolicy(settings), {
@@ -1028,7 +1047,7 @@ export class PromptApplicationService {
     });
     signal.throwIfAborted();
     this.deps.promptRuntimeManager.strataService("ready", settings.strataPort,
-      this.deps.strata.snapshot().message || "Strata 模型已加载。");
+      this.deps.strata.snapshot().message || this.message(settings, uiKeys.promptService.strataLoaded));
     this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId);
   }
 
@@ -1037,7 +1056,7 @@ export class PromptApplicationService {
       this.nativePromptController?.signal.aborted ? "cancelled" : "failed", "Strata request stopped");
     // degraded preserves unknown GPU occupancy; stopped is published only with confirmed cleanup.
     this.deps.promptRuntimeManager.strataService(stopped ? "stopped" : "degraded", settings.strataPort,
-      stopped ? "Strata 已停止。" : "Strata 进程清理未完成，请重试释放。");
+      stopped ? this.message(settings, uiKeys.promptService.strataStopped) : this.message(settings, uiKeys.promptService.strataCleanupIncomplete));
     this.deps.promptRuntimeManager.setModel(stopped ? "unloaded" : "unknown", settings.promptModelId, operationId);
   }
 }

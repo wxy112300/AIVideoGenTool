@@ -12,6 +12,9 @@ export async function gitSoftwareFiles(directory: string, expected?: { repositor
     const git = await fs.lstat(path.join(directory, ".git"));
     if (git.isSymbolicLink()) return new Set();
     const args = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=NUL", "-C", directory];
+    // An app-managed install may have been created by another Windows account/admin.
+    // Trust only this invocation's exact directory; still require the pinned origin/HEAD below.
+    if (expected) args.unshift("-c", `safe.directory=${(await fs.realpath(directory)).replaceAll("\\", "/")}`);
     const options = { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 };
     if (expected) {
       const [origin, head] = await Promise.all([

@@ -1,6 +1,21 @@
 import type { WorkflowMessageKey } from "./workflow-messages.js";
 
-export const zhTWWorkflowMessages: Partial<Record<WorkflowMessageKey, string>> = {
+export const zhTWWorkflowMessages: Record<WorkflowMessageKey, string> = {
+  h3OutputBudget: "{backend} 目前節點最多輸出 {maximum} token，本次需要 {requested}。請在設定中更新對應節點並重新啟動服務，或手動選擇容量足夠的增強模型。",
+  h3ContinuationTimelineMissing: "Continuum 提示詞增強未傳回 integrated_multimodal_description 主時間軸，無法確認單鏡頭接續；結果未儲存，原提示詞保持不變。",
+  h3ContinuationBodyOnly: "Continuum 提示詞增強只能傳回目前的 Chunk body，不能改寫整份 Timeline。",
+  h3ExpansionTimelineMissing: "影視細節擴寫未傳回 {section} 主時間軸；原提示詞保持不變。",
+  revisionPrecedingMissing: "批註前沒有可修訂的文字。請將批註放在需要修改的句子後面。",
+  revisionAnnotationMissing: "批註修訂至少需要一條帶標籤的批註，例如（批註：將這裡改成……）。",
+  revisionReservedMarker: "原提示詞包含批註修訂內部標記，請先移除 EDIT_TARGET 標籤。",
+  revisionAdjacent: "同一句有相鄰或重疊的批註，請合併為一條批註後再修訂。",
+  revisionAnchorMissing: "無法定位第 {id} 條批註對應的原文，請將批註緊接在需要修改的完整句子後面。",
+  revisionOverlap: "多條批註指向重疊的文字，請合併批註或分別標註不同句子。",
+  revisionResultMissing: "提示詞模型未依要求傳回第 {id} 條局部修訂；原提示詞保持不變。",
+  revisionResultInvalid: "第 {id} 條局部修訂為空或格式無效；原提示詞保持不變。",
+  revisionUnchanged: "第 {id} 條批註未產生修改；原提示詞保持不變。",
+  referenceAutoMode: "參考圖自動起稿僅支援 H3 視覺提示詞模式。",
+  referenceAutoMedia: "參考圖自動起稿需要至少一份參考圖片或影片。",
   h3ExpansionWordsWarning: "影視細節擴寫的主時間線只有 {actualWords} 詞，低於建議的至少 {minimumWords} 詞；已保留結果，可按畫面複雜度決定是否補充。",
   h3ExpansionSourceLengthWarning: "影視細節擴寫的有效正文短於原始提示詞；已保留結果，請核對關鍵內容是否完整。",
   spectrumConsumersMissing: "Spectrum 加速需要連線到 H3 的 BasicScheduler / BasicGuider 模型輸入。",
@@ -37,7 +52,8 @@ export const zhTWWorkflowMessages: Partial<Record<WorkflowMessageKey, string>> =
   h3SafeGuidance: "官方本地模板預設檔，適合作為目前顯示卡的穩妥起步範圍。",
   h3BalancedGuidance: "目前顯示卡可嘗試的均衡檔；請預留更長取樣和解碼時間。",
   h3HeavyGuidance: "目前顯示卡重負載檔；允許生成但視訊記憶體與耗時風險較高，請關閉其他 GPU 程式，並避免同時排多個長任務。",
-  h3FrameRange: "{label} 官方影格範圍：{generatedFrames}/{maxGeneratedFrames}。{guidance}",
+  h3FrameRange: "{label} 目前採樣預算：{generatedFrames}/{maxGeneratedFrames} 影格；官方公布範圍約 4–15 秒。{guidance}",
+  continuumDurationFrozen: "此 Continuum Run 的每段時長已固定為 {duration} 秒；請建立新序列以選擇其他時長。",
   currentModel: "目前模型",
   modelFrameBudget: "{label} 模型影格預算：{generatedFrames}/{maxGeneratedFrames}。",
   q3NoExtension: "H3 Q3 GGUF 3080 實驗檔只支援普通 FL2VA 圖生影片，不支援影片續寫。",

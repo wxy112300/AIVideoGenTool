@@ -1,4 +1,7 @@
 import { promises as fs } from "node:fs";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { Translate } from "../../src/core/i18n.js";
 import path from "node:path";
 import type { AppState } from "../../src/types.js";
 import { LibraryRecordStore, canonical, type LibraryPointer } from "./library-record-store.js";
@@ -11,6 +14,7 @@ import { finishRelocation, planRelocation, prepareRelocation, relocationFiles, r
 
 /** Coordinates immutable library commits with the single atomic AppData commit. */
 export class LibraryStateStorage {
+  private translate: Translate = createNativeTranslator(undefined).t;
   private records?: LibraryRecordStore;
   private pointer?: LibraryPointer;
   private migratingSource?: string;
@@ -21,6 +25,7 @@ export class LibraryStateStorage {
 
   async hydrate(raw: string): Promise<string> {
     const state = JSON.parse(raw) as AppState;
+    this.translate = createNativeTranslator(state.settings.uiLocale).t;
     this.progressContext = { operation: state.libraryStorage ? "opening" : "migration", locale: normalizeUiLocale(state.settings.uiLocale), appearance: normalizeAppearance(state.settings.appearance) };
     if (state.libraryStorage) {
       this.report("loading");
@@ -32,26 +37,26 @@ export class LibraryStateStorage {
       return JSON.stringify({ ...state, ...collections });
     }
     const journal = await readOptionalFile(`${this.filename}.library-migration.json`);
-    if (journal && JSON.parse(journal).phase === "switched") throw new StateRecoveryError("The library has already been migrated. Refusing to fall back to the pre-migration state; restore a matching library locator.");
+    if (journal && JSON.parse(journal).phase === "switched") throw new StateRecoveryError(this.translate(uiKeys.storageMigration.libraryMigrated));
     const directory = state.settings.libraryDirectory?.trim() || this.defaultDirectory;
     this.report("backup");
-    if (!path.isAbsolute(directory)) throw new StateRecoveryError("Library directory must be absolute");
+    if (!path.isAbsolute(directory)) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.libraryAbsolute));
     this.release ??= await acquireLibraryLease(directory, this.filename, true);
     const hash = stateDigest(raw), backup = `${this.filename}.pre-library-${hash}.json`;
     const existing = await readOptionalFile(backup);
-    if (existing !== undefined && existing !== raw) throw new StateRecoveryError("Migration backup mismatch");
+    if (existing !== undefined && existing !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.backupMismatch));
     if (existing === undefined) {
       const candidate = await durableCandidate(backup, raw); await fs.rename(candidate, backup);
     }
-    if (await fs.readFile(backup, "utf8") !== raw) throw new StateRecoveryError("Migration backup read-back failed");
+    if (await fs.readFile(backup, "utf8") !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.backupReadback));
     this.records = await LibraryRecordStore.create(directory, hash);
     this.pointer = await this.records.prepare({ history: state.history ?? [], imageHistory: state.imageHistory ?? [] }, null, value => {
       if (value.phase === "write") this.report("write", value.completed, value.total);
       else this.report("verify");
     });
     const reopened = await LibraryRecordStore.open(this.pointer);
-    if (canonical(await reopened.load(this.pointer.commit, value => this.report("verify", value.completed, value.total))) !== canonical({ history: state.history ?? [], imageHistory: state.imageHistory ?? [] })) throw new StateRecoveryError("Independent migration verification failed");
-    if (await fs.readFile(this.filename, "utf8") !== raw) throw new StateRecoveryError("Source changed during migration; no locator was switched");
+    if (canonical(await reopened.load(this.pointer.commit, value => this.report("verify", value.completed, value.total))) !== canonical({ history: state.history ?? [], imageHistory: state.imageHistory ?? [] })) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.independentVerify));
+    if (await fs.readFile(this.filename, "utf8") !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.sourceChangedDuring));
     this.migratingSource = raw;
     await this.journal("prepared");
     return JSON.stringify({ ...state, libraryStorage: this.pointer, settings: { ...state.settings, libraryDirectory: directory } });
@@ -60,8 +65,9 @@ export class LibraryStateStorage {
   get pendingMigration(): boolean { return this.migratingSource !== undefined; }
 
   async prepare(state: AppState): Promise<{ raw: string; pointer: LibraryPointer }> {
-    if (!this.records || !this.pointer || !this.release) throw new StateRecoveryError("Library writer is closed or has not been opened");
-    if (this.migratingSource !== undefined && await fs.readFile(this.filename, "utf8") !== this.migratingSource) throw new StateRecoveryError("Source changed before migration commit");
+    this.translate = createNativeTranslator(state.settings.uiLocale).t;
+    if (!this.records || !this.pointer || !this.release) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.libraryClosed));
+    if (this.migratingSource !== undefined && await fs.readFile(this.filename, "utf8") !== this.migratingSource) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.sourceChangedBefore));
     if (this.migratingSource !== undefined) this.report("finalize");
     let records = this.records, parent: string | null = this.pointer.commit;
     const directory = state.settings.libraryDirectory?.trim() || this.defaultDirectory;
@@ -69,9 +75,9 @@ export class LibraryStateStorage {
       const release = await acquireLibraryLease(directory, this.filename, true);
       this.pending = { records, release };
       const occupied = await fs.readdir(directory).catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; });
-      if (occupied.length) throw new StateRecoveryError(`${LIBRARY_DESTINATION_OCCUPIED}: Destination is not empty`);
-      const tx = await planRelocation("library", records.directory, directory, await relocationFiles(records.directory), relocationJournal(this.filename, "library"), this.onMoveProgress);
-      await prepareRelocation(tx, this.onMoveProgress);
+      if (occupied.length) throw new StateRecoveryError(`${LIBRARY_DESTINATION_OCCUPIED}: ${this.translate(uiKeys.storageMigration.destinationNotEmpty)}`);
+      const tx = await planRelocation("library", records.directory, directory, await relocationFiles(records.directory, this.translate), relocationJournal(this.filename, "library"), this.onMoveProgress, this.translate);
+      await prepareRelocation(tx, this.onMoveProgress, this.translate);
       this.pending.relocation = tx;
       records = await LibraryRecordStore.open({ ...this.pointer, directory });
     }
@@ -92,7 +98,7 @@ export class LibraryStateStorage {
     }
     this.records = this.pending?.records ?? this.records;
     this.pending = undefined;
-    if (relocation) await finishRelocation(relocation, this.onMoveProgress).catch(error => { try { this.onWarning?.(error); } catch { /* The locator is already committed. */ } });
+    if (relocation) await finishRelocation(relocation, this.onMoveProgress, this.translate).catch(error => { try { this.onWarning?.(error); } catch { /* The locator is already committed. */ } });
     if (this.migratingSource !== undefined) {
       // The AppData locator is already authoritative. A journal failure must not
       // report the successful commit as a failed save or roll memory back.
@@ -102,7 +108,7 @@ export class LibraryStateStorage {
   }
 
   async abortPrepare(): Promise<void> {
-    if (this.pending?.relocation) await rollbackRelocation(this.pending.relocation);
+    if (this.pending?.relocation) await rollbackRelocation(this.pending.relocation, this.translate);
     await this.pending?.release?.(); this.pending = undefined;
   }
   async close(): Promise<void> { await this.abortPrepare(); await this.release?.(); this.release = undefined; this.progressContext = undefined; }

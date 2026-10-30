@@ -3,8 +3,11 @@ import type {
   CustomNodeInstallMode,
   CustomNodeStatus,
   EnvironmentScanResult,
-  Settings
+  Settings,
+  UiLocale
 } from "../../../types";
+import { createTranslator } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export type CustomNodeInstallPhase = "idle" | "installing" | "restarting" | "scanning";
 
@@ -34,6 +37,7 @@ export interface CustomNodeInstallQueueDependencies {
   ): Promise<ConnectionResult>;
   cancelInstall?(nodeId: string): Promise<ConnectionResult>;
   removedMessage?: string;
+  getUiLocale?(): UiLocale | undefined;
   restart(settings: Settings): Promise<ConnectionResult>;
   scan(settings: Settings): Promise<EnvironmentScanResult | null>;
   nodeName(nodeId: string): string;
@@ -132,7 +136,7 @@ export class CustomNodeInstallQueue {
     if (index >= 0) {
       this.queuedItems.splice(index, 1);
       this.batchNodeIds.splice(this.batchNodeIds.indexOf(nodeId), 1);
-      const message = this.dependencies.removedMessage ?? "已移出安装队列。";
+      const message = this.dependencies.removedMessage ?? this.text(uiKeys.uiError.installRemoved);
       this.appendLog(nodeId, message);
       this.emit();
       return { ok: true, cancelled: true, message };
@@ -140,7 +144,7 @@ export class CustomNodeInstallQueue {
     if (this.phase === "installing" && this.activeNodeId === nodeId && this.dependencies.cancelInstall) {
       return this.dependencies.cancelInstall(nodeId);
     }
-    return { ok: false, message: "该安装已结束或尚未开始。" };
+    return { ok: false, message: this.text(uiKeys.uiError.installInactive) };
   }
 
   /** Remove only waiting work atomically; never route these IDs to active cancellation. */
@@ -149,10 +153,14 @@ export class CustomNodeInstallQueue {
     for (const { nodeId } of waiting) {
       const index = this.batchNodeIds.indexOf(nodeId);
       if (index >= 0) this.batchNodeIds.splice(index, 1);
-      this.appendLog(nodeId, this.dependencies.removedMessage ?? "已移出安装队列。");
+      this.appendLog(nodeId, this.dependencies.removedMessage ?? this.text(uiKeys.uiError.installRemoved));
     }
     if (waiting.length) this.emit();
     return waiting.length;
+  }
+
+  private text(key: string): string {
+    return createTranslator(this.dependencies.getUiLocale?.() ?? this.batchSettings?.uiLocale).t(key);
   }
 
   private appendLog(nodeId: string, message: string): void {

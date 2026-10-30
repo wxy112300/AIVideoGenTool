@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   AppState,
   H3AvGcDecision,
@@ -107,7 +109,8 @@ function duplicateKey(candidate: H3AvInventoryCandidate): string | null {
  */
 export function classifyH3AvInventory(
   candidates: readonly H3AvInventoryCandidate[],
-  references: H3AvReferenceIndex = { schemaVersion: 1, generatedAt: new Date().toISOString(), byAssetId: {}, byPath: {} }
+  references: H3AvReferenceIndex = { schemaVersion: 1, generatedAt: new Date().toISOString(), byAssetId: {}, byPath: {} },
+  t: Translate = createTranslator().t
 ): H3AvInventoryEntry[] {
   const validByDuplicateKey = new Map<string, Set<string>>();
   for (const candidate of candidates) {
@@ -119,7 +122,7 @@ export function classifyH3AvInventory(
     validByDuplicateKey.set(key, owners);
   }
   return candidates.map((candidate) => {
-    const assetError = candidate.asset ? validateH3AvLatentAsset(candidate.asset) : null;
+    const assetError = candidate.asset ? validateH3AvLatentAsset(candidate.asset, t) : null;
     const key = pathKey(candidate.path);
     const referencedBy = [
       ...(candidate.asset ? (references.byAssetId[candidate.asset.assetId] ?? []) : []),
@@ -129,18 +132,18 @@ export function classifyH3AvInventory(
     let reason: string | undefined;
     if (!candidate.present) {
       status = "missing";
-      reason = "payload 文件不存在";
+      reason = t(uiKeys.h3Inventory.missing);
     } else if (candidate.validationError || assetError) {
       status = "corrupt";
-      reason = candidate.validationError ?? assetError ?? "canonical manifest 校验失败";
+      reason = candidate.validationError ?? assetError ?? t(uiKeys.h3Inventory.invalid);
     } else if (candidate.legacy || !candidate.asset) {
       status = "legacy-unverified";
-      reason = "没有 canonical manifest/producer 证据，保留为 legacy bootstrap 输入";
+      reason = t(uiKeys.h3Inventory.legacy);
     } else {
       const owners = duplicateKey(candidate) ? validByDuplicateKey.get(duplicateKey(candidate)!) : undefined;
       if (owners && owners.size > 1) {
         status = "duplicate-tensor";
-        reason = "不同 canonical reference 暴露了相同 tensor/payload digest";
+        reason = t(uiKeys.h3Inventory.duplicate);
       } else {
         status = "valid";
       }

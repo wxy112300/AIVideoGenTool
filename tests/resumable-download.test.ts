@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadWithResume, downloadFailure } from "../electron/services/resumable-download.js";
 import { runLoggedProcess } from "../electron/services/environment.js";
 import { prepareStrataDownloadCache } from "../electron/services/strata-download-cache.js";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -16,6 +17,25 @@ const wait = async () => undefined;
 const fail = (code: number, detail = "Recv failure: Connection was reset") => Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: `curl: (${code}) ${detail}` });
 
 describe("resumable software download", () => {
+  it.each(["en-US", "zh-TW"] as const)("uses numeric process exits and localized retry hints without exposing URLs (%s)", async uiLocale => {
+    const { destination } = await fixture(), t = createNativeTranslator(uiLocale).t;
+    await fs.writeFile(destination, "keep");
+    let processError: unknown;
+    try { await runLoggedProcess(process.execPath, ["-e", "process.exit(56)"], { uiLocale }); }
+    catch (error) { processError = error; }
+    expect(processError).toMatchObject({ code: 56 });
+    expect(downloadFailure(processError, t)).toMatchObject({ code: 56, retryable: true });
+    const run = vi.fn(async () => { throw Object.assign(new Error("外部诊断 https://user:secret@example.invalid/file"), { code: 33 }); });
+    const onLog = vi.fn();
+    await expect(downloadWithResume({ url: "https://example.invalid/file", destination, totalBytes: 9, run, wait, onLog }, t))
+      .rejects.toThrow(uiLocale === "en-US" ? "server rejected resuming" : "伺服器未接受續傳");
+    expect(run).toHaveBeenCalledOnce();
+    const logged = onLog.mock.calls.flat().join("\n");
+    expect(logged).toContain("外部诊断");
+    expect(logged).toContain(uiLocale === "en-US" ? "[download URL]" : "[下載網址]");
+    expect(logged).not.toContain("secret");
+    expect(await fs.readFile(destination, "utf8")).toBe("keep");
+  });
   it("shares one ten-minute deadline across all three attempts", async () => {
     const { destination } = await fixture(); let now = 1000; vi.spyOn(Date, "now").mockImplementation(() => now);
     const budgets: number[] = [];
@@ -62,6 +82,19 @@ describe("resumable software download", () => {
 
 describe("asset-keyed Strata software cache", () => {
   const asset = { url: "https://example.invalid/fixed.zip", bytes: 20, sha256: "a".repeat(64), revision: "b".repeat(40) };
+  it.each(["en-US", "zh-TW"] as const)("localizes cache provenance protection without overwriting existing bytes (%s)", async uiLocale => {
+    const { root } = await fixture(), t = createNativeTranslator(uiLocale).t;
+    const runtime = { run: vi.fn(), log: vi.fn() };
+    const archive = await prepareStrataDownloadCache(root, runtime, asset, t);
+    const metadata = path.join(path.dirname(archive), "download.json");
+    await fs.writeFile(archive, "使用者保留内容");
+    await fs.writeFile(metadata, '{"owner":"unknown"}');
+    await expect(prepareStrataDownloadCache(root, runtime, asset, t))
+      .rejects.toThrow(uiLocale === "en-US" ? "provenance does not match" : "來源記錄不符");
+    expect(await fs.readFile(archive, "utf8")).toBe("使用者保留内容");
+    expect(await fs.readFile(metadata, "utf8")).toBe('{"owner":"unknown"}');
+    expect(runtime.run).not.toHaveBeenCalled();
+  });
   it("resumes tar.gz components in their own cache without adopting a legacy ZIP", async () => {
     const { root } = await fixture(), stage = path.join(root, ".install-legacy"); await fs.mkdir(stage);
     await fs.writeFile(path.join(stage, "engine.zip"), Buffer.from([0x50, 0x4b, 3, 4]));
@@ -95,7 +128,7 @@ describe("asset-keyed Strata software cache", () => {
 const curl = process.platform === "win32" ? "curl.exe" : "curl";
 let curlAvailable = false; try { execFileSync(curl, ["--version"], { windowsHide: true, stdio: "ignore" }); curlAvailable = true; } catch { /* Explicit skipped native test on hosts without curl. */ }
 describe.skipIf(!curlAvailable)("native curl against isolated loopback HTTP", () => {
-  it("recovers an interrupted body by issuing a Range request with identical final bytes", async () => {
+  it.each(["zh-CN", "en-US", "zh-TW"] as const)("recovers an interrupted body with identical bytes using localized process output (%s)", async uiLocale => {
     const { destination } = await fixture(), body = Buffer.alloc(8192, 42), ranges: (string | undefined)[] = [];
     const server = http.createServer((req, res) => {
       ranges.push(req.headers.range);
@@ -105,7 +138,7 @@ describe.skipIf(!curlAvailable)("native curl against isolated loopback HTTP", ()
     await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
     try {
       const url = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}/engine`;
-      await downloadWithResume({ url, destination, totalBytes: body.length, run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs }), wait });
+      await downloadWithResume({ url, destination, totalBytes: body.length, run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, uiLocale }), wait }, createNativeTranslator(uiLocale).t);
       expect(ranges).toEqual([undefined, "bytes=2048-"]); expect(createHash("sha256").update(await fs.readFile(destination)).digest("hex")).toBe(createHash("sha256").update(body).digest("hex"));
     } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   });

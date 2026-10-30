@@ -9,6 +9,24 @@ import {
 } from "../src/core/prompt-annotations.js";
 
 describe("prompt annotation parsing", () => {
+  it("localizes revision failures while preserving model instructions and Chinese user text", () => {
+    const source = "女人走向门口（批注：改成跑步）。她说“你好”。";
+    const replacement = "<EDIT_TARGET_1>女人跑向门口</EDIT_TARGET_1>";
+    const instruction = promptRevisionInstruction(source, "Picture 1 = 使用者人物", "Keep quoted text.");
+    const result = applyPromptRevision(source, replacement);
+    for (const [locale, preflight, failure] of [
+      ["en-US", "There is no text to revise", "replacement for target 1"],
+      ["zh-TW", "批註前沒有可修訂的文字", "第 1 條局部修訂"]
+    ] as const) {
+      expect(() => buildPromptRevisionPlan("(note: change this)", locale)).toThrow(preflight);
+      expect(() => applyPromptRevision(source, "invalid reply", locale)).toThrow(failure);
+      expect(promptRevisionInstruction(source, "Picture 1 = 使用者人物", "Keep quoted text.", locale)).toBe(instruction);
+      expect(applyPromptRevision(source, replacement, locale)).toBe(result);
+    }
+    expect(result).toContain("她说“你好”");
+    expect(source).toContain("（批注：改成跑步）");
+  });
+
   it("recognizes Chinese and English note labels with mixed full-width delimiters", () => {
     const parsed = parsePromptAnnotations(
       "A girl looks at the camera（批注：camera means the viewpoint, not a prop】, then turns【note: keep the original action）."

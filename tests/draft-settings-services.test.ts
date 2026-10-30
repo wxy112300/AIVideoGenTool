@@ -82,7 +82,7 @@ describe("immediate appearance persistence", () => {
     const resolveComfyOutputDirectory = vi.fn();
     const sendState = vi.fn();
     const service = createSettingsService(repository, { clearRendererDirty, resolveComfyOutputDirectory, sendState });
-    const appearance = { accent: "green", palette: "slate", depth: "0", motion: "reduced" } as const;
+    const appearance = { accent: "green", palette: "slate", depth: "0", motion: "reduced", historyMasonryColumns: 6, historyAlbumColumns: 10 } as const;
     const saved = await service.save({ ...initial.settings, outputDirectory: "UNSAVED", defaultVideoModel: "UNSAVED", appearance }, "appearance");
     expect(saved).toEqual({ ...initial, settings: { ...initial.settings, appearance } });
     expect(clearRendererDirty).not.toHaveBeenCalled();
@@ -509,7 +509,7 @@ describe("SettingsService", () => {
     }, "migrate-video-history");
 
     expect(next.settings.outputDirectory).toBe(newDirectory);
-    expect(spies.plan).toHaveBeenCalledWith([], oldDirectory, newDirectory, []);
+    expect(spies.plan).toHaveBeenCalledWith([], oldDirectory, newDirectory, [], expect.any(Function));
     expect(spies.prepare).toHaveBeenCalledTimes(1);
     expect(spies.markCommitted).toHaveBeenCalledTimes(1);
     expect(spies.cleanup).toHaveBeenCalledTimes(1);

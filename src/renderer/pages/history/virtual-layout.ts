@@ -5,9 +5,9 @@ export interface HistoryVirtualBox { left: number; top: number; width: number; h
 export interface HistoryVirtualLayout { boxes: HistoryVirtualBox[]; height: number }
 
 /** Same widths, gaps and caption height as the non-windowed gallery. */
-export function layoutHistoryWindow(items: readonly HistoryVirtualItem[], width: number, mode: "masonry" | "album", copyHeight = 47): HistoryVirtualLayout {
+export function layoutHistoryWindow(items: readonly HistoryVirtualItem[], width: number, mode: "masonry" | "album", copyHeight = 47, preferredColumns?: number): HistoryVirtualLayout {
   const gap = mode === "album" ? 8 : 10;
-  const columns = Math.max(1, mode === "album" ? historyAlbumColumnCount(width, gap) : historyMasonryColumnCount(width, gap));
+  const columns = Math.max(1, mode === "album" ? historyAlbumColumnCount(width, gap, preferredColumns) : historyMasonryColumnCount(width, gap, preferredColumns));
   const cardWidth = Math.max(1, (width - gap * (columns - 1)) / columns);
   const heights = Array<number>(columns).fill(0);
   const boxes = items.map((item, index) => {

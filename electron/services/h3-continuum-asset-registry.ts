@@ -1,7 +1,11 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
   ExtensionQueueTask,
+  UiLocale,
   GenerationQueueTask,
   H3AvLatentAsset,
   H3AvProducerSnapshot,
@@ -57,6 +61,7 @@ interface PayloadInspection extends ParsedPayload {
 
 export interface H3ContinuumAssetRegistryDependencies {
   fileSystem: NativeAvArtifactFileSystemPort;
+  getUiLocale?: () => UiLocale | undefined;
 }
 
 export interface H3ContinuumManagedAssetRegistrationRequest {
@@ -97,21 +102,21 @@ function isWithinDirectory(rootDirectory: string, candidate: string): boolean {
   );
 }
 
-function safeOutputPath(outputDirectory: string, candidate: string): string {
+function safeOutputPath(outputDirectory: string, candidate: string, t: Translate): string {
   const resolved = path.resolve(candidate);
   if (!isWithinDirectory(outputDirectory, resolved)) {
-    throw new Error(`Continuum Run Storage 路径越出 output root：${candidate}`);
+    throw new Error(t(uiKeys.h3Registry.outside, { path: candidate }));
   }
   return resolved;
 }
 
-function historyFile(outputDirectory: string, filename: string, format: string): HistoryFile {
-  const absolutePath = safeOutputPath(outputDirectory, filename);
+function historyFile(outputDirectory: string, filename: string, format: string, t: Translate): HistoryFile {
+  const absolutePath = safeOutputPath(outputDirectory, filename, t);
   const relative = path.relative(path.resolve(outputDirectory), absolutePath);
   const parts = relative.split(path.sep).filter(Boolean);
   const basename = parts.pop();
   if (!basename || parts.length === 0 || parts.some((part) => part === "." || part === ".." || part.includes(":"))) {
-    throw new Error(`Continuum HistoryFile 路径不安全：${filename}`);
+    throw new Error(t(uiKeys.h3Registry.unsafePath, { path: filename }));
   }
   return {
     filename: basename,
@@ -128,14 +133,15 @@ async function ensureAlias(
   ownerPath: string,
   assetId: string,
   expectedBytes: number,
-  expectedSha256: string
+  expectedSha256: string,
+  t: Translate
 ): Promise<{ file: HistoryFile; mode: "hardlink" | "copy-fallback" }> {
   const aliasFilename = `${assetId}.safetensors`;
   const aliasAbsolutePath = path.join(outputDirectory, "h3-native-av", aliasFilename);
-  const aliasFile = historyFile(outputDirectory, aliasAbsolutePath, "safetensors");
+  const aliasFile = historyFile(outputDirectory, aliasAbsolutePath, "safetensors", t);
   const existing = await fileSystem.stat(aliasAbsolutePath);
   if (existing?.isFile()) {
-    if (existing.size !== expectedBytes) throw new Error(`Continuum canonical alias 已存在但大小不匹配：${aliasAbsolutePath}`);
+    if (existing.size !== expectedBytes) throw new Error(t(uiKeys.h3Registry.aliasSize, { path: aliasAbsolutePath }));
     const digest = createHash("sha256");
     let bytes = 0;
     for await (const chunk of fileSystem.readFileStream(aliasAbsolutePath)) {
@@ -144,7 +150,7 @@ async function ensureAlias(
       digest.update(value);
     }
     if (bytes !== expectedBytes || digest.digest("hex") !== expectedSha256) {
-      throw new Error(`Continuum canonical alias 已存在但 SHA-256 不匹配：${aliasAbsolutePath}`);
+      throw new Error(t(uiKeys.h3Registry.aliasHash, { path: aliasAbsolutePath }));
     }
     return { file: aliasFile, mode: "hardlink" };
   }
@@ -162,7 +168,7 @@ async function ensureAlias(
   const copied = await fileSystem.stat(temporary);
   if (!copied?.isFile() || copied.size !== expectedBytes) {
     await fileSystem.remove(temporary).catch(() => undefined);
-    throw new Error(`Continuum canonical alias copy fallback 大小不匹配：${aliasAbsolutePath}`);
+    throw new Error(t(uiKeys.h3Registry.aliasCopySize, { path: aliasAbsolutePath }));
   }
   const digest = createHash("sha256");
   let bytes = 0;
@@ -173,7 +179,7 @@ async function ensureAlias(
   }
   if (bytes !== expectedBytes || digest.digest("hex") !== expectedSha256) {
     await fileSystem.remove(temporary).catch(() => undefined);
-    throw new Error(`Continuum canonical alias copy fallback SHA-256 不匹配：${aliasAbsolutePath}`);
+    throw new Error(t(uiKeys.h3Registry.aliasCopyHash, { path: aliasAbsolutePath }));
   }
   await fileSystem.rename(temporary, aliasAbsolutePath);
   return { file: aliasFile, mode: "copy-fallback" };
@@ -197,42 +203,42 @@ function parseDescriptor(value: unknown): TensorDescriptor | null {
   return { dtype: record.dtype, shape: record.shape as number[], start, end };
 }
 
-function expectedTensorBytes(descriptor: TensorDescriptor): number {
+function expectedTensorBytes(descriptor: TensorDescriptor, t: Translate): number {
   let elements = 1;
   for (const dimension of descriptor.shape) {
-    if (elements > Number.MAX_SAFE_INTEGER / dimension) throw new Error("safetensors shape 溢出");
+    if (elements > Number.MAX_SAFE_INTEGER / dimension) throw new Error(t(uiKeys.h3Registry.shapeOverflow));
     elements *= dimension;
   }
   const bytes = elements * tensorDtypeBytes[descriptor.dtype]!;
-  if (!Number.isSafeInteger(bytes)) throw new Error("safetensors tensor bytes 溢出");
+  if (!Number.isSafeInteger(bytes)) throw new Error(t(uiKeys.h3Registry.bytesOverflow));
   return bytes;
 }
 
-function parseHeader(prefix: Uint8Array, payloadBytes: number): ParsedPayload {
-  if (prefix.byteLength < 8) throw new Error("Continuum chunk safetensors 缺少 header length");
+function parseHeader(prefix: Uint8Array, payloadBytes: number, t: Translate): ParsedPayload {
+  if (prefix.byteLength < 8) throw new Error(t(uiKeys.h3Registry.headerLength));
   const view = new DataView(prefix.buffer, prefix.byteOffset, prefix.byteLength);
   const headerLengthBigInt = view.getBigUint64(0, true);
-  if (headerLengthBigInt > BigInt(MAX_SAFETENSORS_HEADER_BYTES)) throw new Error("Continuum chunk safetensors header 超出安全上限");
+  if (headerLengthBigInt > BigInt(MAX_SAFETENSORS_HEADER_BYTES)) throw new Error(t(uiKeys.h3Registry.headerLimit));
   const headerLength = Number(headerLengthBigInt);
   const dataStart = 8 + headerLength;
-  if (dataStart > payloadBytes || dataStart > prefix.byteLength) throw new Error("Continuum chunk safetensors header 不完整");
+  if (dataStart > payloadBytes || dataStart > prefix.byteLength) throw new Error(t(uiKeys.h3Registry.headerIncomplete));
   let header: unknown;
   try {
     header = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(prefix.subarray(8, dataStart))) as unknown;
   } catch {
-    throw new Error("Continuum chunk safetensors header 不是有效 JSON");
+    throw new Error(t(uiKeys.h3Registry.headerJson));
   }
-  if (!header || typeof header !== "object" || Array.isArray(header)) throw new Error("Continuum chunk safetensors header 无效");
+  if (!header || typeof header !== "object" || Array.isArray(header)) throw new Error(t(uiKeys.h3Registry.headerInvalid));
   const entries = Object.entries(header as Record<string, unknown>).filter(([key]) => key !== "__metadata__");
-  if (entries.length !== 2 || !entries.some(([key]) => key === "video") || !entries.some(([key]) => key === "audio")) throw new Error("Continuum chunk 必须且只能包含 video/audio tensors");
+  if (entries.length !== 2 || !entries.some(([key]) => key === "video") || !entries.some(([key]) => key === "audio")) throw new Error(t(uiKeys.h3Registry.tensorKeys));
   const video = parseDescriptor((header as Record<string, unknown>).video);
   const audio = parseDescriptor((header as Record<string, unknown>).audio);
-  if (!video || !audio) throw new Error("Continuum chunk video/audio tensor descriptor 无效");
+  if (!video || !audio) throw new Error(t(uiKeys.h3Registry.descriptor));
   const dataBytes = payloadBytes - dataStart;
   for (const [name, tensor] of [["video", video], ["audio", audio]] as const) {
-    if (tensor.end > dataBytes || tensor.end - tensor.start !== expectedTensorBytes(tensor)) throw new Error(`Continuum chunk ${name} tensor offsets/shape/dtype 不一致`);
+    if (tensor.end > dataBytes || tensor.end - tensor.start !== expectedTensorBytes(tensor, t)) throw new Error(t(uiKeys.h3Registry.tensorLayout, { name }));
   }
-  if (Math.max(video.end, audio.end) !== dataBytes) throw new Error("Continuum chunk data 区域与 tensor offsets 不一致");
+  if (Math.max(video.end, audio.end) !== dataBytes) throw new Error(t(uiKeys.h3Registry.dataLayout));
   return { video, audio, dataStart };
 }
 
@@ -240,18 +246,19 @@ async function inspectPayload(
   fileSystem: NativeAvArtifactFileSystemPort,
   filename: string,
   width: number,
-  height: number
+  height: number,
+  t: Translate
 ): Promise<PayloadInspection> {
   const stat = await fileSystem.stat(filename);
-  if (!stat?.isFile() || stat.size <= 0) throw new Error(`Continuum chunk payload 不存在：${filename}`);
-  const parsed = parseHeader(await fileSystem.readFilePrefix(filename, 8 + MAX_SAFETENSORS_HEADER_BYTES), stat.size);
-  if (parsed.video.shape.length !== 5 || parsed.video.shape[0] !== 1 || parsed.video.shape[1] !== 24 || parsed.video.shape[3] !== height / 16 || parsed.video.shape[4] !== width / 16) throw new Error("Continuum chunk video tensor geometry 无效");
-  if (parsed.audio.shape.length !== 4 || parsed.audio.shape[0] !== 1 || parsed.audio.shape[1] !== 32 || parsed.audio.shape[2] !== 2) throw new Error("Continuum chunk audio tensor geometry 无效");
+  if (!stat?.isFile() || stat.size <= 0) throw new Error(t(uiKeys.h3Registry.payloadMissing, { path: filename }));
+  const parsed = parseHeader(await fileSystem.readFilePrefix(filename, 8 + MAX_SAFETENSORS_HEADER_BYTES), stat.size, t);
+  if (parsed.video.shape.length !== 5 || parsed.video.shape[0] !== 1 || parsed.video.shape[1] !== 24 || parsed.video.shape[3] !== height / 16 || parsed.video.shape[4] !== width / 16) throw new Error(t(uiKeys.h3Registry.videoGeometry));
+  if (parsed.audio.shape.length !== 4 || parsed.audio.shape[0] !== 1 || parsed.audio.shape[1] !== 32 || parsed.audio.shape[2] !== 2) throw new Error(t(uiKeys.h3Registry.audioGeometry));
   const temporalLatent = parsed.video.shape[2]!;
-  if ((temporalLatent - 2) % 5 !== 0) throw new Error("Continuum chunk video temporal latent 不符合 H3 时间网格");
+  if ((temporalLatent - 2) % 5 !== 0) throw new Error(t(uiKeys.h3Registry.videoGrid));
   const frameCount = ((temporalLatent - 2) / 5) * 17 + 5;
   const expectedAudioTemporal = Math.round((frameCount / 24) * 40);
-  if (parsed.audio.shape[3] !== expectedAudioTemporal) throw new Error("Continuum chunk audio temporal latent 与 video 不匹配");
+  if (parsed.audio.shape[3] !== expectedAudioTemporal) throw new Error(t(uiKeys.h3Registry.audioGrid));
   const payloadDigest = createHash("sha256");
   const videoDigest = createHash("sha256");
   const audioDigest = createHash("sha256");
@@ -266,7 +273,7 @@ async function inspectPayload(
     }
     offset += bytes.byteLength;
   }
-  if (offset !== stat.size) throw new Error("Continuum chunk payload 在校验期间发生变化");
+  if (offset !== stat.size) throw new Error(t(uiKeys.h3Registry.payloadChanged));
   return {
     ...parsed,
     bytes: stat.size,
@@ -284,7 +291,8 @@ async function inspectPayload(
  */
 async function inspectPayloadHeaderAndDigests(
   fileSystem: NativeAvArtifactFileSystemPort,
-  filename: string
+  filename: string,
+  t: Translate
 ): Promise<{
   bytes: number;
   parsed: ParsedPayload;
@@ -293,8 +301,8 @@ async function inspectPayloadHeaderAndDigests(
   audioTensorSha256: string;
 }> {
   const stat = await fileSystem.stat(filename);
-  if (!stat?.isFile() || stat.size <= 0) throw new Error(`H3 AV inventory payload 不存在：${filename}`);
-  const parsed = parseHeader(await fileSystem.readFilePrefix(filename, 8 + MAX_SAFETENSORS_HEADER_BYTES), stat.size);
+  if (!stat?.isFile() || stat.size <= 0) throw new Error(t(uiKeys.h3Registry.inventoryMissing, { path: filename }));
+  const parsed = parseHeader(await fileSystem.readFilePrefix(filename, 8 + MAX_SAFETENSORS_HEADER_BYTES), stat.size, t);
   const payloadDigest = createHash("sha256");
   const videoDigest = createHash("sha256");
   const audioDigest = createHash("sha256");
@@ -309,7 +317,7 @@ async function inspectPayloadHeaderAndDigests(
     }
     offset += bytes.byteLength;
   }
-  if (offset !== stat.size) throw new Error("H3 AV inventory payload 在校验期间发生变化");
+  if (offset !== stat.size) throw new Error(t(uiKeys.h3Registry.inventoryChanged));
   return {
     bytes: stat.size,
     parsed,
@@ -321,14 +329,15 @@ async function inspectPayloadHeaderAndDigests(
 
 function normalizeReceipt(
   outputDirectory: string,
-  raw: H3ContinuumManagedReceiptRaw
+  raw: H3ContinuumManagedReceiptRaw,
+  t: Translate
 ): H3ContinuumReceipt {
-  const revisionRoot = safeOutputPath(outputDirectory, raw.run_storage_path);
-  const runStorageRoot = historyFile(outputDirectory, path.join(revisionRoot, "manifest.json"), "json");
+  const revisionRoot = safeOutputPath(outputDirectory, raw.run_storage_path, t);
+  const runStorageRoot = historyFile(outputDirectory, path.join(revisionRoot, "manifest.json"), "json", t);
   const chunkRecords = raw.chunk_records.map((record) => ({
     logicalChunkIndex: record.logical_chunk_index,
     recordFilename: record.record_filename,
-    payloadPath: historyFile(outputDirectory, record.payload_path, "safetensors"),
+    payloadPath: historyFile(outputDirectory, record.payload_path, "safetensors", t),
     reused: record.reused,
     generated: record.generated
   }));
@@ -397,11 +406,12 @@ function producerFor(
 
 function expectedFrameCountForReceiptChunk(
   receipt: H3ContinuumManagedReceiptRaw,
-  logicalChunkIndex: number
+  logicalChunkIndex: number,
+  t: Translate
 ): number {
   const expected = receipt.actual_assembly_total_frames[logicalChunkIndex - 1];
   if (!Number.isSafeInteger(expected) || expected <= 0) {
-    throw new Error(`Continuum chunk ${logicalChunkIndex} 缺少官方 assembly frame count`);
+    throw new Error(t(uiKeys.h3Registry.assemblyMissing, { index: logicalChunkIndex }));
   }
   return expected;
 }
@@ -412,6 +422,7 @@ export class H3ContinuumAssetRegistry {
   async registerNativeArtifact(
     request: H3NativeAssetRegistrationRequest
   ): Promise<H3AvLatentAsset> {
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
     const payloadReference = request.artifact.payload;
     const payloadPath = safeOutputPath(
       request.outputDirectory,
@@ -419,20 +430,22 @@ export class H3ContinuumAssetRegistry {
         request.outputDirectory,
         payloadReference.subfolder,
         payloadReference.filename
-      )
+      ),
+      t
     );
     const inspection = await inspectPayload(
       this.deps.fileSystem,
       payloadPath,
       request.artifact.width,
-      request.artifact.height
+      request.artifact.height,
+      t
     );
     if (
       inspection.bytes !== request.artifact.payloadBytes ||
       inspection.payloadSha256 !== request.artifact.payloadSha256 ||
       inspection.frameCount !== request.artifact.frameCount
     ) {
-      throw new Error("Native AV artifact 在 canonical asset 登记前发生内容或帧网格不一致");
+      throw new Error(t(uiKeys.h3Registry.canonicalMismatch));
     }
     const sourceVersionId = request.task.taskType === "extension"
       ? request.task.sourceVersionId
@@ -483,21 +496,21 @@ export class H3ContinuumAssetRegistry {
       capabilities: ["native-av"],
       createdAt: request.createdAt
     };
-    const assetError = validateH3AvLatentAsset(asset);
-    if (assetError) throw new Error(`Native canonical asset 校验失败：${assetError}`);
+    const assetError = validateH3AvLatentAsset(asset, t);
+    if (assetError) throw new Error(t(uiKeys.h3Registry.canonicalInvalid, { reason: assetError }));
     return asset;
   }
 
-  private async walkSafetensors(root: string, directory: string, relativeDirectory: string): Promise<string[]> {
-    if (!this.deps.fileSystem.listDirectory) throw new Error("当前文件系统适配器不支持 H3 AV inventory 扫描");
+  private async walkSafetensors(root: string, directory: string, relativeDirectory: string, t: Translate): Promise<string[]> {
+    if (!this.deps.fileSystem.listDirectory) throw new Error(t(uiKeys.h3Registry.inventoryUnsupported));
     const entries = await this.deps.fileSystem.listDirectory(directory).catch(() => []);
     const files: string[] = [];
     for (const entry of entries) {
       if (entry.name === "." || entry.name === ".." || entry.name.includes("..")) continue;
-      const absolute = safeOutputPath(root, path.join(directory, entry.name));
+      const absolute = safeOutputPath(root, path.join(directory, entry.name), t);
       const relative = path.join(relativeDirectory, entry.name);
       if (entry.isDirectory()) {
-        files.push(...await this.walkSafetensors(root, absolute, relative));
+        files.push(...await this.walkSafetensors(root, absolute, relative, t));
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".safetensors")) {
         files.push(relative);
       }
@@ -513,9 +526,10 @@ export class H3ContinuumAssetRegistry {
     outputDirectory: string,
     references?: H3AvReferenceIndex
   ): Promise<H3AvInventoryResult> {
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
     const root = path.resolve(outputDirectory);
     if (!this.deps.fileSystem.listDirectory) {
-      throw new Error("当前文件系统适配器不支持 H3 AV inventory 扫描");
+      throw new Error(t(uiKeys.h3Registry.inventoryUnsupported));
     }
     const managedRunDirectories = ["h3-continuum/runs", "h3_continuum/runs"];
     const scannedDirectories = [
@@ -524,23 +538,23 @@ export class H3ContinuumAssetRegistry {
       "h3_context",
       ...managedRunDirectories
     ];
-    const manifestDirectory = safeOutputPath(root, path.join(root, "h3-continuum-assets"));
+    const manifestDirectory = safeOutputPath(root, path.join(root, "h3-continuum-assets"), t);
     const manifestEntries = await this.deps.fileSystem.listDirectory(manifestDirectory).catch(() => []);
     const manifests = new Map<string, H3AvLatentAsset>();
     const candidates: H3AvInventoryCandidate[] = [];
     for (const entry of manifestEntries) {
       if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".json")) continue;
-      const manifestAbsolute = safeOutputPath(root, path.join(manifestDirectory, entry.name));
-      const manifestFile = historyFile(root, manifestAbsolute, "json");
+      const manifestAbsolute = safeOutputPath(root, path.join(manifestDirectory, entry.name), t);
+      const manifestFile = historyFile(root, manifestAbsolute, "json", t);
       try {
         const parsed = JSON.parse(await this.deps.fileSystem.readText(manifestAbsolute)) as unknown;
         if (!isH3AvLatentAsset(parsed)) {
-          candidates.push({ referenceId: `manifest:${entry.name}`, path: manifestFile, present: true, validationError: validateH3AvLatentAsset(parsed) ?? "manifest 无效" });
+          candidates.push({ referenceId: `manifest:${entry.name}`, path: manifestFile, present: true, validationError: validateH3AvLatentAsset(parsed, t) ?? t(uiKeys.h3Registry.manifestInvalid) });
           continue;
         }
         manifests.set(parsed.assetId, parsed);
       } catch (error) {
-        candidates.push({ referenceId: `manifest:${entry.name}`, path: manifestFile, present: true, validationError: error instanceof Error ? error.message : "manifest 无法读取" });
+        candidates.push({ referenceId: `manifest:${entry.name}`, path: manifestFile, present: true, validationError: error instanceof Error ? error.message : t(uiKeys.h3Registry.manifestUnreadable) });
       }
     }
     const knownByRelativePath = new Map<string, H3AvLatentAsset>();
@@ -552,20 +566,21 @@ export class H3ContinuumAssetRegistry {
     }
     const payloadFiles: string[] = [];
     for (const relativeDirectory of scannedDirectories) {
-      const directory = safeOutputPath(root, path.join(root, relativeDirectory));
-      payloadFiles.push(...await this.walkSafetensors(root, directory, relativeDirectory));
+      const directory = safeOutputPath(root, path.join(root, relativeDirectory), t);
+      payloadFiles.push(...await this.walkSafetensors(root, directory, relativeDirectory, t));
     }
     const seenRelativePaths = new Set(payloadFiles.map((value) => value.replaceAll("\\", "/")));
     for (const relative of payloadFiles) {
       const normalized = relative.replaceAll("\\", "/");
-      const file = historyFile(root, safeOutputPath(root, path.join(root, relative)), "safetensors");
+      const file = historyFile(root, safeOutputPath(root, path.join(root, relative), t), "safetensors", t);
       const asset = knownByRelativePath.get(normalized);
       let inspected: Awaited<ReturnType<typeof inspectPayloadHeaderAndDigests>> | undefined;
       let validationError: string | undefined;
       try {
         inspected = await inspectPayloadHeaderAndDigests(
           this.deps.fileSystem,
-          safeOutputPath(root, path.join(root, relative))
+          safeOutputPath(root, path.join(root, relative), t),
+          t
         );
         if (asset) {
           const mismatches = [
@@ -574,10 +589,10 @@ export class H3ContinuumAssetRegistry {
             inspected.videoTensorSha256 !== asset.videoTensorSha256 ? "videoTensorSha256" : "",
             inspected.audioTensorSha256 !== asset.audioTensorSha256 ? "audioTensorSha256" : ""
           ].filter(Boolean);
-          if (mismatches.length > 0) validationError = `canonical manifest 与 payload 不一致：${mismatches.join(", ")}`;
+          if (mismatches.length > 0) validationError = t(uiKeys.h3Registry.manifestMismatch, { fields: mismatches.join(", ") });
         }
       } catch (error) {
-        validationError = error instanceof Error ? error.message : "safetensors header/digest 无法读取";
+        validationError = error instanceof Error ? error.message : t(uiKeys.h3Registry.digestUnreadable);
       }
       candidates.push({
         referenceId: `payload:${normalized}`,
@@ -611,7 +626,7 @@ export class H3ContinuumAssetRegistry {
     }
     return {
       outputDirectory: root,
-      entries: classifyH3AvInventory(candidates, references),
+      entries: classifyH3AvInventory(candidates, references, t),
       scannedDirectories
     };
   }
@@ -619,20 +634,21 @@ export class H3ContinuumAssetRegistry {
   async registerManagedReceipt(
     request: H3ContinuumManagedAssetRegistrationRequest
   ): Promise<H3ContinuumManagedAssetRegistrationResult> {
-    const raw = parseH3ContinuumManagedReceipt(request.receipt);
-    const receipt = normalizeReceipt(request.outputDirectory, raw);
+    const t = createNativeTranslator(this.deps.getUiLocale?.()).t;
+    const raw = parseH3ContinuumManagedReceipt(request.receipt, t);
+    const receipt = normalizeReceipt(request.outputDirectory, raw, t);
     const assets = miniMaxH3ModelAssetNames(request.task.modelId);
-    if (!assets) throw new Error(`Continuum managed asset 缺少 ${request.task.modelId} 模型资产映射`);
+    if (!assets) throw new Error(t(uiKeys.h3Registry.modelMapping, { model: request.task.modelId }));
     const [width, height] = extensionOutputDimensions(request.task);
     const bySha = new Map<string, H3AvLatentAsset>();
     const assetsByChunkIndex: Record<number, H3AvLatentAsset> = {};
     for (const record of receipt.chunkRecords) {
       const filename = record.payloadPath.absolutePath;
-      if (!filename) throw new Error(`Continuum chunk 缺少绝对路径：${record.recordFilename}`);
-      const inspection = await inspectPayload(this.deps.fileSystem, safeOutputPath(request.outputDirectory, filename), width, height);
-      const expectedFrameCount = expectedFrameCountForReceiptChunk(request.receipt, record.logicalChunkIndex);
+      if (!filename) throw new Error(t(uiKeys.h3Registry.absoluteMissing, { file: record.recordFilename }));
+      const inspection = await inspectPayload(this.deps.fileSystem, safeOutputPath(request.outputDirectory, filename, t), width, height, t);
+      const expectedFrameCount = expectedFrameCountForReceiptChunk(request.receipt, record.logicalChunkIndex, t);
       if (inspection.frameCount !== expectedFrameCount) {
-        throw new Error(`Continuum chunk ${record.logicalChunkIndex} 的帧网格与官方 assembly plan 不一致（实际 ${inspection.frameCount}，应为 ${expectedFrameCount}）`);
+        throw new Error(t(uiKeys.h3Registry.frameMismatch, { index: record.logicalChunkIndex, actual: inspection.frameCount, expected: expectedFrameCount }));
       }
       const producer = producerFor(request, assets, width, height, expectedFrameCount);
       const existing = bySha.get(inspection.payloadSha256);
@@ -648,7 +664,8 @@ export class H3ContinuumAssetRegistry {
         filename,
         assetId,
         inspection.bytes,
-        inspection.payloadSha256
+        inspection.payloadSha256,
+        t
       );
       const manifestPath = path.join(request.outputDirectory, "h3-continuum-assets", `${assetId}.json`);
       const asset: H3AvLatentAsset = {
@@ -689,13 +706,13 @@ export class H3ContinuumAssetRegistry {
         },
         createdAt: request.createdAt
       };
-      const assetError = validateH3AvLatentAsset(asset);
-      if (assetError) throw new Error(`Continuum managed asset 校验失败：${assetError}`);
+      const assetError = validateH3AvLatentAsset(asset, t);
+      if (assetError) throw new Error(t(uiKeys.h3Registry.managedInvalid, { reason: assetError }));
       const existingManifest = await this.deps.fileSystem.stat(manifestPath);
       if (existingManifest?.isFile()) {
         const persisted = JSON.parse(await this.deps.fileSystem.readText(manifestPath)) as unknown;
         if (!isH3AvLatentAsset(persisted) || (persisted as H3AvLatentAsset).payloadSha256 !== asset.payloadSha256) {
-          throw new Error(`拒绝覆盖不一致的 Continuum asset manifest：${manifestPath}`);
+          throw new Error(t(uiKeys.h3Registry.manifestOverwrite, { path: manifestPath }));
         }
         bySha.set(inspection.payloadSha256, persisted as H3AvLatentAsset);
         assetsByChunkIndex[record.logicalChunkIndex] = persisted as H3AvLatentAsset;

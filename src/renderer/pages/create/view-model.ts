@@ -978,6 +978,7 @@ export function buildVideoCreatePageViewModel(
   );
   const slaNode = environmentScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
   const prompt = activePrompt(draft, state.settings.uiLocale);
+  const selectedBundledWorkflow = Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath);
   let continuumPromptBlockReason = "";
   if (isManagedContinuum && extending && prompt.text.trim()) {
     try {
@@ -1275,7 +1276,9 @@ export function buildVideoCreatePageViewModel(
     selectedWorkflowDescription: extending && !supportsVideoExtension
       ? `${selectedModelProfile?.available ? t(uiKeys.create.validation.workflowComponentsReady, { name: modelName(draft.modelId, state.settings.uiLocale) }) : t(uiKeys.create.validation.workflowComponentsMissing)}${t(uiKeys.create.validation.workflowSafetyFailed)}`
       : draft.workflowPath
-        ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath)
+        ? escapeHtml(selectedBundledWorkflow
+            ? t(uiKeys.workflowLabel.builtIn, { name: modelName(selectedBundledWorkflow.modelId, state.settings.uiLocale) })
+            : draft.workflowPath)
         : t(uiKeys.create.validation.chooseApiWorkflow),
     enqueueBlockReason,
     enqueuePending,

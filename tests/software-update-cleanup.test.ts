@@ -4,11 +4,37 @@ import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanupManifestSoftwareBackups, preserveSoftwareUserData, removeSoftwareArtifact } from "../electron/services/software-update-cleanup";
 import { cleanupAgentSoftwareCopies } from "../electron/services/strata-agent-software";
+import { createNativeTranslator } from "../electron/ui-translator";
 
 const roots: string[] = [];
 async function fixture() { const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-software-cleanup-")); roots.push(root); return root; }
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 describe("software update disk ownership", () => {
+  it.each([
+    ["en-US", "Cleanup target is outside the installation directory", "The update package conflicts with local data of the same name.", "Software cleanup did not finish:"],
+    ["zh-TW", "清理目標超出安裝目錄", "更新套件與本機資料同名", "軟體清理未完成："]
+  ] as const)("preserves ownership and raw errors with %s cleanup messages", async (locale, outsideReason, collision, failed) => {
+    const root = await fixture(), outside = await fixture();
+    const source = path.join(root, "使用者-old"), target = path.join(root, "new");
+    await fs.mkdir(source); await fs.mkdir(target);
+    const name = "settings.json";
+    await fs.writeFile(path.join(source, name), "user settings");
+    await fs.writeFile(path.join(target, name), "package settings");
+    const t = createNativeTranslator(locale).t;
+    await expect(preserveSoftwareUserData(source, target, [], undefined, [], t)).rejects.toThrow(collision);
+    expect(await fs.readFile(path.join(source, name), "utf8")).toBe("user settings");
+    expect(await fs.readFile(path.join(target, name), "utf8")).toBe("package settings");
+    const messages: string[] = [];
+    expect(await removeSoftwareArtifact(root, outside, message => messages.push(message), undefined, t)).toBe(false);
+    expect(messages.at(-1)).toContain(outsideReason);
+    const remove = vi.fn(async () => { throw new Error("EBUSY: 外部原文"); });
+    expect(await removeSoftwareArtifact(root, source, message => messages.push(message), remove, t)).toBe(false);
+    expect(messages.at(-1)).toContain(failed);
+    expect(messages.at(-1)).toContain("EBUSY: 外部原文");
+    expect(await fs.readFile(path.join(source, name), "utf8")).toBe("user settings");
+    expect((await fs.stat(outside)).isDirectory()).toBe(true);
+  });
+
   it("runs an ASAR-safe remover only after validating the exact contained directory", async () => {
     const root = await fixture(), outside = await fixture(), old = path.join(root, "old");
     await fs.mkdir(old);

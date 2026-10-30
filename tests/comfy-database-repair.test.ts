@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createNativeTranslator } from "../electron/ui-translator";
 import {
   backupSqliteDatabaseFamily,
   buildComfyDatabaseMigrationScript,
@@ -21,6 +22,26 @@ afterEach(async () => {
 });
 
 describe("ComfyUI database diagnosis", () => {
+  it("localizes summaries while preserving failure kinds and exact database paths", () => {
+    const fallback=path.resolve("temp/使用者資料/comfyui.db");
+    for(const log of [
+      "database is locked",
+      "Failed to initialize database. No module named 'sqlalchemy'",
+      "unable to open database file",
+      "Failed to initialize database. Can't locate revision identified by 'old'",
+      "Failed to initialize database. database disk image is malformed",
+      "Failed to initialize database. unknown external 診斷"
+    ]) {
+      const original=diagnoseComfyDatabaseFailure(log,fallback)!;
+      for(const locale of ["en-US","zh-TW"] as const) {
+        const localized=diagnoseComfyDatabaseFailure(log,fallback,createNativeTranslator(locale).t)!;
+        expect({...localized,summary:original.summary}).toEqual(original);
+        expect(localized.summary).not.toBe(original.summary);
+        if(locale==="en-US")expect(localized.summary).not.toMatch(/[\p{Script=Han}]/u);
+      }
+    }
+  });
+
   it("extracts the exact locked database path and classifies process ownership conflicts", () => {
     const log = [
       "Failed to initialize database.",

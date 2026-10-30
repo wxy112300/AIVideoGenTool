@@ -7,6 +7,12 @@ import {
 } from "../src/renderer/pages/settings/copy";
 
 describe("Settings localized copy", () => {
+  it("uses Traditional Chinese for the shared prompt runtime card and both component info states", () => {
+    expect(settingsText("zh-TW", "prompt.runtimeInstall")).toBe("安裝並自我檢查");
+    expect(settingsText("zh-TW", "prompt.runtimeNodeMissing")).toContain("重新啟動");
+    expect(settingsText("en-US", "model.component.viewInfo", { label: "Gemma", info: "Source" }))
+      .toBe("Gemma: Source");
+  });
   it("explains the official high/xhigh alias and next-request behavior in all locales", () => {
     for (const locale of ["zh-CN", "zh-TW", "en-US"] as const) {
       expect(settingsText(locale, "prompt.reasoningHint")).toContain("xhigh");

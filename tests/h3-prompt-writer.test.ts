@@ -8,6 +8,7 @@ import {
   extractImageEditPromptFromWriter,
   promptWriterModelForSelection,
   releaseH3PromptWriter,
+  testH3PromptWriter,
   validateH3PromptWriterRuntime,
   warmH3PromptWriter
 } from "../electron/services/h3-prompt-writer.js";
@@ -25,6 +26,60 @@ function detailedWriterPrompt(wordCount: number): string {
 }
 
 describe("ComfyUI H3 Prompt Writer adapter", () => {
+  it.each([
+    ["en-US", "Select a prompt model", "has not loaded MiniMax", "dynamic CPU backend"],
+    ["zh-TW", "支援目前時長", "未載入 MiniMax", "動態 CPU 後端"]
+  ] as const)("localizes %s preflight and runtime recovery without loading a model", async (locale, duration, missing, repair) => {
+    const settings = createDefaultState().settings;
+    settings.uiLocale = locale;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    const fetchMock = vi.fn(async () => new Response("external body", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(enhancePromptWithH3PromptWriter({
+      prompt: "Keep user text 使用者原文.", modelId: "minimax_h3_fl2va", h3DurationSeconds: 21
+    }, settings, new AbortController().signal)).rejects.toThrow(duration);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(testH3PromptWriter(settings)).rejects.toThrow(missing);
+    const raw = "E:/使用者模型/native.dll: 0xC000001D";
+    let message = "";
+    try { validateH3PromptWriterRuntime({status:"crashed",return_code_hex:"0xC000001D",error:raw}, locale); }
+    catch (error) { message = (error as Error).message; }
+    expect(message).toContain(repair);
+    expect(message).toContain(raw);
+  });
+
+  it("keeps model instructions, user content and generated text identical across UI languages", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    const requests: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({version:"test"});
+      if (url.endsWith("/h3studio/models")) return Response.json({models:[{
+        id:"gemma-4-12b-it-Q5_K_M.gguf",path:"D:/models/gemma-4-12b-it-Q5_K_M.gguf",runtime_ready:true
+      }]});
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) return Response.json({diagnostics:{status:"ok"}});
+      if (url.endsWith("/h3studio/generate")) {
+        const { session_id, ...body } = JSON.parse(String(init?.body));
+        requests.push(body);
+        return Response.json({prompt:"detailed_description: 保留使用者原文與招牌文字。"});
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({cleared:true});
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    const request = {prompt:"保留招牌「你好」。",modelId:"qwen-image-edit-2511",mode:"image-edit" as const};
+    const before = structuredClone(request);
+    for (const locale of ["zh-CN","zh-TW","en-US"] as const) {
+      settings.uiLocale = locale;
+      expect(await enhancePromptWithH3PromptWriter(request,settings,new AbortController().signal))
+        .toBe("保留使用者原文與招牌文字。");
+      expect(request).toEqual(before);
+    }
+    expect(requests).toHaveLength(3);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(requests[2]).toEqual(requests[0]);
+  });
+
   it.each([20.1, 30, Number.NaN, Number.POSITIVE_INFINITY])("rejects unsupported duration %s before a network or model request", async (duration) => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "google/gemma-4-12b-q5";

@@ -1,3 +1,4 @@
+import { normalizeAppearance } from "../../../core/appearance";
 import type {
   AssetVersion,
   HistoryAsset,
@@ -198,23 +199,13 @@ export function assignHistoryMasonryColumns(
   return columns;
 }
 
-export function historyMasonryColumnCount(width: number, gap = 10): number {
+export function historyMasonryColumnCount(width: number, gap = 10, preferred = 3): number {
+  if (!Number.isFinite(width) || width <= 0) return 0;
   if (width <= 480) return 1;
-  const minimumCardWidth = 300;
-  const maximumCardWidth = 520;
-  const minimumColumns = 3;
-  const maximumColumns = 5;
-  let columns = minimumColumns;
-  const cardWidth = (columnCount: number) =>
-    (width - gap * (columnCount - 1)) / columnCount;
-
-  while (columns < maximumColumns && cardWidth(columns) > maximumCardWidth) {
-    columns += 1;
-  }
-  while (columns > 2 && cardWidth(columns) < minimumCardWidth) {
-    columns -= 1;
-  }
-  return columns;
+  const columns = normalizeAppearance({ historyMasonryColumns: preferred }).historyMasonryColumns;
+  const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 10;
+  const minimumCardWidth = 300 * 3 / columns;
+  return Math.min(columns, Math.max(2, Math.floor((width + safeGap) / (minimumCardWidth + safeGap))));
 }
 
 /**
@@ -223,18 +214,12 @@ export function historyMasonryColumnCount(width: number, gap = 10): number {
  * card collection prevents filtering or deleting a record from widening the
  * remaining cards.
  */
-export function historyAlbumColumnCount(width: number, gap = 8): number {
+export function historyAlbumColumnCount(width: number, gap = 8, preferred = 5): number {
   if (!Number.isFinite(width) || width <= 0) return 0;
   const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 8;
-  const minimumCardWidth = 180;
-  const maximumCardWidth = 240;
-  let columns = Math.max(1, Math.floor((width + safeGap) / (maximumCardWidth + safeGap)));
-  const cardWidth = (columnCount: number) =>
-    (width - safeGap * (columnCount - 1)) / columnCount;
-
-  while (cardWidth(columns) > maximumCardWidth) columns += 1;
-  while (columns > 1 && cardWidth(columns) < minimumCardWidth) columns -= 1;
-  return columns;
+  const columns = normalizeAppearance({ historyAlbumColumns: preferred }).historyAlbumColumns;
+  const minimumCardWidth = 180 * 5 / columns;
+  return Math.min(columns, Math.max(1, Math.floor((width + safeGap) / (minimumCardWidth + safeGap))));
 }
 
 function historyStateChangedInternal(

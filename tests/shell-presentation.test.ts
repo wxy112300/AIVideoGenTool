@@ -220,9 +220,26 @@ describe("route presentation", () => {
 });
 
 describe("appearance and telemetry", () => {
+  it("saves numeric history density choices without resetting theme and restores a failed choice", async () => {
+    applyAppearance({ accent: "green", palette: "slate", depth: "2", motion: "standard", historyMasonryColumns: 4, historyAlbumColumns: 7 });
+    document.body.innerHTML = renderAppearanceSettings(document.documentElement.dataset, createTranslator("en-US").t);
+    const save = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("disk"));
+    const failed = vi.fn();
+    const dispose = mountAppearanceSettings(document.body, save, failed);
+    try {
+      document.getElementById("appearance-historyMasonryColumns-6")!.click();
+      await vi.waitFor(() => expect(document.getElementById("appearance-historyMasonryColumns-6")!.hasAttribute("aria-disabled")).toBe(false));
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ accent: "green", historyMasonryColumns: 6, historyAlbumColumns: 7 }));
+      document.getElementById("appearance-historyAlbumColumns-10")!.click();
+      await vi.waitFor(() => expect(failed).toHaveBeenCalledOnce());
+      expect(document.documentElement.dataset.historyAlbumColumns).toBe("7");
+      expect(document.getElementById("appearance-historyAlbumColumns-7")!.getAttribute("aria-checked")).toBe("true");
+      expect(normalizeAppearance({ historyMasonryColumns: 99, historyAlbumColumns: 2 })).toMatchObject({ historyMasonryColumns: 3, historyAlbumColumns: 5 });
+    } finally { dispose(); }
+  });
   it("normalizes older or malformed preferences and restores all four attributes", () => {
     expect(normalizeAppearance({ accent: "invalid", depth: "3", motion: "standard", palette: "sand" })).toEqual({
-      accent: "azure", depth: "1", motion: "standard", palette: "sand"
+      accent: "azure", depth: "1", motion: "standard", palette: "sand", historyMasonryColumns: 3, historyAlbumColumns: 5
     });
     applyAppearance({ accent: "red", depth: "0", motion: "reduced", palette: "mauve" });
     expect(document.documentElement.dataset.accent).toBe("red");

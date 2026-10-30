@@ -18,6 +18,16 @@ async function fixture(complete = true) {
   return { directory, root, models, settings: { ...createDefaultSettings(), modelDirectory: models }, options: { managedDirectory: root } };
 }
 describe("Strata managed software uninstallation", () => {
+  it.each(["en-US", "zh-TW"] as const)("localizes overlap protection and successful removal while keeping shared models (%s)", async uiLocale => {
+    const { root, models, settings, options } = await fixture();
+    settings.uiLocale = uiLocale;
+    const blocked = await uninstallStrataRuntime({ ...settings, modelDirectory: root }, undefined, options);
+    expect(blocked).toMatchObject({ ok: false, message: expect.stringContaining(uiLocale === "en-US" ? "overlaps a model directory" : "模型目錄重疊") });
+    expect(await fs.readFile(path.join(root, "software.txt"), "utf8")).toBe("software fixture");
+    const result = await uninstallStrataRuntime(settings, undefined, options);
+    expect(result).toMatchObject({ ok: true, message: expect.stringContaining(uiLocale === "en-US" ? "Shared model files were kept" : "共用模型檔案已保留") });
+    expect(await fs.readFile(path.join(models, "shared.gguf"), "utf8")).toBe("keep model fixture");
+  });
   it.each([true,false])("removes only the exact owned software directory, including interrupted installs (complete=%s)", async (complete) => {
     const { directory,root,models,settings,options } = await fixture(complete), log = vi.fn();
     const backup = `${root}.backup-fixture`, data = path.join(directory,"Strata-data");

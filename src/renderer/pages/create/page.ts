@@ -13,6 +13,7 @@ import type {
 import type { Translate } from "../../../core/i18n";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { uiKeys } from "../../../core/i18n-keys";
+import { promptVersionDisplayLabel } from "../../shared/prompt-version-label";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import { imageOutputCountMax } from "../../../core/image-workflow";
 import {
@@ -278,7 +279,7 @@ export function renderImageEditPage(
       <section class="panel composer image-edit-composer create-editor">
         <section class="create-prompt-card">
         ${viewModel.promptless ? `<div class="section-heading composer-heading"><div><h2>${escapeHtml(viewModel.promptlessTitle)}</h2><span class="muted">${escapeHtml(viewModel.promptlessDescription)}</span></div></div>` : `<div class="section-heading composer-heading">
-          <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button><button class="icon-button danger" id="clear-image-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}">${icon("trash-2")}</button></div></div>
+          <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(promptVersionDisplayLabel(viewModel.prompt.label, t))}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button><button class="icon-button danger" id="clear-image-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}">${icon("trash-2")}</button></div></div>
           <div class="prompt-action-controls">
             <div class="prompt-mode-control"><select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${t(uiKeys.create.imageEdit.optimizeMethod)}">
               <option value="detail-enhance" title="${escapeHtml(viewModel.imageDetailEnhanceTitle)}" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
@@ -448,7 +449,7 @@ export function renderCreatePage(
       <div class="create-prompt-toolbar">
         <div class="composer-heading-main">
           <h2>${t(viewModel.extending ? uiKeys.create.extensionPromptTitle : uiKeys.create.promptTitle)}</h2>
-          <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} · ${escapeHtml(viewModel.prompt.label)}</span>
+          <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} · ${escapeHtml(promptVersionDisplayLabel(viewModel.prompt.label, t))}</span>
           <div class="prompt-version-controls">
             <button class="icon-button" id="prompt-prev" aria-label="${promptUi.t("previousVersion")}" title="${promptUi.t("previousVersion")}" ${viewModel.promptVersionIndex === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
             <button class="icon-button" id="prompt-next" aria-label="${promptUi.t("nextVersion")}" title="${promptUi.t("nextVersion")}" ${viewModel.promptVersionIndex >= viewModel.promptVersionCount - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>

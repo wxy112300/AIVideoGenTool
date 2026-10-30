@@ -39,6 +39,62 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it.each([false, true])("recovers from a truncated source fetch before publishing (parser: %s)", async parser => {
+    const { root, runtime } = await fixture();
+    const original = runtime.run.getMockImplementation()!;
+    let attempts = 0;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      if (args.includes("fetch") && Boolean(options.cwd?.endsWith("llama.cpp")) === parser) {
+        attempts++;
+        expect(args.slice(0, 3)).toEqual(["-c", "http.version=HTTP/1.1", "fetch"]);
+        if (attempts === 1) throw Object.assign(new Error("命令退出，代码 128"), { stdout: "error: RPC failed; curl 92 HTTP/2 stream 5 CANCEL\nfatal: early EOF", code: 128 });
+      }
+      return original(exe, args, options);
+    });
+    const result = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(result.ok, result.log).toBe(true);
+    expect(attempts).toBe(2);
+    expect(result.log).toContain("2/3，HTTP/1.1");
+    expect(await strataManagedReceipt(root)).toBe(true);
+  });
+  it.each(["en-US", "zh-TW"] as const)("rejects a corrupt archive with a localized error before extraction (%s)", async uiLocale => {
+    const { root, runtime } = await fixture();
+    const { verifyArchive: _verifyArchive, ...realVerification } = runtime;
+    const result = await installStrataRuntime({ ...createDefaultSettings(), uiLocale }, realVerification);
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining(uiLocale === "en-US" ? "SHA-256 verification failed" : "SHA-256 驗證失敗") });
+    expect(result.log).toContain(uiLocale === "en-US" ? "archive that failed verification was removed" : "已清理驗證失敗的引擎套件");
+    expect(runtime.run.mock.calls.some(([, args]) => args.includes("-xzf") || args.includes("pip"))).toBe(false);
+    expect(await strataManagedReceipt(root)).toBe(false);
+    await expect(fs.stat(runtime.download.mock.calls[0]![1])).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("localizes installation stages without changing commands or rewriting retained user files", async () => {
+    const executions: string[][] = [];
+    for (const uiLocale of ["zh-CN", "en-US", "zh-TW"] as const) {
+      const { root, runtime } = await fixture();
+      const settings = { ...createDefaultSettings(), uiLocale };
+      const result = await installStrataRuntime(settings, runtime);
+      expect(result.ok, result.log).toBe(true);
+      expect(result.message).toContain(uiLocale === "en-US" ? "runtime components are installed" : uiLocale === "zh-TW" ? "執行元件已安裝" : "运行组件已安装");
+      expect(result.log).toContain(uiLocale === "en-US" ? "MTP GGUF parser source" : uiLocale === "zh-TW" ? "MTP GGUF 解析原始碼" : "MTP GGUF 解析源码");
+      expect(result.log).toContain(uiLocale === "en-US" ? "NVIDIA engine" : uiLocale === "zh-TW" ? "NVIDIA 引擎" : "NVIDIA 引擎");
+      executions.push(runtime.run.mock.calls.map(([exe, args]) => JSON.stringify([exe, args]).replaceAll(root.replaceAll("\\", "\\\\"), "<runtime>").replace(/\.install-[a-zA-Z0-9]+/gu, ".install-stage")));
+      await fs.writeFile(path.join(root, "使用者模型.gguf"), "user model");
+      const original = runtime.run.getMockImplementation()!;
+      runtime.run.mockImplementation(async (exe, args, options) => {
+        if (args.includes("pip")) throw new Error("EACCES: 外部诊断");
+        return original(exe, args, options);
+      });
+      const failed = await installStrataRuntime(settings, runtime);
+      expect(failed).toMatchObject({ ok: false, message: "EACCES: 外部诊断" });
+      expect(await fs.readFile(path.join(root, "使用者模型.gguf"), "utf8")).toBe("user model");
+      expect(await strataManagedReceipt(root)).toBe(true);
+      expect(failed.log).toContain(uiLocale === "en-US" ? "Engine download cache kept at" : uiLocale === "zh-TW" ? "引擎下載快取保留在" : "引擎下载缓存保留在");
+    }
+    // Strip each isolated fixture prefix; executable arguments and self-test source must match.
+    const normalize = (commands: string[]) => commands.map(command => command.replace(/[A-Z]:[^"]*lvs-strata-install-test-[^\\/"]+/giu, "<fixture>"));
+    expect(normalize(executions[1]!)).toEqual(normalize(executions[0]!));
+    expect(normalize(executions[2]!)).toEqual(normalize(executions[0]!));
+  });
   it("retains old software if a mismatched component is extracted despite a successful transfer", async () => {
     const { root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);

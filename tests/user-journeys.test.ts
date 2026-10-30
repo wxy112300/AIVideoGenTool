@@ -18,6 +18,35 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("does not show an error or add a version when Prompt returns a translated cancellation", async () => {
+    const h = journey = await createJourney({}, "zh-TW");
+    h.input("#prompt-input", "A red balloon rises.");
+    const before = structuredClone(h.state().draft.promptVersions);
+    h.enhancePrompt.mockRejectedValueOnce(new Error("提示詞工作已取消。"));
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+    await settle();
+    expect(h.state().draft.promptVersions).toEqual(before);
+    expect(h.context.notify).not.toHaveBeenCalledWith("提示詞工作已取消。", expect.anything());
+  });
+  it("localizes legacy default labels and bundled workflow display without changing saved values", async () => {
+    journey = await createJourney({}, "en-US");
+    const h = journey;
+    const before = structuredClone(h.state().draft);
+    expect(h.root.querySelector(".composer-heading-main")?.textContent).toContain("Original");
+    expect(h.state().draft.promptVersions[0]?.label).toBe("原始");
+    h.dependencies.bundledWorkflows["test"] = {
+      modelId: before.modelId, label: "内置中文说明", path: before.workflowPath,
+      supportsEndImage: true, supportsVideoExtension: true
+    };
+    h.render();
+    expect(h.root.textContent).toContain("Built-in · MiniMax H3");
+    expect(h.root.textContent).not.toContain("内置中文说明");
+    expect(h.state().draft).toEqual(before);
+    h.state().draft.promptVersions[0]!.label = "My custom 原始 title";
+    h.render();
+    expect(h.root.querySelector(".composer-heading-main")?.textContent).toContain("My custom 原始 title");
+  });
   it("sends an opening language directive through the real Enhance control without translating exact dialogue", async () => {
     const h = journey = await createJourney({ startImagePath: "fixture.png" });
     h.state().settings.promptLanguage = "zh";

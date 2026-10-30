@@ -19,6 +19,8 @@ import {
   patchH3PromptWriterAutomaticContextLadder,
   patchH3PromptWriterBriefLimit,
   patchH3PromptWriterLlamaCppCompatibility,
+  patchH3PromptWriterSource,
+  patchKonohamaruPathsSource,
   patchH3PromptWriterOutputBudget,
   patchDlss5DepthAnythingSource,
   patchMultimodalPromptAdaptiveGeneration,
@@ -38,6 +40,7 @@ import {
 } from "../src/infrastructure/dependency-node-adapters";
 import { MINIMAX_H3_PROMPT_WRITER_REVISION } from "../src/core/catalog/dependencies/nodes";
 import { createDefaultState } from "../src/core/defaults";
+import { createNativeTranslator } from "../electron/ui-translator";
 import {
   customNodeDefinition,
   H3_AV_SERIALIZER_REVISION,
@@ -198,6 +201,55 @@ const aetherScaleCarrierSource = [
 ].join("\n");
 
 describe("Prompt Writer model root compatibility", () => {
+  it("produces identical node source in all interface languages", () => {
+    const writer = 'from llama_cpp._ggml import GGML_TYPE_F16, GGML_TYPE_Q8_0\n';
+    const pairs = [
+      [patchDlss5DepthAnythingSource, dlss5DepthAnythingSource],
+      [patchAetherScaleCarrierSource, aetherScaleCarrierSource],
+      [patchH3PromptWriterSource, writer],
+      [patchMultimodalPromptResidency, multimodalVisionNodeFixture()]
+    ] as const;
+    for (const [patch, source] of pairs) {
+      const expected = patch(source);
+      expect(expected).not.toBe(source);
+      for (const locale of ["en-US", "zh-TW", "zh-CN"] as const) {
+        const t = createNativeTranslator(locale).t;
+        expect(patch(source, t)).toBe(expected);
+        expect(patch(expected, t)).toBe(expected);
+      }
+    }
+  });
+
+  it.each([
+    ["en-US", "MMH3 Ultimate Upscale source is missing sample_piece function. Changes were stopped.", "ComfyUI-NVIDIA-DLSS-Frame-Interpolation source is missing DLSS5 addon path. Changes were stopped.", "Qwen-VL LoRA source does not match long-output/context preflight support. Changes stopped."],
+    ["zh-TW", "MMH3 Ultimate Upscale 原始碼缺少 sample_piece 函式，已停止修改。", "ComfyUI-NVIDIA-DLSS-Frame-Interpolation 原始碼缺少 DLSS5 addon 路徑，已停止修改。", "Qwen-VL LoRA 原始碼結構與長輸出/上下文預檢適配不符，已停止修改。"]
+  ] as const)("localizes nested source guards in %s", (locale, mmh3, konohamaru, qwen) => {
+    const t = createNativeTranslator(locale).t;
+    expect(() => patchMmh3UltimateUpscaleSource("", t)).toThrow(mmh3);
+    expect(() => patchKonohamaruPathsSource("", t)).toThrow(konohamaru);
+    expect(() => patchQwenVlOutputBudget("class QwenVLCaption: pass", t)).toThrow(qwen);
+  });
+
+  it.each([
+    ["en-US", "H3 Prompt Writer already supports the current llama-cpp-python API; no upstream source changes needed", "MiniMax H3 Prompt Writer has no recognized GGUF backend (supported paths: backend/models/gguf_backend.py or backend/models/gguf/_backend.py)."],
+    ["zh-TW", "H3 Prompt Writer 已相容目前的 llama-cpp-python API（無需修改上游原始碼）", "MiniMax H3 Prompt Writer 缺少可識別的 GGUF 後端（支援 backend/models/gguf_backend.py 或 backend/models/gguf/_backend.py）。"]
+  ] as const)("localizes %s preparation and keeps failed preparation read-only", async (locale, ready, missing) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "node-adapter-language-"));
+    temporaryDirectories.push(directory);
+    const t = createNativeTranslator(locale).t;
+    await expect(prepareH3PromptWriter(directory, vi.fn(), t)).rejects.toThrow(missing);
+    expect(await fs.readdir(directory)).toEqual([]);
+    const backend = path.join(directory, "backend", "models");
+    await fs.mkdir(backend, { recursive: true });
+    const filename = path.join(backend, "gguf_backend.py");
+    const source = 'print("使用者原文")\n';
+    await fs.writeFile(filename, source);
+    const reports: string[] = [];
+    await prepareH3PromptWriter(directory, message => reports.push(message), t);
+    expect(reports).toContain(ready);
+    expect(await fs.readFile(filename, "utf8")).toBe(source);
+  });
+
   it("skips only unregistered root categories without masking model discovery failures", () => {
     const source = 'def _model_roots():\n    for category in ("LLM", "llm"):\n        for value in folder_paths.get_folder_paths(category):\n            roots.append(value)\n';
     const patched = patchH3PromptWriterModelRoots(source);
@@ -363,6 +415,61 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it.each([
+    ["en-US", "Remote ComfyUI supports connections only. The app will not install or modify local nodes.", "Remote ComfyUI supports connections only. The app will not uninstall or modify local nodes."],
+    ["zh-TW", "遠端 ComfyUI 僅支援連線，應用程式不會安裝或修改本機節點。", "遠端 ComfyUI 僅支援連線，應用程式不會解除安裝或修改本機節點。"]
+  ] as const)("localizes %s guards before locating or modifying nodes", async (locale, install, uninstall) => {
+    const settings={...createDefaultState().settings,uiLocale:locale,comfyUrl:"https://comfy.example.test"};
+    const findComfyRoot=vi.fn(async()=>""), runLoggedProcess=vi.fn(async()=>"");
+    const runtime: DependencyInstallerRuntime={
+      downloadEnvironment:()=>({}),proxyLogLabel:()=>"",findComfyRoot,runLoggedProcess,
+      findExecutable:async()=>"",findComfyPython:async()=>"",exists:async()=>false,
+      retryableRenameError:()=>false,renameWithRetry:async()=>undefined
+    };
+    expect(await installCustomNodePackage("flashvsr",settings,runtime)).toMatchObject({ok:false,message:install});
+    expect(await uninstallCustomNodePackage("flashvsr",settings,runtime)).toMatchObject({ok:false,message:uninstall});
+    expect(findComfyRoot).not.toHaveBeenCalled();expect(runLoggedProcess).not.toHaveBeenCalled();
+  });
+
+  it("localizes install progress while preserving user files and raw failure details", async () => {
+    const root=await fs.mkdtemp(path.join(os.tmpdir(),"node-localization-"));
+    temporaryDirectories.push(root);
+    const settings={...createDefaultState().settings,uiLocale:"en-US" as const};
+    const definition=customNodeDefinition("flashvsr")!;
+    let failClone=false;
+    const raw="external EACCES: 使用者模型";
+    const runtime: DependencyInstallerRuntime={
+      downloadEnvironment:()=>({}),proxyLogLabel:()=>"Proxy: off",findComfyRoot:async()=>root,
+      findExecutable:async()=>"git.exe",findComfyPython:async()=>"",exists,
+      retryableRenameError:()=>false,renameWithRetry:async(a,b)=>fs.rename(a,b),
+      runLoggedProcess:async(_executable,args)=>{
+        if(args.includes("clone")) {
+          if(failClone)throw new Error(raw);
+          const target=args.at(-1)!;
+          await fs.mkdir(target,{recursive:true});
+          await fs.writeFile(path.join(target,"node.py"),"# fixture");
+        }
+        if(args.includes("rev-parse"))return definition.installRevision??"fixture";
+        return "";
+      }
+    };
+    const installed=await installCustomNodePackage("flashvsr",settings,runtime);
+    expect(installed).toMatchObject({ok:true,message:definition.name+" was installed or updated. Restart ComfyUI and recheck."});
+    expect(installed.log).toContain("Locating the selected ComfyUI data directory and Python environment");
+    expect(installed.log).toContain("Cloning "+definition.repositoryUrl);
+    const userFile=path.join(root,"custom_nodes",definition.directoryName,"使用者模型.safetensors");
+    await fs.writeFile(userFile,"user-managed bytes");
+    failClone=true;
+    const failed=await installCustomNodePackage("flashvsr",settings,runtime,undefined,"reinstall");
+    expect(failed).toMatchObject({ok:false,message:raw});
+    expect(await fs.readFile(userFile,"utf8")).toBe("user-managed bytes");
+    expect(failed.log).toContain(raw);
+    const remove=vi.fn(async()=>{throw Object.assign(new Error("busy"),{code:"EBUSY"});});
+    const report=vi.fn();
+    await removeTemporaryNodeCheckout("C:/使用者資料/node.update",report,remove as typeof fs.rm,createNativeTranslator("en-US").t);
+    expect(report).toHaveBeenCalledWith("Windows is still using the temporary update directory. It was kept for later cleanup: C:/使用者資料/node.update (EBUSY)");
+  });
+
   it("does not fail an install when Windows keeps a temporary checkout locked", async () => {
     const report = vi.fn();
     const error = Object.assign(new Error("resource busy or locked"), { code: "EBUSY" });

@@ -8,6 +8,12 @@ import {
 } from "../src/renderer/pages/history/helpers.ts";
 
 describe("history gallery layout calculations", () => {
+  it("uses each requested desktop density and reduces columns in narrow containers", () => {
+    for (const columns of [3, 4, 5, 6]) expect(historyMasonryColumnCount(1200, 10, columns)).toBe(columns);
+    for (const columns of [4, 5, 6, 7, 8, 9, 10]) expect(historyAlbumColumnCount(1200, 8, columns)).toBe(columns);
+    expect(historyMasonryColumnCount(400, 10, 6)).toBe(1);
+    expect(historyAlbumColumnCount(400, 8, 10)).toBeLessThan(10);
+  });
   it("assigns every card once using stable shortest-column tie breaking", () => {
     expect(assignHistoryMasonryColumns([100, 100, 100, 100], 2, 10)).toEqual([
       [0, 2],

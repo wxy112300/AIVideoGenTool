@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults.js";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import {
   DLSS5_NODE_REVISION,
   DLSS5_RUNTIME_BUNDLE_ID,
@@ -33,6 +34,47 @@ const settings = {
   ...createDefaultState().settings,
   comfyUrl: "http://127.0.0.1:8188"
 };
+
+describe("DLSS5 runtime localization", () => {
+  it.each([
+    ["en-US", "Remote ComfyUI supports connections only. The app will not install local DLSS5 runtime.", "Remote ComfyUI supports connections only. The app will not uninstall local DLSS5 runtime.", "DLSS5 runtime archive contains unsafe paths. Extraction refused."],
+    ["zh-TW", "遠端 ComfyUI 僅支援連線，應用程式不會安裝本機 DLSS5 runtime。", "遠端 ComfyUI 僅支援連線，應用程式不會解除安裝本機 DLSS5 runtime。", "DLSS5 runtime 封存檔包含不安全路徑，已拒絕解壓縮。"]
+  ] as const)("localizes %s guards before touching local runtime files", async (uiLocale, install, uninstall, unsafe) => {
+    const context = await fixtureContext();
+    let ran = false;
+    const deps = fixtureDependencies(context, {
+      downloadFile: async () => { ran = true; },
+      runLoggedProcess: async () => { ran = true; return ""; }
+    });
+    const remote = { ...settings, uiLocale, comfyUrl: "https://comfy.example.test" };
+    expect(await installDlss5Runtime(remote, "", "", deps)).toMatchObject({ ok: false, message: install });
+    expect(await uninstallDlss5Runtime(remote, "", "", deps)).toMatchObject({ ok: false, message: uninstall });
+    expect(() => validateDlss5ArchiveEntries(["../outside.dll"], createNativeTranslator(uiLocale).t)).toThrow(unsafe);
+    expect(ran).toBe(false);
+  });
+
+  it.each([
+    ["en-US", "DLSS5 runtime download appears truncated", "DLSS5 runtime archive is missing expected files:"],
+    ["zh-TW", "DLSS5 runtime 下載疑似截斷", "DLSS5 runtime 封存檔缺少預期檔案："]
+  ] as const)("keeps %s failure diagnostics and user files intact", async (uiLocale, truncated, missing) => {
+    const context = await fixtureContext();
+    const userFile = path.join(context.nodeDirectory, "使用者資料.gguf");
+    await fs.writeFile(userFile, "user data");
+    let extracted = false;
+    const result = await installDlss5Runtime({ ...settings, uiLocale }, context.root, context.nodeDirectory,
+      fixtureDependencies(context, {
+        downloadFile: async (_url, destination) => { await fs.writeFile(destination, "x"); },
+        extractArchive: async () => { extracted = true; return []; }
+      }));
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain(truncated);
+    expect(result.log).toContain(result.message);
+    expect(await fs.readFile(userFile, "utf8")).toBe("user data");
+    expect(extracted).toBe(false);
+    expect(() => validateDlss5ArtifactContents(["resources/app.asar"], ["python.exe"], createNativeTranslator(uiLocale).t))
+      .toThrow(missing);
+  });
+});
 
 async function fixtureContext(): Promise<{
   root: string;

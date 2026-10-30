@@ -54,8 +54,26 @@ export function environmentScanOptionsForReason(
 export class EnvironmentRefreshCoordinator {
   private latestRequestId = 0;
   private lastScan: EnvironmentScanResult | null = null;
+  private activeProgress: EnvironmentScanProgress | null = null;
+  private lastProgressMessage = "";
 
   constructor(private readonly dependencies: EnvironmentRefreshCoordinatorDependencies) {}
+
+  private publishProgress(progress: EnvironmentScanProgress, renderPage?: false): void {
+    this.activeProgress = { ...progress };
+    this.lastProgressMessage = this.dependencies.progressMessage?.(progress) ?? this.dependencies.scanningMessage();
+    this.dependencies.notify(this.lastProgressMessage, {
+      key: "environment-scan", durationMs: 300_000,
+      ...(this.dependencies.progressMessage ? { progress } : {}),
+      ...(renderPage === false ? { renderPage: false } : {})
+    });
+  }
+
+  refreshProgressMessage(): void {
+    if (!this.activeProgress) return;
+    const message = this.dependencies.progressMessage?.(this.activeProgress) ?? this.dependencies.scanningMessage();
+    if (message !== this.lastProgressMessage) this.publishProgress(this.activeProgress, false);
+  }
 
   async refresh(
     settings: Settings,
@@ -66,10 +84,7 @@ export class EnvironmentRefreshCoordinator {
     this.dependencies.reportScan(reason);
     this.dependencies.setScanning(true);
     this.dependencies.setError("");
-    this.dependencies.notify(this.dependencies.progressMessage?.({ stage: "environment", completed: 0, total: 4 }) ?? this.dependencies.scanningMessage(), {
-      key: "environment-scan", durationMs: 300_000,
-      ...(this.dependencies.progressMessage ? { progress: { completed: 0, total: 4 } } : {})
-    });
+    this.publishProgress({ stage: "environment", completed: 0, total: 4 });
     this.dependencies.requestRender();
 
     try {
@@ -82,9 +97,7 @@ export class EnvironmentRefreshCoordinator {
       const scan = this.dependencies.progressMessage
         ? await this.dependencies.scan(settings, scope, options, (progress) => {
           if (!active || requestId !== this.latestRequestId) return;
-          this.dependencies.notify(this.dependencies.progressMessage!(progress), {
-            key: "environment-scan", durationMs: 300_000, progress, renderPage: false
-          });
+          this.publishProgress(progress, false);
         })
         : options
         ? await this.dependencies.scan(settings, scope, options)
@@ -106,6 +119,8 @@ export class EnvironmentRefreshCoordinator {
     } finally {
       active = false;
       if (requestId === this.latestRequestId) {
+        this.activeProgress = null;
+        this.lastProgressMessage = "";
         this.dependencies.setScanning(false);
         this.dependencies.requestRender();
       }

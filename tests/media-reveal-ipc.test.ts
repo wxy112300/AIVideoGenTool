@@ -4,19 +4,30 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { shell } from "electron";
 import { registerMediaIpc, type MediaIpcDependencies } from "../electron/media-ipc";
+import type { UiLocale } from "../src/types";
 
 vi.mock("electron", () => ({ shell: { showItemInFolder: vi.fn() }, protocol: {} }));
 const fixtures: string[] = [];
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fs.rm(fixture, { recursive: true, force: true }); vi.clearAllMocks(); });
 
-function revealHandler(resolveSourcePath = vi.fn(async (_filename: string): Promise<string | null> => null)) {
+function revealHandler(resolveSourcePath = vi.fn(async (_filename: string): Promise<string | null> => null), getUiLocale?: () => UiLocale) {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   const logger = { info: vi.fn(), warn: vi.fn() };
-  registerMediaIpc({ ipc: { handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler) }, protocol: {}, service: { resolveSourcePath }, logger, paths: { clipboardFilesDirectory: "unused" } } as unknown as MediaIpcDependencies);
-  return { reveal: (filename: unknown) => handlers.get("file:show-in-folder")!(undefined, filename), resolveSourcePath, logger };
+  registerMediaIpc({ ipc: { handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler) }, protocol: {}, service: { resolveSourcePath }, logger, paths: { clipboardFilesDirectory: "unused" }, getUiLocale } as unknown as MediaIpcDependencies);
+  return { reveal: (filename: unknown) => handlers.get("file:show-in-folder")!(undefined, filename), handlers, resolveSourcePath, logger };
 }
 
 describe("read-only file and dependency location reveal", () => {
+  it("reports missing media in the newly selected language without changing IPC result shape", async () => {
+    let locale: UiLocale = "en-US";
+    const { handlers } = revealHandler(undefined, () => locale);
+    const open = () => handlers.get("file:open-system-player")!(undefined, "missing.mp4");
+    expect(await open()).toEqual({ ok: false, message: "Video file not found. It may have been moved, renamed, or deleted." });
+    locale = "zh-TW";
+    expect(await open()).toEqual({ ok: false, message: "找不到影片檔案，可能已被移動、重新命名或刪除。" });
+    locale = "zh-CN";
+    expect(await open()).toEqual({ ok: false, message: "视频文件不存在，可能已被移动、重命名或删除。" });
+  });
   it("reveals an existing directory without going through History file repair", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "studio-reveal-")); fixtures.push(directory);
     const { reveal, resolveSourcePath, logger } = revealHandler();

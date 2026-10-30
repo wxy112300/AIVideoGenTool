@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { isMossImageModel } from "../../src/core/moss-image-spec.js";
 import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
 import type {
@@ -69,21 +72,21 @@ export function multimodalDeviceFor(
   modelId: string,
   vramUsedBytes: number | null,
   vramTotalBytes: number | null,
-  allowCpuFallback = false
+  allowCpuFallback = false, t: Translate = createNativeTranslator(undefined).t
 ): MultimodalDevice {
   const preflight = multimodalExecutionPreflight(modelId, vramUsedBytes, vramTotalBytes);
   if (!preflight.requiresCpuConfirmation) return "GPU";
   if (allowCpuFallback) return "CPU";
   if (preflight.vramFreeBytes == null) {
     throw new Error(
-      "无法确认 GPU 显存余量，已停止提示词增强；不会自动切换到 CPU。请关闭占用显存的程序后重试。"
+      t(uiKeys.promptBackend.vramUnknown)
     );
   }
   const freeVramGiB = (preflight.vramFreeBytes / gib).toFixed(1);
   const requiredVramGiB = ((preflight.requiredFreeVramBytes ?? 0) / gib).toFixed(0);
   throw new Error(
-    `Qwen 27B GPU 推理需要至少 ${requiredVramGiB} GiB 空闲显存，当前约 ${freeVramGiB} GiB。` +
-    "请关闭 Epic Games Launcher 等占用显存的程序后重试；应用不会自动切换到 CPU。"
+    t(uiKeys.promptBackend.vramInsufficient, { required: requiredVramGiB, free: freeVramGiB }) +
+    t(uiKeys.promptBackend.vramRecovery)
   );
 }
 
@@ -121,14 +124,15 @@ function cleanBaseUrl(url: string): string {
 }
 
 export async function releaseMultimodalPromptModel(
-  settings: Pick<Settings, "comfyUrl">
+  settings: Pick<Settings, "comfyUrl"> & Partial<Pick<Settings, "uiLocale">>
 ): Promise<boolean> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   retainedMultimodalDevice = null;
   const response = await fetch(
     `${cleanBaseUrl(settings.comfyUrl)}/local-video-studio/multimodal-prompt/unload`,
     { method: "POST", signal: AbortSignal.timeout(15_000) }
   );
-  if (!response.ok) throw new Error(`MultiModal Prompt 模型卸载失败（HTTP ${response.status}）`);
+  if (!response.ok) throw new Error(t(uiKeys.promptBackend.unloadFailed, { status: response.status }));
   const body = await response.json() as { unload_requested?: boolean };
   return Boolean(body.unload_requested);
 }
@@ -162,22 +166,22 @@ function objectInfoEnumValues(
 
 export function multimodalRuntimeSelection(
   objectInfo: Record<string, unknown>,
-  modelId: string
+  modelId: string, t: Translate = createNativeTranslator(undefined).t
 ): MultimodalRuntimeSelection {
   const definition = comfyMultimodalPromptModel(modelId);
-  if (!definition) throw new Error("当前选择的提示词模型不是 ComfyUI 多模态模型。");
+  if (!definition) throw new Error(t(uiKeys.promptBackend.multimodalModelRequired));
   const model = modelRelativePath(definition.targetDirectory, definition.modelFilename);
   const mmproj = modelRelativePath(definition.targetDirectory, definition.mmprojFilename);
   const acceptedModels = objectInfoEnumValues(objectInfo, "VisionLLMNode", "model");
   const acceptedMmprojs = objectInfoEnumValues(objectInfo, "VisionLLMNode", "mmproj");
   if (!acceptedModels.includes(model)) {
     throw new Error(
-      `VisionLLMNode 尚未注册所选主模型：${model}。请确认文件位于登记目录，随后在设置页更新/重新安装 ComfyUI MultiModal Prompt Nodes 并重启 ComfyUI。`
+      t(uiKeys.promptBackend.modelNotRegistered, { model: model })
     );
   }
   if (!acceptedMmprojs.includes(mmproj)) {
     throw new Error(
-      `VisionLLMNode 尚未注册所选视觉投影文件：${mmproj}。该文件虽然可能已存在，但旧节点只识别 mmproj 前缀，无法安全用于 Qwen3.8。请在设置页更新/重新安装 ComfyUI MultiModal Prompt Nodes 并重启 ComfyUI。`
+      t(uiKeys.promptBackend.projectorNotRegistered, { file: mmproj })
     );
   }
   return { model, mmproj };
@@ -269,20 +273,20 @@ export function multimodalPromptOutputDiagnostics(
 }
 
 export function multimodalPromptFailureDiagnostic(
-  diagnostics: MultimodalPromptOutputDiagnostics
+  diagnostics: MultimodalPromptOutputDiagnostics, t: Translate = createNativeTranslator(undefined).t
 ): string {
   const tokenDetail = diagnostics.completionTokens === null
-    ? "实际输出 token 数未知"
-    : `输出 ${diagnostics.completionTokens}/${diagnostics.requestedMaxTokens} token`;
+    ? t(uiKeys.promptBackend.tokensUnknown)
+    : t(uiKeys.promptBackend.tokenCount, { count: diagnostics.completionTokens, limit: diagnostics.requestedMaxTokens });
   if (diagnostics.suspectedTruncation) {
-    return `诊断：${tokenDetail}，停止原因 ${diagnostics.finishReason || "未知"}，疑似达到生成长度上限。`;
+    return t(uiKeys.promptBackend.truncationDiagnostic, { tokens: tokenDetail, reason: diagnostics.finishReason || t(uiKeys.promptBackend.unknown) });
   }
   if (diagnostics.finishReason) {
     return diagnostics.completionTokens === null
-      ? `诊断：节点以 ${diagnostics.finishReason} 停止，${tokenDetail}，无法确认是否达到长度上限。`
-      : `诊断：节点以 ${diagnostics.finishReason} 停止，${tokenDetail}，未接近长度上限；更可能是模型提前结束或未遵循字段/细节要求。`;
+      ? t(uiKeys.promptBackend.lengthUnknownDiagnostic, { reason: diagnostics.finishReason, tokens: tokenDetail })
+      : t(uiKeys.promptBackend.earlyStopDiagnostic, { reason: diagnostics.finishReason, tokens: tokenDetail });
   }
-  return "诊断：当前节点未返回生成停止原因；请在设置中一键修复 MultiModal Prompt Nodes 并重启 ComfyUI，以启用长度与 token 诊断。";
+  return t(uiKeys.promptBackend.diagnosticsMissing);
 }
 
 function multimodalLanguageValidatorCompatibilityInstruction(
@@ -310,7 +314,7 @@ function multimodalLanguageValidatorCompatibilityInstruction(
 export function multimodalPromptInstruction(request: EnhanceRequest, settings: Settings, visionLlm = false): string {
   const language = multimodalPromptTargetLanguage(request, settings);
   return [
-    request.mode === "image-edit" ? imageEditPromptInstruction(request) : h3PromptInstruction(request, settings.h3PromptPresets),
+    request.mode === "image-edit" ? imageEditPromptInstruction(request) : h3PromptInstruction(request, settings.h3PromptPresets, settings.uiLocale),
     request.mode === "image-edit" ? "" : language === "zh"
       ? "Write explanatory H3 prose in Chinese; keep official H3 field names in English ASCII. Preserve user dialogue, lyrics and visible text verbatim in their original language. Return only the final prompt, without reasoning or a preface."
       : "Write explanatory H3 prose in English; keep official H3 field names in English ASCII. Preserve user dialogue, lyrics and visible text verbatim in their original language. Return only the final prompt, without reasoning or a preface.",
@@ -319,15 +323,15 @@ export function multimodalPromptInstruction(request: EnhanceRequest, settings: S
   ].filter(Boolean).join("\n\n");
 }
 
-export function normalizeMultimodalPromptOutput(output: string, request: EnhanceRequest): string {
-  if (request.promptStrategy === "targeted-revision") return applyPromptRevision(request.prompt, output);
+export function normalizeMultimodalPromptOutput(output: string, request: EnhanceRequest, locale: Settings["uiLocale"] = "zh-CN"): string {
+  if (request.promptStrategy === "targeted-revision") return applyPromptRevision(request.prompt, output, locale);
   if (request.mode === "image-edit" && isMossImageModel(request.imageTargetModelId)) return normalizeMossImagePromptOutput(output);
   if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
   const source = stripPromptAnnotations(request.prompt);
   const continuation = isH3NativeStateContinuationRequest(request);
   return normalizeH3PromptOutput(output, h3PromptModeForRequest(request), request.h3DurationSeconds ?? 5,
     extractH3DialogueLocks(source), extractH3VisibleTextLocks(source), source, request.prompt,
-    continuation, continuation, request.continuumPreviousChunk, request.h3PromptPreset);
+    continuation, continuation, request.continuumPreviousChunk, request.h3PromptPreset, locale);
 }
 
 function appendImageNodes(
@@ -380,9 +384,10 @@ export function buildMultimodalPromptWorkflow(
   runtimeSelection?: MultimodalRuntimeSelection,
   runtimeMaxOutputTokens = 2048
 ): Record<string, PromptNode> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) {
-    throw new Error("当前选择的不是 ComfyUI 多模态提示词模型。");
+    throw new Error(t(uiKeys.promptBackend.multimodalWorkflowModelRequired));
   }
   const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
@@ -393,7 +398,7 @@ export function buildMultimodalPromptWorkflow(
     ? "Reply with READY only."
     : request.mode === "image-edit"
       ? imageEditPromptInstruction(request)
-      : h3PromptInstruction(request, settings.h3PromptPresets);
+      : h3PromptInstruction(request, settings.h3PromptPresets, settings.uiLocale);
   const sourcePrompt = stripPromptAnnotations(request.prompt);
   const contentLockInstruction = request.mode === "image-edit"
     ? ""
@@ -420,7 +425,7 @@ export function buildMultimodalPromptWorkflow(
     : request.mode === "image-edit"
       ? 768
       : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset, request.prompt);
-  assertH3PromptOutputBudget(maxTokens, runtimeMaxOutputTokens, "MultiModal Qwen");
+  assertH3PromptOutputBudget(maxTokens, runtimeMaxOutputTokens, "MultiModal Qwen", settings.uiLocale);
   const workflow: Record<string, PromptNode> = {
     "vision-llm": {
       class_type: "VisionLLMNode",
@@ -457,11 +462,12 @@ export async function enhancePromptWithMultimodalComfyUi(
   retainModel = false,
   onSubmitted?: (promptId: string) => void
 ): Promise<string> {
-  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-  validateH3ReferenceAutoPrompt(request);
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error(t(uiKeys.promptBackend.promptRequired));
+  validateH3ReferenceAutoPrompt(request, settings.uiLocale);
   onProgress?.("checking", 5);
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
-  if (!definition) throw new Error("当前选择的提示词模型不是 ComfyUI 多模态模型。");
+  if (!definition) throw new Error(t(uiKeys.promptBackend.multimodalModelRequired));
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const operationStartedAt = Date.now();
   try {
@@ -472,7 +478,7 @@ export async function enhancePromptWithMultimodalComfyUi(
         appLogger.warn("prompt", "multimodal-pre-release-failed", "Unable to release existing ComfyUI models before multimodal prompt generation", {
           error: error instanceof Error ? error.message : String(error)
         });
-        throw new Error("无法在加载多模态提示词模型前释放 ComfyUI 已有模型；为避免显存冲突，本次扩写已停止。请先停止当前任务或重启 ComfyUI。", { cause: error });
+        throw new Error(t(uiKeys.promptBackend.releaseFailed), { cause: error });
       }
     }
     const residentDevice = retainModel &&
@@ -480,7 +486,7 @@ export async function enhancePromptWithMultimodalComfyUi(
       ? retainedMultimodalDevice.device
       : null;
     if (residentDevice === "CPU" && request.allowCpuFallback !== true) {
-      throw new Error("当前提示词模型驻留在 CPU；本次运行尚未获得继续使用 CPU 的确认。");
+      throw new Error(t(uiKeys.promptBackend.cpuConfirmationRequired));
     }
     const metrics = residentDevice
       ? null
@@ -489,7 +495,7 @@ export async function enhancePromptWithMultimodalComfyUi(
       settings.promptModelId,
       metrics?.vramUsedBytes ?? null,
       metrics?.vramTotalBytes ?? null,
-      request.allowCpuFallback === true
+      request.allowCpuFallback === true, t
     );
     appLogger.info("prompt", "multimodal-device-selected", "Selected multimodal prompt device", {
       modelId: settings.promptModelId,
@@ -508,18 +514,18 @@ export async function enhancePromptWithMultimodalComfyUi(
     );
     const objectInfo = await jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
-      { signal }
+      { signal }, t
     );
     const runtimeSelection = multimodalRuntimeSelection(
       objectInfo,
-      settings.promptModelId
+      settings.promptModelId, t
     );
     const runtimeMaxOutputTokens = multimodalRuntimeMaxOutputTokens(objectInfo);
     const uploadedImages = await Promise.all(
       (request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))
         .filter(Boolean)
         .slice(0, 12)
-        .map((filePath, index) => uploadInput(baseUrl, filePath, signal, `参考图 ${index + 1}`))
+        .map((filePath, index) => uploadInput(baseUrl, filePath, signal, t(uiKeys.promptBackend.referenceImage, { number: index + 1 }), t))
     );
       onProgress?.("uploading", 18);
     const prompt = buildMultimodalPromptWorkflow(
@@ -535,7 +541,7 @@ export async function enhancePromptWithMultimodalComfyUi(
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
       throw new Error(
-        `当前 ComfyUI 未加载多模态提示词节点：${missingNodes.join("、")}。请安装/更新 ComfyUI MultiModal Prompt Nodes，并重启服务。`
+        t(uiKeys.promptBackend.multimodalNodesMissing, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) })
       );
     }
     const clientId = `local-video-studio-multimodal-prompt-${operationId}`;
@@ -544,8 +550,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, client_id: clientId }),
       signal
-    });
-    if (!result.prompt_id) throw new Error("ComfyUI 未返回提示词 Prompt ID");
+    }, t);
+    if (!result.prompt_id) throw new Error(t(uiKeys.promptBackend.promptIdMissing));
     onSubmitted?.(result.prompt_id);
     const nodeTypes = Object.fromEntries(
       Object.entries(prompt).map(([id, value]) => [id, value.class_type])
@@ -581,10 +587,10 @@ export async function enhancePromptWithMultimodalComfyUi(
       { operationId, modelId: settings.promptModelId }
     );
     onProgress?.("validating", 94);
-    const output = extractStringNodeOutput(history, ["preview", "vision-llm"]);
+    const output = extractStringNodeOutput(history, ["preview", "vision-llm"], t);
     const runtimeDiagnostics = await jsonRequest<MultimodalRuntimeDiagnostics>(
       `${baseUrl}/local-video-studio/multimodal-prompt/diagnostics`,
-      { signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]) }
+      { signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]) }, t
     ).catch(() => ({}));
     const requestedMaxTokens = Number(prompt["vision-llm"]?.inputs.max_tokens ?? 0);
     const outputDiagnostics = multimodalPromptOutputDiagnostics(
@@ -605,15 +611,15 @@ export async function enhancePromptWithMultimodalComfyUi(
     });
     if (warmup) return output;
     if (request.promptStrategy === "targeted-revision") {
-      return applyPromptRevision(request.prompt, output);
+      return applyPromptRevision(request.prompt, output, settings.uiLocale);
     }
     if (request.mode === "image-edit") {
       return normalizeQwenImageEditPromptOutput(output);
     }
     try {
-      return normalizeMultimodalPromptOutput(output, request);
+      return normalizeMultimodalPromptOutput(output, request, settings.uiLocale);
     } catch (error) {
-      const diagnostic = multimodalPromptFailureDiagnostic(outputDiagnostics);
+      const diagnostic = multimodalPromptFailureDiagnostic(outputDiagnostics, t);
       appLogger.warn("prompt", "comfy-output-validation-failed", "Multimodal prompt output failed validation", {
         operationId,
         modelId: settings.promptModelId,

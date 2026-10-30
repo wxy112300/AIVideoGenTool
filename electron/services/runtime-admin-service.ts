@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type {
   AppState,
   ConnectionResult,
@@ -63,7 +65,7 @@ export interface RuntimeAdminServiceDependencies {
 }
 
 export class RuntimeAdminService {
-  private readonly installations = new InstallationCancellation();
+  private readonly installations = new InstallationCancellation(() => this.store.get().settings.uiLocale);
 
   cancelDependencyInstall(id: string): Promise<ConnectionResult> {
     return this.installations.cancel(id);
@@ -116,21 +118,21 @@ export class RuntimeAdminService {
     const runtimeOperationId = this.runtimeState.begin(
       "stopping",
       settings.comfyUrl.replace(/\/+$/, ""),
-      "正在终止本地 ComfyUI。"
+      createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.stopping)
     );
     this.logger.warn(
       "service",
       "force-stop-requested",
       "ComfyUI force-stop requested"
     );
-    this.deps.abortPrompt(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
+    this.deps.abortPrompt(new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.promptForceStopped)));
     const worker = this.deps.getQueueWorker();
     if (worker) {
       const stopped = await this.store.update((state) => {
         state.queueRunning = false;
       });
       this.deps.sendState(stopped);
-      this.deps.abortQueue(new Error("用户强制终止 ComfyUI"));
+      this.deps.abortQueue(new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.queueForceStopped)));
       await this.deps.interruptComfy(settings).catch(() => undefined);
     }
     const result = await this.forceStopService(settings);
@@ -154,7 +156,7 @@ export class RuntimeAdminService {
     if (this.deps.isQueueWorkerRunning() || this.deps.isPromptControllerActive()) {
       return Promise.resolve({
         ok: false,
-        message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务。"
+        message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restartBusy)
       });
     }
     return this.loggedOperation(
@@ -191,7 +193,7 @@ export class RuntimeAdminService {
         )) {
           return Promise.resolve({
             ok: false,
-            message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务后再修复数据库。"
+            message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.databaseBusy)
           });
         }
         return this.repairService(issueId, settings);
@@ -271,7 +273,7 @@ export class RuntimeAdminService {
   }
 
   installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
-    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: "当前有生成或提示词任务，请完成或取消后再安装 Strata。" });
+    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.installStrataBusy) });
     return this.loggedOperation("environment", "strata-install", "Strata installation started", () => this.withStrataSoftwareChange((signal) => this.installations.run("python-runtime:strata", () => (this.deps.installStrata ?? installStrata)(settings, (message, progress) => {
       if (message) this.logger.info("environment", "strata-install-progress", message);
       onProgress?.(message, progress);
@@ -279,7 +281,7 @@ export class RuntimeAdminService {
   }
 
   uninstallStrata(settings: Settings, onProgress?: ProgressListener): Promise<ConnectionResult> {
-    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: "当前有生成或提示词任务，请完成或取消后再卸载 Strata。" });
+    if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) return Promise.resolve({ ok: false, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.uninstallStrataBusy) });
     return this.loggedOperation("environment", "strata-uninstall", "Strata uninstallation started", () => this.withStrataSoftwareChange(() => (this.deps.uninstallStrata ?? uninstallStrata)(settings, (message) => {
       this.logger.info("environment", "strata-uninstall-progress", message);
       onProgress?.(message);
@@ -316,7 +318,7 @@ export class RuntimeAdminService {
     if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) {
       return Promise.resolve({
         ok: false,
-        message: "当前有生成或提示词任务正在运行，停止任务后才能升级 H3 运行环境。"
+        message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.attentionBusy)
       });
     }
     return this.loggedOperation(
@@ -336,7 +338,7 @@ export class RuntimeAdminService {
     if (this.deps.isGenerationBusy() || this.deps.isPromptBusy()) {
       return Promise.resolve({
         ok: false,
-        message: "当前有生成或提示词任务正在运行，停止任务后才能安装 Depth Anything。"
+        message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.depthBusy)
       });
     }
     return this.loggedOperation(

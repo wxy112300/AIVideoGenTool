@@ -44,6 +44,26 @@ async function fixture() {
   return { root, old, current, settings, comfy, software, cache, logs };
 }
 describe("managed software cleanup through cache management", () => {
+  it("uses the current language after creation while retaining protected model data", async () => {
+    const f = await fixture();
+    const model = path.join(f.old, "models", "使用者模型.gguf");
+    await write(model, "user model bytes");
+    const candidate = (await f.software.inspect()).find(item => item.path === f.old);
+    expect(candidate).toBeTruthy();
+    for (const [locale, reason, wrapper] of [
+      ["en-US", "Contains models/media/databases; not cleaned:", "Old software cache was not cleaned:"],
+      ["zh-TW", "包含模型／媒體／資料庫，未清理：", "舊軟體快取未清理："],
+      ["zh-CN", "包含模型／媒体／数据库，未清理：", "旧软件缓存未清理："]
+    ] as const) {
+      f.settings.uiLocale = locale;
+      await expect(f.software.clear(candidate!)).rejects.toThrow(reason);
+      expect(f.logs.at(-1)).toContain(wrapper);
+      expect(f.logs.at(-1)).toContain("使用者模型.gguf");
+      expect(await fs.readFile(model, "utf8")).toBe("user model bytes");
+      expect(await fs.readFile(path.join(f.current, "engine/runtime.dll"), "utf8")).toBe("software");
+    }
+  });
+
   it.each(["builtin", "custom-config", "custom-preprocessor", "weights", "misplaced", "unknown-source"])("recognizes only exact bundled Depth Anything metadata in official backups (%s)", async state => {
     const f = await fixture(), backup = path.join(f.comfy, "node-backups", "ComfyUI-DLSS5-123");
     await write(path.join(backup, "nodes.py"));

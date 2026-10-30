@@ -1,4 +1,4 @@
-import { appearanceAccents, appearancePalettes, normalizeAppearance, type UiAppearance } from "../../../core/appearance";
+import { appearanceAccents, appearancePalettes, historyMasonryColumnChoices, historyAlbumColumnChoices, normalizeAppearance, type UiAppearance } from "../../../core/appearance";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { Translate } from "../../../core/i18n";
 import { applyAppearance } from "../../shared/ui/appearance";
@@ -13,13 +13,17 @@ export function renderAppearanceSettings(value: unknown, t: Translate): string {
     ["motion", ["system", "standard", "reduced"], uiKeys.appearance.motions]
   ] as const;
   const descriptions = { accent: uiKeys.appearance.accentHint, palette: uiKeys.appearance.paletteHint, motion: uiKeys.appearance.motionHint };
+  const historyRows = ([
+    ["historyMasonryColumns", historyMasonryColumnChoices],
+    ["historyAlbumColumns", historyAlbumColumnChoices]
+  ] as const).map(([key, values]) => `<div class="appearance-row"><div class="appearance-copy"><h3 id="appearance-${key}-label">${t(uiKeys.appearance[key])}</h3></div><div class="appearance-options appearance-segment" role="radiogroup" aria-labelledby="appearance-${key}-label">${values.map(value => `<button type="button" id="appearance-${key}-${value}" class="appearance-choice" role="radio" aria-checked="${appearance[key] === value}" tabindex="${appearance[key] === value ? 0 : -1}" data-appearance-key="${key}" data-appearance-value="${value}">${value}</button>`).join("")}</div></div>`).join("");
   return `<section class="appearance-settings"><header class="appearance-heading"><h2>${t(uiKeys.appearance.title)}</h2><span>${t(uiKeys.appearance.immediate)}</span></header><section class="appearance-panel">${groups.map(([key, values, labels]) => {
     const hint = descriptions[key as keyof typeof descriptions];
     return `<div class="appearance-row"><div class="appearance-copy"><h3 id="appearance-${key}-label">${t(uiKeys.appearance[key])}</h3>${hint ? `<p>${t(hint)}</p>` : ""}</div><div class="appearance-options ${key === "accent" ? "appearance-swatches" : "appearance-segment"}" role="radiogroup" aria-labelledby="appearance-${key}-label">${values.map((value) => {
       const label = t((labels as Record<string, string>)[value]!);
       return `<button type="button" id="appearance-${key}-${value}" class="appearance-choice" role="radio" aria-checked="${appearance[key] === value}" tabindex="${appearance[key] === value ? 0 : -1}" data-appearance-key="${key}" data-appearance-value="${value}" ${key === "accent" ? `data-swatch="${value}" aria-label="${label}" title="${label}"` : ""}>${key === "accent" ? "" : label}</button>`;
     }).join("")}</div></div>`;
-  }).join("")}<div class="appearance-row"><div class="appearance-copy"><h3 id="appearance-preview-label">${t(uiKeys.appearance.preview)}</h3></div><div class="appearance-preview" role="group" aria-labelledby="appearance-preview-label"><button type="button" class="primary appearance-preview-button">${icon("list-plus")}${t(uiKeys.appearance.previewQueue)}</button><button type="button" class="secondary appearance-preview-button appearance-preview-tinted">${icon("sparkles")}${t(uiKeys.appearance.previewEnhance)}</button><label class="appearance-preview-switch" data-ui-skip><input type="checkbox" checked aria-label="${t(uiKeys.appearance.previewSwitch)}"><span></span></label><div class="appearance-preview-progress" aria-hidden="true"><span></span></div></div></div></section></section>`;
+  }).join("")}${historyRows}<div class="appearance-row"><div class="appearance-copy"><h3 id="appearance-preview-label">${t(uiKeys.appearance.preview)}</h3></div><div class="appearance-preview" role="group" aria-labelledby="appearance-preview-label"><button type="button" class="primary appearance-preview-button">${icon("list-plus")}${t(uiKeys.appearance.previewQueue)}</button><button type="button" class="secondary appearance-preview-button appearance-preview-tinted">${icon("sparkles")}${t(uiKeys.appearance.previewEnhance)}</button><label class="appearance-preview-switch" data-ui-skip><input type="checkbox" checked aria-label="${t(uiKeys.appearance.previewSwitch)}"><span></span></label><div class="appearance-preview-progress" aria-hidden="true"><span></span></div></div></div></section></section>`;
 }
 
 export function mountAppearanceSettings(root: HTMLElement, save: (value: UiAppearance) => Promise<void>, failed: () => void): () => void {
@@ -42,7 +46,7 @@ export function mountAppearanceSettings(root: HTMLElement, save: (value: UiAppea
   const paint = (appearance: UiAppearance) => {
     for (const button of buttons) {
       const key = button.dataset.appearanceKey as keyof UiAppearance;
-      const selected = appearance[key] === button.dataset.appearanceValue;
+      const selected = String(appearance[key]) === button.dataset.appearanceValue;
       button.setAttribute("aria-checked", String(selected));
       button.tabIndex = selected ? 0 : -1;
     }

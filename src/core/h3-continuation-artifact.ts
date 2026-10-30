@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   H3ContinuationDataStatus,
   HistoryFile,
@@ -61,12 +63,12 @@ function isHistoryFile(value: unknown, expectedExtension: "json" | "safetensors"
     (value.absolutePath === undefined || typeof value.absolutePath === "string");
 }
 
-export function continuationArtifactFilenames(artifactId: string): {
+export function continuationArtifactFilenames(artifactId: string, t: Translate = createTranslator().t): {
   payload: string;
   manifest: string;
 } {
   if (!artifactIdPattern.test(artifactId)) {
-    throw new Error("H3 AV artifactId 不是安全的文件名 ID");
+    throw new Error(t(uiKeys.artifactValidation.unsafeId));
   }
   return {
     payload: `${H3_CONTINUATION_ARTIFACT_PAYLOAD_PREFIX}${artifactId}.safetensors`,
@@ -92,31 +94,32 @@ export function isH3ContinuationDataStatus(value: unknown): value is H3Continuat
  * without importing Node filesystem APIs.
  */
 export function validateNativeAvContinuationArtifact(
-  value: unknown
+  value: unknown,
+  t: Translate = createTranslator().t
 ): string | null {
-  if (!isRecord(value)) return "artifact 不是对象";
-  if (value.schemaVersion !== H3_CONTINUATION_ARTIFACT_SCHEMA_VERSION) return "artifact schema 版本不受支持";
-  if (!isNativeAvArtifactId(value.artifactId)) return "artifactId 不安全或无效";
-  if (!isNativeAvArtifactRole(value.role)) return "artifact role 无效";
-  if (!isSafeString(value.lineageId)) return "缺少 lineageId";
+  if (!isRecord(value)) return t(uiKeys.artifactValidation.notObject);
+  if (value.schemaVersion !== H3_CONTINUATION_ARTIFACT_SCHEMA_VERSION) return t(uiKeys.artifactValidation.schema);
+  if (!isNativeAvArtifactId(value.artifactId)) return t(uiKeys.artifactValidation.id);
+  if (!isNativeAvArtifactRole(value.role)) return t(uiKeys.artifactValidation.role);
+  if (!isSafeString(value.lineageId)) return t(uiKeys.artifactValidation.lineage);
   if (value.derivedFromArtifactId !== undefined && !isNativeAvArtifactId(value.derivedFromArtifactId)) {
-    return "derivedFromArtifactId 无效";
+    return t(uiKeys.artifactValidation.derived);
   }
-  if (!isHistoryFile(value.manifest, "json")) return "manifest 文件引用无效";
-  if (!isHistoryFile(value.payload, "safetensors")) return "payload 文件引用无效";
-  const filenames = continuationArtifactFilenames(value.artifactId);
+  if (!isHistoryFile(value.manifest, "json")) return t(uiKeys.artifactValidation.manifest);
+  if (!isHistoryFile(value.payload, "safetensors")) return t(uiKeys.artifactValidation.payload);
+  const filenames = continuationArtifactFilenames(value.artifactId, t);
   if (value.manifest.filename !== filenames.manifest || value.payload.filename !== filenames.payload) {
-    return "manifest/payload 文件名与 artifactId 不匹配";
+    return t(uiKeys.artifactValidation.filenames);
   }
   if (typeof value.payloadSha256 !== "string" || !sha256Pattern.test(value.payloadSha256)) {
-    return "payload SHA-256 无效";
+    return t(uiKeys.artifactValidation.hash);
   }
-  if (!isPositiveInteger(value.payloadBytes)) return "payload 字节数无效";
-  if (value.modelFamily !== "minimax-h3") return "model family 不受支持";
-  if (!isSafeString(value.executionModelId)) return "缺少 execution model identity";
-  if (!isSafeString(value.providerId) || !isSafeString(value.providerRevision)) return "缺少 provider identity";
+  if (!isPositiveInteger(value.payloadBytes)) return t(uiKeys.artifactValidation.bytes);
+  if (value.modelFamily !== "minimax-h3") return t(uiKeys.artifactValidation.family);
+  if (!isSafeString(value.executionModelId)) return t(uiKeys.artifactValidation.execution);
+  if (!isSafeString(value.providerId) || !isSafeString(value.providerRevision)) return t(uiKeys.artifactValidation.provider);
   for (const key of ["producerNodeId", "producerNodeVersion", "workflowId", "sourceAssetId"]) {
-    if (value[key] !== undefined && !isSafeString(value[key])) return `${key} 无效`;
+    if (value[key] !== undefined && !isSafeString(value[key])) return t(uiKeys.artifactValidation.invalidField, { key });
   }
   for (const key of [
     "diffusionModelFilename",
@@ -127,7 +130,7 @@ export function validateNativeAvContinuationArtifact(
     "sourceTaskId",
     "createdAt"
   ]) {
-    if (!isSafeString(value[key])) return `缺少 ${key}`;
+    if (!isSafeString(value[key])) return t(uiKeys.nativeAv.missingField, { key });
   }
   for (const key of [
     "diffusionModelSha256",
@@ -136,23 +139,23 @@ export function validateNativeAvContinuationArtifact(
     "audioVaeSha256"
   ]) {
     if (value[key] !== undefined && (typeof value[key] !== "string" || !sha256Pattern.test(value[key]))) {
-      return `${key} 无效`;
+      return t(uiKeys.artifactValidation.invalidField, { key });
     }
   }
-  if (!isPositiveInteger(value.width) || !isPositiveInteger(value.height)) return "artifact 几何无效";
-  if (value.width % 32 !== 0 || value.height % 32 !== 0) return "artifact 几何必须 32 对齐";
-  if (value.fps !== 24) return "artifact 只支持 24 FPS";
-  if (!isPositiveInteger(value.frameCount)) return "frameCount 无效";
-  if ((value.frameCount - 5) % 17 !== 0) return "frameCount 不符合 H3 时间网格";
-  if (!isShape(value.videoShape) || !isSafeString(value.videoDtype)) return "video shape/dtype 无效";
+  if (!isPositiveInteger(value.width) || !isPositiveInteger(value.height)) return t(uiKeys.artifactValidation.geometry);
+  if (value.width % 32 !== 0 || value.height % 32 !== 0) return t(uiKeys.artifactValidation.alignment);
+  if (value.fps !== 24) return t(uiKeys.artifactValidation.fps);
+  if (!isPositiveInteger(value.frameCount)) return t(uiKeys.artifactValidation.invalidField, { key: "frameCount" });
+  if ((value.frameCount - 5) % 17 !== 0) return t(uiKeys.nativeAv.frameGrid);
+  if (!isShape(value.videoShape) || !isSafeString(value.videoDtype)) return t(uiKeys.artifactValidation.videoShape);
   if (value.audioSampleRate !== 32000 || value.audioChannels !== 2 || value.audioLatentRate !== 40) {
-    return "audio 采样参数不符合 H3 契约";
+    return t(uiKeys.artifactValidation.audioSampling);
   }
-  if (!isShape(value.audioShape) || !isSafeString(value.audioDtype)) return "audio shape/dtype 无效";
+  if (!isShape(value.audioShape) || !isSafeString(value.audioDtype)) return t(uiKeys.artifactValidation.audioShape);
   const contextFrames = value.contextFrames;
-  if (!Number.isSafeInteger(contextFrames) || (contextFrames as number) < 0) return "contextFrames 无效";
-  if (value.upscalerId !== undefined && !isSafeString(value.upscalerId)) return "upscalerId 无效";
-  if (value.upscalerRevision !== undefined && !isSafeString(value.upscalerRevision)) return "upscalerRevision 无效";
+  if (!Number.isSafeInteger(contextFrames) || (contextFrames as number) < 0) return t(uiKeys.nativeAv.context);
+  if (value.upscalerId !== undefined && !isSafeString(value.upscalerId)) return t(uiKeys.artifactValidation.invalidField, { key: "upscalerId" });
+  if (value.upscalerRevision !== undefined && !isSafeString(value.upscalerRevision)) return t(uiKeys.artifactValidation.invalidField, { key: "upscalerRevision" });
   return null;
 }
 
@@ -163,17 +166,18 @@ export function isNativeAvContinuationArtifact(
 }
 
 export function normalizeNativeAvContinuationData(
-  value: unknown
+  value: unknown,
+  t: Translate = createTranslator().t
 ): NativeAvContinuationData | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value) || !isH3ContinuationDataStatus(value.status)) {
-    return { status: "invalid", reason: "artifact 状态记录格式无效" };
+    return { status: "invalid", reason: t(uiKeys.artifactValidation.state) };
   }
   const reason = typeof value.reason === "string" && value.reason.trim()
     ? value.reason
     : undefined;
   if (value.artifact === undefined) return { status: value.status, ...(reason ? { reason } : {}) };
-  const artifactError = validateNativeAvContinuationArtifact(value.artifact);
+  const artifactError = validateNativeAvContinuationArtifact(value.artifact, t);
   if (artifactError) {
     return {
       status: "invalid",
@@ -182,7 +186,7 @@ export function normalizeNativeAvContinuationData(
   }
   const assetError = value.asset === undefined
     ? undefined
-    : validateH3AvLatentAsset(value.asset);
+    : validateH3AvLatentAsset(value.asset, t);
   if (assetError) {
     return {
       status: "invalid",
@@ -199,10 +203,11 @@ export function normalizeNativeAvContinuationData(
 
 export function artifactHistoryFile(
   filename: string,
-  format: "json" | "safetensors"
+  format: "json" | "safetensors",
+  t: Translate = createTranslator().t
 ): HistoryFile {
   if (!filenamePattern.test(filename) || !filename.toLowerCase().endsWith(`.${format}`)) {
-    throw new Error("H3 AV artifact 文件名无效");
+    throw new Error(t(uiKeys.artifactValidation.filename));
   }
   return {
     filename,

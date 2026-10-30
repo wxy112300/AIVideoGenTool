@@ -22,6 +22,32 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it.each([false, true])("keeps registration classification across languages (partial=%s)", async partial => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "node-scan-language-"));
+    temporaryDirectories.push(root);
+    const directory = path.join(root, "custom_nodes", "comfyui-kjnodes", "nodes");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, "preview_override_node.py"), "class ModelPreviewOverrideKJ: pass");
+    let baseline: unknown;
+    for (const uiLocale of ["zh-CN", "en-US", "zh-TW"] as const) {
+      const statuses = await scanCustomNodes(root,
+        { ...createDefaultState().settings, uiLocale, comfyUrl: "http://127.0.0.1:1" },
+        "", "", "", {}, { nodeIds: new Set(partial ? ["VRAM_Debug"] : []) });
+      const node = statuses.find(item => item.id === "kjnodes")!;
+      expect(node.compatibilityState).toBe(partial ? "error" : "warning");
+      expect(node.runtimeRepairable).toBe(!partial);
+      const facts = { loaded: node.loaded, installed: node.installed, runtimeVerified: node.runtimeVerified,
+        runtimeRepairable: node.runtimeRepairable, missing: node.runtimeMissingNodeTypes,
+        state: node.compatibilityState, directory: node.directory };
+      if (baseline) expect(facts).toEqual(baseline); else baseline = facts;
+      if (uiLocale === "en-US") {
+        expect(node.loadError).toContain("Node files are installed, but the service");
+        expect(node.loadError).not.toMatch(/[\p{Script=Han}]/u);
+      }
+      if (uiLocale === "zh-TW") expect(node.loadError).toContain("節點檔案已安裝");
+    }
+  });
+
   it("keeps the verified H3 GGUF commit readable after adaptation and still detects a different commit", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-gguf-revision-"));
     temporaryDirectories.push(root);

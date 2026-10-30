@@ -136,6 +136,18 @@ function createAdmin(
 }
 
 describe("PromptApplicationService", () => {
+  it.each([
+    ["en-US", "Enter a prompt to expand first.", "A video task is running. The prompt model cannot start yet."],
+    ["zh-TW", "請先輸入要擴寫的提示詞", "目前有影片工作正在執行，暫時無法啟動提示詞模型。"]
+  ] as const)("localizes blocked operations in %s without starting a worker", async (locale, empty, busy) => {
+    const repository = createRepository();
+    repository.get().settings.uiLocale = locale;
+    const service = createPromptService(repository, () => true);
+    await expect(service.start()).resolves.toEqual({ok: false, message: busy});
+    await expect(service.enhance({prompt:"",modelId:"minimax_h3_fl2va"})).rejects.toThrow(empty);
+    expect(service.runningWorker).toBeNull();
+    expect(service.isPromptBusy()).toBe(false);
+  });
   it("preserves the queue gate before starting a prompt model", async () => {
     const repository = createRepository();
     const service = createPromptService(repository, () => true);

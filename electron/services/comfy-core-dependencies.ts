@@ -1,4 +1,7 @@
 import { promises as fs } from "node:fs";
+import type { UiLocale } from "../../src/types.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import path from "node:path";
 import { versionAtLeast } from "./comfy-compatibility.js";
 
@@ -81,7 +84,7 @@ const pyavProbe = [
   "print(json.dumps(result, ensure_ascii=False))"
 ].join("\n");
 
-function parseProbeOutput(output: string): {
+function parseProbeOutput(output: string, locale: UiLocale): {
   version: string;
   importReady: boolean;
   error: string;
@@ -100,7 +103,7 @@ function parseProbeOutput(output: string): {
       // Continue in case a Python wrapper printed another JSON-looking line.
     }
   }
-  return { version: "", importReady: false, error: "未收到有效的 PyAV 检查结果" };
+  return { version: "", importReady: false, error: createNativeTranslator(locale).t(uiKeys.runtimeService.pyavProbeInvalid) };
 }
 
 function processErrorDetail(error: unknown): string {
@@ -118,22 +121,24 @@ function statusDetail(input: {
   installedVersion: string;
   importReady: boolean | null;
   probeError?: string;
-}): string {
-  if (!input.featureDetected) return "当前 ComfyUI 核心没有使用新版视频输入 API，无需执行此兼容修复。";
-  if (!input.pythonPath) return "检测到新版视频输入 API，但没有找到所选 ComfyUI Python 环境。";
+}, locale: UiLocale): string {
+  const t = createNativeTranslator(locale).t;
+  if (!input.featureDetected) return t(uiKeys.runtimeService.pyavNotNeededDetail);
+  if (!input.pythonPath) return t(uiKeys.runtimeService.pyavPythonMissing);
   if (input.importReady === true && versionAtLeast(input.installedVersion, COMFY_CORE_PYAV_MINIMUM_VERSION)) {
-    return `PyAV ${input.installedVersion} 已提供新版视频输入 API 所需的枚举。`;
+    return t(uiKeys.runtimeService.pyavCompatible, { version: input.installedVersion });
   }
-  const current = input.installedVersion || "未安装或无法读取";
-  const reason = input.probeError ? ` 导入检查：${input.probeError}` : "";
-  return `当前 PyAV ${current} 与新版视频输入 API 不兼容，需要 PyAV >=${COMFY_CORE_PYAV_MINIMUM_VERSION}。${reason}`;
+  const current = input.installedVersion || t(uiKeys.runtimeService.pyavUnknownVersion);
+  const reason = input.probeError ? t(uiKeys.runtimeService.pyavProbeDetail, { message: input.probeError }) : "";
+  return t(uiKeys.runtimeService.pyavIncompatible, { current, minimum: COMFY_CORE_PYAV_MINIMUM_VERSION, reason });
 }
 
 export async function inspectComfyCorePythonDependency(
   sourceDirectory: string,
   pythonPath: string,
   runProcess: ComfyCoreProcessRunner,
-  environment: NodeJS.ProcessEnv = process.env
+  environment: NodeJS.ProcessEnv = process.env,
+  locale: UiLocale = "zh-CN"
 ): Promise<ComfyCorePythonDependencyStatus> {
   const sourceFile = await findVideoTypeSource(sourceDirectory);
   if (!sourceFile) {
@@ -150,7 +155,7 @@ export async function inspectComfyCorePythonDependency(
         pythonPath,
         installedVersion: "",
         importReady: null
-      })
+      }, locale)
     };
   }
 
@@ -168,7 +173,7 @@ export async function inspectComfyCorePythonDependency(
         pythonPath,
         installedVersion: "",
         importReady: null
-      })
+      }, locale)
     };
   }
 
@@ -179,7 +184,7 @@ export async function inspectComfyCorePythonDependency(
       ["-s", "-c", pyavProbe],
       { cwd: sourceDirectory, env: environment, timeoutMs: 30_000 }
     );
-    probe = parseProbeOutput(output);
+    probe = parseProbeOutput(output, locale);
   } catch (error) {
     probe.error = processErrorDetail(error);
   }
@@ -199,7 +204,7 @@ export async function inspectComfyCorePythonDependency(
       installedVersion: probe.version,
       importReady: probe.importReady,
       probeError: probe.error
-    })
+    }, locale)
   };
 }
 
@@ -208,8 +213,10 @@ export async function repairComfyCorePythonDependency(
   pythonPath: string,
   environment: NodeJS.ProcessEnv,
   runProcess: ComfyCoreProcessRunner,
-  onLog?: (message: string) => void
+  onLog?: (message: string) => void,
+  locale: UiLocale = "zh-CN"
 ): Promise<ComfyCorePythonDependencyRepairResult> {
+  const t = createNativeTranslator(locale).t;
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -221,12 +228,13 @@ export async function repairComfyCorePythonDependency(
     sourceDirectory,
     pythonPath,
     runProcess,
-    environment
+    environment,
+    locale
   );
   if (!before.featureDetected) {
     return {
       ok: true,
-      message: "当前 ComfyUI 核心不需要 PyAV 兼容修复。",
+      message: t(uiKeys.runtimeService.pyavNotNeeded),
       status: before
     };
   }
@@ -241,12 +249,12 @@ export async function repairComfyCorePythonDependency(
   if (!before.needsRepair) {
     return {
       ok: true,
-      message: "PyAV 已兼容，无需重复安装。",
+      message: t(uiKeys.runtimeService.pyavAlreadyCompatible),
       status: before
     };
   }
 
-  report(`检测到新版 ComfyUI 视频输入 API；正在将 PyAV 更新到 >=${COMFY_CORE_PYAV_MINIMUM_VERSION}。`);
+  report(t(uiKeys.runtimeService.pyavUpdating, { minimum: COMFY_CORE_PYAV_MINIMUM_VERSION }));
   try {
     const output = await runProcess(
       pythonPath,
@@ -273,7 +281,7 @@ export async function repairComfyCorePythonDependency(
     report(detail);
     return {
       ok: false,
-      message: `PyAV 自动修复失败：${detail}`,
+      message: t(uiKeys.runtimeService.pyavRepairFailed, { message: detail }),
       log: log.join("\n"),
       status: before
     };
@@ -283,21 +291,22 @@ export async function repairComfyCorePythonDependency(
     sourceDirectory,
     pythonPath,
     runProcess,
-    environment
+    environment,
+    locale
   );
   if (after.needsRepair) {
     report(after.detail);
     return {
       ok: false,
-      message: `PyAV 已执行更新，但兼容性检查仍未通过：${after.detail}`,
+      message: t(uiKeys.runtimeService.pyavStillIncompatible, { message: after.detail }),
       log: log.join("\n"),
       status: after
     };
   }
-  report(`PyAV ${after.installedVersion} 导入检查通过。`);
+  report(t(uiKeys.runtimeService.pyavImportReady, { version: after.installedVersion }));
   return {
     ok: true,
-    message: `PyAV 已自动修复为 ${after.installedVersion}，ComfyUI 可以继续启动。`,
+    message: t(uiKeys.runtimeService.pyavRepaired, { version: after.installedVersion }),
     log: log.join("\n"),
     status: after
   };

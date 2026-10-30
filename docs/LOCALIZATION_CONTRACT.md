@@ -18,6 +18,10 @@ When adding a locale, update the `UiLocale` union, the supported locale list, th
 
 ## Key rules
 
+Native menus and file dialogs use the main process catalogs through `electron/ui-translator.ts`; their adapters read the saved interface language at invocation time. The renderer continues to load non-default global catalogs lazily. Startup failure dialogs use the locale recovered from library startup progress or the loaded state; if state cannot be recovered, they use the default `zh-CN`. Renderer bootstrap errors likewise use the initial state's locale when available. Raw diagnostic details remain intact.
+
+Legacy default prompt-version labels are localized for display without rewriting drafts, queue snapshots or history. Unrecognized/custom labels remain user content. Built-in workflow summaries use the current localized model name; custom workflow paths remain literal.
+
 - Use namespaced semantic keys such as `create.mode.imageToVideo` and `history.lightbox.close`.
 - Do not use a full sentence as a key.
 - Keep interpolation parameters stable and descriptive, for example `{count}` or `{version}`.

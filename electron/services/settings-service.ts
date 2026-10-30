@@ -10,7 +10,9 @@ import type {
   Settings,
   SettingsSaveMode
 } from "../../src/types.js";
-import { normalizeUiLocale } from "../../src/core/i18n.js";
+import { normalizeUiLocale, type Translate } from "../../src/core/i18n.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { normalizeAppearance } from "../../src/core/appearance.js";
 import { MODEL_DOWNLOAD_INVALID, modelDownloadOrigin, modelDownloadSource, modelDownloadSources } from "../../src/core/download-url.js";
 import {
@@ -38,17 +40,20 @@ export interface SettingsHistoryMigrationPort {
     history: HistoryAsset[],
     oldDirectory: string,
     newDirectory: string,
-    queue: QueueTask[]
+    queue: QueueTask[],
+    t?: Translate
   ): Promise<VideoHistoryMigrationPlan>;
   prepare(
     plan: VideoHistoryMigrationPlan,
     journalFilename: string,
-    onProgress: (progress: HistoryMigrationProgress) => void
+    onProgress: (progress: HistoryMigrationProgress) => void,
+    t?: Translate
   ): Promise<PreparedVideoHistoryMigration>;
   markCommitted(preparation: PreparedVideoHistoryMigration): Promise<void>;
   cleanup(
     preparation: PreparedVideoHistoryMigration,
-    onProgress: (progress: HistoryMigrationProgress) => void
+    onProgress: (progress: HistoryMigrationProgress) => void,
+    t?: Translate
   ): Promise<string[]>;
   rollback(preparation: PreparedVideoHistoryMigration): Promise<void>;
 }
@@ -91,11 +96,12 @@ export class SettingsService {
   }
 
   async effectiveImageInputLibraryDirectory(settings: Settings): Promise<string> {
+    const t = createNativeTranslator(settings.uiLocale).t;
     const configured = settings.imageInputLibraryDirectory.trim();
     if (configured) return path.resolve(configured);
     const outputRoot = await this.deps.resolveComfyOutputDirectory(settings);
     if (!outputRoot) {
-      throw new Error("无法确定 ComfyUI input 目录，请先选择 ComfyUI 实例或手动设置图片素材库目录。");
+      throw new Error(t(uiKeys.serviceError.inputDirectoryUnknown));
     }
     return path.join(path.dirname(path.resolve(outputRoot)), "input", "LocalVideoStudio");
   }
@@ -123,10 +129,11 @@ export class SettingsService {
     input: Settings,
     mode: SettingsSaveMode = "apply"
   ): Promise<AppState> {
+    const t = createNativeTranslator(input.uiLocale ?? this.deps.store.get().settings.uiLocale).t;
     // Immediate visual preferences must never apply an unrelated settings draft,
     // clear the native dirty guard, scan files, or touch queued execution policy.
     if (mode === "appearance") {
-      if (this.historyMigrationRunning) throw new Error("当前正在迁移数据，请等待本次操作完成。");
+      if (this.historyMigrationRunning) throw new Error(t(uiKeys.serviceError.migrationBusy));
       await this.deps.store.update((state) => {
         state.settings.appearance = normalizeAppearance(input.appearance);
       });
@@ -135,31 +142,27 @@ export class SettingsService {
       return state;
     }
     if (mode !== "apply" && mode !== "migrate-video-history" && mode !== "migrate-storage") {
-      throw new Error("未知的设置保存模式。");
+      throw new Error(t(uiKeys.serviceError.saveModeInvalid));
     }
     if (this.historyMigrationRunning) {
-      throw new Error("当前正在迁移数据，请等待本次操作完成。");
+      throw new Error(t(uiKeys.serviceError.migrationBusy));
     }
 
     if (input.lanBrowserEnabled !== undefined && typeof input.lanBrowserEnabled !== "boolean") {
-      throw new Error("局域网浏览开关无效。");
+      throw new Error(t(uiKeys.serviceError.lanSwitchInvalid));
     }
     if (input.lanBrowserPort !== undefined && (!Number.isInteger(input.lanBrowserPort) || input.lanBrowserPort < 1024 || input.lanBrowserPort > 65535)) {
-      throw new Error("局域网浏览端口须为 1024–65535 的整数。");
+      throw new Error(t(uiKeys.serviceError.lanPortInvalid));
     }
 
     if (input.strataPort !== undefined && !validStrataPort(input.strataPort)) {
-      throw new Error(input.uiLocale === "en-US"
-        ? "Strata port must be an integer from 1024 to 65535."
-        : input.uiLocale === "zh-TW"
-          ? "Strata 連接埠須為 1024–65535 的整數。"
-          : "Strata 端口须为 1024–65535 的整数。");
+      throw new Error(t(uiKeys.serviceError.strataPortInvalid));
     }
     if (input.strataUncensored !== undefined && typeof input.strataUncensored !== "boolean") {
-      throw new Error("Strata uncensored 设置必须为布尔值。");
+      throw new Error(t(uiKeys.serviceError.uncensoredInvalid));
     }
     if (input.strataUncensoredMode !== undefined && !isStrataUncensoredMode(input.strataUncensoredMode)) {
-      throw new Error("Strata uncensored 模式无效，请选择关闭、自带或社区向量。");
+      throw new Error(t(uiKeys.serviceError.uncensoredModeInvalid));
     }
     if (input.modelDownloadSource !== undefined && !modelDownloadSources.some(source => source.id === input.modelDownloadSource)) throw new Error(MODEL_DOWNLOAD_INVALID);
     if (modelDownloadSource(input) === "custom" && !modelDownloadOrigin(input.modelDownloadCustomUrl ?? "")) throw new Error(MODEL_DOWNLOAD_INVALID);
@@ -184,7 +187,7 @@ export class SettingsService {
     const previous = this.deps.store.get().settings;
     const storageChanged = (["libraryDirectory", "outputDirectory", "imageOutputDirectory"] as const).some(key =>
       (previous[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase() !== (settings[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase());
-    if (storageChanged && mode === "apply") throw new Error("数据目录更改必须确认后迁移，不能仅保存新路径。");
+    if (storageChanged && mode === "apply") throw new Error(t(uiKeys.serviceError.storageMoveRequired));
     const outputDirectoryChanged =
       previous.outputDirectory.trim() !== settings.outputDirectory.trim();
     const directories = mode !== "migrate-storage" && (outputDirectoryChanged || mode === "migrate-video-history")
@@ -216,7 +219,7 @@ export class SettingsService {
     };
 
     if (mode === "migrate-storage" || (mode === "migrate-video-history" && this.deps.stateFile)) {
-      if (!this.deps.stateFile) throw new Error("迁移状态文件未配置。");
+      if (!this.deps.stateFile) throw new Error(t(uiKeys.serviceError.migrationStateMissing));
       this.historyMigrationRunning = true;
       try {
         const changes = await validateMediaDirectories(previous, settings, this.deps.resolveComfyOutputDirectory);
@@ -238,7 +241,7 @@ export class SettingsService {
           phase: "scanning",
           current: 0,
           total: 0,
-          message: "正在扫描历史视频文件",
+          message: t(uiKeys.serviceError.migrationScanning),
           migratedFiles: 0,
           warningCount: 0
         });
@@ -247,26 +250,28 @@ export class SettingsService {
           current.history,
           directories.oldDirectory,
           directories.newDirectory,
-          current.queue
+          current.queue,
+          t
         );
         this.deps.sendHistoryMigrationProgress({
           phase: "scanning",
           current: 0,
           total: plan.entries.length,
-          message: `已找到 ${plan.entries.length} 个历史视频文件，准备迁移`,
+          message: t(uiKeys.serviceError.migrationFound, { count: plan.entries.length }),
           migratedFiles: 0,
           warningCount: plan.missing.length + plan.conflicts.length
         });
         preparation = await this.migration.prepare(
           plan,
           this.deps.videoHistoryMigrationJournal,
-          this.deps.sendHistoryMigrationProgress
+          this.deps.sendHistoryMigrationProgress,
+          t
         );
         this.deps.sendHistoryMigrationProgress({
           phase: "committing",
           current: plan.entries.length,
           total: plan.entries.length,
-          message: "目标文件已复核，正在更新历史记录",
+          message: t(uiKeys.serviceError.migrationCommitting),
           migratedFiles: plan.entries.length,
           warningCount: 0
         });
@@ -278,15 +283,16 @@ export class SettingsService {
         await this.migration.markCommitted(preparation);
         const warnings = await this.migration.cleanup(
           preparation,
-          this.deps.sendHistoryMigrationProgress
+          this.deps.sendHistoryMigrationProgress,
+          t
         );
         this.deps.sendHistoryMigrationProgress({
           phase: "completed",
           current: plan.entries.length,
           total: plan.entries.length,
           message: warnings.length
-            ? "历史视频已迁移，部分旧文件清理失败"
-            : "历史视频迁移完成",
+            ? t(uiKeys.storageMigration.cleanupWarning)
+            : t(uiKeys.storageMigration.complete),
           migratedFiles: plan.entries.length,
           warningCount: warnings.length
         });
@@ -341,10 +347,11 @@ export class SettingsService {
     previous: Settings,
     next: Settings
   ): Promise<{ oldDirectory: string; newDirectory: string }> {
+    const t = createNativeTranslator(next.uiLocale).t;
     const oldDirectory = await this.effectiveVideoOutputDirectory(previous);
     const newDirectory = await this.effectiveVideoOutputDirectory(next);
     if (!newDirectory) {
-      throw new Error("无法确定新的视频输出目录，请先启动或选择 ComfyUI 实例。");
+      throw new Error(t(uiKeys.serviceError.outputDirectoryUnknown));
     }
     if (!oldDirectory || oldDirectory.toLowerCase() === newDirectory.toLowerCase()) {
       return { oldDirectory, newDirectory };
@@ -354,7 +361,7 @@ export class SettingsService {
       outputDirectory: ""
     }) || oldDirectory;
     if (!isPathWithinDirectory(outputRoot, newDirectory)) {
-      throw new Error("视频输出目录必须位于当前 ComfyUI output 目录内。");
+      throw new Error(t(uiKeys.serviceError.outputOutsideComfy));
     }
     return { oldDirectory, newDirectory };
   }

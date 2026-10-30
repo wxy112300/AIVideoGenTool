@@ -1,4 +1,7 @@
 import path from "node:path";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { TranslationParams } from "../../src/core/i18n.js";
 import { createHash } from "node:crypto";
 import { historyDeleteConfirmationMessage, historyDeleteImpactFromError, type HistoryDeleteApproval } from "../../src/core/history-delete-confirmation.js";
 import type {
@@ -55,6 +58,18 @@ export interface HistoryDestructiveServiceDependencies {
 export class HistoryDestructiveService {
   constructor(private readonly deps: HistoryDestructiveServiceDependencies) {}
 
+  private text(key: string, params?: TranslationParams): string {
+    return createNativeTranslator(this.deps.store.get().settings.uiLocale).t(key, params);
+  }
+
+  private mediaLabelForDisplay(label: string): string {
+    const key = label === "视频文件" ? uiKeys.historyDelete.videoLabel
+      : label === "图片文件" ? uiKeys.historyDelete.imageLabel
+      : label === "JointAV 文件" ? uiKeys.historyDelete.jointAvLabel
+      : label === "Motion Context latent 文件" ? uiKeys.historyDelete.motionLabel : null;
+    return key ? this.text(key) : label;
+  }
+
   async deleteHistory(assetId: string, approval?: HistoryDeleteApproval): Promise<AppState> {
     const startedAt = Date.now();
     this.deps.logger.info("history", "delete-started", "History asset deletion started", { assetId });
@@ -92,7 +107,7 @@ export class HistoryDestructiveService {
       );
       if (resolvedVideoFiles?.unresolved.length) {
         throw new PartialHistoryDeletionError(
-          "视频记录包含无法定位的文件，删除结果不完整。",
+          this.text(uiKeys.historyDelete.recordIncomplete),
           deletedFiles,
           true
         );
@@ -121,7 +136,7 @@ export class HistoryDestructiveService {
   }
 
   async deleteHistoryBatch(kind: HistoryBatchCopyKind, assetIds: string[], approval?: HistoryDeleteApproval): Promise<AppState> {
-    if (kind !== "video" && kind !== "image") throw new Error("历史媒体类型无效。");
+    if (kind !== "video" && kind !== "image") throw new Error(this.text(uiKeys.mediaAction.invalidKind));
     const requestedIds = [...new Set(assetIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())))];
     if (!requestedIds.length) return this.deps.store.get();
     const startedAt = Date.now();
@@ -175,7 +190,7 @@ export class HistoryDestructiveService {
       );
       if (unresolved.length) {
         throw new PartialHistoryDeletionError(
-          "视频记录包含无法定位的文件，批量删除结果不完整。",
+          this.text(uiKeys.historyDelete.batchIncomplete),
           deletedFiles,
           true
         );
@@ -215,9 +230,9 @@ export class HistoryDestructiveService {
     const current = this.deps.store.get();
     const asset = current.history.find((item) => item.id === assetId);
     const version = asset?.versions.find((item) => item.id === versionId);
-    if (!asset || !version) throw new Error("视频记录或版本不存在。");
+    if (!asset || !version) throw new Error(this.text(uiKeys.historyDelete.versionMissing));
     if (asset.versions.length <= 1) {
-      throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
+      throw new Error(this.text(uiKeys.historyDelete.lastVersion));
     }
     const coverCacheKey = this.deps.coverCacheKeyForVideoVersion(asset, version);
     const resolvedVersionFiles = await this.videoVersionFilesToDelete(version, current.settings);
@@ -253,14 +268,14 @@ export class HistoryDestructiveService {
       );
       if (resolvedVersionFiles.unresolved.length) {
         throw new PartialHistoryDeletionError(
-          "视频版本包含无法定位的文件，删除结果不完整。",
+          this.text(uiKeys.historyDelete.versionIncomplete),
           deletedFiles,
           true
         );
       }
       const next = await this.deps.store.update((state) => {
         const target = state.history.find((item) => item.id === assetId);
-        if (!target) throw new Error("视频记录不存在。");
+        if (!target) throw new Error(this.text(uiKeys.historyDelete.recordMissing));
         Object.assign(target, removeHistoryVideoVersion(target, versionId));
       });
       await this.deps.removeCoverCacheKeys([coverCacheKey]);
@@ -343,10 +358,10 @@ export class HistoryDestructiveService {
     const artifact = version?.h3ContinuationData?.status === "available"
       ? version.h3ContinuationData.artifact
       : undefined;
-    if (!asset || !version || !artifact) throw new Error("当前版本没有可删除的 JointAV 文件。");
+    if (!asset || !version || !artifact) throw new Error(this.text(uiKeys.historyDelete.jointAvMissing));
     const unifiedAsset = version.h3AvAsset;
     if (unifiedAsset?.storageKind === "continuum-run-chunk") {
-      throw new Error("官方 Run Storage owner 不能从单个 History 版本删除。");
+      throw new Error(this.text(uiKeys.historyDelete.runOwner));
     }
     const targetFiles = [
       artifact.manifest,
@@ -369,7 +384,7 @@ export class HistoryDestructiveService {
         };
       });
       this.deps.sendState(degraded);
-      throw new Error("JointAV manifest 或 payload 已缺失，无法完成安全删除。");
+      throw new Error(this.text(uiKeys.historyDelete.jointAvUnsafe));
     }
     await this.assertPathsExclusive(
       this.deps.store.get(),
@@ -390,7 +405,7 @@ export class HistoryDestructiveService {
       );
       if (unresolvedTargetFile) {
         throw new PartialHistoryDeletionError(
-          "JointAV manifest 或 payload 已缺失，删除结果不完整。",
+          this.text(uiKeys.historyDelete.jointAvIncomplete),
           deletedJointAvFiles,
           true
         );
@@ -398,7 +413,7 @@ export class HistoryDestructiveService {
       const next = await this.deps.store.update((state) => {
         const target = state.history.find((item) => item.id === assetId)
           ?.versions.find((item) => item.id === versionId);
-        if (!target) throw new Error("视频记录或版本不存在。");
+        if (!target) throw new Error(this.text(uiKeys.historyDelete.versionMissing));
         target.files = target.files.filter((file) =>
           !targetFiles.some((candidate) =>
             file.absolutePath && candidate.absolutePath
@@ -448,14 +463,14 @@ export class HistoryDestructiveService {
         version.files.find(isH3MotionContextHistoryFile)
       : undefined;
     if (!asset || !version || !contextFile) {
-      throw new Error("当前版本没有可删除的 Motion Context latent 文件。");
+      throw new Error(this.text(uiKeys.historyDelete.motionMissing));
     }
     const resolved = await this.deps.resolveHistoryFile(contextFile, current.settings);
     const filename = resolved && path.extname(resolved).toLowerCase() === ".safetensors"
       ? path.resolve(resolved)
       : null;
     if (!filename) {
-      throw new Error("当前版本没有可定位的 Motion Context latent 文件。");
+      throw new Error(this.text(uiKeys.historyDelete.motionUnresolved));
     }
     await this.assertPathsExclusive(
       this.deps.store.get(),
@@ -475,7 +490,7 @@ export class HistoryDestructiveService {
       const next = await this.deps.store.update((state) => {
         const targetAsset = state.history.find((item) => item.id === assetId);
         const target = targetAsset?.versions.find((item) => item.id === versionId);
-        if (!targetAsset || !target) throw new Error("视频记录或版本不存在。");
+        if (!targetAsset || !target) throw new Error(this.text(uiKeys.historyDelete.versionMissing));
         target.files = target.files.filter((file) =>
           !sameMotionContextFile(file, contextFile, filename)
         );
@@ -507,8 +522,8 @@ export class HistoryDestructiveService {
     const current = this.deps.store.get();
     const project = current.imageHistory.find((item) => item.id === projectId);
     const version = project?.versions.find((item) => item.id === versionId);
-    if (!project || !version) throw new Error("图片项目或版本不存在。");
-    if (version.kind === "source") throw new Error("原始导入图片不能从项目中删除。");
+    if (!project || !version) throw new Error(this.text(uiKeys.historyDelete.imageVersionMissing));
+    if (version.kind === "source") throw new Error(this.text(uiKeys.historyDelete.sourceProtected));
     const sharedByAnotherVersion = project.versions.some((item) =>
       item.id !== versionId && (
         Boolean(version.file.absolutePath && item.file.absolutePath === version.file.absolutePath) ||
@@ -588,9 +603,10 @@ export class HistoryDestructiveService {
           continue;
         }
         throw new PartialHistoryDeletionError(
-          `无法删除${mediaLabel} ${path.basename(filename)}：${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          this.text(uiKeys.historyDelete.unlinkFailed, {
+            label: this.mediaLabelForDisplay(mediaLabel), filename: path.basename(filename),
+            message: error instanceof Error ? error.message : String(error)
+          }),
           deletedFiles,
           integrityUncertain || missingFileSeen || deletedFiles.length > 0
         );
@@ -696,7 +712,10 @@ export class HistoryDestructiveService {
         // Image deletion keeps its existing protection; this approval covers
         // video/continuation data only, never expands the actual file set.
         if (mediaLabel === "图片文件") {
-          throw new Error(`${mediaLabel}仍被其他版本、队列或草稿引用，拒绝物理删除：${blockers.map(reference => reference.referenceId).join("、")}`);
+          throw new Error(this.text(uiKeys.historyDelete.referenced, {
+            label: this.mediaLabelForDisplay(mediaLabel),
+            references: blockers.map(reference => reference.referenceId).join(this.deps.store.get().settings.uiLocale === "en-US" ? ", " : "、")
+          }));
         }
         if (approval?.referenceToken !== referenceToken) {
           this.deps.logger.info("history", "delete-confirmation-required", "Linked deletion requires confirmation", {
@@ -712,7 +731,7 @@ export class HistoryDestructiveService {
       }
       return;
     }
-    throw new Error(`${mediaLabel}引用状态在检查期间持续变化，拒绝物理删除，请重试。`);
+    throw new Error(this.text(uiKeys.historyDelete.referencesChanging, { label: this.mediaLabelForDisplay(mediaLabel) }));
   }
 
   private logFailure(

@@ -9,6 +9,23 @@ import path from "node:path";
 import os from "node:os";
 
 describe("installation cancellation", () => {
+  it("uses the current language after switching while preserving installer logs and recovery", async () => {
+    let locale: "en-US" | "zh-TW" = "en-US";
+    const registry = new InstallationCancellation(() => locale);
+    const pending = registry.run("localized", async () => {
+      await new Promise<void>(resolve => installationSignal()!.addEventListener("abort", () => resolve(), { once: true }));
+      return {ok:false, message:"original result",log:"pip: original diagnostic"};
+    });
+    await Promise.resolve();
+    await expect(registry.run("localized", async () => ({ok:true,message:"must not execute"})))
+      .resolves.toMatchObject({ok:false,message:"This installation is already running. Wait for it to finish."});
+    locale = "zh-TW";
+    await expect(registry.cancel("localized")).resolves.toMatchObject({
+      ok:true,cancelled:true,message:"安裝已取消。可查看記錄並重新安裝。",log:"pip: original diagnostic"
+    });
+    await pending;
+    expect(hasActiveInstallations()).toBe(false);
+  });
   it("excludes software cache maintenance and installation without cancelling either operation", async () => {
     const registry = new InstallationCancellation();
     await withSoftwareMaintenance(async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  inspectLlamaCppPythonProbe,
+  llamaCppStatusFromInspection,
+  type LlamaCppPythonProbeResult
+} from "../electron/services/llama-cpp-python";
+import {
   PythonProbeCache,
   type PythonProbeRunOutput
 } from "../electron/services/python-probe-cache";
@@ -66,6 +71,48 @@ function rawValue(
 }
 
 describe("PythonProbeCache", () => {
+  it("reuses raw llama facts across locale changes and formats projections without a native probe", async () => {
+    let now = 1000;
+    const cache = new PythonProbeCache<{ attention: string; llama: LlamaCppPythonProbeResult }>({
+      now: () => now, wallNow: () => now, ttlMs: 1000, fingerprintReader: fingerprintReader().reader
+    });
+    const runner = vi.fn(async () => JSON.stringify({
+      packageVersion: "0.4.5", pythonVersion: "3.12.11", packageDirectory: "使用者/llama_cpp",
+      importable: true, gpuOffload: true, dynamicBackend: false, backendError: "DLL missing: 原文"
+    }));
+    const run = async () => ({ value: await inspectLlamaCppPythonProbe("python.exe", runner), cacheable: true });
+    const first = await cache.readOrRun(identity(), "llama", "auto", run);
+    const previous = { ...llamaCppStatusFromInspection("python.exe", first.value!),
+      probeEvidence: first.evidence };
+    expect(previous.ready).toBe(false);
+    for (const [locale, detail] of [
+      ["en-US", "An outdated or unusable Windows native backend is installed. Run a repair installation: DLL missing: 原文"],
+      ["zh-TW", "已安裝舊版或無法使用的 Windows 原生後端；請執行修復安裝：DLL missing: 原文"],
+      ["zh-CN", "已安装旧版或不可用的 Windows 原生后端；请执行修复安装：DLL missing: 原文"]
+    ] as const) {
+      const hit = await cache.readOrRun(identity(), "llama", "auto", run);
+      expect(hit.metrics.nativeStarted).toBe(false);
+      const format = (raw: LlamaCppPythonProbeResult, snapshot: typeof previous) =>
+        ({ ...snapshot, detail: llamaCppStatusFromInspection(snapshot.pythonPath, raw, locale).detail });
+      const projected = await cache.projectPrevious(identity(), "llama", previous, format);
+      expect(projected.value).toEqual({ ...previous, detail });
+      expect(projected.evidence.state).toBe("valid");
+      expect(projected.metrics.nativeStarted).toBe(false);
+      const sync = cache.projectPreviousSync(identity(), "llama", previous, format);
+      expect(sync).toEqual(projected);
+    }
+    expect(runner).toHaveBeenCalledTimes(1);
+    const stable = await cache.readOrRun(identity(), "llama", "auto", run);
+    expect(stable.value).toEqual(first.value);
+    expect(stable.value?.probe).not.toHaveProperty("detail");
+    now = 2001;
+    const expired = cache.projectPreviousSync(identity(), "llama", previous,
+      (raw, snapshot) => ({ ...snapshot, detail: llamaCppStatusFromInspection("python.exe", raw, "en-US").detail }));
+    expect(expired.evidence.state).toBe("expired");
+    expect(expired.metrics.nativeStarted).toBe(false);
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses a successful native result while keeping the probe value out of disk", async () => {
     let now = 1_000;
     const fingerprint = fingerprintReader();

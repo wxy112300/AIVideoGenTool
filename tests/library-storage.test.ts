@@ -161,7 +161,7 @@ describe("library migration and immutable records", () => {
     await fs.copyFile(filename, other);
     await expect(new JsonStore(other, options).load()).rejects.toThrow("Another profile");
     await first.close();
-    await expect(first.update(state => { state.history[0].title = "Closed writer"; })).rejects.toThrow("writer is closed");
+    await expect(first.update(state => { state.history[0].title = "Closed writer"; })).rejects.toThrow("资料库写入器已关闭或尚未打开。");
     const next = new JsonStore(other, options);
     expect((await next.load()).libraryStorage!.libraryId).toBe(original.libraryStorage!.libraryId);
     await next.close();

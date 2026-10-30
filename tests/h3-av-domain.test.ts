@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import { adaptH3AvAsset } from "../src/core/h3-av-adapters.js";
 import {
   buildH3AvReferenceIndex,
@@ -13,6 +14,34 @@ const outputFile = (subfolder: string, filename: string): HistoryFile => ({
   filename,
   type: "output",
   format: "safetensors"
+});
+
+it("localizes nested asset failures and inventory reasons without changing references", () => {
+  const asset = managedAsset();
+  asset.producer.workflowId = "";
+  const before = structuredClone(asset);
+  for (const [locale, expected, missing] of [
+    ["en-US", "producer.workflowId is missing.", "Payload file does not exist."],
+    ["zh-TW", "producer.workflowId 缺失", "payload 檔案不存在"],
+    ["zh-CN", "producer.workflowId 缺失", "payload 文件不存在"]
+  ] as const) {
+    const t = createNativeTranslator(locale).t;
+    expect(validateH3AvLatentAsset(asset, t)).toBe(expected);
+    const raw = "E:/使用者素材/external: EACCES";
+    const entries = classifyH3AvInventory([
+      { referenceId: "asset-1", path: asset.ownerPath, asset, present: true },
+      { referenceId: "missing-1", path: asset.ownerPath, present: false },
+      { referenceId: "external-1", path: asset.ownerPath, present: true, validationError: raw }
+    ], undefined, t);
+    expect(entries.map((entry) => [entry.referenceId, entry.status, entry.reason])).toEqual([
+      ["asset-1", "corrupt", expected], ["missing-1", "missing", missing], ["external-1", "corrupt", raw]
+    ]);
+    expect(entries.every((entry) => entry.path === asset.ownerPath)).toBe(true);
+    expect(asset).toEqual(before);
+  }
+  const healthy = managedAsset();
+  expect(() => adaptH3AvAsset(healthy, "native-joint-av", createNativeTranslator("en-US").t))
+    .toThrow("H3 AV asset h3av_abcdefgh lacks the native-av capability required by the native-joint-av adapter.");
 });
 
 function producer(legacyUnverified = false) {

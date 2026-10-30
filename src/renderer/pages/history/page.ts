@@ -1,3 +1,4 @@
+import { historyDiagnosticForDisplay } from "../../../core/history-diagnostic";
 import type {
   AppState,
   AssetVersion,
@@ -623,8 +624,8 @@ export function renderHistoryDetailPage(
         : artifactInspectionStatus === "invalid"
           ? options.t(uiKeys.history.page.nativeAvStatusInvalid)
           : options.t(uiKeys.history.page.nativeAvStatusNotSupported);
-  const nativeAvStatusReason = viewModel.historyArtifactInspection?.reason ??
-    version.h3ContinuationData?.reason;
+  const nativeAvStatusReason = historyDiagnosticForDisplay(viewModel.historyArtifactInspection?.reason ??
+    version.h3ContinuationData?.reason, options.t);
   const nativeAvRole = version.h3AvAsset?.artifactRole ?? jointAvArtifact?.role;
   const nativeAvScope = version.h3AvAsset?.sampleScope ??
     (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);

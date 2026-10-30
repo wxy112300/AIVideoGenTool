@@ -1,4 +1,7 @@
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { createReadStream, promises as fs } from "node:fs";
+import { createNativeTranslator } from "../ui-translator.js";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFile } from "node:child_process";
@@ -42,33 +45,33 @@ async function entries(directory: string) {
   const stat = await fs.lstat(directory).catch(() => null);
   return stat?.isDirectory() && !stat.isSymbolicLink() ? fs.readdir(directory, { withFileTypes: true }).catch(() => []) : [];
 }
-async function smallText(filename: string) {
+async function smallText(filename: string, t: Translate = createNativeTranslator(undefined).t) {
   const stat = await fs.lstat(filename);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error("软件来源记录无效");
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error(t(uiKeys.softwareCache.invalidReceipt));
   return fs.readFile(filename, "utf8");
 }
-async function sourceMatches(directory: string, url: string) {
-  try { return repository(/\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(await smallText(path.join(directory, ".git/config")))?.[1] ?? "") === repository(url); }
+async function sourceMatches(directory: string, url: string, t: Translate = createNativeTranslator(undefined).t) {
+  try { return repository(/\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(await smallText(path.join(directory, ".git/config"), t))?.[1] ?? "") === repository(url); }
   catch { return false; }
 }
 /** Unknown local data blocks deletion of that copy; cache cleanup never imports old data into live software. */
-async function assertDisposable(candidate: Candidate) {
+async function assertDisposable(candidate: Candidate, t: Translate = createNativeTranslator(undefined).t) {
   const tracked = candidate.git ? await gitSoftwareFiles(candidate.path) : new Set<string>();
-  const strataSource = candidate.vectors && await sourceMatches(candidate.path, "https://github.com/Niko1221/Strata");
+  const strataSource = candidate.vectors && await sourceMatches(candidate.path, "https://github.com/Niko1221/Strata", t);
   const visit = async (directory: string, relative = "") => {
-    if (candidate.vectors && relative === "third_party/llama.cpp" && await sourceMatches(directory, "https://github.com/ggml-org/llama.cpp")
-      && (await smallText(path.join(directory, ".git/HEAD")).catch(() => "")).trim() === STRATA_LLAMA_REVISION) {
+    if (candidate.vectors && relative === "third_party/llama.cpp" && await sourceMatches(directory, "https://github.com/ggml-org/llama.cpp", t)
+      && (await smallText(path.join(directory, ".git/HEAD"), t).catch(() => "")).trim() === STRATA_LLAMA_REVISION) {
       for (const name of await gitSoftwareFiles(directory)) tracked.add(path.posix.join(relative, name));
     }
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const name = path.posix.join(relative, entry.name), filename = path.join(directory, entry.name);
-      if (entry.isSymbolicLink()) throw new Error(`目录包含链接，未清理：${filename}`);
+      if (entry.isSymbolicLink()) throw new Error(t(uiKeys.softwareCache.linkedDirectory, { path: filename }));
       if ([".git", ".venv", "node_modules", "__pycache__"].includes(entry.name)) continue;
       if (entry.isDirectory()) { await visit(filename, name); continue; }
       if (candidate.owned?.has(name)) continue;
       if (candidate.dlss5 && relative === DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY
         && ["config.json", "preprocessor_config.json"].includes(entry.name)
-        && await smallText(filename) === depthAnythingBuiltinMetadataFile(entry.name)) continue;
+        && await smallText(filename, t) === depthAnythingBuiltinMetadataFile(entry.name)) continue;
       if (candidate.dlss5 && /^\.dlss5-runtime-staging-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\//iu.test(name)
         && name.slice(name.indexOf("/") + 1) === DLSS5_RETIRED_DESKTOP_ASSET.relativePath) {
         const stat = await nativeFs.promises.lstat(filename);
@@ -81,12 +84,12 @@ async function assertDisposable(candidate: Candidate) {
       if (strataSource && tracked.has(name) && /^data\/(?:draft_vocab(?:_(?:en|fr|cyrillic))?|expert-profile(?:-(?:coder|sycl))?)\.bin$/u.test(name)) continue;
       if (candidate.vectors && [strataVectorForMode("builtin").relativePath, strataVectorForMode("community").relativePath, "data/lvs-control-vectors/NOTICE.txt"].includes(name)) continue;
       if (tracked.has(name) && /\.(?:png|jpe?g|webp|gif|mp4|mov|wav|mp3|flac)$/iu.test(name)) continue;
-      if (/\.(?:gguf|safetensors|ckpt|pt|pth|onnx|bin|sqlite3?|db|mp4|mov|wav|mp3|flac)$/iu.test(name)) throw new Error(`包含模型／媒体／数据库，未清理：${filename}`);
+      if (/\.(?:gguf|safetensors|ckpt|pt|pth|onnx|bin|sqlite3?|db|mp4|mov|wav|mp3|flac)$/iu.test(name)) throw new Error(t(uiKeys.softwareCache.protectedData, { path: filename }));
       if (tracked.has(name) || candidate.package) continue;
       if (/\.(?:py|pyi|js|mjs|cjs|ts|tsx|jsx|css|html?|md|rst|dll|exe|pyd|lib|h|hpp|c|cpp|cu|cuh|bat|cmd|ps1|pyc|pyo|zip|tgz|addon64)$/iu.test(name)
         || /^(?:requirements[^/]*\.txt|VERSION|LICENSE[^/]*|NOTICE[^/]*|lvs-strata-(?:stage|install)\.json|download\.json)$/u.test(entry.name)) continue;
-      if (/\.(?:ini|cfg|json|ya?ml|toml)$/iu.test(name)) throw new Error(`包含需保留的本地文件（配置已修改或来源未确认），未清理整个备份：${filename}`);
-      throw new Error(`包含未确认可重建的本地文件，未清理：${filename}`);
+      if (/\.(?:ini|cfg|json|ya?ml|toml)$/iu.test(name)) throw new Error(t(uiKeys.softwareCache.localConfig, { path: filename }));
+      throw new Error(t(uiKeys.softwareCache.unknownData, { path: filename }));
     }
   };
   if ((await fs.lstat(candidate.path)).isDirectory()) await visit(candidate.path);
@@ -94,6 +97,8 @@ async function assertDisposable(candidate: Candidate) {
 
 /** Only software roots already managed by this app; no drive-wide scan, network or model hashing. */
 export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
+  const t: Translate = (key, params, fallback) =>
+    createNativeTranslator(options.getSettings().uiLocale).t(key, params, fallback);
   async function discover(): Promise<Candidate[]> {
     const settings = options.getSettings(), candidates: Candidate[] = [];
     const add = async (parent: string, filename: string, proof: string, extra: Partial<Candidate> = {}) => {
@@ -117,10 +122,10 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       if ([selected, automatic, managedStrataDirectory()].some(current => identity(current) === identity(filename))) continue;
       if (/^(?:v\d+\.\d+\.\d+(?:\.\d+)?-[a-f0-9]{8}|runtime)(?:\.(?:backup|failed)-\d+)?$/iu.test(entry.name) && await strataManagedReceipt(filename, false)) {
         if (!haveCurrent && !/\.(?:backup|failed)-\d+$/u.test(entry.name)) continue;
-        await add(strataRoot, filename, await smallText(path.join(filename, "lvs-strata-install.json")), { git: true, vectors: true, owned: new Set(STRATA_ENGINE_FILES) });
+        await add(strataRoot, filename, await smallText(path.join(filename, "lvs-strata-install.json"), t), { git: true, vectors: true, owned: new Set(STRATA_ENGINE_FILES) });
       } else if (/^\.install-[a-z0-9]+$/iu.test(entry.name)) {
-        const marker = await smallText(path.join(filename, "lvs-strata-stage.json")).catch(() => "{}");
-        try { if (JSON.parse(marker).owner === "local-video-studio" || await sourceMatches(filename, "https://github.com/Niko1221/Strata")) await add(strataRoot, filename, marker, { git: true, vectors: true, owned: new Set(STRATA_ENGINE_FILES) }); }
+        const marker = await smallText(path.join(filename, "lvs-strata-stage.json"), t).catch(() => "{}");
+        try { if (JSON.parse(marker).owner === "local-video-studio" || await sourceMatches(filename, "https://github.com/Niko1221/Strata", t)) await add(strataRoot, filename, marker, { git: true, vectors: true, owned: new Set(STRATA_ENGINE_FILES) }); }
         catch { /* Malformed marker is not ownership. */ }
       }
     }
@@ -129,7 +134,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       if (!entry.isDirectory() || !/^engine-[a-f0-9]{40}-[a-f0-9]{64}$/u.test(entry.name)) continue;
       const filename = path.join(downloads, entry.name);
       try {
-        const proof = await smallText(path.join(filename, "download.json")), receipt = JSON.parse(proof);
+        const proof = await smallText(path.join(filename, "download.json"), t), receipt = JSON.parse(proof);
         if (receipt.owner === "local-video-studio" && entry.name === `engine-${receipt.revision}-${receipt.sha256}`) {
           const owned = new Set(["download.json", "engine.zip", ...(await entries(filename)).filter(file => /^engine\.zip\.invalid-\d+$/u.test(file.name)).map(file => file.name)]);
           await add(strataRoot, filename, proof, { owned });
@@ -143,22 +148,22 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
         const definition = definitions.find(node => entry.name.startsWith(`${node.directoryName}-`) && /^\d+$/u.test(entry.name.slice(node.directoryName.length + 1)));
         if (!definition || !entry.isDirectory()) continue;
         const filename = path.join(comfy, "node-backups", entry.name);
-        if (await sourceMatches(filename, definition.repositoryUrl)) await add(comfy, filename, await smallText(path.join(filename, ".git/config")), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
+        if (await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
         else if (definition.source === "bundled") {
-          const version = await smallText(path.join(filename, "VERSION")).catch(() => "");
+          const version = await smallText(path.join(filename, "VERSION"), t).catch(() => "");
           if (version.trim() && (await fs.lstat(path.join(filename, "__init__.py")).catch(() => null))?.isFile()) await add(comfy, filename, version);
         }
       }
       for (const entry of await entries(path.join(comfy, "custom_nodes"))) {
         const definition = definitions.find(node => entry.name.startsWith(`${node.directoryName}.update-`) && /^[a-f0-9-]{36}$/iu.test(entry.name.slice(node.directoryName.length + 8)));
         const filename = path.join(comfy, "custom_nodes", entry.name);
-        if (definition && entry.isDirectory() && await sourceMatches(filename, definition.repositoryUrl)) await add(comfy, filename, await smallText(path.join(filename, ".git/config")), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
+        if (definition && entry.isDirectory() && await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
       }
       const konohamaru = definitions.find(node => node.id === KONOHAMARU_NODE_ID);
       if (konohamaru) {
         const node = path.join(comfy, "custom_nodes", konohamaru.directoryName);
         const roots = konohamaruSoftwareCacheRoots(node);
-        if (await sourceMatches(node, konohamaru.repositoryUrl)) {
+        if (await sourceMatches(node, konohamaru.repositoryUrl, t)) {
           for (const prefix of roots.addons) for (const entry of await entries(path.dirname(prefix))) {
             if (entry.isFile() && entry.name.startsWith(path.basename(prefix)) && /^\d+$/u.test(entry.name.slice(path.basename(prefix).length))) await add(comfy, path.join(path.dirname(prefix), entry.name), prefix);
           }
@@ -167,7 +172,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
           if (!entry.isDirectory() || !/^\d+-[a-z0-9_-]+$/iu.test(entry.name)) continue;
           const filename = path.join(roots.backups, entry.name);
           try {
-            const proof = await smallText(path.join(filename, "install-manifest.json")), manifest = JSON.parse(proof);
+            const proof = await smallText(path.join(filename, "install-manifest.json"), t), manifest = JSON.parse(proof);
             if (manifest.schemaVersion === 1 && manifest.bundleId === KONOHAMARU_VIDEO2DLSSNR_RUNTIME_BUNDLE_ID && Array.isArray(manifest.ownedFiles) && manifest.ownedFiles.every((name: unknown) => typeof name === "string" && !name.includes("..") && !path.isAbsolute(name))) await add(comfy, filename, proof, { owned: new Set([...manifest.ownedFiles, "install-manifest.json"]) });
           } catch { /* Unknown backup. */ }
         }
@@ -180,7 +185,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
           if (!entry.isDirectory() || !/^\d+-[a-z0-9_-]+$/iu.test(entry.name)) continue;
           const filename = path.join(comfy, folder, entry.name);
           try {
-            const proof = await smallText(path.join(filename, manifestName)), manifest = JSON.parse(proof);
+            const proof = await smallText(path.join(filename, manifestName), t), manifest = JSON.parse(proof);
             if (manifest.schemaVersion === 1 && accepts(manifest) && Array.isArray(manifest.ownedFiles) && manifest.ownedFiles.every((name: unknown) => typeof name === "string" && !name.includes("..") && !path.isAbsolute(name)))
               await add(comfy, filename, proof, { owned: new Set([...manifest.ownedFiles, manifestName]) });
           } catch { /* Unknown runtime. */ }
@@ -200,7 +205,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
         await (options.assertIdle ?? assertSharedPackagesIdle)((await discover()).map(candidate => candidate.path));
         return await work();
       } finally { await lease.release(); }
-    });
+    }, options.getSettings().uiLocale);
   }
   return {
     inspect: discover,
@@ -208,12 +213,12 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
     clear: async target => {
       try {
       const fresh = (await discover()).find(candidate => identity(candidate.path) === identity(target.path) && candidate.identity === target.identity);
-      if (!fresh) throw new Error(`软件归属或当前安装已改变，未清理：${target.path}`);
-      await assertDisposable(fresh);
+      if (!fresh) throw new Error(t(uiKeys.softwareCache.ownershipChanged, { path: target.path }));
+      await assertDisposable(fresh, t);
       const messages: string[] = [];
-      const removed = await removeSoftwareArtifact(fresh.parent, fresh.path, message => { messages.push(message); options.log?.(message); }, removeDirectoryTreeWithoutAsar);
-      if (!removed) throw new Error(messages.at(-1) ?? "软件清理失败");
-      } catch (error) { options.log?.(`旧软件缓存未清理：${error instanceof Error ? error.message : String(error)}`); throw error; }
+      const removed = await removeSoftwareArtifact(fresh.parent, fresh.path, message => { messages.push(message); options.log?.(message); }, removeDirectoryTreeWithoutAsar, createNativeTranslator(options.getSettings().uiLocale).t);
+      if (!removed) throw new Error(messages.at(-1) ?? t(uiKeys.softwareCache.failed));
+      } catch (error) { options.log?.(t(uiKeys.softwareCache.cacheRetained, { reason: error instanceof Error ? error.message : String(error) })); throw error; }
     }
   };
 }

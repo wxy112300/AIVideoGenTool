@@ -249,7 +249,7 @@ export function mountCreatePromptController(
     }
     if (targetedRevision) {
       try {
-        buildPromptRevisionPlan(currentPrompt);
+        buildPromptRevisionPlan(currentPrompt, options.context.getState()?.settings.uiLocale);
       } catch (error) {
         options.context.notify(
           error instanceof Error ? error.message : promptUi().t("annotationRevisionMissing"),

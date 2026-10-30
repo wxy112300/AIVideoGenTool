@@ -60,6 +60,58 @@ function request(outputDirectory: string, payload = safetensorsPayload()): Nativ
 }
 
 describe("NativeAvArtifactService", () => {
+  it("localizes nested validation without changing committed files or exposing translated metadata", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-localized-"));
+    let locale: "en-US" | "zh-TW" = "en-US";
+    const service = new NativeAvArtifactService({
+      fileSystem: nativeAvArtifactFileSystem,
+      getUiLocale: () => locale
+    });
+    try {
+      const truncated = await service.commit(request(root, new Uint8Array([1, 2, 3])));
+      expect(truncated).toEqual({
+        status: "save-failed",
+        reason: "safetensors payload is truncated: header length is missing."
+      });
+      const missingIdentity = await service.commit({ ...request(root), sourceTaskId: "" });
+      expect(missingIdentity).toEqual({ status: "save-failed", reason: "Missing sourceTaskId." });
+      const committed = await service.commit(request(root));
+      expect(committed.status).toBe("available");
+      const artifact = committed.artifact!;
+      const originalManifest = await fs.readFile(artifact.manifest.absolutePath!, "utf8");
+      const originalPayload = await fs.readFile(artifact.payload.absolutePath!);
+      locale = "zh-TW";
+      expect((await service.inspect(artifact, root)).status).toBe("available");
+      expect(await fs.readFile(artifact.manifest.absolutePath!, "utf8")).toBe(originalManifest);
+      expect(await fs.readFile(artifact.payload.absolutePath!)).toEqual(originalPayload);
+      expect(await service.commit(request(root, new Uint8Array([1, 2, 3])))).toEqual({
+        status: "save-failed",
+        reason: "artifact artifact-001 已存在，拒絕覆寫舊結果"
+      });
+      const invalidReference = { ...artifact, payloadBytes: 0 };
+      expect(await service.inspect(invalidReference, root)).toEqual({
+        status: "invalid",
+        reason: "payload 位元組數無效"
+      });
+      locale = "en-US";
+      const stored = JSON.parse(originalManifest);
+      stored.sourceTaskId = "";
+      await fs.writeFile(artifact.manifest.absolutePath!, JSON.stringify(stored));
+      expect(await service.inspect(artifact, root)).toEqual({
+        status: "invalid",
+        reason: "Invalid manifest: Missing sourceTaskId."
+      });
+      const raw = "E:\\使用者素材\\external: EACCES";
+      const externalFailure = new NativeAvArtifactService({
+        fileSystem: { ...nativeAvArtifactFileSystem, stat: async () => { throw new Error(raw); } },
+        getUiLocale: () => locale
+      });
+      expect(await externalFailure.commit(request(root))).toEqual({ status: "save-failed", reason: raw });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a migrated AV pair available after history restoration under a shared output root", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-av-migration-"));
     try {

@@ -22,6 +22,19 @@ import { h3TimelineDurationForRequest } from "../src/core/h3-auto-prompter.js";
 import type { EnhanceRequest, H3PromptPreset } from "../src/types.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("localizes output rejection reasons without translating technical identities", () => {
+    for (const [locale, body, timeline, budget] of [
+      ["en-US", "must return only the current Chunk body", "returned no integrated_multimodal_description timeline", "supports up to 100 output tokens"],
+      ["zh-TW", "只能傳回目前的 Chunk body", "未傳回 integrated_multimodal_description 主時間軸", "最多輸出 100 token"]
+    ] as const) {
+      expect(() => normalizeH3PromptOutput("[Chunk 1] Replace the full timeline.", "T2VA", 5,
+        [], [], "original", "", true, true, 1, undefined, locale)).toThrow(body);
+      expect(() => assertDetailedCinematicExpansion("overall_soundscape: Sound.", "T2VA", 5, "original", locale)).toThrow(timeline);
+      expect(() => assertH3PromptOutputBudget(200, 100, "Writer_使用者", locale)).toThrow(budget);
+      expect(() => assertH3PromptOutputBudget(200, 100, "Writer_使用者", locale)).toThrow("Writer_使用者");
+    }
+  });
+
   it("authors Extend on the visible new axis while Create keeps its complete grid duration", () => {
     const request = { modelId: "minimax_h3_ref2va", h3DurationSeconds: 30 } as EnhanceRequest;
     expect(h3TimelineDurationForRequest(request)).toBe(736 / 24);

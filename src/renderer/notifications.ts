@@ -1,4 +1,6 @@
 import type { AppState, NotificationKind } from "../types";
+import { createTranslator } from "../core/i18n";
+import { uiKeys } from "../core/i18n-keys";
 
 export interface NotificationAction {
   id: string;
@@ -116,7 +118,7 @@ export function queueCompletionChange(
     .map((task) => ({
       taskId: task.id,
       title: task.outputFilename,
-      error: task.error?.trim() || "未知运行错误"
+      error: task.error?.trim() || createTranslator(next.settings.uiLocale).t(uiKeys.uiError.unknownRuntime)
     }));
   const queueCompleted = previous.queueRunning &&
     !next.queueRunning &&

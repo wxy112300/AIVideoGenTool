@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults.js";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import {
   AETHERSCALE_CARRIER_RUNTIME_FILES,
   AETHERSCALE_CARRIER_RUNTIME_FILES_MANIFEST,
@@ -20,6 +21,7 @@ import {
   scanAetherScaleRuntime,
   shouldRestoreAetherScaleGpuPreference,
   terminateAetherScaleWorker,
+  uninstallAetherScaleRuntime,
   validateAetherScaleArchiveEntries,
   type AetherScaleRuntimeInstallerDependencies
 } from "../electron/services/aetherscale-runtime.js";
@@ -60,6 +62,51 @@ function fixtureDependencies(
 }
 
 describe("AetherScale carrier runtime", () => {
+  it.each([
+    ["en-US", "Remote ComfyUI supports connections only. The app will not install local AetherScale carrier runtime.", "Remote ComfyUI supports connections only. The app will not uninstall local AetherScale carrier runtime.", "The AetherScale carrier worker termination target is not the current ComfyUI data directory. No action taken.", "AetherScale carrier archive contains unsafe paths. Extraction refused."],
+    ["zh-TW", "遠端 ComfyUI 僅支援連線，應用程式不會安裝本機 AetherScale carrier runtime。", "遠端 ComfyUI 僅支援連線，應用程式不會解除安裝本機 AetherScale carrier runtime。", "AetherScale carrier worker 終止目標不是目前的 ComfyUI 資料目錄，未執行操作。", "AetherScale carrier 封存檔包含不安全路徑，已拒絕解壓縮。"]
+  ] as const)("localizes %s guards before any download or process operation", async (uiLocale, install, uninstall, worker, unsafe) => {
+    let ran = false;
+    const deps = fixtureDependencies({
+      downloadFile: async () => { ran = true; },
+      runLoggedProcess: async () => { ran = true; return ""; }
+    });
+    const remote = { ...settings, uiLocale, comfyUrl: "https://comfy.example.test" };
+    expect(await installAetherScaleRuntime(remote, "", "", deps)).toMatchObject({ ok: false, message: install });
+    expect(await uninstallAetherScaleRuntime(remote, "", "", deps)).toMatchObject({ ok: false, message: uninstall });
+    const t = createNativeTranslator(uiLocale).t;
+    expect(await terminateAetherScaleWorker("", "", undefined, t)).toMatchObject({ ok: false, verified: false, message: worker });
+    expect(() => validateAetherScaleArchiveEntries(["../outside.dll"], t)).toThrow(unsafe);
+    expect(ran).toBe(false);
+  });
+
+  it.each([
+    ["en-US", "The AetherScale carrier download appears truncated:", "carrier_manifest.json is missing or does not match the pinned bundle"],
+    ["zh-TW", "AetherScale carrier 下載疑似截斷：", "carrier_manifest.json 缺少或與目前固定的 bundle 不符"]
+  ] as const)("preserves user files with %s installation and scan diagnostics", async (uiLocale, truncated, manifest) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aether-runtime-language-"));
+    temporaryDirectories.push(root);
+    const node = path.join(root, "custom_nodes", "ComfyUI-AetherScale");
+    const runtime = aetherScaleCarrierRuntimeDirectory(root, node);
+    await fs.mkdir(runtime, { recursive: true });
+    const userFile = path.join(runtime, "使用者設定.json");
+    await fs.writeFile(userFile, "user settings");
+    let ran = false;
+    const result = await installAetherScaleRuntime({ ...settings, uiLocale }, root, node,
+      fixtureDependencies({ runLoggedProcess: async () => { ran = true; return ""; } }));
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain(truncated);
+    expect(result.log).toContain(result.message);
+    expect(await fs.readFile(userFile, "utf8")).toBe("user settings");
+    expect((await fs.readdir(node)).some(name => name.startsWith(".aetherscale-carrier-staging-"))).toBe(false);
+    const original = await scanAetherScaleRuntime(root, node, "fixture-python.exe", "win32");
+    const localized = await scanAetherScaleRuntime(root, node, "fixture-python.exe", "win32", createNativeTranslator(uiLocale).t);
+    expect(localized).toEqual({ ...original, error: localized.error });
+    expect(localized.error).toContain(manifest);
+    expect(localized.carrierReady).toBe(false);
+    expect(ran).toBe(false);
+  });
+
   it("records the six audited members and the pinned bundle", () => {
     expect(AETHERSCALE_CARRIER_RUNTIME_FILES_MANIFEST).toHaveLength(6);
     expect(AETHERSCALE_CARRIER_RUNTIME_FILES_MANIFEST.map((file) => file.filename))

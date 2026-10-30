@@ -1,8 +1,11 @@
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import { createNativeTranslator } from "../ui-translator.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isMossImageModel } from "../../src/core/moss-image-spec.js";
 import { normalizeMossImagePromptOutput } from "../../src/core/moss-image-prompt.js";
-import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
+import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings, UiLocale } from "../../src/types.js";
 import { managedPromptModel } from "../../src/core/prompt-models.js";
 import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
 import { h3PromptOutputLanguageInstruction } from "../../src/core/prompt-language.js";
@@ -49,6 +52,8 @@ import {
   promptRevisionInstruction,
   stripPromptAnnotations
 } from "../../src/core/prompt-annotations.js";
+
+type WriterSettings = Pick<Settings, "comfyUrl"> & Partial<Pick<Settings, "uiLocale">>;
 
 interface WriterModel {
   id: string;
@@ -137,7 +142,7 @@ function baseUrl(settings: Pick<Settings, "comfyUrl">): string {
   return settings.comfyUrl.replace(/\/+$/, "");
 }
 
-async function writerRequest<T>(url: string, init?: RequestInit): Promise<T> {
+async function writerRequest<T>(url: string, init: RequestInit | undefined, t: Translate): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
@@ -148,16 +153,16 @@ async function writerRequest<T>(url: string, init?: RequestInit): Promise<T> {
       // Older Writer versions can return an HTML/plain-text 500 page.
     }
     if (response.status === 404 && url.includes("/h3studio/")) {
-      throw new Error("当前 ComfyUI 未加载 MiniMax H3 Prompt Writer。请在设置 → 节点与依赖中一键安装/更新，然后重启 ComfyUI。");
+      throw new Error(t(uiKeys.promptWriter.nodeMissing));
     }
     const message = body.error?.message || rawBody.trim() || `HTTP ${response.status}`;
     const details = body.error?.details ? `（${JSON.stringify(body.error.details)}）` : "";
     if (/(?:0xC000001D|-1073741795|illegal instruction|非法指令)/iu.test(`${message}${details}`)) {
       throw new Error(
-        `H3 Prompt Writer 的 GGUF 原生运行库因 Windows 0xC000001D 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 节点与依赖点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${details}`
+        t(uiKeys.promptWriter.nativeCrash, { code: "0xC000001D", details })
       );
     }
-    throw new Error(`H3 Prompt Writer：${message}${details}`);
+    throw new Error(t(uiKeys.promptWriter.requestError, { message, details }));
   }
   return await response.json() as T;
 }
@@ -187,40 +192,43 @@ async function readWriterRuntimeDiagnostics(
 }
 
 export function validateH3PromptWriterRuntime(
-  diagnostics: H3PromptWriterRuntimeDiagnostics | null | undefined
+  diagnostics: H3PromptWriterRuntimeDiagnostics | null | undefined,
+  locale: UiLocale = "zh-CN"
 ): void {
+  const t = createNativeTranslator(locale).t;
   if (!diagnostics) return;
   const status = diagnostics.status?.toLowerCase() || "";
   const code = diagnostics.return_code_hex?.toUpperCase() || "";
   const detail = [diagnostics.message, diagnostics.error].filter(Boolean).join("：");
   if (status === "crashed" && (code === "0XC000001D" || /illegal instruction|非法指令/iu.test(detail))) {
     throw new Error(
-      `H3 Prompt Writer 的 GGUF 原生运行库因 Windows ${code || "0xC000001D"} 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 节点与依赖点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${detail ? `（${detail}）` : ""}`
+      t(uiKeys.promptWriter.nativeCrash, { code: code || "0xC000001D", details: detail ? `（${detail}）` : "" })
     );
   }
   if (["crashed", "timeout", "invalid_response"].includes(status)) {
-    throw new Error(`H3 Prompt Writer 的 GGUF 运行时自检失败：${detail || status}。请到设置 → 节点与依赖查看运行依赖日志并修复。`);
+    throw new Error(t(uiKeys.promptWriter.probeFailed, { detail: detail || status }));
   }
 }
 
 export async function testH3PromptWriter(
-  settings: Pick<Settings, "comfyUrl">,
+  settings: WriterSettings,
   signal?: AbortSignal
 ): Promise<{ version: string; models: WriterModel[]; diagnostics: H3PromptWriterRuntimeDiagnostics | null }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const root = baseUrl(settings);
   const [status, catalog] = await Promise.all([
     writerRequest<{ version?: string }>(`${root}/h3studio/status`, {
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
-    }),
+    }, t),
     writerRequest<{ models?: WriterModel[] }>(`${root}/h3studio/models`, {
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
-    })
+    }, t)
   ]);
   const diagnostics = await readWriterRuntimeDiagnostics(
     root,
     signal || new AbortController().signal
   );
-  return { version: status.version || "未知", models: catalog.models || [], diagnostics };
+  return { version: status.version || t(uiKeys.promptWriter.unknownVersion), models: catalog.models || [], diagnostics };
 }
 
 function writerMode(mode?: H3PromptMode, imageEdit = false): "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "Reference" {
@@ -278,22 +286,25 @@ function imageEditSystemPrompt(request: EnhanceRequest): string {
 
 export function promptWriterModelForSelection(
   models: WriterModel[],
-  logicalModelId: string
+  logicalModelId: string,
+  locale: UiLocale = "zh-CN"
 ): WriterModel {
+  const translator = createNativeTranslator(locale);
+  const t = translator.t;
   const definition = managedPromptModel(logicalModelId);
-  if (!definition) throw new Error("所选模型不是 H3 Prompt Writer 支持的 Gemma GGUF 模型。");
+  if (!definition) throw new Error(t(uiKeys.promptWriter.unsupportedModel));
   const expected = definition.modelFilename.toLowerCase();
   const model = models.find((candidate) =>
     path.basename(candidate.path || candidate.id).toLowerCase() === expected
   );
   if (!model) {
     throw new Error(
-      `ComfyUI 尚未在 models/LLM 中找到 ${definition.modelFilename}。请将 GGUF 与匹配的 ${definition.mmprojFilename} 放在同一个独立子目录。`
+      t(uiKeys.promptWriter.modelMissing, { model: definition.modelFilename, projector: definition.mmprojFilename })
     );
   }
   if (model.runtime_ready === false) {
-    const missing = model.missing_dependencies?.join("、") || "GGUF 运行依赖";
-    throw new Error(`H3 Prompt Writer 模型尚未就绪，缺少：${missing}${model.setup_message ? `。${model.setup_message}` : ""}`);
+    const missing = model.missing_dependencies?.join(translator.locale === "en-US" ? ", " : "、") || t(uiKeys.promptWriter.runtimeDependencies);
+    throw new Error(t(uiKeys.promptWriter.notReady, { missing, setup: model.setup_message ? `${translator.locale === "en-US" ? ". " : "。"}${model.setup_message}` : "" }));
   }
   return model;
 }
@@ -303,7 +314,8 @@ async function uploadMedia(
   sessionId: string,
   mode: ReturnType<typeof writerMode>,
   filenames: string[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate
 ): Promise<void> {
   if (!filenames.length) return;
   const form = new FormData();
@@ -317,15 +329,17 @@ async function uploadMedia(
     method: "POST",
     body: form,
     signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)])
-  });
+  }, t);
 }
 
 export async function releaseH3PromptWriter(
-  settings: Pick<Settings, "comfyUrl">
+  settings: WriterSettings
 ): Promise<boolean> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const response = await writerRequest<{ unload_requested?: boolean }>(
     `${baseUrl(settings)}/h3studio/unload`,
-    { method: "POST", signal: AbortSignal.timeout(15_000) }
+    { method: "POST", signal: AbortSignal.timeout(15_000) },
+    t
   );
   return Boolean(response.unload_requested);
 }
@@ -333,9 +347,7 @@ export async function releaseH3PromptWriter(
 export function validateH3PromptWriterDuration(request: EnhanceRequest, settings: Pick<Settings, "uiLocale">): void {
   const durationSeconds = request.h3DurationSeconds ?? 5;
   if (request.mode !== "image-edit" && (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 20)) {
-    throw new Error(settings.uiLocale === "en-US"
-      ? "Gemma Prompt Writer supports prompt enhancement up to 20 seconds. Select a prompt model that supports the requested duration in Settings."
-      : "Gemma Prompt Writer 支持最多 20 秒的提示词增强。请在设置中手动选择支持当前时长的增强模型。");
+    throw new Error(createNativeTranslator(settings.uiLocale).t(uiKeys.promptWriter.duration));
   }
 }
 
@@ -346,8 +358,9 @@ export async function enhancePromptWithH3PromptWriter(
   onProgress?: PromptProgressReporter,
   unloadAfter = true
 ): Promise<string> {
-  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要优化的提示词");
-  validateH3ReferenceAutoPrompt(request);
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error(t(uiKeys.promptWriter.inputMissing));
+  validateH3ReferenceAutoPrompt(request, settings.uiLocale);
   onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
   const durationSeconds = request.h3DurationSeconds ?? 5;
@@ -400,9 +413,9 @@ export async function enhancePromptWithH3PromptWriter(
   signal.addEventListener("abort", cancel, { once: true });
   try {
     const { models, diagnostics } = await testH3PromptWriter(settings, signal);
-    const model = promptWriterModelForSelection(models, settings.promptModelId);
-    validateH3PromptWriterRuntime(diagnostics);
-    await uploadMedia(root, sessionId, mode, mediaPaths, signal);
+    const model = promptWriterModelForSelection(models, settings.promptModelId, settings.uiLocale);
+    validateH3PromptWriterRuntime(diagnostics, settings.uiLocale);
+    await uploadMedia(root, sessionId, mode, mediaPaths, signal, t);
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
     const contentLocks = h3ContentLockInstruction(sourcePrompt);
@@ -424,7 +437,7 @@ export async function enhancePromptWithH3PromptWriter(
           h3PresetText
         ].join("\n");
     const creativeBrief = targetedRevision
-      ? promptRevisionInstruction(request.prompt, request.referenceContext, h3PresetText)
+      ? promptRevisionInstruction(request.prompt, request.referenceContext, h3PresetText, settings.uiLocale)
       : [
       priorityInstruction,
       request.extensionSource
@@ -481,14 +494,14 @@ export async function enhancePromptWithH3PromptWriter(
         kv_cache: "auto"
       }),
       signal
-    });
+    }, t);
     onProgress?.("validating", 94);
-    if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
+    if (!result.prompt?.trim()) throw new Error(t(uiKeys.promptWriter.emptyResult));
     if (imageEdit) {
       const extracted = extractImageEditPromptFromWriter(result.prompt, request.imageTargetModelId);
       return isMossImageModel(request.imageTargetModelId) ? extracted : stripPromptAnnotations(extracted);
     }
-    if (targetedRevision) return applyPromptRevision(request.prompt, result.prompt);
+    if (targetedRevision) return applyPromptRevision(request.prompt, result.prompt, settings.uiLocale);
     const normalizeWriterResult = (promptText: string): string => normalizeH3PromptOutput(
       promptText.trim(),
       h3Mode,
@@ -500,7 +513,8 @@ export async function enhancePromptWithH3PromptWriter(
       nativeStateContinuation,
       nativeStateContinuation,
       request.continuumPreviousChunk,
-      request.h3PromptPreset
+      request.h3PromptPreset,
+      settings.uiLocale
     );
     if (!detailedExpansion) return normalizeWriterResult(result.prompt);
     let currentResult = result;
@@ -542,13 +556,13 @@ export async function enhancePromptWithH3PromptWriter(
           kv_cache: "auto"
         }),
         signal
-      });
-      if (!repaired.prompt?.trim()) throw new Error("H3 Prompt Writer 自动补写后仍未返回可用的提示词。");
+      }, t);
+      if (!repaired.prompt?.trim()) throw new Error(t(uiKeys.promptWriter.emptyRepair));
       currentResult = repaired;
       currentPrompt = repaired.prompt;
     }
     const message = validationError instanceof Error ? validationError.message : String(validationError);
-    throw new Error(`${message} 已按实际词数分阶段自动补写 2 次但仍未通过。${writerGenerationDiagnostic(currentResult) || writerGenerationDiagnostic(result)}`);
+    throw new Error(t(uiKeys.promptWriter.repairFailed, { message, diagnostic: writerGenerationDiagnostic(currentResult) || writerGenerationDiagnostic(result) }));
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);
     signal.removeEventListener("abort", cancel);

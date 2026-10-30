@@ -1,4 +1,5 @@
 import type { HistoryKind, RendererCleanup, RendererContext } from "../../contracts";
+import { normalizeAppearance } from "../../../core/appearance";
 import { reducedMotion } from "../../shared/ui/motion";
 import {
   assignHistoryMasonryColumns,
@@ -320,7 +321,8 @@ export function createHistoryLayoutController(
     const cards = historyCardsByOrder(gallery);
     if (!cards.length) return 0;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
-    const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
+    const preferred = normalizeAppearance(document.documentElement.dataset).historyMasonryColumns;
+    const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap, preferred);
     const cardWidth = Math.max(1, (gallery.clientWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
     const copy = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy");
     // Offscreen content-visibility descendants can report placeholder geometry.
@@ -351,6 +353,7 @@ export function createHistoryLayoutController(
     gallery.style.setProperty("--masonry-columns", String(columnCount));
     gallery.replaceChildren(...columns);
     gallery.dataset.historyLayoutReady = "masonry";
+    gallery.dataset.historyLayoutColumns = String(preferred);
     gallery.dataset.historyLayoutWidth = String(gallery.clientWidth);
     return columnCount;
   };
@@ -358,13 +361,14 @@ export function createHistoryLayoutController(
   const layoutAlbum = (gallery: HTMLElement): void => {
     if (gallery.clientWidth <= 0) return;
     const currentWidth = gallery.clientWidth;
+    const preferred = normalizeAppearance(document.documentElement.dataset).historyAlbumColumns;
     if (
       gallery.dataset.historyLayoutReady === "album" &&
-      gallery.dataset.historyLayoutWidth === String(currentWidth)
+      gallery.dataset.historyLayoutWidth === String(currentWidth) && gallery.dataset.historyLayoutColumns === String(preferred)
     ) return;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 8;
     const availableWidth = currentWidth;
-    const columnCount = historyAlbumColumnCount(availableWidth, gap);
+    const columnCount = historyAlbumColumnCount(availableWidth, gap, preferred);
     if (!columnCount) return;
     const cardWidth = Math.max(1, (availableWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
     const firstCard = gallery.querySelector<HTMLElement>(".history-gallery-item");
@@ -378,6 +382,7 @@ export function createHistoryLayoutController(
     gallery.style.gridTemplateColumns = `repeat(${columnCount}, minmax(0, 1fr))`;
     gallery.style.justifyContent = "stretch";
     gallery.dataset.historyLayoutReady = "album";
+    gallery.dataset.historyLayoutColumns = String(preferred);
     gallery.dataset.historyLayoutWidth = String(currentWidth);
   };
 
@@ -387,7 +392,8 @@ export function createHistoryLayoutController(
     if (gallery.hasAttribute("data-history-virtual")) { refreshVirtualHistory(gallery); return; }
     const currentWidth = gallery.clientWidth;
     const reusesLayout = gallery.dataset.historyLayoutReady === "masonry" &&
-      gallery.dataset.historyLayoutWidth === String(currentWidth);
+      gallery.dataset.historyLayoutWidth === String(currentWidth) &&
+      gallery.dataset.historyLayoutColumns === String(normalizeAppearance(document.documentElement.dataset).historyMasonryColumns);
     let columnCount = reusesLayout
       ? Number(gallery.style.getPropertyValue("--masonry-columns")) || historyMasonryColumnCount(currentWidth)
       : layoutMasonry(gallery);
@@ -395,7 +401,7 @@ export function createHistoryLayoutController(
     if (typeof ResizeObserver === "undefined") return;
     masonryResizeObserver = new ResizeObserver(() => {
       const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
-      const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
+      const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth, gap, normalizeAppearance(document.documentElement.dataset).historyMasonryColumns);
       if (nextColumnCount !== columnCount || gallery.clientWidth !== layoutWidth) {
         columnCount = layoutMasonry(gallery);
         layoutWidth = gallery.clientWidth;

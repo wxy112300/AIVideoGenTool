@@ -7,6 +7,9 @@ import { isHistoryRating, normalizeHistoryTags } from "../../src/core/history-fi
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { historyMetadataRevision, HistoryMetadataConflict } from "./history-metadata-revision.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { Translate } from "../../src/core/i18n.js";
 
 export interface HistoryMetadataServiceDependencies {
   store: StateRepository;
@@ -14,19 +17,19 @@ export interface HistoryMetadataServiceDependencies {
   sendState(state: AppState): void;
 }
 
-function validateMetadataPatch(patch: HistoryMetadataPatch): HistoryMetadataPatch {
-  if (!patch || typeof patch !== "object") throw new Error("历史记录参数无效。");
+function validateMetadataPatch(patch: HistoryMetadataPatch, t: Translate): HistoryMetadataPatch {
+  if (!patch || typeof patch !== "object") throw new Error(t(uiKeys.serviceError.historyInvalid));
   const favorite = patch.favorite;
   const rating = patch.rating;
   const tags = patch.tags;
   if (favorite !== undefined && typeof favorite !== "boolean") {
-    throw new Error("收藏状态无效。");
+    throw new Error(t(uiKeys.serviceError.favoriteInvalid));
   }
   if (rating !== undefined && rating !== null && !isHistoryRating(rating)) {
-    throw new Error("评分必须是 0.5 到 5 分，支持半星。");
+    throw new Error(t(uiKeys.serviceError.ratingInvalid));
   }
   if (tags !== undefined && !Array.isArray(tags)) {
-    throw new Error("历史标签格式无效。");
+    throw new Error(t(uiKeys.serviceError.tagsInvalid));
   }
   return {
     ...(favorite !== undefined ? { favorite } : {}),
@@ -43,17 +46,19 @@ export class HistoryMetadataService {
     patch: HistoryMetadataPatch,
     expectedRevision?: string
   ): Promise<AppState> {
+    const locale = this.deps.store.get().settings.uiLocale;
+    const t = createNativeTranslator(locale).t;
     if (typeof assetId !== "string" || !assetId.trim()) {
-      throw new Error("历史记录参数无效。");
+      throw new Error(t(uiKeys.serviceError.historyInvalid));
     }
-    const validated = validateMetadataPatch(patch);
+    const validated = validateMetadataPatch(patch, t);
     const next = await this.deps.store.update((state) => {
       const video = state.history.find((item) => item.id === assetId);
       const image = state.imageHistory.find((item) => item.id === assetId);
       const target = video ?? image;
-      if (!target) throw new Error("历史记录不存在。");
+      if (!target) throw new Error(t(uiKeys.serviceError.historyMissing));
       if (expectedRevision !== undefined && historyMetadataRevision(target) !== expectedRevision) {
-        throw new HistoryMetadataConflict();
+        throw new HistoryMetadataConflict(locale);
       }
       if (validated.favorite !== undefined) target.favorite = validated.favorite;
       if (validated.rating !== undefined) target.rating = validated.rating;
@@ -70,23 +75,24 @@ export class HistoryMetadataService {
   }
 
   async updateMetadataBatch(updates: HistoryMetadataBatchUpdate[]): Promise<AppState> {
+    const t = createNativeTranslator(this.deps.store.get().settings.uiLocale).t;
     if (!Array.isArray(updates) || updates.length === 0) {
-      throw new Error("批量历史记录参数无效。");
+      throw new Error(t(uiKeys.serviceError.historyBatchInvalid));
     }
     const validatedUpdates = updates.map((update) => {
       if (!update || typeof update.assetId !== "string" || !update.assetId.trim()) {
-        throw new Error("历史记录参数无效。");
+        throw new Error(t(uiKeys.serviceError.historyInvalid));
       }
-      return { assetId: update.assetId, patch: validateMetadataPatch(update.patch) };
+      return { assetId: update.assetId, patch: validateMetadataPatch(update.patch, t) };
     });
     if (new Set(validatedUpdates.map((update) => update.assetId)).size !== validatedUpdates.length) {
-      throw new Error("批量历史记录不能包含重复项目。");
+      throw new Error(t(uiKeys.serviceError.historyBatchDuplicate));
     }
     const next = await this.deps.store.update((state) => {
       validatedUpdates.forEach(({ assetId, patch }) => {
         const target = state.history.find((item) => item.id === assetId) ??
           state.imageHistory.find((item) => item.id === assetId);
-        if (!target) throw new Error("历史记录不存在。");
+        if (!target) throw new Error(t(uiKeys.serviceError.historyMissing));
         if (patch.favorite !== undefined) target.favorite = patch.favorite;
         if (patch.rating !== undefined) target.rating = patch.rating;
         if (patch.tags !== undefined) target.tags = patch.tags;
@@ -100,12 +106,13 @@ export class HistoryMetadataService {
   }
 
   async setImageCover(projectId: string, versionId?: string): Promise<AppState> {
+    const t = createNativeTranslator(this.deps.store.get().settings.uiLocale).t;
     const next = await this.deps.store.update((state) => {
       const project = state.imageHistory.find((item) => item.id === projectId);
-      if (!project) throw new Error("图片项目不存在。");
+      if (!project) throw new Error(t(uiKeys.serviceError.imageProjectMissing));
       if (versionId) {
         if (!project.versions.some((version) => version.id === versionId)) {
-          throw new Error("图片版本不存在。");
+          throw new Error(t(uiKeys.serviceError.imageVersionMissing));
         }
         project.coverMode = "pinned";
         project.coverVersionId = versionId;

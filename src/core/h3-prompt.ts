@@ -409,9 +409,9 @@ export function h3PromptNodeOutputLimit(
   return Number.isFinite(maximum) && maximum >= 64 ? Math.trunc(maximum) : 2048;
 }
 
-export function assertH3PromptOutputBudget(requested: number, maximum: number, backend: string): void {
+export function assertH3PromptOutputBudget(requested: number, maximum: number, backend: string, locale: UiLocale = "zh-CN"): void {
   if (!Number.isFinite(requested) || requested > maximum) {
-    throw new Error(`${backend} 当前节点最多输出 ${maximum} token，本次需要 ${requested}。请在设置中更新对应节点并重启服务，或手动选择容量足够的增强模型。`);
+    throw new Error(workflowMessage("h3OutputBudget", { backend, maximum, requested }, locale));
   }
 }
 
@@ -721,12 +721,12 @@ function collapseUnexpectedH3Shots(
   return `${promptText.slice(0, contentStart)}${cameraCutReplacements}${promptText.slice(contentEnd)}`.trim();
 }
 
-function ensureH3NativeContinuationLock(promptText: string, mode: H3PromptMode, previousChunk?: number): string {
+function ensureH3NativeContinuationLock(promptText: string, mode: H3PromptMode, previousChunk: number | undefined, locale: UiLocale): string {
   if (mode !== "T2VA") return promptText;
   const sectionPattern = /^[*# \t]*integrated_multimodal_description[ \t]*:/imu;
   const sectionMatch = sectionPattern.exec(promptText);
   if (!sectionMatch) {
-    throw new Error("Continuum 提示词增强未返回 integrated_multimodal_description 主时间线，无法确认单镜头接续；结果没有保存，原提示词已保持不变。");
+    throw new Error(workflowMessage("h3ContinuationTimelineMissing", {}, locale));
   }
   const opener = previousChunk && previousChunk > 0
     ? `Continuation of Chunk ${previousChunk}.`
@@ -789,17 +789,18 @@ export function normalizeH3PromptOutput(
   omitAlignment = false,
   nativeStateContinuation = false,
   previousChunk?: number,
-  preset?: H3PromptPreset
+  preset?: H3PromptPreset,
+  locale: UiLocale = "zh-CN"
 ): string {
   if (nativeStateContinuation && /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(promptText)) {
-    throw new Error("Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。");
+    throw new Error(workflowMessage("h3ContinuationBodyOnly", {}, locale));
   }
   const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(
     stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)),
     mode
   ));
   if (preset === "detailed-cinematic") {
-    assertDetailedCinematicExpansion(cleanedBody, mode, durationSeconds, sourcePrompt);
+    assertDetailedCinematicExpansion(cleanedBody, mode, durationSeconds, sourcePrompt, locale);
   }
   const body = restoreH3VisibleTextLocks(
     restoreH3DialogueLocks(cleanedBody, dialogueLocks),
@@ -815,7 +816,7 @@ export function normalizeH3PromptOutput(
     scaleContext
   );
   const continuationSafeBody = nativeStateContinuation
-    ? ensureH3NativeContinuationLock(shotSafeBody, mode, previousChunk)
+    ? ensureH3NativeContinuationLock(shotSafeBody, mode, previousChunk, locale)
     : shotSafeBody;
   const auditedBody = repairH3PromptControlViolations(
     continuationSafeBody,
@@ -841,7 +842,7 @@ export function assertDetailedCinematicExpansion(
   const cleanSource = stripPromptAnnotations(sourcePrompt);
   const modelTimeline = h3ExpansionTimeline(unwrapH3ModelOutput(promptText, mode), mode);
   if (!modelTimeline?.trim()) {
-    throw new Error(`影视细节扩写未返回 ${section} 主时间线；原提示词已保持不变。`);
+    throw new Error(workflowMessage("h3ExpansionTimelineMissing", { section }, locale));
   }
   const timeline = h3ExpansionUniqueContent(stripPromptAnnotations(modelTimeline), cleanSource);
   const actualWords = countPromptWords(timeline);

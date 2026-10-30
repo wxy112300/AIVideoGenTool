@@ -7,6 +7,9 @@ import type { HistoryBatchCopyKind, HistoryBatchCopyResult } from "../src/types.
 import { copyFileToWindowsClipboard } from "./services/windows-clipboard.js";
 import type { MediaReadService } from "./services/media-read-service.js";
 import type { StudioPaths } from "./services/studio-paths.js";
+import type { UiLocale } from "../src/types.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
+import { createNativeTranslator } from "./ui-translator.js";
 
 export interface MediaIpcDependencies {
   ipc: IpcMain;
@@ -14,6 +17,7 @@ export interface MediaIpcDependencies {
   service: MediaReadService;
   logger: AppLogger;
   paths: Pick<StudioPaths, "clipboardFilesDirectory">;
+  getUiLocale?: () => UiLocale | undefined;
 }
 
 export function registerMediaProtocol(
@@ -27,6 +31,8 @@ export function registerMediaProtocol(
 }
 
 export function registerMediaIpc(deps: MediaIpcDependencies): void {
+  const t: ReturnType<typeof createNativeTranslator>["t"] = (...args) =>
+    createNativeTranslator(deps.getUiLocale?.()).t(...args);
   deps.ipc.handle("file:read-image", async (_event, filename: string) =>
     deps.service.readImage(filename)
   );
@@ -65,7 +71,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       });
       return {
         ok: false,
-        message: "视频文件不存在，可能已被移动、重命名或删除。"
+        message: t(uiKeys.mediaAction.fileMissing)
       };
     }
     let errorMessage = "";
@@ -78,7 +84,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       });
       return {
         ok: false,
-        message: "系统播放器无法打开该视频文件。"
+        message: t(uiKeys.mediaAction.playerFailed)
       };
     }
     if (errorMessage) {
@@ -88,7 +94,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       });
       return {
         ok: false,
-        message: "系统播放器无法打开该视频文件。"
+        message: t(uiKeys.mediaAction.playerFailed)
       };
     }
     deps.logger.info("history", "open-system-player-succeeded", "History file opened with the system player", {
@@ -97,12 +103,12 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
     });
     return {
       ok: true,
-      message: "已使用系统播放器打开视频。"
+      message: t(uiKeys.mediaAction.playerOpened)
     };
   });
   deps.ipc.handle("file:copy", async (_event, filename: string) => {
     if (process.platform !== "win32") {
-      return { ok: false, message: "复制文件目前仅支持 Windows。" };
+      return { ok: false, message: t(uiKeys.mediaAction.windowsOnly) };
     }
     const requestedFilename = typeof filename === "string" ? filename : "";
     const resolved = await deps.service.resolveSourcePath(requestedFilename);
@@ -112,7 +118,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       });
       return {
         ok: false,
-        message: "视频文件不存在，可能已被移动、重命名或删除。"
+        message: t(uiKeys.mediaAction.fileMissing)
       };
     }
     try {
@@ -124,8 +130,8 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       return {
         ok: true,
         message: requestedFilename && path.resolve(requestedFilename) === resolved
-          ? "视频文件已复制，可在资源管理器中粘贴。"
-          : "已自动找到视频的实际文件并复制，可在资源管理器中粘贴。"
+          ? t(uiKeys.mediaAction.copied)
+          : t(uiKeys.mediaAction.relocatedCopied)
       };
     } catch (error) {
       deps.logger.warn("history", "copy-file-failed", "Windows clipboard file copy failed", {
@@ -134,7 +140,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
       });
       return {
         ok: false,
-        message: "剪贴板暂时被其他程序占用，请稍后再试。"
+        message: t(uiKeys.mediaAction.clipboardBusy)
       };
     }
   });
@@ -150,7 +156,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
         missingCount: requestedCount
       });
       if (process.platform !== "win32") {
-        return failure("复制文件目前仅支持 Windows。");
+        return failure(t(uiKeys.mediaAction.windowsOnly));
       }
       try {
         return await deps.service.copyHistoryFiles(
@@ -164,7 +170,7 @@ export function registerMediaIpc(deps: MediaIpcDependencies): void {
           requestedCount,
           error: safeLogErrorMessage(error)
         });
-        return failure("剪贴板暂时被其他程序占用，请稍后再试。");
+        return failure(t(uiKeys.mediaAction.clipboardBusy));
       }
     }
   );

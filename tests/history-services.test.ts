@@ -217,6 +217,28 @@ function destructiveFor(
 }
 
 describe("History application services", () => {
+  it("localizes nested Motion Context header failures without changing source history", async () => {
+    const root = await temporaryRoot();
+    const source = path.join(root,"source.mp4"), latent = path.join(root,"bad.safetensors");
+    await fs.writeFile(source,"video"); await fs.writeFile(latent,new Uint8Array([0,1]));
+    const state = createDefaultState(); state.settings.uiLocale="en-US";
+    const store=repository(state);
+    const service=new HistoryArtifactService({store, artifactService:{} as NativeAvArtifactService, resolveVideoOutputDirectory:async()=>root});
+    expect(await service.inspectExtensionSource({...state.draft,modelId:"minimax_h3_ref2va",sourceVideoPath:source,h3ContextLatentPath:latent}))
+      .toMatchObject({route:"motion-context",status:"invalid",reason:"Motion Context latent is missing the safetensors header length."});
+    expect(store.get()).toEqual(state);
+  });
+  it("localizes missing-version errors before touching files", async () => {
+    const root = await temporaryRoot();
+    const state = createDefaultState(); state.settings.uiLocale = "en-US";
+    const store = repository(state), query = queryFor(store, root);
+    const unlink = vi.fn();
+    const service = destructiveFor(store, query, { ...nativeHistoryFileSystem, unlink });
+    await expect(service.deleteVideoVersion("missing", "missing"))
+      .rejects.toThrow("Video record or version not found.");
+    expect(unlink).not.toHaveBeenCalled();
+    expect(store.get()).toEqual(state);
+  });
   it("checks old AV on disk before submission without mutating history", async () => {
     const root = await temporaryRoot();
     const sourceVideoPath = path.join(root, "source.mp4");

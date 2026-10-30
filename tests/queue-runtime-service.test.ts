@@ -11,6 +11,20 @@ import type { AppLogger } from "../src/infrastructure/app-logger";
 import type { StateRepository } from "../electron/ports/state-repository";
 import { QueueRuntimeService } from "../electron/services/queue-runtime-service";
 
+describe("localized queue runtime failures", () => {
+  it("keeps the remote URL and diagnostic while blocking local startup", async () => {
+    const state = createDefaultState();
+    state.settings = settings({uiLocale:"en-US",comfyUrl:"https://remote.invalid:8188"});
+    const current = runtimeFixture(state, {
+      testComfyUi: async () => { throw new Error("ECONNREFUSED original diagnostic"); }
+    });
+    await expect(current.service.ensureComfyUiReady("missing"))
+      .rejects.toThrow("Could not connect to ComfyUI (https://remote.invalid:8188): ECONNREFUSED original diagnostic");
+    expect(current.startLocalService).not.toHaveBeenCalled();
+    expect(current.updateTask).not.toHaveBeenCalled();
+  });
+});
+
 function repository(initial: AppState): StateRepository {
   let state = structuredClone(initial);
   return {

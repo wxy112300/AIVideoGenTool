@@ -88,8 +88,8 @@ describe("queue lock recovery", () => {
       await fs.writeFile(filename, JSON.stringify(state));
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.settings.appearance).toEqual({ accent: "azure", palette: "graphite", depth: "1", motion: "system" });
-      const appearance = { accent: "orange", palette: "apple", depth: "2", motion: "standard" } as const;
+      expect(loaded.settings.appearance).toEqual({ accent: "azure", palette: "graphite", depth: "1", motion: "system", historyMasonryColumns: 3, historyAlbumColumns: 5 });
+      const appearance = { accent: "orange", palette: "apple", depth: "2", motion: "standard", historyMasonryColumns: 6, historyAlbumColumns: 10 } as const;
       await store.update((current) => { current.settings.appearance = appearance; });
       const restarted = await new JsonStore(filename).load();
       expect(restarted.settings.appearance).toEqual(appearance);

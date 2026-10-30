@@ -143,7 +143,7 @@ export function mountHistoryActionsController(
         // so a playing detail video keeps its media element and audio state.
         patchFavoriteButtons(assetId, favorite);
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : "收藏状态更新失败。", { renderPage: false, kind: "error" });
+        context.notify(error instanceof Error ? error.message : t(uiKeys.uiError.favoriteUpdate), { renderPage: false, kind: "error" });
       } finally {
         favoriteUpdates.delete(assetId);
         setFavoriteBusy(assetId, false);
@@ -161,7 +161,7 @@ export function mountHistoryActionsController(
         updateRatingVisual(control, rating, unsetLabel);
       });
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : "评分更新失败。", { renderPage: false, kind: "error" });
+      context.notify(error instanceof Error ? error.message : t(uiKeys.uiError.ratingUpdate), { renderPage: false, kind: "error" });
     }
   };
 

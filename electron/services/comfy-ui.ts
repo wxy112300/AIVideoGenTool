@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { modelCoreVersionBlockReason } from "../../src/core/model-core-requirements.js";
@@ -161,7 +164,7 @@ function h3ReferenceImageSizeFromPrompt(value: unknown): "match" | "max" {
   return "match";
 }
 
-export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+export async function jsonRequest<T>(url: string, init?: RequestInit, t: Translate = createNativeTranslator(undefined).t): Promise<T> {
   const timeout = AbortSignal.timeout(15_000);
   const response = await fetch(url, {
     ...init,
@@ -171,7 +174,7 @@ export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`ComfyUI 返回 HTTP ${response.status}${detail ? `：${detail}` : ""}`);
+    throw new Error(t(uiKeys.promptBackend.comfyHttp, { status: response.status, detail: detail ? t(uiKeys.promptBackend.detailSuffix, { detail }) : "" }));
   }
   return (await response.json()) as T;
 }
@@ -186,10 +189,11 @@ const videoOutputExtraData = {
 };
 
 export async function testComfyUi(settings: Settings): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const stats = await jsonRequest<Record<string, unknown>>(
-    `${cleanBaseUrl(settings.comfyUrl)}/system_stats`
+    `${cleanBaseUrl(settings.comfyUrl)}/system_stats`, undefined, t
   );
-  return `已连接 · ${Object.keys(stats).length > 0 ? "服务状态正常" : "8188"}`;
+  return t(uiKeys.promptBackend.comfyConnected, { status: Object.keys(stats).length > 0 ? t(uiKeys.promptBackend.comfyHealthy) : "8188" });
 }
 
 export function safeComfyUploadFilename(
@@ -206,7 +210,7 @@ export async function uploadInput(
   baseUrl: string,
   filePath: string,
   signal: AbortSignal,
-  label: string
+  label: string, t: Translate = createNativeTranslator(undefined).t
 ): Promise<string> {
   if (!filePath) return "";
   const bytes = await fs.readFile(filePath, { signal });
@@ -219,9 +223,9 @@ export async function uploadInput(
     body: form,
     signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)])
   });
-  if (!response.ok) throw new Error(`上传${label}失败：HTTP ${response.status}`);
+  if (!response.ok) throw new Error(t(uiKeys.promptBackend.uploadFailed, { label: label, status: response.status }));
   const result = (await response.json()) as { name?: string; subfolder?: string };
-  if (!result.name) throw new Error("ComfyUI 上传接口未返回文件名");
+  if (!result.name) throw new Error(t(uiKeys.promptBackend.uploadNameMissing));
   return result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
 }
 
@@ -231,7 +235,8 @@ export function promptModelFilename(modelId: string): string {
 
 export function h3PromptInstruction(
   request: EnhanceRequest,
-  promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets
+  promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets,
+  locale: Settings["uiLocale"] = "zh-CN"
 ): string {
   const imageCount = request.imagePaths?.length ?? 0;
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
@@ -240,7 +245,7 @@ export function h3PromptInstruction(
   const referenceContext = request.referenceContext?.trim();
   const presetText = h3PromptPresetTextForRequest(preset, promptPresets[preset]);
   if (request.promptStrategy === "targeted-revision") {
-    return promptRevisionInstruction(request.prompt, referenceContext, presetText);
+    return promptRevisionInstruction(request.prompt, referenceContext, presetText, locale);
   }
   const duration = h3TimelineDurationForRequest(request);
   const officialSchema = h3PromptSectionSkeleton(mode, duration, nativeStateContinuation);
@@ -314,10 +319,12 @@ export function buildNativePromptWorkflow(
   uploadedImages: string[],
   promptModelId: string,
   warmup = false,
-  promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets
+  promptPresets: Partial<Record<H3PromptPreset, string>> = defaultH3PromptPresets,
+  locale: Settings["uiLocale"] = "zh-CN"
 ): Record<string, { class_type: string; inputs: Record<string, unknown> }> {
+  const t = createNativeTranslator(locale).t;
   const modelFile = promptModelFilename(promptModelId);
-  if (!modelFile) throw new Error("当前提示词模型不是受支持的 ComfyUI Qwen 模型。请在设置中选择 Qwen3.5 2B 或 4B。");
+  if (!modelFile) throw new Error(t(uiKeys.promptBackend.nativeModelRequired));
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
   const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
@@ -337,7 +344,7 @@ export function buildNativePromptWorkflow(
           ? "Reply with READY only."
           : request.mode === "image-edit"
             ? imageEditPromptInstruction(request)
-            : h3PromptInstruction(request, promptPresets),
+            : h3PromptInstruction(request, promptPresets, locale),
         max_length: warmup
           ? 8
           : request.mode === "image-edit"
@@ -406,24 +413,24 @@ function textCandidates(value: unknown): string[] {
     .flatMap((key) => textCandidates(record[key]));
 }
 
-export function extractTextGenerateOutput(history: unknown): string {
-  return extractStringNodeOutput(history, ["preview", "text-generate"]);
+export function extractTextGenerateOutput(history: unknown, t: Translate = createNativeTranslator(undefined).t): string {
+  return extractStringNodeOutput(history, ["preview", "text-generate"], t);
 }
 
-export function extractStringNodeOutput(history: unknown, nodeIds: readonly string[]): string {
+export function extractStringNodeOutput(history: unknown, nodeIds: readonly string[], t: Translate = createNativeTranslator(undefined).t): string {
   if (!history || typeof history !== "object" || Array.isArray(history)) {
-    throw new Error("ComfyUI 没有返回提示词结果。");
+    throw new Error(t(uiKeys.promptBackend.outputMissing));
   }
   const outputs = (history as { outputs?: unknown }).outputs;
   if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) {
-    throw new Error("ComfyUI 提示词任务没有输出节点结果。");
+    throw new Error(t(uiKeys.promptBackend.outputNodesMissing));
   }
   const outputRecords = outputs as Record<string, unknown>;
   const text = nodeIds
     .flatMap((nodeId) => textCandidates(outputRecords[nodeId]))
     .map((item) => item.trim())
     .find((item) => item.length > 0);
-  if (!text) throw new Error("ComfyUI 没有返回可用的提示词文本。");
+  if (!text) throw new Error(t(uiKeys.promptBackend.outputTextMissing));
   return text
     .replace(/^<think>[\s\S]*?<\/think>\s*/i, "")
     .trim();
@@ -437,19 +444,20 @@ export async function enhancePromptWithComfyUi(
   onProgress?: PromptProgressReporter,
   onSubmitted?: (promptId: string) => void
 ): Promise<string> {
-  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-  validateH3ReferenceAutoPrompt(request);
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error(t(uiKeys.promptBackend.promptRequired));
+  validateH3ReferenceAutoPrompt(request, settings.uiLocale);
   onProgress?.("checking", 5);
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const objectInfo = await jsonRequest<Record<string, unknown>>(
     `${baseUrl}/object_info`,
-    { signal }
+    { signal }, t
   );
   const uploadedImages = await Promise.all(
     (request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))
       .filter(Boolean)
       .slice(0, 12)
-      .map((filePath, index) => uploadInput(baseUrl, filePath, signal, `参考图 ${index + 1}`))
+      .map((filePath, index) => uploadInput(baseUrl, filePath, signal, t(uiKeys.promptBackend.referenceImage, { number: index + 1 }), t))
   );
   onProgress?.("uploading", 18);
   const prompt = buildNativePromptWorkflow(
@@ -457,27 +465,29 @@ export async function enhancePromptWithComfyUi(
     uploadedImages,
     settings.promptModelId,
     warmup,
-    settings.h3PromptPresets
+    settings.h3PromptPresets,
+    settings.uiLocale
   );
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(
-      `当前 ComfyUI 核心不支持提示词工作流节点：${missingNodes.join("、")}。请更新 ComfyUI 后重启并重新扫描。`
+      t(uiKeys.promptBackend.nativeNodesMissing, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) })
     );
   }
   const clientId = `local-video-studio-prompt-${crypto.randomUUID()}`;
   assertH3PromptOutputBudget(
     Number(prompt["text-generate"]!.inputs.max_length),
     h3PromptNodeOutputLimit(objectInfo, "TextGenerate", "max_length"),
-    "Native Qwen"
+    "Native Qwen",
+    settings.uiLocale
   );
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, client_id: clientId }),
     signal
-  });
-  if (!result.prompt_id) throw new Error("ComfyUI 未返回提示词 Prompt ID");
+  }, t);
+  if (!result.prompt_id) throw new Error(t(uiKeys.promptBackend.promptIdMissing));
   onSubmitted?.(result.prompt_id);
   const nodeTypes = Object.fromEntries(
     Object.entries(prompt).map(([id, value]) => [id, value.class_type])
@@ -500,7 +510,7 @@ export async function enhancePromptWithComfyUi(
     () => undefined
   );
   onProgress?.("validating", 94);
-  const output = extractTextGenerateOutput(history);
+  const output = extractTextGenerateOutput(history, t);
   getApplicationLogger().info("prompt", "native-output-diagnostics", "Native prompt output received", {
     promptId: result.prompt_id,
     requestedMaxTokens: prompt["text-generate"]!.inputs.max_length,
@@ -510,7 +520,7 @@ export async function enhancePromptWithComfyUi(
   });
   if (warmup) return output;
   if (request.promptStrategy === "targeted-revision") {
-    return applyPromptRevision(request.prompt, output);
+    return applyPromptRevision(request.prompt, output, settings.uiLocale);
   }
   if (request.mode === "image-edit") {
     if (isMossImageModel(request.imageTargetModelId)) return normalizeMossImagePromptOutput(output);
@@ -529,7 +539,8 @@ export async function enhancePromptWithComfyUi(
     nativeStateContinuation,
     nativeStateContinuation,
     request.continuumPreviousChunk,
-    request.h3PromptPreset
+    request.h3PromptPreset,
+    settings.uiLocale
   );
 }
 
@@ -607,32 +618,33 @@ export async function assertDlss5ExecutionReady(
   objectInfo: unknown
 ): Promise<void> {
   if (task.modelId !== DLSS5_MODEL_ID) return;
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!task.dlss5 || task.targetScale === undefined) {
-    throw new Error("DLSS5 任务缺少不可变的 scale/options 快照，已拒绝执行。");
+    throw new Error(t(uiKeys.dlssRuntime.snapshotMissing));
   }
   assertDlss5ObjectInfoSchema(objectInfo);
   if (!isLocalComfyUrl(settings.comfyUrl)) return;
   const comfyRoot = await findComfyRoot(settings);
-  if (!comfyRoot) throw new Error("没有找到当前本地 ComfyUI 数据目录，无法执行 DLSS5 任务。");
+  if (!comfyRoot) throw new Error(t(uiKeys.dlssRuntime.rootMissing));
   const [runtime, depth] = await Promise.all([
-    scanDlss5Runtime(comfyRoot),
+    scanDlss5Runtime(comfyRoot, "", t),
     scanDepthAnythingAssets(comfyRoot, {
       modelDirectories: [comfyDataDirectories(settings, comfyRoot).modelDirectory]
     })
   ]);
   if (!runtime.srReady) {
-    const detail = runtime.error || runtime.missingFiles.join("、");
-    throw new Error(`DLSS5 Super Resolution runtime 未通过执行前复检${detail ? `：${detail}` : ""}。`);
+    const detail = runtime.error || runtime.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator));
+    throw new Error(t(uiKeys.dlssRuntime.executionFailed, { detail: detail ? `${settings.uiLocale === "en-US" ? ": " : "："}${detail}` : "" }));
   }
   if (runtime.source === "app-managed" && (
     runtime.nodeRevision !== task.dlss5.nodeRevision ||
     runtime.bundleId !== task.dlss5.runtimeBundleId
   )) {
-    throw new Error("DLSS5 任务冻结的节点/runtime revision 与当前 app-managed runtime 不一致，已拒绝执行。");
+    throw new Error(t(uiKeys.dlssRuntime.revisionMismatch));
   }
   if (!depth.available) {
-    const detail = depth.error || depth.missingFiles.join("、");
-    throw new Error(`Depth Anything V2 Small 未通过执行前复检${detail ? `：${detail}` : ""}。`);
+    const detail = depth.error || depth.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator));
+    throw new Error(t(uiKeys.dlssRuntime.depthFailed, { detail: detail ? `${settings.uiLocale === "en-US" ? ": " : "："}${detail}` : "" }));
   }
 }
 
@@ -642,15 +654,16 @@ export async function assertAetherScaleExecutionReady(
   objectInfo: unknown
 ): Promise<void> {
   if (task.modelId !== AETHERSCALE_MODEL_ID) return;
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!task.aetherScale) {
-    throw new Error("AetherScale 任务缺少不可变的 provider/options 快照，已拒绝执行。");
+    throw new Error(t(uiKeys.aetherRuntime.snapshotMissing));
   }
   assertAetherScaleObjectInfoSchema(objectInfo);
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    throw new Error("AetherScale carrier 需要当前 Windows 本地 ComfyUI；远程 ComfyUI 任务不执行本地 native worker。");
+    throw new Error(t(uiKeys.aetherRuntime.localOnly));
   }
   const comfyRoot = await findComfyRoot(settings);
-  if (!comfyRoot) throw new Error("没有找到当前本地 ComfyUI 数据目录，无法执行 AetherScale 任务。");
+  if (!comfyRoot) throw new Error(t(uiKeys.aetherRuntime.rootMissing));
   const target = normalizeAetherScaleTarget({
     modelId: task.modelId,
     sourceWidth: task.sourceWidth,
@@ -660,24 +673,25 @@ export async function assertAetherScaleExecutionReady(
     aetherScale: task.aetherScale
   });
   if (target.targetWidth !== task.targetWidth || target.targetOutputHeight !== task.targetOutputHeight) {
-    throw new Error("AetherScale 任务冻结的输出尺寸与当前 source/mode 不一致，已拒绝执行。");
+    throw new Error(t(uiKeys.aetherRuntime.dimensionsMismatch));
   }
-  const runtime = await scanAetherScaleRuntime(comfyRoot);
+  const runtime = await scanAetherScaleRuntime(comfyRoot, "", "", undefined, t);
   if (!runtime.carrierReady) {
-    const detail = runtime.error || runtime.missingFiles.join("、");
-    throw new Error(`AetherScale carrier runtime 未通过执行前复检${detail ? `：${detail}` : ""}。`);
+    const detail = runtime.error || runtime.missingFiles.join(t(uiKeys.nodeInstaller.listSeparator));
+    throw new Error(t(uiKeys.aetherRuntime.executionFailed, { detail: detail ? `${settings.uiLocale === "en-US" ? ": " : "："}${detail}` : "" }));
   }
   if (
     runtime.nodeRevision !== task.aetherScale.nodeRevision ||
     runtime.bundleId !== task.aetherScale.runtimeBundleId
   ) {
-    throw new Error("AetherScale 任务冻结的节点/carrier revision 与当前 app-managed runtime 不一致，已拒绝执行。");
+    throw new Error(t(uiKeys.aetherRuntime.revisionMismatch));
   }
 }
 
 async function konohamaruRuntimeProblems(
   nodeDirectory: string,
-  runtimeBundleId: string
+  runtimeBundleId: string,
+  t: Translate
 ): Promise<string[]> {
   const problems: string[] = [];
   const expectedFiles = runtimeBundleId === KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID
@@ -693,17 +707,17 @@ async function konohamaruRuntimeProblems(
       const bytes = await fs.readFile(filename);
       const header = bytes.subarray(0, 160).toString("utf8");
       if (!bytes.byteLength || header.startsWith("version https://git-lfs.github.com/spec/v1")) {
-        problems.push(`${relativeFilename}${header.startsWith("version ") ? "（Git LFS pointer）" : "（空文件）"}`);
+        problems.push(t(header.startsWith("version ") ? uiKeys.konohamaruRuntime.lfs : uiKeys.konohamaruRuntime.empty, { file: relativeFilename }));
       }
     } catch {
-      problems.push(`${relativeFilename}（缺失）`);
+      problems.push(t(uiKeys.konohamaruRuntime.missing, { file: relativeFilename }));
     }
   }
   if (runtimeBundleId !== KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID) {
-    problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory));
+    problems.push(...await konohamaruNeuralUpstreamRuntimeProblems(nodeDirectory, t));
   }
   if (runtimeBundleId === KONOHAMARU_RUNTIME_BUNDLE_ID) {
-    problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory));
+    problems.push(...await konohamaruVideo2dlssnrRuntimeProblems(nodeDirectory, t));
   }
   return problems;
 }
@@ -714,8 +728,9 @@ export async function assertKonohamaruExecutionReady(
   objectInfo: unknown
 ): Promise<void> {
   if (task.modelId !== KONOHAMARU_MODEL_ID) return;
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!task.konohamaru) {
-    throw new Error("Konohamaru DLSS5 任务缺少不可变的 provider/options 快照，已拒绝执行。");
+    throw new Error(t(uiKeys.konohamaruRuntime.snapshotMissing));
   }
   const target = normalizeKonohamaruTarget({
     modelId: task.modelId,
@@ -726,14 +741,14 @@ export async function assertKonohamaruExecutionReady(
     konohamaru: task.konohamaru
   });
   if (target.targetWidth !== task.targetWidth || target.targetOutputHeight !== task.targetOutputHeight) {
-    throw new Error("Konohamaru 任务冻结的输出尺寸与当前 source/mode 不一致，已拒绝执行。");
+    throw new Error(t(uiKeys.konohamaruRuntime.dimensionsMismatch));
   }
   assertKonohamaruObjectInfoSchema(objectInfo, {
     frameInterpolation: target.options.frameInterpolation.enabled
   });
   if (!isLocalComfyUrl(settings.comfyUrl)) return;
   const comfyRoot = await findComfyRoot(settings);
-  if (!comfyRoot) throw new Error("没有找到当前本地 ComfyUI 数据目录，无法执行 Konohamaru DLSS5 任务。");
+  if (!comfyRoot) throw new Error(t(uiKeys.konohamaruRuntime.rootMissing));
   const nodeDirectory = path.join(
     comfyRoot,
     "custom_nodes",
@@ -741,11 +756,12 @@ export async function assertKonohamaruExecutionReady(
   );
   const problems = await konohamaruRuntimeProblems(
     nodeDirectory,
-    target.options.runtimeBundleId
+    target.options.runtimeBundleId,
+    t
   );
   if (problems.length) {
     throw new Error(
-      `Konohamaru DLSS5 runtime 未通过执行前复检：${problems.join("、")}。请在设置中重新安装/更新节点；旧队列若仍使用 legacy RenoDX profile，需要在旧 runtime 仍活动时执行或重新创建任务。`
+      t(uiKeys.konohamaruRuntime.executionFailed, { problems: problems.join(t(uiKeys.nodeInstaller.listSeparator)) })
     );
   }
 }
@@ -1619,25 +1635,25 @@ export interface NodeProgressStage {
   tracksSteps: boolean;
 }
 
-export function nodeStage(classType: string | undefined): NodeProgressStage {
-  if (!classType) return { start: 2, end: 4, label: "准备工作流", tracksSteps: false };
+export function nodeStage(classType: string | undefined, t: Translate = createNativeTranslator(undefined).t): NodeProgressStage {
+  if (!classType) return { start: 2, end: 4, label: t(uiKeys.executionProgress.preparing), tracksSteps: false };
   if (classType === "TextGenerate") {
-    return { start: 10, end: 98, label: "提示词扩写", tracksSteps: false };
+    return { start: 10, end: 98, label: t(uiKeys.executionProgress.expanding), tracksSteps: false };
   }
   if (classType === "VHS_LoadVideo") {
-    return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
+    return { start: 2, end: 5, label: t(uiKeys.executionProgress.loadingVideo), tracksSteps: false };
   }
   if (classType === "LoadVideo") {
-    return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
+    return { start: 2, end: 5, label: t(uiKeys.executionProgress.loadingVideo), tracksSteps: false };
   }
   if (classType === "H3ContinuumLoadVideo") {
-    return { start: 2, end: 5, label: "读取续写源视频", tracksSteps: false };
+    return { start: 2, end: 5, label: t(uiKeys.executionProgress.loadingContinuationVideo), tracksSteps: false };
   }
   if (classType === "VHS_VideoInfoSource") {
-    return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
+    return { start: 5, end: 7, label: t(uiKeys.executionProgress.videoInfo), tracksSteps: false };
   }
   if (classType === "AetherScaleMotionAnalysis") {
-    return { start: 5, end: 25, label: "分析视频运动", tracksSteps: false };
+    return { start: 5, end: 25, label: t(uiKeys.executionProgress.motion), tracksSteps: false };
   }
   if (classType === "AetherScaleNeuralRendering") {
     return { start: 25, end: 82, label: "AetherScale DLSS5 Neural Rendering", tracksSteps: false };
@@ -1646,64 +1662,64 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
     return { start: 5, end: 72, label: "Konohamaru DLSS5 Neural Rendering", tracksSteps: true };
   }
   if (classType === "NvidiaDLSSFrameInterpolation") {
-    return { start: 72, end: 96, label: "Konohamaru DLSS5 补帧", tracksSteps: true };
+    return { start: 72, end: 96, label: t(uiKeys.executionProgress.konohamaruFrames), tracksSteps: true };
   }
   if (classType === "DLSS5DepthAnythingV2") {
-    return { start: 5, end: 20, label: "估计视频深度", tracksSteps: false };
+    return { start: 5, end: 20, label: t(uiKeys.executionProgress.depth), tracksSteps: false };
   }
   if (classType === "DLSS5OpticalFlow") {
-    return { start: 20, end: 35, label: "计算视频光流", tracksSteps: false };
+    return { start: 20, end: 35, label: t(uiKeys.executionProgress.flow), tracksSteps: false };
   }
   if (classType === "DLSSSuperResolution") {
     return { start: 35, end: 82, label: "DLSS Super Resolution", tracksSteps: false };
   }
   if (classType === "GetVideoComponents") {
-    return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
+    return { start: 5, end: 7, label: t(uiKeys.executionProgress.videoInfo), tracksSteps: false };
   }
   if (classType === "SeedVR2Preprocess") {
-    return { start: 7, end: 10, label: "准备 SeedVR2 输入", tracksSteps: false };
+    return { start: 7, end: 10, label: t(uiKeys.executionProgress.seedInput), tracksSteps: false };
   }
   if (classType === "VAEEncodeTiled") {
-    return { start: 10, end: 18, label: "编码视频 VAE", tracksSteps: true };
+    return { start: 10, end: 18, label: t(uiKeys.executionProgress.vaeEncode), tracksSteps: true };
   }
   if (classType === "SeedVR2TemporalChunk" || classType === "SeedVR2Conditioning") {
-    return { start: 18, end: 22, label: "准备 SeedVR2 时序条件", tracksSteps: false };
+    return { start: 18, end: 22, label: t(uiKeys.executionProgress.seedConditioning), tracksSteps: false };
   }
   if (classType === "SeedVR2LoadDiTModel") {
-    return { start: 4, end: 8, label: "加载 SeedVR2 DiT", tracksSteps: false };
+    return { start: 4, end: 8, label: t(uiKeys.executionProgress.seedDit), tracksSteps: false };
   }
   if (classType === "SeedVR2LoadVAEModel") {
-    return { start: 8, end: 12, label: "加载 SeedVR2 VAE", tracksSteps: false };
+    return { start: 8, end: 12, label: t(uiKeys.executionProgress.seedVae), tracksSteps: false };
   }
   if (
     classType === "SeedVR2VideoUpscaler" ||
     classType === "SeedVR2"
   ) {
-    return { start: 12, end: 76, label: "SeedVR2 超分辨率", tracksSteps: true };
+    return { start: 12, end: 76, label: t(uiKeys.executionProgress.seedUpscale), tracksSteps: true };
   }
   if (classType === "SeedVR2BlockSwap") {
-    return { start: 8, end: 12, label: "配置 SeedVR2 显存交换", tracksSteps: false };
+    return { start: 8, end: 12, label: t(uiKeys.executionProgress.seedSwap), tracksSteps: false };
   }
   if (classType === "SeedVR2TemporalMerge") {
-    return { start: 76, end: 80, label: "合并 SeedVR2 时序块", tracksSteps: false };
+    return { start: 76, end: 80, label: t(uiKeys.executionProgress.seedMerge), tracksSteps: false };
   }
   if (classType === "SeedVR2PostProcessing") {
-    return { start: 88, end: 92, label: "校正 SeedVR2 输出", tracksSteps: false };
+    return { start: 88, end: 92, label: t(uiKeys.executionProgress.seedPost), tracksSteps: false };
   }
   if (classType === "AILab_FlashVSR" || classType === "ImageUpscaleWithModel") {
-    return { start: 12, end: 76, label: "视频超分辨率", tracksSteps: false };
+    return { start: 12, end: 76, label: t(uiKeys.executionProgress.upscale), tracksSteps: false };
   }
   if (classType === "ImageScale") {
-    return { start: 76, end: 80, label: "调整输出尺寸", tracksSteps: false };
+    return { start: 76, end: 80, label: t(uiKeys.executionProgress.resize), tracksSteps: false };
   }
   if (classType === "LoadImage") {
-    return { start: 2, end: 4, label: "读取输入图片", tracksSteps: false };
+    return { start: 2, end: 4, label: t(uiKeys.executionProgress.loadingImage), tracksSteps: false };
   }
   if (classType.includes("Loader")) {
-    return { start: 4, end: 10, label: "加载模型", tracksSteps: false };
+    return { start: 4, end: 10, label: t(uiKeys.executionProgress.loadingModel), tracksSteps: false };
   }
   if (classType === "CLIPTextEncode") {
-    return { start: 10, end: 14, label: "编码提示词", tracksSteps: false };
+    return { start: 10, end: 14, label: t(uiKeys.executionProgress.promptEncode), tracksSteps: false };
   }
   if (
     classType === "KSampler" ||
@@ -1718,43 +1734,43 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
       start: 14,
       end: 80,
       label: classType === "H3ContinuumSamplerV38" || classType === "LocalVideoStudioH3ContinuumSamplerV38"
-        ? "Continuum 扩散采样"
-        : "扩散采样",
+        ? t(uiKeys.executionProgress.continuumSampling)
+        : t(uiKeys.executionProgress.sampling),
       tracksSteps: true
     };
   }
   if (classType === "MMH3UltimateUpscale") {
-    return { start: 14, end: 80, label: "H3 分块重采样", tracksSteps: true };
+    return { start: 14, end: 80, label: t(uiKeys.executionProgress.tiledSampling), tracksSteps: true };
   }
   if (classType === "VRAM_Debug") {
-    return { start: 80, end: 82, label: "卸载扩散模型并释放显存", tracksSteps: false };
+    return { start: 80, end: 82, label: t(uiKeys.executionProgress.unloading), tracksSteps: false };
   }
   if (classType === "LocalVideoStudioH3RequireGpuVAE") {
-    return { start: 10, end: 12, label: "校验 GPU VAE（禁止 CPU 回退）", tracksSteps: false };
+    return { start: 10, end: 12, label: t(uiKeys.executionProgress.gpuVae), tracksSteps: false };
   }
   if (classType === "VHS_VideoCombine") {
-    return { start: 82, end: 99, label: "封装输出视频", tracksSteps: false };
+    return { start: 82, end: 99, label: t(uiKeys.executionProgress.muxVideo), tracksSteps: false };
   }
   if (classType === "VAEDecodeAudio") {
-    return { start: 88, end: 93, label: "解码音频", tracksSteps: true };
+    return { start: 88, end: 93, label: t(uiKeys.executionProgress.decodeAudio), tracksSteps: true };
   }
   if (classType.includes("VAEDecode")) {
-    return { start: 82, end: 88, label: "解码视频", tracksSteps: true };
+    return { start: 82, end: 88, label: t(uiKeys.executionProgress.decodeVideo), tracksSteps: true };
   }
   if (classType === "RIFE VFI") {
-    return { start: 93, end: 96, label: "RIFE 视频插帧", tracksSteps: true };
+    return { start: 93, end: 96, label: t(uiKeys.executionProgress.rife), tracksSteps: true };
   }
   if (classType === "ImageFromBatch") {
-    return { start: 96, end: 97, label: "裁剪到目标帧数", tracksSteps: true };
+    return { start: 96, end: 97, label: t(uiKeys.executionProgress.trimFrames), tracksSteps: true };
   }
   if (classType === "CreateVideo") {
-    return { start: 97, end: 98.5, label: "封装音视频", tracksSteps: true };
+    return { start: 97, end: 98.5, label: t(uiKeys.executionProgress.muxAv), tracksSteps: true };
   }
   if (classType === "SaveVideo") {
-    return { start: 98.5, end: 99.5, label: "编码并保存", tracksSteps: true };
+    return { start: 98.5, end: 99.5, label: t(uiKeys.executionProgress.save), tracksSteps: true };
   }
   if (classType === "H3ContinuumAssembleSeamV35") {
-    return { start: 93, end: 97, label: "拼接续写音视频", tracksSteps: false };
+    return { start: 93, end: 97, label: t(uiKeys.executionProgress.assemble), tracksSteps: false };
   }
   return { start: 12, end: 14, label: classType, tracksSteps: false };
 }
@@ -1762,22 +1778,22 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
 function progressStageForNode(
   classType: string | undefined,
   nodeId: string | undefined,
-  progressContext?: ComfyProgressContext
+  progressContext?: ComfyProgressContext, t: Translate = createNativeTranslator(undefined).t
 ): NodeProgressStage {
   const role = nodeId ? progressContext?.continuumNodeRoles?.[nodeId] : undefined;
   if (role === "source-state") {
-    return { start: 5, end: 7, label: "读取续写状态", tracksSteps: false };
+    return { start: 5, end: 7, label: t(uiKeys.executionProgress.sourceState), tracksSteps: false };
   }
   if (role === "source-preparation") {
-    return { start: 7, end: 7, label: "准备续写状态", tracksSteps: false };
+    return { start: 7, end: 7, label: t(uiKeys.executionProgress.sourcePreparing), tracksSteps: false };
   }
   if (role === "source-decode") {
-    return { start: 7, end: 12, label: "解码续写边界帧", tracksSteps: true };
+    return { start: 7, end: 12, label: t(uiKeys.executionProgress.sourceDecode), tracksSteps: true };
   }
   if (role === "source-frame") {
-    return { start: 12, end: 14, label: "提取续写边界帧", tracksSteps: false };
+    return { start: 12, end: 14, label: t(uiKeys.executionProgress.sourceFrame), tracksSteps: false };
   }
-  return nodeStage(classType);
+  return nodeStage(classType, t);
 }
 
 function normalizedProgressValues(
@@ -1811,9 +1827,9 @@ export function progressForNode(
   value?: number,
   max?: number,
   progressContext?: ComfyProgressContext,
-  nodeId?: string
+  nodeId?: string, t: Translate = createNativeTranslator(undefined).t
 ): { progress: number; label: string } {
-  const stage = progressStageForNode(classType, nodeId, progressContext);
+  const stage = progressStageForNode(classType, nodeId, progressContext, t);
   const normalized = normalizedProgressValues(classType, value, max, progressContext);
   const progressValue = normalized?.value ?? value;
   const progressMax = normalized?.max ?? max;
@@ -1825,7 +1841,7 @@ export function progressForNode(
     return {
       progress: stage.end,
       label: classType === "MMH3UltimateUpscale"
-        ? `${stage.label} ${Math.ceil(progressMax)}/${Math.ceil(progressMax)} 块`
+        ? t(uiKeys.executionProgress.piecesDone, { stage: stage.label, done: Math.ceil(progressMax), total: Math.ceil(progressMax) })
         : stage.label
     };
   }
@@ -1839,7 +1855,7 @@ export function progressForNode(
     const currentPiece = Math.min(Math.ceil(progressMax), completedPieces + 1);
     return {
       progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
-      label: `${stage.label} ${currentPiece}/${Math.ceil(progressMax)} 块 · 当前块 ${Math.round(pieceProgress * 100)}%`
+      label: t(uiKeys.executionProgress.pieceProgress, { stage: stage.label, current: currentPiece, total: Math.ceil(progressMax), percent: Math.round(pieceProgress * 100) })
     };
   }
   return {
@@ -1875,8 +1891,8 @@ export function workProgressForNode(
 }
 
 export class TaskStalledError extends Error {
-  constructor(minutes: number, reason = "未上报节点进展") {
-    super(`任务连续 ${minutes} 分钟${reason}。`);
+  constructor(minutes: number, reason?: string, t: Translate = createNativeTranslator(undefined).t) {
+    super(t(uiKeys.executionProgress.stalled, { minutes, reason: reason ?? t(uiKeys.executionProgress.noProgress) }));
     this.name = "TaskStalledError";
   }
 }
@@ -1926,7 +1942,7 @@ export function historyEntryHasUnfinishedBatch(value: unknown): boolean {
   });
 }
 
-export function historyFailure(value: unknown): string {
+export function historyFailure(value: unknown, t: Translate = createNativeTranslator(undefined).t): string {
   if (!value || typeof value !== "object") return "";
   const status = (value as { status?: unknown }).status;
   if (!status || typeof status !== "object") return "";
@@ -1947,15 +1963,15 @@ export function historyFailure(value: unknown): string {
         .join(": ");
       if (text) {
         if (/bad file descriptor|errno\s*9|0x?9\b/iu.test(text)) {
-          return `${text}；ComfyUI Desktop 的日志句柄已失效，请重启 ComfyUI；若使用 Qwen-VL LoRA，请在设置 → 节点与依赖中执行一键修复`;
+          return t(uiKeys.executionProgress.logHandle, { detail: text });
         }
         return text;
       }
     }
   }
   return typeof statusString === "string"
-    ? `ComfyUI 任务结束：${statusString}`
-    : "ComfyUI 任务未成功完成";
+    ? t(uiKeys.executionProgress.historyEnded, { status: statusString })
+    : t(uiKeys.executionProgress.historyFailed);
 }
 
 export async function waitForTask(
@@ -1988,6 +2004,7 @@ export async function waitForTask(
   progressContext: ComfyProgressContext = {},
   onProductiveProgress?: (event: VramStallProgressEvent) => void
 ): Promise<unknown> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const logger = getApplicationLogger();
   const waitStartedAt = Date.now();
@@ -2159,7 +2176,7 @@ export async function waitForTask(
             plannedSteps ? 0 : undefined,
             plannedSteps,
             progressContext,
-            activeNodeId
+            activeNodeId, t
           );
           logger.info("comfy", "node-started", "ComfyUI started node", {
             promptId,
@@ -2201,7 +2218,7 @@ export async function waitForTask(
               nodeId,
               value: message.data.value,
               max: message.data.max,
-              unit: progressStageForNode(nodeTypes[nodeId], nodeId, progressContext).tracksSteps
+              unit: progressStageForNode(nodeTypes[nodeId], nodeId, progressContext, t).tracksSteps
                 ? "step"
                 : undefined
             });
@@ -2221,13 +2238,13 @@ export async function waitForTask(
               message.data.value,
               message.data.max,
               progressContext,
-              nodeId
+              nodeId, t
             );
             reportProgress(
               stage.progress,
               stage.label,
               false,
-              progressStageForNode(nodeTypes[nodeId], nodeId, progressContext).tracksSteps,
+              progressStageForNode(nodeTypes[nodeId], nodeId, progressContext, t).tracksSteps,
               workProgressForNode(
                 nodeTypes[nodeId],
                 message.data.value,
@@ -2242,7 +2259,7 @@ export async function waitForTask(
         }
         if (message.type === "execution_error") {
           executionError =
-            message.data?.exception_message || "ComfyUI 工作流执行失败";
+            message.data?.exception_message || t(uiKeys.executionProgress.executionFailed);
           logger.error("comfy", "execution-error", safeLogErrorMessage(executionError), {
             promptId,
             nodeId: typeof message.data?.node === "string" ? message.data.node : activeNodeId,
@@ -2251,7 +2268,7 @@ export async function waitForTask(
           void comfyLogBridge.captureFailure("execution_error");
         }
         if (message.type === "execution_interrupted") {
-          executionError = "ComfyUI 任务已中止";
+          executionError = t(uiKeys.executionProgress.interrupted);
           logger.warn("comfy", "execution-interrupted", executionError, {
             promptId,
             activeNodeId,
@@ -2276,11 +2293,11 @@ export async function waitForTask(
               plannedSteps ?? 1,
               plannedSteps ?? 1,
               progressContext,
-              message.data.node
+              message.data.node, t
             );
             reportProgress(
               stage.progress,
-              `${stage.label} 完成`,
+              t(uiKeys.executionProgress.stageComplete, { stage: stage.label }),
               false,
               Boolean(plannedSteps),
               plannedSteps
@@ -2337,7 +2354,7 @@ export async function waitForTask(
           activeNodeId,
           activeClassType: nodeTypes[activeNodeId] ?? "unknown"
         });
-        throw new TaskStalledError(3, "无法连接 ComfyUI");
+        throw new TaskStalledError(3, t(uiKeys.executionProgress.disconnected), t);
       }
       if (Date.now() - lastActivityAt > activityTimeoutMs) {
         if (isComputeActive()) {
@@ -2356,13 +2373,13 @@ export async function waitForTask(
           activeNodeId,
           activeClassType: nodeTypes[activeNodeId] ?? "unknown"
         });
-        throw new TaskStalledError(activityTimeoutMinutes);
+        throw new TaskStalledError(activityTimeoutMinutes, undefined, t);
       }
       let history: Record<string, unknown>;
       try {
         history = await jsonRequest<Record<string, unknown>>(
           `${baseUrl}/history?max_items=200`,
-          { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
+          { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }, t
         );
         consecutiveServiceFailures = 0;
         lastServiceResponseAt = Date.now();
@@ -2370,10 +2387,10 @@ export async function waitForTask(
         if (signal.aborted) throw signal.reason;
         consecutiveServiceFailures += 1;
         if (socketConnected && socketDisconnected && consecutiveServiceFailures >= 2) {
-          throw new TaskStalledError(3, "ComfyUI 已停止或连接中断");
+          throw new TaskStalledError(3, t(uiKeys.executionProgress.serviceStopped), t);
         }
         if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
-          throw new TaskStalledError(3, "无法连接 ComfyUI");
+          throw new TaskStalledError(3, t(uiKeys.executionProgress.disconnected), t);
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
         continue;
@@ -2381,7 +2398,7 @@ export async function waitForTask(
       try {
         await jsonRequest<{ queue_running?: unknown[] }>(
           `${baseUrl}/queue`,
-          { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }
+          { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }, t
         );
         lastServiceResponseAt = Date.now();
       } catch {
@@ -2390,7 +2407,7 @@ export async function waitForTask(
         (entry) => historyEntryClientId(entry) === clientId
       );
       for (const entry of entries) {
-        const failure = historyFailure(entry);
+        const failure = historyFailure(entry, t);
         if (failure) {
           await comfyLogBridge.captureFailure("history_failure");
           logger.error("comfy", "history-failure", safeLogErrorMessage(failure), { promptId });
@@ -2406,7 +2423,7 @@ export async function waitForTask(
           promptId,
           nodeCount: Object.keys(nodeTypes).length
         });
-        reportProgress(100, "已完成", true);
+        reportProgress(100, t(uiKeys.executionProgress.completed), true);
         taskCompleted = true;
         return completed;
       }
@@ -2443,6 +2460,7 @@ export async function waitForTask(
 }
 
 export async function interrupt(settings: Settings): Promise<void> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const logger = getApplicationLogger();
   const startedAt = Date.now();
   logger.info("comfy", "interrupt-requested", "ComfyUI interrupt requested", {});
@@ -2451,7 +2469,7 @@ export async function interrupt(settings: Settings): Promise<void> {
       method: "POST",
       signal: AbortSignal.timeout(10_000)
     });
-    if (!response.ok) throw new Error(`中止任务失败：HTTP ${response.status}`);
+    if (!response.ok) throw new Error(t(uiKeys.promptBackend.interruptFailed, { status: response.status }));
     logger.info("comfy", "interrupt-succeeded", "ComfyUI interrupt accepted", {
       durationMs: Date.now() - startedAt,
       statusCode: response.status
@@ -2469,13 +2487,14 @@ export async function waitForPromptToLeaveQueue(
   promptId: string,
   timeoutMs: number
 ): Promise<boolean> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const deadline = Date.now() + timeoutMs;
   do {
     const queue = await jsonRequest<{
       queue_running?: unknown[];
       queue_pending?: unknown[];
-    }>(`${baseUrl}/queue`, { signal: AbortSignal.timeout(10_000) });
+    }>(`${baseUrl}/queue`, { signal: AbortSignal.timeout(10_000) }, t);
     const entries = [
       ...(Array.isArray(queue.queue_running) ? queue.queue_running : []),
       ...(Array.isArray(queue.queue_pending) ? queue.queue_pending : [])
@@ -2491,6 +2510,7 @@ export async function waitForPromptToLeaveQueue(
 }
 
 export async function freeMemory(settings: Settings): Promise<void> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const logger = getApplicationLogger();
   const startedAt = Date.now();
   logger.info("comfy", "memory-release-requested", "ComfyUI model unload requested", {});
@@ -2501,7 +2521,7 @@ export async function freeMemory(settings: Settings): Promise<void> {
       body: JSON.stringify({ unload_models: true, free_memory: true }),
       signal: AbortSignal.timeout(10_000)
     });
-    if (!response.ok) throw new Error(`释放显存失败：HTTP ${response.status}`);
+    if (!response.ok) throw new Error(t(uiKeys.promptBackend.freeFailed, { status: response.status }));
     logger.info("comfy", "memory-release-succeeded", "ComfyUI model unload accepted", {
       durationMs: Date.now() - startedAt,
       statusCode: response.status

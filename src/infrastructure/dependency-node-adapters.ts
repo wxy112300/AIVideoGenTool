@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "../core/i18n.js";
+import { uiKeys } from "../core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { H3_REWRITER_NODE_MAX_OUTPUT_TOKENS } from "../core/h3-prompt.js";
@@ -18,15 +20,18 @@ import {
   KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME,
   konohamaruVideo2dlssnrSource
 } from "./konohamaru-video2dlssnr.js";
+
+const defaultNodeAdapterTranslator = createTranslator().t;
+
 export {
   KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME,
   konohamaruVideo2dlssnrSource
 };
 
-function replaceRequired(source: string, before: string, after: string, label: string): string {
+function replaceRequired(source: string, before: string, after: string, label: string, t: Translate = defaultNodeAdapterTranslator): string {
   if (source.includes(after)) return source;
   if (!source.includes(before)) {
-    throw new Error(`MMH3 Ultimate Upscale 源码缺少 ${label}，已停止修改。`);
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "MMH3 Ultimate Upscale", part: label }));
   }
   return source.replace(before, after);
 }
@@ -49,29 +54,29 @@ function replaceKonohamaruRequired(
   source: string,
   before: string,
   after: string,
-  label: string
+  label: string, t: Translate = defaultNodeAdapterTranslator
 ): string {
   if (source.includes(after)) return source;
   if (!source.includes(before)) {
-    throw new Error(`ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 ${label}，已停止修改。`);
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "ComfyUI-NVIDIA-DLSS-Frame-Interpolation", part: label }));
   }
   return source.replace(before, after);
 }
 
-export function patchKonohamaruPathsSource(source: string): string {
+export function patchKonohamaruPathsSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (!patched.includes(konohamaruNeuralUpstreamPatchMarker)) {
     patched = replaceKonohamaruRequired(
       patched,
       'ADDON = HOST_DIR / "renodx-dlss5.addon64"',
       'ADDON = HOST_DIR / "nvngx.dll.addon64"',
-      "DLSS5 addon 路径"
+      t(uiKeys.nodeAdapter.addonPath), t
     );
     patched = replaceKonohamaruRequired(
       patched,
       'for name in ("nvngx.dll", "renodx-dlss5.addon64", "nvngx_dlssnr.dll", "_nvngx.dll"):',
       'for name in ("nvngx.dll", "nvngx.dll.addon64", "nvngx_dlssnr.dll", "_nvngx.dll"):',
-      "Wine host 文件链接列表"
+      t(uiKeys.nodeAdapter.wineLinks), t
     );
     patched = patched.replace(
       'ADDON = HOST_DIR / "nvngx.dll.addon64"',
@@ -90,17 +95,17 @@ export function patchKonohamaruPathsSource(source: string): string {
         'VIDEO2DLSSNR_RUNTIME_DIR = ROOT / "bin" / "runtime" / "video2dlssnr"',
         'VIDEO2DLSSNR_EXE = VIDEO2DLSSNR_RUNTIME_DIR / "video2dlssnr.exe"'
       ].join("\n"),
-      "video2dlssnr runtime 路径"
+      t(uiKeys.nodeAdapter.videoRuntimePath), t
     );
   }
   return patched;
 }
 
-function replaceKonohamaruFeatureVerifier(source: string): string {
+function replaceKonohamaruFeatureVerifier(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   const start = source.indexOf("def verify_feature_18(");
   const end = start >= 0 ? source.indexOf("@dataclass", start) : -1;
   if (start < 0 || end < 0) {
-    throw new Error("ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 feature-18 verifier，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "ComfyUI-NVIDIA-DLSS-Frame-Interpolation", part: "feature-18 verifier" }));
   }
   const verifier = [
     konohamaruNeuralUpstreamPatchMarker,
@@ -175,37 +180,37 @@ function replaceKonohamaruFeatureVerifier(source: string): string {
   return `${source.slice(0, start)}${verifier}${source.slice(end)}`;
 }
 
-export function patchKonohamaruRuntimeSource(source: string): string {
+export function patchKonohamaruRuntimeSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
   patched = replaceKonohamaruRequired(
     patched,
     '"release": "RenoDX DLSS5 runtime (unlocked)",',
     `"release": "neural-upstream ${KONOHAMARU_NEURAL_UPSTREAM_RELEASE} add-on (app-managed)",`,
-    "runtime release 标识"
+    t(uiKeys.nodeAdapter.runtimeRelease), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     'f"RenoDX add-on: {runtime_bundle.get(\'addon\', {}).get(\'path\', \'unavailable\')}",',
     'f"DLSS5 add-on: {runtime_bundle.get(\'addon\', {}).get(\'path\', \'unavailable\')}",',
-    "runtime failure add-on 文案"
+    t(uiKeys.nodeAdapter.runtimeFailure), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     '        RUNTIME / "renodx-dlss5.addon64",\n',
     '        RUNTIME / "renodx-dlss5.addon64",\n        RUNTIME / "nvngx.dll.addon64",\n',
-    "旧 flat runtime 检查"
+    t(uiKeys.nodeAdapter.flatRuntimeCheck), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     '"Move host files (nvngx.dll, dxgi.dll, renodx-dlss5.addon64, ReShade.ini, "',
     '"Move host files (nvngx.dll, dxgi.dll, nvngx.dll.addon64, ReShade.ini, "',
-    "flat runtime 错误文案"
+    t(uiKeys.nodeAdapter.flatRuntimeError), t
   );
-  return replaceKonohamaruFeatureVerifier(patched);
+  return replaceKonohamaruFeatureVerifier(patched, t);
 }
 
-export function patchKonohamaruProcessorSource(source: string): string {
+export function patchKonohamaruProcessorSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (!patched.includes(konohamaruFrameCountPatchMarker)) {
     patched = replaceKonohamaruRequired(
@@ -235,7 +240,7 @@ export function patchKonohamaruProcessorSource(source: string): string {
         '                    metadata["frames"] = frame_count',
         '                    metadata["frame_count_source"] = exact["frame_count_source"]'
       ].join("\n"),
-      "video 完整帧数校验"
+      t(uiKeys.nodeAdapter.videoFrameCheck), t
     );
   }
   const video2dlssnrImport =
@@ -249,7 +254,7 @@ export function patchKonohamaruProcessorSource(source: string): string {
         "from .sizing import resolve_native_settings, resolve_output_size, resolve_upscaling_mode",
         video2dlssnrImport
       ].join("\n"),
-      "video2dlssnr backend import"
+      "video2dlssnr backend import", t
     );
   }
   const video2dlssnrDispatchMarker =
@@ -271,7 +276,7 @@ export function patchKonohamaruProcessorSource(source: string): string {
         "    )",
         ""
       ].join("\n"),
-      "video2dlssnr backend dispatch"
+      "video2dlssnr backend dispatch", t
     );
   }
   if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
@@ -279,13 +284,13 @@ export function patchKonohamaruProcessorSource(source: string): string {
     patched,
     '                "pipeline": "renodx-dlssnr-feature18",',
     `                ${konohamaruNeuralUpstreamPatchMarker}\n                "pipeline": "neural-upstream-dlssnr-feature18",`,
-    "video report pipeline 标识"
+    t(uiKeys.nodeAdapter.videoPipeline), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     '                "nr_native_fallback": nr_native_fallback,\n',
     '                "nr_native_fallback": nr_native_fallback,\n                "nr_enhancement_active": bool(feature_evidence["nr_enhancement_active"]),\n                "neural_pipeline": feature_evidence["neural_pipeline"],\n',
-    "video report Neural enhancement 状态"
+    t(uiKeys.nodeAdapter.videoNeural), t
   );
   return patched.replace(
     '                    f"{HOST_DIR.name}/renodx-dlss5.addon64",',
@@ -293,13 +298,13 @@ export function patchKonohamaruProcessorSource(source: string): string {
   );
 }
 
-function patchKonohamaruFrameInterpolationProcessorSource(source: string): string {
+function patchKonohamaruFrameInterpolationProcessorSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (patched.includes(konohamaruFrameCountPatchMarker)) return patched;
   const sourceRateMatch = patched.match(/^(?<indent>\s*)source_rate = Fraction\(metadata\["rate"\]\)$/mu);
   const indent = sourceRateMatch?.groups?.indent;
   if (!indent) {
-    throw new Error("ComfyUI-NVIDIA-DLSS-Frame-Interpolation 源码缺少 source rate 帧数块，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "ComfyUI-NVIDIA-DLSS-Frame-Interpolation", part: t(uiKeys.nodeAdapter.sourceRateBlock) }));
   }
   const innerIndent = `${indent}    `;
   return replaceKonohamaruRequired(
@@ -327,11 +332,11 @@ function patchKonohamaruFrameInterpolationProcessorSource(source: string): strin
       `${innerIndent}metadata["frames"] = frames`,
       `${innerIndent}metadata["frame_count_source"] = exact["frame_count_source"]`
     ].join("\n"),
-    "补帧完整帧数校验"
+    t(uiKeys.nodeAdapter.interpolationFrames), t
   );
 }
 
-export function patchKonohamaruRootSource(source: string): string {
+export function patchKonohamaruRootSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (patched.includes(konohamaruNeuralUpstreamPatchMarker)) return patched;
   const insertion = [
@@ -344,47 +349,47 @@ export function patchKonohamaruRootSource(source: string): string {
     patched,
     "UPSCALE_FACTORS = {mode[\"label\"]: factor for factor, mode in UPSCALING_MODES.items()}\n",
     `UPSCALE_FACTORS = {mode["label"]: factor for factor, mode in UPSCALING_MODES.items()}\n\n${insertion}`,
-    "node strict guard helper 插入点"
+    t(uiKeys.nodeAdapter.guardInsertion), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     'if require_neural_upscaling and options.upscaling_factor > 1.0 and not report["nr_upscaling_active"]:',
     'if require_neural_upscaling and options.upscaling_factor > 1.0 and not _lvs_neural_rendering_active(report):',
-    "视频 strict Neural guard"
+    t(uiKeys.nodeAdapter.videoGuard), t
   );
   patched = replaceKonohamaruRequired(
     patched,
     'if require_neural_upscaling and factor > 1.0 and not evidence["nr_upscaling_active"]:',
     'if require_neural_upscaling and factor > 1.0 and not (evidence["nr_upscaling_active"] or evidence.get("nr_enhancement_active")):',
-    "图片 strict Neural guard"
+    t(uiKeys.nodeAdapter.imageGuard), t
   );
   return replaceKonohamaruRequired(
     patched,
     '            "nr_upscaling_active": bool(evidence["nr_upscaling_active"]),\n',
     '            "nr_upscaling_active": bool(evidence["nr_upscaling_active"]),\n            "nr_enhancement_active": bool(evidence.get("nr_enhancement_active")),\n            "neural_pipeline": evidence.get("neural_pipeline", "unknown"),\n',
-    "图片 report Neural enhancement 状态"
+    t(uiKeys.nodeAdapter.imageNeural), t
   );
 }
 
 export function patchKonohamaruNeuralUpstreamSource(
   source: string,
-  filename: string
+  filename: string, t: Translate = defaultNodeAdapterTranslator
 ): string {
   switch (filename.replaceAll("\\", "/")) {
     case "__init__.py":
-      return patchKonohamaruRootSource(source);
+      return patchKonohamaruRootSource(source, t);
     case "dlss_engine/core/paths.py":
-      return patchKonohamaruPathsSource(source);
+      return patchKonohamaruPathsSource(source, t);
     case "dlss_engine/core/runtime.py":
-      return patchKonohamaruRuntimeSource(source);
+      return patchKonohamaruRuntimeSource(source, t);
     case "dlss_engine/video/processor.py":
-      return patchKonohamaruProcessorSource(source);
+      return patchKonohamaruProcessorSource(source, t);
     case "dlss_engine/frame_interpolation/processor.py":
-      return patchKonohamaruFrameInterpolationProcessorSource(source);
+      return patchKonohamaruFrameInterpolationProcessorSource(source, t);
     case KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME:
       return konohamaruVideo2dlssnrSource;
     default:
-      throw new Error(`未知的 Konohamaru neural-upstream patch 文件：${filename}`);
+      throw new Error(t(uiKeys.nodeAdapter.unknownFile, { file: filename }));
   }
 }
 
@@ -403,11 +408,11 @@ function replaceAetherScaleRequired(
   source: string,
   before: string,
   after: string,
-  label: string
+  label: string, t: Translate = defaultNodeAdapterTranslator
 ): string {
   if (source.includes(after)) return source;
   if (!source.includes(before)) {
-    throw new Error(`ComfyUI-AetherScale 源码缺少 ${label}，已停止修改。`);
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "ComfyUI-AetherScale", part: label }));
   }
   return source.replace(before, after);
 }
@@ -417,7 +422,7 @@ function replaceAetherScaleRequired(
  * worker is a closed native executable, so the guard records the previous
  * value before launch and restores it on both normal completion and failure.
  */
-export function patchAetherScaleCarrierSource(source: string): string {
+export function patchAetherScaleCarrierSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (
     patched.includes(aetherScaleCarrierPatchMarker) &&
@@ -469,7 +474,7 @@ export function patchAetherScaleCarrierSource(source: string): string {
     patched,
     "def _set_windows_gpu_preference(executable: Path, preference: str) -> dict[str, Any]:",
     `${registryGuard}\ndef _set_windows_gpu_preference(executable: Path, preference: str) -> dict[str, Any]:`,
-    "registry guard insertion point"
+    "registry guard insertion point", t
   );
 
   const workerStateConstant = [
@@ -516,7 +521,7 @@ export function patchAetherScaleCarrierSource(source: string): string {
     patched,
     'CARRIER_MANIFEST = CARRIER_ROOT / "carrier_manifest.json"',
     `CARRIER_MANIFEST = CARRIER_ROOT / "carrier_manifest.json"\n${workerStateConstant}`,
-    "worker ownership state insertion point"
+    "worker ownership state insertion point", t
   );
 
   const interruptHelper = [
@@ -534,19 +539,19 @@ export function patchAetherScaleCarrierSource(source: string): string {
     patched,
     "def process_carrier(\n",
     `${interruptHelper}def process_carrier(\n`,
-    "cooperative interrupt insertion point"
+    "cooperative interrupt insertion point", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     '        "registry_value": None,\n',
     '        "registry_value": None,\n        "previous": None,\n        "restored": False,\n',
-    "registry ownership record"
+    "registry ownership record", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "            winreg.SetValueEx(\n                key,\n                str(executable.resolve()),\n",
     "            worker_path = str(executable.resolve())\n            try:\n                previous_value, previous_type = winreg.QueryValueEx(key, worker_path)\n                info[\"previous\"] = {\"exists\": True, \"value\": previous_value, \"type\": previous_type}\n            except OSError:\n                info[\"previous\"] = {\"exists\": False}\n            winreg.SetValueEx(\n                key,\n                worker_path,\n",
-    "previous registry value capture"
+    "previous registry value capture", t
   );
 
   const popenBlock = [
@@ -577,43 +582,43 @@ export function patchAetherScaleCarrierSource(source: string): string {
     patched,
     popenBlock,
     guardedPopenBlock,
-    "worker process launch guard"
+    "worker process launch guard", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     `${guardedPopenBlock}\n    assert proc.stdin and proc.stdout and proc.stderr`,
     `${guardedPopenBlock}\n    try:\n        assert proc.stdin and proc.stdout and proc.stderr\n        _lvs_write_worker_state(proc)\n    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        raise`,
-    "worker ownership state publication"
+    "worker ownership state publication", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "        for i in range(batch):\n",
     "        for i in range(batch):\n            _lvs_check_comfy_interrupt()\n",
-    "per-frame cooperative interrupt"
+    "per-frame cooperative interrupt", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "                proc.terminate()\n                raise",
     "                proc.terminate()\n                _lvs_restore_windows_gpu_preference(gpu_routing)\n                _lvs_clear_worker_state(proc.pid)\n                raise",
-    "internal motion failure cleanup"
+    "internal motion failure cleanup", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "        t.join(timeout=2)\n        if code:",
     "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        if code:",
-    "normal worker completion cleanup"
+    "normal worker completion cleanup", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        if code:",
     "        t.join(timeout=2)\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        _lvs_clear_worker_state(proc.pid)\n        if code:",
-    "normal worker ownership cleanup"
+    "normal worker ownership cleanup", t
   );
   patched = replaceAetherScaleRequired(
     patched,
     "    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        raise",
     "    except Exception:\n        try:\n            proc.terminate()\n        except Exception:\n            pass\n        _lvs_restore_windows_gpu_preference(gpu_routing)\n        _lvs_clear_worker_state(proc.pid)\n        raise",
-    "worker failure cleanup"
+    "worker failure cleanup", t
   );
   return patched;
 }
@@ -631,11 +636,11 @@ function replaceDlss5Required(
   source: string,
   before: string,
   after: string,
-  label: string
+  label: string, t: Translate = defaultNodeAdapterTranslator
 ): string {
   if (source.includes(after)) return source;
   if (!source.includes(before)) {
-    throw new Error(`ComfyUI-DLSS5 源码缺少 ${label}，已停止修改。`);
+    throw new Error(t(uiKeys.nodeAdapter.sourceMissing, { package: "ComfyUI-DLSS5", part: label }));
   }
   return source.replace(before, after);
 }
@@ -647,7 +652,7 @@ function replaceDlss5Required(
  * keeps Base/Large behavior intact while making the catalogued Small profile
  * deterministic and offline-safe.
  */
-export function patchDlss5DepthAnythingSource(source: string): string {
+export function patchDlss5DepthAnythingSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   if (patched.includes(dlss5DepthAnythingPatchMarker)) return patched;
 
@@ -691,13 +696,13 @@ export function patchDlss5DepthAnythingSource(source: string): string {
     patched,
     "_DEPTH_CACHE = {}",
     `_DEPTH_CACHE = {}\n\n${helper}`,
-    "Depth Anything 本地模型发现 helper"
+    t(uiKeys.nodeAdapter.depthDiscovery), t
   );
   patched = replaceDlss5Required(
     patched,
     "from transformers import AutoImageProcessor, AutoModelForDepthEstimation",
     "from transformers import AutoConfig, AutoImageProcessor, AutoModelForDepthEstimation",
-    "Depth Anything Transformers 导入"
+    t(uiKeys.nodeAdapter.depthImports), t
   );
   const before = [
     "        key = (model_id, str(device))",
@@ -741,7 +746,7 @@ export function patchDlss5DepthAnythingSource(source: string): string {
     patched,
     before,
     after,
-    "Depth Anything Small 模型加载块"
+    t(uiKeys.nodeAdapter.depthLoader), t
   );
 }
 
@@ -755,7 +760,8 @@ async function writeIfChanged(filename: string, contents: string): Promise<boole
 
 export async function prepareKonohamaruNeuralUpstream(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const results = await Promise.all(konohamaruNeuralUpstreamPatchFiles.map(async (filename) => {
     const sourcePath = path.join(targetDirectory, ...filename.split("/"));
@@ -764,40 +770,42 @@ export async function prepareKonohamaruNeuralUpstream(
       : await fs.readFile(sourcePath, "utf8");
     const patched = filename === KONOHAMARU_VIDEO2DLSSNR_SOURCE_FILENAME
       ? source
-      : patchKonohamaruNeuralUpstreamSource(source, filename);
+      : patchKonohamaruNeuralUpstreamSource(source, filename, t);
     const changed = await writeIfChanged(sourcePath, patched);
     return { filename, changed };
   }));
   const changed = results.some((result) => result.changed);
   report(
     changed
-      ? "已将 Konohamaru DLSS5 视频切换到 video2dlssnr 时序 Neural enhancement，并保留 image/DLSSG strict guard"
-      : "Konohamaru video2dlssnr + neural-upstream 兼容层已就绪"
+      ? t(uiKeys.nodeAdapter.konohamaruPatched)
+      : t(uiKeys.nodeAdapter.konohamaruReady)
   );
 }
 
 export async function prepareAetherScaleCarrier(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const carrierPath = path.join(targetDirectory, "backend", "carrier.py");
   const source = await fs.readFile(carrierPath, "utf8");
-  const patched = patchAetherScaleCarrierSource(source);
+  const patched = patchAetherScaleCarrierSource(source, t);
   if (patched !== source) {
     await fs.writeFile(carrierPath, patched, "utf8");
-    report("已为 AetherScale carrier 应用 GPU 注册表所有权回收适配");
+    report(t(uiKeys.nodeAdapter.aetherPatched));
   } else {
-    report("AetherScale carrier GPU 注册表所有权回收适配已就绪");
+    report(t(uiKeys.nodeAdapter.aetherReady));
   }
 }
 
 export async function prepareDlss5DepthAnything(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const nodesPath = path.join(targetDirectory, "nodes.py");
   const source = await fs.readFile(nodesPath, "utf8");
-  const patched = patchDlss5DepthAnythingSource(source);
+  const patched = patchDlss5DepthAnythingSource(source, t);
   const metadataDirectory = path.join(
     targetDirectory,
     ...DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY.split("/")
@@ -817,18 +825,18 @@ export async function prepareDlss5DepthAnything(
   ]);
   report(
     nodesChanged || configChanged || preprocessorChanged
-      ? "已为 DLSS5 Depth Anything Small 应用本地 safetensors 加载适配，并写入内置 JSON 元数据"
-      : "DLSS5 Depth Anything Small 本地 safetensors 适配与内置 JSON 元数据已就绪"
+      ? t(uiKeys.nodeAdapter.depthPatched)
+      : t(uiKeys.nodeAdapter.depthReady)
   );
 }
 
-export function patchMmh3UltimateUpscaleSource(source: string): string {
+export function patchMmh3UltimateUpscaleSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(/\r\n?/gu, "\n");
   patched = replaceRequired(
     patched,
     "def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):",
     "def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg, progress_state=None):",
-    "sample_piece 函数"
+    t(uiKeys.nodeAdapter.sampleFunction), t
   );
   patched = replaceRequired(
     patched,
@@ -853,7 +861,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
                 progress_state["total_pieces"],
                 preview_bytes,
             )`,
-    "sampler progress callback"
+    "sampler progress callback", t
   );
   patched = replaceRequired(
     patched,
@@ -861,7 +869,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
     `    if progress_state is not None:
         progress_state["piece"] += 1
     samples = samples.to(comfy.model_management.intermediate_device())`,
-    "sample_piece 完成点"
+    t(uiKeys.nodeAdapter.sampleEnd), t
   );
   patched = replaceRequired(
     patched,
@@ -869,7 +877,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
                     fun_control=None, inpaint=None):`,
     `def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
                     fun_control=None, inpaint=None, progress_state=None):`,
-    "spatial_process 函数"
+    t(uiKeys.nodeAdapter.spatialFunction), t
   );
   patched = replaceRequired(
     patched,
@@ -878,7 +886,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
                     piece, cond_tile, model, noise, sampler, sigmas, negative, cfg,
                     progress_state=progress_state,
                 )`,
-    "tile sampler 调用"
+    t(uiKeys.nodeAdapter.tileSampler), t
   );
   patched = replaceRequired(
     patched,
@@ -908,7 +916,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
             "piece": 0,
             "total_pieces": len(bounds) * pieces_per_chunk,
         }`,
-    "aggregate progress 初始化点"
+    t(uiKeys.nodeAdapter.aggregateInit), t
   );
   patched = replaceRequired(
     patched,
@@ -917,7 +925,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
     `                    fun_control=fun_control, inpaint=inpaint_param,
                     progress_state=progress_state,
                 )`,
-    "spatial progress 传递点"
+    t(uiKeys.nodeAdapter.spatialProgress), t
   );
   patched = replaceRequired(
     patched,
@@ -926,7 +934,7 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
                     piece, cond_i, model, noise, sampler, sigmas, negative, cfg,
                     progress_state=progress_state,
                 )`,
-    "whole-chunk sampler 调用"
+    t(uiKeys.nodeAdapter.wholeSampler), t
   );
   patched = replaceRequired(
     patched,
@@ -938,30 +946,31 @@ export function patchMmh3UltimateUpscaleSource(source: string): string {
             # use the previous chunk's re-sampled boundary token.
             anchor_video = acc_v if i > 0 and acc_v is not None else chunk_v
             cond_i = anchor_conditioning(cond_i, anchor_video, f0, anchor_strength)`,
-    "首块 frame-0 anchor"
+    t(uiKeys.nodeAdapter.firstAnchor), t
   );
   return patched;
 }
 
 export async function prepareMmh3UltimateUpscale(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const filename = path.join(targetDirectory, "nodes", "nodes.py");
   const source = await fs.readFile(filename, "utf8");
-  const patched = patchMmh3UltimateUpscaleSource(source);
+  const patched = patchMmh3UltimateUpscaleSource(source, t);
   if (patched !== source) {
     await fs.writeFile(filename, patched, "utf8");
-    report("已应用 MMH3 首块 source anchor 与分块聚合进度补丁");
+    report(t(uiKeys.nodeAdapter.mmh3Patched));
   } else {
-    report("MMH3 首块 source anchor 与分块聚合进度补丁已就绪");
+    report(t(uiKeys.nodeAdapter.mmh3Ready));
   }
 }
 
 export function patchVideoHelperBatchCompatibility(
   utilsSource: string,
   nodesSource: string,
-  loadVideoSource: string
+  loadVideoSource: string, t: Translate = defaultNodeAdapterTranslator
 ): { utilsSource: string; nodesSource: string; loadVideoSource: string } {
   let patchedUtils = utilsSource;
   if (!patchedUtils.includes("if len(value) == 6")) {
@@ -1031,7 +1040,7 @@ export function patchVideoHelperBatchCompatibility(
   );
   if (!videoHelperBatchCompatible(patchedUtils, patchedNodes, patchedLoadVideo)) {
     throw new Error(
-      "VideoHelperSuite 源码结构与兼容补丁不匹配，已停止安装以避免损坏节点。"
+      t(uiKeys.nodeAdapter.vhsMismatch)
     );
   }
   return {
@@ -1041,7 +1050,7 @@ export function patchVideoHelperBatchCompatibility(
   };
 }
 
-export function patchLtxAudioVaeCompatibility(source: string): string {
+export function patchLtxAudioVaeCompatibility(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   if (!source.includes("audio_vae = AudioVAE(sd, metadata)")) return source;
   const patched = source
     .replace(
@@ -1060,7 +1069,7 @@ export function patchLtxAudioVaeCompatibility(source: string): string {
     );
   if (!ltxAudioVaeCompatible(patched)) {
     throw new Error(
-      "ComfyUI-LTXVideo 源码结构与 AudioVAE 兼容补丁不匹配，已停止修改以避免损坏节点。"
+      t(uiKeys.nodeAdapter.ltxMismatch)
     );
   }
   return patched;
@@ -1191,7 +1200,7 @@ export function patchH3PromptWriterGemmaChatHandler(source: string): string {
   return patched;
 }
 
-export function patchH3PromptWriterBriefLimit(source: string): string {
+export function patchH3PromptWriterBriefLimit(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(
     /(^def _validated_generation_context\([\s\S]*?^\s*)if len\(brief\) > (?:2000|8000):\r?\n(\s*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/mu,
     (_match, prefix: string, indent: string) =>
@@ -1207,7 +1216,7 @@ export function patchH3PromptWriterBriefLimit(source: string): string {
     /(^def _validated_generation_context[\s\S]*?^\s*)if len\(brief\) > (?:2000|8000):\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/mu.test(patched)
   ) {
     throw new Error(
-      "MiniMax H3 Prompt Writer 的 creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
+      t(uiKeys.nodeAdapter.briefMismatch)
     );
   }
   if (
@@ -1215,7 +1224,7 @@ export function patchH3PromptWriterBriefLimit(source: string): string {
     /brief = _required_text\(body, "creative_brief", "Creative brief"\)[\s\S]*?if len\(brief\) > (?:2000|8000):\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed (?:2,000|8,000) characters\."\)/u.test(patched)
   ) {
     throw new Error(
-      "MiniMax H3 Prompt Writer 的 assemble_request creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
+      t(uiKeys.nodeAdapter.assembleMismatch)
     );
   }
   return patched;
@@ -1271,14 +1280,14 @@ export function patchH3PromptWriterModelRoots(source: string): string {
   );
 }
 
-export function patchH3PromptWriterSource(source: string): string {
+export function patchH3PromptWriterSource(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   return patchH3PromptWriterAutomaticContextLadder(
     patchH3PromptWriterOutputBudget(
       patchH3PromptWriterBatchSize(
         patchH3PromptWriterBriefLimit(
           patchH3PromptWriterGemmaChatHandler(
             patchH3PromptWriterLlamaCppCompatibility(patchH3PromptWriterModelRoots(source))
-          )
+          ), t
         )
       )
     )
@@ -1301,7 +1310,7 @@ export function multimodalPromptSupportsAdaptiveGeneration(source: string): bool
  * schema ceiling. The diagnostic payload contains counts and stop reason
  * only; prompt and generated text are never copied into it.
  */
-export function patchMultimodalPromptAdaptiveGeneration(source: string): string {
+export function patchMultimodalPromptAdaptiveGeneration(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source.replace(
     /("max_tokens"\s*:\s*\("INT"\s*,\s*\{[\s\S]{0,400}?"max"\s*:\s*)(?:2048|3072|16384)\b/u,
     (_match, prefix: string) => `${prefix}${H3_REWRITER_NODE_MAX_OUTPUT_TOKENS}`
@@ -1338,7 +1347,7 @@ export function patchMultimodalPromptAdaptiveGeneration(source: string): string 
     );
   }
   if (!multimodalPromptSupportsAdaptiveGeneration(patched)) {
-    throw new Error("MultiModal Prompt Nodes 源码结构与按需扩容/诊断适配不匹配，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.adaptiveMismatch));
   }
   return patched;
 }
@@ -1361,7 +1370,7 @@ export function multimodalPromptRecognizesQwen38(source: string): boolean {
   return /["']qwen38["']/u.test(method) && /["']qwen3\.8["']/u.test(method);
 }
 
-export function patchMultimodalPromptQwen38Recognition(source: string): string {
+export function patchMultimodalPromptQwen38Recognition(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source;
   if (
     patched.includes("def _infer_is_qwen35") &&
@@ -1372,7 +1381,7 @@ export function patchMultimodalPromptQwen38Recognition(source: string): string {
       '("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower) or ("qwen38" in model_name_lower) or ("qwen3.8" in model_name_lower)'
     );
     if (!multimodalPromptRecognizesQwen38(patched)) {
-      throw new Error("MultiModal Prompt Nodes 无法添加 Qwen3.8 架构识别，已停止修改。");
+      throw new Error(t(uiKeys.nodeAdapter.qwenArchitecture));
     }
   }
   if (patched.includes('families = ["qwen2"')) {
@@ -1381,7 +1390,7 @@ export function patchMultimodalPromptQwen38Recognition(source: string): string {
       '"qwen36", "qwen3.6", "qwen38", "qwen3.8"]'
     );
     if (!patched.includes('"qwen38", "qwen3.8"]')) {
-      throw new Error("MultiModal Prompt Nodes 无法添加 Qwen3.8 mmproj 自动识别，已停止修改。");
+      throw new Error(t(uiKeys.nodeAdapter.qwenProjector));
     }
   }
   if (patched.includes('if f.startswith("mmproj-") and f.endswith(".gguf")')) {
@@ -1393,12 +1402,12 @@ export function patchMultimodalPromptQwen38Recognition(source: string): string {
   return patched;
 }
 
-export function patchMultimodalPromptProjectorDiscovery(source: string): string {
+export function patchMultimodalPromptProjectorDiscovery(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   if (source.includes("def _is_mmproj_filename(")) return source;
   const marker = "def discover_local_gguf_models(";
   const markerIndex = source.indexOf(marker);
   if (markerIndex < 0) {
-    throw new Error("MultiModal Prompt Nodes 缺少本地 GGUF 扫描器，无法添加 vision 投影文件兼容。");
+    throw new Error(t(uiKeys.nodeAdapter.ggufScanner));
   }
   const helper = [
     "def _is_mmproj_filename(file_name: str) -> bool:",
@@ -1414,18 +1423,18 @@ export function patchMultimodalPromptProjectorDiscovery(source: string): string 
   );
   const occurrences = patched.match(/_is_mmproj_filename\(file_name\)/gu)?.length ?? 0;
   if (occurrences < 2) {
-    throw new Error("MultiModal Prompt Nodes 的模型/mmproj 扫描结构不兼容，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.projectorMismatch));
   }
   return patched;
 }
 
-export function patchMultimodalPromptResidency(source: string): string {
+export function patchMultimodalPromptResidency(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   let patched = source;
   if (!patched.includes('"keep_model_loaded": ("BOOLEAN"')) {
     const classStart = patched.indexOf("class VisionLLMNode:");
     const classEnd = patched.indexOf("# ComfyUI Node Registration", classStart);
     if (classStart < 0 || classEnd < 0) {
-      throw new Error("MultiModal Prompt Nodes 缺少 VisionLLMNode 定义，无法应用模型驻留适配。");
+      throw new Error(t(uiKeys.nodeAdapter.visionDefinition));
     }
     let nodeSource = patched.slice(classStart, classEnd);
     nodeSource = nodeSource.replace(
@@ -1446,7 +1455,7 @@ export function patchMultimodalPromptResidency(source: string): string {
     const marker = "import atexit";
     const markerIndex = patched.indexOf(marker);
     if (markerIndex < 0) {
-      throw new Error("MultiModal Prompt Nodes 缺少退出清理注册点，无法添加显式卸载接口。");
+      throw new Error(t(uiKeys.nodeAdapter.unloadHook));
     }
     const route = [
       "try:",
@@ -1468,7 +1477,7 @@ export function patchMultimodalPromptResidency(source: string): string {
     const marker = "import atexit";
     const markerIndex = patched.indexOf(marker);
     if (markerIndex < 0) {
-      throw new Error("MultiModal Prompt Nodes 缺少退出清理注册点，无法添加安全诊断接口。");
+      throw new Error(t(uiKeys.nodeAdapter.diagnosticHook));
     }
     const route = [
       "try:",
@@ -1492,7 +1501,7 @@ export function patchMultimodalPromptResidency(source: string): string {
     !patched.includes('/local-video-studio/multimodal-prompt/unload') ||
     !patched.includes('/local-video-studio/multimodal-prompt/diagnostics')
   ) {
-    throw new Error("MultiModal Prompt Nodes 源码结构与模型驻留适配不匹配，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.residencyMismatch));
   }
   return patched;
 }
@@ -1510,7 +1519,7 @@ export function qwenVlNeedsComfyDesktopLoggingShim(source: string): boolean {
     !/^[\t ]{8}_qwenvl_prepare_console_streams\(\)\r?$/mu.test(source);
 }
 
-export function patchQwenVlComfyDesktopLogging(source: string): string {
+export function patchQwenVlComfyDesktopLogging(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   if (!qwenVlNeedsComfyDesktopLoggingShim(source)) {
     return source;
   }
@@ -1522,7 +1531,7 @@ export function patchQwenVlComfyDesktopLogging(source: string): string {
   const markerIndex = replaced.indexOf(marker);
   if (markerIndex < 0) {
     throw new Error(
-      "ComfyUI Qwen-VL LoRA 源码缺少 folder_paths 导入，已停止应用 Desktop 日志兼容层。"
+      t(uiKeys.nodeAdapter.loggingImport)
     );
   }
   const lineEnd = replaced.indexOf("\n", markerIndex);
@@ -1575,12 +1584,12 @@ export function patchQwenVlComfyDesktopLogging(source: string): string {
   }
   if (!/^[\t ]{8}_qwenvl_prepare_console_streams\(\)\r?$/mu.test(replaced)) {
     throw new Error(
-      "ComfyUI Qwen-VL LoRA 源码结构与 Desktop 日志兼容层不匹配，已停止修改。"
+      t(uiKeys.nodeAdapter.loggingMismatch)
     );
   }
   if (!replaced.includes("            stream.flush()")) {
     throw new Error(
-      "ComfyUI Qwen-VL LoRA 的 Desktop 日志兼容层无法升级 flush 检查，已停止修改。"
+      t(uiKeys.nodeAdapter.loggingFlush)
     );
   }
   return replaced;
@@ -1592,18 +1601,18 @@ export function qwenVlNeedsCooperativeInterrupt(source: string): boolean {
       !source.includes("stopping_criteria=_lvs_stopping_criteria"));
 }
 
-export function patchQwenVlCooperativeInterrupt(source: string): string {
+export function patchQwenVlCooperativeInterrupt(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   const marker = "class _LvsComfyInterruptStoppingCriteria(StoppingCriteria):";
   if (source.includes(marker) && source.includes("stopping_criteria=_lvs_stopping_criteria")) {
     return source;
   }
   if (!source.includes("class QwenVLCaption") || !source.includes("generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens)")) {
-    throw new Error("ComfyUI Qwen-VL LoRA 源码结构与协作式中断适配不匹配，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.interruptMismatch));
   }
   const importMarker = "import folder_paths";
   const importIndex = source.indexOf(importMarker);
   if (importIndex < 0) {
-    throw new Error("ComfyUI Qwen-VL LoRA 源码缺少 folder_paths 导入，无法添加协作式中断。");
+    throw new Error(t(uiKeys.nodeAdapter.interruptImport));
   }
   const importEnd = source.indexOf("\n", importIndex);
   const insertAt = importEnd >= 0 ? importEnd + 1 : source.length;
@@ -1626,25 +1635,26 @@ export function patchQwenVlCooperativeInterrupt(source: string): string {
     "generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens, stopping_criteria=_lvs_stopping_criteria)"
   );
   if (!patched.includes(marker) || !patched.includes("stopping_criteria=_lvs_stopping_criteria")) {
-    throw new Error("ComfyUI Qwen-VL LoRA 协作式中断适配未能完整应用。");
+    throw new Error(t(uiKeys.nodeAdapter.interruptIncomplete));
   }
   return patched;
 }
 
 export async function prepareQwenVlComfyDesktopLogging(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const filename = path.join(targetDirectory, "nodes.py");
   const source = await fs.readFile(filename, "utf8");
   const patched = patchQwenVlOutputBudget(patchQwenVlCooperativeInterrupt(
-    patchQwenVlComfyDesktopLogging(source)
-  ));
+    patchQwenVlComfyDesktopLogging(source, t), t
+  ), t);
   if (patched !== source) {
     await fs.writeFile(filename, patched, "utf8");
-    report("已为 Qwen-VL LoRA 节点应用长输出/上下文预检、Desktop 日志兼容与协作式中断");
+    report(t(uiKeys.nodeAdapter.qwenPatched));
   } else {
-    report("Qwen-VL LoRA 节点已包含长输出/上下文预检、Desktop 日志兼容与协作式中断");
+    report(t(uiKeys.nodeAdapter.qwenReady));
   }
 }
 
@@ -1653,7 +1663,7 @@ export function qwenVlSupportsLongOutput(source: string): boolean {
     source.includes("_lvs_context_limit") && source.includes("_lvs_input_tokens + max_new_tokens");
 }
 
-export function patchQwenVlOutputBudget(source: string): string {
+export function patchQwenVlOutputBudget(source: string, t: Translate = defaultNodeAdapterTranslator): string {
   if (qwenVlSupportsLongOutput(source)) return source;
   let patched = source.replace(
     /("max_new_tokens"\s*:\s*\("INT"\s*,\s*\{[^}]*"max"\s*:\s*)(?:2048|16384)\b/u,
@@ -1672,13 +1682,14 @@ export function patchQwenVlOutputBudget(source: string): string {
         `${indent}with torch.no_grad():`
       ].join("\n"));
   }
-  if (!qwenVlSupportsLongOutput(patched)) throw new Error("Qwen-VL LoRA 源码结构与长输出/上下文预检适配不匹配，已停止修改。");
+  if (!qwenVlSupportsLongOutput(patched)) throw new Error(t(uiKeys.nodeAdapter.outputMismatch));
   return patched;
 }
 
 export async function prepareMultimodalPromptNodes(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const filename = path.join(targetDirectory, "vision_llm_node.py");
   const discoveryFilename = path.join(targetDirectory, "local_gguf_utils.py");
@@ -1689,19 +1700,19 @@ export async function prepareMultimodalPromptNodes(
   const patched = patchMultimodalPromptResidency(
     patchMultimodalPromptQwen38Recognition(
       patchMultimodalPromptAdaptiveGeneration(
-        patchMultimodalPromptLeanLogits(patchMultimodalPromptContextSize(source))
-      )
-    )
+        patchMultimodalPromptLeanLogits(patchMultimodalPromptContextSize(source)), t
+      ), t
+    ), t
   );
-  const patchedDiscovery = patchMultimodalPromptProjectorDiscovery(discoverySource);
+  const patchedDiscovery = patchMultimodalPromptProjectorDiscovery(discoverySource, t);
   const occurrences = patched.match(/n_ctx: int = 8192/gu)?.length ?? 0;
   if (occurrences < 2 || patched.includes("n_ctx: int = 4096")) {
     throw new Error(
-      "MultiModal Prompt Nodes 源码结构与 8K 上下文适配不匹配，已停止修改。"
+      t(uiKeys.nodeAdapter.contextMismatch)
     );
   }
   if (!multimodalPromptSupportsAdaptiveGeneration(patched)) {
-    throw new Error("MultiModal Prompt Nodes 未完成长时间线的按需 32K 上下文/16K 输出适配，已停止修改。");
+    throw new Error(t(uiKeys.nodeAdapter.longContextIncomplete));
   }
   if (patched !== source || patchedDiscovery !== discoverySource) {
     await Promise.all([
@@ -1710,9 +1721,9 @@ export async function prepareMultimodalPromptNodes(
         ? fs.writeFile(discoveryFilename, patchedDiscovery, "utf8")
         : Promise.resolve()
     ]);
-    report("已为 MultiModal Prompt Nodes 应用按需 8K/16K/32K 上下文、16K 输出、安全诊断、模型驻留、Qwen3.8 vision 投影及 Qwen MTMD 精简 logits 兼容");
+    report(t(uiKeys.nodeAdapter.multimodalPatched));
   } else {
-    report("MultiModal Prompt Nodes 已使用按需 8K/16K/32K 上下文、16K 输出，并支持安全诊断、显式驻留/卸载、Qwen3.8 vision 投影与 Qwen MTMD 精简 logits");
+    report(t(uiKeys.nodeAdapter.multimodalReady));
   }
 }
 
@@ -1728,7 +1739,8 @@ function hasLlamaKvCompatibilityShim(source: string): boolean {
 
 export async function prepareH3PromptWriter(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   // 0.3.x releases have used both the flat GGUF adapter path and the older
   // nested path shown by ComfyUI-MiniMaxH3-Prompt-Writer logs.  The context
@@ -1747,7 +1759,7 @@ export async function prepareH3PromptWriter(
   }
   if (!backendFilename) {
     throw new Error(
-      "MiniMax H3 Prompt Writer 缺少可识别的 GGUF 后端（支持 backend/models/gguf_backend.py 或 backend/models/gguf/_backend.py）。"
+      t(uiKeys.nodeAdapter.writerBackend)
     );
   }
   const files: Array<{ filename: string; required: boolean; reportMissing?: boolean }> = [
@@ -1769,25 +1781,25 @@ export async function prepareH3PromptWriter(
     const source = await fs.readFile(filename, "utf8").catch((error) => {
       if (required) throw error;
       if (reportMissing) {
-        report("H3 Prompt Writer 未提供独立运行时诊断文件，跳过兼容补丁（不影响生成接口）");
+        report(t(uiKeys.nodeAdapter.writerDiagnostics));
       }
       return null;
     });
     if (source === null) continue;
-    const patched = patchH3PromptWriterSource(source);
+    const patched = patchH3PromptWriterSource(source, t);
     if (hasLegacyLlamaKvImport(patched) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
-        "MiniMax H3 Prompt Writer 源码结构与 llama-cpp-python 兼容适配不匹配，已停止修改。"
+        t(uiKeys.nodeAdapter.writerMismatch)
       );
     }
     if (hasLegacyLlamaKvImport(source) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
-        "MiniMax H3 Prompt Writer 未包含新版 llama-cpp-python KV 类型回退，已停止修改。"
+        t(uiKeys.nodeAdapter.writerKv)
       );
     }
     if (patched.includes("self.chat_handler._exit_stack.close()")) {
       throw new Error(
-        "MiniMax H3 Prompt Writer 未能应用 llama-cpp-python 0.3.46 资源清理适配，已停止修改。"
+        t(uiKeys.nodeAdapter.writerCleanup)
       );
     }
     if (patched !== source) {
@@ -1798,8 +1810,8 @@ export async function prepareH3PromptWriter(
   }
   report(
     changed
-      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python、Gemma 模板、上下文与批处理兼容层`
-      : "H3 Prompt Writer 已兼容当前 llama-cpp-python API（无需修改上游源码）"
+      ? t(uiKeys.nodeAdapter.writerPatched, { count: patchedFiles })
+      : t(uiKeys.nodeAdapter.writerReady)
   );
 }
 
@@ -1823,40 +1835,43 @@ else:
 
 export async function prepareH3Gguf(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const nodesPath = path.join(targetDirectory, "nodes.py");
   const nodesSource = await fs.readFile(nodesPath, "utf8");
   if (!/["']UnetLoaderGGUFAdvanced["']/.test(nodesSource) ||
       !/["']CLIPLoaderGGUF["']/.test(nodesSource)) {
     throw new Error(
-      "ComfyUI-GGUF H3 源码缺少预期 loader，已停止安装以避免覆盖通用 GGUF 节点。"
+      t(uiKeys.nodeAdapter.ggufMismatch)
     );
   }
   await fs.writeFile(path.join(targetDirectory, "__init__.py"), h3GgufInitSource, "utf8");
-  report("已将 H3 GGUF loader 重命名为独立节点，保留通用 GGUF 包不变");
+  report(t(uiKeys.nodeAdapter.ggufPatched));
 }
 
 export async function prepareLtxVideo(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const loaderPath = path.join(targetDirectory, "low_vram_loaders.py");
   const source = await fs.readFile(loaderPath, "utf8");
-  const patched = patchLtxAudioVaeCompatibility(source);
+  const patched = patchLtxAudioVaeCompatibility(source, t);
   if (patched !== source) {
     await fs.writeFile(loaderPath, patched, "utf8");
     report(
-      "已应用 ComfyUI 0.22+ AudioVAE 加载兼容层（comfy.sd.VAE wrapper）"
+      t(uiKeys.nodeAdapter.ltxPatched)
     );
   } else {
-    report("AudioVAE 加载接口已兼容当前 ComfyUI");
+    report(t(uiKeys.nodeAdapter.ltxReady));
   }
 }
 
 export async function prepareVideoHelperSuite(
   targetDirectory: string,
-  report: (message: string) => void
+  report: (message: string) => void,
+  t: Translate = defaultNodeAdapterTranslator
 ): Promise<void> {
   const utilsPath = path.join(targetDirectory, "videohelpersuite", "utils.py");
   const nodesPath = path.join(targetDirectory, "videohelpersuite", "nodes.py");
@@ -1873,7 +1888,7 @@ export async function prepareVideoHelperSuite(
   const patched = patchVideoHelperBatchCompatibility(
     utilsSource,
     nodesSource,
-    loadVideoSource
+    loadVideoSource, t
   );
   await Promise.all([
     fs.writeFile(utilsPath, patched.utilsSource, "utf8"),
@@ -1887,6 +1902,6 @@ export async function prepareVideoHelperSuite(
     retryDelay: 200
   });
   report(
-    "已应用并锁定当前 ComfyUI 分批队列兼容层；后续更新由本应用备份替换"
+    t(uiKeys.nodeAdapter.vhsPatched)
   );
 }

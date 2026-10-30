@@ -90,7 +90,7 @@ export const imageReferenceRolePromptLabels = {
 export function isPromptCancellationError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /提示词任务已取消|prompt task (?:was )?cancelled|operation was aborted/iu.test(message);
+  return /提示[词詞](?:任务|工作)已取消|提示[词詞]模型[启啟][动動]已取消|prompt (?:task|model startup) (?:was )?cancelled|operation was aborted/iu.test(message);
 }
 
 export function activePrompt(draft: Draft, locale: UiLocale = "zh-CN"): PromptVersion {

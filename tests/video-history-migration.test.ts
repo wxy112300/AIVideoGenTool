@@ -2,10 +2,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { HistoryAsset, QueueTask } from "../src/types.js";
+import type { HistoryAsset, HistoryMigrationProgress, QueueTask } from "../src/types.js";
+import { createNativeTranslator } from "../electron/ui-translator";
 import {
   cleanupVideoHistoryMigration,
   isPathWithinDirectory,
+  markVideoHistoryMigrationCommitted,
   planVideoHistoryMigration,
   prepareVideoHistoryMigration
 } from "../src/infrastructure/video-history-migration.js";
@@ -52,6 +54,30 @@ function historyAsset(sourcePath: string): HistoryAsset {
 }
 
 describe("video history migration", () => {
+  it("localizes copy, verification and cleanup progress while keeping the copy-first transaction", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-migration-localized-"));
+    try {
+      const oldDirectory = path.join(root, "old"), newDirectory = path.join(root, "new");
+      await fs.mkdir(oldDirectory);
+      const source = path.join(oldDirectory, "clip.mp4");
+      await fs.writeFile(source, "original-video");
+      const history = [historyAsset(source)];
+      const { t } = createNativeTranslator("en-US");
+      const plan = await planVideoHistoryMigration(history, oldDirectory, newDirectory, [], t);
+      const events: HistoryMigrationProgress[] = [];
+      const preparation = await prepareVideoHistoryMigration(plan, path.join(root, "journal.json"), value => events.push(value), t);
+      expect(await fs.readFile(source, "utf8")).toBe("original-video");
+      await markVideoHistoryMigrationCommitted(preparation);
+      expect(await cleanupVideoHistoryMigration(preparation, value => events.push(value), t)).toEqual([]);
+      expect(await fs.readFile(path.join(newDirectory, "clip.mp4"), "utf8")).toBe("original-video");
+      await expect(fs.stat(source)).rejects.toMatchObject({code:"ENOENT"});
+      expect(events.map(event => event.message)).toContain("Preparing video file 1 / 1");
+      expect(events.map(event => event.message)).toContain("Verified destination file 1 / 1");
+      expect(events.map(event => event.message)).toContain("Cleaning up old file 1 / 1");
+      expect(history[0]?.title).toBe("测试视频");
+      expect(history[0]?.prompt).toBe("测试");
+    } finally { await fs.rm(root, {recursive:true,force:true}); }
+  });
   it("accepts only targets inside the output root", () => {
     expect(isPathWithinDirectory("C:\\ComfyUI\\output", "C:\\ComfyUI\\output\\Videos")).toBe(true);
     expect(isPathWithinDirectory("C:\\ComfyUI\\output", "C:\\ComfyUI\\output-archive")).toBe(false);

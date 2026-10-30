@@ -29,6 +29,15 @@ function probeOutput(version: string, importReady: boolean, error = ""): string 
 }
 
 describe("ComfyUI core Python dependency detection", () => {
+  it("keeps the original import diagnostic and localizes its repair guidance", async () => {
+    const sourceDirectory = await createVideoApiSource("from av.video.reformatter import ColorPrimaries, ColorRange, ColorTrc\n");
+    const runProcess = vi.fn(async () => probeOutput("16.1.0", false, "ImportError: ColorPrimaries"));
+    const status = await inspectComfyCorePythonDependency(sourceDirectory, "selected-python", runProcess, {}, "en-US");
+    expect(status.needsRepair).toBe(true);
+    expect(status.detail).toContain("PyAV 16.1.0 is incompatible");
+    expect(status.detail).toContain("ImportError: ColorPrimaries");
+    expect(status.pythonPath).toBe("selected-python");
+  });
   it("detects the PyAV gap when the current core imports newer video enums", async () => {
     const sourceDirectory = await createVideoApiSource(
       "from av.video.reformatter import ColorPrimaries, ColorRange, ColorTrc\n"

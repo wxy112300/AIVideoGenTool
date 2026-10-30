@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import type { HistoryMetadataPatch } from "../../src/types.js";
+import type { HistoryMetadataPatch, UiLocale } from "../../src/types.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 
 export function historyMetadataRevision(value: HistoryMetadataPatch): string {
   return createHash("sha256").update(JSON.stringify([
@@ -8,5 +10,5 @@ export function historyMetadataRevision(value: HistoryMetadataPatch): string {
 }
 
 export class HistoryMetadataConflict extends Error {
-  constructor() { super("视频信息已在另一处修改，请刷新后重试。"); }
+  constructor(locale?: UiLocale) { super(createNativeTranslator(locale).t(uiKeys.serviceError.metadataConflict)); }
 }

@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
 import {
   qwenVlPeftPromptModel
@@ -80,10 +83,10 @@ function modelChoiceMatches(choices: readonly string[], expected: string): boole
   return choices.some((choice) => normalizedModelChoice(choice) === normalizedExpected);
 }
 
-function formatRuntimeChoices(choices: readonly string[]): string {
-  if (choices.length === 0) return "没有可选项";
-  const visible = choices.slice(0, 8).join("、");
-  return choices.length > 8 ? `${visible} 等 ${choices.length} 项` : visible;
+function formatRuntimeChoices(choices: readonly string[], t: Translate = createNativeTranslator(undefined).t): string {
+  if (choices.length === 0) return t(uiKeys.promptBackend.noChoices);
+  const visible = choices.slice(0, 8).join(t(uiKeys.nodeInstaller.listSeparator));
+  return choices.length > 8 ? t(uiKeys.promptBackend.moreChoices, { choices: visible, count: choices.length }) : visible;
 }
 
 export class QwenVlRuntimeValidationError extends Error {
@@ -97,15 +100,16 @@ export class QwenVlRuntimeValidationError extends Error {
     nodeType: string,
     inputName: string,
     expected: string,
-    choices: readonly string[]
+    choices: readonly string[],
+    t: Translate = createNativeTranslator(undefined).t
   ) {
     const onlyNone = choices.length === 1 && choices[0] === "(none)";
     const reason = onlyNone
-      ? "当前节点只发现了 (none)，通常表示模型是在 ComfyUI 启动后才放入，或当前服务使用了另一份数据目录"
-      : `当前节点可选项为：${formatRuntimeChoices(choices)}`;
+      ? t(uiKeys.promptBackend.qwenOnlyNone)
+      : t(uiKeys.promptBackend.qwenChoices, { choices: formatRuntimeChoices(choices, t) });
     super(
-      `Qwen-VL 运行时未找到 ${inputName} “${expected}”（${reason}）。` +
-      "请确认当前 ComfyUI 数据目录下的模型路径，并重启 ComfyUI 让节点重新扫描；若服务由 Local Video Studio 管理会自动尝试刷新，外部启动的服务请手动重启后再扫描。"
+      t(uiKeys.promptBackend.qwenChoiceMissing, { input: inputName, expected, reason }) +
+      t(uiKeys.promptBackend.qwenRefreshGuidance)
     );
     this.name = "QwenVlRuntimeValidationError";
     this.nodeType = nodeType;
@@ -121,12 +125,14 @@ export class QwenVlRuntimeValidationError extends Error {
  * instruction. The repair is applied by the app's dependency installer to
  * the selected ComfyUI data directory; no machine-specific path is embedded.
  */
-export function explainQwenVlRuntimeError(error: unknown): unknown {
+class QwenVlRuntimeRepairError extends Error {}
+
+export function explainQwenVlRuntimeError(error: unknown, t: Translate = createNativeTranslator(undefined).t): unknown {
   const message = error instanceof Error ? error.message : String(error);
   if (!/bad file descriptor|errno\s*9|0x?9\b/iu.test(message)) return error;
-  if (/节点与依赖中执行一键修复/iu.test(message)) return error;
-  return new Error(
-    `${message}；ComfyUI Desktop 的日志句柄已失效，请在设置 → 节点与依赖中对 ComfyUI Qwen-VL LoRA 执行一键修复，然后重启 ComfyUI`
+  if (error instanceof QwenVlRuntimeRepairError || /节点与依赖中执行一键修复/iu.test(message)) return error;
+  return new QwenVlRuntimeRepairError(
+    t(uiKeys.promptBackend.qwenRepair, { detail: message })
   );
 }
 
@@ -166,7 +172,8 @@ export function validateQwenVlRuntimeChoices(
         check.nodeType,
         check.inputName,
         check.expected,
-        choices
+        choices,
+        createNativeTranslator(settings.uiLocale).t
       );
     }
   }
@@ -197,7 +204,7 @@ function promptForRequest(request: EnhanceRequest, settings: Settings, warmup: b
   if (warmup) return "Reply with READY only. Do not describe the placeholder image.";
   return request.mode === "image-edit"
     ? imageEditPromptInstruction(request)
-    : h3PromptInstruction(request, settings.h3PromptPresets);
+    : h3PromptInstruction(request, settings.h3PromptPresets, settings.uiLocale);
 }
 
 /**
@@ -211,8 +218,9 @@ export function buildQwenVlPeftPromptWorkflow(
   settings: Settings,
   warmup = false
 ): Record<string, PromptNode> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const definition = qwenVlPeftPromptModel(settings.promptModelId);
-  if (!definition) throw new Error("当前选择的不是 Qwen3-VL PEFT 提示词模型。");
+  if (!definition) throw new Error(t(uiKeys.promptBackend.qwenModelRequired));
   const baseDirectory = definition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct";
   const adapterDirectory = definition.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b";
   const mode = h3PromptModeForRequest(request);
@@ -302,12 +310,13 @@ export async function enhancePromptWithQwenVlPeft(
   retainModel = false,
   onSubmitted?: (promptId: string) => void
 ): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
-    throw new Error("请先输入需要扩写的提示词");
+    throw new Error(t(uiKeys.promptBackend.promptRequired));
   }
-  validateH3ReferenceAutoPrompt(request);
+  validateH3ReferenceAutoPrompt(request, settings.uiLocale);
   const definition = qwenVlPeftPromptModel(settings.promptModelId);
-  if (!definition) throw new Error("当前选择的不是 Qwen3-VL PEFT 提示词模型。");
+  if (!definition) throw new Error(t(uiKeys.promptBackend.qwenModelRequired));
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const startedAt = Date.now();
   try {
@@ -316,42 +325,43 @@ export async function enhancePromptWithQwenVlPeft(
     if (warmup || !retainModel) await freeMemory(settings);
     const objectInfo = await jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
-      { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
+      { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }, t
     );
     validateQwenVlRuntimeChoices(objectInfo, settings);
     const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
     const mode = h3PromptModeForRequest(request);
     if (mode === "R2V") {
-      throw new Error("MiniMax H3 Prompt Rewriter LoRA 不支持 R2VA。请改用 Qwen3.6/Qwen3.8 或 H3 Prompt Writer。");
+      throw new Error(t(uiKeys.promptBackend.qwenR2vaUnsupported));
     }
     const sourceImages = imagePathsForRequest(request, mode);
     if (mode === "FL2VA" && sourceImages.length !== 2) {
-      throw new Error("FL2VA Prompt Rewriter 需要按顺序提供首帧和尾帧两张图片。");
+      throw new Error(t(uiKeys.promptBackend.qwenFramesRequired));
     }
     const uploadedImages = await Promise.all(sourceImages.map((sourceImage, index) =>
-      uploadInput(baseUrl, sourceImage, signal, `提示词参考图 ${index + 1}`)
+      uploadInput(baseUrl, sourceImage, signal, t(uiKeys.promptBackend.promptReferenceImage, { number: index + 1 }), t)
     ));
     onProgress?.("uploading", 18);
     const prompt = buildQwenVlPeftPromptWorkflow(request, uploadedImages, settings, warmup);
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
       throw new Error(
-        `当前 ComfyUI 未加载 Qwen3-VL Prompt LoRA 节点：${missingNodes.join("、")}。请在设置 → 节点与依赖中安装/更新 ComfyUI Qwen-VL LoRA，然后重启服务。`
+        t(uiKeys.promptBackend.qwenNodesMissing, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) })
       );
     }
     const clientId = `local-video-studio-qwenvl-prompt-${operationId}`;
     assertH3PromptOutputBudget(
       Number(prompt["qwenvl-caption"]!.inputs.max_new_tokens),
       h3PromptNodeOutputLimit(objectInfo, "QwenVLCaption", "max_new_tokens"),
-      "Qwen-VL LoRA"
+      "Qwen-VL LoRA",
+      settings.uiLocale
     );
     const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, client_id: clientId }),
       signal
-    });
-    if (!result.prompt_id) throw new Error("ComfyUI 未返回 Qwen3-VL 提示词 Prompt ID");
+    }, t);
+    if (!result.prompt_id) throw new Error(t(uiKeys.promptBackend.qwenPromptIdMissing));
     onSubmitted?.(result.prompt_id);
     const nodeTypes = Object.fromEntries(
       Object.entries(prompt).map(([id, value]) => [id, value.class_type])
@@ -384,7 +394,7 @@ export async function enhancePromptWithQwenVlPeft(
       { operationId, modelId: settings.promptModelId }
     );
     onProgress?.("validating", 94);
-    const output = extractStringNodeOutput(history, ["qwenvl-caption"]);
+    const output = extractStringNodeOutput(history, ["qwenvl-caption"], t);
     appLogger.info("prompt", "qwenvl-output-diagnostics", "Qwen-VL prompt output received", {
       operationId,
       promptId: result.prompt_id,
@@ -395,7 +405,7 @@ export async function enhancePromptWithQwenVlPeft(
     });
     if (warmup) return output;
     if (request.promptStrategy === "targeted-revision") {
-      return applyPromptRevision(request.prompt, output);
+      return applyPromptRevision(request.prompt, output, settings.uiLocale);
     }
     if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
     const sourcePrompt = stripPromptAnnotations(request.prompt);
@@ -410,10 +420,11 @@ export async function enhancePromptWithQwenVlPeft(
       nativeStateContinuation,
       nativeStateContinuation,
       request.continuumPreviousChunk,
-      request.h3PromptPreset
+      request.h3PromptPreset,
+      settings.uiLocale
     );
   } catch (error) {
-    const reportedError = explainQwenVlRuntimeError(error);
+    const reportedError = explainQwenVlRuntimeError(error, t);
     appLogger.error("prompt", "qwenvl-peft-failed", safeLogErrorMessage(reportedError), {
       operationId,
       modelId: settings.promptModelId,

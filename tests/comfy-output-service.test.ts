@@ -45,6 +45,28 @@ function service(
 }
 
 describe("ComfyOutputService", () => {
+  it("uses the saved language for missing outputs and preserves returned filenames", async () => {
+    const state = createDefaultState();
+    state.settings.outputDirectory = "C:/Fixture/output";
+    const current = service(state, () => false);
+    state.settings.uiLocale = "en-US";
+    await expect(current.requireExistingVideoOutput({
+      videos: [{ filename: "使用者影片.mp4", subfolder: "", type: "output" }]
+    })).rejects.toThrow("ComfyUI reported completion, but the output video is missing or empty: 使用者影片.mp4");
+    await expect(current.requireExistingImageOutput({}, state.settings.outputDirectory))
+      .rejects.toThrow("ComfyUI reported completion, but the image workflow returned no image files.");
+    await expect(current.requireExistingNativeAvOutput({}, "serializer-42"))
+      .rejects.toThrow("The task will not be added to History.");
+    state.settings.uiLocale = "zh-TW";
+    await expect(current.requireExistingNativeAvOutput({}, ""))
+      .rejects.toThrow("H3 AV serializer 輸出驗證缺少預期節點 ID，任務不會寫入歷史。");
+    state.settings.outputDirectory = "";
+    await expect(current.requireExistingVideoOutput({}))
+      .rejects.toThrow("請在設定中確認 ComfyUI 目錄後重試。");
+    expect(state.queue).toEqual([]);
+    expect(state.history).toEqual([]);
+  });
+
   it("prefers the detected output directory and verifies returned video files", async () => {
     const state = createDefaultState();
     state.settings.outputDirectory = "C:/Configured/output";

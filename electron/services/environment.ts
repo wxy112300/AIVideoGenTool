@@ -1,4 +1,7 @@
 import { execFile, spawn } from "node:child_process";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
+import type { UiLocale } from "../../src/types.js";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -82,6 +85,9 @@ import {
 import {
   emptyLlamaCppPythonStatus,
   inspectLlamaCppPython,
+  inspectLlamaCppPythonProbe,
+  llamaCppStatusFromInspection,
+  type LlamaCppPythonProbeResult,
   installLlamaCppPythonPackage,
   uninstallLlamaCppPythonPackage,
   type LlamaCppPythonRuntime
@@ -270,7 +276,7 @@ const githubReleaseLookup = new GitHubReleaseVersionLookup((repository, proxy) =
 }));
 
 function latestCatalogNodeVersionSources(settings: Settings): Record<string, string> {
-  const connectionKey = settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl) : "";
+  const connectionKey = settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl, settings.uiLocale) : "";
   return Object.fromEntries(customNodeCatalog.map(node => [node.id, githubReleaseLookup.source(
     node.repositoryUrl.replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, ""), connectionKey)]));
 }
@@ -288,7 +294,7 @@ async function latestGitHubReleaseVersion(
   repository: string
 ): Promise<string> {
   return githubReleaseLookup.latest(repository.trim(),
-    settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl) : "");
+    settings.proxyEnabled && settings.proxyUrl.trim() ? normalizeProxyUrl(settings.proxyUrl, settings.uiLocale) : "");
 }
 
 async function latestCatalogNodeReleaseVersions(
@@ -309,9 +315,10 @@ async function latestCatalogNodeReleaseVersions(
 }
 
 
-export function normalizeProxyUrl(value: string): string {
+export function normalizeProxyUrl(value: string, locale: UiLocale = "zh-CN"): string {
+  const t = createNativeTranslator(locale).t;
   const raw = value.trim();
-  if (!raw) throw new Error("代理已开启，但代理地址为空。");
+  if (!raw) throw new Error(t(uiKeys.nodeInstaller.proxyEmpty));
   const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(raw)
     ? raw
     : `http://${raw}`;
@@ -319,16 +326,16 @@ export function normalizeProxyUrl(value: string): string {
   try {
     parsed = new URL(withScheme);
   } catch {
-    throw new Error(`代理地址无效：${raw}`);
+    throw new Error(t(uiKeys.nodeInstaller.proxyInvalid, { address: raw }));
   }
   if (!["http:", "https:", "socks5:", "socks5h:"].includes(parsed.protocol)) {
-    throw new Error(`不支持的代理协议：${parsed.protocol}`);
+    throw new Error(t(uiKeys.nodeInstaller.proxyProtocol, { protocol: parsed.protocol }));
   }
   if (!parsed.hostname || !parsed.port) {
-    throw new Error("代理地址需要包含主机和端口，例如 127.0.0.1:7890。");
+    throw new Error(t(uiKeys.nodeInstaller.proxyHostPort));
   }
   if ((parsed.pathname && parsed.pathname !== "/") || parsed.search || parsed.hash) {
-    throw new Error("代理地址不能包含路径、查询参数或锚点。");
+    throw new Error(t(uiKeys.nodeInstaller.proxyNoPath));
   }
   return parsed.toString().replace(/\/$/, "");
 }
@@ -343,7 +350,7 @@ function downloadEnvironment(settings: Settings, comfyRoot = ""): NodeJS.Process
     PYTHONIOENCODING: "utf-8"
   };
   if (!settings.proxyEnabled) return baseEnvironment;
-  const proxy = normalizeProxyUrl(settings.proxyUrl);
+  const proxy = normalizeProxyUrl(settings.proxyUrl, settings.uiLocale);
   return {
     ...baseEnvironment,
     HTTP_PROXY: proxy,
@@ -375,9 +382,10 @@ function comfyPyavRepairEnvironment(settings: Settings): NodeJS.ProcessEnv {
 }
 
 function proxyLogLabel(settings: Settings): string {
-  if (!settings.proxyEnabled) return "代理：关闭";
-  const parsed = new URL(normalizeProxyUrl(settings.proxyUrl));
-  return `代理：${parsed.protocol}//${parsed.host}`;
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (!settings.proxyEnabled) return t(uiKeys.nodeInstaller.proxyOff);
+  const parsed = new URL(normalizeProxyUrl(settings.proxyUrl, settings.uiLocale));
+  return t(uiKeys.nodeInstaller.proxyActive, { protocol: parsed.protocol, host: parsed.host });
 }
 
 
@@ -1960,27 +1968,28 @@ export async function uninstallStrata(settings: Settings, onProgress?: (message:
 }
 
 export function installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   return installStrataRuntime(settings, {
     download: async (url, destination, requested, report, onLog, totalBytes) => {
       const curl = await findExecutable("curl.exe");
-      if (!curl) throw new Error("没有找到 curl，无法下载 Strata 引擎。");
+      if (!curl) throw new Error(t(uiKeys.strataRuntime.curlMissing));
       await downloadWithResume({ url, destination, totalBytes: totalBytes ?? STRATA_ENGINE_BYTES, signal: installationSignal(),
-        extraArgs: requested.proxyEnabled ? ["--proxy", normalizeProxyUrl(requested.proxyUrl)] : [],
-        run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, env: downloadEnvironment(requested) }),
-        onProgress: report, onLog });
+        extraArgs: requested.proxyEnabled ? ["--proxy", normalizeProxyUrl(requested.proxyUrl, requested.uiLocale)] : [],
+        run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, env: downloadEnvironment(requested), uiLocale: requested.uiLocale }),
+        onProgress: report, onLog }, t);
     },
     findPython: async (requested) => {
       const candidates = await discoverPythonRuntimes(requested);
       for (const candidate of candidates) {
         if (candidate.path.toLowerCase().includes("python_embeded")) continue;
         try {
-          await runLoggedProcess(candidate.path, ["-c", "import sys,venv; assert sys.version_info >= (3,10)"], { timeoutMs: 15_000 });
+          await runLoggedProcess(candidate.path, ["-c", "import sys,venv; assert sys.version_info >= (3,10)"], { timeoutMs: 15_000, uiLocale: requested.uiLocale });
           return candidate.path;
         } catch { checkInstallationCancelled(); /* Try an existing standard Python, never install into ComfyUI. */ }
       }
       return "";
     },
-    environment: downloadEnvironment, run: runLoggedProcess
+    environment: downloadEnvironment, run: (executable, args, options) => runLoggedProcess(executable, args, { ...options, uiLocale: settings.uiLocale })
   }, onProgress);
 }
 
@@ -1995,7 +2004,7 @@ export async function downloadFileWithCurl(
   if (!curl) throw new Error("没有找到 curl，无法自动下载资源。请安装 Windows 10/11 自带 curl，或检查网络后重试。" );
   const args = ["-fL", "--retry", "2", "--connect-timeout", "20", url, "--output", destination];
   if (settings.proxyEnabled) {
-    args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl));
+    args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl, settings.uiLocale));
   }
   const download = () => runLoggedProcess(curl, args, {
     timeoutMs: 600_000,
@@ -2196,8 +2205,10 @@ async function scanEnvironmentIssues(
   comfyRoot: string,
   comfyServiceReachable: boolean,
   sourceDirectory = "",
-  pythonPath = ""
+  pythonPath = "",
+  locale: UiLocale = "zh-CN"
 ): Promise<EnvironmentIssue[]> {
+  const t = createNativeTranslator(locale).t;
   const issues: EnvironmentIssue[] = [];
   if (comfyRoot) {
     const fantasyNodes = path.join(
@@ -2210,11 +2221,11 @@ async function scanEnvironmentIssues(
     if (/\r?\n"""\r?\n!!! Exception during processing !!!/.test(fantasySource)) {
       issues.push({
         id: "fantasytalking-unicodeescape",
-        label: "FantasyTalking 节点源码损坏",
-        detail: "nodes.py 末尾混入了 Windows 报错文本，导致 unicodeescape 语法错误。",
+        label: t(uiKeys.environmentRepair.fantasyIssue),
+        detail: t(uiKeys.environmentRepair.fantasyIssueDetail),
         severity: "error",
         repairable: true,
-        repairLabel: "自动修复源码"
+        repairLabel: t(uiKeys.environmentRepair.repairSource)
       });
     }
   }
@@ -2223,22 +2234,23 @@ async function scanEnvironmentIssues(
       sourceDirectory,
       pythonPath,
       runLoggedProcess,
-      process.env
+      process.env,
+      locale
     );
     if (coreDependency.featureDetected && coreDependency.needsRepair) {
       issues.push({
         id: "comfy-core-pyav",
-        label: "ComfyUI 核心视频依赖不兼容",
+        label: t(uiKeys.environmentRepair.videoIssue),
         detail: coreDependency.detail,
         severity: "error",
         repairable: Boolean(pythonPath),
-        repairLabel: "自动修复 PyAV"
+        repairLabel: t(uiKeys.environmentRepair.repairPyav)
       });
     }
   }
   const log = await readLatestComfyLog(comfyRoot);
   const fallbackDatabase = path.join(comfyRoot, "user", "comfyui.db");
-  const diagnosis = diagnoseComfyDatabaseFailure(log.content, fallbackDatabase);
+  const diagnosis = diagnoseComfyDatabaseFailure(log.content, fallbackDatabase, createNativeTranslator(locale).t);
   const diagnosedDatabase = diagnosis?.databasePath && isPathInsideDirectory(
     diagnosis.databasePath,
     path.join(comfyRoot, "user")
@@ -2256,13 +2268,13 @@ async function scanEnvironmentIssues(
   })) {
     issues.push({
       id: "comfy-database",
-      label: "ComfyUI 数据库初始化失败",
+      label: t(uiKeys.environmentRepair.databaseIssue),
       detail: diagnosis
-        ? `${diagnosis.summary} 自动修复会先验证目录和依赖、备份真实数据库，再按故障类型重试或重建。`
-        : "数据库初始化异常；自动修复会先诊断并备份，再执行恢复。",
+        ? t(uiKeys.environmentRepair.databaseIssueDetail, { summary: diagnosis.summary })
+        : t(uiKeys.environmentRepair.databaseIssueUnknown),
       severity: "warning",
       repairable: true,
-      repairLabel: "智能修复"
+      repairLabel: t(uiKeys.environmentRepair.repairDatabase)
     });
   }
   return issues;
@@ -2522,6 +2534,7 @@ async function inspectAttentionAcceleration(
   probeOverride?: AttentionPythonProbe,
   probeEvidence?: PythonProbeEvidence
 ): Promise<AttentionAccelerationStatus> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const pythonPath = pythonPathOverride || await findComfyPython(settings, comfyRoot, installation);
   const probe = probeOverride ?? await inspectAttentionPython(pythonPath);
   const probeFailed = probe.probeState === "failed";
@@ -2556,16 +2569,15 @@ async function inspectAttentionAcceleration(
     !torchRuntimeReady
       ? `PyTorch 2.10+ coherent cu130 trio (stable: ${h3TorchRuntime.torch} / ${h3TorchRuntime.torchvision} / ${h3TorchRuntime.torchaudio})`
       : "",
-    !wheel ? "匹配的 Windows wheel" : "",
+    !wheel ? t(uiKeys.attentionInstaller.matchingWheel) : "",
     !sageReady ? `SageAttention ${sageAttentionVersion}` : "",
     !sageNativeReady
-      ? `SageAttention 原生扩展${probe.sageNativeError ? `（${probe.sageNativeError}）` : ""}`
+      ? t(uiKeys.attentionInstaller.nativeExtension, { error: probe.sageNativeError ? ` (${probe.sageNativeError})` : "" })
       : "",
     !tritonReady ? "Triton" : "",
-    !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : "",
+    !kjNodesCompatible ? t(uiKeys.attentionInstaller.kjRequired) : "",
     !convRotCudaOptimized
-      ? `H3 INT8 ConvRot CUDA 内核（需要 comfy-kitchen ${H3_COMFY_KITCHEN_VERSION}；当前 ${probe.comfyKitchenVersion || "未安装"} / ` +
-        `${(probe.comfyKitchenBackends ?? []).join(", ") || "无可用 backend"}）`
+      ? t(uiKeys.attentionInstaller.kitchenRequired, { required: H3_COMFY_KITCHEN_VERSION, current: probe.comfyKitchenVersion || t(uiKeys.attentionInstaller.notInstalled), backends: (probe.comfyKitchenBackends ?? []).join(", ") || t(uiKeys.attentionInstaller.noBackends) })
       : ""
   ].filter(Boolean);
   return {
@@ -2596,8 +2608,8 @@ async function inspectAttentionAcceleration(
       !probeFailed && pythonPath && gpuSupported && (torchRuntimeReady ? wheel : targetWheel)
     ),
     ready,
-    detail: probeFailed ? `H3 环境检测未完成（${probe.probeStage || "Python"}）：${probe.probeError || "探针异常"}。请重新扫描；当前结果不能判断依赖是否缺失。` : ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
-      missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境",
+    detail: probeFailed ? t(uiKeys.attentionInstaller.probeFailed, { stage: probe.probeStage || "Python", reason: probe.probeError || t(uiKeys.attentionInstaller.probeError) }) : ready ? t(uiKeys.attentionInstaller.ready) :
+      missing.length ? t(uiKeys.attentionInstaller.missing, { items: missing.join(t(uiKeys.nodeInstaller.listSeparator)) }) : t(uiKeys.attentionInstaller.unrecognized),
     ...(probeEvidence ? { probeEvidence } : {})
   };
 }
@@ -2606,7 +2618,7 @@ interface PythonRuntimeProbeScan {
   attention: AttentionAccelerationStatus;
   llama: LlamaCppPythonStatus;
   attentionMetrics: PythonProbeCacheResult<AttentionPythonProbe>["metrics"];
-  llamaMetrics: PythonProbeCacheResult<LlamaCppPythonStatus>["metrics"];
+  llamaMetrics: PythonProbeCacheResult<LlamaCppPythonProbeResult>["metrics"];
 }
 
 function runtimeProbeTelemetry(
@@ -2655,28 +2667,32 @@ function llamaProbeCanCache(status: LlamaCppPythonStatus): boolean {
 
 function failedAttentionProbe(
   pythonPath: string,
-  probeEvidence: PythonProbeEvidence
+  probeEvidence: PythonProbeEvidence,
+  locale: UiLocale = "zh-CN"
 ): AttentionPythonProbe {
+  const t = createNativeTranslator(locale).t;
   return {
     probeState: "failed",
     probeStage: probeEvidence.state === "mutating" ? "mutation" : "python",
     probeError: probeEvidence.state === "mutating"
-      ? "Python 运行环境正在变更，原生探针已暂缓。"
+      ? t(uiKeys.probeStatus.attentionDeferred)
       : pythonPath
-        ? "本轮没有取得可复用的 Python 原生探针结果。"
-        : "未找到所选 ComfyUI Python。"
+        ? t(uiKeys.probeStatus.probeUnavailable)
+        : t(uiKeys.probeStatus.pythonMissing)
   };
 }
 
 function failedLlamaStatus(
   pythonPath: string,
-  probeEvidence: PythonProbeEvidence
+  probeEvidence: PythonProbeEvidence,
+  locale: UiLocale = "zh-CN"
 ): LlamaCppPythonStatus {
-  const status = emptyLlamaCppPythonStatus(pythonPath);
+  const t = createNativeTranslator(locale).t;
+  const status = emptyLlamaCppPythonStatus(pythonPath, locale);
   return {
     ...status,
     detail: probeEvidence.state === "mutating"
-      ? "Python 运行环境正在变更，等待完成后重新验证。"
+      ? t(uiKeys.probeStatus.llamaDeferred)
       : status.detail,
     ready: false,
     probeEvidence
@@ -2711,12 +2727,12 @@ async function scanPythonRuntimeProbes(
       comfyRoot,
       installation,
       pythonPath,
-      failedAttentionProbe(pythonPath, mutatingEvidence),
+      failedAttentionProbe(pythonPath, mutatingEvidence, settings.uiLocale),
       mutatingEvidence
     );
     return {
       attention,
-      llama: failedLlamaStatus(pythonPath, mutatingEvidence),
+      llama: failedLlamaStatus(pythonPath, mutatingEvidence, settings.uiLocale),
       attentionMetrics: {
         nativeStarted: false,
         fingerprintDurationMs: 0,
@@ -2769,11 +2785,12 @@ async function scanPythonRuntimeProbes(
       cycle ? { cycle } : {}
     );
   };
-  const runLlama = async (): Promise<PythonProbeCacheResult<LlamaCppPythonStatus>> => {
+  const runLlama = async (): Promise<PythonProbeCacheResult<LlamaCppPythonProbeResult>> => {
     if (!cacheableIdentity) {
-      const status = await inspectLlamaCppPython(pythonPath, runLoggedProcess);
+      const raw = await inspectLlamaCppPythonProbe(pythonPath, runLoggedProcess);
+      const status = llamaCppStatusFromInspection(pythonPath, raw);
       return {
-        value: status,
+        value: raw,
         evidence: {
           source: "live",
           state: status.error || status.nativeCrash ? "failed" : "valid",
@@ -2791,9 +2808,10 @@ async function scanPythonRuntimeProbes(
       "llama",
       mode,
       async () => {
-        const status = await inspectLlamaCppPython(pythonPath, runLoggedProcess);
+        const raw = await inspectLlamaCppPythonProbe(pythonPath, runLoggedProcess);
+        const status = llamaCppStatusFromInspection(pythonPath, raw);
         return {
-          value: status,
+          value: raw,
           cacheable: llamaProbeCanCache(status),
           state: status.error || status.nativeCrash ? "failed" : "valid",
           reason: status.error || status.nativeCrash ? "probe-failed" : "uncacheable"
@@ -2812,16 +2830,19 @@ async function scanPythonRuntimeProbes(
     comfyRoot,
     installation,
     pythonPath,
-    attentionResult.value ?? failedAttentionProbe(pythonPath, attentionEvidence),
+    attentionResult.value ?? failedAttentionProbe(pythonPath, attentionEvidence, settings.uiLocale),
     attentionEvidence
   );
-  const llama = llamaResult.value
+  const llamaStatus = llamaResult.value
+    ? llamaCppStatusFromInspection(pythonPath, llamaResult.value, settings.uiLocale)
+    : undefined;
+  const llama = llamaStatus
     ? {
-        ...llamaResult.value,
-        ready: llamaEvidence.state === "valid" ? llamaResult.value.ready : false,
+        ...llamaStatus,
+        ready: llamaEvidence.state === "valid" ? llamaStatus.ready : false,
         probeEvidence: llamaEvidence
       }
-    : failedLlamaStatus(pythonPath, llamaEvidence);
+    : failedLlamaStatus(pythonPath, llamaEvidence, settings.uiLocale);
   return {
     attention,
     llama,
@@ -3378,7 +3399,8 @@ async function startComfyUi(
         pythonPath,
         comfyPyavRepairEnvironment(settings),
         runLoggedProcess,
-        (message) => appLogger.info("comfy", "core-pyav-auto-repair", message)
+        (message) => appLogger.info("comfy", "core-pyav-auto-repair", message),
+        settings.uiLocale
       );
       return { ok: result.ok, message: result.message };
     }
@@ -3391,7 +3413,7 @@ export async function forceStopComfyProcesses(
   if (!localEndpoint(settings.comfyUrl, 8188)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会终止远程或本机进程。"
+      message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.remoteNoStop)
     };
   }
   const result = await forceStopComfyProcessesWithDependencies(settings, {
@@ -3579,7 +3601,7 @@ async function startLocalServiceOperation(
     } catch (error) {
       return {
         ok: false,
-        message: `无法接管本地 ComfyUI：${safeLogErrorMessage(error)}`
+        message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.takeoverFailed, { message: safeLogErrorMessage(error) })
       };
     }
   }
@@ -3587,7 +3609,7 @@ async function startLocalServiceOperation(
   const operationId = comfyRuntimeState.begin(
     "starting",
     endpoint,
-    "正在启动 ComfyUI，等待接口就绪。",
+    createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startingApi),
     ownership
   );
   try {
@@ -3597,13 +3619,13 @@ async function startLocalServiceOperation(
     const result = ready
       ? {
           ok: true,
-          message: `${kind === "comfy" ? "ComfyUI" : "LM Studio"} 服务已启动。`
+          message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.serviceStarted, { name: kind === "comfy" ? "ComfyUI" : "LM Studio" })
         }
       : {
           ok: false,
           message: startup.graceUsed
-            ? "ComfyUI 进程仍在运行，但等待 5 分钟后接口仍未就绪。请检查启动日志。"
-            : "ComfyUI 进程在启动阶段提前退出，接口未就绪。请检查启动日志。"
+            ? createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startTimeout)
+            : createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startExited)
         };
     if (ready && ownership === "app") await rememberOwnedComfyListener(settings);
     if (!ready) {
@@ -3631,7 +3653,7 @@ async function startLocalServiceOperation(
     return result;
   } catch (error) {
     if (signal?.aborted) {
-      comfyRuntimeState.finish(operationId, "stopped", "ComfyUI 启动已取消。", "none");
+      comfyRuntimeState.finish(operationId, "stopped", createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startCancelled), "none");
       throw signal.reason ?? error;
     }
     const result = {
@@ -3725,25 +3747,25 @@ export async function restartLocalService(
   const operationId = comfyRuntimeState.begin(
     "restarting",
     settings.comfyUrl.replace(/\/+$/, ""),
-    "正在重启 ComfyUI。"
+    createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restarting)
   );
   try {
-    report("正在停止 ComfyUI……");
+    report(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.stoppingProgress));
     await stopComfyUi(settings);
     report(options.visibleConsole === false
-      ? "正在后台启动 ComfyUI……"
-      : "正在启动 ComfyUI……");
+      ? createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startingBackground)
+      : createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.startingProgress));
     const healthUrl = await startComfyUi(settings, options);
-    report("正在等待 ComfyUI 接口就绪……");
+    report(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.waitingApi));
     const startup = await waitForOwnedComfyService(healthUrl);
     const ready = startup.ready;
     const result = ready
-      ? { ok: true, message: "ComfyUI 服务已重启并连接成功。" }
+      ? { ok: true, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restarted) }
       : {
           ok: false,
           message: startup.graceUsed
-            ? "ComfyUI 已重新启动且进程仍在运行，但等待 5 分钟后接口仍未就绪。"
-            : "ComfyUI 重启进程已提前退出，接口未就绪。"
+            ? createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restartTimeout)
+            : createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restartExited)
         };
     if (ready) await rememberOwnedComfyListener(settings);
     report(result.message);
@@ -3754,7 +3776,7 @@ export async function restartLocalService(
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
-    report(`ComfyUI 重启失败：${result.message}`);
+    report(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.restartFailed, { message: result.message }));
     comfyRuntimeState.finish(operationId, "error", result.message);
     return result;
   }
@@ -3764,17 +3786,17 @@ async function restartComfyUiIfRunning(
   settings: Settings,
   onProgress?: (message: string) => void
 ): Promise<ConnectionResult | null> {
-  onProgress?.("正在检查 ComfyUI 运行状态……");
+  onProgress?.(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.checking));
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) return null;
 
   const listenerExists = await isLocalPortInUse(endpoint.port);
   const ownedRuntimeExists = ownedComfyProcessIdSnapshot().length > 0;
   if (!listenerExists && !ownedRuntimeExists) {
-    onProgress?.("ComfyUI 当前未运行，保持停止状态。");
+    onProgress?.(createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.remainStoppedProgress));
     return {
       ok: true,
-      message: "ComfyUI 当前未运行，已保持停止状态。"
+      message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.remainStopped)
     };
   }
   return restartLocalService("comfy", settings, {
@@ -3786,28 +3808,29 @@ async function restartComfyUiIfRunning(
 async function updateComfyUiUnlocked(
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!localEndpoint(settings.comfyUrl, 8188)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会更新远程核心。"
+      message: t(uiKeys.environmentRepair.remoteUpdate)
     };
   }
   const installation = await findComfyInstallation(settings);
   if (!installation) {
-    return { ok: false, message: "没有找到可更新的 ComfyUI 安装。" };
+    return { ok: false, message: t(uiKeys.environmentRepair.updateMissing) };
   }
   if (installation.type === "desktop") {
     try {
       await launchDetached(installation.executable, []);
       return {
         ok: true,
-        message: "已打开 ComfyUI Desktop。请在服务器配置的更新页面确认 Update Now，完成后重启服务并重新扫描。",
-        log: "Desktop 安装由官方更新器维护，本工具不会直接覆盖 Program Files 中的核心文件。"
+        message: t(uiKeys.environmentRepair.desktopUpdate),
+        log: t(uiKeys.environmentRepair.desktopManaged)
       };
     } catch (error) {
       return {
         ok: false,
-        message: `无法打开 ComfyUI Desktop：${error instanceof Error ? error.message : String(error)}`
+        message: t(uiKeys.environmentRepair.desktopFailed, { reason: error instanceof Error ? error.message : String(error) })
       };
     }
   }
@@ -3816,11 +3839,11 @@ async function updateComfyUiUnlocked(
   if (!sourceDirectory || !(await exists(path.join(sourceDirectory, ".git")))) {
     return {
       ok: false,
-      message: "当前安装没有 Git 元数据，无法安全地原地更新；请使用 ComfyUI 官方安装器。"
+      message: t(uiKeys.environmentRepair.gitMetadataMissing)
     };
   }
   const git = await findExecutable("git.exe");
-  if (!git) return { ok: false, message: "没有找到 Git，无法更新 ComfyUI。" };
+  if (!git) return { ok: false, message: t(uiKeys.environmentRepair.gitMissing) };
   try {
     const status = await execFileAsync(
       git,
@@ -3830,7 +3853,7 @@ async function updateComfyUiUnlocked(
     if (status.stdout.trim()) {
       return {
         ok: false,
-        message: "ComfyUI 源码目录存在未提交修改，为避免覆盖修改，本次更新已取消。",
+        message: t(uiKeys.environmentRepair.dirtySource),
         log: status.stdout.trim()
       };
     }
@@ -3846,14 +3869,14 @@ async function updateComfyUiUnlocked(
     );
     return {
       ok: true,
-      message: "ComfyUI 源码已快进更新。请重启 ComfyUI 后重新扫描环境。",
+      message: t(uiKeys.environmentRepair.updated),
       log: `${result.stdout}${result.stderr}`.trim()
     };
   } catch (error) {
     const processError = error as Error & { stdout?: string; stderr?: string };
     return {
       ok: false,
-      message: `ComfyUI 更新失败：${processError.message}`,
+      message: t(uiKeys.environmentRepair.updateFailed, { reason: processError.message }),
       log: [processError.stdout, processError.stderr].filter(Boolean).join("\n")
     };
   }
@@ -3881,6 +3904,7 @@ async function installComfyDatabaseDependencies(
   settings: Settings,
   repairLog: string[]
 ): Promise<void> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const requirementsPath = path.join(sourceDirectory, "requirements.txt");
   const requirements = await fs.readFile(requirementsPath, "utf8").catch(() => "");
   const databaseRequirements = requirements
@@ -3890,7 +3914,7 @@ async function installComfyDatabaseDependencies(
   const packages = databaseRequirements.length
     ? databaseRequirements
     : ["alembic", "SQLAlchemy>=2.0.0", "filelock"];
-  repairLog.push(`补齐数据库依赖：${packages.join("、")}`);
+  repairLog.push(t(uiKeys.environmentRepair.databasePackages, { packages: packages.join(settings.uiLocale === "en-US" ? ", " : "、") }));
   const output = await runLoggedProcess(
     python,
     [
@@ -3928,20 +3952,20 @@ async function initializeAndCheckComfyDatabase(
   );
 }
 
-function databaseRepairDetail(diagnosis: ComfyDatabaseDiagnosis): string {
+function databaseRepairDetail(diagnosis: ComfyDatabaseDiagnosis, t: ReturnType<typeof createNativeTranslator>["t"]): string {
   switch (diagnosis.kind) {
     case "locked":
-      return "检测到数据库被其他进程占用；不会修改原库，将验证应用隔离数据库启动。";
+      return t(uiKeys.environmentRepair.databaseLocked);
     case "missing-dependencies":
-      return "检测到数据库依赖缺失；将使用所选 ComfyUI Python 补齐匹配依赖后重试迁移。";
+      return t(uiKeys.environmentRepair.databaseDependencies);
     case "unavailable-path":
-      return "检测到数据库目录不可用；将创建目录并执行可写性检查。";
+      return t(uiKeys.environmentRepair.databasePath);
     case "migration":
-      return "检测到迁移版本异常；将先备份并无损重试，失败后才隔离旧库并新建。";
+      return t(uiKeys.environmentRepair.databaseMigration);
     case "corrupt":
-      return "检测到 SQLite 损坏；将保留完整备份并创建新库。";
+      return t(uiKeys.environmentRepair.databaseCorrupt);
     default:
-      return "将先备份并执行无损迁移检查；未知错误不会自动丢弃原数据库。";
+      return t(uiKeys.environmentRepair.databaseUnknown);
   }
 }
 
@@ -3959,13 +3983,14 @@ async function repairComfyCorePyavIssue(
   comfyRoot: string,
   repairLog: string[]
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const installation = await findComfyInstallation(settings);
   const sourceDirectory = installation?.sourceDirectory ?? "";
   if (!sourceDirectory) {
-    throw new Error("没有找到所选 ComfyUI 的核心源码目录，无法检查新版视频依赖。");
+    throw new Error(t(uiKeys.environmentRepair.coreMissing));
   }
   const python = await findComfyPython(settings, comfyRoot, installation);
-  if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境，无法自动修复 PyAV。");
+  if (!python) throw new Error(t(uiKeys.environmentRepair.pythonMissingPyav));
 
   let wasRunning = false;
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
@@ -3976,10 +4001,10 @@ async function repairComfyCorePyavIssue(
       ownedRuntime = await reconcileConfiguredComfyListenerOwnership(settings);
     }
     if (listenerExists && !ownedRuntime) {
-      throw new Error("检测到外部 ComfyUI 正在占用本机端口；为避免误终止其他进程，请先停止它再自动修复。");
+      throw new Error(t(uiKeys.environmentRepair.externalRuntime));
     }
     if (ownedRuntime) {
-      repairLog.push("停止应用管理的 ComfyUI，避免替换 PyAV 时锁定 Python 扩展文件");
+      repairLog.push(t(uiKeys.environmentRepair.stoppingPyav));
       await stopOwnedComfyUiForDependencyRepair(settings);
       wasRunning = true;
     }
@@ -3991,15 +4016,16 @@ async function repairComfyCorePyavIssue(
       python,
       comfyPyavRepairEnvironment(settings),
       runLoggedProcess,
-      (message) => repairLog.push(message)
+      (message) => repairLog.push(message),
+      settings.uiLocale
     );
     if (!result.ok) {
       if (wasRunning) {
         const recovery = await startLocalService("comfy", settings);
         repairLog.push(
           recovery.ok
-            ? "PyAV 修复失败，但 ComfyUI 已恢复启动。"
-            : `PyAV 修复失败，ComfyUI 恢复启动失败：${recovery.message}`
+            ? t(uiKeys.environmentRepair.pyavFailedRestored)
+            : t(uiKeys.environmentRepair.pyavFailedRestart, { reason: recovery.message })
         );
       }
       return {
@@ -4011,14 +4037,14 @@ async function repairComfyCorePyavIssue(
     if (wasRunning) {
       const started = await startLocalService("comfy", settings);
       if (!started.ok) {
-        throw new Error(`PyAV 已修复，但 ComfyUI 重启失败：${started.message}`);
+        throw new Error(t(uiKeys.environmentRepair.pyavRestartFailed, { reason: started.message }));
       }
-      repairLog.push("PyAV 修复完成，ComfyUI 已重新启动并通过接口等待。");
+      repairLog.push(t(uiKeys.environmentRepair.pyavRestarted));
     }
     return {
       ok: true,
       message: wasRunning
-        ? "PyAV 已自动修复，ComfyUI 已重启并恢复服务。"
+        ? t(uiKeys.environmentRepair.pyavRepaired)
         : result.message,
       log: repairLog.join("\n")
     };
@@ -4028,12 +4054,12 @@ async function repairComfyCorePyavIssue(
         const recovery = await startLocalService("comfy", settings);
         repairLog.push(
           recovery.ok
-            ? "修复过程异常，但 ComfyUI 已恢复启动。"
-            : `修复过程异常，ComfyUI 恢复启动失败：${recovery.message}`
+            ? t(uiKeys.environmentRepair.repairErrorRestored)
+            : t(uiKeys.environmentRepair.repairErrorRestart, { reason: recovery.message })
         );
       } catch (recoveryError) {
         repairLog.push(
-          `修复过程异常，恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`
+          t(uiKeys.environmentRepair.repairRecoveryFailed, { reason: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) })
         );
       }
     }
@@ -4045,16 +4071,17 @@ async function repairEnvironmentIssueUnlocked(
   issueId: EnvironmentIssue["id"],
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const repairLog: string[] = [];
   try {
     if (!localEndpoint(settings.comfyUrl, 8188)) {
       return {
         ok: false,
-        message: "远程 ComfyUI 仅支持连接，环境修复必须在本地所选实例上执行。"
+        message: t(uiKeys.environmentRepair.remoteRepair)
       };
     }
     const comfyRoot = await findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    if (!comfyRoot) throw new Error(t(uiKeys.environmentRepair.dataMissing));
 
     if (issueId === "fantasytalking-unicodeescape") {
       const nodesFile = path.join(
@@ -4066,7 +4093,7 @@ async function repairEnvironmentIssueUnlocked(
       const source = await fs.readFile(nodesFile, "utf8");
       const marker = /\r?\n"""\r?\n!!! Exception during processing !!!/;
       if (!marker.test(source)) {
-        return { ok: true, message: "FantasyTalking 源码已经是可解析状态，无需修复。" };
+        return { ok: true, message: t(uiKeys.environmentRepair.fantasyReady) };
       }
       const repaired = source.replace(
         marker,
@@ -4074,10 +4101,10 @@ async function repairEnvironmentIssueUnlocked(
       );
       const backupPath = `${nodesFile}.backup-${databaseRepairTimestamp()}`;
       await fs.copyFile(nodesFile, backupPath);
-      repairLog.push(`已备份节点源码：${nodesFile} -> ${backupPath}`);
+      repairLog.push(t(uiKeys.environmentRepair.sourceBackup, { source: nodesFile, backup: backupPath }));
       try {
         await fs.writeFile(nodesFile, repaired, "utf8");
-        repairLog.push(`已将误粘贴的报错块改为 Python 原始字符串：${nodesFile}`);
+        repairLog.push(t(uiKeys.environmentRepair.sourceRepaired, { path: nodesFile }));
         const installation = await findComfyInstallation(settings);
         const python = await findComfyPython(
           settings,
@@ -4090,16 +4117,16 @@ async function repairEnvironmentIssueUnlocked(
             timeout: 30_000,
             windowsHide: true
           });
-          repairLog.push("Python 语法检查通过");
+          repairLog.push(t(uiKeys.environmentRepair.syntaxPassed));
         }
       } catch (error) {
         await fs.copyFile(backupPath, nodesFile).catch(() => undefined);
-        repairLog.push("源码校验失败，已恢复修复前的节点文件");
+        repairLog.push(t(uiKeys.environmentRepair.sourceRestored));
         throw error;
       }
       return {
         ok: true,
-        message: "FantasyTalking 源码已修复。请重启 ComfyUI 以重新加载节点。",
+        message: t(uiKeys.environmentRepair.fantasyRepaired),
         log: repairLog.join("\n")
       };
     }
@@ -4112,18 +4139,18 @@ async function repairEnvironmentIssueUnlocked(
       const installation = await findComfyInstallation(settings);
       const sourceDirectory = installation?.sourceDirectory ?? "";
       if (!sourceDirectory || !(await exists(path.join(sourceDirectory, "alembic.ini")))) {
-        throw new Error("没有找到所选 ComfyUI 的数据库迁移脚本，请先确认核心安装目录。");
+        throw new Error(t(uiKeys.environmentRepair.migrationMissing));
       }
       const python = await findComfyPython(settings, comfyRoot, installation);
-      if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
+      if (!python) throw new Error(t(uiKeys.environmentRepair.pythonMissing));
       const userDirectory = path.join(comfyRoot, "user");
       const defaultDatabase = path.join(userDirectory, "comfyui.db");
       const latestLog = await readLatestComfyLog(comfyRoot);
-      const diagnosis = diagnoseComfyDatabaseFailure(latestLog.content, defaultDatabase) ?? {
+      const diagnosis = diagnoseComfyDatabaseFailure(latestLog.content, defaultDatabase, t) ?? {
         kind: "unknown",
         databasePath: defaultDatabase,
         explicitDatabasePath: false,
-        summary: "当前日志没有保留完整错误，将执行无损数据库检查。"
+        summary: t(uiKeys.environmentRepair.diagnosisMissing)
       } satisfies ComfyDatabaseDiagnosis;
       const databasePath = path.resolve(diagnosis.databasePath || defaultDatabase);
       const allowedDatabaseRoots = [
@@ -4132,12 +4159,12 @@ async function repairEnvironmentIssueUnlocked(
       ];
       if (!allowedDatabaseRoots.some((directory) => isPathInsideDirectory(databasePath, directory))) {
         throw new Error(
-          `日志中的数据库不属于所选 ComfyUI 数据/核心目录，已拒绝自动修改：${databasePath}`
+          t(uiKeys.environmentRepair.databaseOutside, { path: databasePath })
         );
       }
-      repairLog.push(`诊断：${diagnosis.summary}`);
-      repairLog.push(databaseRepairDetail(diagnosis));
-      repairLog.push(`目标数据库：${databasePath}`);
+      repairLog.push(t(uiKeys.environmentRepair.diagnosis, { summary: diagnosis.summary }));
+      repairLog.push(databaseRepairDetail(diagnosis, t));
+      repairLog.push(t(uiKeys.environmentRepair.databaseTarget, { path: databasePath }));
 
       const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
       const running = await fetch(healthUrl, {
@@ -4146,12 +4173,12 @@ async function repairEnvironmentIssueUnlocked(
       if (running) {
         return {
           ok: true,
-          message: "ComfyUI 当前已连接，数据库初始化错误属于历史日志，无需修复。",
+          message: t(uiKeys.environmentRepair.databaseHistorical),
           log: repairLog.join("\n")
         };
       }
       if (ownedComfyProcessIdSnapshot().length) {
-        repairLog.push("停止仍由应用拥有但接口未就绪的 ComfyUI 进程");
+        repairLog.push(t(uiKeys.environmentRepair.stoppingUnready));
         await stopComfyUi(settings);
       }
 
@@ -4159,7 +4186,7 @@ async function repairEnvironmentIssueUnlocked(
         const started = await startLocalService("comfy", settings);
         if (!started.ok) {
           throw new Error(
-            `${started.message} 原数据库仍可能被外部 ComfyUI 占用，应用没有终止该进程。`
+            t(uiKeys.environmentRepair.externalDatabase, { reason: started.message })
           );
         }
         const endpoint = localEndpoint(settings.comfyUrl, 8188);
@@ -4167,18 +4194,18 @@ async function repairEnvironmentIssueUnlocked(
           ? path.join(userDirectory, appManagedComfyDatabaseFilename(endpoint.port))
           : "";
         if (isolatedDatabase && !(await exists(isolatedDatabase))) {
-          throw new Error("ComfyUI 已连接，但应用隔离数据库没有生成。");
+          throw new Error(t(uiKeys.environmentRepair.isolatedMissing));
         }
-        repairLog.push(`原数据库保持不变；应用已使用隔离数据库：${isolatedDatabase}`);
+        repairLog.push(t(uiKeys.environmentRepair.isolatedActive, { path: isolatedDatabase }));
         return {
           ok: true,
-          message: "检测到其他进程占用原数据库；未修改原库，应用已通过隔离数据库恢复服务。",
+          message: t(uiKeys.environmentRepair.isolatedRestored),
           log: repairLog.join("\n")
         };
       }
 
       await probeWritableDirectory(path.dirname(databasePath));
-      repairLog.push("数据库目录可写性检查通过");
+      repairLog.push(t(uiKeys.environmentRepair.databaseWritable));
       if (diagnosis.kind === "missing-dependencies") {
         await installComfyDatabaseDependencies(
           python,
@@ -4191,7 +4218,7 @@ async function repairEnvironmentIssueUnlocked(
       const timestamp = databaseRepairTimestamp();
       const backups = await backupSqliteDatabaseFamily(databasePath, timestamp);
       for (const entry of backups) {
-        repairLog.push(`已复制备份 ${entry.sourcePath} -> ${entry.backupPath}`);
+        repairLog.push(t(uiKeys.environmentRepair.databaseBackup, { source: entry.sourcePath, backup: entry.backupPath }));
       }
 
       let databaseCheck = "";
@@ -4202,11 +4229,11 @@ async function repairEnvironmentIssueUnlocked(
           databasePath,
           settings
         );
-        repairLog.push(`数据库无损迁移与 quick_check 通过：${databaseCheck}`);
+        repairLog.push(t(uiKeys.environmentRepair.databaseChecked, { result: databaseCheck }));
       } catch (initializationError) {
         const resetAllowed = diagnosis.kind === "migration" || diagnosis.kind === "corrupt";
         repairLog.push(
-          `无损修复失败：${initializationError instanceof Error ? initializationError.message : String(initializationError)}`
+          t(uiKeys.environmentRepair.databaseCheckFailed, { reason: initializationError instanceof Error ? initializationError.message : String(initializationError) })
         );
         if (!resetAllowed) {
           await quarantineSqliteDatabaseFamily(
@@ -4214,11 +4241,11 @@ async function repairEnvironmentIssueUnlocked(
             `${timestamp}-repair-attempt`
           ).catch(() => []);
           await restoreSqliteDatabaseBackups(backups);
-          repairLog.push("无损检查未通过，已恢复检查前的数据库文件");
-          throw new Error("无损数据库修复失败；已恢复原数据库，请查看修复日志。");
+          repairLog.push(t(uiKeys.environmentRepair.databaseCheckRestored));
+          throw new Error(t(uiKeys.environmentRepair.databaseFailedRestored));
         }
         const quarantined = await quarantineSqliteDatabaseFamily(databasePath, timestamp);
-        repairLog.push(...quarantined.map((filename) => `已隔离故障文件：${filename}`));
+        repairLog.push(...quarantined.map((filename) => t(uiKeys.environmentRepair.quarantined, { path: filename })));
         try {
           databaseCheck = await initializeAndCheckComfyDatabase(
             python,
@@ -4226,36 +4253,36 @@ async function repairEnvironmentIssueUnlocked(
             databasePath,
             settings
           );
-          repairLog.push(`新数据库迁移与 quick_check 通过：${databaseCheck}`);
+          repairLog.push(t(uiKeys.environmentRepair.newDatabaseChecked, { result: databaseCheck }));
         } catch (resetError) {
           await quarantineSqliteDatabaseFamily(
             databasePath,
             `${timestamp}-repair-attempt`
           ).catch(() => []);
           await restoreSqliteDatabaseBackups(backups);
-          repairLog.push("新建数据库失败，已从备份恢复原数据库文件");
+          repairLog.push(t(uiKeys.environmentRepair.newDatabaseRestored));
           throw resetError;
         }
       }
 
       const started = await startLocalService("comfy", settings);
-      if (!started.ok) throw new Error(`数据库修复完成，但 ComfyUI 启动失败：${started.message}`);
+      if (!started.ok) throw new Error(t(uiKeys.environmentRepair.databaseRestartFailed, { reason: started.message }));
       const endpoint = localEndpoint(settings.comfyUrl, 8188);
       const activeDatabase = endpoint
         ? path.join(userDirectory, appManagedComfyDatabaseFilename(endpoint.port))
         : databasePath;
       if (!(await exists(activeDatabase))) {
-        throw new Error(`ComfyUI API 已恢复，但实际启动数据库没有生成：${activeDatabase}`);
+        throw new Error(t(uiKeys.environmentRepair.activeDatabaseMissing, { path: activeDatabase }));
       }
-      repairLog.push(`ComfyUI 已连接；实际启动数据库：${activeDatabase}`);
+      repairLog.push(t(uiKeys.environmentRepair.activeDatabase, { path: activeDatabase }));
       return {
         ok: true,
-        message: "ComfyUI 数据库已完成分类修复、备份和完整性检查，服务已恢复。",
+        message: t(uiKeys.environmentRepair.databaseRepaired),
         log: repairLog.join("\n")
       };
     }
 
-    return { ok: false, message: "未知的环境问题，已拒绝修复。" };
+    return { ok: false, message: t(uiKeys.environmentRepair.unknownIssue) };
   } catch (error) {
     const processError = error as Error & { stdout?: string; stderr?: string };
     repairLog.push(
@@ -4270,12 +4297,12 @@ async function repairEnvironmentIssueUnlocked(
       }).then((response) => response.ok).catch(() => false);
       if (!running) {
         try {
-          repairLog.push("修复未完成，尝试恢复启动 ComfyUI");
+          repairLog.push(t(uiKeys.environmentRepair.restoring));
           const recovery = await startLocalService("comfy", settings);
           if (!recovery.ok) throw new Error(recovery.message);
         } catch (recoveryError) {
           repairLog.push(
-            `恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`
+            t(uiKeys.environmentRepair.recoveryFailed, { reason: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) })
           );
         }
       }
@@ -4320,7 +4347,7 @@ export async function installCustomNode(
         findExecutable,
         renameWithRetry,
         retryableRenameError,
-        runLoggedProcess
+        runLoggedProcess: (executable, args, options) => runLoggedProcess(executable, args, { ...options, uiLocale: nodeSettings.uiLocale })
       }, report),
     installKonohamaruNeuralUpstreamRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
       installKonohamaruNeuralUpstreamRuntime(nodeSettings, comfyRoot, nodeDirectory, {
@@ -4347,7 +4374,7 @@ export async function installCustomNode(
         findExecutable,
         renameWithRetry,
         retryableRenameError,
-        runLoggedProcess
+        runLoggedProcess: (executable, args, options) => runLoggedProcess(executable, args, { ...options, uiLocale: nodeSettings.uiLocale })
       }, report),
     uninstallAetherScaleRuntime: (nodeSettings, comfyRoot, nodeDirectory, report) =>
       uninstallAetherScaleRuntime(nodeSettings, comfyRoot, nodeDirectory, report),
@@ -4429,21 +4456,23 @@ export async function uninstallCustomNode(
 }
 
 export async function inspectLlamaCppPythonRuntime(
-  pythonPath: string
+  pythonPath: string,
+  locale: UiLocale = "zh-CN"
 ): Promise<LlamaCppPythonStatus> {
-  return inspectLlamaCppPython(pythonPath, runLoggedProcess);
+  return inspectLlamaCppPython(pythonPath, runLoggedProcess, locale);
 }
 
 export async function installLlamaCppPython(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const runtime: LlamaCppPythonRuntime = {
     downloadEnvironment,
     proxyLogLabel,
     findComfyRoot,
     findComfyPython,
-    runLoggedProcess
+    runLoggedProcess: (executable, args, options) => runLoggedProcess(executable, args, { ...options, uiLocale: settings.uiLocale })
   };
   const restartLog: string[] = [];
   const reportRestart = (message: string) => {
@@ -4456,7 +4485,7 @@ export async function installLlamaCppPython(
   try {
     const comfyRoot = await findComfyRoot(settings);
     const python = await findComfyPython(settings, comfyRoot);
-    const before = await inspectLlamaCppPython(python, runLoggedProcess);
+    const before = await inspectLlamaCppPython(python, runLoggedProcess, settings.uiLocale);
     // The button is also an explicit repair action while the probe still
     // reports a healthy package (the native import can succeed but model load
     // may crash). Always release an app-managed ComfyUI process before pip
@@ -4466,9 +4495,9 @@ export async function installLlamaCppPython(
       signal: AbortSignal.timeout(2000)
     }).then((response) => response.ok).catch(() => false);
     if (wasRunning) {
-      reportRestart("正在停止 ComfyUI，避免替换 Python 扩展时文件被占用……");
+      reportRestart(t(uiKeys.llamaInstaller.stoppingInstall));
       await stopComfyUi(settings);
-      reportRestart("ComfyUI 已停止");
+      reportRestart(t(uiKeys.attentionInstaller.stopped));
     }
     const result = await installLlamaCppPythonPackage(settings, runtime, onLog);
     if (result.ok) {
@@ -4478,17 +4507,17 @@ export async function installLlamaCppPython(
         "ComfyUI-MiniMaxH3-Prompt-Writer"
       );
       if (await exists(promptWriterDirectory)) {
-        reportRestart("正在检查 H3 Prompt Writer 与新版 llama-cpp-python 的 API 兼容层……");
-        await prepareH3PromptWriter(promptWriterDirectory, reportRestart);
+        reportRestart(t(uiKeys.llamaInstaller.writerCheck));
+        await prepareH3PromptWriter(promptWriterDirectory, reportRestart, t);
       }
     }
     if (wasRunning) {
-      reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
+      reportRestart(t(uiKeys.llamaInstaller.restarting));
       const healthUrl = await startComfyUi(settings);
       if (!(await waitForOwnedComfyService(healthUrl)).ready) {
-        throw new Error("llama-cpp-python 安装完成，但 ComfyUI 重启后未在等待时间内就绪。");
+        throw new Error(t(uiKeys.llamaInstaller.installRestartFailed));
       }
-      reportRestart("ComfyUI 已重启并恢复连接");
+      reportRestart(t(uiKeys.llamaInstaller.restarted));
     }
     return {
       ...result,
@@ -4499,12 +4528,12 @@ export async function installLlamaCppPython(
     reportRestart(message);
     if (wasRunning) {
       try {
-        reportRestart("安装过程异常，正在尝试恢复 ComfyUI……");
+        reportRestart(t(uiKeys.llamaInstaller.installRecovering));
         const healthUrl = await startComfyUi(settings);
         await waitForOwnedComfyService(healthUrl);
-        reportRestart("ComfyUI 已恢复");
+        reportRestart(t(uiKeys.llamaInstaller.recovered));
       } catch (recoveryError) {
-        reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+        reportRestart(t(uiKeys.llamaInstaller.recoveryFailed, { reason: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) }));
       }
     }
     return { ok: false, message, log: restartLog.join("\n\n") };
@@ -4515,12 +4544,13 @@ export async function uninstallLlamaCppPython(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const runtime: LlamaCppPythonRuntime = {
     downloadEnvironment,
     proxyLogLabel,
     findComfyRoot,
     findComfyPython,
-    runLoggedProcess
+    runLoggedProcess: (executable, args, options) => runLoggedProcess(executable, args, { ...options, uiLocale: settings.uiLocale })
   };
   const restartLog: string[] = [];
   const reportRestart = (message: string) => {
@@ -4538,18 +4568,18 @@ export async function uninstallLlamaCppPython(
       signal: AbortSignal.timeout(2000)
     }).then((response) => response.ok).catch(() => false);
     if (wasRunning) {
-      reportRestart("正在停止 ComfyUI，避免卸载 Python 扩展时文件被占用……");
+      reportRestart(t(uiKeys.llamaInstaller.stoppingUninstall));
       await stopComfyUi(settings);
-      reportRestart("ComfyUI 已停止");
+      reportRestart(t(uiKeys.attentionInstaller.stopped));
     }
     const result = await uninstallLlamaCppPythonPackage(settings, runtime, onLog);
     if (wasRunning) {
-      reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
+      reportRestart(t(uiKeys.llamaInstaller.restarting));
       const restartedHealthUrl = await startComfyUi(settings);
       if (!(await waitForOwnedComfyService(restartedHealthUrl)).ready) {
-        throw new Error("llama-cpp-python 卸载完成，但 ComfyUI 重启后未在等待时间内就绪。");
+        throw new Error(t(uiKeys.llamaInstaller.uninstallRestartFailed));
       }
-      reportRestart("ComfyUI 已重启并恢复连接");
+      reportRestart(t(uiKeys.llamaInstaller.restarted));
     }
     return {
       ...result,
@@ -4560,25 +4590,26 @@ export async function uninstallLlamaCppPython(
     reportRestart(message);
     if (wasRunning) {
       try {
-        reportRestart("卸载过程异常，正在尝试恢复 ComfyUI……");
+        reportRestart(t(uiKeys.llamaInstaller.uninstallRecovering));
         const restartedHealthUrl = await startComfyUi(settings);
         await waitForOwnedComfyService(restartedHealthUrl);
-        reportRestart("ComfyUI 已恢复");
+        reportRestart(t(uiKeys.llamaInstaller.recovered));
       } catch (recoveryError) {
-        reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+        reportRestart(t(uiKeys.llamaInstaller.recoveryFailed, { reason: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) }));
       }
     }
     return { ok: false, message, log: restartLog.join("\n\n") };
   }
 }
 
-export function tritonRequirementForTorch(torchVersion: string): string {
+export function tritonRequirementForTorch(torchVersion: string, locale: UiLocale = "zh-CN"): string {
+  const t = createNativeTranslator(locale).t;
   const match = torchVersion.match(/^(\d+)\.(\d+)/);
-  if (!match) throw new Error(`无法识别 PyTorch 版本：${torchVersion || "未知"}`);
+  if (!match) throw new Error(t(uiKeys.attentionInstaller.torchUnknown, { version: torchVersion || t(uiKeys.attentionInstaller.unknown) }));
   const major = Number(match[1]);
   const minor = Number(match[2]);
   if (major !== 2 || minor < 4 || minor > 11) {
-    throw new Error(`当前自动安装尚不支持 PyTorch ${torchVersion}`);
+    throw new Error(t(uiKeys.attentionInstaller.torchUnsupported, { version: torchVersion }));
   }
   const tritonMinor = minor - 4;
   return `triton-windows>=3.${tritonMinor},<3.${tritonMinor + 1}`;
@@ -4588,6 +4619,7 @@ export async function runLoggedProcess(
   executable: string,
   args: string[],
   options: {
+    uiLocale?: UiLocale;
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
@@ -4595,6 +4627,7 @@ export async function runLoggedProcess(
     onLog?: (message: string) => void;
   }
 ): Promise<string> {
+  const t = createNativeTranslator(options.uiLocale).t;
   const installationAbort = installationSignal();
   const signal = options.signal && installationAbort
     ? AbortSignal.any([options.signal, installationAbort]) : options.signal ?? installationAbort;
@@ -4658,12 +4691,12 @@ export async function runLoggedProcess(
     };
     const abortListener = () => {
       if (settled) return;
-      options.onLog?.("命令已取消，正在终止子进程……");
-      terminateChild(new Error("命令已取消"));
+      options.onLog?.(t(uiKeys.attentionInstaller.commandCancelling));
+      terminateChild(new Error(t(uiKeys.attentionInstaller.commandCancelled)));
     };
     timeout = setTimeout(() => {
-      options.onLog?.("命令超过等待上限，正在终止子进程……");
-      terminateChild(new Error(`命令运行超过 ${Math.round((options.timeoutMs ?? 900_000) / 60_000)} 分钟，已停止`));
+      options.onLog?.(t(uiKeys.attentionInstaller.commandTimingOut));
+      terminateChild(new Error(t(uiKeys.attentionInstaller.commandTimedOut, { minutes: Math.round((options.timeoutMs ?? 900_000) / 60_000) })));
     }, options.timeoutMs ?? 900_000);
     if (signal) {
       if (signal.aborted) abortListener();
@@ -4681,15 +4714,17 @@ export async function runLoggedProcess(
       }
       const text = output.join("").trim();
       if (code === 0) finishResolve(text);
-      else finishReject(Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: text }));
+      else finishReject(Object.assign(new Error(t(uiKeys.attentionInstaller.commandFailed, { code: String(code) })), { stdout: text, code }));
     });
   });
 }
 
 export function createPipDownloadProgressReporter(
   report: (message: string) => void,
-  now: () => number = Date.now
+  now: () => number = Date.now,
+  locale: UiLocale = "zh-CN"
 ): (message: string) => void {
+  const t = createNativeTranslator(locale).t;
   let totalBytes = 0;
   let lastBytes = 0;
   let lastPercent = -1;
@@ -4723,8 +4758,10 @@ export function createPipDownloadProgressReporter(
       ? ` · ${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
       : "";
     report(
-      `下载进度：${percent}% · ${(current / 1024 / 1024).toFixed(1)} / ` +
-      `${(total / 1024 / 1024).toFixed(1)} MB${speed}`
+      t(uiKeys.nodeInstaller.pipProgress, {
+        percent, current: (current / 1024 / 1024).toFixed(1),
+        total: (total / 1024 / 1024).toFixed(1), speed
+      })
     );
   };
 }
@@ -4733,6 +4770,7 @@ export async function installAttentionAcceleration(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const finishMutation = pythonProbeCache.beginMutation();
   const log: string[] = [];
   const report = (message: string) => {
@@ -4745,15 +4783,15 @@ export async function installAttentionAcceleration(
     const comfyRoot = await findComfyRoot(settings);
     const installation = await findComfyInstallation(settings);
     if (!comfyRoot || !installation) {
-      throw new Error("请先在设置中选择完整的 ComfyUI 安装和数据目录。");
+      throw new Error(t(uiKeys.attentionInstaller.rootMissing));
     }
     const python = await findComfyPython(settings, comfyRoot, installation);
-    if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
+    if (!python) throw new Error(t(uiKeys.attentionInstaller.pythonMissing));
     const before = await inspectAttentionPython(python);
     const gpuArchitecture = Number.parseFloat(before.gpuArchitecture ?? "");
     if (!Number.isFinite(gpuArchitecture) || gpuArchitecture < 8) {
       throw new Error(
-        `SageAttention 2.2 需要 SM 8.0+ NVIDIA GPU；当前检测结果为 ${before.gpuName || "未知 GPU"} / SM ${before.gpuArchitecture || "未知"}。`
+        t(uiKeys.attentionInstaller.gpuUnsupported, { gpu: before.gpuName || t(uiKeys.attentionInstaller.unknownGpu), architecture: before.gpuArchitecture || t(uiKeys.attentionInstaller.unknown) })
       );
     }
     const torchRuntimeReady = h3TorchRuntimeReady(before);
@@ -4767,26 +4805,21 @@ export async function installAttentionAcceleration(
     if (!targetWheel) {
       if (torchRuntimeReady) {
         throw new Error(
-          `当前 PyTorch ${before.torchVersion || "未知"} 满足 H3 最低运行时要求，` +
-          `但 ComfyUI 尚未发布匹配的 SageAttention Windows wheel。` +
-          `应用不会自动降级该环境；请使用 PyTorch Attention，或在需要 SageAttention 时切换到稳定的 ` +
-          `PyTorch ${h3TorchRuntime.torch}+cu130。`
+          t(uiKeys.attentionInstaller.noDowngrade, { current: before.torchVersion || t(uiKeys.attentionInstaller.unknown), stable: h3TorchRuntime.torch })
         );
       }
       throw new Error(
-        `没有找到适用于 Python ${before.pythonVersion || "未知"} / ` +
-        `PyTorch ${h3TorchRuntime.torch}+cu130 / CUDA 13.0 的官方 Windows wheel。`
+        t(uiKeys.attentionInstaller.wheelMissing, { python: before.pythonVersion || t(uiKeys.attentionInstaller.unknown), torch: h3TorchRuntime.torch })
       );
     }
-    report(`ComfyUI Python：${python}`);
-    report(`运行时：Python ${before.pythonVersion} · PyTorch ${before.torchVersion} · CUDA ${before.cudaVersion}`);
+    report(t(uiKeys.attentionInstaller.pythonPath, { path: python }));
+    report(t(uiKeys.attentionInstaller.runtime, { python: String(before.pythonVersion), torch: String(before.torchVersion), cuda: String(before.cudaVersion) }));
     if (needsCudaRuntimeUpgrade) {
       report(
-        `检测到 H3 PyTorch 运行时低于最低版本或三件套不一致；目标稳定运行时：` +
-        `PyTorch ${h3TorchRuntime.torch} / CUDA 13.0。`
+        t(uiKeys.attentionInstaller.upgradeNeeded, { torch: h3TorchRuntime.torch })
       );
     } else if (initialWheel) {
-      report(`目标：${initialWheel.filename}`);
+      report(t(uiKeys.attentionInstaller.target, { file: initialWheel.filename }));
     }
 
     const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
@@ -4794,15 +4827,15 @@ export async function installAttentionAcceleration(
       signal: AbortSignal.timeout(2000)
     }).then((response) => response.ok).catch(() => false);
     if (wasRunning) {
-      report("正在停止 ComfyUI，避免更新节点和 Python 扩展时文件被占用……");
+      report(t(uiKeys.attentionInstaller.stopping));
       await stopComfyUi(settings);
-      report("ComfyUI 已停止");
+      report(t(uiKeys.attentionInstaller.stopped));
     }
 
     if (await kjNodesSupportsModelAttention(comfyRoot)) {
-      report("KJNodes 已支持模型级 SageAttention，无需重复更新");
+      report(t(uiKeys.attentionInstaller.kjReady));
     } else {
-      report("正在安装或更新 KJNodes 模型级 Attention 补丁……");
+      report(t(uiKeys.attentionInstaller.kjInstalling));
       const kjResult = await installCustomNode("kjnodes", settings);
       if (kjResult.log) {
         log.push(kjResult.log);
@@ -4810,7 +4843,7 @@ export async function installAttentionAcceleration(
       }
       if (!kjResult.ok) throw new Error(kjResult.message);
       if (!(await kjNodesSupportsModelAttention(comfyRoot))) {
-        throw new Error("KJNodes 已安装，但没有检测到模型级 SageAttention 节点；请查看安装日志。");
+        throw new Error(t(uiKeys.attentionInstaller.kjMissing));
       }
     }
 
@@ -4822,13 +4855,13 @@ export async function installAttentionAcceleration(
       const snapshot = await runLoggedProcess(
         python,
         ["-m", "pip", "freeze", "--disable-pip-version-check"],
-        { env: environment, timeoutMs: 120_000 }
+        { uiLocale: settings.uiLocale, env: environment, timeoutMs: 120_000 }
       );
       const snapshotPath = path.join(comfyRoot, `h3-runtime-before-cu130-${Date.now()}.txt`);
       await fs.writeFile(snapshotPath, `${snapshot}\n`, "utf8");
-      report(`升级前 Python 包快照：${snapshotPath}`);
+      report(t(uiKeys.attentionInstaller.snapshot, { path: snapshotPath }));
       if (needsCudaRuntimeUpgrade) {
-        report("正在从 PyTorch 官方 cu130 索引升级 torch、torchvision 与 torchaudio……");
+        report(t(uiKeys.attentionInstaller.torchInstalling));
         await runLoggedProcess(
           python,
           [
@@ -4841,58 +4874,58 @@ export async function installAttentionAcceleration(
             `torchaudio==${h3TorchRuntime.torchaudio}`
           ],
           {
+            uiLocale: settings.uiLocale,
             env: environment,
             timeoutMs: 2_700_000,
-            onLog: createPipDownloadProgressReporter(report)
+            onLog: createPipDownloadProgressReporter(report, undefined, settings.uiLocale)
           }
         );
-        report("PyTorch cu130 运行时升级完成");
+        report(t(uiKeys.attentionInstaller.torchInstalled));
       }
-      report("正在升级 ComfyUI 官方 comfy-kitchen CUDA 内核……");
+      report(t(uiKeys.attentionInstaller.kitchenInstalling));
       await runLoggedProcess(
         python,
         [...commonPipArgs, "--upgrade", `comfy-kitchen==${H3_COMFY_KITCHEN_VERSION}`],
         {
+          uiLocale: settings.uiLocale,
           env: environment,
           timeoutMs: 900_000,
-          onLog: createPipDownloadProgressReporter(report)
+          onLog: createPipDownloadProgressReporter(report, undefined, settings.uiLocale)
         }
       );
-      report("comfy-kitchen 安装完成");
+      report(t(uiKeys.attentionInstaller.kitchenInstalled));
     }
 
     const target = await inspectAttentionPython(python);
     const wheel = attentionWheelForProbe(target);
     if (!wheel) {
       throw new Error(
-        `升级后没有找到适用于 Python ${target.pythonVersion || "未知"} / ` +
-        `PyTorch ${target.torchVersion || "未知"} / CUDA ${target.cudaVersion || "未知"} 的 SageAttention wheel。`
+        t(uiKeys.attentionInstaller.wheelAfterMissing, { python: target.pythonVersion || t(uiKeys.attentionInstaller.unknown), torch: target.torchVersion || t(uiKeys.attentionInstaller.unknown), cuda: target.cudaVersion || t(uiKeys.attentionInstaller.unknown) })
       );
     }
     const targetHasComfyKitchenCuda = (target.comfyKitchenBackends ?? [])
       .some((backend) => backend.toLowerCase() === "cuda");
     if (!comfyKitchenConvRotCudaOptimized(target.cudaVersion ?? "") || !targetHasComfyKitchenCuda) {
       throw new Error(
-        `升级后 H3 ConvRot CUDA 内核仍未就绪：PyTorch CUDA ${target.cudaVersion || "未知"}，` +
-        `comfy-kitchen ${target.comfyKitchenVersion || "未安装"}，` +
-        `backend ${(target.comfyKitchenBackends ?? []).join(", ") || "无"}。`
+        t(uiKeys.attentionInstaller.kernelNotReady, { cuda: target.cudaVersion || t(uiKeys.attentionInstaller.unknown), kitchen: target.comfyKitchenVersion || t(uiKeys.attentionInstaller.notInstalled), backends: (target.comfyKitchenBackends ?? []).join(", ") || t(uiKeys.attentionInstaller.none) })
       );
     }
-    report(`目标：${wheel.filename}`);
-    const tritonRequirement = tritonRequirementForTorch(target.torchVersion ?? "");
-    report(`正在安装 ${tritonRequirement}……`);
+    report(t(uiKeys.attentionInstaller.target, { file: wheel.filename }));
+    const tritonRequirement = tritonRequirementForTorch(target.torchVersion ?? "", settings.uiLocale);
+    report(t(uiKeys.attentionInstaller.installing, { package: tritonRequirement }));
     await runLoggedProcess(
       python,
       [...commonPipArgs, "--upgrade", tritonRequirement],
       {
+        uiLocale: settings.uiLocale,
         env: environment,
         timeoutMs: 900_000,
-        onLog: createPipDownloadProgressReporter(report)
+        onLog: createPipDownloadProgressReporter(report, undefined, settings.uiLocale)
       }
     );
-    report("Triton 安装完成");
+    report(t(uiKeys.attentionInstaller.tritonInstalled));
 
-    report("正在从 ComfyUI 官方 wheel 仓库安装 SageAttention……");
+    report(t(uiKeys.attentionInstaller.sageInstalling));
     await runLoggedProcess(
       python,
       [
@@ -4903,14 +4936,15 @@ export async function installAttentionAcceleration(
         `sageattention==${wheel.version}`
       ],
       {
+        uiLocale: settings.uiLocale,
         env: environment,
         timeoutMs: 900_000,
-        onLog: createPipDownloadProgressReporter(report)
+        onLog: createPipDownloadProgressReporter(report, undefined, settings.uiLocale)
       }
     );
-    report("SageAttention 安装完成");
+    report(t(uiKeys.attentionInstaller.sageInstalled));
 
-    report("正在运行 CUDA Attention 自检……");
+    report(t(uiKeys.attentionInstaller.testing));
     const selfTest = [
       "import json, torch",
       "from sageattention import sageattn_qk_int8_pv_fp16_cuda as sage",
@@ -4924,25 +4958,25 @@ export async function installAttentionAcceleration(
     const selfTestOutput = await runLoggedProcess(
       python,
       ["-c", selfTest],
-      { env: environment, timeoutMs: 180_000, onLog }
+      { uiLocale: settings.uiLocale, env: environment, timeoutMs: 180_000, onLog }
     );
-    report(`CUDA 自检通过：${selfTestOutput}`);
+    report(t(uiKeys.attentionInstaller.tested, { result: selfTestOutput }));
 
     const after = await inspectAttentionAcceleration(settings, comfyRoot, installation);
-    if (!after.ready) throw new Error(`安装后复检未通过：${after.detail}`);
-    report(`环境复检通过：SageAttention ${after.sageAttentionVersion} · Triton ${after.tritonVersion}`);
+    if (!after.ready) throw new Error(t(uiKeys.attentionInstaller.recheckFailed, { detail: after.detail }));
+    report(t(uiKeys.attentionInstaller.rechecked, { sage: after.sageAttentionVersion, triton: after.tritonVersion }));
 
     if (wasRunning) {
-      report("正在重新启动 ComfyUI 并加载更新后的节点……");
+      report(t(uiKeys.attentionInstaller.restarting));
       const health = await startComfyUi(settings);
       if (!(await waitForOwnedComfyService(health)).ready) {
-        throw new Error("依赖安装成功，但 ComfyUI 在 5 分钟内没有恢复就绪。");
+        throw new Error(t(uiKeys.attentionInstaller.restartFailed));
       }
-      report("ComfyUI 已重新启动");
+      report(t(uiKeys.attentionInstaller.restarted));
     }
     return {
       ok: true,
-      message: "H3 推理加速环境已安装并通过 CUDA 自检。",
+      message: t(uiKeys.attentionInstaller.installed),
       log: log.join("\n")
     };
   } catch (error) {
@@ -4952,11 +4986,11 @@ export async function installAttentionAcceleration(
     report(details);
     if (wasRunning) {
       try {
-        report("安装未完整结束，正在尝试恢复 ComfyUI……");
+        report(t(uiKeys.attentionInstaller.recovering));
         const health = await startComfyUi(settings);
         await waitForOwnedComfyService(health);
       } catch (recoveryError) {
-        report(`恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+        report(t(uiKeys.attentionInstaller.recoveryFailed, { reason: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) }));
       }
     }
     return {
@@ -4973,8 +5007,10 @@ export async function installAttentionAcceleration(
 function validateCustomNodeRuntime(
   customNodes: CustomNodeStatus[],
   llamaCppPython: LlamaCppPythonStatus,
-  runtimeComfyBaseUrl: string
+  runtimeComfyBaseUrl: string,
+  locale: UiLocale = "zh-CN"
 ): CustomNodeStatus[] {
+  const t = createNativeTranslator(locale).t;
   return customNodes.map((node) => {
     if (
       node.id !== "minimax-h3-prompt-writer" ||
@@ -4984,13 +5020,13 @@ function validateCustomNodeRuntime(
     ) {
       return node;
     }
-    const detail = llamaCppPython.detail || llamaCppPython.error || "共享 llama-cpp-python 尚未就绪";
+    const detail = llamaCppPython.detail || llamaCppPython.error || t(uiKeys.probeStatus.llamaUnavailable);
     return {
       ...node,
       loaded: false,
-      loadError: `H3 Prompt Writer 共享 llama-cpp-python 未通过运行时自检：${detail}`,
+      loadError: t(uiKeys.probeStatus.writerFailed, { detail }),
       compatibilityState: "error" as const,
-      compatibilityNotice: "节点接口已响应，但 llama-cpp-python 未就绪；请在设置 → 节点与依赖中修复运行依赖。"
+      compatibilityNotice: t(uiKeys.probeStatus.writerRepair)
     };
   });
 }
@@ -5101,6 +5137,7 @@ async function scanManagedGuideAssets(
   depthAnything: DepthAnythingAssetStatus;
   aetherScaleRuntime: AetherScaleRuntimeStatus;
 }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const local = isLocalComfyUrl(settings.comfyUrl);
   const runtimeDirectory = comfyRoot
     ? dlss5RuntimeDirectory(comfyRoot)
@@ -5110,7 +5147,7 @@ async function scanManagedGuideAssets(
     : "";
   if (!local) {
     return {
-      dlss5Runtime: emptyDlss5RuntimeStatus(runtimeDirectory, "remote", "远程 ComfyUI 仅支持连接；未扫描本地 DLSS5 runtime。"),
+      dlss5Runtime: emptyDlss5RuntimeStatus(runtimeDirectory, "remote", t(uiKeys.dlssRuntime.remoteScan)),
       depthAnything: emptyDepthAnythingStatus(
         comfyRoot ? comfyDepthAnythingModelDirectory(comfyRoot) : "",
         "远程 ComfyUI 仅支持连接；未扫描本地 Depth Anything 资产。"
@@ -5118,20 +5155,20 @@ async function scanManagedGuideAssets(
       aetherScaleRuntime: emptyAetherScaleRuntimeStatus(
         aetherRuntimeDirectory,
         "remote",
-        "远程 ComfyUI 仅支持连接；未扫描本地 AetherScale carrier runtime。"
+        t(uiKeys.aetherRuntime.remoteScan)
       )
     };
   }
   const [dlss5Runtime, depthAnything, aetherScaleRuntime] = await Promise.all([
     comfyRoot
-      ? scanDlss5Runtime(comfyRoot)
-      : Promise.resolve(emptyDlss5RuntimeStatus(runtimeDirectory, "missing", "未找到 ComfyUI 数据目录。")),
+      ? scanDlss5Runtime(comfyRoot, "", t)
+      : Promise.resolve(emptyDlss5RuntimeStatus(runtimeDirectory, "missing", t(uiKeys.dlssRuntime.scanRootMissing))),
     scanDepthAnythingAssets(comfyRoot, {
       modelDirectories: [comfyDataDirectories(settings, comfyRoot).modelDirectory]
     }),
     comfyRoot
-      ? scanAetherScaleRuntime(comfyRoot)
-      : Promise.resolve(emptyAetherScaleRuntimeStatus(aetherRuntimeDirectory, "missing", "未找到 ComfyUI 数据目录。"))
+      ? scanAetherScaleRuntime(comfyRoot, "", "", undefined, t)
+      : Promise.resolve(emptyAetherScaleRuntimeStatus(aetherRuntimeDirectory, "missing", t(uiKeys.aetherRuntime.scanRootMissing)))
   ]);
   return { dlss5Runtime, depthAnything, aetherScaleRuntime };
 }
@@ -5356,7 +5393,8 @@ async function scanFullEnvironment(
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
     llamaCppPython,
-    runtimeComfyBaseUrl
+    runtimeComfyBaseUrl,
+    settings.uiLocale
   );
   const modelProfiles = mergeModelProfilesWithCustomNodes(
     scannedModelProfiles,
@@ -5378,7 +5416,8 @@ async function scanFullEnvironment(
     comfyRoot,
     Boolean(runtimeComfyBaseUrl),
     comfyInstallation?.sourceDirectory ?? "",
-    selectedPython?.path ?? ""
+    selectedPython?.path ?? "",
+    settings.uiLocale
   );
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
     ? {
@@ -5578,10 +5617,11 @@ export function getCachedEnvironmentScan(
     const projected = pythonProbeCache.projectPreviousSync(
       identity,
       "llama",
-      snapshot.llamaCppPython
+      snapshot.llamaCppPython,
+      (cached, previous) => ({ ...previous, detail: llamaCppStatusFromInspection(previous.pythonPath, cached, settings.uiLocale).detail })
     );
     snapshot.llamaCppPython = projectedPreviousStatus(
-      snapshot.llamaCppPython,
+      projected.value ?? snapshot.llamaCppPython,
       projected.evidence
     );
   }
@@ -5660,11 +5700,12 @@ async function scanEnvironmentDependencies(
           pythonProbeCache.projectPrevious(
             probeIdentityFor(comfyRoot, comfyInstallation, selectedPython?.path ?? ""),
             "llama",
-            previous.llamaCppPython
+            previous.llamaCppPython,
+            (cached, previous) => ({ ...previous, detail: llamaCppStatusFromInspection(previous.pythonPath, cached, settings.uiLocale).detail })
           )
         ]).then(([attentionResult, llamaResult]) => ({
           attention: projectedPreviousStatus(previous.attentionAcceleration, attentionResult.evidence),
-          llama: projectedPreviousStatus(previous.llamaCppPython, llamaResult.evidence),
+          llama: projectedPreviousStatus(llamaResult.value ?? previous.llamaCppPython, llamaResult.evidence),
           attentionMetrics: attentionResult.metrics,
           llamaMetrics: llamaResult.metrics
         }))
@@ -5685,7 +5726,8 @@ async function scanEnvironmentDependencies(
   const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
     customNodes,
     llamaCppPython,
-    runtimeComfyBaseUrl
+    runtimeComfyBaseUrl,
+    settings.uiLocale
   );
   const runtimeProfiles = runtimeOnly
     ? refreshModelProfileRuntimeEvidence(
@@ -5725,7 +5767,8 @@ async function scanEnvironmentDependencies(
     comfyRoot,
     Boolean(runtimeComfyBaseUrl),
     comfyInstallation?.sourceDirectory ?? "",
-    selectedPython?.path ?? ""
+    selectedPython?.path ?? "",
+    settings.uiLocale
   );
   const reachableComfyBaseUrl = await firstReachableServiceBase(
     [

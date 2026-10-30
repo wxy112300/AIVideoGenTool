@@ -1,4 +1,5 @@
 import { legacyH3ImageOutputDimensions, isH3ImageModelId } from "../src/core/image-project.js";
+import { createNativeTranslator } from "./ui-translator.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -358,7 +359,8 @@ export function persistVideoHistoryResult(
           {
             parentTakeId: task.h3ContinuumParentTakeId,
             parentBranchId: task.h3ContinuumParentBranchId
-          }
+          },
+          createNativeTranslator(state.settings.uiLocale).t
         )
       : task.h3ContinuumSequence;
     const totalDuration = actualDuration ?? (managedContinuum
