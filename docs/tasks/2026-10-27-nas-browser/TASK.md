@@ -1,12 +1,18 @@
 # NAS 独立只读浏览服务
 
-- Status: done（Filter 固定操作区、统一部署包及本机验收）
-- Updated / Owner: 2026-10-29 / 当前 agent
+- Status: done（封面补发修复与本机验收；用户更新 PC 后待现场确认）
+- Updated / Owner: 2026-10-31 / 当前 agent
 - Scope / Authority: 用户要求在 Tools 建立服务；DS418play、DSM 6.2.4、Docker 20.10.3、Drive 单向上传。最新要求：NAS 与普通浏览功能一致，显示收藏/评分/Tag，保留完整筛选排序，唯独禁止修改；排序收进 Filter，PC/NAS 路径独立。
 - Baseline: 0.67.0；大量其他任务 dirty，保留全部。执行 direct，children=0。
 
 ## Resume
 
+- 2026-10-31 后续授权已扩大到用户数据迁移（Electron 缓存排除），实现与验证见[用户资料任务](../2026-10-31-user-data-storage/TASK.md)。现在正常 PC 的封面原始目录为文档 Local Video Studio/Data/history-covers/v3，发布副本位置与 NAS 挂载不变；下文“仍在 userData/不擅自搬迁”记录的是较早限定范围，已被新授权接续。完整 verify 与真实迁移/封面命中/原生重启已通过，仍未提交/打包或访问真实 NAS。
+
+- 2026-10-31 同步边界澄清：用户只同步“我的文档”，不挂载 AppData；Drive 自行发现本地文件变化，无需 App 主动通知 NAS/Drive。本次所谓通知仅是 PC 进程内的封面写入完成事件，触发在 Documents 的 StudioLibrary 发布目录真实写入封面与索引，随后交给 Drive。当前历史资料库在 Documents，本地可重建封面主缓存仍在 App userData；不将其描述为所有应用数据都已迁移，也不擅自搬迁缓存路径。
+- 2026-10-31 用户确认缺文件的是文档库 `Library/StudioLibrary/<libraryId>/covers`，即 NAS 发布副本；不是已确认的 AppData 本地缓存写入失败。与本轮复现的晚到封面未触发发布相符，采用已完成的 PC 端成功写入通知/合并补发修复。运行含修复的 PC App 后，启动发布会复用已有有效缓存补齐，后续写入自动补发，经 Drive 到 NAS；无需清索引或重装 NAS。待用户更新后的现场验证，当前未提交/打包。
+- 2026-10-31 新封面时序：用户更新部署后新增暂恢复正常，进一步报告最新作品 PC 已显示而 covers 无文件。已确认按需生成、内存 preview→最终选帧→异步保存 JPG/JSON→NAS 导出是分离步骤，本地缓存位于 App userData 而非文档库发布目录。独立夹具复现封面晚于首次发布落地不会触发补发；已接入 HistoryQueryService 成功写入通知与 NasPublisher 合并补发（仅视频），main 仅一行接线，不触碰其他任务 dirty 的 application-runtime.ts。72 项聚焦测试及实际应用封面自动补发均通过；不需要重新部署 NAS，但 PC 要运行含修复的 App。用户尚未回答查看的是本地缓存还是发布副本；此改动不修复尚未完成/失败的选帧或磁盘写入。未提交推送或打包，NAS 包与用户数据保持原样。
+- 2026-10-31 增量更新现场调查：用户报告新增同步后强制刷新仍看不到新作品，暂时无法执行 NAS 命令。只读尝试访问既有 NAS healthz，5 秒内不可达，未连接或修改 NAS。现有 17 项 NAS/commit 测试通过；补测 PC 自动发布新增作品、真实 HTTP 轮询跨过乱序提交与媒体延迟，不先假定 SQLite 损坏，不删除用户索引。现场原因仍待 healthz/日志/同步指针证据；其他任务 dirty 保留。
 - 2026-10-29 固定操作区/清理已完成：两版 Filter 固定标题和重置/应用，仅字段独立滚动并保留 iOS 安全区。Tools 仅留 NAS-Browser-Deploy.zip 完整包，清理日期区分旧部署/更新包及 Node 离线归档，共 313443990 bytes；Node 运行时仍来自 Dockerfile 基础镜像。更新教程改为直接替换容器、保留 config/data，新增部署标识核对目录/镜像/容器。上次额度引起的审批失败已恢复并正常完成操作。其他任务的 llama/设置相关 dirty 保留；本轮未提交推送，未连接 NAS。
 - 2026-10-29 提交上传：用户授权将本次完整只读修正、普通版排序入口同步、验证脚本和 NAS 程序更新包一起提交推送；版本保持 0.67.2，复用下方同一生产文件状态的验证证据，Git 提交及远端结果以实际命令为准。
 - 2026-10-29 完整只读修正已完成：用户已成功打开旧版 NAS，healthz ready=true/count=1258，Windows Chrome 刷新后显示。本轮修正 PC 导出丢弃收藏/评分、NAS 固定 false/null 及前端隐藏筛选/状态的问题；旧投影兼容，PC 更新后自动补发。普通版与 NAS 共用网页，排序都移入 Filter，只在元数据编辑能力上区分。仅程序更新 ZIP 与保留 config/data、旧容器回退的步骤已准备，未提交推送或连接 NAS。
@@ -32,6 +38,11 @@
 
 ## Evidence / handoff
 
+- 新封面修复验证：`tests/nas-commit.test.ts` 覆盖真实 cache 写入后自动发布、相同 desktop commit 下首次封面和后续改进封面均到达 NAS；`history-services` 覆盖仅保存成功通知、stale 不通知、监听者异常隔离与注销。相关 72 项通过。全量日志 `temp/nas-cover-save-verify-20261031.log` 中单元 3005 全过，集成 126/127；无关 H3 Prompt Writer checkout 替换用例首轮失败，单独 maxWorkers=1 重跑通过，未改该测试或安装器。之后 typechecked clean build、440 对比度检查通过；没有将首轮 verify 描述为全绿。
+- 实际应用接线：`node scripts/harness/lan-browser-smoke.mjs --browser-only --cover-publication` / `temp/lan-smoke-8UacxO/report.json` 通过，首次无缓存的封面经真实网页请求→CPU producer→query 成功写入→NAS 新指针/封面文件，desktop libraryStorage.commit 保持不变，`coverOnlyNasPublication=true`。既有播放/整理/筛选/安全区回归通过；cleanup.json 确认 native close、App/浏览器退出和监听关闭，无 ComfyUI/GPU/用户库操作。其他任务 dirty 保留。
+- 封面补发原始复现 `temp/nas-cover-publication-1793431796785/report.json`：本地 JPG/校验 JSON 已写入，原 publisher 接收同一状态后指针未变、发布 covers=0；模拟新资料 commit 后才 covers=1，无运行错误。使用隔离合成文件，不访问用户库。
+- 2026-10-31 调查：新增真实 HTTP 轮询回归，覆盖 PC onCommitted/debounce 自动发布新增作品（不手动 flush）、current.json 先到保留旧快照、记录到达恢复正常、同一提交下媒体稍后到达自动从 1→2 条且 revision 改变；不重启/不清空 SQLite。NAS/commit 18 项与主项目 typecheck 通过。测试首轮因 fetch 未按测试预期覆盖 Host 而未返回健康 DTO，改用既有测试同样的 node:http Host 请求后通过；未修改生产传输检查。
+- 尚无现场 healthz/日志/current.json：用户确认 Ctrl+F5 后仍无新增，暂时无法执行 NAS 命令；本机对既有 NAS IP 的 healthz 只读访问在 5 秒内超时。未复现并不证明现场无缺陷，目前仅补充回归，未改生产代码、部署包、用户索引或同步资料，未提交推送。下一步先用浏览器 healthz 的 count/refreshError 与现场源提交、容器日志区分发布、同步不完整、媒体可用性或代次保护；不能直接清库规避。
 - Filter 固定操作区验收：复用 `temp/nas-browser-smoke-1793209262929/report.json` 的 v2 UI 证据，手机滚动 0/50%/100% 时 footer 坐标固定，两个按钮均能通过 elementFromPoint 命中，底部 padding 包含 34px safe area；iPad 横竖屏与桌面也检查按钮可见可点。截图 phone-filter-actions 已查看。当前构建入口同为 index-KyKnL8wc.js，CSS index-C8QiNJH6.css，与该 UI 验证一致。
 - 普通版真实 App + 浏览器 `temp/lan-smoke-FHEh9x/report.json` 通过固定操作区、实际筛选/应用、收藏/评分/Tag 写回、播放和多宽度回归；首次 harness 因 Settings 保存重挂载期间空节点而退出，等待条件增加节点存在检查后通过，生产 Settings 未改。两个自有 LAN fixture 均 native close，cleanup.json 确认 App/浏览器/监听回收。无 ComfyUI/GPU/用户资料操作。
 - 恢复后的完整检查日志 `temp/nas-filter-footer-resume-verify.log`：2804 单元、104 集成、typechecked clean build、440 对比度检查通过（4 workers，独立系统临时目录）；工具 build/typecheck 与脚本语法、文档链接检查通过。数字对应包含其他任务 dirty 的同一工作树，不提升那些任务的 runtime 结论。

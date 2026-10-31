@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { createStudioPaths } from "../electron/services/studio-paths.js";
 
 describe("StudioPaths", () => {
-  it("keeps application-owned paths under the Electron userData directory", () => {
-    const userDataDirectory = "C:\\Users\\Test User\\AppData\\Roaming\\Local Video Studio";
+  it("keeps application-owned paths under the supplied business data directory", () => {
+    const userDataDirectory = "C:\\Users\\Test User\\Documents\\Local Video Studio\\Data";
     const paths = createStudioPaths(userDataDirectory);
 
     expect(paths).toEqual({

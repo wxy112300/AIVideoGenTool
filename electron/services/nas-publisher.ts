@@ -6,6 +6,8 @@ import { publishNasCommit } from "../../src/infrastructure/nas-commit.js";
 /** Coalesces only committed snapshots. Failure keeps the published pointer and retries later. */
 export class NasPublisher {
   private pending?: AppState;
+  private latest?: AppState;
+  private stopObservingCovers?: () => void;
   private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<void>;
   private stopped = false;
@@ -13,12 +15,27 @@ export class NasPublisher {
   private lastKey = "";
   constructor(private options: { stateFile: string; coversDirectory: string; resolveOutputRoot(settings: Settings): Promise<string>; onError(error: unknown): void; delayMs?: number }) {}
 
+  observeCovers(source: { onCoverSaved(listener: (key: string) => void): () => void }): void {
+    this.stopObservingCovers?.();
+    this.stopObservingCovers = undefined;
+    if (this.stopped) return;
+    this.stopObservingCovers = source.onCoverSaved(key => {
+      if (this.stopped || !this.latest || key.startsWith("image-history:")) return;
+      this.pending ??= this.latest;
+      this.armTimer();
+    });
+  }
+
   schedule(state: AppState): void {
     if (this.stopped) return;
-    if (!state.libraryStorage) { this.pending = undefined; this.lastKey = ""; return; }
+    if (!state.libraryStorage) { this.pending = undefined; this.latest = undefined; this.lastKey = ""; return; }
     const key = JSON.stringify([state.libraryStorage, state.settings.outputDirectory, state.settings.uiLocale]);
     if (key === this.lastKey && !this.pending) return;
-    this.pending = structuredClone(state);
+    this.pending = this.latest = structuredClone(state);
+    this.armTimer();
+  }
+
+  private armTimer(): void {
     if (this.timer || this.running || this.relocationPaused) return;
     this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, this.options.delayMs ?? 1500);
     this.timer.unref();
@@ -65,7 +82,9 @@ export class NasPublisher {
 
   async close(): Promise<void> {
     this.stopped = true;
+    this.stopObservingCovers?.(); this.stopObservingCovers = undefined;
     if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }
     if (!this.relocationPaused) await this.flush();
+    this.latest = undefined;
   }
 }

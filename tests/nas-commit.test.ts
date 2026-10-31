@@ -3,9 +3,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
+import { request } from "node:http";
 import { JsonStore } from "../electron/store.js";
 import { NasPublisher } from "../electron/services/nas-publisher.js";
 import { NasLibrary } from "../Tools/NasBrowser/src/library.js";
+import { startServer } from "../Tools/NasBrowser/src/server.js";
+import { HistoryQueryService } from "../electron/services/history-query-service.js";
+import { nativeHistoryFileSystem } from "../electron/services/native-history-file-system.js";
+import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance.js";
 
@@ -16,7 +21,7 @@ afterEach(async () => {
   for (const library of libraries.splice(0)) library.clear();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
-async function fixture() {
+async function fixture(delayMs = 60000) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "studio-nas-v2-")); roots.push(root);
   const output = path.join(root, "PC Output"), archive = path.join(root, "PC Documents"), nas = path.join(root, "NAS Media"), nasArchive = path.join(root, "NAS Library"), data = path.join(root, "NAS Data");
   for (const directory of [output, archive, nas, nasArchive]) await fs.mkdir(directory);
@@ -27,7 +32,7 @@ async function fixture() {
   state.history = [asset];
   await fs.writeFile(stateFile, JSON.stringify(state));
   const errors: unknown[] = [];
-  const publisher = new NasPublisher({ stateFile, coversDirectory: path.join(root, "covers"), resolveOutputRoot: async () => output, onError: error => errors.push(error), delayMs: 60000 }); publishers.push(publisher);
+  const publisher = new NasPublisher({ stateFile, coversDirectory: path.join(root, "covers"), resolveOutputRoot: async () => output, onError: error => errors.push(error), delayMs }); publishers.push(publisher);
   const store = new JsonStore(stateFile, { libraryDirectory: archive, beforeLibraryMove: () => publisher.prepareLibraryMove(), onCommitted: state => publisher.schedule(state) });
   const loaded = await store.load(); await publisher.flush();
   const relative = `StudioLibrary/${loaded.libraryStorage!.libraryId}`, source = path.join(archive, relative), destination = path.join(nasArchive, relative);
@@ -37,6 +42,69 @@ async function fixture() {
 }
 
 describe("committed automatic NAS projection", () => {
+  it("publishes a cover saved after the initial export without a new desktop metadata commit", async () => {
+    const f = await fixture(10); await f.sync(); const library = f.open(); await library.reload();
+    expect(library.detail(f.asset.id).coverUrl).toBe("");
+    const desktopCommit = f.store.get().libraryStorage!.commit;
+    const pointer = () => fs.readFile(path.join(f.source, "current.json"), "utf8");
+    const initial = await pointer();
+    const query = new HistoryQueryService({ store: f.store, logger: {} as AppLogger,
+      paths: { historyCoverDirectory: path.join(f.root, "covers") }, fileSystem: nativeHistoryFileSystem,
+      resolveTaskOutputDirectory: async () => path.join(f.root, "PC Output") });
+    f.publisher.observeCovers(query);
+    const version = f.asset.versions[0], sourcePath = version.files[0].absolutePath!;
+    const key = query.coverCacheKeyForVideoVersion(f.asset, version);
+    const lookup = await query.lookupHistoryCover(key, sourcePath);
+    expect(lookup.state).toBe("miss"); if (lookup.state !== "miss") throw new Error("Expected uncached fixture");
+    expect(await query.saveHistoryCoverIfCurrent({ key, sourcePath, sourceRevision: lookup.sourceRevision,
+      data: new TextEncoder().encode("first saved jpeg").buffer })).toMatchObject({ state: "saved" });
+    await vi.waitFor(async () => { expect(await pointer()).not.toBe(initial); }, { timeout: 3000 });
+    expect(f.store.get().libraryStorage!.commit).toBe(desktopCommit);
+    await f.sync(); await library.reload(); const firstCover = library.detail(f.asset.id).coverUrl;
+    expect(firstCover).not.toBe("");
+    expect(await fs.readFile(await library.source(f.asset.id, version.id, "cover"), "utf8")).toBe("first saved jpeg");
+    const published = await pointer();
+    await query.saveHistoryCoverIfCurrent({ key, sourcePath, sourceRevision: lookup.sourceRevision,
+      data: new TextEncoder().encode("refined saved jpeg").buffer });
+    await vi.waitFor(async () => { expect(await pointer()).not.toBe(published); }, { timeout: 3000 });
+    await f.sync(); await library.reload();
+    expect(await fs.readFile(await library.source(f.asset.id, version.id, "cover"), "utf8")).toBe("refined saved jpeg");
+    expect(f.errors).toEqual([]);
+  });
+  it("automatically publishes added works and polls past pointer-first sync and late media without restart", async () => {
+    const f = await fixture(10); await f.sync();
+    const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");
+    const refreshErrors: string[] = [];
+    const server = await startServer({ mediaRoot: path.join(f.root, "NAS Media"), libraryRoot: f.nasArchive,
+      libraryDirectory: `StudioLibrary/${f.store.get().libraryStorage!.libraryId}`, dataDirectory: f.data,
+      host: "127.0.0.1", port: 0, pollSeconds: 1, allowedOrigins: ["http://nas.test:8790"] }, web, message => refreshErrors.push(message));
+    const base = `http://127.0.0.1:${(server.server.address() as { port: number }).port}`;
+    const health = () => new Promise<{ count: number; revision: string; refreshError: boolean }>((resolve, reject) => {
+      const req = request(`${base}/healthz`, { headers: { Host: "nas.test:8790" } }, response => {
+        const chunks: Buffer[] = []; response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => { try { expect(response.statusCode).toBe(200); resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (error) { reject(error); } });
+        response.on("error", reject);
+      }); req.on("error", reject); req.end();
+    });
+    const waitFor = (check: () => Promise<void>) => vi.waitFor(check, { timeout: 6000, interval: 80 });
+    try {
+      const original = await health(); expect(original.count).toBe(1);
+      const previous = await fs.readFile(path.join(f.source, "current.json"), "utf8");
+      const added = structuredClone(f.asset), source = path.join(f.root, "PC Output", "late-media.mp4");
+      added.id = "added-work"; added.title = "New batch"; added.versions[0].files[0] = { ...added.versions[0].files[0], filename: "late-media.mp4", absolutePath: source };
+      await fs.writeFile(source, "new synchronized video");
+      await f.store.update(state => { state.history.push(added); });
+      // No manual publisher.flush: the committed-state callback and debounce must run themselves.
+      await waitFor(async () => { expect(await fs.readFile(path.join(f.source, "current.json"), "utf8")).not.toBe(previous); });
+      await fs.copyFile(path.join(f.source, "current.json"), path.join(f.destination, "current.json"));
+      await waitFor(async () => { expect(refreshErrors.length).toBeGreaterThan(0); expect((await health()).count).toBe(1); });
+      await fs.cp(f.source, f.destination, { recursive: true, force: true });
+      await waitFor(async () => { expect(await health()).toMatchObject({ count: 1, refreshError: false }); });
+      await fs.copyFile(source, path.join(f.root, "NAS Media", "late-media.mp4"));
+      await waitFor(async () => { const next = await health(); expect(next.count).toBe(2); expect(next.revision).not.toBe(original.revision); });
+      expect(f.errors).toEqual([]);
+    } finally { await server.close(); }
+  }, 20000);
   it("moves metadata while media is offline and resumes pending publication at the new library", async () => {
     const f = await fixture(), media = path.join(f.root, "PC Output"), offline = `${media}-offline`, moved = path.join(f.root, "Moved Offline Library");
     await f.sync(); const library = f.open(); await library.reload();

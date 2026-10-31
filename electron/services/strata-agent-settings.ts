@@ -6,6 +6,9 @@ import { strataPreparationProfiles, validStrataPort } from "../../src/core/strat
 import { localStateBase, privateLocalDirectory, writePrivateJson } from "./private-local-state.js";
 import { normalizeStrataUncensoredMode, isStrataUncensoredMode, type StrataUncensoredMode } from "../../src/core/strata-uncensored.js";
 import { managedStrataDirectory, isManagedStrataPath, resolvedStrataDirectory } from "./strata-installation.js";
+import { resolveStudioDataDirectory } from "./studio-data-location.js";
+import { durableCandidate, readOptionalFile, withStateFileLock } from "./state-file-safety.js";
+import { createHash } from "node:crypto";
 
 export interface AgentPreferences {
   schema: 1; modelId: string; uncensored: boolean; lan: boolean;
@@ -58,13 +61,41 @@ export function normalizeAgentPreferences(value: unknown): AgentPreferences {
   }
   return result;
 }
+async function preferencesDirectory(directory: string): Promise<string> {
+  if (path.resolve(directory).toLowerCase() !== path.resolve(agentDirectory()).toLowerCase()) return directory;
+  const destination = path.join(path.dirname(await resolveStudioDataDirectory()), "AgentPreferences");
+  const legacy = path.join(directory, "preferences.json"), filename = path.join(destination, "preferences.json");
+  await withStateFileLock(filename, async () => {
+    const raw = await readOptionalFile(legacy);
+    if (raw === undefined) return;
+    normalizeAgentPreferences(JSON.parse(raw)); // A broken preference file must not become fresh defaults.
+    await privateLocalDirectory(destination);
+    const existing = await readOptionalFile(filename);
+    if (existing !== undefined && existing !== raw) throw new Error("Documents 与旧启动器设置不同；请先核对两份 preferences.json，未覆盖或删除原件。");
+    const hash = createHash("sha256").update(raw).digest("hex");
+    const saved = path.join(destination, `preferences.pre-migration-${hash}.json`);
+    if (await readOptionalFile(saved) === undefined) await fs.rename(await durableCandidate(saved, raw), saved);
+    if (await fs.readFile(saved, "utf8") !== raw) throw new Error("启动器设置备份校验失败；原件保留。");
+    if (existing === undefined) await fs.rename(await durableCandidate(filename, raw), filename);
+    if (await fs.readFile(legacy, "utf8") !== raw) throw new Error("旧启动器设置发生变化；原件保留。");
+    await fs.unlink(legacy);
+  });
+  return destination;
+}
+async function studioStateFile(): Promise<string> {
+  const filename = path.join(await resolveStudioDataDirectory(), "studio-state.json");
+  // Read-only discovery before Studio's first upgraded launch remains compatible.
+  if (await readOptionalFile(filename) !== undefined) return filename;
+  return path.join(process.env.APPDATA ?? os.homedir(), "ai-video-gen-tool", "studio-state.json");
+}
 export async function readAgentPreferences(directory = agentDirectory()): Promise<AgentPreferences> {
+  directory = await preferencesDirectory(directory);
   try { return normalizeAgentPreferences(JSON.parse(await fs.readFile(path.join(directory, "preferences.json"), "utf8"))); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const defaults = agentDefaults();
     try {
-      const studio = JSON.parse(await fs.readFile(path.join(process.env.APPDATA ?? os.homedir(), "ai-video-gen-tool", "studio-state.json"), "utf8"));
+      const studio = JSON.parse(await fs.readFile(await studioStateFile(), "utf8"));
       if (validStrataPort(studio.settings?.strataPort)) defaults.strataPort = studio.settings.strataPort;
     } catch { /* An absent Studio profile is normal in standalone mode. */ }
     return defaults;
@@ -72,6 +103,7 @@ export async function readAgentPreferences(directory = agentDirectory()): Promis
 }
 export async function saveAgentPreferences(value: unknown, directory = agentDirectory()): Promise<AgentPreferences> {
   const preferences = normalizeAgentPreferences(value);
+  directory = await preferencesDirectory(directory);
   await privateLocalDirectory(directory);
   await writePrivateJson(path.join(directory, "preferences.json"), preferences);
   return preferences;
@@ -92,9 +124,9 @@ export function applyAgentDiscovery(preferences: AgentPreferences, found: {
   };
 }
 /** Only whitelisted discovery fields; never import provider keys, history, queue or user defaults. */
-export async function agentSettings(preferences: AgentPreferences, stateFile = path.join(process.env.APPDATA ?? os.homedir(), "ai-video-gen-tool", "studio-state.json")) {
+export async function agentSettings(preferences: AgentPreferences, stateFile?: string) {
   let studio: Record<string, unknown> = {};
-  try { studio = JSON.parse(await fs.readFile(stateFile, "utf8")).settings ?? {}; }
+  try { studio = JSON.parse(await fs.readFile(stateFile ?? await studioStateFile(), "utf8")).settings ?? {}; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(preferences.strataDirectory && (preferences.modelRoot || preferences.modelDirectory)))
       throw new Error("Studio 路径发现文件无法读取；请修复该文件或显式选择独立安装和模型路径。");

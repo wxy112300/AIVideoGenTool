@@ -77,7 +77,7 @@ export class LibraryStartupWindow {
           root.lang=state.progress.locale;
           Object.assign(root.dataset,state.progress.appearance);
           const pane=document.querySelector('#library-startup-progress');
-          pane.dataset.operation=state.progress.operation;pane.dataset.stage=state.progress.stage;
+          pane.dataset.operation=state.progress.operation;pane.dataset.scope=state.progress.scope??'library';pane.dataset.stage=state.progress.stage;
           pane.dataset.completed=String(state.progress.completed??'');pane.dataset.total=String(state.progress.total??'');
           for(const [id,text] of Object.entries({heading:state.view.title,stage:state.view.stage,count:state.view.count+(state.view.percent===undefined?'':' · '+state.view.percent+'%'),hint:state.view.hint})){
             const element=document.getElementById(id);if(element.textContent!==text)element.textContent=text;

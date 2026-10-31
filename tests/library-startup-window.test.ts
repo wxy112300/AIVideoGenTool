@@ -64,4 +64,21 @@ describe("library startup window lifetime", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(window.destroyed).toBe(true); expect(window.webContents.executeJavaScript.mock.calls.length).toBe(before + 1);
   });
+  it("reuses the same window for user-data scan, copy, reference update and cleanup", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(fs, "readdir").mockResolvedValue([] as any);
+    const host = new LibraryStartupWindow("assets", vi.fn());
+    host.update({ ...progress, scope: "user-data", stage: "scan", completed: undefined, total: undefined });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fakes.windows).toHaveLength(1);
+    const window = fakes.windows[0];
+    expect(window.show).toHaveBeenCalledOnce();
+    for (const stage of ["write", "verify", "commit", "cleanup"] as const) {
+      host.update({ ...progress, scope: "user-data", stage, completed: 4, total: 10 });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(window.webContents.executeJavaScript.mock.calls.at(-1)[0]).toContain(`"stage":"${stage}"`);
+      expect(window.webContents.executeJavaScript.mock.calls.at(-1)[0]).toContain("正在迁移用户资料");
+    }
+    expect(fakes.windows).toHaveLength(1); host.close(); expect(window.destroyed).toBe(true);
+  });
 });

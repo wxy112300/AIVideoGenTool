@@ -229,7 +229,7 @@ flowchart TD
 <a id="library-storage"></a>
 首次迁移/耗时打开时，在主界面前显示只读启动小窗；计数来自实际记录写入/读回，完成自动交接，进度故障不影响存储。用 `node scripts/harness/library-startup-progress-smoke.mjs` 验证可见进度、中断保留原件、重启完整恢复及窗口关闭。
 
-资料库路线（`guide library-storage`）：旧 AppData state → 校验/完整备份 → Documents 分作品候选 → 独立读回 → 原子切换定位 → History/Settings 原有入口 → 已提交变更后台发布 → Drive 乱序校验 → NAS 本地 SQLite → 只读浏览。位置冲突/缺库/写失败必须保留原件且可恢复，不落空库；旧媒体和队列快照保持。操作与异常路径见[资料库/NAS 手册](LIBRARY_STORAGE_AND_NAS.md)，隔离 UI 复现用 `node scripts/harness/library-storage-smoke.mjs`，NAS v2 用 `node Tools/NasBrowser/smoke.mjs --v2`。
+资料库路线（`guide library-storage`）：旧 AppData 业务文件 → Documents/Data 双份校验复制与恢复标记 → 正常资料库加载 → 事务更新素材路径 → 校验后清理旧业务文件 → History/Settings 原有入口 → 已提交变更后台发布 → Drive 乱序校验 → NAS 本地 SQLite → 只读浏览。未迁移 state 仍先建立 Documents 分作品候选、独立读回并原子切换定位；已有 Library 位置与 ID 保留。位置冲突/缺库/写失败必须保留原件且可恢复，不落空库；作品/任务 ID 及队列内容保留，辅助素材路径更新，Electron 自身缓存不迁移。操作与异常路径见[资料库/NAS 手册](LIBRARY_STORAGE_AND_NAS.md)，隔离 UI 复现用 `node scripts/harness/library-storage-smoke.mjs --migrate-user-data`（不加参数复用原 Library 测试），NAS v2 用 `node Tools/NasBrowser/smoke.mjs --v2`。
 
 保存位置变更：历史数据/视频/图片路径 → 保存 → 新旧位置确认（可取消）→ 实际移动与校验进度 → 持久提交路径 → 源文件移走后完成。视频和图片不得越出当前 ComfyUI output，选择器及后端都检查；运行队列阻止迁移。无确认不能仅改路径；失败/中断从日志恢复，保留作品、版本、草稿与队列身份。独立输入归档与 Run/AV/Motion 不被当作普通输出误搬。
 

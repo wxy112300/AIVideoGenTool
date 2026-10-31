@@ -8,16 +8,21 @@ import { createRequire } from "node:module";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
-import { connectApp, pollUntil } from "../app-harness.mjs";
+import { AppCdpClient, connectApp, loopbackWebSocket, pollUntil } from "../app-harness.mjs";
 import { fixtureUi } from "./fixture-ui.mjs";
 import { createDefaultState } from "../../dist/electron/src/core/defaults.js";
 import { H3_VIDEO_VAE_FP16_FILENAME } from "../../dist/electron/src/core/h3-video-vae.js";
 import { normalizeH3MemoryOptions } from "../../dist/electron/src/core/h3-memory-policy.js";
 
 const root = path.resolve(import.meta.dirname, "../.."), execute = promisify(execFile), electron = createRequire(import.meta.url)("electron");
+const migrateUserData = process.argv.includes("--migrate-user-data");
+const checkMigrationWindow = process.argv.includes("--migration-window");
+if (checkMigrationWindow && !migrateUserData) throw new Error("--migration-window requires --migrate-user-data");
 await fs.mkdir(path.join(root, "temp"), { recursive: true });
 const directory = await fs.mkdtemp(path.join(root, "temp", "library-ui-")), userData = path.join(directory, "user-data"), output = path.join(directory, "comfy", "output");
-const stateFile = path.join(userData, "studio-state.json"), moved = path.join(directory, "chosen-library"), occupied = path.join(directory, "occupied");
+const legacyStateFile = path.join(userData, "studio-state.json");
+const dataDirectory = migrateUserData ? path.join(userData, "Documents", "Local Video Studio", "Data") : userData;
+const stateFile = path.join(dataDirectory, "studio-state.json"), moved = path.join(directory, "chosen-library"), occupied = path.join(directory, "occupied");
 for (const name of [userData, output, occupied]) await fs.mkdir(name, { recursive: true });
 await fs.writeFile(path.join(occupied, "precious.txt"), "Do not overwrite");
 const models = path.join(directory, "models"), core = path.join(directory, "comfy");
@@ -42,17 +47,55 @@ state.imageHistory = [{ mediaKind: "image", id: "old-image", title: "Old source 
   versions: [{ id: "old-image-version", versionNumber: 1, kind: "source", createdAt: time, modelId: "source", workflowPath: "", prompt: "", promptVersion: 0, references: [], width: 640, height: 360, format: "png", file: { filename: "old-image.png", absolutePath: image, type: "input", subfolder: "" }, futureField: { preserve: true } }] }];
 state.imageHistory[0].versions.push({ ...structuredClone(state.imageHistory[0].versions[0]), id: "generated-image-version", versionNumber: 2, kind: "edit", parentVersionId: "old-image-version", file: { filename: "old-result.png", absolutePath: generatedImage, type: "output", subfolder: "" } });
 state.imageHistory[0].nextVersionNumber = 3;
-const originalRaw = JSON.stringify(state); await fs.writeFile(stateFile, originalRaw);
+let pastedImage, migratedImage;
+const cachedCoverKey = "migration-existing-cover", cachedCoverDigest = digest(cachedCoverKey);
+if (migrateUserData) {
+  pastedImage = path.join(userData, "clipboard-inputs", "source.png"); migratedImage = path.join(dataDirectory, "clipboard-inputs", "source.png");
+  await fs.mkdir(path.dirname(pastedImage), { recursive: true }); await fs.copyFile(image, pastedImage);
+  state.imageToVideoDraft.startImagePath = pastedImage;
+  const coverDirectory = path.join(userData, "history-covers", "v3"); await fs.mkdir(coverDirectory, { recursive: true });
+  await execute("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", media, "-frames:v", "1", path.join(coverDirectory, `${cachedCoverDigest}.jpg`)]);
+  const stat = await fs.stat(media);
+  await fs.writeFile(path.join(coverDirectory, `${cachedCoverDigest}.json`), JSON.stringify({ sourceSize: stat.size, sourceMtimeMs: stat.mtimeMs, generatedAt: time }));
+  if (checkMigrationWindow) {
+    const fixtureFiles = path.join(userData, "clipboard-files", "migration-fixture"); await fs.mkdir(fixtureFiles, { recursive: true });
+    for (let index = 0; index < 512; index++) await fs.writeFile(path.join(fixtureFiles, `${index}.bin`), Buffer.alloc(2048, index % 256));
+  }
+}
+const originalRaw = JSON.stringify(state); await fs.writeFile(legacyStateFile, originalRaw);
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.VITE_DEV_SERVER_URL;
 for (const key of ["APPDATA", "LOCALAPPDATA", "TEMP", "TMP"]) { env[key] = path.join(directory, key.toLowerCase()); await fs.mkdir(env[key], { recursive: true }); }
 const report = { ok: false, directory, realApp: true, focusEmulation: true, userLibraryAccessed: false, gpu: false, scannerPlaceholders: true, processes: [], checks: [] };
 let child, client;
 const wait = (test, label) => pollUntil(test, Boolean, 30000, label, 100);
 const freePort = async () => { const server = net.createServer(); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve)); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; };
+async function observeMigrationWindow(port) {
+  await pollUntil(async () => {
+    let progressClient;
+    try {
+      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      const target = targets.find(item => item.type === "page" && item.url.startsWith("data:text/html"));
+      if (!target) return false;
+      progressClient = new AppCdpClient(loopbackWebSocket(target.webSocketDebuggerUrl, port), 3000); await progressClient.connect();
+      const value = await progressClient.evaluate(`(() => {
+        const pane=document.querySelector('#library-startup-progress');
+        return pane ? {title:document.title,visible:!document.hidden,...pane.dataset,heading:document.querySelector('#heading').textContent,stageText:document.querySelector('#stage').textContent,count:document.querySelector('#count').textContent} : null;
+      })()`);
+      if (!value?.visible || value.scope !== "user-data" || !(Number(value.completed) > 0) || !(Number(value.total) >= 512) || Number(value.completed) >= Number(value.total)) return false;
+      assert.equal(value.heading, "正在迁移用户资料"); assert.ok(value.count.includes("/"));
+      report.migrationWindow = { ...value, targetId: target.id };
+      const screenshot = await progressClient.send("Page.captureScreenshot", { format: "png" });
+      await fs.writeFile(path.join(directory, "user-data-migration.png"), Buffer.from(screenshot.data, "base64"));
+      return true;
+    } catch (error) { report.migrationWindowProbe = error.message; return false; }
+    finally { progressClient?.close(); }
+  }, Boolean, 120000, "Visible user-data migration window with actual file counts", 50);
+}
 async function launch() {
   const port = await freePort(), log = openSync(path.join(directory, "app.log"), "a");
-  child = spawn(electron, ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${port}`, `--user-data-dir=${userData}`, root], { cwd: root, env, windowsHide: true, stdio: ["ignore", log, log] }); closeSync(log);
+  child = spawn(electron, ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${port}`, `--user-data-dir=${userData}`, ...(migrateUserData ? ["--migrate-profile-data"] : []), root], { cwd: root, env, windowsHide: true, stdio: ["ignore", log, log] }); closeSync(log);
   report.processes.push({ pid: child.pid, port });
+  if (checkMigrationWindow && report.processes.length === 1) await observeMigrationWindow(port);
   client = await pollUntil(async () => {
     try { return await connectApp({ port, timeout: 3000, target: "" }); }
     catch (error) { report.discoveryError = error.message; return null; }
@@ -60,6 +103,10 @@ async function launch() {
   // Discovery retries are short; renderer commands need the normal UI timeout.
   client.timeout = 30000;
   await wait(() => client.evaluate('!!document.querySelector("button[data-page=history]")'), "Shell");
+  if (checkMigrationWindow) {
+    await wait(async () => !(await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).some(target => target.type === "page" && target.url.startsWith("data:text/html")), "Migration progress window closes on handoff");
+    report.migrationWindowClosed = true;
+  }
   await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 }
 async function nativeClose() {
@@ -124,6 +171,16 @@ try {
   assert.equal(migrated.history.length, 1); assert.equal(migrated.imageHistory.length, 1); assert.ok(migrated.history[0].futureExtension.preserve);
   assert.equal(await fs.readFile(`${stateFile}.pre-library-${digest(originalRaw)}.json`, "utf8"), originalRaw);
   assert.ok(migrated.settings.libraryDirectory.startsWith(userData)); report.libraryId = migrated.libraryStorage.libraryId;
+  if (migrateUserData) {
+    assert.equal(migrated.imageToVideoDraft.startImagePath, migratedImage);
+    assert.deepEqual(await fs.readFile(migratedImage), await fs.readFile(image));
+    assert.equal(await fs.readFile(path.join(dataDirectory, "migration-backup", "studio-state.json"), "utf8"), originalRaw);
+    assert.equal(JSON.parse(await fs.readFile(path.join(dataDirectory, "user-data-migration.json"), "utf8")).phase, "complete");
+    assert.equal(await fs.stat(legacyStateFile).then(() => true, () => false), false);
+    assert.equal(await fs.stat(path.join(userData, "history-covers")).then(() => true, () => false), false);
+    assert.equal((await client.evaluate(`window.studio.lookupHistoryCover(${JSON.stringify(cachedCoverKey)}, ${JSON.stringify(media)})`)).state, "hit");
+    report.checks.push("real startup: owned files leave legacy profile, exact original retained in Documents, pasted input relinked and cached cover hits without generation; Electron profile remains in place");
+  }
   await ui.openHistory("old-asset");
   await client.evaluate("document.querySelector('.history-player video').play();window.__libraryVideo=document.querySelector('.history-player video');true");
   const frames = await client.evaluate("window.__libraryVideo.getVideoPlaybackQuality().totalVideoFrames");
@@ -216,6 +273,9 @@ try {
   await wait(() => client.evaluate("window.studio.getState().then(s=>s.draft.promptVersions[s.draft.activePromptVersion].text.includes('different scene'))"), "Draft persisted");
   assert.deepEqual((await savedState()).queue[0], task);
   assert.equal((await savedState()).queueRunning, false);
+  // The real Create journey above edits the active draft. Compare restart with
+  // that accepted UI state, rather than the inactive input from the old fixture.
+  const imageToVideoBeforeRestart = (await savedState()).imageToVideoDraft;
   await nativeClose(); await launch(); ui = fixtureUi(client, 30000, report);
   const restarted = await savedState();
   // Existing schema-16 startup fills the withdrawn H3 memory fields with inert
@@ -223,6 +283,12 @@ try {
   assert.deepEqual(restarted.queue[0], { ...task, ...normalizeH3MemoryOptions(task, "off") });
   assert.equal(restarted.history[0].favorite, true); assert.ok(restarted.history[0].tags.includes("Migration checked"));
   assert.equal(restarted.libraryStorage.libraryId, report.libraryId); assert.equal(restarted.libraryStorage.directory, moved);
+  if (migrateUserData) {
+    assert.deepEqual(restarted.imageToVideoDraft, imageToVideoBeforeRestart);
+    assert.deepEqual(await fs.readFile(migratedImage), await fs.readFile(image));
+    assert.equal((await client.evaluate(`window.studio.lookupHistoryCover(${JSON.stringify(cachedCoverKey)}, ${JSON.stringify(media)})`)).state, "hit");
+    assert.equal(await fs.stat(legacyStateFile).then(() => true, () => false), false);
+  }
   assert.equal(digest(await fs.readFile(media)), mediaHash); assert.equal(await fs.readFile(path.join(occupied, "precious.txt"), "utf8"), "Do not overwrite");
   await ui.openHistory("old-asset"); await ui.click(".history-detail-back-button");
   await nativeClose(); report.checks.push("missing prompt → keyboard recovery → actual enqueue button → new task ID; later draft edit and native restart preserve frozen task; old video and parent return remain reachable");

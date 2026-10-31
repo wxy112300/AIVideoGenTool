@@ -514,7 +514,7 @@ describe("main/preload boundary characterization", () => {
     const startupSteps = [
       'appLogger.info("app", "ready"',
       "const studioPaths = createStudioPaths",
-      "const stateRepository = new JsonStore",
+      "const stateRepository = new MigratingUserDataRepository(new JsonStore",
       "const runtime = new ApplicationRuntime",
       "applicationRuntime = runtime",
       "await runtime.start({",

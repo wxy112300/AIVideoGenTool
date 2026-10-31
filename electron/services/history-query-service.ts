@@ -187,8 +187,14 @@ function historyPathRepairNeeded(
 export class HistoryQueryService {
   private readonly coverGenerations = new Map<string, number>();
   private readonly coverWriteTails = new Map<string, Promise<void>>();
+  private readonly coverSavedListeners = new Set<(key: string) => void>();
 
   constructor(private readonly deps: HistoryQueryServiceDependencies) {}
+
+  onCoverSaved(listener: (key: string) => void): () => void {
+    this.coverSavedListeners.add(listener);
+    return () => { this.coverSavedListeners.delete(listener); };
+  }
 
   coverPathFromDigest(digest: string, extension = ".jpg"): string {
     return historyCoverPathFromDigest(
@@ -465,6 +471,9 @@ export class HistoryQueryService {
       }
       const coverStat = await this.safeStat(filename);
       if (!coverStat?.isFile()) return { state: "failed" };
+      for (const listener of this.coverSavedListeners) {
+        try { listener(input.key); } catch { /* Consumers cannot invalidate a completed cache write. */ }
+      }
       return { state: "saved", url: this.historyCoverUrl(input.key, coverStat.mtimeMs) };
     });
   }

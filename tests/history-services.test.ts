@@ -462,6 +462,25 @@ describe("History application services", () => {
     expect(await fs.readdir(path.join(root, "covers"))).toHaveLength(2);
   });
 
+  it("notifies cover consumers only after a successful write, isolates listeners and supports unsubscribe", async () => {
+    const root = await temporaryRoot(), source = path.join(root, "source.mp4"); await fs.writeFile(source, "video");
+    const query = queryFor(repository(createDefaultState()), root), notified = vi.fn();
+    const stop = query.onCoverSaved(notified);
+    const stopBroken = query.onCoverSaved(() => { throw new Error("Consumer failure"); });
+    const lookup = await query.lookupHistoryCover("late-cover", source);
+    if (lookup.state !== "miss") throw new Error("Expected uncached source");
+    const input = { key: "late-cover", sourcePath: source, sourceRevision: lookup.sourceRevision, data: new Uint8Array([1, 2, 3]).buffer };
+    expect(await query.saveHistoryCoverIfCurrent(input)).toMatchObject({ state: "saved" });
+    expect(notified).toHaveBeenCalledExactlyOnceWith("late-cover");
+    expect(await fs.readdir(path.join(root, "covers"))).toHaveLength(2);
+    await fs.writeFile(source, "changed video");
+    expect(await query.saveHistoryCoverIfCurrent(input)).toEqual({ state: "stale" });
+    expect(notified).toHaveBeenCalledTimes(1);
+    stop(); stopBroken();
+    expect(await query.saveHistoryCover("late-cover", source, new Uint8Array([4, 5, 6]))).toBe(true);
+    expect(notified).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a source revision and rejects a save after the source changes", async () => {
     const root = await temporaryRoot();
     const source = path.join(root, "source.mp4");

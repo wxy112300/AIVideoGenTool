@@ -18,6 +18,8 @@ import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
 import { JsonStore } from "./store.js";
+import { studioStorageLocation } from "./services/studio-data-location.js";
+import { MigratingUserDataRepository, UserDataMigration } from "./services/user-data-migration.js";
 import { NasPublisher } from "./services/nas-publisher.js";
 import { recoverLibraryLocation } from "./services/library-location-recovery.js";
 import { LibraryStartupWindow } from "./library-startup-window.js";
@@ -655,6 +657,7 @@ function registerIpc(
       service: applicationServices.imageDocument
     })
   });
+  nasPublisher?.observeCovers(applicationServices.history.query);
   registerHistoryIpc({
     ipc: ipcMain,
     query: applicationServices.history.query,
@@ -672,31 +675,33 @@ app.whenReady().then(async () => {
     arch: process.arch
   });
   Menu.setApplicationMenu(null);
-  const studioPaths = createStudioPaths(app.getPath("userData"));
+  const legacyUserData = app.getPath("userData");
+  const storage = studioStorageLocation(legacyUserData, app.getPath("documents"), app.commandLine.hasSwitch("user-data-dir"), app.commandLine.hasSwitch("migrate-profile-data"));
+  const studioPaths = createStudioPaths(storage.data);
+  process.env.LVS_STUDIO_DATA_DIRECTORY = storage.data;
   libraryStartupWindow = new LibraryStartupWindow(path.join(currentDirectory, "..", "..", "renderer", "assets"), error =>
     appLogger.warn("storage", "startup-progress-failed", error instanceof Error ? error.message : String(error)));
   // Alternate profiles (including harness fixtures) must never migrate into
   // the primary user's Documents library.
-  const documents = app.commandLine.hasSwitch("user-data-dir")
-    ? path.join(studioPaths.userDataDirectory, "Documents")
-    : app.getPath("documents");
+  const documents = storage.documents;
   nasPublisher = new NasPublisher({
     stateFile: studioPaths.stateFile,
     coversDirectory: studioPaths.historyCoverDirectory,
     resolveOutputRoot: (settings) => resolveComfyOutputDirectory(settings),
     onError: (error) => appLogger.warn("storage", "nas-publish-failed", error instanceof Error ? error.message : String(error))
   });
-  const stateRepository = new JsonStore(studioPaths.stateFile, {
+  const onStorageProgress = (progress: import("../src/core/library-storage-progress.js").LibraryStorageProgress) => {
+    startupLocale = progress.locale;
+    libraryStartupWindow?.update(progress);
+  };
+  const stateRepository = new MigratingUserDataRepository(new JsonStore(studioPaths.stateFile, {
     libraryDirectory: path.join(documents, "Local Video Studio", "Library"),
     beforeLibraryMove: () => nasPublisher!.prepareLibraryMove(),
     onMoveProgress: progress => studioEventBus.publish("history-migration:progress", progress),
-    onProgress: progress => {
-      startupLocale = progress.locale;
-      libraryStartupWindow?.update(progress);
-    },
+    onProgress: onStorageProgress,
     onCommitted: (state) => nasPublisher?.schedule(state),
     onWarning: (error) => appLogger.warn("storage", "backup-maintenance-failed", error instanceof Error ? error.message : String(error))
-  });
+  }), storage.migrate ? new UserDataMigration(legacyUserData, storage.data, onStorageProgress) : undefined);
   store = stateRepository;
   const queueRuntime = new QueueRuntimeService({
     store: stateRepository,

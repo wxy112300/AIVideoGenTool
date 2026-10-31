@@ -2,8 +2,8 @@ import path from "node:path";
 
 /**
  * Paths owned by the application rather than by Electron's window or runtime
- * shell.  The values are constructed once after Electron resolves userData
- * and then passed to the application handlers that need them.
+ * shell. Normal profiles use Documents/Local Video Studio/Data; Electron's
+ * own userData/cache directory is intentionally independent.
  */
 export interface StudioPaths {
   readonly userDataDirectory: string;

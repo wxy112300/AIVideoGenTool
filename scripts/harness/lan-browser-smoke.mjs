@@ -85,6 +85,14 @@ try {
     const shot=await studio.send("Page.captureScreenshot",{format:"png"});await fs.writeFile(path.join(directory,`settings-lan-${width}.png`),Buffer.from(shot.data,"base64"));
   }
   const local=`http://127.0.0.1:${webPort}/`;
+  let nasCoverProbe;
+  if(process.argv.includes("--cover-publication")) {
+    const locator=await studio.evaluate("window.studio.getState().then(s=>s.libraryStorage)");
+    if(path.resolve(locator.directory)!==path.join(directory,"library"))throw Error("Unexpected cover-publication fixture library");
+    const publishedRoot=path.join(locator.directory,"StudioLibrary",locator.libraryId);
+    const pointer=await wait(async()=>{try{return JSON.parse(await fs.readFile(path.join(publishedRoot,"current.json"),"utf8"));}catch{return null;}},"Initial NAS publication");
+    nasCoverProbe={locator,publishedRoot,commit:pointer.commit};
+  }
   report.lanInterfaceReachable=[];
   for(const url of report.service.urls) { try { report.lanInterfaceReachable.push({url,status:(await fetch(url,{signal:AbortSignal.timeout(3000)})).status}); } catch { report.lanInterfaceReachable.push({url,status:0}); } }
   browserProcess=launch(["--remote-debugging-address=127.0.0.1",`--remote-debugging-port=${browserPort}`,`--user-data-dir=${path.join(directory,"browser-data")}`,path.join(root,"scripts/harness/lan-browser-window.cjs"),local],"browser");
@@ -98,6 +106,21 @@ try {
   assert.equal(report.phoneLayout.columns,2); assert.equal(report.phoneLayout.overflow,false);
   await wait(()=>browser.evaluate('[...document.querySelectorAll(".media-tile img")].slice(0,2).every(i=>i.complete&&i.naturalWidth>0)'),"Cold covers");
   report.coldCovers=true;
+  if(nasCoverProbe) {
+    const {locator,publishedRoot,commit}=nasCoverProbe;
+    await wait(async()=>{
+      try {
+        const next=JSON.parse(await fs.readFile(path.join(publishedRoot,"current.json"),"utf8")); if(next.commit===commit)return false;
+        const manifest=JSON.parse(await fs.readFile(path.join(publishedRoot,"commits",next.commit+".json"),"utf8"));
+        const ref=manifest.records.find(r=>r.id==="lan-0"); if(!ref)return false;
+        const asset=JSON.parse(await fs.readFile(path.join(publishedRoot,"records",ref.hash+".json"),"utf8"));
+        const cover=asset.versions.find(v=>v.id==="version-0")?.cover; if(!cover)return false;
+        return (await fs.stat(path.join(locator.directory,cover.path))).size===cover.size;
+      } catch{return false;}
+    },"Saved cover automatically reaches NAS projection");
+    assert.equal(await studio.evaluate("window.studio.getState().then(s=>s.libraryStorage.commit)"),locator.commit);
+    report.coverOnlyNasPublication=true;
+  }
   async function screenshot(name) { const shot=await browser.send("Page.captureScreenshot",{format:"png"}); await fs.writeFile(path.join(directory,`${name}.png`),Buffer.from(shot.data,"base64")); }
   await screenshot("phone-wall");
   await click(browser,'.media-tile[data-index="0"]');
