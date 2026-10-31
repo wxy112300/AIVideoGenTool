@@ -19,12 +19,15 @@ describe("settings form", () => {
     const base = { ...createDefaultSettings(), comfyInstallDirectory: "", comfyPythonPath: "" };
     const install = { value: "C:\\Detected\\ComfyUI", dataset: { autoDirectory: "C:\\Detected\\ComfyUI" } };
     const python = { value: "C:\\Detected\\python.exe", dataset: { autoDirectory: "C:\\Detected\\python.exe" } };
-    globalThis.document = { querySelector: vi.fn((id: string) => id === "#comfy-install-directory" ? install : id === "#comfy-python-path" ? python : null) } as unknown as Document;
+    const models = { value: "C:\\Detected\\ComfyUI\\models", dataset: { autoDirectory: "C:\\Detected\\ComfyUI\\models" } };
+    globalThis.document = { querySelector: vi.fn((id: string) => id === "#comfy-install-directory" ? install : id === "#comfy-python-path" ? python : id === "#model-directory" ? models : null) } as unknown as Document;
     try {
       const unchanged = readSettingsFromForm(base, "official-storyboard", "faithful");
       expect(unchanged).toEqual(base);
       python.value = "D:\\Other\\python.exe";
       expect(readSettingsFromForm(base, "official-storyboard", "faithful").comfyPythonPath).toBe(python.value);
+      models.value = "D:\\My models";
+      expect(readSettingsFromForm(base, "official-storyboard", "faithful").modelDirectory).toBe(models.value);
     } finally { globalThis.document = previousDocument; }
   });
   it("reads reasoning effort and retains it when the Strata control is hidden", () => {

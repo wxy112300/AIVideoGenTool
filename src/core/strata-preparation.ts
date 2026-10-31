@@ -43,11 +43,19 @@ export function strataModelScanRoots(
   return [...new Set([canonical, existing, sharedOriginal, `${root}${separator}LLM${separator}strata`])];
 }
 
+/** Software identity is independent of the selected ComfyUI and shared model directory. */
+export function strataRuntimeMatchesSettings(
+  settings: Pick<Settings, "strataInstallDirectory">,
+  status: StrataPreparationStatus | undefined
+): boolean {
+  return Boolean(status && (status.configuredInstallDirectory ?? status.installDirectory) === settings.strataInstallDirectory.trim());
+}
+
 export function strataPreparationMatchesSettings(
   settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "modelDirectory"> & Partial<Pick<Settings, "comfyInstallDirectory">>,
   status: StrataPreparationStatus | undefined
 ): boolean {
-  return Boolean(status && (status.configuredInstallDirectory ?? status.installDirectory) === settings.strataInstallDirectory.trim()
+  return Boolean(strataRuntimeMatchesSettings(settings, status) && status
     && (status.configuredModelDirectory ?? "") === settings.modelDirectory.trim()
     && (status.configuredComfyInstallDirectory ?? "") === (settings.comfyInstallDirectory?.trim() ?? ""));
 }

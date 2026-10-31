@@ -1,12 +1,16 @@
 # Strata 提示词增强：更新调查与接入计划
 
 - 类型：Task；Status: basic-native-validated（0.2.7.1 / 原生引擎0.1.52的IQ3+MTP真实基本图文与连续调用已验；带图思考耗时偏长，长上下文及其他组合仍待验证）
-- Updated / Owner: 2026-10-30 / 当前 agent；Execution: direct，新增子 agent 0
+- Updated / Owner: 2026-11-01 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 2026-11-01 提交收尾：用户授权提交上述设置扫描修复、不更新版本。仅纳入软件/模型匹配拆分、自动模型目录表单语义、相关回归与本任务/CHANGELOG条目；保持当前0.67.5，其他本地化、H3 Refiner、长视频及菜单样式改动不暂存。复用2026-10-31同一修复源码的定向/类型、全量通过项及原参数超时复测、集成/构建/对比度和真实隔离Electron证据，不重复GPU或UI。无打包、tag或Release；提交身份以Git记录为准。
+
+- 2026-10-31 设置扫描误判修复（patch，未bump/提交/推送）：用户报告频繁出现“尚未扫描此目录”并丢失版本。软件卡片原复用模型准备的三目录匹配，模型/Comfy草稿变化会整份丢弃已扫描的软件状态；新增纯软件目录匹配供卡片、安装计数和软件卸载前置守卫共用，模型下载目标/就绪仍用严格完整匹配。应用路径中自动发现的model-directory原无auto标记且按普通值读取，切页/扫描会变为显式设置；复用既有自动目录标记和读取语义，真实编辑仍保留。88项定向及双端typecheck通过，补充模型变化的软件操作回归；全量unit首次3027通过/1项资料库迁移真实IO测试5秒超时，该项所在文件与更新的设置守卫原参数单独24项通过；未改超时/断言。后续127项integration、干净双端构建及440对比度通过，不声称首次verify退出0；忽略日志`temp/strata-scan-20261031-*.log`。真实隔离Electron最初CDP早于preload，修正脚本等待并复用同一实例后，两轮真实系统页→扫描按钮→节点页均保持本机0.2.7.1/重新安装；实际输入不同模型目录后版本保留，持久state严格未变，截图已人工查看。夹具报告`temp/strata-scan-ui-20261031/report.json`，测试PID54424/CDP8894/Comfy8893均退出，无模型/队列/下载/正式设置改动；没有执行卸载或原生退出生命周期验收。保留其他本地化、H3 Refiner和长视频在途改动。
 
 - 2026-10-30 0.67.4提交收尾：用户授权全部仓库改动增加patch并提交推送；纳入本次Strata修复、现有本地化及历史列数等全部源码/文档，package/lockfile/README/CHANGELOG一致为0.67.4。本地化仍按其TASK标记进行中，不将阶段覆盖说成全部完成。全量`npm.cmd run verify`退出0：308个单元文件2963项、7个集成文件127项、双端类型、干净生产构建及440项对比度通过（忽略日志`temp/patch-0674-verify.log`）；独立启动器prepare同步通过。只推代码，不打包、创建tag或GitHub Release；未重跑GPU或改正式安装/偏好。最终提交与远端身份以Git记录和推送核对为准。
 

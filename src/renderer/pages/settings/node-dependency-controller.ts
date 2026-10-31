@@ -9,7 +9,7 @@ import type { RendererCleanup, RendererContext } from "../../contracts";
 import type { EnvironmentRefreshReason } from "../../environment-refresh-coordinator";
 import { customNodeIdsForBulkAction } from "./node-install-queue";
 import { settingsText } from "./copy";
-import { strataPreparationMatchesSettings } from "../../../core/strata-preparation";
+import { strataRuntimeMatchesSettings } from "../../../core/strata-preparation";
 import { animateUi } from "../../shared/ui/motion";
 import { mountTwoColumnMasonry } from "../../shared/ui/masonry";
 
@@ -236,7 +236,7 @@ export function mountSettingsNodeDependencyController(
       return;
     }
     const settings = options.formSettings(), status = options.getEnvironmentScan()?.strataPreparation;
-    if (!strataPreparationMatchesSettings(settings, status) || !status?.managedUninstallable) return;
+    if (!strataRuntimeMatchesSettings(settings, status) || !status?.managedUninstallable) return;
     options.setSettingsDraft(settings);
     options.requestStrataUninstall?.(status.installDirectory);
   }, { signal });

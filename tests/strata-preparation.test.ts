@@ -45,6 +45,24 @@ describe("Strata file preparation", () => {
     expect(offline).toContain('最新</span><strong class="node-version-value">');
     expect(offline).not.toContain('最新</span><strong class="node-version-value">v');
   });
+  it("retains the installed software version across model/Comfy changes while invalidating model evidence", () => {
+    const settings = createDefaultSettings();
+    const status = { configuredInstallDirectory: "", configuredModelDirectory: "", configuredComfyInstallDirectory: "",
+      installDirectory: "managed-strata", modelDirectory: "models", files: [], sourcePresent: true, enginePresent: true,
+      managedInstalled: true, managedUninstallable: true, installedVersion: STRATA_VERSION, scannedAt: "fixture" };
+    for (const changed of [{ ...settings, modelDirectory: "D:\\other-models" }, { ...settings, comfyInstallDirectory: "D:\\other-comfy" }]) {
+      expect(strataPreparationMatchesSettings(changed, status)).toBe(false);
+      const markup = renderStrataPreparationPanel(changed, status, value => value);
+      expect(markup).toContain(`本机</span><strong class="node-version-value">v${STRATA_VERSION}`);
+      expect(markup).not.toContain("尚未扫描此目录");
+      expect(markup).toContain('data-node-operation="reinstall"');
+      expect(markup).toContain('data-uninstall-strata');
+    }
+    const otherInstall = renderStrataPreparationPanel({ ...settings, strataInstallDirectory: "D:\\other-strata" }, status, value => value);
+    expect(otherInstall).toContain("尚未扫描此目录");
+    expect(otherInstall).toContain('data-node-operation="install"');
+    expect(otherInstall).not.toContain('data-uninstall-strata');
+  });
   it("keeps missing MTP optional, shares one pinned manual download across quants and gives its model folder", async () => {
     const settings = { ...createDefaultSettings(), modelDirectory: path.resolve("shared-models") };
     const profiles = strataPreparationProfiles();

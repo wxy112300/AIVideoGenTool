@@ -9,14 +9,15 @@ import type { EnvironmentScanResult } from "../src/types";
 import { mountSettingsNodeDependencyController } from "../src/renderer/pages/settings/node-dependency-controller";
 
 describe("Strata settings controls", () => {
-  it.each(["ready", "running", "stale", "unowned", "disabled"])("requests confirmation only for the current eligible Strata installation (%s)", (state) => {
+  it.each(["ready", "different-model", "running", "stale", "unowned", "disabled"])("requests confirmation only for the current eligible Strata installation (%s)", (state) => {
     const root=document.createElement("main"); root.innerHTML=`<button data-uninstall-strata ${state === "disabled" ? "disabled" : ""}>Uninstall</button>`;
     const settings=createDefaultSettings(), request=vi.fn();
+    if (state === "different-model") settings.modelDirectory = "D:\\new-models";
     const status={configuredInstallDirectory:state === "stale" ? "other" : "",installDirectory:"managed-runtime",managedUninstallable:state !== "unowned"};
     const cleanup=mountSettingsNodeDependencyController({root,getState:()=>({queue:state === "running" ? [{status:"running"}] : []}),getRoute:()=>({page:"settings"}),requestRender:vi.fn(),notify:vi.fn(),t:()=>"blocked"} as unknown as RendererContext,{
       formSettings:()=>settings,getEnvironmentScan:()=>({strataPreparation:status} as EnvironmentScanResult),refreshEnvironment:vi.fn(async()=>null),setSettingsDraft:vi.fn(),enqueueCustomNodeInstall:vi.fn(),requestCustomNodeUninstall:vi.fn(),setLlamaCppPythonInstalling:vi.fn(),getLlamaCppPythonLog:()=>"",setLlamaCppPythonLog:vi.fn(),requestLlamaCppPythonUninstall:vi.fn(),requestStrataUninstall:request
     });
-    try{root.querySelector<HTMLButtonElement>("button")!.click(); if(state === "ready") expect(request).toHaveBeenCalledWith("managed-runtime"); else expect(request).not.toHaveBeenCalled();}finally{cleanup();}
+    try{root.querySelector<HTMLButtonElement>("button")!.click(); if(state === "ready" || state === "different-model") expect(request).toHaveBeenCalledWith("managed-runtime"); else expect(request).not.toHaveBeenCalled();}finally{cleanup();}
   });
   it.each([[false, ""], [false, "D:\\managed\\v0.1.41"], [true, ""]] as const)("gets the managed destination on first guide click and does not reopen a dismissed guide (dismissed=%s, runtime=%s)", async (dismissed, runtimeDirectory) => {
     const root = document.createElement("main");

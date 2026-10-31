@@ -76,7 +76,7 @@ export function readSettingsFromForm(
     promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,
     imagePromptPresets,
-    modelDirectory: value("model-directory", base.modelDirectory),
+    modelDirectory: directoryValue("model-directory", base.modelDirectory),
     outputDirectory: directoryValue("output-directory", base.outputDirectory),
     libraryDirectory: directoryValue("library-directory", base.libraryDirectory ?? ""),
     imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),

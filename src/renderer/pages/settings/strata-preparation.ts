@@ -1,13 +1,13 @@
 import type { Settings, StrataPreparationStatus, StrataInstallProgress } from "../../../types";
 import { STRATA_VERSION } from "../../../core/catalog/dependencies/strata";
-import { strataPreparationMatchesSettings } from "../../../core/strata-preparation";
+import { strataRuntimeMatchesSettings } from "../../../core/strata-preparation";
 import { settingsText } from "./copy";
 import { renderDependencyActionSplit, renderDependencyVersions } from "./dependency-actions";
 import { compareReleaseVersions } from "../../../core/release-version";
 import { renderDependencyFeedback } from "./dependency-presentation";
 
 export function isStrataRuntimeInstalled(settings: Settings, status: StrataPreparationStatus | undefined): boolean {
-  return strataPreparationMatchesSettings(settings, status) && Boolean(status?.managedInstalled && status.sourcePresent && status.enginePresent);
+  return strataRuntimeMatchesSettings(settings, status) && Boolean(status?.managedInstalled && status.sourcePresent && status.enginePresent);
 }
 
 export function strataProgressPresentation(locale: Settings["uiLocale"], progress?: StrataInstallProgress, cancelling = false): { label: string; percent: number | null } {
@@ -59,7 +59,7 @@ export function renderStrataPreparationPanel(
   operation: { installing?: boolean; cancelling?: boolean; progress?: StrataInstallProgress; log?: string; blocked?: boolean; icon?: (name: string) => string } = {}
 ): string {
   const s = (key: Parameters<typeof settingsText>[1]) => escape(settingsText(settings.uiLocale, key));
-  const current = strataPreparationMatchesSettings(settings, status) ? status : undefined;
+  const current = strataRuntimeMatchesSettings(settings, status) ? status : undefined;
   const installed = isStrataRuntimeInstalled(settings, current);
   const needsUpdate = installed && current?.installedVersion && compareReleaseVersions(current.installedVersion, STRATA_VERSION) < 0;
   const icon = operation.icon || (() => "");
