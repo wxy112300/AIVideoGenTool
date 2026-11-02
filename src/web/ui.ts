@@ -15,6 +15,14 @@ export function duration(seconds: number): string {
   const safe = Math.max(0, Math.round(seconds) || 0);
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
+/** Local wall time, with a stable full date and seconds in every interface language. */
+export function mediaTimestamp(value: string): { date: string; time: string } | null {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return { date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` };
+}
 let toastTimer = 0;
 export function toast(message: string): void {
   const element = document.querySelector<HTMLElement>("#toast");

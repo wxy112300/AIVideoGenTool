@@ -104,6 +104,9 @@ try {
   assert.equal(await browser.evaluate("typeof window.studio"),"undefined");
   report.phoneLayout=await browser.evaluate('({width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,tiles:document.querySelectorAll(".media-tile").length,columns:new Set([...document.querySelectorAll(".media-tile")].map(e=>Math.round(e.getBoundingClientRect().x))).size})');
   assert.equal(report.phoneLayout.columns,2); assert.equal(report.phoneLayout.overflow,false);
+  report.completionTime = await browser.evaluate('(()=>{const t=document.querySelector(".media-tile .tile-time");return {datetime:t.getAttribute("datetime"),text:t.textContent}})()');
+  assert.equal(report.completionTime.datetime,state.history[0].versions[0].createdAt);
+  assert.match(report.completionTime.text,/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   await wait(()=>browser.evaluate('[...document.querySelectorAll(".media-tile img")].slice(0,2).every(i=>i.complete&&i.naturalWidth>0)'),"Cold covers");
   report.coldCovers=true;
   if(nasCoverProbe) {
@@ -204,6 +207,7 @@ try {
   await wait(()=>browser.evaluate('document.querySelector(".media-tile").classList.contains("album")'),"Album layout frame");
   report.phoneAlbum=await browser.evaluate('({columns:new Set([...document.querySelectorAll(".media-tile")].map(e=>Math.round(e.getBoundingClientRect().x))).size,fit:getComputedStyle(document.querySelector(".media-tile img")).objectFit})');
   assert.equal(report.phoneAlbum.columns,4);assert.equal(report.phoneAlbum.fit,"cover");
+  assert.ok(await browser.evaluate('(()=>{const e=document.querySelector(".media-tile"),t=e.querySelector(".tile-time").getBoundingClientRect(),d=e.querySelector(".tile-duration").getBoundingClientRect();return Math.abs(t.bottom-d.bottom)<1&&t.right<=d.left})()'));
   await screenshot("phone-album");
   await browser.send("Emulation.setDeviceMetricsOverride",{width:320,height:700,deviceScaleFactor:1,mobile:true});
   await browser.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");

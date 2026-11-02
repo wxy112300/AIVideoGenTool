@@ -1,6 +1,7 @@
 import { uiKeys } from "../i18n-keys.js";
 
 export const zhTWCatalog = {
+  [uiKeys.lanBrowser.syncPending]: "同步資料尚未就緒，仍顯示上次有效內容；稍後點選重新整理重試。",
   [uiKeys.executionProgress.preparing]: "準備工作流程",
   [uiKeys.executionProgress.expanding]: "提示詞擴寫",
   [uiKeys.executionProgress.loadingVideo]: "讀取來源影片",

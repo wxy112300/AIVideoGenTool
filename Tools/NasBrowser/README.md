@@ -4,6 +4,10 @@
 
 电脑创作 → 自动发布浏览资料 → Drive 单向上传 → NAS 独立提供网页。复用现有手机优先界面、完整筛选/排序、收藏/评分/Tag 显示、瀑布流/相册、完整视频播放和按需 Prompt；NAS 只读，不能修改收藏、评分或 Tag，也不会写回 App 状态。排序在 Filter 菜单内。
 
+服务端按 pollSeconds 复检同步目录（默认 10 秒），网页每 20 秒检查版本并自动更新空闲列表，恢复前台时立即检查；播放或筛选弹窗期间延后，保留列表位置。刷新按钮通过 /api/v1/library?refresh=1 立即复检磁盘，错误时保留上次有效资料并提示。封面日期使用所选版本的渲染完成时间，包含秒，与 App 历史卡片时间来源相同。2026-11-03 部署包包含这些修复，需要更新 NAS 服务程序才会生效。
+
+维护 NAS 服务或共享网页后，必须运行 `npm.cmd --prefix Tools/NasBrowser run package:deploy`，直接更新本目录唯一的部署 ZIP 与 SHA-256 文件。该命令重新构建、按白名单打包并逐项核对 SHA-256，不包含实际 config/data、资料库、媒体或基础镜像。
+
 首次部署和更新都使用唯一的[完整部署包](NAS-Browser-Deploy.zip)。已部署服务按[更新手册](UPDATE.md)直接替换程序并重建容器，保留 config/data 和原路径，不保留旧容器。旧浏览资料没有收藏/评分字段：还需在 PC 运行更新后的 App，后台重新发布并经 Drive 同步；不需要手动导出或删除 NAS 索引。
 
 新版 App 已提供分作品资料库和后台 v2 发布，自动维护 `Library/StudioLibrary/<libraryId>`，无需在 App 中配置 NAS 发布目录，上传路径由 Drive Client 设置。新配置请使用[资料库迁移与 NAS 自动发布手册](../../docs/runbooks/LIBRARY_STORAGE_AND_NAS.md)、`config.v2.example.json` 和 `compose.v2.example.yml`；NAS 的 `/data` 保存本地 SQLite，资料与媒体分别只读挂载。下面的 `catalog.json`/CLI 流程作为旧格式兼容路径保留，不能直接读取迁移后省略 history 数组的 AppData 主配置。

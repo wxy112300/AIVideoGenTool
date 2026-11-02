@@ -17,6 +17,8 @@ export interface BrowseVideo {
   title: string;
   createdAt: string;
   updatedAt: string;
+  /** Render completion of the displayed version, matching the App History card. */
+  completedAt?: string;
   modelId: string;
   width: number;
   height: number;
@@ -38,6 +40,8 @@ export interface BrowsePage {
 }
 
 export interface BrowseLibraryInfo {
+  /** The last verified snapshot is still usable while synchronized files are incomplete. */
+  refreshError?: boolean;
   /** Independent replicas never expose desktop metadata mutations. Absent means desktop behavior. */
   readOnly?: boolean;
   revision: string;

@@ -34,8 +34,8 @@ export async function startServer(config: ServerConfig, webRoot: string, log: (m
   await fs.access(path.join(webRoot, "index.html"));
   const library = new NasLibrary(config.mediaRoot, config.libraryDirectory, config.libraryRoot, config.dataDirectory);
   let lastError = "";
-  const reload = async () => {
-    try { await library.reload(); lastError = ""; }
+  const reload = async (force = false) => {
+    try { await library.reload(force); lastError = ""; }
     catch (error) { const message = (error as Error).message; if (message !== lastError) log(`Library refresh: ${message}`); lastError = message; }
   };
   await reload();
@@ -66,7 +66,10 @@ export async function startServer(config: ServerConfig, webRoot: string, log: (m
       return new Response(request.method === "HEAD" ? null : bytes, { headers: { "Content-Type": type, "Content-Length": String(bytes.length), "Cache-Control": relative === "index.html" ? "no-cache" : "private, max-age=3600" } });
     }
     if (parts[1] !== "v1") throw new HttpError(404, "接口不存在。");
-    if (parts.length === 3 && ["library", "facets"].includes(parts[2]!)) return json(library.info());
+    if (parts.length === 3 && ["library", "facets"].includes(parts[2]!)) {
+      if (url.searchParams.get("refresh") === "1") await reload(true);
+      return json({ ...library.info(), refreshError: Boolean(lastError) });
+    }
     if (parts.length === 3 && parts[2] === "videos") {
       let filter: unknown;
       try { filter = JSON.parse(url.searchParams.get("q") ?? "{}"); } catch { throw new HttpError(400, "筛选参数无效。"); }

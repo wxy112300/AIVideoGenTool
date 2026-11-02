@@ -6,6 +6,7 @@ import { api } from "./api";
 import { showFilters } from "./filters";
 import { Library } from "./library";
 import { Player } from "./player";
+import { LibraryRefresh } from "./refresh";
 import { button, escape, icon, renderIcons, setLocale, text, toast } from "./ui";
 
 let filter: HistoryFilterState = { ...defaultHistoryFilter };
@@ -14,6 +15,7 @@ let info: BrowseLibraryInfo;
 let library: Library;
 let player: Player;
 let refreshTimer = 0;
+let updates: LibraryRefresh | undefined;
 const root = document.querySelector<HTMLElement>("#app")!;
 const updateUrl = (item?: BrowseVideo) => {
   const url = new URL(location.href); url.searchParams.set("q", JSON.stringify(filter));
@@ -21,14 +23,16 @@ const updateUrl = (item?: BrowseVideo) => {
   else { url.searchParams.delete("watch"); url.searchParams.delete("version"); }
   return url;
 };
-async function refresh(preserve = false): Promise<void> {
-  await library.load(filter, preserve);
+async function refresh(preserve = false): Promise<boolean> {
+  const loaded = await library.load(filter, preserve);
   root.querySelector('[data-action="filter"]')!.classList.toggle("active", historyFilterIsActive(filter));
+  return loaded;
 }
 function apply(next: HistoryFilterState): void { filter = next; history.replaceState({}, "", updateUrl()); void refresh(); }
 async function closePlayer(): Promise<void> {
   await player.close();
   if (player.dirty) { player.dirty = false; void refresh(true); }
+  else void updates?.check();
 }
 async function openFromUrl(): Promise<void> {
   const url = new URL(location.href); const id = url.searchParams.get("watch");
@@ -61,9 +65,14 @@ async function boot(): Promise<void> {
       const mode = library.mode === "masonry" ? "album" : "masonry"; library.setMode(mode);
       const control = event.currentTarget as HTMLButtonElement; control.innerHTML = icon(mode === "album" ? "columns-3" : "layout-grid"); control.title = text(mode === "album" ? "masonry" : "album"); control.setAttribute("aria-label", control.title); renderIcons(control);
     });
-    const refreshAll = async () => {
-      try { info = await api.info(); root.querySelector<HTMLElement>("#new-content")!.hidden = true; await refresh(true); } catch { toast(text("network")); }
-    };
+    updates = new LibraryRefresh(info.revision, {
+      info: (force) => api.info(force),
+      load: () => refresh(true),
+      accept: (next) => { info = next; root.querySelector<HTMLElement>("#new-content")!.hidden = true; },
+      failed: (syncPending) => toast(text(syncPending ? "syncPending" : "network")),
+      canRefresh: () => !document.hidden && !player.active && !document.querySelector("dialog[open]")
+    });
+    const refreshAll = () => updates!.check(true);
     root.querySelector('[data-action="refresh"]')!.addEventListener("click", () => { void refreshAll(); });
     root.querySelector("#new-content")!.addEventListener("click", () => { void refreshAll(); });
     window.addEventListener("popstate", () => {
@@ -73,10 +82,9 @@ async function boot(): Promise<void> {
     });
     renderIcons(root); await refresh(); await openFromUrl();
     window.clearInterval(refreshTimer);
-    refreshTimer = window.setInterval(() => {
-      if (document.hidden || player.active || document.querySelector("dialog[open]")) return;
-      void api.info().then((next) => { root.querySelector<HTMLElement>("#new-content")!.hidden = next.revision === info.revision; }).catch(() => {});
-    }, 20000);
+    refreshTimer = window.setInterval(() => { void updates?.check(); }, 20000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) void updates?.check(); });
+    window.addEventListener("focus", () => { void updates?.check(); });
   } catch {
     root.innerHTML = `<div class="boot-status"><p>${text("network")}</p><button id="boot-retry">${text("retry")}</button></div>`;
     root.querySelector("button")!.addEventListener("click", () => { void boot(); });

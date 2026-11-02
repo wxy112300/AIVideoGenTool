@@ -119,7 +119,7 @@ export class LanBrowserLibrary {
     const base = `/api/v1/videos/${encodeURIComponent(asset.id)}/versions/${encodeURIComponent(version.id)}`;
     return {
       id: asset.id, versionId: version.id, title: asset.title, createdAt: asset.createdAt,
-      updatedAt: asset.updatedAt, modelId: asset.modelId, width: version.width, height: version.height,
+      updatedAt: asset.updatedAt, completedAt: version.createdAt, modelId: asset.modelId, width: version.width, height: version.height,
       duration: version.duration, favorite: asset.favorite, rating: asset.rating,
       tags: [...asset.tags], revision: historyMetadataRevision(asset),
       coverUrl: `${base}/cover`, mediaUrl: `${base}/media`

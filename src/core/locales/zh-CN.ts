@@ -1,6 +1,7 @@
 import { uiKeys } from "../i18n-keys.js";
 
 export const zhCNCatalog = {
+  [uiKeys.lanBrowser.syncPending]: "同步资料尚未就绪，仍显示上次有效内容；稍后点击刷新重试。",
   [uiKeys.executionProgress.preparing]: "准备工作流",
   [uiKeys.executionProgress.expanding]: "提示词扩写",
   [uiKeys.executionProgress.loadingVideo]: "读取源视频",

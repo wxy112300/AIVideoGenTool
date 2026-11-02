@@ -4,6 +4,7 @@ export class CoverLoader {
   private queue: Array<() => void> = [];
   private cache = new Map<string, { blob: Blob; expires: number }>();
   private bytes = 0;
+  clear(): void { this.cache.clear(); this.bytes = 0; }
   load(image: HTMLImageElement, url: string, failed: () => void): () => void {
     const controller = new AbortController();
     let objectUrl = "";
@@ -20,7 +21,7 @@ export class CoverLoader {
       this.queue.push(() => {
         if (controller.signal.aborted) { this.pump(); return; }
         this.running++;
-        void fetch(url, { signal: controller.signal }).then(async (response) => {
+        void fetch(url, { signal: controller.signal, cache: "no-cache" }).then(async (response) => {
           if (response.status === 503 && attempt++ < 90) {
             // The host is filling its disk cache. Release the HTTP slot before retrying.
             timer = window.setTimeout(run, Math.min(1000, 250 + attempt * 50)); return;

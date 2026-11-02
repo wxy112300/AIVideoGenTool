@@ -1,6 +1,8 @@
 # 更新已部署的 NAS 浏览服务
 
-类型：更新手册；日期：2026-10-29。适用：按 DSM6-QUICKSTART.md 部署的服务，容器名 local-video-studio、端口 8790、配置与本地索引分别挂载项目目录下 config/data。
+类型：更新手册；日期：2026-11-03。适用：按 DSM6-QUICKSTART.md 部署的服务，容器名 local-video-studio、端口 8790、配置与本地索引分别挂载项目目录下 config/data。
+
+2026-11-03 的 NAS-Browser-Deploy.zip 已包含自动刷新、刷新按钮立即复检磁盘、封面缓存更新，以及封面底部的渲染完成日期与时分秒。按下面步骤更新服务程序；保留现有 config/data，无需删除 SQLite 索引或重新同步媒体。
 
 ## 1. 先更新 PC 发布端
 

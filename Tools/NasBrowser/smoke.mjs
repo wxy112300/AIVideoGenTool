@@ -39,6 +39,7 @@ for (let i = 0; i < 18; i++) {
   await fs.copyFile(path.join(directory, `${name}.jpg`), path.join(cache, `${sha(key)}.jpg`));
   await fs.writeFile(path.join(cache, `${sha(key)}.json`), JSON.stringify({ sourceSize: stat.size, sourceMtimeMs: stat.mtimeMs }));
 }
+state.history[0].createdAt = "2020-01-01T00:00:00Z"; // Completion belongs to the selected version.
 const stateFile = path.join(directory, "studio-state.json"), exportConfig = path.join(directory, "export.json"), config = path.join(directory, "server.json");
 await fs.writeFile(stateFile, JSON.stringify(state));
 await fs.writeFile(exportConfig, JSON.stringify({ stateFile, outputRoot: pc, libraryRoot: pcLibrary, libraryDirectory, coversDirectory: cache }));
@@ -118,7 +119,11 @@ try {
   await click('[data-action="layout"]');
   await wait('!!document.querySelector(".media-tile.album")', "Album");
   const albumColumns = await browser.evaluate('(()=>{const wall=document.querySelector("#media-wall"),tile=wall.querySelector(".media-tile");return Math.round((wall.clientWidth+6)/(parseFloat(tile.style.width)+6))})()');
-  assert.equal(albumColumns, 4); await screenshot("phone-album");
+  assert.equal(albumColumns, 4);
+  const dates = await browser.evaluate('(()=>[...document.querySelectorAll(".media-tile")].map(e=>{const t=e.querySelector(".tile-time"),d=e.querySelector(".tile-duration"),row=e.querySelector(".tile-bottom");return {value:t?.textContent,datetime:t?.getAttribute("datetime"),aligned:Math.abs(t.getBoundingClientRect().bottom-d.getBoundingClientRect().bottom)<1,within:row.scrollWidth<=row.clientWidth&&t.getBoundingClientRect().right<=d.getBoundingClientRect().left}}))()');
+  assert.ok(dates.length > 0 && dates.every(d=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(d.value)&&d.aligned&&d.within));
+  assert.equal(dates[0].datetime, state.history[0].versions[0].createdAt);
+  report.completionTimestamps = dates; await screenshot("phone-album");
   await click('.media-tile[data-index="0"]');
   await wait('document.querySelector("#watch video").videoWidth>0&&!document.querySelector("#watch video").paused', "Decoded playback");
   assert.equal(await browser.evaluate('document.querySelectorAll(".watch-actions [data-action=favorite]:disabled,.watch-actions [data-action=rating]:disabled").length'), 2);
@@ -151,6 +156,33 @@ try {
     assert.ok(footerVisible); await click('dialog [data-action="cancel"]');
   }
   report.checks.push("actual favorite/rating filters and rating sort in Filter only; empty/reset; favorite/rating badges and disabled player status; tags visible with no editing; four-column album; contain playback with advancing frames; safe area; plain-text Prompt; return; iPad orientations");
+  // Publish to the isolated Drive replica while this same browser remains open.
+  const previousCover = await browser.evaluate('fetch("/api/v1/videos/a0").then(r=>r.json()).then(v=>v.coverUrl)');
+  const coverVersion = state.history[0].versions[0], coverFile = coverVersion.files[0];
+  const coverKey = ["history-cover-v3", "a0", coverVersion.id, coverVersion.createdAt, coverFile.filename, coverFile.absolutePath].join(":");
+  const replacementCover = await fs.readFile(path.join(directory, "landscape.jpg"));
+  await fs.writeFile(path.join(cache, `${sha(coverKey)}.jpg`), replacementCover);
+  state.history[0].favorite = false; state.history[0].rating = 3.5;
+  await fs.writeFile(stateFile, JSON.stringify(state));
+  if (v2) {
+    const { exportLibrary } = await import("../../dist/electron/src/infrastructure/nas-exporter.js");
+    const { publishNasCommit } = await import("../../dist/electron/src/infrastructure/nas-commit.js");
+    await exportLibrary(JSON.parse(await fs.readFile(exportConfig, "utf8")), state, (target, catalog) => publishNasCommit(target, catalog, libraryId));
+  } else await execute(process.execPath, ["Tools/NasBrowser/dist/runtime/export.mjs", "--config", exportConfig], { cwd: root });
+  await fs.cp(path.join(pcLibrary, "StudioLibrary"), path.join(nasLibrary, "StudioLibrary"), { recursive: true, force: true });
+  await browser.evaluate("window.scrollTo(0,0)");
+  await pollUntil(()=>browser.evaluate('document.querySelector(".media-tile .tile-badges")?.textContent.includes("3.5")'), Boolean, 35000, "Automatic metadata refresh without a click");
+  const nextCover = await browser.evaluate('fetch("/api/v1/videos/a0").then(r=>r.json()).then(v=>v.coverUrl)');
+  assert.notEqual(nextCover, previousCover);
+  await wait('document.querySelector(".media-tile img")?.classList.contains("loaded")', "Updated cover decoded");
+  assert.equal(sha(Buffer.from(await (await fetch(base + nextCover)).arrayBuffer())), sha(replacementCover));
+  const displayedMatches = await browser.evaluate(`(async()=>{const current=document.querySelector(".media-tile img"),expected=new Image();expected.src=${JSON.stringify(nextCover)};await expected.decode();const pixels=image=>{const c=document.createElement("canvas");c.width=image.naturalWidth;c.height=image.naturalHeight;c.getContext("2d").drawImage(image,0,0);return c.toDataURL()};return pixels(current)===pixels(expected)})()`);
+  assert.equal(displayedMatches, true);
+  report.automaticCoverBytes = true;
+  await click('[data-action="refresh"]');
+  await wait('document.querySelector(".media-tile .tile-badges")?.textContent.includes("3.5")', "Manual refresh");
+  await screenshot("automatic-refresh");
+  report.checks.push("selected-version render completion with seconds, full date without overlap at four-column phone width; synchronized metadata updates in the same open browser automatically; actual manual refresh button");
   report.ok = true;
 } catch (error) {
   report.error = error.stack;

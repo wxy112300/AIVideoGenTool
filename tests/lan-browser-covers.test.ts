@@ -12,6 +12,15 @@ function fixture() {
   return { loader, created, revoked };
 }
 describe("LAN thumbnail requests", () => {
+  it("revalidates cover content after explicit list refresh while retaining virtual-remount caching", async () => {
+    const f = fixture(), request = vi.fn(async () => new Response(new Blob(["jpeg"])));
+    vi.stubGlobal("fetch", request);
+    const first = f.loader.load(document.createElement("img"), "/cover", vi.fn()); await flush(); first();
+    f.loader.clear();
+    const second = f.loader.load(document.createElement("img"), "/cover", vi.fn()); await flush(); second();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls.every(([, options]) => options.cache === "no-cache")).toBe(true);
+  });
   it("reuses a loaded cover after a virtual tile remount and releases each tile's object URL", async () => {
     const f = fixture(); const fetch = vi.fn(async () => new Response(new Blob(["jpeg"]))); vi.stubGlobal("fetch", fetch);
     const first = document.createElement("img"), second = document.createElement("img");

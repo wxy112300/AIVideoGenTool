@@ -2,7 +2,7 @@ import { historyFilterIsActive, type HistoryFilterState } from "../core/history-
 import { layoutBrowseTiles, type BrowsePage, type BrowseVideo } from "../core/lan-browser";
 import { api, ApiError } from "./api";
 import { CoverLoader } from "./covers";
-import { duration, escape, icon, renderIcons, text, toast } from "./ui";
+import { duration, escape, icon, mediaTimestamp, renderIcons, text, toast } from "./ui";
 
 /** Only visible tiles own image elements; pages retain lightweight metadata. */
 export class Library {
@@ -32,7 +32,7 @@ export class Library {
   private schedule(): void {
     if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = 0; this.paint(); });
   }
-  async load(filter: HistoryFilterState, preserve = false): Promise<void> {
+  async load(filter: HistoryFilterState, preserve = false): Promise<boolean> {
     const anchor = preserve ? this.visibleAnchor() : null;
     const desired = preserve ? this.items.length : 48;
     this.controller.abort(); this.controller = new AbortController();
@@ -47,9 +47,9 @@ export class Library {
         items = [...items, ...page.items];
         if (!page.items.length) break;
       }
-      if (generation !== this.generation) return;
+      if (generation !== this.generation) return false;
       this.queryId = first.queryId; this.total = first.total; this.items = items;
-      this.clearTiles(); this.relayout();
+      this.clearTiles(); this.covers.clear(); this.relayout();
       if (!preserve) window.scrollTo(0, 0);
       else if (anchor) {
         const index = this.items.findIndex((item) => item.id === anchor.id);
@@ -57,12 +57,14 @@ export class Library {
         if (tile) window.scrollTo(0, this.root.offsetTop + tile.y - anchor.top);
       }
       this.status.textContent = !first.total ? text(historyFilterIsActive(filter) ? "noResults" : "empty") : "";
+      return true;
     } catch (error) {
-      if (generation !== this.generation || this.controller.signal.aborted) return;
+      if (generation !== this.generation || this.controller.signal.aborted) return false;
       this.status.replaceChildren();
       const retry = document.createElement("button"); retry.textContent = `${text("network")} · ${text("retry")}`;
       retry.addEventListener("click", () => void this.load(filter, preserve)); this.status.append(retry);
       if (error instanceof ApiError && error.status === 410) toast(text("expired"));
+      return false;
     } finally {
       if (generation === this.generation) { this.pending = false; this.schedule(); }
     }
@@ -103,7 +105,11 @@ export class Library {
         const control = document.createElement("button"); control.type = "button";
         element = control; element.className = "media-tile";
         element.dataset.index = String(tile.index); element.setAttribute("aria-label", item.title || text("play"));
-        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async"><span class="tile-meta"><span>${item.favorite ? icon("heart") : ""}${item.rating ? `★ ${item.rating}` : ""}</span><span>${escape(duration(item.duration))}</span></span>`;
+        const completedAt = item.completedAt || item.createdAt;
+        const timestamp = mediaTimestamp(completedAt);
+        const date = timestamp ? `<time class="tile-time" datetime="${escape(completedAt)}"><span>${timestamp.date}</span> <span>${timestamp.time}</span></time>` : "";
+        const badges = item.favorite || item.rating ? `<span class="tile-badges">${item.favorite ? icon("heart") : ""}${item.rating ? `★ ${item.rating}` : ""}</span>` : "";
+        element.innerHTML = `<span class="cover-placeholder">${icon("film")}<span>${escape(text("loading"))}</span></span><img alt="" decoding="async"><span class="tile-meta">${badges}<span class="tile-bottom">${date}<span class="tile-duration">${escape(duration(item.duration))}</span></span></span>`;
         const image = element.querySelector("img")!;
         const placeholder = element.querySelector<HTMLElement>(".cover-placeholder")!;
         image.addEventListener("load", () => { placeholder.hidden = true; image.classList.add("loaded"); });

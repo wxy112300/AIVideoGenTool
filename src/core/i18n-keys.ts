@@ -1432,6 +1432,7 @@ export const uiKeys = {
   }
 },
   lanBrowser: {
+    syncPending: "lanBrowser.syncPending",
     title: "lanBrowser.title",
     description: "lanBrowser.description",
     enabled: "lanBrowser.enabled",

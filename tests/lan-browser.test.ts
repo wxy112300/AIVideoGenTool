@@ -52,6 +52,7 @@ describe("LAN history browser", () => {
     const first = await (await fetch(`${f.base}/api/v1/videos`)).json();
     expect(first.items.map((item: { id: string }) => item.id)).toEqual(["two", "one"]);
     expect(first.items[1].versionId).toBe("v1");
+    expect(first.items[1].completedAt).toBe("2026-10-18T01:00:00Z");
     const serialized = JSON.stringify(first);
     for (const secret of ["PRIVATE PROMPT", "private-workflow", "private-prompt", f.root, "settings", "comfyOutputs", "absolutePath"]) expect(serialized).not.toContain(secret);
     await f.metadata.updateMetadata("one", { rating: 5, favorite: true });

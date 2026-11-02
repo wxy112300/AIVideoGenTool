@@ -1,6 +1,7 @@
 import { uiKeys } from "../i18n-keys.js";
 
 export const enUSCatalog: Record<string, string> = {
+  [uiKeys.lanBrowser.syncPending]: "Synced data is not ready. Showing the last valid content; refresh again shortly.",
   [uiKeys.executionProgress.preparing]: "Preparing workflow",
   [uiKeys.executionProgress.expanding]: "Expanding prompt",
   [uiKeys.executionProgress.loadingVideo]: "Reading source video",

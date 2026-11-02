@@ -23,8 +23,10 @@ export class NasLibrary {
     if (dataDirectory) this.index = new NasCommitIndex(dataDirectory, [mediaRoot, libraryRoot]);
   }
 
-  reload(): Promise<void> {
-    if (this.reloading) return this.reloading;
+  reload(force = false): Promise<void> {
+    if (this.reloading) return force
+      ? this.reloading.catch(() => undefined).then(() => this.reload())
+      : this.reloading;
     this.reloading = this.readSnapshot().finally(() => { this.reloading = null; });
     return this.reloading;
   }
@@ -97,9 +99,10 @@ export class NasLibrary {
   private dto(snapshot: Snapshot, id: string, versionId?: string): BrowseVideo {
     const { asset, version } = this.record(snapshot, id, versionId);
     const base = `/api/v1/videos/${encodeURIComponent(id)}/versions/${encodeURIComponent(version.id)}`;
-    return { id, versionId: version.id, title: asset.title, createdAt: asset.createdAt, updatedAt: asset.updatedAt,
+    return { id, versionId: version.id, title: asset.title, createdAt: asset.createdAt, updatedAt: asset.updatedAt, completedAt: version.createdAt,
       modelId: asset.modelId, width: version.width, height: version.height, duration: version.duration, tags: asset.tags,
-      favorite: asset.favorite ?? false, rating: asset.rating ?? null, revision: snapshot.revision, mediaUrl: `${base}/media`, coverUrl: version.cover ? `${base}/cover` : "" };
+      favorite: asset.favorite ?? false, rating: asset.rating ?? null, revision: snapshot.revision, mediaUrl: `${base}/media`,
+      coverUrl: version.cover ? `${base}/cover?v=${digest(JSON.stringify(version.cover))}` : "" };
   }
   detail(id: string, versionId?: string): BrowseVideo { return this.dto(this.current(), id, versionId); }
   prompt(id: string, versionId: string): BrowseVideoPrompt {

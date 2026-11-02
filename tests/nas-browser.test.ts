@@ -133,6 +133,7 @@ describe("NAS portable read-only library", () => {
     const page = await pageResponse.json();
     expect(JSON.stringify(page)).not.toMatch(/prompt|absolutePath|mediaRoot|clip\.mp4/);
     const item = page.items[0];
+    expect(item.completedAt).toBe(f.version.createdAt);
     expect(item).toMatchObject({ favorite: true, rating: 4.5, tags: ["Nature"] });
     const response = await get(item.mediaUrl, { headers: { Range: "bytes=2-5" } });
     expect(response.status).toBe(206); expect(await response.text()).toBe("2345");

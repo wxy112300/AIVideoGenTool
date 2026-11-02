@@ -14,7 +14,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 export const api = {
-  info: () => request<BrowseLibraryInfo>("/api/v1/library"),
+  info: (refresh = false) => request<BrowseLibraryInfo>(`/api/v1/library${refresh ? "?refresh=1" : ""}`),
   prompt: (item: BrowseVideo, signal?: AbortSignal) => request<BrowseVideoPrompt>(
     `/api/v1/videos/${encodeURIComponent(item.id)}/versions/${encodeURIComponent(item.versionId)}/prompt`, { signal }),
   query: (filter: HistoryFilterState, signal?: AbortSignal) =>

@@ -13,6 +13,7 @@ import { nativeHistoryFileSystem } from "../electron/services/native-history-fil
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance.js";
+import { parseNasPointer, parseNasCommit, readNasObject, publishNasCommit } from "../src/infrastructure/nas-commit.js";
 
 const roots: string[] = [], publishers: NasPublisher[] = [], libraries: NasLibrary[] = [];
 afterEach(async () => {
@@ -42,6 +43,72 @@ async function fixture(delayMs = 60000) {
 }
 
 describe("committed automatic NAS projection", () => {
+  it("automatically discovers a cover arriving after its unchanged commit without a manual scan", async () => {
+    const f = await fixture();
+    const pointer = parseNasPointer(await fs.readFile(path.join(f.source, "current.json"), "utf8"));
+    const commit = parseNasCommit(await readNasObject(f.source, "commits", pointer.commit), pointer);
+    const asset = JSON.parse(await readNasObject(f.source, "records", commit.records[0].hash));
+    const coverBytes = "late synchronized cover";
+    asset.versions[0].cover = { path: `StudioLibrary/${pointer.libraryId}/covers/late.jpg`, size: Buffer.byteLength(coverBytes) };
+    await publishNasCommit(f.source, { schemaVersion: 1, locale: commit.locale, models: commit.models, assets: [asset] }, pointer.libraryId);
+    await f.sync();
+    const unchangedPointer = await fs.readFile(path.join(f.destination, "current.json"), "utf8");
+    const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");
+    const server = await startServer({ mediaRoot: path.join(f.root, "NAS Media"), libraryRoot: f.nasArchive,
+      libraryDirectory: `StudioLibrary/${pointer.libraryId}`, dataDirectory: f.data,
+      host: "127.0.0.1", port: 0, pollSeconds: 1, allowedOrigins: ["http://nas.test:8790"] }, web, () => undefined);
+    const base = `http://127.0.0.1:${(server.server.address() as { port: number }).port}`;
+    const get = (url: string) => new Promise<Buffer>((resolve, reject) => {
+      const req = request(base + url, { headers: { Host: "nas.test:8790" } }, response => {
+        const chunks: Buffer[] = []; response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => { try { expect(response.statusCode).toBe(200); resolve(Buffer.concat(chunks)); } catch (error) { reject(error); } });
+      }); req.on("error", reject); req.end();
+    });
+    try {
+      const first = JSON.parse((await get("/api/v1/videos")).toString());
+      expect(first.items[0].coverUrl).toBe("");
+      const before = JSON.parse((await get("/api/v1/library")).toString());
+      await fs.mkdir(path.join(f.destination, "covers"), { recursive: true });
+      await fs.writeFile(path.join(f.destination, "covers", "late.jpg"), coverBytes);
+      await vi.waitFor(async () => {
+        expect(JSON.parse((await get("/api/v1/library")).toString()).revision).not.toBe(before.revision);
+      }, { timeout: 6000, interval: 80 });
+      const next = JSON.parse((await get("/api/v1/videos")).toString());
+      expect(next.items[0].coverUrl).toContain("/cover?v=");
+      expect((await get(next.items[0].coverUrl)).toString()).toBe(coverBytes);
+      expect(await fs.readFile(path.join(f.destination, "current.json"), "utf8")).toBe(unchangedPointer);
+    } finally { await server.close(); }
+  }, 10000);
+  it("forces a disk scan through HTTP and reports incomplete sync without discarding the last valid snapshot", async () => {
+    const f = await fixture(); await f.sync();
+    const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");
+    const server = await startServer({ mediaRoot: path.join(f.root, "NAS Media"), libraryRoot: f.nasArchive,
+      libraryDirectory: `StudioLibrary/${f.store.get().libraryStorage!.libraryId}`, dataDirectory: f.data,
+      host: "127.0.0.1", port: 0, pollSeconds: 86400, allowedOrigins: ["http://nas.test:8790"] }, web, () => undefined);
+    const base = `http://127.0.0.1:${(server.server.address() as { port: number }).port}`;
+    const get = (url: string) => new Promise<any>((resolve, reject) => {
+      const req = request(base + url, { headers: { Host: "nas.test:8790" } }, response => {
+        const chunks: Buffer[] = []; response.on("data", chunk => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => { try { expect(response.statusCode).toBe(200); resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (error) { reject(error); } });
+      }); req.on("error", reject); req.end();
+    });
+    try {
+      const before = await get("/api/v1/library");
+      await f.store.update(state => { Object.assign(state.history[0], { favorite: true, rating: 4.5, title: "Newest synchronized" }); });
+      await f.publisher.flush(); await f.sync();
+      expect((await get("/api/v1/library")).revision).toBe(before.revision);
+      const refreshed = await get("/api/v1/library?refresh=1");
+      expect(refreshed.refreshError).toBe(false); expect(refreshed.revision).not.toBe(before.revision);
+      expect((await get("/api/v1/videos")).items[0]).toMatchObject({ favorite: true, rating: 4.5, title: "Newest synchronized" });
+      await f.store.update(state => { state.history[0].title = "Next sync"; }); await f.publisher.flush();
+      await fs.copyFile(path.join(f.source, "current.json"), path.join(f.destination, "current.json"));
+      expect(await get("/api/v1/library?refresh=1")).toMatchObject({ refreshError: true, revision: refreshed.revision });
+      expect((await get("/api/v1/videos")).items[0].title).toBe("Newest synchronized");
+      await f.sync();
+      expect((await get("/api/v1/library?refresh=1")).refreshError).toBe(false);
+      expect((await get("/api/v1/videos")).items[0].title).toBe("Next sync");
+    } finally { await server.close(); }
+  });
   it("publishes a cover saved after the initial export without a new desktop metadata commit", async () => {
     const f = await fixture(10); await f.sync(); const library = f.open(); await library.reload();
     expect(library.detail(f.asset.id).coverUrl).toBe("");
@@ -68,6 +135,7 @@ describe("committed automatic NAS projection", () => {
       data: new TextEncoder().encode("refined saved jpeg").buffer });
     await vi.waitFor(async () => { expect(await pointer()).not.toBe(published); }, { timeout: 3000 });
     await f.sync(); await library.reload();
+    expect(library.detail(f.asset.id).coverUrl).not.toBe(firstCover);
     expect(await fs.readFile(await library.source(f.asset.id, version.id, "cover"), "utf8")).toBe("refined saved jpeg");
     expect(f.errors).toEqual([]);
   });

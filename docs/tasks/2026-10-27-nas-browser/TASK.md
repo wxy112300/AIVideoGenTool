@@ -1,11 +1,25 @@
 # NAS 独立只读浏览服务
 
-- Status: done（封面补发修复与本机验收；用户更新 PC 后待现场确认）
-- Updated / Owner: 2026-10-31 / 当前 agent
+- Status: done（部署包已更新；NAS 现场更新及确认待执行）
+- Updated / Owner: 2026-11-03 / 当前 agent
 - Scope / Authority: 用户要求在 Tools 建立服务；DS418play、DSM 6.2.4、Docker 20.10.3、Drive 单向上传。最新要求：NAS 与普通浏览功能一致，显示收藏/评分/Tag，保留完整筛选排序，唯独禁止修改；排序收进 Filter，PC/NAS 路径独立。
 - Baseline: 0.67.0；大量其他任务 dirty，保留全部。执行 direct，children=0。
 
 ## Resume
+
+- 2026-11-03 提交授权：用户要求只提交上传本修复，版本号保持 0.67.5。以 HEAD 5d535d4 为基线隔离 NAS 源码，混合 i18n/Changelog 仅暂存 syncPending 与 NAS 条目，不夹带 Strata/本地化/Tessera 等未完成任务。隔离快照 npm.cmd run verify 完整通过：310 单元文件 / 2996 项、7 集成文件 / 127 项、typechecked 构建及 440 对比度检查，日志 temp/nas-commit-isolated-verify.log。部署包也从该隔离源码重建，15 项逐条校验，最新 SHA-256 为 6ba3973f0970618c4342a338148c9f6ed37e4451a52790ee000ab36678653c18，替换前轮工作区构建包并同步校验文件；行为修复不变，避免将其他任务的编译内容混入交付。打包日志 temp/nas-commit-isolated-package.log。未改 package/lockfile 版本、未创建 Release、未连接 NAS 或操作用户资料。
+
+- 2026-11-03 二次核查：补充真实 HTTP 定时扫描回归，current.json 完全不变、封面文件晚到时也会自动改变可用快照 revision 并提供新封面，无手动 reload/刷新请求；相关四文件 30 项通过，日志 temp/nas-refresh-recheck-tests.log。真实打开的 NAS v2 页面在同步后自动更新收藏评分，且显示图片的 canvas 像素与新封面一致，HTTP 新封面字节 SHA-256 与替换源相同，报告 temp/nas-browser-smoke-1793641495849/report.json（automaticCoverBytes=true）。初次尝试直接 fetch blob URL 被既有 CSP 阻止，改用同源响应字节与实际绘制像素核对，未放宽 CSP。再次只读校验部署 ZIP 的全部 15 项与当前 runtime/web/部署文件及 checksum 一致；本次只补测试，没有新增生产改动，部署包仍使用下述同一 SHA-256。NAS smoke 的自有浏览器/Node 已退出；不把本机证据当现场 NAS 部署成功。
+
+- 2026-11-03 最新交付要求：用户明确要求每次修改 NAS 服务/共享浏览页时，都直接更新 Tools/NasBrowser/NAS-Browser-Deploy.zip 并提供该部署包。新增 package:deploy 统一重建、白名单打包、逐条 SHA-256 校验与校验文件更新；此要求覆盖此前“只交源码、部署包另做”的交付选择。不代表授权连接 NAS、部署容器或发布 GitHub Release。
+- 当前唯一部署包已重建并直接替换，15 个归档文件逐项与构建/部署源文件 SHA-256 相等；包含本轮自动/手动刷新、封面缓存和渲染完成时间修复，以及最新 UPDATE 教程，保持 v2 示例重命名与原 local-video-studio 根布局。SHA-256 为 23ae5312d29a43408152a8d52b7ef5084372e3c57cf587d5c5edc9c63290ca88，校验文件同步更新。日志 temp/nas-refresh-package.log。首次打包因旧 Windows PowerShell 未提供 Get-FileHash 而在替换前失败，改为 .NET SHA-256 后成功；原包直到校验完成才替换，partial 已清理。未重新跑无改动的全应用测试，复用上轮源码行为证据并补验新打包流程。
+
+- 2026-11-03 用户报告 NAS 已有新存档/封面/收藏评分，浏览页与刷新按钮仍不更新；当前机器无法连接 NAS，用户明确要求先做代码分析。确认共享网页原来仅轮询 revision 并显示提示、不自动更新；手动按钮只请求内存 info/query，没有触发 NAS 磁盘扫描。修复共享网页自动重载（保留筛选/滚动、播放/弹窗/后台延后、恢复前台即查）、强制复检 HTTP 参数与扫描合并后的补检、同步不完整保留有效快照并提示；不放宽 libraryId/代次/哈希保护，不删除用户索引。
+- 两版封面底部新增年月日时分秒，按用户最新指示使用与 App 历史卡片相同的所选版本渲染完成时间（version.createdAt），不是作品创建时间。仅 DTO 新增可选 completedAt，旧服务保留 createdAt 回退；筛选排序继续复用既有 History helper。窄相册日期/时间分行，时分秒和时长底部对齐，保留列数。NAS 封面 URL 增加内容身份，列表刷新清内存 blob 并重新校验 HTTP 缓存；虚拟卡片重挂载仍复用当前缓存。
+- focused 5 文件 39 项与主项目/工具 typecheck 通过；完整测试 317 单元文件 / 3046 项、7 集成文件 / 127 项通过，日志 temp/nas-refresh-verify.log。该 verify 在构建阶段遇同期 Tessera 编辑中的类型不完整，未修改该任务；类型补齐后独立主/工具 typecheck、生产构建及 440 对比度检查通过，日志 temp/nas-refresh-build.log、nas-refresh-contrast.log。原 verify 命令没有被记为一次全绿；保留既有 500 kB 提醒（LAN 662.77 kB）。未改测试断言、超时或配置；进程级 VITEST_MAX_WORKERS=8、独立系统临时目录。计数包含同期其他任务，不作为本功能覆盖率。
+- 真实 NAS v2 浏览器：temp/nas-browser-smoke-1793640814824/report.json 通过；同一打开页面在同步后自动更新收藏评分，实际刷新按钮、四列手机相册完整日期/秒与时长对齐、原比例瀑布流、筛选/排序/只读/播放/返回、iPad 横竖屏均通过，phone-album 截图已查看。刻意令作品创建时间不同于版本完成时间，确认显示后者。首轮新增自动刷新检查因 harness 字符串引号错误失败，修正检查脚本后重跑通过，未改生产行为规避测试。HTTP 夹具另验证即使 pollSeconds=86400 手动刷新仍立即读到收藏评分；指针先到时维持旧快照并报告 refreshError，完整同步后无需清库恢复。封面内容替换后 URL 改变，blob 缓存清除/HTTP 重新校验均覆盖。
+- 真实 App + 局域网网页：temp/lan-smoke-9dAkhk/report.json 通过 Settings 实际开关、冷封面、所选版本完成时间、两/四/三列及宽屏、播放/Prompt/收藏评分标签写回/筛选/返回。phone-album 截图已查看；CPU 合成视频、focus emulation，非真机 Safari。经既有 close-lan-smoke helper 原生关闭，cleanup.json 确认 browser/app/native/listenerClosed；NAS smoke 的自有 Node/浏览器也已退出。本轮不连接现场 NAS、不操作用户资料，不改版本、不提交/推送/发布。
+- 工具独立 build 通过，构建仅在 Tools/NasBrowser/dist；此前仅交源码的状态已由本次部署包替换完成接续，未重做 Docker 镜像或操作 NAS 容器。下一步使用当前 ZIP 更新 NAS 服务，由用户现场确认。没有声称现场故障唯一根因已确定；libraryId/代次/哈希保护保持，若更新后仍不变，继续用 healthz 的 refreshError、源提交与日志区分同步/配置/代次问题。
 
 - 2026-10-31 后续授权已扩大到用户数据迁移（Electron 缓存排除），实现与验证见[用户资料任务](../2026-10-31-user-data-storage/TASK.md)。现在正常 PC 的封面原始目录为文档 Local Video Studio/Data/history-covers/v3，发布副本位置与 NAS 挂载不变；下文“仍在 userData/不擅自搬迁”记录的是较早限定范围，已被新授权接续。完整 verify 与真实迁移/封面命中/原生重启已通过，仍未提交/打包或访问真实 NAS。
 
