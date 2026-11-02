@@ -1,4 +1,6 @@
 import type { ImageModelAdapter } from "./contracts.js";
+import { createTranslator, type Translator } from "../i18n.js";
+import { uiKeys } from "../i18n-keys.js";
 import {
   birefnetBackgroundRemovalCapability,
   flux2Klein4bCapability,
@@ -193,14 +195,15 @@ export function isRetiredImageModelId(modelId: string): boolean {
   return definition?.category === "image" && definition.retired === true;
 }
 
-export function imageModelUnavailableReason(modelId: string): string {
+export function imageModelUnavailableReason(modelId: string, translator: Translator = createTranslator()): string {
+  const { t, locale } = translator;
   if (isRetiredImageModelId(modelId)) {
     const name = modelCatalog.get(modelId)?.definition.family === "minimax-h3-image"
-      ? "H3 图片"
-      : modelCatalog.localized(modelId)?.name ?? modelId;
-    return name + "功能已移除，请调整任务并选择 Qwen Image 2.1；旧任务和历史记录仍保留。";
+      ? t(uiKeys.imageAvailability.h3Image)
+      : modelCatalog.localized(modelId, locale)?.name ?? modelId;
+    return t(uiKeys.imageAvailability.retired, { name });
   }
-  return `当前没有 ${modelId} 的图片工作流适配器。`;
+  return t(uiKeys.imageAvailability.adapterMissing, { model: modelId });
 }
 
 export function firstSupportedImageModelId(

@@ -8,6 +8,28 @@ spec.loader.exec_module(refiner)
 
 
 class RefinerFramePlanTests(unittest.TestCase):
+    def test_tessera_sigmas_and_failed_decode_placeholder(self):
+        import torch
+        self.assertTrue(torch.allclose(refiner.LocalVideoStudioH3TesseraSigmas().get()[0], torch.tensor([1.0, .7, .4, 0.])))
+        with self.assertRaises(ValueError):
+            refiner.LocalVideoStudioH3RefinerOutput().restore(torch.zeros(362, 16, 16, 3), 362, 3780, 2160)
+
+    def test_tessera_loader_delegates_core_loaders_and_resolves_unique_subfolders(self):
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        calls = []
+        def loader(kind):
+            return lambda *args: calls.append((kind, args)) or (kind,)
+        core = SimpleNamespace(UNETLoader=lambda: SimpleNamespace(load_unet=loader("model")),
+                               CLIPLoader=lambda: SimpleNamespace(load_clip=loader("clip")),
+                               VAELoader=lambda: SimpleNamespace(load_vae=loader("vae")))
+        paths = SimpleNamespace(get_filename_list=lambda category: ["H3/model.safetensors", "H3/clip.safetensors", "H3/vae.safetensors", "H3/audio.safetensors"])
+        with patch.dict(sys.modules, {"nodes": core, "folder_paths": paths}):
+            result = refiner.LocalVideoStudioH3TesseraLoad().load(object(), "model.safetensors", "clip.safetensors", "vae.safetensors", "audio.safetensors")
+        self.assertEqual(result, ("model", "clip", "vae", "vae"))
+        self.assertEqual(calls[0], ("model", ("H3/model.safetensors", "default")))
+        self.assertEqual(calls[1], ("clip", ("H3/clip.safetensors", "minimax", "default")))
     def test_an_ignored_adapter_cannot_silently_run_the_base_model(self):
         from types import SimpleNamespace
         base = SimpleNamespace(patches={"qkv": [(1, "turbo")]})
@@ -22,8 +44,17 @@ class RefinerFramePlanTests(unittest.TestCase):
         self.assertEqual(refiner.refiner_frame_plan(150, 30), (120, 124))
         self.assertEqual(refiner.refiner_frame_plan(1, 24), (1, 5))
 
-    def test_refuses_long_and_invalid_sources(self):
-        for count, fps in [(480, 30), (0, 24), (10, 0), (10, float("nan"))]:
+    def test_accepts_aligned_native_and_long_sources_without_truncation(self):
+        for frames in [362, 724, 736, 1440]:
+            count, padded = refiner.refiner_frame_plan(frames, 24)
+            self.assertEqual(count, frames)
+            self.assertGreaterEqual(padded, frames)
+            self.assertEqual((padded - 5) % 17, 0)
+            self.assertLess(padded - frames, 17)
+        self.assertEqual(refiner.refiner_frame_plan(900, 30), (720, 736))
+
+    def test_refuses_invalid_sources(self):
+        for count, fps in [(0, 24), (10, 0), (10, float("nan")), (10, float("inf"))]:
             with self.assertRaises(ValueError):
                 refiner.refiner_frame_plan(count, fps)
 

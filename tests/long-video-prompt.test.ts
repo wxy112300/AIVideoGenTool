@@ -29,3 +29,23 @@ it("stops on malformed planning instead of producing a partial task package", as
   await expect(enhanceLongVideoWithStrata(request, createDefaultState().settings, owner, new AbortController().signal, vi.fn(), async () => {})).rejects.toThrow(/结构/);
   expect(owner.chat).toHaveBeenCalledOnce();
 });
+
+it("keeps planner/detail requests, page identities and output identical across UI languages", async () => {
+  const { plan, request } = fixture(), requests: unknown[][] = [], outputs: string[] = [];
+  for (const uiLocale of ["zh-CN", "en-US", "zh-TW"] as const) {
+    let call = 0; const captured: unknown[] = [], progress = vi.fn();
+    const owner = { chat: vi.fn(async (body) => {
+      captured.push(body);
+      if (!call++) return JSON.stringify({ summary: "保留用户故事", segments: plan.segments.map(p => ({ pageId: p.pageId, outline: "Grounded event order" })) });
+      return JSON.stringify({ segments: plan.segments.slice((call - 2) * 3, (call - 1) * 3).map(p => ({ pageId: p.pageId, text: "用户生成内容 stays unchanged" })) });
+    }) };
+    outputs.push(await enhanceLongVideoWithStrata(request, { ...createDefaultState().settings, uiLocale }, owner, new AbortController().signal, progress, async () => {}));
+    requests.push(captured);
+    expect(owner.chat).toHaveBeenCalledTimes(5);
+    expect(progress.mock.calls[0]![2]).toContain(uiLocale === "en-US" ? "Planning the complete film" : uiLocale === "zh-TW" ? "正在規劃整片故事" : "正在规划整片故事");
+    expect(progress.mock.calls.at(-1)![2]).toContain(uiLocale === "en-US" ? "Checking the complete script" : uiLocale === "zh-TW" ? "正在核對整包腳本" : "正在核对整包脚本");
+  }
+  expect(requests[1]).toEqual(requests[0]); expect(requests[2]).toEqual(requests[0]);
+  expect(outputs[1]).toBe(outputs[0]); expect(outputs[2]).toBe(outputs[0]);
+  expect(JSON.stringify(requests[0])).toContain("LOCAL times 0–10s");
+});

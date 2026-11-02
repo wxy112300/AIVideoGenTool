@@ -283,6 +283,7 @@ export class ApplicationRuntime {
       comfyUrl: () => this.deps.store.get().settings.comfyUrl
     });
     const strataRuntime: StrataRuntimeOwner = this.deps.strataRuntime ?? new StrataRuntimeOwner({
+      getUiLocale: () => this.deps.store.get().settings.uiLocale,
       resourceGate: gpuGuard,
       run: runLoggedProcess,
       onDiagnostics: (diagnostics) => this.deps.logger.info("prompt", "strata-inference-metrics", "Strata inference metrics", {

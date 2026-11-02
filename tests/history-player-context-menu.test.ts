@@ -5,6 +5,7 @@ import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import type { RendererContext } from "../src/renderer/contracts";
 import { createHistoryContextMenus } from "../src/renderer/pages/history/context-menus";
+import { createHistoryPerformanceFixture } from "./fixtures/history-performance";
 
 const translator = createTranslator("zh-CN");
 
@@ -91,6 +92,45 @@ afterEach(() => {
 });
 
 describe("history player context menu", () => {
+  it("keeps compact list actions and keyboard return while showing missing-file reasons only when needed", () => {
+    const { state, context } = createHistoryContext();
+    const options = createOptions(state, context);
+    const menus = createHistoryContextMenus(context, options);
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    menus.openHistory("video-1", 100, 100, trigger);
+    expect(document.querySelector(".history-context-menu small")).toBeNull();
+    document.querySelector(".history-context-menu")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    expect((document.activeElement as HTMLElement).dataset.historyAction).toBe("delete");
+    document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.activeElement).toBe(trigger);
+    expect(document.querySelector(".history-context-menu")).toBeNull();
+    state.history[0]!.versions![0]!.files[0]!.absolutePath = "";
+    menus.openHistory("video-1", 100, 100);
+    const copy = document.querySelector<HTMLButtonElement>('[data-history-action="copy-file"]')!;
+    expect(copy.disabled).toBe(true);
+    expect(copy.querySelector("small")?.textContent).toBeTruthy();
+    menus.close();
+  });
+
+  it("retains image actions without repeated descriptions and keeps absent-prompt guidance", () => {
+    const { state, context } = createHistoryContext();
+    state.imageHistory = createHistoryPerformanceFixture(1).images;
+    const project = state.imageHistory[0]!;
+    const options = createOptions(state, context);
+    const menus = createHistoryContextMenus(context, options);
+    menus.openImageHistory(project.id, 100, 100);
+    expect(document.querySelector('.history-context-menu [data-image-history-action="video"]')).toBeTruthy();
+    document.querySelector<HTMLButtonElement>('[data-image-history-action="detail"]')!.click();
+    expect(options.openImageHistoryDetail).toHaveBeenCalledWith(project.id);
+    for (const version of project.versions) version.prompt = "";
+    menus.openImageHistory(project.id, 100, 100);
+    const copy = document.querySelector<HTMLButtonElement>('[data-image-history-action="copy-prompt"]')!;
+    expect(copy.disabled).toBe(true);
+    expect(copy.querySelector("small")?.textContent).toBeTruthy();
+    menus.close();
+  });
+
   it("exposes the five requested actions and routes file operations", async () => {
     const { state, context, showItemInFolder, openSystemPlayer } = createHistoryContext();
     const options = createOptions(state, context);

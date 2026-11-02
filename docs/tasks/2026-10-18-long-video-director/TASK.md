@@ -13,6 +13,8 @@
 
 ## Resume
 
+- 2026-10-31 用户要求本轮全应用本地化先跳过尚未完工的长视频功能。长视频专属遗漏、英文校验语言传递及功能闭环后的三语言/长度验收移交本任务 [PLAN §10](PLAN.md#10-长视频功能闭环后的本地化验收)。此前已落地的外层规划/分批提示保留；未完成项不视为验收通过，也不触发本轮长视频实现、模型调用或采样。全应用本地化继续处理普通 Prompt、共享 Strata 和其他页面，记录见 [本地化 TASK](../2026-10-30-localization/TASK.md)。
+
 - 2026-10-27用户纠正Spectrum：官方Continuum支持受审计Spectrum并有Review续接实证，先前将off验收条件做成产品硬限制属于适配错误。已修正新Run capability/claim/graph，复用现有Spectrum补丁，冻结可选spectrumMode；旧缺字段等价off，Continue继承，用户中途切换被profile mismatch拒绝。移除三语言“关闭Spectrum”门槛文字；不改用户当前草稿、6条队列、Settings或运行App。34项定向通过，首轮typecheck指出旧task可缺字段，按off兼容修正；全量287文件2686单元+6文件91集成、双端typecheck和440对比度通过。为了保留用户正在观察的dist，在全新temp目录做桌面/Web/Electron干净构建通过（未执行会清理dist的npm verify）。本轮不新增GPU、不重开采样预算；当前窗口仍是此前构建，未自动重载。后续120秒真实验收应尊重用户Spectrum选择，不再默认要求关闭；开启后的GPU/质量仍待验。
 
 - 2026-10-27最新用户指令：先不结束VS Code，改为把测试放进实际草稿/队列以观察UI；停止继续关闭/强杀VS Code，也不启动GPU。已在正式用户库原5条waiting任务后追加唯一`UI观察-手写分段稿-120秒.mp4`，task `1c9b6197-e5b0-40ce-8ef9-63a5baca20c4`，12×10秒/360p/20步/PyTorch/INT8 ConvRot，脚本版本全部source=user，显式标注未经过Strata。因为正式全局配置为sage-triton（当前长视频门槛不支持），用现有纯工厂冻结观察任务的独立PyTorch profile后离线原子导入，**这不是正式UI增强/入队可达性证据**，没有改全局设置来刷新原5条快照。正式App原先未运行，先完整备份并以SHA并发检查后导入，再正常打开主用户库。真实AppApi核对原5条任务全部已有字段、设置、History137条不变，草稿12页/Queue14个浏览按钮通过，截图复核通过。主App PID28024/CDP9333故意保持打开，停在第6条观察卡，queueRunning=false，Comfy未启动。备份/观察报告在忽略temp的`long-video-formal-ui-before-20261027.json`与`long-video-formal-ui-preview.json`；不得清理用户正在看的实际App，后续只能在用户要求继续渲染时处理测试GPU阶段。

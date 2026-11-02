@@ -27,6 +27,18 @@ import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
 import { H3_FACIAL_REALISM_CLOSEUP_LORA } from "../src/core/video-loras.js";
 
 describe("ComfyUI task liveness", () => {
+  it("separates Qwen, unload, H3 load and Tessera sampling within one queue task", () => {
+    const context = progressContextForPrompt({ refine: { class_type: "TesseraRefine", inputs: {} } });
+    expect(context.tessera).toBe(true);
+    const qwen = progressForNode("KSampler", 25, 25, context, "anchor-sampler");
+    const unload = progressForNode("VRAM_Debug", 1, 1, context, "anchor-unload");
+    const load = progressForNode("LocalVideoStudioH3TesseraLoad", 1, 1, context, "h3-load");
+    const refine = progressForNode("TesseraRefine", 1, 1, context, "refine");
+    expect(qwen.label).toContain("Qwen"); expect(load.label).toContain("H3"); expect(refine.label).toContain("Tessera");
+    expect(qwen.progress).toBeLessThan(unload.progress);
+    expect(unload.progress).toBeLessThan(load.progress);
+    expect(load.progress).toBeLessThan(refine.progress);
+  });
   it.each(["official-storyboard", "detailed-cinematic"] as const)("keeps native 30-second %s output headroom", (preset) => {
     const workflow = buildNativePromptWorkflow({ prompt: "A balloon rises.", modelId: "minimax_h3_fl2va", h3PromptPreset: preset, h3DurationSeconds: 30 }, [], "qwen/qwen3.5-2b");
     expect(workflow["text-generate"]?.inputs.max_length).toBe(preset === "detailed-cinematic" ? 5760 : 3840);

@@ -1,6 +1,6 @@
 # 全应用本地化优化
 
-状态：进行中（2026-10-30）。第二十四批处理共享运行等待、节点阶段/分块进度、停滞错误与历史失败摘要，focused 协议分支及全量验收通过。以完整调用链集中推进，不用批次数代表覆盖率。未完成全应用覆盖，也未进入全量英文措辞、长度和功能动作大小写审校。影响等级：patch；未改版本、提交或打包。
+状态：进行中（2026-11-01）。长视频专属剩余本地化按用户指示留在长视频计划。第三十一批完成 H3 运行时 schema 与图片可用性诊断，共 18 个三语言语义键，focused 与最终全量验收通过。未完成其余应用覆盖，也未进入全量英文措辞、长度和功能动作大小写审校。影响等级：patch；本轮未改版本、提交或打包。
 
 用户要求、覆盖范围、执行顺序和验收方式见 [PLAN.md](PLAN.md)。
 
@@ -212,9 +212,63 @@
 - 验收期间出现独立的 Strata source fetch / Git 软件文件检查改动和测试，未编辑这些文件；其变更晚于全量开始，补跑三个邻接文件 32 项通过，日志 temp/localization-adjacent-strata-check.log。全量数字对应集成磁盘状态，不全部归属于本地化，也不作为覆盖率。
 - 本轮没有启动 Electron、ComfyUI 或 GPU，没有下载软件/权重或操作用户媒体；新增协议检查无真实 HTTP/WebSocket listener。未新增真实运行中 Queue/Prompt 页面与模型生成证据，相关正常/错误状态和布局仍在待办。
 
+## 第二十五批：Qwen 配置准备与 Strata 提示链路
+
+- Qwen-VL 的元数据目录/来源路径、下载空文件、准备进度和失败恢复包装，Strata 参考图格式/32 MiB/数量/请求大小保护、视频参考时长与采样总量，以及准备参考图、思考/输出预算、流式字符数、明确时间点纠正和长视频规划/分批/整包核对状态接入三语言，共 32 个语义键。共享 downloadFileWithCurl 的 curl 缺失和子进程错误包装使用调用设置语言。
+- StrataImageContent 与 withStrataReferenceMedia 接受可选 Translate，正常增强入口传入设置语言；validatedOutput 的初次和一次纠正调用传入 uiLocale，保留 StrataPromptValidationError 类型。详细影视预设缺主时间线的真实校验分支分别返回英文/繁体；没有新增其他预设的输出限制。
+- 没有改元数据 URL/清单、下载/替换范围、按模型目录复用的 in-flight key、取消类别、缓存失效、图片 MIME/字节/数量限制、边界图顺序、三点抽帧与清理、参考标签和模型正文。进度使用请求发起时的语言，同目录并发继续共享首个事务，不因切换语言重复下载。保留模型 safetensors、原始外部诊断、中文文件名和用户输出。
+- 新增 14 项检查：三语言元数据准备/复用、空下载和原始外部错误后清理及重试、同目录单事务与 AbortError；Strata 模型请求和中文用户输出跨语言相同，流式预算/思考字符数提示本地化；参考格式及采样超量后清理；长视频规划一次、每批最多三页、总调用数和页面身份/模型请求/输出完全一致。仅使用临时文件与下载、模型、帧工具替身，不连接上游或加载模型。
+- focused 八文件 90 项及 typecheck 通过，日志 temp/localization-strata-prompt-focused.log；npm.cmd run verify 通过：309 个单元文件 / 2979 项、7 个集成文件 / 127 项、typechecked 生产构建和 440 对对比度检查，日志 temp/localization-strata-prompt-verify.log。使用进程级 VITEST_MAX_WORKERS=8，未改既有断言、测试配置或超时。LAN 入口 613.22 kB，已有 500 kB 体积提醒保留；数字包含同期独立改动，不作为本地化覆盖率。
+- 本轮从已经提交的 0.67.4 干净基线继续；未执行版本修改、提交或打包。期间出现独立 context menu/style 任务，相关 History/Settings 菜单、CSS 和测试不属于本轮，均保留。未启动 Electron、ComfyUI 或 GPU，未新增真实增强按钮/模型生成/质量证据；临时文件在测试 finally/afterEach 清理。
+
+## 长视频范围交接（2026-10-31）
+
+用户明确要求先跳过尚未完工的长视频功能。剩余 core layout/enhancement/script 校验、renderer 调用语言、专属正常/错误/恢复状态以及最终三语言/大小写/长度验收，已交接到 [长视频 PLAN §10](../2026-10-18-long-video-director/PLAN.md#10-长视频功能闭环后的本地化验收)，其 TASK Resume 同步入口。本任务当前不再推进这些长视频专属项目，也不将其算作已完成；此前第二十五批成果保留。共享 Strata、普通单段 Prompt、非长视频 Extend 和其他页面仍属于本任务。
+
+## 第二十六批：共享 Strata 服务与控制向量
+
+- 启动/认证/端口/模型加载、上下文与 tokenizer 自有包装、请求/状态/停止失败、驻留日志、资源预警说明，以及控制向量大小/哈希/作用层确认接入三语言，共 59 个语义键。prepareStrataLaunch、进程退出和向量/驻留 helper 接受可选翻译，旧调用仍默认简体；主应用经 ApplicationRuntime → owner → service 的可选 getUiLocale 读取已保存语言，不向启动计划、HTTP 请求、snapshot 或持久化加入语言字段。独立 Agent 未传 getter 时保留简体。
+- 保留 API key 认证/脱敏、端口拒绝接管、惰性加载与实际模型确认、load/chat HTTP 载荷、请求校验、tokenizer 与资源门槛、普通低余量预警/持续严重不足保护、取消和退出占用保护、单进程串行与临时配置清理。自定义 launch 继续收到原来两个参数，只有默认启动器传入可选翻译；控制向量仍读取同一文件/字节范围并校验同一 SHA/层数。原始引擎输出、外部错误与用户内容保持。
+- 新增 6 项检查，覆盖三语言同实例 getter 从创建后的设置读取语言、健康/加载/停止、认证头与模型/中文用户请求和输出一致、无效请求在 HTTP 前拒绝、密钥脱敏/原始 EACCES 保留和仅停止自有子进程，以及真实临时向量/日志的大小/hash/层证据和字节不变。既有向量 overlay 测试仅显式补验新增翻译函数参数，原路径、模式和层数断言不变。
+- focused 七文件 120 项及 typecheck 通过，日志 temp/localization-strata-runtime-focused.log。npm.cmd run verify 通过：310 个单元文件 / 2990 项、7 个集成文件 / 127 项、typechecked 生产构建和 440 对对比度检查，日志 temp/localization-strata-runtime-verify.log；进程级 VITEST_MAX_WORKERS=8，未放宽既有超时/行为断言。LAN 入口 623.95 kB，已有 500 kB 体积提醒保留；计数包含同期独立任务。新测试以受控 HTTP/进程替身和临时文件验证协议；没有启动真实模型、GPU、软件/权重下载或真实用户目录清理。
+- 新生成的消息按 getter 当前语言格式化，不批量改写已有日志或历史 snapshot 字符串。owner 的准备/互斥外层消息、模型准备、Agent 入口及 core 资源/token/stream 校验仍待后续，不能将本批称为全部 Strata 链路完成。同期 H3 Refiner、菜单与 CSS 变化均为独立任务，未编辑或回退。
+
+## 第二十七批：Strata 准备调度、模型校验与 MTP
+
+- owner 的准备/复用、上下文/资源阶段、内存策略说明、模型身份、互斥/停止/退出保护，模型文件大小/哈希、policy/config/receipt/pack/tokenizer 完整性、准备目录保护、兼容 pack 升级与 MTP 离线准备固定消息接入三语言，共 76 个语义键。owner 沿用保存设置 getter；纯 helper 增加可选 Translate，默认简体；服务启动和缓存验证向下传递翻译。prepare/run 选项仅在内存内传递 uiLocale，用于共享子进程错误包装，不写入模型配置、receipt、缓存 key 或协议载荷。
+- 保留已选文件/模型身份、大小/hash/mtime/ctime、parser 与 PLE 检查、CPU 转换/pack 命令、MTP 工具/vocab/dense 索引与张量校验、准备互斥、路径保护、兼容升级条件、临时输出保留、取消恢复、资源准入与模型生命周期。自定义 verifyAsset 保持原调用参数；默认校验器通过闭包接收语言。原始外部诊断、路径、技术字段、组件元数据和用户内容保持。
+- 新增 5 项检查：三语言准备命令完全一致、子进程包装收到语言；切换语言后三次发现命中同一 config，不重新哈希/转换，原模型字节和 config/receipt 字节不变且无 uiLocale 字段；修改 pack 后按原保护拒绝。真实小 GGUF 的大小/hash 错误与 MTP record/tool 缺失返回英文/繁体，源文件不变且不调用工具、不创建 pack。owner 创建后切换语言，繁忙拒绝→空闲恢复→同 PID 拒绝重启/软件修改/错模型→正常 shutdown 后拒绝新操作，原保护顺序与子进程归属保持。测试沿用现有小文件夹具，在 finally 恢复测试 catalog 大小，不改生产 catalog 或校验条件。
+- focused 八文件 182 项及 typecheck 通过，日志 temp/localization-strata-preparation-focused.log。npm.cmd run verify 通过：310 个单元文件 / 2995 项、7 个集成文件 / 127 项、typechecked 生产构建和 440 对对比度检查，日志 temp/localization-strata-preparation-verify.log；进程级 VITEST_MAX_WORKERS=8，没有放宽既有断言、超时或测试配置。LAN 入口 638.33 kB，原有 500 kB 提醒保留；计数包含其他任务的既有改动，不作为本地化覆盖率。
+- 本轮未编辑长视频专属实现、PLAN 或测试。准备/进程/转换采用测试替身和临时文件，未下载模型、运行真实 pack 工具、启动 Electron/ComfyUI/GPU 或改动用户媒体；afterEach/finally 清理自有测试文件。既有菜单/CSS、H3 Refiner 与前批修改均保留。
+
+## 第二十八批：Strata 核心保护
+
+- token 预算、SSE 完整性/顺序/截断、资源准入与 GPU 底线、持续严重提交不足保护、资源探针重试失败接入三语言，共 29 个语义键。纯核心 helper 接受可选 Translate，默认简体；共享服务传入当前语言，保留自定义探针/保护 callback 原参数。没有改 tokenizer 计数、上下文/输出限制、stream stop/DONE 协议、资源门槛、探针次数/等待及持续压力计时。
+- 英文/繁体新增回归比较准入计划和自动输出预算相同；超限原输入不截断，逐字符 SSE 保留中文用户输出，诊断仅存计数，终态后输出与 length 仍拒绝；10 秒严重 commit 保护、缺口重置、2GiB GPU 底线及三次探针失败/定时器清理均保持。
+
+## 第二十九批：环境维护提示
+
+- 通用命令/CUDA/NVIDIA/服务扫描状态、核心版本来源、Depth Anything 维护保护、节点卸载后手动重启提示，以及兼容保留的 llama-server 安装与 LM Studio 探测/启动 helper 接入三语言，共 35 个语义键。路径、版本、驱动输出及外部原文保持，不改安装命令、资产来源、选择安装或重启规则。兼容 LM Studio helper 没有重新开放产品入口。
+- 环境扫描的内存缓存/合并身份纳入 uiLocale，避免语言切换复用旧提示；不新增持久化字段或改变软件/模型缓存身份。英文/繁体远程 Depth Anything 拒绝分支在网络/本地准备前返回当前语言，设置和日志不变；普通探针及安装成功分支没有新增真实软件验收。
+
+## 第三十批：生成提交包装与上传语言
+
+- 视频/续写/放大与图片提交的固定校验包装、缺节点恢复、Prompt ID、参考媒体上传标签、图片运行时节点/输入兼容错误接入三语言，共 44 个语义键；submitTask/submitImageTask 向 jsonRequest、uploadInput 和共享保护传入当前语言。保留旧默认简体 helper 调用；未改图构建、采样、上传表单、client/prompt 身份、前缀保护和提交顺序。
+- 三语言受控提交比较 graph/请求正文完全一致，保留中文用户提示词、输入文件字节及 task 快照；缺工作流在 HTTP 前拒绝，图片缺必要节点/不兼容输入仍拦截，DynamicCombo 点分输入仍通过。仅使用临时文件和 fetch 替身，不作为真实 UI 按钮/入队或模型生成证据。
+- focused 15 文件 331 项及 typecheck 通过，日志 temp/localization-28-30-focused.log；新增三文件 7 项检查。npm.cmd run verify 通过：313 个单元文件 / 3003 项、7 个集成文件 / 127 项、typechecked 生产构建和 440 对对比度检查，日志 temp/localization-28-30-verify.log。进程级 VITEST_MAX_WORKERS=8，未改既有断言/超时/测试配置；desktop 入口 474.36 kB、LAN 入口 657.61 kB，已有 500 kB 提醒保留。计数包含同期独立改动，不作为本地化覆盖率。
+- 本轮未启动 Electron、ComfyUI 或 GPU，未下载软件/模型或操作用户媒体，自有测试文件/定时器已清理。长视频专属实现/PLAN/测试没有新增修改；其他任务的菜单/CSS、NAS 和 H3 Refiner 改动保持。真实安装/扫描状态、提交按钮可达、实际输出及长文本布局仍未新增验收。
+
+## 第三十一批：H3 运行时 schema 与图片可用性
+
+- h3ComfyWorkflowRuntimeIssues、h3ExecutionNodeRuntimeIssues 及内部输入检查接入 15 个三语言语义键；submitTask 传入当前 Translate，默认简体旧调用保持。节点 class_type、输入/输出类型、枚举和数值原样插值；没有改 AV workflow 类别、所需节点/schema、DynamicCombo 点分输入、Attention 支持值、去重或错误返回形状。静态 validateH3ComfyWorkflow 仍待处理。
+- 图片模型不可用原因接入 3 个语义键，接受可选 Translator 并用其 locale 获取已有模型名称；原生入队及 submitImageTask 使用保存设置语言。退役 H3/局部融合的旧记录继续可读，默认简体 factory 调用兼容；没有恢复退役适配器、改队列/历史或修改模型 catalog。各图片 adapter 的 compile/build/validate 固定诊断仍待处理。
+- 新增 6 项检查：英文/繁体 schema 两类故障及恢复、workflow/schema 输入不变、无效 object_info 和精确 class_type 保留；submitTask 的嵌套执行错误确实使用当前语言并在 POST 前拒绝；退役图片在入队/执行前拒绝，不触发网络/状态写回，未知模型 ID 中的中文保持。focused 7 文件 62 项通过，日志 temp/localization-31-focused.log。最终 npm.cmd run verify 通过：316 个单元文件 / 3035 项、7 个集成文件 / 127 项、typechecked 生产构建和 440 对对比度检查，日志 temp/localization-31-final-verify.log；进程级 VITEST_MAX_WORKERS=8，LAN 入口 661.21 kB，既有 500 kB 提醒保留。数字包含同期其他任务，不作为本地化覆盖率。
+- 初次 focused 的两份服务测试在 logger 初始化时遇到系统共享临时目录旧日志 EPERM，未进入测试。随后通过进程级 TEMP/TMP 指向本任务 temp/localization-31-tmp 隔离，focused 通过；但首次全量在该仓库盘临时目录中出现 NAS/资料迁移八项超时及超时后的 ENOTEMPTY 清理错误，日志 temp/localization-31-verify.log。改用系统临时盘下本任务独立目录后，失败两文件 26 项原断言通过，日志 temp/localization-31-storage-recheck.log，再执行全量。没有删除共享旧日志、修改生产日志规则、放宽超时/断言或跳过失败测试。
+- 未启动 Electron、ComfyUI/GPU、安装软件或下载权重；测试只使用自有临时文件和 fetch 替身，不作为真实按钮/生成或视觉审校证据。两处自有临时根在全量结束后核对准确绝对路径并清理，保留 temp 下的验收日志；共享旧日志保持。既有其他任务改动保持；当前磁盘版本已由其他工作推进至 0.67.5，本任务没有执行版本更新。
+
 ## 待完成
 
-1. 继续遗漏修复：检查 Qwen-VL 元数据准备、Strata/长视频 Prompt 服务；此前五条后端及共享等待固定消息已覆盖记录范围，不能称整个 Prompt 运行链已完成。继续检查 `environment.ts` 其余安装/下载及运行配置、Strata 控制向量底层校验/准备/运行服务与 Agent 软件维护；Attention 旧快照、其他扫描固定字段、生成提交/其他上传消费者、资产库与队列/图片/upscale 校验及资料库更底层恢复说明仍有遗漏。保留运行管理元数据、模型面向提示词、外部诊断和路径。
+1. 继续遗漏修复：独立 Strata Agent 语言来源及软件维护、`environment.ts` 其余安装/运行配置、Attention 旧快照和其他扫描固定字段仍需处理；Strata core/owner/模型/MTP 准备、共享服务和控制向量已覆盖上文范围。长视频专属剩余内容按用户要求交接 PLAN。生成提交外层、H3 运行时 schema 和图片可用性已处理，但 `h3-workflow-contract.ts` 静态校验、各图片 workflow adapter 的底层固定诊断及其语言传递仍待处理；继续检查其他上传消费者、资产库与队列/图片/upscale 校验及资料库更底层恢复说明。保留运行管理元数据、模型面向提示词、外部诊断和路径。
 2. 检查有内容的 Queue/History、详情页、Prompt/Extend/Upscale、Settings 其他标签，以及 LAN/NAS 浏览实际正常/加载/错误状态。当前空页面 smoke 不覆盖这些状态；未做原生菜单和对话框的桌面实操验收。
 3. 核查运行时 workflow 消息的调用语言与旧提示词版本其他内建标签；原始用户内容、技术标识、文件路径及旧兼容匹配保留，不能机械替换全部中文。
 4. 遗漏覆盖后，逐条审校全局、Settings、模型和提示词界面译文；英文功能按钮/可执行菜单按用户规则使用标题式大小写，说明句保持句子用途。当前 Copy file、版本未知 notice 重复和英文全角分隔等仍待处理。

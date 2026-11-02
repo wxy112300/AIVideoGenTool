@@ -1,4 +1,5 @@
-import { h3RefinerGeometry, h3RefinerSourceFilename } from "../../core/h3-refiner";
+import { h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } from "../../core/h3-refiner";
+import { TESSERA_ID, tesseraAnchorRecommended, tesseraAnchorModels, tesseraSourceFilename } from "../../core/tessera";
 import type {
   AetherScaleCarrierMode,
   AetherScaleStyleProfile,
@@ -63,7 +64,7 @@ import { versionVideoIndex } from "../../core/history-video";
 type IconRenderer = (name: string, className?: string) => string;
 type HtmlEscaper = (value: unknown) => string;
 
-type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID | "minimax_h3_kijai_refiner";
+type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID | "minimax_h3_kijai_refiner" | typeof TESSERA_ID;
 type UpscaleTargetHeight = 720 | 768 | 1080 | 1440 | 2160;
 type UpscaleTileMode = "auto" | "safe" | "fast";
 
@@ -109,6 +110,8 @@ export interface ImageAssetLibraryDialogOptions {
 }
 
 export interface UpscaleDialogState {
+  tesseraAnchorEnabled?: boolean;
+  tesseraAnchorModelId?: string;
   taskId?: string;
   replaceTaskId?: string;
   h3Provider?: "bilinear" | "learned-3d";
@@ -712,7 +715,8 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   const isAetherScaleSelected = dialog.modelId === AETHERSCALE_MODEL_ID;
   const isKonohamaruSelected = dialog.modelId === KONOHAMARU_MODEL_ID;
   const h3Selected = dialog.modelId === "minimax_h3_latent_upscaler";
-  const refinerSelected = dialog.modelId === "minimax_h3_kijai_refiner";
+  const tesseraSelected = dialog.modelId === TESSERA_ID;
+  const refinerSelected = dialog.modelId === "minimax_h3_kijai_refiner" || tesseraSelected;
   const h3Artifact = version.h3ContinuationData?.status === "available"
     ? version.h3ContinuationData.artifact
     : undefined;
@@ -723,7 +727,8 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   if (refinerSelected) {
     try {
       refinerGeometry = h3RefinerGeometry(version.width, version.height, legacyTargetHeight);
-      if (version.duration > 15) refinerError = options.t(uiKeys.upscale.refinerDuration);
+      try { validateH3RefinerSource(version.duration, version.fps); }
+      catch { refinerError = options.t(uiKeys.upscale.refinerDuration); }
     } catch (error) { refinerError = error instanceof Error ? error.message : String(error); }
   }
   const selectedScale = isDlss5Scale(dialog.targetScale) ? dialog.targetScale : 2;
@@ -859,7 +864,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     0;
   const vramWarning = detectedVramBytes > 0 &&
     estimate.vramMaxGb * 1024 ** 3 > detectedVramBytes;
-  const supportedIds = new Set<string>(["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", "minimax_h3_kijai_refiner"]);
+  const supportedIds = new Set<string>(["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan", "minimax_h3_kijai_refiner", TESSERA_ID]);
   const fallbackProfiles: UpscaleModelProfileOption[] = [
     { id: "seedvr2", name: "SeedVR2", available: true },
     { id: "seedvr2-native-int8", name: "SeedVR2 3B INT8 ConvRot · 原生", available: true },
@@ -886,7 +891,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     ? createAetherScaleUpscaleFilename(version.outputFilename, selectedAetherMode)
     : isDlss5Selected
     ? createDlss5UpscaleFilename(version.outputFilename, selectedScale)
-    : options.createUpscaleFilename(refinerSelected ? h3RefinerSourceFilename(version.outputFilename) : version.outputFilename, legacyTargetHeight);
+    : options.createUpscaleFilename(tesseraSelected ? tesseraSourceFilename(version.outputFilename) : refinerSelected ? h3RefinerSourceFilename(version.outputFilename) : version.outputFilename, legacyTargetHeight);
   const supportsTileMode = dialog.modelId === "seedvr2";
   const targetOptions = h3Selected
     ? [720, 768, 1080, 1440] as const
@@ -966,7 +971,13 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     (dialog.h3Provider === "bilinear" && legacyTargetHeight >= 1080) || (dialog.h3Provider === "learned-3d" && legacyTargetHeight < 1080)
   );
   const pixelModelUnavailable = !h3Selected && !isDlss5Selected && !isAetherScaleSelected && !isKonohamaruSelected && !pixelProfiles.some(profile => profile.id === dialog.modelId && profile.available);
-  const enqueueDisabled = busy || targetUnavailable || pixelModelUnavailable || Boolean(refinerError) ||
+  const anchorModels = tesseraAnchorModels(options.environment);
+  const anchorScaleOk = tesseraAnchorRecommended(version.width, version.height, legacyTargetHeight);
+  const anchorModelId = dialog.tesseraAnchorModelId ?? anchorModels[0]?.modelId;
+  const anchorUnavailable = !anchorModels.some(m => m.modelId === anchorModelId);
+  const anchorError = tesseraSelected && dialog.tesseraAnchorEnabled && anchorUnavailable;
+  const anchorFrozen = Boolean(dialog.taskId || dialog.replaceTaskId);
+  const enqueueDisabled = busy || !!anchorError || targetUnavailable || pixelModelUnavailable || Boolean(refinerError) ||
     (h3Selected && !h3Available) ||
     (isDlss5Selected && !dlss5Status.available) ||
     (isAetherScaleSelected && (!aetherStatus.available || !aetherGeometry || (!aetherAdvancedReady && selectedAetherMode !== "performance_2x" && selectedAetherMode !== "ultra_performance_3x"))) ||
@@ -988,7 +999,11 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
           <div class="upscale-form">
             ${row(t(uiKeys.history.page.model), `<select id="upscale-model" aria-label="${t(uiKeys.upscale.model)}" ${busy ? "disabled" : ""}>${profiles.map(profile => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select>`)}
             ${targetMarkup}${methodMarkup}
+            ${tesseraSelected ? row(t(uiKeys.upscale.tesseraAnchor), `<input type="checkbox" id="upscale-tessera-anchor" aria-label="${t(uiKeys.upscale.tesseraAnchor)}" ${dialog.tesseraAnchorEnabled ? "checked" : ""} ${busy || anchorFrozen || (!dialog.tesseraAnchorEnabled && anchorUnavailable) ? "disabled" : ""}>`)
+              + (dialog.tesseraAnchorEnabled && anchorModels.length ? row(t(uiKeys.upscale.tesseraAnchorModel), `<select id="upscale-tessera-anchor-model" aria-label="${t(uiKeys.upscale.tesseraAnchorModel)}" ${busy || anchorFrozen ? "disabled" : ""}>${anchorModels.map(m => `<option value="${m.modelId}" ${m.modelId === anchorModelId ? "selected" : ""}>${options.escapeHtml(options.environment!.modelProfiles.find(p => p.id === m.modelId)!.name)}</option>`).join("")}</select>`) : "") : ""}
+            ${tesseraSelected && anchorFrozen ? `<span class="upscale-policy-readonly">${t(uiKeys.upscale.tesseraAnchorFrozen)}</span>` : ""}
           </div>
+          ${tesseraSelected && (anchorUnavailable || (dialog.tesseraAnchorEnabled && !anchorScaleOk)) ? `<p class="upscale-warning" role="${anchorError ? "alert" : "status"}">${t(anchorUnavailable ? uiKeys.upscale.tesseraAnchorMissing : uiKeys.upscale.tesseraAnchorScale)}</p>` : ""}
           ${refinerError ? `<p class="upscale-warning" role="alert">${options.escapeHtml(refinerError)}</p>` : ""}${targetUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.targetUnavailable)}</p>` : ""}${pixelModelUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.modelUnavailable)}</p>` : ""}
           ${h3Selected && !h3Available ? `<p class="upscale-warning" role="alert">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}${dlss5StatusMarkup}${aetherStatusMarkup}${konohamaruStatusMarkup}
           <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code title="${options.escapeHtml(outputFilename)}">${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><div><span>${t(uiKeys.history.detail.vramPeak)}</span><b>${estimatedVram}</b></div><div><span>${t(uiKeys.history.page.elapsed)}</span><b>${estimatedTime}</b></div>${isDlss5Selected || isAetherScaleSelected || isKonohamaruSelected ? `<div><span>${t(uiKeys.upscale.disk)}</span><b>${estimatedDiskBytes ? options.formatBytes(estimatedDiskBytes) : "—"}</b></div>` : ""}</div><span class="upscale-output-info">${fieldLabelWithTip("", estimateNote)}</span></div>

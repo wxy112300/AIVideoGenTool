@@ -11,7 +11,7 @@ import { uiKeys } from "../src/core/i18n-keys";
 import { versionShortEdge } from "../src/renderer/pages/history/helpers";
 
 describe("secondary dialog markup", () => {
-  it("opens Refiner 4K for ordinary video, blocks missing files and long clips, and recovers without JointAV", () => {
+  it("opens Refiner 4K for aligned and long video, blocks missing files or invalid metadata, and recovers without JointAV", () => {
     const version = { id: "v-refiner", outputFilename: "source.mp4", width: 1280, height: 720, duration: 5, fps: 30,
       files: [{ filename: "source.mp4", absolutePath: "C:/source.mp4", type: "output", subfolder: "" }] } as AssetVersion;
     const asset = { id: "a-refiner", title: "Source", versions: [version] } as HistoryAsset;
@@ -32,7 +32,12 @@ describe("secondary dialog markup", () => {
     expect(ready).toContain(uiKeys.upscale.benchmarkPending);
     const unavailable = renderUpscaleDialog({ ...options, environment: { modelProfiles: [] } as never });
     expect(unavailable).toContain('id="enqueue-upscale" disabled');
-    version.duration = 16;
+    for (const duration of [15.1, 362 / 24, 30, 736 / 24]) {
+      version.duration = duration;
+      expect(renderUpscaleDialog(options)).not.toContain(uiKeys.upscale.refinerDuration);
+      expect(renderUpscaleDialog(options)).not.toContain('id="enqueue-upscale" disabled');
+    }
+    version.duration = 0;
     expect(renderUpscaleDialog(options)).toContain(uiKeys.upscale.refinerDuration);
     expect(renderUpscaleDialog(options)).toContain('id="enqueue-upscale" disabled');
   });

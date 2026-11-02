@@ -574,9 +574,9 @@ export function workflowTaskForComfyOutput<T extends { outputFilename: string }>
     : task;
 }
 
-function h3NativeUpscaleWorkflowTask(task: UpscaleQueueTask): GenerationQueueTask {
+function h3NativeUpscaleWorkflowTask(task: UpscaleQueueTask, t: Translate = createNativeTranslator(undefined).t): GenerationQueueTask {
   const input = task.h3NativeInput;
-  if (!input) throw new Error("H3 原生二次采样任务缺少 JointAV 输入快照。");
+  if (!input) throw new Error(t(uiKeys.taskSubmission.nativeSnapshotMissing));
   return {
     ...task,
     taskType: "generation",
@@ -767,6 +767,7 @@ export async function assertKonohamaruExecutionReady(
 }
 
 export interface ComfyProgressContext {
+  tessera?: boolean;
   spectrumOuterSteps?: number;
   spectrumOfflineReplay?: boolean;
   continuumNodeRoles?: Record<string, "source-video" | "source-state" | "source-preparation" | "source-decode" | "source-frame" | "sampler" | "assembly">;
@@ -897,6 +898,7 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
     }
   }
   const context: ComfyProgressContext = {};
+  if (Object.values(graph).some(node => node && typeof node === "object" && (node as { class_type?: string }).class_type === "TesseraRefine")) context.tessera = true;
   if (hasSpectrum && schedulerSteps.size === 1) {
     context.spectrumOuterSteps = [...schedulerSteps][0];
     if (hasSpectrumOfflineReplay) context.spectrumOfflineReplay = true;
@@ -927,19 +929,20 @@ export async function submitTask(
   h3ContinuumManagedReceiptNodeId?: string;
   progressContext?: ComfyProgressContext;
 }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!task.workflowPath) {
-    throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
+    throw new Error(t(uiKeys.taskSubmission.workflowMissing));
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const [objectInfo, systemStats] = await Promise.all([
     jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
-      { signal }
+      { signal }, t
     ),
     jsonRequest<{
       system?: { comfyui_version?: string };
       devices?: Array<{ vram_total?: number }>;
-    }>(`${baseUrl}/system_stats`, { signal }).catch(() => ({
+    }>(`${baseUrl}/system_stats`, { signal }, t).catch(() => ({
       devices: [],
       system: undefined
     }))
@@ -987,7 +990,7 @@ export async function submitTask(
     const source = JSON.parse(sourceText) as unknown;
     const h3WorkflowValidation = validateH3ComfyWorkflow(source);
     if (!h3WorkflowValidation.valid) {
-      throw new Error(`H3 AV workflow 静态校验失败：${h3WorkflowValidation.errors.join("；")}`);
+      throw new Error(t(uiKeys.taskSubmission.h3StaticFailed, { detail: h3WorkflowValidation.errors.join("; ") }));
     }
     if (task.taskType === "extension") {
       const h3Continuum = isMiniMaxH3ContinuumModel(task.modelId);
@@ -1002,14 +1005,14 @@ export async function submitTask(
         const imageCount = slots.filter((slot) => slot.mediaType === "image").length;
         const extraVideoCount = Math.max(0, slots.filter((slot) => slot.mediaType === "video").length - 1);
         if (!workflowSupportsH3MotionContextReferences(source, imageCount, extraVideoCount)) {
-          throw new Error("当前 Motion Context 工作流不支持任务中的参考 Slot，请重新选择新版续写工作流。");
+          throw new Error(t(uiKeys.taskSubmission.motionWorkflowOld));
         }
       }
       if (h3Continuum) {
         if (h3ContinuumManaged) {
           const prepared = await prepareH3BoundaryFrame(continuumFirstFrameTask(task), signal);
           try {
-            const uploadedInput = await uploadInput(baseUrl, prepared.filePath, signal, "Continuum 首段边界帧");
+            const uploadedInput = await uploadInput(baseUrl, prepared.filePath, signal, t(uiKeys.taskSubmission.continuumBoundary), t);
             prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
               h3ContinuumBoundaryFrame: uploadedInput,
               vramTotalBytes,
@@ -1023,7 +1026,7 @@ export async function submitTask(
         } else {
           const artifactReference = h3ContinuumArtifactReference(task);
           if (!artifactReference) {
-            throw new Error("Continuum legacy/bootstrap 任务缺少已验证的 H3 Native AV artifact 快照。");
+            throw new Error(t(uiKeys.taskSubmission.artifactMissing));
           }
           prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
             h3AvInputArtifact: artifactReference,
@@ -1046,10 +1049,10 @@ export async function submitTask(
             prepared.filePath,
             signal,
             h3Boundary
-              ? "H3 接续边界帧"
+              ? t(uiKeys.taskSubmission.h3Boundary)
               : h3MotionContext
-                ? "H3 运动与音频上下文"
-                : "续写上下文"
+                ? t(uiKeys.taskSubmission.h3Context)
+                : t(uiKeys.taskSubmission.extensionContext), t
           );
           const motionReferenceSlots = h3MotionContext ? task.h3ReferenceSlots ?? [] : [];
           const motionVideoSlots = motionReferenceSlots.filter((slot) => slot.mediaType === "video");
@@ -1057,19 +1060,19 @@ export async function submitTask(
             motionVideoSlots[0]?.mediaPath !== task.sourceVideoPath ||
             motionReferenceSlots.some((slot) => !slot.mediaPath)
           )) {
-            throw new Error("Motion Context 参考 Slot 无效：Slot 1 必须是当前源视频，其他 Slot 也必须有文件。");
+            throw new Error(t(uiKeys.taskSubmission.motionSlotsInvalid));
           }
           const [extraReferenceImages, extraReferenceVideos] = h3MotionContext
             ? await Promise.all([
                 Promise.all(
                   motionReferenceSlots
                     .filter((slot) => slot.mediaType === "image")
-                    .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, `Motion Context 参考图 ${index + 1}`))
+                    .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.motionImage, { number: index + 1 }), t))
                 ),
                 Promise.all(
                   motionVideoSlots
                     .slice(1)
-                    .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, `Motion Context 参考视频 ${index + 2}`))
+                    .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.motionVideo, { number: index + 2 }), t))
                 )
               ])
             : [[], []] as [string[], string[]];
@@ -1102,22 +1105,22 @@ export async function submitTask(
     } else if (isMiniMaxH3R2vModel(task.modelId)) {
       const referenceSlots = task.h3ReferenceSlots ?? [];
       if (!referenceSlots.length || referenceSlots.some((slot) => !slot.mediaPath)) {
-        throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
+        throw new Error(t(uiKeys.taskSubmission.r2vEmpty));
       }
       const imageSlots = referenceSlots.filter((slot) => slot.mediaType === "image");
       const videoSlots = referenceSlots.filter((slot) => slot.mediaType === "video");
       if (imageSlots.length > 9 || videoSlots.length > 3 || referenceSlots.length > 12) {
-        throw new Error("R2V 最多支持 9 张图片、3 段视频，且总参考媒体不超过 12 个。");
+        throw new Error(t(uiKeys.taskSubmission.r2vLimit));
       }
       const [h3ReferenceImages, h3ReferenceVideos] = await Promise.all([
         Promise.all(
           imageSlots.map((slot, index) =>
-            uploadInput(baseUrl, slot.mediaPath, signal, `R2V 参考图 ${index + 1}`)
+            uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.r2vImage, { number: index + 1 }), t)
           )
         ),
         Promise.all(
           videoSlots.map((slot, index) =>
-            uploadInput(baseUrl, slot.mediaPath, signal, `R2V 参考视频 ${index + 1}`)
+            uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.r2vVideo, { number: index + 1 }), t)
           )
         )
       ]);
@@ -1132,9 +1135,9 @@ export async function submitTask(
     } else {
       const supportsEndImage = workflowSupportsEndImage(source);
       const [inputImage, endImage] = await Promise.all([
-        uploadInput(baseUrl, task.startImagePath, signal, "首帧"),
+        uploadInput(baseUrl, task.startImagePath, signal, t(uiKeys.taskSubmission.startFrame), t),
         supportsEndImage && task.endImagePath
-          ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
+          ? uploadInput(baseUrl, task.endImagePath, signal, t(uiKeys.taskSubmission.endFrame), t)
           : Promise.resolve("")
       ]);
       prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
@@ -1148,7 +1151,7 @@ export async function submitTask(
     }
   } else if (task.taskType === "upscale" && task.upscaleMode === "h3-native") {
       const input = task.h3NativeInput;
-      if (!input) throw new Error("H3 原生二次采样任务缺少 JointAV 输入快照。");
+      if (!input) throw new Error(t(uiKeys.taskSubmission.nativeSnapshotMissing));
       const sourceText = await fs.readFile(task.workflowPath, {
         encoding: "utf8",
         signal
@@ -1156,18 +1159,18 @@ export async function submitTask(
       const source = JSON.parse(sourceText) as unknown;
       const validation = validateH3ComfyWorkflow(source);
       if (!validation.valid || validation.kind !== "second-sampling-av") {
-        throw new Error(`H3 二次采样工作流静态校验失败：${validation.errors.join("；")}`);
+        throw new Error(t(uiKeys.taskSubmission.secondPassStaticFailed, { detail: validation.errors.join("; ") }));
       }
       const [inputImage, endImage] = await Promise.all([
         input.startImagePath
-          ? uploadInput(baseUrl, input.startImagePath, signal, "H3 二采首帧")
+          ? uploadInput(baseUrl, input.startImagePath, signal, t(uiKeys.taskSubmission.secondPassStart), t)
           : Promise.resolve(""),
         input.endImagePath
-          ? uploadInput(baseUrl, input.endImagePath, signal, "H3 二采尾帧")
+          ? uploadInput(baseUrl, input.endImagePath, signal, t(uiKeys.taskSubmission.secondPassEnd), t)
           : Promise.resolve("")
       ]);
       const workflowTask = workflowTaskForComfyOutput(
-        h3NativeUpscaleWorkflowTask(task),
+        h3NativeUpscaleWorkflowTask(task, t),
         settings
       );
       prompt = renderWorkflow(source, workflowTask, {
@@ -1191,14 +1194,14 @@ export async function submitTask(
         .find(([, value]) => value && typeof value === "object" &&
           (value as Record<string, unknown>).class_type === "LocalVideoStudioH3SaveJointAV")?.[0];
       if (!h3AvSerializerNodeId) {
-        throw new Error("H3 二次采样工作流缺少 JointAV serializer 输出节点。");
+        throw new Error(t(uiKeys.taskSubmission.secondPassSerializerMissing));
       }
   } else if (task.taskType === "upscale") {
       const sourceVideo = options.uploadedUpscaleSource ?? await uploadInput(
         baseUrl,
         task.sourceFilePath,
         signal,
-        "源视频"
+        t(uiKeys.taskSubmission.sourceVideo), t
       );
       uploadedUpscaleSource = sourceVideo;
       prompt = renderUpscaleWorkflow(workflowTaskForComfyOutput(task, settings), sourceVideo, {
@@ -1206,7 +1209,7 @@ export async function submitTask(
         realEsrgan: settings.realEsrganModel
       }, objectInfo, options.nativeSeedVr2Segment);
   } else {
-    throw new Error("图片任务必须通过 submitImageTask 提交。");
+    throw new Error(t(uiKeys.taskSubmission.imageSubmitOnly));
   }
   const managedContinuumTask = task.taskType === "extension" &&
     isMiniMaxH3ContinuumModel(task.modelId) &&
@@ -1228,7 +1231,7 @@ export async function submitTask(
           .map(([id]) => id)
       : [];
     if (existingSerializerIds.length > 1) {
-      throw new Error("H3 工作流包含多个 JointAV serializer，无法确定唯一输出节点。");
+      throw new Error(t(uiKeys.taskSubmission.multipleSerializers));
     }
     h3AvSerializerNodeId = existingSerializerIds[0] ?? attachH3JointAvSerializer(
       prompt,
@@ -1243,11 +1246,11 @@ export async function submitTask(
           .map(([id]) => id)
       : [];
     if (receiptIds.length !== 1) {
-      throw new Error("H3 Continuum managed workflow 缺少唯一的 Run Storage receipt 输出节点。");
+      throw new Error(t(uiKeys.taskSubmission.receiptMissing));
     }
     h3ContinuumManagedReceiptNodeId = receiptIds[0];
     const receipt = (prompt as Record<string, { inputs: Record<string, unknown> }>)[receiptIds[0]];
-    bindManagedContinuumPrefixExpectation(receipt.inputs, task, objectInfo);
+    bindManagedContinuumPrefixExpectation(receipt.inputs, task, objectInfo, t);
   } else if (task.taskType === "extension" && isMiniMaxH3ContinuumModel(task.modelId)) {
     const diagnosticsIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
       ? Object.entries(prompt as Record<string, unknown>)
@@ -1256,7 +1259,7 @@ export async function submitTask(
           .map(([id]) => id)
       : [];
     if (diagnosticsIds.length !== 1) {
-      throw new Error("H3 Continuum Extend workflow 缺少唯一的 runtime diagnostics 输出节点。");
+      throw new Error(t(uiKeys.taskSubmission.diagnosticsMissing));
     }
     h3ContinuumDiagnosticsNodeId = diagnosticsIds[0];
   }
@@ -1268,17 +1271,17 @@ export async function submitTask(
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(
-      `当前 ComfyUI 服务尚未加载工作流节点：${missingNodes.join("、")}。请在设置页确认节点状态；如果文件已经安装，请重启 ComfyUI 后复检。`
+      t(uiKeys.taskSubmission.nodesMissing, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) })
     );
   }
-  const h3RuntimeSchemaIssues = h3ComfyWorkflowRuntimeIssues(prompt, objectInfo);
-  const h3ExecutionSchemaIssues = h3ExecutionNodeRuntimeIssues(prompt, objectInfo);
+  const h3RuntimeSchemaIssues = h3ComfyWorkflowRuntimeIssues(prompt, objectInfo, t);
+  const h3ExecutionSchemaIssues = h3ExecutionNodeRuntimeIssues(prompt, objectInfo, t);
   if (h3RuntimeSchemaIssues.length || h3ExecutionSchemaIssues.length) {
     throw new Error(
-      `H3 AV workflow 运行时 schema 不兼容：${[
+      t(uiKeys.taskSubmission.h3SchemaFailed, { detail: [
         ...h3RuntimeSchemaIssues,
         ...h3ExecutionSchemaIssues
-      ].join("；")}。请在设置 → 节点与依赖中更新对应的 ComfyUI 核心或自定义节点，并重启服务。`
+      ].join("; ") })
     );
   }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
@@ -1291,8 +1294,8 @@ export async function submitTask(
       extra_data: videoOutputExtraData
     }),
     signal
-  });
-  if (!result.prompt_id) throw new Error("ComfyUI 未返回 Prompt ID");
+  }, t);
+  if (!result.prompt_id) throw new Error(t(uiKeys.taskSubmission.promptIdMissing));
   const nodeTypes = Object.fromEntries(
     Object.entries(prompt as Record<string, unknown>).flatMap(([id, value]) => {
       const classType =
@@ -1327,50 +1330,51 @@ export async function submitImageTask(
   clientId: string;
   nodeTypes: Record<string, string>;
 }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const adapter = imageModelAdapterFor(task.modelId);
   if (!adapter) {
-    throw new Error(imageModelUnavailableReason(task.modelId));
+    throw new Error(imageModelUnavailableReason(task.modelId, createNativeTranslator(settings.uiLocale)));
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const objectInfo = await jsonRequest<Record<string, unknown>>(
     `${baseUrl}/object_info`,
-    { signal }
+    { signal }, t
   );
   const compiled = adapter.compilePrompt(task.prompt, task.pictures);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const workflow = adapter.buildWorkflow(task, run);
   const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true);
   if (workflowErrors.length) {
-    throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
+    throw new Error(t(uiKeys.taskSubmission.imageValidationFailed, { detail: workflowErrors.join(" ") }));
   }
-  assertImageWorkflowRuntimeCompatible(task.modelId, workflow, objectInfo);
+  assertImageWorkflowRuntimeCompatible(task.modelId, workflow, objectInfo, t);
   const schemaErrors = adapter.validateRuntimeSchema?.(workflow, objectInfo) ?? [];
   if (schemaErrors.length) {
-    throw new Error(`图片工作流运行时 schema 校验失败：${schemaErrors.join(" ")}`);
+    throw new Error(t(uiKeys.taskSubmission.imageSchemaFailed, { detail: schemaErrors.join(" ") }));
   }
   const uploadedPictures = await Promise.all(
     compiled.pictures.map((picture, index) =>
-      uploadInput(baseUrl, imageReferenceInputPath(picture), signal, `Picture ${index + 1}`)
+      uploadInput(baseUrl, imageReferenceInputPath(picture), signal, t(uiKeys.taskSubmission.picture, { number: index + 1 }), t)
     )
   );
   const uploadedMasks = await Promise.all(
     compiled.pictures
       .filter((picture) => picture.mask?.maskPath)
       .map((picture, index) =>
-        uploadInput(baseUrl, picture.mask!.maskPath, signal, `Mask ${index + 1}`)
+        uploadInput(baseUrl, picture.mask!.maskPath, signal, t(uiKeys.taskSubmission.mask, { number: index + 1 }), t)
       )
   );
   const prompt = renderImageWorkflow(workflow, uploadedPictures, uploadedMasks);
   const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile, false, task.h3ImageRecipe);
-  if (renderedWorkflowErrors.length) throw new Error(`图片工作流校验失败：${renderedWorkflowErrors.join(" ")}`);
+  if (renderedWorkflowErrors.length) throw new Error(t(uiKeys.taskSubmission.imageValidationFailed, { detail: renderedWorkflowErrors.join(" ") }));
   const clientId = `local-video-studio-image-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, client_id: clientId }),
     signal
-  });
-  if (!result.prompt_id) throw new Error("ComfyUI 未返回图片 Prompt ID");
+  }, t);
+  if (!result.prompt_id) throw new Error(t(uiKeys.taskSubmission.imagePromptIdMissing));
   const nodeTypes = Object.fromEntries(
     Object.entries(prompt).map(([id, value]) => [id, value.class_type])
   );
@@ -1380,11 +1384,12 @@ export async function submitImageTask(
 export function bindManagedContinuumPrefixExpectation(
   receiptInputs: Record<string, unknown>,
   task: ExtensionQueueTask,
-  objectInfo: Record<string, unknown>
+  objectInfo: Record<string, unknown>,
+  t: Translate = createNativeTranslator(undefined).t
 ): void {
   const supported = objectInfoInputNames(objectInfo.LocalVideoStudioH3ContinuumManagedReceipt);
   if (!supported?.has("expected_parent_revision_id") || !supported.has("expected_prefix_chunks") || !supported.has("sampling_evidence_version")) {
-    throw new Error("Continuum managed 缺少执行前前缀保护：请在设置中更新 Local Video Studio H3 节点并重启 ComfyUI。");
+    throw new Error(t(uiKeys.taskSubmission.prefixGuardMissing));
   }
   receiptInputs.sampling_evidence_version = 2;
   receiptInputs.expected_prefix_chunks = task.h3ContinuumSequence?.acceptedChunks ?? 0;
@@ -1410,7 +1415,8 @@ function objectInfoInputNames(value: unknown): Set<string> | null {
 export function assertImageWorkflowRuntimeCompatible(
   modelId: string,
   workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }>,
-  objectInfo: Record<string, unknown>
+  objectInfo: Record<string, unknown>,
+  t: Translate = createNativeTranslator(undefined).t
 ): void {
   const missingNodes = missingWorkflowNodeTypes(workflow, objectInfo);
   if (missingNodes.length) {
@@ -1420,14 +1426,14 @@ export function assertImageWorkflowRuntimeCompatible(
       .filter((definition) => definition?.nodeTypes?.some((nodeType) => missingNodes.includes(nodeType)));
     if (requiredPackages.length) {
       throw new Error(
-        `必需节点未加载：${requiredPackages.map((item) => item!.name).join("、")}；` +
-        `ComfyUI 未注册 ${missingNodes.join("、")}。节点目录存在但当前运行时不可用，` +
-        "请检查导入错误、重启 ComfyUI，或在设置 → 节点与依赖中更新节点版本。"
+        t(uiKeys.taskSubmission.requiredNodesMissing, { packages: requiredPackages.map((item) => item!.name).join(t(uiKeys.nodeInstaller.listSeparator)) }) +
+        t(uiKeys.taskSubmission.unregisteredNodes, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) }) +
+        t(uiKeys.taskSubmission.nodeRecovery)
       );
     }
     throw new Error(
-      `ComfyUI 核心版本不兼容：缺少图片工作流节点 ${missingNodes.join("、")}。` +
-      "请更新当前选中的 ComfyUI 安装并重启。"
+      t(uiKeys.taskSubmission.imageCoreMissing, { nodes: missingNodes.join(t(uiKeys.nodeInstaller.listSeparator)) }) +
+      t(uiKeys.taskSubmission.coreRecovery)
     );
   }
 
@@ -1443,12 +1449,12 @@ export function assertImageWorkflowRuntimeCompatible(
       const separator = name.indexOf(".");
       return separator < 0 || !supported.has(name.slice(0, separator));
     });
-    if (unknownInputs.length) incompatibleInputs.push(`${node.class_type} 缺少输入 ${unknownInputs.join("/")}`);
+    if (unknownInputs.length) incompatibleInputs.push(t(uiKeys.taskSubmission.inputMissing, { node: node.class_type, inputs: unknownInputs.join("/") }));
   }
   if (incompatibleInputs.length) {
     throw new Error(
-      `节点版本不兼容：${[...new Set(incompatibleInputs)].join("；")}。` +
-      "请在设置 → 节点与依赖中更新对应节点后重启 ComfyUI。"
+      t(uiKeys.taskSubmission.nodeVersionIncompatible, { detail: [...new Set(incompatibleInputs)].join("; ") }) +
+      t(uiKeys.taskSubmission.updateNodes)
     );
   }
 }
@@ -1780,6 +1786,16 @@ function progressStageForNode(
   nodeId: string | undefined,
   progressContext?: ComfyProgressContext, t: Translate = createNativeTranslator(undefined).t
 ): NodeProgressStage {
+  if (progressContext?.tessera) {
+    if (nodeId === "anchor-unload") return { start: 24, end: 26, label: `Qwen · ${t(uiKeys.executionProgress.unloading)}`, tracksSteps: false };
+    if (nodeId?.startsWith("anchor-")) {
+      const stage = nodeStage(classType, t);
+      return { ...stage, start: 5, end: 24, label: `Qwen · ${stage.label}` };
+    }
+    if (classType === "LocalVideoStudioH3TesseraLoad") return { start: 26, end: 29, label: `H3 · ${t(uiKeys.executionProgress.loadingModel)}`, tracksSteps: false };
+    if (classType === "TesseraEncode") return { start: 29, end: 35, label: `Tessera · ${t(uiKeys.executionProgress.vaeEncode)}`, tracksSteps: false };
+    if (classType === "TesseraRefine") return { start: 35, end: 94, label: `Tessera · ${t(uiKeys.executionProgress.tiledSampling)}`, tracksSteps: true };
+  }
   const role = nodeId ? progressContext?.continuumNodeRoles?.[nodeId] : undefined;
   if (role === "source-state") {
     return { start: 5, end: 7, label: t(uiKeys.executionProgress.sourceState), tracksSteps: false };

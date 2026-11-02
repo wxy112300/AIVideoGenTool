@@ -71,6 +71,7 @@ describe("dependency catalog", () => {
       "comfyui-multimodal-prompt-nodes",
       "comfyui-qwenvl-lora",
       "inpaint-nodes",
+      "tessera",
       "seedvr2",
       "flashvsr",
       "frame-interpolation",
@@ -298,6 +299,7 @@ describe("dependency catalog", () => {
       ],
       features: [
         { id: "h3-continuum-groups", nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"] },
+        { id: "h3-tessera", nodeTypes: ["LocalVideoStudioH3TesseraSigmas", "LocalVideoStudioH3TesseraLoad"] },
         { id: "h3-refiner", nodeTypes: ["LocalVideoStudioH3RefinerPrepare", "LocalVideoStudioH3RefinerOutput", "LocalVideoStudioH3RefinerLoraGuard"] }
       ],
       required: false

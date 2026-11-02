@@ -71,7 +71,7 @@ describe("Strata uncensored integrity and compatibility", () => {
     const community = { ...STRATA_COMMUNITY_VECTOR, filename: path.join(dir, STRATA_COMMUNITY_VECTOR.relativePath) };
     verify.mockResolvedValueOnce(community);
     const switched = await prepareStrataLaunch({ strataInstallDirectory: dir, strataPort: 43127, strataUncensoredMode: "community" }, config);
-    expect(verify).toHaveBeenLastCalledWith(dir, "community");
+    expect(verify).toHaveBeenLastCalledWith(dir, "community", expect.any(Function));
     const communityOverlay = JSON.parse(await fs.readFile(switched.temporaryConfig!, "utf8"));
     expect(communityOverlay.args).toEqual(expect.arrayContaining([`${community.filename}:1.0`, "--control-vector-layer-range", "8", "33"]));
     expect(communityOverlay.args.join(" ")).not.toContain(vector.filename);

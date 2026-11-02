@@ -7,9 +7,10 @@ import { createDefaultSettings } from "../src/core/defaults.js";
 import { STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_REVISION, STRATA_SOURCE_FILES, STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
 import { strataModelEntries, STRATA_Q4_MODEL, STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
 import { STRATA_MTP_ASSET } from "../src/core/catalog/models/strata.js";
-import { STRATA_MTP_CJK_VOCAB } from "../electron/services/strata-mtp.js";
+import { STRATA_MTP_CJK_VOCAB, prepareStrataMtp, validateStrataMtp, type StrataMtpRecord } from "../electron/services/strata-mtp.js";
 import { strataModelRoot } from "../src/core/strata-preparation.js";
 import { buildStrataRuntimeConfig, findPreparedStrataRuntime, prepareStrataModelRuntime, validatePreparedStrataRuntime, verifyStrataAsset, type StrataModelPreparationRuntime } from "../electron/services/strata-model-preparation.js";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import { prepareStrataLaunch } from "../electron/services/strata-service.js";
 import { strataFixturePolicy as policy, writeStrataPackFixture, writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
 import { managedStrataDirectory } from "../electron/services/strata-installation.js";
@@ -68,12 +69,61 @@ async function fixture(index = 0) {
 }
 
 describe("Strata CPU preparation and config", () => {
-  it.each([0, 1, 2])("migrates the audited 0.1.45 pack and CUDA layout for Qwen profile %i without hashing or packing again", async index => {
-    const f = await fixture(index), old = STRATA_RELEASES[1];
+  it.each(["en-US", "zh-TW"] as const)("localizes real file integrity and MTP tool guards without modifying sources (%s)", async uiLocale => {
+    const root = await rootFixture(), filename = path.join(root, "使用者模型.gguf"), bytes = Buffer.from("GGUF small localized fixture");
+    const t = createNativeTranslator(uiLocale).t; await fs.writeFile(filename, bytes);
+    const expected = { bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+    const verified = await verifyStrataAsset(filename, expected, undefined, undefined, t);
+    await expect(verifyStrataAsset(filename, { ...expected, bytes: bytes.length + 1 }, undefined, undefined, t)).rejects.toThrow(uiLocale === "en-US" ? "still downloading: 使用者模型.gguf" : "仍在下載：使用者模型.gguf");
+    await expect(verifyStrataAsset(filename, { ...expected, sha256: "0".repeat(64) }, undefined, undefined, t)).rejects.toThrow(uiLocale === "en-US" ? "verification failed" : "驗證失敗");
+    await expect(validateStrataMtp({} as StrataMtpRecord, root, t)).rejects.toThrow(uiLocale === "en-US" ? "Invalid MTP preparation record" : "MTP 準備記錄無效");
+    const run = vi.fn(), onLog = vi.fn();
+    await expect(prepareStrataMtp({ installDirectory: root, packDirectory: path.join(root, "pack"), filename, verifyAsset: async () => verified, run, onLog }, t))
+      .rejects.toThrow(uiLocale === "en-US" ? "conversion tool is missing" : "轉換工具缺失");
+    expect(onLog).toHaveBeenCalledWith(expect.stringContaining(uiLocale === "en-US" ? "Verifying companion MTP" : "驗證配套 MTP"));
+    expect(run).not.toHaveBeenCalled();
+    expect(await fs.readFile(filename)).toEqual(bytes);
+    await expect(fs.stat(path.join(root, "pack"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it("keeps CPU preparation commands, source bytes and cache identity across UI languages", async () => {
+    const commands: unknown[] = [];
+    for (const uiLocale of ["zh-CN", "en-US", "zh-TW"] as const) {
+      const f = await fixture(); f.settings.uiLocale = uiLocale;
+      const guides = f.entry.scan!.components.filter(component => !component.optional).map(component => component.installGuide!);
+      const originalSizes = guides.map(guide => guide.bytes);
+      try {
+      for (const [index, guide] of guides.entries()) guide.bytes = (await fs.stat(f.assets[index]!)).size;
+      const sourceBytes = await Promise.all(f.assets.map(filename => fs.readFile(filename)));
+      const onLog = vi.fn();
+      const prepared = await prepareStrataModelRuntime(f.settings, f.entry.id, policy, f.runtime, { onLog });
+      expect(onLog.mock.calls.flat().join("\n")).toContain(uiLocale === "en-US" ? "runtime configuration are prepared" : uiLocale === "zh-TW" ? "執行設定已準備" : "运行配置已准备");
+      const actualCalls = f.run.mock.calls as unknown as Array<[string, string[], { uiLocale?: string }]>;
+      expect(actualCalls.every(call => call[2].uiLocale === uiLocale)).toBe(true);
+      const normalize = (value: string) => value.replaceAll(f.root, "<fixture>").replace(/qwen-flash-next-[a-z0-9_]+-[a-zA-Z0-9]+/gu, "prepared-pack");
+      commands.push(actualCalls.map(([exe, args]) => [normalize(exe), args.map(normalize)]));
+      const config = await fs.readFile(prepared.configPath, "utf8"), receipt = await fs.readFile(prepared.receiptPath, "utf8");
+      expect(config).not.toContain("uiLocale"); expect(receipt).not.toContain("uiLocale");
+      const counts = [f.verifyAsset.mock.calls.length, f.run.mock.calls.length];
+      for (const nextLocale of ["en-US", "zh-TW", "zh-CN"] as const) {
+        expect(await findPreparedStrataRuntime({ ...f.settings, uiLocale: nextLocale }, f.entry.id, policy, { dataDirectory: f.data, run: f.runtime.run })).toBe(prepared.configPath);
+      }
+      expect([f.verifyAsset.mock.calls.length, f.run.mock.calls.length]).toEqual(counts);
+      expect(await fs.readFile(prepared.configPath, "utf8")).toBe(config);
+      expect(await fs.readFile(prepared.receiptPath, "utf8")).toBe(receipt);
+      expect(await Promise.all(f.assets.map(filename => fs.readFile(filename)))).toEqual(sourceBytes);
+      await fs.appendFile(path.join(prepared.packDirectory, "dense.bin"), "changed fixture");
+      await expect(validatePreparedStrataRuntime(prepared.configPath, f.install, undefined, createNativeTranslator(uiLocale).t))
+        .rejects.toThrow(uiLocale === "en-US" ? "changed after preparation" : uiLocale === "zh-TW" ? "準備後變更" : "准备后改变");
+      } finally { guides.forEach((guide, index) => { guide.bytes = originalSizes[index]; }); }
+    }
+    expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
+  });
+  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
+    const f = await fixture(index), old = STRATA_RELEASES.find(release => release.version === version)!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
     const prepared = await f.prepare();
-    expect(JSON.parse(await fs.readFile(prepared.configPath, "utf8")).lib_dirs[0]).toContain("site-packages");
+    expect(JSON.parse(await fs.readFile(prepared.configPath, "utf8")).lib_dirs[0]).toContain(old.bundledLibraries ? "engine" : "site-packages");
     const artifacts = JSON.parse(await fs.readFile(prepared.receiptPath, "utf8")).artifacts;
     const calls = [f.verifyAsset.mock.calls.length, f.run.mock.calls.length];
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[0], installedAt: "fixture" }));
@@ -145,7 +195,7 @@ describe("Strata CPU preparation and config", () => {
     expect(await fs.stat(path.join(output, "lvs-strata-model.json")).catch(() => null)).toBeNull();
   });
   it("binds prepared cache to the actual installed release, not the newly recommended version", async () => {
-    const f = await fixture(), old = STRATA_RELEASES[1];
+    const f = await fixture(), old = STRATA_RELEASES.find(release => release.version === "0.1.45")!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
     for (const name of ["engine-component.json", "strata_kq.dll", "cublas64_13.dll", "cublasLt64_13.dll"])
@@ -158,7 +208,7 @@ describe("Strata CPU preparation and config", () => {
     expect(await fs.stat(prepared.packDirectory)).toBeTruthy();
   });
   it("does not migrate a modified old config, unrecognized source or unsupported pack format", async () => {
-    const f = await fixture(), old = STRATA_RELEASES[1];
+    const f = await fixture(), old = STRATA_RELEASES.find(release => release.version === "0.1.45")!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
     const prepared = await f.prepare(), originalReceipt = await fs.readFile(prepared.receiptPath, "utf8"), originalConfig = await fs.readFile(prepared.configPath, "utf8");

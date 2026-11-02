@@ -1,5 +1,6 @@
 import type { RendererCleanup, RendererContext } from "../contracts";
 import { H3_REFINER_ID, h3RefinerGeometry, h3RefinerSourceFilename } from "../../core/h3-refiner";
+import { TESSERA_ID, tesseraSourceFilename } from "../../core/tessera";
 import type { UpscaleDialogState } from "./secondary-dialogs";
 import type {
   AetherScaleCarrierMode,
@@ -147,6 +148,18 @@ export function mountUpscaleController(
   };
   root.querySelector("#close-upscale")?.addEventListener("click", closeUpscale, { signal });
   root.querySelector("#cancel-upscale")?.addEventListener("click", closeUpscale, { signal });
+  root.querySelector("#upscale-tessera-anchor")?.addEventListener("change", (event) => {
+    const dialog = options.getDialog();
+    if (!dialog) return;
+    const modelId = (event.currentTarget as HTMLInputElement).dataset.modelId;
+    options.setDialog({ ...dialog, tesseraAnchorEnabled: (event.currentTarget as HTMLInputElement).checked,
+      tesseraAnchorModelId: dialog.tesseraAnchorModelId ?? modelId });
+    renderUpscaleOverlay();
+  }, { signal });
+  root.querySelector("#upscale-tessera-anchor-model")?.addEventListener("change", (event) => {
+    const dialog = options.getDialog();
+    if (dialog) options.setDialog({ ...dialog, tesseraAnchorModelId: (event.currentTarget as HTMLSelectElement).value });
+  }, { signal });
   root.querySelector("#upscale-backdrop")?.addEventListener("click", (event) => {
     if (event.target === event.currentTarget) closeUpscale();
   }, { signal });
@@ -218,7 +231,7 @@ export function mountUpscaleController(
       h3Provider: h3Selected ? dialog.h3Provider : undefined,
       targetHeight: h3Selected
         ? (dialog.targetHeight === 768 ? 768 : 720)
-        : modelId === H3_REFINER_ID
+        : modelId === H3_REFINER_ID || modelId === TESSERA_ID
           ? (dialog.targetHeight === 1440 || dialog.targetHeight === 2160 ? dialog.targetHeight : 1080)
         : aetherScaleSelected || konohamaruSelected
           ? undefined
@@ -386,7 +399,7 @@ export function mountUpscaleController(
                 version.height,
                 legacyTargetHeight === 2160 ? 1440 : legacyTargetHeight!
               )
-            : dialog.modelId === H3_REFINER_ID
+            : dialog.modelId === H3_REFINER_ID || dialog.modelId === TESSERA_ID
               ? (() => { const g = h3RefinerGeometry(version.width, version.height, legacyTargetHeight!); return [g.outputWidth, g.outputHeight]; })()
               : upscaleDimensions(version.width, version.height, legacyTargetHeight!);
       const h3Artifact = version.h3ContinuationData?.status === "available"
@@ -473,7 +486,7 @@ export function mountUpscaleController(
               : `builtin:upscale/${dialog.modelId}`,
             tileMode: dialog.tileMode,
             faceRestore: false,
-            outputFilename: createUpscaleFilename(dialog.modelId === H3_REFINER_ID ? h3RefinerSourceFilename(sourceFile.filename) : sourceFile.filename, legacyTargetHeight!)
+            outputFilename: createUpscaleFilename(dialog.modelId === TESSERA_ID ? tesseraSourceFilename(sourceFile.filename) : dialog.modelId === H3_REFINER_ID ? h3RefinerSourceFilename(sourceFile.filename) : sourceFile.filename, legacyTargetHeight!)
           };
       if (dialog.taskId || dialog.replaceTaskId) {
         const nextState = await context.application.updateUpscaleTask(
@@ -486,6 +499,8 @@ export function mountUpscaleController(
         context.requestRender();
       } else {
         const nextState = await context.application.enqueueUpscale({
+          ...(dialog.modelId === TESSERA_ID ? { tesseraAnchor: { enabled: !!dialog.tesseraAnchorEnabled,
+            modelId: dialog.tesseraAnchorModelId ?? root.querySelector<HTMLSelectElement>("#upscale-tessera-anchor-model")?.value } } : {}),
           sourceAssetId: asset.id,
           sourceVersionId: version.id,
           sourceFilePath: sourceFile.absolutePath,

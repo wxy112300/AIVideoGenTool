@@ -30,7 +30,7 @@ Strata资源遥测的暂时缺失与确认低资源分开处理：H3加载／增
 
 正常完整推理后的格式、长度或时间点校验失败，不保存结果，但保留已确认ready/loaded的自有Strata模型供下一次增强；记录`StrataValidationRetained`。流式/资源/服务失败、用户取消及清理不确定仍走停止保护，手动释放、队列交接和退出语义不变。保留模型不等于放宽文本质量门禁。
 
-运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自catalog，最新版本由官方release查询取得；网络失败不把推荐值当作最新。当前推荐0.2.7.1（固定46c152a），配套Windows Qwen CUDA 13引擎0.1.52；上游应用、Control和引擎独立编号，release标题中的补丁号也参与最新版本识别。0.1.45、0.1.44.1和0.1.41未更新前继续可用并显示更新。新版tar.gz引擎自带CUDA DLL，不再向独立venv重复安装NVIDIA运行库；固定归档与组件清单hash、安装后官方文件校验均通过才完成事务。安装包含社区小向量，失败恢复旧软件，成功清理旧软件、暂存与下载包；官方Git未修改的配置随软件更新，用户新增或修改的配置/权重/数据保留。派生pack仍绑定实际安装revision；仅经格式核对的0.1.45→0.2.7.1允许在模型/MTP/派生文件状态完整且配置精确匹配时迁移，保留原pack来源并更新DLL路径，不重复哈希大权重或生成pack；其他来源、修改或不支持格式仍重新准备。同revision的受管理路径迁移也保留原pack。手动指定目录保持显式选择；主应用与独立Agent始终解析同一个受管理runtime，不修改H3设置。升级证据见[本轮记录](tasks/2026-10-10-strata-prompt-integration/evidence/0271-upgrade.md)。
+运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自catalog，最新版本由官方release查询取得；网络失败不把推荐值当作最新。当前推荐0.2.9（固定c62d5e3），配套Windows Qwen CUDA 13引擎0.1.55；上游应用、Control和引擎独立编号，release标题中的补丁号也参与最新版本识别。0.2.7.1、0.1.45、0.1.44.1和0.1.41未更新前继续可用并显示更新。新版tar.gz引擎自带CUDA DLL，不再向独立venv重复安装NVIDIA运行库；固定归档与组件清单hash、安装后官方文件校验均通过才完成事务。安装包含社区小向量，失败恢复旧软件，成功清理旧软件、暂存与下载包；官方Git未修改的配置随软件更新，用户新增或修改的配置/权重/数据保留。派生pack仍绑定实际安装revision；经格式核对的0.1.45/0.2.7.1 native v3/v4 pack允许在模型/MTP/派生文件状态完整且配置精确匹配时迁移至当前推荐，保留原pack来源并更新DLL路径，不重复哈希大权重或生成pack；其他来源、修改或不支持格式仍重新准备。同revision的受管理路径迁移也保留原pack。手动指定目录保持显式选择；主应用与独立Agent始终解析同一个受管理runtime，不修改H3设置。本次只调整推荐目标，0.2.9实际安装与推理未验；旧版升级实测见[0.2.7.1记录](tasks/2026-10-10-strata-prompt-integration/evidence/0271-upgrade.md)。
 
 模型共用所选 ComfyUI 的模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 只读兼容扫描。派生 pack/tokenizer 位于软件版本目录的同级 `data`，完成记录按源文件/模型/策略复检后复用；未完成资料不当缓存，软件卸载保留模型和数据。默认端口 43127，用户可手动选择 1024–65535 内的整数端口，包括 8080；冲突不接管、不自动修改设置。没有第二个模型根设置，不替换旧模型默认值。文件齐全不代表 GPU、视觉和输出质量已验；当前接入代码完成，完整模型验收由用户下载后另做。版本/来源见 catalog；操作见 [Strata 下载指南](tasks/2026-10-10-strata-prompt-integration/DOWNLOADS.md)。
 
@@ -252,9 +252,17 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 - H3 实时预览是可选能力：更新 KJNodes 以获得 `ModelPreviewOverrideKJ`，并把 Kijai 的 `taeh3.safetensors` 放入 `models/vae_approx`。设置页会离线检查 KJNodes 的预览源码，服务启动后再通过 `/object_info` 验证节点注册；它只负责采样期间的低分辨率 RGB 预览，不替代 `models/vae` 中的最终视频 VAE。队列开关默认关闭，缺少节点或权重时保持原工作流运行。
 - SageAttention、Spectrum、Cache/Attention patch 是模型范围内的策略，不得泄漏到 Qwen、Sulphur 或其他工作流。
 
+### Tessera 与 Qwen 首帧增强
+
+独立Upscale provider `minimax_h3_tessera`，固定Tessera源码`930c882a17fb9a494308ac0f19ed3a73fa9a4ce0`及REF2VA INT8、Taomate三步、LMS v1.0 rank64。安装来源、版本、LoRA大小与SHA-256以catalog为准；示例的Taomate旧文件名对应本接入使用的发布者实际文件名，组合效果仍须实测。H3桥接节点0.4.3提供采样网格及加载屏障。无需SAM，也不依赖Qwen首帧模型才能运行基础放大。
+
+「Qwen 首帧增强」默认关闭；从已扫描且完整的Qwen Image 2.1、官方Turbo、GGUF Q8/Q6变体中选择，复用对应图片编辑配方及实际模型/文本编码器/VAE路径。官方Turbo使用完整模型和八步sigmas，不套用示例旧Turbo LoRA。一个队列任务内首帧增强完成并显式卸载后，才允许H3模型加载；队列记录冻结开关/模型，重开与History保留。作者约2×的建议不构成禁用条件，H3 768p→4K仍可开启。
+
+内部补到17k+5再精修，输出去掉补帧并裁到目标尺寸，复用源音频。上游返回的16×16失败占位不能进入成功History；救援latent不是成功视频或逐块断点恢复。大视频仍需要系统内存和磁盘映射缓冲，不能将“流式”解释为无限长度固定资源。高倍率质量、显存和耗时均待实测，详见[任务记录](tasks/2026-11-03-tessera-upscale/TASK.md)。
+
 ### H3 Refiner 视频 Upscale（Kijai）
 
-独立的普通视频 Upscale，支持1080/1440/2160短边（4K）、最长15秒、输出24 FPS；不要求源视频附带JointAV。新权重和固定revision/hash以模型catalog中的“H3 Refiner · Kijai”为准：需要Kijai rank384精修LoRA与LightX2V Turbo **v1.2**，不能用Create当前的v1.3替换。复用既有FL2VA INT8、H3编码器/VAEs与learned 3D upscaler；本模式固定使用INT8 ConvRot视频VAE，不修改全局选择。
+独立的普通视频 Upscale，支持1080/1440/2160短边（4K）、输出24 FPS；不要求源视频附带JointAV。不设固定15秒时长上限，按实际帧数处理，长视频的资源消耗和质量仍需实测。应用H3节点须更新至0.4.2+，旧版Python仍会拦截长视频。新权重和固定revision/hash以模型catalog中的“H3 Refiner · Kijai”为准：需要Kijai rank384精修LoRA与LightX2V Turbo **v1.2**，不能用Create当前的v1.3替换。复用既有FL2VA INT8、H3编码器/VAEs与learned 3D upscaler；本模式固定使用INT8 ConvRot视频VAE，不修改全局选择。
 
 节点需要Video Helper Suite、KJNodes、既有固定MMH3 Ultimate Upscale、Learned 3D及应用H3节点0.4.1+；应用节点提供帧数/尺寸恢复及LoRA实际patch检查，不另写采样器。安装后重启所选ComfyUI并复检实际schema。权重仍由用户管理，未补齐时保持明确的缺依赖状态。此为应用组合配方，不含LMS Sharp或NV SoL引擎；4K入口开放不表示已完成显存/时长/质量验收。来源审计与待验事项见[任务记录](tasks/2026-10-29-h3-refiner-upscale/TASK.md)。
 

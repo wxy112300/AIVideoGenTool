@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { EnhanceRequest, Settings, PromptProgressReporter } from "../../src/types.js";
@@ -22,8 +25,8 @@ function usesQwenImage21Profile(request: EnhanceRequest): boolean {
   return request.mode === "image-edit" && (!request.promptStrategy || request.promptStrategy === "rewrite")
     && isQwenImage21TargetModel(request.imageTargetModelId);
 }
-function validatedOutput(output: string, request: EnhanceRequest): string {
-  try { return normalizeMultimodalPromptOutput(output, request); }
+function validatedOutput(output: string, request: EnhanceRequest, locale: Settings["uiLocale"] = "zh-CN"): string {
+  try { return normalizeMultimodalPromptOutput(output, request, locale); }
   catch (error) { throw new StrataPromptValidationError(error instanceof Error ? error.message : String(error)); }
 }
 
@@ -34,15 +37,15 @@ export function strataPromptPolicy(_settings: Pick<Settings, "vramReserveGb">): 
     vramReserveMiB: 2048 };
 }
 
-export async function strataImageContent(filename: string, signal: AbortSignal): Promise<StrataContentPart> {
+export async function strataImageContent(filename: string, signal: AbortSignal, t: Translate = createNativeTranslator(undefined).t): Promise<StrataContentPart> {
   signal.throwIfAborted();
   const stat = await fs.stat(filename);
-  if (!stat.isFile() || stat.size === 0 || stat.size > 32 * 1024 ** 2) throw new Error("参考图为空或超过 32 MiB，请缩小图片后重试。");
+  if (!stat.isFile() || stat.size === 0 || stat.size > 32 * 1024 ** 2) throw new Error(t(uiKeys.strataPrompt.imageSize));
   const bytes = await fs.readFile(filename, { signal });
   const mime = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? "image/png"
     : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? "image/jpeg"
     : bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" ? "image/webp" : null;
-  if (!mime) throw new Error(`Strata 参考图格式不支持：${path.basename(filename)}；请使用 PNG、JPEG 或 WebP。`);
+  if (!mime) throw new Error(t(uiKeys.strataPrompt.imageFormat, { file: path.basename(filename) }));
   signal.throwIfAborted();
   return { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}` } };
 }
@@ -52,8 +55,9 @@ export async function buildStrataPromptRequest(
   encodeImage: typeof strataImageContent = strataImageContent,
   evaluation?: { layout: "structured" | "flat"; dossier?: string; reasoning?: StrataChatRequest["reasoning"] }
 ): Promise<StrataChatRequest> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
-  if (paths.length > 12) throw new Error("Strata 每次最多接收 12 张参考图。");
+  if (paths.length > 12) throw new Error(t(uiKeys.strataPrompt.tooManyImages));
   // One compiler for every full H3 rewrite: no mode-specific layout or runtime policy.
   // The Pack owns reference/continuation differences; targeted edits keep their splice contract.
   const profile = evaluation ?? (request.mode === "h3-vision"
@@ -72,9 +76,9 @@ export async function buildStrataPromptRequest(
   const content: StrataContentPart[] = imageParts ? [] : [{ type: "text", text: instruction }];
   let encodedBytes = instruction.length;
   for (const filename of paths) {
-    const image = await encodeImage(filename, signal);
+    const image = await encodeImage(filename, signal, t);
     encodedBytes += image.type === "image_url" ? image.image_url.url.length : 0;
-    if (encodedBytes > 48 * 1024 ** 2) throw new Error("参考图合计超过请求大小限制，请缩小图片后重试。");
+    if (encodedBytes > 48 * 1024 ** 2) throw new Error(t(uiKeys.strataPrompt.requestTooLarge));
     content.push(image);
   }
   if (imageParts) content.push({ type: "text", text: instruction });
@@ -94,8 +98,9 @@ export async function enhancePromptWithStrata(
   signal: AbortSignal, onProgress: PromptProgressReporter,
   beforeChat?: (chat: StrataChatRequest) => Promise<void>
 ): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   onProgress("uploading", null, usesQwenImage21Profile(request)
-    ? `${STRATA_QWEN_IMAGE21_PROFILE} · 正在准备参考图` : "正在准备参考图");
+    ? t(uiKeys.strataPrompt.preparingProfileImages, { profile: STRATA_QWEN_IMAGE21_PROFILE }) : t(uiKeys.strataPrompt.preparingImages));
   return withStrataReferenceMedia(request, signal, async (prepared) => {
     const chat = await buildStrataPromptRequest(prepared, settings, signal);
     await beforeChat?.(chat);
@@ -103,37 +108,37 @@ export async function enhancePromptWithStrata(
     let characters = 0;
     let outputBudget = chat.maxTokens;
     onProgress("generating", null, chat.reasoning
-      ? `正在规划与扩写 · ${chat.reasoning.budgetTokens ? `思考预算 ${chat.reasoning.budgetTokens} tokens` : "思考预算自动分配并预留正文空间"} · 输出空间自动计算`
-      : "正在生成 · 输出空间自动计算");
+      ? t(uiKeys.strataPrompt.planning, { budget: chat.reasoning.budgetTokens ? t(uiKeys.strataPrompt.reasoningBudget, { tokens: chat.reasoning.budgetTokens }) : t(uiKeys.strataPrompt.automaticReasoning) })
+      : t(uiKeys.strataPrompt.generating));
     let output = await owner.chat(chat, signal, (delta) => {
       characters += delta.length;
-      onProgress("generating", null, `已生成 ${characters} 字符 · 输出预算 ${outputBudget} tokens`);
+      onProgress("generating", null, t(uiKeys.strataPrompt.generated, { count: characters, tokens: outputBudget }));
     }, (tokens) => {
       outputBudget = tokens;
-      onProgress("generating", null, `输出预算自动调整为 ${tokens} tokens${chat.reasoning ? " · 含思考" : ""}，仍在 ${chat.contextSize} 上下文内`);
+      onProgress("generating", null, t(uiKeys.strataPrompt.budgetAdjusted, { tokens: tokens, reasoning: chat.reasoning ? t(uiKeys.strataPrompt.includingReasoning) : "", context: String(chat.contextSize) }));
     }, (count) => onProgress("generating", null,
-      `正在思考 · 已接收 ${count} 个思考字符 · 思考与正文共享 ${outputBudget} tokens；思考内容不写入提示词`));
+      t(uiKeys.strataPrompt.reasoning, { count: count, tokens: outputBudget })));
     signal.throwIfAborted();
-    onProgress("validating", null, "正在验证完整结果");
-    let result = validatedOutput(output, request);
+    onProgress("validating", null, t(uiKeys.strataPrompt.validating));
+    let result = validatedOutput(output, request, settings.uiLocale);
     if (chat.messages[0]?.role === "system" && request.mode === "h3-vision"
       && request.h3PromptPreset === "detailed-cinematic") {
       const mode = h3PromptModeForRequest(request), duration = request.h3DurationSeconds ?? 5;
       const missing = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration, h3TimelineDurationForRequest(request));
       if (missing.length) {
-        onProgress("generating", null, `正在补全明确时间点 ${missing.join("、")} 秒 · 最多一次纠正`);
+        onProgress("generating", null, t(uiKeys.strataPrompt.repairTimes, { times: missing.join(t(uiKeys.nodeInstaller.listSeparator)) }));
         const repair: StrataChatRequest = { ...chat,
           messages: [...chat.messages, { role: "assistant", content: output }, { role: "user", content:
             `The candidate omits these explicitly requested times from the MAIN timeline: ${missing.join(", ")} seconds. Read the original brief, identify each event at those times and integrate it into its proper interval. Return the COMPLETE corrected H3 prompt, not a patch or checklist. Preserve all existing correct details and exact speech. Do not merely list the numbers, invent events or alter other event times.` }] };
         // Same owner, full original context, official tokenizer, no queue or unbounded retry.
         output = await owner.chat(repair, signal, undefined, (tokens) =>
-          onProgress("generating", null, `纠正调用输出预算自动调整为 ${tokens} tokens · 含完整原稿与候选`));
+          onProgress("generating", null, t(uiKeys.strataPrompt.repairBudget, { tokens: tokens })));
         signal.throwIfAborted();
-        result = validatedOutput(output, request);
+        result = validatedOutput(output, request, settings.uiLocale);
         const remaining = missingH3SourceTimepoints(request.prompt, unwrapH3ModelOutput(output, mode), mode, duration, h3TimelineDurationForRequest(request));
-        if (remaining.length) throw new StrataPromptValidationError(`影视细节扩写仍缺少明确时间点 ${remaining.join("、")} 秒；一次纠正后未通过，原提示词保持不变。`);
+        if (remaining.length) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.timesStillMissing, { times: remaining.join(t(uiKeys.nodeInstaller.listSeparator)) }));
       }
     }
     return result;
-  });
+  }, undefined, t);
 }

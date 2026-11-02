@@ -1,5 +1,6 @@
 import type { AppState, UpscaleQueueTask } from "../src/types.js";
 import { H3_REFINER_ID, h3RefinerGeometry } from "../src/core/h3-refiner.js";
+import { TESSERA_ID, tesseraGeometry } from "../src/core/tessera.js";
 import { applyH3AccelerationSettingsToWaitingTask } from "../src/core/h3-execution-policy.js";
 import {
   activeQueueTaskIds,
@@ -72,6 +73,16 @@ export class QueueMutationService {
       throw new Error("待编辑的 Upscale 任务不存在。");
     }
     const currentMode = current.upscaleMode ?? "pixel";
+    if (current.modelId === TESSERA_ID || patch.modelId === TESSERA_ID) {
+      if (current.modelId !== TESSERA_ID || patch.modelId !== TESSERA_ID || !current.tessera) throw new Error("已排队任务不能切换Tessera方案，请新建任务。");
+      const g = tesseraGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!);
+      const next = await store.update(state => {
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch, upscaleMode: "pixel", modelId: TESSERA_ID,
+          workflowPath: `builtin:upscale/${TESSERA_ID}`, targetWidth: g.outputWidth, targetOutputHeight: g.outputHeight,
+          tileMode: "safe", faceRestore: false, targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined });
+      });
+      sendState(next); return next;
+    }
     if (current.modelId === H3_REFINER_ID || patch.modelId === H3_REFINER_ID) {
       if (current.modelId !== H3_REFINER_ID || patch.modelId !== H3_REFINER_ID || !current.h3Refiner) {
         throw new Error("已排队的 Refiner 任务不能切换提升方案，请新建任务。");

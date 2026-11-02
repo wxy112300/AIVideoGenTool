@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { PromptProgressReporter, Settings } from "../../src/types.js";
@@ -46,12 +49,12 @@ async function isUsableFile(filename: string): Promise<boolean> {
   return Boolean(stat?.isFile() && stat.size > 0);
 }
 
-function safeAssetPath(modelDirectory: string, relativePath: string): string {
+function safeAssetPath(modelDirectory: string, relativePath: string, t: Translate = createNativeTranslator(undefined).t): string {
   const root = path.resolve(modelDirectory);
   const target = path.resolve(root, ...relativePath.split("/"));
   const relative = path.relative(root, target);
   if (relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error(`Qwen3-VL 资源路径越界：${relativePath}`);
+    throw new Error(t(uiKeys.strataPrompt.assetPath, { path: relativePath }));
   }
   return target;
 }
@@ -68,7 +71,8 @@ async function downloadMetadataAsset(
   modelDirectory: string,
   settings: Settings
 ): Promise<boolean> {
-  const target = safeAssetPath(modelDirectory, asset.relativePath);
+  const t = createNativeTranslator(settings.uiLocale).t;
+  const target = safeAssetPath(modelDirectory, asset.relativePath, t);
   if (await isUsableFile(target)) {
     if (path.extname(target).toLowerCase() !== ".json") return false;
     try {
@@ -82,7 +86,7 @@ async function downloadMetadataAsset(
   const temporary = `${target}.part-${process.pid}-${crypto.randomUUID()}`;
   try {
     await downloadFileWithCurl(asset.url, temporary, settings);
-    if (!(await isUsableFile(temporary))) throw new Error("下载完成但文件为空");
+    if (!(await isUsableFile(temporary))) throw new Error(t(uiKeys.strataPrompt.downloadEmpty));
     if (path.extname(target).toLowerCase() === ".json") {
       JSON.parse(await fs.readFile(temporary, "utf8"));
     }
@@ -98,10 +102,11 @@ export async function ensureQwenVlManagedMetadata(
   signal?: AbortSignal,
   onProgress?: PromptProgressReporter
 ): Promise<{ modelDirectory: string; downloaded: string[] }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
   const modelDirectory = await resolveModelDirectory(settings);
   if (!modelDirectory) {
-    throw new Error("无法定位 ComfyUI 的 models 目录，无法自动准备 Qwen3-VL 配置。请先在设置中选择 ComfyUI 模型目录。");
+    throw new Error(t(uiKeys.strataPrompt.modelsMissing));
   }
   const key = path.normalize(modelDirectory).toLowerCase();
   const existing = inFlight.get(key);
@@ -115,7 +120,7 @@ export async function ensureQwenVlManagedMetadata(
         onProgress?.(
           "checking",
           5 + Math.round((index / qwenVlManagedMetadata.length) * 8),
-          `准备 Qwen3-VL 配置 ${index + 1}/${qwenVlManagedMetadata.length}`
+          t(uiKeys.strataPrompt.metadataProgress, { current: index + 1, total: qwenVlManagedMetadata.length })
         );
         appLogger.info("prompt", "qwenvl-metadata-check", "Checking Qwen3-VL managed metadata", {
           relativePath: asset.relativePath,
@@ -135,7 +140,7 @@ export async function ensureQwenVlManagedMetadata(
         modelDirectory,
         downloaded
       });
-      throw new Error(`Qwen3-VL 配置自动准备失败：${safeLogErrorMessage(error)}。大模型 safetensors 不受影响，请检查网络/代理后重试。`);
+      throw new Error(t(uiKeys.strataPrompt.metadataFailed, { detail: safeLogErrorMessage(error) }));
     }
   })();
   inFlight.set(key, task);

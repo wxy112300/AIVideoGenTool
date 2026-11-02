@@ -1,3 +1,4 @@
+import type { Translate } from "../../src/core/i18n.js";
 import { execFile, spawn } from "node:child_process";
 import { createNativeTranslator } from "../ui-translator.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -1999,24 +2000,26 @@ export async function downloadFileWithCurl(
   settings: Settings,
   progress?: { totalBytes: number; onProgress(receivedBytes: number): void }
 ): Promise<void> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   checkInstallationCancelled();
   const curl = await findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法自动下载资源。请安装 Windows 10/11 自带 curl，或检查网络后重试。" );
+  if (!curl) throw new Error(t(uiKeys.strataPrompt.curlMissing));
   const args = ["-fL", "--retry", "2", "--connect-timeout", "20", url, "--output", destination];
   if (settings.proxyEnabled) {
     args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl, settings.uiLocale));
   }
   const download = () => runLoggedProcess(curl, args, {
     timeoutMs: 600_000,
-    env: downloadEnvironment(settings)
+    env: downloadEnvironment(settings),
+    uiLocale: settings.uiLocale
   });
   if (progress) await withDownloadFileProgress(destination, progress.totalBytes, progress.onProgress, download);
   else await download();
 }
 
-async function expandZipArchive(archive: string, destination: string): Promise<void> {
+async function expandZipArchive(archive: string, destination: string, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   if (process.platform !== "win32") {
-    throw new Error("llama-server 一键安装目前只支持 Windows。" );
+    throw new Error(t(uiKeys.envMaintenance.windowsOnly) );
   }
   const script =
     "& { param([string]$archive, [string]$destination); Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force }";
@@ -2081,8 +2084,9 @@ export function selectLlamaServerReleaseAssets(
 export async function installLlamaServer(
   settings: Settings
 ): Promise<ConnectionResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (process.platform !== "win32") {
-    return { ok: false, message: "llama-server 一键安装目前只支持 Windows。" };
+    return { ok: false, message: t(uiKeys.envMaintenance.windowsOnly) };
   }
   const installLog = [proxyLogLabel(settings)];
   const temporaryRoot = path.join(
@@ -2101,19 +2105,19 @@ export async function installLlamaServer(
     };
     const selected = selectLlamaServerReleaseAssets(release);
     if (!selected) {
-      throw new Error("官方最新版本没有找到 Windows x64 CUDA 12.4/13.3 发布包。" );
+      throw new Error(t(uiKeys.envMaintenance.releaseMissing) );
     }
-    installLog.push(`准备安装 llama.cpp ${release.tag_name ?? "latest"} · CUDA ${selected.variant}`);
+    installLog.push(t(uiKeys.envMaintenance.installingLlama, { version: release.tag_name ?? "latest", cuda: selected.variant }));
     const binaryArchive = path.join(temporaryRoot, "llama-server.zip");
     const cudartArchive = path.join(temporaryRoot, "cudart.zip");
     await downloadFileWithCurl(selected.binaryUrl, binaryArchive, settings);
     await downloadFileWithCurl(selected.cudartUrl, cudartArchive, settings);
     const binaryExtract = path.join(temporaryRoot, "binary");
     const cudartExtract = path.join(temporaryRoot, "cudart");
-    await expandZipArchive(binaryArchive, binaryExtract);
-    await expandZipArchive(cudartArchive, cudartExtract);
+    await expandZipArchive(binaryArchive, binaryExtract, t);
+    await expandZipArchive(cudartArchive, cudartExtract, t);
     const sourceExecutable = await findFile(binaryExtract, "llama-server.exe");
-    if (!sourceExecutable) throw new Error("下载包中没有找到 llama-server.exe。" );
+    if (!sourceExecutable) throw new Error(t(uiKeys.envMaintenance.archiveMissingExe) );
     const sourceCudart = await findFileMatching(
       cudartExtract,
       (basename) => /^cudart64.*\.dll$/i.test(basename)
@@ -2130,7 +2134,7 @@ export async function installLlamaServer(
     if (sourceCudart) await copyDirectoryContents(path.dirname(sourceCudart), targetDirectory);
     const installedExecutable = path.join(targetDirectory, "llama-server.exe");
     if (!(await exists(installedExecutable))) {
-      throw new Error("llama-server.exe 安装后没有出现在目标目录。" );
+      throw new Error(t(uiKeys.envMaintenance.installedExeMissing) );
     }
     try {
       await execFileAsync(installedExecutable, ["--version"], {
@@ -2140,14 +2144,14 @@ export async function installLlamaServer(
       });
     } catch (error) {
       throw new Error(
-        `llama-server 已解压，但无法启动验证：${error instanceof Error ? error.message : String(error)}`
+        t(uiKeys.envMaintenance.llamaProbeFailed, { detail: error instanceof Error ? error.message : String(error) })
       );
     }
-    installLog.push(`已安装：${installedExecutable}`);
+    installLog.push(t(uiKeys.envMaintenance.installedPath, { path: installedExecutable }));
     installationSucceeded = true;
     return {
       ok: true,
-      message: "llama-server 已自动安装并完成启动检查。",
+      message: t(uiKeys.envMaintenance.llamaInstalled),
       log: installLog.join("\n\n"),
       executablePath: installedExecutable
     };
@@ -2876,7 +2880,8 @@ function readStatsString(value: unknown, keys: string[]): string {
 async function inspectComfyCompatibility(
   baseUrl: string,
   installation: ComfyInstallation | null,
-  runtimeEvidence?: { objectInfo: Record<string, unknown> | null }
+  runtimeEvidence?: { objectInfo: Record<string, unknown> | null },
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<ComfyUiCompatibility> {
   const sourceDirectory = installation?.sourceDirectory ?? "";
   let version = "";
@@ -2947,7 +2952,7 @@ async function inspectComfyCompatibility(
     ...evaluateMiniMaxH3CoreSupport(objectInfo),
     {
       id: "ModelSamplingAV",
-      label: `H3 原生双时钟音视频采样（ComfyUI v${MINIMAX_H3_MINIMUM_COMFY_VERSION}+；推荐 v${MINIMAX_H3_RECOMMENDED_COMFY_VERSION}）`,
+      label: t(uiKeys.envMaintenance.nativeAvLabel, { minimum: MINIMAX_H3_MINIMUM_COMFY_VERSION, recommended: MINIMAX_H3_RECOMMENDED_COMFY_VERSION }),
       available: nativeH3AvSampling
     }
   ];
@@ -2961,10 +2966,10 @@ async function inspectComfyCompatibility(
       ? "git"
       : "unsupported";
   const updateHint = checkedFrom === "api"
-    ? "版本信息来自当前已连接的服务；更新后需要重启该服务再复检。"
+    ? t(uiKeys.envMaintenance.sourceApi)
     : sourceDirectory
-      ? "版本信息来自所选安装的本地核心源码。"
-      : "此 Desktop 安装未暴露核心源码；启动服务后将通过 API 读取实际版本。";
+      ? t(uiKeys.envMaintenance.sourceLocal)
+      : t(uiKeys.envMaintenance.sourceDesktop);
   return {
     version,
     revision,
@@ -3014,7 +3019,8 @@ async function commandItem(
   label: string,
   command: string,
   args: string[],
-  optional = false
+  optional = false,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<EnvironmentItem> {
   const executable = await findExecutable(command);
   if (!executable) {
@@ -3022,7 +3028,7 @@ async function commandItem(
       id,
       label,
       ok: false,
-      detail: "未找到",
+      detail: t(uiKeys.envMaintenance.missing),
       optional,
       downloadUrl: environmentDependencyDownloadUrls[id]
     };
@@ -3036,14 +3042,14 @@ async function commandItem(
     const detail = `${stdout}${stderr}`
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .find(Boolean) ?? "已安装";
+      .find(Boolean) ?? t(uiKeys.envMaintenance.installed);
     return { id, label, ok: true, detail, path: executable, optional };
   } catch {
-    return { id, label, ok: true, detail: "已安装", path: executable, optional };
+    return { id, label, ok: true, detail: t(uiKeys.envMaintenance.installed), path: executable, optional };
   }
 }
 
-async function cudaToolkitItem(): Promise<EnvironmentItem> {
+async function cudaToolkitItem(t: Translate = createNativeTranslator(undefined).t): Promise<EnvironmentItem> {
   const toolkit = await discoverCudaToolkit({
     findExecutable,
     exists
@@ -3053,7 +3059,7 @@ async function cudaToolkitItem(): Promise<EnvironmentItem> {
       id: "cuda-toolkit",
       label: "CUDA Toolkit",
       ok: false,
-      detail: "未找到 nvcc；仅在安装 Qwen3.6 多模态可选节点时需要",
+      detail: t(uiKeys.envMaintenance.nvccMissing),
       optional: true,
       downloadUrl: environmentDependencyDownloadUrls["cuda-toolkit"]
     };
@@ -3076,7 +3082,7 @@ async function cudaToolkitItem(): Promise<EnvironmentItem> {
     id: "cuda-toolkit",
     label: "CUDA Toolkit",
     ok: true,
-    detail: `${version || "已找到 nvcc"} · ${toolkit.source === "path" ? "PATH" : toolkit.source === "environment" ? "环境变量" : "默认目录"}`,
+    detail: `${version || t(uiKeys.envMaintenance.nvccFound)} · ${toolkit.source === "path" ? "PATH" : toolkit.source === "environment" ? t(uiKeys.envMaintenance.environmentSource) : t(uiKeys.envMaintenance.defaultSource)}`,
     path: toolkit.root,
     optional: true
   };
@@ -3106,15 +3112,15 @@ interface NvidiaProbe {
   devices: GpuDeviceInfo[];
 }
 
-async function nvidiaItem(): Promise<NvidiaProbe> {
+async function nvidiaItem(t: Translate = createNativeTranslator(undefined).t): Promise<NvidiaProbe> {
   const executable = await findExecutable("nvidia-smi.exe");
   if (!executable) {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA 驱动 / GPU",
+        label: t(uiKeys.envMaintenance.nvidiaLabel),
         ok: false,
-        detail: "未找到 nvidia-smi；通常表示 NVIDIA 驱动未安装或驱动不可用",
+        detail: t(uiKeys.envMaintenance.nvidiaMissing),
         downloadUrl: environmentDependencyDownloadUrls.nvidia
       },
       devices: []
@@ -3133,13 +3139,13 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA 驱动 / GPU",
+        label: t(uiKeys.envMaintenance.nvidiaLabel),
         ok: true,
         detail: devices.length
           ? devices.map((device) =>
-              `GPU ${device.index} · ${device.name} · ${formatGpuMemory(device.vramTotalBytes)} · 驱动 ${device.driverVersion || "未知"}`
-            ).join("；")
-          : stdout.trim() || "已检测到 NVIDIA GPU",
+              t(uiKeys.envMaintenance.gpuDetail, { index: device.index, name: device.name, memory: formatGpuMemory(device.vramTotalBytes), driver: device.driverVersion || t(uiKeys.envMaintenance.unknown) })
+            ).join("; ")
+          : stdout.trim() || t(uiKeys.envMaintenance.gpuDetected),
         path: executable
       },
       devices
@@ -3148,10 +3154,10 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA 驱动 / GPU",
+        label: t(uiKeys.envMaintenance.nvidiaLabel),
         ok: false,
         status: "warning",
-        detail: "已找到 nvidia-smi，但暂时无法读取显卡详情；请检查驱动状态",
+        detail: t(uiKeys.envMaintenance.gpuReadFailed),
         path: executable,
         downloadUrl: environmentDependencyDownloadUrls.nvidia
       },
@@ -3163,14 +3169,16 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
 async function localServiceItem(
   id: "comfyui-api" | "lmstudio-api",
   label: string,
-  url: string
+  url: string,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<EnvironmentItem> {
+  const displayLabel = label === "ComfyUI 服务" ? t(uiKeys.envMaintenance.comfyService) : label;
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return { id, label, ok: true, detail: `运行中 · ${url}` };
+    return { id, label: displayLabel, ok: true, detail: t(uiKeys.envMaintenance.running, { url }) };
   } catch {
-    return { id, label, ok: false, status: "warning", detail: `未运行或无法连接 · ${url}` };
+    return { id, label: displayLabel, ok: false, status: "warning", detail: t(uiKeys.envMaintenance.notRunning, { url }) };
   }
 }
 
@@ -3242,13 +3250,14 @@ async function findLmStudioInstallation(settings: Settings): Promise<string> {
 }
 
 async function lmStudioItem(settings: Settings): Promise<EnvironmentItem> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const installation = await findLmStudioInstallation(settings);
   if (installation) {
     return {
       id: "lmstudio",
       label: "LM Studio",
       ok: true,
-      detail: "已找到 LM Studio.exe",
+      detail: t(uiKeys.envMaintenance.lmFound),
       path: installation,
       optional: true
     };
@@ -3258,8 +3267,8 @@ async function lmStudioItem(settings: Settings): Promise<EnvironmentItem> {
     label: "LM Studio",
     ok: false,
     detail: settings.lmStudioInstallDirectory
-      ? "手动设置的目录中没有找到 LM Studio.exe"
-      : "常见安装目录中未找到，请点击选择目录",
+      ? t(uiKeys.envMaintenance.lmManualMissing)
+      : t(uiKeys.envMaintenance.lmMissing),
     optional: true
   };
 }
@@ -3528,14 +3537,15 @@ async function findLmStudioCli(settings: Settings): Promise<string> {
 }
 
 async function startLmStudio(settings: Settings): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const endpoint = localEndpoint(settings.lmStudioUrl, 1234);
   if (!endpoint) {
-    throw new Error("一键启动只支持本机 LM Studio 地址（localhost 或 127.0.0.1）。");
+    throw new Error(t(uiKeys.envMaintenance.lmLocalOnly));
   }
   const executable = await findLmStudioCli(settings);
   if (!executable) {
     throw new Error(
-      "没有找到 LM Studio 的 lms 命令。请先安装并至少启动一次 LM Studio。"
+      t(uiKeys.envMaintenance.lmsMissing)
     );
   }
   await launchDetached(executable, [
@@ -4409,15 +4419,16 @@ export async function installDepthAnything(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<ConnectionResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会安装本地 Depth Anything 资产。"
+      message: t(uiKeys.envMaintenance.depthRemote)
     };
   }
   const comfyRoot = await findComfyRoot(settings);
   if (!comfyRoot) {
-    return { ok: false, message: "没有找到 ComfyUI 数据目录，无法检查 Depth Anything。" };
+    return { ok: false, message: t(uiKeys.envMaintenance.depthRootMissing) };
   }
   const modelDirectory = comfyDataDirectories(settings, comfyRoot).modelDirectory;
   return prepareDepthAnythingAssets(settings, comfyRoot, [modelDirectory], onLog);
@@ -4428,6 +4439,7 @@ export async function uninstallCustomNode(
   settings: Settings,
   onProgress?: (message: string) => void
 ): Promise<ConnectionResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const result = await uninstallCustomNodePackage(nodeId, settings, {
     findComfyRoot
   }, onProgress);
@@ -4444,7 +4456,7 @@ export async function uninstallCustomNode(
       ...result,
       ok: true,
       manualRestartRequired: true,
-      message: `${result.message} 但 ComfyUI 未能自动重启，请手动重启后重新扫描：${restart.message}`,
+      message: t(uiKeys.envMaintenance.manualRestart, { result: result.message, detail: restart.message }),
       log
     };
   }
@@ -5314,6 +5326,7 @@ async function scanFullEnvironment(
   validation: EnvironmentScanValidation = "auto",
   progress: (progress: EnvironmentScanProgress) => void = () => undefined
 ): Promise<EnvironmentScanResult> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   progress({ stage: "environment", completed: 0, total: 4 });
   const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const userHome = os.homedir();
@@ -5456,7 +5469,7 @@ async function scanFullEnvironment(
   const comfyCompatibility = await inspectComfyCompatibility(
     detectedComfyBaseUrl,
     comfyInstallation,
-    runtimeEvidence
+    runtimeEvidence, t
   );
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
   const [
@@ -5468,13 +5481,13 @@ async function scanFullEnvironment(
     comfyEnvironmentItem,
     comfyApiItem
   ] = await Promise.all([
-    commandItem("node", "Node.js", "node.exe", ["--version"]),
-    commandItem("git", "Git", "git.exe", ["--version"], true),
-    commandItem("ffmpeg", "FFmpeg", "ffmpeg.exe", ["-version"], true),
-    cudaToolkitItem(),
-    nvidiaItem(),
+    commandItem("node", "Node.js", "node.exe", ["--version"], undefined, t),
+    commandItem("git", "Git", "git.exe", ["--version"], true, t),
+    commandItem("ffmpeg", "FFmpeg", "ffmpeg.exe", ["-version"], true, t),
+    cudaToolkitItem(t),
+    nvidiaItem(t),
     Promise.resolve(comfyItem),
-    localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl)
+    localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl, t)
   ]);
   const items = [
     nodeItem,
@@ -5560,6 +5573,7 @@ function cacheEnvironmentScan(key: string, scan: EnvironmentScanResult): void {
 
 function environmentScanCacheKey(settings: Settings): string {
   return JSON.stringify({
+    uiLocale: settings.uiLocale,
     comfyInstallDirectory: settings.comfyInstallDirectory,
     comfyPythonPath: settings.comfyPythonPath,
     comfyUrl: settings.comfyUrl,
@@ -5635,6 +5649,7 @@ async function scanEnvironmentDependencies(
   validation: EnvironmentScanValidation,
   progress: (progress: EnvironmentScanProgress) => void = () => undefined
 ): Promise<EnvironmentScanResult | null> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const [comfyRoot, comfyInstallations] = await Promise.all([
     findComfyRoot(settings),
     discoverComfyInstallations(settings)
@@ -5782,12 +5797,12 @@ async function scanEnvironmentDependencies(
   const comfyCompatibility = await inspectComfyCompatibility(
     detectedComfyBaseUrl,
     comfyInstallation,
-    runtimeEvidence
+    runtimeEvidence, t
   );
   const comfyApiItem = await localServiceItem(
     "comfyui-api",
     "ComfyUI 服务",
-    `${detectedComfyBaseUrl}/system_stats`
+    `${detectedComfyBaseUrl}/system_stats`, t
   );
   const items = previous.items.some((item) => item.id === "comfyui-api")
     ? previous.items.map((item) => item.id === "comfyui-api" ? comfyApiItem : item)

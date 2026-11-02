@@ -77,9 +77,21 @@ describe("Kijai H3 Refiner Upscale", () => {
     expect(h3ComfyWorkflowRuntimeIssues(graph, info)).toEqual([]);
   });
 
-  it("rejects missing nodes, unsupported durations, stale geometry and mismatched recipes", () => {
+  it.each([15.1, 362 / 24, 30, 736 / 24, 60])("preserves the complete %s-second source in the queue and graph", duration => {
+    const { request, state, info } = fixture();
+    const task = upscaleTaskFromRequest({ ...request, duration }, state);
+    expect(task.duration).toBe(duration);
+    const graph = buildH3RefinerWorkflow(task, "source.mp4", info);
+    expect(graph.source!.inputs.frame_load_cap).toBe(0);
+    expect(graph.restore!.inputs.frame_count).toEqual(["prepare", 1]);
+  });
+
+  it("rejects missing nodes, invalid metadata, stale geometry and mismatched recipes", () => {
     const { task, request, state, info } = fixture();
-    expect(() => upscaleTaskFromRequest({ ...request, duration: 16 }, state)).toThrow("15 秒");
+    for (const duration of [0, -1, NaN, Infinity]) {
+      expect(() => upscaleTaskFromRequest({ ...request, duration }, state)).toThrow("时长或帧率无效");
+    }
+    expect(() => upscaleTaskFromRequest({ ...request, fps: 0 }, state)).toThrow("时长或帧率无效");
     expect(() => upscaleTaskFromRequest({ ...request, sourceVersionId: "gone" }, state)).toThrow("源版本");
     expect(() => buildH3RefinerWorkflow(task, "source.mp4", {})).toThrow("缺少节点");
     expect(() => buildH3RefinerWorkflow({ ...task, targetWidth: 4000 }, "source.mp4", info)).toThrow("冻结快照");

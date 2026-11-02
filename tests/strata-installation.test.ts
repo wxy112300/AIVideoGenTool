@@ -10,6 +10,15 @@ import * as vectorTools from "../electron/services/strata-uncensored";
 import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
 import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
 
+// Installation commands and extraction are already mocked. Use a synthetic manifest
+// digest here so recommending a release never requires downloading the full engine.
+vi.mock("../src/core/catalog/dependencies/strata", async importOriginal => {
+  const catalog = await importOriginal<typeof import("../src/core/catalog/dependencies/strata")>();
+  const { createHash } = await import("node:crypto");
+  const { strataEngineManifestFixture } = await import("./helpers/strata-engine-fixture");
+  return { ...catalog, STRATA_ENGINE_MANIFEST_SHA256: createHash("sha256").update(strataEngineManifestFixture()).digest("hex") };
+});
+
 const fixtures: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const folder of fixtures.splice(0)) await fs.rm(folder, { recursive: true, force: true }); });
 async function fixture() {
@@ -39,6 +48,22 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("rejects a modified component manifest before replacing the current installation", async () => {
+    const { root, runtime } = await fixture();
+    expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
+    await fs.writeFile(path.join(root, "keep.txt"), "old runtime");
+    const original = runtime.run.getMockImplementation()!;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      const result = await original(exe, args, options);
+      if (args.includes("-xzf")) await fs.appendFile(path.join(options.cwd!, "engine", "engine-component.json"), " ");
+      return result;
+    });
+    const failed = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(failed.ok).toBe(false);
+    expect(failed.message).toContain("组件清单校验失败");
+    expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old runtime");
+    expect(await strataManagedReceipt(root)).toBe(true);
+  });
   it.each([false, true])("recovers from a truncated source fetch before publishing (parser: %s)", async parser => {
     const { root, runtime } = await fixture();
     const original = runtime.run.getMockImplementation()!;

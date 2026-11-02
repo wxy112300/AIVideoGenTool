@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createNativeTranslator } from "../electron/ui-translator.js";
 import {
   h3ComfyWorkflowRuntimeIssues,
   h3ExecutionNodeRuntimeIssues
@@ -68,6 +69,26 @@ function nativeH3ObjectInfo(includeVsa = true) {
 }
 
 describe("ComfyUI 0.35 native H3 runtime contract", () => {
+  it.each([
+    ["en-US", "missing the vsa option", "expected STRING"],
+    ["zh-TW", "缺少 vsa 選項", "需要 STRING"]
+  ] as const)("preserves %s schema rejection and recovery without changing graph inputs", (locale, missing, type) => {
+    const workflow = nativeH3Workflow(), before = structuredClone(workflow);
+    const objectInfo = nativeH3ObjectInfo(false) as any;
+    objectInfo.BlockSparseAttention.input.required.dense_blocks = [[1, 2], {}];
+    const schemaBefore = structuredClone(objectInfo), t = createNativeTranslator(locale).t;
+    const issues = h3ExecutionNodeRuntimeIssues(workflow, objectInfo, t);
+    expect(issues).toHaveLength(2);
+    expect(issues).toContain("BlockSparseAttention.selection " + (locale === "en-US" ? "is " : "") + missing);
+    expect(issues.some(issue => issue.includes("BlockSparseAttention.dense_blocks") && issue.includes(type))).toBe(true);
+    expect(h3ExecutionNodeRuntimeIssues(workflow, nativeH3ObjectInfo(), t)).toEqual([]);
+    expect(workflow).toEqual(before); expect(objectInfo).toEqual(schemaBefore);
+    expect(h3ExecutionNodeRuntimeIssues(workflow, null, t)[0]).toContain(locale === "en-US" ? "Invalid /object_info" : "/object_info 回應無效");
+    const av = { save: { class_type: "LocalVideoStudioH3SaveJointAV", inputs: {} } };
+    expect(h3ComfyWorkflowRuntimeIssues(av, null, t)[0]).toContain(locale === "en-US" ? "H3 AV node schemas" : "H3 AV 節點 schema");
+    expect(h3ComfyWorkflowRuntimeIssues(av, {}, t).every(issue => issue.includes("class_type="))).toBe(true);
+  });
+
   it("accepts the exact ModelAttentionBackend and DynamicCombo schema", () => {
     expect(h3ExecutionNodeRuntimeIssues(nativeH3Workflow(), nativeH3ObjectInfo())).toEqual([]);
   });

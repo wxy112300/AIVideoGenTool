@@ -33,7 +33,7 @@ Metadata is from each publisher's file page. Existing learned-upscaler bytes alr
 | Very wide 4K exceeds one learned upscale's trained range | Add an intermediate learned upscale if either axis would exceed 4x; each stage remains bounded. |
 | Upscale target capacity | Allow 1080/1440/2160 short edge; explicit errors above 8192px or 16MP. Never reduce the selected target silently. |
 | Whole source decoded to an enormous float image batch | VHS resizes during source decode, before video VAE encoding. |
-| CLI silently fixes video length at ~5 seconds | No fixed load cap; process complete input up to 15 seconds. Longer clips fail visibly. |
+| CLI silently fixes video length at ~5 seconds | No fixed load cap; process the complete input. The initial app-only 15-second limit was removed on 2026-10-31; it was not a verified Refiner model/node limit. Long clips still require RAM/VRAM and quality acceptance. |
 | H3 time grid and arbitrary source FPS | Resample to 24 FPS, pad to 17k+5 internally, remove only padding after decode. Duration rounding is within one output frame. No opening-frame trimming. |
 | Generated/silent model audio replaces original | Use encoded silence for model context; mux the original source audio into the final video. Silent input remains valid. |
 | GPU memory displaced by encode/DiT/decode stages | Tiled VAE, tiled sampling, explicit model unload before decoding, GPU-only VAE guard. OOM remains a visible failure. |

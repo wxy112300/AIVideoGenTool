@@ -12,6 +12,7 @@ import type {
 } from "../types.js";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
 import { H3_REFINER_ID, createH3RefinerSnapshot, h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } from "./h3-refiner.js";
+import { TESSERA_ID, createTesseraSnapshot, tesseraGeometry, tesseraSourceFilename } from "./tessera.js";
 import { freezeLongVideoScript } from "./long-video/script.js";
 import { commitScriptText } from "./long-video/script-buffers.js";
 import { isLongVideoDraftActive, longVideoBlockReason } from "./long-video/capability.js";
@@ -594,6 +595,20 @@ export function upscaleTaskFromRequest(
   }
   // Keep existing pixel/H3 queue snapshots strict and unchanged.
   const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight);
+  if (request.modelId === TESSERA_ID) {
+    validateH3RefinerSource(request.duration, request.fps);
+    const geometry = tesseraGeometry(request.sourceWidth, request.sourceHeight, targetHeight);
+    const asset = state.history.find(a => a.id === request.sourceAssetId);
+    if (!asset?.versions.some(v => v.id === request.sourceVersionId)) throw new Error("Tessera 源版本已不存在。");
+    if (request.tesseraAnchor?.enabled) throw new Error("Tessera 首帧增强须经模型就绪预检后冻结快照。");
+    return { id: clock.id(), taskType: "upscale", status: "waiting", createdAt: now, updatedAt: now,
+      outputFilename: uniqueUpscaleFilename(tesseraSourceFilename(request.sourceFilename), targetHeight, outputNames(state)),
+      modelId: TESSERA_ID, workflowPath: `builtin:upscale/${TESSERA_ID}`, duration: request.duration, fps: 24,
+      seed: Math.floor(clock.random() * 0xffffffff), keepSeedOnCopy: true, sourceAssetId: request.sourceAssetId, sourceVersionId: request.sourceVersionId,
+      sourceFilePath: request.sourceFilePath, sourceFilename: request.sourceFilename, sourceWidth: request.sourceWidth, sourceHeight: request.sourceHeight,
+      targetWidth: geometry.outputWidth, targetHeight, targetOutputHeight: geometry.outputHeight, upscaleMode: "pixel", tileMode: "safe", faceRestore: false, progress: 0,
+      tessera: createTesseraSnapshot(asset.prompt, request.fps) };
+  }
   if (request.modelId === H3_REFINER_ID) {
     validateH3RefinerSource(request.duration, request.fps);
     const geometry = h3RefinerGeometry(request.sourceWidth, request.sourceHeight, targetHeight);

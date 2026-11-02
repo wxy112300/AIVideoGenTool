@@ -880,6 +880,7 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   faceRestore: boolean;
   h3NativeInput?: H3NativeUpscaleInputSnapshot;
   h3Refiner?: import("./core/h3-refiner.js").H3RefinerSnapshot;
+  tessera?: import("./core/tessera.js").TesseraSnapshot;
   /**
    * Runtime checkpoint for the native SeedVR2 long-video adapter. It is
    * deliberately separate from the immutable upscale parameters so a failed
@@ -981,6 +982,7 @@ export type QueueTask =
   | ImageGenerationQueueTask;
 
 export interface UpscaleRequest {
+  tesseraAnchor?: { enabled: boolean; modelId?: string };
   upscaleMode?: "pixel" | "h3-native";
   sourceAssetId: string;
   sourceVersionId: string;
@@ -1431,6 +1433,7 @@ export interface AssetVersion {
   faceRestore?: boolean;
   /** Lineage and provider metadata for derived video versions. */
   h3Refiner?: import("./core/h3-refiner.js").H3RefinerSnapshot;
+  tessera?: import("./core/tessera.js").TesseraSnapshot;
   sourceAssetId?: string;
   sourceVersionId?: string;
   upscaleProvider?: string;

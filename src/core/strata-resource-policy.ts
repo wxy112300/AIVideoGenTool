@@ -1,3 +1,6 @@
+import { createTranslator } from "./i18n.js";
+import type { Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import { STRATA_Q4_MODEL, STRATA_Q4_MODEL_ID } from "./catalog/models/strata.js";
 const GiB = 1024 ** 3;
 export interface StrataResources {
@@ -26,18 +29,18 @@ export interface StrataResourcePlan {
  * Reserve additionally covers the GPU image encoder, WDDM reporting error and workspace.
  */
 export function planStrataResources(resources: StrataResources, requestedReserveMiB: number,
-  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number } = {}): StrataResourcePlan {
+  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number } = {}, t: Translate = createTranslator().t): StrataResourcePlan {
   const { memoryAvailableBytes: ram, commitAvailableBytes: commit, vramAvailableBytes: free, vramTotalBytes: total } = resources;
   if (![ram, commit, free, total, requestedReserveMiB].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
-    || !total || free! > total) throw new Error("无法确认 Strata 的可用 RAM、Windows 提交余量或显存，未加载模型。请重新检查资源。");
+    || !total || free! > total) throw new Error(t(uiKeys.strataCore.metricsUnknown));
   const available = ram;
   const reserve = Math.max(5120, Math.ceil(requestedReserveMiB));
   // Dense/native weights, MTP, KV and prefill staging are budgeted separately from reserve.
   const minimumFreeVramBytes = (reserve / 1024 + 15) * GiB;
-  if (free! < minimumFreeVramBytes) throw new Error(`Strata 安全加载需要约 ${(minimumFreeVramBytes / GiB).toFixed(1)}GiB 空闲显存，目前 ${(free! / GiB).toFixed(1)}GiB；未加载模型。请释放其他 GPU 程序后重试。`);
+  if (free! < minimumFreeVramBytes) throw new Error(t(uiKeys.strataCore.vram, { required: (minimumFreeVramBytes / GiB).toFixed(1), available: (free! / GiB).toFixed(1) }));
   if (options.modelId === STRATA_Q4_MODEL_ID) {
     const context = options.contextTokens ?? 32768;
-    if (!Number.isSafeInteger(context) || context < 1024 || context > 262144) throw new Error("Q4 上下文预算无效。");
+    if (!Number.isSafeInteger(context) || context < 1024 || context > 262144) throw new Error(t(uiKeys.strataCore.q4Context));
     // Larger Agent contexts use upstream KV streaming; count its host allocation
     // before sizing experts. Available memory already excludes other processes.
     const kvBytes = context >= 65536 ? context * 13.7 * 1024 : 0;
@@ -50,7 +53,7 @@ export function planStrataResources(resources: StrataResources, requestedReserve
     // Never borrow IQ3's measured 42GiB commit exception or bypass Q4 commit.
     const budget = Math.floor(Math.min(STRATA_Q4_MODEL.expertBytes,
       ram - 16 * GiB - kvBytes, commit! - total - 16 * GiB - kvBytes) / GiB);
-    if (!options.allowFileReadFallback || budget < 16) throw new Error("Strata Q4 可用内存或 Windows 提交余量不足，无法在保留安全余量时分配专家预算；未加载模型。");
+    if (!options.allowFileReadFallback || budget < 16) throw new Error(t(uiKeys.strataCore.q4Memory));
     const requiredMemoryBytes = (budget + 12) * GiB + kvBytes;
     return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: reserve,
       requiredMemoryBytes, requiredCommitBytes: requiredMemoryBytes + total,
@@ -73,8 +76,8 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   // The larger estimates below are diagnostics, not an allocation/peak guarantee.
   const requiredMemoryBytes = fileReadAllowed ? headroomGiB * GiB : estimatedResidentMemoryBytes;
   if (available < requiredMemoryBytes) throw new Error(fileReadAllowed
-    ? `Strata 文件回读启动预留需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM，目前 ${(available / GiB).toFixed(1)}GiB；未加载模型。请释放部分内存后重试。`
-    : `Strata 完整专家驻留预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM，目前 ${(available / GiB).toFixed(1)}GiB；未加载模型。本次未允许文件回读。`);
+    ? t(uiKeys.strataCore.fileReadMemory, { required: (requiredMemoryBytes / GiB).toFixed(1), available: (available / GiB).toFixed(1) })
+    : t(uiKeys.strataCore.fullMemory, { required: (requiredMemoryBytes / GiB).toFixed(1), available: (available / GiB).toFixed(1) }));
   // Windows CUDA/WDDM loading also consumes commit independently of physical RAM.
   // Measured on 4090: ~19GiB commit disappeared before the RAM complement allocation.
   // Budget one adapter's capacity rather than assuming free RAM == free commit.
@@ -83,7 +86,7 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   // entire adapter capacity as an observed allocation. RAM/VRAM and live floors remain.
   const requiredCommitBytes = options.commitTrial ? requiredMemoryBytes
     : fileReadAllowed ? headroomGiB * GiB : estimatedCommitBytes;
-  if (commit! < requiredCommitBytes) throw new Error(`Strata Windows 加载预计需要约 ${(requiredMemoryBytes / GiB).toFixed(1)}GiB 可用 RAM、${(requiredCommitBytes / GiB).toFixed(1)}GiB 提交余量（含 CUDA 加载预留），目前提交余量 ${(commit! / GiB).toFixed(1)}GiB；未加载模型。请释放程序占用，或检查系统分页文件容量后重试；应用不会修改系统设置。`);
+  if (commit! < requiredCommitBytes) throw new Error(t(uiKeys.strataCore.commit, { ram: (requiredMemoryBytes / GiB).toFixed(1), commit: (requiredCommitBytes / GiB).toFixed(1), available: (commit! / GiB).toFixed(1) }));
   return { hostMode, vramReserveMiB: reserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB,
     estimatedResidentMemoryBytes, estimatedCommitBytes,
     ...(options.commitTrial ? { commitTrial: true } : {}) };
@@ -106,13 +109,13 @@ export function missingStrataResourceMetrics(resources: StrataResources): string
 
 /** Stateless GPU guard. Host pressure needs the shared warning/debounce policy,
  * never an immediate RAM/commit kill from a single reading. */
-export function knownStrataResourcePressure(resources: StrataResources): string | null {
+export function knownStrataResourcePressure(resources: StrataResources, t: Translate = createTranslator().t): string | null {
   const valid = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
-  if (valid(resources.vramAvailableBytes) && resources.vramAvailableBytes < 2 * GiB) return "Strata 空闲显存低于 2GiB 安全线，已中止自有模型。";
+  if (valid(resources.vramAvailableBytes) && resources.vramAvailableBytes < 2 * GiB) return t(uiKeys.strataCore.gpuFloor);
   return null;
 }
 
-export function strataResourcePressure(resources: StrataResources): string | null {
-  return knownStrataResourcePressure(resources) ?? (missingStrataResourceMetrics(resources).length
-    ? "Strata 资源监测不可用，已中止自有模型以保护资源。" : null);
+export function strataResourcePressure(resources: StrataResources, t: Translate = createTranslator().t): string | null {
+  return knownStrataResourcePressure(resources, t) ?? (missingStrataResourceMetrics(resources).length
+    ? t(uiKeys.strataCore.metricsLost) : null);
 }

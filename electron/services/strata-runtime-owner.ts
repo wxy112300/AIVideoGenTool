@@ -1,9 +1,13 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { Settings } from "../../src/types.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime, preparedStrataMtpMatchesSelection, validatePreparedStrataRuntime, type StrataModelPreparationRuntime, type StrataRuntimePolicy } from "./strata-model-preparation.js";
 import { prepareStrataLaunch, StrataService, type StrataChatRequest, type StrataServiceSnapshot, type StrataChatDiagnostics } from "./strata-service.js";
 import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/strata-uncensored.js";
 
 interface StrataRuntimeOwnerDependencies {
+  getUiLocale?(): Settings["uiLocale"] | undefined;
   resourceGate?: { acquire(): Promise<void>; track(pid: number): Promise<void> };
   run: StrataModelPreparationRuntime["run"];
   isResourcesBusy(signal?: AbortSignal): boolean;
@@ -17,6 +21,7 @@ interface StrataRuntimeOwnerDependencies {
 
 /** Application operation owner; production composes the shared cross-process resource gate. */
 export class StrataRuntimeOwner {
+  private readonly t: Translate = (key, params, fallback) => createNativeTranslator(this.deps.getUiLocale?.()).t(key, params, fallback);
   private readonly service: StrataService;
   private controller: AbortController | null = null;
   private worker: Promise<unknown> | null = null;
@@ -26,7 +31,7 @@ export class StrataRuntimeOwner {
   private selectionKey: string | null = null;
 
   constructor(private readonly deps: StrataRuntimeOwnerDependencies) {
-    this.service = deps.service ?? new StrataService({ onDiagnostics: deps.onDiagnostics, onSpawn: (pid) => deps.resourceGate?.track(pid) });
+    this.service = deps.service ?? new StrataService({ getUiLocale: deps.getUiLocale, onDiagnostics: deps.onDiagnostics, onSpawn: (pid) => deps.resourceGate?.track(pid) });
   }
 
   isBusy(): boolean { return Boolean(this.worker || this.stopping); }
@@ -51,7 +56,7 @@ export class StrataRuntimeOwner {
         // Stat/receipt checks catch changed weights/pack without hashing them on every enhancement.
         let valid = false;
         try {
-          valid = Boolean(this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!) === settings.promptModelId);
+          valid = Boolean(this.configPath && await validatePreparedStrataRuntime(this.configPath, this.installDirectory!, undefined, this.t) === settings.promptModelId);
           if (valid) valid = await preparedStrataMtpMatchesSelection(this.configPath!, settings, options.resolvedModelDirectory);
           if (valid && wantsUncensored) valid = await this.service.hasVerifiedControlVector(mode);
         } catch { /* Changed sources invalidate residency and the completion cache. */ }
@@ -64,53 +69,53 @@ export class StrataRuntimeOwner {
       if (this.snapshot().pid !== null) await this.service.stop();
       this.modelId = null; this.selectionKey = null;
       options.onStage?.("checking");
-      options.onLog?.("检查模型与已准备缓存");
+      options.onLog?.(this.t(uiKeys.strataPreparation.checking));
       const cached = await (this.deps.findPrepared ?? findPreparedStrataRuntime)(settings, settings.promptModelId, policy, { ...options, signal, run: this.deps.run });
       if (!cached) {
         options.onStage?.("preparing");
-        options.onLog?.("首次准备：校验共享权重并生成 CPU pack/tokenizer；此阶段尚未启动 Strata 服务，不占用模型显存");
+        options.onLog?.(this.t(uiKeys.strataPreparation.firstUse));
       }
       const configPath = cached ?? (await (this.deps.prepare ?? prepareStrataModelRuntime)(
         settings, settings.promptModelId, policy, { run: this.deps.run }, { ...options, signal }
       )).configPath;
       signal.throwIfAborted();
       let plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath);
-      if (plan.modelId !== settings.promptModelId) throw new Error("Strata 已准备模型与所选模型不一致。");
+      if (plan.modelId !== settings.promptModelId) throw new Error(this.t(uiKeys.strataPreparation.modelMismatch));
       try {
         if (plan.controlVector) options.onLog?.(`uncensored: verified vector=${plan.controlVector.id} sha256=${plan.controlVector.sha256} layers=${plan.controlVector.firstLayer}..${plan.controlVector.lastLayer}; first activation reloads model only, not weights/pack`);
-        options.onLog?.(cached ? "复用已验证 pack/tokenizer" : "pack/tokenizer 准备完成");
+        options.onLog?.(cached ? this.t(uiKeys.strataPreparation.cacheReused) : this.t(uiKeys.strataPreparation.packPrepared));
         options.onStage?.("preparing");
-        options.onLog?.("正在启动 Strata 本机 HTTP 服务；就绪后打开只读监视页");
+        options.onLog?.(this.t(uiKeys.strataPreparation.starting));
         await this.service.start(plan, signal);
         if (options.request) {
-          options.onLog?.("使用官方 tokenizer 检查完整上下文预算");
+          options.onLog?.(this.t(uiKeys.strataPreparation.tokenizerCheck));
           await this.service.preflight(options.request, signal);
         }
-        options.onLog?.("正在确认 ComfyUI 已释放 GPU 资源");
+        options.onLog?.(this.t(uiKeys.strataPreparation.gpuRelease));
         await this.deps.beforeInference?.();
         signal.throwIfAborted();
         // Count the unchanged full request before releasing ComfyUI. Only then measure the
         // resources we actually own; restart the CPU-only lazy server with a session overlay.
-        options.onLog?.("正在检查当前 RAM、Windows 提交余量与显存预算");
+        options.onLog?.(this.t(uiKeys.strataPreparation.resourcesCheck));
         const adaptivePlan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true });
         if (adaptivePlan.resourcePlan) {
           const resourcePlan = adaptivePlan.resourcePlan;
           await this.service.stop();
           plan = adaptivePlan;
-          if (plan.modelId !== settings.promptModelId) throw new Error("Strata 自适应配置模型身份改变。");
-          options.onLog?.(`内存自适应：${plan.resourcePlan!.hostMode === "arena" ? "完整专家 RAM" : plan.resourcePlan!.residentBudgetGiB !== undefined ? "专家预算驻留 / 文件回读" : "GPU 外专家 RAM 驻留"}，model=${settings.promptModelId}，residentBudgetGiB=${plan.resourcePlan!.residentBudgetGiB ?? "none"}，可用 ${(plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1)}GiB，显存预留 ${plan.resourcePlan!.vramReserveMiB}MiB`);
-          options.onLog?.(`资源准入：commit至少 ${(plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB；允许官方文件回读=${plan.allowResidentFallback === true}，实际模式待引擎确认`);
-          if (resourcePlan.estimatedCommitBytes !== undefined && plan.allowResidentFallback) options.onLog?.(`完整驻留提交估计 ${(resourcePlan.estimatedCommitBytes / 1024 ** 3).toFixed(1)}GiB 仅供参考，不作文件回读启动门槛；引擎按当前RAM/commit选择驻留量。`);
+          if (plan.modelId !== settings.promptModelId) throw new Error(this.t(uiKeys.strataPreparation.adaptiveMismatch));
+          options.onLog?.(this.t(uiKeys.strataPreparation.adaptive, { mode: plan.resourcePlan!.hostMode === "arena" ? this.t(uiKeys.strataPreparation.arena) : plan.resourcePlan!.residentBudgetGiB !== undefined ? this.t(uiKeys.strataPreparation.budgetResident) : this.t(uiKeys.strataPreparation.outsideGpu), model: settings.promptModelId, budget: plan.resourcePlan!.residentBudgetGiB ?? "none", available: (plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1), reserve: plan.resourcePlan!.vramReserveMiB }));
+          options.onLog?.(this.t(uiKeys.strataPreparation.admission, { commit: (plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1), fallback: String(plan.allowResidentFallback === true) }));
+          if (resourcePlan.estimatedCommitBytes !== undefined && plan.allowResidentFallback) options.onLog?.(this.t(uiKeys.strataPreparation.commitEstimate, { size: (resourcePlan.estimatedCommitBytes / 1024 ** 3).toFixed(1) }));
           if (resourcePlan.estimatedResidentMemoryBytes !== undefined) {
-            options.onLog?.(`专家完整驻留目标 ${(resourcePlan.estimatedResidentMemoryBytes / 1024 ** 3).toFixed(1)}GiB；启动 RAM 预留 ${(resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1)}GiB。${plan.allowResidentFallback ? "不足完整驻留时允许官方按可用内存保留热点专家，其余文件回读；可能变慢，实际模式以引擎日志为准。" : "本次保留完整驻留策略。"}`);
+            options.onLog?.(this.t(uiKeys.strataPreparation.residentTarget, { target: (resourcePlan.estimatedResidentMemoryBytes / 1024 ** 3).toFixed(1), reserve: (resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1), policy: plan.allowResidentFallback ? this.t(uiKeys.strataPreparation.fallbackPolicy) : this.t(uiKeys.strataPreparation.fullPolicy) }));
           }
-          options.onLog?.(`Windows文件页释放：STRATA_FILE_RELEASE=${plan.env?.STRATA_FILE_RELEASE ?? "unset"}；仅影响自有引擎的只读专家文件页，不清理其他进程`);
+          options.onLog?.(this.t(uiKeys.strataPreparation.fileRelease, { value: plan.env?.STRATA_FILE_RELEASE ?? "unset" }));
           await this.service.start(plan, signal);
         }
         options.onStage?.("loading-model");
-        options.onLog?.("正在加载 Strata GPU 模型；加载请求上限 10 分钟，可取消并停止自有进程");
+        options.onLog?.(this.t(uiKeys.strataPreparation.loading));
         const state = await this.service.load(signal);
-        options.onLog?.(`模型已加载：hostMemoryMode=${state.hostMemoryMode ?? "unknown"}；H3上下文保持 ${policy.maxContext}`);
+        options.onLog?.(this.t(uiKeys.strataPreparation.loaded, { mode: state.hostMemoryMode ?? "unknown", context: policy.maxContext }));
         options.onLog?.(`uncensored: engineConfirmed=${state.uncensored?.vectorLoaded === true} vector=${state.uncensored?.vectorId ?? "none"}; nextRequest=${wantsUncensored}`);
         this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
         return state;
@@ -122,10 +127,10 @@ export class StrataRuntimeOwner {
   private installDirectory: string | null = null;
 
   startPrepared(settings: Settings, configPath: string, signal?: AbortSignal): Promise<StrataServiceSnapshot> {
-    if (this.snapshot().pid !== null) return Promise.reject(new Error("请先停止 Strata，再准备或切换模型。"));
+    if (this.snapshot().pid !== null) return Promise.reject(new Error(this.t(uiKeys.strataPreparation.stopFirst)));
     return this.run(async (ownedSignal) => {
       const plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath);
-      if (!plan.modelId?.trim()) throw new Error("Strata 启动计划缺少已验证模型身份。");
+      if (!plan.modelId?.trim()) throw new Error(this.t(uiKeys.strataPreparation.identityMissing));
       try {
         const state = await this.service.start(plan, ownedSignal);
         ownedSignal.throwIfAborted();
@@ -142,7 +147,7 @@ export class StrataRuntimeOwner {
     settings: Settings, modelId: string, policy: StrataRuntimePolicy,
     options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void } = {}
   ): Promise<StrataServiceSnapshot> {
-    if (this.snapshot().pid !== null) return Promise.reject(new Error("请先停止 Strata，再准备或切换模型。"));
+    if (this.snapshot().pid !== null) return Promise.reject(new Error(this.t(uiKeys.strataPreparation.stopFirst)));
     return this.run(async (signal) => {
       const prepared = await (this.deps.prepare ?? prepareStrataModelRuntime)(
         settings, modelId, policy, { run: this.deps.run }, { ...options, signal }
@@ -165,7 +170,7 @@ export class StrataRuntimeOwner {
   chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void,
     onReasoning?: (characters: number) => void): Promise<string> {
     return this.run(async (ownedSignal) => {
-      if (!this.modelId || request.modelId !== this.modelId) throw new Error("Strata 请求模型与已准备模型不一致，请先准备所选模型。");
+      if (!this.modelId || request.modelId !== this.modelId) throw new Error(this.t(uiKeys.strataPreparation.requestMismatch));
       await this.deps.beforeInference?.();
       ownedSignal.throwIfAborted();
       return this.service.chat(request, ownedSignal, onText, onBudget, onReasoning);
@@ -173,13 +178,13 @@ export class StrataRuntimeOwner {
   }
 
   withSoftwareChange<T>(change: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.snapshot().pid !== null) return Promise.reject(new Error("Strata 服务仍占用软件目录，请先停止服务再安装或卸载。"));
+    if (this.snapshot().pid !== null) return Promise.reject(new Error(this.t(uiKeys.strataPreparation.softwareBusy)));
     return this.run(change);
   }
 
   stop(): Promise<StrataServiceSnapshot> {
     if (this.stopping) return this.stopping;
-    this.abort(new Error("Strata 操作已取消"));
+    this.abort(new Error(this.t(uiKeys.strataPreparation.cancelled)));
     const worker = this.worker;
     const stopped = Promise.resolve().then(async () => {
       // The operation includes owned subprocess termination and installer recovery.
@@ -199,8 +204,8 @@ export class StrataRuntimeOwner {
   }
 
   private run<T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
-    if (this.closing) return Promise.reject(new Error("应用正在退出，不能启动 Strata 操作。"));
-    if (this.isBusy() || this.deps.isResourcesBusy(signal)) return Promise.reject(new Error("当前有生成、提示词或 Strata 操作，请完成或取消后重试。"));
+    if (this.closing) return Promise.reject(new Error(this.t(uiKeys.strataPreparation.closing)));
+    if (this.isBusy() || this.deps.isResourcesBusy(signal)) return Promise.reject(new Error(this.t(uiKeys.strataPreparation.busy)));
     const controller = new AbortController();
     const ownedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     this.controller = controller;

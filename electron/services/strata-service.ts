@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -55,10 +58,10 @@ export interface StrataChatRequest {
   reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
 }
 
-function validateChatRequest(request: StrataChatRequest): void {
-  if (request.uncensoredMode !== undefined && !isStrataUncensoredMode(request.uncensoredMode)) throw new Error("Strata uncensored 模式无效。");
-  if (request.uncensored !== undefined && typeof request.uncensored !== "boolean") throw new Error("Strata uncensored 请求参数无效。");
-  if (normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored) !== "off" && !supportsStrataUncensored(request.modelId)) throw new Error("当前 Strata 模型不支持 uncensored 控制向量。");
+function validateChatRequest(request: StrataChatRequest, t: Translate = createNativeTranslator(undefined).t): void {
+  if (request.uncensoredMode !== undefined && !isStrataUncensoredMode(request.uncensoredMode)) throw new Error(t(uiKeys.strataService.invalidMode));
+  if (request.uncensored !== undefined && typeof request.uncensored !== "boolean") throw new Error(t(uiKeys.strataService.invalidVectorRequest));
+  if (normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored) !== "off" && !supportsStrataUncensored(request.modelId)) throw new Error(t(uiKeys.strataService.unsupportedVector));
   if (!request.modelId.trim() || !Number.isSafeInteger(request.maxTokens) || request.maxTokens < 1
     || request.maxTokens > 32768 || !Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2
     || !request.messages.length || request.messages.some((message) =>
@@ -66,10 +69,10 @@ function validateChatRequest(request: StrataChatRequest): void {
     || (request.reasoning && (!["low", "medium", "high"].includes(request.reasoning.effort)
       || !Number.isSafeInteger(request.reasoning.budgetTokens) || request.reasoning.budgetTokens < 0
       || request.reasoning.budgetTokens > request.maxTokens - 1024))) {
-    throw new Error("Strata 提示词请求参数无效。");
+    throw new Error(t(uiKeys.strataService.invalidRequest));
   }
   if ((request.automaticOutputBudget !== undefined && typeof request.automaticOutputBudget !== "boolean")
-    || (request.automaticOutputBudget && request.contextSize === undefined)) throw new Error("Strata 自动输出预算需要显式上下文。");
+    || (request.automaticOutputBudget && request.contextSize === undefined)) throw new Error(t(uiKeys.strataService.explicitContext));
 }
 
 export interface StrataChatDiagnostics extends ReturnType<StrataChatStream["diagnostics"]> {
@@ -99,19 +102,20 @@ export interface StrataLaunchPlan {
 
 /** Internal only: accepts a completed, coherently verified pack/config preparation. */
 export async function prepareStrataLaunch(
-  settings: Pick<Settings, "strataInstallDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored" | "strataUncensoredMode">>,
+  settings: Pick<Settings, "strataInstallDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored" | "strataUncensoredMode" | "uiLocale">>,
   configPath: string,
   options: { adaptive?: boolean; readResources?: typeof readStrataResources } = {}
 ): Promise<StrataLaunchPlan> {
-  if (!validStrataPort(settings.strataPort)) throw new Error("Strata 端口应为 1024–65535 的整数。");
+  const t = createNativeTranslator(settings.uiLocale).t;
+  if (!validStrataPort(settings.strataPort)) throw new Error(t(uiKeys.strataService.invalidPort));
   const cwd = path.resolve(resolvedStrataDirectory(settings));
-  if (!await strataManagedReceipt(cwd)) throw new Error("Strata 管理安装未完成，请重新扫描或重装。");
+  if (!await strataManagedReceipt(cwd)) throw new Error(t(uiKeys.strataService.installIncomplete));
   const executable = path.join(cwd, ".venv", "Scripts", "python.exe");
   const config = path.resolve(configPath);
   for (const filename of [executable, path.join(cwd, "serve", "server.py"), config]) {
-    if (!(await fs.stat(filename).catch(() => null))?.isFile()) throw new Error(`Strata 启动文件缺失：${filename}`);
+    if (!(await fs.stat(filename).catch(() => null))?.isFile()) throw new Error(t(uiKeys.strataService.launchFileMissing, { file: filename }));
   }
-  const modelId = await validatePreparedStrataRuntime(config, cwd);
+  const modelId = await validatePreparedStrataRuntime(config, cwd, undefined, t);
   const runtimeConfig = JSON.parse(await fs.readFile(config, "utf8"));
   const monitorAvailable = (await fs.readFile(path.join(cwd, "serve", "server.py"), "utf8")).includes('"--api-monitor"') &&
     (await Promise.all(["monitor.html", "monitor.js", "tokens.css"].map((name) =>
@@ -121,7 +125,7 @@ export async function prepareStrataLaunch(
   let resourcePlan: StrataResourcePlan | undefined;
   const mode = strataUncensoredMode(settings);
   const controlVector = mode !== "off" && supportsStrataUncensored(modelId)
-    ? await verifyStrataControlVector(cwd, mode) : undefined;
+    ? await verifyStrataControlVector(cwd, mode, t) : undefined;
   if (controlVector) {
     runtimeConfig.args.push("--control-vector-scaled", `${controlVector.filename}:1.0`, "--control-vector-layer-range",
       String(controlVector.firstLayer), String(controlVector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer");
@@ -130,9 +134,9 @@ export async function prepareStrataLaunch(
   }
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf("--vram-reserve-mib");
-    if (reserveIndex < 0) throw new Error("Strata 准备配置缺少显存策略。");
-    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources), Number(runtimeConfig.args[reserveIndex + 1]), {
-      allowFileReadFallback: true, modelId, contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) });
+    if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
+    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, undefined, t), Number(runtimeConfig.args[reserveIndex + 1]), {
+      allowFileReadFallback: true, modelId, contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
     runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
     runtimeConfig.args = applyStrataResourcePlan(runtimeConfig.args, resourcePlan, modelId);
   }
@@ -164,7 +168,7 @@ export interface StrataOwnedProcess {
 }
 
 /** No detached server or adopted PID: retain the child until its tree has exited. */
-export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk: string) => void): Promise<StrataOwnedProcess> {
+export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk: string) => void, t: Translate = createNativeTranslator(undefined).t): Promise<StrataOwnedProcess> {
   const child = spawn(plan.executable, plan.args, {
     cwd: plan.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...plan.env }
   });
@@ -196,7 +200,7 @@ export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([closed, new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(new Error("Strata 进程尚未退出，保留占用状态。")), 10_000);
+          timer = setTimeout(() => reject(new Error(t(uiKeys.strataService.processStillExiting))), 10_000);
         })]);
       } finally { if (timer) clearTimeout(timer); }
     }
@@ -221,6 +225,7 @@ export interface StrataMonitorConnection {
 }
 
 interface StrataServiceDependencies {
+  getUiLocale?(): Settings["uiLocale"] | undefined;
   onSpawn?(pid: number): Promise<void> | undefined;
   launch?: typeof launchStrataProcess;
   portInUse?: typeof isLocalPortInUse;
@@ -239,20 +244,21 @@ interface StrataServiceDependencies {
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
 export class StrataService {
+  private readonly t: Translate = (key, params, fallback) => createNativeTranslator(this.deps.getUiLocale?.()).t(key, params, fallback);
   private readonly residencyPressure = new FileReadResourcePressure(Date.now, event => {
-    const message = `Strata资源${event.event === "recovered" ? "恢复" : event.event === "critical" ? "紧急保护" : "预警（不中断）"}：RAM=${(event.memoryAvailableBytes / 1024 ** 3).toFixed(2)}GiB commit=${((event.commitAvailableBytes ?? 0) / 1024 ** 3).toFixed(2)}GiB VRAM=${((event.vramAvailableBytes ?? 0) / 1024 ** 3).toFixed(2)}GiB loading=${event.loading} fileRead=${event.fileRead} duration=${event.elapsedMs}ms`;
+    const message = this.t(uiKeys.strataService.pressure, { state: event.event === "recovered" ? this.t(uiKeys.strataService.recovered) : event.event === "critical" ? this.t(uiKeys.strataService.critical) : this.t(uiKeys.strataService.warning), ram: (event.memoryAvailableBytes / 1024 ** 3).toFixed(2), commit: ((event.commitAvailableBytes ?? 0) / 1024 ** 3).toFixed(2), vram: ((event.vramAvailableBytes ?? 0) / 1024 ** 3).toFixed(2), loading: String(event.loading), fileRead: String(event.fileRead), duration: event.elapsedMs });
     this.state.log = `${this.state.log}\n[Strata] ${message}\n`.slice(-65536);
     try {
       const logger = getApplicationLogger();
       logger[event.event === "recovered" ? "info" : event.event === "critical" ? "error" : "warn"]("prompt", `strata-host-${event.event}`, message, { ...event });
     } catch { /* Observability cannot cancel generation. */ }
-  });
+  }, this.t);
   private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
   private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) =>
     (this.deps.resourcePressure ?? this.residencyPressure.check.bind(this.residencyPressure))(sample);
   private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.knownResourcePressure
     ? this.deps.knownResourcePressure(sample) : this.deps.resourcePressure
-      ? knownStrataResourcePressure(sample) : this.residencyPressure.knownPressure(sample);
+      ? knownStrataResourcePressure(sample, this.t) : this.residencyPressure.knownPressure(sample);
   private vectorLoaded = false;
   private modeRequested = false;
   private selectedMode: StrataUncensoredMode = "off";
@@ -268,7 +274,7 @@ export class StrataService {
 
   snapshot(): StrataServiceSnapshot {
     if (this.child && !this.child.running() && this.state.phase === "ready") {
-      this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 服务已退出。" };
+      this.state = { ...this.state, phase: "error", modelLoaded: null, message: this.t(uiKeys.strataService.exited) };
     }
     return { ...this.state, hostMemoryMode: this.state.modelLoaded ? this.hostMemoryMode : null, uncensored: {
       mode: this.selectedMode,
@@ -281,7 +287,7 @@ export class StrataService {
   async hasVerifiedControlVector(mode: Exclude<StrataUncensoredMode, "off"> = "builtin"): Promise<boolean> {
     if (!this.plan?.controlVector || !this.vectorLoaded) return false;
     try {
-      const current = await verifyStrataControlVector(this.plan.cwd, mode);
+      const current = await verifyStrataControlVector(this.plan.cwd, mode, this.t);
       return current.sha256 === this.plan.controlVector.sha256 && current.id === this.plan.controlVector.id;
     } catch { return false; }
   }
@@ -289,17 +295,17 @@ export class StrataService {
   start(plan: StrataLaunchPlan, signal?: AbortSignal): Promise<StrataServiceSnapshot> {
     return this.exclusive(async () => {
       signal?.throwIfAborted();
-      if (!validStrataPort(plan.port) || !plan.apiKey) throw new Error("Strata 启动端口或认证配置无效。");
+      if (!validStrataPort(plan.port) || !plan.apiKey) throw new Error(this.t(uiKeys.strataService.invalidLaunch));
       if (this.child?.running()) {
         if (this.state.phase === "ready" && this.plan && this.plan.executable === plan.executable
           && this.plan.cwd === plan.cwd && this.plan.port === plan.port && this.plan.apiKey === plan.apiKey
           && JSON.stringify(this.plan.args) === JSON.stringify(plan.args)) return this.inspectImpl();
-        throw new Error("Strata 仍占用旧配置，请先停止服务。");
+        throw new Error(this.t(uiKeys.strataService.oldPlanBusy));
       }
       this.child = null;
       this.plan = null;
       if (await (this.deps.portInUse ?? isLocalPortInUse)(plan.port)) {
-        throw new Error(`Strata 端口 ${plan.port} 已占用；不会接管或终止其他服务，请更换端口。`);
+        throw new Error(this.t(uiKeys.strataService.portBusy, { port: plan.port }));
       }
       signal?.throwIfAborted();
       this.plan = { ...plan, args: [...plan.args] };
@@ -307,31 +313,32 @@ export class StrataService {
       this.vectorLoaded = false; this.modeApplied = null;
       this.selectedMode = normalizeStrataUncensoredMode(plan.uncensoredMode, plan.uncensoredRequested);
       this.modeRequested = this.selectedMode !== "off";
-      this.state = { phase: "starting", port: plan.port, pid: null, modelLoaded: null, message: "正在启动 Strata 服务（延迟加载模型）。", log: "" };
+      this.state = { phase: "starting", port: plan.port, pid: null, modelLoaded: null, message: this.t(uiKeys.strataService.starting), log: "" };
       try {
-        this.child = await (this.deps.launch ?? launchStrataProcess)(this.plan, (chunk) => {
+        const onOutput = (chunk: string) => {
           this.state.log = `${this.state.log}${chunk}`.replaceAll(plan.apiKey, "[redacted]").slice(-8_000);
           try { this.deps.onOutput?.(chunk.replaceAll(plan.apiKey, "[redacted]")); } catch { /* Diagnostics cannot own process lifetime. */ }
-        });
+        };
+        this.child = await (this.deps.launch ? this.deps.launch(this.plan, onOutput) : launchStrataProcess(this.plan, onOutput, this.t));
         this.state.pid = this.child.pid;
         await this.deps.onSpawn?.(this.child.pid);
         const deadline = Date.now() + (this.deps.startupTimeoutMs ?? 30_000);
         while (Date.now() < deadline) {
           signal?.throwIfAborted();
-          if (!this.child.running()) throw new Error("Strata 在启动完成前退出，请查看服务日志。");
+          if (!this.child.running()) throw new Error(this.t(uiKeys.strataService.startupExited));
           try {
             const loaded = await this.probe();
             signal?.throwIfAborted();
-            this.state = { ...this.state, phase: "ready", modelLoaded: loaded, message: "Strata HTTP 服务就绪；模型推理尚需单独验证。" };
+            this.state = { ...this.state, phase: "ready", modelLoaded: loaded, message: this.t(uiKeys.strataService.httpReady) };
             return this.snapshot();
           } catch { signal?.throwIfAborted(); /* A port opening before HTTP handlers are ready is not readiness. */ }
           await new Promise<void>((resolve) => setTimeout(resolve, this.deps.pollMs ?? 200));
         }
-        throw new Error("Strata 服务启动超时。");
+        throw new Error(this.t(uiKeys.strataService.startupTimeout));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         try { await this.stopChild(); }
-        catch { this.state = { ...this.state, phase: "error", modelLoaded: null, message: `${message}；清理未完成，请重试停止。` }; throw new Error(this.state.message); }
+        catch { this.state = { ...this.state, phase: "error", modelLoaded: null, message: this.t(uiKeys.strataService.cleanupIncomplete, { detail: message }) }; throw new Error(this.state.message); }
         this.state = { ...this.state, phase: "error", modelLoaded: null, message };
         throw error;
       }
@@ -355,7 +362,7 @@ export class StrataService {
   load(signal?: AbortSignal): Promise<StrataServiceSnapshot> {
     return this.exclusive(async () => {
       signal?.throwIfAborted();
-      if (!this.plan || !this.child?.running()) throw new Error("Strata 服务尚未就绪。");
+      if (!this.plan || !this.child?.running()) throw new Error(this.t(uiKeys.strataService.notReady));
       const plan = this.plan;
       const safety = new AbortController();
       signal = AbortSignal.any([...(signal ? [signal] : []), safety.signal]);
@@ -363,14 +370,14 @@ export class StrataService {
       try {
         this.residencyPressure.setLoading(plan.allowResidentFallback === true);
         if (plan.resourcePlan) {
-          const resources = await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal, knownPressure: this.knownPressure });
+          const resources = await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal, knownPressure: this.knownPressure }, this.t);
           const pressure = this.pressure(resources);
           if (pressure) throw new Error(pressure);
           if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
             || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
-            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error(`Strata 加载前资源已变化：RAM ${(resources.memoryAvailableBytes / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1)}GiB，提交余量 ${(resources.commitAvailableBytes! / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.requiredCommitBytes / 1024 ** 3).toFixed(1)}GiB，显存 ${(resources.vramAvailableBytes! / 1024 ** 3).toFixed(1)}/${(plan.resourcePlan.minimumFreeVramBytes / 1024 ** 3).toFixed(1)}GiB（当前/启动预留）；未加载模型。`);
+            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error(this.t(uiKeys.strataService.resourcesChanged, { ram: (resources.memoryAvailableBytes / 1024 ** 3).toFixed(1), requiredRam: (plan.resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1), commit: (resources.commitAvailableBytes! / 1024 ** 3).toFixed(1), requiredCommit: (plan.resourcePlan.requiredCommitBytes / 1024 ** 3).toFixed(1), vram: (resources.vramAvailableBytes! / 1024 ** 3).toFixed(1), requiredVram: (plan.resourcePlan.minimumFreeVramBytes / 1024 ** 3).toFixed(1) }));
           signal.throwIfAborted();
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure });
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
         }
         const logStart = plan.residentEngineLog ? (await fs.stat(plan.residentEngineLog).catch(() => null))?.size ?? 0 : 0;
         const vectorLogStart = plan.controlVector && plan.engineLog ? (await fs.stat(plan.engineLog).catch(() => null))?.size ?? 0 : 0;
@@ -383,33 +390,33 @@ export class StrataService {
         const acknowledgement = await response.json().catch(() => null);
         if (!response.ok) {
           const reason = typeof acknowledgement?.error?.message === "string"
-            ? acknowledgement.error.message.replaceAll(plan.apiKey, "[redacted]").slice(0, 2000) : "未返回有效加载错误";
-          throw new Error(`Strata 模型加载失败（HTTP ${response.status}）：${reason}。详情见派生目录 engine.log。`);
+            ? acknowledgement.error.message.replaceAll(plan.apiKey, "[redacted]").slice(0, 2000) : this.t(uiKeys.strataService.noLoadError);
+          throw new Error(this.t(uiKeys.strataService.loadHttp, { status: response.status, reason: reason }));
         }
         if (acknowledgement?.status !== "loaded" || !await this.probe()) {
-          throw new Error("Strata 模型加载未确认，请检查内存、显存和 CUDA 驱动后重试。");
+          throw new Error(this.t(uiKeys.strataService.loadUnconfirmed));
         }
-        const fileRead = Boolean(plan.residentEngineLog && await assertStrataResidentLog(plan.residentEngineLog, logStart, plan.allowResidentFallback));
+        const fileRead = Boolean(plan.residentEngineLog && await assertStrataResidentLog(plan.residentEngineLog, logStart, plan.allowResidentFallback, this.t));
         this.residencyPressure.setFileRead(fileRead);
         this.hostMemoryMode = fileRead ? "file-read" : plan.resourcePlan?.hostMode ?? null;
         if (fileRead) this.state.log += this.deps.resourcePressure
-          ? "\n[Agent] 官方文件回读模式已启用，非完整RAM驻留；速度需实测。\n"
-          : "\n[Strata] 官方文件回读模式已确认；RAM/提交普通低余量仅预警，不因单次读数停止；显存保护与持续严重提交不足保护保留。\n";
+          ? this.t(uiKeys.strataService.agentFileRead)
+          : this.t(uiKeys.strataService.studioFileRead);
         if (plan.controlVector) {
-          if (!plan.engineLog) throw new Error("Strata uncensored 缺少引擎确认日志。");
-          await assertStrataControlVectorLog(plan.engineLog, vectorLogStart, plan.controlVector);
+          if (!plan.engineLog) throw new Error(this.t(uiKeys.strataService.vectorLogMissing));
+          await assertStrataControlVectorLog(plan.engineLog, vectorLogStart, plan.controlVector, this.t);
           this.vectorLoaded = true;
         }
         signal?.throwIfAborted();
         this.state = { ...this.state, phase: "ready", modelLoaded: true, message: plan.controlVector
-          ? "Strata 模型已加载 · uncensored 向量就绪，下次增强启用。" : "Strata 模型已加载 · uncensored 未启用。" };
+          ? this.t(uiKeys.strataService.vectorReady) : this.t(uiKeys.strataService.vectorOff) };
         return this.snapshot();
       } catch (error) {
         try { await this.stopChild(); }
-        catch { this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 加载中止后进程未退出，请重试停止。" }; throw new Error(this.state.message); }
+        catch { this.state = { ...this.state, phase: "error", modelLoaded: null, message: this.t(uiKeys.strataService.loadCleanupFailed) }; throw new Error(this.state.message); }
         this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null };
         if (signal?.aborted) throw signal.reason;
-        throw new Error((error instanceof Error ? error.message : "Strata 加载失败。").replaceAll(plan.apiKey, "[redacted]"));
+        throw new Error((error instanceof Error ? error.message : this.t(uiKeys.strataService.loadFailed)).replaceAll(plan.apiKey, "[redacted]"));
       } finally { this.residencyPressure.setLoading(false); await disposeWatch(); }
     });
   }
@@ -420,12 +427,12 @@ export class StrataService {
   }
 
   private async checkContext(request: StrataChatRequest, signal?: AbortSignal): Promise<{ inputTokens: number | null; maxTokens: number }> {
-    validateChatRequest(request);
+    validateChatRequest(request, this.t);
     signal?.throwIfAborted();
-    if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error("Strata 服务尚未就绪。");
+    if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error(this.t(uiKeys.strataService.notReady));
     if (request.contextSize === undefined) return { inputTokens: null, maxTokens: request.maxTokens };
     if (!Number.isSafeInteger(request.contextSize) || request.contextSize < 1024 || request.contextSize > 32768
-      || !Number.isSafeInteger(request.visionTokensPerImage) || request.visionTokensPerImage! < 1) throw new Error("Strata 上下文策略无效。");
+      || !Number.isSafeInteger(request.visionTokensPerImage) || request.visionTokensPerImage! < 1) throw new Error(this.t(uiKeys.strataService.invalidContext));
     const plan = this.plan;
     const textOf = (message: StrataChatRequest["messages"][number]) => typeof message.content === "string" ? message.content
       : message.content.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("");
@@ -440,21 +447,21 @@ export class StrataService {
         messages: request.messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: textOf(message) })) })
     });
     const count = response.ok ? (await response.json()).input_tokens : null;
-    if (!Number.isSafeInteger(count) || count < 0) throw new Error("Strata tokenizer 计数失败，未提交推理。");
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error(this.t(uiKeys.strataService.tokenizerFailed));
     const imageCount = request.messages.reduce((total, message) => total + (Array.isArray(message.content)
       ? message.content.filter((part) => part.type === "image_url").length : 0), 0);
     signal?.throwIfAborted();
     return strataTokenBudget({ inputTokens: count, imageCount, visionTokensPerImage: request.visionTokensPerImage!,
-      contextSize: request.contextSize, requestedMaxTokens: request.maxTokens, automatic: request.automaticOutputBudget });
+      contextSize: request.contextSize, requestedMaxTokens: request.maxTokens, automatic: request.automaticOutputBudget }, this.t);
   }
 
   /** Caller owns GPU arbitration. A failed/aborted stream stops the owned process, not just HTTP. */
   chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void,
     onReasoning?: (characters: number) => void): Promise<string> {
     return this.exclusive(async () => {
-      validateChatRequest(request);
+      validateChatRequest(request, this.t);
       signal?.throwIfAborted();
-      if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error("Strata 服务尚未就绪。");
+      if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error(this.t(uiKeys.strataService.notReady));
       const plan = this.plan;
       const mode = normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored);
       const safety = new AbortController();
@@ -463,7 +470,7 @@ export class StrataService {
       ]);
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       let disposeWatch = async () => {};
-      const stream = new StrataChatStream();
+      const stream = new StrataChatStream(this.t);
       let budget: { inputTokens: number | null; maxTokens: number } = { inputTokens: null, maxTokens: request.maxTokens };
       const vectorLoadedAtRequest = this.vectorLoaded;
       try {
@@ -471,11 +478,11 @@ export class StrataService {
         this.modeRequested = mode !== "off";
         this.modeApplied = null;
         if (mode !== "off" && (!this.vectorLoaded || plan.controlVector?.id !== strataVectorForMode(mode).id))
-          throw new Error("Strata uncensored 向量尚未确认加载，请重新启动所选模型；未发送推理请求。");
+          throw new Error(this.t(uiKeys.strataService.vectorUnconfirmed));
         if (plan.resourcePlan) {
-          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal: requestSignal, knownPressure: this.knownPressure }));
+          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal: requestSignal, knownPressure: this.knownPressure }, this.t));
           if (pressure) throw new Error(pressure);
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure });
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
         }
         budget = await this.checkContext(request, requestSignal);
         requestSignal.throwIfAborted();
@@ -493,8 +500,8 @@ export class StrataService {
         if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream") || !response.body) {
           await response.body?.cancel().catch(() => undefined);
           throw new Error(response.status === 400
-            ? "Strata 拒绝输入或上下文预算，请缩短提示词或减少参考图；原始指令未截断。"
-            : `Strata 提示词请求失败（HTTP ${response.status} 或流式协议不兼容）。`);
+            ? this.t(uiKeys.strataService.inputRejected)
+            : this.t(uiKeys.strataService.requestHttp, { status: response.status }));
         }
         reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -513,25 +520,25 @@ export class StrataService {
         }
         requestSignal.throwIfAborted();
         const result = stream.result();
-        if (!this.child.running()) throw new Error("Strata 服务在请求完成前退出。");
+        if (!this.child.running()) throw new Error(this.t(uiKeys.strataService.requestExited));
         this.state.modelLoaded = await this.probe();
-        if (!this.state.modelLoaded) throw new Error("Strata 请求结束后模型加载状态丢失，结果未保存。");
+        if (!this.state.modelLoaded) throw new Error(this.t(uiKeys.strataService.modelLost));
         requestSignal.throwIfAborted();
         this.modeApplied = mode !== "off";
-        this.state.message = this.modeApplied ? "Strata 模型已加载 · uncensored 已启用。" : "Strata 模型已加载 · uncensored 未启用。";
+        this.state.message = this.modeApplied ? this.t(uiKeys.strataService.vectorOn) : this.t(uiKeys.strataService.vectorOff);
         return result;
       } catch (error) {
         try {
           await this.stopChild();
-          this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null, message: "Strata 请求已中止，自有服务已退出。" };
+          this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null, message: this.t(uiKeys.strataService.requestAborted) };
         } catch {
-          this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 请求中止后进程未退出，禁止继续使用或卸载，请重试停止。" };
+          this.state = { ...this.state, phase: "error", modelLoaded: null, message: this.t(uiKeys.strataService.requestCleanupFailed) };
           throw new Error(this.state.message);
         }
         if (signal?.aborted) throw signal.reason;
         if (safety.signal.aborted) throw safety.signal.reason;
         // Do not expose server bodies, model text or per-launch credentials in errors.
-        throw new Error((error instanceof Error ? error.message : "Strata 提示词请求失败。").replaceAll(plan.apiKey, "[redacted]"));
+        throw new Error((error instanceof Error ? error.message : this.t(uiKeys.strataService.requestFailed)).replaceAll(plan.apiKey, "[redacted]"));
       } finally {
         await disposeWatch();
         await reader?.cancel().catch(() => undefined);
@@ -554,9 +561,9 @@ export class StrataService {
       this.state = { ...this.state, phase: "stopping", modelLoaded: null };
       try {
         await this.stopChild();
-        this.state = { ...this.state, phase: "stopped", port: null, message: "Strata 服务已停止。" };
+        this.state = { ...this.state, phase: "stopped", port: null, message: this.t(uiKeys.strataService.stopped) };
       } catch (error) {
-        this.state = { ...this.state, phase: "error", message: "Strata 进程未退出，请重试停止。" };
+        this.state = { ...this.state, phase: "error", message: this.t(uiKeys.strataService.stopFailed) };
         throw error;
       }
       return this.snapshot();
@@ -564,24 +571,24 @@ export class StrataService {
   }
 
   private async probe(): Promise<boolean> {
-    if (!this.plan || !this.child?.running()) throw new Error("Strata 服务未运行。");
+    if (!this.plan || !this.child?.running()) throw new Error(this.t(uiKeys.strataService.notRunning));
     const plan = this.plan;
     const request = async (endpoint: string) => {
       const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}${endpoint}`, {
         redirect: "error", signal: AbortSignal.timeout(1_000),
         headers: { Authorization: `Bearer ${plan.apiKey}` }
       });
-      if (!response.ok) throw new Error("Strata 状态请求失败。");
+      if (!response.ok) throw new Error(this.t(uiKeys.strataService.statusFailed));
       return response.json();
     };
     const health = await request("/health");
     if (health.service !== "strata" || health.status !== "ok" || typeof health.loaded !== "boolean" || health.api_key !== true) {
-      throw new Error("端点不是受认证的 Strata 服务。");
+      throw new Error(this.t(uiKeys.strataService.notAuthenticated));
     }
     // /health is public upstream; verify our per-launch secret against a protected endpoint too.
     const models = await request("/v1/models");
-    if (models.object !== "list" || !Array.isArray(models.data)) throw new Error("Strata 模型状态协议不兼容。");
-    if (!this.child?.running()) throw new Error("Strata 服务已退出。");
+    if (models.object !== "list" || !Array.isArray(models.data)) throw new Error(this.t(uiKeys.strataService.modelProtocol));
+    if (!this.child?.running()) throw new Error(this.t(uiKeys.strataService.exited));
     return health.loaded;
   }
 
@@ -591,7 +598,7 @@ export class StrataService {
       const loaded = await this.probe();
       this.state = { ...this.state, phase: "ready", modelLoaded: loaded };
     } catch {
-      this.state = { ...this.state, phase: "error", modelLoaded: null, message: "Strata 服务状态检查失败，请停止后重试。" };
+      this.state = { ...this.state, phase: "error", modelLoaded: null, message: this.t(uiKeys.strataService.inspectFailed) };
     }
     return this.snapshot();
   }
@@ -599,7 +606,7 @@ export class StrataService {
   private async stopChild(): Promise<void> {
     if (this.child) {
       await this.child.stop();
-      if (this.child.running()) throw new Error("Strata 进程仍在运行。");
+      if (this.child.running()) throw new Error(this.t(uiKeys.strataService.processRunning));
     }
     this.child = null;
     this.residencyPressure.setLoading(false); this.residencyPressure.setFileRead(false); this.hostMemoryMode = null;
@@ -617,17 +624,17 @@ export class StrataService {
 }
 
 /** Do not accept the engine's implicit partial/file-tier fallback as the requested resident mode. */
-export async function assertStrataResidentLog(filename: string, offset: number, allowFallback = false): Promise<true | void> {
+export async function assertStrataResidentLog(filename: string, offset: number, allowFallback = false, t: Translate = createNativeTranslator(undefined).t): Promise<true | void> {
   const file = await fs.open(filename, "r");
   try {
     const stat = await file.stat();
     const length = Math.min(Math.max(0, stat.size - offset), 256 * 1024);
-    if (!length) throw new Error("未取得本次 Strata 专家驻留日志，未开始推理。");
+    if (!length) throw new Error(t(uiKeys.strataService.residentLogMissing));
     const bytes = Buffer.alloc(length);
     await file.read(bytes, 0, length, Math.max(offset, stat.size - length));
     if (/WARNING: the (?:whole )?resident RAM mode does not fit/u.test(bytes.toString("utf8"))) {
       if (allowFallback) return true;
-      throw new Error("Strata 非GPU专家未能完整驻留 RAM（可用内存或 Windows 提交容量不足），已停止文件回读降速路径。请释放内存后重试，详情见 engine.log。");
+      throw new Error(t(uiKeys.strataService.residentFailed));
     }
   } finally { await file.close(); }
 }

@@ -8,6 +8,7 @@ import { H3_REFINER_ID, validateH3RefinerSource } from "../src/core/h3-refiner.j
 import { modelCoreVersionBlockReason } from "../src/core/model-core-requirements.js";
 import { FASTH3_OMNI_MODEL_ID } from "../src/core/catalog/models/minimax_h3_omni/definition.js";
 import { fileURLToPath } from "node:url";
+import { TESSERA_ID, tesseraAnchorModels, type TesseraAnchorSnapshot } from "../src/core/tessera.js";
 import type {
   AppState,
   ContinuumSequence,
@@ -863,7 +864,7 @@ export class QueueEnqueueService {
     const deps = this.deps;
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
-    if (modelCatalog.get(draft.modelId)?.definition.retired) throw new Error(imageModelUnavailableReason(draft.modelId));
+    if (modelCatalog.get(draft.modelId)?.definition.retired) throw new Error(imageModelUnavailableReason(draft.modelId, createNativeTranslator(enqueueSettings.uiLocale)));
     const requested = normalizeImageEditDraft(draft);
     const adapter = imageModelAdapterFor(requested.modelId);
     const normalized = normalizeImageEditDraft({
@@ -871,7 +872,7 @@ export class QueueEnqueueService {
       ...(adapter?.deterministic ? { outputCount: 1 } : {}),
       pictures: imagePicturesForModelInput(requested.pictures, adapter?.supportsTextOnly === true)
     });
-    if (!adapter) throw new Error(imageModelUnavailableReason(normalized.modelId));
+    if (!adapter) throw new Error(imageModelUnavailableReason(normalized.modelId, createNativeTranslator(enqueueSettings.uiLocale)));
     const imageLoraError = imageLoraConfigurationError(
       normalized.imageLoras,
       normalized.modelId,
@@ -1363,7 +1364,8 @@ export class QueueEnqueueService {
     const isDlss5 = !isKonohamaru && !isAetherScale && (request.modelId === DLSS5_MODEL_ID ||
       request.targetScale !== undefined || request.dlss5 !== undefined);
     let preparedRequest = request;
-    if (request.modelId === H3_REFINER_ID) {
+    let tesseraAnchor: TesseraAnchorSnapshot | undefined;
+    if (request.modelId === H3_REFINER_ID || request.modelId === TESSERA_ID) {
       if (request.upscaleMode === "h3-native") throw new Error("H3 Refiner 使用视频输入，请新建独立任务。");
       const source = version.files.find(file => file.absolutePath && path.resolve(file.absolutePath) === path.resolve(request.sourceFilePath));
       if (!source || !/\.(mp4|webm|mov|mkv|m4v)$/i.test(source.filename)) throw new Error("H3 Refiner 输入与选中的源视频版本不一致。");
@@ -1372,9 +1374,17 @@ export class QueueEnqueueService {
         duration: version.duration, fps: version.fps, sourceFilename: version.outputFilename,
         targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined, h3NativeInput: undefined };
       const environment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings);
-      const profile = environment?.modelProfiles.find(item => item.id === H3_REFINER_ID);
+      const profile = environment?.modelProfiles.find(item => item.id === request.modelId);
       if (environment && (!profile?.available || profile.missingCustomNodeNames?.length || profile.customNodeCompatibility === "error")) {
         throw new Error("H3 Refiner 组件或节点尚未就绪，请在设置中补齐模型与依赖后重试。");
+      }
+      if (request.modelId === TESSERA_ID) {
+        if (!environment || !profile?.available) throw new Error("Tessera 尚未就绪，请先检查模型与节点。");
+        if (request.tesseraAnchor?.enabled) {
+          tesseraAnchor = tesseraAnchorModels(environment).find(m => m.modelId === request.tesseraAnchor?.modelId);
+          if (!tesseraAnchor) throw new Error("所选Qwen Image及配套组件尚未就绪，请关闭首帧增强或补齐模型。");
+        }
+        preparedRequest = { ...preparedRequest, tesseraAnchor: undefined };
       }
     }
     if (isKonohamaru) {
@@ -1513,7 +1523,9 @@ export class QueueEnqueueService {
       };
     }
     const next = await store.update((state) => {
-      state.queue.push(upscaleTaskFromRequest(preparedRequest, state));
+      const task = upscaleTaskFromRequest(preparedRequest, state);
+      if (task.tessera && tesseraAnchor) task.tessera.anchor = structuredClone(tesseraAnchor);
+      state.queue.push(task);
     });
     const task = next.queue.at(-1);
     if (task?.taskType === "upscale") logger.info("queue", "task-enqueued", "Upscale task added to queue", {

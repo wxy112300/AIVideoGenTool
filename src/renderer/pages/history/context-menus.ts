@@ -231,15 +231,15 @@ export function createHistoryContextMenus(
     menu.setAttribute("aria-label", `${asset.title} ${t(uiKeys.history.menu.shortcutActions)}`);
     menu.innerHTML = `
       <div class="history-context-heading"><strong>${escapeHtml(asset.title)}</strong><span>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</span></div>
-      <button role="menuitem" data-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>${t(uiKeys.history.menu.detail)}</strong><small>${t(uiKeys.history.menu.detailVideoDescription)}</small></span><kbd>Enter</kbd></button>
-      ${retiredModel ? "" : `<button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>${t(uiKeys.history.menu.useParams)}</strong><small>${t(uiKeys.history.menu.useParamsDescription)}</small></span></button>`}
+      <button role="menuitem" data-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>${t(uiKeys.history.menu.detail)}</strong></span><kbd>Enter</kbd></button>
+      ${retiredModel ? "" : `<button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>${t(uiKeys.history.menu.useParams)}</strong></span></button>`}
       <div class="history-context-separator" role="separator"></div>
-      <button role="menuitem" data-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyFile)}</strong><small>${absolutePath ? t(uiKeys.history.menu.copyVideoFileDescription) : t(uiKeys.history.menu.noFile)}</small></span></button>
-      <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyPath)}</strong><small>${absolutePath ? t(uiKeys.history.menu.copyVideoPathDescription) : t(uiKeys.history.menu.noFile)}</small></span></button>
-      <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>${t(uiKeys.history.menu.openFolder)}</strong><small>${t(uiKeys.history.menu.locateVideo)}</small></span></button>
-      <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">${icon("file-text")}</span><span><strong>${t(uiKeys.history.menu.copyPrompt)}</strong><small>${t(uiKeys.history.menu.actualPromptDescription)}</small></span></button>
+      <button role="menuitem" data-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyFile)}</strong>${absolutePath ? "" : `<small>${t(uiKeys.history.menu.noFile)}</small>`}</span></button>
+      <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyPath)}</strong>${absolutePath ? "" : `<small>${t(uiKeys.history.menu.noFile)}</small>`}</span></button>
+      <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>${t(uiKeys.history.menu.openFolder)}</strong></span></button>
+      <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">${icon("file-text")}</span><span><strong>${t(uiKeys.history.menu.copyPrompt)}</strong></span></button>
       <div class="history-context-separator" role="separator"></div>
-      <button class="danger" role="menuitem" data-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>${t(uiKeys.history.menu.deleteVideoRecord)}</strong><small>${t(uiKeys.history.menu.confirmBeforeAction)}</small></span></button>`;
+      <button class="danger" role="menuitem" data-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>${t(uiKeys.history.menu.deleteVideoRecord)}</strong></span></button>`;
     showMenu(menu, clientX, clientY, async (action) => {
       if (action === "detail") options.openHistoryDetail(assetId);
       else if (action === "edit") await options.editHistoryAsset(assetId);
@@ -272,16 +272,16 @@ export function createHistoryContextMenus(
     menu.setAttribute("aria-label", `${title} ${t(uiKeys.history.menu.shortcutActions)}`);
     menu.innerHTML = `
       <div class="history-context-heading"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(version.file.filename)}</span></div>
-      <button role="menuitem" data-image-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>${t(uiKeys.history.menu.detail)}</strong><small>${t(uiKeys.history.menu.imageDetailDescription)}</small></span><kbd>Enter</kbd></button>
-      <button role="menuitem" data-image-history-action="edit"><span class="context-icon">${icon("wand-sparkles")}</span><span><strong>${t(uiKeys.history.menu.continueEdit)}</strong><small>${t(uiKeys.history.menu.continueEditDescription)}</small></span></button>
-      <button role="menuitem" data-image-history-action="video"><span class="context-icon">${icon("video")}</span><span><strong>${t(uiKeys.history.menu.startVideo)}</strong><small>${t(uiKeys.history.menu.startVideoDescription)}</small></span></button>
+      <button role="menuitem" data-image-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>${t(uiKeys.history.menu.detail)}</strong></span><kbd>Enter</kbd></button>
+      <button role="menuitem" data-image-history-action="edit"><span class="context-icon">${icon("wand-sparkles")}</span><span><strong>${t(uiKeys.history.menu.continueEdit)}</strong></span></button>
+      <button role="menuitem" data-image-history-action="video"><span class="context-icon">${icon("video")}</span><span><strong>${t(uiKeys.history.menu.startVideo)}</strong></span></button>
       <div class="history-context-separator" role="separator"></div>
-      <button role="menuitem" data-image-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyFile)}</strong><small>${absolutePath ? t(uiKeys.history.menu.copyImageFileDescription) : t(uiKeys.history.menu.noFile)}</small></span></button>
-      <button role="menuitem" data-image-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyPath)}</strong><small>${absolutePath ? t(uiKeys.history.menu.copyImagePathDescription) : t(uiKeys.history.menu.noFile)}</small></span></button>
-      <button role="menuitem" data-image-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>${t(uiKeys.history.menu.openFolder)}</strong><small>${t(uiKeys.history.menu.locateImage)}</small></span></button>
-      <button role="menuitem" data-image-history-action="copy-prompt" ${version.prompt ? "" : "disabled"}><span class="context-icon">${icon("file-text")}</span><span><strong>${t(uiKeys.history.menu.copyPrompt)}</strong><small>${version.prompt ? t(uiKeys.history.menu.imagePromptDescription) : t(uiKeys.history.menu.originalNoPrompt)}</small></span></button>
+      <button role="menuitem" data-image-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyFile)}</strong>${absolutePath ? "" : `<small>${t(uiKeys.history.menu.noFile)}</small>`}</span></button>
+      <button role="menuitem" data-image-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${t(uiKeys.history.menu.copyPath)}</strong>${absolutePath ? "" : `<small>${t(uiKeys.history.menu.noFile)}</small>`}</span></button>
+      <button role="menuitem" data-image-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>${t(uiKeys.history.menu.openFolder)}</strong></span></button>
+      <button role="menuitem" data-image-history-action="copy-prompt" ${version.prompt ? "" : "disabled"}><span class="context-icon">${icon("file-text")}</span><span><strong>${t(uiKeys.history.menu.copyPrompt)}</strong>${version.prompt ? "" : `<small>${t(uiKeys.history.menu.originalNoPrompt)}</small>`}</span></button>
       <div class="history-context-separator" role="separator"></div>
-      <button class="danger" role="menuitem" data-image-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>${t(uiKeys.history.menu.deleteImageProject)}</strong><small>${t(uiKeys.history.menu.confirmBeforeAction)}</small></span></button>`;
+      <button class="danger" role="menuitem" data-image-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>${t(uiKeys.history.menu.deleteImageProject)}</strong></span></button>`;
     showMenu(menu, clientX, clientY, async (action) => {
       if (action === "detail") options.openImageHistoryDetail(projectId);
       else if (action === "edit") await options.continueImageEdit(project, version);

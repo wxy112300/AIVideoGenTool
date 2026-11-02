@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { EnhanceRequest } from "../../src/types.js";
@@ -8,7 +11,7 @@ import { preparePromptExtensionFrame, probeVideoDuration } from "./extension-med
 export async function withStrataReferenceMedia<T>(
   request: EnhanceRequest, signal: AbortSignal,
   run: (prepared: EnhanceRequest) => Promise<T>,
-  deps: { prepareFrame?: typeof preparePromptExtensionFrame; duration?: typeof probeVideoDuration } = {}
+  deps: { prepareFrame?: typeof preparePromptExtensionFrame; duration?: typeof probeVideoDuration } = {}, t: Translate = createNativeTranslator(undefined).t
 ): Promise<T> {
   const cleanup: Array<() => Promise<void>> = [];
   const images = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
@@ -24,7 +27,7 @@ export async function withStrataReferenceMedia<T>(
   // The shared extension adapter already supplied the exact selected final frame.
   // Do not sample earlier source states again; keep other named video references unchanged.
   const videoReferences = [...new Set(request.referenceMediaPaths ?? [])].filter((filename) => /\.(?:mp4|mov|mkv|webm|avi|m4v)$/iu.test(filename));
-  if (videoReferences.length > 3) throw new Error("Strata 每次最多分析 3 份视频参考，请减少参考数量后重试。");
+  if (videoReferences.length > 3) throw new Error(t(uiKeys.strataPrompt.tooManyVideos));
   const videos = videoReferences.map((filename, index) => ({ filename, index }))
     .filter(({ filename }) => filename !== request.extensionSource?.filePath);
   try {
@@ -32,7 +35,7 @@ export async function withStrataReferenceMedia<T>(
       signal.throwIfAborted();
       const start = 0;
       const end = await (deps.duration ?? probeVideoDuration)(filename, signal);
-      if (!end || !Number.isFinite(end) || end <= start) throw new Error(`视频参考时长无效：${path.basename(filename)}`);
+      if (!end || !Number.isFinite(end) || end <= start) throw new Error(t(uiKeys.strataPrompt.invalidDuration, { file: path.basename(filename) }));
       for (const fraction of [0, 0.5, 1]) {
         signal.throwIfAborted();
         const sampleEnd = Math.max(start + Math.min(1 / 24, end - start), start + (end - start) * fraction);
@@ -45,7 +48,7 @@ export async function withStrataReferenceMedia<T>(
         labels.push(`<Video ${index + 1}> sampled frame near ${sampleEnd.toFixed(2)}s, silent visual inspection; not a new Picture reference`);
       }
     }
-    if (images.length > 12) throw new Error("参考图和视频采样帧合计超过 12 张，请减少参考数量后重试。");
+    if (images.length > 12) throw new Error(t(uiKeys.strataPrompt.tooManyFrames));
     return await run({ ...request, imagePaths: images,
       referenceContext: [request.referenceContext, "Visual attachments in order (labels identify the attachments; do not renumber execution references):",
         ...labels.map((label, index) => `Attachment ${index + 1}: ${label}`),

@@ -2,7 +2,7 @@ import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 import {
   h3LearnedLatentUpscaler,
-  h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae,
+  h3Fl2vaInt8Model, h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae,
 } from "./minimax_h3_shared.js";
 import { H3_REFINER_ID, H3_REFINER_FILENAME, H3_REFINER_REVISION, H3_REFINER_TURBO_FILENAME, H3_REFINER_TURBO_REVISION, H3_REFINER_NODES } from "../../h3-refiner.js";
 import {
@@ -11,11 +11,25 @@ import {
   seedVr2NativeVaeFilename
 } from "../../seedvr2-native.js";
 import { KONOHAMARU_NODE_ID } from "../dependencies/konohamaru.js";
+import { TESSERA_ID, TESSERA_NODES, TESSERA_TAO, TESSERA_LMS } from "../../tessera.js";
 
 export const postProcessModelEntries: CatalogModelEntry[] = [
+  entry({ id: TESSERA_ID, family: "h3-tessera", category: "upscale", adapterId: "h3-tessera", order: 107, inputModes: ["video"],
+    capabilities: { resolutions: [1080, 1440, 2160] }, scan: { integrated: true, vram: "INT8 · streamed/tiled · 基准待完成", minimumComfyVersion: "0.36.0",
+      requiredCustomNodeIds: ["tessera", "local-video-studio-h3-av", "kjnodes", "video-helper-suite"], runtimeNodeTypes: TESSERA_NODES,
+      components: [h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae,
+        component("Taomate 3-step", `loras/${TESSERA_TAO}`, /loras[\\/]minimax_h3_taomate_fl2va_3step_avg_rank_19_bf16\.safetensors$/i,
+          { ...guide("Kijai / MiniMax-H3-experimental", `https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/f5c3b1d5a63e008a691fca1b6096fd57a5307536/loras/${TESSERA_TAO}`, "loras", TESSERA_TAO),
+            revision: "f5c3b1d5a63e008a691fca1b6096fd57a5307536", bytes: 176723664, sha256: "e6f86322a0158dcf804b106e784a9ec1a078b1522c161143627364edc08a8bd9" }),
+        component("LMS v1.0 rank64", `loras/${TESSERA_LMS}`, /loras[\\/]minimax_h3_lms_v1\.0_r64\.safetensors$/i,
+          { ...guide("Alissonerdx / Minimax-H3-ComfyUI", `https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/b5755af914cce9c5307e7cd5903a7c59488c41a3/loras/${TESSERA_LMS}`, "loras", TESSERA_LMS),
+            revision: "b5755af914cce9c5307e7cd5903a7c59488c41a3", bytes: 1239664536, sha256: "16f3195bc6bffa431c0598dc2031e520ba058b4fcbc9f104db9e3fdfdeacf60c" })]
+    } }, { name: "Tessera · H3", description: "参考引导的视频分块精修放大；可选Qwen首帧增强。" },
+    { name: "Tessera · H3", description: "Guided tiled video refinement with optional Qwen first-frame enhancement." },
+    { name: "Tessera · H3", description: "參考引導的影片分塊精修放大；可選Qwen首幀增強。" }),
   entry({
     id: H3_REFINER_ID, family: "h3-refiner", category: "upscale", adapterId: "h3-kijai-refiner",
-    order: 106, inputModes: ["video"], capabilities: { resolutions: [1080, 1440, 2160], maxDurationSeconds: 15 },
+    order: 106, inputModes: ["video"], capabilities: { resolutions: [1080, 1440, 2160] },
     scan: {
       integrated: true, vram: "INT8 · tiled · 本机基准待完成", minimumComfyVersion: "0.36.0",
       requiredCustomNodeIds: ["local-video-studio-h3-av", "mmh3-ultimate-upscale", "minimax-h3-learned-upscaler", "kjnodes", "video-helper-suite"],
@@ -32,9 +46,9 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
             "此精修配方固定 v1.2；不要用 Create 当前的 v1.3 或其他蒸馏 LoRA 替换。"), revision: H3_REFINER_TURBO_REVISION,
             sha256: "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8" })]
     }
-  }, { name: "H3 Refiner · Kijai", description: "视频精修放大至 4K；最长 15 秒，输出 24 FPS。" },
-  { name: "H3 Refiner · Kijai", description: "Video refinement up to 4K; up to 15 seconds, output at 24 FPS." },
-  { name: "H3 Refiner · Kijai", description: "影片精修放大至 4K；最長 15 秒，輸出 24 FPS。" }),
+  }, { name: "H3 Refiner · Kijai", description: "视频精修放大至 4K，输出 24 FPS。" },
+  { name: "H3 Refiner · Kijai", description: "Video refinement up to 4K, output at 24 FPS." },
+  { name: "H3 Refiner · Kijai", description: "影片精修放大至 4K，輸出 24 FPS。" }),
   entry({
     id: "minimax_h3_latent_upscaler",
     family: "minimax-h3",

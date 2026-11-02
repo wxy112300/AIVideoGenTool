@@ -463,8 +463,8 @@ export function validateQwenImage21GgufRuntimeSchema(
 }
 
 function buildQwenImage21WorkflowForOptions(
-  task: ImageGenerationQueueTask,
-  run: ImageGenerationRun,
+  task: Pick<ImageGenerationQueueTask, "prompt" | "pictures" | "imageLoras" | "modelId" | "qualityProfile" | "outputWidth" | "outputHeight" | "aspectRatio" | "targetResolution" | "imageOutputSubfolder" | "outputFilename" | "diffusionModelFilename">,
+  run: Pick<ImageGenerationRun, "index" | "seed">,
   options: QwenImage21WorkflowOptions
 ): ComfyApiWorkflow {
   const compiled = compileQwenImage21Prompt(
@@ -711,6 +711,29 @@ export function buildQwenImage21Workflow(
   run: ImageGenerationRun
 ): ComfyApiWorkflow {
   return buildQwenImage21WorkflowForOptions(task, run, officialQwenImage21WorkflowOptions);
+}
+
+/** Reuse the edit recipe for one source frame; caller wires IMAGE and owns its output. */
+export function buildQwenImage21AnchorWorkflow(
+  snapshot: { modelId: string; model: string; textEncoder: string; vae: string },
+  width: number, height: number, seed: number
+): ComfyApiWorkflow {
+  const options = snapshot.modelId === "qwen-image-2-1-turbo" ? turboQwenImage21WorkflowOptions
+    : snapshot.modelId === "qwen-image-2-1" ? officialQwenImage21WorkflowOptions
+    : snapshot.modelId === "qwen-image-2-1-uncensored-gguf" ? ggufQwenImage21WorkflowOptions
+    : snapshot.modelId === "qwen-image-2-1-uncensored-gguf-q6" ? ggufQ6QwenImage21WorkflowOptions : undefined;
+  if (!options) throw new Error("首帧增强的 Qwen Image 模型不兼容。");
+  const graph = buildQwenImage21WorkflowForOptions({
+    prompt: "Enhance the fine natural detail of <image1>. Preserve the exact face, identity, pose, composition, colors, lighting and all existing objects and text. Do not add or remove anything.",
+    pictures: [{ id: "first", pictureNumber: 1, absolutePath: "{{TESSERA_FIRST_FRAME}}", width, height }], imageLoras: [],
+    modelId: snapshot.modelId, diffusionModelFilename: snapshot.model,
+    qualityProfile: options.samplingMode === "turbo" ? "turbo-8" : "preview-25",
+    outputWidth: width, outputHeight: height, aspectRatio: "source", targetResolution: Math.min(width, height), outputFilename: "tessera-anchor"
+  }, { index: 0, seed }, options);
+  graph.clip!.inputs.clip_name = snapshot.textEncoder;
+  graph.vae!.inputs.vae_name = snapshot.vae;
+  delete graph.save;
+  return graph;
 }
 
 export function buildQwenImage21TurboWorkflow(

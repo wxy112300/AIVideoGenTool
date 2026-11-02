@@ -55,7 +55,7 @@ export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
 export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
-export const H3_AV_SERIALIZER_REVISION = "0.4.1";
+export const H3_AV_SERIALIZER_REVISION = "0.4.3";
 export const H3_CONTINUUM_MINIMUM_VERSION = "3.8.0";
 export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.10.2";
 export const H3_CONTINUUM_REVISION = "308653cff108061a94381cef446fef985384b214";
@@ -100,6 +100,12 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
 };
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
+  id: "tessera", priority: 107, name: "Tessera", purpose: "H3参考引导分块视频放大与流式编码/解码",
+  repositoryUrl: "https://github.com/hashu786/ComfyUI-Tessera", directoryName: "ComfyUI-Tessera", aliases: ["ComfyUI-Tessera"],
+  installRevision: "930c882a17fb9a494308ac0f19ed3a73fa9a4ce0", installRevisionPolicy: "required",
+  versionMode: "pinned", recommendedVersion: "1.0.0", minimumVersion: "1.0.0", license: "MIT",
+  nodeTypes: ["TesseraEncode", "TesseraRefine", "TesseraArgs"], required: false
+}, {
   // Tombstone retains explicit uninstall lookup; no scan, readiness or install route.
   id: "minimax-h3-image-studio",
   retired: true,
@@ -658,10 +664,12 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     nodeTypes: ["LocalVideoStudioH3ContinuumGroupReceipt"],
     description: "长视频内部执行使用的独立分组收据；需要应用H3节点0.4.0+，旧AV与managed路径保留0.3.6兼容。"
   }, {
+    id: "h3-tessera", name: "Tessera 采样配方", nodeTypes: ["LocalVideoStudioH3TesseraSigmas", "LocalVideoStudioH3TesseraLoad"], description: "Tessera 独立sigma与Qwen→卸载→H3串行加载，需要应用H3节点0.4.3+。"
+  }, {
     id: "h3-refiner",
     name: "H3 Refiner 视频桥接",
     nodeTypes: ["LocalVideoStudioH3RefinerPrepare", "LocalVideoStudioH3RefinerOutput", "LocalVideoStudioH3RefinerLoraGuard"],
-    description: "Refiner 的24 FPS重采样、H3时间网格补齐与交付帧数/尺寸恢复；需要应用H3节点0.4.1+。"
+    description: "Refiner 的24 FPS重采样、H3时间网格补齐与交付帧数/尺寸恢复；需要应用H3节点0.4.2+，移除旧15秒拦截。"
   }],
   runtimeRequirement: "应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 3.10.2，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。",
   required: false

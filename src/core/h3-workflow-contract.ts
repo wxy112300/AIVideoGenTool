@@ -1,3 +1,6 @@
+import { createTranslator } from "./i18n.js";
+import type { Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 /**
  * Static and /object_info checks for the app-owned H3 clean-AV workflows.
  *
@@ -1025,11 +1028,12 @@ function runtimeNode(source: unknown, classType: string): unknown {
  */
 export function h3ComfyWorkflowRuntimeIssues(
   workflow: unknown,
-  objectInfo: unknown
+  objectInfo: unknown,
+  t: Translate = createTranslator().t
 ): string[] {
   const kind = h3ComfyAvWorkflowKind(workflow);
   if (!kind) return [];
-  if (!isRecord(objectInfo)) return ["/object_info 响应无效，无法验证 H3 AV 节点 schema"];
+  if (!isRecord(objectInfo)) return [t(uiKeys.h3RuntimeSchema.avResponseInvalid)];
   const workflowClassTypes = classTypes(graphNodes(workflow));
   const continuum = kind === "continuum-extension" || kind === "continuum-managed-extension";
   const continuumManaged = kind === "continuum-managed-extension";
@@ -1113,7 +1117,7 @@ export function h3ComfyWorkflowRuntimeIssues(
   for (const classType of runtimeClasses) {
     const node = objectInfo[classType];
     if (!node) {
-      issues.push(`/object_info 缺少精确 class_type=${classType}`);
+      issues.push(t(uiKeys.h3RuntimeSchema.classMissing, { node: classType }));
       continue;
     }
     const requirements = RUNTIME_NODE_REQUIREMENTS[classType];
@@ -1121,21 +1125,21 @@ export function h3ComfyWorkflowRuntimeIssues(
     for (const requirement of requirements.inputs) {
       const spec = inputSpecFor(node, requirement.name);
       if (spec === undefined) {
-        issues.push(`${classType}.${requirement.name} 不在 /object_info schema 中`);
+        issues.push(t(uiKeys.h3RuntimeSchema.inputAbsent, { node: classType, input: requirement.name }));
       } else if (!runtimeTypeMatches(spec, requirement.type)) {
-        issues.push(`${classType}.${requirement.name} schema 类型不兼容：要求 ${requirement.type}`);
+        issues.push(t(uiKeys.h3RuntimeSchema.inputType, { node: classType, input: requirement.name, type: requirement.type }));
       }
       if (requirement.name === "upscale_method" && spec !== undefined) {
         const options = comboOptions(spec);
         if (options.length > 0 && !options.includes("bilinear")) {
-          issues.push(`${classType}.upscale_method 缺少 workflow 使用的 bilinear 选项`);
+          issues.push(t(uiKeys.h3RuntimeSchema.bilinearMissing, { node: classType }));
         }
       }
     }
     if (requirements.outputs) {
       const actualOutputs = outputTypesFor(node);
       if (actualOutputs.length > 0 && requirements.outputs.some((expected) => !actualOutputs.includes(expected))) {
-        issues.push(`${classType} /object_info 输出 schema 不包含 ${requirements.outputs.join("/")}`);
+        issues.push(t(uiKeys.h3RuntimeSchema.outputsMissing, { node: classType, outputs: requirements.outputs.join("/") }));
       }
     }
   }
@@ -1160,13 +1164,14 @@ function runtimeInputIssue(
   objectInfo: Record<string, unknown>,
   classType: string,
   inputName: string,
-  expected: RuntimeInputRequirement["type"]
+  expected: RuntimeInputRequirement["type"],
+  t: Translate = createTranslator().t
 ): unknown {
   const spec = inputSpecFor(objectInfo[classType], inputName);
   if (spec === undefined) {
-    issues.push(`${classType}.${inputName} 不在 /object_info schema 中`);
+    issues.push(t(uiKeys.h3RuntimeSchema.inputAbsent, { node: classType, input: inputName }));
   } else if (!runtimeTypeMatches(spec, expected)) {
-    issues.push(`${classType}.${inputName} schema 类型不兼容：要求 ${expected}`);
+    issues.push(t(uiKeys.h3RuntimeSchema.inputType, { node: classType, input: inputName, type: expected }));
   }
   return spec;
 }
@@ -1178,23 +1183,24 @@ function runtimeInputIssue(
  */
 export function h3ExecutionNodeRuntimeIssues(
   workflow: unknown,
-  objectInfo: unknown
+  objectInfo: unknown,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodes = graphNodes(workflow);
-  if (!isRecord(objectInfo)) return ["/object_info 响应无效，无法验证 H3 执行节点 schema"];
+  if (!isRecord(objectInfo)) return [t(uiKeys.h3RuntimeSchema.executionResponseInvalid)];
   const issues: string[] = [];
   const objectInfoRecord = objectInfo as Record<string, unknown>;
   for (const [nodeId, node] of nodes) {
     const classType = node.class_type;
     if (classType !== "ModelAttentionBackend" && classType !== "BlockSparseAttention") continue;
     if (!objectInfoRecord[classType]) {
-      issues.push(`/object_info 缺少精确 class_type=${classType}`);
+      issues.push(t(uiKeys.h3RuntimeSchema.classMissing, { node: classType }));
       continue;
     }
-    runtimeInputIssue(issues, objectInfoRecord, classType, "model", "MODEL");
+    runtimeInputIssue(issues, objectInfoRecord, classType, "model", "MODEL", t);
     const outputs = outputTypesFor(objectInfoRecord[classType]);
     if (outputs.length > 0 && !outputs.includes("MODEL")) {
-      issues.push(`${classType} /object_info 输出 schema 不包含 MODEL`);
+      issues.push(t(uiKeys.h3RuntimeSchema.modelOutputMissing, { node: classType }));
     }
     if (classType === "ModelAttentionBackend") {
       const attentionSpec = runtimeInputIssue(
@@ -1202,14 +1208,14 @@ export function h3ExecutionNodeRuntimeIssues(
         objectInfoRecord,
         classType,
         "attention",
-        "COMBO"
+        "COMBO", t
       );
       const options = comboOptions(attentionSpec);
       const actual = inputsFor(node).attention;
       if (actual !== "pytorch attention" && actual !== "comfy kitchen attention") {
-        issues.push(`ModelAttentionBackend.attention 使用了未知值：${String(actual)}`);
+        issues.push(t(uiKeys.h3RuntimeSchema.attentionUnknown, { value: String(actual) }));
       } else if (options.length > 0 && !options.includes(actual)) {
-        issues.push(`ModelAttentionBackend.attention 不接受工作流值：${actual}`);
+        issues.push(t(uiKeys.h3RuntimeSchema.attentionRejected, { value: actual }));
       }
       continue;
     }
@@ -1219,15 +1225,15 @@ export function h3ExecutionNodeRuntimeIssues(
       objectInfoRecord,
       classType,
       "selection",
-      "ANY"
+      "ANY", t
     );
     const selectionType = specType(selectionSpec);
     if (selectionType !== "COMFY_DYNAMICCOMBO_V3" && selectionType !== "DYNAMIC_COMBO") {
-      issues.push("BlockSparseAttention.selection 必须是 ComfyUI 0.35 DynamicCombo schema");
+      issues.push(t(uiKeys.h3RuntimeSchema.dynamicComboRequired));
     }
     for (const required of ["sol-attn", "sla", "vsa"]) {
       if (!dynamicOptionKeys(selectionSpec).includes(required)) {
-        issues.push(`BlockSparseAttention.selection 缺少 ${required} 选项`);
+        issues.push(t(uiKeys.h3RuntimeSchema.selectionMissing, { option: required }));
       }
     }
     for (const [inputName, expected] of [
@@ -1239,24 +1245,24 @@ export function h3ExecutionNodeRuntimeIssues(
       ["sink_conditioning", "COMBO"],
       ["verbose", "BOOLEAN"]
     ] as const) {
-      runtimeInputIssue(issues, objectInfoRecord, classType, inputName, expected);
+      runtimeInputIssue(issues, objectInfoRecord, classType, inputName, expected, t);
     }
     const sinkSpec = inputSpecFor(objectInfoRecord[classType], "sink_conditioning");
     const sinkOptions = comboOptions(sinkSpec);
     if (sinkOptions.length > 0 && !sinkOptions.includes("exact_kv_and_rows")) {
-      issues.push("BlockSparseAttention.sink_conditioning 缺少 exact_kv_and_rows 选项");
+      issues.push(t(uiKeys.h3RuntimeSchema.sinkMissing));
     }
     const nodeInputs = inputsFor(node);
     const selection = nodeInputs.selection;
     if (typeof selection !== "string" || !["sol-attn", "sla", "vsa"].includes(selection)) {
-      issues.push(`BlockSparseAttention.selection 使用了未知值：${String(selection)}`);
+      issues.push(t(uiKeys.h3RuntimeSchema.selectionUnknown, { value: String(selection) }));
     } else {
       const parameterName = selection === "sol-attn"
         ? "selection.tau"
         : "selection.keep_percent";
       const parameterValue = nodeInputs[parameterName];
       if (typeof parameterValue !== "number" || !Number.isFinite(parameterValue)) {
-        issues.push(`BlockSparseAttention.${parameterName} 必须通过 DynamicCombo 扁平输入提供数值`);
+        issues.push(t(uiKeys.h3RuntimeSchema.flatValueRequired, { input: parameterName }));
       }
     }
     // Keep nodeId in the loop's diagnostics context without exposing it in

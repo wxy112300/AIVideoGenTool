@@ -217,6 +217,7 @@ export function createQueueWorkspaceCoordinator(
       ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
       assetId: task.sourceAssetId,
       versionId: task.sourceVersionId,
+      ...(task.tessera ? { tesseraAnchorEnabled: !!task.tessera.anchor, tesseraAnchorModelId: task.tessera.anchor?.modelId } : {}),
       ...(task.upscaleMode === "h3-native"
         ? { h3Provider: task.h3NativeInput?.provider ?? "bilinear" }
         : {}),

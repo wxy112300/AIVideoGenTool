@@ -10,7 +10,7 @@ import os from "node:os";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
 
 const settings = createDefaultSettings();
-function fixture() {
+function fixture(getUiLocale?: () => "zh-CN" | "en-US" | "zh-TW") {
   let alive = false;
   const child = { pid: 1234, running: () => alive, stop: vi.fn(async () => { alive = false; }) };
   const service = new StrataService({
@@ -20,12 +20,29 @@ function fixture() {
   });
   let resourcesBusy = false;
   const prepare = vi.fn<typeof prepareStrataModelRuntime>(async () => ({ configPath: "fixture.json", packDirectory: "fixture", receiptPath: "fixture/receipt", modelId: "fixture-model" }));
-  const owner = new StrataRuntimeOwner({ service, run: vi.fn(), prepare, isResourcesBusy: () => resourcesBusy,
+  const owner = new StrataRuntimeOwner({ getUiLocale, service, run: vi.fn(), prepare, isResourcesBusy: () => resourcesBusy,
     prepareLaunch: async () => ({ executable: "fixture", args: [], cwd: "fixture", apiKey: "secret", port: 43127, modelId: "fixture-model" }) });
-  return { owner, child, service, prepare, busy: () => { resourcesBusy = true; } };
+  return { owner, child, service, prepare, busy: (value = true) => { resourcesBusy = value; } };
 }
 
 describe("application Strata ownership", () => {
+  it.each(["en-US", "zh-TW"] as const)("localizes owner guards dynamically without changing recovery or process ownership (%s)", async uiLocale => {
+    let language: "zh-CN" | "en-US" | "zh-TW" = "zh-CN"; const f = fixture(() => language); language = uiLocale;
+    f.busy();
+    await expect(f.owner.prepareAndStart(settings, "fixture-model", strataFixturePolicy))
+      .rejects.toThrow(uiLocale === "en-US" ? "operation is active" : "目前有生成");
+    expect(f.prepare).not.toHaveBeenCalled(); expect(f.owner.snapshot().pid).toBeNull();
+    f.busy(false);
+    await f.owner.startPrepared(settings, "unused-fixture.json");
+    await expect(f.owner.startPrepared(settings, "unused-fixture.json")).rejects.toThrow(uiLocale === "en-US" ? "Stop Strata before" : "請先停止");
+    await expect(f.owner.withSoftwareChange(async () => "must not run")).rejects.toThrow(uiLocale === "en-US" ? "still using the software directory" : "仍占用軟體目錄");
+    await expect(f.owner.chat({ modelId: "wrong", messages: [{ role: "user", content: "用户正文" }], maxTokens: 1, temperature: .7 })).rejects.toThrow(uiLocale === "en-US" ? "differs from the prepared model" : "與已準備模型不一致");
+    expect(f.child.stop).not.toHaveBeenCalled();
+    await f.owner.shutdown();
+    expect(f.child.stop).toHaveBeenCalledOnce(); expect(f.owner.snapshot().pid).toBeNull();
+    language = "zh-CN";
+    await expect(f.owner.startPrepared(settings, "unused-fixture.json")).rejects.toThrow("应用正在退出");
+  });
   it("reloads only on first activation, reuses the base pack and retains later on/off mode switches", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "strata-owner-modes-"));
     const configPath = path.join(root, "pack", "runtime.json"), modelId = "strata/qwen3.8-flash-next-iq3_xxs";

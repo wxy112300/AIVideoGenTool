@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { EnhanceRequest, Settings, PromptProgressReporter } from "../../src/types.js";
 import { assertLongVideoPromptRequest, longVideoPromptTargets, parseLongVideoPromptResult, type LongVideoPromptResult } from "../../src/core/long-video/enhancement.js";
 import { buildStrataPromptRequest, StrataPromptValidationError } from "./strata-prompt.js";
@@ -10,6 +12,7 @@ const validText = (value: unknown, maximum = 4000): value is string => typeof va
 /** Planner and bounded detail batches share the existing single prompt operation/owner. */
 export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settings: Settings, owner: Pick<StrataRuntimeOwner, "chat">,
   signal: AbortSignal, progress: PromptProgressReporter, beforeChat: (chat: StrataChatRequest) => Promise<void>): Promise<string> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const planRequest = request.longVideo!; assertLongVideoPromptRequest(planRequest);
   const base = await buildStrataPromptRequest(request, settings, signal);
   const images = base.messages.flatMap(m => Array.isArray(m.content) ? m.content : []).filter(p => p.type === "image_url");
@@ -34,19 +37,19 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
   const source = JSON.stringify(planRequest);
   const slots = planRequest.segments.map((page, index) => ({ pageId: page.pageId,
     startSeconds: index * planRequest.layout.chunkSeconds, endSeconds: (index + 1) * planRequest.layout.chunkSeconds }));
-  const planned = await chat(`Plan this complete film before writing detailed prompts. Each discrete event belongs to exactly one time window; persistent states may continue. For existing-Run future pages, the input time range starts after the frozen prefix. Allocate only the requested future narrative.\nSOURCE:\n${source}\nTIME WINDOWS (relative to requested new movie portion):\n${JSON.stringify(slots)}\nReturn exactly {"summary":"English story bible: grounded identities, camera/spatial continuity, ordered events and final outcome","segments":[{"pageId":"exact supplied ID","outline":"English event allocation, entering state, observable action, exiting state, audio"}]}. Include every supplied segment once, in its original order. Summarize locked pages faithfully; do not rewrite them.`, "正在规划整片故事");
+  const planned = await chat(`Plan this complete film before writing detailed prompts. Each discrete event belongs to exactly one time window; persistent states may continue. For existing-Run future pages, the input time range starts after the frozen prefix. Allocate only the requested future narrative.\nSOURCE:\n${source}\nTIME WINDOWS (relative to requested new movie portion):\n${JSON.stringify(slots)}\nReturn exactly {"summary":"English story bible: grounded identities, camera/spatial continuity, ordered events and final outcome","segments":[{"pageId":"exact supplied ID","outline":"English event allocation, entering state, observable action, exiting state, audio"}]}. Include every supplied segment once, in its original order. Summarize locked pages faithfully; do not rewrite them.`, t(uiKeys.strataPrompt.moviePlanning));
   const plannedValue = planned as { summary: string; segments: Array<{ pageId: string; outline: string }> };
   if (!plannedValue || !validText(plannedValue.summary, 16000) || !Array.isArray(plannedValue.segments) || plannedValue.segments.length !== slots.length ||
-      plannedValue.segments.some((p, index) => p?.pageId !== slots[index]!.pageId || !validText(p.outline))) throw new StrataPromptValidationError("长视频规划结构不完整，原稿保持不变。");
+      plannedValue.segments.some((p, index) => p?.pageId !== slots[index]!.pageId || !validText(p.outline))) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.planIncomplete));
   const targets = longVideoPromptTargets(planRequest);
   const result: LongVideoPromptResult = { schemaVersion: 1, scriptId: planRequest.scriptId, revision: planRequest.revision,
     ...(!planRequest.targetPageId && !planRequest.brief.locked ? { brief: plannedValue.summary } : {}), segments: [] };
   for (let offset = 0; offset < targets.length; offset += 3) {
     const batch = targets.slice(offset, offset + 3);
-    const raw = await chat(`Write detailed English sampling prompts ONLY for the requested page IDs. The complete plan and original user constraints remain binding. Each prompt covers exactly ${planRequest.layout.chunkSeconds} seconds and uses LOCAL times 0–${planRequest.layout.chunkSeconds}s. Use concrete observable action, continuity from the prior boundary, coherent camera movement and diegetic sound. No narrator or music unless requested. Natural English prose is accepted by Continuum List mode; do not write a 120-second timeline inside each page. Each page must be directly usable without reading this JSON plan. Do not repeat the entire global story or restart earlier events.\nSOURCE:\n${source}\nCOMPLETE PLAN:\n${JSON.stringify(plannedValue)}\nMOST RECENT ADOPTED DETAIL:\n${JSON.stringify(result.segments.at(-1) ?? null)}\nREQUESTED PAGES:\n${JSON.stringify(batch.map(p => ({ ...p, slot: slots.find(s => s.pageId === p.pageId) })))}\nReturn exactly {"segments":[{"pageId":"exact requested ID","text":"complete sampling prompt"}]} in the requested order, with no extra pages.`, `正在扩写 ${offset + 1}–${Math.min(offset + 3, targets.length)} / ${targets.length}`) as { segments: Array<{ pageId: string; text: string }> };
-    if (!raw || !Array.isArray(raw.segments) || raw.segments.length !== batch.length || raw.segments.some((p, i) => p?.pageId !== batch[i]!.pageId || !validText(p.text, 24000))) throw new StrataPromptValidationError("长视频分段详稿不完整，原稿保持不变。");
+    const raw = await chat(`Write detailed English sampling prompts ONLY for the requested page IDs. The complete plan and original user constraints remain binding. Each prompt covers exactly ${planRequest.layout.chunkSeconds} seconds and uses LOCAL times 0–${planRequest.layout.chunkSeconds}s. Use concrete observable action, continuity from the prior boundary, coherent camera movement and diegetic sound. No narrator or music unless requested. Natural English prose is accepted by Continuum List mode; do not write a 120-second timeline inside each page. Each page must be directly usable without reading this JSON plan. Do not repeat the entire global story or restart earlier events.\nSOURCE:\n${source}\nCOMPLETE PLAN:\n${JSON.stringify(plannedValue)}\nMOST RECENT ADOPTED DETAIL:\n${JSON.stringify(result.segments.at(-1) ?? null)}\nREQUESTED PAGES:\n${JSON.stringify(batch.map(p => ({ ...p, slot: slots.find(s => s.pageId === p.pageId) })))}\nReturn exactly {"segments":[{"pageId":"exact requested ID","text":"complete sampling prompt"}]} in the requested order, with no extra pages.`, t(uiKeys.strataPrompt.batchProgress, { first: offset + 1, last: Math.min(offset + 3, targets.length), total: targets.length })) as { segments: Array<{ pageId: string; text: string }> };
+    if (!raw || !Array.isArray(raw.segments) || raw.segments.length !== batch.length || raw.segments.some((p, i) => p?.pageId !== batch[i]!.pageId || !validText(p.text, 24000))) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.detailsIncomplete));
     result.segments.push(...raw.segments.map(p => ({ ...p, outline: plannedValue.segments.find(s => s.pageId === p.pageId)!.outline })));
   }
-  progress("validating", null, "正在核对整包脚本与页面身份");
+  progress("validating", null, t(uiKeys.strataPrompt.movieValidating));
   const encoded = JSON.stringify(result); parseLongVideoPromptResult(encoded, planRequest); return encoded;
 }

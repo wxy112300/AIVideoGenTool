@@ -215,8 +215,8 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await fs.mkdir(path.dirname(vectorFile), { recursive: true });
     await runtime.download(vector.source, vectorFile, settings, undefined, log, vector.bytes);
     checkInstallationCancelled();
-    await verifyStrataControlVector(staging, "community");
-    await verifyStrataControlVector(staging, "builtin");
+    await verifyStrataControlVector(staging, "community", t);
+    await verifyStrataControlVector(staging, "builtin", t);
     await fs.writeFile(path.join(path.dirname(vectorFile), "NOTICE.txt"),
       `Community vector by sergqwer, derived from Qwen3.8-Flash-Next. Qwen Community License 1.0 applies.\nSource and license notice: ${vector.notice}\nRevision: ${vector.revision}\nSHA-256: ${vector.sha256}\nExperimental refusal-reduction projection; not a guarantee of output quality or refusal-free behavior.\n`, "utf8");
     log(t(uiKeys.strataRuntime.vectorVerified, { id: vector.id, first: vector.firstLayer, last: vector.lastLayer }));

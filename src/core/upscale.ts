@@ -27,6 +27,7 @@ import {
   seedVr2NativeVaeFilename
 } from "./seedvr2-native.js";
 import { H3_REFINER_ID, buildH3RefinerWorkflow } from "./h3-refiner.js";
+import { TESSERA_ID, buildTesseraWorkflow } from "./tessera.js";
 
 type ApiNode = {
   class_type: string;
@@ -69,7 +70,7 @@ export interface NativeSeedVr2WorkflowSegment {
 }
 
 export interface UpscaleResourceEstimateInput {
-  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID | typeof H3_REFINER_ID;
+  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler" | "dlss5-sr" | "aetherscale-dlss5" | typeof KONOHAMARU_MODEL_ID | typeof H3_REFINER_ID | typeof TESSERA_ID;
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
@@ -88,6 +89,7 @@ export interface UpscaleResourceEstimate {
 }
 
 const upscaleEstimateProfiles = {
+  [TESSERA_ID]: { baseVramMinGb: 0, baseVramMaxGb: 0, vramPerAreaMinGb: 0, vramPerAreaMaxGb: 0, secondsPerFrameMin: 0, secondsPerFrameMax: 0 },
   [H3_REFINER_ID]: {
     baseVramMinGb: 0, baseVramMaxGb: 0, vramPerAreaMinGb: 0, vramPerAreaMaxGb: 0,
     secondsPerFrameMin: 0, secondsPerFrameMax: 0
@@ -804,6 +806,7 @@ export function renderUpscaleWorkflow(
   nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment
 ): Record<string, ApiNode> {
   if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo);
+  if (task.modelId === TESSERA_ID) return buildTesseraWorkflow(task, sourceVideo, objectInfo);
   if (task.modelId === KONOHAMARU_MODEL_ID) {
     return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo);
   }

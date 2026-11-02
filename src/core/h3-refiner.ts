@@ -66,8 +66,8 @@ export function h3RefinerGeometry(width: number, height: number, target: number)
 }
 
 export function validateH3RefinerSource(duration: number, fps: number): void {
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 15 || !Number.isFinite(fps) || fps <= 0) {
-    throw new Error("H3 Refiner 当前支持不超过 15 秒的视频；不会截短长视频。");
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0) {
+    throw new Error("H3 Refiner 源视频时长或帧率无效，请重新检查源视频。");
   }
 }
 

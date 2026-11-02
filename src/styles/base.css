@@ -25,6 +25,8 @@ body {
 
 :root[data-motion="reduced"] *:hover, :root[data-motion="reduced"] *:hover::before, :root[data-motion="reduced"] *:hover::after { transition-duration: 0ms !important; }
 
+:root[data-motion="reduced"] :is(.history-context-menu, .history-player-info-menu) { animation: ui-context-menu-fade var(--dur-2) var(--ease-out) !important; }
+
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="standard"]) *,
   :root:not([data-motion="standard"]) *::before,
@@ -35,4 +37,5 @@ body {
     scroll-behavior: auto !important;
   }
   :root:not([data-motion="standard"]) *:hover, :root:not([data-motion="standard"]) *:hover::before, :root:not([data-motion="standard"]) *:hover::after { transition-duration: 0ms !important; }
+  :root:not([data-motion="standard"]) :is(.history-context-menu, .history-player-info-menu) { animation: ui-context-menu-fade var(--dur-2) var(--ease-out) !important; }
 }

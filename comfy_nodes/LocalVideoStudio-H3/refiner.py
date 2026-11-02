@@ -7,6 +7,54 @@ import math
 import logging
 
 
+class LocalVideoStudioH3TesseraSigmas:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    RETURN_TYPES = ("SIGMAS",)
+    FUNCTION = "get"
+    CATEGORY = "Local Video Studio/H3"
+
+    def get(self):
+        import torch
+        return (torch.tensor([1.0, 0.7, 0.4, 0.0]),)
+
+
+class LocalVideoStudioH3TesseraLoad:
+    """Barrier: no H3 loader executes until the enhanced IMAGE has unloaded Qwen."""
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"anchor": ("IMAGE",), "unet_name": ("STRING",),
+                             "clip_name": ("STRING",), "vae_name": ("STRING",),
+                             "audio_vae_name": ("STRING",)}}
+
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "VAE")
+    FUNCTION = "load"
+    CATEGORY = "Local Video Studio/H3"
+
+    def load(self, anchor, unet_name, clip_name, vae_name, audio_vae_name):
+        import nodes
+        import folder_paths
+
+        def resolve(category, name):
+            files = folder_paths.get_filename_list(category)
+            if name in files:
+                return name
+            basename = name.replace("\\", "/").split("/")[-1]
+            matches = [f for f in files if f.replace("\\", "/").split("/")[-1] == basename]
+            if len(matches) != 1:
+                raise ValueError(f"Tessera {category}: missing or ambiguous model {name}")
+            return matches[0]
+
+        logging.info("Tessera: Qwen first-frame stage complete; loading H3 models")
+        model = nodes.UNETLoader().load_unet(resolve("diffusion_models", unet_name), "default")[0]
+        clip = nodes.CLIPLoader().load_clip(resolve("text_encoders", clip_name), "minimax", "default")[0]
+        vae = nodes.VAELoader().load_vae(resolve("vae", vae_name))[0]
+        audio_vae = nodes.VAELoader().load_vae(resolve("vae", audio_vae_name))[0]
+        return model, clip, vae, audio_vae
+
+
 class LocalVideoStudioH3RefinerLoraGuard:
     @classmethod
     def INPUT_TYPES(cls):
@@ -29,8 +77,6 @@ def refiner_frame_plan(frame_count, fps):
     if not isinstance(frame_count, int) or frame_count < 1 or not math.isfinite(fps) or fps <= 0:
         raise ValueError("H3 Refiner input has no usable frames/fps")
     duration = frame_count / fps
-    if duration > 15 + 1 / fps:
-        raise ValueError("H3 Refiner supports up to 15 seconds; refusing to truncate")
     count = max(1, round(duration * 24))
     padded = max(5, count)
     padded += (5 - padded) % 17

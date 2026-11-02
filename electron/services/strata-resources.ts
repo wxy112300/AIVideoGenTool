@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
@@ -84,7 +87,7 @@ function cancellable<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> 
 }
 
 /** Default: three fresh probes within 12s. Callers may keep retrying until their deadline. */
-export async function readReliableStrataResources(read = readStrataResources, options: RetryOptions = {}): Promise<StrataResourceProbe> {
+export async function readReliableStrataResources(read = readStrataResources, options: RetryOptions = {}, t: Translate = createNativeTranslator(undefined).t): Promise<StrataResourceProbe> {
   const budget = new AbortController(), started = Date.now();
   const signal = AbortSignal.any([budget.signal, ...(options.signal ? [options.signal] : [])]);
   const timer = setTimeout(() => budget.abort(new DOMException("resource-probe-deadline", "TimeoutError")), options.maxWaitMs ?? 12_000);
@@ -110,7 +113,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
           probeIssues: [probeFailure("sampler", error, started)] };
       }
       options.signal?.throwIfAborted();
-      if ((options.knownPressure ?? knownStrataResourcePressure)(last)) { report("pressure"); return last; }
+      if ((options.knownPressure ?? ((sample) => knownStrataResourcePressure(sample, t)))(last)) { report("pressure"); return last; }
       if (!missingStrataResourceMetrics(last).length && !budget.signal.aborted) {
         if (attempt > 1) report("recovered");
         return last;
@@ -124,7 +127,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
       }), signal); } catch { options.signal?.throwIfAborted(); break; }
     }
     report("unavailable");
-    throw new Error(`Strata 资源监测持续不可用（${missingStrataResourceMetrics(last).join(", ")}；${attempt} 次采样，${Date.now() - started}ms），本次操作已中止以保护资源。`);
+    throw new Error(t(uiKeys.strataCore.probeRetries, { missing: missingStrataResourceMetrics(last).join(", "), attempts: attempt, elapsed: Date.now() - started }));
   } finally {
     clearTimeout(timer); budget.abort();
     // Native child callbacks acknowledge cancellation before a later operation can sample.
@@ -135,15 +138,15 @@ export async function readReliableStrataResources(read = readStrataResources, op
 
 /** Poll non-overlapping probes; dispose waits for the in-flight probe, so none leak into a later run. */
 export function watchStrataResources(abort: (reason: Error) => void, read = readStrataResources, intervalMs = 1000,
-  options: Omit<RetryOptions, "signal"> & { pressure?: (sample: StrataResources) => string | null } = {}): () => Promise<void> {
+  options: Omit<RetryOptions, "signal"> & { pressure?: (sample: StrataResources) => string | null } = {}, t: Translate = createNativeTranslator(undefined).t): () => Promise<void> {
   let closed = false, failed = false, pending: Promise<void> | undefined;
   const controller = new AbortController();
   const fail = (error: Error) => { if (!closed && !failed) { failed = true; clearInterval(timer); abort(error); } };
   const timer = setInterval(() => {
     if (closed || failed || pending) return;
-    pending = readReliableStrataResources(read, { ...options, signal: controller.signal }).then((sample) => {
-      if (!closed) { const reason = (options.pressure ?? strataResourcePressure)(sample); if (reason) fail(new Error(reason)); }
-    }).catch((error) => { fail(error instanceof Error ? error : new Error("Strata 资源监测持续失败，已中止自有模型。")); })
+    pending = readReliableStrataResources(read, { ...options, signal: controller.signal }, t).then((sample) => {
+      if (!closed) { const reason = (options.pressure ?? ((sample) => strataResourcePressure(sample, t)))(sample); if (reason) fail(new Error(reason)); }
+    }).catch((error) => { fail(error instanceof Error ? error : new Error(t(uiKeys.strataCore.probeFailed))); })
       .finally(() => { pending = undefined; });
   }, intervalMs);
   return async () => { closed = true; clearInterval(timer); controller.abort(new Error("resource-watch-disposed")); await pending; };

@@ -4,6 +4,8 @@
 
 ## 当前任务
 
+- [Tessera 视频放大与可选 Qwen 首帧增强](2026-11-03-tessera-upscale/TASK.md)
+
 - [H3 Refiner 视频 Upscale（Kijai，至 4K）](2026-10-29-h3-refiner-upscale/TASK.md)
 
 - [0.67.1 Windows Release](2026-10-28-release-0.67.1/TASK.md)

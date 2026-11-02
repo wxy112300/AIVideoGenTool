@@ -75,6 +75,29 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
 }
 
 describe("queue command services", () => {
+  it("preflights Qwen anchor components and freezes only the installed model in a Tessera task", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-tessera-enqueue-"));
+    try {
+      const videoPath = path.join(root, "source.mp4"); await fs.writeFile(videoPath, "video");
+      const state = createDefaultState();
+      state.history = [{ id: "a", prompt: "source", versions: [{ id: "v", outputFilename: "source.mp4", width: 1344, height: 768,
+        duration: 362 / 24, fps: 24, files: [{ filename: "source.mp4", absolutePath: videoPath, type: "output", subfolder: "" }] }] }] as AppState["history"];
+      const qwen = { id: "qwen-image-2-1", available: false, components: ["diffusion_models/qwen_image_2.1_int8_convrot.safetensors", "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "vae/qwen_image_2.1_vae_bf16.safetensors"].map(file => ({ found: true, matches: ["C:/models/" + file] })) };
+      const store = repository(state);
+      const service = new QueueEnqueueService({ store, logger: logger(), sendState: vi.fn(), getCachedEnvironmentScanForQueue: () => ({ modelProfiles: [{ id: "minimax_h3_tessera", available: true }, qwen] }) as never } as never);
+      const request = { modelId: "minimax_h3_tessera", sourceAssetId: "a", sourceVersionId: "v", sourceFilePath: videoPath, sourceFilename: "wrong.mp4",
+        sourceWidth: 1, sourceHeight: 1, fps: 1, duration: 1, targetHeight: 2160 as const, tileMode: "safe" as const, faceRestore: false,
+        tesseraAnchor: { enabled: true, modelId: qwen.id } };
+      await expect(service.enqueueUpscale(request)).rejects.toThrow("Qwen Image");
+      expect(store.get().queue).toHaveLength(0);
+      qwen.available = true;
+      const next = await service.enqueueUpscale(request);
+      expect(next.queue[0]).toMatchObject({ sourceWidth: 1344, sourceHeight: 768, duration: 362 / 24, targetHeight: 2160,
+        tessera: { anchor: { modelId: qwen.id, model: "qwen_image_2.1_int8_convrot.safetensors" } } });
+      qwen.components[0]!.matches[0] = "changed";
+      expect((next.queue[0] as import("../src/types").UpscaleQueueTask).tessera!.anchor!.model).toBe("qwen_image_2.1_int8_convrot.safetensors");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
   it("queues Refiner from authoritative video identity after dependency recovery, without JointAV", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-refiner-enqueue-"));
     try {

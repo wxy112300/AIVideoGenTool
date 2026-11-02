@@ -242,7 +242,9 @@ flowchart TD
   D --> P{当前 provider}
   P --> H3[H3 native: AV 资格 / latent 二次采样]
   P --> SEED[SeedVR2: 像素视频 / 目标尺寸 / 分段策略]
-    P --> REF[H3 Refiner: 普通视频 / 1080至4K / 最长15秒]
+    P --> REF[H3 Refiner: 普通视频 / 1080至4K / 完整时长]
+  P --> TESS[Tessera: 可选Qwen首帧 → 卸载 → H3加载 → 分块精修]
+  TESS --> Q
   SEED --> SWITCH{provider 切换}
   SWITCH --> CLASSIC[普通 SeedVR2: 显存策略选择]
   SWITCH --> NATIVE[原生 INT8: 节点固定低显存分批]
