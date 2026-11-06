@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -53,14 +56,15 @@ function officialQwenImage21Prompt(prompt: string): string {
 
 export function compileQwenImage21Prompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const compiled = compileImagePromptWithLimit(
     prompt,
     pictures,
     qwenImage21Capability.maxPictures,
     "Qwen Image 2.1",
-    true
+    true, t
   );
   return {
     ...compiled,
@@ -68,8 +72,9 @@ export function compileQwenImage21Prompt(
   };
 }
 
-function qwenImage21LatentDimension(value: number, fallback: number, multiple = 8): number {
-  const dimension = exactImageDimension(value, fallback);
+function qwenImage21LatentDimension(value: number, fallback: number, multiple = 8,
+  t: Translate = createTranslator().t): number {
+  const dimension = exactImageDimension(value, fallback, t);
   // The official ResolutionSelector emits dimensions in multiples of 8.
   // Keep the UI's selected 720p/1080p/etc. canvas intact instead of silently
   // rounding it to a different visible resolution.
@@ -136,7 +141,8 @@ function validateQwenImage21WorkflowForOptions(
   _qualityProfile = "preview-25",
   allowImagePlaceholders = false,
   options: QwenImage21WorkflowOptions,
-  additionalRequiredNodeTypes: readonly string[] = []
+  additionalRequiredNodeTypes: readonly string[] = [],
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
@@ -147,12 +153,12 @@ function validateQwenImage21WorkflowForOptions(
   ];
   const errors = requiredNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `Qwen Image 2.1 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.qwen21Node, { node: nodeType }));
   if (inputNodes.length > options.capability.maxPictures) {
-    errors.push(`Qwen Image 2.1 工作流必须包含 1–${options.capability.maxPictures} 个 LoadImage 节点。`);
+    errors.push(t(uiKeys.workflowChecks.qwen21InputCount, { count: options.capability.maxPictures }));
   }
   if (!hasPictures && !options.capability.supportsTextOnly) {
-    errors.push("Qwen Image 2.1 当前配置不支持无参考图的文生图路径。");
+    errors.push(t(uiKeys.workflowChecks.qwen21TextOnly));
   }
   const unresolvedPlaceholders = Object.values(workflow).flatMap((node) =>
     Object.values(node.inputs).filter(
@@ -160,7 +166,7 @@ function validateQwenImage21WorkflowForOptions(
     )
   );
   if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
-    errors.push("Qwen Image 2.1 工作流仍包含未上传的 IMAGE 占位符。");
+    errors.push(t(uiKeys.workflowChecks.qwen21Placeholder));
   }
   return [...new Set(errors)];
 }
@@ -168,52 +174,56 @@ function validateQwenImage21WorkflowForOptions(
 export function validateQwenImage21Workflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "preview-25",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21WorkflowForOptions(
     workflow,
     qualityProfile,
     allowImagePlaceholders,
-    officialQwenImage21WorkflowOptions
+    officialQwenImage21WorkflowOptions, undefined, t
   );
 }
 
 export function validateQwenImage21TurboWorkflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "turbo-8",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21WorkflowForOptions(
     workflow,
     qualityProfile,
     allowImagePlaceholders,
-    turboQwenImage21WorkflowOptions
+    turboQwenImage21WorkflowOptions, undefined, t
   );
 }
 
 export function validateQwenImage21GgufWorkflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "preview-25",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21WorkflowForOptions(
     workflow,
     qualityProfile,
     allowImagePlaceholders,
-    ggufQwenImage21WorkflowOptions
+    ggufQwenImage21WorkflowOptions, undefined, t
   );
 }
 
 export function validateQwenImage21GgufQ6Workflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "preview-25",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21WorkflowForOptions(
     workflow,
     qualityProfile,
     allowImagePlaceholders,
-    ggufQ6QwenImage21WorkflowOptions
+    ggufQ6QwenImage21WorkflowOptions, undefined, t
   );
 }
 
@@ -383,7 +393,8 @@ function runtimeSupportsInput(
 function validateQwenImage21RuntimeSchemaForOptions(
   workflow: ComfyApiWorkflow,
   objectInfo: Record<string, unknown>,
-  options: QwenImage21WorkflowOptions
+  options: QwenImage21WorkflowOptions,
+  t: Translate = createTranslator().t
 ): string[] {
   const errors: string[] = [];
   const requiredSockets = options.samplingMode === "turbo"
@@ -399,19 +410,19 @@ function validateQwenImage21RuntimeSchemaForOptions(
   for (const node of Object.values(workflow)) {
     const groups = runtimeInputGroups(objectInfo[node.class_type]);
     if (!groups) {
-      errors.push(`运行时 /object_info 缺少 ${node.class_type} 的 input schema。`);
+      errors.push(t(uiKeys.workflowChecks.runtimeSchema, { node: node.class_type }));
       continue;
     }
     const expectedRequired = requiredSockets[node.class_type] ?? [];
     for (const inputName of expectedRequired) {
       if (!runtimeSupportsInput(groups, inputName, node.inputs)) {
-        errors.push(`${node.class_type} 缺少 socket ${inputName}。`);
+        errors.push(t(uiKeys.workflowChecks.runtimeSocket, { node: node.class_type, input: inputName }));
       }
     }
     for (const [inputName, inputValue] of Object.entries(node.inputs)) {
       const supported = runtimeSupportsInput(groups, inputName, node.inputs);
       if (!supported) {
-        errors.push(`${node.class_type} 不接受 input ${inputName}。`);
+        errors.push(t(uiKeys.workflowChecks.runtimeInput, { node: node.class_type, input: inputName }));
         continue;
       }
       if (Array.isArray(inputValue)) continue;
@@ -420,9 +431,9 @@ function validateQwenImage21RuntimeSchemaForOptions(
       const parentName = inputName.includes(".") ? inputName.slice(0, inputName.indexOf(".")) : undefined;
       const values = runtimeEnumValues(runtimeInputSpec(groups, inputName, parentName ? node.inputs[parentName] : undefined));
       if (!values) {
-        errors.push(`${key} 未暴露可验证的运行时 enum。`);
+        errors.push(t(uiKeys.workflowChecks.runtimeEnumMissing, { input: key }));
       } else if (!values.includes(String(inputValue))) {
-        errors.push(`${key} 不接受 ${String(inputValue)}。`);
+        errors.push(t(uiKeys.workflowChecks.runtimeEnumValue, { input: key, value: String(inputValue) }));
       }
     }
   }
@@ -431,55 +442,60 @@ function validateQwenImage21RuntimeSchemaForOptions(
 
 export function validateQwenImage21RuntimeSchema(
   workflow: ComfyApiWorkflow,
-  objectInfo: Record<string, unknown>
+  objectInfo: Record<string, unknown>,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21RuntimeSchemaForOptions(
     workflow,
     objectInfo,
-    officialQwenImage21WorkflowOptions
+    officialQwenImage21WorkflowOptions, t
   );
 }
 
 export function validateQwenImage21TurboRuntimeSchema(
   workflow: ComfyApiWorkflow,
-  objectInfo: Record<string, unknown>
+  objectInfo: Record<string, unknown>,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21RuntimeSchemaForOptions(
     workflow,
     objectInfo,
-    turboQwenImage21WorkflowOptions
+    turboQwenImage21WorkflowOptions, t
   );
 }
 
 export function validateQwenImage21GgufRuntimeSchema(
   workflow: ComfyApiWorkflow,
-  objectInfo: Record<string, unknown>
+  objectInfo: Record<string, unknown>,
+  t: Translate = createTranslator().t
 ): string[] {
   return validateQwenImage21RuntimeSchemaForOptions(
     workflow,
     objectInfo,
-    ggufQwenImage21WorkflowOptions
+    ggufQwenImage21WorkflowOptions, t
   );
 }
 
 function buildQwenImage21WorkflowForOptions(
   task: Pick<ImageGenerationQueueTask, "prompt" | "pictures" | "imageLoras" | "modelId" | "qualityProfile" | "outputWidth" | "outputHeight" | "aspectRatio" | "targetResolution" | "imageOutputSubfolder" | "outputFilename" | "diffusionModelFilename">,
   run: Pick<ImageGenerationRun, "index" | "seed">,
-  options: QwenImage21WorkflowOptions
+  options: QwenImage21WorkflowOptions,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
   const compiled = compileQwenImage21Prompt(
     imagePromptForLoras(task.prompt, task.imageLoras),
-    task.pictures
+    task.pictures, t
   );
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const hasPictures = compiled.pictures.length > 0;
   if (!hasPictures && !options.capability.supportsTextOnly) {
-    throw new Error("Qwen Image 2.1 当前配置不支持无参考图的文生图路径。");
+    throw new Error(t(uiKeys.workflowChecks.qwen21TextOnly));
   }
   const imageLoraError = imageLoraConfigurationError(
     task.imageLoras,
     task.modelId,
-    compiled.pictures.length
+    compiled.pictures.length,
+    t
   );
   if (imageLoraError) throw new Error(imageLoraError);
   const selectedImageLora = task.imageLoras?.[0];
@@ -512,8 +528,8 @@ function buildQwenImage21WorkflowForOptions(
   const sourceHeight = compiled.pictures[0]?.height ?? 0;
   const textOnlyWidth = options.capability.textOnlyOutputWidth ?? 1024;
   const textOnlyHeight = options.capability.textOnlyOutputHeight ?? 1024;
-  const outputWidth = exactImageDimension(task.outputWidth, hasPictures ? sourceWidth : textOnlyWidth);
-  const outputHeight = exactImageDimension(task.outputHeight, hasPictures ? sourceHeight : textOnlyHeight);
+  const outputWidth = exactImageDimension(task.outputWidth, hasPictures ? sourceWidth : textOnlyWidth, t);
+  const outputHeight = exactImageDimension(task.outputHeight, hasPictures ? sourceHeight : textOnlyHeight, t);
   const customSize = hasPictures && (
     (task.aspectRatio ?? "source") !== "source" ||
     (task.targetResolution ?? "source") !== "source"
@@ -629,8 +645,8 @@ function buildQwenImage21WorkflowForOptions(
     empty: {
       class_type: "EmptyLatentImage",
       inputs: {
-        width: qwenImage21LatentDimension(outputWidth, hasPictures ? sourceWidth : textOnlyWidth, hasPictures ? 32 : 8),
-        height: qwenImage21LatentDimension(outputHeight, hasPictures ? sourceHeight : textOnlyHeight, hasPictures ? 32 : 8),
+        width: qwenImage21LatentDimension(outputWidth, hasPictures ? sourceWidth : textOnlyWidth, hasPictures ? 32 : 8, t),
+        height: qwenImage21LatentDimension(outputHeight, hasPictures ? sourceHeight : textOnlyHeight, hasPictures ? 32 : 8, t),
         batch_size: 1
       }
     },
@@ -700,7 +716,7 @@ function buildQwenImage21WorkflowForOptions(
     quality.id,
     true,
     options,
-    usesFix ? qwenImage21FixRequiredNodeTypes : []
+    usesFix ? qwenImage21FixRequiredNodeTypes : [], t
   );
   if (validationErrors.length) throw new Error(validationErrors.join(" "));
   return workflow;
@@ -708,28 +724,30 @@ function buildQwenImage21WorkflowForOptions(
 
 export function buildQwenImage21Workflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  return buildQwenImage21WorkflowForOptions(task, run, officialQwenImage21WorkflowOptions);
+  return buildQwenImage21WorkflowForOptions(task, run, officialQwenImage21WorkflowOptions, t);
 }
 
 /** Reuse the edit recipe for one source frame; caller wires IMAGE and owns its output. */
 export function buildQwenImage21AnchorWorkflow(
   snapshot: { modelId: string; model: string; textEncoder: string; vae: string },
-  width: number, height: number, seed: number
+  width: number, height: number, seed: number,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
   const options = snapshot.modelId === "qwen-image-2-1-turbo" ? turboQwenImage21WorkflowOptions
     : snapshot.modelId === "qwen-image-2-1" ? officialQwenImage21WorkflowOptions
     : snapshot.modelId === "qwen-image-2-1-uncensored-gguf" ? ggufQwenImage21WorkflowOptions
     : snapshot.modelId === "qwen-image-2-1-uncensored-gguf-q6" ? ggufQ6QwenImage21WorkflowOptions : undefined;
-  if (!options) throw new Error("首帧增强的 Qwen Image 模型不兼容。");
+  if (!options) throw new Error(t(uiKeys.workflowChecks.anchorModel));
   const graph = buildQwenImage21WorkflowForOptions({
     prompt: "Enhance the fine natural detail of <image1>. Preserve the exact face, identity, pose, composition, colors, lighting and all existing objects and text. Do not add or remove anything.",
     pictures: [{ id: "first", pictureNumber: 1, absolutePath: "{{TESSERA_FIRST_FRAME}}", width, height }], imageLoras: [],
     modelId: snapshot.modelId, diffusionModelFilename: snapshot.model,
     qualityProfile: options.samplingMode === "turbo" ? "turbo-8" : "preview-25",
     outputWidth: width, outputHeight: height, aspectRatio: "source", targetResolution: Math.min(width, height), outputFilename: "tessera-anchor"
-  }, { index: 0, seed }, options);
+  }, { index: 0, seed }, options, t);
   graph.clip!.inputs.clip_name = snapshot.textEncoder;
   graph.vae!.inputs.vae_name = snapshot.vae;
   delete graph.save;
@@ -738,21 +756,24 @@ export function buildQwenImage21AnchorWorkflow(
 
 export function buildQwenImage21TurboWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  return buildQwenImage21WorkflowForOptions(task, run, turboQwenImage21WorkflowOptions);
+  return buildQwenImage21WorkflowForOptions(task, run, turboQwenImage21WorkflowOptions, t);
 }
 
 export function buildQwenImage21GgufWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  return buildQwenImage21WorkflowForOptions(task, run, ggufQwenImage21WorkflowOptions);
+  return buildQwenImage21WorkflowForOptions(task, run, ggufQwenImage21WorkflowOptions, t);
 }
 
 export function buildQwenImage21GgufQ6Workflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  return buildQwenImage21WorkflowForOptions(task, run, ggufQ6QwenImage21WorkflowOptions);
+  return buildQwenImage21WorkflowForOptions(task, run, ggufQ6QwenImage21WorkflowOptions, t);
 }

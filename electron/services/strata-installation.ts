@@ -15,6 +15,9 @@ import { verifyStrataControlVector } from "./strata-uncensored.js";
 import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-update-cleanup.js";
 import { gitSoftwareFiles } from "./software-git-files.js";
 import { fetchStrataSource } from "./strata-source-fetch.js";
+import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
+import { hasDeepSeekEngine, installDeepSeekEngine } from "./strata-deepseek-engine.js";
+import { STRATA_DSV41_BYTES } from "../../src/core/catalog/dependencies/strata-deepseek.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
 import { STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_ENGINE_VERSION, STRATA_ENGINE_MANIFEST_SHA256, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
 
@@ -24,7 +27,7 @@ async function preserveStrataUserData(source: string, destination: string, t: Tr
   const head = (await fs.readFile(path.join(source, ".git", "HEAD"), "utf8").catch(() => "")).trim();
   const release = strataInstalledRelease(source, false) ?? STRATA_RELEASES.find(release => release.revision === head);
   const downloadable = release ? await gitSoftwareFiles(source, { repository: "https://github.com/Niko1221/Strata", revision: release.revision }) : new Set<string>();
-  await preserveSoftwareUserData(source, destination, vectorDirectories, undefined, [...downloadable], t);
+  await preserveSoftwareUserData(source, destination, [...vectorDirectories, ...(await hasDeepSeekEngine(source, true) ? ["engine-dsv41"] : [])], undefined, [...downloadable], t);
 }
 export function managedStrataDirectory(release?: { version: string; revision: string }): string {
   return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", release ? `v${release.version}-${release.revision.slice(0, 8)}` : "runtime");
@@ -147,9 +150,9 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
   installing = true;
   const logs: string[] = [];
   const log = (message: string) => { logs.push(message); onProgress?.(message); };
-  const stage = (value: StrataInstallProgress["stage"], receivedBytes?: number) => onProgress?.("", {
+  const stage = (value: StrataInstallProgress["stage"], receivedBytes?: number, totalBytes = STRATA_ENGINE_BYTES) => onProgress?.("", {
     stage: value,
-    ...(receivedBytes === undefined ? {} : { receivedBytes, totalBytes: STRATA_ENGINE_BYTES, percent: Math.min(100, Math.max(0, Math.floor(receivedBytes * 100 / STRATA_ENGINE_BYTES))) })
+    ...(receivedBytes === undefined ? {} : { receivedBytes, totalBytes, percent: Math.min(100, Math.max(0, Math.floor(receivedBytes * 100 / totalBytes))) })
   });
   const root = path.resolve(runtime.managedDirectory ?? managedStrataDirectory());
   let staging = "";
@@ -161,6 +164,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
   try {
     checkInstallationCancelled();
     stage("prepare");
+    const includeDeepSeek = isStrataDeepSeek(settings.promptModelId) || await hasDeepSeekEngine(root, true);
     env = runtime.environment(settings);
     if (process.platform !== "win32") throw new Error(t(uiKeys.strataRuntime.windowsOnly));
     if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {
@@ -241,6 +245,11 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     log(t(uiKeys.strataRuntime.checking));
     stage("check");
     await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path('engine')),full=True)"], root);
+    if (includeDeepSeek) {
+      stage("download", 0, STRATA_DSV41_BYTES);
+      await installDeepSeekEngine(root, settings, { ...runtime, run: (executable, args, options) => run(executable, args, options.cwd ?? root, options.timeoutMs) }, log,
+        received => stage("download", received, STRATA_DSV41_BYTES));
+    }
     checkInstallationCancelled();
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
     log(t(uiKeys.strataRuntime.installedLog, { path: root }));

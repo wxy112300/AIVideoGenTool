@@ -241,7 +241,7 @@ export function renderQueueTaskCard(
     ? `<span>${t(uiKeys.queue.card.extensionRetain, { start: task.trimStartSeconds.toFixed(1), end: task.trimEndSeconds.toFixed(1) })}</span>`
     : "";
   const upscaleOutput = task.taskType === "upscale"
-    ? upscaleOutputDimensions(task)
+    ? upscaleOutputDimensions(task, t)
     : null;
   const h3ComputeSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
     ? task.spectrumMode === "balanced"
@@ -267,7 +267,9 @@ export function renderQueueTaskCard(
     : undefined;
   const seedText = task.taskType === "image-generation" ? t(uiKeys.queue.card.batchIndependent) : String(task.seed);
   const frameSettings = task.taskType === "generation" || task.taskType === "extension"
-    ? normalizeH3FrameSettings(task)
+    ? task.longVideoPlan
+      ? { fps: 24 * (task.frameInterpolation === "rife4x" ? 4 : task.frameInterpolation === "rife2x" ? 2 : 1), frameInterpolation: task.frameInterpolation }
+      : normalizeH3FrameSettings(task)
     : undefined;
   const metadata = task.taskType === "image-generation"
     ? `<span>${t(uiKeys.queue.card.imageProcessing)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}</span><span>${options.escapeHtml(localizeImageOptionLabel(imageQueueQuality?.label ?? task.qualityProfile, t))}${imageQueueQuality ? ` · ${imageQueueQuality.steps} ${t(uiKeys.queue.card.steps)} · CFG ${imageQueueQuality.cfg}` : ""}</span>${imageQueueQuality?.lightning ? `<span>${t(uiKeys.queue.card.lightningLora)}</span>` : ""}<span>${t(uiKeys.queue.card.pictureCanvas, { pictures: task.pictures.length, markings: task.pictures.reduce((count, picture) => count + (picture.markup?.objectCount ?? 0), 0) })}</span><span>${t(uiKeys.queue.card.pngIntermediate)}</span>`

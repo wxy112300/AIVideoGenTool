@@ -43,8 +43,8 @@ async function verify(filename: string, entry: RelocationEntry, t: Translate): P
   const stat = await fs.stat(filename);
   if (!stat.isFile() || stat.size !== entry.size || await hash(filename) !== entry.hash) throw new StateRecoveryError(t(uiKeys.storageMigration.verifyFailed, { path: filename }));
 }
-async function journal(tx: FileRelocation): Promise<void> {
-  const candidate = await durableCandidate(tx.journal, JSON.stringify(tx));
+async function journal(tx: FileRelocation, t: Translate): Promise<void> {
+  const candidate = await durableCandidate(tx.journal, JSON.stringify(tx), t);
   await fs.rename(candidate, tx.journal);
 }
 function emit(onProgress: RelocationProgress | undefined, phase: HistoryMigrationProgress["phase"], current: number, total: number, message: string): void {
@@ -120,7 +120,7 @@ async function transfer(source: string, target: string, entry: RelocationEntry, 
 
 export async function prepareRelocation(tx: FileRelocation, onProgress?: RelocationProgress, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   if (await exists(tx.journal)) throw new StateRecoveryError(t(uiKeys.storageMigration.pending));
-  await journal(tx);
+  await journal(tx, t);
   try {
     await fs.mkdir(tx.targetRoot, { recursive: true }); await noLinks(tx.targetRoot, t);
     for (const [index, entry] of tx.entries.entries()) {

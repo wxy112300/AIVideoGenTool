@@ -45,6 +45,9 @@ import { renderAppearanceSettings } from "./appearance";
 import { renderSettingsPathField } from "./path-field";
 import { groupSettingsLoras, sharedSettingsComponentPaths } from "./model-presentation";
 import { settingsChangeSummary } from "./change-summary";
+import { localizeModelScanProfile } from "../../shared/model-profile-labels";
+import { localizeImageOptionLabel } from "../../shared/image-option-label";
+import { localizeNodeRuntimeRequirement } from "../../../core/catalog/dependencies/localized";
 import { modelDownloadSource, modelDownloadSources } from "../../../core/download-url";
 import {
   customNodeBulkActionMode,
@@ -236,7 +239,7 @@ export function renderSettingsPage(
   const profiles = [
     ...scannedProfiles.filter((profile) => profile.managedBy !== "strata"),
     ...(strataProfiles.length ? strataProfiles : strataPreparationProfiles(settings.uiLocale))
-  ];
+  ].map(profile => localizeModelScanProfile(profile, settings.uiLocale, t));
   const videoProfiles = options.orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
   );
@@ -648,7 +651,7 @@ export function renderSettingsPage(
             }))).map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${options.isImageModelSelectable(profile) ? "" : "disabled"}>${escape(profile.name)}${options.isImageModelSelectable(profile) ? "" : ` · ${escape(options.imageWorkflowStatus(profile))}`}</option>`).join("")}
           </select></label>
           <label>${s("image.defaultQuality")}<select id="image-quality-profile">
-            ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(profile.label)} · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`).join("")}
+            ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(localizeImageOptionLabel(profile.label, t))} · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`).join("")}
           </select></label>
         </div>
       </section>
@@ -836,7 +839,7 @@ export function renderSettingsPage(
     const installBlocked = cardState.installBlocked;
     const primaryOperation = cardState.primaryOperation;
     const manualOnly = node.appInstallable === false;
-    const nodeGuide = [node.runtimeRequirement, node.runtimeNotice, node.id === "spectrum-minimax-h3" ? s("nodes.runtimeMemory") : ""].filter(Boolean).join("\n\n");
+    const nodeGuide = [localizeNodeRuntimeRequirement(node.id, node.runtimeRequirement ?? "", t), node.runtimeNotice, node.id === "spectrum-minimax-h3" ? s("nodes.runtimeMemory") : ""].filter(Boolean).join("\n\n");
     const versionMode = node.versionMode ?? "release";
     const versionFallback = versionMode === "rolling"
       ? s("nodes.rollingVersion")

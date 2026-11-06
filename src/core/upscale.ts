@@ -1,3 +1,5 @@
+import { uiKeys } from "./i18n-keys.js";
+import { createTranslator, type Translate } from "./i18n.js";
 import type {
   AetherScaleCarrierMode,
   Dlss5Scale,
@@ -239,9 +241,10 @@ export function estimateUpscaleResources(
 export function upscaleDimensions(
   sourceWidth: number,
   sourceHeight: number,
-  targetShortEdge: UpscaleRequest["targetHeight"]
+  targetShortEdge: UpscaleRequest["targetHeight"],
+  t: Translate = createTranslator().t
 ): [number, number] {
-  const requiredTargetShortEdge = requireLegacyUpscaleTargetHeight(targetShortEdge);
+  const requiredTargetShortEdge = requireLegacyUpscaleTargetHeight(targetShortEdge, t);
   const safeWidth = Math.max(1, sourceWidth);
   const safeHeight = Math.max(1, sourceHeight);
   const sourceShortEdge = Math.min(safeWidth, safeHeight);
@@ -279,12 +282,13 @@ export function upscaleOutputDimensions(
   task: Pick<
     UpscaleQueueTask,
     "upscaleMode" | "sourceWidth" | "sourceHeight" | "targetWidth" | "targetHeight" | "targetOutputHeight"
-  >
+  >,
+  t: Translate = createTranslator().t
 ): [number, number] {
   if (task.targetOutputHeight && task.targetWidth) {
     return [task.targetWidth, task.targetOutputHeight];
   }
-  return upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight);
+  return upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight, t);
 }
 
 function seedVr2SegmentMemoryBudgetBytes(tileMode: UpscaleQueueTask["tileMode"]): number {
@@ -351,7 +355,8 @@ export function nativeSeedVr2SegmentPlan(
     "modelId" | "sourceWidth" | "sourceHeight" | "targetHeight" | "duration" | "fps" | "tileMode"
   >,
   resources?: NativeSeedVr2ResourceSnapshot,
-  preferredFramesPerSegment?: number
+  preferredFramesPerSegment?: number,
+  t: Translate = createTranslator().t
 ): NativeSeedVr2SegmentPlan | null {
   if (task.modelId !== "seedvr2-native-int8") return null;
   const fps = Math.max(1, task.fps);
@@ -359,7 +364,7 @@ export function nativeSeedVr2SegmentPlan(
   const [targetWidth, targetHeight] = upscaleDimensions(
     task.sourceWidth,
     task.sourceHeight,
-    task.targetHeight
+    task.targetHeight, t
   );
   const bytesPerFloatRgbFrame = targetWidth * targetHeight * 3 * 4;
   const preprocessingBudgetBytes = seedVr2AdaptiveMemoryBudgetBytes(task.tileMode, resources);
@@ -443,9 +448,10 @@ export function uniqueUpscaleFilename(
 
 export function createDlss5UpscaleFilename(
   sourceFilename: string,
-  scale: Dlss5Scale
+  scale: Dlss5Scale,
+  t: Translate = createTranslator().t
 ): string {
-  if (!isDlss5Scale(scale)) throw new Error("DLSS5 filename scale must be 2, 3 or 4");
+  if (!isDlss5Scale(scale)) throw new Error(t(uiKeys.upscaleChecks.dlssFilenameScale));
   const stem = sourceFilename
     .replace(/\.(mp4|webm|mov|m4v|mkv)$/i, "")
     .replace(/-dlss-[234]x$/i, "")
@@ -462,9 +468,10 @@ export function createDlss5UpscaleFilename(
 export function uniqueDlss5UpscaleFilename(
   sourceFilename: string,
   scale: Dlss5Scale,
-  existingNames: string[]
+  existingNames: string[],
+  t: Translate = createTranslator().t
 ): string {
-  const base = createDlss5UpscaleFilename(sourceFilename, scale);
+  const base = createDlss5UpscaleFilename(sourceFilename, scale, t);
   if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase())) return base;
   const stem = base.replace(/\.mp4$/i, "");
   for (let version = 2; version < 1000; version += 1) {
@@ -474,8 +481,8 @@ export function uniqueDlss5UpscaleFilename(
   return `${stem}-${Date.now()}.mp4`;
 }
 
-function aetherScaleModeLabel(mode: AetherScaleCarrierMode): string {
-  if (!isAetherScaleMode(mode)) throw new Error("AetherScale filename mode is invalid");
+function aetherScaleModeLabel(mode: AetherScaleCarrierMode, t: Translate): string {
+  if (!isAetherScaleMode(mode)) throw new Error(t(uiKeys.upscaleChecks.aetherFilenameMode));
   return mode === "native_1x"
     ? "1x"
     : mode === "quality_1_5x"
@@ -489,9 +496,10 @@ function aetherScaleModeLabel(mode: AetherScaleCarrierMode): string {
 
 export function createAetherScaleUpscaleFilename(
   sourceFilename: string,
-  mode: AetherScaleCarrierMode
+  mode: AetherScaleCarrierMode,
+  t: Translate = createTranslator().t
 ): string {
-  const label = aetherScaleModeLabel(mode);
+  const label = aetherScaleModeLabel(mode, t);
   const stem = sourceFilename
     .replace(/\.(mp4|webm|mov|m4v|mkv)$/iu, "")
     .replace(/-aether-(?:1|1\.5|1\.724|2|3)x$/iu, "")
@@ -499,8 +507,8 @@ export function createAetherScaleUpscaleFilename(
   return `${stem.replace(/-(?:720p|768p|1080p|1440p|2160p|4K)$/iu, "")}-aether-${label}-v01.mp4`;
 }
 
-function konohamaruModeLabel(mode: KonohamaruDlss5Mode): string {
-  if (!isKonohamaruMode(mode)) throw new Error("Konohamaru filename mode is invalid");
+function konohamaruModeLabel(mode: KonohamaruDlss5Mode, t: Translate): string {
+  if (!isKonohamaruMode(mode)) throw new Error(t(uiKeys.upscaleChecks.konoFilenameMode));
   return mode === "native_1x"
     ? "1x"
     : mode === "quality_1_5x"
@@ -515,10 +523,11 @@ function konohamaruModeLabel(mode: KonohamaruDlss5Mode): string {
 export function createKonohamaruUpscaleFilename(
   sourceFilename: string,
   mode: KonohamaruDlss5Mode,
-  frameOutputFps: "off" | 60 | 120 = "off"
+  frameOutputFps: "off" | 60 | 120 = "off",
+  t: Translate = createTranslator().t
 ): string {
-  const spec = konohamaruModeSpec(mode);
-  const label = konohamaruModeLabel(spec.mode);
+  const spec = konohamaruModeSpec(mode, t);
+  const label = konohamaruModeLabel(spec.mode, t);
   const frameSuffix = frameOutputFps === "off" ? "" : `-fg${frameOutputFps}`;
   const stem = sourceFilename
     .replace(/\.(mp4|webm|mov|m4v|mkv)$/iu, "")
@@ -532,9 +541,10 @@ export function uniqueKonohamaruUpscaleFilename(
   sourceFilename: string,
   mode: KonohamaruDlss5Mode,
   existingNames: string[],
-  frameOutputFps: "off" | 60 | 120 = "off"
+  frameOutputFps: "off" | 60 | 120 = "off",
+  t: Translate = createTranslator().t
 ): string {
-  const base = createKonohamaruUpscaleFilename(sourceFilename, mode, frameOutputFps);
+  const base = createKonohamaruUpscaleFilename(sourceFilename, mode, frameOutputFps, t);
   if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase())) return base;
   const stem = base.replace(/\.mp4$/iu, "");
   for (let version = 2; version < 1000; version += 1) {
@@ -547,9 +557,10 @@ export function uniqueKonohamaruUpscaleFilename(
 export function uniqueAetherScaleUpscaleFilename(
   sourceFilename: string,
   mode: AetherScaleCarrierMode,
-  existingNames: string[]
+  existingNames: string[],
+  t: Translate = createTranslator().t
 ): string {
-  const base = createAetherScaleUpscaleFilename(sourceFilename, mode);
+  const base = createAetherScaleUpscaleFilename(sourceFilename, mode, t);
   if (!existingNames.some((name) => name.toLowerCase() === base.toLowerCase())) return base;
   const stem = base.replace(/\.mp4$/iu, "");
   for (let version = 2; version < 1000; version += 1) {
@@ -576,11 +587,12 @@ function loadVideoNode(sourceVideo: string, useExternalBatching: boolean): ApiNo
   };
 }
 
-function exactScaleNode(image: unknown, task: UpscaleQueueTask): ApiNode {
+function exactScaleNode(image: unknown, task: UpscaleQueueTask,
+  t: Translate = createTranslator().t): ApiNode {
   const [targetWidth, targetHeight] = upscaleDimensions(
     task.sourceWidth,
     task.sourceHeight,
-    task.targetHeight
+    task.targetHeight, t
   );
   return {
     class_type: "ImageScale",
@@ -623,12 +635,13 @@ const seedVr2RequiredNodes = [
 function renderNativeSeedVr2Workflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
-  segment?: NativeSeedVr2WorkflowSegment
+  segment?: NativeSeedVr2WorkflowSegment,
+  t: Translate = createTranslator().t
 ): Record<string, ApiNode> {
   const [targetWidth, targetHeight] = upscaleDimensions(
     task.sourceWidth,
     task.sourceHeight,
-    task.targetHeight
+    task.targetHeight, t
   );
   return {
     "1": {
@@ -765,13 +778,14 @@ function renderNativeSeedVr2Workflow(
   };
 }
 
-function seedVr2Profile(task: UpscaleQueueTask): {
+function seedVr2Profile(task: UpscaleQueueTask,
+  t: Translate = createTranslator().t): {
   batchSize: number;
   blocksToSwap: number;
   swapIoComponents: boolean;
   tiledVae: boolean;
 } {
-  const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight);
+  const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight, t);
   const highResolution = targetHeight >= 1440;
   const ultraHighResolution = targetHeight >= 2160;
   if (task.tileMode === "safe") {
@@ -803,20 +817,21 @@ export function renderUpscaleWorkflow(
   sourceVideo: string,
   models: { seedVr2: string; realEsrgan: string },
   objectInfo?: unknown,
-  nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment
+  nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment,
+  t: Translate = createTranslator().t
 ): Record<string, ApiNode> {
-  if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo);
-  if (task.modelId === TESSERA_ID) return buildTesseraWorkflow(task, sourceVideo, objectInfo);
+  if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo, t);
+  if (task.modelId === TESSERA_ID) return buildTesseraWorkflow(task, sourceVideo, objectInfo, t);
   if (task.modelId === KONOHAMARU_MODEL_ID) {
-    return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo);
+    return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo, t);
   }
   if (task.modelId === AETHERSCALE_MODEL_ID) {
-    return buildAetherScaleUpscaleWorkflow(task, sourceVideo, objectInfo);
+    return buildAetherScaleUpscaleWorkflow(task, sourceVideo, objectInfo, t);
   }
   if (task.modelId === "dlss5-sr") {
-    return buildDlss5UpscaleWorkflow(task, sourceVideo, objectInfo);
+    return buildDlss5UpscaleWorkflow(task, sourceVideo, objectInfo, t);
   }
-  const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight);
+  const targetHeight = requireLegacyUpscaleTargetHeight(task.targetHeight, t);
   const sourceShortEdge = Math.max(1, Math.min(task.sourceWidth, task.sourceHeight));
   const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
     ? new Set(Object.keys(objectInfo as Record<string, unknown>))
@@ -829,17 +844,17 @@ export function renderUpscaleWorkflow(
   const missingSeedVr2Nodes = requiredSeedVr2Nodes.filter((node) => !availableNodes.has(node));
   if (missingSeedVr2Nodes.length) {
     const nodeLabel = task.modelId === "seedvr2-native-int8"
-      ? "原生 SeedVR2 节点"
-      : "SeedVR2 节点模块";
+      ? t(uiKeys.serviceChecks.nativeSeedNodes)
+      : t(uiKeys.serviceChecks.seedNodes);
     throw new Error(
-      `${nodeLabel}版本过旧或尚未加载，缺少：${missingSeedVr2Nodes.join(", ")}。` +
+      t(uiKeys.serviceChecks.seedVersion, { label: nodeLabel, nodes: missingSeedVr2Nodes.join(", ") }) +
       (task.modelId === "seedvr2-native-int8"
-        ? "请升级到支持原生 SeedVR2 工作流的 ComfyUI 核心后重启并复检。"
-        : "请在设置 → 节点与依赖中更新 SeedVR2，并重启 ComfyUI。")
+        ? t(uiKeys.serviceChecks.nativeSeedUpdate)
+        : t(uiKeys.serviceChecks.seedUpdate))
     );
   }
   if (task.modelId === "seedvr2-native-int8") {
-    return renderNativeSeedVr2Workflow(task, sourceVideo, nativeSeedVr2Segment);
+    return renderNativeSeedVr2Workflow(task, sourceVideo, nativeSeedVr2Segment, t);
   }
   const modernSeedVr2 = task.modelId === "seedvr2";
   const useExternalBatching = !modernSeedVr2;
@@ -876,7 +891,7 @@ export function renderUpscaleWorkflow(
       inputs: { upscale_model: ["3", 0], image: ["1", 0] }
     };
   } else if (task.modelId === "seedvr2") {
-    const profile = seedVr2Profile(task);
+    const profile = seedVr2Profile(task, t);
     workflow["3"] = {
       class_type: "SeedVR2LoadDiTModel",
       inputs: {
@@ -925,7 +940,7 @@ export function renderUpscaleWorkflow(
         enable_debug: false
       }
     };
-    workflow["9"] = exactScaleNode(["5", 0], task);
+    workflow["9"] = exactScaleNode(["5", 0], task, t);
   } else if (task.modelId === "flashvsr") {
     workflow["4"] = {
       class_type: "AILab_FlashVSR",
@@ -939,11 +954,11 @@ export function renderUpscaleWorkflow(
       }
     };
   } else {
-    throw new Error(`不支持的分辨率提升模型：${task.modelId}`);
+    throw new Error(t(uiKeys.serviceChecks.upscaleModel, { model: task.modelId }));
   }
 
   if (task.modelId !== "seedvr2") {
-    workflow["5"] = exactScaleNode(["4", 0], task);
+    workflow["5"] = exactScaleNode(["4", 0], task, t);
   }
   const finalImageNode = task.modelId === "seedvr2" ? ["9", 0] : ["5", 0];
   workflow["8"] = {

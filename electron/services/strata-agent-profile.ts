@@ -9,6 +9,7 @@ import { privateLocalDirectory, writePrivateJson } from "./private-local-state.j
 import type { AgentPreferences } from "./strata-agent-settings.js";
 import type { StrataLaunchPlan } from "./strata-service.js";
 import { STRATA_Q4_MODEL_ID } from "../../src/core/catalog/models/strata.js";
+import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 
 /** Context validation changes only the private Agent overlay, never the shared H3 pack/receipt. */
 export async function agentLaunchPlan(input: {
@@ -26,7 +27,7 @@ export async function agentLaunchPlan(input: {
   const resourcePlan = planStrataResources(input.resources, 5120, { commitTrial: input.commitTrial, allowFileReadFallback: true,
     modelId: p.modelId, contextTokens });
   const directory = await privateLocalDirectory(path.join(input.directory, "runs", randomUUID()));
-  const reserve = config.args.indexOf("--vram-reserve-mib");
+  const reserve = config.args.indexOf(isStrataDeepSeek(p.modelId) ? "--reserve-mib" : "--vram-reserve-mib");
   if (reserve < 0) throw new Error("pack 缺少显存策略。");
   config.args[reserve + 1] = String(resourcePlan.vramReserveMiB);
   config.args = applyStrataResourcePlan(config.args, resourcePlan, p.modelId);
@@ -35,7 +36,7 @@ export async function agentLaunchPlan(input: {
   const controlVector = applyVector ? await verifyStrataControlVector(install, mode as "builtin" | "community") : undefined;
   if (controlVector) config.args.push("--control-vector-scaled", `${controlVector.filename}:1.0`, "--control-vector-layer-range",
     String(controlVector.firstLayer), String(controlVector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer");
-  config.sampling = { ...(config.sampling ?? {}), experimental_speed_projection: applyVector };
+  config.sampling = isStrataDeepSeek(p.modelId) ? { temperature: 1, top_p: 1 } : { ...(config.sampling ?? {}), experimental_speed_projection: applyVector };
   // Host KV streaming is upstream's default for long Agent contexts, not a
   // change to the shared H3 32K preparation record.
   if (p.modelId === STRATA_Q4_MODEL_ID && contextTokens >= 65536) config.args.push("--kv-resident", "32768");
@@ -55,9 +56,9 @@ export async function agentLaunchPlan(input: {
   return { executable, cwd: install, port: p.strataPort, modelId: p.modelId, apiKey: input.token,
     args: ["-B", "-u", input.guardScript, "--serve", install, "--engine", "strata", "--config", filename,
       "--host", "127.0.0.1", "--port", String(p.strataPort), "--lazy", "--api-monitor"],
-    env: { STRATA_API_KEY: input.token, STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+    env: { STRATA_API_KEY: input.token, ...(!isStrataDeepSeek(p.modelId) ? { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
       // Same Windows safety rollback as H3; never inherit a working-set opt-in from the shell.
-      STRATA_FILE_RELEASE: "0",
+      STRATA_FILE_RELEASE: "0" } : {}),
       STRATA_AGENT_ADMISSION: path.join(input.directory, "admission.json") },
     resourcePlan, allowResidentFallback: true, engineLog: config.log,
     ...(config.args.includes("--resident-experts") || config.args.includes("--resident-budget-gib") ? { residentEngineLog: config.log } : {}),

@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { createReadStream, constants } from "node:fs";
 import { promises as fs } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -36,22 +39,22 @@ async function renameFile(source: string, destination: string) {
     }
   }
 }
-async function inventory(root: string): Promise<Entry[]> {
+async function inventory(root: string, t: Translate): Promise<Entry[]> {
   const result: Entry[] = [];
   async function visit(relative: string) {
     const filename = path.join(root, relative), stat = await fs.lstat(filename);
-    if (stat.isSymbolicLink()) throw new StateRecoveryError(`User data contains a link; original preserved: ${filename}`);
+    if (stat.isSymbolicLink()) throw new StateRecoveryError(t(uiKeys.storageSafety.userLink, { path: filename }));
     if (stat.isDirectory()) { for (const name of (await fs.readdir(filename)).sort()) await visit(path.join(relative, name)); }
     else if (stat.isFile()) result.push({ relative, size: stat.size, sha256: await digest(filename) });
-    else throw new StateRecoveryError(`Unsupported user data file: ${filename}`);
+    else throw new StateRecoveryError(t(uiKeys.storageSafety.userUnsupported, { path: filename }));
   }
   if (await exists(root)) for (const name of (await fs.readdir(root)).filter(owned).sort()) await visit(name);
   return result;
 }
-async function checkedFile(filename: string, entry: Entry) {
+async function checkedFile(filename: string, entry: Entry, t: Translate) {
   const stat = await fs.lstat(filename);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== entry.size || await digest(filename) !== entry.sha256)
-    throw new StateRecoveryError(`User data verification failed; original preserved: ${filename}`);
+    throw new StateRecoveryError(t(uiKeys.storageSafety.userVerify, { path: filename }));
 }
 
 /** Only path-bearing fields are rewritten: prompt text and user labels stay byte-for-byte intact. */
@@ -76,23 +79,25 @@ export function relocateUserDataReferences(value: unknown, source: string, desti
 
 /** Copy-first, resumable transition. Never moves Electron's own profile or external media. */
 export class UserDataMigration {
+  private get t(): Translate { return createNativeTranslator(this.context.locale).t; }
+
   private pending = false;
   private context = { locale: normalizeUiLocale(undefined), appearance: normalizeAppearance(undefined) };
   constructor(readonly source: string, readonly destination: string, private readonly onProgress?: (value: LibraryStorageProgress) => void) {
     const nestedOwnedRoot = within(source, destination) && owned(path.relative(source, destination).split(path.sep)[0]);
     if (!path.isAbsolute(source) || !path.isAbsolute(destination) || nestedOwnedRoot || within(destination, source))
-      throw new Error("User data migration requires non-overlapping owned roots");
+      throw new Error(this.t(uiKeys.storageSafety.userRoots));
   }
   private async manifest(): Promise<Manifest | undefined> {
     const raw = await readOptionalFile(path.join(this.destination, marker));
     if (!raw) return;
     const value = JSON.parse(raw) as Manifest;
     if (value.format !== 1 || !samePath(value.source, this.source) || !["copying", "prepared", "complete"].includes(value.phase) || !Array.isArray(value.files))
-      throw new StateRecoveryError("Invalid user data migration record; no source files were removed");
+      throw new StateRecoveryError(this.t(uiKeys.storageSafety.userManifest));
     const seen = new Set<string>();
     for (const entry of value.files) {
       if (typeof entry.relative !== "string" || path.isAbsolute(entry.relative) || path.normalize(entry.relative) !== entry.relative || !within(this.destination, path.resolve(this.destination, entry.relative)) || !owned(entry.relative.split(path.sep)[0]) || seen.has(entry.relative) || !/^[a-f0-9]{64}$/u.test(entry.sha256) || (entry.installedSha256 !== undefined && !/^[a-f0-9]{64}$/u.test(entry.installedSha256)) || !Number.isSafeInteger(entry.size) || entry.size < 0)
-        throw new StateRecoveryError("Invalid user data migration file record");
+        throw new StateRecoveryError(this.t(uiKeys.storageSafety.userFileRecord));
       seen.add(entry.relative);
     }
     return value;
@@ -103,7 +108,7 @@ export class UserDataMigration {
     try {
       const handle = await fs.open(candidate, "wx");
       try { await handle.writeFile(raw, "utf8"); await handle.sync(); } finally { await handle.close(); }
-      if (await fs.readFile(candidate, "utf8") !== raw) throw new StateRecoveryError("User data migration record read-back failed");
+      if (await fs.readFile(candidate, "utf8") !== raw) throw new StateRecoveryError(this.t(uiKeys.storageSafety.userReadback));
       await renameFile(candidate, filename);
     } finally { await fs.unlink(candidate).catch(error => { if (error.code !== "ENOENT") throw error; }); }
   }
@@ -120,13 +125,13 @@ export class UserDataMigration {
   /** Stage one file next to its final path; a failed copy never leaves a truncated active file. */
   private async installFile(original: string, filename: string, entry: Entry, transform: boolean): Promise<string> {
     if (await exists(filename) && (!transform || !entry.relative.endsWith(".json"))) {
-      await checkedFile(filename, entry); return entry.sha256;
+      await checkedFile(filename, entry, this.t); return entry.sha256;
     }
     const candidate = `${filename}.user-migration-${randomUUID()}.tmp`;
     await fs.mkdir(path.dirname(filename), { recursive: true });
     try {
       const stat = await fs.stat(original);
-      await fs.copyFile(original, candidate, constants.COPYFILE_EXCL); await checkedFile(candidate, entry);
+      await fs.copyFile(original, candidate, constants.COPYFILE_EXCL); await checkedFile(candidate, entry, this.t);
       await fs.utimes(candidate, stat.atimeMs / 1000, stat.mtimeMs / 1000);
       if (transform && entry.relative.endsWith(".json")) {
         let document: unknown;
@@ -138,7 +143,7 @@ export class UserDataMigration {
       if (await exists(filename)) {
         const installed = await fs.lstat(filename);
         if (!installed.isFile() || installed.isSymbolicLink() || await digest(filename) !== sha256)
-          throw new StateRecoveryError(`Conflicting migrated file; original preserved: ${filename}`);
+          throw new StateRecoveryError(this.t(uiKeys.storageSafety.userConflict, { path: filename }));
       } else await renameFile(candidate, filename);
       return sha256;
     } finally { await fs.unlink(candidate).catch(error => { if (error.code !== "ENOENT") throw error; }); }
@@ -147,35 +152,36 @@ export class UserDataMigration {
     if (this.pending) this.report("commit");
   }
   async prepare(): Promise<void> {
+    await this.readContext();
     let manifest = await this.manifest();
     if (manifest && manifest.phase !== "copying") {
       if (manifest.files.some(entry => entry.relative === "studio-state.json") && !await exists(path.join(this.destination, "studio-state.json")) && !await exists(path.join(this.destination, "studio-state.json.backups")))
-        throw new StateRecoveryError(`Migrated state is missing. Restore the original from ${path.join(this.destination, backup)}; an empty profile was not created.`);
+        throw new StateRecoveryError(this.t(uiKeys.storageSafety.userStateMissing, { path: path.join(this.destination, backup) }));
       this.pending = manifest.phase !== "complete";
-      if (this.pending) { await this.readContext(); this.report("verify"); }
+      if (this.pending) this.report("verify");
       return;
     }
     if (!manifest && (!await exists(this.source) || !(await fs.readdir(this.source)).some(owned))) return;
     this.pending = true;
-    await this.readContext(); this.report("scan");
+    this.report("scan");
     // Keep original files intact until both installation and repository transactions finish.
     await withStateFileLock(path.join(this.source, "studio-state.json"), async () => {
-      const current = await inventory(this.source);
+      const current = await inventory(this.source, this.t);
       if (!manifest) {
         if (!current.length) { this.pending = false; this.report("complete"); return; }
         if (await exists(this.destination) && (await fs.readdir(this.destination)).length)
-          throw new StateRecoveryError(`Both legacy and Documents user data exist. Nothing was overwritten. Review ${this.destination} and ${this.source}`);
+          throw new StateRecoveryError(this.t(uiKeys.storageSafety.userBothExist, { destination: this.destination, source: this.source }));
         manifest = { format: 1, source: this.source, phase: "copying", files: current };
         // Publish intent before any business file. Startup resumes this phase instead of opening partial data.
         await this.writeManifest(this.destination, manifest);
       } else if (current.length !== manifest.files.length || current.some((entry, index) => entry.relative !== manifest!.files[index].relative || entry.sha256 !== manifest!.files[index].sha256 || entry.size !== manifest!.files[index].size)) {
-        throw new StateRecoveryError("Legacy user data changed during copying; original and partial copy preserved");
+        throw new StateRecoveryError(this.t(uiKeys.storageSafety.userCopyChanged));
       }
       let completed = 0;
       this.report("backup", completed, manifest.files.length);
       for (const entry of manifest.files) {
         const original = path.join(this.source, entry.relative), saved = path.join(this.destination, backup, entry.relative), active = path.join(this.destination, entry.relative);
-        if (await exists(saved)) await checkedFile(saved, entry);
+        if (await exists(saved)) await checkedFile(saved, entry, this.t);
         else await this.installFile(original, saved, entry, false);
         this.report("write", completed, manifest.files.length);
         const sha256 = await this.installFile(saved, active, entry, folders.includes(entry.relative.split(path.sep)[0]));
@@ -186,22 +192,23 @@ export class UserDataMigration {
     });
   }
   async finish(): Promise<void> {
+    await this.readContext();
     const manifest = await this.manifest();
     if (!manifest || manifest.phase === "complete") return;
-    if (manifest.phase !== "prepared") throw new StateRecoveryError("User data copying has not completed");
+    if (manifest.phase !== "prepared") throw new StateRecoveryError(this.t(uiKeys.storageSafety.userCopyIncomplete));
     await withStateFileLock(path.join(this.source, "studio-state.json"), async () => {
-      const remaining = await inventory(this.source), expected = new Map(manifest.files.map(entry => [entry.relative, entry]));
+      const remaining = await inventory(this.source, this.t), expected = new Map(manifest.files.map(entry => [entry.relative, entry]));
       // Check every original and every backup BEFORE removing even one source file.
       for (const entry of remaining) if (entry.size !== expected.get(entry.relative)?.size || entry.sha256 !== expected.get(entry.relative)?.sha256)
-        throw new StateRecoveryError(`Legacy user data changed during migration: ${entry.relative}. Original preserved.`);
+        throw new StateRecoveryError(this.t(uiKeys.storageSafety.userSourceChanged, { path: entry.relative }));
       let verified = 0;
       this.report("verify", verified, manifest.files.length);
       for (const entry of manifest.files) {
-        await checkedFile(path.join(this.destination, backup, entry.relative), entry);
+        await checkedFile(path.join(this.destination, backup, entry.relative), entry, this.t);
         if (folders.includes(entry.relative.split(path.sep)[0])) {
           const active = path.join(this.destination, entry.relative), stat = await fs.lstat(active);
           if (!stat.isFile() || stat.isSymbolicLink() || await digest(active) !== (entry.installedSha256 ?? entry.sha256))
-            throw new StateRecoveryError(`Migrated auxiliary file is missing or changed; original preserved: ${active}`);
+            throw new StateRecoveryError(this.t(uiKeys.storageSafety.userAuxChanged, { path: active }));
         }
         this.report("verify", ++verified, manifest.files.length);
       }
@@ -210,7 +217,7 @@ export class UserDataMigration {
       this.report("cleanup", removed, remaining.length);
       for (const entry of remaining) {
         const filename = path.join(this.source, entry.relative);
-        await checkedFile(filename, entry); await fs.unlink(filename);
+        await checkedFile(filename, entry, this.t); await fs.unlink(filename);
         for (let parent = path.dirname(filename); within(this.source, parent) && !samePath(parent, this.source); parent = path.dirname(parent)) directories.add(parent);
         this.report("cleanup", ++removed, remaining.length);
       }

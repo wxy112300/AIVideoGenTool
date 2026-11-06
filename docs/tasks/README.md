@@ -4,6 +4,8 @@
 
 ## 当前任务
 
+- [Strata DeepSeek 接入与 0.2.10 双引擎升级](2026-11-03-strata-deepseek/TASK.md)
+
 - [Tessera 视频放大与可选 Qwen 首帧增强](2026-11-03-tessera-upscale/TASK.md)
 
 - [H3 Refiner 视频 Upscale（Kijai，至 4K）](2026-10-29-h3-refiner-upscale/TASK.md)

@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageOutputFormat,
   ImageReference,
@@ -80,8 +83,9 @@ function ratioValue(value: Exclude<ImageAspectRatio, "source">): number {
   return width / height;
 }
 
-function ratioLabelForDimensions(width: number, height: number): string {
-  if (!(width > 0 && height > 0)) return "原图比例";
+function ratioLabelForDimensions(width: number, height: number,
+  t: Translate = createTranslator().t): string {
+  if (!(width > 0 && height > 0)) return t(uiKeys.workflowChecks.sourceRatio);
   const sourceRatio = width / height;
   const match = imageAspectRatioValues.find((value) => Math.abs(sourceRatio - ratioValue(value)) < 0.01);
   return match ?? `${width}×${height}`;
@@ -138,20 +142,21 @@ export function imageAspectRatioOptionsFor(
   sourceWidth = 0,
   sourceHeight = 0,
   fallbackWidth = 0,
-  fallbackHeight = 0
+  fallbackHeight = 0,
+  t: Translate = createTranslator().t
 ): ImageAspectRatioOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
   const sourceLabel = hasSource
-    ? `原图比例 · ${ratioLabelForDimensions(sourceWidth, sourceHeight)}`
+    ? t(uiKeys.workflowChecks.sourceRatioValue, { ratio: ratioLabelForDimensions(sourceWidth, sourceHeight, t) })
     : hasFallback
-      ? `默认比例 · ${ratioLabelForDimensions(fallbackWidth, fallbackHeight)}`
-      : "原图比例 · 上传后读取";
+      ? t(uiKeys.workflowChecks.defaultRatioValue, { ratio: ratioLabelForDimensions(fallbackWidth, fallbackHeight, t) })
+      : t(uiKeys.workflowChecks.sourceRatioPending);
   return [
     { value: "source", label: sourceLabel },
     ...imageAspectRatioValues.map((value) => ({
       value,
-      label: `${value}${value === "1:1" ? " · 方形" : value === "16:9" || value === "3:2" ? " · 横向" : value === "9:16" || value === "2:3" ? " · 竖向" : ""}`
+      label: `${value}${value === "1:1" ? t(uiKeys.workflowChecks.square) : value === "16:9" || value === "3:2" ? t(uiKeys.workflowChecks.landscape) : value === "9:16" || value === "2:3" ? t(uiKeys.workflowChecks.portrait) : ""}`
     }))
   ];
 }
@@ -162,7 +167,8 @@ export function imageResolutionOptionsFor(
   fallbackWidth = 0,
   fallbackHeight = 0,
   aspectRatio: ImageAspectRatio = "source",
-  alignmentMultiple = 8
+  alignmentMultiple = 8,
+  t: Translate = createTranslator().t
 ): ImageResolutionOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
@@ -176,10 +182,10 @@ export function imageResolutionOptionsFor(
     alignmentMultiple
   );
   const sourceLabel = hasSource
-    ? `原图 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
+    ? t(uiKeys.workflowChecks.sourceSize, { width: sourceOptionDimensions[0], height: sourceOptionDimensions[1] })
     : hasFallback
-      ? `默认 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
-      : "原图 · 上传后读取";
+      ? t(uiKeys.workflowChecks.defaultSize, { width: sourceOptionDimensions[0], height: sourceOptionDimensions[1] })
+      : t(uiKeys.workflowChecks.sourceSizePending);
   const options: ImageResolutionOption[] = [{
     value: "source",
     label: sourceLabel,
@@ -280,7 +286,8 @@ export function compileImagePromptWithLimit(
   pictures: ImageReferenceSnapshot[],
   maxPictures: number,
   modelLabel: string,
-  includeMarkupGuides = false
+  includeMarkupGuides = false,
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const usable = ordered.filter((picture) => picture.absolutePath.trim());
@@ -288,14 +295,14 @@ export function compileImagePromptWithLimit(
   ordered
     .filter((picture) => !picture.absolutePath.trim())
     .forEach((picture) => {
-      errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`);
+      errors.push(t(uiKeys.workflowChecks.pictureEmpty, { number: picture.pictureNumber }));
     });
   const originalToCompiled = new Map<number, number>();
   const compiledPictures: ImageReferenceSnapshot[] = [];
   const markupGuides: CompiledMarkupGuide[] = [];
   usable.forEach((picture) => {
     if (originalToCompiled.has(picture.pictureNumber)) {
-      errors.push(`Picture ${picture.pictureNumber} 重复，无法确定引用对象。`);
+      errors.push(t(uiKeys.workflowChecks.pictureDuplicate, { number: picture.pictureNumber }));
       return;
     }
     const sourceInputNumber = compiledPictures.length + 1;
@@ -313,12 +320,12 @@ export function compileImagePromptWithLimit(
     }
   });
   if (ordered.length > maxPictures) {
-    errors.push(`当前 ${modelLabel} 工作流最多支持 ${maxPictures} 张 Picture。`);
+    errors.push(t(uiKeys.workflowChecks.pictureLimit, { model: modelLabel, count: maxPictures }));
   }
   if (compiledPictures.length > maxPictures) {
     const guideCount = markupGuides.length;
     errors.push(
-      `Canvas 标记会额外占用 ${guideCount} 个标注参考输入；当前 ${modelLabel} 最多接收 ${maxPictures} 张模型输入，请减少普通参考图或清除部分标记。`
+      t(uiKeys.workflowChecks.markupLimit, { guides: guideCount, model: modelLabel, count: maxPictures })
     );
   }
 
@@ -328,7 +335,7 @@ export function compileImagePromptWithLimit(
     referencedPictureNumbers.add(originalNumber);
     const compiledNumber = originalToCompiled.get(originalNumber);
     if (!compiledNumber) {
-      errors.push(`${match} 引用了不存在的 Picture ${originalNumber}。`);
+      errors.push(t(uiKeys.workflowChecks.pictureReference, { reference: match, number: originalNumber }));
       return match;
     }
     return `Picture ${compiledNumber}`;
@@ -409,10 +416,11 @@ export function imageReferenceInputs(
   );
 }
 
-export function exactImageDimension(value: number | undefined, fallback: number): number {
+export function exactImageDimension(value: number | undefined, fallback: number,
+  t: Translate = createTranslator().t): number {
   const dimension = value ?? fallback;
   if (!Number.isInteger(dimension) || dimension <= 0) {
-    throw new Error("图片输出尺寸无效，无法保持 Picture 1 的原始尺寸。");
+    throw new Error(t(uiKeys.workflowChecks.outputDimensions));
   }
   return dimension;
 }

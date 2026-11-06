@@ -8,6 +8,7 @@ import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { MODEL_DOWNLOAD_INVALID, rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
+import { localizeModelScanProfile } from "../../shared/model-profile-labels";
 import { outputDirectoryWithinRoot } from "./helpers";
 import { modelComponentWithLocations, openModelComponentLocation } from "./model-location";
 import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
@@ -95,9 +96,10 @@ export function mountSettingsPageController(
       options.rememberModalFocus();
       options.setSettingsDraft(options.formSettings());
       const settings = options.formSettings();
-      const profile = [...(options.getEnvironmentScan()?.modelProfiles ?? []), ...strataPreparationProfiles(settings.uiLocale)].find(
+      const scannedProfile = [...(options.getEnvironmentScan()?.modelProfiles ?? []), ...strataPreparationProfiles(settings.uiLocale)].find(
         (item) => item.id === button.dataset.installProfile
       );
+      const profile = scannedProfile && localizeModelScanProfile(scannedProfile, settings.uiLocale, options.context.t);
       const component = profile?.components[Number(button.dataset.installComponent)];
       if (!profile || !component) return;
       const status = options.getEnvironmentScan()?.strataPreparation;

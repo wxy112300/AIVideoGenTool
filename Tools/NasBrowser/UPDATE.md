@@ -1,8 +1,10 @@
 # 更新已部署的 NAS 浏览服务
 
-类型：更新手册；日期：2026-11-03。适用：按 DSM6-QUICKSTART.md 部署的服务，容器名 local-video-studio、端口 8790、配置与本地索引分别挂载项目目录下 config/data。
+类型：更新手册；日期：2026-11-04。适用：按 DSM6-QUICKSTART.md 部署的服务，容器名 local-video-studio、端口 8790、配置与本地索引分别挂载项目目录下 config/data。
 
 2026-11-03 的 NAS-Browser-Deploy.zip 已包含自动刷新、刷新按钮立即复检磁盘、封面缓存更新，以及封面底部的渲染完成日期与时分秒。按下面步骤更新服务程序；保留现有 config/data，无需删除 SQLite 索引或重新同步媒体。
+
+当前包还修复了 SQLite 临时文件错误：程序临时表使用内存，创建容器时保留下面的 `--tmpfs /tmp:…` 参数。NAS/容器重启会保留该挂载配置；升级重建容器时仍需按本手册创建，不使用旧版保存的 docker run 命令。
 
 ## 1. 先更新 PC 发布端
 
@@ -40,6 +42,12 @@ ls -ld "$MEDIA_ROOT" "$LIBRARY_ROOT" "$PWD/data" "$PWD/config/config.json"
 
 直接移除本服务当前容器及上一次教程留下的备份容器，再创建新容器；不保留旧容器，不删除 config/data。先完成上方镜像验证及路径读取，任一步报错先停止。
 
+先单独执行下面这条，输入 NAS 账号密码，等重新出现命令提示符后，再复制下一段。不要在等待密码时粘贴后续命令。
+
+```sh
+sudo -v
+```
+
 ```sh
 for CONTAINER_NAME in local-video-studio local-video-studio-backup-20261029; do
   if sudo docker inspect --type container "$CONTAINER_NAME" >/dev/null 2>&1; then
@@ -50,6 +58,7 @@ sudo docker run -d \
   --name local-video-studio \
   --restart unless-stopped \
   --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777 \
   --user "$SERVICE_USER" \
   -p 8790:8790 \
   -v "$MEDIA_ROOT:/media:ro" \
@@ -60,6 +69,14 @@ sudo docker run -d \
 sudo docker logs --tail=80 local-video-studio
 ```
 
+确认可写临时目录已配置：
+
+```sh
+sudo docker inspect --format 'Tmpfs={{json .HostConfig.Tmpfs}}' local-video-studio
+```
+
+输出必须包含 `/tmp` 和 `size=128m`，不能是 `Tmpfs=null`。不符合时先停止后续步骤，检查是否完整执行了新建容器命令；单纯重启旧容器不会新增挂载。
+
 浏览器打开原地址并强制刷新（Windows Chrome：Ctrl+F5）。Filter 应包含收藏、评分范围和评分排序；列表和播放器显示同步值，播放器不能修改收藏/评分/标签。布局、视频播放和 Prompt 仍可用。Drive 完成前可能继续显示旧数据，等待轮询并刷新；无需删除 data 重建。
 
 ## 5. 确认网页已更新
@@ -69,6 +86,9 @@ sudo docker logs --tail=80 local-video-studio
 ```sh
 sudo docker exec local-video-studio cat /app/dist/deployment.json
 curl -fsS http://你的NAS_IP:8790/ | grep 'assets/index-'
+curl -fsS --connect-timeout 3 --max-time 15 http://你的NAS_IP:8790/healthz
 ```
+
+healthz 应显示 `ready:true`、`refreshError:false` 和已同步作品数量。再完成一个新作品，等待 Drive 同步和服务扫描后，确认不重启容器也能更新。若持续 refreshError，保留 data 和容器日志排查，不通过清库规避。
 
 若部署目录中的标识还是旧值，重新覆盖 dist；镜像标识旧则重新构建；运行中容器标识旧则重新创建容器。标识都正确后用无痕窗口或 Ctrl+F5 打开页面。新版 Filter 的重置/应用固定在底部，筛选字段独立滚动。

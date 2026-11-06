@@ -1,3 +1,4 @@
+import { dlss5ObjectInfo } from "./fixtures/upscale-object-info.js";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DLSS5_UPSCALE_OPTIONS,
@@ -90,7 +91,7 @@ describe("DLSS5 phase A catalog and pure contracts", () => {
     expect(() => normalizeDlss5Options({
       ...DEFAULT_DLSS5_UPSCALE_OPTIONS,
       scale: 5
-    })).toThrow("scale must be 2, 3 or 4");
+    })).toThrow("scale 必须为 2、3 或 4");
     expect(() => normalizeDlss5Options({
       ...DEFAULT_DLSS5_UPSCALE_OPTIONS,
       runtimeBundleId: "latest"
@@ -98,7 +99,7 @@ describe("DLSS5 phase A catalog and pure contracts", () => {
     expect(() => normalizeDlss5Options({
       ...DEFAULT_DLSS5_UPSCALE_OPTIONS,
       nodeRevision: "a".repeat(40)
-    })).toThrow("pinned commit");
+    })).toThrow("固定提交");
 
     const dlssTarget = normalizeUpscaleTarget({
       modelId: "dlss5-sr",
@@ -120,14 +121,14 @@ describe("DLSS5 phase A catalog and pure contracts", () => {
       targetScale: 2,
       targetHeight: 1080,
       dlss5: DEFAULT_DLSS5_UPSCALE_OPTIONS
-    })).toThrow("must not depend on legacy targetHeight");
+    })).toThrow("不能依赖旧版 targetHeight");
     expect(() => normalizeUpscaleTarget({
       modelId: "realesrgan",
       sourceWidth: 832,
       sourceHeight: 480,
       targetScale: 2,
       dlss5: DEFAULT_DLSS5_UPSCALE_OPTIONS
-    })).toThrow("only valid for modelId dlss5-sr");
+    })).toThrow("仅适用于 modelId dlss5-sr");
   });
 
   it("preserves legacy short-edge records without adding DLSS fields", () => {
@@ -145,40 +146,11 @@ describe("DLSS5 phase A catalog and pure contracts", () => {
       modelId: "realesrgan",
       sourceWidth: 832,
       sourceHeight: 480
-    })).toThrow("targetHeight is missing or invalid");
+    })).toThrow("targetHeight 缺失或无效");
   });
 
   it("validates the frozen SR object_info contract without a runtime call", () => {
-    const schema = {
-      DLSSSuperResolution: {
-        input: { required: {
-          image: ["IMAGE"],
-          depth: ["IMAGE"],
-          motion_vectors: ["IMAGE"],
-          scale: [["2x", "3x", "4x"]],
-          quality: [["Quality", "Balanced", "Performance", "Ultra Quality"]]
-        } },
-        output: ["IMAGE", "STRING"]
-      },
-      DLSS5DepthAnythingV2: {
-        input: { required: {
-          images: ["IMAGE"],
-          model: [["Small (recommended)", "Base", "Large"]],
-          temporal_normalization: ["BOOLEAN", { default: true }],
-          chunk_size: ["INT", { default: 4, min: 1, max: 32 }]
-        } },
-        output: ["IMAGE"]
-      },
-      DLSS5OpticalFlow: {
-        input: { required: {
-          images: ["IMAGE"],
-          pyramid_scale: ["FLOAT", { default: 0.5 }],
-          levels: ["INT", { default: 5 }],
-          window_size: ["INT", { default: 21 }]
-        } },
-        output: ["IMAGE"]
-      }
-    };
+    const schema = structuredClone(dlss5ObjectInfo);
     expect(validateDlss5ObjectInfoSchema(schema).valid).toBe(true);
     expect(() => assertDlss5ObjectInfoSchema(schema)).not.toThrow();
     expect(validateDlss5ObjectInfoSchema({}).missingNodes).toEqual([
@@ -248,6 +220,6 @@ describe("DLSS5 phase A catalog and pure contracts", () => {
       { ...task, targetWidth: 1 },
       "studio-input-source.mp4",
       schema
-    )).toThrow("geometry");
+    )).toThrow("任务尺寸与冻结的源倍率不符");
   });
 });

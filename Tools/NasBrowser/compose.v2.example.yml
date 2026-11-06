@@ -14,6 +14,8 @@ services:
       - /volume1/docker/local-video-studio/data:/data:rw
       - ./config.json:/config/config.json:ro
     read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:

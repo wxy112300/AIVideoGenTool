@@ -6,13 +6,15 @@
 
 Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素材、参数、队列、历史、文件管理和 ComfyUI 通信；模型加载、CUDA、采样、VAE、音频和媒体输出由 ComfyUI 执行。
 
-提示词辅助同样通过所选 ComfyUI 运行：
+提示词辅助按所选后端运行：
 
 - Qwen3.5 使用 ComfyUI 核心 `TextGenerate` 路径。
 - Gemma 4 使用 ComfyUI MiniMax H3 Prompt Writer 节点及其 ComfyUI Python 依赖。
 - Gemma 4 26B-A4B UNSEEN NSFW 使用配套的 `UNSEEN_Gemma_4_26B_NSFW_Q4_K_M.gguf` 与 `mmproj-gemma4-vision-q4_0.gguf`；4090 24GB 档位保持标准 16K 上下文。
 - Qwen3.6 / Qwen3.8 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。Qwen3.8 当前登记的是 JonathanColetti 的非 MTP Uncensored Q4 与配套 vision 投影文件。
 - 旧状态中可能仍有 LM Studio/llama-server 字段用于兼容迁移，但当前 UI 不要求、也不推荐安装独立服务。
+
+Strata 的 DeepSeek V4.1 Flash Uncensored IQ2_XXS 复用原提示词选择器和共享模型根，下载指南指向 `LLM/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF`。四个主分片、共享 Engram、元数据、视觉投影及 DSpark 由用户准备；扫描仅检查大小/header，首次使用再核对固定 SHA-256、调用官方 DeepSeek pack 工具并生成独立完成记录。选择 DeepSeek 后，原 Strata 更新入口会补装独立 `engine-dsv41`（0.1.57，约423MB），校验固定归档/清单、官方签名与全部组件；既有 DeepSeek 引擎随以后软件更新保留支持，失败恢复旧软件。应用和独立 Agent 当前使用 32K、完整六专家、官方采样和独立 RAM/提交缓存预算；不使用 Qwen 的 PLE/MTP/控制向量。Qwen 默认、原权重与旧 pack 保留。接入与未验边界见 [当前任务](tasks/2026-11-03-strata-deepseek/TASK.md)；文件就绪不代表真实推理通过。
 
 Strata 是独立运行组件，不是 ComfyUI 节点。Qwen3.8-Flash-Next 可在原提示词模型选择器中选用，启动/增强会自动完成校验、CPU pack/tokenizer、受认证的本机服务和模型加载，取消/释放/开始队列/退出均清理自有进程。软件安装本身不启动模型；它使用独立 `.venv`，不向 ComfyUI Python 安装包，不执行上游整套 setup，也不下载权重。受管理安装统一使用 `strata/runtime`，主应用与独立启动器共用解析，不记住具体版本路径；旧受管理路径兼容迁移，手动目录保留。更新只在事务内暂存旧软件供失败恢复，成功验证后删除旧软件、受信历史副本、安装暂存和成功下载包，不永久保留版本备份。失败清理本次暂存，仅保留可续传的固定资产半包及日志。
 
@@ -30,7 +32,7 @@ Strata资源遥测的暂时缺失与确认低资源分开处理：H3加载／增
 
 正常完整推理后的格式、长度或时间点校验失败，不保存结果，但保留已确认ready/loaded的自有Strata模型供下一次增强；记录`StrataValidationRetained`。流式/资源/服务失败、用户取消及清理不确定仍走停止保护，手动释放、队列交接和退出语义不变。保留模型不等于放宽文本质量门禁。
 
-运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐安装目标来自catalog，最新版本由官方release查询取得；网络失败不把推荐值当作最新。当前推荐0.2.9（固定c62d5e3），配套Windows Qwen CUDA 13引擎0.1.55；上游应用、Control和引擎独立编号，release标题中的补丁号也参与最新版本识别。0.2.7.1、0.1.45、0.1.44.1和0.1.41未更新前继续可用并显示更新。新版tar.gz引擎自带CUDA DLL，不再向独立venv重复安装NVIDIA运行库；固定归档与组件清单hash、安装后官方文件校验均通过才完成事务。安装包含社区小向量，失败恢复旧软件，成功清理旧软件、暂存与下载包；官方Git未修改的配置随软件更新，用户新增或修改的配置/权重/数据保留。派生pack仍绑定实际安装revision；经格式核对的0.1.45/0.2.7.1 native v3/v4 pack允许在模型/MTP/派生文件状态完整且配置精确匹配时迁移至当前推荐，保留原pack来源并更新DLL路径，不重复哈希大权重或生成pack；其他来源、修改或不支持格式仍重新准备。同revision的受管理路径迁移也保留原pack。手动指定目录保持显式选择；主应用与独立Agent始终解析同一个受管理runtime，不修改H3设置。本次只调整推荐目标，0.2.9实际安装与推理未验；旧版升级实测见[0.2.7.1记录](tasks/2026-10-10-strata-prompt-integration/evidence/0271-upgrade.md)。
+运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐目标来自 catalog，最新版本由官方 release 查询取得；网络失败不把推荐值当最新。当前推荐及本机为 Strata 0.2.11（固定 c3b3f50），Windows Qwen / DeepSeek 独立引擎均为 0.1.57。0.2.10、0.2.9、0.2.7.1、0.1.45、0.1.44.1 和 0.1.41 的准确身份继续识别；更新事务验证固定归档、清单及官方组件后才完成，DeepSeek 另校验签名。保留受管理路径、手动目录和用户数据规则。已核对读取格式的 0.2.10/0.2.9/0.2.7.1/0.1.45 native v3/v4 pack，在源模型/MTP/派生文件事实及精确配置完整时可迁移到当前推荐，不重复哈希大权重或准备 pack；其他来源、修改或不支持格式仍重新准备。现有 Qwen MTP 配置继续使用，不因上游 Auto 改为 DFlash2 而自动下载新辅助权重。0.2.11 软件安装、既有完整 IQ3/MTP 缓存迁移已验；新版神经推理与质量不由旧版结果替代，详见 [DeepSeek/升级任务](tasks/2026-11-03-strata-deepseek/TASK.md)。
 
 模型共用所选 ComfyUI 的模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 只读兼容扫描。派生 pack/tokenizer 位于软件版本目录的同级 `data`，完成记录按源文件/模型/策略复检后复用；未完成资料不当缓存，软件卸载保留模型和数据。默认端口 43127，用户可手动选择 1024–65535 内的整数端口，包括 8080；冲突不接管、不自动修改设置。没有第二个模型根设置，不替换旧模型默认值。文件齐全不代表 GPU、视觉和输出质量已验；当前接入代码完成，完整模型验收由用户下载后另做。版本/来源见 catalog；操作见 [Strata 下载指南](tasks/2026-10-10-strata-prompt-integration/DOWNLOADS.md)。
 

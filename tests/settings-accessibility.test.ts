@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { mountSettingsNodeDependencyController } from "../src/renderer/pages/settings/node-dependency-controller";
 import type { RendererContext } from "../src/renderer/contracts";
 import { createDefaultState } from "../src/core/defaults";
+import { modelCatalog } from "../src/core/catalog";
+import { createTranslator, loadUiLocale } from "../src/core/i18n";
+import { imageModelCapabilityFor } from "../src/core/image-workflow";
 import type { EnvironmentScanResult, ModelScanProfile } from "../src/types";
 import {
   renderSettingsPage,
@@ -92,6 +95,37 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 }
 
 describe("Settings accessibility markup", () => {
+  it("uses the current locale for scanned image/upscale defaults and built-in quality options", async () => {
+    const ids = ["qwen-image-2-1", "seedvr2-native-int8"] as const;
+    const profiles: ModelScanProfile[] = ids.map((id, i) => ({ id, name: "旧中文扫描名称", category: i ? "upscale" : "image", badge: "", description: "", vram: "", available: true, integrated: true, components: [] }));
+    const scan = { items: [], modelProfiles: profiles, customNodes: [], issues: [] } as unknown as EnvironmentScanResult;
+    for (const uiLocale of ["en-US", "zh-TW"] as const) {
+      await loadUiLocale(uiLocale);
+      const settings = { ...state.settings, uiLocale, defaultImageModel: ids[0], defaultUpscaleModel: ids[1] };
+      const opts = { ...renderOptions, t: createTranslator(uiLocale).t, getImageQualityProfiles: (id: string) => imageModelCapabilityFor(id).qualityProfiles };
+      const image = markupRoot(renderSettingsPage(viewModel({ settingsTab: "image", settings, environmentScan: scan }), opts));
+      expect(image.querySelector('#default-image-model option')?.textContent).toBe(modelCatalog.localized(ids[0], uiLocale)?.name);
+      expect(image.querySelector('#image-quality-profile')?.textContent).not.toContain("官方原生质量");
+      expect(image.querySelector('#image-quality-profile')?.textContent).toContain(uiLocale === "en-US" ? "Official" : "官方");
+      const upscale = markupRoot(renderSettingsPage(viewModel({ settingsTab: "upscale", settings, environmentScan: scan }), opts));
+      expect(upscale.querySelector('#default-upscale-model option')?.textContent).toBe(modelCatalog.localized(ids[1], uiLocale)?.name);
+    }
+    expect(profiles.map(p => p.name)).toEqual(["旧中文扫描名称", "旧中文扫描名称"]);
+  });
+  it("refreshes video names from the current locale without rescanning or mutating scan data", () => {
+    const id = "minimax_h3_ref2va";
+    const profile: ModelScanProfile = { id, name: "旧中文扫描名称", category: "video", badge: "", description: "", vram: "", available: true, integrated: true, components: [] };
+    const custom = { ...profile, id: "custom-video", name: "My 自定义 Model" };
+    const scan = { items: [], modelProfiles: [profile, custom], customNodes: [], issues: [] } as unknown as EnvironmentScanResult;
+    for (const uiLocale of ["en-US", "zh-TW", "zh-CN"] as const) {
+      const root = markupRoot(renderSettingsPage(viewModel({ settingsTab: "video", settings: { ...state.settings, uiLocale }, environmentScan: scan }), renderOptions));
+      for (const selector of ["#default-video-model", "#default-extension-model"]) {
+        expect(root.querySelector(`${selector} option[value="${id}"]`)?.textContent).toBe(modelCatalog.localized(id, uiLocale)?.name);
+      }
+      expect(root.querySelector('#default-video-model option[value="custom-video"]')?.textContent).toBe(custom.name);
+    }
+    expect(profile.name).toBe("旧中文扫描名称");
+  });
   it("shows detected GPU names and total VRAM, including multiple GPUs, without a model or budget fallback", () => {
     const scan = { items: [], modelProfiles: [], customNodes: [], issues: [], gpus: [
       { index: 0, name: "Detected GPU A", driverVersion: "test", vramTotalBytes: 12 * 1024 ** 3 },

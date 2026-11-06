@@ -360,6 +360,7 @@ export function createSettingsWorkspaceCoordinator(
     saveDraft: (draft) => deps.context.application.saveDraft(draft),
     getBundledWorkflow: (modelId, inputMode) => deps.context.application.getBundledWorkflow(modelId, inputMode),
     setState: (state) => {
+      if (state.settings.uiLocale !== deps.getState().settings.uiLocale) serviceStatusMessage = "";
       deps.setState(state);
       environmentRefreshCoordinator.refreshProgressMessage();
     },
@@ -468,7 +469,10 @@ export function createSettingsWorkspaceCoordinator(
         serviceStarting: serviceStarting ?? (comfyRuntime.phase === "starting" ? "comfy" : null),
         serviceRestarting: serviceRestarting ?? (comfyRuntime.phase === "restarting" ? "comfy" : null),
         serviceForceStopping,
-        serviceStatusMessage: serviceStatusMessage || (["starting", "restarting", "error"].includes(comfyRuntime.phase) ? comfyRuntime.message : ""),
+        serviceStatusMessage: serviceStatusMessage || (comfyRuntime.phase === "starting"
+          ? uiText(uiKeys.runtimeService.startingApi)
+          : comfyRuntime.phase === "restarting" ? uiText(uiKeys.runtimeService.restarting)
+          : comfyRuntime.phase === "error" ? comfyRuntime.message : ""),
         comfyUpdating,
         comfyUpdateLog,
         environmentRepairing,

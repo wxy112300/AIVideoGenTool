@@ -1,4 +1,6 @@
+import { uiKeys } from "./i18n-keys.js";
 import type { EnvironmentScanResult, UpscaleQueueTask, ModelScanProfile } from "../types.js";
+import { createTranslator, type Translate } from "./i18n.js";
 import { h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } from "./h3-refiner.js";
 import { h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae } from "./catalog/models/minimax_h3_shared.js";
 import { buildQwenImage21AnchorWorkflow } from "./image-workflow/qwen-image-2-1.js";
@@ -50,8 +52,8 @@ export function tesseraAnchorModels(environment: EnvironmentScanResult | null | 
 export function tesseraAnchorRecommended(width: number, height: number, target: number): boolean {
   return target / Math.min(width, height) <= 2.02;
 }
-export function tesseraGeometry(width: number, height: number, target: number) {
-  const g = h3RefinerGeometry(width, height, target);
+export function tesseraGeometry(width: number, height: number, target: number, t: Translate = createTranslator().t) {
+  const g = h3RefinerGeometry(width, height, target, t);
   const scale = target / Math.min(width, height) <= 2.02 ? 2 : 4;
   // Encode an exact integer-scale plate on the 32px source grid; crop only final canvas padding.
   const baseWidth = Math.ceil(g.canvasWidth / scale / 32) * 32;
@@ -65,19 +67,19 @@ export function createTesseraSnapshot(prompt: string, fps: number, anchor?: Tess
     tao: TESSERA_TAO, lms: TESSERA_LMS, ...(anchor ? { anchor: structuredClone(anchor) } : {}) };
 }
 
-export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown) {
+export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t) {
   const s = task.tessera;
-  if (!s || s.recipe !== TESSERA_RECIPE || s.tao !== TESSERA_TAO || s.lms !== TESSERA_LMS) throw new Error("Tessera 配方不兼容，请重新入队。");
-  validateH3RefinerSource(task.duration, s.sourceFps);
-  const g = tesseraGeometry(task.sourceWidth, task.sourceHeight, task.targetHeight!);
-  if (g.outputWidth !== task.targetWidth || g.outputHeight !== task.targetOutputHeight) throw new Error("Tessera 输出尺寸与快照不一致。");
+  if (!s || s.recipe !== TESSERA_RECIPE || s.tao !== TESSERA_TAO || s.lms !== TESSERA_LMS) throw new Error(t(uiKeys.serviceChecks.tesseraRecipe));
+  validateH3RefinerSource(task.duration, s.sourceFps, t);
+  const g = tesseraGeometry(task.sourceWidth, task.sourceHeight, task.targetHeight!, t);
+  if (g.outputWidth !== task.targetWidth || g.outputHeight !== task.targetOutputHeight) throw new Error(t(uiKeys.serviceChecks.tesseraSnapshot));
   const info = objectInfo as Record<string, { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } }>;
   const missing = TESSERA_NODES.filter(id => !info?.[id]);
-  if (missing.length) throw new Error(`Tessera 缺少节点：${missing.join("、")}。请更新依赖并重启 ComfyUI。`);
+  if (missing.length) throw new Error(t(uiKeys.serviceChecks.tesseraNodes, { nodes: missing.join("、") }));
   const spec = info.ModelAttentionBackend?.input?.required?.attention;
   const choices = Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : [];
   const attention = choices.includes("comfy kitchen attention") ? "comfy kitchen attention" : "pytorch attention";
-  if (!choices.includes(attention)) throw new Error("Tessera attention schema 不兼容。");
+  if (!choices.includes(attention)) throw new Error(t(uiKeys.serviceChecks.tesseraAttention));
   const graph: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {};
   const add = (id: string, class_type: string, inputs: Record<string, unknown>) => { graph[id] = { class_type, inputs }; };
   add("source", "VHS_LoadVideo", { video: source, force_rate: 24, custom_width: g.baseWidth, custom_height: g.baseHeight, frame_load_cap: 0, skip_first_frames: 0, select_every_nth: 1, format: "AnimateDiff" });
@@ -92,7 +94,7 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
   add("encode", "TesseraEncode", { images: ["prepare", 0], vae: ["vae", 0], positive: ["conditioning", 0], upscale_by: g.scale,
     upscale_method: "lanczos", segment_frames: 39, anchor_strength: 1, anchor_spread: 4 });
   if (s.anchor) {
-    const qwen = buildQwenImage21AnchorWorkflow(s.anchor, g.canvasWidth, g.canvasHeight, task.seed);
+    const qwen = buildQwenImage21AnchorWorkflow(s.anchor, g.canvasWidth, g.canvasHeight, task.seed, t);
     for (const [id, node] of Object.entries(qwen)) {
       graph[`anchor-${id}`] = { class_type: node.class_type, inputs: Object.fromEntries(Object.entries(node.inputs).map(([key, value]) =>
         [key, Array.isArray(value) && typeof value[0] === "string" && value.length === 2 && typeof value[1] === "number" ? [`anchor-${value[0]}`, value[1]] : value])) };
@@ -105,8 +107,8 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
     add("anchor-vae", "LocalVideoStudioH3RequireGpuVAE", { vae: ["anchor-vae-loader", 0] });
     add("anchor-unload", "VRAM_Debug", { any_input: ["anchor-decoded", 0], empty_cache: true, gc_collect: true, unload_all_models: true });
     graph.encode!.inputs.anchor = ["anchor-unload", 0];
-    for (const node of Object.values(qwen)) if (!info[node.class_type] && node.class_type !== "LoadImage") throw new Error(`Qwen 首帧增强缺少节点：${node.class_type}`);
-    if (!info.ImageFromBatch) throw new Error("Qwen 首帧增强缺少 ImageFromBatch");
+    for (const node of Object.values(qwen)) if (!info[node.class_type] && node.class_type !== "LoadImage") throw new Error(t(uiKeys.serviceChecks.anchorNode, { node: node.class_type }));
+    if (!info.ImageFromBatch) throw new Error(t(uiKeys.serviceChecks.anchorBatch));
   }
   add("unet", "UNETLoader", { unet_name: s.model, weight_dtype: "default" });
   add("tao", "LoraLoaderModelOnly", { model: ["unet", 0], lora_name: s.tao, strength_model: 1 });
@@ -135,7 +137,7 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
   add("video", "CreateVideo", { images: ["restore", 0], audio: ["source", 2], fps: 24 });
   add("save", "SaveVideo", { video: ["video", 0], filename_prefix: task.outputFilename.replace(/\.mp4$/i, ""), format: "mp4", codec: "h264" });
   if (s.anchor) {
-    if (!info.LocalVideoStudioH3TesseraLoad) throw new Error("请更新H3桥接节点以串行加载Qwen和H3。");
+    if (!info.LocalVideoStudioH3TesseraLoad) throw new Error(t(uiKeys.serviceChecks.tesseraLoad));
     add("h3-load", "LocalVideoStudioH3TesseraLoad", { anchor: ["anchor-unload", 0], unet_name: s.model, clip_name: s.textEncoder, vae_name: s.videoVae, audio_vae_name: s.audioVae });
     const outputs: Record<string, number> = { unet: 0, clip: 1, "video-vae": 2, "audio-vae": 3 };
     for (const node of Object.values(graph)) {
@@ -145,6 +147,6 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
     }
     for (const id of Object.keys(outputs)) delete graph[id];
   }
-  if (!info.LocalVideoStudioH3TesseraSigmas) throw new Error("请更新应用H3桥接节点以运行Tessera。");
+  if (!info.LocalVideoStudioH3TesseraSigmas) throw new Error(t(uiKeys.serviceChecks.tesseraBridge));
   return graph;
 }

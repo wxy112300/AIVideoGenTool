@@ -129,7 +129,8 @@ describe("extracted Electron IPC adapters", () => {
       true,
       settings.comfyUrl,
       "app",
-      true
+      true,
+      expect.any(Function)
     );
 
     promptRuntime = createPromptRuntimeState(runtime);
@@ -138,7 +139,8 @@ describe("extracted Electron IPC adapters", () => {
       true,
       settings.comfyUrl,
       "app",
-      false
+      false,
+      expect.any(Function)
     );
   });
 

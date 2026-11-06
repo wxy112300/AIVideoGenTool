@@ -1,6 +1,14 @@
 import type { WorkflowMessageKey } from "./workflow-messages.js";
 
 export const zhTWWorkflowMessages: Record<WorkflowMessageKey, string> = {
+  serializerApi: "H3 AV serializer 只能附加至 API-format 工作流程。",
+  serializerUnique: "H3 AV serializer 無法確定唯一最終 joint latent（找到 {count} 個）。",
+  continuumFirstSource: "Continuum Run 缺少最初的首影格來源，不能以目前尾影格替換後繼續。",
+  continuumFirstResolution: "Continuum 首影格來源不支援原生高解析度二次採樣設定。",
+  continuumRegeneratePrompt: "官方重新生成本段必須保留原提示詞；修改正文不屬於此操作支援的重新生成。",
+  continuumChunkBody: "Continuum 每段提示詞必須為非空 Chunk body，不能巢狀包含 Timeline 標題。",
+  pddWorkflowRequired: "PDD Acc 需要包含 KSamplerSelect、BasicScheduler 與 BasicGuider 的原生 H3 工作流程；Ref2VA 還需要 MiniMaxH3ReferenceToVideo。",
+  h3PolicyUnavailable: "H3 執行策略不可用：{reasons}",
   h3OutputBudget: "{backend} 目前節點最多輸出 {maximum} token，本次需要 {requested}。請在設定中更新對應節點並重新啟動服務，或手動選擇容量足夠的增強模型。",
   h3ContinuationTimelineMissing: "Continuum 提示詞增強未傳回 integrated_multimodal_description 主時間軸，無法確認單鏡頭接續；結果未儲存，原提示詞保持不變。",
   h3ContinuationBodyOnly: "Continuum 提示詞增強只能傳回目前的 Chunk body，不能改寫整份 Timeline。",

@@ -9,6 +9,9 @@ import { InstallationCancellation, installationSignal } from "../electron/servic
 import * as vectorTools from "../electron/services/strata-uncensored";
 import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
 import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
+import { STRATA_DEEPSEEK_MODEL_ID } from "../src/core/catalog/models/strata-deepseek";
+import { STRATA_DSV41_URL } from "../src/core/catalog/dependencies/strata-deepseek";
+import { hasDeepSeekEngine } from "../electron/services/strata-deepseek-engine";
 
 // Installation commands and extraction are already mocked. Use a synthetic manifest
 // digest here so recommending a release never requires downloading the full engine.
@@ -17,6 +20,12 @@ vi.mock("../src/core/catalog/dependencies/strata", async importOriginal => {
   const { createHash } = await import("node:crypto");
   const { strataEngineManifestFixture } = await import("./helpers/strata-engine-fixture");
   return { ...catalog, STRATA_ENGINE_MANIFEST_SHA256: createHash("sha256").update(strataEngineManifestFixture()).digest("hex") };
+});
+
+vi.mock("../src/core/catalog/dependencies/strata-deepseek", async importOriginal => {
+  const catalog = await importOriginal<typeof import("../src/core/catalog/dependencies/strata-deepseek")>();
+  const { createHash } = await import("node:crypto");
+  return { ...catalog, STRATA_DSV41_PREVIOUS_MANIFEST_SHA256: [createHash("sha256").update("previous verified component fixture").digest("hex")] };
 });
 
 const fixtures: string[] = [];
@@ -48,6 +57,39 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("updates an existing previous DeepSeek engine even when Qwen is selected, and restores it on failure", async () => {
+    const { root, runtime } = await fixture(), settings = createDefaultSettings();
+    expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
+    const directory = path.join(root, "engine-dsv41");
+    await fs.mkdir(directory);
+    for (const file of ["strata-dsv41.exe", "BUILD.json", "cublas64_13.dll", "cublasLt64_13.dll"])
+      await fs.writeFile(path.join(directory, file), "old component");
+    const manifest = path.join(directory, "engine-component.json");
+    await fs.writeFile(manifest, "previous verified component fixture");
+    expect(await hasDeepSeekEngine(root)).toBe(false);
+    expect(await hasDeepSeekEngine(root, true)).toBe(true);
+    runtime.download.mockClear();
+    const result = await installStrataRuntime(settings, runtime);
+    expect(result.ok).toBe(false);
+    expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(true);
+    expect(await fs.readFile(manifest, "utf8")).toBe("previous verified component fixture");
+    await fs.appendFile(manifest, "tampered");
+    expect(await hasDeepSeekEngine(root, true)).toBe(false);
+  });
+  it("restores the previous Qwen installation if the new DeepSeek package fails integrity checks", async () => {
+    const { root, runtime } = await fixture();
+    const settings = createDefaultSettings();
+    expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
+    const previous = await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8");
+    await fs.writeFile(path.join(root, "keep.txt"), "user data");
+    const failed = await installStrataRuntime({ ...settings, promptModelId: STRATA_DEEPSEEK_MODEL_ID }, runtime);
+    expect(failed.ok).toBe(false);
+    expect(failed.message).toContain("DeepSeek");
+    expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(true);
+    expect(await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8")).toBe(previous);
+    expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("user data");
+    expect(await strataManagedReceipt(root)).toBe(true);
+  });
   it("rejects a modified component manifest before replacing the current installation", async () => {
     const { root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);

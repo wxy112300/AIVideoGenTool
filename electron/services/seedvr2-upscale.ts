@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -76,14 +79,15 @@ function matchingCheckpoint(
 async function concatSeedVr2Segments(
   taskId: string,
   files: HistoryFile[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate
 ): Promise<{ file: HistoryFile; intermediatePaths: string[] }> {
   const paths = files.map((file) => file.absolutePath).filter((value): value is string => Boolean(value));
   if (paths.length !== files.length || paths.length < 2) {
-    throw new Error("SeedVR2 分段输出不完整，无法合并最终视频。");
+    throw new Error(t(uiKeys.upscaleChecks.seedIncomplete));
   }
   const outputPath = finalOutputPath(paths[0]!);
-  if (outputPath === paths[0]) throw new Error("SeedVR2 分段输出文件名无效，无法确定最终文件名。");
+  if (outputPath === paths[0]) throw new Error(t(uiKeys.upscaleChecks.seedFilename));
   const directory = path.join(os.tmpdir(), "local-video-studio", `${taskId}-seedvr2-concat`);
   const concatPath = path.join(directory, "segments.txt");
   const temporaryOutput = path.join(directory, path.basename(outputPath));
@@ -103,7 +107,7 @@ async function concatSeedVr2Segments(
       signal
     });
     const stat = await fs.stat(temporaryOutput).catch(() => null);
-    if (!stat?.isFile() || stat.size <= 0) throw new Error("FFmpeg 没有生成可用的 SeedVR2 合并视频。");
+    if (!stat?.isFile() || stat.size <= 0) throw new Error(t(uiKeys.upscaleChecks.seedMergeMissing));
     const replacement = `${outputPath}.${taskId}.replacement.mp4`;
     const backup = `${outputPath}.${taskId}.backup.mp4`;
     await fs.copyFile(temporaryOutput, replacement);
@@ -157,6 +161,7 @@ export async function executeNativeSeedVr2Upscale(
   deps: ExecuteNativeSeedVr2UpscaleDependencies
 ): Promise<NativeSeedVr2UpscaleResult | null> {
   if (task.modelId !== "seedvr2-native-int8") return null;
+  const t = createNativeTranslator(deps.settings.uiLocale).t;
   await deps.updateTask(task.id, {
     seedVr2Progress: {
       phase: "planning",
@@ -166,7 +171,7 @@ export async function executeNativeSeedVr2Upscale(
       segmentProgress: 0
     },
     progress: 1,
-    stage: "根据物理内存、显存与目标分辨率规划 SeedVR2 切片"
+    stage: t(uiKeys.upscaleChecks.seedPlanning)
   });
   const measuredResources = await getComputeResourceSnapshot().catch(() => undefined);
   const resources = measuredResources
@@ -183,7 +188,7 @@ export async function executeNativeSeedVr2Upscale(
   const reusableFrames = task.seedVr2Checkpoint?.planVersion === 2
     ? task.seedVr2Checkpoint.framesPerSegment
     : undefined;
-  const plan = nativeSeedVr2SegmentPlan(task, resources, reusableFrames);
+  const plan = nativeSeedVr2SegmentPlan(task, resources, reusableFrames, t);
   if (!plan) {
     await deps.updateTask(task.id, { seedVr2Progress: undefined });
     return null;
@@ -210,7 +215,8 @@ export async function executeNativeSeedVr2Upscale(
   const [targetWidth, targetHeight] = upscaleDimensions(
     task.sourceWidth,
     task.sourceHeight,
-    task.targetHeight
+    task.targetHeight,
+    t
   );
   await deps.updateTask(task.id, {
     seedVr2Checkpoint: checkpoint,
@@ -222,7 +228,7 @@ export async function executeNativeSeedVr2Upscale(
       segmentProgress: 0
     },
     progress: Math.min(94, completedFrameCount() / plan.totalFrames * 94),
-    stage: `SeedVR2 自动分段 · ${checkpoint.completed.length}/${plan.segments.length}`
+    stage: t(uiKeys.upscaleChecks.seedSegments, { completed: checkpoint.completed.length, total: plan.segments.length })
   });
   deps.logger.info("queue", "seedvr2-segment-plan", "Native SeedVR2 long video will run in resource-adaptive bounded segments", {
     taskId: task.id,
@@ -263,7 +269,7 @@ export async function executeNativeSeedVr2Upscale(
         segmentProgress: 0
       },
       progress: Math.min(94, segment.startFrame / plan.totalFrames * 94),
-      stage: `SeedVR2 片段 ${segment.index + 1}/${plan.segments.length} · 提交工作流`
+      stage: t(uiKeys.upscaleChecks.seedSubmitting, { number: segment.index + 1, total: plan.segments.length })
     });
     const submitted = await submitTask(segmentTask, deps.settings, deps.signal, {
       uploadedUpscaleSource,
@@ -276,7 +282,7 @@ export async function executeNativeSeedVr2Upscale(
     lastPromptId = submitted.promptId;
     await deps.updateTask(task.id, {
       comfyPromptId: submitted.promptId,
-      stage: `SeedVR2 片段 ${segment.index + 1}/${plan.segments.length} · 等待 ComfyUI`
+      stage: t(uiKeys.upscaleChecks.seedWaiting, { number: segment.index + 1, total: plan.segments.length })
     });
     deps.logger.info("comfy", "prompt-submitted", "SeedVR2 segment workflow submitted to ComfyUI", {
       taskId: task.id,
@@ -310,7 +316,7 @@ export async function executeNativeSeedVr2Upscale(
             segmentProgress: localProgress
           },
           progress: Math.min(94, aggregate),
-          stage: `SeedVR2 片段 ${segment.index + 1}/${plan.segments.length} · ${stage}`
+          stage: t(uiKeys.upscaleChecks.seedProgress, { number: segment.index + 1, total: plan.segments.length, stage: stage })
         });
       },
       deps.onPreview,
@@ -324,7 +330,7 @@ export async function executeNativeSeedVr2Upscale(
     const files = await deps.requireExistingVideoOutput(result, [deps.settings.outputDirectory]);
     const file = files.find((candidate) => candidate.absolutePath && isVideoOutputFilename(candidate.filename));
     if (!file || !await usableFile(file)) {
-      throw new Error(`SeedVR2 第 ${segment.index + 1} 段没有返回可用视频文件。`);
+      throw new Error(t(uiKeys.upscaleChecks.seedOutput, { number: segment.index + 1 }));
     }
     checkpoint = {
       ...checkpoint,
@@ -350,7 +356,7 @@ export async function executeNativeSeedVr2Upscale(
         segmentProgress: checkpoint.completed.length === plan.segments.length ? 100 : 0
       },
       progress: Math.min(94, completedFrameCount() / plan.totalFrames * 94),
-      stage: `SeedVR2 自动分段 · 已完成 ${checkpoint.completed.length}/${plan.segments.length}`
+      stage: t(uiKeys.upscaleChecks.seedCompleted, { completed: checkpoint.completed.length, total: plan.segments.length })
     });
     deps.logger.info("queue", "seedvr2-segment-completed", "Native SeedVR2 segment completed and checkpointed", {
       taskId: task.id,
@@ -363,7 +369,7 @@ export async function executeNativeSeedVr2Upscale(
   const orderedFiles = plan.segments.map((segment) =>
     checkpoint.completed.find((item) => item.index === segment.index)?.file
   );
-  if (orderedFiles.some((file) => !file)) throw new Error("SeedVR2 分段检查点不完整，无法合并最终视频。");
+  if (orderedFiles.some((file) => !file)) throw new Error(t(uiKeys.upscaleChecks.seedCheckpoint));
   await deps.updateTask(task.id, {
     seedVr2Progress: {
       phase: "merging",
@@ -373,9 +379,9 @@ export async function executeNativeSeedVr2Upscale(
       segmentProgress: 100
     },
     progress: 95,
-    stage: "全部切片完成 · 合并 SeedVR2 分段并保留原音轨"
+    stage: t(uiKeys.upscaleChecks.seedMerging)
   });
-  const merged = await concatSeedVr2Segments(task.id, orderedFiles as HistoryFile[], deps.signal);
+  const merged = await concatSeedVr2Segments(task.id, orderedFiles as HistoryFile[], deps.signal, t);
   await deps.updateTask(task.id, { progress: 98 });
   deps.logger.info("queue", "seedvr2-segments-merged", "Native SeedVR2 segments were merged into the final video", {
     taskId: task.id,

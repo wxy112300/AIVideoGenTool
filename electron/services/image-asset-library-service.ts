@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { randomUUID } from "node:crypto";
 import type {
   AppState,
@@ -38,6 +41,8 @@ export class ImageAssetLibraryService {
     this.fileSystem = deps.fileSystem ?? nativeImageAssetLibrary;
   }
 
+  private get t(): Translate { return createNativeTranslator(this.deps.store.getSettings().uiLocale).t; }
+
   isRunning(): boolean {
     return this.operationRunning;
   }
@@ -59,7 +64,8 @@ export class ImageAssetLibraryService {
         const result = await this.fileSystem.scan(
           snapshot,
           library,
-          (progress) => this.report(progress)
+          (progress) => this.report(progress),
+          this.t
         );
         this.deps.logger.info("assets", "image-library-scan-completed", "图片素材库扫描完成", {
           operationId,
@@ -83,7 +89,7 @@ export class ImageAssetLibraryService {
   organize(): Promise<ImageAssetLibraryOperationResult> {
     return this.runExclusive(async () => {
       if (this.deps.store.get().queueRunning) {
-        throw new Error("队列运行期间不能整理图片素材库，请先暂停或等待任务完成。");
+        throw new Error(this.t(uiKeys.serviceChecks.organizeRunning));
       }
       const operationId = randomUUID().slice(0, 8);
       try {
@@ -100,7 +106,8 @@ export class ImageAssetLibraryService {
         const prepared = await this.fileSystem.organize(
           snapshot,
           library,
-          (progress) => this.report(progress)
+          (progress) => this.report(progress),
+          this.t
         );
         const next = await this.deps.store.update((state) => {
           this.applyPreparedState(state, prepared.state);
@@ -110,7 +117,7 @@ export class ImageAssetLibraryService {
           phase: "completed",
           current: 1,
           total: 1,
-          message: "图片素材库整理完成"
+          message: this.t(uiKeys.serviceChecks.organizeDone)
         });
         this.deps.logger.info(
           "assets",
@@ -142,7 +149,7 @@ export class ImageAssetLibraryService {
   cleanup(paths: string[]): Promise<ImageAssetLibraryOperationResult> {
     return this.runExclusive(async () => {
       if (this.deps.store.get().queueRunning) {
-        throw new Error("队列运行期间不能清理图片素材库，请先暂停或等待任务完成。");
+        throw new Error(this.t(uiKeys.serviceChecks.cleanupRunning));
       }
       const operationId = randomUUID().slice(0, 8);
       try {
@@ -157,13 +164,14 @@ export class ImageAssetLibraryService {
           library,
           paths,
           (progress) => this.report(progress),
-          () => this.deps.store.get()
+          () => this.deps.store.get(),
+          this.t
         );
         this.report({
           phase: "completed",
           current: 1,
           total: 1,
-          message: "素材库清理完成"
+          message: this.t(uiKeys.serviceChecks.cleanupDone)
         });
         this.deps.logger.info("assets", "image-library-cleanup-completed", "图片素材库清理完成", {
           operationId,
@@ -188,7 +196,7 @@ export class ImageAssetLibraryService {
   }
 
   private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.operationRunning) throw new Error("图片素材库正在处理中，请稍候。");
+    if (this.operationRunning) throw new Error(this.t(uiKeys.serviceChecks.assetBusy));
     this.operationRunning = true;
     try {
       return await operation();

@@ -44,6 +44,15 @@ const launch = () => ({ executable: path.join(install, ".venv", "Scripts", "pyth
     "--port", String(port), "--api-key", apiKey, "--api-monitor", "--script-delay", "0.005",
     "--script", "A scripted fixture thought.</think>\n\nOfficial fixture final." ] });
 const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
+// Windows can complete process-tree termination before TCP teardown is visible.
+// Still require the port to close within a bounded interval; never accept a leftover listener.
+async function assertPortClosed() {
+  const deadline = Date.now() + 2000;
+  while (await isLocalPortInUse(port)) {
+    assert.ok(Date.now() < deadline, `Owned Strata port ${port} remained open after stopping`);
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
 const api = async (route, options = {}) => fetch(`http://127.0.0.1:${port}${route}`, { ...options, headers: { ...headers, ...options.headers } });
 let pid, restartedPid;
 try {
@@ -87,7 +96,7 @@ try {
     maxTokens: 2048, temperature: 1, reasoning: { effort: "medium", budgetTokens: 0 } };
   const controller = new AbortController();
   await assert.rejects(service.chat(request, controller.signal, () => controller.abort(new Error("fixture cancellation"))), /fixture cancellation/u);
-  assert.equal(service.snapshot().phase, "stopped"); assert.equal(await isLocalPortInUse(port), false);
+  assert.equal(service.snapshot().phase, "stopped"); await assertPortClosed();
   assert.throws(() => process.kill(pid, 0));
   restartedPid = (await service.start(launch())).pid;
   assert.ok((await service.chat(request)).endsWith("Official fixture final."));
@@ -97,7 +106,7 @@ try {
   await fs.writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ ...report, directory }));
 } finally {
-  await service.stop(); assert.equal(await isLocalPortInUse(port), false);
+  await service.stop(); await assertPortClosed();
   for (const ownedPid of [pid, restartedPid].filter(Boolean)) assert.throws(() => process.kill(ownedPid, 0));
   console.log(JSON.stringify({ cleanup: true }));
 }

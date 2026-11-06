@@ -195,7 +195,7 @@ describe("image asset library application boundary", () => {
     const current = serviceFixture(state, fileSystem);
 
     await expect(current.service.scan()).resolves.toBe(scan);
-    expect(scanOperation).toHaveBeenCalledWith(state, library, expect.any(Function));
+    expect(scanOperation).toHaveBeenCalledWith(state, library, expect.any(Function), expect.any(Function));
     expect(current.publish).toHaveBeenCalledWith("image-assets:progress", {
       phase: "scanning",
       current: 1,
@@ -242,7 +242,7 @@ describe("image asset library application boundary", () => {
       total: 1,
       message: "图片素材库整理完成"
     });
-    expect(organize).toHaveBeenCalledWith(state, current.library, expect.any(Function));
+    expect(organize).toHaveBeenCalledWith(state, current.library, expect.any(Function), expect.any(Function));
   });
 
   it("rejects organize and cleanup during queue execution without touching the filesystem", async () => {

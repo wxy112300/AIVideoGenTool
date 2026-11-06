@@ -1768,7 +1768,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
         if (args.includes("get-url")) return "https://github.com/molbal/ComfyUI-GGUF.git";
         if (args.includes("status")) return " M __init__.py\n";
         if (args.includes("rev-parse") && args.at(-1) === "HEAD") {
-          return "61843db580f8549a85b0a1ed850d550079fadfee";
+          return "da5f435cd9a9e54ad27eed417ed72b1f2543ef41";
         }
         return "";
       }

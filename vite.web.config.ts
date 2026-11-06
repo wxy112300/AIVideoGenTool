@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
@@ -8,10 +8,43 @@ export default defineConfig({
   plugins: [{ name: "typescript-source-imports", enforce: "pre", resolveId(source, importer) {
     if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return;
     const candidate = path.resolve(path.dirname(importer), `${source.slice(0,-3)}.ts`);
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) return normalizePath(candidate);
   } }],
   resolve: { extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".json"] },
-  build: { outDir: path.resolve("dist/web"), emptyOutDir: true },
+  build: {
+    outDir: path.resolve("dist/web"),
+    emptyOutDir: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: (moduleId) => {
+                const match = moduleId.match(/[\\/]src[\\/]core[\\/]locales[\\/]([^\\/]+)\.ts$/);
+                return match ? `locale-${match[1]}` : null;
+              },
+              test: /[\\/]src[\\/]core[\\/]locales[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "i18n-keys",
+              test: /[\\/]src[\\/]core[\\/]i18n-keys\.ts$/,
+              priority: 4,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "i18n-runtime",
+              test: /[\\/]src[\\/]core[\\/]i18n\.ts$/,
+              priority: 3,
+              includeDependenciesRecursively: false
+            }
+          ]
+        }
+      }
+    }
+  },
   server: { host: "127.0.0.1", port: 5174, strictPort: true,
     proxy: { "/api": { target: "http://127.0.0.1:8790", changeOrigin: true,
       configure(proxy) { proxy.on("proxyReq", (request) => {

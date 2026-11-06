@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { hasDeepSeekEngine } from "./strata-deepseek-engine.js";
 import { canUninstallStrata, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import type { Settings, StrataPreparationStatus } from "../../src/types.js";
 import { strataModelRoot, strataModelScanRoots, strataPreparationProfiles } from "../../src/core/strata-preparation.js";
@@ -59,6 +60,7 @@ export async function scanStrataPreparation(
     managedInstalled: await strataManagedReceipt(installDirectory) && Boolean((await inspect(path.join(installDirectory, ".venv/Scripts/python.exe")))?.size),
     sourcePresent: files.slice(0, STRATA_SOURCE_FILES.length).every((file) => file.present),
     enginePresent: files.slice(STRATA_SOURCE_FILES.length).every((file) => file.present),
+    deepSeekEnginePresent: await hasDeepSeekEngine(installDirectory),
     scannedAt: new Date().toISOString()
   };
   return { status, profiles };

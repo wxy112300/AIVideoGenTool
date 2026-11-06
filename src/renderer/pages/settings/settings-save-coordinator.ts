@@ -127,7 +127,7 @@ export class SettingsSaveCoordinator {
       }
     }
 
-    const requiresEnvironmentRefresh = pathsChanged ||
+    const requiresEnvironmentRefresh = pathsChanged || previousSettings.uiLocale !== savedState.settings.uiLocale ||
       savedState.settings.ltxExtensionModelProfile !== previousProfile;
     const environmentRefreshed = !requiresEnvironmentRefresh ||
       Boolean(await this.dependencies.refreshEnvironment(savedState.settings));

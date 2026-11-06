@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
 import type { AppState, ComfyRuntimeState, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
 import {
   classifyFailureForRecovery,
@@ -35,6 +37,7 @@ export async function cleanupCancelledQueueTask(
   settings: Settings,
   worker: Promise<void> | null
 ): Promise<void> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const cancellationIsCurrent = (): boolean =>
     deps.isCancellationCurrent?.(taskId) ?? true;
   const updateCancelledTask = async (patch: Partial<QueueTask>): Promise<boolean> => {
@@ -53,8 +56,8 @@ export async function cleanupCancelledQueueTask(
       await waitWithTimeout(worker, 15_000);
       await updateCancelledTask({
         status: "cancelled",
-        stage: "任务已取消，ComfyUI 进程已停止",
-        error: "任务已取消"
+        stage: t(uiKeys.queueRecovery.cancelStopped),
+        error: t(uiKeys.queueRecovery.cancelled)
       });
       return;
     }
@@ -68,9 +71,9 @@ export async function cleanupCancelledQueueTask(
       await updateCancelledTask({
         status: "cancelled",
         stage: runtime.phase === "error"
-          ? "任务已取消，ComfyUI 当前不可用"
-          : "任务已取消，ComfyUI 未连接",
-        error: "任务已取消"
+          ? t(uiKeys.queueRecovery.cancelUnavailable)
+          : t(uiKeys.queueRecovery.cancelDisconnected),
+        error: t(uiKeys.queueRecovery.cancelled)
       });
       return;
     }
@@ -87,8 +90,8 @@ export async function cleanupCancelledQueueTask(
     if (!hasSubmittedPrompt && workerSettled) {
       await updateCancelledTask({
         status: "cancelled",
-        stage: "任务已取消，尚未提交到 ComfyUI",
-        error: "任务已取消"
+        stage: t(uiKeys.queueRecovery.cancelUnsubmitted),
+        error: t(uiKeys.queueRecovery.cancelled)
       });
       return;
     }
@@ -140,8 +143,8 @@ export async function cleanupCancelledQueueTask(
         await (deps.freeComfyMemory ?? freeMemory)(settings);
         await updateCancelledTask({
           status: "cancelled",
-          stage: "任务已取消，显存已释放",
-          error: "任务已取消"
+          stage: t(uiKeys.queueRecovery.cancelFreed),
+          error: t(uiKeys.queueRecovery.cancelled)
         });
         return;
       } catch (error) {
@@ -154,8 +157,8 @@ export async function cleanupCancelledQueueTask(
     const recovery = await (deps.restartComfyUi ?? restartLocalService)("comfy", settings);
     await updateCancelledTask({
       status: "cancelled",
-      stage: recovery.ok ? "任务已取消，ComfyUI 已后台重启" : "任务已取消，但 ComfyUI 清理失败",
-      error: recovery.ok ? "任务已取消" : `任务已取消；ComfyUI 清理失败：${recovery.message}`
+      stage: recovery.ok ? t(uiKeys.queueRecovery.cancelRestarted) : t(uiKeys.queueRecovery.cancelCleanupFailed),
+      error: recovery.ok ? t(uiKeys.queueRecovery.cancelled) : t(uiKeys.queueRecovery.cancelCleanupDetail, { detail: recovery.message })
     });
   } catch (error) {
     deps.logger.error("comfy", "cancel-cleanup-failed", "Background cancellation cleanup failed", {
@@ -163,8 +166,8 @@ export async function cleanupCancelledQueueTask(
     });
     await updateCancelledTask({
       status: "cancelled",
-      stage: "任务已取消，但 ComfyUI 清理失败",
-      error: `任务已取消；ComfyUI 清理失败：${safeLogErrorMessage(error)}`
+      stage: t(uiKeys.queueRecovery.cancelCleanupFailed),
+      error: t(uiKeys.queueRecovery.cancelCleanupDetail, { detail: safeLogErrorMessage(error) })
     }).catch(() => undefined);
   }
 }
@@ -220,6 +223,7 @@ export async function recoverQueueFailure(
   const cudaContextFailure = recoveryDecision.kind === "cuda-context";
   const memoryPressureStall = recoveryDecision.kind === "memory-pressure-stall";
   const recoverySettings = deps.settingsForTask(task, store.get().settings);
+  const t = createNativeTranslator(recoverySettings.uiLocale).t;
   const runtimeState = deps.getComfyRuntimeState?.();
   const memoryPressureRecoveryAllowed = !memoryPressureStall || (
     isLocalComfyUrl(recoverySettings.comfyUrl) &&
@@ -288,13 +292,13 @@ export async function recoverQueueFailure(
   const failedState = await updateTask(task.id, {
     status: aborted ? "cancelled" : "failed",
     error: aborted
-      ? "任务已中止，ComfyUI 已停止当前采样。"
+      ? t(uiKeys.queueRecovery.interrupted)
       : memoryPressureStall
         ? memoryPressureRecoveryAllowed
-          ? "检测到持续显存/系统内存压力且任务长期没有生产性进展，正在重启 ComfyUI。"
-          : "检测到持续显存/系统内存压力，但当前 ComfyUI 不是应用管理的本地运行时，未执行进程恢复。"
+          ? t(uiKeys.queueRecovery.pressureRestart)
+          : t(uiKeys.queueRecovery.pressureExternal)
         : cudaContextFailure
-          ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
+          ? t(uiKeys.queueRecovery.cudaRestart, { detail: error instanceof Error ? error.message : String(error) })
           : error instanceof Error ? error.message : String(error),
     performanceStats
   });
@@ -317,7 +321,7 @@ export async function recoverQueueFailure(
       state.queueRunning = false;
       const failedTask = state.queue.find((item) => item.id === task.id);
       if (failedTask) {
-        failedTask.error = `${originalError} 自动恢复失败：${recovery.message}`;
+        failedTask.error = t(uiKeys.queueRecovery.recoveryFailed, { detail: originalError, recovery: recovery.message });
         failedTask.updatedAt = new Date().toISOString();
       }
     });
@@ -399,8 +403,8 @@ export async function recoverQueueFailure(
         updatedAt: new Date().toISOString(),
         comfyPromptId: undefined,
         progress: 0,
-        stage: `自动重试 ${nextAttempt}/${retryLimit}${attentionFallback ? ` · Attention ${attentionFallback}` : ""}`,
-        error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。${attentionFallback ? ` H3 Attention 已切换为 ${attentionFallback}。` : ""}`,
+        stage: t(uiKeys.queueRecovery.retryStage, { attempt: nextAttempt, limit: retryLimit, attention: attentionFallback ? ` · Attention ${attentionFallback}` : "" }),
+        error: t(uiKeys.queueRecovery.retryDetail, { detail: originalError, attempt: nextAttempt, limit: retryLimit, attention: attentionFallback ? t(uiKeys.queueRecovery.attentionFallback, { mode: attentionFallback }) : "" }),
         automaticRetryAttempt: nextAttempt
       });
       state.queuePauseBoundary = adjustQueuePauseBoundary(
@@ -417,10 +421,10 @@ export async function recoverQueueFailure(
     return;
   }
   const exhaustedError = memoryPressureStall
-    ? `${originalError} 显存压力卡死保护已重启 ComfyUI 并重试 ${retryAttempt} 次，仍未取得生产性进展，已跳过此任务。`
-    : `${originalError} ComfyUI 已恢复就绪。${recoveredState.settings.autoRetryFailedTasks
-      ? `自动重试已达到上限（${retryLimit} 次），已跳过此任务。`
-      : "自动重试未开启，已跳过此任务。"}`;
+    ? t(uiKeys.queueRecovery.pressureExhausted, { detail: originalError, attempts: retryAttempt })
+    : t(uiKeys.queueRecovery.recoveredDetail, { detail: originalError, retry: recoveredState.settings.autoRetryFailedTasks
+      ? t(uiKeys.queueRecovery.retryLimit, { limit: retryLimit })
+      : t(uiKeys.queueRecovery.retryDisabled) });
   await updateTask(task.id, {
     error: exhaustedError
   });

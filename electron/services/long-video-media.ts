@@ -4,6 +4,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { HistoryFile } from "../../src/types.js";
 import { assertLongVideoMediaEvidence, type LongVideoExecutionSnapshot, type LongVideoMediaEvidence } from "../../src/core/long-video/execution.js";
+import { longVideoOutputFps } from "../../src/core/long-video/delivery.js";
 
 const exec = promisify(execFile);
 export async function hashLongVideoFile(filename: string, signal: AbortSignal) {
@@ -35,7 +36,7 @@ export async function inspectLongVideoMedia(snapshot: LongVideoExecutionSnapshot
   if (!video || !audio) throw new Error("Full-prefix movie requires video and audio streams");
   const rational = (value: unknown) => { const [n, d = "1"] = String(value).split("/"); return Number(n) / Number(d); };
   const sampleRate = Number(audio.sample_rate), channels = Number(audio.channels);
-  if (Number(video.width) !== snapshot.profile.width || Number(video.height) !== snapshot.profile.height || rational(video.avg_frame_rate) !== 24 ||
+  if (Number(video.width) !== snapshot.profile.width || Number(video.height) !== snapshot.profile.height || rational(video.avg_frame_rate) !== longVideoOutputFps(snapshot) ||
       !Number.isSafeInteger(channels) || channels < 1 || channels > 8 || !Number.isSafeInteger(sampleRate) || sampleRate < 1) throw new Error("Unexpected output geometry/audio format");
   const audioBytes = await decodedAudioBytes(filename, signal);
   const decodedSamples = audioBytes / (2 * channels);
@@ -45,7 +46,7 @@ export async function inspectLongVideoMedia(snapshot: LongVideoExecutionSnapshot
   const sha256 = await hashLongVideoFile(filename, signal);
   const after = await fs.stat(filename);
   if (before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error("Movie changed during validation");
-  const evidence: LongVideoMediaEvidence = { files: [{ path: filename, bytes: after.size, sha256 }], videoFrames: Number(video.nb_read_frames),
+  const evidence: LongVideoMediaEvidence = { files: [{ path: filename, bytes: after.size, sha256 }], videoFrames: Number(video.nb_read_frames), videoFps: rational(video.avg_frame_rate),
     audioContentSamples: contentSamples, audioSampleRate: sampleRate, codecPaddingSamples: padding, fullDecode: true };
   assertLongVideoMediaEvidence(snapshot, evidence);
   return evidence;

@@ -23,6 +23,7 @@ function fakeIpc(): { ipc: IpcMain; handlers: Map<string, Handler> } {
 function fakeStore(state: AppState) {
   return {
     get: () => structuredClone(state),
+    getSettings: () => structuredClone(state.settings),
     update: async (mutator: (next: AppState) => void) => {
       mutator(state);
       return state;

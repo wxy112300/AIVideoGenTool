@@ -49,7 +49,7 @@ describe("Settings model card layout", () => {
     const markup = renderSettingsInstallGuideDialog({ configuredModelDirectory: "C:\\models", selectedInstallGuide: { profileName: "Video", component: component() } }, { ...options, locale });
     const root = document.createElement("div"); root.innerHTML = markup;
     expect(markup).not.toContain("settings.system.installGuideDownloadInstruction");
-    expect(root.querySelector("#open-install-download")?.textContent).toBe(locale === "en-US" ? "View source" : locale === "zh-TW" ? "檢視來源" : "查看来源");
+    expect(root.querySelector("#open-install-download")?.textContent).toBe(locale === "en-US" ? "View Source" : locale === "zh-TW" ? "檢視來源" : "查看来源");
     expect(root.querySelectorAll(".install-guide-fields code").length).toBeGreaterThanOrEqual(3);
     expect(root.querySelector("#open-install-directory")?.hasAttribute("disabled")).toBe(false);
   });

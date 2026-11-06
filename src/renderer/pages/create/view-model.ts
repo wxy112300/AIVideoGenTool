@@ -19,6 +19,7 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import { createTranslator, type Translate } from "../../../core/i18n";
+import { isLongVideoDraftActive } from "../../../core/long-video/capability";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
@@ -146,7 +147,7 @@ export function videoResolutionOptionsForDraft(
     draft.videoLoras.length === 0 &&
     h3LatentSaveModeSavesJointAv(h3SharedLatentSaveModeFor(draft)) &&
     jointAvSerializerInstalled;
-  return h3Create1080 ? [...base, 1080] : base;
+  return h3Create1080 || isLongVideoDraftActive(draft) ? [...new Set([...base, 1080])] : base;
 }
 
 export function resolutionAfterJointAvPreference(
@@ -204,7 +205,8 @@ export function imageEditEnqueueBlockReason(
   const imageLoraBlockReason = imageLoraConfigurationError(
     draft.imageLoras,
     draft.modelId,
-    imageModelInputCount
+    imageModelInputCount,
+    t
   );
   if (imageLoraBlockReason) return imageLoraBlockReason;
   if (referenceBlockReason) return referenceBlockReason;
@@ -334,7 +336,8 @@ export function buildImageEditPageViewModel(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0,
     imageCapability.textOnlyOutputWidth ?? 0,
-    imageCapability.textOnlyOutputHeight ?? 0
+    imageCapability.textOnlyOutputHeight ?? 0,
+    t
   );
   const imageResolutionOptions = imageResolutionOptionsFor(
     basePicture?.width ?? 0,
@@ -342,7 +345,8 @@ export function buildImageEditPageViewModel(
     imageCapability.textOnlyOutputWidth ?? 0,
     imageCapability.textOnlyOutputHeight ?? 0,
     selectedAspectRatio,
-    imageCapability.outputMultiple ?? (basePicture ? imageCapability.customOutputMultiple ?? 8 : 8)
+    imageCapability.outputMultiple ?? (basePicture ? imageCapability.customOutputMultiple ?? 8 : 8),
+    t
   );
   const imageModelProfiles = sortProfilesByCatalogOrder(
     environmentScan?.modelProfiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired) ?? [],
@@ -521,6 +525,7 @@ export function buildImageEditPageViewModel(
       state.settings.uiLocale, !promptEnhancing && !promptStarting && !promptReleasing),
     imagePromptEnhanceBlocked,
     imagePromptAiDisabled,
+    promptSetupReason: promptStatus.recoveryHint ?? "",
     releasePromptControlTitle: promptModelActionTitle(options.promptRuntimeControlTitle(), state.settings.promptModelId,
       state.settings.uiLocale, promptRuntimeView.left.intent === "start"),
     releasePromptControlIconName: promptRuntimeView.left.icon,
@@ -982,7 +987,7 @@ export function buildVideoCreatePageViewModel(
   let continuumPromptBlockReason = "";
   if (isManagedContinuum && extending && prompt.text.trim()) {
     try {
-      continuumTimelinePromptForTask({ ...draft, prompt: prompt.text.trim() }, draft.duration);
+      continuumTimelinePromptForTask({ ...draft, prompt: prompt.text.trim() }, draft.duration, state.settings.uiLocale);
     } catch (error) {
       continuumPromptBlockReason = error instanceof Error ? error.message : String(error);
     }
@@ -1151,6 +1156,7 @@ export function buildVideoCreatePageViewModel(
     releasePromptControlIconName: promptRuntimeView.left.icon,
     releasePromptControlDisabled: (promptStarting && !isStrataPromptModel(state.settings.promptModelId)) || promptRuntimeView.left.disabled || state.queueRunning,
     promptAiDisabled,
+    promptSetupReason: promptStatus.recoveryHint ?? "",
     promptEnhanceButtonTitle: promptModelActionTitle(promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)
       : promptBoundaryBlockReason

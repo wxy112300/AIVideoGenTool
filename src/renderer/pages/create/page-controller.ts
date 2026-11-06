@@ -20,6 +20,7 @@ import { mountImageEditController, type ImageEditControllerOptions } from "./ima
 import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
+import { paintRangeFill } from "../../shared/ui/runtime";
 import { creationDraftForMode } from "../../../core/creation-drafts";
 import {
   h3LatentSaveModeFor,
@@ -483,7 +484,7 @@ export function mountCreatePageController(
       (options.refreshVideoControls ?? options.context.requestRender)();
   }, { signal });
 
-  for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
+  for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "seed"]) {
     root.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const state = getState();
       if (!state) return;
@@ -627,7 +628,6 @@ export function mountCreatePageController(
         id === "spectrum-mode" ? { spectrumMode: value as Draft["spectrumMode"], spectrumModeUserSet: true } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
-        id === "motion" ? { motion: value as Draft["motion"] } :
         { seed: value ? Number(value) : null };
       options.patchDraft(patch);
       options.syncEnqueueUi();
@@ -675,7 +675,7 @@ export function mountCreatePageController(
     const duration = Math.max(minimumDuration, Math.min(visibleMaximum, commit ? Math.round(requested * 10) / 10 : requested));
     options.patchDraft({ duration });
     options.syncEnqueueUi();
-    if (range) range.value = String(duration);
+    if (range) { range.value = String(duration); paintRangeFill(range); }
     if (number && (source === range || commit)) number.value = duration.toFixed(1);
     const added = root.querySelector("#trim-added");
     const total = root.querySelector("#trim-total");

@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "./ui-translator.js";
+import type { Translate } from "../src/core/i18n.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { StateFileSafety, StateRecoveryError, durableCandidate, readOptionalFile, stateDigest, validateStateFile, withStateFileLock } from "./services/state-file-safety.js";
@@ -642,6 +645,7 @@ export class JsonStore implements StateRepository {
   private loadFailed = false;
   private lastRaw?: string;
   private readonly safety: StateFileSafety;
+  private get t(): Translate { return this.loadFailed ? this.safety.translate : createNativeTranslator(this.state.settings.uiLocale).t; }
   private library?: LibraryStateStorage;
 
   constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
@@ -708,7 +712,7 @@ export class JsonStore implements StateRepository {
       if (savedImages.length !== imageHistory.length || savedImages.some(project => {
         const restored = imageHistory.find(item => item.id === project.id);
         return !restored || (project.versions ?? []).some(version => !restored.versions.some(item => item.id === version.id));
-      })) throw new StateRecoveryError("Image history normalization would discard records or versions; recovery is required");
+      })) throw new StateRecoveryError(this.safety.translate(uiKeys.storageSafety.normalizationLoss));
       const history = (saved.history ?? []).map(migrateHistoryAsset);
       const savedDraft = saved.draft;
       const migratedSavedDraft = migrateDraftH3LatentSaveMode(savedDraft);
@@ -1099,7 +1103,7 @@ export class JsonStore implements StateRepository {
     } catch (error) {
       this.loadFailed = true;
       await this.library?.close();
-      throw new StateRecoveryError(`Unable to open ${this.filename}. Existing data has not been replaced with defaults. ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw new StateRecoveryError(this.safety.translate(uiKeys.storageSafety.openFailed, { path: this.filename, detail: error instanceof Error ? error.message : String(error) }), { cause: error });
     }
     this.notifyCommitted();
     this.library?.finishStartup();
@@ -1158,15 +1162,15 @@ export class JsonStore implements StateRepository {
     const write = this.writeChain.catch(() => undefined).then(() => withStateFileLock(this.filename, async () => {
       this.assertWritable();
       const previous = await readOptionalFile(this.filename);
-      if (previous !== this.lastRaw) throw new StateRecoveryError("State changed outside this writer; reopen it before saving");
+      if (previous !== this.lastRaw) throw new StateRecoveryError(this.t(uiKeys.storageSafety.externalWriter));
       const requestedLibrary = snapshot.settings.libraryDirectory?.trim() || this.options.libraryDirectory || snapshot.libraryStorage?.directory;
       if (snapshot.libraryStorage && requestedLibrary && path.resolve(requestedLibrary).toLowerCase() !== path.resolve(snapshot.libraryStorage.directory).toLowerCase()) resumePublication = await this.options.beforeLibraryMove?.();
       const prepared = this.library && snapshot.libraryStorage ? await this.library.prepare(snapshot) : undefined;
       const raw = prepared?.raw ?? JSON.stringify(snapshot, null, 2);
-      validateStateFile(raw);
+      validateStateFile(raw, this.t);
       if (previous === raw) return;
       if (previous !== undefined) await this.safety.backup(previous);
-      const temporary = await durableCandidate(this.filename, raw);
+      const temporary = await durableCandidate(this.filename, raw, this.t);
       await replaceStateFile(temporary, this.filename);
       this.lastRaw = raw;
       if (prepared) {
@@ -1191,7 +1195,7 @@ export class JsonStore implements StateRepository {
   }
 
   private assertWritable(): void {
-    if (this.loadFailed) throw new StateRecoveryError("State recovery is required before saving; original files have been preserved");
+    if (this.loadFailed) throw new StateRecoveryError(this.t(uiKeys.storageSafety.saveRecovery));
   }
 
   private notifyCommitted(): void {

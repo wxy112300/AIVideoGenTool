@@ -1,5 +1,5 @@
 import type { AssetVersion, Draft } from "../../types.js";
-import { H3_BASE_RESOLUTIONS } from "../video-resolution.js";
+import { H3_BASE_RESOLUTIONS, H3_CUSTOM_RESOLUTION_RANGE, clampCustomVideoResolution } from "../video-resolution.js";
 import { normalizeH3Steps } from "../workflow.js";
 import { proposeLongVideoExtension } from "./layout.js";
 import { longVideoRunSourceForVersion } from "./run-source.js";
@@ -9,7 +9,10 @@ import { continuumProfileLoras } from "./group-workflow.js";
 /** History Continue preserves the Run, rather than resetting seed or re-encoding its tail. */
 export function longVideoContinuationDraft(current: Draft, assetId: string, version: AssetVersion, filename: string, id: ScriptIdFactory): Draft {
   const source = longVideoRunSourceForVersion(assetId, version), profile = source.profile;
-  const resolution = H3_BASE_RESOLUTIONS.find(value => Math.round(value / 32) * 32 === Math.min(profile.width, profile.height));
+  const size = Math.min(profile.width, profile.height);
+  const custom = clampCustomVideoResolution(size, H3_CUSTOM_RESOLUTION_RANGE);
+  const resolution = H3_BASE_RESOLUTIONS.find(value => Math.round(value / 32) * 32 === size) ??
+    (Math.round(custom / 32) * 32 === size ? custom : size === 1088 ? 1080 : undefined);
   const videoLoras = continuumProfileLoras(profile);
   const steps = normalizeH3Steps(profile.steps, profile.h3?.modelId ?? "minimax_h3_continuum", videoLoras);
   if (!resolution || steps !== profile.steps) throw new Error("This group Run size/steps cannot be edited by the continuation route");
@@ -26,7 +29,7 @@ export function longVideoContinuationDraft(current: Draft, assetId: string, vers
     h3ContinuumSequence: undefined, h3ContextLatentPath: undefined, h3MotionContextAsset: undefined,
     h3ContinuumReviewAction: undefined, h3ContinuumRerollFromChunk: undefined, h3ContinuumTakeGroup: undefined,
     h3ContinuumTakeRevisionId: undefined, h3ContinuumTakeAction: undefined,
-    spectrumMode: profile.spectrumMode ?? "off", spectrumModeUserSet: true, videoLoras, frameInterpolation: "off", ratio: "source",
+    spectrumMode: profile.spectrumMode ?? "off", spectrumModeUserSet: true, videoLoras, frameInterpolation: profile.delivery?.frameInterpolation ?? "off", ratio: "source",
     spectrumModelAwareMode: profile.h3?.spectrumModelAwareMode ?? "off",
     seed: profile.seed, steps, resolution, longVideoRunSource: source, longVideoScript: script,
     longVideoEditor: { key: "minimax_h3_continuum:video", active: true, confirmed: false, seeded: true, seconds: profile.chunkSeconds, count: 1 } };

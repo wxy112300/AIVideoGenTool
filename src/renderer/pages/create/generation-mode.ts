@@ -90,6 +90,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     for (const id of ["#duration", "#duration-number"]) {
       const field = root.querySelector<HTMLInputElement>(id); if (field) field.max = String(maximum);
       if (field && select.dataset.fixedDuration) { field.min = field.max = field.value = select.dataset.fixedDuration; field.disabled = true; }
+      if (field?.type === "range") paintRangeFill(field);
     }
     const ticks = nativeDuration?.querySelector(".create-duration-ticks");
     if (ticks) {

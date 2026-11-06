@@ -2,6 +2,9 @@ import type { ComfyUiCompatibility } from "../../src/types.js";
 import type { DependencyBadRange } from "../../src/core/catalog/dependencies/types.js";
 import { availableComfyNodeIds } from "./dependency-scanner.js";
 import { COMFYUI_RECOMMENDED_VERSION } from "../../src/core/catalog/dependencies/comfy-core.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 
 export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "43cb4ff";
 export const MINIMAX_H3_MINIMUM_COMFY_VERSION = "0.31.0";
@@ -64,12 +67,13 @@ export function evaluateMiniMaxH3CoreSupport(
 export function evaluateMiniMaxH3CompatibilityState(
   version: string,
   revision: string,
-  checkedFrom: ComfyUiCompatibility["checkedFrom"]
+  checkedFrom: ComfyUiCompatibility["checkedFrom"],
+  t: Translate = createNativeTranslator(undefined).t
 ): Pick<ComfyUiCompatibility, "compatibilityState" | "compatibilityNotice"> {
   if (version && !versionAtLeast(version, MINIMAX_H3_MINIMUM_COMFY_VERSION)) {
     return {
       compatibilityState: "error",
-      compatibilityNotice: `当前 ComfyUI v${version} 低于 H3 最低支持版本 v${MINIMAX_H3_MINIMUM_COMFY_VERSION}。`
+      compatibilityNotice: t(uiKeys.comfyCompatibility.belowMinimum, { current: version, minimum: MINIMAX_H3_MINIMUM_COMFY_VERSION })
     };
   }
   const knownBad = minimaxH3KnownBadCoreRanges.find((range) =>
@@ -84,12 +88,12 @@ export function evaluateMiniMaxH3CompatibilityState(
     return { compatibilityState: "warning", compatibilityNotice: knownBad.reason };
   }
   if (!version && !revision && !checkedFrom) {
-    return { compatibilityState: "unknown", compatibilityNotice: "等待连接服务或读取所选核心源码。" };
+    return { compatibilityState: "unknown", compatibilityNotice: t(uiKeys.comfyCompatibility.waiting) };
   }
   if (!version || !revision) {
-    return { compatibilityState: "warning", compatibilityNotice: "已找到核心或服务，但版本与 Git 提交信息尚未完整读取。" };
+    return { compatibilityState: "warning", compatibilityNotice: t(uiKeys.comfyCompatibility.incomplete) };
   }
-  return { compatibilityState: "supported", compatibilityNotice: "版本与提交信息已读取；是否可用仍以节点扫描和工作流验证为准。" };
+  return { compatibilityState: "supported", compatibilityNotice: t(uiKeys.comfyCompatibility.read) };
 }
 
 export function evaluatePromptCoreSupport(

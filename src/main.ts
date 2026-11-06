@@ -152,6 +152,7 @@ const promptRuntimeControlTitle = (settings = state.settings): string =>
 
 function upscaleDialogHtml(): string {
   return renderUpscaleDialog({
+    uiLocale: state.settings.uiLocale,
     dialog: ui.upscaleDialog,
     history: state.history,
     environment: settingsWorkspaceCoordinator.getEnvironmentScan(),

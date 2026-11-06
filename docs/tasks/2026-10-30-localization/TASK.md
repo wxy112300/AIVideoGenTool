@@ -1,8 +1,12 @@
 # 全应用本地化优化
 
-状态：进行中（2026-11-01）。长视频专属剩余本地化按用户指示留在长视频计划。第三十一批完成 H3 运行时 schema 与图片可用性诊断，共 18 个三语言语义键，focused 与最终全量验收通过。未完成其余应用覆盖，也未进入全量英文措辞、长度和功能动作大小写审校。影响等级：patch；本轮未改版本、提交或打包。
+状态：本轮自动源码工作已收尾（2026-11-03）。固定工作包 1/2/3 已完成；用户要求停止真实页面检查，工作包 4 剩余路径和工作包 6 的实屏验收转交人工，不再阻塞本轮。既有三语言 84 个组合及两处修复证据保留。本轮完成英文动作大小写/术语与长度源码审校、Settings 侧栏及入口引用、退出标题和 History 无障碍名称，相关自动检查及构建已完成，仓库全量仍有既有独立 NAS 测试失败，详见证据。独立 NAS Browser 不需要翻译，长视频专属继续延期，独立 Strata Agent 不在主 App 收尾范围。影响等级：patch；版本保持 0.67.6，未提交或发布。
 
 用户要求、覆盖范围、执行顺序和验收方式见 [PLAN.md](PLAN.md)。
+
+范围澄清（2026-11-03）：用户明确 NAS Browser 是独立工具，不需要翻译；从本任务验收清单移除，不改其实现或部署包。此前日志中 NAS 测试失败仅是全量仓库检查的既有结果，不是本地化待办；主 App 自带的局域网浏览入口另按其实际功能检查。
+
+验收调整（2026-11-03，用户最新指示）：停止继续真实页面检查，后续漏查由人工负责。自动工作转为源码/资源审校和自动回归；未覆盖的真实路径留在人工清单，不虚报通过，也不因缺少这部分证据反复延长本轮。
 
 ## 已处理与证据范围
 
@@ -266,16 +270,134 @@
 - 初次 focused 的两份服务测试在 logger 初始化时遇到系统共享临时目录旧日志 EPERM，未进入测试。随后通过进程级 TEMP/TMP 指向本任务 temp/localization-31-tmp 隔离，focused 通过；但首次全量在该仓库盘临时目录中出现 NAS/资料迁移八项超时及超时后的 ENOTEMPTY 清理错误，日志 temp/localization-31-verify.log。改用系统临时盘下本任务独立目录后，失败两文件 26 项原断言通过，日志 temp/localization-31-storage-recheck.log，再执行全量。没有删除共享旧日志、修改生产日志规则、放宽超时/断言或跳过失败测试。
 - 未启动 Electron、ComfyUI/GPU、安装软件或下载权重；测试只使用自有临时文件和 fetch 替身，不作为真实按钮/生成或视觉审校证据。两处自有临时根在全量结束后核对准确绝对路径并清理，保留 temp 下的验收日志；共享旧日志保持。既有其他任务改动保持；当前磁盘版本已由其他工作推进至 0.67.5，本任务没有执行版本更新。
 
-## 待完成
+## 集中收尾：工作包 1、2（H3 静态校验与图片适配器）
 
-1. 继续遗漏修复：独立 Strata Agent 语言来源及软件维护、`environment.ts` 其余安装/运行配置、Attention 旧快照和其他扫描固定字段仍需处理；Strata core/owner/模型/MTP 准备、共享服务和控制向量已覆盖上文范围。长视频专属剩余内容按用户要求交接 PLAN。生成提交外层、H3 运行时 schema 和图片可用性已处理，但 `h3-workflow-contract.ts` 静态校验、各图片 workflow adapter 的底层固定诊断及其语言传递仍待处理；继续检查其他上传消费者、资产库与队列/图片/upscale 校验及资料库更底层恢复说明。保留运行管理元数据、模型面向提示词、外部诊断和路径。
-2. 检查有内容的 Queue/History、详情页、Prompt/Extend/Upscale、Settings 其他标签，以及 LAN/NAS 浏览实际正常/加载/错误状态。当前空页面 smoke 不覆盖这些状态；未做原生菜单和对话框的桌面实操验收。
-3. 核查运行时 workflow 消息的调用语言与旧提示词版本其他内建标签；原始用户内容、技术标识、文件路径及旧兼容匹配保留，不能机械替换全部中文。
-4. 遗漏覆盖后，逐条审校全局、Settings、模型和提示词界面译文；英文功能按钮/可执行菜单按用户规则使用标题式大小写，说明句保持句子用途。当前 Copy file、版本未知 notice 重复和英文全角分隔等仍待处理。
-5. 对英文侧栏、按钮、选项、标题和窄视口做长度审校，必要时拆分共用语义键；补齐相应真实状态与错误恢复验收。影响提交门槛时再走缺输入 → 恢复 → 实际按钮 → task ID；本轮未改门槛，也未宣称真实生成通过。
+- H3 静态节点、引用/output、artifact 与提示词占位、普通 Continuum/managed Extend、bilinear/learned/ultimate 二采约束接入可选 Translate，调用链透传；1080p 入队预检和提交传入保存语言。未改任何节点/引用/枚举/时间网格条件，也未改长视频 director 专属代码或模型指令。
+- Qwen 2511、Qwen 2.1 official/Turbo/GGUF/Q6、FLUX.2 Klein、HiDream、OmniGen2、Z-Image/Turbo、LaMa、BiRefNet、MOSS 两模型的编译/构图/校验、自有 runtime schema 和共享 Picture/Canvas/尺寸诊断接入三语言；ImageModelAdapter 在原参数后增加可选翻译，校验绑定保留原 recipe 位置。renderer 比例/分辨率选项、原生入队/提交和 Tessera 可选 Qwen anchor 传入当前翻译；旧简体调用兼容。LoRA 通用保护也传入翻译，模型/LoRA 名称和 pictureRoles 元数据按契约保持原文。
+- 共 155 个语义键（含共享选项和调用包装），不作覆盖率。源码盘点后，本轮目标文件中只余必须保留的中文 Picture 引用识别正则；capability/运行管理元数据按契约不纳入普通 UI 翻译。模型正文、可见中文用户内容、Picture 编号映射、节点图/采样/尺寸/seed、固定文件路径、队列快照和校验决策均保持。
+- 新增 24 项有行为断言的检查：14 个 adapter 三语言图/编译输出与 task 不变、缺节点及 schema 错误同样拦截；6 个共享 H3 工作流原图通过/破坏后相同拒绝，错误保留技术标识；选项值保持、空 Picture/未知 LoRA 原始名称、真实 submitImageTask 调用在 upload/POST 前返回当前语言。既有 focused 10 文件 150 项通过，日志 temp/localization-workflows-focused.log；新增原生提交两项随最终全量通过。
+- npm.cmd run verify 完整通过：319 个单元文件 / 3078 项、7 个集成文件 / 127 项、typechecked 生产构建及 440 对比度检查，日志 temp/localization-workflows-verify.log。进程级 VITEST_MAX_WORKERS=8、独立系统临时根，未放宽断言/超时或配置。LAN 692.23 kB，既有 500 kB 提醒保留。后续只精简 5 条新增英文选项，另做相关 focused 3 文件 48 项及 typechecked build，见 temp/localization-workflows-label-check.log、localization-workflows-final-build.log；最终构建再次通过三语言真实 UI 检查，未据此重复全部 GPU/运行测试。
+- 实际 Electron 隔离 fixture 经真实 Settings 语言 select/change 与保存按钮，切英文/繁体/简体，实际导航图片模式读取比例/尺寸选项，值相同且无页面横向溢出，queue/history/imageHistory 保持，Prompt unloaded/idle。报告 temp/create-smoke-8s67uk/localization-workflow-ui.json，英文截图已查看；发现新英文 source 选项过长后缩为 Source · After Upload。初次脚本未等待 Settings 完整保存就导航，触发保护确认；脚本等待 is-clean 后三语言通过，未改生产导航/保护。早先自有 Electron 已退出，复核后仅 resume 同一 fixture，未干预其他进程。
+- 未运行真实模型或 GPU、未下载/安装资产、未操作用户媒体。现有 cleanup helper 请求关闭，报告同目录 localization-workflow-cleanup.json，最终自有 PID 96544，CDP 12105、测试 ComfyUI 19818 已复核无监听；该 helper 不证明原生关闭生命周期。此次不修改 NAS 服务/网页或部署包。
 
-下一批从第 1 项继续；只更新本 TASK 的覆盖与验证，不另建计划或把阶段性检查标为全应用完成。
+## 集中收尾：工作包 3（队列、放大、环境与恢复入口）
+
+- 视频/图片/普通续写入队、参考媒体缺失、模型/节点/LoRA 保护、原生 1080p 与 Learned 3D 预检、DLSS provider 预检、队列编辑/排序/暂停边界/取消清理保护接入三语言。QueueEnqueueService、QueueMutationService 与素材库 service 在消息产生时读取保存语言；纯任务工厂增加末尾可选 Translate，原生入口显式传入完整词典。不改原有校验决策、入队快照或错误类别。
+- H3 Refiner、Tessera 和 SeedVR2 自有构图诊断，以及 Refiner/Tessera 几何、源时长校验接入翻译；对话框、controller、队列编辑、工厂和 renderUpscaleWorkflow 向下透传。保留节点图、attention、采样/seed、音轨、尺寸/帧数和 optional Qwen anchor 冻结身份，不将普通续写与长视频专属代码混为一项。
+- 环境完整/依赖扫描的安装类型、数据目录固定包装、三类 DLSS provider 的就绪证据及阻塞说明、Depth Anything 离线准备状态接入三语言。扫描判断、六文件校验证据与版本/hash 标识、远程连接限制、原始外部诊断、运行管理元数据和旧技术匹配保持；未新增下载/安装或更改 schema 门槛。
+- 原生选择资料库恢复的四条直接保护接入保存语言，复用已有资料迁移词条；继续保留 StateRecoveryError、锁、备份、完整库校验及原子切换。底层 StateFileSafety/LibraryRecordStore 等自己的错误尚未全部处理，不能据此称资料恢复链路全部完成。旧“无需 Prompt”仅经 promptVersionDisplayLabel 翻译，持久化标签和其他自定义标签不变。
+- 本轮共 206 个三语言语义键（含 1 个显示标签），不作为完成率。新增两文件 12 项行为检查：已有 service 切语言后报错、拒绝前无写回、素材操作互斥/运行中保护及恢复；Refiner/Tessera 图和冻结 task 跨语言相同、嵌套源/缺节点拒绝；真实临时输入字节保持；Depth Anything 缺输入→用户提供小文件→可用但未 runtimeVerified；资料库拒绝后原数据不变、空目录恢复保留完整状态；旧标签显示不改 snapshot。均为隔离文件/受控服务测试，不作为 GPU、真实原生对话框或按钮入队证据。
+- focused 最终队列/放大/素材/对话框/生产 DOM 旅程 12 文件 208 项通过，日志 temp/localization-services-final-focused.log；环境/恢复/语言资源等 7 文件 138 项通过，日志 temp/localization-services-environment-focused.log，二者有重叠，不相加作总数。类型检查通过。初次新测试用了允许 T2V 的 H3 无图草稿、提前触发共同 Refiner 保护的 Tessera 夹具，已纠正夹具以触发预定保护；没有为测试修改生产门槛。
+- 最终 npm.cmd run verify 的单元层为 320 文件通过、1 文件失败；3090 项通过、1 项失败。剩余是 tests/nas-commit.test.ts 的 late cover 用例，在 readNasObject → confinedFile 报 File outside library root，单独复查仍复现；该文件有独立任务未提交改动，本轮未编辑或覆盖其实现/断言，不跳过该项、不报告 verify 全绿。较早的 queue-controls 替身缺 getSettings 导致两项失败，已补齐替身接口，原清理保护断言保持并通过。最终日志 temp/localization-services-closure-verify.log；此前复查见 localization-services-recheck.log。
+- verify 在单元失败后提前退出，其余集成 7 文件 127 项、typechecked build 和 440 对比度检查单独执行均通过，最终结果见 temp/localization-services-closure-integration.log、localization-services-closure-build.log、localization-services-closure-contrast.log；LAN 入口约 731 kB，已有 500 kB 提醒保留。未放宽超时、修改测试配置或使用跳过项凑通过；只用进程级 VITEST_MAX_WORKERS=8 与独立系统临时根隔离。所有检查结束后核对准确绝对路径并清理本任务系统临时根，保留仓库 temp 下的验收日志；最终 diff --check 通过。
+- 已运行 guide upscale 和 guide assets。未启动 Electron、ComfyUI/GPU，未下载软件/权重，未操作用户媒体；本轮不新增实际按钮→task ID、真实扫描/原生恢复窗口或视觉布局验收，留在工作包 4/6。NAS 服务/网页/部署包未修改；独立 NAS TASK/测试改动均保留。
+
+## 工作包 3 补充：底层素材库消息链路
+
+- src/infrastructure/image-asset-library.ts 的扫描/归档/校验/保存/清理进度，缺图、哈希校验/复制/冲突及清理时队列启动保护共 10 条三语言语义键接入可选 Translate。ImageAssetLibraryFileSystemPort 保留原参数位置，在末尾接收可选翻译；service 使用当前保存语言，native adapter 原有函数绑定直接透传。视频/图片/普通续写的归档调用也传入当前翻译，不修改长视频专属代码。
+- 不改源文件/内容哈希/归档文件命名、复制校验和 rename 顺序、引用去重/更新范围、进度 phase/current/total、实时已提交引用重检、同步删除保护及清理范围。原始文件名、路径和系统异常保持。旧 helper 调用继续默认简体，没有在 IPC 或持久化快照加入语言字段。
+- 新增 7 项真实隔离文件检查：同一 service 连续切三语言，经默认 native port 扫描→归档→清理，原图/受引用归档保护、共享路径身份与哈希一致；三语言缺图/损坏归档继续拒绝，不改原图、坏档或输入引用；service 预检后队列启动，底层按当前语言停止清理并保留孤儿文件。另有既有新增引用竞争保护测试保持。两处旧端口 mock 断言只增加翻译函数参数，原状态/事件断言保持。
+- focused 8 文件 109 项及类型检查通过，日志 temp/localization-asset-pipeline-focused.log、localization-asset-pipeline-typecheck.log。新增检查不依赖真实模型/GPU，不作为真实原生窗口或清理按钮可达证明。已运行 guide assets；无 Electron/ComfyUI 启动、软件/权重下载或用户媒体操作。NAS 服务/网页/部署包及独立 NAS 文件均未改。
+- 最终 verify 的单元层 321 文件/3097 项通过，仍只有独立 NAS late cover 用例的 File outside library root 失败（共 322 文件/3098 项），没有跳过或覆盖该文件，不能称全量通过。因 verify 提前中止，另跑集成 7 文件/127 项、typechecked build 与 440 对比度检查，均通过；LAN 733.40 kB，已有 500 kB 提醒保留。证据 temp/localization-asset-pipeline-verify.log、localization-asset-pipeline-integration.log、localization-asset-pipeline-build.log、localization-asset-pipeline-contrast.log。进程级 VITEST_MAX_WORKERS=8，未改配置/超时；最终 diff --check 通过，准确路径复核后已清理自有系统临时根，仓库 temp 验收日志保留。
+
+## 工作包 3 补充：资料文件、记录库和用户资料迁移
+
+- state-file-safety.ts、library-record-store.ts、user-data-migration.ts 与 JsonStore 的 50 条固定诊断接入三语言，覆盖资料结构/身份、未来 schema、备份、候选读回、写入排他、内容地址/不可变对象/文本/提交校验、迁移目录冲突及原件/备份/辅助文件保护。保留 StateRecoveryError、ErrorOptions.cause、LVS_LIBRARY_DESTINATION_* 前缀、技术集合名/hash/文件路径、JSON/文件系统原始异常；未将内部 Transient state is unavailable 开发契约错误当普通 UI 文案。
+- 启动安全层从同一次已解析的资料对象恢复语言后校验，选用已验证备份恢复时也读取其语言；无法恢复语言时保留默认简体。JsonStore 的打开/恢复前禁写包装沿用安全层语言，正常写入使用当前设置。记录库经可选内存 getter 跟随 LibraryStateStorage 当前事务语言，恢复入口、候选文件和迁移日志也透传翻译。UserDataMigration 在验证迁移日志前只读恢复语言，prepare 不重复读取上下文。
+- 不改记录/manifest/backup/journal 格式与内容寻址、缓存/无变化提交、源/备份校验、未来版本不降级、写锁/lease 范围与释放、候选写入/读回/原子替换、备份保留、迁移提交和原件清理条件。校验函数复用已解析值，避免仅为语言新增一次完整 JSON 解析；新语言状态仅留内存，不进入持久化或哈希。业务端冲突判断仍按稳定标识/错误类型，未发现依赖这些英文正文的控制匹配。
+- 新增 7 项真实隔离文件检查：三语言启动拒绝从保存设置获取语言，嵌套 cause/集合技术名保持、禁写且无空配置；有旧备份也不覆盖未来 schema；同一记录库切换语言，长中文文本/未知字段、对象文件字节、hash、无变化提交及冲突 marker 相同，坏记录按当前语言拒绝且不覆盖；三语言在验证坏迁移日志前取得语言，校验失败保留全部原件/备份，恢复源字节后按原流程完成。既有测试仅将英文固定消息断言换为对应默认简体说明，文件/类型/计数/异常码断言及超时保持。
+- focused 10 文件 159 项通过，日志 temp/localization-storage-focused.log；随后去除重复解析/上下文读取，相关 4 文件 92 项和 typecheck 再通过，日志 localization-storage-read-check.log、localization-storage-typecheck.log。初次 focused 16 个失败均为默认提示从英文转为简体后的旧消息断言，未通过删断言、放宽保护或跳过测试处理。
+- 已运行 guide library-storage；没有启动 Electron/ComfyUI/GPU、下载或操作用户资料，所有物理文件验证均位于自有系统临时根。没有新增真实原生错误窗口、选择资料库/迁移按钮或重启 UI 证据，不推广为工作包 4/6 已验；NAS 服务/网页/部署包和独立 NAS 修改保持。
+- 最终代码状态完整 verify 的单元层为 322 文件/3104 项通过、1 文件/1 项失败（共 323 文件/3105 项）；仍是独立 tests/nas-commit.test.ts 的 late cover 路径校验 File outside library root，没有跳过或修改该项，不报告 verify 全绿。verify 提前退出后另跑集成 7 文件/127 项、typechecked build 与 440 对比度检查均通过。日志 temp/localization-storage-final-verify.log、localization-storage-final-integration.log、localization-storage-final-build.log、localization-storage-final-contrast.log；LAN 742.09 kB，既有 500 kB 提醒保持。进程级 VITEST_MAX_WORKERS=8，无超时/配置放宽；最终 diff --check 通过，所有检查结束后核对准确绝对路径并清理本轮系统临时根，保留仓库 temp 验收日志。
+
+## 工作包 3 补充：放大 provider 与 SeedVR2
+
+- DLSS5、AetherScale、Konohamaru 参数/目标规范化、数值范围、冻结尺寸、object_info schema、API 图/连接/输入/输出保护共 120 个语义键接入三语言；固定说明翻译，节点/输入/枚举/版本/hash/输出索引仍原样。纯函数末尾增加可选 Translate，内部链路透传，旧调用默认简体；结构化结果字段和技术标识数组保持，不改 schema/图校验条件。
+- 补齐 SeedVR2 分段规划、提交/等待/进度包装、完成/合并及缺输出/检查点保护，并补齐文件名参数、队列图片复制兜底和 History 缺父作品错误，本轮合计 137 个三语言键。入队、编辑、任务工厂、执行预检/构图、分段计划、History/AV 收集、队列卡片/编辑回流和放大对话框传入当前语言。SeedVR2 是现有普通放大链路，不修改长视频 director 专属实现或交接计划。
+- 保留 graph/client 提交载荷、模型/源作品版本身份、options 冻结、输出尺寸、采样/seed、帧率、分段计划/检查点、FFmpeg 命令与原音轨、文件名/重复编号、进度数值与旧历史兼容。新阶段消息使用操作语言，原始子阶段文字保持，不批量回写旧诊断或 stage；不新增持久化语言字段、节点/软件安装或 GPU 启动。
+- 新增 15 项有行为断言的检查：三个 provider（含 Konohamaru 有/无补帧）的图/快照跨三语言一致；缺 schema 的技术节点身份、坏连接和冻结尺寸继续拒绝；真实原生执行预检在 HTTP/准备前返回当前语言，队列错误编辑不写回；命名与重复编号不变、History 缺父作品不创建派生记录。受控 SeedVR2 提交/等待替身验证三语言阶段、原始子阶段与数值进度、首段请求身份和缺输出时不接受检查点。不执行真实模型/FFmpeg，不作为真实分段成片或按钮可达证据。
+- 将既有 DLSS5/Konohamaru schema 原样提取为 tests/fixtures/upscale-object-info.ts，原测试与新检查共用同一份夹具；AetherScale 继续用现有应用 v0.5.5 fixture。未删 schema/graph/边/输出断言，六项旧测试首次失败属于默认英文说明转简体，改为对应具体说明后通过；新测试的英文 do/does 语法匹配及 SeedVR2 合法目标夹具已核对，不改生产校验配合测试。
+- focused 15 文件 215 项与 typecheck 通过，日志 temp/localization-upscale-checks-focused.log、localization-upscale-checks-typecheck.log。已运行 guide upscale；未启动 Electron、ComfyUI/GPU 或下载软件/权重，未操作用户媒体。renderer 仅传递翻译、不改 DOM/交互门槛；真实正常/错误窗口、按钮→task ID 和布局仍留在工作包 4/6。NAS 服务/网页/部署包及独立 NAS 改动保持。
+- 最终 verify 单元层 323 文件/3119 项通过，仍只有独立 NAS late cover 用例在 readNasObject → confinedFile 的 File outside library root 失败（共 324 文件/3120 项）；未跳过、覆盖该文件或报告全量全绿。verify 提前退出后，另跑集成 7 文件/127 项、typechecked build 与 440 对比度检查均通过。证据 temp/localization-upscale-checks-verify.log、localization-upscale-checks-integration.log、localization-upscale-checks-build.log、localization-upscale-checks-contrast.log；LAN 765.27 kB，既有 500 kB 提醒保留。仅进程级 VITEST_MAX_WORKERS=8，无配置/超时放宽；最终 diff --check 通过，准确绝对路径检查后已清理本轮自有系统临时根，仓库 temp 验收日志保留。
+
+## 工作包 3 终查：执行、恢复与旧标签
+
+- 新增 71 个三语言资源：队列恢复 21 个、执行/隔离/图片批次/显存停滞/H3 双遍和普通续写阶段 39 个、共享工作流错误 8 个、旧出厂标签 3 个。主进程沿保存语言格式化新消息；纯工作流 helper 末尾增加可选 locale，保持默认简体。原始运行阶段/恢复诊断、技术节点和 reason ID、模型正文、重试次数/回退顺序/暂停与任务身份均保持，不回写旧 stage/error。
+- 普通 Continuum 首帧/Timeline 保护、JointAV serializer 与 PDD 构图错误传递当前语言；H3 新策略拒绝补齐翻译，旧 Attention 读取器现有 locale seam 已回归。workflow-ipc 的无 locale 校验仅用于布尔能力判断、不展示错误；内置 workflow 的原始 label 是元数据，Create 已在显示层翻译摘要，保持磁盘值。长视频专属调用仍按用户要求延期。
+- “新建”“手动编辑”“扩写 N”“图片优化 N”及对应已发布英文/繁体标签只在显示层识别；复用既有图片优化资源，自定义标签/近似拼写/零或前导零编号保持字面值，不改历史、草稿、编号或版本创建规则。
+- 新增 15 项行为回归：三语言 CUDA 回退和重试耗尽、恢复失败原文、取消及过期清理拒绝；合法 Timeline/serializer 图跨语言一致，非法正文和旧 Attention 分叉仍拒绝；旧标签显示不改变数据。执行器另验真实生产队列函数的两张图片身份/进度包装、运行时隔离失败不提交/不产生 History、worker 释放。只用受控进程/提交/输出替身，不作为真实按钮、ComfyUI 或生成证据。
+- focused 10 文件/217 项与 typecheck 通过，证据 temp/localization-terminal-focused.log、localization-terminal-typecheck.log；已运行 settings-runtime guide。终查发现 electron/services/extension-media.ts 的上下文/边界帧提取、Prompt 增强源/裁剪检查及 Continuum 拼接帧数仍有 10 处固定诊断未接语言，需连同调用者在本包补齐；不能因此报告工作包 3 完成。
+- 最终 verify 单元层共 325 文件/3135 项，324 文件/3134 项通过；唯一失败仍是独立 NAS late cover 用例在 readNasObject → confinedFile 的 File outside library root，未跳过或编辑该文件。verify 提前退出后另跑集成 7 文件/127 项、typechecked build 和 440 对比度检查均通过，证据 temp/localization-terminal-verify.log、localization-terminal-integration.log、localization-terminal-build.log、localization-terminal-contrast.log。LAN 776.34 kB，已有 500 kB 体积提醒保留；仅进程级 VITEST_MAX_WORKERS=8，没有放宽断言/超时/配置。本轮未启动 Electron/ComfyUI/GPU、未安装或下载软件/权重、未操作用户媒体或改 NAS 包；长视频专属实现保持。全部检查完成后核对绝对路径并清理自有系统临时根，保留仓库 temp 验收日志；最终 diff --check 通过。
+
+## 工作包 3 收尾：普通续写媒体底层
+
+- extension-media 的上下文/边界帧/运动音频提取、Prompt 增强源文件与裁剪保护、边界帧回退失败及嵌套 cause、Continuum 拼接帧数错误共 11 个资源接入三语言。纯媒体 helper 末尾接受可选 Translate、旧调用保持默认简体；ComfyUI 提交、QueueExecutionSideEffects 合并、两类 PromptApplicationService 增强和 Strata 参考视频抽帧透传当前翻译。自定义 prepareFrame 仍收到原来三个参数，模型指令、Picture/Video 编号及用户正文不翻译。
+- 不改 FFmpeg/ffprobe 命令、裁剪/回退时间和顺序、帧预算/校验门槛、外部错误 cause、临时目录或复制/替换/回滚规则。新增 8 项行为回归，覆盖三语言默认增强适配器的缺源拒绝→恢复、请求不变和清理；裁剪越界在解码前拒绝、七次边界帧尝试的准确时序及原始错误；空上下文输出跨语言同命令；帧数错误/不可读在替换前拒绝并保留源与生成文件，恢复后按相同命令完成替换。新文件使用受控子进程和隔离物理小文件，不把合成内容称为可播放成片。
+- focused 7 文件/102 项和 typecheck 通过，证据 temp/localization-extension-focused.log、localization-extension-typecheck.log，已运行 guide extend。既有 prompt-extension-media 三种模型的真实 FFmpeg 合成视频回归也通过，继续保持两轮拼接的 698/1034 帧；这是媒体处理证据，不是模型生成或真实 UI 按钮证据。首次 focused 仅有一处数学等价表达的浮点尾差导致三语言失败，改用 12 位精度数值断言，未改生产回退时间或放宽保护。
+- 已复核此模块全部生产消费者，主 App 调用均传递保存语言，本模块不再有固定中文诊断。此处关闭工作包 3 的已定位代码接线范围；真实页面漏翻仍由工作包 4 捕获，译文和布局由工作包 5/6 验收，不能将此状态推广为全应用验收完成。NAS 服务/网页/部署包、长视频专属实现及独立任务改动保持。
+- 最终 verify 单元层共 326 文件/3143 项，325 文件/3142 项通过；唯一失败仍是独立 NAS late cover 用例的 File outside library root，未跳过或修改。另跑集成 7 文件/127 项、typechecked build、440 对比度检查均通过，日志 temp/localization-extension-verify.log、localization-extension-integration.log、localization-extension-build.log、localization-extension-contrast.log。LAN 778.45 kB，已有 500 kB 体积提醒保留；仅进程级 VITEST_MAX_WORKERS=8，无超时/配置放宽。未启动 Electron/ComfyUI/GPU、下载模型或操作用户媒体；全部检查完成后核对准确绝对路径并清理本轮系统临时根，仓库 temp 日志保留。最终 diff --check 通过，版本保持 0.67.6，未提交或发布。
+
+## 工作包 4：主 App 有内容页面与状态（部分完成）
+
+- 用户澄清独立 NAS Browser 不需要翻译，已修正 PLAN 与本 TASK 的范围；不改其实现/部署包，不将独立工具失败当作本地化待办。主 App 的局域网浏览是另一条实际产品路径，继续保留验收。
+- 新建 temp/create-smoke-fIlcs7 隔离 Electron fixture：独立 userData/资料库/日志、空闲专用 ComfyUI/CDP 端口，以 FFmpeg 合成 2 秒测试图案视频和单色 PNG；经现有生产工厂/History 持久化 helper 构造两条视频（含缺文件与双版本）、一个图片项目和 waiting/failed/cancelled 三条停止任务。未复制用户媒体，不启动队列/模型。使用现有 launch/close/resume 桥接和真实鼠标事件；不替换 window.studio 或 renderer。
+- 真实检查发现英文 Settings 显示中文“核心版本低于 H3 最低支持版本”，Queue 徽标 title 显示中文“当前未连接”。新增 9 个三语言资源，evaluateMiniMaxH3CompatibilityState 接受可选 Translate 并由扫描传入；ComfyRuntimeStateController 的探测消息接受翻译，performance IPC 传入操作语言。保留版本/已知风险判断、探测两次失败迟滞、app-owned 活跃任务保护、operationId/旧操作拒绝、ownership、外部 message 和已存日志，不新增持久化/公共 IPC 字段。运行管理元数据及技术描述按契约保留。
+- 新增 6 项三语言行为回归，覆盖兼容性各状态/原版本号与已知风险规则不变，探测的 starting 权威、running→ready、degraded→stopped→ready、归属/操作号和原始外部错误保持。旧 IPC 测试仅补验翻译参数，保留活跃 Prompt 与 listener ownership 断言；focused 5 文件/43 项和 typecheck 通过，日志 temp/localization-populated-focused.log、localization-populated-typecheck.log。
+- 新构建中按保存/切换语言→等待保存完成→实际扫描→稳定状态检查，三语言各 22 个组合（66）：Settings 的 11 个标签、停止 Queue 的 waiting/failed/cancelled、视频/图片 History、两个菜单、正常视频解码详情、缺文件播放错误、放大对话框、图片详情与大图、Create。另在三语言检查续写/图片编辑/图生视频三模式与 Prompt 方法菜单，18 个组合。语言名称始终是三种自称；扫描版本阻塞和 Queue 悬浮提示在三语言复验通过。两轮前后深比较 queue/history/imageHistory 完全一致，USER_TEXT_中文提示词/原始错误保留。后台 focus emulation；正常合成视频 readyState≥2、图片可见，截图人工复核英文视频/图片详情和繁体放大弹窗。
+- 证据：fixture 内 populated-review.json（66）、populated-modes.json（18）及对应截图；temp/localization-populated-review.log、localization-populated-modes.log。所有组合检查页级横向溢出为 false，但不代替工作包 6 的长文案/支持视口验收。英文详情的 Copy file、Continue creation 等动作大小写及图片模型值省略仍留工作包 5/6；元数据和原始日志中的中文不机械替换。本轮仅查空输入/禁用/菜单和现有内容，未新增按钮→task ID 或 GPU 生成证据，不能将上述状态推广为所有功能路径通过。
+- 自动化初次遇到正在扫描的 Queue 初始化提示、语言保存尚未结束的导航保护和鼠标悬浮遮挡；改为等待真实保存/扫描稳定、移开指针后再实际点击，最终两轮报告均通过。未移除 disabled、调内部 handler、绕过保存保护或放宽生产门槛。
+- 最终 verify 单元层 326 文件/3149 项中 325 文件/3148 项通过；仍只有既有独立 NAS late cover 用例 File outside library root 失败，未跳过或修改。另跑集成 7 文件/127 项、typechecked build、440 对比度检查通过；日志 temp/localization-populated-verify.log、localization-populated-integration.log、localization-populated-build.log、localization-populated-contrast.log。LAN 780.03 kB，已有 500 kB 提醒保留。进程级 VITEST_MAX_WORKERS=8，无超时/配置放宽。版本保持 0.67.6。
+- 资源收尾：每次 launch/resume 均经现有 close-fixture helper 关闭；最终 runtime 为 stopped/unknown、没有 app-owned ComfyUI。已复核本轮三个 Electron PID 和专用 CDP/ComfyUI 监听退出，准确绝对路径检查后清理自有系统测试临时根；fixture、报告和截图保留以便续验。JS 关闭只用于 Harness 清理，不算原生窗口退出验收。最终 diff --check 通过，无意外删除、版本更新、提交或发布。
+
+## 用户停止真实检查后的源码收尾
+
+- 用户指示前尝试原生窗口检查，node_repl/Computer Use 启动报 helper_unknown_error，另一原生入口也未能启动；没有实操系统菜单或文件对话框。App 局域网浏览仅在自有 fixture 从 Settings 启动监听，浏览器导航期间的文档初始化竞态使脚本提前退出，不能算三语言网页已验。用户要求停止后未重试；已通过保存自有 fixture 的 lanBrowserEnabled=false 关闭监听，再用既有 close-fixture helper 关闭 App。复核本轮 profile 的 Electron 进程及 CDP/网页/ComfyUI 端口均退出，未杀其他任务进程、改用户媒体或启动模型。
+- 审校英文动作文字 164 条，覆盖 Create/Queue/History/Settings/共享弹窗/App 局域网浏览及 Settings 独立文案包。按具体用途统一 Copy File、Add to Queue、Save Settings、Move Up 等；保留说明句、禁用原因、状态、图片 alt 和元数据的句式，不机械把全部资源改为标题式。统一 Resume Queue，精简 Install、Create Video、Continue Editing、Enlarge、Manage Assets，修正 Stop Tasks and Exit，避免误导为等待生成完成。启动/重启明确为 ComfyUI，崩溃按钮明确打开目录；这四类标签同步简繁体。实际 handler、队列恢复与持久化字段均保持。
+- 根据现有 220px Settings 侧栏及图标/计数占位，在资源层缩短 ComfyUI、Performance、Dependencies、Prompt Models、Logs 等英文导航；同步 59 条资源/引用（含这些标签），避免错误仍引导到旧名称。保持 Settings tab ID、布局和 CSS，不加解释或重设计。技术模型名、节点/文件标识、用户正文和运行管理说明按契约保留；没有改独立 NAS 工具。
+- 源码复核发现 main.ts 退出过程标题仍硬编码中文，补齐一个三语言键并按保存语言格式化，logger-only 文本保留。History 两个版本导航 aria-label 原来直接拼接 PreviousVersions，改为两个独立三语言键；10 处导航/卡片 title/aria-label 的全角静态分隔统一为中性间隔点，用户标题仍经过原来的转义。既有节点提示避免兼容性与更新说明完全重复的 guard 已核对，不为无实证情形改校验或增加文字。
+- focused 9 文件/86 项及 typecheck 通过：i18n、独立资源、Settings copy、main 边界、History 详情/图片/虚拟列表、视频/图片合成旅程。证据 temp/localization-quality-focused.log、localization-quality-typecheck.log；新增导航/长度资源随后进入最终 verify。旧英文 Uninstall node 的精确断言更新为 Uninstall Node，未删断言或放宽行为测试。不新增为字符串逐字镜像的测试。
+- 源码审校的清单保留在 temp/localization-quality-changes.json、localization-length-changes.json；后者与最终 diff 为最终标签依据。临时扫描器剩余候选已区分说明/状态和短介词规则，不当作遗漏。本轮无真实 UI/原生退出/按钮→task ID 新证据；人工检查后续发现的问题另行修复。
+- 最终 npm.cmd run verify 单元层 326 文件/3149 项中 325 文件/3148 项通过，唯一失败仍是独立 NAS late cover 的 File outside library root，未跳过或修改该文件，不能报告仓库 verify 全绿。初次全量另有 History 卡片分隔与 View source 的旧精确断言失败，已同步到间隔点和 View Source；保留其余可达动作/原选择器/路径/字段断言，最终重跑只剩前述独立失败。证据 temp/localization-quality-verify.log、localization-quality-final-verify.log。
+- 最终集成 7 文件/127 项、typechecked build 与 440 对比度检查均通过，日志 temp/localization-quality-integration.log、localization-quality-build.log、localization-quality-contrast.log；LAN 780.47 kB，原有 500 kB 提醒保留。全程只设置进程级 VITEST_MAX_WORKERS=8，没有放宽超时/配置。所有进程/检查结束后核对准确绝对路径并清理本轮自有系统测试临时根，保留 gitignored 验收日志；最终 diff --check 通过，无意外删除、版本更新、提交或发布。用户停止真实检查后未再启动真实 App/浏览器。
+
+## 收尾清单（固定 6 个工作包）
+
+1. **已完成：H3 静态工作流校验与语言传递。** 本轮证据如上。
+2. **已完成：图片适配器内部提示与语言传递。** 包含本轮共享选项/LoRA 包装；运行管理元数据按契约保留。
+3. **已完成：主 App 剩余服务与保护提示。** 上述队列、放大 provider/SeedVR2、环境、素材库、资料安全/迁移、恢复与执行器、旧出厂标签及普通续写 FFmpeg 底层均已接入语言；Attention 旧快照、共享 workflow、uploadInput 和 extension-media 主 App 调用已核对。运行管理元数据/技术匹配按契约保留；此项完成指已定位代码范围，不代替工作包 4 的真实页面漏翻检查。独立 Strata Agent 另列工具待办，长视频专属已交接，不增加工作包。
+4. **按用户要求转人工：真实页面和状态漏翻。** 保留既有三语言 84 个组合和两处修复证据；未覆盖的原生菜单/文件对话框、App 局域网浏览及恢复状态不报告通过，停止自动实操。独立 NAS Browser 不在范围内。
+5. **源码审校已完成：译文、术语与英文动作大小写。** 已按用途审校全局/Settings 动作资源、入口引用、重复 notice guard、退出措辞、导航语义与标点；保持用户内容/技术标识。最终回归结果见本轮记录，后续漏查交人工。
+6. **源码长度优化已完成，实屏按用户要求转人工。** 已缩短英文 Settings 侧栏和长动作、同步入口引用，按现有 CSS 结构控制文字长度，不改变布局或提交门槛。支持视口/原生窗口/最终三语言实屏由人工验收，源码判断不替代实测。
+
+本轮自动源码工作已结束；余下真实页面/布局及后续漏查按用户指示交人工。此处不新增工作包、不继续启动实屏检查，也不宣称未覆盖路径已经通过。
 
 ## 执行环境
 
-沙箱内多次进程启动返回 `helper_unknown_error: setup refresh had errors`；本轮经已获准的沙箱外命令完成检查，没有因该错误停止工作。`harness:app -- list`、`guide settings-runtime` 与 `guide extend` 已运行。完成全部覆盖与验收前不要将任务标记完成。
+沙箱内多次进程启动返回 `helper_unknown_error: setup refresh had errors`；已获准的沙箱外命令用于源码检查。`harness:app -- list`、`guide settings-runtime`、`guide extend` 与 `guide lan-browser` 已运行。后续按用户最新要求停止自动真实页面检查；自动源码工作收尾与人工实际验收分别记录，不将未测路径标为通过。
+
+## 2026-11-04 补充：启动前构建的 chunk 警告
+
+- 用户要求定位并拆分两个大包，不提高上限。真实构建模块分析（write:false，不清理 dist）发现：桌面 locale-en-US 为 543.92 kB，语言分组递归带入 i18n-keys，使英文词典被首屏静态依赖；网页 index 为 780.47 kB，同一键表分别以 Windows 反斜杠与 Vite 正斜杠 ID 出现两份。Vite 警告比较未 gzip 的 minified JS，不能用日志中的 gzip 数字判断是否超限。
+- 两份 Vite 配置的 .js→.ts 源码解析返回 normalizePath，统一模块身份；词典分组不递归吸入依赖，翻译键表和翻译运行时各设边界，避免词典读取键表时形成初始化循环。桌面 media-chrome 单独分包，页面、模型和图片适配器的现有边界保留。未提高 chunkSizeWarningLimit，也不改变默认语言、缓存/回退、用户内容、IPC 或运行逻辑。
+- 分析结果：桌面入口 476.19→235.04 kB，英文词典 543.92→353.84 kB；网页入口 780.47→61.25 kB。两端最大单包均约 353.84 kB。静态依赖图确认首屏只包含默认简体，英文/繁体仍动态加载；键表只出现一次、无反向词典依赖。仅将大包拆开不能宣称真实启动耗时改善，此处只记录构建字节/依赖证据。
+- 新增 tests/frontend-build.test.ts 的两项真实内存构建回归：两端源码 ID 唯一、键表/翻译运行时各一份、默认语言静态可达而英文/繁体不可达、键表无词典回边，以及单个 JS 包保持在原 500 kB 范围。build.write=false 避免测试清理/覆盖其他检查读取的 dist。focused 4 文件/38 项和 typecheck 通过，日志 temp/localization-chunks-focused.log、localization-chunks-typecheck.log；分析模块清单在 temp/localization-desktop-chunks.json、localization-web-chunks.json。
+- 未启动真实 App、ComfyUI/GPU 或浏览器，延续用户将真实页面验收交给人工的要求；没有操作用户媒体、安装软件或改独立 NAS 工具/部署包。版本保持 0.67.6，不提交或发布。同期 Strata/NAS 及前批未提交改动均保留。
+- 最终 npm.cmd run verify 单元层共 328 文件/3162 项，327 文件/3161 项通过；唯一失败仍是既有独立 NAS late cover 用例的 File outside library root，本轮未跳过或编辑该文件。verify 提前退出后，另跑集成 7 文件/127 项、typechecked build 和 440 对比度检查全部通过；日志 temp/localization-chunks-verify.log、localization-chunks-integration.log、localization-chunks-build.log、localization-chunks-contrast.log。计数包含同期独立代码，不能当作本地化覆盖率。
+- 正式生产构建确认桌面入口 235.03 kB、网页入口 61.24 kB、两端最大 JS 353.83 kB，无大 chunk 警告；最终产物以正式构建日志为准。保持原阈值，未隐藏生产构建警告或修改脚本退出码；没有从字节数推断实际启动性能。所有测试结束后核对准确绝对路径并清理自有系统临时根，保留 temp 验收报告；最终 diff --check 通过，版本仍为 0.67.6。
+
+## 2026-11-06 人工反馈：H3 悬停详情与视频模型名称
+
+- H3 检查徽标原先只翻译了状态标签，summary/items 仍由 checkH3Prompt 硬编码中文生成；将 29 条摘要/检查说明接入全局三语言资源，并向首次渲染和 coordinator 编辑即时更新两条路径传递当前 translator。旧调用继续默认简体，校验规则、模式、警告等级和用户提示词正文不变，官方字段/时间戳/LoRA 名称与触发词保持原值。
+- Settings 默认视频和续写模型选项原先直接使用扫描时的 profile.name；现在渲染时按当前 uiLocale 读取 catalog.name，未知自定义模型保留扫描名称，不修改环境扫描缓存。Create 选项和 Settings 模型卡片已有相同语言投影，核对后保持；模型产品名与技术 ID 不改。
+- 新增生产 DOM 合成旅程回归覆盖英文/繁体警告与通过状态、整页渲染及编辑后的悬停数据，确认中文用户正文保留；Settings 回归复用同一次扫描切换三语言，检查视频/续写名称、未知模型与原扫描数据。初次 focused 4 文件/94 项及 typecheck 通过，日志 temp/localization-hover-focused.log、localization-hover-typecheck.log；随后扩充的通过状态断言纳入全量 verify。
+- 本轮为 patch 修复，不更新版本、不提交、不打包，保留同期其他任务改动。继续遵守用户将真实页面检查交人工的决定；没有启动 Electron、浏览器、ComfyUI 或 GPU。
+- 最终 npm.cmd run verify 全部通过：单元 328 文件/3174 项、集成 7 文件/127 项、typechecked 桌面与网页构建、440 对比度检查；日志 temp/localization-hover-verify.log。两端最大 JS 357.09 kB，无大包警告，500 kB 阈值保持。测试使用进程级 VITEST_MAX_WORKERS=8 和独立系统临时目录；检查结束后核对绝对路径并清理自有临时根，验收日志保留，最终 diff --check 通过。
+
+## 2026-11-06 截图复核：模型卡片、基础选项与 ComfyUI 提示
+
+- 用户截图证明上轮模型名称修复覆盖不足。旧契约将运行管理元数据整体排除，实际把普通界面说明也留成中文；已修正 LOCALIZATION_CONTRACT，仅保留技术标识、原始测量/诊断和用户内容，内置组件标签、资源/卸载说明与节点说明纳入翻译。
+- 新增 118 条三语言模型资源文案，覆盖整个 catalog 及 Sulphur scanVariants 的中文组件名、资源说明及两处来源标签。共享 model-profile-labels 仅匹配完整内置标签，投影名称、组件标签和资源说明；扫描对象、组件索引、路径、文件名与安装证据不变，未知自定义 profile 保持原样。Settings 卡片、图片/提示词/放大默认选项、图片质量与安装详情接入；放大弹窗及 Tessera 锚点模型名称也按当前语言读取。
+- 补齐 Tessera、H3 optimizations、归档 DLSS 等节点用途，以及 13 类运行要求的三语言资源；扫描器输出与设置页现存扫描详情共用显示规则。ComfyUI 启动/重启、安装进度及版本通知的现有 native translator 入口已核对；发现语言保存未触发环境重扫，修复为仅语言变化时也重扫，保持不变保存不重扫。清除旧语言的已完成服务提示，启动/重启中按当前界面语言渲染通用状态；原始异常与外部进程输出不做自动翻译。
+- 新增整个模型目录的英文卡片检查，覆盖组件标签、资源说明、名称和路径不变；所有已登记节点用途/运行要求无中文残留。另有同一扫描下图片/放大默认名称与质量的双语言检查，以及仅改语言的保存→环境刷新回归。focused 8 文件/176 项及 typecheck 通过，日志 temp/localization-model-cards-focused.log、localization-model-cards-typecheck.log。
+- 本轮为 patch 修复，版本保持 0.67.6；未提交、打包、操作 NAS 部署包或启动 Electron/浏览器/ComfyUI/GPU。真实页面仍按用户决定交人工；同期其他任务改动保留。
+- 全量 verify 通过：单元 329 文件/3179 项、集成 7 文件/127 项、typechecked build、440 对比度检查，日志 temp/localization-model-cards-verify.log。随后整张卡片文字检查补出两处来源标签，修复后相关 6 文件/77 项回归（含真实内存构建和放大弹窗）及最终 typechecked build 通过，日志 temp/localization-model-cards-final-focused.log、localization-model-cards-final-build.log。技术 code 路径/模式文本逐字保留，不作为界面中文残留；英文卡片其余正文无中文。最终两端最大 JS 371.79 kB，无大包警告，500 kB 阈值保持。检查完成后核对绝对路径清理自有系统临时根，保留验收日志，diff --check 通过。

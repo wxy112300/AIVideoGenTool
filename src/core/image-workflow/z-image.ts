@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -51,15 +54,16 @@ function zImagePictureWithMarkupGuide(
  */
 export function compileZImagePrompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const errors: string[] = [];
   ordered
     .filter((picture) => !picture.absolutePath.trim())
-    .forEach((picture) => errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`));
+    .forEach((picture) => errors.push(t(uiKeys.workflowChecks.pictureEmpty, { number: picture.pictureNumber })));
   if (ordered.length > zImageCapability.maxPictures) {
-    errors.push("Z-Image 工作流最多支持一张 Picture。请先合成为一张底图。");
+    errors.push(t(uiKeys.workflowChecks.zLimit));
   }
   const picture = ordered.find((candidate) => candidate.absolutePath.trim());
   const originalPictureNumber = picture?.pictureNumber;
@@ -68,7 +72,7 @@ export function compileZImagePrompt(
     const originalNumber = Number(numberText);
     referencedPictureNumbers.add(originalNumber);
     if (originalNumber !== originalPictureNumber) {
-      errors.push(`${match} 引用了不存在的 Picture ${originalNumber}。Z-Image 只接收 Picture 1。`);
+      errors.push(t(uiKeys.workflowChecks.zReference, { reference: match, number: originalNumber }));
       return match;
     }
     return "Picture 1";
@@ -134,31 +138,32 @@ function unresolvedImagePlaceholders(workflow: ComfyApiWorkflow): string[] {
 export function validateZImageWorkflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = zImageBaseCoreNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `Z-Image 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.zNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   const maskNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImageMask");
-  if (inputNodes.length > 1) errors.push("Z-Image 工作流最多包含 1 个 LoadImage 节点。");
-  if (maskNodes.length > 1) errors.push("Z-Image 工作流最多包含 1 个 LoadImageMask 节点。");
+  if (inputNodes.length > 1) errors.push(t(uiKeys.workflowChecks.zInputCount));
+  if (maskNodes.length > 1) errors.push(t(uiKeys.workflowChecks.zMaskCount));
   if (inputNodes.length === 0 && maskNodes.length > 0) {
-    errors.push("Z-Image 的 Mask 必须绑定一张参考 Picture。");
+    errors.push(t(uiKeys.workflowChecks.zMaskBinding));
   }
   if (inputNodes.length === 0 && !nodeTypes.has("EmptySD3LatentImage")) {
-    errors.push("Z-Image 文生图工作流缺少节点 EmptySD3LatentImage。");
+    errors.push(t(uiKeys.workflowChecks.zLatent));
   }
   if (inputNodes.length === 1) {
     if (maskNodes.length === 1 && !nodeTypes.has("VAEEncodeForInpaint")) {
-      errors.push("Z-Image Mask 工作流缺少节点 VAEEncodeForInpaint。");
+      errors.push(t(uiKeys.workflowChecks.zInpaint));
     } else if (maskNodes.length === 0 && !nodeTypes.has("VAEEncode")) {
-      errors.push("Z-Image 图生图工作流缺少节点 VAEEncode。");
+      errors.push(t(uiKeys.workflowChecks.zEncode));
     }
   }
   if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
-    errors.push("Z-Image 工作流仍包含未上传的图片或 Mask 占位符。");
+    errors.push(t(uiKeys.workflowChecks.zPlaceholder));
   }
   return [...new Set(errors)];
 }
@@ -166,25 +171,26 @@ export function validateZImageWorkflow(
 export function validateZImageTurboWorkflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "turbo-8",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = zImageTurboCoreNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `Z-Image-Turbo 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.zTurboNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   const maskNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImageMask");
-  if (inputNodes.length > 1) errors.push("Z-Image-Turbo 工作流最多包含 1 个 LoadImage 节点。");
-  if (maskNodes.length > 1) errors.push("Z-Image-Turbo 工作流最多包含 1 个 LoadImageMask 节点。");
+  if (inputNodes.length > 1) errors.push(t(uiKeys.workflowChecks.zTurboInputCount));
+  if (maskNodes.length > 1) errors.push(t(uiKeys.workflowChecks.zTurboMaskCount));
   if (inputNodes.length === 1) {
     for (const nodeType of ["Canny", "ModelPatchLoader", "ZImageFunControlnet"]) {
-      if (!nodeTypes.has(nodeType)) errors.push(`Z-Image-Turbo 参考图工作流缺少节点 ${nodeType}。`);
+      if (!nodeTypes.has(nodeType)) errors.push(t(uiKeys.workflowChecks.zTurboReferenceNode, { node: nodeType }));
     }
   } else if (maskNodes.length) {
-    errors.push("Z-Image-Turbo 的 Mask 必须绑定一张参考 Picture。");
+    errors.push(t(uiKeys.workflowChecks.zTurboMaskBinding));
   }
   if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
-    errors.push("Z-Image-Turbo 工作流仍包含未上传的图片或 Mask 占位符。");
+    errors.push(t(uiKeys.workflowChecks.zTurboPlaceholder));
   }
   return [...new Set(errors)];
 }
@@ -200,11 +206,12 @@ function zImageQualityProfile(
 function zImageOutputDimensions(
   task: ImageGenerationQueueTask,
   picture: ImageReferenceSnapshot | undefined,
-  capability: ImageModelCapability
+  capability: ImageModelCapability,
+  t: Translate = createTranslator().t
 ): [number, number] {
   return [
-    exactImageDimension(task.outputWidth, picture?.width || capability.textOnlyOutputWidth || 1024),
-    exactImageDimension(task.outputHeight, picture?.height || capability.textOnlyOutputHeight || 1024)
+    exactImageDimension(task.outputWidth, picture?.width || capability.textOnlyOutputWidth || 1024, t),
+    exactImageDimension(task.outputHeight, picture?.height || capability.textOnlyOutputHeight || 1024, t)
   ];
 }
 
@@ -248,14 +255,15 @@ function zImageLoaderNodes(
 
 export function buildZImageWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileZImagePrompt(task.prompt, task.pictures);
+  const compiled = compileZImagePrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
   const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
   const quality = zImageQualityProfile(zImageCapability, task.qualityProfile);
-  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageCapability);
+  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageCapability, t);
   const latentNodes: ComfyApiWorkflow = picture
     ? {
         input: {
@@ -353,21 +361,22 @@ export function buildZImageWorkflow(
       }
     }
   };
-  const errors = validateZImageWorkflow(workflow, quality.id, true);
+  const errors = validateZImageWorkflow(workflow, quality.id, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }
 
 export function buildZImageTurboWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileZImagePrompt(task.prompt, task.pictures);
+  const compiled = compileZImagePrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
   const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
   const quality = zImageQualityProfile(zImageTurboCapability, task.qualityProfile);
-  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageTurboCapability);
+  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageTurboCapability, t);
   const workflow: ComfyApiWorkflow = {
     ...zImageLoaderNodes(task, zImageTurboDiffusionModel),
     positive: {
@@ -449,7 +458,7 @@ export function buildZImageTurboWorkflow(
       }
     };
     const sampler = workflow.sampler;
-    if (!sampler) throw new Error("Z-Image-Turbo 工作流缺少采样节点。");
+    if (!sampler) throw new Error(t(uiKeys.workflowChecks.zTurboSampler));
     sampler.inputs.model = ["control", 0];
     workflow.controlGuide = {
       class_type: "Canny",
@@ -466,7 +475,7 @@ export function buildZImageTurboWorkflow(
       };
     }
   }
-  const errors = validateZImageTurboWorkflow(workflow, quality.id, true);
+  const errors = validateZImageTurboWorkflow(workflow, quality.id, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }

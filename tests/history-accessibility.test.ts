@@ -602,10 +602,10 @@ describe("History accessibility markup", () => {
     expect(videoPage).not.toContain('<video controls');
     expect(videoCardStart).toBeDefined();
     expect(videoCardStart).not.toContain("title=");
-    expect(videoCardStart).toContain('aria-label="Detail fixture，history.card.openDetailsContext"');
+    expect(videoCardStart).toContain('aria-label="Detail fixture · history.card.openDetailsContext"');
     expect(imageCardStart).toBeDefined();
     expect(imageCardStart).not.toContain("title=");
-    expect(imageCardStart).toContain('aria-label="Image detail fixture，history.card.openDetailsContext"');
+    expect(imageCardStart).toContain('aria-label="Image detail fixture · history.card.openDetailsContext"');
     expect(imagePage).toContain('class="history-side-zone history-side-create"');
     expect(imagePage).toContain('class="history-side-action-pair"');
     expect(imagePage).toContain('class="history-side-zone history-side-files"');

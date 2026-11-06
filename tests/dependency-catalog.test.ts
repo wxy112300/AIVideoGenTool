@@ -147,8 +147,8 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
       repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF-H3",
-      recommendedVersion: "26.10.21",
-      installRevision: "61843db580f8549a85b0a1ed850d550079fadfee",
+      recommendedVersion: "26.10.30",
+      installRevision: "da5f435cd9a9e54ad27eed417ed72b1f2543ef41",
       installRevisionPolicy: "recommended",
       nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
       required: false

@@ -20,6 +20,7 @@ import {
 } from "../../shared/status";
 import type { CustomNodeInstallPhase } from "./node-install-queue";
 import { isStrataPromptModel } from "../../../core/prompt-models";
+import { strataModelSoftwareReady } from "../../../core/strata-preparation";
 
 export interface SettingsEnvironmentItemState extends EnvironmentItem {
   tone: SettingsStatusTone;
@@ -72,7 +73,7 @@ export function derivePromptRuntimeState(
 ): PromptRuntimeState {
   const selectedProfile = promptProfiles.find((profile) => profile.id === settings.promptModelId);
   if (isStrataPromptModel(settings.promptModelId)) {
-    const ready = environmentScan?.strataPreparation?.managedInstalled && selectedProfile?.available;
+    const ready = strataModelSoftwareReady(settings.promptModelId, environmentScan?.strataPreparation) && selectedProfile?.available;
     return { kind: "strata", tone: ready ? "available" : "warning", label: ready ? "ready" : environmentScan ? "missing" : "waiting" };
   }
   const usesQwenVl = classifiers.isQwenVlPeftPromptModel(settings.promptModelId);

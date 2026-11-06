@@ -1,8 +1,8 @@
 # 长视频模式：Strata 编排与 Continuum 自动续接
 
 - 类型：Task；Status: in_progress（P0/P1及P2 Create/Queue分页通过；已有Run Extend采样后因官方导入副本语义被拒收，待补证明恢复；P3/P6单图120秒真实增强受资源门槛阻塞）。
-- Updated / Owner: 2026-10-27 / 当前 agent；Execution: direct，新增子 agent 0。
-- 本轮交付：完整289文件2716单元+6文件91集成、双typecheck、独立干净生产构建和440对比度通过。已更新本次开发dist后端模块及renderer/web，保留旧资源与其他任务main/preload，不重启当前用户应用/ComfyUI；正式state前后字节不变。正常重启应用后加载完整H3接线。没有新增GPU采样、权重下载、版本提升或打包。
+- Updated / Owner: 2026-11-04 / 当前 agent；Execution: direct，新增子 agent 0。
+- 本轮交付（minor）：解除多段720p及禁止插帧的应用额外门槛；接入整片完成后的RIFE 2×/4×、实际FPS/帧数/音频时长校验和History发布，保留采样Run身份与旧profile。完整3167单元+127集成、双typecheck、独立干净生产构建/440对比度通过；末次摘要修正后36项旅程及双typecheck/前端构建再次通过。真实隔离Electron缺图恢复→鼠标入队得到1080p/RIFE任务，已安装节点四帧GPU 2×/4×通过，24节点整图在线schema通过。没有新H3采样，120秒仍0/12；不下载权重、不升版本、不打包。详见[分辨率及交付](evidence/delivery-options.md)。
 - 2026-10-27完整 H3 配置接线（minor）：已复用共享LoRA栈/模型补丁/Turbo与PDD采样函数，新增可选profile.h3冻结LoRA及SOL/SLA、运行时、Compiler、Spectrum model-aware配置；四种attention均可构图，Compiler auto不再误禁managed Sage原始函数观测。修复History继续创作清空LoRA/覆盖运行时、普通草稿归一化丢失继承LoRA/步数，以及LoRA触发词与严格快照校验不一致。Queue逐页显示真实采样文本，已接受prefix不改；旧profile不写h3、保持旧图/身份。真实隔离120秒草稿采用已安装Realism People LoRA+Kitchen+SOL+Spectrum+native+Compiler auto，经缺图恢复/真实鼠标入队得到98e15ade-7345-406f-9f81-65a2d1733a47；未启动队列或采样。对现有8188只读GET object_info，18节点新图通过实际接口检查。正式state字节未变，29820/13955/18319隔离资源已清理；用户运行实例与8188未重启。最终验证与交付见[加速边界复核](evidence/acceleration-boundaries.md#完整接线完成记录)。
 - 2026-10-27加速边界复核：用户指出入队过严，保存配置实际只因Sage Triton被白名单漏掉。已补UI/task/claim/graph/profile/恢复身份，保留Spectrum；定向23项、完整2696单元+91集成、双typecheck/独立生产构建/440对比度通过。新版完整隔离Electron经缺图→真实拖入→鼠标入队得到120秒Triton+Spectrum任务，未启动队列/GPU，正式state字节未变。官方指南/开放集成契约/Issue31及Core文档确认LoRA、稀疏和其他后端并非Continuum通用禁令；仍未接入的部分不能仅删除校验就假装应用设置已生效。见[加速边界复核](evidence/acceleration-boundaries.md)。后续优先复用H3共享LoRA/模型补丁/采样配方，取消一概限制；保留训练权重与真实复用契约。正式非CDP用户窗口未动，新执行代码需正常重启生效；隔离47100/1172/18319已清理。
 - 2026-10-27导航最终方向（替代下条换行方案）：用户明确要求保持一行、左右窄箭头切段并滚动、无滚动条。已实现18px箭头，包含全局在内首尾禁用、整片视图/未确认布局禁用；绘制与ResizeObserver让选中页保持可见，键盘导航不滚动整页。真实隔离Electron在1440×900、1280×800、900×800以实际鼠标完整往返0→16→0，均单行、选中页完整可见、scrollbar none，箭头18px；未启动GPU。最终完整2688单元+91集成、双typecheck、独立renderer/web/electron生产构建与440对比度通过，证据`temp/long-arrows-*`。加载新renderer前确认Prompt/Queue空闲及编辑文字已保存，刷新后原草稿、6条队列、137条History、settings逐字段相同，正式9333窗口显示单行/双箭头/automatic并保留；隔离PID33316/CDP10969/18319清理，正式窗口不启动队列。
@@ -51,7 +51,7 @@
 - 状态：旧managed accepted>0/head保护保持；独立new-run服务不借旧续写入口创建首段。Create UI、整包revision、逐页稳定ID、组后恢复与单History已接；分层修复、已有Run新增段、独占文件回收及完整History回流仍待实施。P0服务层成功不代替P2单独的UI/GPU/History证据。
 - P0历史决定（2026-10-20）：实际Continuum为干净3.9.1，已具备当前物理组投影；当时保留此基线。2026-10-26更新推荐至3.10.2，但不以升级代替应用适配。正式new-run独立入口、预设完整布局；旧managed逐次续接与accepted>0/head保护保持不变。见[P0证据](evidence/research.md)。
 - 已解除：独立分组receipt明确planned/accepted、物理组及输出scope，并实证计划3段仅完成2段。旧完整前缀收据保持严格；部分输出不标全片。末次Review完整解码/Finalize可生成10秒成片；中间组仅输出当前5秒，Finalize仍不是Run目录读取器。
-- 下一步：完成已授权的VS Code正常退出（不保存强制结束须有用户额外授权），资源满足后恢复`temp/create-smoke-6s4Pbb`：先核对无活动请求/queue0，保留真实资源失败的story-prepare报告，再用现有真实按钮重试增强，审阅12段模型脚本→实际enqueue→render唯一120秒Run→音画/History播放/故事质量验收。不能直接重跑wx报告或绕过显存门槛。旧Extend已1/1采样，不再执行其finish盲重采；后续补官方跨计划导入的逐tensor/契约来源证明并安全恢复。P0 4/4、Create3/3不重开；canonical AV、活动取消修复、持续Reference/跨Run与120秒结果仍未完成。
+- 下一步：本轮“放开限制”已交付开发dist，用户正常重启后可使用；不关闭VS Code。原120秒真实增强/渲染仍未完成，后续需在当前实际状态与资源上继续原授权单次Run，不能把手写草稿、入队或四帧RIFE冒烟算作120秒H3成功。旧Extend已1/1采样，不盲重采；P0 4/4、Create3/3不重开。
 
 ## Implementation and resources
 

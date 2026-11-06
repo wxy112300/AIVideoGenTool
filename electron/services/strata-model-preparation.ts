@@ -8,6 +8,8 @@ import { isDeepStrictEqual } from "node:util";
 import type { Settings } from "../../src/types.js";
 import { STRATA_REVISION, STRATA_RELEASES, STRATA_COMPATIBLE_PACK_REVISIONS, STRATA_BUNDLED_LIBRARIES, STRATA_EXPERT_PROFILE } from "../../src/core/catalog/dependencies/strata.js";
 import { strataModelGeometry } from "../../src/core/catalog/models/strata.js";
+import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
+import { findPreparedDeepSeekRuntime, prepareDeepSeekRuntime, validatePreparedDeepSeekRuntime } from "./strata-deepseek-preparation.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { containsPath, isManagedStrataPath, managedStrataDirectory, physicalPath, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import { scanStrataPreparation, type StrataFileInspector } from "./strata-preparation.js";
@@ -122,6 +124,7 @@ export function strataDerivedDataDirectory(): string {
 
 /** A newly downloaded optional MTP invalidates a retained non-MTP engine on the next request. */
 export async function preparedStrataMtpMatchesSelection(configPath: string, settings: Settings, resolvedModelDirectory?: string): Promise<boolean> {
+  if (isStrataDeepSeek(settings.promptModelId)) return true;
   const receipt = JSON.parse(await fs.readFile(path.join(path.dirname(configPath), "lvs-strata-model.json"), "utf8"));
   const scan = await scanStrataPreparation(settings, undefined, resolvedModelDirectory);
   const mtp = scan.profiles.find((profile) => profile.id === settings.promptModelId)?.components.find((component) => component.optional);
@@ -135,6 +138,7 @@ export async function findPreparedStrataRuntime(
   options: { resolvedModelDirectory?: string; dataDirectory?: string; signal?: AbortSignal;
     run?: StrataModelPreparationRuntime["run"]; onLog?: (message: string) => void } = {}
 ): Promise<string | null> {
+  if (isStrataDeepSeek(modelId)) return findPreparedDeepSeekRuntime(settings, policy, options);
   const t = createNativeTranslator(settings.uiLocale).t;
   const install = path.resolve(resolvedStrataDirectory(settings));
   const scan = await scanStrataPreparation(settings, undefined, options.resolvedModelDirectory);
@@ -188,6 +192,7 @@ export async function validatePreparedStrataRuntime(
 ): Promise<string> {
   const packDirectory = path.dirname(path.resolve(configPath));
   const receipt = JSON.parse(await fs.readFile(path.join(packDirectory, "lvs-strata-model.json"), "utf8"));
+  if (isStrataDeepSeek(receipt.modelId)) return validatePreparedDeepSeekRuntime(configPath, installDirectory, t);
   const config = JSON.parse(await fs.readFile(configPath, "utf8"));
   const geometry = strataModelGeometry(receipt.modelId);
   const installedRevision = strataInstalledRelease(installDirectory)?.revision ?? STRATA_REVISION;
@@ -283,11 +288,12 @@ async function validatePackFiles(directory: string, modelId = "", t: Translate =
     || !types.every((type) => Number.isInteger(type)) || !merges.every((merge) => merge.split(" ").length === 2)) throw new Error(t(uiKeys.strataPreparation.tokenizerInvalid));
 }
 
-/** CPU preparation only. No setup.py, downloads, native engine, or model service. */
+/** CPU preparation only. No setup.py, downloads or model service; DeepSeek's --pack-info only inspects files. */
 export async function prepareStrataModelRuntime(
   settings: Settings, modelId: string, policy: StrataRuntimePolicy, runtime: StrataModelPreparationRuntime,
   options: { resolvedModelDirectory?: string; signal?: AbortSignal; onLog?: (message: string) => void } = {}
 ): Promise<{ configPath: string; packDirectory: string; receiptPath: string; modelId: string }> {
+  if (isStrataDeepSeek(modelId)) return prepareDeepSeekRuntime(settings, policy, runtime, options);
   const t = createNativeTranslator(settings.uiLocale).t;
   validateStrataRuntimePolicy(policy, t);
   if (!validStrataPort(settings.strataPort)) throw new Error(t(uiKeys.strataPreparation.invalidPort));

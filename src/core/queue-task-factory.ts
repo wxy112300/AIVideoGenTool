@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   AppState,
   Draft,
@@ -82,6 +84,7 @@ const defaultClock: QueueTaskFactoryClock = {
 };
 
 function firstPassResolutionFor(draft: Draft): GenerationQueueTask["resolution"] {
+  if (isLongVideoDraftActive(draft)) return draft.resolution;
   return draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution;
 }
 
@@ -118,7 +121,8 @@ export function queueTaskFromDraft(
   draft: Draft,
   state: AppState,
   clock: QueueTaskFactoryClock = defaultClock,
-  options: QueueTaskFactoryOptions = {}
+  options: QueueTaskFactoryOptions = {},
+  t: Translate = createTranslator(state.settings.uiLocale).t
 ): GenerationQueueTask {
   draft = normalizeVideoDraft(draft);
   const longVideo = isLongVideoDraftActive(draft);
@@ -127,7 +131,7 @@ export function queueTaskFromDraft(
     if (reason) throw new Error(reason);
   }
   if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
-    throw new Error("当前模型不支持图像输入生成。");
+    throw new Error(t(uiKeys.serviceChecks.imageUnsupported));
   }
   const now = clock.now().toISOString();
   const h3VideoVaeMode = isMiniMaxH3Model(draft.modelId)
@@ -321,7 +325,8 @@ export function extensionTaskFromDraft(
   draft: Draft,
   state: AppState,
   clock: QueueTaskFactoryClock = defaultClock,
-  options: QueueTaskFactoryOptions = {}
+  options: QueueTaskFactoryOptions = {},
+  t: Translate = createTranslator(state.settings.uiLocale).t
 ): ExtensionQueueTask {
   draft = normalizeVideoDraft(draft);
   const longVideo = isLongVideoDraftActive(draft);
@@ -333,7 +338,7 @@ export function extensionTaskFromDraft(
     options = { ...options, h3VideoVaeMode: source.profile.videoVae.includes("int8_convrot") ? "int8-convrot" : "fp16" };
   }
   if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
-    throw new Error("当前模型不支持视频续写。");
+    throw new Error(t(uiKeys.serviceChecks.extensionUnsupported));
   }
   const now = clock.now().toISOString();
   const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) ||
@@ -462,7 +467,8 @@ export function extensionTaskFromDraft(
 export function upscaleTaskFromRequest(
   request: UpscaleRequest,
   state: AppState,
-  clock: QueueTaskFactoryClock = defaultClock
+  clock: QueueTaskFactoryClock = defaultClock,
+  t: Translate = createTranslator(state.settings.uiLocale).t
 ): UpscaleQueueTask {
   const now = clock.now().toISOString();
   const hasKonohamaruFields = request.modelId === KONOHAMARU_MODEL_ID ||
@@ -474,9 +480,9 @@ export function upscaleTaskFromRequest(
       request.dlss5 !== undefined ||
       request.aetherScale !== undefined
     ) {
-      throw new Error("Konohamaru DLSS5 任务不能与 legacy/HECer/AetherScale target 字段混用。");
+      throw new Error(t(uiKeys.serviceChecks.konohamaruTarget));
     }
-    const target = normalizeKonohamaruTarget(request);
+    const target = normalizeKonohamaruTarget(request, t);
     const frameOutputFps = target.options.frameInterpolation.enabled
       ? target.options.frameInterpolation.outputFps
       : "off" as const;
@@ -490,7 +496,7 @@ export function upscaleTaskFromRequest(
         request.sourceFilename,
         target.options.mode,
         outputNames(state),
-        frameOutputFps
+        frameOutputFps, t
       ),
       modelId: KONOHAMARU_MODEL_ID,
       workflowPath: KONOHAMARU_WORKFLOW_PATH,
@@ -519,9 +525,9 @@ export function upscaleTaskFromRequest(
     request.aetherScale !== undefined;
   if (hasAetherScaleFields) {
     if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined) {
-      throw new Error("AetherScale 任务不能与 legacy/HECer target 字段混用。");
+      throw new Error(t(uiKeys.serviceChecks.aetherTarget));
     }
-    const target = normalizeAetherScaleTarget(request);
+    const target = normalizeAetherScaleTarget(request, t);
     return {
       id: clock.id(),
       taskType: "upscale",
@@ -531,7 +537,7 @@ export function upscaleTaskFromRequest(
       outputFilename: uniqueAetherScaleUpscaleFilename(
         request.sourceFilename,
         target.aetherScale.mode,
-        outputNames(state)
+        outputNames(state), t
       ),
       modelId: AETHERSCALE_MODEL_ID,
       workflowPath: "builtin:upscale/aetherscale-dlss5",
@@ -558,8 +564,8 @@ export function upscaleTaskFromRequest(
   const hasDlss5Fields = request.modelId === DLSS5_MODEL_ID ||
     request.targetScale !== undefined || request.dlss5 !== undefined;
   if (hasDlss5Fields) {
-    const target = normalizeUpscaleTarget(request);
-    if (target.provider !== "dlss5") throw new Error("DLSS5 target normalization failed");
+    const target = normalizeUpscaleTarget(request, t);
+    if (target.provider !== "dlss5") throw new Error(t(uiKeys.serviceChecks.dlssTarget));
     return {
       id: clock.id(),
       taskType: "upscale",
@@ -569,7 +575,7 @@ export function upscaleTaskFromRequest(
       outputFilename: uniqueDlss5UpscaleFilename(
         request.sourceFilename,
         target.scale,
-        outputNames(state)
+        outputNames(state), t
       ),
       modelId: DLSS5_MODEL_ID,
       workflowPath: `builtin:upscale/${DLSS5_MODEL_ID}`,
@@ -594,13 +600,13 @@ export function upscaleTaskFromRequest(
     };
   }
   // Keep existing pixel/H3 queue snapshots strict and unchanged.
-  const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight);
+  const targetHeight = requireLegacyUpscaleTargetHeight(request.targetHeight, t);
   if (request.modelId === TESSERA_ID) {
-    validateH3RefinerSource(request.duration, request.fps);
-    const geometry = tesseraGeometry(request.sourceWidth, request.sourceHeight, targetHeight);
+    validateH3RefinerSource(request.duration, request.fps, t);
+    const geometry = tesseraGeometry(request.sourceWidth, request.sourceHeight, targetHeight, t);
     const asset = state.history.find(a => a.id === request.sourceAssetId);
-    if (!asset?.versions.some(v => v.id === request.sourceVersionId)) throw new Error("Tessera 源版本已不存在。");
-    if (request.tesseraAnchor?.enabled) throw new Error("Tessera 首帧增强须经模型就绪预检后冻结快照。");
+    if (!asset?.versions.some(v => v.id === request.sourceVersionId)) throw new Error(t(uiKeys.serviceChecks.tesseraSourceVersion));
+    if (request.tesseraAnchor?.enabled) throw new Error(t(uiKeys.serviceChecks.anchorPreflight));
     return { id: clock.id(), taskType: "upscale", status: "waiting", createdAt: now, updatedAt: now,
       outputFilename: uniqueUpscaleFilename(tesseraSourceFilename(request.sourceFilename), targetHeight, outputNames(state)),
       modelId: TESSERA_ID, workflowPath: `builtin:upscale/${TESSERA_ID}`, duration: request.duration, fps: 24,
@@ -610,10 +616,10 @@ export function upscaleTaskFromRequest(
       tessera: createTesseraSnapshot(asset.prompt, request.fps) };
   }
   if (request.modelId === H3_REFINER_ID) {
-    validateH3RefinerSource(request.duration, request.fps);
-    const geometry = h3RefinerGeometry(request.sourceWidth, request.sourceHeight, targetHeight);
+    validateH3RefinerSource(request.duration, request.fps, t);
+    const geometry = h3RefinerGeometry(request.sourceWidth, request.sourceHeight, targetHeight, t);
     const sourceAsset = state.history.find(asset => asset.id === request.sourceAssetId);
-    if (!sourceAsset?.versions.some(version => version.id === request.sourceVersionId)) throw new Error("H3 Refiner 源版本已不存在。");
+    if (!sourceAsset?.versions.some(version => version.id === request.sourceVersionId)) throw new Error(t(uiKeys.serviceChecks.refinerSourceVersion));
     return {
       id: clock.id(), taskType: "upscale", status: "waiting", createdAt: now, updatedAt: now,
       outputFilename: uniqueUpscaleFilename(h3RefinerSourceFilename(request.sourceFilename), targetHeight, outputNames(state)),
@@ -629,7 +635,7 @@ export function upscaleTaskFromRequest(
   }
   const h3Native = request.upscaleMode === "h3-native";
   if (h3Native && !request.h3NativeInput) {
-    throw new Error("H3 原生二次采样缺少已提交的 JointAV 输入快照。");
+    throw new Error(t(uiKeys.serviceChecks.nativeInputSnapshot));
   }
   if (
     h3Native &&
@@ -638,10 +644,10 @@ export function upscaleTaskFromRequest(
     targetHeight !== 1080 &&
     targetHeight !== 1440
   ) {
-    throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
+    throw new Error(t(uiKeys.serviceChecks.nativeTargets));
   }
   if (h3Native && targetHeight >= 1080 && request.h3NativeInput?.provider !== "learned-3d") {
-    throw new Error("H3 1080p/1440p 必须冻结 learned 3D upscaler provider。");
+    throw new Error(t(uiKeys.serviceChecks.nativeLearnedSnapshot));
   }
   const [targetWidth, targetOutputHeight] = h3Native
     ? h3NativeUpscaleDimensions(
@@ -649,7 +655,7 @@ export function upscaleTaskFromRequest(
         request.sourceHeight,
         targetHeight as 720 | 768 | 1080 | 1440
       )
-    : upscaleDimensions(request.sourceWidth, request.sourceHeight, targetHeight);
+    : upscaleDimensions(request.sourceWidth, request.sourceHeight, targetHeight, t);
   return {
     id: clock.id(),
     taskType: "upscale",

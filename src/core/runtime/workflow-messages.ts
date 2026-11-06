@@ -2,6 +2,14 @@ import type { UiLocale } from "../../types.js";
 import { zhTWWorkflowMessages } from "./workflow-messages.zh-TW.js";
 
 export type WorkflowMessageKey =
+  | "serializerApi"
+  | "serializerUnique"
+  | "continuumFirstSource"
+  | "continuumFirstResolution"
+  | "continuumRegeneratePrompt"
+  | "continuumChunkBody"
+  | "pddWorkflowRequired"
+  | "h3PolicyUnavailable"
   | "h3OutputBudget"
   | "h3ContinuationTimelineMissing"
   | "h3ContinuationBodyOnly"
@@ -92,6 +100,14 @@ type RuntimeParams = Record<string, string | number>;
 export type WorkflowLocale = Record<WorkflowMessageKey, string>;
 
 const zhCN: WorkflowLocale = {
+  serializerApi: "H3 AV serializer 只能附加到 API-format workflow。",
+  serializerUnique: "H3 AV serializer 无法确定唯一最终 joint latent（找到 {count} 个）。",
+  continuumFirstSource: "Continuum Run 缺少最初的首帧来源，不能用当前末帧替换后继续。",
+  continuumFirstResolution: "Continuum 首帧来源不支持原生高分辨率二次采样档。",
+  continuumRegeneratePrompt: "官方重抽本段必须保留原提示词；修改正文不属于此操作支持的重抽。",
+  continuumChunkBody: "Continuum 每段提示词必须是非空 Chunk body，不能嵌套 Timeline 标题。",
+  pddWorkflowRequired: "PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。",
+  h3PolicyUnavailable: "H3 执行策略不可用：{reasons}",
   h3OutputBudget: "{backend} 当前节点最多输出 {maximum} token，本次需要 {requested}。请在设置中更新对应节点并重启服务，或手动选择容量足够的增强模型。",
   h3ContinuationTimelineMissing: "Continuum 提示词增强未返回 integrated_multimodal_description 主时间线，无法确认单镜头接续；结果没有保存，原提示词已保持不变。",
   h3ContinuationBodyOnly: "Continuum 提示词增强只能返回当前 Chunk body，不能改写整份 Timeline。",
@@ -179,6 +195,14 @@ const zhCN: WorkflowLocale = {
   filenamePlaceholderMissing: "缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名",
 };
 const enUS: WorkflowLocale = {
+  serializerApi: "H3 AV serializer can only be attached to an API-format workflow.",
+  serializerUnique: "H3 AV serializer could not identify a unique final joint latent ({count} found).",
+  continuumFirstSource: "The Continuum Run is missing its original first-frame source. It cannot continue by substituting the current last frame.",
+  continuumFirstResolution: "The Continuum first-frame source does not support native high-resolution second-pass sampling.",
+  continuumRegeneratePrompt: "Official segment regeneration must preserve the original prompt. Editing the body is not supported by this action.",
+  continuumChunkBody: "Each Continuum prompt must be a non-empty Chunk body without nested Timeline headings.",
+  pddWorkflowRequired: "PDD Acc requires a native H3 workflow with KSamplerSelect, BasicScheduler and BasicGuider. Ref2VA also requires MiniMaxH3ReferenceToVideo.",
+  h3PolicyUnavailable: "H3 execution policy is unavailable: {reasons}",
   h3OutputBudget: "The current {backend} node supports up to {maximum} output tokens; this request needs {requested}. Update the node in Settings and restart the service, or select a prompt model with sufficient capacity.",
   h3ContinuationTimelineMissing: "Continuum prompt enhancement returned no integrated_multimodal_description timeline, so single-shot continuity cannot be verified. The result was not saved; the original prompt is unchanged.",
   h3ContinuationBodyOnly: "Continuum prompt enhancement must return only the current Chunk body and cannot rewrite the entire Timeline.",

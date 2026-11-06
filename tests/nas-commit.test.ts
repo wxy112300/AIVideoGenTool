@@ -13,7 +13,8 @@ import { nativeHistoryFileSystem } from "../electron/services/native-history-fil
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance.js";
-import { parseNasPointer, parseNasCommit, readNasObject, publishNasCommit } from "../src/infrastructure/nas-commit.js";
+import { persistVideoHistoryResult } from "../electron/queue-history.js";
+import { queueTaskFromDraft } from "../src/core/queue-task-factory.js";
 
 const roots: string[] = [], publishers: NasPublisher[] = [], libraries: NasLibrary[] = [];
 afterEach(async () => {
@@ -43,42 +44,64 @@ async function fixture(delayMs = 60000) {
 }
 
 describe("committed automatic NAS projection", () => {
-  it("automatically discovers a cover arriving after its unchanged commit without a manual scan", async () => {
-    const f = await fixture();
-    const pointer = parseNasPointer(await fs.readFile(path.join(f.source, "current.json"), "utf8"));
-    const commit = parseNasCommit(await readNasObject(f.source, "commits", pointer.commit), pointer);
-    const asset = JSON.parse(await readNasObject(f.source, "records", commit.records[0].hash));
-    const coverBytes = "late synchronized cover";
-    asset.versions[0].cover = { path: `StudioLibrary/${pointer.libraryId}/covers/late.jpg`, size: Buffer.byteLength(coverBytes) };
-    await publishNasCommit(f.source, { schemaVersion: 1, locale: commit.locale, models: commit.models, assets: [asset] }, pointer.libraryId);
-    await f.sync();
-    const unchangedPointer = await fs.readFile(path.join(f.destination, "current.json"), "utf8");
+  it("preserves an auto-rollback I/O failure and retries the pending commit without resetting the index", async () => {
+    const f = await fixture(); await f.sync(); const library = f.open(); await library.reload();
+    const oldTitle = library.detail(f.asset.id).title;
+    await f.store.update(state => { state.history[0].title = "After temporary I/O recovery"; });
+    await f.publisher.flush(); await f.sync();
+    const execute = DatabaseSync.prototype.exec;
+    const fault = vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (sql.startsWith("CREATE TEMP TABLE")) {
+        execute.call(this, "ROLLBACK"); // Model SQLite automatically aborting an I/O-failed transaction.
+        throw Object.assign(new Error("disk I/O error (temporary storage)"), { errcode: 6410 });
+      }
+      return execute.call(this, sql);
+    });
+    await expect(library.reload()).rejects.toThrow("disk I/O error (temporary storage)");
+    expect(library.detail(f.asset.id).title).toBe(oldTitle);
+    fault.mockRestore(); await library.reload();
+    expect(library.detail(f.asset.id).title).toBe("After temporary I/O recovery");
+  });
+  it("publishes completed renders before the remaining queue finishes and updates the same NAS index", async () => {
+    const f = await fixture(10); await f.sync();
     const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");
+    const errors: string[] = [];
     const server = await startServer({ mediaRoot: path.join(f.root, "NAS Media"), libraryRoot: f.nasArchive,
-      libraryDirectory: `StudioLibrary/${pointer.libraryId}`, dataDirectory: f.data,
-      host: "127.0.0.1", port: 0, pollSeconds: 1, allowedOrigins: ["http://nas.test:8790"] }, web, () => undefined);
-    const base = `http://127.0.0.1:${(server.server.address() as { port: number }).port}`;
-    const get = (url: string) => new Promise<Buffer>((resolve, reject) => {
-      const req = request(base + url, { headers: { Host: "nas.test:8790" } }, response => {
+      libraryDirectory: `StudioLibrary/${f.store.get().libraryStorage!.libraryId}`, dataDirectory: f.data,
+      host: "127.0.0.1", port: 0, pollSeconds: 1, allowedOrigins: ["http://nas.test:8790"] }, web, message => errors.push(message));
+    const endpoint = `http://127.0.0.1:${(server.server.address() as { port: number }).port}`;
+    const info = () => new Promise<{ count: number; revision: string; refreshError: boolean }>((resolve, reject) => {
+      const req = request(`${endpoint}/api/v1/library?refresh=1`, { headers: { Host: "nas.test:8790" } }, response => {
         const chunks: Buffer[] = []; response.on("data", chunk => chunks.push(Buffer.from(chunk)));
-        response.on("end", () => { try { expect(response.statusCode).toBe(200); resolve(Buffer.concat(chunks)); } catch (error) { reject(error); } });
+        response.on("end", () => { try { expect(response.statusCode).toBe(200); resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (error) { reject(error); } });
       }); req.on("error", reject); req.end();
     });
     try {
-      const first = JSON.parse((await get("/api/v1/videos")).toString());
-      expect(first.items[0].coverUrl).toBe("");
-      const before = JSON.parse((await get("/api/v1/library")).toString());
-      await fs.mkdir(path.join(f.destination, "covers"), { recursive: true });
-      await fs.writeFile(path.join(f.destination, "covers", "late.jpg"), coverBytes);
-      await vi.waitFor(async () => {
-        expect(JSON.parse((await get("/api/v1/library")).toString()).revision).not.toBe(before.revision);
-      }, { timeout: 6000, interval: 80 });
-      const next = JSON.parse((await get("/api/v1/videos")).toString());
-      expect(next.items[0].coverUrl).toContain("/cover?v=");
-      expect((await get(next.items[0].coverUrl)).toString()).toBe(coverBytes);
-      expect(await fs.readFile(path.join(f.destination, "current.json"), "utf8")).toBe(unchangedPointer);
+      const tasks = Array.from({ length: 3 }, (_, index) => ({ ...queueTaskFromDraft(f.store.get().draft, f.store.get()), outputFilename: `queue-result-${index}.mp4` }));
+      await f.store.update(state => { state.queue = tasks; state.queueRunning = true; });
+      let previous = await info(); expect(previous).toMatchObject({ count: 1, refreshError: false });
+      for (let index = 0; index < 2; index++) {
+        const task = tasks[index], filename = path.join(f.root, "PC Output", task.outputFilename);
+        await fs.writeFile(filename, `completed-render-${index}`);
+        // The physical video may arrive before its committed browsing records.
+        await fs.copyFile(filename, path.join(f.root, "NAS Media", task.outputFilename));
+        const before = await fs.readFile(path.join(f.source, "current.json"), "utf8");
+        let identity = 0;
+        await f.store.update(state => persistVideoHistoryResult(state, { task, completedAt: new Date().toISOString(), promptId: `render-${index}`,
+          files: [{ filename: task.outputFilename, subfolder: "", type: "output", absolutePath: filename }], comfyOutputs: {}, id: () => `queue-${index}-result-${identity++}` }));
+        expect(f.store.get().queueRunning).toBe(true); expect(f.store.get().queue).toHaveLength(2 - index);
+        // No publisher.flush and no NAS restart: production persistence must trigger publication itself.
+        await vi.waitFor(async () => expect(await fs.readFile(path.join(f.source, "current.json"), "utf8")).not.toBe(before), { timeout: 3000 });
+        await fs.copyFile(path.join(f.source, "current.json"), path.join(f.destination, "current.json"));
+        expect(await info()).toMatchObject({ count: 1 + index, refreshError: true });
+        await f.sync();
+        const next = await info(); expect(next).toMatchObject({ count: 2 + index, refreshError: false });
+        expect(next.revision).not.toBe(previous.revision); previous = next;
+      }
+      expect(f.store.get().queueRunning).toBe(true); expect(f.store.get().queue).toHaveLength(1);
+      expect(f.errors).toEqual([]); expect(errors.length).toBeGreaterThan(0);
     } finally { await server.close(); }
-  }, 10000);
+  }, 20000);
   it("forces a disk scan through HTTP and reports incomplete sync without discarding the last valid snapshot", async () => {
     const f = await fixture(); await f.sync();
     const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");

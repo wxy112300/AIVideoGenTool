@@ -39,7 +39,8 @@ export async function withStrataReferenceMedia<T>(
       for (const fraction of [0, 0.5, 1]) {
         signal.throwIfAborted();
         const sampleEnd = Math.max(start + Math.min(1 / 24, end - start), start + (end - start) * fraction);
-        const frame = await (deps.prepareFrame ?? preparePromptExtensionFrame)(
+        const prepareFrame = deps.prepareFrame ?? ((source, id, abortSignal) => preparePromptExtensionFrame(source, id, abortSignal, t));
+        const frame = await prepareFrame(
           { filePath: filename, trimStartSeconds: start, trimEndSeconds: sampleEnd }, `strata-${randomUUID()}`, signal
         );
         cleanup.push(frame.cleanup);

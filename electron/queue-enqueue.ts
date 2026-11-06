@@ -1,3 +1,4 @@
+import type { Translate } from "../src/core/i18n.js";
 import type { IpcMain } from "electron";
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
@@ -162,11 +163,11 @@ export type QueueEnqueueIpcDependencies =
   | QueueEnqueueDependencies
   | { ipc: IpcMain; service: QueueEnqueueService };
 
-async function readWorkflow(filename: string, label: string): Promise<unknown> {
+async function readWorkflow(filename: string, label: string, t: Translate = createNativeTranslator(undefined).t): Promise<unknown> {
   try {
     return JSON.parse(await fs.readFile(filename, "utf8"));
   } catch (error) {
-    throw new Error(`无法读取${label} JSON：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(t(uiKeys.serviceChecks.readWorkflow, { label: label, detail: error instanceof Error ? error.message : String(error) }));
   }
 }
 
@@ -247,13 +248,14 @@ async function resolveImageProjectLineage(
 async function resolveImageOutputTarget(settings: Settings): Promise<{
   root: string; directory: string; subfolder: string;
 }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const detectedRoot = await resolveComfyOutputDirectory(settings);
   const rootCandidate = detectedRoot || settings.outputDirectory.trim();
-  if (!rootCandidate) throw new Error("无法确定 ComfyUI output 目录，无法准备图片输出目录。");
+  if (!rootCandidate) throw new Error(t(uiKeys.serviceChecks.outputRoot));
   const root = path.resolve(rootCandidate);
   const directory = path.resolve(settings.imageOutputDirectory.trim() || path.join(root, "Images"));
   if (!isPathWithinDirectory(root, directory)) {
-    throw new Error("图片输出目录必须位于当前 ComfyUI output 目录内。");
+    throw new Error(t(uiKeys.serviceChecks.outputInside));
   }
   await fs.mkdir(directory, { recursive: true });
   return { root, directory, subfolder: path.relative(root, directory).replaceAll(path.sep, "/") };
@@ -261,10 +263,11 @@ async function resolveImageOutputTarget(settings: Settings): Promise<{
 
 function readImageDimensions(
   filename: string,
-  imageInspection: ImageInspectionPort
+  imageInspection: ImageInspectionPort,
+  t: Translate = createNativeTranslator(undefined).t
 ): { width: number; height: number } {
   const size = imageInspection.readDimensions(filename);
-  if (!size.width || !size.height) throw new Error(`无法读取 Picture 图片尺寸：${filename}`);
+  if (!size.width || !size.height) throw new Error(t(uiKeys.serviceChecks.pictureSize, { filename: filename }));
   return size;
 }
 
@@ -312,32 +315,33 @@ async function requireImageModelAssets(
   hasReference = false,
   cachedScan?: EnvironmentScanResult
 ): Promise<string | undefined> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   const adapter = imageModelAdapterFor(modelId);
   const scan = cachedScan;
   if (!scan) return undefined;
   const profile = scan.modelProfiles.find((item) => item.id === modelId);
   if (!adapter || profile?.category !== "image" || !profile.integrated) {
-    throw new Error(`当前没有 ${modelId} 的可用图片工作流适配器。`);
+    throw new Error(t(uiKeys.serviceChecks.adapterMissing, { model: modelId }));
   }
   if (!profile.available) {
     const missing = profile.components.filter((component) => !component.found)
       .map((component) => component.expected).join("、");
-    throw new Error(`${adapter.name} 组件尚未完整${missing ? `，缺少：${missing}` : ""}。请确认设置已保存后重新扫描。`);
+    throw new Error(t(uiKeys.serviceChecks.componentsMissing, { model: adapter.name, detail: missing ? t(uiKeys.serviceChecks.missingDetail, { detail: missing }) : "" }));
   }
   if (profile.missingCustomNodeNames?.length) {
     throw new Error(
-      `${adapter.name} 缺少必需节点：${profile.missingCustomNodeNames.join("、")}。` +
-      "请先在设置 → 节点与依赖中安装；节点目录存在即可入队，无需启动 ComfyUI。"
+      t(uiKeys.serviceChecks.nodesMissing, { model: adapter.name, nodes: profile.missingCustomNodeNames.join("、") }) +
+      t(uiKeys.serviceChecks.installNodes)
     );
   }
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
-    throw new Error("当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。");
+    throw new Error(t(uiKeys.serviceChecks.lightningMissing));
   }
   const requiredQualityComponent = imageQualityProfileRequiredComponentLabel(adapter, qualityProfile);
   if (requiredQualityComponent && !imageQualityProfileComponentFound(adapter, qualityProfile, profile.components)) {
     throw new Error(
-      `${adapter.name} 的 ${qualityProfile} 需要 ${requiredQualityComponent}，但当前未找到匹配文件。` +
-      "请在设置 → 图片模型中按下载说明安装后重新扫描；Base 质量档不受该可选 Turbo 文件影响。"
+      t(uiKeys.serviceChecks.qualityFile, { model: adapter.name, quality: qualityProfile, component: requiredQualityComponent }) +
+      t(uiKeys.serviceChecks.qualityRecovery)
     );
   }
   if (hasReference && adapter.referenceModelComponentLabel) {
@@ -346,8 +350,8 @@ async function requireImageModelAssets(
     );
     if (!referenceComponent?.found) {
       throw new Error(
-        `${adapter.name} 的参考图路径需要 ${adapter.referenceModelComponentLabel}。` +
-        "请在设置 → 图片模型中按下载说明安装后重新扫描；无参考图的文生图不需要该文件。"
+        t(uiKeys.serviceChecks.referenceComponent, { model: adapter.name, component: adapter.referenceModelComponentLabel }) +
+        t(uiKeys.serviceChecks.referenceRecovery)
       );
     }
   }
@@ -357,67 +361,72 @@ async function requireImageModelAssets(
     /(?:^|[\\/])(diffusion_models|unet)[\\/]/u.test(component.expected)
   )
     ?.matches[0]?.split(/[\\/]/u).pop();
-  if (!diffusionModel) throw new Error(`${adapter.name} 扩散模型文件未能从环境扫描结果中解析。`);
+  if (!diffusionModel) throw new Error(t(uiKeys.serviceChecks.diffusionFile, { model: adapter.name }));
   return diffusionModel;
 }
 
 export class QueueEnqueueService {
   constructor(private readonly deps: QueueEnqueueServiceDependencies) {}
 
+  private get t(): Translate { return createNativeTranslator(this.deps.store.getSettings().uiLocale).t; }
+
   private rejectUnavailableH3NativeResolution(draft: Draft): void {
+    if (isLongVideoDraftActive(draft)) return;
     if (!isH3NativeHighResolution(draft.resolution)) return;
     if (draft.resolution === 1440) {
-      throw new Error("Create 暂未开放 H3 原生 1440p；请选择 1080p 或普通分辨率。");
+      throw new Error(this.t(uiKeys.serviceChecks.native1440));
     }
     if (draft.modelId !== "minimax_h3_fl2va") {
-      throw new Error("Create 原生 1080p 当前仅支持 MiniMax H3 FL2VA Base。");
+      throw new Error(this.t(uiKeys.serviceChecks.nativeBase));
     }
     if (h3SharedLatentSaveModeFor(draft) === "none") {
-      throw new Error("Create 原生 1080p 需要开启 JointAV 输出。");
+      throw new Error(this.t(uiKeys.serviceChecks.nativeJointAv));
     }
     if (draft.videoLoras.length) {
-      throw new Error("Create 原生 1080p 首发档暂不支持视频 LoRA，请先移除 LoRA。");
+      throw new Error(this.t(uiKeys.serviceChecks.nativeLora));
     }
   }
 
   private async validateH3Create1080(draft: Draft, settings: Settings): Promise<void> {
+    if (isLongVideoDraftActive(draft)) return;
     if (draft.resolution !== 1080) return;
+    const t = createNativeTranslator(settings.uiLocale).t;
     const [firstPass, secondPass] = await Promise.all([
       readWorkflow(fileURLToPath(new URL(
         "../workflows/minimax_h3_fl2va_first_pass_av_api.json",
         import.meta.url
-      )), "H3 1080p 首遍工作流"),
+      )), t(uiKeys.workflowChecks.first1080Label), t),
       readWorkflow(fileURLToPath(new URL(
         "../workflows/minimax_h3_fl2va_learned_3d_second_sample_av_api.json",
         import.meta.url
-      )), "H3 1080p learned 二采工作流")
+      )), t(uiKeys.workflowChecks.second1080Label), t)
     ]);
-    const firstValidation = validateH3ComfyWorkflow(firstPass);
-    const secondValidation = validateH3ComfyWorkflow(secondPass);
+    const firstValidation = validateH3ComfyWorkflow(firstPass, t);
+    const secondValidation = validateH3ComfyWorkflow(secondPass, t);
     if (!firstValidation.valid || firstValidation.kind !== "first-pass-av") {
-      throw new Error(`H3 1080p 首遍工作流静态校验失败：${firstValidation.errors.join("；")}`);
+      throw new Error(t(uiKeys.workflowChecks.first1080Static, { detail: firstValidation.errors.join("; ") }));
     }
     if (!secondValidation.valid || secondValidation.kind !== "second-sampling-av") {
-      throw new Error(`H3 1080p learned 二采工作流静态校验失败：${secondValidation.errors.join("；")}`);
+      throw new Error(t(uiKeys.workflowChecks.second1080Static, { detail: secondValidation.errors.join("; ") }));
     }
     const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
     if (!environment) return;
     const learnedProfile = environment.modelProfiles.find(
       (profile) => profile.id === "minimax_h3_latent_upscaler"
     );
-    if (!learnedProfile?.integrated) throw new Error("当前应用版本没有接入 H3 Learned 3D 工作流。");
+    if (!learnedProfile?.integrated) throw new Error(this.t(uiKeys.serviceChecks.learnedUnsupported));
     if (!learnedProfile.available) {
       const missing = learnedProfile.components
         .filter((component) => !component.found)
         .map((component) => component.expected)
         .join("、");
-      throw new Error(`H3 Learned 3D 权重尚未完整${missing ? `，缺少：${missing}` : ""}。`);
+      throw new Error(this.t(uiKeys.serviceChecks.learnedWeights, { detail: missing ? this.t(uiKeys.serviceChecks.missingDetail, { detail: missing }) : "" }));
     }
     if (learnedProfile.missingCustomNodeNames?.length) {
-      throw new Error(`H3 Learned 3D 缺少必需节点：${learnedProfile.missingCustomNodeNames.join("、")}。`);
+      throw new Error(this.t(uiKeys.serviceChecks.learnedNodes, { nodes: learnedProfile.missingCustomNodeNames.join("、") }));
     }
     if (learnedProfile.customNodeCompatibility === "error") {
-      throw new Error("H3 Learned 3D 节点版本不兼容，请在设置 → 节点与依赖中更新后重试。");
+      throw new Error(this.t(uiKeys.serviceChecks.learnedVersion));
     }
   }
 
@@ -425,10 +434,10 @@ export class QueueEnqueueService {
     request: UpscaleRequest
   ): UpscaleRequest {
     if (request.upscaleMode === "h3-native") {
-      throw new Error("DLSS5 任务不能与 H3 原生二次采样 provider 混用。");
+      throw new Error(this.t(uiKeys.serviceChecks.dlssProvider));
     }
-    const target = normalizeUpscaleTarget(request);
-    if (target.provider !== "dlss5") throw new Error("DLSS5 目标规范化失败。");
+    const target = normalizeUpscaleTarget(request, this.t);
+    if (target.provider !== "dlss5") throw new Error(this.t(uiKeys.serviceChecks.dlssTarget));
     return {
       ...request,
       upscaleMode: "pixel",
@@ -445,7 +454,7 @@ export class QueueEnqueueService {
     request: UpscaleRequest
   ): UpscaleRequest {
     if (request.upscaleMode === "h3-native") {
-      throw new Error("Konohamaru DLSS5 任务不能与 H3 原生二次采样 provider 混用。");
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruProvider));
     }
     if (
       request.targetHeight !== undefined ||
@@ -453,9 +462,9 @@ export class QueueEnqueueService {
       request.dlss5 !== undefined ||
       request.aetherScale !== undefined
     ) {
-      throw new Error("Konohamaru DLSS5 任务不能与 legacy/HECer/AetherScale target 字段混用。");
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruTarget));
     }
-    const target = normalizeKonohamaruTarget(request);
+    const target = normalizeKonohamaruTarget(request, this.t);
     return {
       ...request,
       upscaleMode: "pixel",
@@ -494,7 +503,7 @@ export class QueueEnqueueService {
       : undefined;
     const node = customNodes?.find((candidate) => candidate.id === "comfyui-dlss-frame-interpolation");
     if (customNodes && !node) {
-      throw new Error("Konohamaru DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。");
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruInstall));
     }
     if (node && (
       !node.installed ||
@@ -505,20 +514,20 @@ export class QueueEnqueueService {
     )) {
       throw new Error(
         node.loadError
-          ? `Konohamaru DLSS5 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
-          : "Konohamaru DLSS5 节点尚未通过检查，请先在设置 → 节点与依赖中修复/更新并重新扫描。"
+          ? this.t(uiKeys.serviceChecks.konohamaruLoad, { detail: node.loadError })
+          : this.t(uiKeys.serviceChecks.konohamaruCheck)
       );
     }
     if (node?.runtimeMissingNodeTypes?.length) {
-      throw new Error(`Konohamaru DLSS5 节点 schema 尚未通过当前 ComfyUI 检查：${node.runtimeMissingNodeTypes.join("、")}。`);
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruNodes, { nodes: node.runtimeMissingNodeTypes.join("、") }));
     }
     const profile = environment.modelProfiles?.find((candidate) => candidate.id === KONOHAMARU_MODEL_ID);
     if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
-      throw new Error(`Konohamaru DLSS5 schema 尚未通过当前 ComfyUI 检查${profile.runtimeMissingNodes?.length ? `：${profile.runtimeMissingNodes.join("、")}` : ""}。请刷新环境后重试。`);
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruSchema, { detail: profile.runtimeMissingNodes?.length ? this.t(uiKeys.serviceChecks.detailSuffix, { detail: profile.runtimeMissingNodes.join("、") }) : "" }));
     }
     const nvidia = environment.items?.find((item) => item.id === "nvidia");
     if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
-      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，Konohamaru DLSS5 需要 NVIDIA RTX 环境。");
+      throw new Error(this.t(uiKeys.serviceChecks.konohamaruGpu));
     }
   }
 
@@ -526,12 +535,12 @@ export class QueueEnqueueService {
     request: UpscaleRequest
   ): UpscaleRequest {
     if (request.upscaleMode === "h3-native") {
-      throw new Error("AetherScale 任务不能与 H3 原生二次采样 provider 混用。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherProvider));
     }
     if (request.targetHeight !== undefined || request.targetScale !== undefined || request.dlss5 !== undefined) {
-      throw new Error("AetherScale 任务不能与 legacy/HECer target 字段混用。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherTarget));
     }
-    const target = normalizeAetherScaleTarget(request);
+    const target = normalizeAetherScaleTarget(request, this.t);
     return {
       ...request,
       upscaleMode: "pixel",
@@ -550,7 +559,7 @@ export class QueueEnqueueService {
     settings: Settings
   ): Promise<void> {
     if (!isLocalComfyUrl(settings.comfyUrl)) {
-      throw new Error("AetherScale carrier 需要与当前 Windows 本地 ComfyUI 使用同一台机器；远程 ComfyUI 仅支持连接。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherLocal));
     }
     const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
     if (!environment) {
@@ -565,25 +574,25 @@ export class QueueEnqueueService {
         (node.runtimeVerified && !node.loaded)) {
       throw new Error(
         node?.loadError
-          ? `AetherScale 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
-          : "AetherScale 节点尚未安装或未通过静态检查，请先在设置 → 节点与依赖中安装并重新扫描。"
+          ? this.t(uiKeys.serviceChecks.aetherLoad, { detail: node.loadError })
+          : this.t(uiKeys.serviceChecks.aetherInstall)
       );
     }
     if (node.runtimeMissingNodeTypes?.length) {
-      throw new Error("AetherScale 节点 schema 尚未通过当前 ComfyUI 检查，请刷新环境后重试。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherSchema));
     }
     const profile = environment.modelProfiles?.find((candidate) => candidate.id === AETHERSCALE_MODEL_ID);
     if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
-      throw new Error("AetherScale 节点 schema 尚未通过当前 ComfyUI 检查，请刷新环境后重试。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherSchema));
     }
     const nvidia = environment.items?.find((item) => item.id === "nvidia");
     if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
-      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，AetherScale carrier 只能在 Windows + NVIDIA 环境运行。");
+      throw new Error(this.t(uiKeys.serviceChecks.aetherGpu));
     }
     const runtime = environment.aetherScaleRuntime;
     if (runtime && (!runtime.carrierReady || runtime.state === "missing" || runtime.state === "invalid")) {
       const detail = runtime.error || runtime.missingFiles.join("、") || runtime.incompatibleFiles.join("、");
-      throw new Error(`AetherScale carrier runtime 尚未就绪${detail ? `：${detail}` : ""}。请在设置 → 节点与依赖中完成安装并重新扫描。`);
+      throw new Error(this.t(uiKeys.serviceChecks.aetherRuntime, { detail: detail ? this.t(uiKeys.serviceChecks.detailSuffix, { detail: detail }) : "" }));
     }
   }
 
@@ -605,7 +614,7 @@ export class QueueEnqueueService {
       : undefined;
     const node = customNodes?.find((candidate) => candidate.id === "comfyui-dlss5");
     if (customNodes && !node) {
-      throw new Error("DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。");
+      throw new Error(this.t(uiKeys.serviceChecks.dlssInstall));
     }
     if (node && (
       !node.installed ||
@@ -616,20 +625,20 @@ export class QueueEnqueueService {
     )) {
       throw new Error(
         node.loadError
-          ? `DLSS5 节点加载失败：${node.loadError} 请在设置 → 节点与依赖中更新并重启 ComfyUI。`
-          : "DLSS5 节点尚未安装，请先在设置 → 节点与依赖中安装并重新扫描。"
+          ? this.t(uiKeys.serviceChecks.dlssLoad, { detail: node.loadError })
+          : this.t(uiKeys.serviceChecks.dlssInstall)
       );
     }
     if (node?.runtimeMissingNodeTypes?.length) {
-      throw new Error("DLSS5 节点 schema 尚未通过当前 ComfyUI 检查，请在设置 → 节点与依赖中刷新并重试。");
+      throw new Error(this.t(uiKeys.serviceChecks.dlssSchema));
     }
     const profile = environment.modelProfiles?.find((candidate) => candidate.id === DLSS5_MODEL_ID);
     if (profile?.runtimeMissingNodes?.length || profile?.available === false) {
-      throw new Error("DLSS5 节点 schema 尚未通过当前 ComfyUI 检查，请在设置 → 节点与依赖中刷新并重试。");
+      throw new Error(this.t(uiKeys.serviceChecks.dlssSchema));
     }
     const nvidia = environment.items?.find((item) => item.id === "nvidia");
     if (nvidia && nvidia.ok === false && nvidia.status === "missing") {
-      throw new Error("当前未检测到可用的 NVIDIA GPU/驱动，DLSS Super Resolution 只能在 Windows + NVIDIA 环境运行。");
+      throw new Error(this.t(uiKeys.serviceChecks.dlssGpu));
     }
     const runtime = environment.dlss5Runtime;
     const runtimeUnavailable = runtime && (
@@ -640,12 +649,12 @@ export class QueueEnqueueService {
     );
     if (runtimeUnavailable) {
       const detail = runtime.error || runtime.missingFiles.join("、");
-      throw new Error(`DLSS5 Super Resolution runtime 尚未就绪${detail ? `：${detail}` : ""}。请在设置 → 节点与依赖中完成安装并重新扫描。`);
+      throw new Error(this.t(uiKeys.serviceChecks.dlssRuntime, { detail: detail ? this.t(uiKeys.serviceChecks.detailSuffix, { detail: detail }) : "" }));
     }
     const depth = environment.depthAnything;
     if (depth && !depth.available) {
       const detail = depth.error || depth.missingFiles.join("、");
-      throw new Error(`Depth Anything V2 Small 权重尚未就绪${detail ? `：${detail}` : ""}。请按设置页模型卡下载 model.safetensors，放入指定 ComfyUI 模型目录后重新扫描。`);
+      throw new Error(this.t(uiKeys.serviceChecks.depthWeights, { detail: detail ? this.t(uiKeys.serviceChecks.detailSuffix, { detail: detail }) : "" }));
     }
   }
 
@@ -659,21 +668,21 @@ export class QueueEnqueueService {
       const reason = longVideoBlockReason(draft, enqueueSettings);
       if (reason) throw new Error(reason);
     }
-    if (draft.inputMode !== "image") throw new Error("视频续写必须使用独立的 extension 队列任务");
+    if (draft.inputMode !== "image") throw new Error(this.t(uiKeys.serviceChecks.extensionTask));
     if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
-      throw new Error("当前模型不支持图像输入生成。");
+      throw new Error(this.t(uiKeys.serviceChecks.imageUnsupported));
     }
     this.rejectUnavailableH3NativeResolution(draft);
     await this.validateH3Create1080(draft, enqueueSettings);
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
     const hasReference = Boolean(draft.startImagePath || draft.endImagePath);
     const isH3TextToVideo = isMiniMaxH3Model(draft.modelId) && !isR2V && !hasReference;
-    if (!isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error("请先选择首帧图片");
+    if (!isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error(this.t(uiKeys.serviceChecks.firstImage));
     if (isR2V && (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))) {
-      throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
+      throw new Error(this.t(uiKeys.serviceChecks.r2vSlots));
     }
-    if (!longVideo && !promptOf(draft)) throw new Error("提示词不能为空");
-    if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
+    if (!longVideo && !promptOf(draft)) throw new Error(this.t(uiKeys.serviceChecks.promptEmpty));
+    if (!draft.workflowPath) throw new Error(this.t(uiKeys.serviceChecks.workflowSelect));
     const resolvedWorkflowPath = h3WorkflowPathForInput(
       draft.workflowPath,
       draft.modelId,
@@ -685,7 +694,7 @@ export class QueueEnqueueService {
     }, enqueueSettings.uiLocale);
     if (!longVideo && !safety.safe) throw new Error(safety.message);
     if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
-      throw new Error("H3 Q3 GGUF 3080 实验档不支持 LoRA，请先移除 LoRA。");
+      throw new Error(this.t(uiKeys.serviceChecks.q3Lora));
     }
     const videoPolicy = resolveVideoGenerationPolicy({
       modelId: draft.modelId,
@@ -706,20 +715,20 @@ export class QueueEnqueueService {
       h3LivePreview: enqueueSettings.h3LivePreview
     });
     if (isMiniMaxH3Model(draft.modelId) && !initialH3ExecutionPolicy.allowed) {
-      throw new Error(`H3 执行策略不可用：${initialH3ExecutionPolicy.reasons.join("、")}`);
+      throw new Error(this.t(uiKeys.serviceChecks.executionPolicy, { reasons: initialH3ExecutionPolicy.reasons.join("、") }));
     }
     if (draft.spectrumMode === "balanced" && !videoPolicy.spectrum.allowed) {
       throw new Error(isMiniMaxH3Q3GgufModel(draft.modelId)
-        ? "H3 Q3 GGUF 3080 实验档不支持 Spectrum，请关闭后再提交。"
-        : "当前模型不支持 Spectrum，请关闭后再提交。");
+        ? this.t(uiKeys.serviceChecks.q3Spectrum)
+        : this.t(uiKeys.serviceChecks.spectrumUnsupported));
     }
-    const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
+    const workflow = await readWorkflow(resolvedWorkflowPath, this.t(uiKeys.serviceChecks.workflowLabel), this.t);
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
-    if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    if (!validation.valid) throw new Error(this.t(uiKeys.serviceChecks.workflowInvalid, { errors: validation.errors.join("；") }));
     if ((draft.modelId === FASTH3_OMNI_MODEL_ID || draft.videoLoras.some((lora) =>
       isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
     )) && !workflowSupportsH3PddSampling(workflow, { modelId: draft.modelId })) {
-      throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
+      throw new Error(this.t(uiKeys.serviceChecks.pddWorkflow));
     }
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
       (enqueueSettings.h3AttentionMode === "sage" || enqueueSettings.h3AttentionMode === "sage-triton");
@@ -749,7 +758,7 @@ export class QueueEnqueueService {
         )
       : undefined) ?? undefined;
     if (isMiniMaxH3Model(draft.modelId) && dependencyScan && !h3VideoVaeMode) {
-      throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+      throw new Error(this.t(uiKeys.serviceChecks.videoVae));
     }
     if (draft.videoLoras.length) {
       const issues = videoLoraConfigurationIssues({
@@ -772,7 +781,7 @@ export class QueueEnqueueService {
             return normalized === expected || normalized.endsWith(`/${expected}`);
           }));
         });
-        if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
+        if (missing) throw new Error(this.t(uiKeys.serviceChecks.loraFile, { name: missing.name, filename: missing.filename }));
       }
     }
     if (draft.spectrumMode === "balanced" && dependencyScan) {
@@ -780,30 +789,30 @@ export class QueueEnqueueService {
         (node) => node.id === "spectrum-minimax-h3"
       );
       if (!spectrum?.loaded) {
-        throw new Error("Spectrum 节点不可用；请先在设置 → 节点与依赖中安装、更新并复检。");
+        throw new Error(this.t(uiKeys.serviceChecks.spectrumInstall));
       }
       if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
         spectrum.version,
         SPECTRUM_TURBO_MINIMUM_VERSION
       )) {
-        throw new Error(`LightX2V Turbo + Spectrum 需要 Spectrum v${SPECTRUM_TURBO_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+        throw new Error(this.t(uiKeys.serviceChecks.spectrumTurbo, { minimum: SPECTRUM_TURBO_MINIMUM_VERSION, current: spectrum.version ? `v${spectrum.version}` : this.t(uiKeys.serviceChecks.unknownVersion) }));
       }
       if (draft.videoLoras.some((lora) =>
         isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
       ) && !releaseVersionAtLeast(spectrum.version, SPECTRUM_PDD_MINIMUM_VERSION)) {
-        throw new Error(`PDD Acc + Spectrum 需要 Spectrum v${SPECTRUM_PDD_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+        throw new Error(this.t(uiKeys.serviceChecks.spectrumPdd, { minimum: SPECTRUM_PDD_MINIMUM_VERSION, current: spectrum.version ? `v${spectrum.version}` : this.t(uiKeys.serviceChecks.unknownVersion) }));
       }
       if (draft.spectrumModelAwareMode !== "off" && !releaseVersionAtLeast(
         spectrum.version,
         SPECTRUM_MODEL_AWARE_MINIMUM_VERSION
       )) {
-        throw new Error(`模型感知预测需要 Spectrum v${SPECTRUM_MODEL_AWARE_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+        throw new Error(this.t(uiKeys.serviceChecks.spectrumAware, { minimum: SPECTRUM_MODEL_AWARE_MINIMUM_VERSION, current: spectrum.version ? `v${spectrum.version}` : this.t(uiKeys.serviceChecks.unknownVersion) }));
       }
     }
     if (h3UsesSageAttention && dependencyScan) {
       const kjNodes = dependencyScan?.customNodes.find((node) => node.id === "kjnodes");
       if (!kjNodes?.installed) {
-        throw new Error("当前 H3 Attention 模式需要 ComfyUI-KJNodes 的 SageAttention 节点；请先安装节点，或切换到 PyTorch 模式。");
+        throw new Error(this.t(uiKeys.serviceChecks.sageNode));
       }
     }
     if (isH3TurboEnabled(draft) && !workflowSupportsH3TurboSampling(workflow, {
@@ -811,10 +820,10 @@ export class QueueEnqueueService {
       videoLoras: draft.videoLoras,
       applySamplingRecipe: true
     })) {
-      throw new Error("当前工作流无法应用所选 Turbo 的采样配方；请使用对应的内置工作流。R2V 还需要标准 MiniMaxH3ReferenceToVideo 节点。");
+      throw new Error(this.t(uiKeys.serviceChecks.turboWorkflow));
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
-      throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");
+      throw new Error(this.t(uiKeys.serviceChecks.endImage));
     }
     const sourcePaths = (isR2V
       ? draft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").map((slot) => slot.mediaPath)
@@ -826,7 +835,7 @@ export class QueueEnqueueService {
       const operationId = randomUUID().slice(0, 8);
       logger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", { operationId, referenceCount: sourcePaths.length });
       try {
-        const archived = await archiveImagePaths(sourcePaths, library);
+        const archived = await archiveImagePaths(sourcePaths, library, this.t);
         const replacements = new Map(sourcePaths.map((source, index) => [source, archived[index]!]));
         preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
         preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
@@ -847,7 +856,7 @@ export class QueueEnqueueService {
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
-      const task = queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode });
+      const task = queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode }, this.t);
       if (longVideoRoot) task.longVideoRoot = longVideoRoot;
       state.queue.push(task);
       activateCreationDraft(state, preparedDraft);
@@ -878,24 +887,25 @@ export class QueueEnqueueService {
       normalized.modelId,
       normalized.pictures.length + (adapter.supportsMarkupReferenceGuide
         ? normalized.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
-        : 0)
+        : 0),
+      createNativeTranslator(enqueueSettings.uiLocale).t
     );
     if (imageLoraError) throw new Error(imageLoraError);
     const hasReference = normalized.pictures.length > 0;
     if (!hasReference && !adapter.supportsTextOnly) {
-      throw new Error("请先添加至少一张 Picture 作为基础图片。");
+      throw new Error(this.t(uiKeys.serviceChecks.basePicture));
     }
-    if (normalized.pictures.length > adapter.maxPictures) throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);
+    if (normalized.pictures.length > adapter.maxPictures) throw new Error(this.t(uiKeys.serviceChecks.maxPictures, { model: adapter.name, count: adapter.maxPictures }));
     if (hasReference) {
       const incomplete = normalized.pictures.find((picture) => !picture.absolutePath);
-      if (incomplete) throw new Error(`请先为 Slot ${incomplete.pictureNumber}（Picture ${incomplete.pictureNumber}）添加图片。`);
+      if (incomplete) throw new Error(this.t(uiKeys.serviceChecks.emptySlot, { slot: incomplete.pictureNumber, picture: incomplete.pictureNumber }));
     }
     const prompt = adapter.requiresPrompt === false
       ? ""
       : normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
-    if (adapter.requiresPrompt !== false && !prompt) throw new Error("图片处理提示词不能为空");
+    if (adapter.requiresPrompt !== false && !prompt) throw new Error(this.t(uiKeys.serviceChecks.imagePrompt));
     if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
-      throw new Error("请先在原图上绘制并保存 Mask。");
+      throw new Error(this.t(uiKeys.serviceChecks.maskRequired));
     }
     const cachedEnvironment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(
       enqueueSettings
@@ -923,7 +933,8 @@ export class QueueEnqueueService {
       archivedPictures = normalized.pictures.length
         ? await archiveImageReferences(
             normalized.pictures,
-            await deps.effectiveImageInputLibraryDirectory(enqueueSettings)
+            await deps.effectiveImageInputLibraryDirectory(enqueueSettings),
+            this.t
           )
         : [];
       logger.info("assets", "image-input-archive-completed", "图片任务输入素材已归档并校验", {
@@ -953,7 +964,7 @@ export class QueueEnqueueService {
         ...picture,
         ...(picture.crop
           ? { width: picture.crop.width, height: picture.crop.height }
-          : readImageDimensions(picture.absolutePath, deps.imageInspection))
+          : readImageDimensions(picture.absolutePath, deps.imageInspection, this.t))
       })),
       outputFormat: "png"
     });
@@ -961,22 +972,22 @@ export class QueueEnqueueService {
     preparedDraft = normalizeImageEditDraft({ ...preparedDraft, projectId: lineage?.projectId, parentVersionId: lineage?.parentVersionId });
     for (const picture of preparedDraft.pictures) {
       if (!(await fs.stat(picture.absolutePath).catch(() => null))?.isFile()) {
-        throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
+        throw new Error(this.t(uiKeys.serviceChecks.pictureMissing, { number: picture.pictureNumber, path: picture.absolutePath }));
       }
       if (picture.crop?.croppedPath?.trim() && !(await fs.stat(picture.crop.croppedPath).catch(() => null))?.isFile()) {
-        throw new Error(`Picture ${picture.pictureNumber} 的裁剪文件不存在，请重新打开裁剪工具并保存。`);
+        throw new Error(this.t(uiKeys.serviceChecks.cropMissing, { number: picture.pictureNumber }));
       }
       const markedPath = picture.markup?.renderedPath.trim();
       if (picture.markup?.objectCount && markedPath && !(await fs.stat(markedPath).catch(() => null))?.isFile()) {
-        throw new Error(`Picture ${picture.pictureNumber} 的标记预览不存在，请重新打开标记画布并保存。`);
+        throw new Error(this.t(uiKeys.serviceChecks.markupMissing, { number: picture.pictureNumber }));
       }
       const maskPath = picture.mask?.maskPath.trim();
       if (adapter.requiresMask && (!maskPath || !(await fs.stat(maskPath).catch(() => null))?.isFile())) {
-        throw new Error(`Picture ${picture.pictureNumber} 的 Mask 不存在，请重新绘制并保存。`);
+        throw new Error(this.t(uiKeys.serviceChecks.maskMissing, { number: picture.pictureNumber }));
       }
     }
     const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";
-    const compiled = adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
+    const compiled = adapter.compilePrompt(preparedPrompt, preparedDraft.pictures, createNativeTranslator(enqueueSettings.uiLocale).t);
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const task = imageTaskFromDraft(preparedDraft, diffusionModelFilename, outputTarget);
     const next = await store.update((state) => {
@@ -997,9 +1008,9 @@ export class QueueEnqueueService {
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeVideoDraft(draft));
     if (isLongVideoDraftActive(draft)) return enqueueLongVideoExtension(deps, draft);
-    if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
+    if (draft.inputMode !== "video") throw new Error(this.t(uiKeys.serviceChecks.extensionMode));
     if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
-      throw new Error("当前模型不支持视频续写。");
+      throw new Error(this.t(uiKeys.serviceChecks.extensionUnsupported));
     }
     const loraIssue = videoLoraConfigurationIssues({
       modelId: draft.modelId, inputMode: draft.inputMode, spectrumMode: draft.spectrumMode,
@@ -1020,12 +1031,12 @@ export class QueueEnqueueService {
       h3LivePreview: enqueueSettings.h3LivePreview
     });
     if (isMiniMaxH3Model(draft.modelId) && !initialH3ExecutionPolicy.allowed) {
-      throw new Error(`H3 执行策略不可用：${initialH3ExecutionPolicy.reasons.join("、")}`);
+      throw new Error(this.t(uiKeys.serviceChecks.executionPolicy, { reasons: initialH3ExecutionPolicy.reasons.join("、") }));
     }
-    if (!promptOf(draft)) throw new Error("提示词不能为空");
+    if (!promptOf(draft)) throw new Error(this.t(uiKeys.serviceChecks.promptEmpty));
     const extensionWorkflowPath = await extensionWorkflowPathForDraft(draft);
-    if (!extensionWorkflowPath) throw new Error("当前模型没有可用的视频续写 API 工作流，请在设置中检查工作流。");
-    if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
+    if (!extensionWorkflowPath) throw new Error(this.t(uiKeys.serviceChecks.extensionWorkflow));
+    if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error(this.t(uiKeys.serviceChecks.extensionSource));
     const dependencyScanRequired = isMiniMaxH3Model(draft.modelId);
     const dependencyScan = dependencyScanRequired
       ? getCachedEnvironmentScan(enqueueSettings)
@@ -1043,7 +1054,7 @@ export class QueueEnqueueService {
         )
       : undefined) ?? undefined;
     if (isMiniMaxH3Model(draft.modelId) && dependencyScan && !h3VideoVaeMode) {
-      throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+      throw new Error(this.t(uiKeys.serviceChecks.videoVae));
     }
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
     const continuum = isMiniMaxH3ContinuumModel(draft.modelId);
@@ -1152,10 +1163,10 @@ export class QueueEnqueueService {
       );
       const counts = h3ReferenceSlotCounts(preparedDraft.h3ReferenceSlots);
       if (counts.imageCount > 9 || counts.videoCount > 3 || counts.total > 12) {
-        throw new Error("H3 Motion Context 最多支持 9 张图片、3 段视频，且总参考媒体不超过 12 个。");
+        throw new Error(this.t(uiKeys.serviceChecks.motionLimits));
       }
       if (!preparedDraft.h3ReferenceSlots.every((slot) => slot.mediaPath.trim())) {
-        throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
+        throw new Error(this.t(uiKeys.serviceChecks.motionSlots));
       }
     }
     if (continuum && !managedContinuum) {
@@ -1172,15 +1183,15 @@ export class QueueEnqueueService {
           )
         : preparedDraft.h3ContinuumArtifactPath?.trim() || "";
       if (!artifactPath) {
-        throw new Error("Continuum 续写需要一个已验证的 H3 Native AV artifact；请从 History 继续，或选择 output/h3-native-av 下的 safetensors 文件。");
+        throw new Error(this.t(uiKeys.serviceChecks.continuumArtifact));
       }
       if (!deps.inspectNativeAvArtifact) {
-        throw new Error("当前运行时没有可用的 H3 Native AV artifact 校验服务，请重启应用后重试。");
+        throw new Error(this.t(uiKeys.serviceChecks.artifactService));
       }
       const inspection = await deps.inspectNativeAvArtifact(artifactPath, outputDirectory);
       const artifact = inspection.status === "available" ? inspection.artifact : undefined;
       if (!artifact) {
-        throw new Error(`Continuum 输入 artifact 不可用：${inspection.reason ?? "manifest 或 payload 校验失败"}`);
+        throw new Error(this.t(uiKeys.serviceChecks.artifactInvalid, { detail: inspection.reason ?? this.t(uiKeys.serviceChecks.artifactFallback) }));
       }
       const assets = miniMaxH3ModelAssetNames(draft.modelId);
       if (
@@ -1188,35 +1199,35 @@ export class QueueEnqueueService {
         !assets ||
         artifact.diffusionModelFilename !== assets.diffusionModel
       ) {
-        throw new Error("所选 JointAV 与 MiniMax H3 Continuum 当前权重不兼容；请使用同一套 FL2VA INT8 模型生成的 artifact。");
+        throw new Error(this.t(uiKeys.serviceChecks.artifactWeights));
       }
       if (
         preparedDraft.sourceWidth > 0 && preparedDraft.sourceHeight > 0 &&
         (artifact.width !== preparedDraft.sourceWidth || artifact.height !== preparedDraft.sourceHeight)
       ) {
-        throw new Error(`所选 JointAV 分辨率 ${artifact.width}×${artifact.height} 与源视频 ${preparedDraft.sourceWidth}×${preparedDraft.sourceHeight} 不一致。`);
+        throw new Error(this.t(uiKeys.serviceChecks.artifactResolution, { width: artifact.width, height: artifact.height, sourceWidth: preparedDraft.sourceWidth, sourceHeight: preparedDraft.sourceHeight }));
       }
       preparedDraft.h3ContinuumArtifactPath = inspection.payloadPath ?? artifact.payload.absolutePath;
       preparedDraft.h3ContinuumArtifact = artifact;
     }
-    const workflow = await readWorkflow(preparedDraft.workflowPath, "续写工作流");
+    const workflow = await readWorkflow(preparedDraft.workflowPath, this.t(uiKeys.serviceChecks.extensionLabel), this.t);
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
-    if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    if (!validation.valid) throw new Error(this.t(uiKeys.serviceChecks.workflowInvalid, { errors: validation.errors.join("；") }));
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
-      ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
+      ? workflowSupportsH3BoundaryExtension(workflow) ? [] : [this.t(uiKeys.serviceChecks.boundaryWorkflow)]
       : continuum
         ? managedContinuum
-          ? workflowSupportsH3ContinuumManagedExtension(workflow) ? [] : ["H3 Continuum managed 工作流缺少 public V3.8 sampler、首帧、Run Storage receipt 或完整 Finalize 输出节点"]
-          : workflowSupportsH3ContinuumExtension(workflow) ? [] : ["H3 Continuum legacy/bootstrap 工作流缺少 JointAV loader、native-state bridge、V3.8 sampler 或视频输出节点"]
+          ? workflowSupportsH3ContinuumManagedExtension(workflow) ? [] : [this.t(uiKeys.serviceChecks.managedWorkflow)]
+          : workflowSupportsH3ContinuumExtension(workflow) ? [] : [this.t(uiKeys.serviceChecks.bootstrapWorkflow)]
       : isMiniMaxH3R2vModel(draft.modelId)
-        ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
+        ? workflowSupportsH3MotionContextExtension(workflow) ? [] : [this.t(uiKeys.serviceChecks.motionWorkflow)]
         : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);
-    if (safetyErrors.length) throw new Error(`续写工作流不符合原生续写低显存契约：${safetyErrors.join("；")}`);
+    if (safetyErrors.length) throw new Error(this.t(uiKeys.serviceChecks.extensionSafety, { errors: safetyErrors.join("；") }));
     if (motionContext) {
       const imageCount = preparedDraft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").length;
       const extraVideoCount = Math.max(0, preparedDraft.h3ReferenceSlots.filter((slot) => slot.mediaType === "video").length - 1);
       if (!workflowSupportsH3MotionContextReferences(workflow, imageCount, extraVideoCount)) {
-        throw new Error("当前 Motion Context 工作流没有对应的参考 Slot 输入，请重新选择新版 minimax_h3_r2v_extend_api.json。");
+        throw new Error(this.t(uiKeys.serviceChecks.motionInputs));
       }
     }
     if (motionContext) {
@@ -1232,7 +1243,7 @@ export class QueueEnqueueService {
           referenceCount: imagePaths.length
         });
         try {
-          const archived = await archiveImagePaths(imagePaths, library);
+          const archived = await archiveImagePaths(imagePaths, library, this.t);
           const replacements = new Map(imagePaths.map((source, index) => [source, archived[index]!])) as Map<string, string>;
           preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) =>
             slot.mediaType === "image"
@@ -1258,14 +1269,14 @@ export class QueueEnqueueService {
     const taskDraft = managedContinuum && preparedDraft.h3ContinuumSequence
       ? { ...preparedDraft, seed: preparedDraft.h3ContinuumSequence.baseSeed }
       : preparedDraft;
-    const task = extensionTaskFromDraft(taskDraft, current, undefined, { h3VideoVaeMode });
+    const task = extensionTaskFromDraft(taskDraft, current, undefined, { h3VideoVaeMode }, this.t);
     if (managedContinuum) {
       const sequence = preparedDraft.h3ContinuumSequence!;
       task.h3ContinuumMode = "managed";
       task.h3ContinuumSequence = structuredClone(sequence);
       const reviewAction = preparedDraft.h3ContinuumReviewAction ?? "Continue / Next";
       if (reviewAction === "Regenerate Current" && sequence.acceptedChunks < 1) {
-        throw new Error("首个 managed Continuum Chunk 尚未存在，不能 Regenerate Current。");
+        throw new Error(this.t(uiKeys.serviceChecks.managedFirst));
       }
       task.h3ContinuumTargetChunks = reviewAction === "Regenerate Current"
         ? sequence.acceptedChunks
@@ -1282,13 +1293,13 @@ export class QueueEnqueueService {
       task.h3ContinuumTakeAction = preparedDraft.h3ContinuumTakeAction ?? "Automatic";
       if (task.h3ContinuumTakeAction !== "Automatic" &&
           (!(task.h3ContinuumTakeGroup > 0) || !task.h3ContinuumTakeRevisionId)) {
-        throw new Error("managed Continuum Take action 缺少已验证的 physical group/revision。");
+        throw new Error(this.t(uiKeys.serviceChecks.managedPhysical));
       }
-      continuumTimelinePromptForTask(task, sequence.chunkSeconds);
+      continuumTimelinePromptForTask(task, sequence.chunkSeconds, enqueueSettings.uiLocale);
       if (sequence.acceptedChunks > 0) {
-        if (!deps.inspectExtensionSource) throw new Error("Continuum Run 入队前检查服务不可用。");
+        if (!deps.inspectExtensionSource) throw new Error(this.t(uiKeys.serviceChecks.runService));
         const inspection = await deps.inspectExtensionSource(preparedDraft);
-        if (inspection.status !== "available") throw new Error(inspection.reason ?? "Continuum Run 前缀不可用。");
+        if (inspection.status !== "available") throw new Error(inspection.reason ?? this.t(uiKeys.serviceChecks.runPrefix));
       }
     }
     if (isMiniMaxH3R2vModel(task.modelId)) {
@@ -1311,24 +1322,24 @@ export class QueueEnqueueService {
         contextFile?.isFile() &&
         Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) >= 0.05
       ) {
-        throw new Error("当前 Motion Context latent 只对应源视频末端；请调整裁剪末端，或清除 latent 改用视频上下文。");
+        throw new Error(this.t(uiKeys.serviceChecks.latentEndpoint));
       }
       if (contextPath && !contextFile?.isFile()) {
-        throw new Error("所选 Motion Context latent 已不存在；请清除该 latent 后明确改用视频上下文，或恢复文件后重试。");
+        throw new Error(this.t(uiKeys.serviceChecks.latentMissing));
       }
       if (contextPath && contextFile?.isFile()) {
         const latestContextFile = await fs.stat(contextPath).catch(() => undefined);
         if (!latestContextFile?.isFile() ||
             latestContextFile.size !== contextFile.size ||
             latestContextFile.mtimeMs !== contextFile.mtimeMs) {
-          throw new Error("所选 Motion Context latent 在提交前发生变化，请重新检查后重试。");
+          throw new Error(this.t(uiKeys.serviceChecks.latentChanged));
         }
         if (!deps.inspectExtensionSource) {
-          throw new Error("当前运行时没有可用的 Motion Context latent 校验服务，请重启应用后重试。");
+          throw new Error(this.t(uiKeys.serviceChecks.latentService));
         }
         const motionInspection = await deps.inspectExtensionSource(preparedDraft);
         if (motionInspection.route !== "motion-context" || motionInspection.status !== "available") {
-          throw new Error(motionInspection.reason ?? "所选 Motion Context latent 未通过提交前校验。");
+          throw new Error(motionInspection.reason ?? this.t(uiKeys.serviceChecks.latentInvalid));
         }
       }
       task.h3ContextLatentPath = contextPath &&
@@ -1355,9 +1366,9 @@ export class QueueEnqueueService {
     const current = store.get();
     const asset = current.history.find((item) => item.id === request.sourceAssetId);
     const version = asset?.versions.find((item) => item.id === request.sourceVersionId);
-    if (!asset || !version) throw new Error("源作品或版本已不存在");
+    if (!asset || !version) throw new Error(this.t(uiKeys.serviceChecks.sourceVersion));
     if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
-      throw new Error("源视频文件不存在，无法加入提升队列");
+      throw new Error(this.t(uiKeys.serviceChecks.upscaleSource));
     }
     const isKonohamaru = request.modelId === KONOHAMARU_MODEL_ID || request.konohamaru !== undefined;
     const isAetherScale = !isKonohamaru && (request.modelId === AETHERSCALE_MODEL_ID || request.aetherScale !== undefined);
@@ -1366,23 +1377,23 @@ export class QueueEnqueueService {
     let preparedRequest = request;
     let tesseraAnchor: TesseraAnchorSnapshot | undefined;
     if (request.modelId === H3_REFINER_ID || request.modelId === TESSERA_ID) {
-      if (request.upscaleMode === "h3-native") throw new Error("H3 Refiner 使用视频输入，请新建独立任务。");
+      if (request.upscaleMode === "h3-native") throw new Error(this.t(uiKeys.serviceChecks.refinerTask));
       const source = version.files.find(file => file.absolutePath && path.resolve(file.absolutePath) === path.resolve(request.sourceFilePath));
-      if (!source || !/\.(mp4|webm|mov|mkv|m4v)$/i.test(source.filename)) throw new Error("H3 Refiner 输入与选中的源视频版本不一致。");
-      validateH3RefinerSource(version.duration, version.fps);
+      if (!source || !/\.(mp4|webm|mov|mkv|m4v)$/i.test(source.filename)) throw new Error(this.t(uiKeys.serviceChecks.refinerInput));
+      validateH3RefinerSource(version.duration, version.fps, this.t);
       preparedRequest = { ...request, upscaleMode: "pixel", sourceWidth: version.width, sourceHeight: version.height,
         duration: version.duration, fps: version.fps, sourceFilename: version.outputFilename,
         targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined, h3NativeInput: undefined };
       const environment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings);
       const profile = environment?.modelProfiles.find(item => item.id === request.modelId);
       if (environment && (!profile?.available || profile.missingCustomNodeNames?.length || profile.customNodeCompatibility === "error")) {
-        throw new Error("H3 Refiner 组件或节点尚未就绪，请在设置中补齐模型与依赖后重试。");
+        throw new Error(this.t(uiKeys.serviceChecks.refinerReady));
       }
       if (request.modelId === TESSERA_ID) {
-        if (!environment || !profile?.available) throw new Error("Tessera 尚未就绪，请先检查模型与节点。");
+        if (!environment || !profile?.available) throw new Error(this.t(uiKeys.serviceChecks.tesseraReady));
         if (request.tesseraAnchor?.enabled) {
           tesseraAnchor = tesseraAnchorModels(environment).find(m => m.modelId === request.tesseraAnchor?.modelId);
-          if (!tesseraAnchor) throw new Error("所选Qwen Image及配套组件尚未就绪，请关闭首帧增强或补齐模型。");
+          if (!tesseraAnchor) throw new Error(this.t(uiKeys.serviceChecks.anchorReady));
         }
         preparedRequest = { ...preparedRequest, tesseraAnchor: undefined };
       }
@@ -1404,17 +1415,17 @@ export class QueueEnqueueService {
         request.targetHeight !== 1080 &&
         request.targetHeight !== 1440
       ) {
-        throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
+        throw new Error(this.t(uiKeys.serviceChecks.nativeTargets));
       }
       const artifact = version.h3ContinuationData?.status === "available"
         ? version.h3ContinuationData.artifact
         : undefined;
-      if (!artifact) throw new Error("当前版本没有可用的 JointAV artifact。");
+      if (!artifact) throw new Error(this.t(uiKeys.serviceChecks.jointAvMissing));
       if (!isMiniMaxH3Fl2vaModel(artifact.executionModelId) || artifact.contextFrames !== 0) {
-        throw new Error("当前 JointAV artifact 不是可重建 conditioning 的 H3 FL2VA clean AV。");
+        throw new Error(this.t(uiKeys.serviceChecks.jointAvClean));
       }
       if (artifact.width !== version.width || artifact.height !== version.height) {
-        throw new Error("JointAV artifact 的实际分辨率与当前 History 版本不一致。");
+        throw new Error(this.t(uiKeys.serviceChecks.jointAvSize));
       }
       const [payloadStat, manifestStat] = await Promise.all([
         artifact.payload.absolutePath
@@ -1425,14 +1436,14 @@ export class QueueEnqueueService {
           : Promise.resolve(null)
       ]);
       if (!payloadStat?.isFile() || !manifestStat?.isFile()) {
-        throw new Error("JointAV payload 或 manifest 已不存在，无法加入 H3 提升队列。");
+        throw new Error(this.t(uiKeys.serviceChecks.jointAvFiles));
       }
       for (const [label, filename] of [
-        ["首帧", asset.startImagePath],
-        ["尾帧", asset.endImagePath]
+        [this.t(uiKeys.serviceChecks.firstFrame), asset.startImagePath],
+        [this.t(uiKeys.serviceChecks.lastFrame), asset.endImagePath]
       ] as const) {
         if (filename && !(await fs.stat(filename).catch(() => null))?.isFile()) {
-          throw new Error(`H3 二次采样的${label} conditioning 文件已不存在。`);
+          throw new Error(this.t(uiKeys.serviceChecks.conditioningFile, { label: label }));
         }
       }
       const h3VideoVaeMode = version.h3VideoVaeMode ?? asset.h3VideoVaeMode ??
@@ -1454,20 +1465,20 @@ export class QueueEnqueueService {
             { taskType: "upscale", provider, targetHeight: request.targetHeight }
           );
         } else if (!learnedProfile?.integrated) {
-          throw new Error("当前应用版本没有接入 H3 Learned 3D 工作流。");
+          throw new Error(this.t(uiKeys.serviceChecks.learnedUnsupported));
         } else if (!learnedProfile.available) {
           const missing = learnedProfile.components
             .filter((component) => !component.found)
             .map((component) => component.expected)
             .join("、");
-          throw new Error(`H3 Learned 3D 权重尚未完整${missing ? `，缺少：${missing}` : ""}。`);
+          throw new Error(this.t(uiKeys.serviceChecks.learnedWeights, { detail: missing ? this.t(uiKeys.serviceChecks.missingDetail, { detail: missing }) : "" }));
         } else if (learnedProfile.missingCustomNodeNames?.length) {
           throw new Error(
-            `H3 Learned 3D 缺少必需节点：${learnedProfile.missingCustomNodeNames.join("、")}。` +
-            "请先在设置 → 节点与依赖中安装；节点目录存在即可入队，无需启动 ComfyUI。"
+            this.t(uiKeys.serviceChecks.learnedNodes, { nodes: learnedProfile.missingCustomNodeNames.join("、") }) +
+            this.t(uiKeys.serviceChecks.installNodes)
           );
         } else if (learnedProfile.customNodeCompatibility === "error") {
-          throw new Error("H3 Learned 3D 节点版本不兼容，请在设置 → 节点与依赖中更新后重试。");
+          throw new Error(this.t(uiKeys.serviceChecks.learnedVersion));
         }
         if (environment && request.targetHeight === 1440) {
           const mmh3Node = environment.customNodes.find(
@@ -1475,14 +1486,14 @@ export class QueueEnqueueService {
           );
           if (!mmh3Node?.installed) {
             throw new Error(
-              "1440p H3 分块二次采样需要 MMH3 Ultimate Upscale。" +
-              "请先在设置 → 节点与依赖中安装固定版本。"
+              this.t(uiKeys.serviceChecks.ultimateRequired) +
+              this.t(uiKeys.serviceChecks.ultimateInstall)
             );
           }
           if (mmh3Node.compatibilityState === "error") {
             throw new Error(
-              "MMH3 Ultimate Upscale 版本或应用补丁不兼容，" +
-              "请在设置 → 节点与依赖中修复后重试。"
+              this.t(uiKeys.serviceChecks.ultimateVersion) +
+              this.t(uiKeys.serviceChecks.ultimateRepair)
             );
           }
         }
@@ -1523,7 +1534,7 @@ export class QueueEnqueueService {
       };
     }
     const next = await store.update((state) => {
-      const task = upscaleTaskFromRequest(preparedRequest, state);
+      const task = upscaleTaskFromRequest(preparedRequest, state, undefined, this.t);
       if (task.tessera && tesseraAnchor) task.tessera.anchor = structuredClone(tesseraAnchor);
       state.queue.push(task);
     });

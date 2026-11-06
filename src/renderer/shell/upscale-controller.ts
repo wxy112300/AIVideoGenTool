@@ -379,20 +379,20 @@ export function mountUpscaleController(
         : AETHERSCALE_DEFAULT_STYLE_PROFILE;
       const legacyTargetHeight = dlss5Selected || aetherScaleSelected || konohamaruSelected
         ? undefined
-        : requireLegacyUpscaleTargetHeight(dialog.targetHeight);
+        : requireLegacyUpscaleTargetHeight(dialog.targetHeight, t);
       const h3Native = dialog.modelId === "minimax_h3_latent_upscaler";
       const [targetWidth, targetOutputHeight] = konohamaruSelected
         ? (() => {
-            const geometry = konohamaruOutputGeometry(version.width, version.height, selectedKonohamaruMode);
+            const geometry = konohamaruOutputGeometry(version.width, version.height, selectedKonohamaruMode, t);
             return [geometry.width, geometry.height] as [number, number];
           })()
         : aetherScaleSelected
         ? (() => {
-            const geometry = aetherScaleOutputGeometry(version.width, version.height, selectedAetherMode);
+            const geometry = aetherScaleOutputGeometry(version.width, version.height, selectedAetherMode, t);
             return [geometry.width, geometry.height] as [number, number];
           })()
         : dlss5Selected
-          ? dlss5OutputDimensions(version.width, version.height, selectedScale)
+          ? dlss5OutputDimensions(version.width, version.height, selectedScale, t)
           : h3Native
             ? h3NativeUpscaleDimensions(
                 version.width,
@@ -400,8 +400,8 @@ export function mountUpscaleController(
                 legacyTargetHeight === 2160 ? 1440 : legacyTargetHeight!
               )
             : dialog.modelId === H3_REFINER_ID || dialog.modelId === TESSERA_ID
-              ? (() => { const g = h3RefinerGeometry(version.width, version.height, legacyTargetHeight!); return [g.outputWidth, g.outputHeight]; })()
-              : upscaleDimensions(version.width, version.height, legacyTargetHeight!);
+              ? (() => { const g = h3RefinerGeometry(version.width, version.height, legacyTargetHeight!, t); return [g.outputWidth, g.outputHeight]; })()
+              : upscaleDimensions(version.width, version.height, legacyTargetHeight!, t);
       const h3Artifact = version.h3ContinuationData?.status === "available"
         ? version.h3ContinuationData.artifact
         : undefined;
@@ -417,7 +417,7 @@ export function mountUpscaleController(
         targetWidth,
         targetOutputHeight,
         selectedAetherMode,
-        selectedAetherStyle
+        selectedAetherStyle, t
       );
       const konohamaruStyle: KonohamaruNrStyle = isKonohamaruNrStyle(dialog.konohamaruNrStyle)
         ? dialog.konohamaruNrStyle
@@ -448,7 +448,7 @@ export function mountUpscaleController(
             workflowPath: "builtin:upscale/dlss5-konohamaru",
             tileMode: "auto" as const,
             faceRestore: false,
-            outputFilename: createKonohamaruUpscaleFilename(sourceFile.filename, selectedKonohamaruMode, safeKonohamaruFrame)
+            outputFilename: createKonohamaruUpscaleFilename(sourceFile.filename, selectedKonohamaruMode, safeKonohamaruFrame, t)
           }
         : aetherScaleSelected
         ? {
@@ -460,7 +460,7 @@ export function mountUpscaleController(
             workflowPath: "builtin:upscale/aetherscale-dlss5",
             tileMode: "auto" as const,
             faceRestore: false,
-            outputFilename: createAetherScaleUpscaleFilename(sourceFile.filename, selectedAetherMode)
+            outputFilename: createAetherScaleUpscaleFilename(sourceFile.filename, selectedAetherMode, t)
           }
         : dlss5Selected
         ? {
@@ -473,7 +473,7 @@ export function mountUpscaleController(
             workflowPath: "builtin:upscale/dlss5-sr",
             tileMode: "auto" as const,
             faceRestore: false,
-            outputFilename: createDlss5UpscaleFilename(sourceFile.filename, selectedScale)
+            outputFilename: createDlss5UpscaleFilename(sourceFile.filename, selectedScale, t)
           }
         : {
             targetWidth,

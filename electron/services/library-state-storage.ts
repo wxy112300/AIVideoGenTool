@@ -30,8 +30,8 @@ export class LibraryStateStorage {
     if (state.libraryStorage) {
       this.report("loading");
       this.pointer = state.libraryStorage;
-      this.release ??= await acquireLibraryLease(this.pointer.directory, this.filename);
-      this.records = await LibraryRecordStore.open(this.pointer);
+      this.release ??= await acquireLibraryLease(this.pointer.directory, this.filename, false, this.translate);
+      this.records = await LibraryRecordStore.open(this.pointer, () => this.translate);
       const collections = await this.records.load(this.pointer.commit, value => this.report("loading", value.completed, value.total));
       await this.journal("switched");
       return JSON.stringify({ ...state, ...collections });
@@ -41,20 +41,20 @@ export class LibraryStateStorage {
     const directory = state.settings.libraryDirectory?.trim() || this.defaultDirectory;
     this.report("backup");
     if (!path.isAbsolute(directory)) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.libraryAbsolute));
-    this.release ??= await acquireLibraryLease(directory, this.filename, true);
+    this.release ??= await acquireLibraryLease(directory, this.filename, true, this.translate);
     const hash = stateDigest(raw), backup = `${this.filename}.pre-library-${hash}.json`;
     const existing = await readOptionalFile(backup);
     if (existing !== undefined && existing !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.backupMismatch));
     if (existing === undefined) {
-      const candidate = await durableCandidate(backup, raw); await fs.rename(candidate, backup);
+      const candidate = await durableCandidate(backup, raw, this.translate); await fs.rename(candidate, backup);
     }
     if (await fs.readFile(backup, "utf8") !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.backupReadback));
-    this.records = await LibraryRecordStore.create(directory, hash);
+    this.records = await LibraryRecordStore.create(directory, hash, undefined, () => this.translate);
     this.pointer = await this.records.prepare({ history: state.history ?? [], imageHistory: state.imageHistory ?? [] }, null, value => {
       if (value.phase === "write") this.report("write", value.completed, value.total);
       else this.report("verify");
     });
-    const reopened = await LibraryRecordStore.open(this.pointer);
+    const reopened = await LibraryRecordStore.open(this.pointer, () => this.translate);
     if (canonical(await reopened.load(this.pointer.commit, value => this.report("verify", value.completed, value.total))) !== canonical({ history: state.history ?? [], imageHistory: state.imageHistory ?? [] })) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.independentVerify));
     if (await fs.readFile(this.filename, "utf8") !== raw) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.sourceChangedDuring));
     this.migratingSource = raw;
@@ -72,14 +72,14 @@ export class LibraryStateStorage {
     let records = this.records, parent: string | null = this.pointer.commit;
     const directory = state.settings.libraryDirectory?.trim() || this.defaultDirectory;
     if (path.resolve(directory).toLowerCase() !== path.resolve(records.directory).toLowerCase()) {
-      const release = await acquireLibraryLease(directory, this.filename, true);
+      const release = await acquireLibraryLease(directory, this.filename, true, this.translate);
       this.pending = { records, release };
       const occupied = await fs.readdir(directory).catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; });
       if (occupied.length) throw new StateRecoveryError(`${LIBRARY_DESTINATION_OCCUPIED}: ${this.translate(uiKeys.storageMigration.destinationNotEmpty)}`);
       const tx = await planRelocation("library", records.directory, directory, await relocationFiles(records.directory, this.translate), relocationJournal(this.filename, "library"), this.onMoveProgress, this.translate);
       await prepareRelocation(tx, this.onMoveProgress, this.translate);
       this.pending.relocation = tx;
-      records = await LibraryRecordStore.open({ ...this.pointer, directory });
+      records = await LibraryRecordStore.open({ ...this.pointer, directory }, () => this.translate);
     }
     this.pending = { records, release: this.pending?.release, relocation: this.pending?.relocation };
     // JSON removes optional undefined fields exactly as the legacy serializer did.
@@ -121,7 +121,7 @@ export class LibraryStateStorage {
 
   private async journal(phase: "prepared" | "switched"): Promise<void> {
     const filename = `${this.filename}.library-migration.json`;
-    const candidate = await durableCandidate(filename, JSON.stringify({ format: 1, phase, pointer: this.pointer, sourceHash: this.migratingSource && stateDigest(this.migratingSource) }));
+    const candidate = await durableCandidate(filename, JSON.stringify({ format: 1, phase, pointer: this.pointer, sourceHash: this.migratingSource && stateDigest(this.migratingSource) }), this.translate);
     await fs.rename(candidate, filename);
   }
 }

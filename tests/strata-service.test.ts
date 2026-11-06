@@ -77,6 +77,22 @@ it.each([
   } finally { await f.service.stop(); }
 });
 const plan = (): StrataLaunchPlan => ({ executable: "python.exe", cwd: "fixture", args: ["--lazy", "--api-monitor"], port: 43127, apiKey: "fixture-secret" });
+it.each([false, true])("uses DeepSeek sampling and thinking without Qwen MTP/vector fields (thinking=%s)", async thinking => {
+  const f = fixture();
+  const modelId = "strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs";
+  await f.service.start({ ...plan(), modelId }); f.load();
+  f.fetchMock.mockImplementationOnce(async (_url, options) => {
+    const body = JSON.parse(options!.body as string);
+    expect(body).toMatchObject({ model: modelId, temperature: 1, top_p: 1,
+      reasoning_effort: thinking ? "medium" : "none", chat_template_kwargs: { enable_thinking: thinking } });
+    for (const key of ["experimental_speed_projection", "top_k", "min_p", "presence_penalty", "reasoning_budget_tokens"]) expect(body).not.toHaveProperty(key);
+    return new Response('data: {"choices":[{"index":0,"delta":{"content":"DeepSeek answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "Content-Type": "text/event-stream" } });
+  });
+  try {
+    expect(await f.service.chat({ modelId, messages: [{ role: "user", content: "hello" }], maxTokens: 4096, temperature: 0.7,
+      ...(thinking ? { reasoning: { effort: "medium", budgetTokens: 0 } as const } : {}) })).toBe("DeepSeek answer");
+  } finally { await f.service.stop(); }
+});
 function fixture() {
   let alive = true;
   let loaded = false;

@@ -46,7 +46,8 @@ export class NasCommitIndex {
       await fs.rename(filename, `${filename}.corrupt-${randomUUID()}`);
       this.db = new DatabaseSync(filename);
     }
-    this.db.exec("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, hash TEXT NOT NULL, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS texts (hash TEXT PRIMARY KEY, text TEXT NOT NULL);");
+    // The container root is read-only. Active-ID temporary tables must not spill there.
+    this.db.exec("PRAGMA temp_store=MEMORY; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, hash TEXT NOT NULL, json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS texts (hash TEXT PRIMARY KEY, text TEXT NOT NULL);");
     try {
       const row = this.db.prepare("SELECT value FROM metadata WHERE key='commit'").get();
       if (row) {
@@ -118,7 +119,11 @@ export class NasCommitIndex {
           this.db!.exec("DELETE FROM records WHERE NOT EXISTS (SELECT 1 FROM active_ids WHERE active_ids.id=records.id)");
           this.db!.prepare("INSERT INTO metadata(key,value) VALUES('commit',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({ format: 1, sha256: digest(JSON.stringify(next)), saved: next }));
           this.db!.exec("COMMIT");
-        } catch (error) { this.db!.exec("ROLLBACK"); throw error; }
+        } catch (error) {
+          // SQLite can automatically roll back on I/O errors. Preserve that first failure.
+          try { this.db!.exec("ROLLBACK"); } catch { /* The transaction may already be gone. */ }
+          throw error;
+        }
         for (const [id, item] of changed) this.assets.set(id, item);
         const active = new Set(commit.records.map(ref => ref.id));
         for (const id of this.assets.keys()) if (!active.has(id)) this.assets.delete(id);

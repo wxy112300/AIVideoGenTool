@@ -18,6 +18,52 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("keeps duration fill aligned after number edits and native/unlocked/Continuum switches", async () => {
+    const h = journey = await createJourney({ startImagePath: "fixture.png" });
+    const slider = h.element("#duration") as HTMLInputElement;
+    const fill = () => Number(slider.style.getPropertyValue("--ui-range-ratio"));
+    h.input("#duration-number", "7.8");
+    expect(slider.value).toBe("7.8");
+    expect(fill()).toBeCloseTo(6.8 / 14.1);
+    h.input("#generation-mode", "unlocked", "change");
+    expect(slider.max).toBe("30");
+    expect(fill()).toBeCloseTo(6.8 / 29);
+    h.input("#generation-mode", "native", "change");
+    expect(slider.max).toBe("15.1");
+    expect(fill()).toBeCloseTo(6.8 / 14.1);
+    h.input("#generation-mode", "preview", "change");
+    h.input("#generation-mode", "unlocked", "change");
+    expect(h.element("#duration")).toBe(slider);
+    expect(fill()).toBeCloseTo(6.8 / 29);
+    h.input("#duration-number", "28", "change");
+    expect(fill()).toBeCloseTo(27 / 29);
+    h.input("#generation-mode", "native", "change");
+    expect(slider.value).toBe("15.1");
+    expect(fill()).toBe(1);
+  });
+
+  it.each(["en-US", "zh-TW"] as const)("localizes H3 hover details before and after typing (%s)", async locale => {
+    const h = journey = await createJourney({ startImagePath: "fixture.png" }, locale);
+    const assertTooltip = () => {
+      const detail = h.element("#h3-prompt-check").dataset.uiTooltip!;
+      expect(detail).toContain(locale === "en-US" ? "check found" : "檢查發現");
+      expect(detail).toContain(locale === "en-US" ? "Missing official fields" : "缺少官方欄位");
+      expect(detail).not.toContain("缺少官方字段");
+      expect(detail).toContain("integrated_multimodal_description:");
+    };
+    h.input("#prompt-input", "User text: 你好 <Subject 1>");
+    await settle();
+    assertTooltip();
+    h.render();
+    assertTooltip();
+    h.input("#prompt-input", "User text: 保留原文 <Picture 1>");
+    await settle();
+    assertTooltip();
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toBe("User text: 保留原文 <Picture 1>");
+    h.input("#prompt-input", "For the target video, at 0.00 seconds, use Picture 1 as the opening frame.\nintegrated_multimodal_description: [Shot 1] A person walks.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A");
+    await settle();
+    expect(h.element("#h3-prompt-check").dataset.uiTooltip).toContain(locale === "en-US" ? "structure complete" : "結構完整");
+  });
   it("does not show an error or add a version when Prompt returns a translated cancellation", async () => {
     const h = journey = await createJourney({}, "zh-TW");
     h.input("#prompt-input", "A red balloon rises.");

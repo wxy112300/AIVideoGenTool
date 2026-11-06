@@ -2959,7 +2959,7 @@ async function inspectComfyCompatibility(
   const h3CoreSupported = coreNodes.every((node) => node.available);
   const promptNodes = evaluatePromptCoreSupport(objectInfo);
   const promptCoreSupported = promptNodes.every((node) => node.available);
-  const compatibility = evaluateMiniMaxH3CompatibilityState(version, revision, checkedFrom);
+  const compatibility = evaluateMiniMaxH3CompatibilityState(version, revision, checkedFrom, t);
   const updateMode: ComfyUiCompatibility["updateMode"] = installation?.type === "desktop"
     ? "desktop"
     : sourceDirectory && await exists(path.join(sourceDirectory, ".git"))
@@ -5162,7 +5162,7 @@ async function scanManagedGuideAssets(
       dlss5Runtime: emptyDlss5RuntimeStatus(runtimeDirectory, "remote", t(uiKeys.dlssRuntime.remoteScan)),
       depthAnything: emptyDepthAnythingStatus(
         comfyRoot ? comfyDepthAnythingModelDirectory(comfyRoot) : "",
-        "远程 ComfyUI 仅支持连接；未扫描本地 Depth Anything 资产。"
+        t(uiKeys.serviceChecks.depthRemoteScan)
       ),
       aetherScaleRuntime: emptyAetherScaleRuntimeStatus(
         aetherRuntimeDirectory,
@@ -5189,7 +5189,8 @@ function buildDlss5ProviderStatuses(
   customNodes: CustomNodeStatus[],
   modelProfiles: ModelScanProfile[],
   dlss5Runtime: Dlss5RuntimeStatus,
-  aetherScaleRuntime: AetherScaleRuntimeStatus
+  aetherScaleRuntime: AetherScaleRuntimeStatus,
+  t: Translate = createNativeTranslator(undefined).t
 ): Partial<Record<"hecer" | "aetherscale-carrier" | "konohamaru", Dlss5ProviderStatus>> {
   const hecerNode = customNodes.find((node) => node.id === DLSS5_NODE_ID);
   const aetherNode = customNodes.find((node) => node.id === AETHERSCALE_NODE_ID);
@@ -5218,15 +5219,15 @@ function buildDlss5ProviderStatuses(
   const hecerInstalled = Boolean(hecerNode?.installed);
   const aetherInstalled = Boolean(aetherNode?.installed);
   const konohamaruInstalled = Boolean(konohamaruNode?.installed);
-  const hecerBlockedReason = "HECer ComfyUI-DLSS5 v0.2.2 的 SR wrapper 仍缺少上游发布的 vsdlsssr.dll；保持可见但 fail closed，不回退到其他 provider。";
+  const hecerBlockedReason = t(uiKeys.serviceChecks.hecerBlocked);
   const aetherBlockedReason = !aetherInstalled
-    ? "AetherScale 节点尚未安装。"
+    ? t(uiKeys.serviceChecks.aetherNodeAbsent)
     : !nodeHealthy(aetherNode)
-      ? aetherNode?.loadError || aetherNode?.compatibilityNotice || "AetherScale 节点加载或版本检查未通过。"
+      ? aetherNode?.loadError || aetherNode?.compatibilityNotice || t(uiKeys.serviceChecks.aetherNodeInvalid)
       : !aetherSchemaValidated
-        ? "AetherScale v0.5.5 schema 尚未通过当前 ComfyUI /object_info 检查。"
+        ? t(uiKeys.serviceChecks.aetherSchemaPending)
         : !aetherScaleRuntime.carrierReady
-          ? aetherScaleRuntime.error || "固定 carrier 六文件 runtime 尚未就绪。"
+          ? aetherScaleRuntime.error || t(uiKeys.serviceChecks.carrierPending)
           : "";
   const aetherLevel: Dlss5ProviderStatus["level"] = !aetherInstalled
     ? "missing"
@@ -5257,8 +5258,8 @@ function buildDlss5ProviderStatuses(
       evidence: [
         `node revision ${DLSS5_NODE_REVISION}`,
         `HECer runtime bundle ${DLSS5_RUNTIME_BUNDLE_ID}`,
-        hecerSchemaValidated ? "DLSSSuperResolution schema 已从当前 object_info 读取" : "DLSSSuperResolution schema 尚未取得当前 object_info 证据",
-        "上游 wrapper 缺失 vsdlsssr.dll；未启用 Real-ESRGAN/其他 provider fallback"
+        hecerSchemaValidated ? t(uiKeys.serviceChecks.hecerSchemaRead) : t(uiKeys.serviceChecks.hecerSchemaPending),
+        t(uiKeys.serviceChecks.hecerFallbackBlocked)
       ]
     },
     "aetherscale-carrier": {
@@ -5278,9 +5279,9 @@ function buildDlss5ProviderStatuses(
       evidence: [
         `node revision ${AETHERSCALE_NODE_REVISION}`,
         `carrier archive ${AETHERSCALE_CARRIER_RUNTIME_BUNDLE.archiveSha256}`,
-        aetherSchemaValidated ? "AetherScaleMotionAnalysis/AetherScaleNeuralRendering schema 已从当前 object_info 读取" : "AetherScale schema 尚未取得当前 object_info 证据",
-        aetherScaleRuntime.carrierReady ? "carrier 六文件离线 hash/PE 校验通过" : "carrier 六文件离线校验未通过",
-        aetherScaleRuntime.vfxReady ? "可选 nvidia-vfx 已找到" : "可选 nvidia-vfx 不可用；不阻塞 carrier"
+        aetherSchemaValidated ? t(uiKeys.serviceChecks.aetherSchemaRead) : t(uiKeys.serviceChecks.aetherSchemaEvidence),
+        aetherScaleRuntime.carrierReady ? t(uiKeys.serviceChecks.carrierVerified) : t(uiKeys.serviceChecks.carrierUnverified),
+        aetherScaleRuntime.vfxReady ? t(uiKeys.serviceChecks.vfxFound) : t(uiKeys.serviceChecks.vfxMissing)
       ]
     },
     konohamaru: {
@@ -5303,19 +5304,19 @@ function buildDlss5ProviderStatuses(
       missingFiles: konohamaruNode?.loadError?.includes("缺失") ? [konohamaruNode.loadError] : [],
       incompatibleFiles: konohamaruNode?.loadError?.includes("Git LFS") ? [konohamaruNode.loadError] : [],
       blockedReason: !konohamaruInstalled
-        ? "Konohamaru DLSS5 节点尚未安装。"
+        ? t(uiKeys.serviceChecks.konohamaruNodeAbsent)
         : !nodeHealthy(konohamaruNode)
-          ? konohamaruNode?.loadError || "Konohamaru 节点文件或 Git LFS runtime 未通过检查。"
+          ? konohamaruNode?.loadError || t(uiKeys.serviceChecks.konohamaruFilesInvalid)
           : !konohamaruSchemaValidated
-            ? "Konohamaru 节点 schema 尚未通过当前 ComfyUI /object_info 检查。"
+            ? t(uiKeys.serviceChecks.konohamaruSchemaPending)
             : "",
       evidence: [
         `node revision ${KONOHAMARU_NODE_REVISION}`,
         `DLSS5 runtime bundle ${KONOHAMARU_RUNTIME_BUNDLE_ID}`,
         konohamaruSchemaValidated
-          ? "NvidiaDLSSVideoUpscale/NvidiaDLSSFrameInterpolation schema 已从当前 object_info 读取"
-          : "Konohamaru schema 尚未取得当前 object_info 证据",
-        "native runtime 文件由 Git LFS 管理；本机真实 Neural Rendering/补帧 smoke 尚未完成"
+          ? t(uiKeys.serviceChecks.konohamaruSchemaRead)
+          : t(uiKeys.serviceChecks.konohamaruSchemaEvidence),
+        t(uiKeys.serviceChecks.konohamaruSmokePending)
       ]
     }
   };
@@ -5417,7 +5418,8 @@ async function scanFullEnvironment(
     runtimeValidatedCustomNodes,
     modelProfiles,
     dlss5Runtime,
-    aetherScaleRuntime
+    aetherScaleRuntime,
+    t
   );
   const llamaServer: LlamaServerStatus = {
     found: false,
@@ -5438,21 +5440,19 @@ async function scanFullEnvironment(
         label: "ComfyUI",
         ok: true,
         detail: comfyInstallation
-          ? `${
-              comfyInstallation.type === "desktop"
-                ? "桌面版"
+          ? t(uiKeys.serviceChecks.installationData, { type: comfyInstallation.type === "desktop"
+                ? t(uiKeys.serviceChecks.desktopInstall)
                 : comfyInstallation.type === "portable"
-                  ? "便携版"
-                  : "手动安装"
-            } · 数据目录 ${comfyRoot || "等待初始化"}`
-          : "已找到数据目录，尚未找到程序入口",
+                  ? t(uiKeys.serviceChecks.portableInstall)
+                  : t(uiKeys.serviceChecks.manualInstall), directory: comfyRoot || t(uiKeys.serviceChecks.dataPending) })
+          : t(uiKeys.serviceChecks.entryMissing),
         path: comfyInstallation?.directory || comfyRoot
       }
     : {
         id: "comfyui",
         label: "ComfyUI",
         ok: false,
-        detail: `未在 ${userHome} 及常见磁盘目录中找到`,
+        detail: t(uiKeys.serviceChecks.comfyNotFound, { home: userHome }),
         downloadUrl: environmentDependencyDownloadUrls.comfyui
       };
 
@@ -5776,7 +5776,8 @@ async function scanEnvironmentDependencies(
     runtimeValidatedCustomNodes,
     modelProfiles,
     managedGuideAssets.dlss5Runtime,
-    managedGuideAssets.aetherScaleRuntime
+    managedGuideAssets.aetherScaleRuntime,
+    t
   );
   const issues = await scanEnvironmentIssues(
     comfyRoot,

@@ -15,6 +15,7 @@ import { inspectLongVideoMedia, hashLongVideoFile } from "./long-video-media.js"
 import { persistVideoHistoryResult } from "../queue-history.js";
 import { queuePauseBoundaryAfterTaskCompletion } from "../../src/core/queue.js";
 import { verifyLongVideoRunSource } from "./long-video-run-source.js";
+import { longVideoOutputFps } from "../../src/core/long-video/delivery.js";
 
 export class LongVideoPausedError extends Error {}
 type Dependencies = Pick<QueueExecutorDependencies, "store" | "sendState" | "updateTask" | "updateTaskProgress" | "requireExistingVideoOutput" | "getComfyRuntimeState">;
@@ -37,10 +38,10 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
   if (!snapshot) {
     const template = JSON.parse(await fs.readFile(templatePath, "utf8"));
     if (task.taskType === "extension" && task.longVideoRunSource) {
-      snapshot = freezeLongVideoExtensionPlan(task.id, task.id, task.longVideoPlan, task.longVideoRunSource);
+      snapshot = freezeLongVideoExtensionPlan(task.id, task.id, task.longVideoPlan, task.longVideoRunSource, { frameInterpolation: task.frameInterpolation });
     } else {
     if (task.taskType !== "generation" || task.modelId !== "minimax_h3_fl2va" || !task.startImagePath || task.endImagePath || task.h3ReferenceSlots?.length ||
-        !["off", "balanced"].includes(task.spectrumMode ?? "off") || !["sage", "sage-triton", "comfy-kitchen", "pytorch"].includes(task.attentionMode ?? "") || task.frameInterpolation !== "off" || task.resolution > 720) {
+        !["off", "balanced"].includes(task.spectrumMode ?? "off") || !["sage", "sage-triton", "comfy-kitchen", "pytorch"].includes(task.attentionMode ?? "")) {
       throw new Error("Long-video claimed configuration is unsupported; the saved choices have not been replaced");
     }
     const assets = miniMaxH3ModelAssetNames(task.modelId);
@@ -54,7 +55,7 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
       script: structuredClone(task.longVideoPlan), profile: { ...assets, videoVae: h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16"), width, height,
         seed: task.seed, steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras), sampler: template["6"].inputs.sampler_name, scheduler: template["7"].inputs.scheduler,
         chunkSeconds: task.longVideoPlan.layout.chunkSeconds, prompts: compileLongVideoPrompts(task.longVideoPlan).map(p => videoPromptForLoras(p, task.videoLoras)), firstImage,
-        attention: task.attentionMode === "pytorch" ? "sdpa" : task.attentionMode ?? "sage", spectrumMode: task.spectrumMode,
+        attention: task.attentionMode === "pytorch" ? "sdpa" : task.attentionMode ?? "sage", spectrumMode: task.spectrumMode, delivery: { frameInterpolation: task.frameInterpolation },
         h3: { modelId: "minimax_h3_fl2va", videoLoras: structuredClone(task.videoLoras ?? []), sparseAttentionMode: task.h3SparseAttentionMode ?? "off",
           runtimeMode: task.h3RuntimeMode ?? "compatibility", comfyCompilerMode: task.h3ComfyCompilerMode ?? "disabled", spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off" } } };
     }
@@ -102,9 +103,11 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
         const previousQueue = [...state.queue];
         let idIndex = 0;
         persistVideoHistoryResult(state, { task, completedAt, promptId: current.comfyPromptId ?? lastPromptId, comfyOutputs: { outputs: final.outputs }, files,
-          actualDuration: media.videoFrames / 24, id: () => [identity.versionId, identity.assetId][idIndex++]!,
+          actualDuration: media.videoFrames / longVideoOutputFps(frozen), id: () => [identity.versionId, identity.assetId][idIndex++]!,
           h3ContinuationData: { status: "not-supported", reason: "Continuum 分组 Run 已保留；独立 JointAV 导出尚未登记。" } });
         const asset = state.history.find(asset => asset.id === identity.assetId)!;
+        asset.fps = longVideoOutputFps(frozen);
+        asset.versions[0]!.fps = longVideoOutputFps(frozen);
         asset.versions[0]!.longVideoExecution = structuredClone(frozen);
         asset.versions[0]!.longVideoReceipt = structuredClone(final.receipt);
         const boundary = queuePauseBoundaryAfterTaskCompletion(previousQueue, state.queuePauseBoundary, task.id, state.queue);

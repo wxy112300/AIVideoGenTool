@@ -12,6 +12,17 @@ const profile: ContinuumGroupProfile = { diffusionModel: "model.safetensors", te
 afterEach(() => vi.restoreAllMocks());
 
 describe("internal Continuum group adapter", () => {
+  it.each(["rife2x", "rife4x"] as const)("supports high-resolution delivery with %s without changing sampling or audio", interpolation => {
+    const raw = compileContinuumGroupWorkflow(template(), request, { ...profile, width: 3840, height: 2160 });
+    const delivered = compileContinuumGroupWorkflow(template(), request, { ...profile, width: 3840, height: 2160, delivery: { frameInterpolation: interpolation } });
+    expect(delivered["12"]).toEqual(raw["12"]);
+    expect(delivered["16"].inputs.audio).toEqual(raw["16"].inputs.audio);
+    expect(Object.values(raw).some(n => n.class_type === "RIFE VFI")).toBe(false);
+    const branch = Object.values(delivered).find(n => n.class_type === "ComfySwitchNode")!;
+    expect(branch.inputs.on_false).toEqual(raw["16"].inputs.images);
+    expect(delivered["16"].inputs.images).not.toEqual(raw["16"].inputs.images);
+    expect(Object.values(delivered).find(n => n.class_type === "RIFE VFI")!.inputs.multiplier).toBe(interpolation === "rife2x" ? 2 : 4);
+  });
   it("keeps Triton Sage and Spectrum in the frozen graph without silently selecting CUDA or SDPA", () => {
     const graph = compileContinuumGroupWorkflow(template(), request, { ...profile, attention: "sage-triton", spectrumMode: "balanced" });
     expect(graph["5"].class_type).toBe("LocalVideoStudioH3ManagedSageAttention");

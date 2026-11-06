@@ -61,7 +61,7 @@ export function nativeAvArtifactMetadataForTask(
   const workflowBasename = task.workflowPath.replaceAll("\\", "/").split("/").pop() ?? task.workflowPath;
   const firstPass = workflowBasename.includes("first_pass");
   const [width, height] = task.taskType === "upscale"
-    ? upscaleOutputDimensions(task)
+    ? upscaleOutputDimensions(task, t)
     : outputDimensions(task);
   const contextFrames = task.taskType === "extension" && (
     isMiniMaxH3R2vModel(task.modelId) || isMiniMaxH3ContinuumModel(task.modelId)

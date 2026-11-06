@@ -1,5 +1,6 @@
 import type { CatalogModelComponent, CatalogModelEntry } from "../types.js";
 import { entry } from "./catalog-helpers.js";
+import { strataDeepSeekEntries } from "./strata-deepseek.js";
 import { STRATA_MODEL_REPOSITORY, STRATA_MODEL_REVISION } from "../dependencies/strata.js";
 
 export const QWEN_FLASH_NEXT_MODEL_DIRECTORY = "Qwen3.8-Flash-Next-GSQ-RCO-GGUF";
@@ -117,3 +118,5 @@ strataModelEntries.push(entry({
   name: q4Name, badge: "Strata · Unsloth Q4",
   description: "多模態提示詞模型，支援圖片理解與 MTP 加速。"
 }));
+
+strataModelEntries.push(...strataDeepSeekEntries);

@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import {
   DLSS5_NODE_REVISION,
   DLSS5_RUNTIME_BUNDLE_ID
@@ -100,9 +102,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function positiveInteger(value: unknown, label: string): number {
+function positiveInteger(value: unknown, label: string,
+  t: Translate = createTranslator().t): number {
   if (!Number.isSafeInteger(value) || Number(value) <= 0) {
-    throw new Error(`${label} must be a positive safe integer`);
+    throw new Error(t(uiKeys.upscaleChecks.positiveInteger, { label: label }));
   }
   return Number(value);
 }
@@ -124,32 +127,34 @@ export function isUpscaleTargetHeight(value: unknown): value is UpscaleTargetHei
  * makes the legacy field optional so a DLSS snapshot cannot use it by type
  * accident; old paths still receive the same required short-edge value.
  */
-export function requireLegacyUpscaleTargetHeight(value: unknown): UpscaleTargetHeight {
+export function requireLegacyUpscaleTargetHeight(value: unknown,
+  t: Translate = createTranslator().t): UpscaleTargetHeight {
   if (!isUpscaleTargetHeight(value)) {
-    throw new Error("Legacy upscale targetHeight is missing or invalid");
+    throw new Error(t(uiKeys.upscaleChecks.legacyHeight));
   }
   return value;
 }
 
-export function normalizeDlss5Options(value: unknown): Dlss5UpscaleOptions {
-  if (!isRecord(value)) throw new Error("DLSS5 options must be an object");
+export function normalizeDlss5Options(value: unknown,
+  t: Translate = createTranslator().t): Dlss5UpscaleOptions {
+  if (!isRecord(value)) throw new Error(t(uiKeys.upscaleChecks.dlssOptions));
   if (value.operation !== "super-resolution") {
-    throw new Error("DLSS5 operation must be super-resolution");
+    throw new Error(t(uiKeys.upscaleChecks.dlssOperation));
   }
   if (!isDlss5Scale(value.scale)) {
-    throw new Error("DLSS5 scale must be 2, 3 or 4");
+    throw new Error(t(uiKeys.upscaleChecks.dlssScale));
   }
   if (!isDlss5Quality(value.quality)) {
-    throw new Error("DLSS5 quality must be quality, balanced or performance");
+    throw new Error(t(uiKeys.upscaleChecks.dlssQuality));
   }
   if (value.guideProfile !== DLSS5_GUIDE_PROFILE) {
-    throw new Error(`DLSS5 guide profile must be ${DLSS5_GUIDE_PROFILE}`);
+    throw new Error(t(uiKeys.upscaleChecks.dlssGuide, { profile: DLSS5_GUIDE_PROFILE }));
   }
   if (value.nodeRevision !== DLSS5_NODE_REVISION) {
-    throw new Error(`DLSS5 nodeRevision must be the pinned commit ${DLSS5_NODE_REVISION}`);
+    throw new Error(t(uiKeys.upscaleChecks.dlssRevision, { revision: DLSS5_NODE_REVISION }));
   }
   if (value.runtimeBundleId !== DLSS5_RUNTIME_BUNDLE_ID) {
-    throw new Error(`DLSS5 runtimeBundleId must be ${DLSS5_RUNTIME_BUNDLE_ID}`);
+    throw new Error(t(uiKeys.upscaleChecks.dlssBundle, { bundle: DLSS5_RUNTIME_BUNDLE_ID }));
   }
   return {
     operation: "super-resolution",
@@ -163,9 +168,10 @@ export function normalizeDlss5Options(value: unknown): Dlss5UpscaleOptions {
 
 export const normalizeDlss5UpscaleOptions = normalizeDlss5Options;
 
-export function isDlss5UpscaleOptions(value: unknown): value is Dlss5UpscaleOptions {
+export function isDlss5UpscaleOptions(value: unknown,
+  t: Translate = createTranslator().t): value is Dlss5UpscaleOptions {
   try {
-    normalizeDlss5Options(value);
+    normalizeDlss5Options(value, t);
     return true;
   } catch {
     return false;
@@ -175,15 +181,16 @@ export function isDlss5UpscaleOptions(value: unknown): value is Dlss5UpscaleOpti
 export function dlss5OutputGeometry(
   sourceWidth: unknown,
   sourceHeight: unknown,
-  scale: unknown
+  scale: unknown,
+  t: Translate = createTranslator().t
 ): Dlss5OutputGeometry {
-  const width = positiveInteger(sourceWidth, "sourceWidth");
-  const height = positiveInteger(sourceHeight, "sourceHeight");
-  if (!isDlss5Scale(scale)) throw new Error("DLSS5 scale must be 2, 3 or 4");
+  const width = positiveInteger(sourceWidth, "sourceWidth", t);
+  const height = positiveInteger(sourceHeight, "sourceHeight", t);
+  if (!isDlss5Scale(scale)) throw new Error(t(uiKeys.upscaleChecks.dlssScale));
   const outputWidth = width * scale;
   const outputHeight = height * scale;
   if (!Number.isSafeInteger(outputWidth) || !Number.isSafeInteger(outputHeight)) {
-    throw new Error("DLSS5 output dimensions exceed safe integer range");
+    throw new Error(t(uiKeys.upscaleChecks.dlssGeometry));
   }
   return { width: outputWidth, height: outputHeight, scale };
 }
@@ -191,37 +198,39 @@ export function dlss5OutputGeometry(
 export function dlss5OutputDimensions(
   sourceWidth: unknown,
   sourceHeight: unknown,
-  scale: unknown
+  scale: unknown,
+  t: Translate = createTranslator().t
 ): [number, number] {
-  const geometry = dlss5OutputGeometry(sourceWidth, sourceHeight, scale);
+  const geometry = dlss5OutputGeometry(sourceWidth, sourceHeight, scale, t);
   return [geometry.width, geometry.height];
 }
 
 export const dlss5Geometry = dlss5OutputGeometry;
 
-export function normalizeUpscaleTarget(input: Dlss5TargetInput): NormalizedUpscaleTarget {
-  if (!isRecord(input)) throw new Error("Upscale target must be an object");
+export function normalizeUpscaleTarget(input: Dlss5TargetInput,
+  t: Translate = createTranslator().t): NormalizedUpscaleTarget {
+  if (!isRecord(input)) throw new Error(t(uiKeys.upscaleChecks.targetObject));
   const hasDlssFields = input.targetScale !== undefined || input.dlss5 !== undefined;
   if (input.modelId === "dlss5-sr" || hasDlssFields) {
     if (input.modelId !== "dlss5-sr") {
-      throw new Error("DLSS5 target fields are only valid for modelId dlss5-sr");
+      throw new Error(t(uiKeys.upscaleChecks.dlssTargetModel));
     }
     if (input.targetHeight !== undefined) {
-      throw new Error("DLSS5 targets must not depend on legacy targetHeight");
+      throw new Error(t(uiKeys.upscaleChecks.dlssLegacyTarget));
     }
     if (!isDlss5Scale(input.targetScale)) {
-      throw new Error("DLSS5 targetScale must be 2, 3 or 4");
+      throw new Error(t(uiKeys.upscaleChecks.dlssTargetScale));
     }
-    const dlss5 = normalizeDlss5Options(input.dlss5);
+    const dlss5 = normalizeDlss5Options(input.dlss5, t);
     if (dlss5.scale !== input.targetScale) {
-      throw new Error("DLSS5 targetScale and dlss5.scale must match");
+      throw new Error(t(uiKeys.upscaleChecks.dlssScaleMatch));
     }
-    const geometry = dlss5OutputGeometry(input.sourceWidth, input.sourceHeight, input.targetScale);
+    const geometry = dlss5OutputGeometry(input.sourceWidth, input.sourceHeight, input.targetScale, t);
     return {
       provider: "dlss5",
       modelId: "dlss5-sr",
-      sourceWidth: positiveInteger(input.sourceWidth, "sourceWidth"),
-      sourceHeight: positiveInteger(input.sourceHeight, "sourceHeight"),
+      sourceWidth: positiveInteger(input.sourceWidth, "sourceWidth", t),
+      sourceHeight: positiveInteger(input.sourceHeight, "sourceHeight", t),
       scale: input.targetScale,
       targetScale: input.targetScale,
       dlss5,
@@ -231,7 +240,7 @@ export function normalizeUpscaleTarget(input: Dlss5TargetInput): NormalizedUpsca
       height: geometry.height
     };
   }
-  const targetHeight = requireLegacyUpscaleTargetHeight(input.targetHeight);
+  const targetHeight = requireLegacyUpscaleTargetHeight(input.targetHeight, t);
   return {
     provider: "legacy",
     modelId: input.modelId,
@@ -314,7 +323,8 @@ function validateGuideNodeSchema(
   }
 }
 
-export function validateDlss5ObjectInfoSchema(objectInfo: unknown): Dlss5SchemaValidation {
+export function validateDlss5ObjectInfoSchema(objectInfo: unknown,
+  t: Translate = createTranslator().t): Dlss5SchemaValidation {
   const missingNodes: string[] = [];
   const missingInputs: string[] = [];
   const invalidInputs: string[] = [];
@@ -362,10 +372,10 @@ export function validateDlss5ObjectInfoSchema(objectInfo: unknown): Dlss5SchemaV
     invalidInputs,
     outputMismatch
   );
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (missingInputs.length) errors.push(`missing inputs: ${missingInputs.join(", ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join(", ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (missingInputs.length) errors.push(t(uiKeys.upscaleChecks.missingInputs, { inputs: missingInputs.join(", ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join(", ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return {
     valid: errors.length === 0,
     missingNodes,
@@ -378,9 +388,10 @@ export function validateDlss5ObjectInfoSchema(objectInfo: unknown): Dlss5SchemaV
 
 export const validateDlss5Schema = validateDlss5ObjectInfoSchema;
 
-export function assertDlss5ObjectInfoSchema(objectInfo: unknown): void {
-  const result = validateDlss5ObjectInfoSchema(objectInfo);
-  if (!result.valid) throw new Error(`DLSS5 object_info schema mismatch: ${result.errors.join("; ")}`);
+export function assertDlss5ObjectInfoSchema(objectInfo: unknown,
+  t: Translate = createTranslator().t): void {
+  const result = validateDlss5ObjectInfoSchema(objectInfo, t);
+  if (!result.valid) throw new Error(t(uiKeys.upscaleChecks.dlssSchema, { errors: result.errors.join("; ") }));
 }
 
 export const assertDlss5Schema = assertDlss5ObjectInfoSchema;
@@ -405,22 +416,23 @@ function validateConnection(
   label: string,
   workflow: Dlss5ApiWorkflow,
   invalidEdges: string[],
-  outputArities: Record<string, number>
+  outputArities: Record<string, number>,
+  t: Translate = createTranslator().t
 ): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" ||
       !Number.isSafeInteger(value[1]) || Number(value[1]) < 0) {
-    invalidEdges.push(`${label} is not a valid API connection`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionInvalid, { label: label }));
     return;
   }
   const nodeId = value[0];
   const outputIndex = Number(value[1]);
   if (!workflow[nodeId]) {
-    invalidEdges.push(`${label} references missing node ${nodeId}`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionMissing, { label: label, node: nodeId }));
     return;
   }
   const arity = outputArities[nodeId];
   if (arity !== undefined && outputIndex >= arity) {
-    invalidEdges.push(`${label} references ${nodeId}:${outputIndex}, but that output does not exist`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionOutput, { label: label, node: nodeId, index: outputIndex }));
   }
 }
 
@@ -429,16 +441,18 @@ function expectedLiteral(
   nodeId: string,
   inputName: string,
   expected: unknown,
-  invalidInputs: string[]
+  invalidInputs: string[],
+  t: Translate = createTranslator().t
 ): void {
   if (inputValue(workflow[nodeId], inputName) !== expected) {
-    invalidInputs.push(`${nodeId}.${inputName} must be ${JSON.stringify(expected)}`);
+    invalidInputs.push(t(uiKeys.upscaleChecks.literalRequired, { node: nodeId, input: inputName, value: JSON.stringify(expected) }));
   }
 }
 
 export function validateDlss5Workflow(
   workflow: unknown,
-  objectInfo?: unknown
+  objectInfo?: unknown,
+  t: Translate = createTranslator().t
 ): Dlss5WorkflowValidation {
   const missingNodes: string[] = [];
   const invalidEdges: string[] = [];
@@ -448,7 +462,7 @@ export function validateDlss5Workflow(
   const graph = isRecord(workflow) ? workflow as Dlss5ApiWorkflow : undefined;
 
   if (!graph) {
-    errors.push("workflow must be an API-format node graph");
+    errors.push(t(uiKeys.upscaleChecks.apiGraph));
   } else {
     const expectedNodes: Record<string, string> = {
       "1": "VHS_LoadVideo",
@@ -462,9 +476,9 @@ export function validateDlss5Workflow(
       if (!node || !isRecord(node)) {
         addUnique(missingNodes, classType);
       } else if (node.class_type !== classType) {
-        invalidInputs.push(`${nodeId}.class_type must be ${classType}`);
+        invalidInputs.push(t(uiKeys.upscaleChecks.classRequired, { node: nodeId, type: classType }));
       } else if (!isRecord(node.inputs)) {
-        invalidInputs.push(`${nodeId}.inputs must be an object`);
+        invalidInputs.push(t(uiKeys.upscaleChecks.inputsObject, { node: nodeId }));
       }
     }
     for (const classType of DLSS5_REQUIRED_WORKFLOW_NODE_TYPES) {
@@ -478,7 +492,7 @@ export function validateDlss5Workflow(
       if (!isRecord(node) || !isRecord(node.inputs)) continue;
       for (const [inputName, value] of Object.entries(node.inputs)) {
         if (Array.isArray(value) && (value.length === 2 || typeof value[0] === "string")) {
-          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, outputArities);
+          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, outputArities, t);
         }
       }
     }
@@ -490,62 +504,62 @@ export function validateDlss5Workflow(
     const combine = graph["5"];
     if (load?.class_type === "VHS_LoadVideo" && isRecord(load.inputs)) {
       const source = inputValue(load, "video");
-      if (!isSafeRelativeComfyPath(source)) invalidInputs.push("1.video must be a safe uploaded relative path");
+      if (!isSafeRelativeComfyPath(source)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssVideoPath));
     }
     if (depth?.class_type === "DLSS5DepthAnythingV2" && isRecord(depth.inputs)) {
-      if (!sameConnection(inputValue(depth, "images"), "1", 0)) invalidInputs.push("2.images must use 1:0");
-      expectedLiteral(graph, "2", "model", DLSS5_DEPTH_MODEL, invalidInputs);
-      expectedLiteral(graph, "2", "temporal_normalization", true, invalidInputs);
-      expectedLiteral(graph, "2", "chunk_size", 4, invalidInputs);
+      if (!sameConnection(inputValue(depth, "images"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssDepthImages));
+      expectedLiteral(graph, "2", "model", DLSS5_DEPTH_MODEL, invalidInputs, t);
+      expectedLiteral(graph, "2", "temporal_normalization", true, invalidInputs, t);
+      expectedLiteral(graph, "2", "chunk_size", 4, invalidInputs, t);
     }
     if (flow?.class_type === "DLSS5OpticalFlow" && isRecord(flow.inputs)) {
-      if (!sameConnection(inputValue(flow, "images"), "1", 0)) invalidInputs.push("3.images must use 1:0");
-      expectedLiteral(graph, "3", "pyramid_scale", 0.5, invalidInputs);
-      expectedLiteral(graph, "3", "levels", 5, invalidInputs);
-      expectedLiteral(graph, "3", "window_size", 21, invalidInputs);
+      if (!sameConnection(inputValue(flow, "images"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssFlowImages));
+      expectedLiteral(graph, "3", "pyramid_scale", 0.5, invalidInputs, t);
+      expectedLiteral(graph, "3", "levels", 5, invalidInputs, t);
+      expectedLiteral(graph, "3", "window_size", 21, invalidInputs, t);
     }
     if (sr?.class_type === "DLSSSuperResolution" && isRecord(sr.inputs)) {
-      if (!sameConnection(inputValue(sr, "image"), "1", 0)) invalidInputs.push("4.image must use 1:0");
-      if (!sameConnection(inputValue(sr, "depth"), "2", 0)) invalidInputs.push("4.depth must use 2:0");
-      if (!sameConnection(inputValue(sr, "motion_vectors"), "3", 0)) invalidInputs.push("4.motion_vectors must use 3:0");
+      if (!sameConnection(inputValue(sr, "image"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssImage));
+      if (!sameConnection(inputValue(sr, "depth"), "2", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssDepth));
+      if (!sameConnection(inputValue(sr, "motion_vectors"), "3", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssMotion));
       if (!DLSS5_SR_SCALE_ENUM.includes(inputValue(sr, "scale") as typeof DLSS5_SR_SCALE_ENUM[number])) {
-        invalidInputs.push("4.scale must be 2x, 3x or 4x");
+        invalidInputs.push(t(uiKeys.upscaleChecks.dlssNodeScale));
       }
       if (!DLSS5_SR_QUALITY_ENUM.includes(inputValue(sr, "quality") as typeof DLSS5_SR_QUALITY_ENUM[number])) {
-        invalidInputs.push("4.quality is not an allowed DLSS5 quality");
+        invalidInputs.push(t(uiKeys.upscaleChecks.dlssNodeQuality));
       }
     }
     if (combine?.class_type === "VHS_VideoCombine" && isRecord(combine.inputs)) {
-      if (!sameConnection(inputValue(combine, "images"), "4", 0)) invalidInputs.push("5.images must use 4:0");
-      if (!sameConnection(inputValue(combine, "audio"), "1", 2)) invalidInputs.push("5.audio must use 1:2");
+      if (!sameConnection(inputValue(combine, "images"), "4", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssOutputImages));
+      if (!sameConnection(inputValue(combine, "audio"), "1", 2)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssOutputAudio));
       const frameRate = inputValue(combine, "frame_rate");
       if (typeof frameRate !== "number" || !Number.isFinite(frameRate) || frameRate <= 0) {
-        invalidInputs.push("5.frame_rate must be positive");
+        invalidInputs.push(t(uiKeys.upscaleChecks.dlssOutputFps));
       }
       if (!isSafeRelativeComfyPath(inputValue(combine, "filename_prefix"))) {
-        invalidInputs.push("5.filename_prefix must be a safe relative output prefix");
+        invalidInputs.push(t(uiKeys.upscaleChecks.dlssOutputPrefix));
       }
-      expectedLiteral(graph, "5", "format", "video/h264-mp4", invalidInputs);
-      expectedLiteral(graph, "5", "save_output", true, invalidInputs);
+      expectedLiteral(graph, "5", "format", "video/h264-mp4", invalidInputs, t);
+      expectedLiteral(graph, "5", "save_output", true, invalidInputs, t);
     }
     for (const [nodeId, node] of Object.entries(graph)) {
       if (isRecord(node) && (node.class_type === "ImageScale" || node.class_type === "VRAM_Debug")) {
-        invalidInputs.push(`${nodeId}.${node.class_type} is not allowed in the DLSS5 graph`);
+        invalidInputs.push(t(uiKeys.upscaleChecks.dlssForbidden, { node: nodeId, type: node.class_type }));
       }
     }
   }
 
   if (objectInfo !== undefined) {
-    const schema = validateDlss5ObjectInfoSchema(objectInfo);
+    const schema = validateDlss5ObjectInfoSchema(objectInfo, t);
     for (const value of schema.missingNodes) addUnique(missingNodes, value);
     invalidInputs.push(...schema.missingInputs, ...schema.invalidInputs);
     outputMismatch.push(...schema.outputMismatch);
-    if (!schema.valid) errors.push(`object_info schema: ${schema.errors.join("; ")}`);
+    if (!schema.valid) errors.push(t(uiKeys.upscaleChecks.schemaErrors, { errors: schema.errors.join("; ") }));
   }
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (invalidEdges.length) errors.push(`invalid edges: ${invalidEdges.join("; ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join("; ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (invalidEdges.length) errors.push(t(uiKeys.upscaleChecks.invalidEdges, { edges: invalidEdges.join("; ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join("; ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return {
     valid: errors.length === 0,
     missingNodes,
@@ -563,12 +577,13 @@ function dlss5NodeQualityFor(quality: Dlss5Quality): typeof DLSS5_SR_QUALITY_ENU
 export function buildDlss5UpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
-  objectInfo: unknown
+  objectInfo: unknown,
+  t: Translate = createTranslator().t
 ): Dlss5ApiWorkflow {
-  if (task.modelId !== DLSS5_MODEL_ID) throw new Error("DLSS5 workflow requires modelId dlss5-sr");
-  if (task.targetHeight !== undefined) throw new Error("DLSS5 workflow must not contain legacy targetHeight");
+  if (task.modelId !== DLSS5_MODEL_ID) throw new Error(t(uiKeys.upscaleChecks.dlssWorkflowModel));
+  if (task.targetHeight !== undefined) throw new Error(t(uiKeys.upscaleChecks.dlssWorkflowLegacy));
   if (!task.dlss5 || task.targetScale === undefined) {
-    throw new Error("DLSS5 workflow is missing its immutable scale/options snapshot");
+    throw new Error(t(uiKeys.upscaleChecks.dlssSnapshot));
   }
   const target = normalizeUpscaleTarget({
     modelId: task.modelId,
@@ -576,12 +591,12 @@ export function buildDlss5UpscaleWorkflow(
     sourceHeight: task.sourceHeight,
     targetScale: task.targetScale,
     dlss5: task.dlss5
-  });
-  if (target.provider !== "dlss5") throw new Error("DLSS5 workflow target normalization failed");
+  }, t);
+  if (target.provider !== "dlss5") throw new Error(t(uiKeys.upscaleChecks.dlssNormalize));
   if (task.targetWidth !== target.targetWidth || task.targetOutputHeight !== target.targetOutputHeight) {
-    throw new Error("DLSS5 task geometry does not match its frozen source scale");
+    throw new Error(t(uiKeys.upscaleChecks.dlssFrozenSize));
   }
-  assertDlss5ObjectInfoSchema(objectInfo);
+  assertDlss5ObjectInfoSchema(objectInfo, t);
   const filenamePrefix = typeof task.outputFilename === "string"
     ? task.outputFilename.replace(/\.mp4$/i, "")
     : "";
@@ -641,7 +656,7 @@ export function buildDlss5UpscaleWorkflow(
       }
     }
   };
-  const validation = validateDlss5Workflow(workflow, objectInfo);
-  if (!validation.valid) throw new Error(`DLSS5 workflow validation failed: ${validation.errors.join("; ")}`);
+  const validation = validateDlss5Workflow(workflow, objectInfo, t);
+  if (!validation.valid) throw new Error(t(uiKeys.upscaleChecks.dlssWorkflowInvalid, { errors: validation.errors.join("; ") }));
   return workflow;
 }

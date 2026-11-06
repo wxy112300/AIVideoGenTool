@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   AppState,
   HistoryAsset,
@@ -460,12 +462,13 @@ const defaultClock: QueueMutationClock = {
 export function duplicateQueueTask(
   state: AppState,
   taskId: string,
-  clock: QueueMutationClock = defaultClock
+  clock: QueueMutationClock = defaultClock,
+  t: Translate = createTranslator().t
 ): QueueTask[] {
   const source = state.queue.find((task) => task.id === taskId);
   if (!source) return state.queue;
   if (isImageGenerationQueueTask(source)) {
-    throw new Error("图片批次复制将在图片编辑页面接入。");
+    throw new Error(t(uiKeys.upscaleChecks.copyImageUnsupported));
   }
   const now = clock.now().toISOString();
   const names = [
@@ -481,12 +484,13 @@ export function duplicateQueueTask(
           names,
           source.konohamaru.frameInterpolation.enabled
             ? source.konohamaru.frameInterpolation.outputFps
-            : "off"
+            : "off",
+          t
         )
     : source.modelId === "aetherscale-dlss5" && source.aetherScale
-      ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names)
+      ? uniqueAetherScaleUpscaleFilename(source.sourceFilename, source.aetherScale.mode, names, t)
     : source.modelId === "dlss5-sr"
-      ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale!, names)
+      ? uniqueDlss5UpscaleFilename(source.sourceFilename, source.targetScale!, names, t)
       : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
   const h3AvOutputPolicyError = "h3AvOutputPolicyError" in source
     ? source.h3AvOutputPolicyError

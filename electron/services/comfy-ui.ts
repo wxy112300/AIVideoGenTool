@@ -622,7 +622,7 @@ export async function assertDlss5ExecutionReady(
   if (!task.dlss5 || task.targetScale === undefined) {
     throw new Error(t(uiKeys.dlssRuntime.snapshotMissing));
   }
-  assertDlss5ObjectInfoSchema(objectInfo);
+  assertDlss5ObjectInfoSchema(objectInfo, t);
   if (!isLocalComfyUrl(settings.comfyUrl)) return;
   const comfyRoot = await findComfyRoot(settings);
   if (!comfyRoot) throw new Error(t(uiKeys.dlssRuntime.rootMissing));
@@ -658,7 +658,7 @@ export async function assertAetherScaleExecutionReady(
   if (!task.aetherScale) {
     throw new Error(t(uiKeys.aetherRuntime.snapshotMissing));
   }
-  assertAetherScaleObjectInfoSchema(objectInfo);
+  assertAetherScaleObjectInfoSchema(objectInfo, t);
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     throw new Error(t(uiKeys.aetherRuntime.localOnly));
   }
@@ -671,7 +671,7 @@ export async function assertAetherScaleExecutionReady(
     targetWidth: task.targetWidth,
     targetOutputHeight: task.targetOutputHeight,
     aetherScale: task.aetherScale
-  });
+  }, t);
   if (target.targetWidth !== task.targetWidth || target.targetOutputHeight !== task.targetOutputHeight) {
     throw new Error(t(uiKeys.aetherRuntime.dimensionsMismatch));
   }
@@ -739,13 +739,13 @@ export async function assertKonohamaruExecutionReady(
     targetWidth: task.targetWidth,
     targetOutputHeight: task.targetOutputHeight,
     konohamaru: task.konohamaru
-  });
+  }, t);
   if (target.targetWidth !== task.targetWidth || target.targetOutputHeight !== task.targetOutputHeight) {
     throw new Error(t(uiKeys.konohamaruRuntime.dimensionsMismatch));
   }
   assertKonohamaruObjectInfoSchema(objectInfo, {
     frameInterpolation: target.options.frameInterpolation.enabled
-  });
+  }, t);
   if (!isLocalComfyUrl(settings.comfyUrl)) return;
   const comfyRoot = await findComfyRoot(settings);
   if (!comfyRoot) throw new Error(t(uiKeys.konohamaruRuntime.rootMissing));
@@ -988,7 +988,7 @@ export async function submitTask(
       signal
     });
     const source = JSON.parse(sourceText) as unknown;
-    const h3WorkflowValidation = validateH3ComfyWorkflow(source);
+    const h3WorkflowValidation = validateH3ComfyWorkflow(source, t);
     if (!h3WorkflowValidation.valid) {
       throw new Error(t(uiKeys.taskSubmission.h3StaticFailed, { detail: h3WorkflowValidation.errors.join("; ") }));
     }
@@ -1010,7 +1010,7 @@ export async function submitTask(
       }
       if (h3Continuum) {
         if (h3ContinuumManaged) {
-          const prepared = await prepareH3BoundaryFrame(continuumFirstFrameTask(task), signal);
+          const prepared = await prepareH3BoundaryFrame(continuumFirstFrameTask(task, settings.uiLocale), signal, t);
           try {
             const uploadedInput = await uploadInput(baseUrl, prepared.filePath, signal, t(uiKeys.taskSubmission.continuumBoundary), t);
             prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
@@ -1039,10 +1039,10 @@ export async function submitTask(
         }
       } else {
         const prepared = h3Boundary
-          ? await prepareH3BoundaryFrame(task, signal)
+          ? await prepareH3BoundaryFrame(task, signal, t)
           : h3MotionContext
-            ? await prepareH3MotionContext(task, signal)
-            : await prepareExtensionContext(task, signal);
+            ? await prepareH3MotionContext(task, signal, t)
+            : await prepareExtensionContext(task, signal, t);
         try {
           const uploadedInput = await uploadInput(
             baseUrl,
@@ -1157,7 +1157,7 @@ export async function submitTask(
         signal
       });
       const source = JSON.parse(sourceText) as unknown;
-      const validation = validateH3ComfyWorkflow(source);
+      const validation = validateH3ComfyWorkflow(source, t);
       if (!validation.valid || validation.kind !== "second-sampling-av") {
         throw new Error(t(uiKeys.taskSubmission.secondPassStaticFailed, { detail: validation.errors.join("; ") }));
       }
@@ -1207,7 +1207,7 @@ export async function submitTask(
       prompt = renderUpscaleWorkflow(workflowTaskForComfyOutput(task, settings), sourceVideo, {
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
-      }, objectInfo, options.nativeSeedVr2Segment);
+      }, objectInfo, options.nativeSeedVr2Segment, t);
   } else {
     throw new Error(t(uiKeys.taskSubmission.imageSubmitOnly));
   }
@@ -1235,7 +1235,8 @@ export async function submitTask(
     }
     h3AvSerializerNodeId = existingSerializerIds[0] ?? attachH3JointAvSerializer(
       prompt,
-      `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`
+      `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
+      settings.uiLocale
     );
   }
   if (task.taskType === "extension" && isMiniMaxH3ContinuumManagedWorkflow(task.workflowPath)) {
@@ -1340,15 +1341,15 @@ export async function submitImageTask(
     `${baseUrl}/object_info`,
     { signal }, t
   );
-  const compiled = adapter.compilePrompt(task.prompt, task.pictures);
+  const compiled = adapter.compilePrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
-  const workflow = adapter.buildWorkflow(task, run);
-  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true);
+  const workflow = adapter.buildWorkflow(task, run, t);
+  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true, task.h3ImageRecipe, t);
   if (workflowErrors.length) {
     throw new Error(t(uiKeys.taskSubmission.imageValidationFailed, { detail: workflowErrors.join(" ") }));
   }
   assertImageWorkflowRuntimeCompatible(task.modelId, workflow, objectInfo, t);
-  const schemaErrors = adapter.validateRuntimeSchema?.(workflow, objectInfo) ?? [];
+  const schemaErrors = adapter.validateRuntimeSchema?.(workflow, objectInfo, t) ?? [];
   if (schemaErrors.length) {
     throw new Error(t(uiKeys.taskSubmission.imageSchemaFailed, { detail: schemaErrors.join(" ") }));
   }
@@ -1365,7 +1366,7 @@ export async function submitImageTask(
       )
   );
   const prompt = renderImageWorkflow(workflow, uploadedPictures, uploadedMasks);
-  const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile, false, task.h3ImageRecipe);
+  const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile, false, task.h3ImageRecipe, t);
   if (renderedWorkflowErrors.length) throw new Error(t(uiKeys.taskSubmission.imageValidationFailed, { detail: renderedWorkflowErrors.join(" ") }));
   const clientId = `local-video-studio-image-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {

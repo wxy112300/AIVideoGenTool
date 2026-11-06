@@ -69,7 +69,7 @@ describe("Strata file preparation", () => {
     const base = new Map(profiles.flatMap((profile) => profile.components.filter((component) => !component.optional)
       .map((component) => [path.join(strataModelRoot(settings), component.expected), component.installGuide.bytes!] as const)));
     const scan = await scanStrataPreparation(settings, async (filename) => base.has(filename) ? { size: base.get(filename)!, header: "GGUF" } : null);
-    expect(scan.profiles.every((profile) => profile.available && profile.components.filter(component => component.optional).every(component => !component.found))).toBe(true);
+    expect(scan.profiles.filter(profile => !profile.id.includes("deepseek")).every((profile) => profile.available && profile.components.filter(component => component.optional).every(component => !component.found))).toBe(true);
     const guide = scan.profiles[0].components[3].installGuide;
     expect(guide).toEqual(scan.profiles[1].components[3].installGuide);
     expect(guide).toMatchObject({ bytes: 889017216, targetSubdirectory: "mtp", recommendedFilename: "mtp-q2_0.gguf" });
@@ -104,7 +104,7 @@ describe("Strata file preparation", () => {
     const inspect = vi.fn(async (filename: string) => ({ size: assets.get(filename) ?? 10, header: "GGUF" }));
     const scan = await scanStrataPreparation(settings, inspect);
     expect(scan.status).toMatchObject({ sourcePresent: true, enginePresent: true });
-    expect(scan.profiles.every((profile) => profile.available && profile.integrated && !profile.runtimeReady && !profile.runtimeVerified)).toBe(true);
+    expect(scan.profiles.filter(profile => !profile.id.includes("deepseek")).every((profile) => profile.available && profile.integrated && !profile.runtimeReady && !profile.runtimeVerified)).toBe(true);
     expect(new Set(inspect.mock.calls.map(([filename]) => filename)).size).toBe(inspect.mock.calls.length); // Shared paths are never inspected twice.
     expect(scan.profiles[0].components[0].matches[0]).toContain(modelRoot);
   });
@@ -119,7 +119,7 @@ describe("Strata file preparation", () => {
     expect(strataPreparationMatchesSettings(settings, scan.status)).toBe(true);
     expect(strataPreparationMatchesSettings({ ...settings, modelDirectory: path.resolve("new-models") }, scan.status)).toBe(false);
     expect(strataPreparationMatchesSettings({ ...settings, comfyInstallDirectory: path.resolve("another-comfy") }, scan.status)).toBe(false);
-    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 26); // Bounded IQ and Q4 family paths, never recursion.
+    expect(inspect).toHaveBeenCalledTimes(STRATA_SOURCE_FILES.length + STRATA_ENGINE_FILES.length + 34); // Bounded Qwen and DeepSeek paths, never recursion.
   });
 
   it.each(["old-only", "both", "invalid-new"])("reads old shared files in place but keeps the download root model-named (%s)", async (layout) => {
@@ -135,9 +135,9 @@ describe("Strata file preparation", () => {
     });
     const scan = await scanStrataPreparation(settings, inspect);
     expect(scan.status.modelDirectory).toBe(canonical);
-    expect(scan.profiles.every((profile) => profile.available && !profile.runtimeReady)).toBe(true);
+    expect(scan.profiles.filter(profile => !profile.id.includes("deepseek")).every((profile) => profile.available && !profile.runtimeReady)).toBe(true);
     const expectedRoot = layout === "both" ? canonical : legacy;
-    for (const component of scan.profiles.flatMap((profile) => profile.components)) {
+    for (const component of scan.profiles.filter(profile => !profile.id.includes("deepseek")).flatMap((profile) => profile.components)) {
       expect(component.matches).toEqual([path.join(expectedRoot, component.expected)]);
     }
     expect(inspect.mock.calls.filter(([filename]) => filename === path.join(expectedRoot, "mmproj-Qwen3.8-Flash-Next-BF16.gguf"))).toHaveLength(1);

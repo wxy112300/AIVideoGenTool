@@ -842,7 +842,7 @@ export class PromptApplicationService {
           await this.ensureStrataReady(settings, controller.signal, onProgress, chat);
           this.retainedPromptRuntime = { backend: promptBackend, modelId: settings.promptModelId };
           this.deps.promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        }));
+        }), {}, createNativeTranslator(settings.uiLocale).t);
       return { result, leaseAlreadyRetained };
     }
     await this.deps.externalRuntime?.stop();
@@ -910,7 +910,9 @@ export class PromptApplicationService {
           onProgress,
           (promptId) => this.deps.promptRuntimeManager.markSubmitted(operationId, promptId)
         );
-      }
+      },
+      {},
+      createNativeTranslator(settings.uiLocale).t
     );
     return { result, leaseAlreadyRetained };
   }

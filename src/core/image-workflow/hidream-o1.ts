@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -36,15 +39,16 @@ function hidreamO1PictureWithMarkupGuide(
 /** HiDream-O1 uses one reference image; annotations without a binary mask use the rendered guide. */
 export function compileHiDreamO1Prompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const errors: string[] = [];
   ordered
     .filter((picture) => !picture.absolutePath.trim())
-    .forEach((picture) => errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`));
+    .forEach((picture) => errors.push(t(uiKeys.workflowChecks.pictureEmpty, { number: picture.pictureNumber })));
   if (ordered.length > hidreamO1Capability.maxPictures) {
-    errors.push("HiDream-O1-Image 工作流最多支持一张 Picture。请先合成为一张底图。");
+    errors.push(t(uiKeys.workflowChecks.hidreamLimit));
   }
   const picture = ordered.find((candidate) => candidate.absolutePath.trim());
   const originalPictureNumber = picture?.pictureNumber;
@@ -53,7 +57,7 @@ export function compileHiDreamO1Prompt(
     const originalNumber = Number(numberText);
     referencedPictureNumbers.add(originalNumber);
     if (originalNumber !== originalPictureNumber) {
-      errors.push(`${match} 引用了不存在的 Picture ${originalNumber}。HiDream-O1-Image 只接收 Picture 1。`);
+      errors.push(t(uiKeys.workflowChecks.hidreamReference, { reference: match, number: originalNumber }));
       return match;
     }
     return "Picture 1";
@@ -99,54 +103,57 @@ const hidreamO1CoreNodeTypes = [
 export function validateHiDreamO1Workflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = hidreamO1CoreNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `HiDream-O1-Image 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.hidreamNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   const referenceNodes = Object.values(workflow).filter((node) => node.class_type === "HiDreamO1ReferenceImages");
   const maskNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImageMask");
   const compositeNodes = Object.values(workflow).filter((node) => node.class_type === "ImageCompositeMasked");
-  if (inputNodes.length > 1) errors.push("HiDream-O1-Image 工作流最多包含 1 个 LoadImage 节点。");
-  if (referenceNodes.length > 1) errors.push("HiDream-O1-Image 工作流最多包含 1 个 HiDreamO1ReferenceImages 节点。");
-  if (maskNodes.length > 1) errors.push("HiDream-O1-Image 工作流最多包含 1 个 LoadImageMask 节点。");
-  if (compositeNodes.length > 1) errors.push("HiDream-O1-Image 工作流最多包含 1 个 ImageCompositeMasked 节点。");
+  if (inputNodes.length > 1) errors.push(t(uiKeys.workflowChecks.hidreamInputCount));
+  if (referenceNodes.length > 1) errors.push(t(uiKeys.workflowChecks.hidreamReferenceCount));
+  if (maskNodes.length > 1) errors.push(t(uiKeys.workflowChecks.hidreamMaskCount));
+  if (compositeNodes.length > 1) errors.push(t(uiKeys.workflowChecks.hidreamCompositeCount));
   if (inputNodes.length === 1 && referenceNodes.length !== 1) {
-    errors.push("HiDream-O1-Image 参考图工作流缺少 HiDreamO1ReferenceImages 节点。");
+    errors.push(t(uiKeys.workflowChecks.hidreamReferenceNode));
   }
   if (inputNodes.length === 0 && referenceNodes.length > 0) {
-    errors.push("HiDream-O1-Image 的 HiDreamO1ReferenceImages 节点必须绑定一张参考图。");
+    errors.push(t(uiKeys.workflowChecks.hidreamReferenceBinding));
   }
   if (maskNodes.length > 0 && inputNodes.length !== 1) {
-    errors.push("HiDream-O1-Image 的 Mask 必须绑定一张参考 Picture。");
+    errors.push(t(uiKeys.workflowChecks.hidreamMaskBinding));
   }
   if (maskNodes.length > 0 && compositeNodes.length !== 1) {
-    errors.push("HiDream-O1-Image 的 Mask 工作流缺少 ImageCompositeMasked 节点。");
+    errors.push(t(uiKeys.workflowChecks.hidreamMaskComposite));
   }
   if (maskNodes.length === 0 && compositeNodes.length > 0) {
-    errors.push("HiDream-O1-Image 的 ImageCompositeMasked 节点必须绑定一个 Mask。");
+    errors.push(t(uiKeys.workflowChecks.hidreamCompositeMask));
   }
   if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
-    errors.push("HiDream-O1-Image 工作流仍包含未上传的图片或 Mask 占位符。");
+    errors.push(t(uiKeys.workflowChecks.hidreamPlaceholders));
   }
   return [...new Set(errors)];
 }
 
 function hidreamO1OutputDimensions(
   task: ImageGenerationQueueTask,
-  picture: ImageReferenceSnapshot | undefined
+  picture: ImageReferenceSnapshot | undefined,
+  t: Translate = createTranslator().t
 ): [number, number] {
   return [
-    exactImageDimension(task.outputWidth, picture?.width || hidreamO1Capability.textOnlyOutputWidth || 2048),
-    exactImageDimension(task.outputHeight, picture?.height || hidreamO1Capability.textOnlyOutputHeight || 2048)
+    exactImageDimension(task.outputWidth, picture?.width || hidreamO1Capability.textOnlyOutputWidth || 2048, t),
+    exactImageDimension(task.outputHeight, picture?.height || hidreamO1Capability.textOnlyOutputHeight || 2048, t)
   ];
 }
 
-function hidreamO1LatentDimension(value: number): number {
+function hidreamO1LatentDimension(value: number,
+  t: Translate = createTranslator().t): number {
   if (!Number.isInteger(value) || value <= 0) {
-    throw new Error("HiDream-O1-Image latent 尺寸无效。");
+    throw new Error(t(uiKeys.workflowChecks.hidreamDimensions));
   }
   return Math.max(64, Math.floor(value / 32) * 32);
 }
@@ -163,16 +170,17 @@ function hidreamO1OutputPrefix(
 
 export function buildHiDreamO1Workflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileHiDreamO1Prompt(task.prompt, task.pictures);
+  const compiled = compileHiDreamO1Prompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
   const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
   const quality = hidreamO1Capability.qualityProfiles.find((profile) => profile.id === task.qualityProfile) ?? hidreamO1Capability.qualityProfiles[0]!;
-  const [outputWidth, outputHeight] = hidreamO1OutputDimensions(task, picture);
-  const latentWidth = hidreamO1LatentDimension(outputWidth);
-  const latentHeight = hidreamO1LatentDimension(outputHeight);
+  const [outputWidth, outputHeight] = hidreamO1OutputDimensions(task, picture, t);
+  const latentWidth = hidreamO1LatentDimension(outputWidth, t);
+  const latentHeight = hidreamO1LatentDimension(outputHeight, t);
   const workflow: ComfyApiWorkflow = {
     checkpoint: {
       class_type: "CheckpointLoaderSimple",
@@ -271,7 +279,7 @@ export function buildHiDreamO1Workflow(
       }
     };
     const sampler = workflow.sampler;
-    if (!sampler) throw new Error("HiDream-O1-Image 工作流缺少采样节点。");
+    if (!sampler) throw new Error(t(uiKeys.workflowChecks.hidreamSampler));
     sampler.inputs.positive = ["reference", 0];
     sampler.inputs.negative = ["reference", 1];
   }
@@ -302,10 +310,10 @@ export function buildHiDreamO1Workflow(
       }
     };
     const save = workflow.save;
-    if (!save) throw new Error("HiDream-O1-Image 工作流缺少保存节点。");
+    if (!save) throw new Error(t(uiKeys.workflowChecks.hidreamSave));
     save.inputs.images = ["composite", 0];
   }
-  const errors = validateHiDreamO1Workflow(workflow, quality.id, true);
+  const errors = validateHiDreamO1Workflow(workflow, quality.id, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }

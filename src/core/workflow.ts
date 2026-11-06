@@ -95,10 +95,11 @@ interface ApiWorkflowNode {
 
 export function attachH3JointAvSerializer(
   workflow: unknown,
-  filename: string
+  filename: string,
+  locale: UiLocale = "zh-CN"
 ): string {
   if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
-    throw new Error("H3 AV serializer 只能附加到 API-format workflow。" );
+    throw new Error(workflowMessage("serializerApi", {}, locale) );
   }
   const graph = workflow as Record<string, ApiWorkflowNode>;
   const latentReferences = Object.values(graph)
@@ -111,7 +112,7 @@ export function attachH3JointAvSerializer(
     latentReferences.map((reference) => [`${reference[0]}:${reference[1]}`, reference] as const)
   );
   if (uniqueReferences.size !== 1) {
-    throw new Error(`H3 AV serializer 无法确定唯一最终 joint latent（找到 ${uniqueReferences.size} 个）。`);
+    throw new Error(workflowMessage("serializerUnique", { count: uniqueReferences.size }, locale));
   }
   const numericIds = Object.keys(graph)
     .map((id) => Number(id))
@@ -1166,6 +1167,23 @@ export function frameInterpolationMultiplier(
   return 1;
 }
 
+/** Shared RIFE node settings. Optional tail padding retains the source duration. */
+export function appendRifeFrames(workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>, frames: unknown, multiplier: 2 | 4, padLastFrame = false): [string, number] {
+  if (!Array.isArray(frames)) throw new Error("RIFE requires an image connection");
+  let id = Math.max(0, ...Object.keys(workflow).map(k => Number(k) || 0)) + 1;
+  const rife = String(id++);
+  workflow[rife] = { class_type: "RIFE VFI", inputs: { ckpt_name: "rife47.pth", frames, clear_cache_after_n_frames: 1,
+    multiplier, fast_mode: true, ensemble: false, scale_factor: 1, dtype: "bfloat16", torch_compile: false, batch_size: 1 } };
+  if (!padLastFrame) return [rife, 0];
+  const size = String(id++), last = String(id++), tail = String(id++), repeat = String(id++), joined = String(id++);
+  workflow[size] = { class_type: "GetImageSize", inputs: { image: frames } };
+  workflow[last] = { class_type: "ComfyMathExpression", inputs: { expression: "a - 1", "values.a": [size, 2] } };
+  workflow[tail] = { class_type: "ImageFromBatch", inputs: { image: frames, batch_index: [last, 1], length: 1 } };
+  workflow[repeat] = { class_type: "RepeatImageBatch", inputs: { image: [tail, 0], amount: multiplier - 1 } };
+  workflow[joined] = { class_type: "ImageBatch", inputs: { image1: [rife, 0], image2: [repeat, 0] } };
+  return [joined, 0];
+}
+
 export function outputFrameCountForTask(
   task: Pick<GenerationQueueTask, "duration" | "fps"> &
     Partial<Pick<GenerationQueueTask, "modelId" | "workflowPath">> &
@@ -1327,30 +1345,31 @@ export function workflowSupportsH3ContinuumManagedExtension(source: unknown): bo
     ].some((classType) => classTypes.has(classType));
 }
 
-export function continuumFirstFrameTask(task: ExtensionQueueTask): ExtensionQueueTask {
+export function continuumFirstFrameTask(task: ExtensionQueueTask, locale: UiLocale = "zh-CN"): ExtensionQueueTask {
   const source = task.h3ContinuumSequence?.firstFrameSource;
   if (!source && task.h3ContinuumSequence?.acceptedChunks) {
-    throw new Error("Continuum Run 缺少最初的首帧来源，不能用当前末帧替换后继续。");
+    throw new Error(workflowMessage("continuumFirstSource", {}, locale));
   }
   if (!source) return task;
-  if (source.resolution === 1080 || source.resolution === 1440) throw new Error("Continuum 首帧来源不支持原生高分辨率二次采样档。");
+  if (source.resolution === 1080 || source.resolution === 1440) throw new Error(workflowMessage("continuumFirstResolution", {}, locale));
   return { ...task, ...source, resolution: source.resolution };
 }
 
 export function continuumTimelinePromptForTask(
   task: Pick<ExtensionQueueTask, "prompt" | "h3ContinuumSequence" | "h3ContinuumReviewAction">,
-  _chunkSeconds: number
+  _chunkSeconds: number,
+  locale: UiLocale = "zh-CN"
 ): string {
   const accepted = task.h3ContinuumSequence?.chunks
     .filter((chunk) => chunk.status === "accepted" || chunk.status === "review-ready")
     .map((chunk) => chunk.prompt.finalPrompt) ?? [];
   if (task.h3ContinuumReviewAction === "Regenerate Current" && task.prompt !== accepted.at(-1)) {
-    throw new Error("官方重抽本段必须保留原提示词；修改正文不属于此操作支持的重抽。");
+    throw new Error(workflowMessage("continuumRegeneratePrompt", {}, locale));
   }
   const prefix = task.h3ContinuumReviewAction === "Regenerate Current" ? accepted.slice(0, -1) : accepted;
   const prompts = [...prefix, task.prompt];
   if (prompts.some((prompt) => !prompt.trim() || /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(prompt))) {
-    throw new Error("Continuum 每段提示词必须是非空 Chunk body，不能嵌套 Timeline 标题。");
+    throw new Error(workflowMessage("continuumChunkBody", {}, locale));
   }
   const preamble = task.h3ContinuumSequence?.globalPromptPreamble;
   const sections = prompts.map((prompt, index) => `[Chunk ${index + 1}]\n${prompt}`);
@@ -2109,7 +2128,8 @@ export function renderWorkflow(
       continuumManaged
         ? continuumTimelinePromptForTask(
             task as ExtensionQueueTask,
-            task.h3ContinuumSequence?.chunkSeconds ?? task.duration
+            task.h3ContinuumSequence?.chunkSeconds ?? task.duration,
+            context.locale
           )
         : task.prompt,
       task.videoLoras
@@ -2368,7 +2388,7 @@ export function renderWorkflow(
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   ))) {
     if (!workflowSupportsH3PddSampling(workflow, { modelId: task.modelId })) {
-      throw new Error("PDD Acc 需要包含 KSamplerSelect、BasicScheduler 与 BasicGuider 的原生 H3 工作流；Ref2VA 还需要 MiniMaxH3ReferenceToVideo。");
+      throw new Error(workflowMessage("pddWorkflowRequired", {}, context.locale));
     }
   }
   applyMiniMaxH3PddSampling(workflow, task);
@@ -2497,27 +2517,13 @@ export function renderWorkflow(
       node.inputs.images = decodedImages;
     }
     if (interpolationMultiplier === 1) continue;
-    const interpolateId = String(nextNodeId++);
+    const interpolated = appendRifeFrames(workflow, decodedImages, interpolationMultiplier);
+    nextNodeId = Math.max(nextNodeId, ...Object.keys(workflow).map(id => Number(id) + 1 || 0));
     const trimId = String(nextNodeId++);
-    workflow[interpolateId] = {
-      class_type: "RIFE VFI",
-      inputs: {
-        ckpt_name: "rife47.pth",
-        frames: decodedImages,
-        clear_cache_after_n_frames: 1,
-        multiplier: interpolationMultiplier,
-        fast_mode: true,
-        ensemble: false,
-        scale_factor: 1,
-        dtype: "bfloat16",
-        torch_compile: false,
-        batch_size: 1
-      }
-    };
     workflow[trimId] = {
       class_type: "ImageFromBatch",
       inputs: {
-        image: [interpolateId, 0],
+        image: interpolated,
         batch_index: 0,
         length: task.taskType === "extension"
           ? task.overlapFrames * interpolationMultiplier +

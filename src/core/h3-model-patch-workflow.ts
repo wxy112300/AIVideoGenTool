@@ -272,7 +272,7 @@ export function normalizeMiniMaxH3ModelPatchChain(
     h3LivePreview: previewEnabled
   });
   if (!policy.allowed && (spectrumEnabled || policy.sparseAttentionMode !== "off")) {
-    throw new Error(`H3 执行策略不可用：${policy.reasons.join("、")}`);
+    throw new Error(message("h3PolicyUnavailable", { reasons: policy.reasons.join("、") }, locale));
   }
 
   const attentionIds = [

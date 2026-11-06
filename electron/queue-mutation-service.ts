@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
+import type { Translate } from "../src/core/i18n.js";
 import type { AppState, UpscaleQueueTask } from "../src/types.js";
 import { H3_REFINER_ID, h3RefinerGeometry } from "../src/core/h3-refiner.js";
 import { TESSERA_ID, tesseraGeometry } from "../src/core/tessera.js";
@@ -45,6 +48,8 @@ export interface QueueMutationServiceDependencies {
 export class QueueMutationService {
   constructor(private readonly deps: QueueMutationServiceDependencies) {}
 
+  private get t(): Translate { return createNativeTranslator(this.deps.store.getSettings().uiLocale).t; }
+
   async setH3LivePreview(enabled: boolean): Promise<AppState> {
     const value = enabled === true;
     const { store, logger, sendState } = this.deps;
@@ -70,12 +75,12 @@ export class QueueMutationService {
     const { store, sendState } = this.deps;
     const current = store.get().queue.find((task) => task.id === taskId);
     if (!current || current.taskType !== "upscale") {
-      throw new Error("待编辑的 Upscale 任务不存在。");
+      throw new Error(this.t(uiKeys.serviceChecks.editMissing));
     }
     const currentMode = current.upscaleMode ?? "pixel";
     if (current.modelId === TESSERA_ID || patch.modelId === TESSERA_ID) {
-      if (current.modelId !== TESSERA_ID || patch.modelId !== TESSERA_ID || !current.tessera) throw new Error("已排队任务不能切换Tessera方案，请新建任务。");
-      const g = tesseraGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!);
+      if (current.modelId !== TESSERA_ID || patch.modelId !== TESSERA_ID || !current.tessera) throw new Error(this.t(uiKeys.serviceChecks.editTessera));
+      const g = tesseraGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!, this.t);
       const next = await store.update(state => {
         state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch, upscaleMode: "pixel", modelId: TESSERA_ID,
           workflowPath: `builtin:upscale/${TESSERA_ID}`, targetWidth: g.outputWidth, targetOutputHeight: g.outputHeight,
@@ -85,9 +90,9 @@ export class QueueMutationService {
     }
     if (current.modelId === H3_REFINER_ID || patch.modelId === H3_REFINER_ID) {
       if (current.modelId !== H3_REFINER_ID || patch.modelId !== H3_REFINER_ID || !current.h3Refiner) {
-        throw new Error("已排队的 Refiner 任务不能切换提升方案，请新建任务。");
+        throw new Error(this.t(uiKeys.serviceChecks.editRefiner));
       }
-      const g = h3RefinerGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!);
+      const g = h3RefinerGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!, this.t);
       const next = await store.update(state => {
         state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch,
           upscaleMode: "pixel", modelId: H3_REFINER_ID, workflowPath: `builtin:upscale/${H3_REFINER_ID}`,
@@ -114,7 +119,7 @@ export class QueueMutationService {
       currentIsAetherScale !== requestedIsAetherScale ||
       currentIsDlss5 !== requestedIsDlss5
     ) {
-      throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+      throw new Error(this.t(uiKeys.serviceChecks.editProvider));
     }
     if (currentIsKonohamaru) {
       const target = normalizeKonohamaruTarget({
@@ -128,9 +133,9 @@ export class QueueMutationService {
         dlss5: patch.dlss5,
         aetherScale: patch.aetherScale,
         konohamaru: patch.konohamaru
-      });
+      }, this.t);
       if (patch.upscaleMode !== currentMode) {
-        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+        throw new Error(this.t(uiKeys.serviceChecks.editProvider));
       }
       const safePatch = {
         ...patch,
@@ -171,9 +176,9 @@ export class QueueMutationService {
         targetScale: patch.targetScale,
         dlss5: patch.dlss5,
         aetherScale: patch.aetherScale
-      });
+      }, this.t);
       if (patch.upscaleMode !== currentMode) {
-        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+        throw new Error(this.t(uiKeys.serviceChecks.editProvider));
       }
       const safePatch = {
         ...patch,
@@ -210,10 +215,10 @@ export class QueueMutationService {
         targetHeight: patch.targetHeight,
         targetScale: patch.targetScale,
         dlss5: patch.dlss5
-      });
-      if (target.provider !== "dlss5") throw new Error("DLSS5 队列目标规范化失败。");
+      }, this.t);
+      if (target.provider !== "dlss5") throw new Error(this.t(uiKeys.serviceChecks.editDlssTarget));
       if (patch.upscaleMode !== currentMode) {
-        throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+        throw new Error(this.t(uiKeys.serviceChecks.editProvider));
       }
       const safePatch = {
         ...patch,
@@ -242,12 +247,12 @@ export class QueueMutationService {
       sendState(next);
       return next;
     }
-    const targetHeight = requireLegacyUpscaleTargetHeight(patch.targetHeight);
+    const targetHeight = requireLegacyUpscaleTargetHeight(patch.targetHeight, this.t);
     if (currentMode === "h3-native") {
       const currentProvider = current.h3NativeInput?.provider ?? "bilinear";
       const requestedProvider = targetHeight >= 1080 ? "learned-3d" : "bilinear";
       if (requestedProvider !== currentProvider) {
-        throw new Error("已排队的 H3 Upscale 任务不能跨 bilinear/learned provider 修改分辨率，请新建任务。");
+        throw new Error(this.t(uiKeys.serviceChecks.editH3Provider));
       }
     }
     const safePatch = currentMode === "h3-native"
@@ -336,11 +341,11 @@ export class QueueMutationService {
     pauseBoundaryTarget?: number
   ): Promise<AppState> {
     if (typeof taskId !== "string" || !Number.isInteger(targetWaitingIndex)) {
-      throw new Error("无效的队列排序位置。");
+      throw new Error(this.t(uiKeys.serviceChecks.queuePosition));
     }
     if (pauseBoundaryTarget !== undefined &&
       (!Number.isInteger(pauseBoundaryTarget) || pauseBoundaryTarget < 1)) {
-      throw new Error("无效的队列分割位置。");
+      throw new Error(this.t(uiKeys.serviceChecks.pausePosition));
     }
     const { store, sendState, resumeQueue } = this.deps;
     const current = store.get();
@@ -372,7 +377,7 @@ export class QueueMutationService {
   async duplicate(taskId: string): Promise<AppState> {
     const { store, sendState } = this.deps;
     const next = await store.update((state) => {
-      state.queue = duplicateQueueTask(state, taskId);
+      state.queue = duplicateQueueTask(state, taskId, undefined, this.t);
     });
     sendState(next);
     return next;
@@ -380,7 +385,7 @@ export class QueueMutationService {
 
   async randomizeSeed(taskId: string): Promise<AppState> {
     if (typeof taskId !== "string" || !taskId.trim()) {
-      throw new Error("无效的任务。 ");
+      throw new Error(this.t(uiKeys.serviceChecks.invalidTask));
     }
     const { store, sendState } = this.deps;
     const next = await store.update((state) => {
@@ -392,13 +397,13 @@ export class QueueMutationService {
 
   async setPauseBoundaryAfterTask(taskId: string): Promise<AppState> {
     if (typeof taskId !== "string" || !taskId.trim()) {
-      throw new Error("无效的队列任务。 ");
+      throw new Error(this.t(uiKeys.serviceChecks.invalidQueueTask));
     }
     const { store, sendState } = this.deps;
     const next = await store.update((state) => {
       const task = state.queue.find((candidate) => candidate.id === taskId);
       const activeIndex = activeQueueTaskIds(state.queue).indexOf(taskId);
-      if (activeIndex < 0) throw new Error("只能将分割线放在等待或运行中的任务之后。 ");
+      if (activeIndex < 0) throw new Error(this.t(uiKeys.serviceChecks.pauseAfterActive));
       const activeCount = state.queue.filter((task) =>
         task.status === "waiting" || task.status === "running"
       ).length;
@@ -419,7 +424,7 @@ export class QueueMutationService {
 
   async setPauseBoundary(waitingTaskCount: number): Promise<AppState> {
     if (!Number.isInteger(waitingTaskCount) || waitingTaskCount < 0) {
-      throw new Error("无效的队列分割位置。 ");
+      throw new Error(this.t(uiKeys.serviceChecks.pausePosition));
     }
     const { store, sendState } = this.deps;
     const next = await store.update((state) => {
@@ -466,7 +471,7 @@ export class QueueMutationService {
       current.queueLifecycleTaskId === taskId &&
       cleanupActive
     ) {
-      throw new Error("任务仍在清理中，请等待取消操作完成后再重置。 ");
+      throw new Error(this.t(uiKeys.serviceChecks.cleanupBeforeReset));
     }
     let reset = false;
     const next = await store.update((state) => {

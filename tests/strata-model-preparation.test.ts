@@ -21,7 +21,7 @@ const originalVocab = { ...STRATA_MTP_CJK_VOCAB };
 afterEach(async () => {
   vi.unstubAllEnvs();
   Object.assign(STRATA_MTP_ASSET, originalMtp); Object.assign(STRATA_MTP_CJK_VOCAB, originalVocab);
-  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!, { bytes: originalMtp.bytes, sha256: originalMtp.sha256 });
+  for (const entry of strataModelEntries.filter(entry => entry.definition.family === "strata-qwen3.8-flash-next")) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!, { bytes: originalMtp.bytes, sha256: originalMtp.sha256 });
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 async function rootFixture() { const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-pack-")); roots.push(root); return root; }
@@ -118,7 +118,7 @@ describe("Strata CPU preparation and config", () => {
     }
     expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
   });
-  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
+  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1", "0.2.9", "0.2.10"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
     const f = await fixture(index), old = STRATA_RELEASES.find(release => release.version === version)!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
@@ -425,7 +425,7 @@ async function addMtp(f: Awaited<ReturnType<typeof fixture>>) {
   await fs.writeFile(filename, body);
   STRATA_MTP_ASSET.bytes = body.length;
   STRATA_MTP_ASSET.sha256 = createHash("sha256").update(body).digest("hex");
-  for (const entry of strataModelEntries) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!,
+  for (const entry of strataModelEntries.filter(entry => entry.definition.family === "strata-qwen3.8-flash-next")) Object.assign(entry.definition.scan!.components.find(component => component.optional)!.installGuide!,
     { bytes: STRATA_MTP_ASSET.bytes, sha256: STRATA_MTP_ASSET.sha256 });
   const vocab = Buffer.alloc(STRATA_MTP_CJK_VOCAB.tokens * 4);
   STRATA_MTP_CJK_VOCAB.sha256 = createHash("sha256").update(vocab).digest("hex");

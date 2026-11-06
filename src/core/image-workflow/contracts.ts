@@ -1,3 +1,4 @@
+import type { Translate } from "../i18n.js";
 import type {
   H3ImageRecipeSnapshot,
   ImageGenerationQueueTask,
@@ -77,18 +78,20 @@ export interface ImageOutputCandidate {
 }
 
 export interface ImageModelAdapter extends ImageModelCapability {
-  compilePrompt(prompt: string, pictures: ImageReferenceSnapshot[]): CompiledImagePrompt;
-  buildWorkflow(task: ImageGenerationQueueTask, run: ImageGenerationRun): ComfyApiWorkflow;
+  compilePrompt(prompt: string, pictures: ImageReferenceSnapshot[], t?: Translate): CompiledImagePrompt;
+  buildWorkflow(task: ImageGenerationQueueTask, run: ImageGenerationRun, t?: Translate): ComfyApiWorkflow;
   validateWorkflow(
     workflow: ComfyApiWorkflow,
     qualityProfile?: string,
     allowImagePlaceholders?: boolean,
-    recipe?: H3ImageRecipeSnapshot
+    recipe?: H3ImageRecipeSnapshot,
+    t?: Translate
   ): string[];
   /** Validate model-specific runtime sockets and enum values before uploads. */
   validateRuntimeSchema?(
     workflow: ComfyApiWorkflow,
-    objectInfo: Record<string, unknown>
+    objectInfo: Record<string, unknown>,
+    t?: Translate
   ): string[];
   parseOutputs(history: unknown): ImageOutputCandidate[];
 }

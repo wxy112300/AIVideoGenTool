@@ -1,3 +1,5 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type {
@@ -134,18 +136,19 @@ export async function prepareDepthAnythingAssets(
   modelDirectories: readonly string[] = [],
   onLog?: (message: string) => void
 ): Promise<ConnectionResult & { status?: DepthAnythingAssetStatus }> {
+  const t = createNativeTranslator(settings.uiLocale).t;
   if (!isLocalComfyUrl(settings.comfyUrl)) {
     return {
       ok: false,
-      message: "远程 ComfyUI 仅支持连接，应用不会安装本地 Depth Anything 资产。"
+      message: t(uiKeys.serviceChecks.depthRemotePrepare)
     };
   }
   if (!comfyRoot) {
-    return { ok: false, message: "没有找到 ComfyUI 数据目录，无法检查 Depth Anything。" };
+    return { ok: false, message: t(uiKeys.serviceChecks.depthRootMissing) };
   }
   const status = await scanDepthAnythingAssets(comfyRoot, { modelDirectories });
   if (status.available) {
-    const message = "Depth Anything 配置已由应用内置，且已找到用户提供的 model.safetensors。";
+    const message = t(uiKeys.serviceChecks.depthFound);
     onLog?.(message);
     return { ok: true, message, status };
   }
@@ -153,7 +156,7 @@ export async function prepareDepthAnythingAssets(
     modelDirectories[0] || path.join(comfyRoot, "models"),
     ...modelSubdirectoryParts
   );
-  const message = `Depth Anything 配置已由应用内置；请只下载 ${DEPTH_ANYTHING_V2_SMALL_MODEL_FILENAME} 并放入 ${modelDirectory}。`;
+  const message = t(uiKeys.serviceChecks.depthInstall, { filename: DEPTH_ANYTHING_V2_SMALL_MODEL_FILENAME, directory: modelDirectory });
   onLog?.(message);
   return { ok: false, message, status };
 }

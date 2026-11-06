@@ -28,9 +28,9 @@ describe("historical state protection", () => {
     const { filename } = await fixture();
     await fs.writeFile(filename, raw);
     const store = new JsonStore(filename);
-    await expect(store.load()).rejects.toThrow("not been replaced");
-    await expect(store.flush()).rejects.toThrow("recovery is required");
-    await expect(store.update(state => { state.history = []; })).rejects.toThrow("recovery is required");
+    await expect(store.load()).rejects.toThrow("未被默认值替换");
+    await expect(store.flush()).rejects.toThrow("必须先恢复资料");
+    await expect(store.update(state => { state.history = []; })).rejects.toThrow("必须先恢复资料");
     expect(await fs.readFile(filename, "utf8")).toBe(raw);
   });
 
@@ -60,14 +60,14 @@ describe("historical state protection", () => {
     const { filename, safety } = await fixture();
     await fs.mkdir(safety.directory);
     await fs.writeFile(path.join(safety.directory, `${"a".repeat(64)}.json`), "{}");
-    await expect(new JsonStore(filename).load()).rejects.toThrow("no verified backup");
+    await expect(new JsonStore(filename).load()).rejects.toThrow("没有可用的已验证备份");
     await expect(fs.stat(filename)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("does not initialize a missing primary when migration evidence remains", async () => {
     const { filename } = await fixture();
     await fs.writeFile(`${filename}.library-migration.json`, '{"phase":"switched"}');
-    await expect(new JsonStore(filename).load()).rejects.toThrow("no verified backup");
+    await expect(new JsonStore(filename).load()).rejects.toThrow("没有可用的已验证备份");
     await expect(fs.stat(filename)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -75,7 +75,7 @@ describe("historical state protection", () => {
     const { filename } = await fixture(), state = createDefaultState();
     const raw = JSON.stringify({ ...state, history: undefined });
     await fs.writeFile(filename, raw);
-    await expect(new JsonStore(filename).load()).rejects.toThrow("no verified backup");
+    await expect(new JsonStore(filename).load()).rejects.toThrow("没有可用的已验证备份");
     expect(await fs.readFile(filename, "utf8")).toBe(raw);
   });
 
@@ -84,7 +84,7 @@ describe("historical state protection", () => {
     await safety.backup(JSON.stringify(createDefaultState()));
     const raw = JSON.stringify({ ...createDefaultState(), schemaVersion: APP_SCHEMA_VERSION + 1 });
     await fs.writeFile(filename, raw);
-    await expect(new JsonStore(filename).load()).rejects.toThrow("newer application");
+    await expect(new JsonStore(filename).load()).rejects.toThrow("更新版本的应用");
     expect(await fs.readFile(filename, "utf8")).toBe(raw);
   });
 
@@ -150,7 +150,7 @@ describe("historical state protection", () => {
     const first = new JsonStore(filename); await first.load();
     const second = new JsonStore(filename); await second.load();
     await first.update(state => { state.settings.outputDirectory = "New authoritative edit"; });
-    await expect(second.update(state => { state.settings.outputDirectory = "Stale edit"; })).rejects.toThrow("outside this writer");
+    await expect(second.update(state => { state.settings.outputDirectory = "Stale edit"; })).rejects.toThrow("此写入器之外");
     expect((await new JsonStore(filename).load()).settings.outputDirectory).toBe("New authoritative edit");
   });
 

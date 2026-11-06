@@ -48,6 +48,7 @@ export interface ContinuumDependencyFileViewModel {
 }
 
 export interface ImageEditPageViewModel {
+  promptSetupReason?: string;
   draft: ImageEditDraft;
   prompt: PromptVersion;
   imagePromptTokenEstimate?: number;
@@ -96,6 +97,7 @@ export interface ImageEditPageViewModel {
 }
 
 export interface VideoCreatePageViewModel {
+  promptSetupReason?: string;
   draft: Draft;
   prompt: PromptVersion;
   promptVersionIndex: number;
@@ -289,6 +291,7 @@ export function renderImageEditPage(
             ${promptButtonWithTip(`<button class="secondary button-with-icon" id="enhance-prompt" data-prompt-enhance-blocked="${viewModel.imagePromptEnhanceBlocked ? "true" : "false"}" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} aria-describedby="prompt-progress-tooltip" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>`, viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle, "prompt-progress-tooltip", viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing, true)}
           </div>
         </div>`}
+        ${!viewModel.promptless && viewModel.promptSetupReason ? `<div class="button-row" data-prompt-setup role="status"><span class="muted">${escapeHtml(viewModel.promptSetupReason)}</span><button class="ghost" type="button" data-page="settings">${t(uiKeys.nav.settings)}</button></div>` : ""}
         ${viewModel.promptless ? "" : `
         <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea></div>
         `}
@@ -470,6 +473,7 @@ export function renderCreatePage(
              </button>`, viewModel.promptEnhanceButtonTitle, "prompt-progress-tooltip", viewModel.promptAiDisabled && !viewModel.promptEnhancing, true)}
         </div>
       </div>
+      ${viewModel.promptSetupReason ? `<div class="button-row" data-prompt-setup role="status"><span class="muted">${escapeHtml(viewModel.promptSetupReason)}</span><button class="ghost" type="button" data-page="settings">${t(uiKeys.nav.settings)}</button></div>` : ""}
       <div class="prompt-editor-shell">
         <textarea id="prompt-input" rows="4" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
       </div>
@@ -537,17 +541,10 @@ export function renderCreatePage(
           </select>
         </label>
         ${viewModel.isMiniMaxH3 ? "" : `<label class="settings-field settings-interpolation">${t(uiKeys.create.videoSettings.interpolation)}
-          <select id="frame-interpolation" ${viewModel.isMiniMaxH3 ? "disabled" : ""}>
+          <select id="frame-interpolation">
             <option value="off" ${viewModel.draft.frameInterpolation === "off" ? "selected" : ""}>${t(uiKeys.create.videoSettings.interpolationOff)}</option>
             <option value="rife2x" ${viewModel.draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
             <option value="rife4x" ${viewModel.draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>
-          </select>
-        </label>
-        <label class="settings-field settings-motion">${t(uiKeys.create.videoSettings.motionLabel)}
-          <select id="motion" ${viewModel.isMiniMaxH3 ? "disabled" : ""}>
-            <option value="subtle" ${viewModel.draft.motion === "subtle" ? "selected" : ""}>${t(uiKeys.create.videoSettings.subtle)}</option>
-            <option value="natural" ${viewModel.draft.motion === "natural" ? "selected" : ""}>${t(uiKeys.create.videoSettings.natural)}</option>
-            <option value="strong" ${viewModel.draft.motion === "strong" ? "selected" : ""}>${t(uiKeys.create.videoSettings.strong)}</option>
           </select>
         </label>`}
           </div>
@@ -577,7 +574,7 @@ export function renderCreatePage(
         </section>
       </div>
       <div class="create-submit-bar">
-        <div class="create-submit-copy"><span class="create-submit-summary" data-submit-summary ${viewModel.enqueueBlockReason ? "hidden" : ""}>${viewModel.outputWidth} × ${viewModel.outputHeight} · ${viewModel.draft.duration.toFixed(1)}s · ${viewModel.draft.fps} FPS</span><p class="composer-submit-status ${viewModel.enqueuePending ? "pending" : "error"}" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon(viewModel.enqueuePending ? "refresh-cw" : "circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p></div>
+<div class="create-submit-copy"><span class="create-submit-summary" data-submit-summary ${viewModel.enqueueBlockReason ? "hidden" : ""}>${viewModel.outputWidth} × ${viewModel.outputHeight} · ${viewModel.draft.duration.toFixed(1)}s · ${viewModel.isMiniMaxH3 ? 24 * viewModel.interpolationMultiplier : viewModel.draft.fps} FPS</span><p class="composer-submit-status ${viewModel.enqueuePending ? "pending" : "error"}" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon(viewModel.enqueuePending ? "refresh-cw" : "circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p></div>
         <span class="create-draft-alert" data-draft-save-error role="alert" hidden><span>${icon("alert-triangle")}${t(uiKeys.create.editor.draftFailed)}</span><button class="ghost button-with-icon" type="button" data-retry-draft-save>${icon("refresh-cw")}${t(uiKeys.create.editor.retry)}</button></span><div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}${t(uiKeys.create.videoSettings.clearDraft)}</button>
         ${viewModel.h3TokenEstimate == null ? "" : `<span class="composer-token-estimate" data-h3-token-estimate>${Math.trunc(viewModel.h3TokenEstimate)} tokens</span>`}
         <button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue" data-ui-label-variants="${escapeHtml(JSON.stringify([t(uiKeys.create.videoSettings.enqueue), t(uiKeys.create.videoSettings.enqueueBusy)]))}" data-enqueue-block-reason="${escapeHtml(viewModel.enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration))}" ${viewModel.enqueueDisabled || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}" title="${escapeHtml(viewModel.enqueueBlockReason || (viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration)))}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "list-plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.videoSettings.enqueueBusy) : t(uiKeys.create.videoSettings.enqueue)}</span></button></div>

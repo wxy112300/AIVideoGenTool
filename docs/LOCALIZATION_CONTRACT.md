@@ -34,7 +34,7 @@ Legacy default prompt-version labels are localized for display without rewriting
 Keep these values outside UI catalogs unless they are ordinary labels:
 
 - Model names, workflow IDs, node IDs, file names, paths, and API URLs.
-- Runtime-managed model, node, LoRA, acceleration, hardware-recommendation, and component-description metadata. Localize the generic labels around these values, but keep the values themselves outside the UI catalog.
+- Runtime identifiers, measurements, filenames and original diagnostic output remain literal. Built-in model component labels, resource/offload explanations, node purposes and option labels are interface copy and must be localized for display. Keep scan evidence and user/custom metadata unchanged; use whole-label catalog lookups rather than rewriting paths or technical identifiers. This supersedes the earlier broad exclusion of runtime-managed descriptions following the user's screenshot review.
 - Prompt contracts, generated prompts, visible user text, dialogue, lyrics, and model-facing instructions.
 - Technical values such as `CPU`, `GPU`, `FPS`, `H3`, `R2V`, and `LoRA` may remain literal when they are identifiers.
 

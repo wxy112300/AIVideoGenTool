@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -19,27 +22,29 @@ import {
 
 export function compileFlux2Klein4bPrompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   return compileImagePromptWithLimit(
     prompt,
     pictures,
     flux2Klein4bCapability.maxPictures,
-    "FLUX.2 Klein 4B"
+    "FLUX.2 Klein 4B", undefined, t
   );
 }
 export function validateFlux2Klein4bWorkflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = flux2Klein4bRequiredNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `FLUX.2 Klein workflow 缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.fluxNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   if (inputNodes.length !== 1) {
-    errors.push("FLUX.2 Klein 4B 工作流必须包含 1 个 LoadImage 节点。");
+    errors.push(t(uiKeys.workflowChecks.fluxInputCount));
   }
   const unresolvedPlaceholders = Object.values(workflow).flatMap((node) =>
     Object.values(node.inputs).filter(
@@ -47,24 +52,25 @@ export function validateFlux2Klein4bWorkflow(
     )
   );
   if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
-    errors.push("FLUX.2 Klein 工作流仍包含未上传的 IMAGE 占位符。");
+    errors.push(t(uiKeys.workflowChecks.fluxPlaceholder));
   }
   return [...new Set(errors)];
 }
 
 export function buildFlux2Klein4bWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileFlux2Klein4bPrompt(task.prompt, task.pictures);
+  const compiled = compileFlux2Klein4bPrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
-  if (!picture) throw new Error("FLUX.2 Klein 4B 至少需要一张基础 Picture。");
+  if (!picture) throw new Error(t(uiKeys.workflowChecks.fluxBase));
   const quality = flux2Klein4bCapability.qualityProfiles.find(
     (profile) => profile.id === task.qualityProfile
   ) ?? flux2Klein4bCapability.qualityProfiles[0]!;
-  const outputWidth = exactImageDimension(task.outputWidth, picture.width);
-  const outputHeight = exactImageDimension(task.outputHeight, picture.height);
+  const outputWidth = exactImageDimension(task.outputWidth, picture.width, t);
+  const outputHeight = exactImageDimension(task.outputHeight, picture.height, t);
   const outputPrefix = [
     task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
     `Flux2Klein_${task.outputFilename}_${run.index + 1}`

@@ -1,4 +1,5 @@
 import { defineConfig, configDefaults } from "vitest/config";
+import { normalizePath } from "vite";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -14,7 +15,7 @@ export default defineConfig({
       // old checked-in generated JS in both the renderer and Vitest.
       if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return;
       const candidate = path.resolve(path.dirname(importer), `${source.slice(0, -3)}.ts`);
-      if (existsSync(candidate)) return candidate;
+      if (existsSync(candidate)) return normalizePath(candidate);
     }
   }],
   resolve: {
@@ -48,11 +49,27 @@ export default defineConfig({
                 return match ? `locale-${match[1]}` : null;
               },
               test: /[\\/]src[\\/]core[\\/]locales[\\/]/,
-              priority: 2
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "i18n-keys",
+              test: /[\\/]src[\\/]core[\\/]i18n-keys\.ts$/,
+              priority: 4,
+              includeDependenciesRecursively: false
             },
             {
               name: "i18n-runtime",
-              test: /[\\/]src[\\/]core[\\/]i18n(?:-keys)?\.ts$/
+              test: /[\\/]src[\\/]core[\\/]i18n\.ts$/,
+              priority: 3,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "media-player",
+              test: /[\\/]node_modules[\\/]media-chrome[\\/]/,
+              priority: 2,
+              includeDependenciesRecursively: false
             },
             {
               // Keep the history surface out of the renderer entry. It is a

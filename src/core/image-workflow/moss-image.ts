@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type { ImageGenerationQueueTask, ImageGenerationRun, ImageReferenceSnapshot } from "../../types.js";
 import type { ComfyApiWorkflow, CompiledImagePrompt, ImageModelAdapter, ImageModelCapability } from "./contracts.js";
 import { parseImageOutputs } from "./shared.js";
@@ -20,63 +23,67 @@ export const mossNsfwCapability: ImageModelCapability = {
   ...mossImageCapability, id: MOSS_NSFW_ID, name: "MOSS · PornMaster V1 · INT8"
 };
 
-export function compileMossImagePrompt(prompt: string, pictures: ImageReferenceSnapshot[]): CompiledImagePrompt {
+export function compileMossImagePrompt(prompt: string, pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t): CompiledImagePrompt {
   return {
     prompt: prompt.trim(), pictures: [], referencedPictureNumbers: [],
     errors: [
-      ...(!prompt.trim() ? ["MOSS 需要文生图提示词或 JSON 布局。"] : []),
-      ...(pictures.some(p => p.absolutePath.trim()) ? ["MOSS 当前仅支持文生图，请移除参考图片；Paint、Mask 与参考编辑需要独立的编辑权重。"] : [])
+      ...(!prompt.trim() ? [t(uiKeys.workflowChecks.mossPrompt)] : []),
+      ...(pictures.some(p => p.absolutePath.trim()) ? [t(uiKeys.workflowChecks.mossTextOnly)] : [])
     ]
   };
 }
 
-export function validateMossImageWorkflow(workflow: ComfyApiWorkflow): string[] {
+export function validateMossImageWorkflow(workflow: ComfyApiWorkflow,
+  t: Translate = createTranslator().t): string[] {
   const nodes = Object.values(workflow);
   const types = new Set(nodes.map(n => n.class_type));
   const errors = MOSS_REQUIRED_NODE_TYPES.filter(type => !types.has(type))
-    .map(type => `MOSS 工作流缺少节点 ${type}。`);
-  if (types.has("LoadImage") || types.has("VAEEncodeForInpaint")) errors.push("MOSS 文生图不能接收参考图或 Mask。");
+    .map(type => t(uiKeys.workflowChecks.mossNode, { node: type }));
+  if (types.has("LoadImage") || types.has("VAEEncodeForInpaint")) errors.push(t(uiKeys.workflowChecks.mossReferences));
   const latent = nodes.find(n => n.class_type === "EmptyFlux2LatentImage");
   if (latent && [latent.inputs.width, latent.inputs.height].some(v =>
     typeof v !== "number" || !Number.isInteger(v) || v < 16 || v % 16 !== 0
-  )) errors.push("MOSS 输出尺寸必须为 16 的正整数倍。");
+  )) errors.push(t(uiKeys.workflowChecks.mossDimensions));
   const clip = nodes.find(n => n.class_type === "CLIPLoader");
-  if (clip && clip.inputs.type !== "moss_image") errors.push("MOSS 需要 CLIPLoader type=moss_image。");
+  if (clip && clip.inputs.type !== "moss_image") errors.push(t(uiKeys.workflowChecks.mossClip));
   return errors;
 }
 
 /** Reject missing sockets/enums before inference; file presence remains a separate gate. */
-export function validateMossImageRuntimeSchema(workflow: ComfyApiWorkflow, objectInfo: Record<string, unknown>): string[] {
+export function validateMossImageRuntimeSchema(workflow: ComfyApiWorkflow, objectInfo: Record<string, unknown>,
+  t: Translate = createTranslator().t): string[] {
   const errors: string[] = [];
   for (const node of Object.values(workflow)) {
     const schema = objectInfo[node.class_type] as {
       input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> }
     } | undefined;
     if (!schema?.input) {
-      errors.push(`MOSS 缺少 ${node.class_type} schema，请升级并重启 ComfyUI（推荐 0.42.3+）。`);
+      errors.push(t(uiKeys.workflowChecks.mossSchema, { node: node.class_type }));
       continue;
     }
     const required = schema.input.required ?? {};
     const sockets = { ...required, ...schema.input.optional };
     for (const name of Object.keys(required)) {
-      if (!(name in node.inputs)) errors.push(`MOSS ${node.class_type} 缺少必填输入 ${name}。`);
+      if (!(name in node.inputs)) errors.push(t(uiKeys.workflowChecks.mossRequiredInput, { node: node.class_type, input: name }));
     }
     for (const [name, value] of Object.entries(node.inputs)) {
       const definition = sockets[name];
-      if (!definition) errors.push(`MOSS ${node.class_type} 不支持输入 ${name}。`);
+      if (!definition) errors.push(t(uiKeys.workflowChecks.mossUnsupportedInput, { node: node.class_type, input: name }));
       else if (!Array.isArray(value) && Array.isArray(definition) && Array.isArray(definition[0]) &&
-        !definition[0].includes(value)) errors.push(`MOSS ${node.class_type}.${name} 不支持 ${String(value)}；请检查文件与 ComfyUI 版本。`);
+        !definition[0].includes(value)) errors.push(t(uiKeys.workflowChecks.mossEnum, { node: node.class_type, input: name, value: String(value) }));
     }
   }
   return [...new Set(errors)];
 }
 
-export function buildMossImageWorkflow(task: ImageGenerationQueueTask, run: ImageGenerationRun): ComfyApiWorkflow {
-  const compiled = compileMossImagePrompt(task.prompt, task.pictures);
+export function buildMossImageWorkflow(task: ImageGenerationQueueTask, run: ImageGenerationRun,
+  t: Translate = createTranslator().t): ComfyApiWorkflow {
+  const compiled = compileMossImagePrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
-  if (task.imageLoras?.length) throw new Error("当前 MOSS 工作流不支持附加图片 LoRA。");
+  if (task.imageLoras?.length) throw new Error(t(uiKeys.workflowChecks.mossLoras));
   const quality = mossImageCapability.qualityProfiles.find(p => p.id === task.qualityProfile);
-  if (!quality) throw new Error(`MOSS 不支持质量档位 ${task.qualityProfile}，请重新选择。`);
+  if (!quality) throw new Error(t(uiKeys.workflowChecks.mossQuality, { quality: task.qualityProfile }));
   const quality50 = quality.id === "quality-50";
   const prefix = [task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
     `MOSS_${task.outputFilename}_${run.index + 1}`].filter(Boolean).join("/");
@@ -100,14 +107,15 @@ export function buildMossImageWorkflow(task: ImageGenerationQueueTask, run: Imag
     decoded: { class_type: "VAEDecode", inputs: { samples: ["sampler", 0], vae: ["vae", 0] } },
     save: { class_type: "SaveImage", inputs: { images: ["decoded", 0], filename_prefix: prefix } }
   };
-  const errors = validateMossImageWorkflow(workflow);
+  const errors = validateMossImageWorkflow(workflow, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }
 
 function adapter(capability: ImageModelCapability): ImageModelAdapter {
   return { ...capability, compilePrompt: compileMossImagePrompt, buildWorkflow: buildMossImageWorkflow,
-    validateWorkflow: validateMossImageWorkflow, validateRuntimeSchema: validateMossImageRuntimeSchema, parseOutputs: parseImageOutputs };
+    validateWorkflow: (workflow, _quality, _allow, _recipe, t) => validateMossImageWorkflow(workflow, t),
+    validateRuntimeSchema: validateMossImageRuntimeSchema, parseOutputs: parseImageOutputs };
 }
 export const mossImageAdapter = adapter(mossImageCapability);
 export const mossNsfwAdapter = adapter(mossNsfwCapability);

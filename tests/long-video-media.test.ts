@@ -7,6 +7,19 @@ import { promisify } from "node:util";
 import { inspectLongVideoMedia } from "../electron/services/long-video-media";
 import type { LongVideoExecutionSnapshot } from "../src/core/long-video/execution";
 
+it.each([2, 4] as const)("validates real %sx delivered frames without multiplying audio duration", async multiplier => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "long-delivery-"));
+  try {
+    const filename = path.join(root, "delivery.mp4");
+    await promisify(execFile)("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=1344x768:r=${24 * multiplier}`, "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "1", "-c:v", "libx264", "-threads", "2", "-preset", "ultrafast", "-c:a", "aac", filename], { windowsHide: true });
+    const snapshot = { profile: { width: 1344, height: 768, delivery: { frameInterpolation: multiplier === 2 ? "rife2x" : "rife4x" } }, script: { layout: { targetFrames: 24 } } } as LongVideoExecutionSnapshot;
+    const files = [{ filename: "delivery.mp4", absolutePath: filename, subfolder: "", type: "output" as const }];
+    const result = await inspectLongVideoMedia(snapshot, files, new AbortController().signal);
+    expect(result.videoFrames).toBe(24 * multiplier); expect(result.videoFps).toBe(24 * multiplier); expect(result.audioContentSamples).toBe(48000);
+    await expect(inspectLongVideoMedia({ ...snapshot, profile: { ...snapshot.profile, delivery: { frameInterpolation: "off" } } }, files, new AbortController().signal)).rejects.toThrow();
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 it("fully decodes actual video/audio and measures codec padding separately from the target", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "long-media-"));
   try {

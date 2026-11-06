@@ -48,8 +48,8 @@ describe("Documents user data migration", () => {
     const migration = new UserDataMigration(f.source, destination);
     await migration.prepare();
     expect(await fs.readFile(path.join(destination, "clipboard-inputs", "picture.png"), "utf8")).toBe("original-picture");
-    expect(() => new UserDataMigration(f.source, path.join(f.source, "clipboard-inputs", "nested"))).toThrow("non-overlapping");
-    expect(() => new UserDataMigration(f.source, path.dirname(f.source))).toThrow("non-overlapping");
+    expect(() => new UserDataMigration(f.source, path.join(f.source, "clipboard-inputs", "nested"))).toThrow("不能重叠");
+    expect(() => new UserDataMigration(f.source, path.dirname(f.source))).toThrow("不能重叠");
   });
   it("preserves drafts, queue IDs, history and covers through migration and restart", async () => {
     const f = await fixture(), raw = await f.writeState();
@@ -118,18 +118,18 @@ describe("Documents user data migration", () => {
   it("stops rather than overwriting an existing Documents profile", async () => {
     const f = await fixture(), raw = await f.writeState();
     await fs.mkdir(f.destination, { recursive: true }); await fs.writeFile(path.join(f.destination, "studio-state.json"), "other-profile");
-    await expect(f.migration.prepare()).rejects.toThrow("Both legacy and Documents");
+    await expect(f.migration.prepare()).rejects.toThrow("用户资料同时存在");
     expect(await fs.readFile(path.join(f.source, "studio-state.json"), "utf8")).toBe(raw);
     expect(await fs.readFile(path.join(f.destination, "studio-state.json"), "utf8")).toBe("other-profile");
   });
   it("validates all originals and backups before removing any source", async () => {
     const f = await fixture(), raw = await f.writeState(); await f.migration.prepare();
     await fs.writeFile(f.sourceImage, "changed by another writer");
-    await expect(f.migration.finish()).rejects.toThrow("changed during migration");
+    await expect(f.migration.finish()).rejects.toThrow("迁移期间旧用户资料发生变化");
     expect(await fs.readFile(path.join(f.source, "studio-state.json"), "utf8")).toBe(raw);
     await fs.writeFile(f.sourceImage, "original-picture");
     await fs.writeFile(path.join(f.destination, "migration-backup", "clipboard-inputs", "picture.png"), "broken-backup");
-    await expect(f.migration.finish()).rejects.toThrow("verification failed");
+    await expect(f.migration.finish()).rejects.toThrow("用户资料校验失败");
     expect(await fs.readFile(path.join(f.source, "studio-state.json"), "utf8")).toBe(raw);
   });
   it("preserves the legacy files when a copy fails and can retry", async () => {
@@ -192,7 +192,7 @@ describe("Documents user data migration", () => {
     const outside = path.join(f.directory, "external"); await fs.mkdir(outside);
     await fs.writeFile(path.join(outside, "precious.txt"), "keep");
     await fs.symlink(outside, path.join(f.source, "image-guides"), process.platform === "win32" ? "junction" : "dir");
-    await expect(f.migration.prepare()).rejects.toThrow("contains a link");
+    await expect(f.migration.prepare()).rejects.toThrow("用户资料包含链接");
     expect(await fs.readFile(path.join(outside, "precious.txt"), "utf8")).toBe("keep");
   });
   it("never rewrites prompt text, unrelated absolute paths or sibling-prefix paths", () => {

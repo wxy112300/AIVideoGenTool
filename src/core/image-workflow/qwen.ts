@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -23,20 +26,22 @@ import {
 
 export function compileQwenImageEditPrompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   return compileImagePromptWithLimit(
     prompt,
     pictures,
     qwenImageEdit2511Capability.maxPictures,
     "Qwen 2511",
-    true
+    true, t
   );
 }
 export function validateQwenImageEdit2511Workflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const required = [
@@ -45,10 +50,10 @@ export function validateQwenImageEdit2511Workflow(
   ];
   const errors = required
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `图片工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.qwenNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   if (inputNodes.length < 1 || inputNodes.length > qwenImageEdit2511Capability.maxPictures) {
-    errors.push(`图片工作流必须包含 1–${qwenImageEdit2511Capability.maxPictures} 个 LoadImage 节点。`);
+    errors.push(t(uiKeys.workflowChecks.qwenInputCount, { count: qwenImageEdit2511Capability.maxPictures }));
   }
   const unresolvedPlaceholders = Object.values(workflow).flatMap((node) =>
     Object.values(node.inputs).filter(
@@ -56,21 +61,22 @@ export function validateQwenImageEdit2511Workflow(
     )
   );
   if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
-    errors.push("图片工作流仍包含未上传的 IMAGE 占位符。");
+    errors.push(t(uiKeys.workflowChecks.qwenPlaceholder));
   }
   return [...new Set(errors)];
 }
 
 export function buildQwenImageEdit2511Workflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileQwenImageEditPrompt(task.prompt, task.pictures);
+  const compiled = compileQwenImageEditPrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) {
     throw new Error(compiled.errors.join(" "));
   }
   if (!compiled.pictures.length) {
-    throw new Error("Qwen Image Edit 至少需要一张基础 Picture。");
+    throw new Error(t(uiKeys.workflowChecks.qwenBase));
   }
   const quality = qwenImageEdit2511Capability.qualityProfiles.find(
     (profile) => profile.id === task.qualityProfile
@@ -96,8 +102,8 @@ export function buildQwenImageEdit2511Workflow(
     vae: ["gpuVae", 0],
     ...imageReferenceInputs(compiled.pictures, "image")
   };
-  const outputWidth = exactImageDimension(task.outputWidth, compiled.pictures[0]?.width ?? 0);
-  const outputHeight = exactImageDimension(task.outputHeight, compiled.pictures[0]?.height ?? 0);
+  const outputWidth = exactImageDimension(task.outputWidth, compiled.pictures[0]?.width ?? 0, t);
+  const outputHeight = exactImageDimension(task.outputHeight, compiled.pictures[0]?.height ?? 0, t);
   const outputPrefix = [
     task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
     `QwenEdit_${task.outputFilename}_${run.index + 1}`
@@ -228,7 +234,7 @@ export function buildQwenImageEdit2511Workflow(
       }
     };
   }
-  const validationErrors = validateQwenImageEdit2511Workflow(modelNode, quality.id, true);
+  const validationErrors = validateQwenImageEdit2511Workflow(modelNode, quality.id, true, t);
   if (validationErrors.length) throw new Error(validationErrors.join(" "));
   return modelNode;
 }

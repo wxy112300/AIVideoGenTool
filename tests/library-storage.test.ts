@@ -125,7 +125,7 @@ describe("library migration and immutable records", () => {
   it("refuses occupied destinations and preserves the old source", async () => {
     const { filename, options, libraryDirectory, raw } = await fixture(1);
     await fs.mkdir(libraryDirectory, { recursive: true }); await fs.writeFile(path.join(libraryDirectory, "precious.txt"), "keep");
-    await expect(new JsonStore(filename, options).load()).rejects.toThrow("not empty");
+    await expect(new JsonStore(filename, options).load()).rejects.toThrow("目标目录非空");
     expect(await fs.readFile(filename, "utf8")).toBe(raw);
     expect(await fs.readFile(path.join(libraryDirectory, "precious.txt"), "utf8")).toBe("keep");
   });
@@ -136,8 +136,8 @@ describe("library migration and immutable records", () => {
     await store.update(state => { state.history[0].title = "New work after migration"; });
     await fs.rename(libraryDirectory, `${libraryDirectory}-offline`);
     const raw = await fs.readFile(filename, "utf8"), restarted = new JsonStore(filename, options);
-    await expect(restarted.load()).rejects.toThrow("not been replaced");
-    await expect(restarted.flush()).rejects.toThrow("recovery is required");
+    await expect(restarted.load()).rejects.toThrow("未被默认值替换");
+    await expect(restarted.flush()).rejects.toThrow("必须先恢复资料");
     expect(await fs.readFile(filename, "utf8")).toBe(raw);
     expect(loaded.libraryStorage!.libraryId).toBeTruthy();
   });
@@ -159,7 +159,7 @@ describe("library migration and immutable records", () => {
     const first = new JsonStore(filename, options); const original = await first.load();
     const other = path.join(directory, "other-profile.json");
     await fs.copyFile(filename, other);
-    await expect(new JsonStore(other, options).load()).rejects.toThrow("Another profile");
+    await expect(new JsonStore(other, options).load()).rejects.toThrow("另一个配置");
     await first.close();
     await expect(first.update(state => { state.history[0].title = "Closed writer"; })).rejects.toThrow("资料库写入器已关闭或尚未打开。");
     const next = new JsonStore(other, options);

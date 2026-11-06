@@ -10,7 +10,7 @@ import { videoLoraConfigurationIssues } from "../video-loras.js";
 import { resolveH3ExecutionPolicy } from "../h3-execution-policy.js";
 
 /** A remembered editor for another model must not hijack the selected native route. */
-export function isLongVideoDraftActive(draft: Draft): boolean {
+export function isLongVideoDraftActive(draft: Pick<Draft, "modelId" | "longVideoEditor"> & Partial<Pick<Draft, "inputMode">>): boolean {
   return draft.longVideoEditor?.active === true && [ `${draft.modelId}:${draft.inputMode}`, `${draft.modelId}:undefined` ].includes(draft.longVideoEditor.key);
 }
 
@@ -41,7 +41,6 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
       comfyCompilerMode: settings.h3ComfyCompilerMode, spectrumMode: draft.spectrumMode });
     if (!policy.allowed) return t(k.blockSparseWeights);
   }
-  if (draft.frameInterpolation !== "off" || draft.resolution > 720) return t(k.blockDelivery);
   if (!draft.longVideoEditor?.confirmed || !draft.longVideoScript) return t(k.blockLayout);
   try {
     const frozen = freezeLongVideoScript(commitScriptText(draft.longVideoScript, () => crypto.randomUUID()));

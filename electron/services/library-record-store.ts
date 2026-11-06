@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -23,40 +26,44 @@ const identityPattern = /^[a-f0-9-]{36}$/;
 
 export class LibraryRecordStore {
   private verified = new Map<string, { source: string; ref: RecordRef }>();
-  private constructor(readonly directory: string, readonly libraryId: string) {}
+  private constructor(readonly directory: string, readonly libraryId: string, private readonly getTranslate: () => Translate) {}
 
-  static async create(directory: string, sourceHash: string, desiredId?: string): Promise<LibraryRecordStore> {
+  private get t(): Translate { return this.getTranslate(); }
+
+  static async create(directory: string, sourceHash: string, desiredId?: string, getTranslate: () => Translate = () => createNativeTranslator(undefined).t): Promise<LibraryRecordStore> {
+    const t = getTranslate();
     await fs.mkdir(directory, { recursive: true });
     const identityFile = path.join(directory, "library.json");
     const existing = await readOptionalFile(identityFile);
     if (existing !== undefined) {
       const identity = JSON.parse(existing);
-      if (identity.format !== 1 || identity.sourceHash !== sourceHash || !identityPattern.test(identity.libraryId) || (desiredId && identity.libraryId !== desiredId)) throw new StateRecoveryError(`${LIBRARY_DESTINATION_CONFLICT}: Destination contains a different library; it was not overwritten`);
-      return new LibraryRecordStore(directory, identity.libraryId);
+      if (identity.format !== 1 || identity.sourceHash !== sourceHash || !identityPattern.test(identity.libraryId) || (desiredId && identity.libraryId !== desiredId)) throw new StateRecoveryError(t(uiKeys.storageSafety.destinationConflict, { code: LIBRARY_DESTINATION_CONFLICT }));
+      return new LibraryRecordStore(directory, identity.libraryId, getTranslate);
     }
-    if ((await fs.readdir(directory)).some(name => !/^library\.json\.\d+\.[a-f0-9-]{36}\.tmp$/.test(name))) throw new StateRecoveryError(`${LIBRARY_DESTINATION_OCCUPIED}: Destination is not empty; select a separate library directory`);
+    if ((await fs.readdir(directory)).some(name => !/^library\.json\.\d+\.[a-f0-9-]{36}\.tmp$/.test(name))) throw new StateRecoveryError(t(uiKeys.storageSafety.destinationOccupied, { code: LIBRARY_DESTINATION_OCCUPIED }));
     const libraryId = desiredId ?? randomUUID();
     // Exclusive creation makes an existing library's identity immutable.
-    const candidate = await durableCandidate(identityFile, JSON.stringify({ format: 1, libraryId, sourceHash }));
+    const candidate = await durableCandidate(identityFile, JSON.stringify({ format: 1, libraryId, sourceHash }), t);
     await fs.rename(candidate, identityFile);
-    return new LibraryRecordStore(directory, libraryId);
+    return new LibraryRecordStore(directory, libraryId, getTranslate);
   }
 
-  static async open(pointer: LibraryPointer): Promise<LibraryRecordStore> {
-    if (pointer.format !== 1 || !path.isAbsolute(pointer.directory) || !identityPattern.test(pointer.libraryId) || !hashPattern.test(pointer.commit)) throw new StateRecoveryError("Invalid library locator");
+  static async open(pointer: LibraryPointer, getTranslate: () => Translate = () => createNativeTranslator(undefined).t): Promise<LibraryRecordStore> {
+    const t = getTranslate();
+    if (pointer.format !== 1 || !path.isAbsolute(pointer.directory) || !identityPattern.test(pointer.libraryId) || !hashPattern.test(pointer.commit)) throw new StateRecoveryError(t(uiKeys.storageSafety.locatorInvalid));
     const identity = JSON.parse(await fs.readFile(path.join(pointer.directory, "library.json"), "utf8"));
-    if (identity.format !== 1 || identity.libraryId !== pointer.libraryId) throw new StateRecoveryError("Library identity mismatch");
-    return new LibraryRecordStore(pointer.directory, pointer.libraryId);
+    if (identity.format !== 1 || identity.libraryId !== pointer.libraryId) throw new StateRecoveryError(t(uiKeys.storageSafety.libraryIdentity));
+    return new LibraryRecordStore(pointer.directory, pointer.libraryId, getTranslate);
   }
 
   private async filename(kind: "records" | "texts" | "commits", hash: string, create = false): Promise<string> {
-    if (!hashPattern.test(hash)) throw new StateRecoveryError("Invalid content address");
+    if (!hashPattern.test(hash)) throw new StateRecoveryError(this.t(uiKeys.storageSafety.contentAddress));
     const root = await fs.realpath(this.directory), directory = path.join(root, kind);
     if (create) await fs.mkdir(directory, { recursive: true });
     const actual = await fs.realpath(directory);
-    if (actual !== directory) throw new StateRecoveryError("Library subdirectory must not be a symbolic link");
+    if (actual !== directory) throw new StateRecoveryError(this.t(uiKeys.storageSafety.directoryLink));
     const filename = path.join(directory, `${hash}.json`);
-    try { if ((await fs.lstat(filename)).isSymbolicLink()) throw new StateRecoveryError("Library object must not be a symbolic link"); }
+    try { if ((await fs.lstat(filename)).isSymbolicLink()) throw new StateRecoveryError(this.t(uiKeys.storageSafety.objectLink)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     return filename;
   }
@@ -65,10 +72,10 @@ export class LibraryRecordStore {
     const hash = stateDigest(raw), filename = await this.filename(kind, hash, true);
     const existing = await readOptionalFile(filename);
     if (existing !== undefined) {
-      if (existing !== raw) throw new StateRecoveryError("An immutable library object is damaged; original preserved");
+      if (existing !== raw) throw new StateRecoveryError(this.t(uiKeys.storageSafety.objectImmutable));
       return hash;
     }
-    const candidate = await durableCandidate(filename, raw);
+    const candidate = await durableCandidate(filename, raw, this.t);
     // The application owns the sole writer; objects are immutable and content addressed.
     await fs.rename(candidate, filename);
     return hash;
@@ -76,7 +83,7 @@ export class LibraryRecordStore {
 
   private async read(kind: "records" | "texts" | "commits", hash: string): Promise<string> {
     const raw = await fs.readFile(await this.filename(kind, hash), "utf8");
-    if (stateDigest(raw) !== hash) throw new StateRecoveryError(`Damaged library ${kind} object ${hash}`);
+    if (stateDigest(raw) !== hash) throw new StateRecoveryError(this.t(uiKeys.storageSafety.objectDamaged, { kind: kind, hash: hash }));
     return raw;
   }
 
@@ -89,27 +96,27 @@ export class LibraryRecordStore {
       for (const key of Object.keys(value).sort()) entries.push([key, await this.encode((value as Record<string, unknown>)[key])]);
       return ["object", entries];
     }
-    throw new StateRecoveryError("Library records must contain JSON values");
+    throw new StateRecoveryError(this.t(uiKeys.storageSafety.jsonOnly));
   }
 
   private async decode(value: Encoded): Promise<unknown> {
-    if (!Array.isArray(value) || value.length !== 2) throw new StateRecoveryError("Invalid encoded record");
+    if (!Array.isArray(value) || value.length !== 2) throw new StateRecoveryError(this.t(uiKeys.storageSafety.encodedInvalid));
     switch (value[0]) {
       case "value": return value[1];
-      case "text": { const text: unknown = JSON.parse(await this.read("texts", value[1])); if (typeof text !== "string") throw new StateRecoveryError("Invalid text object"); return text; }
+      case "text": { const text: unknown = JSON.parse(await this.read("texts", value[1])); if (typeof text !== "string") throw new StateRecoveryError(this.t(uiKeys.storageSafety.textInvalid)); return text; }
       case "array": { const values: unknown[] = []; for (const item of value[1]) values.push(await this.decode(item)); return values; }
       case "object": { const entries: Array<[string, unknown]> = []; for (const [key, item] of value[1]) entries.push([key, await this.decode(item)]); return Object.fromEntries(entries); }
-      default: throw new StateRecoveryError("Invalid record encoding");
+      default: throw new StateRecoveryError(this.t(uiKeys.storageSafety.encodingInvalid));
     }
   }
 
   private async manifest(hash: string): Promise<LibraryCommit> {
     const commit = JSON.parse(await this.read("commits", hash)) as LibraryCommit;
-    if (commit.format !== 1 || commit.libraryId !== this.libraryId || !Array.isArray(commit.history) || !Array.isArray(commit.imageHistory) || !Array.isArray(commit.deleted)) throw new StateRecoveryError("Invalid library commit");
+    if (commit.format !== 1 || commit.libraryId !== this.libraryId || !Array.isArray(commit.history) || !Array.isArray(commit.imageHistory) || !Array.isArray(commit.deleted)) throw new StateRecoveryError(this.t(uiKeys.storageSafety.commitInvalid));
     for (const key of ["history", "imageHistory"] as const) {
       const ids = new Set<string>();
       for (const ref of commit[key]) {
-        if (!ref || typeof ref.id !== "string" || !ref.id || ids.has(ref.id) || !hashPattern.test(ref.hash)) throw new StateRecoveryError("Invalid library record reference");
+        if (!ref || typeof ref.id !== "string" || !ref.id || ids.has(ref.id) || !hashPattern.test(ref.hash)) throw new StateRecoveryError(this.t(uiKeys.storageSafety.referenceInvalid));
         ids.add(ref.id);
       }
     }
@@ -125,7 +132,7 @@ export class LibraryRecordStore {
     for (const key of ["history", "imageHistory"] as const) {
       for (const ref of commit[key]) {
         const record = await this.decode(JSON.parse(await this.read("records", ref.hash)));
-        if (!record || typeof record !== "object" || (record as { id?: unknown }).id !== ref.id) throw new StateRecoveryError("Record identity does not match commit");
+        if (!record || typeof record !== "object" || (record as { id?: unknown }).id !== ref.id) throw new StateRecoveryError(this.t(uiKeys.storageSafety.recordIdentity));
         result[key].push(record);
         this.verified.set(`${key}:${ref.id}`, { source: canonical(record), ref });
         progress(onProgress, { phase: "read", completed: ++completed, total });
@@ -145,7 +152,7 @@ export class LibraryRecordStore {
       const ids = new Set<string>();
       for (const record of collections[key]) {
         const id = (record as { id?: unknown })?.id;
-        if (typeof id !== "string" || !id || ids.has(id)) throw new StateRecoveryError("Invalid or duplicate record identity");
+        if (typeof id !== "string" || !id || ids.has(id)) throw new StateRecoveryError(this.t(uiKeys.storageSafety.recordDuplicate));
         ids.add(id);
         const source = canonical(record), cached = this.verified.get(`${key}:${id}`);
         const ref = cached?.source === source ? cached.ref : { id, hash: await this.put("records", JSON.stringify(await this.encode(record))) };
@@ -163,7 +170,7 @@ export class LibraryRecordStore {
     // Independent disk reopen checks object, text, identities and semantic content before activation.
     for (const item of changed) {
       const record = await this.decode(JSON.parse(await this.read("records", item.ref.hash)));
-      if (canonical(record) !== item.source) throw new StateRecoveryError("Library round-trip verification failed");
+      if (canonical(record) !== item.source) throw new StateRecoveryError(this.t(uiKeys.storageSafety.roundTrip));
       this.verified.set(`${item.key}:${item.ref.id}`, { source: item.source, ref: item.ref });
       progress(onProgress, { phase: "verify", completed: ++completed, total: changed.length });
     }

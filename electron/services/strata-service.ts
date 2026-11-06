@@ -8,6 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
+import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
@@ -133,7 +134,7 @@ export async function prepareStrataLaunch(
     runtimeConfig.sampling = { ...(runtimeConfig.sampling ?? {}), experimental_speed_projection: false };
   }
   if (options.adaptive) {
-    const reserveIndex = runtimeConfig.args.indexOf("--vram-reserve-mib");
+    const reserveIndex = runtimeConfig.args.indexOf(isStrataDeepSeek(modelId) ? "--reserve-mib" : "--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
     resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, undefined, t), Number(runtimeConfig.args[reserveIndex + 1]), {
       allowFileReadFallback: true, modelId, contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
@@ -151,7 +152,7 @@ export async function prepareStrataLaunch(
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
     ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
-      env: { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+      env: isStrataDeepSeek(modelId) ? {} : { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
@@ -492,9 +493,11 @@ export class StrataService {
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
           // Upstream monitor captures only the first 256K characters. Keep diagnostics before image base64.
           body: JSON.stringify({ model: request.modelId, max_tokens: budget.maxTokens,
-            experimental_speed_projection: mode !== "off",
-            ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
-            ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}),
+            ...(isStrataDeepSeek(request.modelId) ? { temperature: 1, top_p: 1,
+              reasoning_effort: request.reasoning?.effort ?? "none" } : {
+              experimental_speed_projection: mode !== "off",
+              ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
+              ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}) }),
             stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) }, messages: request.messages })
         });
         if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream") || !response.body) {

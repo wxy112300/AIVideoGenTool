@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -16,12 +19,13 @@ import { orderedPictures } from "./shared.js";
 
 export function compileBirefnetInput(
   _prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const picture = orderedPictures(pictures)[0];
   const errors: string[] = [];
-  if (!picture?.absolutePath.trim()) errors.push("BiRefNet 自动抠图需要一张原始图片。");
-  if (pictures.length > 1) errors.push("BiRefNet 自动抠图只支持一张原始图片。");
+  if (!picture?.absolutePath.trim()) errors.push(t(uiKeys.workflowChecks.birefnetInput));
+  if (pictures.length > 1) errors.push(t(uiKeys.workflowChecks.birefnetLimit));
   return {
     prompt: "",
     pictures: picture?.absolutePath.trim() ? [picture] : [],
@@ -32,33 +36,35 @@ export function compileBirefnetInput(
 export function validateBirefnetWorkflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = birefnetRequiredNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `BiRefNet 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.birefnetNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
-  if (inputNodes.length !== 1) errors.push("BiRefNet 自动抠图工作流必须包含 1 个 LoadImage 节点。");
+  if (inputNodes.length !== 1) errors.push(t(uiKeys.workflowChecks.birefnetInputCount));
   if (!allowImagePlaceholders) {
     const unresolved = Object.values(workflow).flatMap((node) =>
       Object.values(node.inputs).filter((value) =>
         typeof value === "string" && /^\{\{IMAGE_\d+\}\}$/u.test(value)
       )
     );
-    if (unresolved.length) errors.push("BiRefNet 工作流仍包含未上传的图片占位符。");
+    if (unresolved.length) errors.push(t(uiKeys.workflowChecks.birefnetPlaceholder));
   }
   return [...new Set(errors)];
 }
 
 export function buildBirefnetBackgroundRemovalWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileBirefnetInput(task.prompt, task.pictures);
+  const compiled = compileBirefnetInput(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
-  if (!picture) throw new Error("BiRefNet 自动抠图至少需要一张基础 Picture。");
+  if (!picture) throw new Error(t(uiKeys.workflowChecks.birefnetBase));
   const outputPrefix = [
     task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
     `BiRefNet_${task.outputFilename}_${run.index + 1}`
@@ -98,21 +104,22 @@ export function buildBirefnetBackgroundRemovalWorkflow(
       }
     }
   };
-  const errors = validateBirefnetWorkflow(workflow, task.qualityProfile, true);
+  const errors = validateBirefnetWorkflow(workflow, task.qualityProfile, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }
 
 export function compileLamaInpaintInput(
   _prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const picture = orderedPictures(pictures)[0];
   const errors: string[] = [];
-  if (!picture?.absolutePath.trim()) errors.push("LaMa 局部移除需要一张原始图片。");
-  if (pictures.length > 1) errors.push("LaMa 局部移除只支持一张原始图片。");
+  if (!picture?.absolutePath.trim()) errors.push(t(uiKeys.workflowChecks.lamaInput));
+  if (pictures.length > 1) errors.push(t(uiKeys.workflowChecks.lamaLimit));
   if (!picture?.mask?.regionCount || !picture.mask.maskPath.trim()) {
-    errors.push("请先在原图上绘制并保存 Mask。");
+    errors.push(t(uiKeys.workflowChecks.maskRequired));
   }
   return {
     prompt: "",
@@ -125,28 +132,30 @@ export function compileLamaInpaintInput(
 export function validateLamaInpaintWorkflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "natural",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = lamaInpaintRequiredNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `LaMa 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.lamaNode, { node: nodeType }));
   if (!allowImagePlaceholders) {
     const unresolved = Object.values(workflow).flatMap((node) =>
       Object.values(node.inputs).filter((value) =>
         typeof value === "string" && /^\{\{(?:IMAGE|MASK)_\d+\}\}$/u.test(value)
       )
     );
-    if (unresolved.length) errors.push("LaMa 工作流仍包含未上传的图片或 Mask 占位符。");
+    if (unresolved.length) errors.push(t(uiKeys.workflowChecks.lamaPlaceholder));
   }
   return [...new Set(errors)];
 }
 
 export function buildLamaInpaintWorkflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileLamaInpaintInput(task.prompt, task.pictures);
+  const compiled = compileLamaInpaintInput(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const edge = task.qualityProfile === "tight"
     ? { grow: 3, blur: 3 }
@@ -188,7 +197,7 @@ export function buildLamaInpaintWorkflow(
       inputs: { images: ["inpainted", 0], filename_prefix: outputPrefix }
     }
   };
-  const errors = validateLamaInpaintWorkflow(workflow, task.qualityProfile, true);
+  const errors = validateLamaInpaintWorkflow(workflow, task.qualityProfile, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }

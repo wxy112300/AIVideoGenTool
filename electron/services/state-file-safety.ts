@@ -1,3 +1,6 @@
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -22,17 +25,17 @@ export async function withStateFileLock<T>(filename: string, operation: () => Pr
 
 const libraryLeases = new Map<string, { writer: string; references: number; close(): Promise<void> }>();
 /** Temporary local exclusion only; neither host identity nor paths are stored in the library. */
-export async function acquireLibraryLease(directory: string, writer: string, create = false): Promise<() => Promise<void>> {
+export async function acquireLibraryLease(directory: string, writer: string, create = false, t: Translate = createNativeTranslator(undefined).t): Promise<() => Promise<void>> {
   if (create) await fs.mkdir(directory, { recursive: true });
   const key = stateDigest((await fs.realpath(directory)).toLowerCase());
   const existing = libraryLeases.get(key);
-  if (existing && existing.writer !== writer) throw new StateRecoveryError("Another profile is currently writing this library");
+  if (existing && existing.writer !== writer) throw new StateRecoveryError(t(uiKeys.storageSafety.profileWriting));
   let lease = existing;
   if (!lease) {
     const server = createServer(); server.unref();
     const address = process.platform === "win32" ? `\\\\.\\pipe\\lvs-library-${key}` : path.join(os.tmpdir(), `lvs-library-${key}.sock`);
     await new Promise<void>((resolve, reject) => {
-      server.once("error", error => reject(new StateRecoveryError("Another application is currently writing this library; close it before retrying", { cause: error })));
+      server.once("error", error => reject(new StateRecoveryError(t(uiKeys.storageSafety.appWriting), { cause: error })));
       server.listen(address, resolve);
     });
     lease = { writer, references: 0, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
@@ -48,27 +51,30 @@ export async function acquireLibraryLease(directory: string, writer: string, cre
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 /** Validate the envelope before any migrations can fill missing fields or drop records. */
-export function validateStateFile(raw: string): void {
-  const value: unknown = JSON.parse(raw);
-  if (!object(value) || !object(value.settings) || !object(value.draft)) throw new StateRecoveryError("Invalid state envelope");
-  if (value.schemaVersion !== undefined && (!Number.isInteger(value.schemaVersion) || Number(value.schemaVersion) < 1)) throw new StateRecoveryError("Invalid state schema");
-  if (Number(value.schemaVersion) > APP_SCHEMA_VERSION) throw new StateRecoveryError("State was written by a newer application; use that version to open it");
+export function validateStateFile(raw: string, t: Translate = createNativeTranslator(undefined).t): void {
+  validateStateValue(JSON.parse(raw), t);
+}
+
+function validateStateValue(value: unknown, t: Translate): void {
+  if (!object(value) || !object(value.settings) || !object(value.draft)) throw new StateRecoveryError(t(uiKeys.storageSafety.stateEnvelope));
+  if (value.schemaVersion !== undefined && (!Number.isInteger(value.schemaVersion) || Number(value.schemaVersion) < 1)) throw new StateRecoveryError(t(uiKeys.storageSafety.stateSchema));
+  if (Number(value.schemaVersion) > APP_SCHEMA_VERSION) throw new StateRecoveryError(t(uiKeys.storageSafety.stateNewer));
   const locator = value.libraryStorage;
   if (locator !== undefined && (!object(locator) || locator.format !== 1 || typeof locator.directory !== "string" || !path.isAbsolute(locator.directory) ||
-      typeof locator.libraryId !== "string" || !/^[a-f0-9-]{36}$/.test(locator.libraryId) || typeof locator.commit !== "string" || !/^[a-f0-9]{64}$/.test(locator.commit))) throw new StateRecoveryError("Invalid library locator");
-  if (!Array.isArray(value.queue) || (!locator && !Array.isArray(value.history)) || (!locator && Number(value.schemaVersion) >= 5 && !Array.isArray(value.imageHistory))) throw new StateRecoveryError("Missing persisted collections; refusing to initialize empty history");
+      typeof locator.libraryId !== "string" || !/^[a-f0-9-]{36}$/.test(locator.libraryId) || typeof locator.commit !== "string" || !/^[a-f0-9]{64}$/.test(locator.commit))) throw new StateRecoveryError(t(uiKeys.storageSafety.locatorInvalid));
+  if (!Array.isArray(value.queue) || (!locator && !Array.isArray(value.history)) || (!locator && Number(value.schemaVersion) >= 5 && !Array.isArray(value.imageHistory))) throw new StateRecoveryError(t(uiKeys.storageSafety.collectionsMissing));
   for (const key of ["queue", "history", "imageHistory"]) {
     if (value[key] === undefined) continue; // Legacy states predate these collections.
-    if (!Array.isArray(value[key])) throw new StateRecoveryError(`Invalid ${key} collection`);
+    if (!Array.isArray(value[key])) throw new StateRecoveryError(t(uiKeys.storageSafety.collectionInvalid, { collection: key }));
     const ids = new Set<string>();
     for (const record of value[key]) {
-      if (!object(record) || typeof record.id !== "string" || !record.id || ids.has(record.id)) throw new StateRecoveryError(`Invalid or duplicate ${key} identity`);
+      if (!object(record) || typeof record.id !== "string" || !record.id || ids.has(record.id)) throw new StateRecoveryError(t(uiKeys.storageSafety.identityInvalid, { collection: key }));
       ids.add(record.id);
       if (record.versions !== undefined) {
-        if (!Array.isArray(record.versions)) throw new StateRecoveryError(`Invalid ${key} versions`);
+        if (!Array.isArray(record.versions)) throw new StateRecoveryError(t(uiKeys.storageSafety.versionsInvalid, { collection: key }));
         const versions = new Set<string>();
         for (const version of record.versions) {
-          if (!object(version) || typeof version.id !== "string" || !version.id || versions.has(version.id)) throw new StateRecoveryError(`Invalid or duplicate ${key} version`);
+          if (!object(version) || typeof version.id !== "string" || !version.id || versions.has(version.id)) throw new StateRecoveryError(t(uiKeys.storageSafety.versionInvalid, { collection: key }));
           versions.add(version.id);
         }
       }
@@ -82,13 +88,13 @@ export async function readOptionalFile(filename: string): Promise<string | undef
 }
 
 /** Exclusive candidate, flush, read-back. A failed replacement never truncates the destination. */
-export async function durableCandidate(filename: string, raw: string): Promise<string> {
+export async function durableCandidate(filename: string, raw: string, t: Translate = createNativeTranslator(undefined).t): Promise<string> {
   await fs.mkdir(path.dirname(filename), { recursive: true });
   const candidate = `${filename}.${process.pid}.${randomUUID()}.tmp`;
   const handle = await fs.open(candidate, "wx");
   try { await handle.writeFile(raw, "utf8"); await handle.sync(); }
   finally { await handle.close(); }
-  if (await fs.readFile(candidate, "utf8") !== raw) throw new StateRecoveryError("Candidate read-back mismatch");
+  if (await fs.readFile(candidate, "utf8") !== raw) throw new StateRecoveryError(t(uiKeys.storageSafety.candidateMismatch));
   return candidate;
 }
 
@@ -97,29 +103,38 @@ interface Backup { format: 1; savedAt: string; sha256: string; raw: string }
 /** Only this directory's verified snapshots are managed; legacy .corrupt/.bak files are never removed. */
 export class StateFileSafety {
   readonly directory: string;
-  constructor(private filename: string) { this.directory = `${filename}.backups`; }
+  constructor(private filename: string, private t: Translate = createNativeTranslator(undefined).t) { this.directory = `${filename}.backups`; }
+
+  get translate(): Translate { return this.t; }
+
+  private readState(raw: string): unknown {
+    const value: unknown = JSON.parse(raw);
+    this.t = createNativeTranslator(object(value) && object(value.settings) ? value.settings.uiLocale : undefined).t;
+    return value;
+  }
 
   async backup(raw: string): Promise<void> {
-    validateStateFile(raw);
+    const value = this.readState(raw);
+    validateStateValue(value, this.t);
     const sha256 = stateDigest(raw);
     await fs.mkdir(this.directory, { recursive: true });
     const filename = path.join(this.directory, `${sha256}.json`);
     const existing = await readOptionalFile(filename);
     if (existing !== undefined) {
       const backup = this.parse(existing);
-      if (backup.sha256 !== sha256 || backup.raw !== raw) throw new StateRecoveryError("Existing backup does not match source");
+      if (backup.sha256 !== sha256 || backup.raw !== raw) throw new StateRecoveryError(this.t(uiKeys.storageSafety.backupMismatch));
       return;
     }
     const backup: Backup = { format: 1, savedAt: new Date().toISOString(), sha256, raw };
-    const candidate = await durableCandidate(filename, JSON.stringify(backup));
+    const candidate = await durableCandidate(filename, JSON.stringify(backup), this.t);
     await fs.rename(candidate, filename);
     this.parse(await fs.readFile(filename, "utf8"));
   }
 
   private parse(raw: string): Backup {
     const value = JSON.parse(raw) as Backup;
-    if (value.format !== 1 || typeof value.raw !== "string" || value.sha256 !== stateDigest(value.raw) || !Number.isFinite(Date.parse(value.savedAt))) throw new StateRecoveryError("Invalid backup integrity");
-    validateStateFile(value.raw);
+    if (value.format !== 1 || typeof value.raw !== "string" || value.sha256 !== stateDigest(value.raw) || !Number.isFinite(Date.parse(value.savedAt))) throw new StateRecoveryError(this.t(uiKeys.storageSafety.backupInvalid));
+    validateStateFile(value.raw, this.t);
     return value;
   }
 
@@ -144,7 +159,7 @@ export class StateFileSafety {
     const raw = await readOptionalFile(this.filename);
     let invalid: unknown;
     if (raw !== undefined) {
-      try { validateStateFile(raw); return raw; } catch (error) { invalid = error; }
+      try { const value = this.readState(raw); validateStateValue(value, this.t); return raw; } catch (error) { invalid = error; }
       // A future version is not corruption and must never be downgraded from a backup.
       try { if (Number(JSON.parse(raw).schemaVersion) > APP_SCHEMA_VERSION) throw invalid; }
       catch (error) { if (error === invalid) throw error; }
@@ -159,16 +174,17 @@ export class StateFileSafety {
         if (error.code === "ENOENT") return [] as string[]; throw error;
       })).some(name => name.startsWith(`${path.basename(this.filename)}.`));
       if (raw === undefined && !evidence && !siblingEvidence) return undefined;
-      throw new StateRecoveryError(`Cannot read ${this.filename}. Original data was preserved; no verified backup is available.`, { cause: invalid });
+      throw new StateRecoveryError(this.t(uiKeys.storageSafety.backupUnavailable, { path: this.filename }), { cause: invalid });
     }
     const source = backups[0];
+    this.readState(source.raw);
     // Preserve the original bytes before replacing; no rename-away window for the primary.
     if (raw !== undefined) {
       const evidence = `${this.filename}.corrupt-${Date.now()}-${randomUUID()}`;
       const handle = await fs.open(evidence, "wx");
       try { await handle.writeFile(raw, "utf8"); await handle.sync(); } finally { await handle.close(); }
     }
-    const candidate = await durableCandidate(this.filename, source.raw);
+    const candidate = await durableCandidate(this.filename, source.raw, this.t);
     await fs.rename(candidate, this.filename);
     await fs.appendFile(`${this.filename}.recovery.jsonl`, `${JSON.stringify({ at: new Date().toISOString(), source: path.basename(source.filename), restored: source.sha256 })}\n`, "utf8");
     return source.raw;

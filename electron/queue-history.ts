@@ -1,5 +1,6 @@
 import { legacyH3ImageOutputDimensions, isH3ImageModelId } from "../src/core/image-project.js";
 import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -441,9 +442,9 @@ export function persistVideoHistoryResult(
     return;
   }
   const assetIndex = state.history.findIndex((asset) => asset.id === task.sourceAssetId);
-  if (assetIndex < 0) throw new Error("源作品已不存在，无法保存提升版本");
+  if (assetIndex < 0) throw new Error(createNativeTranslator(state.settings.uiLocale).t(uiKeys.upscaleChecks.historySourceMissing));
   const asset = state.history[assetIndex]!;
-  const [targetWidth, targetHeight] = upscaleOutputDimensions(task);
+  const [targetWidth, targetHeight] = upscaleOutputDimensions(task, createNativeTranslator(state.settings.uiLocale).t);
   const version: AssetVersion = {
     id: result.id(), taskId: task.id, kind: "upscale", createdAt: result.completedAt,
     outputFilename: task.outputFilename, modelId: task.modelId,

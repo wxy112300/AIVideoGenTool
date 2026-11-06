@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type { UpscaleQueueTask } from "../types.js";
 import { h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LearnedLatentUpscaler } from "./catalog/models/minimax_h3_shared.js";
 
@@ -47,16 +49,16 @@ export function createH3RefinerSnapshot(prompt: string, sourceFps: number): H3Re
   };
 }
 
-export function h3RefinerGeometry(width: number, height: number, target: number) {
+export function h3RefinerGeometry(width: number, height: number, target: number, t: Translate = createTranslator().t) {
   if (![width, height, target].every(v => Number.isFinite(v) && v > 0) ||
-      !H3_REFINER_TARGETS.some(v => v === target)) throw new Error("H3 Refiner 目标必须为 1080p、1440p 或 4K。");
+      !H3_REFINER_TARGETS.some(v => v === target)) throw new Error(t(uiKeys.serviceChecks.refinerTarget));
   const factor = target / Math.min(width, height);
   const outputWidth = Math.round(width * factor / 2) * 2;
   const outputHeight = Math.round(height * factor / 2) * 2;
   const canvasWidth = Math.ceil(outputWidth / 32) * 32;
   const canvasHeight = Math.ceil(outputHeight / 32) * 32;
   if (Math.max(canvasWidth, canvasHeight) > 8192 || canvasWidth * canvasHeight > 16_000_000) {
-    throw new Error("H3 Refiner 目标超过 8192px 或 16MP，请选择较小档位。");
+    throw new Error(t(uiKeys.serviceChecks.refinerSize));
   }
   // Bound encoding work without changing the source aspect ratio by center cropping.
   const scale = Math.min(768 / Math.min(width, height), 1344 / Math.max(width, height));
@@ -65,22 +67,22 @@ export function h3RefinerGeometry(width: number, height: number, target: number)
   return { outputWidth, outputHeight, canvasWidth, canvasHeight, baseWidth, baseHeight };
 }
 
-export function validateH3RefinerSource(duration: number, fps: number): void {
+export function validateH3RefinerSource(duration: number, fps: number, t: Translate = createTranslator().t): void {
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0) {
-    throw new Error("H3 Refiner 源视频时长或帧率无效，请重新检查源视频。");
+    throw new Error(t(uiKeys.serviceChecks.refinerSource));
   }
 }
 
-export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown) {
+export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t) {
   const snapshot = task.h3Refiner;
   if (!snapshot || snapshot.recipe !== H3_REFINER_RECIPE ||
       snapshot.refiner !== H3_REFINER_FILENAME || snapshot.turbo !== H3_REFINER_TURBO_FILENAME) {
-    throw new Error("H3 Refiner 配方快照缺失或不兼容，请重新入队。");
+    throw new Error(t(uiKeys.serviceChecks.refinerRecipe));
   }
-  validateH3RefinerSource(task.duration, snapshot.sourceFps);
+  validateH3RefinerSource(task.duration, snapshot.sourceFps, t);
   const info = objectInfo as Record<string, { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } }> | undefined;
   const missing = H3_REFINER_NODES.filter(id => !info?.[id]);
-  if (missing.length) throw new Error(`H3 Refiner 缺少节点：${missing.join("、")}。请在设置中更新节点并重启 ComfyUI。`);
+  if (missing.length) throw new Error(t(uiKeys.serviceChecks.refinerNodes, { nodes: missing.join("、") }));
   for (const [id, names] of [
     ["LocalVideoStudioH3RefinerPrepare", ["images", "fps", "width", "height"]],
     ["LocalVideoStudioH3RefinerOutput", ["images", "frame_count", "width", "height"]],
@@ -89,19 +91,19 @@ export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, o
     for (const name of names) {
       const inputs = info![id]!.input;
       if (!(name in (inputs?.required ?? {})) && !(name in (inputs?.optional ?? {}))) {
-        throw new Error(`H3 Refiner schema 不兼容：${id}.${name}。请更新应用 H3 节点并重启。`);
+        throw new Error(t(uiKeys.serviceChecks.refinerSchema, { node: id, input: name }));
       }
     }
   }
-  const geometry = h3RefinerGeometry(task.sourceWidth, task.sourceHeight, task.targetHeight!);
+  const geometry = h3RefinerGeometry(task.sourceWidth, task.sourceHeight, task.targetHeight!, t);
   const { canvasWidth: w, canvasHeight: h, baseWidth, baseHeight } = geometry;
   if (task.targetWidth !== geometry.outputWidth || task.targetOutputHeight !== geometry.outputHeight) {
-    throw new Error("H3 Refiner 输出尺寸与冻结快照不一致。");
+    throw new Error(t(uiKeys.serviceChecks.refinerSnapshot));
   }
   const attentionSpec = info?.ModelAttentionBackend?.input?.required?.attention;
   const choices = Array.isArray(attentionSpec) && Array.isArray(attentionSpec[0]) ? attentionSpec[0] : [];
   const attention = choices.includes("comfy kitchen attention") ? "comfy kitchen attention" : "pytorch attention";
-  if (!choices.includes(attention)) throw new Error("H3 Refiner attention schema 不兼容，请更新 ComfyUI。");
+  if (!choices.includes(attention)) throw new Error(t(uiKeys.serviceChecks.refinerAttention));
   type Node = { class_type: string; inputs: Record<string, unknown> };
   const graph: Record<string, Node> = {};
   const add = (id: string, class_type: string, inputs: Node["inputs"]) => { graph[id] = { class_type, inputs }; };

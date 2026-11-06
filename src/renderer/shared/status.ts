@@ -5,6 +5,8 @@ import {
   isStrataPromptModel
 } from "../../core/prompt-models";
 import { modelCatalog } from "../../core/catalog";
+import { strataModelSoftwareReady } from "../../core/strata-preparation";
+import { isStrataDeepSeek } from "../../core/catalog/models/strata-deepseek";
 import { createTranslator, type Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 import type {
@@ -20,6 +22,7 @@ export type SettingsStatusTone = "available" | "warning" | "missing";
 export interface PromptModelStatus {
   ready: boolean;
   detail: string;
+  recoveryHint?: string;
 }
 
 export interface ModelProfileEvidence {
@@ -140,11 +143,13 @@ export function promptModelStatus(
       .join("、");
     return {
       ready: false,
+      ...(isStrataDeepSeek(settings.promptModelId) ? { recoveryHint: t(uiKeys.status.promptIncomplete, { missing: "" }) } : {}),
       detail: `${t(uiKeys.status.promptIncomplete, { missing: missing ? `：${t(uiKeys.status.promptMissing, { missing })}` : "" })}`
     };
   }
-  if (isStrataPromptModel(settings.promptModelId) && !environmentScan.strataPreparation?.managedInstalled) {
-    return { ready: false, detail: t(uiKeys.status.promptStrataMissingSoftware) };
+  if (isStrataPromptModel(settings.promptModelId) && !strataModelSoftwareReady(settings.promptModelId, environmentScan.strataPreparation)) {
+    return { ready: false, detail: t(uiKeys.status.promptStrataMissingSoftware),
+      ...(isStrataDeepSeek(settings.promptModelId) ? { recoveryHint: t(uiKeys.status.promptStrataMissingSoftware) } : {}) };
   }
   const evidence = modelProfileEvidence(profile);
   if (evidence.nodePackage === "missing") {

@@ -414,7 +414,8 @@ async function finishRunningWorkClose(
 ): Promise<void> {
   try {
     if (!mainWindow) return;
-    mainWindow.setTitle(`正在结束任务并退出… · ${studioWindowTitle()}`);
+    const t = createNativeTranslator(store.get().settings.uiLocale).t;
+    mainWindow.setTitle(`${t(uiKeys.dialog.stoppingAndExiting)} · ${studioWindowTitle()}`);
     if (response === "force-exit") {
       await interruptForExit(false, queueCleanupOnly);
       await finishWindowClose();
@@ -803,7 +804,7 @@ app.whenReady().then(async () => {
     if (result.response === 3) {
       const selection = await dialog.showOpenDialog({ title: t(uiKeys.nativeDialog.chooseLibraryTitle), properties: ["openDirectory"] });
       if (!selection.canceled && selection.filePaths[0]) {
-        try { await recoverLibraryLocation(studioPaths.stateFile, selection.filePaths[0]); app.relaunch(); }
+        try { await recoverLibraryLocation(studioPaths.stateFile, selection.filePaths[0], t); app.relaunch(); }
         catch (recoveryError) { dialog.showErrorBox(t(uiKeys.nativeDialog.recoveryFailed), recoveryError instanceof Error ? recoveryError.message : String(recoveryError)); }
       }
     }

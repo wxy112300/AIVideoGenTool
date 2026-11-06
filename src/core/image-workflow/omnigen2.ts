@@ -1,3 +1,6 @@
+import { uiKeys } from "../i18n-keys.js";
+import type { Translate } from "../i18n.js";
+import { createTranslator } from "../i18n.js";
 import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -51,15 +54,16 @@ function omnigen2PictureWithMarkupGuide(
  */
 export function compileOmniGen2Prompt(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  t: Translate = createTranslator().t
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const errors: string[] = [];
   ordered
     .filter((picture) => !picture.absolutePath.trim())
-    .forEach((picture) => errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`));
+    .forEach((picture) => errors.push(t(uiKeys.workflowChecks.pictureEmpty, { number: picture.pictureNumber })));
   if (ordered.length > omnigen2Capability.maxPictures) {
-    errors.push("OmniGen2 工作流最多支持两张 Picture。请先合成为一张底图。");
+    errors.push(t(uiKeys.workflowChecks.omnigenLimit));
   }
 
   const originalToCompiled = new Map<number, number>();
@@ -69,7 +73,7 @@ export function compileOmniGen2Prompt(
   for (const picture of ordered) {
     if (!picture.absolutePath.trim()) continue;
     if (originalToCompiled.has(picture.pictureNumber)) {
-      errors.push(`Picture ${picture.pictureNumber} 重复，无法确定引用对象。`);
+      errors.push(t(uiKeys.workflowChecks.pictureDuplicate, { number: picture.pictureNumber }));
       continue;
     }
     const compiledNumber = compiledPictures.length + 1;
@@ -81,7 +85,7 @@ export function compileOmniGen2Prompt(
     if (pictureHasMask) {
       hasMask = true;
       if (compiledNumber !== 1) {
-        errors.push("OmniGen2 的 Mask 只支持绑定 Picture 1，请将需要编辑的底图放在第一张。");
+        errors.push(t(uiKeys.workflowChecks.omnigenMaskFirst));
       }
     }
     if (pictureHasMarkup) hasMarkup = true;
@@ -100,7 +104,7 @@ export function compileOmniGen2Prompt(
       referencedPictureNumbers.add(originalNumber);
       const compiledNumber = originalToCompiled.get(originalNumber);
       if (!compiledNumber) {
-        errors.push(`${match} 引用了不存在的 Picture ${originalNumber}。`);
+        errors.push(t(uiKeys.workflowChecks.pictureReference, { reference: match, number: originalNumber }));
         return match;
       }
       return `Picture ${compiledNumber}`;
@@ -143,12 +147,13 @@ const omnigen2CoreNodeTypes = [
 export function validateOmniGen2Workflow(
   workflow: ComfyApiWorkflow,
   _qualityProfile = "native",
-  allowImagePlaceholders = false
+  allowImagePlaceholders = false,
+  t: Translate = createTranslator().t
 ): string[] {
   const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
   const errors = omnigen2CoreNodeTypes
     .filter((nodeType) => !nodeTypes.has(nodeType))
-    .map((nodeType) => `OmniGen2 工作流缺少节点 ${nodeType}。`);
+    .map((nodeType) => t(uiKeys.workflowChecks.omnigenNode, { node: nodeType }));
   const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
   const scaledInputNodes = Object.values(workflow).filter(
     (node) => node.class_type === "ImageScaleToTotalPixels"
@@ -165,39 +170,39 @@ export function validateOmniGen2Workflow(
     (node) => node.class_type === "ImageCompositeMasked"
   );
   if (inputNodes.length > omnigen2Capability.maxPictures) {
-    errors.push("OmniGen2 工作流最多包含 2 个 LoadImage 节点。");
+    errors.push(t(uiKeys.workflowChecks.omnigenInputCount));
   }
   if (inputNodes.length === 0) {
     if (scaledInputNodes.length || encodedReferenceNodes.length || referenceLatentNodes.length || imageSizeNodes.length) {
-      errors.push("OmniGen2 文生图工作流不应包含参考图编码节点。");
+      errors.push(t(uiKeys.workflowChecks.omnigenTextOnly));
     }
   } else {
     if (scaledInputNodes.length !== inputNodes.length) {
-      errors.push("OmniGen2 每张参考图都必须经过 ImageScaleToTotalPixels 节点。");
+      errors.push(t(uiKeys.workflowChecks.omnigenScale));
     }
     if (encodedReferenceNodes.length !== inputNodes.length) {
-      errors.push("OmniGen2 每张参考图都必须经过 VAEEncode 节点。");
+      errors.push(t(uiKeys.workflowChecks.omnigenEncode));
     }
     if (referenceLatentNodes.length !== inputNodes.length * 2) {
-      errors.push("OmniGen2 每张参考图都必须分别绑定正向和负向 ReferenceLatent 节点。");
+      errors.push(t(uiKeys.workflowChecks.omnigenConditioning));
     }
     if (imageSizeNodes.length !== 1) {
-      errors.push("OmniGen2 参考图工作流必须包含 1 个 GetImageSize 节点。");
+      errors.push(t(uiKeys.workflowChecks.omnigenSizeNode));
     }
   }
-  if (maskNodes.length > 1) errors.push("OmniGen2 工作流最多包含 1 个 LoadImageMask 节点。");
-  if (compositeNodes.length > 1) errors.push("OmniGen2 工作流最多包含 1 个 ImageCompositeMasked 节点。");
+  if (maskNodes.length > 1) errors.push(t(uiKeys.workflowChecks.omnigenMaskCount));
+  if (compositeNodes.length > 1) errors.push(t(uiKeys.workflowChecks.omnigenCompositeCount));
   if (maskNodes.length > 0 && inputNodes.length !== 1 && inputNodes.length !== 2) {
-    errors.push("OmniGen2 的 Mask 必须绑定至少一张参考 Picture。");
+    errors.push(t(uiKeys.workflowChecks.omnigenMaskBinding));
   }
   if (maskNodes.length > 0 && inputNodes.length > 0 && compositeNodes.length !== 1) {
-    errors.push("OmniGen2 的 Mask 工作流缺少 ImageCompositeMasked 节点。");
+    errors.push(t(uiKeys.workflowChecks.omnigenMaskComposite));
   }
   if (maskNodes.length === 0 && compositeNodes.length > 0) {
-    errors.push("OmniGen2 的 ImageCompositeMasked 节点必须绑定一个 Mask。");
+    errors.push(t(uiKeys.workflowChecks.omnigenCompositeMask));
   }
   if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
-    errors.push("OmniGen2 工作流仍包含未上传的图片或 Mask 占位符。");
+    errors.push(t(uiKeys.workflowChecks.omnigenPlaceholders));
   }
   return [...new Set(errors)];
 }
@@ -209,11 +214,12 @@ function omnigen2QualityProfile(requestedId: string): ImageQualityProfile {
 
 function omnigen2OutputDimensions(
   task: ImageGenerationQueueTask,
-  picture: ImageReferenceSnapshot | undefined
+  picture: ImageReferenceSnapshot | undefined,
+  t: Translate = createTranslator().t
 ): [number, number] {
   return [
-    exactImageDimension(task.outputWidth, picture?.width || omnigen2Capability.textOnlyOutputWidth || 1024),
-    exactImageDimension(task.outputHeight, picture?.height || omnigen2Capability.textOnlyOutputHeight || 1024)
+    exactImageDimension(task.outputWidth, picture?.width || omnigen2Capability.textOnlyOutputWidth || 1024, t),
+    exactImageDimension(task.outputHeight, picture?.height || omnigen2Capability.textOnlyOutputHeight || 1024, t)
   ];
 }
 
@@ -226,14 +232,15 @@ function omnigen2OutputPrefix(task: ImageGenerationQueueTask, run: ImageGenerati
 
 export function buildOmniGen2Workflow(
   task: ImageGenerationQueueTask,
-  run: ImageGenerationRun
+  run: ImageGenerationRun,
+  t: Translate = createTranslator().t
 ): ComfyApiWorkflow {
-  const compiled = compileOmniGen2Prompt(task.prompt, task.pictures);
+  const compiled = compileOmniGen2Prompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const picture = compiled.pictures[0];
   const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
   const quality = omnigen2QualityProfile(task.qualityProfile);
-  const [outputWidth, outputHeight] = omnigen2OutputDimensions(task, picture);
+  const [outputWidth, outputHeight] = omnigen2OutputDimensions(task, picture, t);
   const workflow: ComfyApiWorkflow = {
     model: {
       class_type: "UNETLoader",
@@ -371,11 +378,11 @@ export function buildOmniGen2Workflow(
       inputs: { image: [firstScaledKey, 0] }
     };
     const latent = workflow.latent;
-    if (!latent) throw new Error("OmniGen2 工作流缺少 latent 节点。");
+    if (!latent) throw new Error(t(uiKeys.workflowChecks.omnigenLatent));
     latent.inputs.width = ["imageSize", 0];
     latent.inputs.height = ["imageSize", 1];
     const guider = workflow.guider;
-    if (!guider) throw new Error("OmniGen2 工作流缺少 DualCFGGuider 节点。");
+    if (!guider) throw new Error(t(uiKeys.workflowChecks.omnigenGuider));
     guider.inputs.cond1 = [positiveKey, 0];
     guider.inputs.cond2 = [negativeKey, 0];
   }
@@ -407,11 +414,11 @@ export function buildOmniGen2Workflow(
       }
     };
     const save = workflow.save;
-    if (!save) throw new Error("OmniGen2 工作流缺少保存节点。");
+    if (!save) throw new Error(t(uiKeys.workflowChecks.omnigenSave));
     save.inputs.images = ["composite", 0];
   }
 
-  const errors = validateOmniGen2Workflow(workflow, quality.id, true);
+  const errors = validateOmniGen2Workflow(workflow, quality.id, true, t);
   if (errors.length) throw new Error(errors.join(" "));
   return workflow;
 }

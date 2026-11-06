@@ -4,6 +4,7 @@ import type {
   ImageAssetLibraryResult,
   ImageAssetLibraryScan
 } from "../../src/types.js";
+import type { Translate } from "../../src/core/i18n.js";
 
 export type ImageAssetLibraryProgressReporter = (
   progress: ImageAssetLibraryProgress
@@ -18,12 +19,14 @@ export interface ImageAssetLibraryFileSystemPort {
   scan(
     state: AppState,
     libraryDirectory: string,
-    report?: ImageAssetLibraryProgressReporter
+    report?: ImageAssetLibraryProgressReporter,
+    t?: Translate
   ): Promise<ImageAssetLibraryScan>;
   organize(
     state: AppState,
     libraryDirectory: string,
-    report?: ImageAssetLibraryProgressReporter
+    report?: ImageAssetLibraryProgressReporter,
+    t?: Translate
   ): Promise<{ state: AppState; result: ImageAssetLibraryResult }>;
   cleanup(
     state: AppState,
@@ -31,6 +34,7 @@ export interface ImageAssetLibraryFileSystemPort {
     requestedPaths: string[],
     report?: ImageAssetLibraryProgressReporter,
     /** Read fresh committed references immediately before each deletion. */
-    getCurrentState?: () => AppState
+    getCurrentState?: () => AppState,
+    t?: Translate
   ): Promise<ImageAssetLibraryResult>;
 }

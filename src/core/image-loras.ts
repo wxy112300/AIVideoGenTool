@@ -1,4 +1,6 @@
 import type { ImageLoraSelection, ModelScanProfile } from "../types.js";
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import {
   IMAGE_LORA_DEFINITIONS,
   type CatalogImageLoraDefinition
@@ -145,19 +147,21 @@ export function normalizeImageLoras(value: unknown, _modelId = ""): ImageLoraSel
 export function imageLoraConfigurationError(
   loras: readonly ImageLoraSelection[] | undefined,
   modelId: string,
-  pictureCount: number
+  pictureCount: number,
+  t: Translate = createTranslator().t
 ): string {
   if (!loras?.length) return "";
-  if (loras.length > 1) return "当前图片 LoRA 路径一次只支持一个图片 LoRA。";
+  if (loras.length > 1) return t(uiKeys.workflowChecks.loraLimit);
   const lora = loras[0]!;
   const definition = imageLoraDefinition(lora.id);
-  if (!definition) return `图片 LoRA ${lora.name || lora.id} 尚未登记，无法加入队列。`;
+  if (!definition) return t(uiKeys.workflowChecks.loraUnknown, { name: lora.name || lora.id });
   if (!imageLoraCompatibleWithModel(definition, modelId)) {
-    return `${definition.name} 不兼容当前图片模型。`;
+    return t(uiKeys.workflowChecks.loraIncompatible, { name: definition.name });
   }
   if (definition.requiredPictureCount !== undefined && pictureCount !== definition.requiredPictureCount) {
-    const roles = definition.pictureRoles?.map((role, index) => `Picture ${index + 1} 为${role}`).join("，");
-    return `${definition.name} 需要正好 ${definition.requiredPictureCount} 张 Picture${roles ? `：${roles}` : ""}。`;
+    const roles = definition.pictureRoles?.map((role, index) => t(uiKeys.workflowChecks.loraRole, { number: index + 1, role })).join(t(uiKeys.workflowChecks.loraSeparator));
+    return t(uiKeys.workflowChecks.loraPictures, { name: definition.name, count: definition.requiredPictureCount,
+      roles: roles ? t(uiKeys.workflowChecks.loraRoles, { roles }) : "" });
   }
   return "";
 }

@@ -2116,6 +2116,7 @@ export interface StrataPreparationStatus {
   files: { relativePath: string; present: boolean }[];
   sourcePresent: boolean;
   enginePresent: boolean;
+  deepSeekEnginePresent?: boolean;
   scannedAt: string;
 }
 

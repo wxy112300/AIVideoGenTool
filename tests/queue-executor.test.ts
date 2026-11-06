@@ -339,6 +339,50 @@ describe("queue executor runtime gate", () => {
     return { ...harness, image };
   }
 
+  it.each([
+    ["zh-CN", "准备图片批次", "生成第 1 / 2 张", "第 1 / 2 张 · 生成中"],
+    ["en-US", "Preparing image batch", "Generating image 1 / 2", "Image 1 / 2 · 生成中"],
+    ["zh-TW", "準備圖片批次", "產生第 1 / 2 張", "第 1 / 2 張 · 生成中"]
+  ] as const)("localizes image execution stages without changing run identity (%s)", async (locale, preparation, beginning, progress) => {
+    const state = createDefaultState();
+    state.settings.uiLocale = locale;
+    const h = imageHarness(state);
+    const frozen = structuredClone(h.image.runs.map(run => ({ id: run.id, seed: run.seed, prompt: run.prompt })));
+    await createQueueExecutor(h.deps)();
+    const stages = h.snapshots.flatMap(snapshot => snapshot.queue.map(task => task.stage));
+    expect(stages).toContain(preparation);
+    expect(stages).toContain(beginning);
+    expect(stages).toContain(progress);
+    expect(mocks.submitImageTask).toHaveBeenCalledTimes(2);
+    expect(mocks.submitImageTask.mock.calls.map(call => ({
+      id: call[1].id, seed: call[1].seed, prompt: call[1].prompt
+    }))).toEqual(frozen);
+    expect(h.store.get().imageHistory).toHaveLength(1);
+    expect(h.store.get().queue).toHaveLength(0);
+    expect(h.worker.activeController).toBeNull();
+  });
+
+  it.each([
+    ["zh-CN", "准备队列运行时隔离", "ComfyUI 无法建立请求的队列运行时隔离边界"],
+    ["en-US", "Preparing queue runtime isolation", "ComfyUI could not establish the requested queue runtime isolation boundary"],
+    ["zh-TW", "準備佇列執行環境隔離", "ComfyUI 無法建立要求的佇列執行環境隔離邊界"]
+  ] as const)("blocks submission on runtime isolation failure in the current locale (%s)", async (locale, stage, error) => {
+    const state = createDefaultState();
+    state.settings.uiLocale = locale;
+    state.settings.queueIsolationMode = "always";
+    const task = fixtureTask(state);
+    state.queue = [task]; state.queueRunning = true;
+    const prepare = vi.fn(async () => false);
+    const h = createHarness(state, { prepareQueueRuntimeForTask: prepare });
+    await createQueueExecutor(h.deps)();
+    expect(h.snapshots.some(snapshot => snapshot.queue.some(item => item.stage === stage))).toBe(true);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(mocks.submitTask).not.toHaveBeenCalled();
+    expect(h.store.get().queue[0]).toMatchObject({ id: task.id, status: "failed", error });
+    expect(h.store.get().history).toHaveLength(0);
+    expect(h.worker.activeController).toBeNull();
+  });
+
   it("awaits prompt-model release before image runtime startup and every image submission", async () => {
     const h = imageHarness(createDefaultState());
     let finish!: () => void;

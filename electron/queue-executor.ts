@@ -53,6 +53,9 @@ import {
 } from "../src/core/vram-stall-watchdog.js";
 import { VramPressureStallError } from "../src/core/recovery.js";
 import type { TaskResourceSample } from "./services/performance.js";
+import { createNativeTranslator } from "./ui-translator.js";
+import { uiKeys } from "../src/core/i18n-keys.js";
+import type { Translate } from "../src/core/i18n.js";
 
 const performanceLogIntervalMs = 30_000;
 
@@ -109,6 +112,7 @@ function isAppManagedLocalComfyRuntime(
 }
 
 function assertManagedContinuationHead(state: AppState, task: Exclude<QueueTask, ImageGenerationQueueTask>): void {
+  const t = createNativeTranslator(state.settings.uiLocale).t;
   if (
     task.taskType !== "extension" ||
     task.h3ContinuumMode !== "managed" ||
@@ -121,16 +125,16 @@ function assertManagedContinuationHead(state: AppState, task: Exclude<QueueTask,
   const version = asset?.versions.find((candidate) => candidate.id === task.sourceVersionId);
   const sequence = version?.h3ContinuumSequence;
   if (!sequence) {
-    throw new Error("Continuum managed parent History 版本缺少 sequence，拒绝静默切换到最新 Run head。");
+    throw new Error(t(uiKeys.queueExecution.parentMissing));
   }
   if (sequence.canonicalHead.revisionId !== task.h3ContinuumParentRevisionId) {
-    throw new Error(`Continuum managed parent head 已过期：任务绑定 ${task.h3ContinuumParentRevisionId}，当前为 ${sequence.canonicalHead.revisionId}。请从选中的 History Take 重新继续。`);
+    throw new Error(t(uiKeys.queueExecution.parentHead, { bound: task.h3ContinuumParentRevisionId, current: sequence.canonicalHead.revisionId }));
   }
   if (task.h3ContinuumParentTakeId !== undefined && sequence.canonicalHead.takeId !== task.h3ContinuumParentTakeId) {
-    throw new Error("Continuum managed parent Take 已过期，请从当前选中的 History Take 重新继续。");
+    throw new Error(t(uiKeys.queueExecution.parentTake));
   }
   if (task.h3ContinuumParentBranchId !== undefined && sequence.canonicalHead.branchId !== task.h3ContinuumParentBranchId) {
-    throw new Error("Continuum managed parent branch 已过期，请从当前选中的 History 分支重新继续。");
+    throw new Error(t(uiKeys.queueExecution.parentBranch));
   }
 }
 
@@ -301,6 +305,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     errorMeta: errorLogMeta
   };
   const sideEffects = deps.sideEffects ?? new QueueExecutionSideEffects(sideEffectsDependencies);
+  const t: Translate = (key, params) => createNativeTranslator(store.get().settings.uiLocale).t(key, params);
 
   async function executeImageGenerationQueueTask(
     task: ImageGenerationQueueTask,
@@ -372,7 +377,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           remainingVramMiB: Math.round(remainingMiB),
           vramTotalMiB: resource.vramTotalBytes == null ? null : Math.round(resource.vramTotalBytes / 1024 ** 2)
         });
-        queueWatchdogStage("显存余量低于 1 GiB，已进入预警");
+        queueWatchdogStage(t(uiKeys.queueExecution.vramWarning));
       }
       if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB && !lowVramMonitoringActive) {
         lowVramMonitoringActive = true;
@@ -383,7 +388,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           remainingVramMiB: Math.round(remainingMiB),
           watchdogWindowMinutes: appliedWatchdogMinutes
         });
-        queueWatchdogStage("显存余量低于 800 MiB，正在持续监测卡死");
+        queueWatchdogStage(t(uiKeys.queueExecution.vramMonitoring));
       }
       if ((lowVramMonitoringActive || lowVramWarningActive) && remainingMiB >= VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB) {
         lowVramMonitoringActive = false;
@@ -394,7 +399,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           modelId: task.modelId,
           remainingVramMiB: Math.round(remainingMiB)
         });
-        queueWatchdogStage("显存压力已缓解，恢复正常监测");
+        queueWatchdogStage(t(uiKeys.queueExecution.vramRecovered));
       }
     };
     const beginWatchdogObservation = (): void => {
@@ -499,7 +504,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         recoveryAttempt: task.automaticRetryAttempt ?? 0
       };
       vramStallWatchdogError = new VramPressureStallError(
-        "持续显存/系统内存压力下图片任务长期没有生产性进展",
+        t(uiKeys.queueExecution.imageStall),
         vramStallWatchdogDiagnostics
       );
       logger.error("performance", "vram-stall-triggered", "VRAM stall watchdog triggered image task recovery", {
@@ -508,7 +513,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         modelId: task.modelId,
         ...vramStallWatchdogDiagnostics
       });
-      queueWatchdogStage("检测到持续显存/系统内存压力，正在恢复 ComfyUI");
+      queueWatchdogStage(t(uiKeys.queueExecution.stallRecovery));
       vramWatchdog?.stop();
       controller.abort(vramStallWatchdogError);
     };
@@ -525,7 +530,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       await updateTask(task.id, {
         status: "running",
         progress: 1,
-        stage: "准备图片批次",
+        stage: t(uiKeys.queueExecution.prepareImages),
         startedAt: new Date().toISOString(),
         error: undefined
       });
@@ -583,7 +588,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               lastProgress = Math.round(batchProgress);
               void updateTaskProgress(task.id, {
                 progress: Math.min(99, batchProgress),
-                stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`,
+                stage: t(uiKeys.queueExecution.imageProgress, { index: run.index + 1, total: totalRuns, stage }),
                 workProgress
               });
             },
@@ -604,7 +609,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           pauseWatchdogObservation();
           const files = await sideEffects.trackImageOutput(result, task);
           const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
-          if (!file) throw new Error("图片工作流没有返回可用图片文件。");
+          if (!file) throw new Error(t(uiKeys.queueExecution.imageMissing));
           const performanceStats = monitor.stop();
           activePerformanceMonitor = undefined;
           const completedAt = new Date().toISOString();
@@ -643,7 +648,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
       const aborted = controller.signal.aborted && !watchdogFailure;
       const message = aborted
-        ? "图片批次已取消，已保留完成的图片版本。"
+        ? t(uiKeys.queueExecution.imageCancelled)
         : error instanceof Error
           ? error.message
           : String(error);
@@ -685,13 +690,13 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     const releasePromptModel = async (taskId: string, signal: AbortSignal): Promise<void> => {
       signal.throwIfAborted();
       if (promptModelReleased) return;
-      await updateTask(taskId, { progress: 1, stage: "卸载提示词模型并释放显存" });
+      await updateTask(taskId, { progress: 1, stage: t(uiKeys.queueExecution.releasePrompt) });
       signal.throwIfAborted();
       const unloaded = await releasePromptRuntime(store.get().settings);
       signal.throwIfAborted();
       promptModelReleased = true;
       logger.info("queue", "prompt-runtime-released", "Prompt runtime handoff completed before queue runtime startup", { taskId, unloaded });
-      if (unloaded > 0) await updateTask(taskId, { progress: 1, stage: "已释放提示词模型" });
+      if (unloaded > 0) await updateTask(taskId, { progress: 1, stage: t(uiKeys.queueExecution.promptReleased) });
       signal.throwIfAborted();
     };
     while (store.get().queueRunning) {
@@ -802,7 +807,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             remainingVramMiB: Math.round(remainingMiB),
             vramTotalMiB: resource.vramTotalBytes == null ? null : Math.round(resource.vramTotalBytes / 1024 ** 2)
           });
-          queueWatchdogStage("显存余量低于 1 GiB，已进入预警");
+          queueWatchdogStage(t(uiKeys.queueExecution.vramWarning));
         }
         if (remainingMiB < VRAM_STALL_WATCHDOG_TUNING.dedicatedVramMonitoringMiB && !lowVramMonitoringActive) {
           lowVramMonitoringActive = true;
@@ -813,7 +818,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             remainingVramMiB: Math.round(remainingMiB),
             watchdogWindowMinutes: appliedWatchdogMinutes
           });
-          queueWatchdogStage("显存余量低于 800 MiB，正在持续监测卡死");
+          queueWatchdogStage(t(uiKeys.queueExecution.vramMonitoring));
         }
         if ((lowVramMonitoringActive || lowVramWarningActive) && remainingMiB >= VRAM_STALL_WATCHDOG_TUNING.dedicatedVramWarningMiB) {
           lowVramMonitoringActive = false;
@@ -824,7 +829,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             modelId: task.modelId,
             remainingVramMiB: Math.round(remainingMiB)
           });
-          queueWatchdogStage("显存压力已缓解，恢复正常监测");
+          queueWatchdogStage(t(uiKeys.queueExecution.vramRecovered));
         }
       };
       const onProductiveProgress = (event: VramStallProgressEvent): void => {
@@ -896,7 +901,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             settingsAtClaim ?? store.get().settings
           );
           if (!h3VideoVaeMode) {
-            throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+            throw new Error(t(uiKeys.queueExecution.vaeMissing));
           }
           const resolvedState = await updateTask(task.id, {
             h3VideoVaeMode
@@ -920,7 +925,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         await updateTask(task.id, {
           status: "running",
           progress: 1,
-          stage: "提交工作流",
+          stage: t(uiKeys.queueExecution.submit),
           startedAt: new Date().toISOString(),
           error: undefined
         });
@@ -1045,7 +1050,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         }
         await updateTask(task.id, {
           progress: 1,
-          stage: "提交工作流"
+          stage: t(uiKeys.queueExecution.submit)
         });
         let lastGpuComputeAt = 0;
         const onResourceSample = (resource: TaskResourceSample): void => {
@@ -1125,7 +1130,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             recoveryAttempt: task.automaticRetryAttempt ?? 0
           };
           vramStallWatchdogError = new VramPressureStallError(
-            "持续显存/系统内存压力下任务长期没有生产性进展",
+            t(uiKeys.queueExecution.stall),
             vramStallWatchdogDiagnostics
           );
           logger.error("performance", "vram-stall-triggered", "VRAM stall watchdog triggered ComfyUI recovery", {
@@ -1134,7 +1139,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             modelId: task.modelId,
             ...vramStallWatchdogDiagnostics
           });
-          queueWatchdogStage("检测到持续显存/系统内存压力，正在恢复 ComfyUI");
+          queueWatchdogStage(t(uiKeys.queueExecution.stallRecovery));
           vramWatchdog?.stop();
           activeController.abort(vramStallWatchdogError);
         };
@@ -1274,7 +1279,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           await updateTask(task.id, {
             comfyPromptId: promptId,
             progress: 2,
-            stage: "等待 ComfyUI"
+            stage: t(uiKeys.queueExecution.waiting)
           });
           beginWatchdogObservation();
           let lastLoggedProgress = -5;
@@ -1294,7 +1299,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             (progress, stage, _determinate, workProgress) => {
               const aggregateProgress = initialProgressOffset + progress * initialProgressScale;
               const aggregateStage = h3CompositeTask
-                ? `${executionTask.taskType === "upscale" ? "1080p 二次采样" : "720p 首遍"} · ${stage}`
+                ? `${executionTask.taskType === "upscale" ? t(uiKeys.queueExecution.secondPass) : t(uiKeys.queueExecution.firstPass)} · ${stage}`
                 : stage;
               void updateTaskProgress(task.id, { progress: aggregateProgress, stage: aggregateStage, workProgress });
               const roundedProgress = Math.round(aggregateProgress);
@@ -1361,7 +1366,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             isMiniMaxH3ContinuumManagedWorkflow(executionTask.workflowPath)
           ) {
             if (!h3ContinuumManagedReceiptNodeId || !deps.registerH3ContinuumManagedOutput) {
-              throw new Error("H3 Continuum managed 执行缺少 Run Storage receipt 注册器。");
+              throw new Error(t(uiKeys.queueExecution.receiptRegistry));
             }
             const registered = await deps.registerH3ContinuumManagedOutput(
               result,
@@ -1372,7 +1377,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             h3ContinuumReceipt = registered.receipt;
             h3ContinuumAsset = registered.assetsByChunkIndex[registered.receipt.firstGeneratedChunk];
             if (!h3ContinuumAsset) {
-              throw new Error("H3 Continuum managed receipt 没有对应 generated Chunk 的 canonical asset。");
+              throw new Error(t(uiKeys.queueExecution.receiptAsset));
             }
             logger.info("queue", "h3-continuum-managed-receipt", "H3 Continuum managed Run Storage receipt validated", {
               taskId: task.id,
@@ -1388,7 +1393,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
           if (h3CompositeTask && executionTask.taskType === "generation") {
             if (!h3AvSerializerNodeId) {
-              throw new Error("H3 1080p 首遍工作流没有返回 JointAV serializer 节点。");
+              throw new Error(t(uiKeys.queueExecution.serializerMissing));
             }
             const firstPassData = await commitH3NativeAvOutput(
               result,
@@ -1403,7 +1408,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               file.absolutePath && isVideoOutputFilename(file.filename)
             );
             if (!firstPassArtifact || !firstPassOutput) {
-              throw new Error("H3 1080p 首遍没有提交可恢复的 JointAV artifact 或临时视频。");
+              throw new Error(t(uiKeys.queueExecution.firstPassMissing));
             }
             h3FirstPassCheckpoint = {
               promptId,
@@ -1413,7 +1418,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             await updateTask(task.id, {
               h3FirstPassCheckpoint,
               progress: 50,
-              stage: "720p 首遍完成 · 准备 1080p learned 二次采样"
+              stage: t(uiKeys.queueExecution.prepareSecondPass)
             });
             executionTask = h3CreateSecondPassTask(
               h3CompositeTask,
@@ -1433,7 +1438,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             await updateTask(task.id, {
               comfyPromptId: promptId,
               progress: 50,
-              stage: "1080p learned 二次采样 · 等待 ComfyUI"
+              stage: t(uiKeys.queueExecution.waitSecondPass)
             });
             beginWatchdogObservation();
             result = await waitForTask(
@@ -1449,7 +1454,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               (progress, stage, _determinate, workProgress) => {
                 void updateTaskProgress(task.id, {
                   progress: 50 + progress * 0.5,
-                  stage: `1080p 二次采样 · ${stage}`,
+                  stage: t(uiKeys.queueExecution.secondPassProgress, { stage }),
                   workProgress
                 });
               },
@@ -1515,21 +1520,21 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             (file) => file.absolutePath && isVideoOutputFilename(file.filename)
           );
           if (!outputVideo?.absolutePath) {
-            throw new Error("续写工作流没有返回可供 History 保存的视频文件");
+            throw new Error(t(uiKeys.queueExecution.extensionMissing));
           }
           if (completedTask.h3ContinuumMode === "managed") {
             await updateTask(task.id, {
               progress: 99,
-              stage: "Run Storage 完整序列已 Finalize · 保留官方输出"
+              stage: t(uiKeys.queueExecution.finalized)
             });
           } else {
             await updateTask(task.id, {
               progress: 99,
               stage: isMiniMaxH3R2vModel(completedTask.modelId)
-                ? "合并 Motion Context 续写片段与 32 kHz 音轨"
+                ? t(uiKeys.queueExecution.mergeMotion)
                 : isMiniMaxH3Fl2vaModel(completedTask.modelId)
-                  ? "裁掉重复边界帧并合并原生音轨"
-                  : "去除重叠帧并拼接成片"
+                  ? t(uiKeys.queueExecution.trimBoundary)
+                  : t(uiKeys.queueExecution.mergeOverlap)
             });
             await sideEffects.finalizeExtension(
               completedTask,
@@ -1549,7 +1554,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               temporaryFileCount: seedVr2IntermediatePaths.length
             },
             progress: 99,
-            stage: `合并完成 · 清理 ${seedVr2IntermediatePaths.length} 个临时切片文件`
+            stage: t(uiKeys.queueExecution.cleanupSlices, { count: seedVr2IntermediatePaths.length })
           });
           const cleanup = await sideEffects.cleanupSeedVr2Intermediates(seedVr2IntermediatePaths);
           logger.info("queue", "seedvr2-intermediates-cleaned", "Native SeedVR2 temporary segment cleanup finished", {

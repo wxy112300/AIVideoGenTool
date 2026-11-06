@@ -41,15 +41,17 @@ async function fixture() {
   const deps = { store, sendState: vi.fn(), updateTask: vi.fn(), updateTaskProgress: vi.fn(), requireExistingVideoOutput: vi.fn(async () => [file]) };
   return { directory, filename, task, media, deps, signal: new AbortController().signal };
 }
-it("claims Sage Triton with Spectrum and freezes the chosen backend before executing groups", async () => {
+it.each(["off", "rife2x", "rife4x"] as const)("claims 1080p with %s, Sage Triton and Spectrum before executing groups", async frameInterpolation => {
   const f = await fixture();
   f.task.longVideoExecution = undefined;
   Object.assign(f.task, { modelId: "minimax_h3_fl2va", startImagePath: "first.png", endImagePath: "", videoLoras: [], h3ReferenceSlots: [],
-    attentionMode: "sage-triton", spectrumMode: "balanced", h3SparseAttentionMode: "off", h3RuntimeMode: "compatibility", h3ComfyCompilerMode: "disabled", frameInterpolation: "off", resolution: 360 });
+    attentionMode: "sage-triton", spectrumMode: "balanced", h3SparseAttentionMode: "off", h3RuntimeMode: "compatibility", h3ComfyCompilerMode: "disabled", frameInterpolation, resolution: 1080 });
   execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
     expect(snapshot.profile.attention).toBe("sage-triton");
     expect(snapshot.profile.spectrumMode).toBe("balanced");
     expect(snapshot.profile.firstImage).toBe("uploaded-first.png");
+    expect(snapshot.profile.delivery?.frameInterpolation).toBe(frameInterpolation);
+    expect(Math.min(snapshot.profile.width, snapshot.profile.height)).toBe(1088);
     return { phase: "published" };
   });
   await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);
@@ -72,8 +74,12 @@ it("freezes the complete LoRA, SOL, Kitchen and launch configuration on claim", 
   expect(execution.run).toHaveBeenCalledOnce();
 });
 
-it("publishes one durable ordinary History movie with stable IDs when publication is retried", async () => {
+it.each([1, 2, 4] as const)("publishes %sx delivery with stable duration and IDs when publication is retried", async multiplier => {
   const f = await fixture();
+  if (multiplier > 1) {
+    f.task.longVideoExecution!.profile.delivery = { frameInterpolation: multiplier === 2 ? "rife2x" : "rife4x" };
+    f.media.videoFrames *= multiplier; f.media.videoFps = 24 * multiplier;
+  }
   execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot, ports: LongVideoExecutionPorts, signal: AbortSignal) => {
     await ports.assertLease();
     const final = { receipt: { accepted_chunks: 2, final_output: true }, outputs: {} } as Parameters<LongVideoExecutionPorts["publish"]>[4];
@@ -89,6 +95,7 @@ it("publishes one durable ordinary History movie with stable IDs when publicatio
   expect(asset.versions).toHaveLength(1); expect(asset.versions[0]!.id).toBe(f.task.id); expect(asset.versions[0]!.duration).toBe(10);
   expect(asset.versions[0]!.longVideoExecution).toEqual(f.task.longVideoExecution);
   expect(asset.versions[0]!.longVideoReceipt?.final_output).toBe(true);
+  expect(asset.fps).toBe(24 * multiplier); expect(asset.versions[0]!.fps).toBe(24 * multiplier);
 });
 it("refuses publication if a validated movie was replaced, leaving the task recoverable", async () => {
   const f = await fixture(); await fs.writeFile(f.media.files[0]!.path, "replaced fixture bytes");

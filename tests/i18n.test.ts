@@ -68,7 +68,7 @@ describe("UI locale foundation", () => {
     expect(enUS.t(uiKeys.dialog.recoverable)).toBe("This action can be restored from backup");
     expect(enUS.t(uiKeys.dialog.uninstallNodeTitle, { name: "Example node" })).toBe("Uninstall “Example node”?");
     expect(enUS.t(uiKeys.dialog.uninstallNodeDescription)).toContain("permanently deleted");
-    expect(enUS.t(uiKeys.dialog.uninstallNode)).toBe("Uninstall node");
+    expect(enUS.t(uiKeys.dialog.uninstallNode)).toBe("Uninstall Node");
   });
 
   it("accepts an incremental catalog without requiring the full UI to move at once", () => {

@@ -14,6 +14,8 @@ import {
 } from "../src/core/prompt-runtime-state.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import type { StateRepository } from "./ports/state-repository.js";
+import { createNativeTranslator } from "./ui-translator.js";
+import type { Translate } from "../src/core/i18n.js";
 
 interface RuntimeStatePort {
   snapshot(): ComfyRuntimeState;
@@ -21,7 +23,8 @@ interface RuntimeStatePort {
     reachable: boolean,
     endpoint: string,
     ownership?: ComfyRuntimeOwnership,
-    taskActive?: boolean
+    taskActive?: boolean,
+    t?: Translate
   ): ComfyRuntimeState;
 }
 
@@ -99,7 +102,8 @@ export function registerAppQueryIpc(deps: AppQueryIpcDependencies): void {
       settings.comfyUrl.replace(/\/+$/, ""),
       ownership,
       deps.store.get().queue.some((task) => task.status === "running") ||
-        promptOperationIsActive(deps.getPromptRuntimeState())
+        promptOperationIsActive(deps.getPromptRuntimeState()),
+      createNativeTranslator(settings.uiLocale).t
     );
     return metrics;
   });

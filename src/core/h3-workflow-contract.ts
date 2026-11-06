@@ -435,10 +435,11 @@ function refToClass(
 function addMissingClasses(
   errors: string[],
   classes: readonly string[],
-  available: Set<string>
+  available: Set<string>,
+  t: Translate = createTranslator().t
 ): void {
   for (const classType of classes) {
-    if (!available.has(classType)) errors.push(`缺少节点 class_type=${classType}`);
+    if (!available.has(classType)) errors.push(t(uiKeys.workflowChecks.nodeMissing, { node: classType }));
   }
 }
 
@@ -447,30 +448,32 @@ function requireInputReference(
   nodes: Map<string, ApiNode>,
   classType: string,
   inputName: string,
-  expectedClass?: string
+  expectedClass?: string,
+  t: Translate = createTranslator().t
 ): void {
   const nodeId = nodeIdsForClass(nodes, classType)[0];
   const value = nodeId ? inputsFor(nodes.get(nodeId))[inputName] : undefined;
   if (!refExists(value, nodes)) {
-    errors.push(`${classType}.${inputName} 必须引用已存在的 workflow 节点`);
+    errors.push(t(uiKeys.workflowChecks.referenceExisting, { node: classType, input: inputName }));
     return;
   }
   if (expectedClass && !refToClass(value, expectedClass, nodes)) {
-    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass}`);
+    errors.push(t(uiKeys.workflowChecks.referenceClass, { node: classType, input: inputName, expected: expectedClass }));
   }
 }
 
-function validateFirstPass(nodes: Map<string, ApiNode>, errors: string[]): void {
+function validateFirstPass(nodes: Map<string, ApiNode>, errors: string[],
+  t: Translate = createTranslator().t): void {
   const available = classTypes(nodes);
-  addMissingClasses(errors, FIRST_PASS_CLASSES, available);
+  addMissingClasses(errors, FIRST_PASS_CLASSES, available, t);
   if (!available.has("LocalVideoStudioH3SaveJointAV")) return;
-  requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av");
+  requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", undefined, t);
   const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
   const filename = serializerId
     ? inputsFor(nodes.get(serializerId)).filename
     : undefined;
   if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
-    errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+    errors.push(t(uiKeys.workflowChecks.savePlaceholder));
   }
 }
 
@@ -480,19 +483,20 @@ function requireOutputReference(
   classType: string,
   inputName: string,
   expectedClass: string,
-  outputIndex: number
+  outputIndex: number,
+  t: Translate = createTranslator().t
 ): void {
   const nodeId = nodeIdsForClass(nodes, classType)[0];
   const value = nodeId ? inputsFor(nodes.get(nodeId))[inputName] : undefined;
   const reference = nodeRef(value);
   if (!reference || !nodes.has(reference.nodeId)) {
-    errors.push(`${classType}.${inputName} 必须引用已存在的 workflow 节点`);
+    errors.push(t(uiKeys.workflowChecks.referenceExisting, { node: classType, input: inputName }));
     return;
   }
   if (nodes.get(reference.nodeId)?.class_type !== expectedClass) {
-    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass}`);
+    errors.push(t(uiKeys.workflowChecks.referenceClass, { node: classType, input: inputName, expected: expectedClass }));
   } else if (reference.outputIndex !== outputIndex) {
-    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass} 的 output ${outputIndex}`);
+    errors.push(t(uiKeys.workflowChecks.referenceOutput, { node: classType, input: inputName, expected: expectedClass, output: outputIndex }));
   }
 }
 
@@ -503,18 +507,19 @@ function requireOutputReferenceAtNodeId(
   classType: string,
   inputName: string,
   expectedClass: string,
-  outputIndex: number
+  outputIndex: number,
+  t: Translate = createTranslator().t
 ): void {
   const value = nodeId ? inputsFor(nodes.get(nodeId))[inputName] : undefined;
   const reference = nodeRef(value);
   if (!reference || !nodes.has(reference.nodeId)) {
-    errors.push(`${classType}.${inputName} 必须引用已存在的 workflow 节点`);
+    errors.push(t(uiKeys.workflowChecks.referenceExisting, { node: classType, input: inputName }));
     return;
   }
   if (nodes.get(reference.nodeId)?.class_type !== expectedClass) {
-    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass}`);
+    errors.push(t(uiKeys.workflowChecks.referenceClass, { node: classType, input: inputName, expected: expectedClass }));
   } else if (reference.outputIndex !== outputIndex) {
-    errors.push(`${classType}.${inputName} 必须引用 ${expectedClass} 的 output ${outputIndex}`);
+    errors.push(t(uiKeys.workflowChecks.referenceOutput, { node: classType, input: inputName, expected: expectedClass, output: outputIndex }));
   }
 }
 
@@ -533,12 +538,13 @@ function nodeIdReferencing(
   });
 }
 
-function validateContinuum(nodes: Map<string, ApiNode>, errors: string[]): void {
+function validateContinuum(nodes: Map<string, ApiNode>, errors: string[],
+  t: Translate = createTranslator().t): void {
   const available = classTypes(nodes);
-  addMissingClasses(errors, CONTINUUM_CLASSES, available);
+  addMissingClasses(errors, CONTINUUM_CLASSES, available, t);
   const loadId = nodeIdsForClass(nodes, "LocalVideoStudioH3LoadJointAV")[0];
   if (loadId && inputsFor(nodes.get(loadId)).artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
-    errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+    errors.push(t(uiKeys.workflowChecks.inputPlaceholder));
   }
   requireOutputReference(
     errors,
@@ -546,35 +552,36 @@ function validateContinuum(nodes: Map<string, ApiNode>, errors: string[]): void 
     "LocalVideoStudioH3ArtifactToContinuumState",
     "joint_av",
     "LocalVideoStudioH3LoadJointAV",
-    0
+    0, t
   );
-  requireOutputReference(errors, nodes, "H3ContinuumJoin", "latent", "LocalVideoStudioH3LoadJointAV", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumJoin", "conditioning", "MiniMaxH3ImageToVideo", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumJoin", "previous_state", "LocalVideoStudioH3ArtifactToContinuumState", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumFinish", "samples", "SamplerCustomAdvanced", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumFinish", "images", "VAEDecode", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumFinish", "audio", "VAEDecodeAudio", 0);
-  requireOutputReference(errors, nodes, "H3ContinuumFinish", "plan", "H3ContinuumJoin", 3);
-  requireOutputReference(errors, nodes, "CreateVideo", "images", "H3ContinuumFinish", 0);
-  requireOutputReference(errors, nodes, "CreateVideo", "audio", "H3ContinuumFinish", 1);
-  requireOutputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", "SamplerCustomAdvanced", 0);
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "latent", "LocalVideoStudioH3LoadJointAV", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "conditioning", "MiniMaxH3ImageToVideo", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumJoin", "previous_state", "LocalVideoStudioH3ArtifactToContinuumState", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "samples", "SamplerCustomAdvanced", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "images", "VAEDecode", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "audio", "VAEDecodeAudio", 0, t);
+  requireOutputReference(errors, nodes, "H3ContinuumFinish", "plan", "H3ContinuumJoin", 3, t);
+  requireOutputReference(errors, nodes, "CreateVideo", "images", "H3ContinuumFinish", 0, t);
+  requireOutputReference(errors, nodes, "CreateVideo", "audio", "H3ContinuumFinish", 1, t);
+  requireOutputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", "SamplerCustomAdvanced", 0, t);
   const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
   const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
   if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
-    errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+    errors.push(t(uiKeys.workflowChecks.savePlaceholder));
   }
   const conditioningId = nodeIdsForClass(nodes, "MiniMaxH3ImageToVideo")[0];
   if (conditioningId) {
     const inputs = inputsFor(nodes.get(conditioningId));
     if ("first_frame" in inputs || "last_frame" in inputs) {
-      errors.push("Continuum 的 MiniMaxH3ImageToVideo 必须只提供文本 conditioning，不能携带首尾帧 keyframe");
+      errors.push(t(uiKeys.workflowChecks.continuumTextOnly));
     }
   }
 }
 
-function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): void {
+function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[],
+  t: Translate = createTranslator().t): void {
   const available = classTypes(nodes);
-  addMissingClasses(errors, CONTINUUM_V38_CLASSES, available);
+  addMissingClasses(errors, CONTINUUM_V38_CLASSES, available, t);
   const serialized = JSON.stringify(Object.fromEntries(nodes));
   for (const placeholder of [
     "H3_AV_INPUT_ARTIFACT",
@@ -590,65 +597,65 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
     "OUTPUT_FILENAME"
   ]) {
     if (!serialized.includes(`{{${placeholder}}}`)) {
-      errors.push(`Continuum V3.8 workflow 缺少 {{${placeholder}}} 占位符`);
+      errors.push(t(uiKeys.workflowChecks.continuumPlaceholder, { placeholder: placeholder }));
     }
   }
 
   const loadId = nodeIdsForClass(nodes, "LocalVideoStudioH3LoadJointAV")[0];
   if (loadId && inputsFor(nodes.get(loadId)).artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
-    errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+    errors.push(t(uiKeys.workflowChecks.inputPlaceholder));
   }
   const bridgeId = nodeIdsForClass(nodes, "LocalVideoStudioH3ArtifactToContinuumState")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, bridgeId, "LocalVideoStudioH3ArtifactToContinuumState", "joint_av", "LocalVideoStudioH3LoadJointAV", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, bridgeId, "LocalVideoStudioH3ArtifactToContinuumState", "joint_av", "LocalVideoStudioH3LoadJointAV", 0, t);
 
   const samplerType = "LocalVideoStudioH3ContinuumSamplerV38";
   const samplerId = nodeIdsForClass(nodes, samplerType)[0];
   if (samplerId) {
     const inputs = inputsFor(nodes.get(samplerId));
     if (inputs.sequence_prompt !== "{{PROMPT}}") {
-      errors.push(`${samplerType}.sequence_prompt 必须保留 PROMPT 占位符`);
+      errors.push(t(uiKeys.workflowChecks.sequencePrompt, { node: samplerType }));
     }
     if (inputs.chunks !== "{{H3_CONTINUUM_CHUNKS}}") {
-      errors.push(`${samplerType}.chunks 必须保留 H3_CONTINUUM_CHUNKS 占位符`);
+      errors.push(t(uiKeys.workflowChecks.chunks, { node: samplerType }));
     }
     if (inputs.chunk_seconds !== "{{H3_CONTINUUM_CHUNK_SECONDS}}") {
-      errors.push(`${samplerType}.chunk_seconds 必须保留 H3_CONTINUUM_CHUNK_SECONDS 占位符`);
+      errors.push(t(uiKeys.workflowChecks.chunkSeconds, { node: samplerType }));
     }
     if (inputs.width !== "{{WIDTH}}" || inputs.height !== "{{HEIGHT}}") {
-      errors.push(`${samplerType}.width/height 必须保留 WIDTH/HEIGHT 占位符`);
+      errors.push(t(uiKeys.workflowChecks.geometry, { node: samplerType }));
     }
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "model", "PathchSageAttentionKJ", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "clip", "CLIPLoader", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "video_vae", "VAELoader", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sampler", "KSamplerSelect", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sigmas", "BasicScheduler", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "initial_state", "LocalVideoStudioH3ArtifactToContinuumState", 0);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "model", "PathchSageAttentionKJ", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "clip", "CLIPLoader", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "video_vae", "VAELoader", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sampler", "KSamplerSelect", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sigmas", "BasicScheduler", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "initial_state", "LocalVideoStudioH3ArtifactToContinuumState", 0, t);
     if ("first_frame" in inputs || "reference_video_1" in inputs) {
-      errors.push(`${samplerType} 使用 native state 时不能重复连接同源 First Image 或 Video Guide`);
+      errors.push(t(uiKeys.workflowChecks.duplicateContext, { node: samplerType }));
     }
   }
 
   const generatedDecodeId = nodeIdReferencing(nodes, "VAEDecode", "samples", samplerId, 0);
   const audioDecodeId = nodeIdReferencing(nodes, "VAEDecodeAudio", "samples", samplerId, 1);
   const finalizeId = nodeIdsForClass(nodes, "H3ContinuumAssembleSeamV35")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "images", "VAEDecode", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "audio", "VAEDecodeAudio", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "assembly_plan", samplerType, 2);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "images", "VAEDecode", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "audio", "VAEDecodeAudio", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "assembly_plan", samplerType, 2, t);
   if (generatedDecodeId === undefined) {
-    errors.push(`VAEDecode.samples 必须有一个节点引用 ${samplerType} 的 video latent output 0`);
+    errors.push(t(uiKeys.workflowChecks.videoDecodeOne, { node: samplerType }));
   }
   if (audioDecodeId === undefined) {
-    errors.push(`VAEDecodeAudio.samples 必须引用 ${samplerType} 的 audio latent output 1`);
+    errors.push(t(uiKeys.workflowChecks.audioDecode, { node: samplerType }));
   }
   if (finalizeId) {
     const finalizeInputs = inputsFor(nodes.get(finalizeId));
     const imageReference = nodeRef(finalizeInputs.images);
     if (generatedDecodeId && imageReference?.nodeId !== generatedDecodeId) {
-      errors.push("H3ContinuumAssembleSeamV35.images 必须引用 sampler video latent 解码出的图像");
+      errors.push(t(uiKeys.workflowChecks.seamImages));
     }
     const audioReference = nodeRef(finalizeInputs.audio);
     if (audioDecodeId && audioReference?.nodeId !== audioDecodeId) {
-      errors.push("H3ContinuumAssembleSeamV35.audio 必须引用 sampler audio latent 解码出的音频");
+      errors.push(t(uiKeys.workflowChecks.seamAudio));
     }
   }
   const diagnosticsId = nodeIdsForClass(nodes, "LocalVideoStudioH3ContinuumDiagnostics")[0];
@@ -659,7 +666,7 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
     "LocalVideoStudioH3ContinuumDiagnostics",
     "bridge_report",
     "LocalVideoStudioH3ArtifactToContinuumState",
-    1
+    1, t
   );
   requireOutputReferenceAtNodeId(
     errors,
@@ -668,7 +675,7 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
     "LocalVideoStudioH3ContinuumDiagnostics",
     "status",
     samplerType,
-    3
+    3, t
   );
   requireOutputReferenceAtNodeId(
     errors,
@@ -677,7 +684,7 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
     "LocalVideoStudioH3ContinuumDiagnostics",
     "assembly_plan",
     samplerType,
-    2
+    2, t
   );
   requireOutputReferenceAtNodeId(
     errors,
@@ -686,34 +693,35 @@ function validateContinuumV38(nodes: Map<string, ApiNode>, errors: string[]): vo
     "LocalVideoStudioH3ContinuumDiagnostics",
     "assembly_report",
     "H3ContinuumAssembleSeamV35",
-    2
+    2, t
   );
   if (diagnosticsId) {
     const diagnosticsInputs = inputsFor(nodes.get(diagnosticsId));
     if (diagnosticsInputs.spectrum_mode !== "{{H3_SPECTRUM_MODE}}" ||
       diagnosticsInputs.spectrum_model_aware_mode !== "{{H3_SPECTRUM_MODEL_AWARE_MODE}}") {
-      errors.push("LocalVideoStudioH3ContinuumDiagnostics 必须保留 Spectrum 占位符");
+      errors.push(t(uiKeys.workflowChecks.diagnosticSpectrum));
     }
   }
   const createVideoId = nodeIdsForClass(nodes, "CreateVideo")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "images", "H3ContinuumAssembleSeamV35", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1);
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "images", "H3ContinuumAssembleSeamV35", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1, t);
   const saveVideoId = nodeIdsForClass(nodes, "SaveVideo")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0, t);
   const concatId = nodeIdsForClass(nodes, "LTXVConcatAVLatent")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "video_latent", samplerType, 0);
-  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "audio_latent", samplerType, 1);
+  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "video_latent", samplerType, 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, concatId, "LTXVConcatAVLatent", "audio_latent", samplerType, 1, t);
   const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, serializerId, "LocalVideoStudioH3SaveJointAV", "joint_av", "LTXVConcatAVLatent", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, serializerId, "LocalVideoStudioH3SaveJointAV", "joint_av", "LTXVConcatAVLatent", 0, t);
   const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
   if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
-    errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+    errors.push(t(uiKeys.workflowChecks.savePlaceholder));
   }
 }
 
-function validateContinuumManagedV38(nodes: Map<string, ApiNode>, errors: string[]): void {
+function validateContinuumManagedV38(nodes: Map<string, ApiNode>, errors: string[],
+  t: Translate = createTranslator().t): void {
   const available = classTypes(nodes);
-  addMissingClasses(errors, CONTINUUM_MANAGED_V38_CLASSES, available);
+  addMissingClasses(errors, CONTINUUM_MANAGED_V38_CLASSES, available, t);
   const serialized = JSON.stringify(Object.fromEntries(nodes));
   for (const placeholder of [
     "PROMPT",
@@ -731,7 +739,7 @@ function validateContinuumManagedV38(nodes: Map<string, ApiNode>, errors: string
     "OUTPUT_FILENAME"
   ]) {
     if (!serialized.includes(`{{${placeholder}}}`)) {
-      errors.push(`Continuum managed workflow 缺少 {{${placeholder}}} 占位符`);
+      errors.push(t(uiKeys.workflowChecks.managedPlaceholder, { placeholder: placeholder }));
     }
   }
   for (const legacyClass of [
@@ -741,87 +749,88 @@ function validateContinuumManagedV38(nodes: Map<string, ApiNode>, errors: string
     "LocalVideoStudioH3SaveJointAV",
     "LTXVConcatAVLatent"
   ]) {
-    if (available.has(legacyClass)) errors.push(`managed workflow 不得包含 legacy bridge/saver：${legacyClass}`);
+    if (available.has(legacyClass)) errors.push(t(uiKeys.workflowChecks.legacyBridge, { node: legacyClass }));
   }
   const samplerType = "H3ContinuumSamplerV38";
   const samplerId = nodeIdsForClass(nodes, samplerType)[0];
   if (samplerId) {
     const inputs = inputsFor(nodes.get(samplerId));
-    if (inputs.sequence_prompt !== "{{PROMPT}}") errors.push(`${samplerType}.sequence_prompt 必须保留 PROMPT 占位符`);
-    if (inputs.chunks !== "{{H3_CONTINUUM_CHUNKS}}") errors.push(`${samplerType}.chunks 必须保留 H3_CONTINUUM_CHUNKS 占位符`);
-    if (inputs.chunk_seconds !== "{{H3_CONTINUUM_CHUNK_SECONDS}}") errors.push(`${samplerType}.chunk_seconds 必须保留 H3_CONTINUUM_CHUNK_SECONDS 占位符`);
-    if (inputs.run_storage !== "Save + Auto Resume") errors.push(`${samplerType}.run_storage 必须固定为 Save + Auto Resume`);
-    if (inputs.generation_mode !== "Review Each Chunk") errors.push(`${samplerType}.generation_mode 必须固定为 Review Each Chunk`);
-    if (inputs.prompt_mode !== "Timeline") errors.push(`${samplerType}.prompt_mode 必须固定为 Timeline`);
-    if (inputs.run_name !== "{{H3_CONTINUUM_RUN_NAME}}") errors.push(`${samplerType}.run_name 必须保留 managed run-name 占位符`);
-    if (inputs.project_id !== "{{H3_CONTINUUM_PROJECT_ID}}") errors.push(`${samplerType}.project_id 必须保留 managed project-id 占位符`);
-    if (inputs.review_action !== "{{H3_CONTINUUM_REVIEW_ACTION}}") errors.push(`${samplerType}.review_action 必须保留 review-action 占位符`);
-    if ("initial_state" in inputs) errors.push(`${samplerType} managed workflow 不得包含 initial_state`);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "model", "PathchSageAttentionKJ", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "clip", "CLIPLoader", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "video_vae", "VAELoader", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sampler", "KSamplerSelect", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sigmas", "BasicScheduler", 0);
-    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "first_frame", "LoadImage", 0);
+    if (inputs.sequence_prompt !== "{{PROMPT}}") errors.push(t(uiKeys.workflowChecks.sequencePrompt, { node: samplerType }));
+    if (inputs.chunks !== "{{H3_CONTINUUM_CHUNKS}}") errors.push(t(uiKeys.workflowChecks.chunks, { node: samplerType }));
+    if (inputs.chunk_seconds !== "{{H3_CONTINUUM_CHUNK_SECONDS}}") errors.push(t(uiKeys.workflowChecks.chunkSeconds, { node: samplerType }));
+    if (inputs.run_storage !== "Save + Auto Resume") errors.push(t(uiKeys.workflowChecks.runStorage, { node: samplerType }));
+    if (inputs.generation_mode !== "Review Each Chunk") errors.push(t(uiKeys.workflowChecks.generationMode, { node: samplerType }));
+    if (inputs.prompt_mode !== "Timeline") errors.push(t(uiKeys.workflowChecks.promptMode, { node: samplerType }));
+    if (inputs.run_name !== "{{H3_CONTINUUM_RUN_NAME}}") errors.push(t(uiKeys.workflowChecks.runName, { node: samplerType }));
+    if (inputs.project_id !== "{{H3_CONTINUUM_PROJECT_ID}}") errors.push(t(uiKeys.workflowChecks.projectId, { node: samplerType }));
+    if (inputs.review_action !== "{{H3_CONTINUUM_REVIEW_ACTION}}") errors.push(t(uiKeys.workflowChecks.reviewAction, { node: samplerType }));
+    if ("initial_state" in inputs) errors.push(t(uiKeys.workflowChecks.initialState, { node: samplerType }));
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "model", "PathchSageAttentionKJ", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "clip", "CLIPLoader", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "video_vae", "VAELoader", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sampler", "KSamplerSelect", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "sigmas", "BasicScheduler", 0, t);
+    requireOutputReferenceAtNodeId(errors, nodes, samplerId, samplerType, "first_frame", "LoadImage", 0, t);
   }
   const generatedDecodeId = nodeIdReferencing(nodes, "VAEDecode", "samples", samplerId, 0);
   const audioDecodeId = nodeIdReferencing(nodes, "VAEDecodeAudio", "samples", samplerId, 1);
   const finalizeId = nodeIdsForClass(nodes, "H3ContinuumAssembleSeamV35")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "images", "VAEDecode", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "audio", "VAEDecodeAudio", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "assembly_plan", samplerType, 2);
-  if (!generatedDecodeId) errors.push(`VAEDecode.samples 必须引用 ${samplerType} 的 video latent output 0`);
-  if (!audioDecodeId) errors.push(`VAEDecodeAudio.samples 必须引用 ${samplerType} 的 audio latent output 1`);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "images", "VAEDecode", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "audio", "VAEDecodeAudio", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, finalizeId, "H3ContinuumAssembleSeamV35", "assembly_plan", samplerType, 2, t);
+  if (!generatedDecodeId) errors.push(t(uiKeys.workflowChecks.videoDecode, { node: samplerType }));
+  if (!audioDecodeId) errors.push(t(uiKeys.workflowChecks.audioDecode, { node: samplerType }));
   const receiptId = nodeIdsForClass(nodes, "LocalVideoStudioH3ContinuumManagedReceipt")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, receiptId, "LocalVideoStudioH3ContinuumManagedReceipt", "status", samplerType, 3);
-  requireOutputReferenceAtNodeId(errors, nodes, receiptId, "LocalVideoStudioH3ContinuumManagedReceipt", "assembly_plan", samplerType, 2);
+  requireOutputReferenceAtNodeId(errors, nodes, receiptId, "LocalVideoStudioH3ContinuumManagedReceipt", "status", samplerType, 3, t);
+  requireOutputReferenceAtNodeId(errors, nodes, receiptId, "LocalVideoStudioH3ContinuumManagedReceipt", "assembly_plan", samplerType, 2, t);
   if (receiptId) {
     const receiptInputs = inputsFor(nodes.get(receiptId));
     if (receiptInputs.run_name !== "{{H3_CONTINUUM_RUN_NAME}}" || receiptInputs.project_id !== "{{H3_CONTINUUM_PROJECT_ID}}") {
-      errors.push("managed receipt 必须保留 run/project identity 占位符");
+      errors.push(t(uiKeys.workflowChecks.receiptIdentity));
     }
     if (receiptInputs.requested_chunks !== "{{H3_CONTINUUM_CHUNKS}}" || receiptInputs.generation_mode !== "Review Each Chunk" || receiptInputs.review_action !== "{{H3_CONTINUUM_REVIEW_ACTION}}") {
-      errors.push("managed receipt 必须保留 chunks/review contract");
+      errors.push(t(uiKeys.workflowChecks.receiptReview));
     }
     if (receiptInputs.spectrum_mode !== "{{H3_SPECTRUM_MODE}}" || receiptInputs.spectrum_model_aware_mode !== "{{H3_SPECTRUM_MODEL_AWARE_MODE}}") {
-      errors.push("managed receipt 必须保留 Spectrum 占位符");
+      errors.push(t(uiKeys.workflowChecks.receiptSpectrum));
     }
   }
   const createVideoId = nodeIdsForClass(nodes, "CreateVideo")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "images", "H3ContinuumAssembleSeamV35", 0);
-  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1);
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "images", "H3ContinuumAssembleSeamV35", 0, t);
+  requireOutputReferenceAtNodeId(errors, nodes, createVideoId, "CreateVideo", "audio", "H3ContinuumAssembleSeamV35", 1, t);
   const saveVideoId = nodeIdsForClass(nodes, "SaveVideo")[0];
-  requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0);
+  requireOutputReferenceAtNodeId(errors, nodes, saveVideoId, "SaveVideo", "video", "CreateVideo", 0, t);
 }
 
-function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void {
+function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[],
+  t: Translate = createTranslator().t): void {
   const available = classTypes(nodes);
   if (available.has("MMH3UltimateUpscale")) {
-    addMissingClasses(errors, ULTIMATE_SECOND_PASS_CLASSES, available);
+    addMissingClasses(errors, ULTIMATE_SECOND_PASS_CLASSES, available, t);
     const loadId = nodeIdsForClass(nodes, "LocalVideoStudioH3LoadJointAV")[0];
     if (loadId && inputsFor(nodes.get(loadId)).artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
-      errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+      errors.push(t(uiKeys.workflowChecks.inputPlaceholder));
     }
-    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "latent", "LocalVideoStudioH3LoadJointAV");
-    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "conditioning", "MiniMaxH3ConditioningUpscale");
-    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "latent_upscale_param", "MMH3LatentUpscaleWithModelParams");
-    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "temporal_split_param", "MMH3TemporalSplitParams");
-    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "spatial_split_param", "MMH3SpatialSplitParams");
-    requireInputReference(errors, nodes, "MiniMaxH3ImageToVideo", "vae", "LocalVideoStudioH3RequireGpuVAE");
-    requireInputReference(errors, nodes, "VAEDecode", "vae", "LocalVideoStudioH3RequireGpuVAE");
-    requireInputReference(errors, nodes, "VAEDecodeAudio", "vae", "LocalVideoStudioH3RequireGpuVAE");
-    requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av");
+    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "latent", "LocalVideoStudioH3LoadJointAV", t);
+    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "conditioning", "MiniMaxH3ConditioningUpscale", t);
+    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "latent_upscale_param", "MMH3LatentUpscaleWithModelParams", t);
+    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "temporal_split_param", "MMH3TemporalSplitParams", t);
+    requireInputReference(errors, nodes, "MMH3UltimateUpscale", "spatial_split_param", "MMH3SpatialSplitParams", t);
+    requireInputReference(errors, nodes, "MiniMaxH3ImageToVideo", "vae", "LocalVideoStudioH3RequireGpuVAE", t);
+    requireInputReference(errors, nodes, "VAEDecode", "vae", "LocalVideoStudioH3RequireGpuVAE", t);
+    requireInputReference(errors, nodes, "VAEDecodeAudio", "vae", "LocalVideoStudioH3RequireGpuVAE", t);
+    requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", undefined, t);
     const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
     const filename = serializerId ? inputsFor(nodes.get(serializerId)).filename : undefined;
     if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
-      errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+      errors.push(t(uiKeys.workflowChecks.savePlaceholder));
     }
     return;
   }
-  addMissingClasses(errors, SECOND_PASS_CLASSES, available);
+  addMissingClasses(errors, SECOND_PASS_CLASSES, available, t);
   const upscalerClasses = SECOND_PASS_UPSCALER_CLASSES.filter((classType) => available.has(classType));
   if (upscalerClasses.length !== 1) {
-    errors.push("二采 workflow 必须恰好包含一个 bilinear 或 learned 3D video latent upscaler");
+    errors.push(t(uiKeys.workflowChecks.secondPassUpscaler));
   }
   const upscalerClass = upscalerClasses[0];
 
@@ -829,12 +838,12 @@ function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void
   if (loadId) {
     const artifact = inputsFor(nodes.get(loadId)).artifact;
     if (artifact !== "{{H3_AV_INPUT_ARTIFACT}}") {
-      errors.push("LocalVideoStudioH3LoadJointAV.artifact 必须保留 H3_AV_INPUT_ARTIFACT 占位符");
+      errors.push(t(uiKeys.workflowChecks.inputPlaceholder));
     }
   }
 
   if (available.has("LTXVSeparateAVLatent") && available.has("LocalVideoStudioH3LoadJointAV")) {
-    requireInputReference(errors, nodes, "LTXVSeparateAVLatent", "av_latent", "LocalVideoStudioH3LoadJointAV");
+    requireInputReference(errors, nodes, "LTXVSeparateAVLatent", "av_latent", "LocalVideoStudioH3LoadJointAV", t);
   }
   if (upscalerClass && available.has("LTXVSeparateAVLatent")) {
     requireInputReference(
@@ -842,59 +851,59 @@ function validateSecondPass(nodes: Map<string, ApiNode>, errors: string[]): void
       nodes,
       upscalerClass,
       upscalerClass === "MinimaxH3LatentUpscaler3D" ? "latent" : "samples",
-      "LTXVSeparateAVLatent"
+      "LTXVSeparateAVLatent", t
     );
   }
   if (available.has("LTXVConcatAVLatent") && upscalerClass && available.has("LTXVSeparateAVLatent")) {
-    requireInputReference(errors, nodes, "LTXVConcatAVLatent", "video_latent", upscalerClass);
+    requireInputReference(errors, nodes, "LTXVConcatAVLatent", "video_latent", upscalerClass, t);
     const concatId = nodeIdsForClass(nodes, "LTXVConcatAVLatent")[0];
     const audio = concatId ? inputsFor(nodes.get(concatId)).audio_latent : undefined;
     const separateId = nodeIdsForClass(nodes, "LTXVSeparateAVLatent")[0];
     const separateRef = nodeRef(audio);
     if (!separateRef || separateRef.nodeId !== separateId || separateRef.outputIndex !== 1) {
-      errors.push("LTXVConcatAVLatent.audio_latent 必须引用 LTXVSeparateAVLatent 的 audio 输出");
+      errors.push(t(uiKeys.workflowChecks.audioLatent));
     }
   }
 
   const addNoiseIds = nodeIdsForClass(nodes, "MiniMaxH3AddNoise");
   if (addNoiseIds.length !== 2) {
-    errors.push("二采 workflow 必须恰好包含两个 MiniMaxH3AddNoise（video/audio 各一个）");
+    errors.push(t(uiKeys.workflowChecks.secondPassNoise));
   }
   for (const nodeId of addNoiseIds) {
     const inputs = inputsFor(nodes.get(nodeId));
     for (const name of ["model", "noise", "sigmas", "latent_image"]) {
       if (!refExists(inputs[name], nodes)) {
-        errors.push(`MiniMaxH3AddNoise.${name} 必须引用已存在的 workflow 节点`);
+        errors.push(t(uiKeys.workflowChecks.noiseReference, { input: name }));
       }
     }
   }
   if (available.has("MiniMaxH3ShiftSigmas")) {
-    requireInputReference(errors, nodes, "MiniMaxH3ShiftSigmas", "sigmas", "BasicScheduler");
+    requireInputReference(errors, nodes, "MiniMaxH3ShiftSigmas", "sigmas", "BasicScheduler", t);
   }
   if (available.has("MiniMaxH3ConditioningUpscale") && available.has("MiniMaxH3ImageToVideo")) {
-    requireInputReference(errors, nodes, "MiniMaxH3ConditioningUpscale", "conditioning", "MiniMaxH3ImageToVideo");
+    requireInputReference(errors, nodes, "MiniMaxH3ConditioningUpscale", "conditioning", "MiniMaxH3ImageToVideo", t);
   }
   if (upscalerClass === "MinimaxH3LatentUpscaler3D") {
     if (!available.has("LocalVideoStudioH3AnchorConditioning")) {
-      errors.push("learned 3D 二采 workflow 缺少 LocalVideoStudioH3AnchorConditioning");
+      errors.push(t(uiKeys.workflowChecks.learnedAnchor));
     } else {
-      requireInputReference(errors, nodes, "LocalVideoStudioH3AnchorConditioning", "conditioning", "MiniMaxH3ConditioningUpscale");
-      requireInputReference(errors, nodes, "LocalVideoStudioH3AnchorConditioning", "video_latent", "MinimaxH3LatentUpscaler3D");
-      requireInputReference(errors, nodes, "BasicGuider", "conditioning", "LocalVideoStudioH3AnchorConditioning");
+      requireInputReference(errors, nodes, "LocalVideoStudioH3AnchorConditioning", "conditioning", "MiniMaxH3ConditioningUpscale", t);
+      requireInputReference(errors, nodes, "LocalVideoStudioH3AnchorConditioning", "video_latent", "MinimaxH3LatentUpscaler3D", t);
+      requireInputReference(errors, nodes, "BasicGuider", "conditioning", "LocalVideoStudioH3AnchorConditioning", t);
     }
   }
   if (available.has("SamplerCustomAdvanced") && available.has("DisableNoise") && available.has("LTXVConcatAVLatent")) {
-    requireInputReference(errors, nodes, "SamplerCustomAdvanced", "noise", "DisableNoise");
-    requireInputReference(errors, nodes, "SamplerCustomAdvanced", "latent_image", "LTXVConcatAVLatent");
+    requireInputReference(errors, nodes, "SamplerCustomAdvanced", "noise", "DisableNoise", t);
+    requireInputReference(errors, nodes, "SamplerCustomAdvanced", "latent_image", "LTXVConcatAVLatent", t);
   }
   if (available.has("LocalVideoStudioH3SaveJointAV") && available.has("SamplerCustomAdvanced")) {
-    requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av");
+    requireInputReference(errors, nodes, "LocalVideoStudioH3SaveJointAV", "joint_av", undefined, t);
     const serializerId = nodeIdsForClass(nodes, "LocalVideoStudioH3SaveJointAV")[0];
     const filename = serializerId
       ? inputsFor(nodes.get(serializerId)).filename
       : undefined;
     if (typeof filename !== "string" || !filename.includes("H3_AV_ARTIFACT_FILENAME")) {
-      errors.push("LocalVideoStudioH3SaveJointAV.filename 必须保留 H3_AV_ARTIFACT_FILENAME 占位符");
+      errors.push(t(uiKeys.workflowChecks.savePlaceholder));
     }
   }
 }
@@ -930,21 +939,22 @@ export function h3ComfyAvWorkflowKind(source: unknown): H3ComfyAvWorkflowKind | 
   return classes.has("LocalVideoStudioH3SaveJointAV") ? "first-pass-av" : null;
 }
 
-export function validateH3ComfyWorkflow(source: unknown): H3ComfyWorkflowValidation {
+export function validateH3ComfyWorkflow(source: unknown,
+  t: Translate = createTranslator().t): H3ComfyWorkflowValidation {
   const nodes = graphNodes(source);
   const kind = h3ComfyAvWorkflowKind(source);
   if (!kind) return { valid: true, kind: null, errors: [] };
   const errors: string[] = [];
-  if (kind === "first-pass-av") validateFirstPass(nodes, errors);
-  else if (kind === "continuum-managed-extension") validateContinuumManagedV38(nodes, errors);
+  if (kind === "first-pass-av") validateFirstPass(nodes, errors, t);
+  else if (kind === "continuum-managed-extension") validateContinuumManagedV38(nodes, errors, t);
   else if (kind === "continuum-extension") {
     if (
       classTypes(nodes).has("H3ContinuumSamplerV38") ||
       classTypes(nodes).has("LocalVideoStudioH3ContinuumSamplerV38")
-    ) validateContinuumV38(nodes, errors);
-    else validateContinuum(nodes, errors);
+    ) validateContinuumV38(nodes, errors, t);
+    else validateContinuum(nodes, errors, t);
   }
-  else validateSecondPass(nodes, errors);
+  else validateSecondPass(nodes, errors, t);
   return { valid: errors.length === 0, kind, errors: [...new Set(errors)] };
 }
 

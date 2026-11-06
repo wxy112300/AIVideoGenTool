@@ -14,12 +14,13 @@ import {
 } from "./video-policy.js";
 import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
 import { h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3R2vModel } from "./workflow.js";
+import { isLongVideoDraftActive } from "./long-video/capability.js";
 
 export function normalizeH3FrameSettings(
-  draft: Pick<Draft, "modelId" | "fps" | "frameInterpolation">
+  draft: Pick<Draft, "modelId" | "fps" | "frameInterpolation"> & Partial<Pick<Draft, "longVideoEditor" | "inputMode">>
 ): Pick<Draft, "fps" | "frameInterpolation"> {
   return modelCatalog.isFamily(draft.modelId, "minimax-h3")
-    ? { fps: 24, frameInterpolation: "off" }
+    ? { fps: 24, frameInterpolation: isLongVideoDraftActive(draft) ? draft.frameInterpolation : "off" }
     : { fps: draft.fps, frameInterpolation: draft.frameInterpolation };
 }
 

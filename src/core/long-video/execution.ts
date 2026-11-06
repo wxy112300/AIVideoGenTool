@@ -3,6 +3,7 @@ import { assertContinuumGroupProfile, type ContinuumGroupProfile } from "./group
 import { assertLongVideoLayout } from "./layout.js";
 import { assertLongVideoRunSource, longVideoProfileIdentity, type LongVideoRunSource } from "./run-source.js";
 import { videoPromptForLoras } from "../video-loras.js";
+import { longVideoDeliveryMultiplier, type ContinuumDelivery } from "./delivery.js";
 
 export interface LongVideoExecutionSnapshot {
   schemaVersion: 1;
@@ -29,13 +30,13 @@ export function freezeLongVideoExtension(taskId: string, executionId: string, sc
   return freezeLongVideoExtensionPlan(taskId, executionId, freezeLongVideoScript(script), input);
 }
 
-export function freezeLongVideoExtensionPlan(taskId: string, executionId: string, plan: ReturnType<typeof freezeLongVideoScript>, input: LongVideoRunSource): LongVideoExecutionSnapshot {
+export function freezeLongVideoExtensionPlan(taskId: string, executionId: string, plan: ReturnType<typeof freezeLongVideoScript>, input: LongVideoRunSource, delivery?: ContinuumDelivery): LongVideoExecutionSnapshot {
   const parent = structuredClone(input);
   assertLongVideoRunSource(parent);
   const frozen = structuredClone(plan);
   const snapshot: LongVideoExecutionSnapshot = { schemaVersion: 1, taskId, executionId, parent,
     projectId: parent.receipt.project_id, runName: parent.receipt.run_name, script: frozen,
-    profile: { ...parent.profile, prompts: [...parent.profile.prompts, ...compileLongVideoPrompts(frozen).map(p => videoPromptForLoras(p, parent.profile.h3?.videoLoras))] } };
+    profile: { ...parent.profile, ...(delivery ? { delivery: structuredClone(delivery) } : {}), prompts: [...parent.profile.prompts, ...compileLongVideoPrompts(frozen).map(p => videoPromptForLoras(p, parent.profile.h3?.videoLoras))] } };
   assertLongVideoExecutionSnapshot(snapshot);
   return structuredClone(snapshot);
 }
@@ -66,6 +67,7 @@ export function assertLongVideoExecutionSnapshot(snapshot: LongVideoExecutionSna
 export interface LongVideoMediaEvidence {
   files: Array<{ path: string; bytes: number; sha256: string }>;
   videoFrames: number;
+  videoFps?: number;
   audioContentSamples: number;
   audioSampleRate: number;
   codecPaddingSamples: number;
@@ -74,14 +76,18 @@ export interface LongVideoMediaEvidence {
 
 /** Extend requests new seconds, while the saved movie covers the entire accepted Run. */
 export function longVideoOutputFrames(snapshot: LongVideoExecutionSnapshot): number {
+  return longVideoBaseFrames(snapshot) * longVideoDeliveryMultiplier(snapshot.profile);
+}
+export function longVideoBaseFrames(snapshot: LongVideoExecutionSnapshot): number {
   return snapshot.script.layout.origin === "extend" ? Math.round(snapshot.script.layout.totalChunks * snapshot.profile.chunkSeconds * 24) : snapshot.script.layout.targetFrames;
 }
 
 export function assertLongVideoMediaEvidence(snapshot: LongVideoExecutionSnapshot, evidence: LongVideoMediaEvidence): void {
   const target = longVideoOutputFrames(snapshot);
   if (evidence.fullDecode !== true || !evidence.files.length || evidence.files.some(file => !file.path.trim() || !Number.isSafeInteger(file.bytes) || file.bytes <= 0 || !/^[a-f0-9]{64}$/u.test(file.sha256)) ||
-      !Number.isSafeInteger(evidence.videoFrames) || Math.abs(evidence.videoFrames - target) > 1 ||
+      !Number.isSafeInteger(evidence.videoFrames) || Math.abs(evidence.videoFrames - target) > longVideoDeliveryMultiplier(snapshot.profile) ||
+      ((evidence.videoFps !== undefined || longVideoDeliveryMultiplier(snapshot.profile) > 1) && evidence.videoFps !== 24 * longVideoDeliveryMultiplier(snapshot.profile)) ||
       !Number.isSafeInteger(evidence.audioSampleRate) || evidence.audioSampleRate < 1 ||
-      !Number.isSafeInteger(evidence.audioContentSamples) || Math.abs(evidence.audioContentSamples - Math.round(target * evidence.audioSampleRate / 24)) > 1 ||
+      !Number.isSafeInteger(evidence.audioContentSamples) || Math.abs(evidence.audioContentSamples - Math.round(longVideoBaseFrames(snapshot) * evidence.audioSampleRate / 24)) > 1 ||
       !Number.isSafeInteger(evidence.codecPaddingSamples) || evidence.codecPaddingSamples < 0) throw new Error("Unverified final video/audio evidence");
 }

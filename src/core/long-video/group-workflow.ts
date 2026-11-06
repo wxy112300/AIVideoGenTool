@@ -1,6 +1,7 @@
 import { isContinuumIdentity, type ContinuumGroupRequest } from "./group-checkpoint.js";
 import { applyMiniMaxH3Spectrum, applyVideoLoraStack, applyMiniMaxH3PddSampling, applyMiniMaxH3Ref2vTurboSampling, validateApiWorkflow } from "../workflow.js";
 import { normalizeMiniMaxH3ModelPatchChain } from "../h3-model-patch-workflow.js";
+import { appendContinuumDelivery, type ContinuumDelivery } from "./delivery.js";
 import type { H3SpectrumMode, H3AttentionMode, H3SparseAttentionMode, H3RuntimeMode, H3ComfyCompilerMode, VideoLoraSelection, H3SpectrumModelAwareMode } from "../../types.js";
 
 /** Optional for old Runs: absent retains the original adapter graph exactly. */
@@ -29,6 +30,8 @@ export interface ContinuumGroupProfile {
   firstImage?: string;
   attention: "sage" | "sage-triton" | "comfy-kitchen" | "sdpa";
   h3?: ContinuumH3Options;
+  /** Output-only processing, excluded from the sampling Run identity. */
+  delivery?: ContinuumDelivery;
   /** Absent on older frozen runs means off; never read live settings on resume. */
   spectrumMode?: H3SpectrumMode;
   lora?: { filename: string; strength: number };
@@ -39,11 +42,12 @@ export type ContinuumApiGraph = Record<string, { class_type: string; inputs: Rec
 export function assertContinuumGroupProfile(profile: ContinuumGroupProfile, plannedChunks: number): void {
   if (profile.prompts.length !== plannedChunks || profile.prompts.some(p => !p.trim()) ||
       !Number.isFinite(profile.chunkSeconds) || profile.chunkSeconds < 4 || profile.chunkSeconds > 15 ||
-      ![profile.width, profile.height].every(v => Number.isInteger(v) && v >= 64 && v <= 2048 && v % 16 === 0) ||
+      ![profile.width, profile.height].every(v => Number.isInteger(v) && v >= 32 && v <= 16384 && v % 16 === 0) ||
       !Number.isSafeInteger(profile.seed) || profile.seed < 0 || !Number.isInteger(profile.steps) || profile.steps < 1 || profile.steps > 100 ||
       ![profile.diffusionModel, profile.textEncoder, profile.videoVae, profile.sampler, profile.scheduler].every(v => v.trim()) ||
       !["sage", "sage-triton", "comfy-kitchen", "sdpa"].includes(profile.attention) ||
       (profile.spectrumMode !== undefined && !["off", "balanced"].includes(profile.spectrumMode)) ||
+      (profile.delivery !== undefined && !["off", "rife2x", "rife4x"].includes(profile.delivery.frameInterpolation)) ||
       (profile.lora && (!profile.lora.filename.trim() || !Number.isFinite(profile.lora.strength) || profile.lora.strength < 0 || profile.lora.strength > 2))) {
     throw new Error("Continuum group frozen execution profile invalid");
   }
@@ -135,6 +139,7 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
       videoLoras: task.videoLoras, spectrumEnabled: task.spectrumMode === "balanced", spectrumModelAwareMode: profile.h3.spectrumModelAwareMode });
     applyMiniMaxH3PddSampling(graph, task);
     applyMiniMaxH3Ref2vTurboSampling(graph, task);
+    appendContinuumDelivery(graph, profile, request.planned_chunks);
     return graph;
   }
   if (profile.lora) graph["30"] = { class_type: "LoraLoaderModelOnly", inputs: {
@@ -155,5 +160,6 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     graph["12"].inputs.model = model;
   }
   if (profile.spectrumMode === "balanced") applyMiniMaxH3Spectrum(graph);
+  appendContinuumDelivery(graph, profile, request.planned_chunks);
   return graph;
 }

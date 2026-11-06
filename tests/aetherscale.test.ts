@@ -82,12 +82,12 @@ describe("AetherScale carrier integration contract", () => {
       sourceHeight: 480,
       targetScale: 2,
       aetherScale: defaultAetherScaleOptions(1664, 960)
-    })).toThrow("legacy targetHeight/targetScale/dlss5");
+    })).toThrow("旧版 targetHeight/targetScale/dlss5");
     expect(() => normalizeAetherScaleOptions({
       ...defaultAetherScaleOptions(1664, 960),
       targetWidth: 1665
-    })).toThrow("even");
-    expect(() => aetherScaleOutputGeometry(4096, 2160, "performance_2x")).toThrow("8K boundary");
+    })).toThrow("必须为偶数");
+    expect(() => aetherScaleOutputGeometry(4096, 2160, "performance_2x")).toThrow("8K 边界");
   });
 
   it("validates the pinned v0.5.5 node schema fixture", () => {
@@ -130,6 +130,6 @@ describe("AetherScale carrier integration contract", () => {
       ...taskFor(),
       dlss5: undefined,
       aetherScale: undefined
-    }, "input/source.mp4", AETHERSCALE_V055_OBJECT_INFO)).toThrow("missing its immutable options");
+    }, "input/source.mp4", AETHERSCALE_V055_OBJECT_INFO)).toThrow("缺少不可变的 options 快照");
   });
 });

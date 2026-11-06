@@ -2,6 +2,7 @@ import { createTranslator } from "./i18n.js";
 import type { Translate } from "./i18n.js";
 import { uiKeys } from "./i18n-keys.js";
 import { STRATA_Q4_MODEL, STRATA_Q4_MODEL_ID } from "./catalog/models/strata.js";
+import { isStrataDeepSeek } from "./catalog/models/strata-deepseek.js";
 const GiB = 1024 ** 3;
 export interface StrataResources {
   memoryAvailableBytes: number;
@@ -35,6 +36,19 @@ export function planStrataResources(resources: StrataResources, requestedReserve
     || !total || free! > total) throw new Error(t(uiKeys.strataCore.metricsUnknown));
   const available = ram;
   const reserve = Math.max(5120, Math.ceil(requestedReserveMiB));
+  if (isStrataDeepSeek(options.modelId ?? "")) {
+    const context = options.contextTokens ?? 32768;
+    if (!Number.isSafeInteger(context) || context < 8192 || context > 32768) throw new Error(t(uiKeys.strataService.invalidContext));
+    // Separate from Qwen's 42.9GB arena: bound DeepSeek's host expert store
+    // against BOTH fresh RAM and Windows commit, reserving WDDM + host headroom.
+    const headroomGiB = 8, minimumFreeVramBytes = (reserve / 1024 + 10) * GiB;
+    if (free! < minimumFreeVramBytes) throw new Error(t(uiKeys.strataCore.vram, { required: (minimumFreeVramBytes / GiB).toFixed(1), available: (free! / GiB).toFixed(1) }));
+    const budget = Math.floor(Math.min(138.24e9, ram - headroomGiB * GiB, commit! - total - headroomGiB * GiB) / GiB);
+    if (budget < 8) throw new Error(t(uiKeys.strataCore.fileReadMemory, { required: 16, available: (Math.min(ram, commit! - total) / GiB).toFixed(1) }));
+    return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: reserve,
+      requiredMemoryBytes: (budget + headroomGiB) * GiB, requiredCommitBytes: (budget + headroomGiB) * GiB + total,
+      availableMemoryBytes: ram, minimumFreeVramBytes, headroomGiB };
+  }
   // Dense/native weights, MTP, KV and prefill staging are budgeted separately from reserve.
   const minimumFreeVramBytes = (reserve / 1024 + 15) * GiB;
   if (free! < minimumFreeVramBytes) throw new Error(t(uiKeys.strataCore.vram, { required: (minimumFreeVramBytes / GiB).toFixed(1), available: (free! / GiB).toFixed(1) }));
@@ -94,6 +108,12 @@ export function planStrataResources(resources: StrataResources, requestedReserve
 
 /** Apply only a session overlay; base pack/config identity remains unchanged. */
 export function applyStrataResourcePlan(args: string[], plan: StrataResourcePlan, modelId: string): string[] {
+  if (isStrataDeepSeek(modelId)) {
+    const result = args.filter((arg, index) => arg !== "--ssd-cache" && args[index - 1] !== "--ssd-cache");
+    if (plan.residentBudgetGiB === undefined) throw new Error("DeepSeek: missing host cache budget");
+    result.push("--ssd-cache", String(plan.residentBudgetGiB));
+    return result;
+  }
   const result = args.filter((arg, index) => arg !== "--resident-budget-gib" && args[index - 1] !== "--resident-budget-gib"
     && !(arg === "--resident-experts" && (plan.hostMode === "arena" || modelId === STRATA_Q4_MODEL_ID))
     && !(arg === "--mmap-experts" && modelId === STRATA_Q4_MODEL_ID));

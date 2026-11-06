@@ -93,7 +93,7 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "mmh3-ultimate-upscale": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
   "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: SPECTRUM_RECOMMENDED_VERSION, latestVersion: SPECTRUM_RECOMMENDED_VERSION },
   "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION, latestVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION },
-  "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.10.21", latestVersion: "26.10.21" },
+  "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.10.30", latestVersion: "26.10.30" },
   "comfyui-dlss5": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.2.2", latestVersion: "0.2.2" },
   "comfyui-aetherscale": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "0.5.5", latestVersion: "0.5.5" },
   "h3-optimizations": { versionMode: "release", recommendedVersion: "0.2.20", latestVersion: "0.2.20" }
@@ -164,7 +164,7 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   directoryName: "ComfyUI-GGUF-H3",
   aliases: ["comfyui-gguf-h3"],
   releaseSource: "github-release",
-  installRevision: "61843db580f8549a85b0a1ed850d550079fadfee",
+  installRevision: "da5f435cd9a9e54ad27eed417ed72b1f2543ef41",
   installRevisionPolicy: "recommended",
   nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
   runtimeRequirement: "只注册 H3 专用 loader 名称，与通用 ComfyUI-GGUF 并存；Q3_K 扩散模型仍需 CPU/RAM offload。",

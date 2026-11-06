@@ -1,4 +1,6 @@
 import type { H3PromptMode, VideoLoraSelection } from "../types.js";
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import { inferH3PromptMode } from "./h3-prompt.js";
 import { parseH3Timecode } from "./h3-temporal.js";
 import {
@@ -26,6 +28,7 @@ export interface H3PromptCheckResult {
 }
 
 export interface H3PromptCheckOptions {
+  t?: Translate;
   hasEndImage?: boolean;
   mode?: H3PromptMode;
   hasImageReference?: boolean;
@@ -136,6 +139,7 @@ export function checkH3Prompt(
   promptText: string,
   options: H3PromptCheckOptions = {}
 ): H3PromptCheckResult {
+  const t = options.t ?? createTranslator("zh-CN").t;
   const prompt = promptText.trim();
   const mode = options.mode ?? inferH3PromptMode(
     options.hasImageReference ?? true,
@@ -148,7 +152,7 @@ export function checkH3Prompt(
     if (!missingTriggers.length) continue;
     items.push({
       level: "warning",
-      message: `LoRA「${lora.name}」缺少触发词：${missingTriggers.join("、")}（执行时自动补入）`
+      message: t(uiKeys.h3PromptCheck.loraTriggers, { name: lora.name, triggers: missingTriggers.join(", ") })
     });
   }
   const requiredSections = mode === "R2V" ? r2vSections : baseSections;
@@ -156,19 +160,19 @@ export function checkH3Prompt(
   if (missingSections.length) {
     items.push({
       level: "warning",
-      message: `缺少官方字段：${missingSections.join("、")}`
+      message: t(uiKeys.h3PromptCheck.missingSections, { sections: missingSections.join(", ") })
     });
   }
   if (!sectionsInOrder(prompt, requiredSections)) {
     items.push({
       level: "warning",
-      message: "官方字段顺序不正确；请按固定顺序排列，不要把声音或保留关系段落穿插到时间轴中。"
+      message: t(uiKeys.h3PromptCheck.sectionOrder)
     });
   }
   if (!sectionsInOrder(prompt, requiredSections)) {
     items.push({
       level: "warning",
-      message: "官方字段顺序不正确；请按固定顺序排列，不要把声音或保留关系段落穿插到时间轴中。"
+      message: t(uiKeys.h3PromptCheck.sectionOrder)
     });
   }
 
@@ -176,7 +180,7 @@ export function checkH3Prompt(
   if (!/\[Shot\s+1\]/iu.test(timeline)) {
     items.push({
       level: "warning",
-      message: "主时间轴建议以 [Shot 1] 开始，先锁定初始画面再描述动作。"
+      message: t(uiKeys.h3PromptCheck.firstShot)
     });
   }
 
@@ -184,53 +188,53 @@ export function checkH3Prompt(
     if (/\b(?:contact sheet|sheet cells?|sampled frames?|internal media analysis)\b/iu.test(prompt)) {
       items.push({
         level: "warning",
-        message: "最终提示词泄露了接触表或抽帧等内部分析描述；这些内容不能成为目标镜头。"
+        message: t(uiKeys.h3PromptCheck.internalAnalysis)
       });
     }
     if (/\b(?:contact sheet|sheet cells?|sampled frames?|internal media analysis)\b/iu.test(prompt)) {
       items.push({
         level: "warning",
-        message: "最终提示词泄露了接触表或抽帧等内部分析描述；这些内容不能成为目标镜头。"
+        message: t(uiKeys.h3PromptCheck.internalAnalysis)
       });
     }
     const hasImageReference = options.hasImageReference ?? true;
     if (hasImageReference && !/<(?:Subject|Picture)\s+1>/iu.test(prompt)) {
       items.push({
         level: "warning",
-        message: "R2V 至少需要在提示词中定义或引用 <Subject 1> 或 <Picture 1>"
+        message: t(uiKeys.h3PromptCheck.r2vImage)
       });
     }
     if (options.hasVideoReference && !prompt.includes("<Video 1>")) {
       items.push({
         level: "warning",
-        message: "当前包含参考视频，建议在提示词中明确引用 <Video 1> 并说明它的作用。"
+        message: t(uiKeys.h3PromptCheck.r2vVideo)
       });
     }
     const summary = prompt.match(/summary:\s*([\s\S]*?)(?=\n\s*retention_analysis:|$)/iu)?.[1] ?? "";
     if (!/^\s*\[[^\]]+\]/u.test(summary)) {
       items.push({
         level: "warning",
-        message: "R2V summary 应以 [reference generation] 等官方任务类型前缀开头"
+        message: t(uiKeys.h3PromptCheck.r2vSummary)
       });
     }
     const retention = prompt.match(/retention_analysis:\s*([\s\S]*?)(?=\n\s*detailed_description:|$)/iu)?.[1] ?? "";
     if (!/(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)/iu.test(retention)) {
       items.push({
         level: "warning",
-        message: "R2V retention_analysis 应使用官方保留关系词"
+        message: t(uiKeys.h3PromptCheck.r2vRetention)
       });
     }
   } else if (mode === "T2VA") {
     if (prompt.includes("Picture 1") || prompt.includes("How the reference pictures align")) {
       items.push({
         level: "warning",
-        message: "T2VA 没有参考图，不应生成 Picture 对齐语句"
+        message: t(uiKeys.h3PromptCheck.t2vaAlignment)
       });
     }
     if (!startsWithOfficialInstruction(prompt, mode)) {
       items.push({
         level: "warning",
-        message: "T2VA 的第一个官方字段必须直接位于提示词第一行"
+        message: t(uiKeys.h3PromptCheck.t2vaOpening)
       });
     }
   } else {
@@ -240,31 +244,31 @@ export function checkH3Prompt(
     if (!prompt.includes(alignmentPhrase)) {
       items.push({
         level: "warning",
-        message: `${mode} 尚未检测到官方参考图对齐说明`
+        message: t(uiKeys.h3PromptCheck.missingAlignment, { mode })
       });
     }
     if (!startsWithOfficialInstruction(prompt, mode)) {
       items.push({
         level: "warning",
-        message: `${mode} 的官方参考图对齐说明必须位于提示词第一行`
+        message: t(uiKeys.h3PromptCheck.alignmentOpening, { mode })
       });
     }
     if (mode === "FL2VA" && !prompt.includes("Picture 2")) {
       items.push({
         level: "warning",
-        message: "FL2VA 需要在提示词中说明 Picture 2 的结束状态"
+        message: t(uiKeys.h3PromptCheck.fl2vaEnd)
       });
     }
     if (mode === "I2VA" && prompt.includes("Picture 2")) {
       items.push({
         level: "warning",
-        message: "当前只有首帧，但提示词提到了 Picture 2；请确认是否应该添加尾帧"
+        message: t(uiKeys.h3PromptCheck.i2vaEnd)
       });
     }
     if (mode === "L2VA" && !prompt.includes("Picture 1")) {
       items.push({
         level: "warning",
-        message: "L2VA 需要在提示词中说明 Picture 1 的最终状态"
+        message: t(uiKeys.h3PromptCheck.l2vaEnd)
       });
     }
   }
@@ -273,13 +277,13 @@ export function checkH3Prompt(
     if (!hasSpeakerId(prompt)) {
       items.push({
         level: "warning",
-        message: "检测到对白，但没有稳定说话人 ID，例如 (S1)"
+        message: t(uiKeys.h3PromptCheck.speakerId)
       });
     }
     if (!/<d>\s*\[[^\]\r\n]+\]/u.test(prompt)) {
       items.push({
         level: "warning",
-        message: "对白建议使用 <d>[Chinese] ...</d> 或其它明确语言标签"
+        message: t(uiKeys.h3PromptCheck.dialogueLanguage)
       });
     }
   }
@@ -291,59 +295,59 @@ export function checkH3Prompt(
     if (dialogueValidation.missing.length) {
       items.push({
         level: "warning",
-        message: `有 ${dialogueValidation.missing.length} 条用户对白没有逐字保留，可能被遗漏或翻译`
+        message: t(uiKeys.h3PromptCheck.missingDialogue, { count: dialogueValidation.missing.length })
       });
     }
     if (dialogueValidation.duplicates.length) {
       items.push({
         level: "warning",
-        message: `有 ${dialogueValidation.duplicates.length} 条用户对白被重复输出；请保留每条锁定对白一次`
+        message: t(uiKeys.h3PromptCheck.duplicateDialogue, { count: dialogueValidation.duplicates.length })
       });
     }
     if (dialogueValidation.unexpected.length) {
       items.push({
         level: "warning",
-        message: `检测到 ${dialogueValidation.unexpected.length} 条未在用户输入中出现的对白；请删除模型自行新增的台词`
+        message: t(uiKeys.h3PromptCheck.unexpectedDialogue, { count: dialogueValidation.unexpected.length })
       });
     }
   }
   if (!checkShotTimestamps(prompt)) {
     items.push({
       level: "warning",
-      message: "SHOT 2 及之后的镜头需要递增的 At 00:03.500 时间戳"
+      message: t(uiKeys.h3PromptCheck.shotTimestamps)
     });
   }
   if (firstShotHasTimestamp(prompt)) {
     items.push({
       level: "warning",
-      message: "官方格式要求 [Shot 1] 不添加 At 时间戳"
+      message: t(uiKeys.h3PromptCheck.firstTimestamp)
     });
   }
   const outsideDuration = timestampsOutsideDuration(prompt, options.durationSeconds);
   if (outsideDuration.length) {
     items.push({
       level: "warning",
-      message: `检测到超出视频时长或格式非法的时间戳：${[...new Set(outsideDuration)].join("、")}`
+      message: t(uiKeys.h3PromptCheck.invalidTimestamps, { timestamps: [...new Set(outsideDuration)].join(", ") })
     });
   }
   const soundscape = prompt.match(/overall_soundscape:\s*([\s\S]*?)(?=\n\s*non_diegetic_music:|$)/iu)?.[1] ?? "";
   if (/<d>|\bsays\b|\bdialogue\b/iu.test(soundscape)) {
     items.push({
       level: "warning",
-      message: "overall_soundscape 不应重复放对白；对白应写在 integrated_multimodal_description"
+      message: t(uiKeys.h3PromptCheck.soundscapeDialogue)
     });
   }
   if (sentenceCount(soundscape) > 4) {
     items.push({
       level: "warning",
-      message: "overall_soundscape 按官方指南应控制在 1-4 句"
+      message: t(uiKeys.h3PromptCheck.soundscapeLength)
     });
   }
   const music = prompt.match(/non_diegetic_music:\s*([\s\S]*?)(?=\n\s*(?:subject_definitions:|summary:|retention_analysis:|detailed_description:|integrated_multimodal_description:)|$)/iu)?.[1] ?? "";
   if (sentenceCount(music) > 3) {
     items.push({
       level: "warning",
-      message: "non_diegetic_music 按官方指南应控制在 1-3 句"
+      message: t(uiKeys.h3PromptCheck.musicLength)
     });
   }
 
@@ -353,7 +357,7 @@ export function checkH3Prompt(
     items,
     valid,
     summary: valid
-      ? `${mode} 结构完整 · 官方字段、参考图和音频段落已识别`
-      : `${mode} 检查发现 ${items.length} 项可改进内容`
+      ? t(uiKeys.h3PromptCheck.valid, { mode })
+      : t(uiKeys.h3PromptCheck.review, { mode, count: items.length })
   };
 }

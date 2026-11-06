@@ -1,6 +1,8 @@
 import type { EnhanceRequest } from "../../src/types.js";
 import { isH3NativeStateContinuationRequest } from "../../src/core/h3-auto-prompter.js";
 import { preparePromptExtensionFrame } from "./extension-media.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
 
 function extensionBoundaryContextFor(request: EnhanceRequest): string {
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
@@ -29,10 +31,12 @@ export async function withPromptExtensionMedia<T>(
   operationId: string,
   signal: AbortSignal,
   run: (preparedRequest: EnhanceRequest) => Promise<T>,
-  dependencies: PromptExtensionMediaDependencies = {}
+  dependencies: PromptExtensionMediaDependencies = {},
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<T> {
   if (!request.extensionSource) return run(request);
-  const prepared = await (dependencies.prepareFrame ?? preparePromptExtensionFrame)(
+  const prepareFrame = dependencies.prepareFrame ?? ((source, id, abortSignal) => preparePromptExtensionFrame(source, id, abortSignal, t));
+  const prepared = await prepareFrame(
     request.extensionSource,
     operationId,
     signal

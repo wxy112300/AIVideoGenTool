@@ -11,6 +11,7 @@ import { privateLocalDirectory, writePrivateJson } from "./private-local-state.j
 import { StrataService } from "./strata-service.js";
 import { readReliableStrataResources } from "./strata-resources.js";
 import { planStrataResources, type StrataResources } from "../../src/core/strata-resource-policy.js";
+import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { AgentResourcePressure } from "../../src/core/strata-agent-resources.js";
 import { isLocalPortInUse, localEndpoint } from "./local-service-process.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime } from "./strata-model-preparation.js";
@@ -269,6 +270,7 @@ export class AgentController {
     }
   }
   private async startEngine(preferences: AgentPreferences, signal: AbortSignal, commitTrial = false, contextTokens = 32768) {
+    if (isStrataDeepSeek(preferences.modelId) && contextTokens !== 32768) throw new Error("DeepSeek 接入当前使用 32K 上下文，请在启动选项选择 32K。");
     if (![32768, 65536, 131072, 262144].includes(contextTokens)) throw new Error("上下文档位无效，未加载模型。");
     const started = Date.now();
     if (this.service.snapshot().pid !== null) throw new Error("引擎已由本窗口启动；更改选项前请停止全部。");
@@ -276,6 +278,7 @@ export class AgentController {
     this.log("冻结本次选项并检查独立模式依赖");
     const doctor = await agentDoctor(preferences, this.directory);
     if (!doctor.strata.managedInstalled || !doctor.strata.sourcePresent || !doctor.strata.enginePresent) throw new Error("Strata 运行组件缺失，请检测后安装缺失软件。");
+    if (isStrataDeepSeek(preferences.modelId) && !doctor.strata.deepSeekEnginePresent) throw new Error("DeepSeek 引擎缺失，请使用更新 Strata 安装独立引擎。");
     if (!doctor.models.find((model) => model.id === preferences.modelId)?.available) throw new Error("所选模型文件未齐全，请选择已有共享模型目录；不会下载模型。");
     if (doctor.ports.strataPortBusy) throw new Error(`端口 ${preferences.strataPort} 已占用；未接管或停止任何监听。`);
     const settings = await agentSettings(preferences);

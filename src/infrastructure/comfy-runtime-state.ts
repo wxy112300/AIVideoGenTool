@@ -3,6 +3,8 @@ import type {
   ComfyRuntimePhase,
   ComfyRuntimeState
 } from "../types.js";
+import { createTranslator, type Translate } from "../core/i18n.js";
+import { uiKeys } from "../core/i18n-keys.js";
 
 type RuntimeListener = (state: ComfyRuntimeState) => void;
 
@@ -10,7 +12,7 @@ const initialState = (): ComfyRuntimeState => ({
   phase: "unknown",
   ownership: "unknown",
   endpoint: "",
-  message: "尚未检查 ComfyUI 运行状态。",
+  message: createTranslator("zh-CN").t(uiKeys.comfyObservation.unchecked),
   updatedAt: new Date().toISOString(),
   operationId: 0
 });
@@ -73,7 +75,8 @@ export class ComfyRuntimeStateController {
     reachable: boolean,
     endpoint: string,
     ownership: ComfyRuntimeOwnership = this.state.ownership,
-    taskActive = false
+    taskActive = false,
+    t: Translate = createTranslator("zh-CN").t
   ): ComfyRuntimeState {
     if (["starting", "restarting", "stopping"].includes(this.state.phase)) {
       return this.snapshot();
@@ -84,7 +87,7 @@ export class ComfyRuntimeStateController {
         phase: "ready",
         endpoint,
         ownership,
-        message: "ComfyUI 正在执行任务；接口可能暂时无法响应。"
+        message: t(uiKeys.comfyObservation.taskActive)
       });
       return this.snapshot();
     }
@@ -94,7 +97,7 @@ export class ComfyRuntimeStateController {
         phase: "ready",
         endpoint,
         ownership: ownership === "unknown" || ownership === "none" ? "external" : ownership,
-        message: "ComfyUI 已连接并可用。"
+        message: t(uiKeys.comfyObservation.ready)
       });
     } else {
       this.consecutiveUnreachableChecks += 1;
@@ -107,8 +110,8 @@ export class ComfyRuntimeStateController {
         endpoint,
         ownership,
         message: previouslyObserved && this.consecutiveUnreachableChecks < 2
-          ? "ComfyUI 接口暂时不可用，正在继续检查。"
-          : "ComfyUI 当前未连接。"
+          ? t(uiKeys.comfyObservation.checking)
+          : t(uiKeys.comfyObservation.disconnected)
       });
     }
     return this.snapshot();

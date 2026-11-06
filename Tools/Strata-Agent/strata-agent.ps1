@@ -162,8 +162,11 @@ function Get-Preferences {
 function Update-ModelCapabilities {
   if(!$model.SelectedItem){return}
   $supported=$model.SelectedItem.uncensoredSupported -ne $false
+  $deepSeek=$model.SelectedItem.id -eq 'strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs'
+  if($deepSeek){$context.SelectedIndex=0}
+  $context.Enabled=!$deepSeek
   $uncensored.Enabled=$supported
-  $tips.SetToolTip($uncensored,$(if($supported){'关闭 / 自带 ESP / 社区 sergqwer；更换向量需停止并重启。不放宽文件或 shell 权限，也不保证不会拒答。'}else{'此模型的控制向量兼容性尚未验证，本次以关闭模式运行；原有偏好保留。'}))
+  $tips.SetToolTip($uncensored,$(if($deepSeek){'此模型已在权重中完成 Uncensored 编辑，不使用 Qwen 控制向量。'}elseif($supported){'关闭 / 自带 ESP / 社区 sergqwer；更换向量需停止并重启。不放宽文件或 shell 权限，也不保证不会拒答。'}else{'此模型的控制向量兼容性尚未验证，本次以关闭模式运行；原有偏好保留。'}))
 }
 $model.Add_SelectionChangeCommitted({$script:paths['packConfig'].Text=''; Update-ModelCapabilities})
 function Send-Command($action,$extra=@{}) {

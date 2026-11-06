@@ -249,7 +249,7 @@ export function createQueueWorkspaceCoordinator(
                   : "off"
               }
         : {
-            targetHeight: requireLegacyUpscaleTargetHeight(task.targetHeight)
+            targetHeight: requireLegacyUpscaleTargetHeight(task.targetHeight, deps.context.t)
           }),
       modelId: task.upscaleMode === "h3-native"
         ? "minimax_h3_latent_upscaler"

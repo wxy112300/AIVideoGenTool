@@ -4,6 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionQueueTask, PromptExtensionSource } from "../../src/types.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import type { Translate } from "../../src/core/i18n.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 import {
   extensionContextDuration,
   extensionOutputDimensions,
@@ -46,7 +49,8 @@ function temporaryDirectory(taskId: string): string {
 
 export async function prepareExtensionContext(
   task: ExtensionQueueTask,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<{ filePath: string; cleanup(): Promise<void> }> {
   const directory = temporaryDirectory(task.id);
   await fs.rm(directory, { recursive: true, force: true });
@@ -88,7 +92,7 @@ export async function prepareExtensionContext(
     filePath
   ], signal);
   const stat = await fs.stat(filePath);
-  if (stat.size <= 0) throw new Error("FFmpeg 没有生成可用的续写上下文视频");
+  if (stat.size <= 0) throw new Error(t(uiKeys.extensionMedia.contextMissing));
   return {
     filePath,
     cleanup: () => fs.rm(directory, { recursive: true, force: true })
@@ -97,7 +101,8 @@ export async function prepareExtensionContext(
 
 export async function prepareH3BoundaryFrame(
   task: ExtensionQueueTask,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<{ filePath: string; cleanup(): Promise<void> }> {
   const directory = temporaryDirectory(task.id);
   await fs.rm(directory, { recursive: true, force: true });
@@ -121,7 +126,7 @@ export async function prepareH3BoundaryFrame(
     filePath
   ], signal);
   const stat = await fs.stat(filePath);
-  if (stat.size <= 0) throw new Error("FFmpeg 没有提取出可用的 H3 接续边界帧");
+  if (stat.size <= 0) throw new Error(t(uiKeys.extensionMedia.boundaryMissing));
   return {
     filePath,
     cleanup: () => fs.rm(directory, { recursive: true, force: true })
@@ -131,16 +136,17 @@ export async function prepareH3BoundaryFrame(
 export async function preparePromptExtensionFrame(
   source: PromptExtensionSource,
   operationId: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<{ filePath: string; cleanup(): Promise<void> }> {
-  if (!source.filePath.trim()) throw new Error("续写提示词增强缺少源视频路径");
+  if (!source.filePath.trim()) throw new Error(t(uiKeys.extensionMedia.sourceRequired));
   if (!Number.isFinite(source.trimStartSeconds) ||
       !Number.isFinite(source.trimEndSeconds) ||
       source.trimEndSeconds <= source.trimStartSeconds) {
-    throw new Error("续写提示词增强的裁剪区间无效");
+    throw new Error(t(uiKeys.extensionMedia.invalidTrim));
   }
   const sourceStat = await fs.stat(source.filePath).catch(() => null);
-  if (!sourceStat?.isFile()) throw new Error("续写提示词增强找不到源视频文件");
+  if (!sourceStat?.isFile()) throw new Error(t(uiKeys.extensionMedia.sourceMissing));
   const directory = temporaryDirectory(`prompt-${operationId}`);
   await fs.rm(directory, { recursive: true, force: true });
   await fs.mkdir(directory, { recursive: true });
@@ -148,7 +154,7 @@ export async function preparePromptExtensionFrame(
   try {
     const sourceDuration = await probeVideoDuration(source.filePath, signal);
     if (sourceDuration != null && source.trimStartSeconds >= sourceDuration) {
-      throw new Error("续写提示词增强的裁剪起点已超出源视频时长");
+      throw new Error(t(uiKeys.extensionMedia.trimBeyondEnd));
     }
     const frameTime = promptExtensionFrameTime(source, sourceDuration);
     // Some containers report a duration that is a little later than their
@@ -195,11 +201,11 @@ export async function preparePromptExtensionFrame(
             cleanup: () => fs.rm(directory, { recursive: true, force: true })
           };
         }
-        lastError = new Error(`FFmpeg 未在 ${candidateTime.toFixed(3)} 秒生成边界帧`);
+        lastError = new Error(t(uiKeys.extensionMedia.frameAtTimeMissing, { seconds: candidateTime.toFixed(3) }));
       }
     }
     throw new Error(
-      "FFmpeg 没有提取出可用的续写末帧；请确认源视频包含可解码的视频轨道，且裁剪范围没有超出视频时长。",
+      t(uiKeys.extensionMedia.promptFrameMissing),
       lastError instanceof Error ? { cause: lastError } : undefined
     );
   } catch (error) {
@@ -239,7 +245,8 @@ export function promptExtensionFrameTime(
 
 export async function prepareH3MotionContext(
   task: ExtensionQueueTask,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<{ filePath: string; cleanup(): Promise<void> }> {
   const directory = temporaryDirectory(task.id);
   await fs.rm(directory, { recursive: true, force: true });
@@ -274,7 +281,7 @@ export async function prepareH3MotionContext(
   );
   await run("ffmpeg", args, signal);
   const stat = await fs.stat(filePath);
-  if (stat.size <= 0) throw new Error("FFmpeg 没有生成可用的 H3 运动与音频上下文");
+  if (stat.size <= 0) throw new Error(t(uiKeys.extensionMedia.motionMissing));
   return {
     filePath,
     cleanup: () => fs.rm(directory, { recursive: true, force: true })
@@ -303,7 +310,8 @@ async function hasAudioStream(filename: string, signal: AbortSignal): Promise<bo
 async function requireVideoFrameCount(
   filename: string,
   expectedFrames: number,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const output = await run("ffprobe", [
     "-v", "error",
@@ -316,7 +324,7 @@ async function requireVideoFrameCount(
   const actualFrames = Number.parseInt(output.trim().split(/\s+/u)[0] ?? "", 10);
   if (!Number.isSafeInteger(actualFrames) || actualFrames !== expectedFrames) {
     throw new Error(
-      `Continuum 拼接帧数校验失败：期望 ${expectedFrames} 帧，实际 ${Number.isSafeInteger(actualFrames) ? actualFrames : "无法读取"} 帧。`
+      t(uiKeys.extensionMedia.frameCountMismatch, { expected: expectedFrames, actual: Number.isSafeInteger(actualFrames) ? actualFrames : t(uiKeys.extensionMedia.unreadable) })
     );
   }
 }
@@ -354,7 +362,8 @@ export function continuumExtensionFrameBudget(
 export async function finalizeExtensionOutput(
   task: ExtensionQueueTask,
   generatedPath: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  t: Translate = createNativeTranslator(undefined).t
 ): Promise<void> {
   const directory = temporaryDirectory(`${task.id}-finalize`);
   await fs.rm(directory, { recursive: true, force: true });
@@ -447,7 +456,8 @@ export async function finalizeExtensionOutput(
       await requireVideoFrameCount(
         finalPath,
         frameBudget.totalFrames,
-        signal
+        signal,
+        t
       );
     }
 

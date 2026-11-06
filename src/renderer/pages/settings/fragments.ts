@@ -9,6 +9,7 @@ import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog } from "../../../core/catalog";
 import { imageModelOptionNote } from "../../shared/image-option-label";
+import { localizeModelResourceText, localizeModelScanProfile } from "../../shared/model-profile-labels";
 import { loraLocaleFor } from "../../../core/catalog/loras/locales";
 import { videoLoraDefinition } from "../../../core/video-loras";
 import {
@@ -255,7 +256,7 @@ export function renderSettingsModelScanCard(
   options: SettingsModelScanCardOptions
 ): string {
   const localized = modelCatalog.localized(profile.id, options.locale);
-  if (localized) profile = { ...profile, name: localized.name, badge: localized.badge ?? profile.badge, description: localized.description ?? profile.description };
+  profile = localizeModelScanProfile(profile, options.locale, options.t);
   const missingCount = modelProfileMissingComponentCount(profile);
   const isLoraProfile = profile.category === "lora";
   const loraGuide = isLoraProfile
@@ -336,7 +337,8 @@ export function renderSettingsInstallGuideDialog(
   options: SettingsFragmentRenderOptions
 ): string {
   if (!viewModel.selectedInstallGuide) return "";
-  const { profileName, component } = viewModel.selectedInstallGuide;
+  const { profileName, component: originalComponent } = viewModel.selectedInstallGuide;
+  const component = { ...originalComponent, label: localizeModelResourceText(originalComponent.label, options.t) };
   const guide = component.installGuide;
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);

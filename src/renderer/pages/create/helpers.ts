@@ -15,6 +15,7 @@ import type {
 } from "../../../types";
 import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
+import { isLongVideoDraftActive } from "../../../core/long-video/capability";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import {
@@ -37,7 +38,7 @@ import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
 import { icon } from "../../shared/icons";
-import type { Translate } from "../../../core/i18n";
+import { createTranslator, type Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { h3FrameCountForSeconds, h3MaxDurationForFrameBudget } from "../../../core/h3-temporal";
 import { generationSafetyForTask } from "../../../core/workflow";
@@ -135,6 +136,11 @@ export function interpolationEstimate(draft: Draft): {
   generatedFrames: number;
   outputFrames: number;
 } {
+  if (isLongVideoDraftActive(draft)) {
+    const multiplier = frameInterpolationMultiplier(draft);
+    const frames = draft.longVideoScript?.layout.targetFrames ?? Math.round(draft.duration * 24);
+    return { multiplier, generatedFrames: frames, outputFrames: frames * multiplier };
+  }
   if (isMiniMaxH3Model(draft.modelId)) {
     const normalized = normalizeVideoDraft(draft);
     const plan = h3TemporalPlanForTask({
@@ -155,7 +161,8 @@ export function interpolationEstimate(draft: Draft): {
 }
 
 export function h3TimelineDurationForDraft(draft: Draft): number {
-  return interpolationEstimate(draft).outputFrames / (isMiniMaxH3Model(draft.modelId) ? 24 : draft.fps);
+  const estimate = interpolationEstimate(draft);
+  return estimate.outputFrames / (isMiniMaxH3Model(draft.modelId) ? 24 * estimate.multiplier : draft.fps);
 }
 
 export function extensionSafetyForDraft(draft: Draft, settings: Settings) {
@@ -415,7 +422,8 @@ export function h3PromptCheckMarkup(
     hasImageReference,
     hasVideoReference,
     durationSeconds,
-    videoLoras
+    videoLoras,
+    t: t ?? createTranslator(ui.locale).t
   });
   if (t) return renderH3PromptCheckBadge(result, t);
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">

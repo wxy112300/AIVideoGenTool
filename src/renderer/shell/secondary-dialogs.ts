@@ -20,6 +20,7 @@ import type {
 } from "../../types";
 import type { Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
+import { modelCatalog } from "../../core/catalog";
 import type {
   UpscaleResourceEstimate,
   UpscaleResourceEstimateInput
@@ -132,6 +133,7 @@ export interface UpscaleDialogState {
 }
 
 export interface UpscaleDialogOptions {
+  uiLocale?: Settings["uiLocale"];
   dialog: UpscaleDialogState | null;
   history: ReadonlyArray<HistoryAsset>;
   environment: EnvironmentScanResult | null;
@@ -726,8 +728,8 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   let refinerGeometry: ReturnType<typeof h3RefinerGeometry> | undefined;
   if (refinerSelected) {
     try {
-      refinerGeometry = h3RefinerGeometry(version.width, version.height, legacyTargetHeight);
-      try { validateH3RefinerSource(version.duration, version.fps); }
+      refinerGeometry = h3RefinerGeometry(version.width, version.height, legacyTargetHeight, options.t);
+      try { validateH3RefinerSource(version.duration, version.fps, options.t); }
       catch { refinerError = options.t(uiKeys.upscale.refinerDuration); }
     } catch (error) { refinerError = error instanceof Error ? error.message : String(error); }
   }
@@ -745,7 +747,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
         const mainMode = spec.mode === "performance_2x" || spec.mode === "ultra_performance_3x";
         if (!aetherAdvancedReady && !mainMode) return [];
         try {
-          return [{ spec, geometry: aetherScaleOutputGeometry(version.width, version.height, spec.mode) }];
+          return [{ spec, geometry: aetherScaleOutputGeometry(version.width, version.height, spec.mode, options.t) }];
         } catch {
           return [];
         }
@@ -764,7 +766,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   const konohamaruModeOptions = isKonohamaruSelected
     ? KONOHAMARU_MODE_SPECS.flatMap((spec) => {
         try {
-          return [{ spec, geometry: konohamaruOutputGeometry(version.width, version.height, spec.mode) }];
+          return [{ spec, geometry: konohamaruOutputGeometry(version.width, version.height, spec.mode, options.t) }];
         } catch {
           return [];
         }
@@ -804,7 +806,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
       konohamaruGeometry = konohamaruOutputGeometry(
         version.width,
         version.height,
-        selectedKonohamaruMode
+        selectedKonohamaruMode, options.t
       );
     } catch (error) {
       konohamaruGeometryError = error instanceof Error ? error.message : String(error);
@@ -817,7 +819,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
       aetherGeometry = aetherScaleOutputGeometry(
         version.width,
         version.height,
-        selectedAetherMode
+        selectedAetherMode, options.t
       );
     } catch (error) {
       aetherGeometryError = error instanceof Error ? error.message : String(error);
@@ -828,7 +830,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     : isAetherScaleSelected && aetherGeometry
     ? [aetherGeometry.width, aetherGeometry.height]
     : isDlss5Selected
-      ? dlss5OutputDimensions(version.width, version.height, selectedScale)
+      ? dlss5OutputDimensions(version.width, version.height, selectedScale, options.t)
       : h3Selected
         ? h3NativeUpscaleDimensions(
             version.width,
@@ -875,9 +877,9 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     .filter((profile) => profile.category === "upscale" && supportedIds.has(profile.id))
     .map((profile) => ({
       id: profile.id,
-      name: profile.name,
+      name: modelCatalog.localized(profile.id, options.uiLocale)?.name ?? profile.name,
       available: profile.available
-    })) ?? fallbackProfiles;
+    })) ?? fallbackProfiles.map(profile => ({ ...profile, name: modelCatalog.localized(profile.id, options.uiLocale)?.name ?? profile.name }));
   const profiles: UpscaleModelProfileOption[] = [
     ...pixelProfiles,
     ...(isDlss5Selected ? [{ id: DLSS5_MODEL_ID, name: options.t(uiKeys.upscale.dlss5Name), available: false }] : []),
@@ -886,11 +888,11 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     { id: KONOHAMARU_MODEL_ID, name: options.t(uiKeys.upscale.konohamaruName), available: konohamaruStatus.available }
   ];
   const outputFilename = isKonohamaruSelected
-    ? createKonohamaruUpscaleFilename(version.outputFilename, selectedKonohamaruMode, selectedKonohamaruFrame)
+    ? createKonohamaruUpscaleFilename(version.outputFilename, selectedKonohamaruMode, selectedKonohamaruFrame, options.t)
     : isAetherScaleSelected
-    ? createAetherScaleUpscaleFilename(version.outputFilename, selectedAetherMode)
+    ? createAetherScaleUpscaleFilename(version.outputFilename, selectedAetherMode, options.t)
     : isDlss5Selected
-    ? createDlss5UpscaleFilename(version.outputFilename, selectedScale)
+    ? createDlss5UpscaleFilename(version.outputFilename, selectedScale, options.t)
     : options.createUpscaleFilename(tesseraSelected ? tesseraSourceFilename(version.outputFilename) : refinerSelected ? h3RefinerSourceFilename(version.outputFilename) : version.outputFilename, legacyTargetHeight);
   const supportsTileMode = dialog.modelId === "seedvr2";
   const targetOptions = h3Selected
@@ -938,7 +940,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     : isDlss5Selected
     ? `<div class="upscale-row"><span class="upscale-label">${options.t(uiKeys.upscale.scale)}</span><div class="upscale-resolution upscale-scale-resolution" data-ui-segmented="upscale-scale">
             ${DLSS5_SCALE_VALUES.map((scale) => {
-              const [width, height] = dlss5OutputDimensions(version.width, version.height, scale);
+              const [width, height] = dlss5OutputDimensions(version.width, version.height, scale, options.t);
               return `<button class="${scale === selectedScale ? "primary" : "secondary"}" id="upscale-scale-${scale}" aria-pressed="${scale === selectedScale}" data-upscale-scale="${scale}" aria-label="${scale}× · ${width} × ${height}" title="${width} × ${height}"${busy || !dlss5Status.available ? " disabled" : ""}>${scale}×</button>`;
             }).join("")}
           </div></div>`
@@ -1000,7 +1002,7 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
             ${row(t(uiKeys.history.page.model), `<select id="upscale-model" aria-label="${t(uiKeys.upscale.model)}" ${busy ? "disabled" : ""}>${profiles.map(profile => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select>`)}
             ${targetMarkup}${methodMarkup}
             ${tesseraSelected ? row(t(uiKeys.upscale.tesseraAnchor), `<input type="checkbox" id="upscale-tessera-anchor" aria-label="${t(uiKeys.upscale.tesseraAnchor)}" ${dialog.tesseraAnchorEnabled ? "checked" : ""} ${busy || anchorFrozen || (!dialog.tesseraAnchorEnabled && anchorUnavailable) ? "disabled" : ""}>`)
-              + (dialog.tesseraAnchorEnabled && anchorModels.length ? row(t(uiKeys.upscale.tesseraAnchorModel), `<select id="upscale-tessera-anchor-model" aria-label="${t(uiKeys.upscale.tesseraAnchorModel)}" ${busy || anchorFrozen ? "disabled" : ""}>${anchorModels.map(m => `<option value="${m.modelId}" ${m.modelId === anchorModelId ? "selected" : ""}>${options.escapeHtml(options.environment!.modelProfiles.find(p => p.id === m.modelId)!.name)}</option>`).join("")}</select>`) : "") : ""}
+              + (dialog.tesseraAnchorEnabled && anchorModels.length ? row(t(uiKeys.upscale.tesseraAnchorModel), `<select id="upscale-tessera-anchor-model" aria-label="${t(uiKeys.upscale.tesseraAnchorModel)}" ${busy || anchorFrozen ? "disabled" : ""}>${anchorModels.map(m => `<option value="${m.modelId}" ${m.modelId === anchorModelId ? "selected" : ""}>${options.escapeHtml(modelCatalog.localized(m.modelId, options.uiLocale)?.name ?? options.environment!.modelProfiles.find(p => p.id === m.modelId)!.name)}</option>`).join("")}</select>`) : "") : ""}
             ${tesseraSelected && anchorFrozen ? `<span class="upscale-policy-readonly">${t(uiKeys.upscale.tesseraAnchorFrozen)}</span>` : ""}
           </div>
           ${tesseraSelected && (anchorUnavailable || (dialog.tesseraAnchorEnabled && !anchorScaleOk)) ? `<p class="upscale-warning" role="${anchorError ? "alert" : "status"}">${t(anchorUnavailable ? uiKeys.upscale.tesseraAnchorMissing : uiKeys.upscale.tesseraAnchorScale)}</p>` : ""}

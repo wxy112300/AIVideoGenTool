@@ -300,7 +300,8 @@ export function createCreateWorkspaceCoordinator(
       hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
       hasVideoReference,
       durationSeconds: h3TimelineDurationForDraft(state.draft),
-      videoLoras
+      videoLoras,
+      t: uiText
     });
     element.className = `create-prompt-check ${result.valid ? "valid" : "warning"}`;
     element.dataset.uiTooltip = [result.summary, ...result.items.map(item => item.message)].join("\n");
@@ -1027,7 +1028,7 @@ export function createCreateWorkspaceCoordinator(
     const summary = document.querySelector<HTMLElement>("[data-submit-summary]");
     if (summary) {
       summary.hidden = Boolean(reason);
-      summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · ${(preview ? getState().draft.longVideoScript?.layout.requestedSeconds ?? viewModel.draft.duration : viewModel.draft.duration).toFixed(1)}s · ${viewModel.draft.fps} FPS`;
+summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · ${(preview ? getState().draft.longVideoScript?.layout.requestedSeconds ?? viewModel.draft.duration : viewModel.draft.duration).toFixed(1)}s · ${viewModel.isMiniMaxH3 ? 24 * viewModel.interpolationMultiplier : viewModel.draft.fps} FPS`;
     }
     button.dataset.enqueueBlockReason = reason;
     button.disabled = Boolean(reason) || enqueueBusy;

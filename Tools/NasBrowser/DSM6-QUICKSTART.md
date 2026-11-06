@@ -137,11 +137,14 @@ cat config/config.json
 
 以下命令一次复制执行；每行末尾的反斜杠后不要加空格。保持第 6 步的 SSH 窗口及变量：
 
+先单独执行 `sudo -v` 并完成密码输入，等命令提示符重新出现后，再粘贴下面整段，避免密码提示打断命令。必须保留 `--tmpfs`：只读容器中的 SQLite 需要可写临时目录。
+
 ```sh
 sudo docker run -d \
   --name local-video-studio \
   --restart unless-stopped \
   --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777 \
   --user "$(id -u):$(id -g)" \
   -p 8790:8790 \
   -v "$MEDIA_ROOT:/media:ro" \
@@ -162,6 +165,14 @@ sudo docker logs --tail=80 local-video-studio
 ```
 
 正常应出现 NAS browser listening on port 8790。首次索引/上传未齐可能暂时无法显示全部作品，等 Drive 完成；持续报错时保留日志排查。
+
+再确认临时目录挂载：
+
+```sh
+sudo docker inspect --format 'Tmpfs={{json .HostConfig.Tmpfs}}' local-video-studio
+```
+
+输出应包含 `/tmp` 和 `size=128m`，不能是 `null`。该配置在 NAS/容器重启后仍然有效；以后升级请使用包内 UPDATE.md，不省略可写临时目录，也不删除现有 config/data。
 
 ## 8. 用浏览器打开与日常管理
 

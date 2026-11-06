@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import {
   AETHERSCALE_NODE_REVISION,
   AETHERSCALE_RUNTIME_BUNDLE_ID
@@ -182,9 +184,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function positiveInteger(value: unknown, label: string): number {
+function positiveInteger(value: unknown, label: string,
+  t: Translate = createTranslator().t): number {
   if (!Number.isSafeInteger(value) || Number(value) <= 0) {
-    throw new Error(`${label} must be a positive safe integer`);
+    throw new Error(t(uiKeys.upscaleChecks.positiveInteger, { label: label }));
   }
   return Number(value);
 }
@@ -193,9 +196,10 @@ function evenDimension(value: number): number {
   return Math.max(2, Math.floor(value / 2 + 0.5) * 2);
 }
 
-function modeSpec(mode: unknown): AetherScaleModeSpec {
+function modeSpec(mode: unknown,
+  t: Translate = createTranslator().t): AetherScaleModeSpec {
   const spec = AETHERSCALE_MODE_SPECS.find((candidate) => candidate.mode === mode);
-  if (!spec) throw new Error("AetherScale mode is invalid");
+  if (!spec) throw new Error(t(uiKeys.upscaleChecks.aetherMode));
   return spec;
 }
 
@@ -207,25 +211,27 @@ export function isAetherScaleStyleProfile(value: unknown): value is AetherScaleS
   return value === "faithful" || value === "enhanced";
 }
 
-export function aetherScaleModeSpec(mode: AetherScaleCarrierMode): AetherScaleModeSpec {
-  return modeSpec(mode);
+export function aetherScaleModeSpec(mode: AetherScaleCarrierMode,
+  t: Translate = createTranslator().t): AetherScaleModeSpec {
+  return modeSpec(mode, t);
 }
 
 export function aetherScaleOutputGeometry(
   sourceWidth: unknown,
   sourceHeight: unknown,
-  mode: unknown
+  mode: unknown,
+  t: Translate = createTranslator().t
 ): AetherScaleOutputGeometry {
-  const width = positiveInteger(sourceWidth, "sourceWidth");
-  const height = positiveInteger(sourceHeight, "sourceHeight");
-  const spec = modeSpec(mode);
+  const width = positiveInteger(sourceWidth, "sourceWidth", t);
+  const height = positiveInteger(sourceHeight, "sourceHeight", t);
+  const spec = modeSpec(mode, t);
   const outputWidth = evenDimension(width * spec.factor);
   const outputHeight = evenDimension(height * spec.factor);
   if (!Number.isSafeInteger(outputWidth) || !Number.isSafeInteger(outputHeight)) {
-    throw new Error("AetherScale output dimensions exceed safe integer range");
+    throw new Error(t(uiKeys.upscaleChecks.aetherGeometry));
   }
   if (Math.max(outputWidth, outputHeight) > 7680 || Math.min(outputWidth, outputHeight) > 4320) {
-    throw new Error(`AetherScale carrier output ${outputWidth}x${outputHeight} exceeds the 8K boundary`);
+    throw new Error(t(uiKeys.upscaleChecks.aetherBoundary, { width: outputWidth, height: outputHeight }));
   }
   return {
     width: outputWidth,
@@ -240,9 +246,10 @@ export function defaultAetherScaleOptions(
   targetWidth: number,
   targetHeight: number,
   mode: AetherScaleCarrierMode = AETHERSCALE_DEFAULT_MODE,
-  styleProfile: AetherScaleStyleProfile = AETHERSCALE_DEFAULT_STYLE_PROFILE
+  styleProfile: AetherScaleStyleProfile = AETHERSCALE_DEFAULT_STYLE_PROFILE,
+  t: Translate = createTranslator().t
 ): AetherScaleDlss5Options {
-  const spec = modeSpec(mode);
+  const spec = modeSpec(mode, t);
   return {
     provider: "aetherscale-carrier",
     operation: spec.operation,
@@ -258,38 +265,39 @@ export function defaultAetherScaleOptions(
   };
 }
 
-export function normalizeAetherScaleOptions(value: unknown): AetherScaleDlss5Options {
-  if (!isRecord(value)) throw new Error("AetherScale options must be an object");
+export function normalizeAetherScaleOptions(value: unknown,
+  t: Translate = createTranslator().t): AetherScaleDlss5Options {
+  if (!isRecord(value)) throw new Error(t(uiKeys.upscaleChecks.aetherOptions));
   if (value.provider !== "aetherscale-carrier") {
-    throw new Error("AetherScale provider must be aetherscale-carrier");
+    throw new Error(t(uiKeys.upscaleChecks.aetherProvider));
   }
-  const spec = modeSpec(value.mode);
+  const spec = modeSpec(value.mode, t);
   if (value.operation !== spec.operation) {
-    throw new Error(`AetherScale operation must be ${spec.operation} for ${spec.mode}`);
+    throw new Error(t(uiKeys.upscaleChecks.aetherOperation, { operation: spec.operation, mode: spec.mode }));
   }
   if (!isAetherScaleStyleProfile(value.styleProfile)) {
-    throw new Error("AetherScale styleProfile must be faithful or enhanced");
+    throw new Error(t(uiKeys.upscaleChecks.aetherStyle));
   }
   if (value.motionProfile !== AETHERSCALE_MOTION_PROFILE) {
-    throw new Error(`AetherScale motionProfile must be ${AETHERSCALE_MOTION_PROFILE}`);
+    throw new Error(t(uiKeys.upscaleChecks.aetherMotion, { profile: AETHERSCALE_MOTION_PROFILE }));
   }
   if (value.nodeRevision !== AETHERSCALE_NODE_REVISION) {
-    throw new Error(`AetherScale nodeRevision must be the pinned commit ${AETHERSCALE_NODE_REVISION}`);
+    throw new Error(t(uiKeys.upscaleChecks.aetherRevision, { revision: AETHERSCALE_NODE_REVISION }));
   }
   if (value.runtimeBundleId !== AETHERSCALE_RUNTIME_BUNDLE_ID) {
-    throw new Error(`AetherScale runtimeBundleId must be ${AETHERSCALE_RUNTIME_BUNDLE_ID}`);
+    throw new Error(t(uiKeys.upscaleChecks.aetherBundle, { bundle: AETHERSCALE_RUNTIME_BUNDLE_ID }));
   }
-  const targetWidth = positiveInteger(value.targetWidth, "AetherScale targetWidth");
-  const targetHeight = positiveInteger(value.targetHeight, "AetherScale targetHeight");
+  const targetWidth = positiveInteger(value.targetWidth, "AetherScale targetWidth", t);
+  const targetHeight = positiveInteger(value.targetHeight, "AetherScale targetHeight", t);
   if (targetWidth % 2 !== 0 || targetHeight % 2 !== 0) {
-    throw new Error("AetherScale target dimensions must be even");
+    throw new Error(t(uiKeys.upscaleChecks.aetherEven));
   }
   if (!Number.isSafeInteger(value.warmupFrames) || Number(value.warmupFrames) < 0 || Number(value.warmupFrames) > 240) {
-    throw new Error("AetherScale warmupFrames must be an integer from 0 to 240");
+    throw new Error(t(uiKeys.upscaleChecks.aetherWarmup));
   }
   if (typeof value.sceneCutThreshold !== "number" || !Number.isFinite(value.sceneCutThreshold) ||
       value.sceneCutThreshold < 0.01 || value.sceneCutThreshold > 1) {
-    throw new Error("AetherScale sceneCutThreshold must be between 0.01 and 1");
+    throw new Error(t(uiKeys.upscaleChecks.aetherCut));
   }
   return {
     provider: "aetherscale-carrier",
@@ -307,31 +315,32 @@ export function normalizeAetherScaleOptions(value: unknown): AetherScaleDlss5Opt
 }
 
 export function normalizeAetherScaleTarget(
-  input: AetherScaleTargetInput
+  input: AetherScaleTargetInput,
+  t: Translate = createTranslator().t
 ): NormalizedAetherScaleTarget {
-  if (!isRecord(input)) throw new Error("AetherScale target must be an object");
+  if (!isRecord(input)) throw new Error(t(uiKeys.upscaleChecks.aetherTarget));
   const hasAetherFields = input.aetherScale !== undefined;
   if (input.modelId !== AETHERSCALE_MODEL_ID && hasAetherFields) {
-    throw new Error("AetherScale target fields are only valid for modelId aetherscale-dlss5");
+    throw new Error(t(uiKeys.upscaleChecks.aetherTargetOnly));
   }
   if (input.modelId !== AETHERSCALE_MODEL_ID) {
-    throw new Error("AetherScale target requires modelId aetherscale-dlss5");
+    throw new Error(t(uiKeys.upscaleChecks.aetherTargetModel));
   }
   if (input.targetHeight !== undefined || input.targetScale !== undefined || input.dlss5 !== undefined) {
-    throw new Error("AetherScale targets must not depend on legacy targetHeight/targetScale/dlss5");
+    throw new Error(t(uiKeys.upscaleChecks.aetherTargetLegacy));
   }
-  const sourceWidth = positiveInteger(input.sourceWidth, "sourceWidth");
-  const sourceHeight = positiveInteger(input.sourceHeight, "sourceHeight");
-  const aetherScale = normalizeAetherScaleOptions(input.aetherScale);
-  const geometry = aetherScaleOutputGeometry(sourceWidth, sourceHeight, aetherScale.mode);
+  const sourceWidth = positiveInteger(input.sourceWidth, "sourceWidth", t);
+  const sourceHeight = positiveInteger(input.sourceHeight, "sourceHeight", t);
+  const aetherScale = normalizeAetherScaleOptions(input.aetherScale, t);
+  const geometry = aetherScaleOutputGeometry(sourceWidth, sourceHeight, aetherScale.mode, t);
   if (aetherScale.targetWidth !== geometry.width || aetherScale.targetHeight !== geometry.height) {
-    throw new Error("AetherScale target dimensions do not match the frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.aetherTargetSize));
   }
   if (input.targetWidth !== undefined && input.targetWidth !== geometry.width) {
-    throw new Error("AetherScale task targetWidth does not match its frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.aetherWidth));
   }
   if (input.targetOutputHeight !== undefined && input.targetOutputHeight !== geometry.height) {
-    throw new Error("AetherScale task targetOutputHeight does not match its frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.aetherHeight));
   }
   return {
     provider: "aetherscale-carrier",
@@ -349,9 +358,10 @@ export function normalizeAetherScaleTarget(
 export const normalizeAetherScaleUpscaleOptions = normalizeAetherScaleOptions;
 export const normalizeAetherScaleUpscaleTarget = normalizeAetherScaleTarget;
 
-export function isAetherScaleUpscaleOptions(value: unknown): value is AetherScaleDlss5Options {
+export function isAetherScaleUpscaleOptions(value: unknown,
+  t: Translate = createTranslator().t): value is AetherScaleDlss5Options {
   try {
-    normalizeAetherScaleOptions(value);
+    normalizeAetherScaleOptions(value, t);
     return true;
   } catch {
     return false;
@@ -387,7 +397,8 @@ function checkSchemaInput(
   }
 }
 
-export function validateAetherScaleObjectInfoSchema(objectInfo: unknown): AetherScaleSchemaValidation {
+export function validateAetherScaleObjectInfoSchema(objectInfo: unknown,
+  t: Translate = createTranslator().t): AetherScaleSchemaValidation {
   const missingNodes: string[] = [];
   const missingInputs: string[] = [];
   const invalidInputs: string[] = [];
@@ -423,16 +434,17 @@ export function validateAetherScaleObjectInfoSchema(objectInfo: unknown): Aether
     if (!enumValues(schemaInput(neural, "upscale_mode"))?.includes("performance_2x")) invalidInputs.push("AetherScaleNeuralRendering.upscale_mode");
     if (!Array.isArray(neural.output) || neural.output[0] !== "IMAGE" || neural.output[1] !== "STRING") outputMismatch.push("AetherScaleNeuralRendering.output");
   }
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (missingInputs.length) errors.push(`missing inputs: ${missingInputs.join(", ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join(", ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (missingInputs.length) errors.push(t(uiKeys.upscaleChecks.missingInputs, { inputs: missingInputs.join(", ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join(", ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return { valid: errors.length === 0, missingNodes, missingInputs, invalidInputs, outputMismatch, errors };
 }
 
-export function assertAetherScaleObjectInfoSchema(objectInfo: unknown): void {
-  const result = validateAetherScaleObjectInfoSchema(objectInfo);
-  if (!result.valid) throw new Error(`AetherScale object_info schema mismatch: ${result.errors.join("; ")}`);
+export function assertAetherScaleObjectInfoSchema(objectInfo: unknown,
+  t: Translate = createTranslator().t): void {
+  const result = validateAetherScaleObjectInfoSchema(objectInfo, t);
+  if (!result.valid) throw new Error(t(uiKeys.upscaleChecks.aetherSchema, { errors: result.errors.join("; ") }));
 }
 
 function inputValue(node: AetherScaleApiNode | undefined, name: string): unknown {
@@ -448,18 +460,19 @@ function validateConnection(
   label: string,
   workflow: AetherScaleApiWorkflow,
   invalidEdges: string[],
-  outputArities: Record<string, number>
+  outputArities: Record<string, number>,
+  t: Translate = createTranslator().t
 ): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" ||
       !Number.isSafeInteger(value[1]) || Number(value[1]) < 0) {
-    invalidEdges.push(`${label} is not a valid API connection`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionInvalid, { label: label }));
     return;
   }
   const nodeId = value[0];
   const outputIndex = Number(value[1]);
-  if (!workflow[nodeId]) invalidEdges.push(`${label} references missing node ${nodeId}`);
+  if (!workflow[nodeId]) invalidEdges.push(t(uiKeys.upscaleChecks.connectionMissing, { label: label, node: nodeId }));
   else if (outputArities[nodeId] !== undefined && outputIndex >= outputArities[nodeId]!) {
-    invalidEdges.push(`${label} references ${nodeId}:${outputIndex}, but that output does not exist`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionOutput, { label: label, node: nodeId, index: outputIndex }));
   }
 }
 
@@ -468,16 +481,18 @@ function expectedLiteral(
   nodeId: string,
   inputName: string,
   expected: unknown,
-  invalidInputs: string[]
+  invalidInputs: string[],
+  t: Translate = createTranslator().t
 ): void {
   if (inputValue(workflow[nodeId], inputName) !== expected) {
-    invalidInputs.push(`${nodeId}.${inputName} must be ${JSON.stringify(expected)}`);
+    invalidInputs.push(t(uiKeys.upscaleChecks.literalRequired, { node: nodeId, input: inputName, value: JSON.stringify(expected) }));
   }
 }
 
 export function validateAetherScaleWorkflow(
   workflow: unknown,
-  objectInfo?: unknown
+  objectInfo?: unknown,
+  t: Translate = createTranslator().t
 ): AetherScaleWorkflowValidation {
   const missingNodes: string[] = [];
   const invalidEdges: string[] = [];
@@ -485,7 +500,7 @@ export function validateAetherScaleWorkflow(
   const outputMismatch: string[] = [];
   const errors: string[] = [];
   const graph = isRecord(workflow) ? workflow as AetherScaleApiWorkflow : undefined;
-  if (!graph) errors.push("workflow must be an API-format node graph");
+  if (!graph) errors.push(t(uiKeys.upscaleChecks.apiGraph));
   else {
     const expectedNodes: Record<string, string> = {
       "1": "VHS_LoadVideo",
@@ -496,8 +511,8 @@ export function validateAetherScaleWorkflow(
     for (const [nodeId, classType] of Object.entries(expectedNodes)) {
       const node = graph[nodeId];
       if (!node || !isRecord(node)) missingNodes.push(classType);
-      else if (node.class_type !== classType) invalidInputs.push(`${nodeId}.class_type must be ${classType}`);
-      else if (!isRecord(node.inputs)) invalidInputs.push(`${nodeId}.inputs must be an object`);
+      else if (node.class_type !== classType) invalidInputs.push(t(uiKeys.upscaleChecks.classRequired, { node: nodeId, type: classType }));
+      else if (!isRecord(node.inputs)) invalidInputs.push(t(uiKeys.upscaleChecks.inputsObject, { node: nodeId }));
     }
     for (const nodeType of AETHERSCALE_REQUIRED_WORKFLOW_NODE_TYPES) {
       if (!Object.values(graph).some((node) => isRecord(node) && node.class_type === nodeType)) {
@@ -508,15 +523,15 @@ export function validateAetherScaleWorkflow(
       if (!isRecord(node) || !isRecord(node.inputs)) continue;
       for (const [inputName, value] of Object.entries(node.inputs)) {
         if (Array.isArray(value) && (value.length === 2 || typeof value[0] === "string")) {
-          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, { "1": 4, "2": 3, "3": 2 });
+          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, { "1": 4, "2": 3, "3": 2 }, t);
         }
       }
       if (typeof node.class_type === "string" && AETHERSCALE_FORBIDDEN_WORKFLOW_NODE_TYPES.includes(node.class_type as typeof AETHERSCALE_FORBIDDEN_WORKFLOW_NODE_TYPES[number])) {
-        invalidInputs.push(`${nodeId}.${node.class_type} is not allowed in the production carrier graph`);
+        invalidInputs.push(t(uiKeys.upscaleChecks.aetherForbidden, { node: nodeId, type: node.class_type }));
       }
       if (typeof node.class_type === "string" && node.class_type.startsWith("AetherScale") &&
           !["AetherScaleMotionAnalysis", "AetherScaleNeuralRendering"].includes(node.class_type)) {
-        invalidInputs.push(`${nodeId}.${node.class_type} is not allowed in the production carrier graph`);
+        invalidInputs.push(t(uiKeys.upscaleChecks.aetherForbidden, { node: nodeId, type: node.class_type }));
       }
     }
     const load = graph["1"];
@@ -524,56 +539,56 @@ export function validateAetherScaleWorkflow(
     const neural = graph["3"];
     const combine = graph["4"];
     if (load?.class_type === "VHS_LoadVideo" && isRecord(load.inputs) && !isSafeRelativeComfyPath(inputValue(load, "video"))) {
-      invalidInputs.push("1.video must be a safe uploaded relative path");
+      invalidInputs.push(t(uiKeys.upscaleChecks.dlssVideoPath));
     }
     if (motion?.class_type === "AetherScaleMotionAnalysis" && isRecord(motion.inputs)) {
-      if (!sameConnection(inputValue(motion, "images"), "1", 0)) invalidInputs.push("2.images must use 1:0");
-      expectedLiteral(graph, "2", "engine", "torch_lk", invalidInputs);
-      expectedLiteral(graph, "2", "quality", "balanced", invalidInputs);
-      expectedLiteral(graph, "2", "scene_cut_threshold", AETHERSCALE_DEFAULT_SCENE_CUT_THRESHOLD, invalidInputs);
-      expectedLiteral(graph, "2", "reset_on_scene_cut", true, invalidInputs);
-      expectedLiteral(graph, "2", "output_device", "cpu_safe", invalidInputs);
-      expectedLiteral(graph, "2", "motion_mode", "compact_flow", invalidInputs);
-      expectedLiteral(graph, "2", "analysis_long_edge", 512, invalidInputs);
-      expectedLiteral(graph, "2", "storage_precision", "float16", invalidInputs);
-      expectedLiteral(graph, "2", "preview_frames", 1, invalidInputs);
+      if (!sameConnection(inputValue(motion, "images"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssDepthImages));
+      expectedLiteral(graph, "2", "engine", "torch_lk", invalidInputs, t);
+      expectedLiteral(graph, "2", "quality", "balanced", invalidInputs, t);
+      expectedLiteral(graph, "2", "scene_cut_threshold", AETHERSCALE_DEFAULT_SCENE_CUT_THRESHOLD, invalidInputs, t);
+      expectedLiteral(graph, "2", "reset_on_scene_cut", true, invalidInputs, t);
+      expectedLiteral(graph, "2", "output_device", "cpu_safe", invalidInputs, t);
+      expectedLiteral(graph, "2", "motion_mode", "compact_flow", invalidInputs, t);
+      expectedLiteral(graph, "2", "analysis_long_edge", 512, invalidInputs, t);
+      expectedLiteral(graph, "2", "storage_precision", "float16", invalidInputs, t);
+      expectedLiteral(graph, "2", "preview_frames", 1, invalidInputs, t);
     }
     if (neural?.class_type === "AetherScaleNeuralRendering" && isRecord(neural.inputs)) {
-      if (!sameConnection(inputValue(neural, "images"), "1", 0)) invalidInputs.push("3.images must use 1:0");
-      if (!sameConnection(inputValue(neural, "motion"), "2", 0)) invalidInputs.push("3.motion must use 2:0");
-      expectedLiteral(graph, "3", "backend", "carrier", invalidInputs);
-      expectedLiteral(graph, "3", "motion_source", "connected_motion", invalidInputs);
-      expectedLiteral(graph, "3", "auto_bootstrap", false, invalidInputs);
-      expectedLiteral(graph, "3", "output_device", "cpu_safe", invalidInputs);
-      expectedLiteral(graph, "3", "output_precision", "float16", invalidInputs);
-      expectedLiteral(graph, "3", "output_storage", "auto", invalidInputs);
-      expectedLiteral(graph, "3", "clean_cache", true, invalidInputs);
-      if (!isAetherScaleMode(inputValue(neural, "upscale_mode"))) invalidInputs.push("3.upscale_mode is invalid");
+      if (!sameConnection(inputValue(neural, "images"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.dlssFlowImages));
+      if (!sameConnection(inputValue(neural, "motion"), "2", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.aetherMotionEdge));
+      expectedLiteral(graph, "3", "backend", "carrier", invalidInputs, t);
+      expectedLiteral(graph, "3", "motion_source", "connected_motion", invalidInputs, t);
+      expectedLiteral(graph, "3", "auto_bootstrap", false, invalidInputs, t);
+      expectedLiteral(graph, "3", "output_device", "cpu_safe", invalidInputs, t);
+      expectedLiteral(graph, "3", "output_precision", "float16", invalidInputs, t);
+      expectedLiteral(graph, "3", "output_storage", "auto", invalidInputs, t);
+      expectedLiteral(graph, "3", "clean_cache", true, invalidInputs, t);
+      if (!isAetherScaleMode(inputValue(neural, "upscale_mode"))) invalidInputs.push(t(uiKeys.upscaleChecks.aetherNodeMode));
       if (!isSafeRelativeComfyPath(inputValue(neural, "carrier_gpu")) && inputValue(neural, "carrier_gpu") !== "windows_high_performance") {
-        invalidInputs.push("3.carrier_gpu must use the Windows high-performance selector");
+        invalidInputs.push(t(uiKeys.upscaleChecks.aetherGpu));
       }
     }
     if (combine?.class_type === "VHS_VideoCombine" && isRecord(combine.inputs)) {
-      if (!sameConnection(inputValue(combine, "images"), "3", 0)) invalidInputs.push("4.images must use 3:0");
-      if (!sameConnection(inputValue(combine, "audio"), "1", 2)) invalidInputs.push("4.audio must use 1:2");
+      if (!sameConnection(inputValue(combine, "images"), "3", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.aetherOutputImages));
+      if (!sameConnection(inputValue(combine, "audio"), "1", 2)) invalidInputs.push(t(uiKeys.upscaleChecks.aetherOutputAudio));
       const frameRate = inputValue(combine, "frame_rate");
-      if (typeof frameRate !== "number" || !Number.isFinite(frameRate) || frameRate <= 0) invalidInputs.push("4.frame_rate must be positive");
-      if (!isSafeRelativeComfyPath(inputValue(combine, "filename_prefix"))) invalidInputs.push("4.filename_prefix must be a safe relative output prefix");
-      expectedLiteral(graph, "4", "format", "video/h264-mp4", invalidInputs);
-      expectedLiteral(graph, "4", "save_output", true, invalidInputs);
+      if (typeof frameRate !== "number" || !Number.isFinite(frameRate) || frameRate <= 0) invalidInputs.push(t(uiKeys.upscaleChecks.aetherOutputFps));
+      if (!isSafeRelativeComfyPath(inputValue(combine, "filename_prefix"))) invalidInputs.push(t(uiKeys.upscaleChecks.aetherOutputPrefix));
+      expectedLiteral(graph, "4", "format", "video/h264-mp4", invalidInputs, t);
+      expectedLiteral(graph, "4", "save_output", true, invalidInputs, t);
     }
   }
   if (objectInfo !== undefined) {
-    const schema = validateAetherScaleObjectInfoSchema(objectInfo);
+    const schema = validateAetherScaleObjectInfoSchema(objectInfo, t);
     for (const value of schema.missingNodes) if (!missingNodes.includes(value)) missingNodes.push(value);
     invalidInputs.push(...schema.missingInputs, ...schema.invalidInputs);
     outputMismatch.push(...schema.outputMismatch);
-    if (!schema.valid) errors.push(`object_info schema: ${schema.errors.join("; ")}`);
+    if (!schema.valid) errors.push(t(uiKeys.upscaleChecks.schemaErrors, { errors: schema.errors.join("; ") }));
   }
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (invalidEdges.length) errors.push(`invalid edges: ${invalidEdges.join("; ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join("; ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (invalidEdges.length) errors.push(t(uiKeys.upscaleChecks.invalidEdges, { edges: invalidEdges.join("; ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join("; ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return { valid: errors.length === 0, missingNodes, invalidEdges, invalidInputs, outputMismatch, errors };
 }
 
@@ -584,13 +599,14 @@ function styleForProfile(profile: AetherScaleStyleProfile): "natural" | "materia
 export function buildAetherScaleUpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
-  objectInfo: unknown
+  objectInfo: unknown,
+  t: Translate = createTranslator().t
 ): AetherScaleApiWorkflow {
-  if (task.modelId !== AETHERSCALE_MODEL_ID) throw new Error("AetherScale workflow requires modelId aetherscale-dlss5");
+  if (task.modelId !== AETHERSCALE_MODEL_ID) throw new Error(t(uiKeys.upscaleChecks.aetherWorkflowModel));
   if (task.targetHeight !== undefined || task.targetScale !== undefined || task.dlss5 !== undefined) {
-    throw new Error("AetherScale workflow must not contain HECer or legacy target fields");
+    throw new Error(t(uiKeys.upscaleChecks.aetherWorkflowLegacy));
   }
-  if (!task.aetherScale) throw new Error("AetherScale workflow is missing its immutable options snapshot");
+  if (!task.aetherScale) throw new Error(t(uiKeys.upscaleChecks.aetherSnapshot));
   const target = normalizeAetherScaleTarget({
     modelId: task.modelId,
     sourceWidth: task.sourceWidth,
@@ -598,11 +614,11 @@ export function buildAetherScaleUpscaleWorkflow(
     targetWidth: task.targetWidth,
     targetOutputHeight: task.targetOutputHeight,
     aetherScale: task.aetherScale
-  });
+  }, t);
   if (task.targetWidth !== target.targetWidth || task.targetOutputHeight !== target.targetOutputHeight) {
-    throw new Error("AetherScale task geometry does not match its frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.aetherFrozenSize));
   }
-  assertAetherScaleObjectInfoSchema(objectInfo);
+  assertAetherScaleObjectInfoSchema(objectInfo, t);
   const filenamePrefix = typeof task.outputFilename === "string"
     ? task.outputFilename.replace(/\.mp4$/iu, "")
     : "";
@@ -683,7 +699,7 @@ export function buildAetherScaleUpscaleWorkflow(
       }
     }
   };
-  const validation = validateAetherScaleWorkflow(graph, objectInfo);
-  if (!validation.valid) throw new Error(`AetherScale workflow validation failed: ${validation.errors.join("; ")}`);
+  const validation = validateAetherScaleWorkflow(graph, objectInfo, t);
+  if (!validation.valid) throw new Error(t(uiKeys.upscaleChecks.aetherWorkflowInvalid, { errors: validation.errors.join("; ") }));
   return graph;
 }

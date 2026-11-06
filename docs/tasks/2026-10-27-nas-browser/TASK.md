@@ -1,11 +1,24 @@
 # NAS 独立只读浏览服务
 
-- Status: done（部署包已更新；NAS 现场更新及确认待执行）
+- Status: investigating（新版现场仍停在部署快照；用户要求先分析代码）
 - Updated / Owner: 2026-11-03 / 当前 agent
 - Scope / Authority: 用户要求在 Tools 建立服务；DS418play、DSM 6.2.4、Docker 20.10.3、Drive 单向上传。最新要求：NAS 与普通浏览功能一致，显示收藏/评分/Tag，保留完整筛选排序，唯独禁止修改；排序收进 Filter，PC/NAS 路径独立。
 - Baseline: 0.67.0；大量其他任务 dirty，保留全部。执行 direct，children=0。
 
 ## Resume
+
+- 2026-11-04 安装说明闭环：用户现场重建后 Tmpfs 包含可写 /tmp，healthz ready=true/count=1312/refreshError=false，用户确认新作品出现。按用户“以后照安装说明操作”的要求，首次安装与升级手册明确保留 tmpfs、先单独 sudo -v 防止粘贴被密码打断、重建后 inspect 验证不能为 null、healthz 与持续更新验收；保留 config/data。重新从 HEAD+本次NAS修复/手册隔离构建唯一部署包，15项校验通过，最新SHA256 fdb3fe493097f21265e3fe2de8823e131474c0a62761c5408486fbfc8507eab9，日志 temp/nas-install-docs-package-20261104.log。本轮仅说明更新/打包，未重复无改动的服务测试、未连接NAS或提交推送。
+
+- 2026-11-03 现场定位：ReadonlyRootfs=true、Tmpfs=null，/data 与 /tmp 所在卷仍有 4.3TB；独立 SQLite 探针 FILE 报 disk I/O error / 6410，MEMORY 成功。官方 6410=SQLITE_IOERR_GETTEMPPATH（无合适临时目录），确认缺失可写临时区。加入 temp_store=MEMORY，回滚二次异常不再覆盖原始异常；Compose/首次安装/更新命令均增加上限128MB、mode1777 的 /tmp tmpfs。对现有镜像的修复操作仅重建服务容器增加 tmpfs，保留原镜像、UID和所有实际挂载，不删数据。
+- 聚焦 NAS 两文件23项通过（包含自动回滚I/O错误保真、旧快照保留及同实例恢复），工具 typecheck 通过。按已提交 HEAD+本次四个 NAS 文件隔离重建部署包，15项校验通过，SHA256 bacd6b496424307299ae24806fb6324a63797c77bc9dc17e92c1a8d9578748ce；日志 temp/nas-temp-io-fix-isolated-package.log。未提交/升版/连接NAS或清理索引；实际重建及更新恢复待用户执行命令确认。本轮未运行全应用verify，不把聚焦结果称为全应用通过。
+
+- 2026-11-03 现场开始可调试：用户贴出真实容器日志 `NAS browser listening on port 8790`、`Library refresh: cannot rollback - no transaction is active`。已定位 commit-index.ts 更新事务 catch 无条件执行 ROLLBACK，会覆盖 SQLite 原始异常。现有部署命令 --read-only、Compose read_only=true 且未配置 tmpfs，索引又使用 CREATE TEMP TABLE；可写临时区、/data 写入和空间/inode 是待验证方向，尚不能认定任何一个就是现场根因。先指导只读 inspect/df，不删索引、不重建容器。
+
+- 2026-11-03 新现场失败：新建任务→渲染完成→PC History 可见→视频已同步 NAS（队列仍有未完成任务）；NAS 手动刷新返回 syncPending，PC 普通浏览正常。用户要求先分析代码，不要求现在提供 SSH 日志。只读连接既有 NAS healthz 3 秒超时，未访问/修改 NAS；不重复索要日志，不清库、不假定轮询不存在。
+- 代码已确认定时扫描与 refresh=1 强制扫描均存在，队列是否为空不是导出/索引的显式门槛；syncPending 来自 refreshError=true，提示意味着读入过程失败而非只缺一个前端轮询。下一步补真实 persistVideoHistoryResult + 未完成队列 + PC 自动发布 + 原 NAS SQLite/HTTP 继续更新的精确服务回归，并逐项审查导入失败路径。现场根因未确认，不能再以旧本机通过记录称修复现场。
+- 本轮代码分析结果：新增服务回归调用生产 persistVideoHistoryResult，三任务中连续完成两个且仍有一个未完成/queueRunning=true；无需手动 flush，PC 自动发布，视频先到/指针先到暂退旧快照、完整对象同步后同一 NAS HTTP+SQLite 从 1→2→3 恢复。与既有 NAS 用例合计 22 项通过，日志 temp/nas-running-queue-analysis-canonical-20261103.log；主项目 typecheck 通过。仅测试服务完成后的发布/导入，没有运行 GPU 或声称现场已修复。
+- 精确拒绝点：NasCommitIndex.open 先加载本地 SQLite 的旧已验证数据；refresh 随后读 current→commit→record→text，源目录不可用、缺文件/权限/哈希、libraryId 不符、generation<=已接受代次、SQLite 写入失败均会保留旧数据并令 lastError 非空。server 只向页面返回 refreshError 布尔值，refresh controller/main 将所有这些原因显示成同一 syncPending 提示。因而“永久读取失败或代次/身份冲突”也会被误导为“再等同步”；PC 普通版直接读实时仓库，不能证明 NAS 投影/导入可用。
+- 首次聚焦全文件有一个旧封面用例因临时目录短路径/规范路径不一致触发 File outside library root，新运行中队列回归本身通过；改用独立一致临时根后两文件 22 项全过，未放宽校验或断言。生产路径逻辑、网页和部署包均未修改，不生成一个仅凭推测的“修复包”。未再索要现场日志，保持用户“先分析代码”的范围；具体现场拒绝原因尚无证据。
 
 - 2026-11-03 提交授权：用户要求只提交上传本修复，版本号保持 0.67.5。以 HEAD 5d535d4 为基线隔离 NAS 源码，混合 i18n/Changelog 仅暂存 syncPending 与 NAS 条目，不夹带 Strata/本地化/Tessera 等未完成任务。隔离快照 npm.cmd run verify 完整通过：310 单元文件 / 2996 项、7 集成文件 / 127 项、typechecked 构建及 440 对比度检查，日志 temp/nas-commit-isolated-verify.log。部署包也从该隔离源码重建，15 项逐条校验，最新 SHA-256 为 6ba3973f0970618c4342a338148c9f6ed37e4451a52790ee000ab36678653c18，替换前轮工作区构建包并同步校验文件；行为修复不变，避免将其他任务的编译内容混入交付。打包日志 temp/nas-commit-isolated-package.log。未改 package/lockfile 版本、未创建 Release、未连接 NAS 或操作用户资料。
 

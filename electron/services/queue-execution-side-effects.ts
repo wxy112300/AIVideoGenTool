@@ -31,6 +31,8 @@ import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { persistImageHistoryResult, persistVideoHistoryResult } from "../queue-history.js";
 import { probeVideoOutputDuration } from "./video-output-duration.js";
 import { recoverQueueFailure } from "../queue-recovery.js";
+import { createNativeTranslator } from "../ui-translator.js";
+import { uiKeys } from "../../src/core/i18n-keys.js";
 
 export type QueueIsolationReason = "lora" | "model-change" | "always";
 type VideoQueueTask = Exclude<QueueTask, ImageGenerationQueueTask>;
@@ -113,6 +115,7 @@ export class QueueExecutionSideEffects {
     hasH3VideoLoras: boolean
   ): Promise<void> {
     const { store, updateTask } = this.deps;
+    const t = createNativeTranslator(store.get().settings.uiLocale).t;
     const isolationMode = store.get().settings.queueIsolationMode;
     const reason: QueueIsolationReason | undefined = isolationMode === "always"
       ? "always"
@@ -124,7 +127,7 @@ export class QueueExecutionSideEffects {
     if (!reason) return;
     await updateTask(task.id, {
       progress: 1,
-      stage: "准备队列运行时隔离"
+      stage: t(uiKeys.queueExecution.prepareIsolation)
     });
     const prepared = await this.deps.prepareQueueRuntimeForTask(
       task.id,
@@ -133,11 +136,11 @@ export class QueueExecutionSideEffects {
       reason
     );
     if (!prepared) {
-      throw new Error("ComfyUI 无法建立请求的队列运行时隔离边界");
+      throw new Error(t(uiKeys.queueExecution.isolationFailed));
     }
     this.resetRuntime();
     if (signal.aborted) {
-      throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
+      throw signal.reason instanceof Error ? signal.reason : new Error(t(uiKeys.queueExecution.cancelled));
     }
   }
 
@@ -179,7 +182,7 @@ export class QueueExecutionSideEffects {
       }
       candidate.status = "running";
       candidate.progress = 1;
-      candidate.stage = "准备任务";
+      candidate.stage = createNativeTranslator(next.settings.uiLocale).t(uiKeys.queueExecution.prepareTask);
       candidate.startedAt = new Date().toISOString();
       candidate.error = undefined;
       candidate.vramStallWatchdogMinutesApplied = next.settings.vramStallWatchdogMinutes;
@@ -242,7 +245,7 @@ export class QueueExecutionSideEffects {
     generatedPath: string,
     signal: AbortSignal
   ): Promise<void> {
-    await finalizeExtensionOutput(task, generatedPath, signal);
+    await finalizeExtensionOutput(task, generatedPath, signal, createNativeTranslator(this.deps.store.get().settings.uiLocale).t);
   }
 
   async cleanupSeedVr2Intermediates(paths: string[]): Promise<{ removed: number; failed: number }> {
@@ -268,7 +271,7 @@ export class QueueExecutionSideEffects {
       run.status = "running";
       run.startedAt = runStartedAt;
       run.progress = 1;
-      queued.stage = `生成第 ${run.index + 1} / ${totalRuns} 张`;
+      queued.stage = createNativeTranslator(state.settings.uiLocale).t(uiKeys.queueExecution.generateImage, { index: run.index + 1, total: totalRuns });
     });
     sendState(next);
     return next;

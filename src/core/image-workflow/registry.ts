@@ -74,7 +74,7 @@ export const qwenImageEdit2511Adapter: ImageModelAdapter = {
   ...qwenImageEdit2511Capability,
   compilePrompt: compileQwenImageEditPrompt,
   buildWorkflow: buildQwenImageEdit2511Workflow,
-  validateWorkflow: validateQwenImageEdit2511Workflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateQwenImageEdit2511Workflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -82,7 +82,7 @@ export const qwenImage21Adapter: ImageModelAdapter = {
   ...qwenImage21Capability,
   compilePrompt: compileQwenImage21Prompt,
   buildWorkflow: buildQwenImage21Workflow,
-  validateWorkflow: validateQwenImage21Workflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateQwenImage21Workflow(workflow, quality, allow, t),
   validateRuntimeSchema: validateQwenImage21RuntimeSchema,
   parseOutputs
 };
@@ -91,7 +91,7 @@ export const qwenImage21TurboAdapter: ImageModelAdapter = {
   ...qwenImage21TurboCapability,
   compilePrompt: compileQwenImage21Prompt,
   buildWorkflow: buildQwenImage21TurboWorkflow,
-  validateWorkflow: validateQwenImage21TurboWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateQwenImage21TurboWorkflow(workflow, quality, allow, t),
   validateRuntimeSchema: validateQwenImage21TurboRuntimeSchema,
   parseOutputs
 };
@@ -100,7 +100,7 @@ export const qwenImage21UncensoredGgufAdapter: ImageModelAdapter = {
   ...qwenImage21UncensoredGgufCapability,
   compilePrompt: compileQwenImage21Prompt,
   buildWorkflow: buildQwenImage21GgufWorkflow,
-  validateWorkflow: validateQwenImage21GgufWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateQwenImage21GgufWorkflow(workflow, quality, allow, t),
   validateRuntimeSchema: validateQwenImage21GgufRuntimeSchema,
   parseOutputs
 };
@@ -109,7 +109,7 @@ export const qwenImage21UncensoredGgufQ6Adapter: ImageModelAdapter = {
   ...qwenImage21UncensoredGgufQ6Capability,
   compilePrompt: compileQwenImage21Prompt,
   buildWorkflow: buildQwenImage21GgufQ6Workflow,
-  validateWorkflow: validateQwenImage21GgufQ6Workflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateQwenImage21GgufQ6Workflow(workflow, quality, allow, t),
   validateRuntimeSchema: validateQwenImage21GgufRuntimeSchema,
   parseOutputs
 };
@@ -118,7 +118,7 @@ export const flux2Klein4bAdapter: ImageModelAdapter = {
   ...flux2Klein4bCapability,
   compilePrompt: compileFlux2Klein4bPrompt,
   buildWorkflow: buildFlux2Klein4bWorkflow,
-  validateWorkflow: validateFlux2Klein4bWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateFlux2Klein4bWorkflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -126,7 +126,7 @@ export const zImageAdapter: ImageModelAdapter = {
   ...zImageCapability,
   compilePrompt: compileZImagePrompt,
   buildWorkflow: buildZImageWorkflow,
-  validateWorkflow: validateZImageWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateZImageWorkflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -134,7 +134,7 @@ export const zImageTurboAdapter: ImageModelAdapter = {
   ...zImageTurboCapability,
   compilePrompt: compileZImagePrompt,
   buildWorkflow: buildZImageTurboWorkflow,
-  validateWorkflow: validateZImageTurboWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateZImageTurboWorkflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -142,7 +142,7 @@ export const hidreamO1Adapter: ImageModelAdapter = {
   ...hidreamO1Capability,
   compilePrompt: compileHiDreamO1Prompt,
   buildWorkflow: buildHiDreamO1Workflow,
-  validateWorkflow: validateHiDreamO1Workflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateHiDreamO1Workflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -150,7 +150,7 @@ export const omnigen2Adapter: ImageModelAdapter = {
   ...omnigen2Capability,
   compilePrompt: compileOmniGen2Prompt,
   buildWorkflow: buildOmniGen2Workflow,
-  validateWorkflow: validateOmniGen2Workflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateOmniGen2Workflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -158,7 +158,7 @@ export const lamaInpaintAdapter: ImageModelAdapter = {
   ...lamaInpaintCapability,
   compilePrompt: compileLamaInpaintInput,
   buildWorkflow: buildLamaInpaintWorkflow,
-  validateWorkflow: validateLamaInpaintWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateLamaInpaintWorkflow(workflow, quality, allow, t),
   parseOutputs
 };
 
@@ -166,7 +166,7 @@ export const birefnetBackgroundRemovalAdapter: ImageModelAdapter = {
   ...birefnetBackgroundRemovalCapability,
   compilePrompt: compileBirefnetInput,
   buildWorkflow: buildBirefnetBackgroundRemovalWorkflow,
-  validateWorkflow: validateBirefnetWorkflow,
+  validateWorkflow: (workflow, quality, allow, _recipe, t) => validateBirefnetWorkflow(workflow, quality, allow, t),
   parseOutputs
 };
 

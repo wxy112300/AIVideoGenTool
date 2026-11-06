@@ -1,4 +1,5 @@
 import { createNativeTranslator } from "../ui-translator.js";
+import { localizeNodeRuntimeRequirement } from "../../src/core/catalog/dependencies/localized.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
@@ -784,7 +785,7 @@ export async function scanCustomNodes(
         : [],
       knownBadRanges: definition.knownBadRanges ? [...definition.knownBadRanges] : [],
       duplicateDirectories,
-      runtimeRequirement: definition.runtimeRequirement ?? "",
+      runtimeRequirement: localizeNodeRuntimeRequirement(definition.id, definition.runtimeRequirement ?? "", t),
       bulkInstall: definition.bulkInstall !== false,
       appInstallable: definition.appInstallable !== false,
       updateAvailable

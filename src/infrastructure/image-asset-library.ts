@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createTranslator, type Translate } from "../core/i18n.js";
+import { uiKeys } from "../core/i18n-keys.js";
 import { createReadStream, promises as fs, unlinkSync } from "node:fs";
 import path from "node:path";
 import { setImmediate as yieldToStateUpdates } from "node:timers/promises";
@@ -155,7 +157,8 @@ async function walkImages(directory: string): Promise<string[]> {
 export async function scanImageAssetLibrary(
   state: AppState,
   libraryDirectory: string,
-  report?: ProgressReporter
+  report?: ProgressReporter,
+  t: Translate = createTranslator().t
 ): Promise<ImageAssetLibraryScan> {
   const library = path.resolve(libraryDirectory);
   const handles = referenceHandles(state);
@@ -170,7 +173,7 @@ export async function scanImageAssetLibrary(
 
   for (const sourcePath of unique.values()) {
     current += 1;
-    report?.({ phase: "scanning", current, total: unique.size, message: `正在检查 ${path.basename(sourcePath)}` });
+    report?.({ phase: "scanning", current, total: unique.size, message: t(uiKeys.serviceChecks.assetScanning, { filename: path.basename(sourcePath) }) });
     const stat = await fs.stat(sourcePath).catch(() => null);
     if (!stat?.isFile()) {
       missingReferences.push(sourcePath);
@@ -216,7 +219,7 @@ export async function scanImageAssetLibrary(
   };
 }
 
-async function archiveFile(sourcePath: string, library: string): Promise<{
+async function archiveFile(sourcePath: string, library: string, t: Translate): Promise<{
   absolutePath: string;
   hash: string;
   relativePath: string;
@@ -230,20 +233,20 @@ async function archiveFile(sourcePath: string, library: string): Promise<{
   await fs.mkdir(path.dirname(destination), { recursive: true });
   const existing = await fs.stat(destination).catch(() => null);
   if (existing?.isFile() && await hashImageFile(destination) !== hash) {
-    throw new Error(`素材库中的哈希文件校验失败，请先保留该文件并重新扫描：${destination}`);
+    throw new Error(t(uiKeys.serviceChecks.assetArchiveHash, { path: destination }));
   }
   if (!existing?.isFile()) {
     const temporary = `${destination}.${randomUUID()}.tmp`;
     await fs.copyFile(sourcePath, temporary);
     if (await hashImageFile(temporary) !== hash) {
       await fs.rm(temporary, { force: true });
-      throw new Error(`素材复制校验失败：${sourcePath}`);
+      throw new Error(t(uiKeys.serviceChecks.assetCopyHash, { path: sourcePath }));
     }
     await fs.rename(temporary, destination).catch(async (error: NodeJS.ErrnoException) => {
       if (error.code !== "EEXIST") throw error;
       if (await hashImageFile(destination) !== hash) {
         await fs.rm(temporary, { force: true });
-        throw new Error(`素材归档发生哈希冲突：${destination}`);
+        throw new Error(t(uiKeys.serviceChecks.assetHashConflict, { path: destination }));
       }
       await fs.rm(temporary, { force: true });
     });
@@ -253,7 +256,8 @@ async function archiveFile(sourcePath: string, library: string): Promise<{
 
 export async function archiveImagePaths(
   sourcePaths: readonly string[],
-  libraryDirectory: string
+  libraryDirectory: string,
+  t: Translate = createTranslator().t
 ): Promise<string[]> {
   const library = path.resolve(libraryDirectory);
   await fs.mkdir(library, { recursive: true });
@@ -261,11 +265,11 @@ export async function archiveImagePaths(
   const archivedPaths: string[] = [];
   for (const sourcePath of sourcePaths) {
     const stat = await fs.stat(sourcePath).catch(() => null);
-    if (!stat?.isFile()) throw new Error(`图片素材不存在：${sourcePath}`);
+    if (!stat?.isFile()) throw new Error(t(uiKeys.serviceChecks.assetSourceMissing, { path: sourcePath }));
     const key = normalizedPath(sourcePath);
     let archived = archivedByPath.get(key);
     if (!archived) {
-      archived = await archiveFile(sourcePath, library);
+      archived = await archiveFile(sourcePath, library, t);
       archivedByPath.set(key, archived);
     }
     archivedPaths.push(archived.absolutePath);
@@ -275,7 +279,8 @@ export async function archiveImagePaths(
 
 export async function archiveImageReferences(
   references: ImageReference[],
-  libraryDirectory: string
+  libraryDirectory: string,
+  t: Translate = createTranslator().t
 ): Promise<ImageReference[]> {
   const next = structuredClone(references);
   const library = path.resolve(libraryDirectory);
@@ -284,11 +289,11 @@ export async function archiveImageReferences(
   for (const reference of next) {
     const sourcePath = reference.absolutePath;
     const stat = await fs.stat(sourcePath).catch(() => null);
-    if (!stat?.isFile()) throw new Error(`图片素材不存在：${sourcePath}`);
+    if (!stat?.isFile()) throw new Error(t(uiKeys.serviceChecks.assetSourceMissing, { path: sourcePath }));
     const key = normalizedPath(sourcePath);
     let archived = archivedByPath.get(key);
     if (!archived) {
-      archived = await archiveFile(sourcePath, library);
+      archived = await archiveFile(sourcePath, library, t);
       archivedByPath.set(key, archived);
     }
     if (!reference.originalPath && normalizedPath(sourcePath) !== normalizedPath(archived.absolutePath)) {
@@ -298,11 +303,11 @@ export async function archiveImageReferences(
     reference.contentHash = archived.hash;
     reference.managedRelativePath = archived.relativePath.replaceAll(path.sep, "/");
     if (reference.markup?.renderedPath?.trim()) {
-      const rendered = await archiveFile(reference.markup.renderedPath, library);
+      const rendered = await archiveFile(reference.markup.renderedPath, library, t);
       reference.markup.renderedPath = rendered.absolutePath;
     }
     if (reference.crop?.croppedPath?.trim()) {
-      const cropped = await archiveFile(reference.crop.croppedPath, library);
+      const cropped = await archiveFile(reference.crop.croppedPath, library, t);
       reference.crop.croppedPath = cropped.absolutePath;
     }
   }
@@ -312,7 +317,8 @@ export async function archiveImageReferences(
 export async function organizeImageAssetLibrary(
   state: AppState,
   libraryDirectory: string,
-  report?: ProgressReporter
+  report?: ProgressReporter,
+  t: Translate = createTranslator().t
 ): Promise<{ state: AppState; result: ImageAssetLibraryResult }> {
   const next = structuredClone(state);
   const library = path.resolve(libraryDirectory);
@@ -330,10 +336,10 @@ export async function organizeImageAssetLibrary(
   for (const group of groups.values()) {
     current += 1;
     const sourcePath = group[0]!.path;
-    report?.({ phase: "archiving", current, total: groups.size, message: `正在归档 ${path.basename(sourcePath)}` });
+    report?.({ phase: "archiving", current, total: groups.size, message: t(uiKeys.serviceChecks.assetArchiving, { filename: path.basename(sourcePath) }) });
     const stat = await fs.stat(sourcePath).catch(() => null);
     if (!stat?.isFile()) continue;
-    const archived = await archiveFile(sourcePath, library);
+    const archived = await archiveFile(sourcePath, library, t);
     if (!isPathInsideImageLibrary(library, sourcePath)) archivedFiles += 1;
     else if (normalizedPath(sourcePath) !== normalizedPath(archived.absolutePath)) reorganizedFiles += 1;
     for (const handle of group) {
@@ -341,9 +347,9 @@ export async function organizeImageAssetLibrary(
       updatedReferences += 1;
     }
   }
-  report?.({ phase: "verifying", current: groups.size, total: groups.size, message: "正在校验素材库与历史引用" });
-  const scan = await scanImageAssetLibrary(next, library);
-  report?.({ phase: "committing", current: 1, total: 1, message: "正在保存历史引用" });
+  report?.({ phase: "verifying", current: groups.size, total: groups.size, message: t(uiKeys.serviceChecks.assetVerifying) });
+  const scan = await scanImageAssetLibrary(next, library, undefined, t);
+  report?.({ phase: "committing", current: 1, total: 1, message: t(uiKeys.serviceChecks.assetCommitting) });
   return {
     state: next,
     result: { scan, archivedFiles, reorganizedFiles, updatedReferences, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }
@@ -375,16 +381,17 @@ export async function cleanupImageAssetLibrary(
   libraryDirectory: string,
   requestedPaths: string[],
   report?: ProgressReporter,
-  getCurrentState: () => AppState = () => state
+  getCurrentState: () => AppState = () => state,
+  t: Translate = createTranslator().t
 ): Promise<ImageAssetLibraryResult> {
-  const before = await scanImageAssetLibrary(getCurrentState(), libraryDirectory, report);
+  const before = await scanImageAssetLibrary(getCurrentState(), libraryDirectory, report, t);
   const validOrphans = new Map(before.orphanFiles.map((file) => [normalizedPath(file.absolutePath), file]));
   let cleanedFiles = 0;
   let cleanedBytes = 0;
   let current = 0;
   for (const requested of [...new Set(requestedPaths)]) {
     current += 1;
-    report?.({ phase: "cleaning", current, total: requestedPaths.length, message: `正在清理 ${path.basename(requested)}` });
+    report?.({ phase: "cleaning", current, total: requestedPaths.length, message: t(uiKeys.serviceChecks.assetCleaning, { filename: path.basename(requested) }) });
     const orphan = validOrphans.get(normalizedPath(requested));
     if (!orphan || !isPathInsideImageLibrary(libraryDirectory, orphan.absolutePath)) continue;
     // Let pending IPC/state updates run between files, then make the final
@@ -392,7 +399,7 @@ export async function cleanupImageAssetLibrary(
     // An awaited unlink here would reopen a check/delete race with saveDraft.
     await yieldToStateUpdates();
     const currentState = getCurrentState();
-    if (currentState.queueRunning) throw new Error("队列已开始运行，已停止清理图片素材库。");
+    if (currentState.queueRunning) throw new Error(t(uiKeys.serviceChecks.assetQueueStarted));
     if (referenceHandles(currentState).some(handle => normalizedPath(handle.path) === normalizedPath(orphan.absolutePath))) continue;
     try {
       unlinkSync(orphan.absolutePath);
@@ -404,6 +411,6 @@ export async function cleanupImageAssetLibrary(
     cleanedBytes += orphan.size;
   }
   const cleanedDirectories = await removeEmptySourceDirectories(libraryDirectory);
-  const scan = await scanImageAssetLibrary(getCurrentState(), libraryDirectory);
+  const scan = await scanImageAssetLibrary(getCurrentState(), libraryDirectory, undefined, t);
   return { scan, archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles, cleanedDirectories, cleanedBytes };
 }

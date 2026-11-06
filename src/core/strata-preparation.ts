@@ -1,6 +1,7 @@
 import type { ModelScanProfile, Settings, StrataPreparationStatus, UiLocale } from "../types.js";
 import { QWEN_FLASH_NEXT_MODEL_DIRECTORY, QWEN_FLASH_NEXT_UNSLOTH_DIRECTORY, STRATA_Q4_MODEL_ID, strataModelEntries } from "./catalog/models/strata.js";
 import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
+import { isStrataDeepSeek, STRATA_DEEPSEEK_DIRECTORY } from "./catalog/models/strata-deepseek.js";
 import { strataUncensoredMode } from "./strata-uncensored.js";
 import { normalizeStrataReasoningEffort } from "./strata-reasoning.js";
 
@@ -21,6 +22,8 @@ export function strataModelRoot(
 /** Read old shared downloads in place; new download guides always use strataModelRoot. */
 export function strataProfileModelRoot(root: string, modelId: string): string {
   if (!root) return root;
+  if (isStrataDeepSeek(modelId)) return root.replace(/(?:Qwen3\.8-Flash-Next-(?:GSQ-RCO-)?GGUF|DeepSeek-V4\.1-Flash-1017-Uncensored-GSQ-RCO-GGUF)([\\/]*)$/iu, `${STRATA_DEEPSEEK_DIRECTORY}$1`);
+  root = root.replace(/DeepSeek-V4\.1-Flash-1017-Uncensored-GSQ-RCO-GGUF([\\/]*)$/iu, `${QWEN_FLASH_NEXT_MODEL_DIRECTORY}$1`);
   return modelId === STRATA_Q4_MODEL_ID
     ? root.replace(/Qwen3\.8-Flash-Next-GSQ-RCO-GGUF([\\/]*)$/iu, `${QWEN_FLASH_NEXT_UNSLOTH_DIRECTORY}$1`)
     : root.replace(/Qwen3\.8-Flash-Next-GGUF([\\/]*)$/iu, `${QWEN_FLASH_NEXT_MODEL_DIRECTORY}$1`);
@@ -33,6 +36,7 @@ export function strataModelScanRoots(
 ): string[] {
   const existing = strataModelRoot(settings, resolvedModelDirectory);
   const canonical = strataProfileModelRoot(existing, modelId);
+  if (isStrataDeepSeek(modelId)) return canonical ? [canonical] : [];
   // Standalone discovery can remember the Q4 family folder directly, without
   // a Comfy model root. Its original projector/MTP may still live beside it.
   const sharedOriginal = strataProfileModelRoot(existing, "");
@@ -44,6 +48,10 @@ export function strataModelScanRoots(
 }
 
 /** Software identity is independent of the selected ComfyUI and shared model directory. */
+export function strataModelSoftwareReady(modelId: string, status: StrataPreparationStatus | undefined): boolean {
+  return Boolean(status?.managedInstalled && (!isStrataDeepSeek(modelId) || (status.sourcePresent && status.deepSeekEnginePresent)));
+}
+
 export function strataRuntimeMatchesSettings(
   settings: Pick<Settings, "strataInstallDirectory">,
   status: StrataPreparationStatus | undefined

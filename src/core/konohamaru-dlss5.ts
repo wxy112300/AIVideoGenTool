@@ -1,3 +1,5 @@
+import { createTranslator, type Translate } from "./i18n.js";
+import { uiKeys } from "./i18n-keys.js";
 import type {
   KonohamaruDlss5Mode,
   KonohamaruDlssEngine,
@@ -109,9 +111,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function positiveInteger(value: unknown, label: string): number {
+function positiveInteger(value: unknown, label: string,
+  t: Translate = createTranslator().t): number {
   if (!Number.isSafeInteger(value) || Number(value) <= 0) {
-    throw new Error(`${label} must be a positive safe integer`);
+    throw new Error(t(uiKeys.upscaleChecks.positiveInteger, { label: label }));
   }
   return Number(value);
 }
@@ -120,10 +123,11 @@ function finiteNumberInRange(
   value: unknown,
   label: string,
   minimum: number,
-  maximum: number
+  maximum: number,
+  t: Translate = createTranslator().t
 ): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum) {
-    throw new Error(`${label} must be between ${minimum} and ${maximum}`);
+    throw new Error(t(uiKeys.upscaleChecks.numberRange, { label: label, minimum: minimum, maximum: maximum }));
   }
   return value;
 }
@@ -131,10 +135,11 @@ function finiteNumberInRange(
 function enumValue<T extends string>(
   value: unknown,
   values: readonly T[],
-  label: string
+  label: string,
+  t: Translate = createTranslator().t
 ): T {
   if (typeof value !== "string" || !values.includes(value as T)) {
-    throw new Error(`${label} is invalid`);
+    throw new Error(t(uiKeys.upscaleChecks.enumInvalid, { label: label }));
   }
   return value as T;
 }
@@ -151,9 +156,10 @@ export function isKonohamaruFrameOutputFps(value: unknown): value is KonohamaruF
   return KONOHAMARU_FRAME_FPS_VALUES.includes(value as KonohamaruFrameOutputFps);
 }
 
-export function konohamaruModeSpec(mode: KonohamaruDlss5Mode) {
+export function konohamaruModeSpec(mode: KonohamaruDlss5Mode,
+  t: Translate = createTranslator().t) {
   const spec = KONOHAMARU_MODE_SPECS.find((candidate) => candidate.mode === mode);
-  if (!spec) throw new Error("Konohamaru DLSS5 mode is invalid");
+  if (!spec) throw new Error(t(uiKeys.upscaleChecks.konoMode));
   return spec;
 }
 
@@ -164,17 +170,18 @@ function nearestEven(value: number): number {
 export function konohamaruOutputGeometry(
   sourceWidth: unknown,
   sourceHeight: unknown,
-  mode: unknown
+  mode: unknown,
+  t: Translate = createTranslator().t
 ): KonohamaruOutputGeometry {
-  const width = positiveInteger(sourceWidth, "sourceWidth");
-  const height = positiveInteger(sourceHeight, "sourceHeight");
-  const normalizedMode = enumValue(mode, KONOHAMARU_MODE_SPECS.map((spec) => spec.mode), "Konohamaru mode");
-  const spec = konohamaruModeSpec(normalizedMode);
+  const width = positiveInteger(sourceWidth, "sourceWidth", t);
+  const height = positiveInteger(sourceHeight, "sourceHeight", t);
+  const normalizedMode = enumValue(mode, KONOHAMARU_MODE_SPECS.map((spec) => spec.mode), "Konohamaru mode", t);
+  const spec = konohamaruModeSpec(normalizedMode, t);
   const outputWidth = nearestEven(width * spec.factor);
   const outputHeight = nearestEven(height * spec.factor);
   if (Math.max(outputWidth, outputHeight) > 7680 || Math.min(outputWidth, outputHeight) > 4320) {
     throw new Error(
-      `Konohamaru DLSS5 output ${outputWidth}×${outputHeight} exceeds the supported 7680×4320 boundary`
+      t(uiKeys.upscaleChecks.konoBoundary, { width: outputWidth, height: outputHeight })
     );
   }
   return {
@@ -188,9 +195,10 @@ export function konohamaruOutputGeometry(
 export function konohamaruOutputDimensions(
   sourceWidth: unknown,
   sourceHeight: unknown,
-  mode: unknown
+  mode: unknown,
+  t: Translate = createTranslator().t
 ): [number, number] {
-  const geometry = konohamaruOutputGeometry(sourceWidth, sourceHeight, mode);
+  const geometry = konohamaruOutputGeometry(sourceWidth, sourceHeight, mode, t);
   return [geometry.width, geometry.height];
 }
 
@@ -235,32 +243,33 @@ export function defaultKonohamaruOptions(
   };
 }
 
-export function normalizeKonohamaruOptions(value: unknown): KonohamaruDlss5Options {
-  if (!isRecord(value)) throw new Error("Konohamaru options must be an object");
-  if (value.provider !== "konohamaru") throw new Error("Konohamaru provider must be konohamaru");
-  if (value.operation !== "video-upscale") throw new Error("Konohamaru operation must be video-upscale");
-  const mode = enumValue(value.mode, KONOHAMARU_MODE_SPECS.map((spec) => spec.mode), "Konohamaru mode");
+export function normalizeKonohamaruOptions(value: unknown,
+  t: Translate = createTranslator().t): KonohamaruDlss5Options {
+  if (!isRecord(value)) throw new Error(t(uiKeys.upscaleChecks.konoOptions));
+  if (value.provider !== "konohamaru") throw new Error(t(uiKeys.upscaleChecks.konoProvider));
+  if (value.operation !== "video-upscale") throw new Error(t(uiKeys.upscaleChecks.konoOperation));
+  const mode = enumValue(value.mode, KONOHAMARU_MODE_SPECS.map((spec) => spec.mode), "Konohamaru mode", t);
   if (value.requireNeuralUpscaling !== true) {
-    throw new Error("Konohamaru tasks must require neural upscaling");
+    throw new Error(t(uiKeys.upscaleChecks.konoNeural));
   }
-  const nrPreset = enumValue(value.nrPreset, KONOHAMARU_NR_PRESETS, "Konohamaru NR preset");
-  const nrStyle = enumValue(value.nrStyle, KONOHAMARU_NR_STYLES, "Konohamaru NR style");
-  const dlssModelPreset = enumValue(value.dlssModelPreset, KONOHAMARU_DLSS_MODEL_PRESETS, "Konohamaru DLSS model preset");
-  const nrIntensity = finiteNumberInRange(value.nrIntensity, "Konohamaru NR intensity", 0, 2);
-  const localToneStrength = finiteNumberInRange(value.localToneStrength, "Konohamaru local tone strength", 0, 2);
-  const localStructureStrength = finiteNumberInRange(value.localStructureStrength, "Konohamaru local structure strength", 0, 2);
-  const skinStructureStrength = finiteNumberInRange(value.skinStructureStrength, "Konohamaru skin structure strength", -1, 2);
-  const outputDetailStrength = finiteNumberInRange(value.outputDetailStrength, "Konohamaru output detail strength", 1, 2);
-  if (typeof value.automaticMask !== "boolean") throw new Error("Konohamaru automatic mask must be boolean");
-  if (!isRecord(value.frameInterpolation)) throw new Error("Konohamaru frame interpolation options are missing");
+  const nrPreset = enumValue(value.nrPreset, KONOHAMARU_NR_PRESETS, "Konohamaru NR preset", t);
+  const nrStyle = enumValue(value.nrStyle, KONOHAMARU_NR_STYLES, "Konohamaru NR style", t);
+  const dlssModelPreset = enumValue(value.dlssModelPreset, KONOHAMARU_DLSS_MODEL_PRESETS, "Konohamaru DLSS model preset", t);
+  const nrIntensity = finiteNumberInRange(value.nrIntensity, "Konohamaru NR intensity", 0, 2, t);
+  const localToneStrength = finiteNumberInRange(value.localToneStrength, "Konohamaru local tone strength", 0, 2, t);
+  const localStructureStrength = finiteNumberInRange(value.localStructureStrength, "Konohamaru local structure strength", 0, 2, t);
+  const skinStructureStrength = finiteNumberInRange(value.skinStructureStrength, "Konohamaru skin structure strength", -1, 2, t);
+  const outputDetailStrength = finiteNumberInRange(value.outputDetailStrength, "Konohamaru output detail strength", 1, 2, t);
+  if (typeof value.automaticMask !== "boolean") throw new Error(t(uiKeys.upscaleChecks.konoMask));
+  if (!isRecord(value.frameInterpolation)) throw new Error(t(uiKeys.upscaleChecks.konoInterpolation));
   if (typeof value.frameInterpolation.enabled !== "boolean") {
-    throw new Error("Konohamaru frame interpolation enabled must be boolean");
+    throw new Error(t(uiKeys.upscaleChecks.konoInterpolationEnabled));
   }
   const outputFps = value.frameInterpolation.outputFps;
-  if (!isKonohamaruFrameOutputFps(outputFps)) throw new Error("Konohamaru output FPS must be 60 or 120");
-  const dlssEngine = enumValue(value.frameInterpolation.dlssEngine, KONOHAMARU_DLSS_ENGINES, "Konohamaru DLSS engine");
+  if (!isKonohamaruFrameOutputFps(outputFps)) throw new Error(t(uiKeys.upscaleChecks.konoFps));
+  const dlssEngine = enumValue(value.frameInterpolation.dlssEngine, KONOHAMARU_DLSS_ENGINES, "Konohamaru DLSS engine", t);
   if (value.nodeRevision !== KONOHAMARU_NODE_REVISION) {
-    throw new Error(`Konohamaru nodeRevision must be ${KONOHAMARU_NODE_REVISION}`);
+    throw new Error(t(uiKeys.upscaleChecks.konoRevision, { revision: KONOHAMARU_NODE_REVISION }));
   }
   const runtimeBundleId = value.runtimeBundleId === KONOHAMARU_RUNTIME_BUNDLE_ID
     ? KONOHAMARU_RUNTIME_BUNDLE_ID
@@ -271,7 +280,7 @@ export function normalizeKonohamaruOptions(value: unknown): KonohamaruDlss5Optio
       : null;
   if (!runtimeBundleId) {
     throw new Error(
-      `Konohamaru runtimeBundleId must be ${KONOHAMARU_RUNTIME_BUNDLE_ID}, ${KONOHAMARU_NEURAL_UPSTREAM_RUNTIME_BUNDLE_ID} or the legacy ${KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID}`
+      t(uiKeys.upscaleChecks.konoBundle, { current: KONOHAMARU_RUNTIME_BUNDLE_ID, previous: KONOHAMARU_NEURAL_UPSTREAM_RUNTIME_BUNDLE_ID, legacy: KONOHAMARU_LEGACY_RUNTIME_BUNDLE_ID })
     );
   }
   return {
@@ -300,24 +309,25 @@ export function normalizeKonohamaruOptions(value: unknown): KonohamaruDlss5Optio
 
 export const normalizeKonohamaruDlss5Options = normalizeKonohamaruOptions;
 
-export function normalizeKonohamaruTarget(input: KonohamaruTargetInput): NormalizedKonohamaruTarget {
-  if (!isRecord(input)) throw new Error("Konohamaru target must be an object");
-  if (input.modelId !== KONOHAMARU_MODEL_ID) throw new Error("Konohamaru target requires modelId dlss5-konohamaru");
+export function normalizeKonohamaruTarget(input: KonohamaruTargetInput,
+  t: Translate = createTranslator().t): NormalizedKonohamaruTarget {
+  if (!isRecord(input)) throw new Error(t(uiKeys.upscaleChecks.konoTarget));
+  if (input.modelId !== KONOHAMARU_MODEL_ID) throw new Error(t(uiKeys.upscaleChecks.konoTargetModel));
   if (input.targetHeight !== undefined || input.targetScale !== undefined || input.dlss5 !== undefined || input.aetherScale !== undefined) {
-    throw new Error("Konohamaru targets must not use legacy, HECer or AetherScale fields");
+    throw new Error(t(uiKeys.upscaleChecks.konoTargetLegacy));
   }
-  const sourceWidth = positiveInteger(input.sourceWidth, "sourceWidth");
-  const sourceHeight = positiveInteger(input.sourceHeight, "sourceHeight");
-  const options = normalizeKonohamaruOptions(input.konohamaru);
-  const geometry = konohamaruOutputGeometry(sourceWidth, sourceHeight, options.mode);
+  const sourceWidth = positiveInteger(input.sourceWidth, "sourceWidth", t);
+  const sourceHeight = positiveInteger(input.sourceHeight, "sourceHeight", t);
+  const options = normalizeKonohamaruOptions(input.konohamaru, t);
+  const geometry = konohamaruOutputGeometry(sourceWidth, sourceHeight, options.mode, t);
   const targetWidth = input.targetWidth === undefined
     ? geometry.width
-    : positiveInteger(input.targetWidth, "targetWidth");
+    : positiveInteger(input.targetWidth, "targetWidth", t);
   const targetOutputHeight = input.targetOutputHeight === undefined
     ? geometry.height
-    : positiveInteger(input.targetOutputHeight, "targetOutputHeight");
+    : positiveInteger(input.targetOutputHeight, "targetOutputHeight", t);
   if (targetWidth !== geometry.width || targetOutputHeight !== geometry.height) {
-    throw new Error("Konohamaru target dimensions do not match the frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.konoTargetSize));
   }
   return {
     provider: "konohamaru",
@@ -457,7 +467,8 @@ function validateFrameInterpolationSchema(
 
 export function validateKonohamaruObjectInfoSchema(
   objectInfo: unknown,
-  options: { frameInterpolation?: boolean } = {}
+  options: { frameInterpolation?: boolean } = {},
+  t: Translate = createTranslator().t
 ): KonohamaruSchemaValidation {
   const missingNodes: string[] = [];
   const missingInputs: string[] = [];
@@ -483,10 +494,10 @@ export function validateKonohamaruObjectInfoSchema(
       outputMismatch
     );
   }
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (missingInputs.length) errors.push(`missing inputs: ${missingInputs.join(", ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join(", ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (missingInputs.length) errors.push(t(uiKeys.upscaleChecks.missingInputs, { inputs: missingInputs.join(", ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join(", ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return {
     valid: errors.length === 0,
     missingNodes,
@@ -499,11 +510,12 @@ export function validateKonohamaruObjectInfoSchema(
 
 export function assertKonohamaruObjectInfoSchema(
   objectInfo: unknown,
-  options: { frameInterpolation?: boolean } = {}
+  options: { frameInterpolation?: boolean } = {},
+  t: Translate = createTranslator().t
 ): void {
-  const result = validateKonohamaruObjectInfoSchema(objectInfo, options);
+  const result = validateKonohamaruObjectInfoSchema(objectInfo, options, t);
   if (!result.valid) {
-    throw new Error(`Konohamaru DLSS5 object_info schema mismatch: ${result.errors.join("; ")}`);
+    throw new Error(t(uiKeys.upscaleChecks.konoSchema, { errors: result.errors.join("; ") }));
   }
 }
 
@@ -516,18 +528,19 @@ function validateConnection(
   label: string,
   workflow: KonohamaruApiWorkflow,
   invalidEdges: string[],
-  outputArities: Record<string, number>
+  outputArities: Record<string, number>,
+  t: Translate = createTranslator().t
 ): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" ||
       !Number.isSafeInteger(value[1]) || Number(value[1]) < 0) {
-    invalidEdges.push(`${label} is not a valid API connection`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.connectionInvalid, { label: label }));
     return;
   }
   const nodeId = value[0];
   const outputIndex = Number(value[1]);
-  if (!workflow[nodeId]) invalidEdges.push(`${label} references missing node ${nodeId}`);
+  if (!workflow[nodeId]) invalidEdges.push(t(uiKeys.upscaleChecks.connectionMissing, { label: label, node: nodeId }));
   else if (outputArities[nodeId] !== undefined && outputIndex >= outputArities[nodeId]!) {
-    invalidEdges.push(`${label} references an unavailable output`);
+    invalidEdges.push(t(uiKeys.upscaleChecks.outputUnavailable, { label: label }));
   }
 }
 
@@ -540,16 +553,18 @@ function expectedLiteral(
   nodeId: string,
   inputName: string,
   expected: unknown,
-  invalidInputs: string[]
+  invalidInputs: string[],
+  t: Translate = createTranslator().t
 ): void {
   if (inputValueForNode(workflow[nodeId], inputName) !== expected) {
-    invalidInputs.push(`${nodeId}.${inputName} must be ${JSON.stringify(expected)}`);
+    invalidInputs.push(t(uiKeys.upscaleChecks.literalRequired, { node: nodeId, input: inputName, value: JSON.stringify(expected) }));
   }
 }
 
 export function validateKonohamaruWorkflow(
   workflow: unknown,
-  objectInfo?: unknown
+  objectInfo?: unknown,
+  t: Translate = createTranslator().t
 ): KonohamaruWorkflowValidation {
   const missingNodes: string[] = [];
   const invalidEdges: string[] = [];
@@ -558,7 +573,7 @@ export function validateKonohamaruWorkflow(
   const errors: string[] = [];
   const graph = isRecord(workflow) ? workflow as KonohamaruApiWorkflow : undefined;
   if (!graph) {
-    errors.push("workflow must be an API-format node graph");
+    errors.push(t(uiKeys.upscaleChecks.apiGraph));
   } else {
     const frameNode = Object.values(graph).find((node) => node?.class_type === "NvidiaDLSSFrameInterpolation");
     const expectedNodes: Record<string, string> = frameNode
@@ -567,12 +582,12 @@ export function validateKonohamaruWorkflow(
     for (const [nodeId, classType] of Object.entries(expectedNodes)) {
       const node = graph[nodeId];
       if (!node) addUnique(missingNodes, classType);
-      else if (node.class_type !== classType) invalidInputs.push(`${nodeId}.class_type must be ${classType}`);
-      else if (!isRecord(node.inputs)) invalidInputs.push(`${nodeId}.inputs must be an object`);
+      else if (node.class_type !== classType) invalidInputs.push(t(uiKeys.upscaleChecks.classRequired, { node: nodeId, type: classType }));
+      else if (!isRecord(node.inputs)) invalidInputs.push(t(uiKeys.upscaleChecks.inputsObject, { node: nodeId }));
     }
     const allowedClasses = new Set(Object.values(expectedNodes));
     for (const [nodeId, node] of Object.entries(graph)) {
-      if (!allowedClasses.has(node?.class_type)) invalidInputs.push(`${nodeId}.${node?.class_type ?? "unknown"} is not allowed in the Konohamaru graph`);
+      if (!allowedClasses.has(node?.class_type)) invalidInputs.push(t(uiKeys.upscaleChecks.konoForbidden, { node: nodeId, type: node?.class_type ?? "unknown" }));
     }
     const outputArities: Record<string, number> = frameNode
       ? { "1": 4, "2": 2, "3": 2 }
@@ -581,7 +596,7 @@ export function validateKonohamaruWorkflow(
       if (!isRecord(node) || !isRecord(node.inputs)) continue;
       for (const [inputName, value] of Object.entries(node.inputs)) {
         if (Array.isArray(value) && value.length === 2) {
-          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, outputArities);
+          validateConnection(value, `${nodeId}.${inputName}`, graph, invalidEdges, outputArities, t);
         }
       }
     }
@@ -590,37 +605,37 @@ export function validateKonohamaruWorkflow(
     const frame = frameNode ? graph["3"] : undefined;
     const save = frameNode ? graph["4"] : graph["3"];
     if (load?.class_type === "LoadVideo" && isRecord(load.inputs) && !isSafeRelativeComfyPath(inputValueForNode(load, "file"))) {
-      invalidInputs.push("1.file must be a safe uploaded relative path");
+      invalidInputs.push(t(uiKeys.upscaleChecks.konoVideoPath));
     }
     if (upscale?.class_type === "NvidiaDLSSVideoUpscale" && isRecord(upscale.inputs)) {
-      if (!sameConnection(inputValueForNode(upscale, "video"), "1", 0)) invalidInputs.push("2.video must use 1:0");
-      expectedLiteral(graph, "2", "require_neural_upscaling", true, invalidInputs);
+      if (!sameConnection(inputValueForNode(upscale, "video"), "1", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.konoInputVideo));
+      expectedLiteral(graph, "2", "require_neural_upscaling", true, invalidInputs, t);
       const mode = inputValueForNode(upscale, "upscale_mode");
-      if (!KONOHAMARU_MODE_SPECS.some((spec) => spec.label === mode)) invalidInputs.push("2.upscale_mode is not supported");
-      if (!KONOHAMARU_NR_STYLES.includes(inputValueForNode(upscale, "nr_style") as KonohamaruNrStyle)) invalidInputs.push("2.nr_style is not supported");
+      if (!KONOHAMARU_MODE_SPECS.some((spec) => spec.label === mode)) invalidInputs.push(t(uiKeys.upscaleChecks.konoNodeMode));
+      if (!KONOHAMARU_NR_STYLES.includes(inputValueForNode(upscale, "nr_style") as KonohamaruNrStyle)) invalidInputs.push(t(uiKeys.upscaleChecks.konoNodeStyle));
     }
     if (frameNode && frame?.class_type === "NvidiaDLSSFrameInterpolation" && isRecord(frame.inputs)) {
-      if (!sameConnection(inputValueForNode(frame, "video"), "2", 0)) invalidInputs.push("3.video must use 2:0");
-      if (!KONOHAMARU_FRAME_FPS_VALUES.some((fps) => String(fps) === String(inputValueForNode(frame, "output_fps")))) invalidInputs.push("3.output_fps is not supported");
-      if (!KONOHAMARU_DLSS_ENGINES.includes(inputValueForNode(frame, "dlss_engine") as KonohamaruDlssEngine)) invalidInputs.push("3.dlss_engine is not supported");
+      if (!sameConnection(inputValueForNode(frame, "video"), "2", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.konoInterpolatedVideo));
+      if (!KONOHAMARU_FRAME_FPS_VALUES.some((fps) => String(fps) === String(inputValueForNode(frame, "output_fps")))) invalidInputs.push(t(uiKeys.upscaleChecks.konoNodeFps));
+      if (!KONOHAMARU_DLSS_ENGINES.includes(inputValueForNode(frame, "dlss_engine") as KonohamaruDlssEngine)) invalidInputs.push(t(uiKeys.upscaleChecks.konoEngine));
     }
     if (save?.class_type === "SaveVideo" && isRecord(save.inputs)) {
-      if (!sameConnection(inputValueForNode(save, "video"), frameNode ? "3" : "2", 0)) invalidInputs.push(`${frameNode ? "4" : "3"}.video must use ${frameNode ? "3" : "2"}:0`);
-      if (!isSafeRelativeComfyPath(inputValueForNode(save, "filename_prefix"))) invalidInputs.push(`${frameNode ? "4" : "3"}.filename_prefix must be safe`);
-      if (inputValueForNode(save, "format") !== "mp4") invalidInputs.push(`${frameNode ? "4" : "3"}.format must be mp4`);
+      if (!sameConnection(inputValueForNode(save, "video"), frameNode ? "3" : "2", 0)) invalidInputs.push(t(uiKeys.upscaleChecks.konoOutputVideo, { node: frameNode ? "4" : "3", source: frameNode ? "3" : "2" }));
+      if (!isSafeRelativeComfyPath(inputValueForNode(save, "filename_prefix"))) invalidInputs.push(t(uiKeys.upscaleChecks.konoOutputPrefix, { node: frameNode ? "4" : "3" }));
+      if (inputValueForNode(save, "format") !== "mp4") invalidInputs.push(t(uiKeys.upscaleChecks.konoOutputFormat, { node: frameNode ? "4" : "3" }));
     }
     if (objectInfo !== undefined) {
-      const schema = validateKonohamaruObjectInfoSchema(objectInfo, { frameInterpolation: Boolean(frameNode) });
+      const schema = validateKonohamaruObjectInfoSchema(objectInfo, { frameInterpolation: Boolean(frameNode) }, t);
       for (const value of schema.missingNodes) addUnique(missingNodes, value);
       invalidInputs.push(...schema.missingInputs, ...schema.invalidInputs);
       outputMismatch.push(...schema.outputMismatch);
-      if (!schema.valid) errors.push(`object_info schema: ${schema.errors.join("; ")}`);
+      if (!schema.valid) errors.push(t(uiKeys.upscaleChecks.schemaErrors, { errors: schema.errors.join("; ") }));
     }
   }
-  if (missingNodes.length) errors.push(`missing nodes: ${missingNodes.join(", ")}`);
-  if (invalidEdges.length) errors.push(`invalid edges: ${invalidEdges.join("; ")}`);
-  if (invalidInputs.length) errors.push(`invalid inputs: ${invalidInputs.join("; ")}`);
-  if (outputMismatch.length) errors.push(`invalid outputs: ${outputMismatch.join(", ")}`);
+  if (missingNodes.length) errors.push(t(uiKeys.upscaleChecks.missingNodes, { nodes: missingNodes.join(", ") }));
+  if (invalidEdges.length) errors.push(t(uiKeys.upscaleChecks.invalidEdges, { edges: invalidEdges.join("; ") }));
+  if (invalidInputs.length) errors.push(t(uiKeys.upscaleChecks.invalidInputs, { inputs: invalidInputs.join("; ") }));
+  if (outputMismatch.length) errors.push(t(uiKeys.upscaleChecks.invalidOutputs, { outputs: outputMismatch.join(", ") }));
   return {
     valid: errors.length === 0,
     missingNodes,
@@ -634,13 +649,14 @@ export function validateKonohamaruWorkflow(
 export function buildKonohamaruUpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
-  objectInfo: unknown
+  objectInfo: unknown,
+  t: Translate = createTranslator().t
 ): KonohamaruApiWorkflow {
-  if (task.modelId !== KONOHAMARU_MODEL_ID) throw new Error("Konohamaru workflow requires modelId dlss5-konohamaru");
+  if (task.modelId !== KONOHAMARU_MODEL_ID) throw new Error(t(uiKeys.upscaleChecks.konoWorkflowModel));
   if (task.targetHeight !== undefined || task.targetScale !== undefined || task.dlss5 !== undefined || task.aetherScale !== undefined) {
-    throw new Error("Konohamaru workflow must not contain legacy provider fields");
+    throw new Error(t(uiKeys.upscaleChecks.konoWorkflowLegacy));
   }
-  if (!task.konohamaru) throw new Error("Konohamaru workflow is missing its immutable options snapshot");
+  if (!task.konohamaru) throw new Error(t(uiKeys.upscaleChecks.konoSnapshot));
   const target = normalizeKonohamaruTarget({
     modelId: task.modelId,
     sourceWidth: task.sourceWidth,
@@ -648,19 +664,19 @@ export function buildKonohamaruUpscaleWorkflow(
     targetWidth: task.targetWidth,
     targetOutputHeight: task.targetOutputHeight,
     konohamaru: task.konohamaru
-  });
+  }, t);
   if (task.targetWidth !== target.targetWidth || task.targetOutputHeight !== target.targetOutputHeight) {
-    throw new Error("Konohamaru task geometry does not match its frozen source mode");
+    throw new Error(t(uiKeys.upscaleChecks.konoFrozenSize));
   }
-  if (!isSafeRelativeComfyPath(sourceVideo)) throw new Error("Konohamaru source video must be a safe uploaded relative path");
+  if (!isSafeRelativeComfyPath(sourceVideo)) throw new Error(t(uiKeys.upscaleChecks.konoSourcePath));
   assertKonohamaruObjectInfoSchema(objectInfo, {
     frameInterpolation: target.options.frameInterpolation.enabled
-  });
-  const spec = konohamaruModeSpec(target.options.mode);
+  }, t);
+  const spec = konohamaruModeSpec(target.options.mode, t);
   const filenamePrefix = typeof task.outputFilename === "string"
     ? task.outputFilename.replace(/\.mp4$/iu, "")
     : "";
-  if (!isSafeRelativeComfyPath(filenamePrefix)) throw new Error("Konohamaru output filename must be a safe relative path");
+  if (!isSafeRelativeComfyPath(filenamePrefix)) throw new Error(t(uiKeys.upscaleChecks.konoOutputPath));
   const workflow: KonohamaruApiWorkflow = {
     "1": {
       class_type: "LoadVideo",
@@ -716,7 +732,7 @@ export function buildKonohamaruUpscaleWorkflow(
       codec: "auto"
     }
   };
-  const validation = validateKonohamaruWorkflow(workflow);
-  if (!validation.valid) throw new Error(`Konohamaru workflow validation failed: ${validation.errors.join("; ")}`);
+  const validation = validateKonohamaruWorkflow(workflow, undefined, t);
+  if (!validation.valid) throw new Error(t(uiKeys.upscaleChecks.konoWorkflowInvalid, { errors: validation.errors.join("; ") }));
   return workflow;
 }
