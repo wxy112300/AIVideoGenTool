@@ -6,6 +6,8 @@ import { normalizeAppearance } from "../src/core/appearance";
 import { applyAppearance } from "../src/renderer/shared/ui/appearance";
 import { mountAppearanceSettings, renderAppearanceSettings } from "../src/renderer/pages/settings/appearance";
 import { createTranslator } from "../src/core/i18n";
+import { createDefaultState } from "../src/core/defaults";
+import { setRendererState } from "../src/renderer/renderer-state";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); document.body.innerHTML = ""; window.scrollY = 0; applyAppearance(undefined); });
 
@@ -220,6 +222,24 @@ describe("route presentation", () => {
 });
 
 describe("appearance and telemetry", () => {
+  it("does not rewrite document language or theme on ordinary state acknowledgements", () => {
+    const state = createDefaultState();
+    setRendererState(state);
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(document.documentElement, { attributes: true });
+    try {
+      setRendererState(structuredClone(state));
+      expect(observer.takeRecords()).toHaveLength(0);
+      const changed = structuredClone(state);
+      changed.settings.uiLocale = "en-US";
+      changed.settings.appearance = { ...normalizeAppearance(state.settings.appearance), accent: "red" };
+      setRendererState(changed);
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(document.documentElement.dataset.accent).toBe("red");
+      expect(observer.takeRecords().length).toBeGreaterThan(0);
+    } finally { observer.disconnect(); }
+  });
+
   it("saves numeric history density choices without resetting theme and restores a failed choice", async () => {
     applyAppearance({ accent: "green", palette: "slate", depth: "2", motion: "standard", historyMasonryColumns: 4, historyAlbumColumns: 7 });
     document.body.innerHTML = renderAppearanceSettings(document.documentElement.dataset, createTranslator("en-US").t);

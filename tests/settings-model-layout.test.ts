@@ -34,6 +34,20 @@ const component = (label = "Model file", found = true) => ({
 });
 
 describe("Settings model card layout", () => {
+  it("shows only the first actual library hit, and the default library's full target for missing files", () => {
+    const found = { ...component(), locations: ["E:\\Models\\diffusion_models\\model.safetensors", "F:\\Duplicate\\diffusion_models\\model.safetensors"] };
+    const profile: ModelScanProfile = { id: "fixture", name: "Fixture", category: "video", badge: "", description: "", vram: "", available: false, components: [found, component("Missing", false)] };
+    const root = document.createElement("div");
+    root.innerHTML = renderSettingsModelScanCard(profile, { ...options, modelRoots: { modelDirectory: "D:\\Default", promptModelDirectory: "", comfyRoot: "" } });
+    const paths = [...root.querySelectorAll(".component-row code")];
+    expect(paths.map(path => path.textContent)).toEqual(["E:\\Models\\diffusion_models\\model.safetensors", "D:\\Default\\diffusion_models\\model.safetensors"]);
+    expect(paths[0]?.getAttribute("title")).toBe(paths[0]?.textContent);
+    expect(root.textContent).not.toContain("F:\\Duplicate");
+    root.innerHTML = renderSettingsInstallGuideDialog({ configuredModelDirectory: "D:\\Default", selectedInstallGuide: { profileName: "Fixture", component: found } }, options);
+    expect(root.textContent).toContain(found.locations[0]);
+    expect(root.textContent).not.toContain(found.locations[1]);
+    expect(root.querySelector(".install-target")).toBeNull();
+  });
   it("uses the current language instead of stale scan descriptions and keeps unknown node purposes", () => {
     const profile: ModelScanProfile = { id: "strata/qwen3.8-flash-next-iq3_xxs", name: "旧中文名称", category: "prompt", badge: "", description: "旧中文扫描缓存", vram: "24 GB", available: true, integrated: true, components: [] };
     const root = document.createElement("div"); root.innerHTML = renderSettingsModelScanCard(profile, { ...options, locale: "en-US" });

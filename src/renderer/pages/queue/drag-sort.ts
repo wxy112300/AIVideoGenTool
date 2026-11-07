@@ -777,7 +777,7 @@ export function mountQueueDragSort(
       }
     }, { signal });
     handle.addEventListener("lostpointercapture", (event) => {
-      if (drag?.pointerId === event.pointerId && drag.phase !== "dropping") cancelDrag();
+      if (drag?.pointerId === event.pointerId && drag.phase !== "dropping" && !(event.buttons & 1)) cancelDrag();
     }, { signal });
   });
 
@@ -816,7 +816,7 @@ export function mountQueueDragSort(
       }
     }, { signal });
     handle.addEventListener("lostpointercapture", (event) => {
-      if (boundaryDrag?.pointerId === event.pointerId && boundaryDrag.phase !== "dropping") cancelBoundaryDrag();
+      if (boundaryDrag?.pointerId === event.pointerId && boundaryDrag.phase !== "dropping" && !(event.buttons & 1)) cancelBoundaryDrag();
     }, { signal });
   });
 

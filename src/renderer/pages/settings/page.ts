@@ -1,4 +1,5 @@
 import { renderModelLibraries } from "./model-libraries";
+import { modelDownloadRoot } from "../../../core/model-libraries";
 import type {
   AppCacheSnapshot,
   AppLogSnapshot,
@@ -226,6 +227,11 @@ export function renderSettingsPage(
     {
       ...sharedFragmentOptions,
       sharedComponentPaths,
+      modelRoots: {
+        modelDirectory: modelDownloadRoot(settings, environmentScan?.modelDirectory),
+        promptModelDirectory: settings.promptModelDirectory,
+        comfyRoot: environmentScan?.comfyRoot ?? ""
+      },
       isGemmaPromptModel: options.isGemmaPromptModel,
       isComfyMultimodalPromptModel: options.isComfyMultimodalPromptModel,
       isQwenVlPeftPromptModel: options.isQwenVlPeftPromptModel,

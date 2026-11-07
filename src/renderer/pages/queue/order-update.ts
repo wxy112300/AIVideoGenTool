@@ -39,11 +39,13 @@ export function patchQueueOrderDom(root: ParentNode, previous: AppState, next: A
     const rank = card.querySelector<HTMLElement>("[data-queue-rank-value]")!;
     const position = String(index + 1).padStart(2, "0");
     if (rank.textContent !== position) rank.textContent = position;
-    card.querySelector(".queue-rank")!.setAttribute("aria-label", t(uiKeys.queue.card.queuePosition, { count: index + 1 }));
+    const rankLabel = card.querySelector(".queue-rank")!;
+    const positionLabel = t(uiKeys.queue.card.queuePosition, { count: index + 1 });
+    if (rankLabel.getAttribute("aria-label") !== positionLabel) rankLabel.setAttribute("aria-label", positionLabel);
     const deferred = boundary !== undefined && index >= boundary;
     card.classList.toggle("queue-task-deferred", deferred);
-    if (deferred) card.dataset.queueTaskDeferred = "true";
-    else delete card.dataset.queueTaskDeferred;
+    if (deferred && card.dataset.queueTaskDeferred !== "true") card.dataset.queueTaskDeferred = "true";
+    else if (!deferred && card.hasAttribute("data-queue-task-deferred")) delete card.dataset.queueTaskDeferred;
     const badge = card.querySelector<HTMLElement>(".queue-task-title > .status.deferred");
     if (deferred && !badge) {
       const status = document.createElement("span");

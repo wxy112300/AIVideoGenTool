@@ -11,14 +11,15 @@ const translator = createTranslator("zh-CN");
 
 function pointerEvent(
   type: string,
-  options: { pointerId: number; clientX: number; clientY: number; button?: number }
+  options: { pointerId: number; clientX: number; clientY: number; button?: number; buttons?: number }
 ): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     pointerId: { configurable: true, value: options.pointerId },
     clientX: { configurable: true, value: options.clientX },
     clientY: { configurable: true, value: options.clientY },
-    button: { configurable: true, value: options.button ?? 0 }
+    button: { configurable: true, value: options.button ?? 0 },
+    buttons: { configurable: true, value: options.buttons ?? 0 }
   });
   return event;
 }
@@ -229,6 +230,19 @@ afterEach(() => {
 });
 
 describe("queue drag selection cleanup", () => {
+  it("keeps window-level dragging usable when capture is lost while the primary button remains down", async () => {
+    vi.useFakeTimers();
+    const { cleanup, handle, reorderTask } = createQueueFixture();
+    handle.dispatchEvent(pointerEvent("pointerdown", { pointerId: 7, clientX: 20, clientY: 20, buttons: 1 }));
+    handle.dispatchEvent(pointerEvent("lostpointercapture", { pointerId: 7, clientX: 20, clientY: 20, buttons: 1 }));
+    window.dispatchEvent(pointerEvent("pointermove", { pointerId: 7, clientX: 20, clientY: 140, buttons: 1 }));
+    window.dispatchEvent(pointerEvent("pointerup", { pointerId: 7, clientX: 20, clientY: 140 }));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(reorderTask).toHaveBeenCalledWith("first", 1);
+    expect(document.body.classList.contains("queue-drag-active")).toBe(false);
+    cleanup();
+  });
+
   it("clears the global selection lock after a successful reorder", async () => {
     vi.useFakeTimers();
     const { cleanup, handle, reorderTask } = createQueueFixture();

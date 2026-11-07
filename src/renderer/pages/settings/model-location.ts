@@ -2,6 +2,23 @@ import type { AppApi, ModelComponentStatus } from "../../../types";
 import { strataModelRoot, strataProfileModelRoot } from "../../../core/strata-preparation";
 import type { SettingsInstallGuideSelection } from "./fragments";
 
+export interface ModelLocationRoots {
+  modelDirectory: string;
+  promptModelDirectory: string;
+  comfyRoot: string;
+}
+
+/** Display the first scan hit, or the default library's canonical download filename. */
+export function modelComponentDisplayPath(component: ModelComponentStatus, roots: ModelLocationRoots, profileId: string, strata = false): string {
+  if (component.found) return modelComponentWithLocations(component, roots).matches.find(filename => filename.trim()) ?? "";
+  if (!roots.modelDirectory.trim()) return "";
+  const guide = component.installGuide;
+  const root = strata ? strataProfileModelRoot(strataModelRoot({ modelDirectory: roots.modelDirectory, strataModelDirectory: "" }), profileId) : roots.modelDirectory;
+  const relative = guide ? [guide.targetSubdirectory, guide.recommendedFilename].filter(Boolean).join("/") : component.expected;
+  const separator = root.includes("\\") || /^[a-z]:/iu.test(root) ? "\\" : "/";
+  return `${root.replace(/[\\/]+$/u, "")}${separator}${relative.replace(/[\\/]/gu, separator)}`;
+}
+
 /** Keep blank slots and their displayed library numbers; never retarget a blank default. */
 export function installGuideDirectories(selection: SettingsInstallGuideSelection, fallback: string, libraries?: readonly string[]): string[] {
   const roots = libraries?.length ? libraries : [selection.targetRoot ?? fallback];
@@ -33,7 +50,7 @@ export function bindModelDirectoryActions(root: HTMLElement, host: Pick<AppApi, 
 /** Scanner paths are relative, except independently managed Strata assets. */
 export function modelComponentWithLocations(
   component: ModelComponentStatus,
-  roots: { modelDirectory: string; promptModelDirectory: string; comfyRoot: string }
+  roots: ModelLocationRoots
 ): ModelComponentStatus {
   if (component.locations?.length) return { ...component, matches: [...component.locations] };
   const join = (root: string, filename: string) => root.trim()

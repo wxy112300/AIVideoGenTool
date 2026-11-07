@@ -11,7 +11,7 @@ import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { containsPath, physicalPath, resolvedStrataDirectory, strataInstalledRelease } from "./strata-installation.js";
 import { scanStrataPreparation } from "./strata-preparation.js";
-import { deepSeekEngineDirectory, hasDeepSeekEngine } from "./strata-deepseek-engine.js";
+import { deepSeekEngineDirectory, deepSeekEngineIssue, hasDeepSeekEngine } from "./strata-deepseek-engine.js";
 import { strataDerivedDataDirectory, verifyStrataAsset, validateStrataRuntimePolicy, type StrataModelPreparationRuntime, type StrataRuntimePolicy, type StrataVerifiedAsset } from "./strata-model-preparation.js";
 
 const files = ["ds4.txt", "tensors.txt", "engram.bin", "expert-profile.bin", "tokenizer/vocab.json", "tokenizer/merges.txt", "tokenizer/token_type.json", "tokenizer/tokenizer.json", "tokenizer/chat_template.jinja"];
@@ -52,7 +52,7 @@ export async function validatePreparedDeepSeekRuntime(configPath: string, instal
     if (!stat.isFile() || stat.size !== asset.bytes || stat.mtimeMs !== asset.mtimeMs || stat.ctimeMs !== asset.ctimeMs)
       throw new Error(t(uiKeys.strataPreparation.modelChanged));
   }
-  if (!await hasDeepSeekEngine(install)) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: "strata-dsv41 · Settings → Strata" }));
+  if (!await hasDeepSeekEngine(install)) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: await deepSeekEngineIssue(install) ?? deepSeekEngineDirectory(install) }));
   if (!isDeepStrictEqual(config, buildDeepSeekRuntimeConfig({ install, pack, policy: receipt.policy, port: config.port })))
     throw new Error(t(uiKeys.strataPreparation.configMismatch));
   if (!isDeepStrictEqual(receipt.artifacts, await artifacts(pack))) throw new Error(t(uiKeys.strataPreparation.packChanged));
@@ -96,7 +96,7 @@ export async function prepareDeepSeekRuntime(settings: Settings, policy: StrataR
     const scan = await scanStrataPreparation(settings, runtime.inspect, options.resolvedModelDirectory);
     if (!scan.status.managedInstalled || !scan.status.sourcePresent || scan.status.installedRevision !== STRATA_REVISION)
       throw new Error(t(uiKeys.strataPreparation.installIncomplete));
-    if (!scan.status.deepSeekEnginePresent) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: "strata-dsv41 · Settings → Strata" }));
+    if (!scan.status.deepSeekEnginePresent) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: await deepSeekEngineIssue(install) ?? deepSeekEngineDirectory(install) }));
     const profile = scan.profiles.find(item => item.id === STRATA_DEEPSEEK_MODEL_ID)!;
     if (!profile.available) throw new Error(t(uiKeys.strataPreparation.modelsMissing));
     const data = path.resolve(runtime.dataDirectory ?? strataDerivedDataDirectory());

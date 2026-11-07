@@ -10,7 +10,10 @@ export let historyKind: HistoryKind = "video";
 
 export function setRendererState(nextState: AppState): AppState {
   state = nextState;
-  if (typeof document !== "undefined") document.documentElement.lang = normalizeUiLocale(state.settings.uiLocale);
+  if (typeof document !== "undefined") {
+    const locale = normalizeUiLocale(state.settings.uiLocale);
+    if (document.documentElement.lang !== locale) document.documentElement.lang = locale;
+  }
   applyAppearance(state.settings.appearance);
   return state;
 }

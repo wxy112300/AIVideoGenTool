@@ -45,6 +45,8 @@ export function mountSharedUi(root: HTMLElement): () => void {
   const controls = new Map<HTMLSelectElement, SelectControl>();
   const segments = new Map<HTMLElement, () => void>();
   const positions = new Map<string, SegmentPosition>();
+  const initializedControls = new WeakSet<Element>();
+  const controlSelector = 'button, select, input, textarea, [data-ui-segmented], [role="tooltip"], [data-ui-tooltip-source]';
   const events = new AbortController();
   const { signal } = events;
   let disposed = false;
@@ -75,6 +77,7 @@ export function mountSharedUi(root: HTMLElement): () => void {
       paintRangeFill(input);
     });
     buttons.forEach(stableLabel);
+    scope.querySelectorAll(controlSelector).forEach(element => initializedControls.add(element));
   };
   root.addEventListener("input", (event) => {
     if (event.target instanceof HTMLInputElement && event.target.classList.contains("ui-range")) paintRangeFill(event.target);
@@ -83,17 +86,24 @@ export function mountSharedUi(root: HTMLElement): () => void {
     for (const record of records) {
       if (record.type === "attributes" && record.target instanceof HTMLButtonElement) paintProgressButton(record.target);
     }
-    // Media, decoded covers and tooltip text do not introduce UI controls.
-    // Refresh only parents that gained controls, coalescing overlapping scopes.
+    // Moving an existing card does not introduce controls. Reinitializing its
+    // parent would rescan the entire queue after every drop.
     const scopes = new Set<ParentNode>();
-    const selector = 'button, select, input, textarea, [data-ui-segmented], [role="tooltip"], [data-ui-tooltip-source]';
     for (const record of records) {
       if (record.type !== "childList" || !root.contains(record.target)) continue;
-      if ([...record.addedNodes].some(node => node instanceof HTMLElement && !node.closest(".ui-select-list, .ui-tooltip") && (node.matches(selector) || node.querySelector(selector)))) scopes.add(record.target as ParentNode);
+      if ([...record.addedNodes].some(node => node instanceof HTMLElement && !node.closest(".ui-select-list, .ui-tooltip") && (
+        (node.matches(controlSelector) && !initializedControls.has(node)) ||
+        [...node.querySelectorAll(controlSelector)].some(control => !initializedControls.has(control))
+      ))) scopes.add(record.target as ParentNode);
     }
     const parents = [...scopes].filter(scope => ![...scopes].some(other => other !== scope && (other as Node).contains(scope as Node)));
     parents.forEach(refresh);
     if (records.some((record) => record.removedNodes.length)) {
+      for (const record of records) for (const node of record.removedNodes) {
+        if (!(node instanceof HTMLElement) || root.contains(node)) continue;
+        initializedControls.delete(node);
+        node.querySelectorAll(controlSelector).forEach(control => initializedControls.delete(control));
+      }
       for (const [native, control] of controls) if (!root.contains(native)) { control.dispose(); controls.delete(native); }
       for (const [element, dispose] of segments) if (!root.contains(element)) { dispose(); segments.delete(element); }
     }

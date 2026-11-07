@@ -5,7 +5,7 @@ import { renderSettingsInstallGuideDialog } from "../src/renderer/pages/settings
 import { mountSettingsPageController, type SettingsPageControllerOptions } from "../src/renderer/pages/settings/page-controller";
 import { modelComponentWithLocations, openModelComponentLocation } from "../src/renderer/pages/settings/model-location";
 import { createTranslator } from "../src/core/i18n";
-import { installGuideDirectories } from "../src/renderer/pages/settings/model-location";
+import { installGuideDirectories, modelComponentDisplayPath } from "../src/renderer/pages/settings/model-location";
 import { STRATA_DEEPSEEK_MODEL_ID, STRATA_DEEPSEEK_DIRECTORY } from "../src/core/catalog/models/strata-deepseek";
 
 afterEach(() => { document.body.innerHTML = ""; });
@@ -16,6 +16,12 @@ function component(found: boolean, matches: string[]): ModelComponentStatus {
 }
 
 describe("model and LoRA folder action", () => {
+  it("displays a missing DeepSeek file under the default library, and does not invent a target for a blank default", () => {
+    const missing = component(false, []);
+    const roots = { modelDirectory: "D:\\Models", promptModelDirectory: "", comfyRoot: "" };
+    expect(modelComponentDisplayPath(missing, roots, STRATA_DEEPSEEK_MODEL_ID, true)).toBe(`D:\\Models\\LLM\\${STRATA_DEEPSEEK_DIRECTORY}\\loras\\model.safetensors`);
+    expect(modelComponentDisplayPath(missing, { ...roots, modelDirectory: "" }, "fixture")).toBe("");
+  });
   it("offers numbered destinations, keeps blank libraries disabled, and opens the chosen model subfolder", async () => {
     const selected = { profileName: "Fixture", component: component(false, []) };
     const t = createTranslator("zh-CN").t;

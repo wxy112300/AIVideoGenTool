@@ -165,7 +165,11 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
   try {
     checkInstallationCancelled();
     stage("prepare");
-    const includeDeepSeek = isStrataDeepSeek(settings.promptModelId) || await hasDeepSeekEngine(root, true);
+    // Upgrades can migrate a versioned runtime into the shared target. Inspect
+    // the runtime actually in use before cleanup removes that old directory.
+    const previousRoot = runtime.managedDirectory ? root : resolvedStrataDirectory(settings);
+    const includeDeepSeek = isStrataDeepSeek(settings.promptModelId) || await hasDeepSeekEngine(root, true)
+      || (previousRoot !== root && await hasDeepSeekEngine(previousRoot, true));
     env = runtime.environment(settings);
     if (process.platform !== "win32") throw new Error(t(uiKeys.strataRuntime.windowsOnly));
     if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {

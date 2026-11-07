@@ -86,7 +86,7 @@ describe("DeepSeek via the managed Strata path", () => {
     await fs.writeFile(missing, body);
     expect((await scan()).profiles.find(profile => profile.id === modelId)).toMatchObject({ available: true, runtimeVerified: false });
     engine.present = false;
-    await expect(prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime)).rejects.toThrow(/strata-dsv41/);
+    await expect(prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime)).rejects.toThrow(/engine-dsv41/);
     const scanned = await scan();
     const environment = { modelProfiles: scanned.profiles, strataPreparation: scanned.status } as EnvironmentScanResult;
     expect(promptModelStatus(f.settings, environment)).toMatchObject({ ready: false, detail: expect.stringContaining("Strata") });

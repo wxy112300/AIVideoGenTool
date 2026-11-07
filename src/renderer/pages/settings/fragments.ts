@@ -24,7 +24,7 @@ import {
 } from "../../shared/status";
 import type { SettingsEnvironmentItemState } from "./selectors";
 import { settingsComponentPath } from "./model-presentation";
-import { installGuideDirectories } from "./model-location";
+import { installGuideDirectories, modelComponentDisplayPath, type ModelLocationRoots } from "./model-location";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -66,6 +66,7 @@ export interface SettingsComfyCompatibilityPanelViewModel {
 }
 
 export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOptions {
+  modelRoots?: ModelLocationRoots;
   sharedComponentPaths?: ReadonlySet<string>;
   isGemmaPromptModel(modelId: string): boolean;
   isComfyMultimodalPromptModel(modelId: string): boolean;
@@ -315,7 +316,9 @@ export function renderSettingsModelScanCard(
     const label = component.found ? settingsText(options.locale, "model.component.viewSource") : settingsText(options.locale, "model.component.downloadInstall");
     const state = component.found ? "found" : satisfied || component.optional ? "warning" : "missing";
     const tag = component.found ? "" : alternativeAvailable ? settingsText(options.locale, "model.component.alternativeAvailable") : component.optional ? settingsText(options.locale, "model.component.optional") : options.t(uiKeys.settings.system.scanCardMissing);
-    const path = component.found ? component.matches.join(" · ") : component.expected;
+    const path = options.modelRoots
+      ? modelComponentDisplayPath(component, options.modelRoots, profile.id, profile.managedBy === "strata") || settingsText(options.locale, "strata.chooseRoot")
+      : component.locations?.[0] || component.matches[0] || component.expected;
     const shared = component.found && component.matches.some(path => options.sharedComponentPaths?.has(settingsComponentPath(path)));
     return `<div class="component-row ${state}"><span class="component-state">${icon(component.found ? "circle-check" : satisfied || component.optional ? "circle-help" : "circle-dashed")}</span>
       <div class="settings-component-main"><div class="settings-component-line"><strong>${escape(component.label)}</strong>${shared ? `<span class="settings-component-tag">${escape(settingsText(options.locale, "model.shared"))}</span>` : ""}${tag ? `<span class="settings-component-tag">${escape(tag)}</span>` : ""}${source ? `<small class="component-evidence" title="${escape(source)}">${escape(source)}</small>` : ""}</div><code title="${escape(path)}">${escape(path)}</code></div>
@@ -361,10 +364,11 @@ export function renderSettingsInstallGuideDialog(
   }
   const directories = installGuideDirectories(viewModel.selectedInstallGuide, viewModel.configuredModelDirectory, viewModel.modelDirectories);
   const targetDirectory = directories[0] ?? "";
+  const actualLocation = component.locations?.[0] || component.matches.find(filename => filename.trim()) || "";
   const openLabel = t(uiKeys.settings.system.installGuideOpenDirectory);
   const libraryLabel = (index: number) => index === 0 ? t(uiKeys.settings.modelLibraries.defaultLibrary) : t(uiKeys.settings.modelLibraries.numberedLibrary, { index });
   const directoryAction = component.found
-    ? `<button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" title="${escape(component.matches.join("\n"))}" ${component.matches.some(filename => filename.trim()) || targetDirectory ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.modelLibraries.containingDirectory)}</button>`
+    ? `<button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" title="${escape(actualLocation)}" ${actualLocation || targetDirectory ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.modelLibraries.containingDirectory)}</button>`
     : `<details class="model-directory-menu"><summary class="ui-button secondary button-with-icon" title="${escape(targetDirectory || t(uiKeys.settings.modelLibraries.empty))}">${icon("folder-open")}${openLabel}（${escape(libraryLabel(0))}）${icon("chevron-down")}</summary><div class="node-action-menu-popover">${directories.map((directory, index) => `<button type="button" ${index === 0 ? 'id="open-install-directory"' : ""} data-install-directory="${escape(directory)}" ${directory ? "" : "disabled"} title="${escape(directory || t(uiKeys.settings.modelLibraries.empty))}">${openLabel}（${escape(libraryLabel(index))}）</button>`).join("")}</div></details>`;
   const sourceRevision = guide.version
     ? `v${guide.version}`
@@ -383,8 +387,7 @@ export function renderSettingsInstallGuideDialog(
           ${guide.bytes ? `<div><span>${escape(settingsText(options.locale, "model.component.fileSize"))}</span><code>${escape(formatGuideBytes(guide.bytes))}</code></div>` : ""}
           ${guide.sha256 ? `<div><span>${escape(settingsText(options.locale, "model.component.sha256"))}</span><code>${escape(guide.sha256)}</code></div>` : ""}
           <div><span>${t(uiKeys.settings.system.installGuideRecommendedFile)}</span><code>${escape(guide.recommendedFilename)}</code></div>
-          ${component.found && component.matches.length ? `<div><span>${escape(settingsText(options.locale, "model.component.location"))}</span><code>${escape(component.matches.join("\n"))}</code></div>` : ""}
-          <div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory || settingsText(options.locale, "strata.chooseRoot"))}</code></div>
+          ${component.found ? `<div><span>${escape(settingsText(options.locale, "model.component.location"))}</span><code>${escape(actualLocation || settingsText(options.locale, "strata.chooseRoot"))}</code></div>` : `<div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory || settingsText(options.locale, "strata.chooseRoot"))}</code></div>`}
         </div>
         ${guide.notes ? `<div class="install-note"><strong>${t(uiKeys.settings.system.installGuideNote)}</strong><p>${escape(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">

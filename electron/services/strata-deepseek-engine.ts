@@ -6,14 +6,25 @@ import { STRATA_DSV41_BYTES, STRATA_DSV41_FILES, STRATA_DSV41_MANIFEST_SHA256, S
 import { checkInstallationCancelled } from "./installation-cancellation.js";
 
 export const deepSeekEngineDirectory = (install: string) => path.join(install, "engine-dsv41");
-export async function hasDeepSeekEngine(install: string, includePrevious = false): Promise<boolean> {
+export async function deepSeekEngineIssue(install: string, includePrevious = false): Promise<string | null> {
   const root = deepSeekEngineDirectory(install);
+  const manifestPath = path.join(root, "engine-component.json");
+  let checking = manifestPath;
   try {
-    const manifest = await fs.readFile(path.join(root, "engine-component.json"));
+    const manifest = await fs.readFile(manifestPath);
     const accepted: readonly string[] = includePrevious ? [STRATA_DSV41_MANIFEST_SHA256, ...STRATA_DSV41_PREVIOUS_MANIFEST_SHA256] : [STRATA_DSV41_MANIFEST_SHA256];
-    return accepted.includes(createHash("sha256").update(manifest).digest("hex"))
-      && (await Promise.all(STRATA_DSV41_FILES.map(file => fs.stat(path.join(root, file)).then(stat => stat.isFile() && stat.size > 0)))).every(Boolean);
-  } catch { return false; }
+    const digest = createHash("sha256").update(manifest).digest("hex");
+    if (!accepted.includes(digest)) return `${manifestPath} (manifest SHA-256: ${digest}; expected: ${STRATA_DSV41_MANIFEST_SHA256})`;
+    for (const file of STRATA_DSV41_FILES) {
+      checking = path.join(root, file);
+      const stat = await fs.stat(checking);
+      if (!stat.isFile() || !stat.size) return `${checking} (empty or not a file)`;
+    }
+    return null;
+  } catch (error) { return `${checking} (${(error as NodeJS.ErrnoException).code ?? String(error)})`; }
+}
+export async function hasDeepSeekEngine(install: string, includePrevious = false): Promise<boolean> {
+  return await deepSeekEngineIssue(install, includePrevious) === null;
 }
 
 /** Called inside the existing software replacement transaction; never downloads model weights. */

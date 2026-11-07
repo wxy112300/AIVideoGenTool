@@ -118,7 +118,7 @@ describe("Strata CPU preparation and config", () => {
     }
     expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
   });
-  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1", "0.2.9", "0.2.10"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
+  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1", "0.2.9", "0.2.10", "0.2.11"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
     const f = await fixture(index), old = STRATA_RELEASES.find(release => release.version === version)!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));

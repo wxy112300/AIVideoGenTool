@@ -11,7 +11,8 @@ import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata
 import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
 import { STRATA_DEEPSEEK_MODEL_ID } from "../src/core/catalog/models/strata-deepseek";
 import { STRATA_DSV41_URL } from "../src/core/catalog/dependencies/strata-deepseek";
-import { hasDeepSeekEngine } from "../electron/services/strata-deepseek-engine";
+import { hasDeepSeekEngine, deepSeekEngineIssue } from "../electron/services/strata-deepseek-engine";
+import * as deepSeekEngineTools from "../electron/services/strata-deepseek-engine";
 
 // Installation commands and extraction are already mocked. Use a synthetic manifest
 // digest here so recommending a release never requires downloading the full engine.
@@ -25,7 +26,8 @@ vi.mock("../src/core/catalog/dependencies/strata", async importOriginal => {
 vi.mock("../src/core/catalog/dependencies/strata-deepseek", async importOriginal => {
   const catalog = await importOriginal<typeof import("../src/core/catalog/dependencies/strata-deepseek")>();
   const { createHash } = await import("node:crypto");
-  return { ...catalog, STRATA_DSV41_PREVIOUS_MANIFEST_SHA256: [createHash("sha256").update("previous verified component fixture").digest("hex")] };
+  return { ...catalog, STRATA_DSV41_MANIFEST_SHA256: createHash("sha256").update("current verified component fixture").digest("hex"),
+    STRATA_DSV41_PREVIOUS_MANIFEST_SHA256: [createHash("sha256").update("previous verified component fixture").digest("hex")] };
 });
 
 const fixtures: string[] = [];
@@ -57,6 +59,51 @@ async function fixture() {
   return { folder, root, runtime };
 }
 describe("Strata software installer", () => {
+  it("reports the actual engine directory and distinguishes missing files from a stale manifest", async () => {
+    const { root } = await fixture();
+    expect(await deepSeekEngineIssue(root)).toContain(path.join(root, "engine-dsv41", "engine-component.json"));
+    expect(await deepSeekEngineIssue(root)).toContain("ENOENT");
+    await fs.mkdir(path.join(root, "engine-dsv41"), { recursive: true });
+    const manifest = path.join(root, "engine-dsv41", "engine-component.json");
+    await fs.writeFile(manifest, "previous verified component fixture");
+    expect(await deepSeekEngineIssue(root)).toContain("manifest SHA-256:");
+    expect(await deepSeekEngineIssue(root, true)).toContain("strata-dsv41.exe");
+  });
+  it.each([false, true])("keeps DeepSeek support when migrating an older managed runtime while another model is selected (success: %s)", async succeeds => {
+    const { folder, runtime } = await fixture();
+    vi.stubEnv("LOCALAPPDATA", folder);
+    const old = managedStrataDirectory(STRATA_RELEASES[1]);
+    await fs.mkdir(path.join(old, ".venv", "Scripts"), { recursive: true });
+    await fs.writeFile(path.join(old, ".venv", "Scripts", "python.exe"), "fixture");
+    await fs.writeFile(path.join(old, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...STRATA_RELEASES[1], installedAt: "fixture" }));
+    const engine = path.join(old, "engine-dsv41");
+    await fs.mkdir(engine);
+    for (const filename of ["strata-dsv41.exe", "BUILD.json", "cublas64_13.dll", "cublasLt64_13.dll"]) await fs.writeFile(path.join(engine, filename), "old component");
+    await fs.writeFile(path.join(engine, "engine-component.json"), "previous verified component fixture");
+    expect(await hasDeepSeekEngine(old, true)).toBe(true);
+    const { managedDirectory: _override, ...productionTarget } = runtime;
+    const install = succeeds ? vi.spyOn(deepSeekEngineTools, "installDeepSeekEngine").mockImplementation(async target => {
+      const directory = path.join(target, "engine-dsv41");
+      await fs.mkdir(directory, { recursive: true });
+      for (const filename of ["strata-dsv41.exe", "BUILD.json", "cublas64_13.dll", "cublasLt64_13.dll"]) await fs.writeFile(path.join(directory, filename), "new component");
+      await fs.writeFile(path.join(directory, "engine-component.json"), "current verified component fixture");
+    }) : null;
+    // The synthetic download fails verification. Upgrade must try the DeepSeek
+    // package and retain the old runtime, rather than succeed with Qwen alone.
+    const result = await installStrataRuntime(createDefaultSettings(), productionTarget);
+    if (succeeds) {
+      expect(install).toHaveBeenCalled();
+      expect(result.ok, result.log).toBe(true);
+      expect(await hasDeepSeekEngine(managedStrataDirectory())).toBe(true);
+      expect(resolvedStrataDirectory(createDefaultSettings())).toBe(managedStrataDirectory());
+      await expect(fs.stat(old)).rejects.toMatchObject({ code: "ENOENT" });
+      return;
+    }
+    expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(await hasDeepSeekEngine(old, true)).toBe(true);
+    expect(resolvedStrataDirectory(createDefaultSettings())).toBe(old);
+  });
   it("updates an existing previous DeepSeek engine even when Qwen is selected, and restores it on failure", async () => {
     const { root, runtime } = await fixture(), settings = createDefaultSettings();
     expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);

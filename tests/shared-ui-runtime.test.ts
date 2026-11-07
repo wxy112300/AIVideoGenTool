@@ -49,6 +49,26 @@ it("does not rescan the page for decoded media, but still enhances dynamically i
   expect(scan).not.toHaveBeenCalled();
 });
 
+it("does not reinitialize moved cards but still finds controls added during a move or after remount", async () => {
+  const root = document.createElement("div"); document.body.append(root);
+  root.innerHTML = '<section><article><button class="secondary">First</button><select id="moving"><option>One</option></select></article><article><button class="secondary">Second</button></article></section>';
+  dispose = mountSharedUi(root);
+  const list = root.querySelector("section")!, first = list.firstElementChild!, second = list.lastElementChild!;
+  const trigger = first.querySelector("#moving-trigger");
+  const scan = vi.spyOn(list, "querySelectorAll");
+  list.insertBefore(second, first);
+  await Promise.resolve(); await Promise.resolve();
+  expect(scan).not.toHaveBeenCalled();
+  expect(first.querySelector("#moving-trigger")).toBe(trigger);
+  const added = document.createElement("button"); added.className = "secondary"; added.textContent = "New action";
+  first.append(added); list.insertBefore(first, second);
+  await Promise.resolve(); await Promise.resolve();
+  expect(added.classList.contains("ui-button")).toBe(true);
+  first.remove(); await Promise.resolve(); await Promise.resolve();
+  list.append(first); await Promise.resolve(); await Promise.resolve();
+  expect(first.querySelector("#moving-trigger")).not.toBeNull();
+});
+
 it("decorates every button before measuring any, and does not remeasure unchanged labels", () => {
   document.body.innerHTML = '<button id="a" class="secondary">One</button><button id="b" class="primary">Two</button>';
   const measure = vi.fn(() => {

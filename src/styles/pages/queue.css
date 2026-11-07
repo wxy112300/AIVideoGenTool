@@ -123,7 +123,8 @@
 .queue-pause-boundary-handle { color: var(--accent-text); }
 .queue-task-deferred { opacity: .55; }
 .queue-task-deferred:hover, .queue-task-deferred:focus-within { opacity: 1; }
-.queue-drag-active, .queue-drag-active * { cursor: grabbing; user-select: none; }
+/* Pointer capture supplies the handle cursor; avoid inherited body changes. */
+.queue-drag-active :is(.queue-drag-handle, .queue-pause-boundary-handle) { cursor: grabbing; }
 .task-card.queue-dragging { z-index: 60; pointer-events: none; box-shadow: var(--shadow-lift); background: var(--surface-2); }
 .queue-pause-boundary-dragging { z-index: 60; pointer-events: none; }
 .queue-drag-placeholder, .queue-boundary-drag-placeholder { border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--hover-wash); }

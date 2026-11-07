@@ -14,7 +14,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 - Qwen3.6 / Qwen3.8 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。Qwen3.8 当前登记的是 JonathanColetti 的非 MTP Uncensored Q4 与配套 vision 投影文件。
 - 旧状态中可能仍有 LM Studio/llama-server 字段用于兼容迁移，但当前 UI 不要求、也不推荐安装独立服务。
 
-Strata 的 DeepSeek V4.1 Flash Uncensored IQ2_XXS 复用原提示词选择器和共享模型根，下载指南指向 `LLM/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF`。四个主分片、共享 Engram、元数据、视觉投影及 DSpark 由用户准备；扫描仅检查大小/header，首次使用再核对固定 SHA-256、调用官方 DeepSeek pack 工具并生成独立完成记录。选择 DeepSeek 后，原 Strata 更新入口会补装独立 `engine-dsv41`（0.1.57，约423MB），校验固定归档/清单、官方签名与全部组件；既有 DeepSeek 引擎随以后软件更新保留支持，失败恢复旧软件。应用和独立 Agent 当前使用 32K、完整六专家、官方采样和独立 RAM/提交缓存预算；不使用 Qwen 的 PLE/MTP/控制向量。Qwen 默认、原权重与旧 pack 保留。接入与未验边界见 [当前任务](tasks/2026-11-03-strata-deepseek/TASK.md)；文件就绪不代表真实推理通过。
+Strata 的 DeepSeek V4.1 Flash Uncensored IQ2_XXS 复用原提示词选择器和共享模型根，下载指南指向 `LLM/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF`。四个主分片、共享 Engram、元数据、视觉投影及 DSpark 由用户准备；扫描仅检查大小/header，首次使用再核对固定 SHA-256、调用官方 DeepSeek pack 工具并生成独立完成记录。选择 DeepSeek 后，原 Strata 更新入口会补装独立 `engine-dsv41`（0.1.58，约423MB），校验固定归档/清单、官方签名与全部组件；既有 DeepSeek 引擎随以后软件更新保留支持，失败恢复旧软件。应用和独立 Agent 当前使用 32K、完整六专家、官方采样和独立 RAM/提交缓存预算；不使用 Qwen 的 PLE/MTP/控制向量。Qwen 默认、原权重与旧 pack 保留。接入与未验边界见 [当前任务](tasks/2026-11-03-strata-deepseek/TASK.md)；文件就绪不代表真实推理通过。
 
 Strata 是独立运行组件，不是 ComfyUI 节点。Qwen3.8-Flash-Next 可在原提示词模型选择器中选用，启动/增强会自动完成校验、CPU pack/tokenizer、受认证的本机服务和模型加载，取消/释放/开始队列/退出均清理自有进程。软件安装本身不启动模型；它使用独立 `.venv`，不向 ComfyUI Python 安装包，不执行上游整套 setup，也不下载权重。受管理安装统一使用 `strata/runtime`，主应用与独立启动器共用解析，不记住具体版本路径；旧受管理路径兼容迁移，手动目录保留。更新只在事务内暂存旧软件供失败恢复，成功验证后删除旧软件、受信历史副本、安装暂存和成功下载包，不永久保留版本备份。失败清理本次暂存，仅保留可续传的固定资产半包及日志。
 

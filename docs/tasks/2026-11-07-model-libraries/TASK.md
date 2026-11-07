@@ -20,6 +20,9 @@
 
 ## Evidence
 
+- 本轮显示规则：用户选择直接显示完整路径；存在时仅最高优先级实际命中，缺失时默认库完整目标文件路径。卡片使用同一定位/家族目录规则，已有文件弹窗移除默认应放目录与其他副本列表。
+- 本轮验收：48项focused通过，完整verify退出0（当前整合工作区3198单元、127集成、类型/双端构建、440对比度）。真实Electron `full-path-report.json` ok：两个库都有SeedVR2同名文件，仅显示首库完整实际路径，详情无次库副本/默认应放目录；Real-ESRGAN缺失项显示首库完整目标文件路径；600px无横向溢出。人工查看详情截图，未运行权重推理、未改正式配置。证据 `temp/model-libraries/full-path-*` 与 `temp/create-smoke-gRyUlg/full-path-*`；AppApi清理成功，PID40012/CDP13475/18462退出。保留队列性能任务的共用runtime/CSS等并行修改。
+
 - 最新追加：按用户要求将模型库原生拖放替换为 LoRA 的 mountSortable；非首库显示顺序编号。安装指南已存在文件使用“打开所在目录”，缺失文件提供默认/编号库目标菜单，空路径禁用、title 显示完整目标，沿用主进程 mkdir + open。Strata 菜单按每个库的模型家族子目录映射；编号按当前顺序更新，空行占位。
 - 本次验证：完整 verify 退出0，3194单元、127集成、类型/双端构建及440对比度。之后仅为拖动行补不透明底色，再次干净构建和440对比度通过。真实 Electron 最终 `directory-ui-report.json` ok：鼠标触发共用拖动样式、排序/保存、编号、完整路径title、空库禁用、已存在文件新按钮、600px无溢出；人工查看菜单与拖动截图。`directory-create-report.json` ok：实际鼠标打开Real-ESRGAN指南并选模型库1，原本不存在的upscale_models成功创建。隐藏窗口启用focus emulation；首轮补验缺此条件导致滚动/键盘时序超时，补齐后通过，未改生产逻辑绕过点击门槛。证据在 `temp/create-smoke-gRyUlg/` 与 `temp/model-libraries/directory-*`。未跑推理/GPU、未改正式配置。
 - 本次隔离实例通过AppApi清理，PID112572/CDP11118/18462退出；未启动正式ComfyUI。清理日志 `temp/model-libraries/directory-cleanup.log`。
