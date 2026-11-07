@@ -1,7 +1,7 @@
 # Strata DeepSeek 接入
 
 - Status: implemented-awaiting-model-inference
-- Updated: 2026-11-07
+- Updated: 2026-11-08
 - Authority: 用户授权参考现有 Qwen Flash 方式接入 AtomicChat DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF；权重用户管理，保留 Qwen 与现有设置，不自动下载权重。
 - Execution: direct，子 agent 0。
 - Latest request: 2026-11-07 仅将推荐升至0.2.12，由用户自行点击升级；用户要求只验Strata相关项，不再跑全量测试。
@@ -24,6 +24,9 @@
 - focused tests + verify；真实隔离 Settings/Prompt 缺件恢复与按钮路径；真实神经输出仅在权重可用后验证，明确未验边界。
 
 ## Evidence
+
+- 2026-11-08 另一台升级后报 runtime/engine-dsv41/engine-component.json ENOENT；这只确认当前检查目录缺manifest，远端安装日志仍未取得。新增本地复现：Strata不属于isManagedPromptModel，模型选择change只给Comfy类模型保存草稿，Strata立即requestRender可退回旧选择，切依赖页仍拿到旧模型并跳过DeepSeek。DeepSeek/Qwen两个回归修复前均失败；现改为所有提示词模型重绘前保存草稿，原Comfy提示不变。安装日志补目标路径与软件分支。仅验证Strata相关项，不跑全量，不代用户安装。
+- 2026-11-08 修复验收：70项选择/Strata定向回归、类型检查与构建通过（`temp/strata-0212-repair/`）。新测试只验证模型草稿与切页，隔离无关的RAF焦点恢复，未作真实远端UI或DeepSeek推理验收。源代码/构建已修，未打包部署或代装另一台；无法仅凭ENOENT断言该机器唯一根因。无软件/权重下载、无运行实例/GPU操作。
 
 - 0.2.12推荐更新：核对[官方release](https://github.com/Niko1221/Strata/releases/tag/v0.2.12)、tag指向146df3c46与固定feed sequence122（本地feed SHA-256和GitHub发布digest一致），双引擎归档bytes/SHA-256/manifest摘要同步。0.2.11→0.2.12 compare中requirements、pack工具、签名验证与组件验证源码未变；服务差异主要请求统计/工具调用，未改本应用请求接口。170项Strata focused及类型检查通过；按用户要求不跑全量verify，不做安装或神经推理。证据 `temp/strata-0212/{feed.json,focused.log,typecheck.log}`。
 - 0.2.12构建通过 `temp/strata-0212/build.log`，读取实际产物确认推荐0.2.12/双引擎0.1.58及0.2.11兼容记录。未启动Electron/ComfyUI、未修改正式runtime或GPU资源，用户自行安装。

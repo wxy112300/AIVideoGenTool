@@ -170,6 +170,8 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     const previousRoot = runtime.managedDirectory ? root : resolvedStrataDirectory(settings);
     const includeDeepSeek = isStrataDeepSeek(settings.promptModelId) || await hasDeepSeekEngine(root, true)
       || (previousRoot !== root && await hasDeepSeekEngine(previousRoot, true));
+    log(`Strata install target: ${root}`);
+    log(`Strata install model: ${settings.promptModelId}; DeepSeek engine: ${includeDeepSeek ? "required" : "not requested"}`);
     env = runtime.environment(settings);
     if (process.platform !== "win32") throw new Error(t(uiKeys.strataRuntime.windowsOnly));
     if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {

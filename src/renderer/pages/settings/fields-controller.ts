@@ -115,8 +115,8 @@ export function mountSettingsFieldsController(
 
   root.querySelector("#prompt-model-id")?.addEventListener("change", (event) => {
     const modelId = (event.currentTarget as HTMLSelectElement).value;
+    options.setSettingsDraft(options.formSettings());
     if (isManagedPromptModel(modelId)) {
-      options.setSettingsDraft(options.formSettings());
       context.notify(context.t(uiKeys.settings.promptWriterRuntime));
     }
     // Show the Strata-specific switch without inventing a second preference.

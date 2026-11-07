@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- Strata 模型选择修复（patch）：切换 DeepSeek/Qwen 后先保留设置草稿再重绘，避免切到依赖页升级时丢失模型选择、漏装 DeepSeek 引擎。安装日志增加实际目标目录、所选模型及 DeepSeek 安装分支。
+
 - Strata 推荐版本（patch）：更新至 0.2.12，固定源码与 Windows Qwen/DeepSeek 0.1.58 双引擎的归档、大小及清单校验；保留 0.2.11 安装识别与 Qwen pack 迁移。不自动安装或下载新增 DFlash2 权重。
 
 - Strata DeepSeek 升级修复（patch）：从旧受管理版本迁移至共用 runtime 时，按实际使用的旧目录检测并保留 DeepSeek 引擎支持，避免未选 DeepSeek 时升级成功却丢失其引擎。启动缺件错误显示实际检查路径与文件缺失/清单不匹配原因。
