@@ -1,3 +1,4 @@
+import { modelLibrariesFromForm } from "./model-libraries";
 import type { H3PromptPreset, ImagePromptPreset, Settings } from "../../../types";
 import { imageOutputCountMax } from "../../../core/image-workflow";
 import { LAN_BROWSER_DEFAULT_PORT } from "../../../core/lan-browser";
@@ -77,6 +78,9 @@ export function readSettingsFromForm(
     h3PromptPresets,
     imagePromptPresets,
     modelDirectory: directoryValue("model-directory", base.modelDirectory),
+    modelDirectories: base.modelDirectories,
+    modelDownloadDirectory: base.modelDownloadDirectory,
+    ...(modelLibrariesFromForm(base) ?? {}),
     outputDirectory: directoryValue("output-directory", base.outputDirectory),
     libraryDirectory: directoryValue("library-directory", base.libraryDirectory ?? ""),
     imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),

@@ -129,6 +129,15 @@ describe("NAS portable read-only library", () => {
         }))); response.on("error", reject);
       }); req.on("error", reject); req.end();
     });
+    await fs.mkdir(path.join(web, "assets"));
+    await fs.writeFile(path.join(web, "assets", "locale-zh-CN~index-ab_12.js"), "export const locale = 'zh-CN';");
+    const chunk = await get("/assets/locale-zh-CN~index-ab_12.js");
+    expect(chunk.status).toBe(200);
+    expect(chunk.headers.get("content-type")).toContain("text/javascript");
+    expect(await chunk.text()).toBe("export const locale = 'zh-CN';");
+    for (const name of ["nested/chunk.js", "%2e%2e%2findex.html", "%5cindex.html"]) {
+      expect((await get(`/assets/${name}`)).status).toBe(404);
+    }
     const pageResponse = await get("/api/v1/videos"); expect(pageResponse.status).toBe(200);
     const page = await pageResponse.json();
     expect(JSON.stringify(page)).not.toMatch(/prompt|absolutePath|mediaRoot|clip\.mp4/);

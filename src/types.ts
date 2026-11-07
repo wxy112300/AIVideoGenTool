@@ -509,6 +509,10 @@ export interface Settings {
   imageOutputDirectory: string;
   imageInputLibraryDirectory: string;
   modelDirectory: string;
+  /** Ordered models roots; absent/empty keeps the legacy single-directory behavior. */
+  modelDirectories?: string[];
+  /** Legacy independent destination; ignored in favor of the first library row. */
+  modelDownloadDirectory?: string;
   defaultVideoModel: string;
   /** Default model selected when entering video-extension mode. */
   defaultExtensionModel: string;
@@ -559,6 +563,8 @@ export interface Settings {
 }
 
 interface QueueTaskBase {
+  /** Lookup roots frozen when a new task is enqueued; absent on legacy tasks. */
+  modelDirectories?: string[];
   id: string;
   taskType: "generation" | "extension" | "upscale" | "image-generation";
   status: TaskStatus;
@@ -1806,6 +1812,8 @@ export interface ModelComponentStatus {
   alternativeGroup?: string;
   expected: string;
   matches: string[];
+  /** Actual scanned files, ordered by library precedence; matches remain relative for graphs. */
+  locations?: string[];
   installGuide: {
     sourceLabel: string;
     downloadUrl: string;
@@ -2066,6 +2074,8 @@ export interface EnvironmentIssue {
 }
 
 export interface EnvironmentScanResult {
+  modelDirectories?: string[];
+  modelLibraryStates?: { directory: string; available: boolean; truncated: boolean }[];
   /** Offline preparation evidence, never inference readiness. */
   strataPreparation?: StrataPreparationStatus;
   scannedAt: string;
@@ -2103,6 +2113,7 @@ export interface EnvironmentScanResult {
 }
 
 export interface StrataPreparationStatus {
+  configuredModelDirectories?: string[];
   installedVersion?: string;
   installedRevision?: string;
   latestVersion?: string;

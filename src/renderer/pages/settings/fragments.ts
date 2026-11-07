@@ -24,6 +24,7 @@ import {
 } from "../../shared/status";
 import type { SettingsEnvironmentItemState } from "./selectors";
 import { settingsComponentPath } from "./model-presentation";
+import { installGuideDirectories } from "./model-location";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -75,6 +76,7 @@ export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOpti
 
 export interface SettingsInstallGuideSelection {
   profileName: string;
+  profileId?: string;
   component: ModelComponentStatus;
   /** Explicit independent root. Empty means unconfigured, not the ComfyUI root. */
   targetRoot?: string;
@@ -83,6 +85,7 @@ export interface SettingsInstallGuideSelection {
 export interface SettingsInstallGuideDialogViewModel {
   selectedInstallGuide: SettingsInstallGuideSelection | null;
   configuredModelDirectory: string;
+  modelDirectories?: string[];
 }
 
 function formatGuideBytes(bytes: number): string {
@@ -356,10 +359,13 @@ export function renderSettingsInstallGuideDialog(
         </section>
       </div>`;
   }
-  const targetRoot = viewModel.selectedInstallGuide.targetRoot ?? viewModel.configuredModelDirectory;
-  const targetDirectory = targetRoot.trim()
-    ? [targetRoot.replace(/[\\/]+$/, ""), guide.targetSubdirectory.replaceAll("/", "\\")].filter(Boolean).join("\\")
-    : "";
+  const directories = installGuideDirectories(viewModel.selectedInstallGuide, viewModel.configuredModelDirectory, viewModel.modelDirectories);
+  const targetDirectory = directories[0] ?? "";
+  const openLabel = t(uiKeys.settings.system.installGuideOpenDirectory);
+  const libraryLabel = (index: number) => index === 0 ? t(uiKeys.settings.modelLibraries.defaultLibrary) : t(uiKeys.settings.modelLibraries.numberedLibrary, { index });
+  const directoryAction = component.found
+    ? `<button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" title="${escape(component.matches.join("\n"))}" ${component.matches.some(filename => filename.trim()) || targetDirectory ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.modelLibraries.containingDirectory)}</button>`
+    : `<details class="model-directory-menu"><summary class="ui-button secondary button-with-icon" title="${escape(targetDirectory || t(uiKeys.settings.modelLibraries.empty))}">${icon("folder-open")}${openLabel}（${escape(libraryLabel(0))}）${icon("chevron-down")}</summary><div class="node-action-menu-popover">${directories.map((directory, index) => `<button type="button" ${index === 0 ? 'id="open-install-directory"' : ""} data-install-directory="${escape(directory)}" ${directory ? "" : "disabled"} title="${escape(directory || t(uiKeys.settings.modelLibraries.empty))}">${openLabel}（${escape(libraryLabel(index))}）</button>`).join("")}</div></details>`;
   const sourceRevision = guide.version
     ? `v${guide.version}`
     : guide.revision || "—";
@@ -383,7 +389,7 @@ export function renderSettingsInstallGuideDialog(
         ${guide.notes ? `<div class="install-note"><strong>${t(uiKeys.settings.system.installGuideNote)}</strong><p>${escape(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">
           <button class="secondary" id="dismiss-install-guide">${t(uiKeys.settings.system.installGuideClose)}</button>
-          <button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" ${targetDirectory || (component.found && component.matches.some(filename => filename.trim())) ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.system.installGuideOpenDirectory)}</button>
+          ${directoryAction}
           <button class="primary button-with-icon" id="open-install-download">${component.found ? escape(settingsText(options.locale, "model.component.viewSource")) : t(uiKeys.settings.system.installGuideOpenDownload)}${icon("external-link")}</button>
         </div>
       </section>

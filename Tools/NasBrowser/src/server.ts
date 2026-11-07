@@ -58,7 +58,7 @@ export async function startServer(config: ServerConfig, webRoot: string, log: (m
       return json({ ready: true, readOnly: true, count: info.count, revision: info.revision, refreshError: Boolean(lastError) });
     }
     if (parts[0] !== "api") {
-      const relative = url.pathname === "/" ? "index.html" : /^\/assets\/[a-zA-Z0-9_.-]+$/.test(url.pathname) ? url.pathname.slice(1) : null;
+      const relative = url.pathname === "/" ? "index.html" : /^\/assets\/[a-zA-Z0-9_.~-]+$/.test(url.pathname) ? url.pathname.slice(1) : null;
       if (!relative) throw new HttpError(404, "页面不存在。");
       const bytes = await fs.readFile(path.join(webRoot, relative)).catch(() => null);
       if (!bytes) throw new HttpError(404, "页面不存在。");

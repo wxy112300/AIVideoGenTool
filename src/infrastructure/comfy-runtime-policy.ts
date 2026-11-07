@@ -31,6 +31,7 @@ export function comfyUiSettingsForQueueTask(
     h3RuntimeMode?: Settings["h3RuntimeMode"];
     h3ComfyCompilerMode?: Settings["h3ComfyCompilerMode"];
     upscaleMode?: "pixel" | "h3-native";
+    modelDirectories?: string[];
   }) | undefined,
   settings: Settings
 ): Settings {
@@ -41,6 +42,7 @@ export function comfyUiSettingsForQueueTask(
   const isH3VideoTask = isVideoTask && task?.modelId.startsWith("minimax_h3_");
   return {
     ...settings,
+    ...(task?.modelDirectories?.length ? { modelDirectories: [...task.modelDirectories], modelDirectory: task.modelDirectories[0] } : {}),
     defaultImageModel: isImageTask ? task.modelId : "",
     defaultVideoModel: isVideoTask
       ? task.modelId

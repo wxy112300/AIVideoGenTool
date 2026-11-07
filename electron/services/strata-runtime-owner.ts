@@ -51,7 +51,7 @@ export class StrataRuntimeOwner {
       const wantsUncensored = mode !== "off" && supportsStrataUncensored(settings.promptModelId);
       options.onLog?.(`uncensored: mode=${mode} requested=${mode !== "off"} supported=${supportsStrataUncensored(settings.promptModelId)}`);
       const key = JSON.stringify([settings.promptModelId, settings.strataInstallDirectory,
-        options.resolvedModelDirectory ?? settings.modelDirectory, settings.strataModelDirectory, settings.strataPort, policy]);
+        options.resolvedModelDirectory ?? settings.modelDirectory, settings.modelDirectories, settings.strataModelDirectory, settings.strataPort, policy]);
       if (this.selectionKey === key && this.snapshot().phase === "ready" && this.snapshot().modelLoaded) {
         // Stat/receipt checks catch changed weights/pack without hashing them on every enhancement.
         let valid = false;

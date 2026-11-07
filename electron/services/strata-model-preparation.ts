@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -322,7 +323,7 @@ export async function prepareStrataModelRuntime(
     }
     const data = path.resolve(runtime.dataDirectory ?? strataDerivedDataDirectory());
     const actualData = await physicalPath(data);
-    for (const protectedRoot of [install, options.resolvedModelDirectory ?? settings.modelDirectory, scan.status.modelDirectory,
+    for (const protectedRoot of [...modelLibraryRoots(settings, options.resolvedModelDirectory), install, options.resolvedModelDirectory ?? settings.modelDirectory, scan.status.modelDirectory,
       ...profile.components.filter((component) => component.found).map((component) => path.dirname(component.matches[0]))].filter(Boolean)) {
       const actualRoot = await physicalPath(protectedRoot);
       if (containsPath(actualRoot, actualData) || containsPath(actualData, actualRoot)) throw new Error(t(uiKeys.strataPreparation.directoryOverlap));

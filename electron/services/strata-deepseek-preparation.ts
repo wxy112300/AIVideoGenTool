@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -100,7 +101,7 @@ export async function prepareDeepSeekRuntime(settings: Settings, policy: StrataR
     if (!profile.available) throw new Error(t(uiKeys.strataPreparation.modelsMissing));
     const data = path.resolve(runtime.dataDirectory ?? strataDerivedDataDirectory());
     const actualData = await physicalPath(data);
-    for (const root of [install, options.resolvedModelDirectory ?? settings.modelDirectory, ...profile.components.map(item => path.dirname(item.matches[0]))].filter(Boolean)) {
+    for (const root of [...modelLibraryRoots(settings, options.resolvedModelDirectory), install, options.resolvedModelDirectory ?? settings.modelDirectory, ...profile.components.map(item => path.dirname(item.matches[0]))].filter(Boolean)) {
       const actualRoot = await physicalPath(root);
       if (containsPath(actualRoot, actualData) || containsPath(actualData, actualRoot)) throw new Error(t(uiKeys.strataPreparation.directoryOverlap));
     }

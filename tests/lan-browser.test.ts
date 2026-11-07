@@ -46,6 +46,19 @@ async function fixture() {
 }
 
 describe("LAN history browser", () => {
+  it("serves split locale chunks containing a tilde without exposing nested or encoded paths", async () => {
+    const f = await fixture();
+    await fs.mkdir(path.join(f.root, "assets"));
+    const source = "export const locale = 'zh-CN';";
+    await fs.writeFile(path.join(f.root, "assets", "locale-zh-CN~index-ab_12.js"), source);
+    const response = await fetch(`${f.base}/assets/locale-zh-CN~index-ab_12.js`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/javascript");
+    expect(await response.text()).toBe(source);
+    for (const name of ["nested/chunk.js", "%2e%2e%2findex.html", "%5cindex.html"]) {
+      expect((await fetch(`${f.base}/assets/${name}`)).status).toBe(404);
+    }
+  });
   it("only publishes video DTOs and preserves a query's order/default version through metadata changes", async () => {
     const f = await fixture();
     await f.store.update((state: AppState) => { state.history[0]!.versions.push({ ...state.history[0]!.versions[0]!, id: "large", width: 1920, height: 1080 }); });

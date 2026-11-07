@@ -75,6 +75,21 @@ function createSettingsService(
 }
 
 describe("immediate appearance persistence", () => {
+  it("persists ordered model libraries without a storage migration and rejects relative roots", async () => {
+    const initial = createDefaultState(), repository = createRepository(initial);
+    const service = createSettingsService(repository);
+    const roots = [path.resolve("second/models"), path.resolve("first/models")];
+    const saved = await service.save({ ...initial.settings, modelDirectories: roots, modelDownloadDirectory: roots[1] }, "apply");
+    expect(saved.settings.modelDirectories).toEqual(roots);
+    expect(saved.settings.modelDirectory).toBe(roots[0]);
+    expect(saved.settings.modelDownloadDirectory).toBeUndefined();
+    const withEmpty = await service.save({ ...saved.settings, modelDirectories: [roots[0]!, "", roots[1]!] }, "apply");
+    expect(withEmpty.settings.modelDirectories).toEqual([roots[0], "", roots[1]]);
+    expect(saved.queue).toEqual(initial.queue);
+    expect(saved.history).toEqual(initial.history);
+    await expect(service.save({ ...saved.settings, modelDirectories: ["relative/models"] }, "apply")).rejects.toThrow("models");
+    expect(repository.snapshot().settings.modelDirectories).toEqual([roots[0], "", roots[1]]);
+  });
   it("saves only appearance and preserves unsaved settings, queue and native dirty guard", async () => {
     const initial = createDefaultState();
     const repository = createRepository(initial);

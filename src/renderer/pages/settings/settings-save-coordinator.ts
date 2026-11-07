@@ -141,6 +141,8 @@ export class SettingsSaveCoordinator {
     return previous.comfyInstallDirectory !== next.comfyInstallDirectory ||
       previous.comfyPythonPath !== next.comfyPythonPath ||
       previous.modelDirectory !== next.modelDirectory ||
+      JSON.stringify(previous.modelDirectories) !== JSON.stringify(next.modelDirectories) ||
+      previous.modelDownloadDirectory !== next.modelDownloadDirectory ||
       previous.outputDirectory !== next.outputDirectory ||
       previous.imageOutputDirectory !== next.imageOutputDirectory ||
       previous.imageInputLibraryDirectory !== next.imageInputLibraryDirectory ||

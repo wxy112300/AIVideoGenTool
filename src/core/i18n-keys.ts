@@ -3248,6 +3248,23 @@ export const uiKeys = {
     loraSource: "shared.lora.source"
   },
   settings: {
+    modelLibraries: {
+      title: "settings.modelLibraries.title",
+      defaultLibrary: "settings.modelLibraries.defaultLibrary",
+      numberedLibrary: "settings.modelLibraries.numberedLibrary",
+      containingDirectory: "settings.modelLibraries.containingDirectory",
+      keepDefault: "settings.modelLibraries.keepDefault",
+      empty: "settings.modelLibraries.empty",
+      choose: "settings.modelLibraries.choose",
+      add: "settings.modelLibraries.add",
+      path: "settings.modelLibraries.path",
+      remove: "settings.modelLibraries.remove",
+      open: "settings.modelLibraries.open",
+      order: "settings.modelLibraries.order",
+      invalid: "settings.modelLibraries.invalid",
+      unavailable: "settings.modelLibraries.unavailable",
+      truncated: "settings.modelLibraries.truncated"
+    },
     localeTitle: "settings.locale.title",
     localeDescription: "settings.locale.description",
     localeLabel: "settings.locale.label",

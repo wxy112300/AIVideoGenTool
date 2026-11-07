@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -629,7 +630,7 @@ export async function assertDlss5ExecutionReady(
   const [runtime, depth] = await Promise.all([
     scanDlss5Runtime(comfyRoot, "", t),
     scanDepthAnythingAssets(comfyRoot, {
-      modelDirectories: [comfyDataDirectories(settings, comfyRoot).modelDirectory]
+      modelDirectories: modelLibraryRoots(settings, comfyDataDirectories(settings, comfyRoot).modelDirectory)
     })
   ]);
   if (!runtime.srReady) {

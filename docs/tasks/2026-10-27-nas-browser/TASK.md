@@ -1,11 +1,15 @@
 # NAS 独立只读浏览服务
 
-- Status: investigating（新版现场仍停在部署快照；用户要求先分析代码）
-- Updated / Owner: 2026-11-03 / 当前 agent
+- Status: done（NAS 同步现场已恢复；本机局域网空白页修复与隔离浏览器验收通过）
+- Updated / Owner: 2026-11-07 / 当前 agent
 - Scope / Authority: 用户要求在 Tools 建立服务；DS418play、DSM 6.2.4、Docker 20.10.3、Drive 单向上传。最新要求：NAS 与普通浏览功能一致，显示收藏/评分/Tag，保留完整筛选排序，唯独禁止修改；排序收进 Filter，PC/NAS 路径独立。
 - Baseline: 0.67.0；大量其他任务 dirty，保留全部。执行 direct，children=0。
 
 ## Resume
+
+- 2026-11-07 本机局域网页面空白：当前 Vite 语言分包生成 `locale-zh-CN~index-*.js`，PC/NAS 静态文件白名单遗漏 `~`。新增真实 HTTP 回归先复现 404，随后两处规则仅放行该字符，继续拒绝嵌套与编码路径；19 项 LAN/NAS 聚焦测试及主项目 typecheck 通过。使用 HEAD+两处服务修复隔离构建/浏览器验收及更新唯一 NAS 部署包，不混入其他任务的模型库/设置改动；现场 NAS 未连接，未提交/推送/升版本。
+
+- 本轮验收：隔离源码 `temp/lan-blank-fix-xnLoRx` 完整 typechecked build 通过；真实 App Settings 开关启动服务、无 preload 网页加载、视频解码、筛选/相册/瀑布流、收藏/评分/标签持久化、手机/平板/桌面通过，报告 `temp/lan-blank-fix-xnLoRx/temp/lan-smoke-OmYDot/report.json`。cleanup.json 确认自有浏览器、App 原生退出及监听回收，无 GPU/用户库操作。未运行全量 verify。部署包19项已验证，SHA256 `7fda54f852604d873088e56d4b8778c87b9bf01361b64d95539ea0010d0f7b89`；完整日志 `temp/lan-blank-fix-check.log`。根 dist 未覆盖，使用当前源码的本机 App 需重新构建/启动后生效。
 
 - 2026-11-04 安装说明闭环：用户现场重建后 Tmpfs 包含可写 /tmp，healthz ready=true/count=1312/refreshError=false，用户确认新作品出现。按用户“以后照安装说明操作”的要求，首次安装与升级手册明确保留 tmpfs、先单独 sudo -v 防止粘贴被密码打断、重建后 inspect 验证不能为 null、healthz 与持续更新验收；保留 config/data。重新从 HEAD+本次NAS修复/手册隔离构建唯一部署包，15项校验通过，最新SHA256 fdb3fe493097f21265e3fe2de8823e131474c0a62761c5408486fbfc8507eab9，日志 temp/nas-install-docs-package-20261104.log。本轮仅说明更新/打包，未重复无改动的服务测试、未连接NAS或提交推送。
 

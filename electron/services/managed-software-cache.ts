@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import { createReadStream, promises as fs } from "node:fs";
@@ -106,7 +107,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       if (!stat || stat.isSymbolicLink()) return;
       const actualParent = await physicalPath(parent), actual = await physicalPath(filename);
       if (identity(actual) === identity(actualParent) || !containsPath(actualParent, actual)) return;
-      for (const protectedRoot of [settings.modelDirectory, settings.strataModelDirectory, settings.outputDirectory,
+      for (const protectedRoot of [...modelLibraryRoots(settings), settings.modelDirectory, settings.strataModelDirectory, settings.outputDirectory,
         settings.comfyInstallDirectory ? path.join(settings.comfyInstallDirectory, "models") : ""].filter(Boolean)) {
         const protectedPath = await physicalPath(protectedRoot);
         if (containsPath(actual, protectedPath) || containsPath(protectedPath, actual)) return;

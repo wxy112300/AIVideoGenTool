@@ -1,5 +1,7 @@
 # Model and Workflow Contract
 
+模型文件解析支持按优先级排列的多个 `models` 根，catalog和工作流继续使用分类相对路径。扫描、ComfyUI注册目录、Strata查找与组件文件定位必须保持同一顺序；新任务的显式多库列表入队后冻结，旧任务沿用原设置兼容行为。不同组件可以来自不同库，同一GGUF分片组必须同目录完整；第一行兼作默认存放库且禁止删除；新增空行可保存但不参与扫描。更改库配置不迁移/删除权重、不更改正在执行任务的解析快照。远程路径仅由远端配置，不因本机扫描成功而声称可加载。
+
 This document defines what it means to support a ComfyUI-backed capability and how model-specific behavior stays isolated.
 
 ## Completion Levels

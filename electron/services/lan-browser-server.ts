@@ -140,7 +140,7 @@ export class LanBrowserServer {
     if (parts[0] !== "api") {
       if (!read) throw new BrowseError(405, "请求方式无效。");
       const relative = url.pathname === "/" ? "index.html"
-        : /^\/assets\/[a-zA-Z0-9_.-]+$/.test(url.pathname) ? url.pathname.slice(1) : null;
+        : /^\/assets\/[a-zA-Z0-9_.~-]+$/.test(url.pathname) ? url.pathname.slice(1) : null;
       if (!relative) throw new BrowseError(404, "页面不存在。");
       const filename = path.join(this.deps.webRoot, relative);
       const bytes = await fs.readFile(filename).catch(() => null);

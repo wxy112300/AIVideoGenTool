@@ -1,4 +1,8 @@
 import path from "node:path";
+import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { modelLibraryRoots, comfyModelLibrariesConfig } from "../../src/core/model-libraries.js";
+import { localStateBase, privateLocalDirectory } from "./private-local-state.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { Settings } from "../../src/types.js";
@@ -13,6 +17,12 @@ import { getApplicationLogger } from "../../src/infrastructure/app-logger.js";
 
 const appLogger = getApplicationLogger();
 const ownedComfyProcessIds = new Set<number>();
+
+export function comfyModelLibrariesLaunchMatches(settings: Settings, commandLine: string): boolean {
+  if (!settings.modelDirectories?.length) return !commandLine.includes("comfy-model-libraries");
+  const content = comfyModelLibrariesConfig(modelLibraryRoots(settings));
+  return commandLine.includes(`${createHash("sha256").update(content).digest("hex")}.json`);
+}
 
 export function appManagedComfyDatabaseFilename(
   port: number,
@@ -197,8 +207,17 @@ async function startComfyUiServiceImpl(
     "auto",
     ...memoryArgs
   ];
-  if (settings.modelDirectory.trim()) {
-    args.push("--models-directory", directories.modelDirectory);
+  const modelRoots = modelLibraryRoots(settings, directories.modelDirectory);
+  if (settings.modelDirectory.trim() || settings.modelDirectories?.length) {
+    args.push("--models-directory", modelRoots[0] ?? directories.modelDirectory);
+  }
+  if (settings.modelDirectories?.length) {
+    const content = comfyModelLibrariesConfig(modelRoots);
+    const configRoot = path.join(localStateBase(), "comfy-model-libraries");
+    await privateLocalDirectory(configRoot);
+    const config = path.join(configRoot, `${createHash("sha256").update(content).digest("hex")}.json`);
+    await fs.writeFile(config, content, "utf8");
+    args.push("--extra-model-paths-config", config);
   }
   args.push(
     ...comfyUiBundledFrontendArgs(

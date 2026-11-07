@@ -1,3 +1,4 @@
+import { renderModelLibraries } from "./model-libraries";
 import type {
   AppCacheSnapshot,
   AppLogSnapshot,
@@ -566,7 +567,7 @@ export function renderSettingsPage(
           </div>
           <div class="settings-grid two">
             ${pathField("image-input-library-directory", "pick-image-input-library-directory", t(uiKeys.settings.system.inputLibrary), settings.imageInputLibraryDirectory || autoImageInputLibraryDirectory, t(uiKeys.settings.system.inputLibraryPlaceholder), autoImageInputLibraryDirectory)}
-            ${pathField("model-directory", "pick-model-directory", t(uiKeys.settings.system.modelDirectory), effectiveModelDirectory, t(uiKeys.settings.system.modelDirectoryPlaceholder), environmentScan?.modelDirectory || "")}
+            ${renderModelLibraries(settings, effectiveModelDirectory, t, options.escapeHtml, environmentScan?.modelLibraryStates)}
           </div>
         </div>
       </section>

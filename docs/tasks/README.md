@@ -4,6 +4,8 @@
 
 ## 当前任务
 
+- [多个 models 根目录与查找优先级](2026-11-07-model-libraries/TASK.md)
+
 - [Strata DeepSeek 接入与 0.2.10 双引擎升级](2026-11-03-strata-deepseek/TASK.md)
 
 - [Tessera 视频放大与可选 Qwen 首帧增强](2026-11-03-tessera-upscale/TASK.md)

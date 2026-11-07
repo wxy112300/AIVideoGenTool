@@ -290,6 +290,13 @@
 .settings-node-item .node-action-main:only-child { border-radius: var(--r-md); }
 .settings-node-item .node-action-main[data-node-operation="update"] { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; box-shadow: none; }
 .settings-node-item .node-action-main[data-node-operation="update"]:hover:not(:disabled) { background: var(--accent-soft-hover,var(--accent-soft)); }
+.model-directory-menu { position: relative; margin: 0; padding: 0; border: 0; }
+.model-library-row.ui-sort-dragging { background: var(--surface-2); border-radius: var(--r-md); }
+.model-directory-menu > summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; }
+.model-directory-menu > summary::-webkit-details-marker { display: none; }
+.model-directory-menu > .node-action-menu-popover { top: auto; bottom: calc(100% + 6px); max-height: min(320px, 50vh); overflow-y: auto; }
+.model-directory-menu:not([open]) > .node-action-menu-popover { display: none; }
+.model-directory-menu[open] > .node-action-menu-popover { display: grid; }
 .settings-node-item .node-action-menu { height: 28px; }
 .settings-node-item .node-action-menu > summary { width: 28px; height: 28px; min-height: 28px; border-color: var(--line); border-radius: 0 var(--r-md) var(--r-md) 0; background: var(--surface-2); color: var(--text-2); }
 .settings-node-item .node-action-menu > summary:hover { background: var(--hover-wash); }

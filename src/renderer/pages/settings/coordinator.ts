@@ -1,5 +1,6 @@
 import { mountAppearanceSettings } from "./appearance";
 import { renderSettingsCacheDialog } from "./cache-dialog";
+import { modelDownloadRoot, modelLibraryEntries } from "../../../core/model-libraries";
 import type {
   AppCacheClearResult,
   AppCacheSnapshot,
@@ -30,7 +31,7 @@ import { modelCatalog } from "../../../core/catalog";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { settingsChangedKeys } from "../../../core/settings-changes";
 import { settingsChangeSummary } from "./change-summary";
-import { openModelComponentLocation } from "./model-location";
+import { bindModelDirectoryActions } from "./model-location";
 import { animateUi } from "../../shared/ui/motion";
 import { BUILTIN_VIDEO_LORAS } from "../../../core/video-loras";
 import { h3AutoPromptSeeds } from "../../../core/prompts/h3/auto-seeds";
@@ -541,14 +542,14 @@ export function createSettingsWorkspaceCoordinator(
   const installGuideDialogHtml = (): string => {
     if (deps.getPage() !== "settings") return "";
     const state = deps.getState();
+    const settings = settingsDraft ?? state.settings;
+    const configuredModelDirectory = modelDownloadRoot(settings, environmentScan?.modelDirectory);
     return renderSettingsInstallGuideDialog(
       {
         selectedInstallGuide,
-        configuredModelDirectory:
-          environmentScan?.modelDirectory ||
-          settingsDraft?.modelDirectory ||
-          state.settings.modelDirectory ||
-          "ComfyUI\\models"
+        configuredModelDirectory,
+        modelDirectories: settings.modelDirectories?.length || configuredModelDirectory
+          ? modelLibraryEntries(settings, environmentScan?.modelDirectory) : undefined
       },
       {
         icon,
@@ -582,11 +583,8 @@ export function createSettingsWorkspaceCoordinator(
       const opened = await deps.context.hostCapabilities.openExternal(url);
       if (!opened) deps.showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
     });
-    deps.modalRoot.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
-      const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim() || "";
-      const opened = await openModelComponentLocation(deps.context.hostCapabilities, selectedInstallGuide?.component, directory);
-      if (!opened) deps.showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
-    });
+    bindModelDirectoryActions(deps.modalRoot, deps.context.hostCapabilities, () => selectedInstallGuide?.component,
+      () => deps.showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" }));
     const dialog = deps.modalRoot.querySelector<HTMLElement>(".install-guide-dialog");
     if (dialog) deps.bindModalFocus(dialog, close, "#dismiss-install-guide");
   };

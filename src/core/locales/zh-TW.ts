@@ -1,6 +1,21 @@
 import { uiKeys } from "../i18n-keys.js";
 
 export const zhTWCatalog = {
+  [uiKeys.settings.modelLibraries.title]: "模型庫",
+  [uiKeys.settings.modelLibraries.defaultLibrary]: "預設",
+  [uiKeys.settings.modelLibraries.numberedLibrary]: "模型庫 {index}",
+  [uiKeys.settings.modelLibraries.containingDirectory]: "開啟所在目錄",
+  [uiKeys.settings.modelLibraries.keepDefault]: "無法刪除預設模型庫",
+  [uiKeys.settings.modelLibraries.empty]: "未設定目錄（無效）",
+  [uiKeys.settings.modelLibraries.choose]: "選擇 models 根目錄",
+  [uiKeys.settings.modelLibraries.unavailable]: "無法存取目錄",
+  [uiKeys.settings.modelLibraries.truncated]: "檔案過多，掃描不完整",
+  [uiKeys.settings.modelLibraries.add]: "新增模型庫",
+  [uiKeys.settings.modelLibraries.path]: "模型庫 {index}",
+  [uiKeys.settings.modelLibraries.remove]: "移除模型庫（不刪除檔案）",
+  [uiKeys.settings.modelLibraries.open]: "開啟模型庫",
+  [uiKeys.settings.modelLibraries.order]: "拖曳調整尋找優先順序",
+  [uiKeys.settings.modelLibraries.invalid]: "請選擇完整的 models 目錄路徑，最多支援 32 個模型庫。",
   [uiKeys.modelResource.sourceGemmaStandard]: "unsloth/gemma-4-12b-it-GGUF · 社群標準 · Q5",
   [uiKeys.modelResource.sourceRealEsrgan]: "Real-ESRGAN 官方 Releases",
   [uiKeys.nodeRequirement.comfyuiGguf]: "維護版 fork；requirements.txt 需要 gguf>=0.13.0、sentencepiece、protobuf 及較新的 ComfyUI custom ops。Qwen Image 2.1 GGUF 預設 Q8_0，Q6_K 作為 4090 顯存餘量設定；Q4/Q5 不再作為應用預設路徑。",

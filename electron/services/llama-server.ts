@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -82,7 +83,7 @@ function promptModelDirectories(settings: Settings): string[] {
   }).map((root) => path.join(root, "models", "prompt_models"));
   return [...new Set([
     settings.promptModelDirectory,
-    settings.modelDirectory ? path.join(settings.modelDirectory, "prompt_models") : "",
+    ...modelLibraryRoots(settings).map(root => path.join(root, "prompt_models")),
     settings.comfyInstallDirectory ? path.join(settings.comfyInstallDirectory, "models", "prompt_models") : "",
     ...comfyDirectories
   ].filter(Boolean).map((root) => path.resolve(root)))];

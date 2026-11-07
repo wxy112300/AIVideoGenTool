@@ -1,4 +1,5 @@
 import path from "node:path";
+import { modelLibraryEntries } from "../../src/core/model-libraries.js";
 import { LAN_BROWSER_DEFAULT_PORT } from "../../src/core/lan-browser.js";
 import { normalizeStrataSettings, validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataUncensoredMode } from "../../src/core/strata-uncensored.js";
@@ -166,7 +167,15 @@ export class SettingsService {
     }
     if (input.modelDownloadSource !== undefined && !modelDownloadSources.some(source => source.id === input.modelDownloadSource)) throw new Error(MODEL_DOWNLOAD_INVALID);
     if (modelDownloadSource(input) === "custom" && !modelDownloadOrigin(input.modelDownloadCustomUrl ?? "")) throw new Error(MODEL_DOWNLOAD_INVALID);
+    if (input.modelDirectories !== undefined && (!Array.isArray(input.modelDirectories) || input.modelDirectories.length > 32 || input.modelDirectories.some(root => typeof root !== "string" || (Boolean(root.trim()) && !path.isAbsolute(root.trim()))))) {
+      throw new Error(t(uiKeys.settings.modelLibraries.invalid));
+    }
     let settings = { ...input, ...normalizeStrataSettings(input), appearance: normalizeAppearance(input.appearance ?? this.deps.store.get().settings.appearance) };
+    if (input.modelDirectories !== undefined) {
+      settings.modelDirectories = modelLibraryEntries(input);
+      settings.modelDirectory = settings.modelDirectories[0] ?? "";
+      settings.modelDownloadDirectory = undefined;
+    }
     settings.modelDownloadSource = modelDownloadSource(input);
     settings.hfMirrorEnabled = settings.modelDownloadSource !== "huggingface";
     if (settings.modelDownloadSource === "custom") settings.modelDownloadCustomUrl = modelDownloadOrigin(input.modelDownloadCustomUrl!)!;

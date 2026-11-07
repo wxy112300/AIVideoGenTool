@@ -569,7 +569,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           const submitted = await submitImageTask(
             current,
             { ...run, status: "running" },
-            store.get().settings,
+            comfyUiSettingsForQueueTask(task, settingsAtClaim ?? store.get().settings),
             controller.signal
           );
           sideEffects.markTaskSubmitted(task, false);
@@ -1206,7 +1206,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         let artifactCommitTask = executionTask;
         const segmentedSeedVr2 = task.taskType === "upscale"
           ? await executeNativeSeedVr2Upscale(task, {
-              settings: store.get().settings,
+              settings: comfyUiSettingsForQueueTask(task, settingsAtClaim ?? store.get().settings),
               logger,
               signal: activeController.signal,
               updateTask: (taskId, patch) => updateTask(taskId, patch),
@@ -1242,7 +1242,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           assertManagedContinuationHead(store.get(), executionTask);
           const submitted = await submitTask(
             executionTask,
-            store.get().settings,
+            comfyUiSettingsForQueueTask(task, settingsAtClaim ?? store.get().settings),
             activeController.signal
           );
           sideEffects.markTaskSubmitted(task, hasVideoLoras);
@@ -1428,7 +1428,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             artifactCommitTask = executionTask;
             const secondSubmitted = await submitTask(
               executionTask,
-              store.get().settings,
+              comfyUiSettingsForQueueTask(task, settingsAtClaim ?? store.get().settings),
               activeController.signal
             );
             promptId = secondSubmitted.promptId;

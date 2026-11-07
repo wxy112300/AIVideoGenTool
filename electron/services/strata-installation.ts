@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -79,7 +80,7 @@ export async function verifyStrataEngineArchive(filename: string, t: Translate =
 }
 let installing = false;
 
-type StrataUninstallSettings = Pick<Settings, "strataInstallDirectory" | "modelDirectory" | "strataModelDirectory" | "comfyInstallDirectory"> & Partial<Pick<Settings, "uiLocale">>;
+type StrataUninstallSettings = Pick<Settings, "strataInstallDirectory" | "modelDirectory" | "strataModelDirectory" | "comfyInstallDirectory"> & Partial<Pick<Settings, "uiLocale" | "modelDirectories">>;
 interface StrataUninstallOptions { managedDirectory?: string; protectedDirectories?: string[] }
 const pathIdentity = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
 export async function physicalPath(filename: string): Promise<string> {
@@ -109,7 +110,7 @@ async function checkedUninstallRoot(settings: StrataUninstallSettings, options: 
     throw new Error(t(uiKeys.strataRuntime.uninstallMissing));
   }
   const actualRoot = await physicalPath(root);
-  const protectedDirectories = [settings.modelDirectory, settings.strataModelDirectory,
+  const protectedDirectories = [...modelLibraryRoots(settings), settings.modelDirectory, settings.strataModelDirectory,
     settings.comfyInstallDirectory.trim() ? path.join(settings.comfyInstallDirectory, "models") : "",
     ...(options.protectedDirectories ?? [])].filter((directory) => directory.trim());
   for (const directory of protectedDirectories) {

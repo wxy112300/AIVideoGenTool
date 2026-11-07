@@ -1,3 +1,5 @@
+import { modelLibraryRoots, modelPathKey } from "../../src/core/model-libraries.js";
+import { scanModelLibraries } from "./model-library-scan.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { execFile, spawn } from "node:child_process";
 import { createNativeTranslator } from "../ui-translator.js";
@@ -190,6 +192,7 @@ import {
   waitForComfyServiceStartup
 } from "./local-service-process.js";
 import {
+  comfyModelLibrariesLaunchMatches,
   appManagedComfyDatabaseFilename,
   clearOwnedComfyProcessIds,
   ownedComfyProcessIdSnapshot,
@@ -1794,7 +1797,8 @@ function modelComponentsAvailable(
 export function evaluateModelProfiles(
   modelFiles: string[],
   ltxModelProfile: Settings["ltxExtensionModelProfile"] = "q3_k_m",
-  runtimeNodeIds?: ReadonlySet<string>
+  runtimeNodeIds?: ReadonlySet<string>,
+  locations?: ReadonlyMap<string, string[]>
 ): ModelScanProfile[] {
   const normalizedFiles = modelFiles.map((filename) =>
     filename.replaceAll("\\", "/")
@@ -1821,6 +1825,7 @@ export function evaluateModelProfiles(
         ...(component.alternativeGroup ? { alternativeGroup: component.alternativeGroup } : {}),
         expected: component.expected,
         matches,
+        ...(locations ? { locations: matches.flatMap(filename => locations.get(modelPathKey(filename)) ?? []) } : {}),
         installGuide: component.installGuide ??
           installGuides[`${profile.id}:${component.label}`] ??
           installGuides[`minimax_h3_fl2va:${component.label}`] ??
@@ -1965,7 +1970,7 @@ export async function scanLlamaServer(
 export async function uninstallStrata(settings: Settings, onProgress?: (message: string) => void): Promise<ConnectionResult> {
   const comfyRoot = await findComfyRoot(settings);
   const modelDirectory = comfyRoot ? comfyDataDirectories(settings, comfyRoot).modelDirectory : settings.modelDirectory;
-  return uninstallStrataRuntime(settings, onProgress, { protectedDirectories: [modelDirectory] });
+  return uninstallStrataRuntime(settings, onProgress, { protectedDirectories: modelLibraryRoots(settings, modelDirectory) });
 }
 
 export function installStrata(settings: Settings, onProgress?: (message: string, progress?: StrataInstallProgress) => void): Promise<ConnectionResult> {
@@ -3337,14 +3342,13 @@ export function comfyOutputSubfolder(
 }
 
 export function comfyDataDirectories(
-  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> &
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> & Partial<Pick<Settings, "modelDirectories">> &
     Partial<Pick<Settings, "imageOutputDirectory">>,
   comfyRoot: string
 ): { modelDirectory: string; outputDirectory: string } {
+  const modelRoot = modelLibraryRoots(settings, path.join(comfyRoot, "models"))[0] ?? path.join(comfyRoot, "models");
   return {
-    modelDirectory: settings.modelDirectory.trim()
-      ? path.resolve(settings.modelDirectory)
-      : path.join(comfyRoot, "models"),
+    modelDirectory: path.resolve(modelRoot),
     outputDirectory: sharedComfyOutputRoot(settings)
       ? path.resolve(sharedComfyOutputRoot(settings))
       : path.join(comfyRoot, "output")
@@ -3353,13 +3357,13 @@ export function comfyDataDirectories(
 
 export function mergeComfyDesktopSettings(
   value: unknown,
-  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> &
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> & Partial<Pick<Settings, "modelDirectories">> &
     Partial<Pick<Settings, "imageOutputDirectory">>
 ): Record<string, unknown> {
   const current = value && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
-  const modelDirectory = settings.modelDirectory.trim();
+  const modelDirectory = modelLibraryRoots(settings)[0] ?? "";
   const outputDirectory = sharedComfyOutputRoot(settings);
   const currentModels = Array.isArray(current.modelsDirs)
     ? current.modelsDirs.filter((item): item is string => typeof item === "string")
@@ -3367,14 +3371,14 @@ export function mergeComfyDesktopSettings(
   return {
     ...current,
     ...(modelDirectory
-      ? { modelsDirs: uniqueWindowsPaths([modelDirectory, ...currentModels]) }
+      ? { modelsDirs: uniqueWindowsPaths([...modelLibraryRoots(settings), ...currentModels]) }
       : {}),
     ...(outputDirectory ? { outputDir: path.resolve(outputDirectory) } : {})
   };
 }
 
 async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
-  if (!settings.modelDirectory.trim() && !settings.outputDirectory.trim()) return;
+  if (!modelLibraryRoots(settings).length && !settings.outputDirectory.trim()) return;
   const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
   const filename = path.join(appData, "Comfy Desktop", "settings.json");
   const source = await fs.readFile(filename, "utf8").catch(() => "");
@@ -3487,7 +3491,7 @@ export async function alignLocalComfyUiRuntimeProfile(
   const previousProfile = comfyUiRuntimeProfileFromCommandLine(
     listener?.commandLine ?? ""
   );
-  if (listenerOwned && previousProfile === desiredProfile) {
+  if (listenerOwned && previousProfile === desiredProfile && comfyModelLibrariesLaunchMatches(settings, listener?.commandLine ?? "")) {
     return {
       ok: true,
       restarted: false,
@@ -4431,7 +4435,7 @@ export async function installDepthAnything(
     return { ok: false, message: t(uiKeys.envMaintenance.depthRootMissing) };
   }
   const modelDirectory = comfyDataDirectories(settings, comfyRoot).modelDirectory;
-  return prepareDepthAnythingAssets(settings, comfyRoot, [modelDirectory], onLog);
+  return prepareDepthAnythingAssets(settings, comfyRoot, modelLibraryRoots(settings, modelDirectory), onLog);
 }
 
 export async function uninstallCustomNode(
@@ -5114,8 +5118,9 @@ async function environmentModelFiles(
   settings: Settings,
   comfyRoot: string,
   modelDirectory: string
-): Promise<string[]> {
-  const modelFiles = await listModelFiles(modelDirectory);
+): Promise<string[] & { locations: Map<string, string[]>; libraries: { directory: string; available: boolean; truncated: boolean }[] }> {
+  const scanned = await scanModelLibraries(modelLibraryRoots(settings, modelDirectory));
+  const modelFiles = scanned.files;
   if (settings.promptModelDirectory.trim()) {
     const promptDirectory = path.resolve(settings.promptModelDirectory);
     if (promptDirectory.toLowerCase() !== path.resolve(modelDirectory).toLowerCase()) {
@@ -5138,7 +5143,7 @@ async function environmentModelFiles(
   ) {
     modelFiles.push("frame_interpolation/rife47.pth");
   }
-  return modelFiles;
+  return Object.assign(modelFiles, { locations: scanned.locations, libraries: scanned.libraries });
 }
 
 async function scanManagedGuideAssets(
@@ -5176,7 +5181,7 @@ async function scanManagedGuideAssets(
       ? scanDlss5Runtime(comfyRoot, "", t)
       : Promise.resolve(emptyDlss5RuntimeStatus(runtimeDirectory, "missing", t(uiKeys.dlssRuntime.scanRootMissing))),
     scanDepthAnythingAssets(comfyRoot, {
-      modelDirectories: [comfyDataDirectories(settings, comfyRoot).modelDirectory]
+      modelDirectories: modelLibraryRoots(settings, comfyDataDirectories(settings, comfyRoot).modelDirectory)
     }),
     comfyRoot
       ? scanAetherScaleRuntime(comfyRoot, "", "", undefined, t)
@@ -5373,7 +5378,8 @@ async function scanFullEnvironment(
   const scannedModelProfiles = evaluateModelProfiles(
     modelFiles,
     settings.ltxExtensionModelProfile,
-    runtimeNodeIds
+    runtimeNodeIds,
+    modelFiles.locations
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
@@ -5529,6 +5535,8 @@ async function scanFullEnvironment(
     pythonRuntimes,
     gpus: nvidiaProbe.devices,
     modelDirectory,
+    modelDirectories: modelLibraryRoots(settings, modelDirectory),
+    modelLibraryStates: modelFiles.libraries,
     outputDirectory,
     llamaServer,
     llamaCppPython: { ...llamaCppPython, latestVersion: (await latestNodeVersionsPromise)["llama-cpp-python"] || "" },
@@ -5578,6 +5586,7 @@ function environmentScanCacheKey(settings: Settings): string {
     comfyPythonPath: settings.comfyPythonPath,
     comfyUrl: settings.comfyUrl,
     modelDirectory: settings.modelDirectory,
+    modelDirectories: settings.modelDirectories ?? null,
     promptModelDirectory: settings.promptModelDirectory,
     strataInstallDirectory: settings.strataInstallDirectory,
     strataModelDirectory: settings.strataModelDirectory,
@@ -5765,7 +5774,8 @@ async function scanEnvironmentDependencies(
         return evaluateModelProfiles(
           modelFiles,
           settings.ltxExtensionModelProfile,
-          runtimeNodeIds
+          runtimeNodeIds,
+          modelFiles.locations
         );
       })();
   const modelProfiles = mergeModelProfilesWithCustomNodes(

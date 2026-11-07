@@ -3,6 +3,7 @@ import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import type { PromptProgressReporter, Settings } from "../../src/types.js";
 import { findComfyRoot } from "./comfy-discovery.js";
 import { downloadFileWithCurl } from "./environment.js";
@@ -60,10 +61,13 @@ function safeAssetPath(modelDirectory: string, relativePath: string, t: Translat
 }
 
 async function resolveModelDirectory(settings: Settings): Promise<string> {
-  const configured = settings.modelDirectory.trim();
-  if (configured) return path.resolve(configured);
   const comfyRoot = await findComfyRoot(settings);
-  return comfyRoot ? path.join(comfyRoot, "models") : "";
+  const roots = modelLibraryRoots(settings, comfyRoot ? path.join(comfyRoot, "models") : "");
+  for (const root of roots) {
+    const entries = await fs.readdir(path.join(root, QWEN_BASE_DIRECTORY)).catch(() => []);
+    if (entries.some(name => name.endsWith(".safetensors"))) return path.resolve(root);
+  }
+  return roots[0] ? path.resolve(roots[0]) : "";
 }
 
 async function downloadMetadataAsset(
@@ -126,7 +130,12 @@ export async function ensureQwenVlManagedMetadata(
           relativePath: asset.relativePath,
           modelDirectory
         });
-        if (await downloadMetadataAsset(asset, modelDirectory, settings)) downloaded.push(asset.relativePath);
+        let destination = modelDirectory;
+        for (const root of modelLibraryRoots(settings, modelDirectory)) {
+          const entries = await fs.readdir(path.join(root, path.dirname(asset.relativePath))).catch(() => []);
+          if (entries.some(name => name.endsWith(".safetensors"))) { destination = root; break; }
+        }
+        if (await downloadMetadataAsset(asset, destination, settings)) downloaded.push(asset.relativePath);
       }
       if (downloaded.length) {
         appLogger.info("prompt", "qwenvl-metadata-prepared", "Qwen3-VL prompt metadata prepared", {

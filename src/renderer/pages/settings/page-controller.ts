@@ -10,9 +10,11 @@ import { MODEL_DOWNLOAD_INVALID, rewriteHuggingFaceDownloadUrl } from "../../../
 import { uiKeys } from "../../../core/i18n-keys";
 import { localizeModelScanProfile } from "../../shared/model-profile-labels";
 import { outputDirectoryWithinRoot } from "./helpers";
-import { modelComponentWithLocations, openModelComponentLocation } from "./model-location";
+import { modelComponentWithLocations, bindModelDirectoryActions } from "./model-location";
 import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
+import { modelLibraryRoots, modelLibraryEntries, modelDownloadRoot } from "../../../core/model-libraries";
+import { mountSortable, moveListItem } from "../../shared/ui/sortable";
 
 // UI-only disclosure state survives a scan/remount without entering persisted settings.
 const modelDisclosures = new WeakMap<HTMLElement, Map<string, boolean>>();
@@ -103,11 +105,12 @@ export function mountSettingsPageController(
       const component = profile?.components[Number(button.dataset.installComponent)];
       if (!profile || !component) return;
       const status = options.getEnvironmentScan()?.strataPreparation;
-      const targetRoot = strataProfileModelRoot(strataPreparationMatchesSettings(settings, status)
-        ? status!.modelDirectory
-        : settings.modelDirectory.trim() ? strataModelRoot(settings) : "", profile.id);
+      const destination = modelDownloadRoot(settings, options.getEnvironmentScan()?.modelDirectory);
+      const targetRoot = strataProfileModelRoot(destination ? strataModelRoot({ modelDirectory: destination, strataModelDirectory: "" })
+        : !settings.modelDirectories?.length && strataPreparationMatchesSettings(settings, status) ? status!.modelDirectory : "", profile.id);
       const selection: SettingsInstallGuideSelection = {
         profileName: profile.name,
+        profileId: profile.id,
         component: modelComponentWithLocations(component, {
           modelDirectory: options.getEnvironmentScan()?.modelDirectory || settings.modelDirectory,
           promptModelDirectory: settings.promptModelDirectory,
@@ -117,7 +120,7 @@ export function mountSettingsPageController(
       };
       options.setInstallGuide(selection);
       (options.requestOverlayRender ?? options.context.requestRender)();
-      if (profile.managedBy === "strata" && !targetRoot) {
+      if (profile.managedBy === "strata" && !targetRoot && !settings.modelDirectories?.length) {
         try {
           const scanned = (await options.runEnvironmentScan(settings))?.strataPreparation;
           if (options.getInstallGuide() === selection && strataPreparationMatchesSettings(options.formSettings(), scanned)) {
@@ -158,11 +161,8 @@ export function mountSettingsPageController(
     const opened = await options.context.hostCapabilities.openExternal(url);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
   }, { signal });
-  root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
-    const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim() || "";
-    const opened = await openModelComponentLocation(options.context.hostCapabilities, options.getInstallGuide()?.component, directory);
-    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
-  }, { signal });
+  bindModelDirectoryActions(root, options.context.hostCapabilities, () => options.getInstallGuide()?.component,
+    () => options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" }), signal);
 
   root.querySelectorAll<HTMLButtonElement>("[data-settings-open-path]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -274,16 +274,51 @@ export function mountSettingsPageController(
     }, { signal });
   });
 
-  root.querySelector("#pick-model-directory")?.addEventListener("click", async () => {
-    const directory = await options.context.hostCapabilities.pickDirectory();
-    const input = root.querySelector<HTMLInputElement>("#model-directory");
-    if (!directory || !input) return;
-    input.value = directory;
-    const settings = options.formSettings();
+  const libraryRoots = () => modelLibraryEntries(options.formSettings(), options.getEnvironmentScan()?.modelDirectory);
+  let scannedLibraryRoots = root.querySelector("[data-model-libraries]")
+    ? JSON.stringify(modelLibraryRoots(options.formSettings(), options.getEnvironmentScan()?.modelDirectory)) : "";
+  const changeLibraries = (directories: string[]) => {
+    const current = options.formSettings();
+    const settings = { ...current, modelDirectories: [...directories], modelDirectory: directories[0] ?? "" };
+    settings.modelDownloadDirectory = undefined;
     options.setSettingsDraft(settings);
-    void options.runEnvironmentScan(settings);
+    options.syncSettingsDirtyUi();
+    options.context.requestRender();
+    const nextRoots = JSON.stringify(modelLibraryRoots(settings, options.getEnvironmentScan()?.modelDirectory));
+    if (scannedLibraryRoots !== nextRoots) { scannedLibraryRoots = nextRoots; void options.runEnvironmentScan(settings); }
+  };
+  const moveLibrary = (from: number, to: number) => {
+    const directories = libraryRoots();
+    if (from < 0 || to < 0 || from >= directories.length || to >= directories.length || from === to) return;
+    changeLibraries(moveListItem(directories, from, to));
+  };
+  const libraryList = root.querySelector<HTMLElement>("[data-model-library-list]");
+  const cleanupLibrarySort = libraryList ? mountSortable(libraryList, moveLibrary) : undefined;
+  root.querySelector("[data-model-library-add]")?.addEventListener("click", () => {
+    const directories = libraryRoots();
+    if (directories.length >= 32) return;
+    changeLibraries([...directories, ""]);
+    globalThis.requestAnimationFrame?.(() => {
+      const inputs = root.querySelectorAll<HTMLInputElement>("[data-model-library-path]");
+      inputs[inputs.length - 1]?.focus();
+    });
   }, { signal });
-
+  root.querySelectorAll<HTMLElement>("[data-model-library-index]").forEach(row => {
+    const index = Number(row.dataset.modelLibraryIndex);
+    row.querySelector("[data-model-library-pick]")?.addEventListener("click", async () => {
+      const directories = libraryRoots();
+      const directory = await options.context.hostCapabilities.pickDirectory(directories[index]);
+      if (!directory) return;
+      directories[index] = directory;
+      changeLibraries(directories);
+    }, { signal });
+    row.querySelector("[data-model-library-remove]")?.addEventListener("click", () => { if (index > 0) changeLibraries(libraryRoots().filter((_, i) => i !== index)); }, { signal });
+    row.querySelector("[data-model-library-open]")?.addEventListener("click", () => { const directory = libraryRoots()[index]; if (directory) void options.context.hostCapabilities.openDirectory(directory); }, { signal });
+    row.querySelector<HTMLInputElement>("[data-model-library-path]")?.addEventListener("input", () => {
+      options.setSettingsDraft(options.formSettings()); options.syncSettingsDirtyUi();
+    }, { signal });
+    row.querySelector<HTMLInputElement>("[data-model-library-path]")?.addEventListener("change", () => changeLibraries(libraryRoots()), { signal });
+  });
   root.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
     const input = root.querySelector<HTMLInputElement>("#output-directory");
     const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
@@ -375,6 +410,7 @@ export function mountSettingsPageController(
   });
 
   return () => {
+    cleanupLibrarySort?.();
     root.querySelectorAll<HTMLDetailsElement>("[data-settings-disclosure-key]").forEach(details => {
       disclosures.set(details.dataset.settingsDisclosureKey!, details.open);
     });

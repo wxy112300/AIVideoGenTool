@@ -37,6 +37,7 @@ export async function enqueueLongVideoExtension(deps: QueueEnqueueServiceDepende
   task.longVideoRoot = path.join(outputRoot, ".lvs-long-video");
   const next = await deps.store.update(state => {
     if (!state.history.find(asset => asset.id === source.sourceAssetId)?.versions.some(version => version.id === source.sourceVersionId)) throw new Error("Group Run source was removed during enqueue");
+    if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];
     state.queue.push(task); activateCreationDraft(state, prepared);
   });
   deps.logger.info("queue", "task-enqueued", "Group Run extension added to queue", { taskId: task.id, taskType: task.taskType, modelId: task.modelId });

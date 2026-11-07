@@ -1,3 +1,4 @@
+import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -134,6 +135,7 @@ export async function agentSettings(preferences: AgentPreferences, stateFile?: s
   const text = (key: string) => typeof studio[key] === "string" ? studio[key] as string : "";
   const settings = createDefaultSettings();
   return { ...settings, comfyInstallDirectory: "", modelDirectory: preferences.modelRoot || (preferences.modelDirectory ? "" : text("modelDirectory")),
+    modelDirectories: preferences.modelRoot || preferences.modelDirectory ? undefined : modelLibraryRoots({modelDirectory:text("modelDirectory"), modelDirectories: studio.modelDirectories as string[]}),
     strataModelDirectory: preferences.modelDirectory || text("strataModelDirectory"),
     strataInstallDirectory: preferences.strataDirectory || text("strataInstallDirectory"),
     strataPort: preferences.strataPort, strataUncensored: preferences.uncensoredMode !== "off", strataUncensoredMode: preferences.uncensoredMode, promptModelId: preferences.modelId,

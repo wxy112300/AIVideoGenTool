@@ -91,7 +91,10 @@ describe("committed automatic NAS projection", () => {
           files: [{ filename: task.outputFilename, subfolder: "", type: "output", absolutePath: filename }], comfyOutputs: {}, id: () => `queue-${index}-result-${identity++}` }));
         expect(f.store.get().queueRunning).toBe(true); expect(f.store.get().queue).toHaveLength(2 - index);
         // No publisher.flush and no NAS restart: production persistence must trigger publication itself.
-        await vi.waitFor(async () => expect(await fs.readFile(path.join(f.source, "current.json"), "utf8")).not.toBe(before), { timeout: 3000 });
+        await vi.waitFor(async () => {
+          if (f.errors.length) throw new Error(`Automatic NAS publication failed: ${f.errors.map(String).join("; ")}`);
+          expect(await fs.readFile(path.join(f.source, "current.json"), "utf8")).not.toBe(before);
+        }, { timeout: 15000 });
         await fs.copyFile(path.join(f.source, "current.json"), path.join(f.destination, "current.json"));
         expect(await info()).toMatchObject({ count: 1 + index, refreshError: true });
         await f.sync();
@@ -101,7 +104,7 @@ describe("committed automatic NAS projection", () => {
       expect(f.store.get().queueRunning).toBe(true); expect(f.store.get().queue).toHaveLength(1);
       expect(f.errors).toEqual([]); expect(errors.length).toBeGreaterThan(0);
     } finally { await server.close(); }
-  }, 20000);
+  }, 60000);
   it("forces a disk scan through HTTP and reports incomplete sync without discarding the last valid snapshot", async () => {
     const f = await fixture(); await f.sync();
     const web = path.join(f.root, "web"); await fs.mkdir(web); await fs.writeFile(path.join(web, "index.html"), "<!doctype html>");

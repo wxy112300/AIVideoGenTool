@@ -8,6 +8,7 @@ type EventHandler = (event: { currentTarget?: unknown; target?: unknown }) => un
 
 interface FakeButton {
   dataset: Record<string, string>;
+  closest: () => null;
   addEventListener: (type: string, handler: EventHandler) => void;
 }
 
@@ -15,6 +16,7 @@ function button(dataset: Record<string, string> = {}) {
   const handlers = new Map<string, EventHandler>();
   const value: FakeButton = {
     dataset,
+    closest: () => null,
     addEventListener: (type, handler) => {
       handlers.set(type, handler);
     }
@@ -56,7 +58,7 @@ describe("notification error routing", () => {
     };
     const root = {
       querySelector: (selector: string) => buttons[selector] ?? null,
-      querySelectorAll: (selector: string) => selector === "[data-open-environment-download]"
+      querySelectorAll: (selector: string) => selector === "[data-install-directory]" ? [installDirectory.value] : selector === "[data-open-environment-download]"
         ? [environmentDownload.value]
         : []
     };

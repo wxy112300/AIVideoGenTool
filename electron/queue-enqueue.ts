@@ -858,6 +858,7 @@ export class QueueEnqueueService {
       taskDraft.workflowPath = resolvedWorkflowPath;
       const task = queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode }, this.t);
       if (longVideoRoot) task.longVideoRoot = longVideoRoot;
+      if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];
       state.queue.push(task);
       activateCreationDraft(state, preparedDraft);
     });
@@ -991,6 +992,7 @@ export class QueueEnqueueService {
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const task = imageTaskFromDraft(preparedDraft, diffusionModelFilename, outputTarget);
     const next = await store.update((state) => {
+      if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];
       state.queue.push(task);
       state.imageDraft = preparedDraft;
     });
@@ -1350,6 +1352,7 @@ export class QueueEnqueueService {
     const safety = extensionSafetyForTask(task, current.settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     const next = await store.update((state) => {
+      if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];
       state.queue.push(task);
       activateCreationDraft(state, preparedDraft);
     });
@@ -1536,6 +1539,7 @@ export class QueueEnqueueService {
     const next = await store.update((state) => {
       const task = upscaleTaskFromRequest(preparedRequest, state, undefined, this.t);
       if (task.tessera && tesseraAnchor) task.tessera.anchor = structuredClone(tesseraAnchor);
+      if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];
       state.queue.push(task);
     });
     const task = next.queue.at(-1);

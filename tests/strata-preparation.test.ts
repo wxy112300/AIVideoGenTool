@@ -191,7 +191,7 @@ describe("Strata file preparation", () => {
     const options = { icon: () => "", escapeHtml: (value: string) => value, t: (key: string) => key, locale: "zh-CN" as const };
     const render = (targetRoot: string) => renderSettingsInstallGuideDialog({ selectedInstallGuide: { profileName: "Strata", component, targetRoot }, configuredModelDirectory: "ComfyUI\\models" }, options);
     expect(render("D:\\ComfyUI\\models\\LLM\\Qwen3.8-Flash-Next-GSQ-RCO-GGUF")).toContain("D:\\ComfyUI\\models\\LLM\\Qwen3.8-Flash-Next-GSQ-RCO-GGUF\\IQ3_XXS");
-    expect(render("")).toContain('data-install-directory="" disabled');
+    expect(render("")).toMatch(/data-install-directory=""[^>]* disabled/u);
     expect(render("")).toContain("模型路径暂不可用");
   });
 

@@ -163,6 +163,12 @@ label { display: grid; }
 .install-note p { margin: 4px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.55; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
 .input-action input { flex: 1; }
+.model-libraries { grid-column: 1 / -1; min-width: 0; }
+.model-library-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-block: 8px; }
+.model-library-row > .input-action { flex: 1; min-width: 0; }
+.model-library-row > .button-row { flex-shrink: 0; }
+.model-library-row .model-badge { flex-shrink: 0; }
+.model-library-status { grid-column: 2 / -1; }
 .input-action button { flex: 0 0 auto; }
 .connection-result { margin-top: 18px; padding: 12px; border-radius: 10px; background: #15171a; }
 .danger-hint { color: #d99a91 !important; }

@@ -1,3 +1,4 @@
+import { modelDownloadRoot } from "../../../core/model-libraries";
 import type {
   AppCacheSnapshot,
   AppLogSnapshot,
@@ -115,10 +116,7 @@ export function buildSettingsPageViewModel(
     strataInstallProgress: options.strataInstallProgress,
     selectedInstallGuide: options.selectedInstallGuide,
     installGuideModelDirectory:
-      options.environmentScan?.modelDirectory ||
-      options.settingsDraft?.modelDirectory ||
-      options.state.settings.modelDirectory ||
-      "ComfyUI\\models",
+      modelDownloadRoot(options.settingsDraft ?? options.state.settings, options.environmentScan?.modelDirectory),
     appLogs: options.appLogs,
     appLogsLoading: options.appLogsLoading,
     appLogsError: options.appLogsError,

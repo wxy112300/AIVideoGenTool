@@ -1,6 +1,21 @@
 import { uiKeys } from "../i18n-keys.js";
 
 export const enUSCatalog: Record<string, string> = {
+  [uiKeys.settings.modelLibraries.title]: "Model libraries",
+  [uiKeys.settings.modelLibraries.defaultLibrary]: "Default",
+  [uiKeys.settings.modelLibraries.numberedLibrary]: "Library {index}",
+  [uiKeys.settings.modelLibraries.containingDirectory]: "Open Containing Folder",
+  [uiKeys.settings.modelLibraries.keepDefault]: "The default library cannot be removed",
+  [uiKeys.settings.modelLibraries.empty]: "No directory (inactive)",
+  [uiKeys.settings.modelLibraries.choose]: "Choose a models root directory",
+  [uiKeys.settings.modelLibraries.unavailable]: "Directory unavailable",
+  [uiKeys.settings.modelLibraries.truncated]: "Too many files; scan incomplete",
+  [uiKeys.settings.modelLibraries.add]: "Add library",
+  [uiKeys.settings.modelLibraries.path]: "Model library {index}",
+  [uiKeys.settings.modelLibraries.remove]: "Remove library (keep files)",
+  [uiKeys.settings.modelLibraries.open]: "Open library",
+  [uiKeys.settings.modelLibraries.order]: "Drag to change lookup priority",
+  [uiKeys.settings.modelLibraries.invalid]: "Choose absolute models directory paths, up to 32 libraries.",
   [uiKeys.modelResource.sourceGemmaStandard]: "unsloth/gemma-4-12b-it-GGUF · Community standard · Q5",
   [uiKeys.modelResource.sourceRealEsrgan]: "Real-ESRGAN Official Releases",
   [uiKeys.nodeRequirement.comfyuiGguf]: "Maintained fork. requirements.txt needs gguf>=0.13.0, sentencepiece, protobuf and recent ComfyUI custom ops. Qwen Image 2.1 GGUF defaults to Q8_0; Q6_K provides more VRAM headroom on 4090. Q4/Q5 are no longer app defaults.",

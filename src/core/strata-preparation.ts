@@ -4,16 +4,18 @@ import { STRATA_DEFAULT_PORT } from "./catalog/dependencies/strata.js";
 import { isStrataDeepSeek, STRATA_DEEPSEEK_DIRECTORY } from "./catalog/models/strata-deepseek.js";
 import { strataUncensoredMode } from "./strata-uncensored.js";
 import { normalizeStrataReasoningEffort } from "./strata-reasoning.js";
+import { modelLibraryRoots, type ModelLibrarySettings } from "./model-libraries.js";
 
 export function validStrataPort(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
 }
 /** Reuse the selected ComfyUI model root; software installation remains independent. */
 export function strataModelRoot(
-  settings: Pick<Settings, "strataModelDirectory" | "modelDirectory">,
+  settings: Pick<Settings, "strataModelDirectory"> & ModelLibrarySettings,
   resolvedModelDirectory = settings.modelDirectory
 ): string {
-  const root = resolvedModelDirectory?.trim().replace(/[\\/]+$/u, "");
+  const root = modelLibraryRoots({ ...settings, modelDirectory: resolvedModelDirectory }, resolvedModelDirectory)[0]?.replace(/[\\/]+$/u, "");
+  if (!root && settings.modelDirectories?.length) return "";
   if (!root) return settings.strataModelDirectory?.trim() || "";
   const separator = root.includes("\\") || /^[a-z]:/iu.test(root) ? "\\" : "/";
   return `${root}${separator}LLM${separator}${QWEN_FLASH_NEXT_MODEL_DIRECTORY}`;
@@ -30,9 +32,20 @@ export function strataProfileModelRoot(root: string, modelId: string): string {
 }
 
 export function strataModelScanRoots(
-  settings: Pick<Settings, "strataModelDirectory" | "modelDirectory">,
+  settings: Pick<Settings, "strataModelDirectory"> & ModelLibrarySettings,
   resolvedModelDirectory = settings.modelDirectory,
   modelId = ""
+): string[] {
+  const roots = modelLibraryRoots({ ...settings, modelDirectory: resolvedModelDirectory }, resolvedModelDirectory);
+  if (!roots.length && settings.modelDirectories?.length) return [];
+  return [...new Set((roots.length ? roots : [""]).flatMap(root => singleStrataModelScanRoots(
+    { strataModelDirectory: settings.strataModelDirectory, modelDirectory: root }, root, modelId)))];
+}
+
+function singleStrataModelScanRoots(
+  settings: Pick<Settings, "strataModelDirectory" | "modelDirectory">,
+  resolvedModelDirectory: string,
+  modelId: string
 ): string[] {
   const existing = strataModelRoot(settings, resolvedModelDirectory);
   const canonical = strataProfileModelRoot(existing, modelId);
@@ -60,11 +73,12 @@ export function strataRuntimeMatchesSettings(
 }
 
 export function strataPreparationMatchesSettings(
-  settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "modelDirectory"> & Partial<Pick<Settings, "comfyInstallDirectory">>,
+  settings: Pick<Settings, "strataInstallDirectory" | "strataModelDirectory" | "modelDirectory"> & Partial<Pick<Settings, "comfyInstallDirectory" | "modelDirectories">>,
   status: StrataPreparationStatus | undefined
 ): boolean {
   return Boolean(strataRuntimeMatchesSettings(settings, status) && status
     && (status.configuredModelDirectory ?? "") === settings.modelDirectory.trim()
+    && JSON.stringify(status.configuredModelDirectories ?? modelLibraryRoots({ modelDirectory: status.configuredModelDirectory ?? "" })) === JSON.stringify(settings.modelDirectories ?? modelLibraryRoots(settings))
     && (status.configuredComfyInstallDirectory ?? "") === (settings.comfyInstallDirectory?.trim() ?? ""));
 }
 
