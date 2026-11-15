@@ -67,6 +67,8 @@ import {
 } from "./legacy.js";
 import { modelCatalog } from "../catalog/index.js";
 import { mossImageAdapter, mossNsfwAdapter } from "./moss-image.js";
+import { minimaxH3ImageAdapter, minimaxH3ImageW4a8Adapter } from "./minimax-h3-image.js";
+import { H3_IMAGE_ID, H3_IMAGE_W4A8_ID } from "../minimax-h3-image-spec.js";
 
 const parseOutputs = parseImageOutputs;
 
@@ -171,6 +173,8 @@ export const birefnetBackgroundRemovalAdapter: ImageModelAdapter = {
 };
 
 export const imageModelAdapters: Record<string, ImageModelAdapter> = {
+  [minimaxH3ImageW4a8Adapter.id]: minimaxH3ImageW4a8Adapter,
+  [minimaxH3ImageAdapter.id]: minimaxH3ImageAdapter,
   [mossImageAdapter.id]: mossImageAdapter,
   [mossNsfwAdapter.id]: mossNsfwAdapter,
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
@@ -195,6 +199,12 @@ export function isRetiredImageModelId(modelId: string): boolean {
   return definition?.category === "image" && definition.retired === true;
 }
 
+export function retiredImageModelReplacement(modelId: string) {
+  return modelId === H3_IMAGE_ID
+    ? { modelId: H3_IMAGE_W4A8_ID, qualityProfile: "native-6" }
+    : { modelId: "qwen-image-2-1", qualityProfile: "preview-25" };
+}
+
 export function imageModelUnavailableReason(modelId: string, translator: Translator = createTranslator()): string {
   const { t, locale } = translator;
   if (isRetiredImageModelId(modelId)) {
@@ -209,7 +219,7 @@ export function imageModelUnavailableReason(modelId: string, translator: Transla
 export function firstSupportedImageModelId(
   ...candidates: Array<string | undefined>
 ): string {
-  return candidates.find((candidate) => candidate && imageModelAdapterFor(candidate)) ??
+  return candidates.find((candidate) => candidate && !isRetiredImageModelId(candidate) && imageModelAdapterFor(candidate)) ??
     qwenImageEdit2511Adapter.id;
 }
 

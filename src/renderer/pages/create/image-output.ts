@@ -1,4 +1,5 @@
-import { clampCustomImageResolution, imageModelCapabilityFor, imageOutputCountMax, imageOutputDimensions, imageTargetResolutionRange } from "../../../core/image-workflow";
+import { isH3ImageModel } from "../../../core/minimax-h3-image-spec";
+import { clampCustomImageResolution, imageModelCapabilityFor, imageOutputCountMax, imageOutputDimensions, imageResolutionRangeFor } from "../../../core/image-workflow";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { ImageEditDraft } from "../../../types";
 import type { Translate } from "../../../core/i18n";
@@ -12,7 +13,7 @@ export function imageOutputSummary(draft: ImageEditDraft, t: Translate, name?: s
   const capability = imageModelCapabilityFor(draft.modelId), base = draft.pictures[0];
   const dimensions = imageOutputDimensions(base?.width ?? 0, base?.height ?? 0, draft.targetResolution,
     capability.textOnlyOutputWidth, capability.textOnlyOutputHeight, draft.aspectRatio,
-    capability.outputMultiple ?? (base ? capability.customOutputMultiple ?? 8 : 8));
+    capability.outputMultiple ?? (base ? capability.customOutputMultiple ?? 8 : 8), draft.modelId);
   return [name ?? capability.name, t(uiKeys.create.imageEdit.outputCountValue, { count: capability.deterministic ? 1 : draft.outputCount }),
     dimensions.every(value => value > 0) ? dimensions.join(" × ") : ""].filter(Boolean).join(" · ");
 }
@@ -24,7 +25,7 @@ export function renderImageOutput(vm: ImageEditPageViewModel, options: CreatePag
     <div class="create-card-heading"><h3>${t(uiKeys.create.imageEdit.generationSettings)}</h3></div>
     <div class="composer-control-grid">
       <label class="settings-field create-span-2">${t(uiKeys.create.imageEdit.model)}<select id="image-edit-model">${vm.imageModelOptionsMarkup}</select></label>
-      <label class="settings-field" ${capability.deterministic ? "hidden" : ""}>${t(uiKeys.create.imageEdit.quality)}<select id="image-edit-quality">${vm.imageQualityOptionsMarkup}</select></label>
+      <label class="settings-field" ${capability.deterministic || isH3ImageModel(vm.draft.modelId) ? "hidden" : ""}>${t(uiKeys.create.imageEdit.quality)}<select id="image-edit-quality">${vm.imageQualityOptionsMarkup}</select></label>
       ${vm.imageAspectRatioVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.outputAspectRatio)}<select id="image-edit-aspect-ratio">${vm.imageAspectRatioOptionsMarkup}</select></label>` : ""}
       ${!vm.promptless && capability.supportsSeed !== false ? `<label class="settings-field create-span-2">${t(uiKeys.create.imageEdit.randomSeed)}<div class="seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${vm.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("dices")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>` : ""}
       ${vm.imageResolutionVisible ? `<div class="settings-field create-span-3 image-resolution-control"><div class="create-field-label"><span>${t(uiKeys.create.imageEdit.outputResolution)}</span><output data-image-output-dimensions></output></div>
@@ -46,8 +47,16 @@ export function mountImageOutput(root: HTMLElement, getDraft: () => ImageEditDra
   const panel = root.querySelector<HTMLElement>("[data-image-custom-resolution-panel]");
   const events = new AbortController(), { signal } = events;
   const values = source ? [...source.options].map(option => option.value).filter(value => value !== "source").map(Number).sort((a,b) => a-b) : [];
-  const presets = ["source", "720", "1024", "1080", "1536", "2160"];
   const initial = getDraft();
+  const imageTargetResolutionRange = imageResolutionRangeFor(initial?.modelId);
+  const presets = isH3ImageModel(initial?.modelId)
+    ? ["source", "2048", "2160", "3072", "3552", "4096"]
+    : ["source", "720", "1024", "1080", "1536", "2160"];
+  if (source && isH3ImageModel(initial?.modelId)) {
+    for (const value of [2048, 2688, 3072, 3360, 3552, 4096]) {
+      if (![...source.options].some(option => option.value === String(value))) source.add(new Option(String(value), String(value)));
+    }
+  }
   const previous = resolutionChoices.get(root);
   const selected = previous && previous.modelId === initial?.modelId ? previous : {
     modelId: initial?.modelId ?? "", custom: !presets.includes(String(initial?.targetResolution ?? "source"))
@@ -67,7 +76,7 @@ export function mountImageOutput(root: HTMLElement, getDraft: () => ImageEditDra
     const draft = getDraft(); if (!draft) return [0,0];
     const cap = imageModelCapabilityFor(draft.modelId), base = draft.pictures[0];
     return imageOutputDimensions(base?.width ?? 0, base?.height ?? 0, draft.targetResolution,
-      cap.textOnlyOutputWidth, cap.textOnlyOutputHeight, draft.aspectRatio, cap.outputMultiple ?? (base ? cap.customOutputMultiple ?? 8 : 8));
+      cap.textOnlyOutputWidth, cap.textOnlyOutputHeight, draft.aspectRatio, cap.outputMultiple ?? (base ? cap.customOutputMultiple ?? 8 : 8), draft.modelId);
   };
   const sync = () => {
     const draft = getDraft(); if (!draft) return;
@@ -94,7 +103,7 @@ export function mountImageOutput(root: HTMLElement, getDraft: () => ImageEditDra
   }
   const commit = (value: number) => { if (!source || !Number.isFinite(value) || !values.length) return;
     selected.custom = true;
-    const next = String(clampCustomImageResolution(value, step()));
+    const next = String(clampCustomImageResolution(value, step(), getDraft()?.modelId));
     const changed = source.value !== next;
     ensureValue(next);
     if (changed) source.dispatchEvent(new Event("change", { bubbles: true }));

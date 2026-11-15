@@ -8,19 +8,37 @@ export interface ModelLocationRoots {
   comfyRoot: string;
 }
 
+/** A partially downloaded tensor set must be completed beside its scanned shards. */
+export function modelShardDirectory(component: ModelComponentStatus, siblings: readonly ModelComponentStatus[], roots: ModelLocationRoots): string | undefined {
+  if (component.found) return undefined;
+  const group = (item: ModelComponentStatus) => item.expected.replaceAll("\\", "/").match(/^(.*)-\d+-of-(\d+)\.gguf$/iu)?.slice(1).join("|").toLowerCase();
+  const key = group(component);
+  if (!key) return undefined;
+  for (const sibling of siblings) {
+    if (!sibling.found || group(sibling) !== key) continue;
+    const filename = modelComponentWithLocations(sibling, roots).matches.find(value => value.trim());
+    if (!filename) continue;
+    const end = Math.max(filename.lastIndexOf("\\"), filename.lastIndexOf("/"));
+    if (end > 0) return filename.slice(0, end);
+  }
+  return undefined;
+}
+
 /** Display the first scan hit, or the default library's canonical download filename. */
-export function modelComponentDisplayPath(component: ModelComponentStatus, roots: ModelLocationRoots, profileId: string, strata = false): string {
+export function modelComponentDisplayPath(component: ModelComponentStatus, roots: ModelLocationRoots, profileId: string, strata = false, shardDirectory?: string): string {
   if (component.found) return modelComponentWithLocations(component, roots).matches.find(filename => filename.trim()) ?? "";
-  if (!roots.modelDirectory.trim()) return "";
+  if (!shardDirectory && !roots.modelDirectory.trim()) return "";
   const guide = component.installGuide;
-  const root = strata ? strataProfileModelRoot(strataModelRoot({ modelDirectory: roots.modelDirectory, strataModelDirectory: "" }), profileId) : roots.modelDirectory;
-  const relative = guide ? [guide.targetSubdirectory, guide.recommendedFilename].filter(Boolean).join("/") : component.expected;
+  const root = shardDirectory ?? (strata ? strataProfileModelRoot(strataModelRoot({ modelDirectory: roots.modelDirectory, strataModelDirectory: "" }), profileId) : roots.modelDirectory);
+  const relative = shardDirectory ? guide?.recommendedFilename ?? component.expected.split(/[\\/]/u).at(-1)!
+    : guide ? [guide.targetSubdirectory, guide.recommendedFilename].filter(Boolean).join("/") : component.expected;
   const separator = root.includes("\\") || /^[a-z]:/iu.test(root) ? "\\" : "/";
   return `${root.replace(/[\\/]+$/u, "")}${separator}${relative.replace(/[\\/]/gu, separator)}`;
 }
 
 /** Keep blank slots and their displayed library numbers; never retarget a blank default. */
 export function installGuideDirectories(selection: SettingsInstallGuideSelection, fallback: string, libraries?: readonly string[]): string[] {
+  if (selection.lockedDirectory) return [selection.lockedDirectory];
   const roots = libraries?.length ? libraries : [selection.targetRoot ?? fallback];
   return roots.map(root => {
     if (!root.trim()) return "";

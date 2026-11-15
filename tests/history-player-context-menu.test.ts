@@ -5,6 +5,7 @@ import { createDefaultState } from "../src/core/defaults";
 import { createTranslator } from "../src/core/i18n";
 import type { RendererContext } from "../src/renderer/contracts";
 import { createHistoryContextMenus } from "../src/renderer/pages/history/context-menus";
+import { mountModalIsolation } from "../src/renderer/shared/ui/modal-isolation";
 import { createHistoryPerformanceFixture } from "./fixtures/history-performance";
 
 const translator = createTranslator("zh-CN");
@@ -92,6 +93,26 @@ afterEach(() => {
 });
 
 describe("history player context menu", () => {
+  it("returns focus from video info only after the custom modal background is released", async () => {
+    const { state, context } = createHistoryContext();
+    const menus = createHistoryContextMenus(context, createOptions(state, context));
+    const player = document.createElement("div");
+    const trigger = document.createElement("button"); player.append(trigger); document.body.append(player);
+    const release = mountModalIsolation(document.body);
+    try {
+      menus.openHistoryPlayer("video-1", "version-1", 100, 100, player, trigger);
+      document.querySelector<HTMLButtonElement>('[data-history-player-action="video-info"]')!.click();
+      await Promise.resolve(); await Promise.resolve();
+      expect(trigger.closest("[inert]")).not.toBeNull();
+      const focus = vi.spyOn(trigger, "focus").mockImplementation(() => {
+        expect(trigger.closest("[inert]")).toBeNull();
+      });
+      document.querySelector<HTMLButtonElement>("[data-history-player-info-close]")!.click();
+      expect(focus).not.toHaveBeenCalled();
+      await Promise.resolve(); await Promise.resolve();
+      expect(focus).toHaveBeenCalledOnce();
+    } finally { menus.close(); release(); }
+  });
   it("keeps compact list actions and keyboard return while showing missing-file reasons only when needed", () => {
     const { state, context } = createHistoryContext();
     const options = createOptions(state, context);

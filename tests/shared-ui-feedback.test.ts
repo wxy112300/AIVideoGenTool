@@ -103,6 +103,26 @@ describe("notification stack", () => {
 });
 
 describe("single application tooltip", () => {
+  it("stays readable while crossing the gap and hovering its content, then closes on exit or Escape", () => {
+    vi.useFakeTimers(); document.body.innerHTML = '<button title="Long help" aria-describedby="original">Info</button>';
+    cleanups.push(mountTooltip(document.body));
+    const button = document.querySelector("button")!;
+    button.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })); vi.advanceTimersByTime(451);
+    const tip = document.querySelector<HTMLElement>(".ui-tooltip")!;
+    button.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }));
+    vi.advanceTimersByTime(80); tip.dispatchEvent(new MouseEvent("pointerenter")); vi.advanceTimersByTime(500);
+    expect(tip.isConnected).toBe(true);
+    tip.dispatchEvent(new MouseEvent("pointerleave", { relatedTarget: button })); vi.advanceTimersByTime(200);
+    expect(tip.isConnected).toBe(true);
+    button.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: tip }));
+    tip.dispatchEvent(new MouseEvent("pointerenter"));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(tip.isConnected).toBe(false); expect(button.getAttribute("aria-describedby")).toBe("original");
+    button.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })); vi.advanceTimersByTime(451);
+    button.dispatchEvent(new MouseEvent("pointerout", { bubbles: true, relatedTarget: tip }));
+    tip.dispatchEvent(new MouseEvent("pointerleave", { relatedTarget: document.body })); vi.advanceTimersByTime(161);
+    expect(tip.isConnected).toBe(false);
+  });
   it("shows a material thumbnail in the unique body portal outside clipped editors", () => {
     vi.useFakeTimers(); document.body.innerHTML = '<div style="overflow:hidden"><span data-ui-tooltip="Picture 1" data-ui-tooltip-image="data:image/png;base64,AA==">Picture 1</span></div>';
     cleanups.push(mountTooltip(document.body));

@@ -84,6 +84,15 @@ describe("Attention installation messages", () => {
         if (baseline) expect(commands).toEqual(baseline);
         else baseline = commands;
       }
+      const installed = await vi.mocked(inspectAttentionPython)();
+      vi.mocked(inspectAttentionPython).mockResolvedValue({ ...installed, comfyKitchenVersion: "0.2.42" });
+      vi.mocked(spawn).mockClear();
+      expect((await installAttentionAcceleration({
+        ...createDefaultSettings(), uiLocale: "en-US", comfyPythonPath: process.execPath
+      })).ok).toBe(true);
+      expect(vi.mocked(spawn).mock.calls.some(([, args]) =>
+        args?.some(arg => String(arg).startsWith("comfy-kitchen==")))).toBe(false);
+
       const complete = await vi.mocked(inspectAttentionPython)();
       vi.mocked(inspectAttentionPython)
         .mockResolvedValueOnce(complete)

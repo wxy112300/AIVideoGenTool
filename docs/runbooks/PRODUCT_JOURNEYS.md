@@ -125,6 +125,7 @@ flowchart TD
 - Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
 - Strata UD-Q4_K_XL：模型卡四分片→共享模型命名目录→原版projector/MTP原地复用→固定hash与`--compat-bf16`离线pack/独立receipt→按Q4专家体量选择完整或显式预算驻留→原提示词按钮/独立Agent启动。缺片阻塞、补齐恢复、切换模型重新发现pack；H3仍32K，Agent长context计host KV。关闭/自带ESP/社区sergqwer三模式均可选，仍验证当次引擎作用层与逐请求应用，不把控制向量加载当去拒答效果。无权重阶段只验卡片/配置/合成按钮链，真实图文、Agent、性能与峰值留待实测。
 - 异步回写使用请求的 `origin`；切换到图片编辑或 Extend 后，旧请求只能更新原草稿。失败不破坏原 prompt，取消不是错误成功。
+- Strata已加载后的请求取消：原增强取消按钮 → 断开当次HTTP流 → 官方客户端断连取消 → 后台in_flight归零且健康/loaded确认 → 原稿不保存部分输出、模型/PID保留 → 修改后下一次增强复用。未知状态或尚在计算结束中保持取消等待；显式模型停止/队列交接/退出仍终止服务，准备/加载尚未完成的取消仍清理。协议脚本引擎通过不能当神经计算取消延迟已验。
 - Strata完整H3增强统一调用一个编译器，不再按模式分流旧平铺模板：T2VA/I2VA/FL2VA/L2VA/R2V及三条Extend共用契约/控制/自动预算；仅参考角色、首尾对齐、续接时间轴有差异。批注仍为局部替换，图片编辑仍用自己的Pack。最终HTTP回归同时检查FL2VA双图顺序和所有路径思考/预算，不能用“参数写得一样”代替入口复用。
 - Strata先以官方tokenizer核对完整输入、图片与所选thinking模板，再加载GPU；超限失败无新版本且不截断资料。提示词设置在uncensored旁提供思考强度关闭/低/中/高，默认中；官方high是xhigh别名，不伪造第五档。保存后下一增强/纠正请求快照生效，不改变正在运行的请求、准备身份或重载驻留模型；隐藏时保留，旧/损坏状态归一到中。开启仍用自动思考分配（reasoning_budget_tokens=0，官方answer_room预留正文），关闭显式enable_thinking=false并用非思考采样；两者仍用32K自动输出预算。思考不写回正文，实际计数更新进度，日志区分请求强度与实际思考量。图片/批注保留各自契约。Extend只用所选终点最后可见帧，不重复采样源视频；额外视频参考保留编号/静音采样。边界/Motion Context/Continuum分别保留I2VA/R2V/T2VA执行字段；当前独立Agent/其他后端不由本设置控制。按原按钮取消，请求正确不等于实际质量/延迟已验。
 - Strata模型卡的MTP配套文件沿用组件信息弹窗和共享模型根手动下载；扫描不下载/哈希/加载。完整本地文件经固定hash→官方CPU转换→中文词表→原按钮加载；补齐MTP会使旧驻留下次请求重建，完整主pack不重准备。无MTP保留基础模式；明确允许官方文件回读时，完整驻留目标不足不单独阻止native IQ启动，仍检查启动RAM、commit和显存，并从本次引擎日志确认实际模式；可能降速。未允许回读仍拒绝，不把配置/mock通过当真实性能验收。
@@ -334,7 +335,11 @@ Prompt 最小设置闭环见 [操作配方](../AGENT_ELECTRON_API_RUNBOOK.md#set
 
 图片清空按钮 → 确认 → 只清内容/旧作品关联，不恢复默认模型或步数；生成参数继续沿用当前选择。文本 token 估算随输入原位更新，不计入参考图、不作为准入预算。Strata + Qwen2.1 增强 → 独立图片 profile（T2I/编辑及参考用途）→ 普通图片输出清理 → 新 prompt version；旧后端和 H3 不使用这套图片规则。规则来源与未验质量边界见[图片提示词资料库](../research/qwen-image-21-strata-editing.md)。
 
-H3图片与Qwen2511局部融合修复已退出活动选择；旧默认/可编辑草稿转Qwen2.1，旧队列/历史保持身份，重新编辑保留父版本。融合使用现有Qwen2.1 LoRA入口；旧Mask sidecar保留，不自动作为Paint输入。
+旧 H3 视频取帧图片方案与 Qwen2511 局部融合修复已退出活动选择；旧默认/可编辑草稿转 Qwen2.1，旧队列/历史保持身份，重新编辑保留父版本。融合使用现有 Qwen2.1 LoRA 入口；旧 Mask sidecar 保留，不自动作为 Paint 输入。
+
+官方 MiniMax H3 Image 使用新 ID `minimax-h3-image`：文生图 / 最多 16 图编辑 → 官方 T2I/Edit Skill 增强 → H3 专用 32px 尺寸与 4096 短边输入 → 原生 6 步 Euler/Simple → 图片队列 / History。界面隐藏不适用的质量切换、Paint/Mask 和 LoRA。文件、核心 0.45.0、schema 分别检查；旧核心在上传前拒绝执行。升级后的真实输出与性能仍需单独验收，见 [H3 Image 任务](../tasks/2026-11-11-minimax-h3-image/TASK.md)。
+
+4090 优先选 `minimax-h3-image-w4a8`：W4A8 DiT 与 NVFP4 AWQ 编码器必须配套就绪；缺任一组件保持阻塞，补齐后复用同一原生6步与图片任务链路。建议2048×2048单参考图起验；4K与多参考图保持可选，实际显存待测。原INT8选项与已排队配方独立。
 
 现有 `guide image` 定位 capability/adapter 与校验；用户旅程应覆盖增删图、Paint/Mask 保存、切模型、prompt 完成回流、实际按钮、结果重编辑及版本 lineage。
 

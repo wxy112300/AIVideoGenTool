@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../../src/core/minimax-h3-image-spec.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -524,7 +525,7 @@ export async function enhancePromptWithMultimodalComfyUi(
     const uploadedImages = await Promise.all(
       (request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))
         .filter(Boolean)
-        .slice(0, 12)
+        .slice(0, request.mode === "image-edit" && isH3ImageModel(request.imageTargetModelId) ? 16 : 12)
         .map((filePath, index) => uploadInput(baseUrl, filePath, signal, t(uiKeys.promptBackend.referenceImage, { number: index + 1 }), t))
     );
       onProgress?.("uploading", 18);

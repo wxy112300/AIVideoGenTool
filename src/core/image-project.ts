@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "./minimax-h3-image-spec.js";
 import type {
   ImageAssetVersion,
   ImageGenerationQueueTask,
@@ -11,7 +12,7 @@ import type {
 } from "../types.js";
 import type { H3ImageOptions, H3ImageRecipeSnapshot } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
-import { isRetiredImageModelId, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
+import { isRetiredImageModelId, retiredImageModelReplacement, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { normalizeImageLoras } from "./image-loras.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 
@@ -555,7 +556,8 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     : defaults.modelId;
   // Only editable drafts migrate; queued and historical model identities stay intact.
   const retiredImage = isRetiredImageModelId(storedModelId);
-  const modelId = retiredImage ? "qwen-image-2-1" : storedModelId;
+  const replacement = retiredImageModelReplacement(storedModelId);
+  const modelId = retiredImage ? replacement.modelId : storedModelId;
   const imageLoras = normalizeImageLoras(source.imageLoras, modelId);
   const largestPictureNumber = pictures.reduce(
     (largest, picture) => Math.max(largest, picture.pictureNumber),
@@ -580,14 +582,15 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     promptVersions,
     activePromptVersion,
     modelId,
-    qualityProfile: retiredImage ? "preview-25" : typeof source.qualityProfile === "string" && source.qualityProfile.trim()
+    qualityProfile: retiredImage ? replacement.qualityProfile : typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? source.qualityProfile
       : defaults.qualityProfile,
     aspectRatio: normalizeImageAspectRatio(source.aspectRatio ?? defaults.aspectRatio),
     targetResolution: normalizeImageTargetResolution(
       source.targetResolution ?? defaults.targetResolution,
       pictures[0]?.width ?? 0,
-      pictures[0]?.height ?? 0
+      pictures[0]?.height ?? 0,
+      modelId
     ),
     outputCount,
     outputFormat,
@@ -686,7 +689,7 @@ export function imageEditPicturesForVersion(
   const preserveH3ReferenceNumbers = version.modelId === "minimax-h3-reference-edit";
   const retainedReferences = version.references
     .filter((reference) => reference.pictureNumber > 1 && reference.absolutePath.trim())
-    .slice(0, preserveH3ReferenceNumbers ? 8 : 2)
+    .slice(0, isH3ImageModel(version.modelId) ? 15 : preserveH3ReferenceNumbers ? 8 : 2)
     .map((reference, index) => ({
       ...reference,
       ...(preserveH3ReferenceNumbers ? {} : { pictureNumber: index + 2 }),

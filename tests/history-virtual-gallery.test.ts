@@ -64,6 +64,28 @@ it("repaints cached cards after timeline measurement calculates a resized layout
   } finally { cleanup(); vi.unstubAllGlobals(); }
 });
 
+it("refreshes a moved viewport when sticky controls resize without a gallery width change", () => {
+  let notify: ResizeObserverCallback | undefined;
+  const observe = vi.fn();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { notify = callback; }
+    observe = observe; disconnect() {}
+  });
+  const { root, gallery } = galleryFixture();
+  const context = document.createElement("div"); context.dataset.historyContext = ""; root.prepend(context);
+  const cleanup = mountVirtualHistory(root, () => () => undefined);
+  try {
+    expect(observe).toHaveBeenCalledWith(context);
+    const first = gallery.firstElementChild!;
+    // A layout/scroll correction has already happened; no scroll event follows it.
+    window.scrollY = 30000;
+    notify!([{ target: context }] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
+    expect(first.isConnected).toBe(false);
+    expect(gallery.children.length).toBeGreaterThan(0);
+    expect([...gallery.children].every(node => Number((node as HTMLElement).dataset.historyOrder) > 0)).toBe(true);
+  } finally { cleanup(); vi.unstubAllGlobals(); }
+});
+
 function galleryFixture() {
   const root = document.createElement("div"); document.body.append(root);
   const token = registerHistoryWindow(items, index => `<article class="history-gallery-item" data-history="asset-${index}" data-history-order="${index}" tabindex="0"><button>More</button></article>`);

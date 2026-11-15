@@ -1,12 +1,14 @@
 # Strata 提示词增强：更新调查与接入计划
 
-- 类型：Task；Status: recommended-0.2.9-native-pending（推荐0.2.9／引擎0.1.55；本机仍0.2.7.1／0.1.52，其IQ3+MTP基本图文及连续调用既有实测不推广为新版验收）
-- Updated / Owner: 2026-11-01 / 当前 agent；Execution: direct，新增子 agent 0
+- 类型：Task；Status: cancel-retains-loaded-model（已完成取消保留模型修复；本机官方0.2.13脚本引擎协议实测通过，神经模型取消延迟尚未复测）
+- Updated / Owner: 2026-11-14 / 当前 agent；Execution: direct，新增子 agent 0
 - Scope / Authority: 最新用户授权新权重真实提示词测试、视频History丰富原图、15s复杂动作/多镜头与逐次测速，以及按当前内存自适应、兼顾128GB机器；禁止爆显存。只测提示词增强，不测生成队列/视频，不下载额外权重、不替用户关闭程序、不自动修改系统分页文件。允许接入缺件/策略修复；本轮获取官方固定小型解析源码并修复MTP离线准备，未执行全量setup，不改默认模型/原草稿/History，不用8080。原软件更新/手动模型管理约定保留。
 - Baseline: Local Video Studio 0.65.0，`836a8aa150c981578a4dc9b73e240d8614ba023a`；开始时 worktree clean。
 - 权威：现行 [Workflow](../../WORKFLOW_CONTRACT.md)、[Dependencies](../../DEPENDENCIES_AND_SETUP.md)、[Prompt Pack](../../PROMPT_PACK_DESIGN.md)。2026-10-17新增用户授权的Strata uncensored单开关与持久偏好；不新增公开IPC方法／高级参数面板。
 
 ## Resume
+
+- 2026-11-14 请求取消保留模型（patch，未bump/提交/推送）：用户报告计算中取消会退出模型。定位服务chat catch及Prompt取消/catch两层stop，改为客户端断连→受认证状态in_flight=0/loaded及health/models确认→保留同PID/驻留租约，原稿与部分输出不保存，下一次请求复用。状态未知/仍忙只保持取消等待，显式stop可打断；已确认丢失模型不误报resident，既有资源故障信号和准备/加载取消仍清理。Owner只等待自身backend worker，不等待依赖取消回执的外层Prompt，避免循环等待。最终相关3文件112项、前轮5文件135项及33项生产DOM合成旅程、双端typecheck/独立prepare通过；全量首次3252通过/两个NAS用例5秒超时，原参数整文件14项复测通过，随后127项integration/干净构建/440对比度通过，不声称首次verify退出0。安装的官方0.2.13服务+实际旧Qwen tokenizer+官方脚本引擎，两轮真实HTTP/SSE/认证/监视/六请求→取消→同PID再请求→显式停止/重启通过；真实权重未加载、取消神经计算延迟未验。初始脚本误选DeepSeek tokenizer而截断，改为Qwen专用并显式tokenizer-only复用旧缓存，不修复/重建/下载模型；失败及通过报告均保留忽略temp。自有服务PID/端口已清理，无队列/用户设置改变，现有其他DeepSeek/图像/依赖/UI在途改动保留；详见[取消保留证据](evidence/cancellation-retention.md)。
 
 - 2026-11-01 推荐提高至0.2.9（patch，未bump/提交/推送）：用户仅要求提高推荐，未自动安装。固定源码c62d5e3、Windows Qwen CUDA13引擎0.1.55，621585315bytes、官方归档SHA及组件清单SHA；Release API和固定feed元数据一致，保留0.2.7.1及历史收据识别。核对上游加载器的v3/v4读取后，将0.2.7.1加入精确配置/源资产/MTP/派生文件检查后的兼容迁移，三量化从0.1.45/0.2.7.1迁移的合成回归通过；不扩大到任意revision/v5。主应用/独立工具共用catalog，prepare及编译产物只读确认推荐0.2.9、engine0.1.55、本机实际0.2.7.1。160项focused、双端typecheck通过；最终unit3038通过/1项NAS真实文件用例超时并清理ENOTEMPTY，原参数单独整文件11项通过，未改NAS代码/断言/超时；随后127项integration、干净生产构建、440对比度通过，不称首次verify退出0。合成安装清单仅在安装事务测试中独立摘要，生产feed摘要未弱化，篡改清单仍拒绝且保留旧软件。仅下载小feed/源码、自带483520bytes向量（hash与catalog一致）及64KiB归档前缀；临时向量/前缀已清理，无完整引擎/主模型下载、GPU/Claude/GUI服务或正式设置改动，DeepSeek继续延期。真实0.2.9安装与图文/长上下文/连续启停/Agent推理仍待用户安装后验证；见[固定身份与边界](evidence/029-recommendation.md)，忽略日志`temp/strata-029-assessment`。其他在途本地化/H3/长视频改动保留。
 

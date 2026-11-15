@@ -701,6 +701,7 @@ app.whenReady().then(async () => {
     onMoveProgress: progress => studioEventBus.publish("history-migration:progress", progress),
     onProgress: onStorageProgress,
     onCommitted: (state) => nasPublisher?.schedule(state),
+    onCommittedNeeded: (state) => nasPublisher?.needsSnapshot(state) ?? false,
     onWarning: (error) => appLogger.warn("storage", "backup-maintenance-failed", error instanceof Error ? error.message : String(error))
   }), storage.migrate ? new UserDataMigration(legacyUserData, storage.data, onStorageProgress) : undefined);
   store = stateRepository;

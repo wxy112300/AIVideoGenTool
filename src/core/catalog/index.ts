@@ -12,6 +12,7 @@ import { promptModelEntries } from "./models/prompt.js";
 import { strataModelEntries } from "./models/strata.js";
 import { imageModelEntries } from "./models/image.js";
 import { mossImageModelEntries } from "./models/moss-image.js";
+import { minimaxH3Image, minimaxH3ImageW4a8 } from "./models/minimax-h3-image.js";
 import { legacyVideoModelEntries } from "./models/legacy-video.js";
 import { postProcessModelEntries } from "./models/post-process.js";
 import { depthAnythingModelEntries } from "./models/depth-anything.js";
@@ -31,6 +32,8 @@ export const modelCatalog = createModelCatalog([
   ...strataModelEntries,
   ...imageModelEntries,
   ...mossImageModelEntries,
+  minimaxH3Image,
+  minimaxH3ImageW4a8,
   ...legacyVideoModelEntries,
   ...postProcessModelEntries,
   ...depthAnythingModelEntries,
@@ -69,6 +72,7 @@ export {
   SPECTRUM_PDD_MINIMUM_VERSION,
   SPECTRUM_RECOMMENDED_VERSION,
   H3_COMFY_KITCHEN_VERSION,
+  H3_COMFY_KITCHEN_MINIMUM_VERSION,
   H3_MOTION_CONTEXT_MINIMUM_VERSION,
   H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
   H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,

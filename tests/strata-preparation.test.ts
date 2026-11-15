@@ -44,6 +44,9 @@ describe("Strata file preparation", () => {
     const offline = renderStrataPreparationPanel(settings, { ...status, latestVersion: "" }, value => value);
     expect(offline).toContain('最新</span><strong class="node-version-value">');
     expect(offline).not.toContain('最新</span><strong class="node-version-value">v');
+    const missingEngine = renderStrataPreparationPanel(settings, { ...status, installedVersion: STRATA_VERSION, deepSeekEnginePresent: false }, value => value);
+    expect(settings.promptModelId).not.toContain("strata");
+    expect(missingEngine).toContain('data-node-operation="update"');
   });
   it("retains the installed software version across model/Comfy changes while invalidating model evidence", () => {
     const settings = createDefaultSettings();

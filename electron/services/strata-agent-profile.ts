@@ -25,7 +25,7 @@ export async function agentLaunchPlan(input: {
   if (![32768, 65536, 131072, 262144].includes(contextTokens)) throw new Error("Agent 上下文必须使用逐档验证的32K/64K/128K/262K之一。");
   config.args[context + 1] = String(contextTokens);
   const resourcePlan = planStrataResources(input.resources, 5120, { commitTrial: input.commitTrial, allowFileReadFallback: true,
-    modelId: p.modelId, contextTokens });
+    modelId: p.modelId, contextTokens, accountForOccupiedVram: process.platform === "win32" });
   const directory = await privateLocalDirectory(path.join(input.directory, "runs", randomUUID()));
   const reserve = config.args.indexOf(isStrataDeepSeek(p.modelId) ? "--reserve-mib" : "--vram-reserve-mib");
   if (reserve < 0) throw new Error("pack 缺少显存策略。");

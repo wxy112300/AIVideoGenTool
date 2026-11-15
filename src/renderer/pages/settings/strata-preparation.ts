@@ -1,6 +1,5 @@
 import type { Settings, StrataPreparationStatus, StrataInstallProgress } from "../../../types";
 import { STRATA_VERSION } from "../../../core/catalog/dependencies/strata";
-import { isStrataDeepSeek } from "../../../core/catalog/models/strata-deepseek";
 import { strataRuntimeMatchesSettings } from "../../../core/strata-preparation";
 import { settingsText } from "./copy";
 import { renderDependencyActionSplit, renderDependencyVersions } from "./dependency-actions";
@@ -63,7 +62,7 @@ export function renderStrataPreparationPanel(
   const current = strataRuntimeMatchesSettings(settings, status) ? status : undefined;
   const installed = isStrataRuntimeInstalled(settings, current);
   const needsUpdate = installed && ((current?.installedVersion && compareReleaseVersions(current.installedVersion, STRATA_VERSION) < 0)
-    || (isStrataDeepSeek(settings.promptModelId) && !current?.deepSeekEnginePresent));
+    || current?.deepSeekEnginePresent === false);
   const icon = operation.icon || (() => "");
   const progress = strataProgressPresentation(settings.uiLocale, operation.progress, operation.cancelling);
   return `<article class="panel custom-node-card settings-node-item settings-runtime-card ${installed && !needsUpdate ? "available" : "warning"}" data-strata-preparation="runtime" data-install-state="${operation.installing ? "processing" : "idle"}">

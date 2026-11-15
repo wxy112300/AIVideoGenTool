@@ -9,7 +9,7 @@ import type { LibraryStorageProgress } from "../src/core/library-storage-progres
 import { recoverRelocations, type RelocationProgress } from "./services/file-relocation.js";
 import { normalizeAppearance } from "../src/core/appearance.js";
 import { normalizeStrataSettings } from "../src/core/strata-preparation.js";
-import { isRetiredImageModelId } from "../src/core/image-workflow.js";
+import { isRetiredImageModelId, retiredImageModelReplacement } from "../src/core/image-workflow.js";
 import type {
   AppState,
   AssetVersion,
@@ -20,6 +20,7 @@ import type {
   ImageEditDraft,
   ImageGenerationQueueTask,
   ImageGenerationRun,
+  ImageHistoryProject,
   H3AttentionMode,
   H3SparseAttentionMode,
   H3LatentSaveMode,
@@ -648,7 +649,7 @@ export class JsonStore implements StateRepository {
   private get t(): Translate { return this.loadFailed ? this.safety.translate : createNativeTranslator(this.state.settings.uiLocale).t; }
   private library?: LibraryStateStorage;
 
-  constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
+  constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onCommittedNeeded?(state: Pick<AppState, "libraryStorage" | "settings">): boolean; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
     this.safety = new StateFileSafety(filename);
     if (options.libraryDirectory) this.library = new LibraryStateStorage(filename, options.libraryDirectory, options.onProgress, options.onMoveProgress, options.onWarning);
   }
@@ -934,8 +935,9 @@ export class JsonStore implements StateRepository {
         needsPersist = true;
       }
       if (isRetiredImageModelId(this.state.settings.defaultImageModel)) {
-        this.state.settings.defaultImageModel = "qwen-image-2-1";
-        this.state.settings.defaultImageQualityProfile = "preview-25";
+        const replacement = retiredImageModelReplacement(this.state.settings.defaultImageModel);
+        this.state.settings.defaultImageModel = replacement.modelId;
+        this.state.settings.defaultImageQualityProfile = replacement.qualityProfile;
         needsPersist = true;
       }
       if (typeof this.state.settings.defaultImageModel !== "string" || !this.state.settings.defaultImageModel.trim()) {
@@ -946,6 +948,7 @@ export class JsonStore implements StateRepository {
         "preview-25",
         "balanced-20",
         "native",
+        "native-6",
         "high-quality",
         "lightning-4step"
       ].includes(this.state.settings.defaultImageQualityProfile)) {
@@ -1127,9 +1130,51 @@ export class JsonStore implements StateRepository {
     return asset ? structuredClone(asset) : undefined;
   }
 
+  async updateHistoryItems(ids: readonly string[], mutator: (items: Array<HistoryAsset | ImageHistoryProject>) => void): Promise<AppState> {
+    const update = this.updateChain.catch(() => undefined).then(async () => {
+      this.assertWritable();
+      const selected = new Set(ids);
+      const originals = ids.map(id => this.state.history.find(item => item.id === id) ?? this.state.imageHistory.find(item => item.id === id));
+      if (selected.size !== ids.length || originals.some(item => !item)) throw new Error(this.t(uiKeys.serviceError.historyMissing));
+      const items = structuredClone(originals) as Array<HistoryAsset | ImageHistoryProject>;
+      mutator(items);
+      if (items.length !== ids.length || items.some((item, index) => item.id !== ids[index])) throw new Error(this.t(uiKeys.serviceError.historyInvalid));
+      const replacements = new Map(items.map((item, index) => [originals[index]!, item]));
+      const history = this.state.history, imageHistory = this.state.imageHistory;
+      this.state.history = history.map(item => (replacements.get(item) as HistoryAsset | undefined) ?? item);
+      this.state.imageHistory = imageHistory.map(item => (replacements.get(item) as ImageHistoryProject | undefined) ?? item);
+      try { await this.persist(selected); }
+      catch (error) { this.state.history = history; this.state.imageHistory = imageHistory; throw error; }
+    });
+    this.updateChain = update;
+    await update;
+    return this.snapshot();
+  }
+
   async update(mutator: (state: AppState) => void): Promise<AppState> {
     await this.updateWithoutSnapshot(mutator);
     return this.snapshot();
+  }
+
+  async updateWorkspace(mutator: import("./ports/state-repository.js").WorkspaceMutator): Promise<AppState> {
+    await this.updateWorkspaceWithoutSnapshot(mutator);
+    return this.snapshot();
+  }
+
+  async updateWorkspaceWithoutSnapshot(mutator: import("./ports/state-repository.js").WorkspaceMutator): Promise<void> {
+    const update = this.updateChain.catch(() => undefined).then(async () => {
+      this.assertWritable();
+      const previous = this.state;
+      const { history, imageHistory, ...workspace } = previous;
+      const next = structuredClone(workspace);
+      mutator(next);
+      if ("history" in next || "imageHistory" in next) throw new Error(this.t(uiKeys.serviceError.historyInvalid));
+      this.state = { ...next, history, imageHistory };
+      try { await this.persist(new Set()); }
+      catch (error) { this.state = previous; throw error; }
+    });
+    this.updateChain = update;
+    return update;
   }
 
   async updateWithoutSnapshot(mutator: (state: AppState) => void): Promise<void> {
@@ -1151,13 +1196,24 @@ export class JsonStore implements StateRepository {
     return this.persist();
   }
 
+  flushWorkspace(): Promise<void> {
+    const update = this.updateChain.catch(() => undefined).then(() => this.persist(new Set()));
+    this.updateChain = update;
+    return update;
+  }
+
   private snapshot(): AppState {
     return structuredClone(this.state);
   }
 
-  private async persist(): Promise<void> {
+  private async persist(changedHistoryIds?: ReadonlySet<string>): Promise<void> {
     this.assertWritable();
-    const snapshot = structuredClone(this.state);
+    // Scoped edits replace selected records and are serialized by updateChain.
+    // Clone mutable non-history state, retaining untouched library records.
+    const snapshot: AppState = changedHistoryIds ? {
+      ...structuredClone({ ...this.state, history: [], imageHistory: [] }),
+      history: this.state.history.slice(), imageHistory: this.state.imageHistory.slice()
+    } : structuredClone(this.state);
     let resumePublication: void | (() => void);
     const write = this.writeChain.catch(() => undefined).then(() => withStateFileLock(this.filename, async () => {
       this.assertWritable();
@@ -1165,7 +1221,7 @@ export class JsonStore implements StateRepository {
       if (previous !== this.lastRaw) throw new StateRecoveryError(this.t(uiKeys.storageSafety.externalWriter));
       const requestedLibrary = snapshot.settings.libraryDirectory?.trim() || this.options.libraryDirectory || snapshot.libraryStorage?.directory;
       if (snapshot.libraryStorage && requestedLibrary && path.resolve(requestedLibrary).toLowerCase() !== path.resolve(snapshot.libraryStorage.directory).toLowerCase()) resumePublication = await this.options.beforeLibraryMove?.();
-      const prepared = this.library && snapshot.libraryStorage ? await this.library.prepare(snapshot) : undefined;
+      const prepared = this.library && snapshot.libraryStorage ? await this.library.prepare(snapshot, changedHistoryIds) : undefined;
       const raw = prepared?.raw ?? JSON.stringify(snapshot, null, 2);
       validateStateFile(raw, this.t);
       if (previous === raw) return;
@@ -1200,7 +1256,11 @@ export class JsonStore implements StateRepository {
 
   private notifyCommitted(): void {
     // Background projection must never reject or roll back a durable user edit.
-    try { this.options.onCommitted?.(this.snapshot()); } catch { /* Publisher owns reporting/retry. */ }
+    try {
+      if (this.options.onCommitted && (this.options.onCommittedNeeded?.({ settings: this.state.settings, libraryStorage: this.state.libraryStorage }) ?? true)) {
+        this.options.onCommitted(this.snapshot());
+      }
+    } catch { /* Publisher owns reporting/retry. */ }
   }
 
   private warn(error: unknown): void { try { this.options.onWarning?.(error); } catch { /* A committed write stays committed. */ } }

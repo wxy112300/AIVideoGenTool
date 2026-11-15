@@ -15,6 +15,7 @@ import type { HistoryFileSystemPort } from "../electron/ports/history-file-syste
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { HistoryDestructiveService } from "../electron/services/history-destructive-service.js";
 import { HistoryMetadataService } from "../electron/services/history-metadata-service.js";
+import { MigratingUserDataRepository } from "../electron/services/user-data-migration.js";
 import {
   historyCoverDigest,
   HistoryQueryService
@@ -508,6 +509,30 @@ describe("History application services", () => {
       data: new Uint8Array([4, 5, 6]).buffer
     })).resolves.toEqual({ state: "stale" });
     await expect(query.readHistoryCover(key, source)).resolves.toBeNull();
+  });
+
+  it("uses scoped durable writes for favorite, rating and batch tags without a full-state locale read", async () => {
+    const state = createDefaultState();
+    state.history = [videoAsset("asset-1", [videoVersion("original", [])])];
+    state.imageHistory = [imageProject("image-1", [imageVersion("v1", { filename: "one.png", subfolder: "", type: "output" }, "edit", 1)])];
+    const store = repository(state), sendState = vi.fn();
+    const scoped = vi.fn(async (ids: readonly string[], mutator: (items: Array<HistoryAsset | ImageHistoryProject>) => void) => {
+      mutator(ids.map(id => state.history.find(item => item.id === id) ?? state.imageHistory.find(item => item.id === id)) as Array<HistoryAsset | ImageHistoryProject>);
+      return structuredClone(state);
+    });
+    store.updateHistoryItems = scoped;
+    vi.spyOn(store, "get").mockImplementation(() => { throw Error("full state read"); });
+    const broad = vi.spyOn(store, "update");
+    const metadata = new HistoryMetadataService({ store: new MigratingUserDataRepository(store), logger: logger(), sendState });
+    await metadata.updateMetadata("asset-1", { favorite: true, rating: 4.5 });
+    await metadata.updateMetadataBatch([{ assetId: "asset-1", patch: { tags: [" scene "] } }, { assetId: "image-1", patch: { tags: [" scene "] } }]);
+    expect(state.history[0]).toMatchObject({ favorite: true, rating: 4.5, tags: ["scene"] });
+    expect(state.imageHistory[0]!.tags).toEqual(["scene"]);
+    expect(scoped).toHaveBeenCalledTimes(2);
+    expect(broad).not.toHaveBeenCalled();
+    expect(sendState).toHaveBeenCalledTimes(2);
+    await expect(metadata.updateMetadata("asset-1", { rating: 7 as never })).rejects.toThrow();
+    expect(scoped).toHaveBeenCalledTimes(2);
   });
 
   it("updates curation metadata and image cover selection directly", async () => {

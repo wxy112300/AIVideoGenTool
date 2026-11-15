@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../core/minimax-h3-image-spec";
 import type { H3PromptMode, H3PromptPreset, ImagePromptPreset, UiLocale } from "../types";
 import { isMossImageModel } from "../core/moss-image-spec";
 
@@ -28,6 +29,7 @@ export function qwenImagePromptPackFor(locale: UiLocale = "zh-CN") {
 }
 
 export function imagePromptPackForTarget(locale: UiLocale = "zh-CN", modelId?: string) {
+  if (isH3ImageModel(modelId)) return loadedPromptPacks().h3ImagePromptPackFor(locale);
   if (isMossImageModel(modelId)) return loadedPromptPacks().mossImagePromptPackFor(locale);
   return modelId === "qwen-image-2-1" ||
     modelId === "qwen-image-2-1-turbo" ||

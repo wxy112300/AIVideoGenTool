@@ -75,6 +75,25 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
 }
 
 describe("queue command services", () => {
+  it("moves and reorders waiting recipes through workspace saves without reading the history snapshot", async () => {
+    const state = createDefaultState();
+    state.queue = ["a", "b", "c"].map((id, index) => ({ ...task(state), id, seed: index + 11 }));
+    const recipes = state.queue.map(item => ({ id: item.id, seed: item.seed }));
+    const store = repository(state), broad = vi.spyOn(store, "update");
+    store.updateWorkspace = vi.fn(async mutator => {
+      const { history, imageHistory, ...workspace } = state;
+      const next = structuredClone(workspace); mutator(next); Object.assign(state, next);
+      return structuredClone(state);
+    });
+    vi.spyOn(store, "get").mockImplementation(() => { throw Error("full history read"); });
+    const service = new QueueMutationService({ store, logger: logger(), sendState: vi.fn() });
+    expect((await service.move("a", 1)).queue.map(item => item.id)).toEqual(["b", "a", "c"]);
+    expect((await service.reorder("a", 0)).queue.map(item => item.id)).toEqual(["a", "b", "c"]);
+    expect(state.queue.map(item => ({ id: item.id, seed: item.seed }))).toEqual(recipes);
+    expect(store.updateWorkspace).toHaveBeenCalledTimes(2);
+    expect(broad).not.toHaveBeenCalled();
+  });
+
   it("preflights Qwen anchor components and freezes only the installed model in a Tessera task", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-tessera-enqueue-"));
     try {
@@ -126,6 +145,22 @@ describe("queue command services", () => {
       expect(next.queue[0]!.id).toBeTruthy();
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
+  it("checkpoints live queue progress without traversing history when a workspace writer exists", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createDefaultState(), queued = task(state); queued.status = "running"; state.queue = [queued];
+      const store = repository(state), flush = vi.spyOn(store, "flush"), sendState = vi.fn();
+      store.flushWorkspace = vi.fn(async () => undefined);
+      const service = new QueueTaskStateService({ store, logger: logger(), sendState, sendProgress: vi.fn(), stageStartedAt: new Map() });
+      await service.updateTaskProgress(queued.id, { progress: 25 });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(store.flushWorkspace).toHaveBeenCalledTimes(1);
+      expect(flush).not.toHaveBeenCalled();
+      expect(sendState).not.toHaveBeenCalled();
+      expect(store.get().queue[0]!.progress).toBe(25);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("coalesces live progress without broadcasting full state and checkpoints it later", async () => {
     vi.useFakeTimers();
     try {

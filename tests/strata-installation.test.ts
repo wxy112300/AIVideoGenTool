@@ -10,7 +10,7 @@ import * as vectorTools from "../electron/services/strata-uncensored";
 import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
 import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
 import { STRATA_DEEPSEEK_MODEL_ID } from "../src/core/catalog/models/strata-deepseek";
-import { STRATA_DSV41_URL } from "../src/core/catalog/dependencies/strata-deepseek";
+import { STRATA_DSV41_URL, STRATA_DSV41_BYTES } from "../src/core/catalog/dependencies/strata-deepseek";
 import { hasDeepSeekEngine, deepSeekEngineIssue } from "../electron/services/strata-deepseek-engine";
 import * as deepSeekEngineTools from "../electron/services/strata-deepseek-engine";
 
@@ -26,7 +26,8 @@ vi.mock("../src/core/catalog/dependencies/strata", async importOriginal => {
 vi.mock("../src/core/catalog/dependencies/strata-deepseek", async importOriginal => {
   const catalog = await importOriginal<typeof import("../src/core/catalog/dependencies/strata-deepseek")>();
   const { createHash } = await import("node:crypto");
-  return { ...catalog, STRATA_DSV41_MANIFEST_SHA256: createHash("sha256").update("current verified component fixture").digest("hex"),
+  return { ...catalog, STRATA_DSV41_BYTES: 7, STRATA_DSV41_SHA256: createHash("sha256").update("fixture").digest("hex"),
+    STRATA_DSV41_MANIFEST_SHA256: createHash("sha256").update("current verified component fixture").digest("hex"),
     STRATA_DSV41_PREVIOUS_MANIFEST_SHA256: [createHash("sha256").update("previous verified component fixture").digest("hex")] };
 });
 
@@ -48,6 +49,11 @@ async function fixture() {
       }
       if (args.includes("-xzf")) {
         expect(_exe).toBe("tar.exe");
+        if (args.at(-1) === path.join(options.cwd!, "engine-dsv41")) {
+          for (const name of ["strata-dsv41.exe", "BUILD.json", "cublas64_13.dll", "cublasLt64_13.dll", "engine-component.json"])
+            await fs.writeFile(path.join(options.cwd!, "engine-dsv41", name), name === "engine-component.json" ? "current verified component fixture" : "fixture");
+          return "";
+        }
         expect(args.at(-1)).toBe(path.join(options.cwd!, "engine"));
         await fs.mkdir(path.join(options.cwd!, "engine"), { recursive: true });
         for (const name of STRATA_ENGINE_FILES) await fs.writeFile(path.join(options.cwd!, name),
@@ -66,7 +72,7 @@ describe("Strata software installer", () => {
     await fs.mkdir(path.join(root, "engine-dsv41"), { recursive: true });
     const manifest = path.join(root, "engine-dsv41", "engine-component.json");
     await fs.writeFile(manifest, "previous verified component fixture");
-    expect(await deepSeekEngineIssue(root)).toContain("manifest SHA-256:");
+    expect(await deepSeekEngineIssue(root, false)).toContain("manifest SHA-256:");
     expect(await deepSeekEngineIssue(root, true)).toContain("strata-dsv41.exe");
   });
   it.each([false, true])("keeps DeepSeek support when migrating an older managed runtime while another model is selected (success: %s)", async succeeds => {
@@ -90,6 +96,7 @@ describe("Strata software installer", () => {
     }) : null;
     // The synthetic download fails verification. Upgrade must try the DeepSeek
     // package and retain the old runtime, rather than succeed with Qwen alone.
+    if (!succeeds) runtime.download.mockImplementation(async (url, destination) => { await fs.writeFile(destination, url === STRATA_DSV41_URL ? "corrupt" : "fixture"); });
     const result = await installStrataRuntime(createDefaultSettings(), productionTarget);
     if (succeeds) {
       expect(install).toHaveBeenCalled();
@@ -108,14 +115,16 @@ describe("Strata software installer", () => {
     const { root, runtime } = await fixture(), settings = createDefaultSettings();
     expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
     const directory = path.join(root, "engine-dsv41");
-    await fs.mkdir(directory);
+    await fs.mkdir(directory, { recursive: true });
     for (const file of ["strata-dsv41.exe", "BUILD.json", "cublas64_13.dll", "cublasLt64_13.dll"])
       await fs.writeFile(path.join(directory, file), "old component");
     const manifest = path.join(directory, "engine-component.json");
     await fs.writeFile(manifest, "previous verified component fixture");
-    expect(await hasDeepSeekEngine(root)).toBe(false);
+    expect(await hasDeepSeekEngine(root)).toBe(true);
+    expect(await hasDeepSeekEngine(root, false)).toBe(false);
     expect(await hasDeepSeekEngine(root, true)).toBe(true);
     runtime.download.mockClear();
+    runtime.download.mockImplementation(async (url, destination) => { await fs.writeFile(destination, url === STRATA_DSV41_URL ? "corrupt" : "fixture"); });
     const result = await installStrataRuntime(settings, runtime);
     expect(result.ok).toBe(false);
     expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(true);
@@ -129,6 +138,7 @@ describe("Strata software installer", () => {
     expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
     const previous = await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8");
     await fs.writeFile(path.join(root, "keep.txt"), "user data");
+    runtime.download.mockImplementation(async (url, destination) => { await fs.writeFile(destination, url === STRATA_DSV41_URL ? "corrupt" : "fixture"); });
     const failed = await installStrataRuntime({ ...settings, promptModelId: STRATA_DEEPSEEK_MODEL_ID }, runtime);
     expect(failed.ok).toBe(false);
     expect(failed.message).toContain("DeepSeek");
@@ -263,7 +273,7 @@ describe("Strata software installer", () => {
     expect(failed).toMatchObject({ ok: false, message: expect.stringContaining("curl 56") });
     expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old software");
     expect(await fs.readFile(archive, "utf8")).toBe("partial transfer");
-    runtime.download.mockImplementation(async (url, destination) => { if (url === STRATA_ENGINE_URL) { expect(destination).toBe(archive); expect(await fs.readFile(destination, "utf8")).toBe("partial transfer"); } else await fs.writeFile(destination, "vector fixture"); });
+    runtime.download.mockImplementation(async (url, destination) => { if (url === STRATA_ENGINE_URL) { expect(destination).toBe(archive); expect(await fs.readFile(destination, "utf8")).toBe("partial transfer"); } else await fs.writeFile(destination, url === STRATA_DSV41_URL ? "fixture" : "vector fixture"); });
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
   });
   it("keeps a recognized older managed install usable until the recommended update completes", async () => {
@@ -358,6 +368,8 @@ describe("Strata software installer", () => {
     const { root, runtime } = await fixture();
     const first = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(first.ok, first.log).toBe(true);
+    expect(await hasDeepSeekEngine(root)).toBe(true);
+    expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(true);
     expect(await strataManagedReceipt(root)).toBe(true);
     expect(runtime.download).toHaveBeenCalledWith(STRATA_ENGINE_URL, expect.any(String), expect.any(Object), expect.any(Function), expect.any(Function));
     expect(runtime.download).toHaveBeenCalledWith(STRATA_COMMUNITY_VECTOR.source, expect.stringContaining("sergqwer-8-33.gguf"), expect.any(Object), undefined, expect.any(Function), STRATA_COMMUNITY_VECTOR.bytes);
@@ -381,14 +393,15 @@ describe("Strata software installer", () => {
     const events: import("../src/types").StrataInstallProgress[] = [];
     const originalDownload = runtime.download.getMockImplementation()!;
     const download = async (url: string, destination: string, _settings: import("../src/types").Settings, report?: (bytes: number) => void) => {
-      report?.(Math.floor(STRATA_ENGINE_BYTES / 2));
+      const bytes = url === STRATA_DSV41_URL ? STRATA_DSV41_BYTES : STRATA_ENGINE_BYTES;
+      report?.(Math.floor(bytes / 2));
       await originalDownload(url, destination);
-      report?.(STRATA_ENGINE_BYTES);
+      report?.(bytes);
     };
     const result = await installStrataRuntime(createDefaultSettings(), { ...runtime, download }, (_message, progress) => { if (progress) events.push(progress); });
     expect(result.ok).toBe(true);
-    expect(events.map(event => event.stage)).toEqual(["prepare", "source", "download", "download", "download", "verify", "extract", "assets", "python", "packages", "check", "complete"]);
-    expect(events.filter(event => event.stage === "download").map(event => event.percent)).toEqual([0, Math.floor(Math.floor(STRATA_ENGINE_BYTES / 2) * 100 / STRATA_ENGINE_BYTES), 100]);
+    expect(events.map(event => event.stage)).toEqual(["prepare", "source", "download", "download", "download", "verify", "extract", "assets", "python", "packages", "check", "download", "download", "download", "complete"]);
+    expect(events.filter(event => event.stage === "download").map(event => event.percent)).toEqual([0, Math.floor(Math.floor(STRATA_ENGINE_BYTES / 2) * 100 / STRATA_ENGINE_BYTES), 100, 0, Math.floor(Math.floor(STRATA_DSV41_BYTES / 2) * 100 / STRATA_DSV41_BYTES), 100]);
     expect(events.find(event => event.stage === "packages")?.percent).toBeUndefined();
   });
   it("rejects custom directories and unowned targets without touching files", async () => {

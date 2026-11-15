@@ -14,10 +14,11 @@ const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu126",
   "cu128",
   "cu130",
-  "cu131"
+  "cu131",
+  "cu132"
 ]);
 
-// Verified against the published v0.4.5 Windows release assets. Reject an
+// Verified against the published v0.4.7 Windows release assets. Reject an
 // unknown ABI before pip starts so another computer gets an actionable error
 // instead of a long download followed by a GitHub 404.
 export const LLAMA_CPP_PYTHON_JAMEPENG_PYTHON_ABIS = [
@@ -34,8 +35,7 @@ const LLAMA_CPP_PYTHON_JAMEPENG_ABI_SET = new Set<string>(
 const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_FALLBACKS: Record<string, string> = {
   cu125: "cu124",
   cu127: "cu126",
-  cu129: "cu128",
-  cu132: "cu131"
+  cu129: "cu128"
 };
 
 /**

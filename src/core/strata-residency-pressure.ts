@@ -12,7 +12,8 @@ export interface StrataHostPressureDiagnostic {
 
 /** Windows mapped source pages can make Available RAM briefly approach zero (#1571).
  * 3GiB RAM / 6GiB commit are observations, NOT kill thresholds. Let the engine and
- * OS manage the file tier; retain the GPU guard and a debounced last-resort commit
+ * OS manage the file tier; retain the GPU guard by default (DeepSeek delegates
+ * GPU allocation to its native lane) and a debounced last-resort commit
  * guard (512MiB for 10s). The latter is an app emergency policy, not an upstream
  * minimum or a guarantee against allocation failures. Missing telemetry still retries.
  */
@@ -26,14 +27,14 @@ export class FileReadResourcePressure {
   setLoading(value: boolean) { this.loading = value; this.lowSince = null; }
   setFileRead(value: boolean) { this.fileRead = value; this.lowSince = null; }
   /** Do not advance host-pressure timers during probe retries or on partial samples. */
-  knownPressure(resources: StrataResources): string | null {
+  knownPressure(resources: StrataResources, options: { enforceGpuFloor?: boolean } = {}): string | null {
     if (missingStrataResourceMetrics(resources).length) { this.lowSince = null; this.sampledAt = null; }
-    if (typeof resources.vramAvailableBytes === "number" && Number.isFinite(resources.vramAvailableBytes)
+    if (options.enforceGpuFloor !== false && typeof resources.vramAvailableBytes === "number" && Number.isFinite(resources.vramAvailableBytes)
       && resources.vramAvailableBytes >= 0 && resources.vramAvailableBytes < 2 * GiB) return knownStrataResourcePressure(resources, this.t);
     return null;
   }
-  check(resources: StrataResources): string | null {
-    const gpu = this.knownPressure(resources);
+  check(resources: StrataResources, options: { enforceGpuFloor?: boolean } = {}): string | null {
+    const gpu = this.knownPressure(resources, options);
     if (gpu) return gpu;
     if (missingStrataResourceMetrics(resources).length) {
       this.lowSince = null; // Unknown readings cannot prove continuous pressure.

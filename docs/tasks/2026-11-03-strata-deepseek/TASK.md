@@ -1,20 +1,32 @@
 # Strata DeepSeek 接入
 
-- Status: implemented-awaiting-model-inference
-- Updated: 2026-11-08
+- Status: complete
+- Updated: 2026-11-11
 - Authority: 用户授权参考现有 Qwen Flash 方式接入 AtomicChat DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF；权重用户管理，保留 Qwen 与现有设置，不自动下载权重。
 - Execution: direct，子 agent 0。
-- Latest request: 2026-11-07 仅将推荐升至0.2.12，由用户自行点击升级；用户要求只验Strata相关项，不再跑全量测试。
+- Latest request: 用户授权强制开启DSpark、降低显存预留后真实复测速度；保持六专家，不改权重/路由，不按短暂停顿判断崩溃。只验相关项，不跑全量测试。
 - Scope: IQ2_XXS 首选；模型 catalog/离线扫描、独立 DeepSeek 引擎安装、原生 pack/tokenizer、共用服务与 Prompt/Agent 路由、模型专属采样和资源策略。用户追加授权升级到 Strata 0.2.10，2026-11-06 继续授权升到 0.2.11；保持现有 MTP，不自动下载 DFlash2 辅助权重。
 - Baseline: 工作区已有本地化、NAS、History 等无关改动；只增量修改接入所需内容，不重置、暂存或提交。
 
 ## Resume
 
-当前推荐线已更新0.2.12（146df3c468739147f520ac3816de806f71232571），Windows Qwen/DeepSeek双引擎0.1.58；正式安装仍是下述0.2.11，未代用户点升级。保留0.2.11 receipt及Qwen pack迁移、旧DeepSeek清单仅用于发现升级。新DFlash2不接入/不下载，现有MTP与采样策略不变。
+性能复测完成：主应用DeepSeek基础视觉显存预留从5GiB降至900MiB，另计其他程序GPU占用；只在完整pack/receipt验证后的临时session覆盖，不重哈希或pack。强开DSpark已真实试过：首轮误用早期纯文本用例文案（图相同，仅作探测）1.89t/s、草稿65/74接受；恢复原始图文后operation 48465cae-ee48-4edb-93d8-8abad2a2bf2b，3261输入tokens预填充173.650秒，371输出tokens/235.126秒=1.58t/s，草稿67/72接受，正文1693字符，HTTP200并写回版本。因此撤销强开，最终保留Auto，缺可选权重仍off，不改Qwen或独立Agent。
 
-代码与软件接入完成，真实DeepSeek推理待用户准备权重。现场已通过生产安装事务从0.2.10升级到0.2.11（c3b3f50），Qwen/DeepSeek双引擎均0.1.57，Python3.12/Pillow13.0.0。现有完整Qwen IQ3/MTP pack迁移复用，未重新哈希/准备；一个历史无效receipt保留未修复，不影响完整pack发现。正式state字节不变，未下载主模型/DFlash2，不改路径、默认模型或偏好。4090 24GB / 64GB RAM；D为NVMe，E为HDD。新版短神经推理尝试被生产资源门槛拒绝：需要约20GiB空闲显存，现场仅14.8GiB；未加载模型、未干预其他GPU程序。
+最终低预留/Auto对照operation c4fc796a-12a8-466b-a634-123c75cb0be4完成：同一参考图与原始指令、关闭思考、3261输入tokens，缓存复用token为0；预填充64.064秒/50.9t/s，361输出tokens/87.814秒=4.11t/s，正文1639字符，HTTP200并写回新版本，预览Output/计数正常。对应旧5GiB预留/Auto基线为预填充120.349秒、生成302tokens/155.038秒=1.95t/s。样本输出长度随机且未重复跑分，不能当稳定吞吐保证。主模型专家缓存5.48GB/600个→9.49GB/1063个；DSpark开启时8.72GB包含草稿专家，不能全算成主模型缓存。D盘实际为CT4000P3PSSD8 NVMe，仍需文件回读；不以一次采样推断完整磁盘性能。
 
-下一步：用户按原设置页的DeepSeek八项下载指南准备约257.8GB文件，使用共享模型根下`LLM/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF`（建议NVMe）。重新扫描→选择DeepSeek→实际增强按钮→首次完整hash/原生pack→真实operation ID/结果版本与图文质量、性能、取消/连续调用验收。当前真实UI缺件时禁用增强并显示设置恢复入口，不能把合成完整准备或mock输出当成这条神经链路成功。
+本次77项相关定向回归、类型检查和Electron编译通过，不跑全量。最终源代码/构建是900MiB加占用、DSpark Auto；输出保留参考图外观、固定构图、微风与无音乐要求，预览截图已人工检查。证据temp/strata-deepseek-live/tuning-{probe,exact-on,exact-auto}-report.json及对应输出/截图，tuning-tests.log、tuning-typecheck.log。正式state SHA-256与测试前相同，Qwen/medium偏好及6个waiting任务未动。分别经AppApi释放自有模型后清理Electron63656/CDP1114和55008/CDP4819，自有native58588/16528及43129/18465监听均退出；GPU回到约5GiB其他程序原有占用。无权重下载、软件安装、ComfyUI启动或队列执行。
+
+当前：本机0.2.13/双引擎0.1.59，八个权重完整SHA-256通过，隔离真实文本增强完成并写回新版本（1192字符，加载约47秒，3072输入tokens预填充67秒，267输出tokens/约1.6token/s，请求236秒）。首次完整校验/pack约8分多；64KiB读取实测约25MB/s，4MiB顺序块改后实际约400–660MB/s，逐文件百分比可见，完整校验不跳过。低思考首轮实际未启用，由真实模板发现上游遗漏enable_thinking=True，且模板不接受medium；已补DeepSeek启动adapter，界面低/中/高映射low/high/max即50/75/100，真实OpenAI与Anthropic转换器+实际GGUF模板八分支通过，未设置思考token上限。
+
+单图高档和取消验收：fixture temp/create-smoke-ba1GVF，operation e5479795-12f7-4d31-b495-361494a509fc。实际拖放合成256px参考图、保存高档并点击增强；GENI读取267ms，首token270秒。正常运行约24分半，收到12119个独立思考字符，未观察到20词段循环；随后为验收取消路径主动点取消，terminalStatus=cancelled，版本数保持3、显存回落约5GiB。未以崩溃处理，未声称完整高档输出质量通过。
+
+单图关闭思考完成：同一隔离资料库通过设置保存off，再次实际点击增强；operation b0673eb8-8874-4252-bd11-f77d2ede66c6，约60秒加载，3261输入tokens预填充120秒，302输出tokens解码155秒/约1.9token/s，HTTP200请求275.4秒。raw输出1348字符，渲染后1350字符，新版本数3→4；正确描述参考图的红色椭圆气球、细绳、浅蓝天空和绿色地面，保留固定构图与无音乐要求。预览无需手动刷新，实际点击请求与Output可见正文/耗时；App图像chip和新版本显示正确，截图已人工检查。证据temp/strata-deepseek-live（只存思考计数，不存思考正文）。
+
+用户强调推荐不能当最低：DeepSeek移除15GiB空闲显存/8GiB缓存硬准入和2GiB瞬时GPU中止线，缓存不足允许原生文件回读；Windows会话预算计入其他进程已占用显存，未停止其他程序。原生/应用静默及总时限不杀DeepSeek，用户取消、真实进程退出、后端错误与持续系统提交耗尽保护保留。已审核旧组件/旧软件可使用，不要求等于推荐revision；旧0.2.12准备与复用回归通过，安装更新仍严格校验最新归档/清单/签名。相关定向检查通过，最后一轮全局类型构建与正式缓存留存待单图完成。
+
+当前推荐线已更新0.2.13（d2f096475817d4666c364c820b0ca830f751cfc5），Windows Qwen/DeepSeek双引擎0.1.59；未代用户点升级。安装/更新事务不依赖模型选择，始终安装双引擎并校验/失败恢复。DSpark Q8_0现为可选：缺失时不校验/不传pack参数，配置off；存在时校验并pack，配置auto，是否实际启用由引擎判断。完整0.2.12 DeepSeek pack在文件/配置/产物校验后直接复用；后补DSpark会触发新pack。新Qwen DFlash2不接入/不下载，现有MTP与采样策略不变。
+
+交付完成：277项相关定向测试、最终类型检查/双端构建通过，不跑全量；真实转换器+实际模板八分支通过。使用本次完整SHA-256的未变文件证据，经生产prepare与官方CPU pack/pack-info生成正常目录缓存，生产validator/finder确认可复用，未重复哈希；正式state字节未改，其LastWriteTime在测试前，六个waiting任务与原Qwen/medium偏好保持。通过正式releasePromptModel清理后，自有Electron/Python/原生模型进程及4608/43129/18465等监听均退出，GPU约4.9GiB为其他程序原有占用。未安装软件、下载权重、启动ComfyUI、运行队列或生成视频。未覆盖复杂多图、完整max思考结果质量及所有旧版本的神经推理。
 
 ## Acceptance
 
@@ -24,6 +36,19 @@
 - focused tests + verify；真实隔离 Settings/Prompt 缺件恢复与按钮路径；真实神经输出仅在权重可用后验证，明确未验边界。
 
 ## Evidence
+
+- 2026-11-10 推荐0.2.13：固定官方tag源码、双引擎归档bytes/SHA-256与manifest SHA-256；feed SHA-256 2511b792da4fc4ee45404d763096051890e49fc2d85a4212fc3052f6e327eb20与GitHub发布asset digest一致。官方requirements.txt、tools/iq_pack.py及tools/dsv41/pack_gguf.py相对0.2.12未变，setup仍固定原llama.cpp parser。129项Strata安装/准备/模型/controller/目录测试通过，覆盖非Strata当前选择仍下载DeepSeek、双引擎进度、损坏包恢复旧软件、可选DSpark缺失和后补、旧pack复用；类型/双端构建通过。证据temp/strata-0213；未下载引擎归档/权重、未升级正式runtime或跑GPU推理。
+- 0.2.13隔离UI：真实离线扫描、进入提示词模型、展开DeepSeek后可见“DSpark · Q8_0／可选”，实际点击下载按钮打开来源/固定revision/大小/hash/完整目标目录弹窗，截图temp/create-smoke-4evC8u/optional-dspark.png已人工检查；一次成功但长列表平滑滚动复跑存在定位超时，未改产品逻辑或放宽按钮门槛，不声称重复稳定。未点击软件安装/下载页面，也未启动GPU；fixture自有PID10584/CDP3802/Comfy配置端口18464，清理见temp/strata-0213/cleanup.log。
+- 收尾：缺DeepSeek引擎时即使选中其他模型、软件已是推荐版本，Strata卡片仍显示更新按钮；37项准备/controller回归与最终类型/双端构建通过（button-final.log、build-final.log）。AppApi隔离清理完成，PID10584和3802/18464监听均已退出；未运行全量测试。
+
+- 2026-11-10 用户追加同组分片下载目录锁定：缺失分片从同profile内已找到且组前缀/总片数相同的分片解析真实目录，卡片目标路径和下载弹窗共用；已有分片时移除库菜单，只保留直达实际目录按钮及完整路径title。没有同组分片时仍保留多库菜单；不锁不同量化或配套文件。40项目录/布局/控制器/多库回归和类型/双端构建通过。真实隔离UI以空默认库和D盘第二库扫描，实际点DeepSeek第2分片下载卡片：按钮无下拉、title/应放目录均为D盘已有分片目录，并实际点击打开成功；人工查看截图。`temp/create-smoke-Hdq3Dd/shard-lock-report.json` ok；AppApi清理后PID72700/CDP7131/18463退出，未启动模型或ComfyUI。证据 `temp/strata-0212-inference-error/shard-*`；不做推理或下载。
+
+- 2026-11-10 部分下载扫描：只读检查用户指定DeepSeek目录，主分片1/3及四个配套文件大小均符合固定配置，缺主分片2/4。旧多库扫描要求整组完整才标任一分片found，真实复现旧结果4/8；修复选完整库优先、无完整库时展示首个有下载分片的库，整组仍不跨库。31项相关扫描/DeepSeek测试和类型/双端构建通过；正式目录真实复扫6/8，available=false。无下载/哈希/搬移/模型加载，证据 `temp/strata-0212-inference-error/partial-scan-*`。
+
+- 2026-11-10 用户提供engine.log：原生启动成功，62GB热点专家预读40秒，DSpark因19GB GPU相对132GB专家关闭；日志只有stderr启动，无法把90分钟都归因原生加载。核对0.2.12官方ds_pictures.py及ds4_main.cpp：DSI写在cfg.log父目录（默认Local Video Studio含空格），GENI不引用路径且原生parse_gen按空格分隔，必然截断图片路径。DeepSeek用内置视觉塔，不能套Qwen独立vision块。新增应用启动bootstrap只把含空白的图片临时目录选到无空白可写临时目录，不改安装源码/权重/pack/receipt，无需重新hash或pack。
+- 图片路径验收：120项DeepSeek/service/model-preparation/owner定向测试及干净类型/双端构建通过；用固定0.2.12实际ds_pictures.py与Pillow生成PNG→DSI文件、按原生同样空格分隔解析GENI字段，修复前native_file_matches=false，修复后true，DSI头与计数均正确。`temp/strata-0212-inference-error/pictures-report.json`、`vision-focused.log`、`vision-build.log`。仅应用服务入口适配，独立Agent guard未改；未加载GPU或下载权重，未代用户安装/打包，另一台完整神经图文输出仍待实际复试。启动回归确认准备config/receipt字节和准备调用数不变。
+
+- 2026-11-08 远端首次启动约90分钟后DeepSeek已加载，随后单图H3 I2VA增强在6472ms失败（operation badb5c02-2bdd-42ba-bb92-2d8b0f3d3b1e）；原SSE解析丢弃payload.error.message，故现有日志无法确定引擎/图像/内存/上下文原因。已请求远端准备目录engine.log末尾和存储类型，不要求重新加载或重哈希。新增StrataInferenceError仅携带后端错误到服务边界，那里限定type/code/message、脱敏输入/图片/API key并限制长度，附实际engine.log；部分输出仍不可保存，失败仍停自有服务。80项stream/service/owner focused及类型检查通过，未跑全量；远端实际推理根因待日志，未声称已修复其引擎错误。证据 `temp/strata-0212-inference-error/`。
 
 - 2026-11-08 另一台升级后报 runtime/engine-dsv41/engine-component.json ENOENT；这只确认当前检查目录缺manifest，远端安装日志仍未取得。新增本地复现：Strata不属于isManagedPromptModel，模型选择change只给Comfy类模型保存草稿，Strata立即requestRender可退回旧选择，切依赖页仍拿到旧模型并跳过DeepSeek。DeepSeek/Qwen两个回归修复前均失败；现改为所有提示词模型重绘前保存草稿，原Comfy提示不变。安装日志补目标路径与软件分支。仅验证Strata相关项，不跑全量，不代用户安装。
 - 2026-11-08 修复验收：70项选择/Strata定向回归、类型检查与构建通过（`temp/strata-0212-repair/`）。新测试只验证模型草稿与切页，隔离无关的RAF焦点恢复，未作真实远端UI或DeepSeek推理验收。源代码/构建已修，未打包部署或代装另一台；无法仅凭ENOENT断言该机器唯一根因。无软件/权重下载、无运行实例/GPU操作。

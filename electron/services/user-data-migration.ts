@@ -232,7 +232,16 @@ export class UserDataMigration {
 
 /** Startup owns the transition; JsonStore still owns all schema/Library transactions and leases. */
 export class MigratingUserDataRepository implements StateRepository {
-  constructor(private readonly repository: StateRepository, private readonly migration?: UserDataMigration) {}
+  readonly updateHistoryItems: StateRepository["updateHistoryItems"];
+  readonly updateWorkspace: StateRepository["updateWorkspace"];
+  readonly updateWorkspaceWithoutSnapshot: StateRepository["updateWorkspaceWithoutSnapshot"];
+  readonly flushWorkspace: StateRepository["flushWorkspace"];
+  constructor(private readonly repository: StateRepository, private readonly migration?: UserDataMigration) {
+    this.updateHistoryItems = repository.updateHistoryItems?.bind(repository);
+    this.updateWorkspace = repository.updateWorkspace?.bind(repository);
+    this.updateWorkspaceWithoutSnapshot = repository.updateWorkspaceWithoutSnapshot?.bind(repository);
+    this.flushWorkspace = repository.flushWorkspace?.bind(repository);
+  }
   async load(): Promise<AppState> {
     await this.migration?.prepare();
     this.migration?.committing();

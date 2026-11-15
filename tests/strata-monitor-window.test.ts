@@ -14,7 +14,7 @@ vi.mock("electron", () => ({
   }) },
   BrowserWindow: class {
     events: Record<string, any> = {}; destroyed = false;
-    webContents = { events: {} as Record<string, any>, setWindowOpenHandler: vi.fn(),
+    webContents = { events: {} as Record<string, any>, setWindowOpenHandler: vi.fn(), reload: vi.fn(),
       on: (name: string, fn: any) => { this.webContents.events[name] = fn; }, insertCSS: vi.fn(async () => "css") };
     constructor(readonly options: any) { if (fake.failWindow) throw new Error("native window unavailable"); fake.windows.push(this); }
     once(name: string, fn: any) { this.events[name] = fn; }
@@ -106,6 +106,8 @@ describe("Strata official read-only monitor", () => {
     s.hooks.headers({ url: target.origin + "/v1/status", method: "GET", requestHeaders: { authorization: "bad", "x-api-key": "bad" } }, callback);
     expect(callback).toHaveBeenLastCalledWith({ requestHeaders: { Authorization: "Bearer " + target.apiKey } });
     f.setConnection({ ...target, apiKey: "rotated" }); f.monitor.sync();
+    expect(fake.windows[0].webContents.reload).toHaveBeenCalledOnce();
+    f.monitor.sync(); expect(fake.windows[0].webContents.reload).toHaveBeenCalledOnce();
     s.hooks.headers({ url: target.origin + "/api/requests", method: "GET", requestHeaders: {} }, callback);
     expect(callback).toHaveBeenLastCalledWith({ requestHeaders: { Authorization: "Bearer rotated" } });
     s.hooks.headers({ url: target.origin + "/web/monitor.js", method: "GET", requestHeaders: { Authorization: "bad" } }, callback);

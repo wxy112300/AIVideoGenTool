@@ -36,8 +36,9 @@ export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
 export const SPECTRUM_PDD_MINIMUM_VERSION = "0.2.21";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.29";
-export const H3_COMFY_KITCHEN_VERSION = "0.2.40";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.30";
+export const H3_COMFY_KITCHEN_VERSION = "0.2.41";
+export const H3_COMFY_KITCHEN_MINIMUM_VERSION = "0.2.39";
 export const COMFYUI_GGUF_REVISION = "373048b8403a7820620065210a691263d4da0a61";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.8";
@@ -47,8 +48,8 @@ export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.7.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = COMFYUI_RECOMMENDED_VERSION;
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
-export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.5.6";
-export const H3_SLA_ATTENTION_REVISION = "d58d006a4ea32c25c06499f2ff104f0852a045a6";
+export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.6.4";
+export const H3_SLA_ATTENTION_REVISION = "cc944b5064d1b15fc77664c7138d9752bba66302";
 export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
 export const H3_MEMORY_RECOMMENDED_VERSION = "0.2.20";
 export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
@@ -75,7 +76,7 @@ type NodeVersionDefaults = Pick<
 const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "video-helper-suite": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.7.9", latestVersion: "1.7.9" },
   "comfyui-gguf": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.0.0", latestVersion: "2.0.0" },
-  kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.3", latestVersion: "1.5.3" },
+  kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.4", latestVersion: "1.5.4" },
   "ltx-video": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
   "minimax-h3-prompt-writer": { versionMode: "release", releaseSource: "github-release", recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION, latestVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION },
   "comfyui-multimodal-prompt-nodes": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.16", latestVersion: "1.0.16" },
@@ -102,8 +103,7 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "tessera", priority: 107, name: "Tessera", purpose: "H3参考引导分块视频放大与流式编码/解码",
   repositoryUrl: "https://github.com/hashu786/ComfyUI-Tessera", directoryName: "ComfyUI-Tessera", aliases: ["ComfyUI-Tessera"],
-  installRevision: "930c882a17fb9a494308ac0f19ed3a73fa9a4ce0", installRevisionPolicy: "required",
-  versionMode: "pinned", recommendedVersion: "1.0.0", minimumVersion: "1.0.0", license: "MIT",
+  versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.0.0", latestVersion: "1.0.0", license: "MIT",
   nodeTypes: ["TesseraEncode", "TesseraRefine", "TesseraArgs"], required: false
 }, {
   // Tombstone retains explicit uninstall lookup; no scan, readiness or install route.
@@ -246,6 +246,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     name: "显存调试",
     nodeTypes: ["VRAM_Debug"],
     description: "用于运行统计与显存调试，不是生成必需节点。"
+  }],
+  compatibilityEvidence: [{
+    verifiedAt: "2026-11-15",
+    sourceUrl: "https://github.com/kijai/ComfyUI-KJNodes/tree/70701d2a11d4797cf52733290ed0b6b5037148d9",
+    commit: "70701d2a11d4797cf52733290ed0b6b5037148d9",
+    note: "源码1.5.4（无GitHub Release），新增H3提示词权重/混合、H3图片多出口Tiny VAE及图像工具改进；Python依赖声明不变。Sage补丁/get_sage_func、VRAM_Debug、ModelPreviewOverrideKJ和视频TAEHVDecoder与本机1.5.3基线实现一致；候选CPU注册267节点，三个现用节点schema与基线一致。ImageResizeKJv2新增GPU重采样及GPU默认值，当前应用图未使用该节点；不自动接入提示词权重或图片预览，不外推GPU性能/画质。",
+    checks: ["static"]
   }],
   required: false
 }, {
@@ -515,10 +522,22 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     description: "提供 H3SLAAttention 兼容 schema；现用 Turbo-SLA 的原生稀疏节点由应用自动配置。"
   }],
   compatibilityEvidence: [{
+    verifiedAt: "2026-11-15",
+    sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/cc944b5064d1b15fc77664c7138d9752bba66302",
+    note: "固定源码1.6.4（无GitHub Release），相较1.6.2的变化集中于视频upsampler的IC重绘、放大及标志修复；SLA六个源文件与包加载入口未变，无新增声明依赖。选中核心c844cb6上隔离CPU导入注册18节点，H3SLAAttention存在；应用仍用核心BlockSparseAttention和独立MMH3放大路径，不自动接入新upsampler。未安装或GPU生成。",
+    commit: H3_SLA_ATTENTION_REVISION,
+    checks: ["static"]
+  }, {
+    verifiedAt: "2026-11-13",
+    sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/cfb88a01d8922ca634d4ac1e753c7ae2c3c4273e",
+    note: "源码版本1.6.2（无正式Release），SLA子目录六个文件与固定1.5.6完全相同，隔离CPU进程导入与H3SLAAttention注册通过。新增媒体/H3图片节点及替换包内旧放大节点不参与应用现用图；1440p仍由独立固定MMH3包提供，Turbo-SLA仍用核心BlockSparseAttention。不自动启用新节点，未实测新放大/图片功能或GPU性能。",
+    commit: "cfb88a01d8922ca634d4ac1e753c7ae2c3c4273e",
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-10-09",
     sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/d58d006a4ea32c25c06499f2ff104f0852a045a6",
     note: "固定HEAD源码1.5.6，H3SLAAttention保留旧输入并新增engine/INT8 QK/参考保护选项；实际schema通过。现用Turbo-SLA执行图采用核心BlockSparseAttention，并非本包的新内核；本包新后端性能与画质尚未实测。",
-    commit: H3_SLA_ATTENTION_REVISION,
+    commit: "d58d006a4ea32c25c06499f2ff104f0852a045a6",
     checks: ["static"]
   }],
   runtimeRequirement: "需要支持 comfy_api.latest 的 ComfyUI。现用 H3 Turbo-SLA 由核心 BlockSparseAttention 采用 SLA 选择及 exact_kv_and_rows 音频/条件保护；本包 H3SLAAttention 保留旧工作流兼容，不自动切换其新实验内核。",
@@ -686,6 +705,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
+    verifiedAt: "2026-11-13",
+    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.30",
+    note: "v0.2.30修复新旧PackedLayout的frame_count构造差异及FinalLayer四参/shifts/grids三类PDD接口；无新增Python依赖，节点定义与0.2.29逐字节相同，应用图参数及采样公式不变。本机核心74eb0c4的grids接口上，102项上游CPU兼容/数值回归通过；仅在隔离CPU进程将不可用的Kitchen CUDA能力探针返回false，不改生产环境。未安装到本机或执行GPU生成，不外推速度/画质。",
+    commit: "7df883bb2361b7884ad789e97effd1dc37c8963a",
+    workflowIds: ["minimax_h3_t2va_api.json", "minimax_h3_r2v_api.json"],
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-10-09",
     sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.29",
     note: "v0.2.28 规范化 Windows CRLF source audit；v0.2.29 按实际 Core BSA/Flow/Untwist 的运行结构、route/layout/conditioning 与 actual-call receipt 判断兼容，不再仅凭整文件 hash 拒绝普通 forecast，并强化 cold-to-primed 校准所有权与历史身份。当前应用的 Spectrum 节点接口和 RES/ER-SDE 图参数不变；未知 wrapper、无效 receipt 或校准证明失败仍安全执行 actual。本条为发布及源码核对；本机生成、forecast 计数和适用边界另见本次升级任务证据，不推广为所有 backend/旧 Run 已验或性能/画质提升。",

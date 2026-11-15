@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../../../core/minimax-h3-image-spec";
 import { H3_BASE_RESOLUTIONS, isCustomVideoResolution } from "../../../core/video-resolution";
 import { videoDurationLimitsForDraft } from "./helpers";
 import { imageModelOptionNote, localizeImageOptionLabel } from "../../shared/image-option-label";
@@ -213,6 +214,10 @@ export function imageEditEnqueueBlockReason(
   if (imageCapability.requiresPrompt !== false && !prompt.text.trim()) {
     return t(uiKeys.create.validation.imagePromptMissing);
   }
+  if (isH3ImageModel(draft.modelId)) {
+    const errors = imageModelAdapterFor(draft.modelId)!.compilePrompt(prompt.text, inputPictures, t).errors;
+    if (errors.length) return errors[0]!;
+  }
   if (imageProfile?.missingCustomNodeNames?.length) {
     return t(uiKeys.create.finish.nodesMissing, { nodes: imageProfile.missingCustomNodeNames.join("、") });
   }
@@ -330,14 +335,16 @@ export function buildImageEditPageViewModel(
   const selectedTargetResolution = normalizeImageTargetResolution(
     draft.targetResolution,
     basePicture?.width ?? 0,
-    basePicture?.height ?? 0
+    basePicture?.height ?? 0,
+    draft.modelId
   );
   const imageAspectRatioOptions = imageAspectRatioOptionsFor(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0,
     imageCapability.textOnlyOutputWidth ?? 0,
     imageCapability.textOnlyOutputHeight ?? 0,
-    t
+    t,
+    draft.modelId
   );
   const imageResolutionOptions = imageResolutionOptionsFor(
     basePicture?.width ?? 0,
@@ -346,7 +353,8 @@ export function buildImageEditPageViewModel(
     imageCapability.textOnlyOutputHeight ?? 0,
     selectedAspectRatio,
     imageCapability.outputMultiple ?? (basePicture ? imageCapability.customOutputMultiple ?? 8 : 8),
-    t
+    t,
+    draft.modelId
   );
   const imageModelProfiles = sortProfilesByCatalogOrder(
     environmentScan?.modelProfiles.filter((profile) => profile.category === "image" && !modelCatalog.get(profile.id)?.definition.retired) ?? [],
@@ -457,7 +465,10 @@ export function buildImageEditPageViewModel(
     : 0;
   const imageModelInputCount = inputPictures.length + markupGuideCount;
   const enqueuePending = Boolean(options.environmentScanning && !environmentScan);
-  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : imageEditEnqueueBlockReason(draft, imageProfile, t);
+  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning)
+    : (isH3ImageModel(draft.modelId) && environmentScan?.comfyCompatibility.version
+      ? modelCoreVersionBlockReason(draft.modelId, environmentScan.comfyCompatibility.version, state.settings.uiLocale) : "")
+      || imageEditEnqueueBlockReason(draft, imageProfile, t);
   const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
   const backgroundRemoval = imageCapability.operation === "background-removal";
   const promptlessTitle = t(backgroundRemoval

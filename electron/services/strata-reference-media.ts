@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../../src/core/minimax-h3-image-spec.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -49,7 +50,7 @@ export async function withStrataReferenceMedia<T>(
         labels.push(`<Video ${index + 1}> sampled frame near ${sampleEnd.toFixed(2)}s, silent visual inspection; not a new Picture reference`);
       }
     }
-    if (images.length > 12) throw new Error(t(uiKeys.strataPrompt.tooManyFrames));
+    if (images.length > (request.mode === "image-edit" && isH3ImageModel(request.imageTargetModelId) ? 16 : 12)) throw new Error(t(uiKeys.strataPrompt.tooManyFrames));
     return await run({ ...request, imagePaths: images,
       referenceContext: [request.referenceContext, "Visual attachments in order (labels identify the attachments; do not renumber execution references):",
         ...labels.map((label, index) => `Attachment ${index + 1}: ${label}`),

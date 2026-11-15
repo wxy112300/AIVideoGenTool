@@ -83,6 +83,10 @@ describe("ordered model libraries", () => {
     expect(found.available).toBe(true);
     expect(found.components.filter(component => shards.some(shard => shard.expected === component.expected)).every(component => component.matches[0]?.startsWith(rootFor(roots[1]!)))).toBe(true);
     files.delete(path.join(rootFor(roots[1]!), shards[0]!.expected));
-    expect((await scanStrataPreparation(settings, inspect)).profiles.find(item => item.id === profile.id)?.available).toBe(false);
+    const partial = (await scanStrataPreparation(settings, inspect)).profiles.find(item => item.id === profile.id)!;
+    expect(partial.available).toBe(false);
+    expect(partial.components.find(component => component.expected === shards[0]!.expected)?.found).toBe(true);
+    expect(partial.components.find(component => component.expected === shards[1]!.expected)?.found).toBe(false);
+    expect(partial.components.find(component => component.expected === shards[0]!.expected)?.matches[0]).toBe(path.join(rootFor(roots[0]!), shards[0]!.expected));
   });
 });

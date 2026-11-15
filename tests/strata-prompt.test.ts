@@ -75,6 +75,7 @@ function fixture() {
       snapshot = { ...snapshot, phase: "ready", pid: 123, port: 43127, modelLoaded: true }; return snapshot;
     }),
     chat: vi.fn(async (_request, signal, onText) => { signal.throwIfAborted(); onText?.("The blue car."); return "The blue car."; }),
+    cancelRequest: vi.fn(async () => snapshot),
     stop: vi.fn(async () => { snapshot = { ...snapshot, phase: "stopped", pid: null, port: null, modelLoaded: null }; return snapshot; })
   };
   const progress: PromptProgress[] = [];
@@ -209,7 +210,7 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     expect(f.manager.snapshot()).toMatchObject({ model: { phase: "unloaded" }, operation: { terminalStatus: "cancelled" } });
     expect(f.service.isPromptBusy()).toBe(false);
   });
-  it("rejects partial output on cancellation without saving or retaining a model", async () => {
+  it("discards partial output on cancellation, retains the model and accepts the next enhancement", async () => {
     const f = fixture(), before = structuredClone(f.state);
     f.owner.chat.mockImplementationOnce(async (_request, signal, onText) => {
       onText?.("partial");
@@ -218,10 +219,15 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     });
     const enhance = f.service.enhance(request); const rejected = expect(enhance).rejects.toThrow("取消");
     await vi.waitFor(() => expect(f.owner.chat).toHaveBeenCalled());
-    expect(await f.service.cancel()).toMatchObject({ ok: true });
+    expect(await f.service.cancel()).toMatchObject({ ok: true, message: expect.stringContaining("模型保持运行") });
     await rejected;
     expect(f.progress.at(-1)?.status).toBe("cancelled"); expect(f.state).toEqual(before);
-    expect(f.manager.snapshot().model.phase).toBe("unloaded");
+    expect(f.manager.snapshot().model.phase).toBe("resident");
+    expect(f.owner.stop).not.toHaveBeenCalled();
+    expect(f.owner.cancelRequest).toHaveBeenCalledOnce();
+    expect(await f.service.enhance(request)).toBe("The blue car.");
+    expect(f.owner.snapshot()).toMatchObject({ pid: 123, modelLoaded: true });
+    await f.service.releaseForUser();
   });
   it("keeps failed cleanup occupancy and exposes retry release", async () => {
     const f = fixture(); await f.service.start();

@@ -26,6 +26,13 @@ try {
   assert.ok(!state.queue.some(t => t.status === "running"));
   assert.equal(promptOperationIsActive(prompt), false);
   assert.equal(promptModelStartupIsActive(prompt), false);
+  // The native window-close hook is bypassed below. Explicitly release an owned
+  // Strata model too, otherwise its monitor can keep the app and GPU alive.
+  if (prompt.service.backend === "strata" && prompt.service.ownership === "app") {
+    const released = await client.evaluate("window.studio.releasePromptModel()");
+    assert.equal(released.ok, true, released.message);
+    report.ownedPromptStoppedViaAppApi = true;
+  }
   const outputRelative = path.relative(directory, path.resolve(state.settings.outputDirectory));
   assert.ok(!outputRelative.startsWith("..") && !path.isAbsolute(outputRelative), "State output must belong to fixture");
   const endpoint = new URL(state.settings.comfyUrl);

@@ -9,10 +9,23 @@ import {
   clearOwnedComfyProcessIds,
   type ComfyRuntimeServiceDependencies
 } from "../electron/services/comfy-runtime-service";
-import { comfyUiSettingsForQueueTask } from "../src/infrastructure/comfy-runtime-policy";
+import { comfyUiSettingsForQueueTask, comfyUiMemoryArgs, comfyUiRuntimeProfileForSettings, comfyUiRuntimeProfileFromCommandLine } from "../src/infrastructure/comfy-runtime-policy";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it("isolates the W4A8 image transfer workaround from H3 video and INT8 images", () => {
+    const saved = createDefaultState().settings;
+    const image = comfyUiSettingsForQueueTask({ taskType: "image-generation", modelId: "minimax-h3-image-w4a8" }, saved);
+    const args = comfyUiMemoryArgs(image);
+    expect(comfyUiRuntimeProfileForSettings(image)).toBe("h3-image-w4a8");
+    expect(args).toEqual(expect.arrayContaining(["--disable-dynamic-vram", "--disable-smart-memory", "--disable-comfy-compiler"]));
+    expect(comfyUiRuntimeProfileFromCommandLine(`python main.py ${args.join(" ")}`)).toBe("h3-image-w4a8");
+    for (const task of [
+      { taskType: "image-generation" as const, modelId: "minimax-h3-image" },
+      { taskType: "generation" as const, modelId: "minimax_h3_fl2va" }
+    ]) expect(comfyUiMemoryArgs(comfyUiSettingsForQueueTask(task, image))).not.toContain("--disable-dynamic-vram");
+    expect(saved).not.toHaveProperty("comfyRuntimeProfileOverride");
+  });
   it("localizes missing-core errors without launching a process", async () => {
     const launchDetached = vi.fn();
     const dependencies = {

@@ -1,4 +1,6 @@
+import { isH3ImageModel } from "./minimax-h3-image-spec.js";
 import type { EnhanceRequest, ImagePromptPreset } from "../types.js";
+import { h3ImagePromptContract, h3ImagePromptUserContent } from "./minimax-h3-image-prompt.js";
 import { isMossImageModel } from "./moss-image-spec.js";
 import { mossImagePromptContract, mossImagePromptUserContent } from "./moss-image-prompt.js";
 import {
@@ -55,6 +57,7 @@ export function imageEditPromptContractForTarget(
   presetText = "",
   outputMode: "plain" | "writer" = "plain"
 ): string {
+  if (isH3ImageModel(modelId)) return h3ImagePromptContract(preset, presetText, outputMode);
   if (isMossImageModel(modelId)) return mossImagePromptContract(preset, presetText, outputMode);
   if (isOmniGen2TargetModel(modelId)) {
     return omnigen2PromptContract(preset, presetText, outputMode);
@@ -75,7 +78,9 @@ export function imageEditPromptUserContentForTarget(request: EnhanceRequest): st
   const sourceRequest = parsedPrompt.annotations.length
     ? { ...request, prompt: parsedPrompt.prompt }
     : request;
-  const content = isMossImageModel(request.imageTargetModelId)
+  const content = isH3ImageModel(request.imageTargetModelId)
+    ? h3ImagePromptUserContent(sourceRequest)
+    : isMossImageModel(request.imageTargetModelId)
     ? mossImagePromptUserContent(sourceRequest)
     : isOmniGen2TargetModel(request.imageTargetModelId)
     ? omnigen2PromptUserContent(sourceRequest)

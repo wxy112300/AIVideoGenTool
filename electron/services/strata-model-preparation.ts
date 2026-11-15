@@ -41,7 +41,9 @@ export async function verifyStrataAsset(filename: string, expected: AssetExpecta
   const digest = createHash("sha256");
   let bytes = 0;
   let header = Buffer.alloc(0);
-  for await (const chunk of createReadStream(filename, { signal })) {
+  // Multi-hundred-GB GGUFs need sequential reads; Windows per-read overhead at
+  // Node's 64KiB default can dominate verification. Memory remains bounded.
+  for await (const chunk of createReadStream(filename, { signal, highWaterMark: 4 * 1024 ** 2 })) {
     signal?.throwIfAborted();
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     if (header.length < 4) header = Buffer.concat([header, buffer.subarray(0, 4 - header.length)]);

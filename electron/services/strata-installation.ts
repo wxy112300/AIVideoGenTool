@@ -16,7 +16,6 @@ import { verifyStrataControlVector } from "./strata-uncensored.js";
 import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-update-cleanup.js";
 import { gitSoftwareFiles } from "./software-git-files.js";
 import { fetchStrataSource } from "./strata-source-fetch.js";
-import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { hasDeepSeekEngine, installDeepSeekEngine } from "./strata-deepseek-engine.js";
 import { STRATA_DSV41_BYTES } from "../../src/core/catalog/dependencies/strata-deepseek.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
@@ -165,13 +164,9 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
   try {
     checkInstallationCancelled();
     stage("prepare");
-    // Upgrades can migrate a versioned runtime into the shared target. Inspect
-    // the runtime actually in use before cleanup removes that old directory.
-    const previousRoot = runtime.managedDirectory ? root : resolvedStrataDirectory(settings);
-    const includeDeepSeek = isStrataDeepSeek(settings.promptModelId) || await hasDeepSeekEngine(root, true)
-      || (previousRoot !== root && await hasDeepSeekEngine(previousRoot, true));
+    // Both model families share this software transaction, regardless of selection.
     log(`Strata install target: ${root}`);
-    log(`Strata install model: ${settings.promptModelId}; DeepSeek engine: ${includeDeepSeek ? "required" : "not requested"}`);
+    log(`Strata install model: ${settings.promptModelId}; DeepSeek engine: required`);
     env = runtime.environment(settings);
     if (process.platform !== "win32") throw new Error(t(uiKeys.strataRuntime.windowsOnly));
     if (settings.strataInstallDirectory.trim() && !isManagedStrataPath(settings.strataInstallDirectory) && path.resolve(settings.strataInstallDirectory).toLowerCase() !== root.toLowerCase()) {
@@ -252,11 +247,9 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     log(t(uiKeys.strataRuntime.checking));
     stage("check");
     await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path('engine')),full=True)"], root);
-    if (includeDeepSeek) {
-      stage("download", 0, STRATA_DSV41_BYTES);
-      await installDeepSeekEngine(root, settings, { ...runtime, run: (executable, args, options) => run(executable, args, options.cwd ?? root, options.timeoutMs) }, log,
-        received => stage("download", received, STRATA_DSV41_BYTES));
-    }
+    stage("download", 0, STRATA_DSV41_BYTES);
+    await installDeepSeekEngine(root, settings, { ...runtime, run: (executable, args, options) => run(executable, args, options.cwd ?? root, options.timeoutMs) }, log,
+      received => stage("download", received, STRATA_DSV41_BYTES));
     checkInstallationCancelled();
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
     log(t(uiKeys.strataRuntime.installedLog, { path: root }));

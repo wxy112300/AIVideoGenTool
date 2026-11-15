@@ -470,7 +470,8 @@ export function mountImageEditController(
                   targetResolution: normalizeImageTargetResolution(
                     value,
                     draft.pictures[0]?.width ?? 0,
-                    draft.pictures[0]?.height ?? 0
+                    draft.pictures[0]?.height ?? 0,
+                    draft.modelId
                   )
                   }
                   : { seed: value ? Number(value) : null }

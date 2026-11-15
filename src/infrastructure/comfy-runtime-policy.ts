@@ -1,4 +1,5 @@
 import path from "node:path";
+import { H3_IMAGE_W4A8_ID } from "../core/minimax-h3-image-spec.js";
 import type {
   QueueTask,
   Settings
@@ -8,6 +9,7 @@ export type ComfyUiRuntimeProfile =
   | "standard"
   | "prompt-resident"
   | "qwen-image"
+  | "h3-image-w4a8"
   | "h3-native"
   | "h3-q3-3080";
 
@@ -83,6 +85,11 @@ export function comfyUiMemoryArgs(
       "--vram-headroom",
       "0.5"
     );
+  } else if (runtimeProfile === "h3-image-w4a8") {
+    // Windows/Ada DynamicVRAM can stall in quantized weight transfers. Keep
+    // this compatibility path scoped to the W4A8 still-image recipe.
+    args.push("--disable-dynamic-vram", "--disable-smart-memory",
+      "--disable-pinned-memory", "--disable-async-offload", "--disable-comfy-compiler");
   } else if (runtimeProfile === "h3-q3-3080") {
     args.push(
       "--lowvram",
@@ -110,6 +117,7 @@ export function comfyUiRuntimeProfileForSettings(
   settings: RuntimeProfileSettings
 ): ComfyUiRuntimeProfile {
   if (settings.comfyRuntimeProfileOverride) return settings.comfyRuntimeProfileOverride;
+  if (settings.defaultImageModel === H3_IMAGE_W4A8_ID) return "h3-image-w4a8";
   if (settings.defaultVideoModel === "minimax_h3_fl2va_q3_gguf") return "h3-q3-3080";
   if (typeof settings.defaultVideoModel === "string" && settings.defaultVideoModel.startsWith("minimax_h3_")) {
     return settings.h3RuntimeMode === "native" ? "h3-native" : "standard";
@@ -124,6 +132,10 @@ export function comfyUiRuntimeProfileFromCommandLine(
 ): ComfyUiRuntimeProfile | "unknown" {
   const normalized = commandLine.toLowerCase();
   if (normalized.includes("--cache-lru")) return "prompt-resident";
+  if (normalized.includes("--disable-dynamic-vram") &&
+      normalized.includes("--disable-smart-memory") &&
+      normalized.includes("--disable-comfy-compiler") &&
+      !normalized.includes("--cpu-vae")) return "h3-image-w4a8";
   if (
     normalized.includes("--lowvram") &&
     normalized.includes("--cpu-vae") &&

@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../minimax-h3-image-spec.js";
 import { uiKeys } from "../i18n-keys.js";
 import type { Translate } from "../i18n.js";
 import { createTranslator } from "../i18n.js";
@@ -37,9 +38,12 @@ export function cachedImageProfileAllowsEnqueue(
 export const imageOutputCountMax = 6;
 export const imageTargetResolutionValues = [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] as const;
 export const imageTargetResolutionRange = { min: 480, max: 2160 } as const;
+export function imageResolutionRangeFor(modelId?: string) {
+  return { min: 480, max: isH3ImageModel(modelId) ? 4096 : 2160 };
+}
 
-export function clampCustomImageResolution(value: number, multiple = 8): number {
-  const { min, max } = imageTargetResolutionRange;
+export function clampCustomImageResolution(value: number, multiple = 8, modelId?: string): number {
+  const { min, max } = imageResolutionRangeFor(modelId);
   if (!Number.isFinite(value)) return min;
   const step = Number.isInteger(multiple) && multiple > 0 ? multiple : 8;
   return Math.max(min, Math.min(max, Math.round(value / step) * step));
@@ -68,11 +72,12 @@ function alignedImageDimension(value: number, multiple = 8): number {
 export function normalizeImageTargetResolution(
   value: unknown,
   sourceWidth = 0,
-  sourceHeight = 0
+  sourceHeight = 0,
+  modelId?: string
 ): ImageTargetResolution {
   if (value === "source") return "source";
   const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(numeric) || numeric < imageTargetResolutionRange.min || numeric > imageTargetResolutionRange.max) return "source";
+  if (!Number.isInteger(numeric) || numeric < 480 || numeric > imageResolutionRangeFor(modelId).max) return "source";
   return numeric;
 }
 
@@ -92,7 +97,7 @@ function ratioLabelForDimensions(width: number, height: number,
 }
 
 export function normalizeImageAspectRatio(value: unknown): ImageAspectRatio {
-  if (value === "source" || imageAspectRatioValues.some((candidate) => candidate === value)) {
+  if (value === "source" || value === "21:9" || imageAspectRatioValues.some((candidate) => candidate === value)) {
     return value as ImageAspectRatio;
   }
   return "source";
@@ -105,7 +110,8 @@ export function imageOutputDimensions(
   fallbackWidth = 0,
   fallbackHeight = 0,
   aspectRatio: ImageAspectRatio = "source",
-  alignmentMultiple = 8
+  alignmentMultiple = 8,
+  modelId?: string
 ): [number, number] {
   const hasSource = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) &&
     sourceWidth > 0 && sourceHeight > 0;
@@ -118,13 +124,14 @@ export function imageOutputDimensions(
   }
   const normalizedAspectRatio = normalizeImageAspectRatio(aspectRatio);
   if (targetResolution === "source" && normalizedAspectRatio === "source") {
+    if (isH3ImageModel(modelId)) return [alignedImageDimension(width, 32), alignedImageDimension(height, 32)];
     return [Math.max(0, Math.trunc(width)), Math.max(0, Math.trunc(height))];
   }
   const sourceRatio = normalizedAspectRatio === "source"
     ? width / height
     : ratioValue(normalizedAspectRatio);
   const shortEdge = Math.min(width, height);
-  const normalizedTarget = normalizeImageTargetResolution(targetResolution);
+  const normalizedTarget = normalizeImageTargetResolution(targetResolution, 0, 0, modelId);
   const outputShortEdge = normalizedTarget === "source" ? shortEdge : normalizedTarget;
   const outputWidth = sourceRatio >= 1
     ? outputShortEdge * sourceRatio
@@ -143,7 +150,8 @@ export function imageAspectRatioOptionsFor(
   sourceHeight = 0,
   fallbackWidth = 0,
   fallbackHeight = 0,
-  t: Translate = createTranslator().t
+  t: Translate = createTranslator().t,
+  modelId?: string
 ): ImageAspectRatioOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
@@ -154,7 +162,7 @@ export function imageAspectRatioOptionsFor(
       : t(uiKeys.workflowChecks.sourceRatioPending);
   return [
     { value: "source", label: sourceLabel },
-    ...imageAspectRatioValues.map((value) => ({
+    ...(isH3ImageModel(modelId) ? [...imageAspectRatioValues, "21:9" as const] : imageAspectRatioValues).map((value) => ({
       value,
       label: `${value}${value === "1:1" ? t(uiKeys.workflowChecks.square) : value === "16:9" || value === "3:2" ? t(uiKeys.workflowChecks.landscape) : value === "9:16" || value === "2:3" ? t(uiKeys.workflowChecks.portrait) : ""}`
     }))
@@ -168,7 +176,8 @@ export function imageResolutionOptionsFor(
   fallbackHeight = 0,
   aspectRatio: ImageAspectRatio = "source",
   alignmentMultiple = 8,
-  t: Translate = createTranslator().t
+  t: Translate = createTranslator().t,
+  modelId?: string
 ): ImageResolutionOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
@@ -179,7 +188,8 @@ export function imageResolutionOptionsFor(
     fallbackWidth,
     fallbackHeight,
     aspectRatio,
-    alignmentMultiple
+    alignmentMultiple,
+    modelId
   );
   const sourceLabel = hasSource
     ? t(uiKeys.workflowChecks.sourceSize, { width: sourceOptionDimensions[0], height: sourceOptionDimensions[1] })
@@ -192,9 +202,12 @@ export function imageResolutionOptionsFor(
     width: sourceOptionDimensions[0],
     height: sourceOptionDimensions[1]
   }];
-  for (const target of imageTargetResolutionValues) {
+  const targets = isH3ImageModel(modelId)
+    ? [4096, 3552, 3360, 3072, 2688, 2160, 2048, 1536, 1024]
+    : imageTargetResolutionValues;
+  for (const target of targets) {
     const [width, height] = hasSource || hasFallback
-      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio, alignmentMultiple)
+      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio, alignmentMultiple, modelId)
       : [0, 0];
     options.push({
       value: target,

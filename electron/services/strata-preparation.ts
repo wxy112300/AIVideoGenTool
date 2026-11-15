@@ -58,10 +58,16 @@ export async function scanStrataPreparation(
     for (const group of shardGroups.values()) {
       if (!settings.modelDirectories?.length || group.length < 2) continue;
       let complete: string | undefined;
+      let partial: string | undefined;
       for (const root of roots) {
-        if ((await Promise.all(group.map(component => valid(root, component)))).every(Boolean)) { complete = root; break; }
+        const present = await Promise.all(group.map(component => valid(root, component)));
+        if (present.some(Boolean)) partial ??= root;
+        if (present.every(Boolean)) { complete = root; break; }
       }
-      for (const component of group) chosen.set(component.expected, complete ? [complete] : []);
+      // Show downloaded shards from the first partial library without combining
+      // separate libraries into a falsely complete tensor set.
+      const selected = complete ?? partial;
+      for (const component of group) chosen.set(component.expected, selected ? [selected] : []);
     }
     await Promise.all(profile.components.map(async component => {
     for (const root of chosen.get(component.expected) ?? roots) {

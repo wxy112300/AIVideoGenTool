@@ -52,7 +52,16 @@ export function startStrataMonitorWindow(options: StrataMonitorWindowOptions): {
     const capability = options.connection();
     const origin = strataMonitorOrigin(capability);
     // Adaptive lazy-server restarts rotate the private key; keep the same window.
-    if (!origin || origin === openedOrigin) return;
+    if (!origin) return;
+    if (origin === openedOrigin) {
+      // During an adaptive restart, the old page's script requests can be
+      // denied while ownership is absent. Refresh it once the new key is ready.
+      if (window && !window.isDestroyed() && attemptKey !== capability!.apiKey) {
+        attemptKey = capability!.apiKey;
+        window.webContents.reload();
+      }
+      return;
+    }
     // Retry transient lazy-server startup/restart failures, not an explicit user dismissal.
     if (attemptKey !== capability!.apiKey) { attemptKey = capability!.apiKey; attempts = 0; retryAt = 0; }
     if (attempts >= 3 || Date.now() < retryAt) return;

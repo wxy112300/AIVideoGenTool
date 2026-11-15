@@ -25,6 +25,102 @@ async function fixture(count = 0) {
 }
 
 describe("library migration and immutable records", () => {
+  it("keeps newer transient progress in memory when a workspace checkpoint fails", async () => {
+    const { filename, options } = await fixture(1), store = new JsonStore(filename, options);
+    await store.load(); store.mutateTransient(state => { state.draft.seed = 100; });
+    const rename = vi.spyOn(fs, "rename").mockImplementationOnce(async () => {
+      store.mutateTransient(state => { state.draft.seed = 200; });
+      throw Error("checkpoint failed");
+    });
+    await expect(store.flushWorkspace()).rejects.toThrow("checkpoint failed");
+    rename.mockRestore(); expect(store.get().draft.seed).toBe(200);
+    await store.flushWorkspace(); await store.close();
+    const reopened = new JsonStore(filename, options);
+    expect((await reopened.load()).draft.seed).toBe(200);
+    await reopened.close();
+  });
+
+  it("saves workspace edits without cloning history and restores them on failed writes", async () => {
+    const { filename, options } = await fixture(4), committed = vi.fn();
+    const store = new JsonStore(filename, { ...options, onCommitted: committed, onCommittedNeeded: () => false });
+    const before = await store.load(); committed.mockClear();
+    const clone = vi.spyOn(globalThis, "structuredClone");
+    await store.updateWorkspaceWithoutSnapshot(state => { state.draft.seed = 1234; state.settings.appearance.historyMasonryColumns = 6; });
+    expect(clone.mock.calls.every(([value]) => !(value as { history?: unknown[] })?.history?.length)).toBe(true);
+    clone.mockRestore();
+    expect(committed).not.toHaveBeenCalled();
+    expect(store.get().libraryStorage).toEqual(before.libraryStorage);
+    expect(store.get().history).toEqual(before.history);
+    await expect(store.updateWorkspaceWithoutSnapshot(state => { (state as unknown as { history: unknown[] }).history = []; })).rejects.toThrow();
+    const rename = vi.spyOn(fs, "rename").mockRejectedValueOnce(Error("disk failure"));
+    await expect(store.updateWorkspaceWithoutSnapshot(state => { state.draft.seed = 999; })).rejects.toThrow("disk failure");
+    rename.mockRestore();
+    expect(store.get().draft.seed).toBe(1234);
+    await store.close();
+    const reopened = new JsonStore(filename, options), next = await reopened.load();
+    expect(next.draft.seed).toBe(1234);
+    expect(next.settings.appearance.historyMasonryColumns).toBe(6);
+    expect(next.history).toEqual(before.history);
+    await reopened.close();
+  });
+
+  it("persists scoped video/image metadata without changing unrelated record identities", async () => {
+    const { filename, options } = await fixture(3);
+    const store = new JsonStore(filename, options), before = await store.load();
+    const disk = await LibraryRecordStore.open(before.libraryStorage!);
+    const previous = JSON.parse(await fs.readFile(path.join(before.libraryStorage!.directory, "commits", `${before.libraryStorage!.commit}.json`), "utf8"));
+    const ids = [before.history[0]!.id, before.imageHistory[0]!.id];
+    const next = await store.updateHistoryItems(ids, items => {
+      items[0]!.favorite = true; items[0]!.rating = 4.5;
+      items[1]!.tags = ["scene", "new"];
+    });
+    const commit = JSON.parse(await fs.readFile(path.join(next.libraryStorage!.directory, "commits", `${next.libraryStorage!.commit}.json`), "utf8"));
+    expect(commit.history.slice(1)).toEqual(previous.history.slice(1));
+    expect(commit.imageHistory.slice(1)).toEqual(previous.imageHistory.slice(1));
+    expect(next.queue).toEqual(before.queue);
+    await store.close();
+    const reopened = new JsonStore(filename, options), loaded = await reopened.load();
+    expect(loaded.history[0]).toMatchObject({ favorite: true, rating: 4.5 });
+    expect(loaded.imageHistory[0]!.tags).toEqual(["scene", "new"]);
+    await reopened.close();
+  });
+
+  it("rolls back scoped edits after validation or durable-write failure and allows retry", async () => {
+    const { filename, options } = await fixture(2);
+    const store = new JsonStore(filename, options), before = await store.load(), id = before.history[0]!.id;
+    await expect(store.updateHistoryItems([id], items => { items[0]!.favorite = true; throw Error("invalid edit"); })).rejects.toThrow("invalid edit");
+    expect(store.get().history).toEqual(before.history);
+    const rename = vi.spyOn(fs, "rename").mockRejectedValueOnce(Error("disk write failed"));
+    await expect(store.updateHistoryItems([id], items => { items[0]!.tags = ["failed"]; })).rejects.toThrow("disk write failed");
+    rename.mockRestore();
+    expect(store.get().history).toEqual(before.history);
+    const next = await store.updateHistoryItems([id], items => { items[0]!.tags = ["retry"]; });
+    expect(next.history[0]!.tags).toEqual(["retry"]);
+    await expect(store.updateHistoryItems([id, "missing"], () => undefined)).rejects.toThrow();
+    expect(store.get().history[0]!.tags).toEqual(["retry"]);
+    await store.close();
+  });
+
+  it("skips untouched record bodies only when their verified hash belongs to the parent", async () => {
+    const { filename, options } = await fixture(2);
+    const store = new JsonStore(filename, options), state = await store.load(); await store.close();
+    const pointer = state.libraryStorage!, disk = await LibraryRecordStore.open(pointer);
+    const collections = await disk.load(pointer.commit);
+    const first = collections.history[0] as Record<string, unknown>;
+    const second = collections.history[1] as Record<string, unknown>;
+    const guarded = new Proxy(first, { ownKeys() { throw Error("untouched body traversed"); } });
+    const candidate = await disk.prepare({ ...collections, history: [guarded, { ...second, rating: 3.5 }] }, pointer.commit, undefined, new Set([second.id as string]));
+    const loaded = await disk.load(candidate.commit);
+    expect(loaded.history[0]).toEqual(first);
+    expect(loaded.history[1]).toMatchObject({ rating: 3.5 });
+    // A prepared but uncommitted generation must never leak through cache reuse.
+    const original = await disk.prepare(collections, pointer.commit, undefined, new Set([first.id as string]));
+    expect((await disk.load(original.commit)).history).toEqual(collections.history);
+    const cold = await LibraryRecordStore.open(pointer);
+    const fallback = await cold.prepare({ ...collections, history: [{ ...first, optional: undefined }, second] }, pointer.commit, undefined, new Set([first.id as string]));
+    expect((await cold.load(fallback.commit)).history).toEqual(collections.history);
+  });
+
   it("reports durable write/read counts, finishes only after switching, and distinguishes reopening", async () => {
     const { filename, options, state } = await fixture(3), events: LibraryStorageProgress[] = [];
     const store = new JsonStore(filename, { ...options, onProgress: value => events.push(value) });

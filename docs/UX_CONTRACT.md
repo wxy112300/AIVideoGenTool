@@ -35,6 +35,7 @@ The LAN viewer uses an icon-only sound control and a visible loading ring during
 ## Layout Grammar
 
 - Use one compact application header and one page title. Do not create a second hero-sized title area without user value.
+- At narrow widths, global notices sit below the measured header and page action row so navigation and mode switches remain unobscured.
 - The application header keeps a single-line global resource monitor in the thin gap directly above the top-right navigation, aligned to the navigation's right edge with only a minimal vertical separation. Desktop shows CPU/GPU utilization, GPU temperature, and RAM/VRAM percentage plus used/total capacity. The right-aligned monitor remains visible alongside centered global notices. Narrower layouts progressively move or hide lower-priority detail without increasing the desktop header height. Queue may retain its larger diagnostic cards, but both surfaces share one polling source.
 - Keep primary content within a consistent page gutter and readable maximum width. Media viewers may use available width when that materially improves inspection.
 - Use the spacing scale defined in [DESIGN.md §4](../DESIGN.md#4-间距圆角尺寸); derive exceptional spacing from an explicit layout need.
@@ -65,6 +66,7 @@ The LAN viewer uses an icon-only sound control and a visible loading ring during
 - Never replace a focused editable control during unrelated updates. Prefer targeted state updates; when rerendering is unavoidable, preserve focus, selection, and scroll position.
 - Buttons communicate an action; tabs switch peers; selects choose one value; badges report state. Do not style one semantic control as another.
 - Destructive actions require a styled application confirmation dialog, not a browser-native alert. The default focus must not make accidental confirmation likely.
+- Modal dialogs isolate background controls from keyboard, pointer and assistive technology while keeping their own menus and help usable; closing returns focus to the invoking control.
 - Drag/drop targets accept click-to-select as an equivalent path. Dropping a new reference over an occupied target replaces it only with clear feedback.
 - Media reference controls expose an immediate remove action so the prompt can be retained while the image is changed or cleared.
 - Seed fields follow the video interaction: blank means random, with explicit randomize and clear actions. Do not invent incrementing seed semantics.

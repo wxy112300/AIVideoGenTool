@@ -35,7 +35,7 @@ async function fixture(delayMs = 60000) {
   await fs.writeFile(stateFile, JSON.stringify(state));
   const errors: unknown[] = [];
   const publisher = new NasPublisher({ stateFile, coversDirectory: path.join(root, "covers"), resolveOutputRoot: async () => output, onError: error => errors.push(error), delayMs }); publishers.push(publisher);
-  const store = new JsonStore(stateFile, { libraryDirectory: archive, beforeLibraryMove: () => publisher.prepareLibraryMove(), onCommitted: state => publisher.schedule(state) });
+  const store = new JsonStore(stateFile, { libraryDirectory: archive, beforeLibraryMove: () => publisher.prepareLibraryMove(), onCommitted: state => publisher.schedule(state), onCommittedNeeded: state => publisher.needsSnapshot(state) });
   const loaded = await store.load(); await publisher.flush();
   const relative = `StudioLibrary/${loaded.libraryStorage!.libraryId}`, source = path.join(archive, relative), destination = path.join(nasArchive, relative);
   const sync = async () => { await fs.cp(path.join(store.get().libraryStorage!.directory, relative), destination, { recursive: true, force: true }); await fs.cp(output, nas, { recursive: true, force: true }); };
@@ -44,6 +44,26 @@ async function fixture(delayMs = 60000) {
 }
 
 describe("committed automatic NAS projection", () => {
+  it("does not clone unchanged publication input, and retains a revert over a different pending snapshot", async () => {
+    const f = await fixture(), state = f.store.get();
+    expect(f.publisher.needsSnapshot(state)).toBe(false);
+    const clone = vi.spyOn(globalThis, "structuredClone");
+    f.publisher.schedule({ ...state, draft: { ...state.draft, seed: 987 } });
+    expect(clone).not.toHaveBeenCalled();
+    clone.mockRestore();
+    const changed = { ...state, settings: { ...state.settings, uiLocale: "en-US" as const } };
+    f.publisher.schedule(changed);
+    expect(f.publisher.needsSnapshot(changed)).toBe(false);
+    expect(f.publisher.needsSnapshot(state)).toBe(true);
+    f.publisher.schedule(state);
+    expect(f.publisher.needsSnapshot(state)).toBe(false);
+    await f.publisher.flush();
+    expect(f.errors).toEqual([]);
+    await f.store.updateWorkspaceWithoutSnapshot(workspace => { workspace.draft.seed = 444; });
+    expect(f.publisher.needsSnapshot(f.store.get())).toBe(false);
+    await f.store.close();
+  });
+
   it("preserves an auto-rollback I/O failure and retries the pending commit without resetting the index", async () => {
     const f = await fixture(); await f.sync(); const library = f.open(); await library.reload();
     const oldTitle = library.detail(f.asset.id).title;

@@ -20,7 +20,7 @@ import {
   applyH3AccelerationSettingsToWaitingTask,
   normalizeH3GlobalSparseAttentionMode
 } from "../../src/core/h3-execution-policy.js";
-import type { StateRepository } from "../ports/state-repository.js";
+import type { StateRepository, WorkspaceState } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import {
   cleanupVideoHistoryMigration,
@@ -108,9 +108,9 @@ export class SettingsService {
   }
 
   async materializeDefaultImageInputLibraryDirectory(): Promise<void> {
-    if (this.deps.store.get().settings.imageInputLibraryDirectory.trim()) return;
+    if (this.deps.store.getSettings().imageInputLibraryDirectory.trim()) return;
     const directory = await this.effectiveImageInputLibraryDirectory(
-      this.deps.store.get().settings
+      this.deps.store.getSettings()
     ).catch(() => "");
     if (!directory) return;
     await this.deps.store.update((state) => {
@@ -130,15 +130,15 @@ export class SettingsService {
     input: Settings,
     mode: SettingsSaveMode = "apply"
   ): Promise<AppState> {
-    const t = createNativeTranslator(input.uiLocale ?? this.deps.store.get().settings.uiLocale).t;
+    const t = createNativeTranslator(input.uiLocale ?? this.deps.store.getSettings().uiLocale).t;
     // Immediate visual preferences must never apply an unrelated settings draft,
     // clear the native dirty guard, scan files, or touch queued execution policy.
     if (mode === "appearance") {
       if (this.historyMigrationRunning) throw new Error(t(uiKeys.serviceError.migrationBusy));
-      await this.deps.store.update((state) => {
+      const update = this.deps.store.updateWorkspace?.bind(this.deps.store) ?? this.deps.store.update.bind(this.deps.store);
+      const state = await update((state) => {
         state.settings.appearance = normalizeAppearance(input.appearance);
       });
-      const state = this.deps.store.get();
       this.deps.sendState(state);
       return state;
     }
@@ -170,7 +170,7 @@ export class SettingsService {
     if (input.modelDirectories !== undefined && (!Array.isArray(input.modelDirectories) || input.modelDirectories.length > 32 || input.modelDirectories.some(root => typeof root !== "string" || (Boolean(root.trim()) && !path.isAbsolute(root.trim()))))) {
       throw new Error(t(uiKeys.settings.modelLibraries.invalid));
     }
-    let settings = { ...input, ...normalizeStrataSettings(input), appearance: normalizeAppearance(input.appearance ?? this.deps.store.get().settings.appearance) };
+    let settings = { ...input, ...normalizeStrataSettings(input), appearance: normalizeAppearance(input.appearance ?? this.deps.store.getSettings().appearance) };
     if (input.modelDirectories !== undefined) {
       settings.modelDirectories = modelLibraryEntries(input);
       settings.modelDirectory = settings.modelDirectories[0] ?? "";
@@ -193,7 +193,7 @@ export class SettingsService {
       h3SparseAttentionMode: normalizeH3GlobalSparseAttentionMode(settings.h3SparseAttentionMode)
     };
 
-    const previous = this.deps.store.get().settings;
+    const previous = this.deps.store.getSettings();
     const storageChanged = (["libraryDirectory", "outputDirectory", "imageOutputDirectory"] as const).some(key =>
       (previous[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase() !== (settings[key] ?? "").trim().replace(/[\\/]+$/u, "").toLowerCase());
     if (storageChanged && mode === "apply") throw new Error(t(uiKeys.serviceError.storageMoveRequired));
@@ -217,7 +217,7 @@ export class SettingsService {
       previous.h3RuntimeMode !== settings.h3RuntimeMode ||
       previous.h3ComfyCompilerMode !== settings.h3ComfyCompilerMode;
     let updatedH3TaskCount = 0;
-    const commitSettings = (state: AppState): void => {
+    const commitSettings = (state: WorkspaceState): void => {
       state.settings = settings;
       if (!h3AccelerationChanged) return;
       for (const task of state.queue) {
@@ -329,9 +329,9 @@ export class SettingsService {
       }
     }
 
-    const next = await this.deps.store.update((state) => {
-      commitSettings(state);
-    });
+    const next = mode === "apply" && !storageChanged && this.deps.store.updateWorkspace
+      ? await this.deps.store.updateWorkspace(commitSettings)
+      : await this.deps.store.update(commitSettings);
     this.deps.logger.info("settings", "saved", "Application settings saved", {
       changedKeys,
       changedCount: changedKeys.length,

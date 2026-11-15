@@ -5,7 +5,7 @@ import { renderSettingsInstallGuideDialog } from "../src/renderer/pages/settings
 import { mountSettingsPageController, type SettingsPageControllerOptions } from "../src/renderer/pages/settings/page-controller";
 import { modelComponentWithLocations, openModelComponentLocation } from "../src/renderer/pages/settings/model-location";
 import { createTranslator } from "../src/core/i18n";
-import { installGuideDirectories, modelComponentDisplayPath } from "../src/renderer/pages/settings/model-location";
+import { installGuideDirectories, modelComponentDisplayPath, modelShardDirectory } from "../src/renderer/pages/settings/model-location";
 import { STRATA_DEEPSEEK_MODEL_ID, STRATA_DEEPSEEK_DIRECTORY } from "../src/core/catalog/models/strata-deepseek";
 
 afterEach(() => { document.body.innerHTML = ""; });
@@ -16,6 +16,27 @@ function component(found: boolean, matches: string[]): ModelComponentStatus {
 }
 
 describe("model and LoRA folder action", () => {
+  it("locks a missing shard to its existing sibling's directory and removes the library menu", async () => {
+    const first = { ...component(true, ["LLM/model-IQ2_XXS-00001-of-00004.gguf"]), expected: "model-IQ2_XXS-00001-of-00004.gguf", locations: ["E:/Other/quant/model-IQ2_XXS-00001-of-00004.gguf"] };
+    const missing = { ...component(false, []), expected: "model-IQ2_XXS-00002-of-00004.gguf" };
+    missing.installGuide!.recommendedFilename = missing.expected;
+    const roots = { modelDirectory: "D:/Default", promptModelDirectory: "", comfyRoot: "" };
+    const lockedDirectory = modelShardDirectory(missing, [first, missing], roots);
+    expect(lockedDirectory).toBe("E:/Other/quant");
+    expect(modelComponentDisplayPath(missing, roots, "fixture", false, lockedDirectory).replaceAll("\\", "/")).toBe("E:/Other/quant/model-IQ2_XXS-00002-of-00004.gguf");
+    expect(modelShardDirectory(missing, [{ ...first, expected: first.expected.replace("IQ2_XXS", "Q4_K") }], roots)).toBeUndefined();
+    expect(modelShardDirectory(missing, [{ ...first, found: false }], roots)).toBeUndefined();
+    const selected = { profileName: "Fixture", component: missing, lockedDirectory };
+    document.body.innerHTML = renderSettingsInstallGuideDialog({ selectedInstallGuide: selected, configuredModelDirectory: "D:/Default", modelDirectories: ["D:/Default", "E:/Other"] }, { icon: () => "", escapeHtml: value => value, t: createTranslator("zh-CN").t, locale: "zh-CN" });
+    expect(document.querySelector(".model-directory-menu")).toBeNull();
+    expect(document.querySelectorAll("[data-install-directory]")).toHaveLength(1);
+    const button = document.querySelector<HTMLButtonElement>("#open-install-directory")!;
+    expect(button.title).toBe(lockedDirectory);
+    const openDirectory = vi.fn(async () => true);
+    const cleanup = mountSettingsPageController({ context: { root: document.body, hostCapabilities: { openDirectory }, notify: vi.fn(), t: key => key }, getInstallGuide: () => selected } as unknown as SettingsPageControllerOptions);
+    try { button.click(); await vi.waitFor(() => expect(openDirectory).toHaveBeenCalledWith(lockedDirectory)); }
+    finally { cleanup(); }
+  });
   it("displays a missing DeepSeek file under the default library, and does not invent a target for a blank default", () => {
     const missing = component(false, []);
     const roots = { modelDirectory: "D:\\Models", promptModelDirectory: "", comfyRoot: "" };

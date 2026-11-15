@@ -2,6 +2,7 @@ import { defaultHistoryFilter, historyTagKey, normalizeHistoryFilter, type Histo
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { positionFloating } from "../../shared/ui/floating";
 import { historyDurationStops } from "./filter-view";
+import { refreshVirtualHistory } from "./virtual-gallery";
 
 export interface HistoryFilterControllerOptions {
   getFilter(): HistoryFilterState;
@@ -121,6 +122,8 @@ export function mountHistoryFilterController(context: RendererContext, options: 
   };
   root.querySelector("[data-history-filter-toggle]")?.addEventListener("click", event => {
     event.preventDefault(); options.setPanelOpen(!options.getPanelOpen()); close(); sync();
+    const gallery = root.querySelector<HTMLElement>("[data-history-virtual]");
+    if (gallery) refreshVirtualHistory(gallery);
   }, { signal });
   panel.addEventListener("click", event => {
     const target = event.target instanceof Element ? event.target : null;

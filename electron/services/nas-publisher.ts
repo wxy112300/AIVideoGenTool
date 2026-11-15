@@ -29,10 +29,18 @@ export class NasPublisher {
   schedule(state: AppState): void {
     if (this.stopped) return;
     if (!state.libraryStorage) { this.pending = undefined; this.latest = undefined; this.lastKey = ""; return; }
-    const key = JSON.stringify([state.libraryStorage, state.settings.outputDirectory, state.settings.uiLocale]);
-    if (key === this.lastKey && !this.pending) return;
+    if (!this.needsSnapshot(state)) return;
     this.pending = this.latest = structuredClone(state);
     this.armTimer();
+  }
+
+  needsSnapshot(state: Pick<AppState, "libraryStorage" | "settings">): boolean {
+    if (this.stopped) return false;
+    if (!state.libraryStorage) return Boolean(this.pending || this.latest);
+    const key = JSON.stringify([state.libraryStorage, state.settings.outputDirectory, state.settings.uiLocale]);
+    const pending = this.pending ?? (this.running ? this.latest : undefined);
+    if (pending && key === JSON.stringify([pending.libraryStorage, pending.settings.outputDirectory, pending.settings.uiLocale])) return false;
+    return Boolean(pending) || key !== this.lastKey;
   }
 
   private armTimer(): void {

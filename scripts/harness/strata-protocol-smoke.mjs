@@ -12,15 +12,27 @@ import { createDefaultSettings } from "../../dist/electron/src/core/defaults.js"
 import { isLocalPortInUse } from "../../dist/electron/electron/services/local-service-process.js";
 
 if (process.argv.includes("--help")) {
-  console.log("node scripts/harness/strata-protocol-smoke.mjs\nRequires an installed managed Strata and a completed model pack. Tests real model tokenizer/template, auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor and cancel/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
+  console.log("node scripts/harness/strata-protocol-smoke.mjs [--tokenizer-only]\nRequires installed managed Strata and a completed Qwen pack. --tokenizer-only permits its tokenizer from an older source revision without validating or rebuilding weights. Tests auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor, cancellation retention and explicit stop/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
   process.exit(0);
 }
 
 const install = managedStrataDirectory(), data = strataDerivedDataDirectory();
+const tokenizerOnly = process.argv.includes("--tokenizer-only");
 let prepared;
 for (const entry of (await fs.readdir(data, { withFileTypes: true })).filter(e => e.isDirectory() && !e.isSymbolicLink()).slice(-1000).reverse()) {
   const config = path.join(data, entry.name, "runtime.json");
-  try { await validatePreparedStrataRuntime(config, install); prepared = JSON.parse(await fs.readFile(config, "utf8")); break; }
+  try {
+    const candidate = JSON.parse(await fs.readFile(config, "utf8"));
+    // This scripted completion uses Qwen's end-of-turn and thinking delimiters.
+    if (!candidate.model_name?.startsWith("strata/qwen3.8-flash-next-")) continue;
+    if (tokenizerOnly) {
+      const receipt = JSON.parse(await fs.readFile(path.join(data, entry.name, "lvs-strata-model.json"), "utf8"));
+      assert.equal(receipt.owner, "local-video-studio"); assert.equal(receipt.modelId, candidate.model_name);
+      assert.equal(path.resolve(candidate.tokenizer), path.resolve(data, entry.name, "tokenizer"));
+      for (const name of ["vocab.json", "merges.txt", "tokenizer.json"]) assert.ok((await fs.stat(path.join(candidate.tokenizer, name))).size > 0);
+    } else await validatePreparedStrataRuntime(config, install);
+    prepared = candidate; break;
+  }
   catch { /* Do not repair a pack or download anything for a protocol smoke. */ }
 }
 assert.ok(prepared, "No completed compatible Strata pack; prepare one before this opt-in protocol check");
@@ -42,7 +54,7 @@ const service = new StrataService({ startupTimeoutMs: 15000, requestTimeoutMs: 1
 const launch = () => ({ executable: path.join(install, ".venv", "Scripts", "python.exe"), cwd: install, port, apiKey,
   args: ["-B", "-u", "-m", "serve.server", "--engine", "mock", "--config", config, "--host", "127.0.0.1",
     "--port", String(port), "--api-key", apiKey, "--api-monitor", "--script-delay", "0.005",
-    "--script", "A scripted fixture thought.</think>\n\nOfficial fixture final." ] });
+    "--script", "A scripted fixture thought.</think>\n\n" + "Fixture detail. ".repeat(30) + "Official fixture final." ] });
 const headers = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" };
 // Windows can complete process-tree termination before TCP teardown is visible.
 // Still require the port to close within a bounded interval; never accept a leftover listener.
@@ -96,15 +108,24 @@ try {
     maxTokens: 2048, temperature: 1, reasoning: { effort: "medium", budgetTokens: 0 } };
   const controller = new AbortController();
   await assert.rejects(service.chat(request, controller.signal, () => controller.abort(new Error("fixture cancellation"))), /fixture cancellation/u);
-  assert.equal(service.snapshot().phase, "stopped"); await assertPortClosed();
+  assert.equal(service.snapshot().phase, "ready");
+  assert.equal(service.snapshot().modelLoaded, true);
+  assert.equal(service.snapshot().pid, pid);
+  assert.ok((await service.chat(request)).endsWith("Official fixture final."));
+  assert.equal(service.snapshot().pid, pid);
+  await service.stop(); await assertPortClosed();
   assert.throws(() => process.kill(pid, 0));
   restartedPid = (await service.start(launch())).pid;
   assert.ok((await service.chat(request)).endsWith("Official fixture final."));
   const report = { ok: true, layer: "installed official HTTP/template/model tokenizer + scripted mock engine; no neural/vision/performance claim",
-    version: strataInstalledRelease(install)?.version, pid, restartedPid, port, repeatedCalls: calls,
-    monitor: true, auth: true, contextOverflowRecovery: true, controlFieldsVisible: true, cancellationCleanupAndRestart: true };
+    version: strataInstalledRelease(install)?.version, tokenizerOnly, pid, restartedPid, port, repeatedCalls: calls,
+    monitor: true, auth: true, contextOverflowRecovery: true, controlFieldsVisible: true, cancellationRetainedModel: true, explicitStopAndRestart: true };
   await fs.writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ ...report, directory }));
+} catch (error) {
+  await fs.writeFile(path.join(directory, "report.json"), JSON.stringify({ ok: false, error: error.message, calls, diagnostics, wire }, null, 2));
+  console.error(JSON.stringify({ directory, error: error.message }));
+  throw error;
 } finally {
   await service.stop(); await assertPortClosed();
   for (const ownedPid of [pid, restartedPid].filter(Boolean)) assert.throws(() => process.kill(ownedPid, 0));

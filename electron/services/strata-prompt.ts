@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../../src/core/minimax-h3-image-spec.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
@@ -57,7 +58,7 @@ export async function buildStrataPromptRequest(
 ): Promise<StrataChatRequest> {
   const t = createNativeTranslator(settings.uiLocale).t;
   const paths = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
-  if (paths.length > 12) throw new Error(t(uiKeys.strataPrompt.tooManyImages));
+  if (paths.length > (request.mode === "image-edit" && isH3ImageModel(request.imageTargetModelId) ? 16 : 12)) throw new Error(t(uiKeys.strataPrompt.tooManyImages));
   // One compiler for every full H3 rewrite: no mode-specific layout or runtime policy.
   // The Pack owns reference/continuation differences; targeted edits keep their splice contract.
   const profile = evaluation ?? (request.mode === "h3-vision"

@@ -5,7 +5,7 @@ import type {
 } from "../../src/types.js";
 import { activateCreationDraft } from "../../src/core/creation-drafts.js";
 import { normalizeImageEditDraft } from "../../src/core/image-project.js";
-import type { StateRepository } from "../ports/state-repository.js";
+import type { StateRepository, WorkspaceMutator } from "../ports/state-repository.js";
 
 export interface DraftServiceDependencies {
   store: StateRepository;
@@ -42,8 +42,12 @@ export class DraftService {
   }
 
   private async updateWithoutSnapshot(
-    mutator: Parameters<StateRepository["update"]>[0]
+    mutator: WorkspaceMutator
   ): Promise<void> {
+    if (this.deps.store.updateWorkspaceWithoutSnapshot) {
+      await this.deps.store.updateWorkspaceWithoutSnapshot(mutator);
+      return;
+    }
     if (this.deps.store.updateWithoutSnapshot) {
       await this.deps.store.updateWithoutSnapshot(mutator);
       return;

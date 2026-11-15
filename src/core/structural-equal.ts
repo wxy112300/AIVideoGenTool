@@ -1,14 +1,27 @@
-function canonicalJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalJsonValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([, entryValue]) => entryValue !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => [key, canonicalJsonValue(entryValue)])
-  );
+function jsonScalar(value: unknown): unknown {
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+  if (typeof value === "function" || typeof value === "symbol") return undefined;
+  return value;
 }
 
+/** Equality for JSON-shaped application state, without sorting/copying whole trees. */
 export function structurallyEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(canonicalJsonValue(left)) === JSON.stringify(canonicalJsonValue(right));
+  left = jsonScalar(left); right = jsonScalar(right);
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) {
+      const a = jsonScalar(left[index]), b = jsonScalar(right[index]);
+      if (!structurallyEqual(a === undefined ? null : a, b === undefined ? null : b)) return false;
+    }
+    return true;
+  }
+  const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+  const keys = Object.keys(a).filter(key => jsonScalar(a[key]) !== undefined);
+  if (keys.length !== Object.keys(b).filter(key => jsonScalar(b[key]) !== undefined).length) return false;
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(b, key) || !structurallyEqual(a[key], b[key])) return false;
+  }
+  return true;
 }

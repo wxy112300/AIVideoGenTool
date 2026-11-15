@@ -25,7 +25,7 @@ const name = "DeepSeek V4.1 Flash · Strata · IQ2_XXS · Uncensored";
 export const strataDeepSeekEntries: CatalogModelEntry[] = [entry({
   id: STRATA_DEEPSEEK_MODEL_ID, family: "strata-deepseek-v4.1-flash", category: "prompt", adapterId: "strata", order: 7, inputModes: ["image"],
   scan: { managedBy: "strata", integrated: true, productGate: "open", vram: "RTX 4090 24GB · RAM 64GB · NVMe 260GB+ · CUDA 13 / driver 580+",
-    components: STRATA_DEEPSEEK_ASSETS.map(asset => ({ label: asset.filename, expected: asset.filename,
+    components: STRATA_DEEPSEEK_ASSETS.map((asset, index) => ({ label: index === 7 ? "DSpark · Q8_0" : asset.filename, expected: asset.filename, optional: index === 7,
       patterns: [new RegExp(`^${asset.filename.replaceAll(".", "\\.")}$`, "i")],
       installGuide: { sourceLabel: asset.repository, downloadUrl: `https://huggingface.co/${asset.repository}/resolve/${asset.revision}/${asset.remote}${asset.filename}`,
         targetSubdirectory: "", recommendedFilename: asset.filename, revision: asset.revision, bytes: asset.bytes, sha256: asset.sha256, license: "MIT" } })) }

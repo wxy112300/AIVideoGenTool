@@ -4,6 +4,7 @@ import { defaultHistoryFilter, normalizeHistoryFilter } from "../src/core/histor
 import { createTranslator } from "../src/core/i18n";
 import { renderHistoryFilterPanel, renderHistoryFilterToggle } from "../src/renderer/pages/history/filter-view";
 import { mountHistoryFilterController } from "../src/renderer/pages/history/filter-controller";
+import { mountVirtualHistory, prepareVirtualHistory, registerHistoryWindow } from "../src/renderer/pages/history/virtual-gallery";
 import { mountHistoryActionsController, type HistoryActionsControllerOptions } from "../src/renderer/pages/history/actions-controller";
 import type { HistoryPageOptions, HistoryPageViewModel } from "../src/renderer/pages/history/page";
 import type { RendererContext } from "../src/renderer/contracts";
@@ -23,6 +24,30 @@ function setup() {
   return { root, context, click, requestRender, clearBatchSelection, filter: () => filter };
 }
 describe("History prototype filter controls", () => {
+  it("reconciles the visible history window when filters close without a scroll event or page render", () => {
+    const h = setup();
+    const token = registerHistoryWindow(Array.from({ length: 1500 }, (_, i) => ({ id: `asset-${i}`, ratio: 16 / 9 })),
+      i => `<article class="history-gallery-item" data-history="asset-${i}" data-history-order="${i}"></article>`);
+    const gallery = document.createElement("section"); gallery.className = "history-gallery masonry"; gallery.dataset.historyVirtual = token;
+    Object.defineProperty(gallery, "clientWidth", { value: 1100 });
+    let origin = 200;
+    gallery.getBoundingClientRect = () => ({ top: origin, width: 1100 }) as DOMRect;
+    h.root.append(gallery); prepareVirtualHistory(h.root);
+    const dispose = mountVirtualHistory(h.root, () => () => undefined);
+    try {
+      const first = gallery.firstElementChild!;
+      origin = -30000;
+      h.click('[data-history-filter-toggle]');
+      expect(h.root.querySelector<HTMLElement>('[data-history-context]')!.hidden).toBe(true);
+      expect(first.isConnected).toBe(false);
+      expect(gallery.children.length).toBeGreaterThan(0);
+      expect([...gallery.children].every(node => Number((node as HTMLElement).dataset.historyOrder) > 0)).toBe(true);
+      const retained = gallery.firstElementChild;
+      h.click('[data-history-filter-toggle]');
+      expect(gallery.firstElementChild).toBe(retained);
+      expect(h.requestRender).not.toHaveBeenCalled();
+    } finally { dispose(); }
+  });
   it("toggles favorites without the artwork favorite controller intercepting the filter click", () => {
     const h = setup(), updateHistoryMetadata = vi.fn();
     const disposeActions = mountHistoryActionsController(h.context, { updateHistoryMetadata } as unknown as HistoryActionsControllerOptions);

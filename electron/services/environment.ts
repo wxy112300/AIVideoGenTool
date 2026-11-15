@@ -1,4 +1,5 @@
 import { modelLibraryRoots, modelPathKey } from "../../src/core/model-libraries.js";
+import { releaseVersionAtLeast } from "../../src/core/release-version.js";
 import { scanModelLibraries } from "./model-library-scan.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { execFile, spawn } from "node:child_process";
@@ -71,6 +72,7 @@ import {
   DLSS5_NODE_REVISION,
   DLSS5_RUNTIME_BUNDLE_ID,
   H3_COMFY_KITCHEN_VERSION,
+  H3_COMFY_KITCHEN_MINIMUM_VERSION,
   modelCatalog,
   KONOHAMARU_NODE_ID,
   KONOHAMARU_NODE_REVISION,
@@ -187,6 +189,7 @@ import {
 import {
   isLocalPortInUse,
   launchComfyUiVisible,
+  launchDesktopApplication,
   launchDetached,
   localEndpoint,
   waitForComfyServiceStartup
@@ -2494,17 +2497,23 @@ export function comfyKitchenConvRotCudaOptimized(cudaVersion: string): boolean {
 
 /**
  * The H3 VAE's official ConvRot path is only considered optimized when the
- * selected ComfyUI environment exposes the CUDA backend from the pinned
+ * selected ComfyUI environment exposes the CUDA backend from a compatible
  * comfy-kitchen release. A CUDA version alone is not proof that the matching
  * kernel is installed.
  */
 export function h3ComfyKitchenCudaBackendReady(
   probe: Pick<AttentionPythonProbe, "cudaVersion" | "comfyKitchenVersion" | "comfyKitchenBackends">
 ): boolean {
-  // Keep the previous core's verified backend usable while new installs follow the recommendation.
-  return (probe.comfyKitchenVersion === H3_COMFY_KITCHEN_VERSION || probe.comfyKitchenVersion === "0.2.39") &&
+  return releaseVersionAtLeast(probe.comfyKitchenVersion ?? "", H3_COMFY_KITCHEN_MINIMUM_VERSION) &&
     comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
     (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
+}
+
+/** Repair the selected environment without downgrading a newer installed package. */
+export function h3ComfyKitchenInstallRequirement(currentVersion = ""): string {
+  const target = releaseVersionAtLeast(currentVersion, H3_COMFY_KITCHEN_VERSION)
+    ? currentVersion : H3_COMFY_KITCHEN_VERSION;
+  return `comfy-kitchen==${target}`;
 }
 
 export function kjNodesAttentionSourceCompatible(source: string): boolean {
@@ -2586,7 +2595,7 @@ async function inspectAttentionAcceleration(
     !tritonReady ? "Triton" : "",
     !kjNodesCompatible ? t(uiKeys.attentionInstaller.kjRequired) : "",
     !convRotCudaOptimized
-      ? t(uiKeys.attentionInstaller.kitchenRequired, { required: H3_COMFY_KITCHEN_VERSION, current: probe.comfyKitchenVersion || t(uiKeys.attentionInstaller.notInstalled), backends: (probe.comfyKitchenBackends ?? []).join(", ") || t(uiKeys.attentionInstaller.noBackends) })
+      ? t(uiKeys.attentionInstaller.kitchenRequired, { required: `${H3_COMFY_KITCHEN_MINIMUM_VERSION}+`, current: probe.comfyKitchenVersion || t(uiKeys.attentionInstaller.notInstalled), backends: (probe.comfyKitchenBackends ?? []).join(", ") || t(uiKeys.attentionInstaller.noBackends) })
       : ""
   ].filter(Boolean);
   return {
@@ -3819,7 +3828,7 @@ async function restartComfyUiIfRunning(
   });
 }
 
-async function updateComfyUiUnlocked(
+export async function updateComfyUi(
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const t = createNativeTranslator(settings.uiLocale).t;
@@ -3835,7 +3844,7 @@ async function updateComfyUiUnlocked(
   }
   if (installation.type === "desktop") {
     try {
-      await launchDetached(installation.executable, []);
+      await launchDesktopApplication(installation.executable);
       return {
         ok: true,
         message: t(uiKeys.environmentRepair.desktopUpdate),
@@ -3858,6 +3867,7 @@ async function updateComfyUiUnlocked(
   }
   const git = await findExecutable("git.exe");
   if (!git) return { ok: false, message: t(uiKeys.environmentRepair.gitMissing) };
+  const finishMutation = pythonProbeCache.beginMutation();
   try {
     const status = await execFileAsync(
       git,
@@ -3893,15 +3903,6 @@ async function updateComfyUiUnlocked(
       message: t(uiKeys.environmentRepair.updateFailed, { reason: processError.message }),
       log: [processError.stdout, processError.stderr].filter(Boolean).join("\n")
     };
-  }
-}
-
-export async function updateComfyUi(
-  settings: Settings
-): Promise<{ ok: boolean; message: string; log?: string }> {
-  const finishMutation = pythonProbeCache.beginMutation();
-  try {
-    return await updateComfyUiUnlocked(settings);
   } finally {
     finishMutation();
     pythonProbeCache.invalidate(undefined, "mutation");
@@ -4812,8 +4813,7 @@ export async function installAttentionAcceleration(
     }
     const torchRuntimeReady = h3TorchRuntimeReady(before);
     const needsCudaRuntimeUpgrade = !torchRuntimeReady;
-    const needsComfyKitchenRepair = !(before.comfyKitchenBackends ?? [])
-      .some((backend) => backend.toLowerCase() === "cuda") || before.comfyKitchenVersion !== H3_COMFY_KITCHEN_VERSION;
+    const needsComfyKitchenRepair = !h3ComfyKitchenCudaBackendReady(before);
     const initialWheel = attentionWheelForProbe(before);
     const targetWheel = needsCudaRuntimeUpgrade
       ? h3TargetAttentionWheelForProbe(before)
@@ -4901,7 +4901,7 @@ export async function installAttentionAcceleration(
       report(t(uiKeys.attentionInstaller.kitchenInstalling));
       await runLoggedProcess(
         python,
-        [...commonPipArgs, "--upgrade", `comfy-kitchen==${H3_COMFY_KITCHEN_VERSION}`],
+        [...commonPipArgs, "--upgrade", h3ComfyKitchenInstallRequirement(before.comfyKitchenVersion)],
         {
           uiLocale: settings.uiLocale,
           env: environment,

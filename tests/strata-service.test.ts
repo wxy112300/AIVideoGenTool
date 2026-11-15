@@ -16,23 +16,23 @@ import { createDefaultState } from "../src/core/defaults.js";
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
-it("changes saved thinking effort on the final HTTP wire while retaining the model process", async () => {
+it.each(["strata/qwen3.8-flash-next-iq3_xxs", "strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs"])("changes saved thinking effort on the final HTTP wire while retaining %s", async modelId => {
   const f = fixture(); await f.service.start(plan()); f.load();
   try {
     for (const effort of ["off", "low", "medium", "high"] as const) {
       const chat = await buildStrataPromptRequest({ mode: "h3-vision", modelId: "minimax_h3_fl2va", prompt: "A red balloon rises." },
-        { ...createDefaultState().settings, strataReasoningEffort: effort }, new AbortController().signal);
+        { ...createDefaultState().settings, promptModelId: modelId, strataReasoningEffort: effort }, new AbortController().signal);
       f.fetchMock.mockImplementationOnce(async (_url, options) => {
         const b = JSON.parse(options!.body as string);
         expect(b.thinking.type).toBe(effort === "off" ? "disabled" : "enabled");
-        expect(b.output_config?.effort).toBe(effort === "off" ? undefined : effort);
+        expect(b.output_config?.effort).toBe(effort === "off" ? undefined : modelId.includes("deepseek") ? { low: "low", medium: "high", high: "max" }[effort] : effort);
         return new Response('{"input_tokens":1000}');
       });
       f.fetchMock.mockImplementationOnce(async (_url, options) => {
         const b = JSON.parse(options!.body as string);
         expect(b.chat_template_kwargs.enable_thinking).toBe(effort !== "off");
-        expect(b.reasoning_effort).toBe(effort === "off" ? undefined : effort);
-        expect(b.reasoning_budget_tokens).toBe(effort === "off" ? undefined : 0);
+        expect(b.reasoning_effort).toBe(effort === "off" ? modelId.includes("deepseek") ? "none" : undefined : modelId.includes("deepseek") ? { low: "low", medium: "high", high: "max" }[effort] : effort);
+        expect(b.reasoning_budget_tokens).toBe(effort === "off" || modelId.includes("deepseek") ? undefined : 0);
         return new Response('data: {"choices":[{"index":0,"delta":{"content":"complete"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "Content-Type": "text/event-stream" } });
       });
       expect(await f.service.chat(chat)).toBe("complete");
@@ -84,7 +84,7 @@ it.each([false, true])("uses DeepSeek sampling and thinking without Qwen MTP/vec
   f.fetchMock.mockImplementationOnce(async (_url, options) => {
     const body = JSON.parse(options!.body as string);
     expect(body).toMatchObject({ model: modelId, temperature: 1, top_p: 1,
-      reasoning_effort: thinking ? "medium" : "none", chat_template_kwargs: { enable_thinking: thinking } });
+      reasoning_effort: thinking ? "high" : "none", chat_template_kwargs: { enable_thinking: thinking } });
     for (const key of ["experimental_speed_projection", "top_k", "min_p", "presence_penalty", "reasoning_budget_tokens"]) expect(body).not.toHaveProperty(key);
     return new Response('data: {"choices":[{"index":0,"delta":{"content":"DeepSeek answer"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "Content-Type": "text/event-stream" } });
   });
@@ -107,6 +107,52 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
+  it.each(["loading", "generating"])("keeps a silent DeepSeek %s alive past ten minutes, then accepts completion", async stage => {
+    vi.useFakeTimers();
+    const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(milliseconds => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException("deadline", "TimeoutError")), milliseconds);
+      return controller.signal;
+    });
+    const f = fixture(), modelId = "strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs";
+    let finish!: () => void, wire: AbortSignal | undefined;
+    try {
+      await f.service.start({ ...plan(), modelId });
+      if (stage === "generating") f.load();
+      f.fetchMock.mockImplementationOnce(async (_url, options) => {
+        wire = options!.signal!;
+        if (stage === "loading") return new Promise<Response>((resolve, reject) => {
+          wire!.addEventListener("abort", () => reject(wire!.reason), { once: true });
+          finish = () => { f.load(); resolve(new Response('{"status":"loaded"}')); };
+        });
+        return new Response(new ReadableStream({ start(controller) {
+          wire!.addEventListener("abort", () => controller.error(wire!.reason), { once: true });
+          finish = () => { controller.enqueue(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"complete"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')); controller.close(); };
+        } }), { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const pending = (stage === "loading" ? f.service.load() : f.service.chat({ modelId, messages: [{ role: "user", content: "enhance" }], maxTokens: 1024, temperature: 1 })).catch(error => error);
+      await vi.advanceTimersByTimeAsync(11 * 60_000);
+      expect(wire?.aborted).toBe(false);
+      expect(f.child.stop).not.toHaveBeenCalled();
+      finish();
+      const result = await pending;
+      if (stage === "loading") expect(result).toMatchObject({ modelLoaded: true });
+      else expect(result).toBe("complete");
+    } finally { await f.service.stop(); deadline.mockRestore(); vi.useRealTimers(); }
+  });
+  it("keeps the upstream inference error and engine-log path while redacting inputs, credentials and partial output", async () => {
+    const f = fixture(); await f.service.start({ ...plan(), engineLog: "D:/prepared/engine.log" }); f.load();
+    const prompt = "private user instructions", image = "data:image/png;base64," + "a".repeat(400);
+    f.fetchMock.mockResolvedValueOnce(new Response(
+      'data: {"choices":[{"index":0,"delta":{"content":"uncommitted model text"},"finish_reason":null}]}\n\n' +
+      `data: ${JSON.stringify({ error: { type: "server_error", message: `CUDA out of memory; fixture-secret; ${prompt}; ${image}`, raw_body: "private model trace" } })}\n\n`,
+      { headers: { "Content-Type": "text/event-stream" } }));
+    const error = await f.service.chat({ modelId: "fixture", messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: image } }] }], maxTokens: 1024, temperature: 1 }).catch(error => error);
+    expect(error.message).toContain("推理返回错误"); expect(error.message).toContain("CUDA out of memory");
+    expect(error.message).toContain("[server_error]"); expect(error.message).toContain("D:/prepared/engine.log");
+    for (const privateValue of [prompt, image, "fixture-secret", "uncommitted model text", "private model trace"]) expect(error.message).not.toContain(privateValue);
+    expect(f.child.stop).toHaveBeenCalledOnce(); expect(f.service.snapshot().phase).toBe("stopped");
+  });
   it("uses the supplied Agent thirty-second policy during load so partial telemetry can recover after twelve seconds", async () => {
     vi.useFakeTimers();
     const f = fixture(), GiB = 1024 ** 3;
@@ -342,7 +388,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     expect(f.child.stop).not.toHaveBeenCalled(); await f.service.stop();
   });
 
-  it.each(["abort", "truncated", "length", "timeout"])("stops owned processes instead of accepting partial output on %s", async (failure) => {
+  it.each(["truncated", "length", "timeout"])("stops owned processes instead of accepting partial output on %s", async (failure) => {
     const f = fixture(); await f.service.start(plan());
     const controller = new AbortController();
     const content = 'data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n';
@@ -356,9 +402,78 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       }
     }), { headers: { "Content-Type": "text/event-stream" } }));
     await expect(f.service.chat({ modelId: "fixture", messages: [{ role: "user", content: "enhance" }], maxTokens: 4, temperature: 0 }, controller.signal,
-      () => { if (failure === "abort") controller.abort(new Error("cancelled")); })).rejects.toThrow();
+      () => {})).rejects.toThrow();
     expect(f.child.stop).toHaveBeenCalledOnce();
     expect(f.service.snapshot()).toMatchObject({ phase: "stopped", pid: null, modelLoaded: null });
+  });
+
+  it.each(["prefill", "decode"])("cancels %s, waits through busy/missing status, then reuses the same loaded model", async stage => {
+    const f = fixture(); await f.service.start(plan()); f.load(); await f.service.inspect();
+    const controller = new AbortController(), original = f.fetchMock.getMockImplementation()!;
+    let began!: () => void; const started = new Promise<void>(resolve => { began = resolve; });
+    let statusPolls = 0, chats = 0;
+    f.fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/v1/status')) {
+        expect(f.child.stop).not.toHaveBeenCalled();
+        if (++statusPolls === 1) throw new Error('transient status loss');
+        return new Response(JSON.stringify({ service: 'strata', loaded: true, activity: { in_flight: statusPolls === 2 ? 1 : 0 } }));
+      }
+      if (String(url).endsWith('/v1/chat/completions')) {
+        if (++chats > 1) return new Response('data: {"choices":[{"index":0,"delta":{"content":"next prompt"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+        return new Response(new ReadableStream({ start(stream) {
+          if (stage === 'decode') stream.enqueue(new TextEncoder().encode('data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n'));
+          options!.signal!.addEventListener('abort', () => stream.error(options!.signal!.reason), { once: true });
+          began();
+        } }), { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return original(url, options);
+    });
+    const request = { modelId: 'fixture', messages: [{ role: 'user' as const, content: 'enhance' }], maxTokens: 4, temperature: 0 };
+    try {
+      const pending = f.service.chat(request, controller.signal); const rejected = expect(pending).rejects.toThrow('cancelled');
+      await started; controller.abort(new Error('cancelled')); await rejected;
+      expect(statusPolls).toBe(3);
+      expect(f.service.snapshot()).toMatchObject({ phase: 'ready', modelLoaded: true, pid: 12345 });
+      expect(await f.service.chat(request)).toBe('next prompt');
+      expect(f.launch).toHaveBeenCalledOnce(); expect(f.child.stop).not.toHaveBeenCalled();
+    } finally { await f.service.stop(); }
+  });
+
+  it("allows an explicit stop while an aborted request is still draining upstream", async () => {
+    const f = fixture(); await f.service.start(plan()); f.load(); await f.service.inspect();
+    const controller = new AbortController(), original = f.fetchMock.getMockImplementation()!;
+    let began!: () => void, draining!: () => void;
+    const started = new Promise<void>(resolve => { began = resolve; }), entered = new Promise<void>(resolve => { draining = resolve; });
+    f.fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/v1/status')) { draining(); return new Response(JSON.stringify({ service: 'strata', loaded: true, activity: { in_flight: 1 } })); }
+      if (String(url).endsWith('/v1/chat/completions')) return new Response(new ReadableStream({ start(stream) {
+        options!.signal!.addEventListener('abort', () => stream.error(options!.signal!.reason), { once: true }); began();
+      } }), { headers: { 'Content-Type': 'text/event-stream' } });
+      return original(url, options);
+    });
+    const pending = f.service.chat({ modelId: 'fixture', messages: [{ role: 'user', content: 'enhance' }], maxTokens: 4, temperature: 0 }, controller.signal);
+    const rejected = expect(pending).rejects.toThrow('cancelled');
+    await started; controller.abort(new Error('cancelled')); await entered;
+    const stopped = f.service.stop(); await rejected;
+    expect(await stopped).toMatchObject({ phase: 'stopped', pid: null }); expect(f.child.stop).toHaveBeenCalledOnce();
+  });
+
+  it("does not report a retained model when cancellation status confirms the backend unloaded it", async () => {
+    const f = fixture(); await f.service.start(plan()); f.load(); await f.service.inspect();
+    const controller = new AbortController(), original = f.fetchMock.getMockImplementation()!;
+    let began!: () => void; const started = new Promise<void>(resolve => { began = resolve; });
+    f.fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).endsWith('/v1/status')) return new Response(JSON.stringify({ service: 'strata', loaded: false, activity: { in_flight: 0 } }));
+      if (String(url).endsWith('/v1/chat/completions')) return new Response(new ReadableStream({ start(stream) {
+        options!.signal!.addEventListener('abort', () => stream.error(options!.signal!.reason), { once: true }); began();
+      } }), { headers: { 'Content-Type': 'text/event-stream' } });
+      return original(url, options);
+    });
+    try {
+      const pending = f.service.chat({ modelId: 'fixture', messages: [{ role: 'user', content: 'enhance' }], maxTokens: 4, temperature: 0 }, controller.signal);
+      const rejected = expect(pending).rejects.toThrow(); await started; controller.abort(new Error('cancelled')); await rejected;
+      expect(f.service.snapshot()).toMatchObject({ phase: 'error', modelLoaded: false });
+    } finally { await f.service.stop(); }
   });
 
   it("keeps a long-context stream and its next enhancement resident after transient telemetry loss", async () => {

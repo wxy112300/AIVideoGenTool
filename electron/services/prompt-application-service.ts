@@ -97,7 +97,7 @@ export interface PromptApplicationServiceDependencies {
     isBusy(): boolean;
     stop(): Promise<unknown>;
   };
-  strata?: Pick<StrataRuntimeOwner, "ensurePromptReady" | "chat" | "stop" | "snapshot">;
+  strata?: Pick<StrataRuntimeOwner, "ensurePromptReady" | "chat" | "cancelRequest" | "stop" | "snapshot">;
 }
 
 /**
@@ -377,11 +377,12 @@ export class PromptApplicationService {
     } catch (error) {
       if (promptBackend === "strata") {
         const live = this.deps.strata?.snapshot();
-        if (error instanceof StrataPromptValidationError && !controller.signal.aborted && live?.phase === "ready" && live.modelLoaded && live.pid !== null) {
+        if ((controller.signal.aborted || error instanceof StrataPromptValidationError) && live?.phase === "ready" && live.modelLoaded && live.pid !== null) {
           this.retainedPromptRuntime = { backend: "strata", modelId: settings.promptModelId };
           this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, live.message);
           this.deps.promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
-          this.deps.logger.info("prompt", "strata-validation-retained", "Strata output rejected; healthy model retained", {
+          this.deps.logger.info("prompt", controller.signal.aborted ? "strata-cancel-retained" : "strata-validation-retained",
+            controller.signal.aborted ? "Strata request cancelled; healthy model retained" : "Strata output rejected; healthy model retained", {
             operationId, strataPid: live.pid, hostMemoryMode: live.hostMemoryMode ?? "unknown"
           });
         } else {
@@ -450,7 +451,7 @@ export class PromptApplicationService {
       const result = await this.cancelActivePromptRuntime(settings);
       return {
         ok: true,
-        message: strata && result.settled ? this.message(settings, uiKeys.promptService.strataCancelled)
+        message: strata && result.settled && !result.recovered ? this.message(settings, uiKeys.promptService.strataCancelled)
           : result.settled
           ? this.message(settings, uiKeys.promptService.cancelledResident)
           : this.message(settings, uiKeys.promptService.cancelRequested)
@@ -969,10 +970,13 @@ export class PromptApplicationService {
     this.promptCancellationWorker = (async () => {
       if (promptBackend === "strata") {
         // Do not wait on the outer Prompt promise: it is awaiting this cancellation acknowledgement.
-        await this.deps.strata?.stop();
-        this.retainedPromptRuntime = null;
-        this.deps.promptRuntimeManager.setModel("unloaded");
-        return { recovered: false, settled: true };
+        const live = await this.deps.strata?.cancelRequest();
+        const retained = live?.phase === "ready" && live.modelLoaded === true && live.pid !== null;
+        if (!retained && live?.pid != null) await this.deps.strata?.stop();
+        this.retainedPromptRuntime = retained ? { backend: "strata", modelId: settings.promptModelId } : null;
+        if (retained) this.deps.promptRuntimeManager.strataService("ready", settings.strataPort, live.message);
+        this.deps.promptRuntimeManager.setModel(retained ? "resident" : "unloaded");
+        return { recovered: retained, settled: true };
       }
       if (promptBackend === "h3-prompt-writer" || !cancellation.promptId) {
         const settled = await this.waitForWorkerToStop(worker, 10_000);

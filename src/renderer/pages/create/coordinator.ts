@@ -544,7 +544,8 @@ export function createCreateWorkspaceCoordinator(
                 targetResolution: normalizeImageTargetResolution(
                   getState().imageDraft.targetResolution,
                   basePicture?.width ?? 0,
-                  basePicture?.height ?? 0
+                  basePicture?.height ?? 0,
+                  getState().imageDraft.modelId
                 )
               });
               dimensionsChanged = true;

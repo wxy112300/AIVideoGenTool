@@ -10,7 +10,7 @@ import { MODEL_DOWNLOAD_INVALID, rewriteHuggingFaceDownloadUrl } from "../../../
 import { uiKeys } from "../../../core/i18n-keys";
 import { localizeModelScanProfile } from "../../shared/model-profile-labels";
 import { outputDirectoryWithinRoot } from "./helpers";
-import { modelComponentWithLocations, bindModelDirectoryActions } from "./model-location";
+import { modelComponentWithLocations, modelShardDirectory, bindModelDirectoryActions } from "./model-location";
 import { LIBRARY_DESTINATION_CONFLICT, LIBRARY_DESTINATION_OCCUPIED } from "../../../core/library-storage-errors";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationMatchesSettings, strataPreparationProfiles } from "../../../core/strata-preparation";
 import { modelLibraryRoots, modelLibraryEntries, modelDownloadRoot } from "../../../core/model-libraries";
@@ -106,16 +106,18 @@ export function mountSettingsPageController(
       if (!profile || !component) return;
       const status = options.getEnvironmentScan()?.strataPreparation;
       const destination = modelDownloadRoot(settings, options.getEnvironmentScan()?.modelDirectory);
+      const locationRoots = {
+        modelDirectory: options.getEnvironmentScan()?.modelDirectory || settings.modelDirectory,
+        promptModelDirectory: settings.promptModelDirectory,
+        comfyRoot: options.getEnvironmentScan()?.comfyRoot || ""
+      };
       const targetRoot = strataProfileModelRoot(destination ? strataModelRoot({ modelDirectory: destination, strataModelDirectory: "" })
         : !settings.modelDirectories?.length && strataPreparationMatchesSettings(settings, status) ? status!.modelDirectory : "", profile.id);
       const selection: SettingsInstallGuideSelection = {
         profileName: profile.name,
         profileId: profile.id,
-        component: modelComponentWithLocations(component, {
-          modelDirectory: options.getEnvironmentScan()?.modelDirectory || settings.modelDirectory,
-          promptModelDirectory: settings.promptModelDirectory,
-          comfyRoot: options.getEnvironmentScan()?.comfyRoot || ""
-        }),
+        component: modelComponentWithLocations(component, locationRoots),
+        lockedDirectory: modelShardDirectory(component, profile.components, locationRoots),
         ...(profile.managedBy === "strata" ? { targetRoot } : {})
       };
       options.setInstallGuide(selection);
@@ -182,9 +184,12 @@ export function mountSettingsPageController(
     button.addEventListener("click", async () => {
       const sourceUrl = button.dataset.openEnvironmentDownload?.trim();
       if (!sourceUrl) return;
-      const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings());
-      const opened = await options.context.hostCapabilities.openExternal(url);
-      if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
+      try {
+        const opened = await options.context.hostCapabilities.openExternal(sourceUrl);
+        if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
+      } catch {
+        options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
+      }
     }, { signal });
   });
 

@@ -137,8 +137,13 @@ export function mountVirtualHistory(root: HTMLElement, mountCard: (card: HTMLEle
   state.update = update;
   update();
   window.addEventListener("scroll", schedule, { signal, passive: true });
-  const resize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => {
-    if (gallery.clientWidth === state.width && paintedLayout === state.layout) return;
+  window.addEventListener("resize", schedule, { signal });
+  const resize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(entries => {
+    if (gallery.clientWidth === state.width && paintedLayout === state.layout) {
+      // Sticky controls can move the gallery without resizing its own box.
+      if (entries.some(entry => entry.target !== gallery)) update();
+      return;
+    }
     const origin = gallery.getBoundingClientRect().top;
     // Timeline measurement can calculate the new boxes before this observer runs.
     // Anchor and repaint against the geometry actually applied to the cards.
@@ -149,6 +154,7 @@ export function mountVirtualHistory(root: HTMLElement, mountCard: (card: HTMLEle
     if (anchor !== undefined) { window.scrollBy({ top: state.layout.boxes[anchor]!.top + gallery.getBoundingClientRect().top - oldTop, behavior: "auto" }); update(); }
   });
   resize?.observe(gallery);
+  root.querySelectorAll<HTMLElement>(".history-heading, [data-history-context]").forEach(element => resize?.observe(element));
   gallery.addEventListener("keydown", event => {
     if (event.key !== "Tab") return;
     const card = (event.target as Element).closest<HTMLElement>(".history-gallery-item");

@@ -64,7 +64,7 @@ export class LibraryStateStorage {
 
   get pendingMigration(): boolean { return this.migratingSource !== undefined; }
 
-  async prepare(state: AppState): Promise<{ raw: string; pointer: LibraryPointer }> {
+  async prepare(state: AppState, changedHistoryIds?: ReadonlySet<string>): Promise<{ raw: string; pointer: LibraryPointer }> {
     this.translate = createNativeTranslator(state.settings.uiLocale).t;
     if (!this.records || !this.pointer || !this.release) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.libraryClosed));
     if (this.migratingSource !== undefined && await fs.readFile(this.filename, "utf8") !== this.migratingSource) throw new StateRecoveryError(this.translate(uiKeys.storageMigration.sourceChangedBefore));
@@ -83,8 +83,9 @@ export class LibraryStateStorage {
     }
     this.pending = { records, release: this.pending?.release, relocation: this.pending?.relocation };
     // JSON removes optional undefined fields exactly as the legacy serializer did.
-    const collections = JSON.parse(JSON.stringify({ history: state.history, imageHistory: state.imageHistory }));
-    const pointer = await records.prepare(collections, parent);
+    const normalize = (items: Array<{ id: string }>) => changedHistoryIds ? items : JSON.parse(JSON.stringify(items));
+    const collections = { history: normalize(state.history), imageHistory: normalize(state.imageHistory) };
+    const pointer = await records.prepare(collections, parent, undefined, changedHistoryIds);
     const raw = JSON.stringify({ ...state, history: undefined, imageHistory: undefined, libraryStorage: pointer, settings: { ...state.settings, libraryDirectory: directory } }, null, 2);
     if (this.migratingSource !== undefined) this.report("commit");
     return { raw, pointer };

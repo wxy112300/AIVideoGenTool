@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
+import path from "node:path";
 
 export const serviceStartupTimeoutMs = 120_000;
 export const comfyServiceStartupGraceTimeoutMs = 180_000;
@@ -50,7 +51,8 @@ export async function launchDetached(
   args: string[],
   cwd?: string,
   env: NodeJS.ProcessEnv = process.env,
-  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
+  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void,
+  options: { windowsHide?: boolean } = {}
 ): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const child = spawn(executable, args, {
@@ -58,7 +60,7 @@ export async function launchDetached(
       env,
       detached: true,
       stdio: "ignore",
-      windowsHide: true
+      windowsHide: options.windowsHide ?? true
     });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
@@ -73,6 +75,14 @@ export async function launchDetached(
       resolve(child.pid);
     });
   });
+}
+
+export function launchDesktopApplication(executable: string, args: string[] = []): Promise<number> {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (["ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ASAR", "NODE_OPTIONS"].includes(key.toUpperCase())) delete env[key];
+  }
+  return launchDetached(executable, args, path.dirname(executable), env, undefined, { windowsHide: false });
 }
 
 /**

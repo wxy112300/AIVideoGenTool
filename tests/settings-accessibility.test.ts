@@ -161,7 +161,7 @@ describe("Settings accessibility markup", () => {
   it("keeps the llama runtime card compact while leaving repair failures visible", () => {
     for (const ready of [true, false]) {
       const environmentScan = { comfyRoot: "fixture", customNodes: [], items: [], modelProfiles: [], issues: [],
-        llamaCppPython: { installed: true, ready, packageVersion: "0.4.5+cu130", pythonPath: "fixture/python.exe",
+        llamaCppPython: { installed: true, ready, packageVersion: "0.4.7+cu130", pythonPath: "fixture/python.exe",
           pythonVersion: "3.12.11", torchVersion: "2.10.0+cu130", cudaVersion: "13.0", detail: ready ? "CUDA ready" : "CUDA backend failed; reinstall to repair",
           probeEvidence: { source: "cache", state: "valid", verifiedAt: "2026-10-25T12:00:00Z" } }
       } as unknown as EnvironmentScanResult;
@@ -172,7 +172,7 @@ describe("Settings accessibility markup", () => {
       expect(card.textContent).not.toContain('已使用缓存验证');
       expect(card.querySelector('[role="alert"]')?.textContent ?? "").toBe(ready ? "" : "CUDA backend failed; reinstall to repair");
       expect(card.querySelector('#install-llama-cpp-python')).not.toBeNull();
-      expect(card.querySelector('.node-version-item:nth-child(3)')?.textContent).toContain('0.4.5');
+      expect(card.querySelector('.node-version-item:nth-child(3)')?.textContent).toContain('0.4.7');
       expect(card.querySelector('.node-version-value.behind')).toBeNull();
     }
   });
@@ -541,12 +541,17 @@ describe("Settings accessibility markup", () => {
     expect(oldMarkup).toContain("data-uninstall-llama-cpp-python");
   });
 
-  it.each(["0.3.46", "0.3.46+cu130", "0.4.2", "0.4.2+cu130", "0.4.5", "0.4.5+cu130", "0.4.6"])("compares llama %s against the pinned recommendation independently of latest", version => {
+  it.each([
+    ["0.3.46", "update"], ["0.3.46+cu130", "update"],
+    ["0.4.2", "update"], ["0.4.2+cu130", "update"],
+    ["0.4.5", "update"], ["0.4.5+cu130", "update"], ["0.4.6", "update"],
+    ["0.4.7", "reinstall"], ["0.4.7+cu130", "reinstall"], ["0.4.8", "reinstall"]
+  ])("compares llama %s against the pinned recommendation independently of latest", (version, operation) => {
     const environmentScan={comfyRoot:"C:\\ComfyUI",items:[],modelProfiles:[],customNodes:[],issues:[],llamaCppPython:{installed:true,ready:true,packageVersion:version,latestVersion:"0.4.5"}} as unknown as EnvironmentScanResult;
     const root=markupRoot(renderSettingsPage(viewModel({settingsTab:"nodes",environmentScan}),renderOptions));
     const button=root.querySelector<HTMLButtonElement>("#install-llama-cpp-python")!;
-    expect(button.dataset.nodeOperation).toBe(version.startsWith("0.3") || version.startsWith("0.4.2") ? "update" : "reinstall");
-    expect(button.disabled).toBe(false);expect(root.querySelector('[data-settings-runtime="llama"] .node-version-line')?.textContent).toContain("v0.4.5");
+    expect(button.dataset.nodeOperation).toBe(operation);
+    expect(button.disabled).toBe(false);expect(root.querySelector('[data-settings-runtime="llama"] .node-version-line')?.textContent).toContain("v0.4.7");
     const busy=markupRoot(renderSettingsPage(viewModel({settingsTab:"nodes",environmentScan,hasRunningQueueTask:true}),renderOptions));
     expect(busy.querySelector<HTMLButtonElement>("#install-llama-cpp-python")!.disabled).toBe(true);
     expect(busy.querySelector<HTMLButtonElement>("#install-llama-cpp-python")!.title).toBe("settings.actions.runningTaskBlocked");

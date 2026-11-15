@@ -68,6 +68,7 @@ describe("model catalog", () => {
       "moss-image-sft",
       "moss-image-pornmaster",
       "qwen-image-2-1-turbo",
+      "minimax-h3-image-w4a8",
       "qwen-image-2-1-uncensored-gguf",
       "qwen-image-2-1-uncensored-gguf-q6",
       "hidream-o1-image",

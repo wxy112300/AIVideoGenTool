@@ -1,7 +1,9 @@
 import type {
   AppState,
   HistoryMetadataBatchUpdate,
-  HistoryMetadataPatch
+  HistoryMetadataPatch,
+  HistoryAsset,
+  ImageHistoryProject
 } from "../../src/types.js";
 import { isHistoryRating, normalizeHistoryTags } from "../../src/core/history-filter.js";
 import type { StateRepository } from "../ports/state-repository.js";
@@ -41,21 +43,27 @@ function validateMetadataPatch(patch: HistoryMetadataPatch, t: Translate): Histo
 export class HistoryMetadataService {
   constructor(private readonly deps: HistoryMetadataServiceDependencies) {}
 
+  private updateItems(ids: readonly string[], mutator: (items: Array<HistoryAsset | ImageHistoryProject>) => void): Promise<AppState> {
+    if (this.deps.store.updateHistoryItems) return this.deps.store.updateHistoryItems(ids, mutator);
+    return this.deps.store.update(state => {
+      const items = ids.map(id => state.history.find(item => item.id === id) ?? state.imageHistory.find(item => item.id === id));
+      if (items.some(item => !item)) throw new Error(createNativeTranslator(state.settings.uiLocale).t(uiKeys.serviceError.historyMissing));
+      mutator(items as Array<HistoryAsset | ImageHistoryProject>);
+    });
+  }
+
   async updateMetadata(
     assetId: string,
     patch: HistoryMetadataPatch,
     expectedRevision?: string
   ): Promise<AppState> {
-    const locale = this.deps.store.get().settings.uiLocale;
+    const locale = this.deps.store.getSettings().uiLocale;
     const t = createNativeTranslator(locale).t;
     if (typeof assetId !== "string" || !assetId.trim()) {
       throw new Error(t(uiKeys.serviceError.historyInvalid));
     }
     const validated = validateMetadataPatch(patch, t);
-    const next = await this.deps.store.update((state) => {
-      const video = state.history.find((item) => item.id === assetId);
-      const image = state.imageHistory.find((item) => item.id === assetId);
-      const target = video ?? image;
+    const next = await this.updateItems([assetId], ([target]) => {
       if (!target) throw new Error(t(uiKeys.serviceError.historyMissing));
       if (expectedRevision !== undefined && historyMetadataRevision(target) !== expectedRevision) {
         throw new HistoryMetadataConflict(locale);
@@ -75,7 +83,7 @@ export class HistoryMetadataService {
   }
 
   async updateMetadataBatch(updates: HistoryMetadataBatchUpdate[]): Promise<AppState> {
-    const t = createNativeTranslator(this.deps.store.get().settings.uiLocale).t;
+    const t = createNativeTranslator(this.deps.store.getSettings().uiLocale).t;
     if (!Array.isArray(updates) || updates.length === 0) {
       throw new Error(t(uiKeys.serviceError.historyBatchInvalid));
     }
@@ -88,10 +96,9 @@ export class HistoryMetadataService {
     if (new Set(validatedUpdates.map((update) => update.assetId)).size !== validatedUpdates.length) {
       throw new Error(t(uiKeys.serviceError.historyBatchDuplicate));
     }
-    const next = await this.deps.store.update((state) => {
-      validatedUpdates.forEach(({ assetId, patch }) => {
-        const target = state.history.find((item) => item.id === assetId) ??
-          state.imageHistory.find((item) => item.id === assetId);
+    const next = await this.updateItems(validatedUpdates.map(update => update.assetId), (items) => {
+      validatedUpdates.forEach(({ patch }, index) => {
+        const target = items[index];
         if (!target) throw new Error(t(uiKeys.serviceError.historyMissing));
         if (patch.favorite !== undefined) target.favorite = patch.favorite;
         if (patch.rating !== undefined) target.rating = patch.rating;

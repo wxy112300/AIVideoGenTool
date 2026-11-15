@@ -201,7 +201,7 @@ export interface H3ReferenceSlot {
 export type ImageOutputFormat = "png" | "jpeg" | "webp";
 /** Requested short edge; numeric values are normalized at the image workflow boundary. */
 export type ImageTargetResolution = "source" | number;
-export type ImageAspectRatio = "source" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3";
+export type ImageAspectRatio = "source" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9";
 export type ImageReferenceRole =
   | "base"
   | "person"

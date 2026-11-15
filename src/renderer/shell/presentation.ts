@@ -140,21 +140,23 @@ export function createPagePresentation(root: HTMLElement, loadingLabel: () => st
 export function mountShellGeometry(): () => void {
   const header = document.querySelector<HTMLElement>(".topbar");
   if (!header) return () => undefined;
-  const historyHeading = document.querySelector<HTMLElement>(".history-heading");
+  const pageHeading = document.querySelector<HTMLElement>(".create-page-heading, .queue-page-heading, .history-heading, .settings-heading, .history-detail-back");
   const measure = () => {
     const height = header.getBoundingClientRect().height;
     if (!height) return;
     for (const name of ["--topbar-h", "--page-sticky-offset"]) {
       document.documentElement.style.setProperty(name, `${height}px`);
     }
-    if (historyHeading) {
-      document.documentElement.style.setProperty("--history-heading-height", `${historyHeading.getBoundingClientRect().height}px`);
+    const headingHeight = pageHeading?.getBoundingClientRect().height ?? 0;
+    document.documentElement.style.setProperty("--page-heading-h", `${headingHeight}px`);
+    if (pageHeading?.matches(".history-heading")) {
+      document.documentElement.style.setProperty("--history-heading-height", `${headingHeight}px`);
     }
   };
   measure();
   if (typeof ResizeObserver === "undefined") return () => undefined;
   const observer = new ResizeObserver(measure);
   observer.observe(header);
-  if (historyHeading) observer.observe(historyHeading);
+  if (pageHeading) observer.observe(pageHeading);
   return () => observer.disconnect();
 }

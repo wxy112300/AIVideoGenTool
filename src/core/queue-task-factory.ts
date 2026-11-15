@@ -254,7 +254,8 @@ export function imageTaskFromDraft(
   const targetResolution = normalizeImageTargetResolution(
     draft.targetResolution,
     basePicture?.width ?? 0,
-    basePicture?.height ?? 0
+    basePicture?.height ?? 0,
+    draft.modelId
   );
   // Source-following is the default reference-image policy. Qwen Image 2.1
   // opts into its official custom canvas path while still using source size
@@ -277,7 +278,8 @@ export function imageTaskFromDraft(
     adapter.textOnlyOutputWidth,
     adapter.textOnlyOutputHeight,
     aspectRatio,
-    outputAlignmentMultiple
+    outputAlignmentMultiple,
+    draft.modelId
   );
   const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   return {

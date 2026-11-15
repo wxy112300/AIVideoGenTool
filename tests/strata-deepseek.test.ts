@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults.js";
 import { STRATA_DEEPSEEK_ASSETS, STRATA_DEEPSEEK_MODEL_ID as modelId, STRATA_DEEPSEEK_DIRECTORY } from "../src/core/catalog/models/strata-deepseek.js";
 import { strataModelEntries } from "../src/core/catalog/models/strata.js";
-import { STRATA_REVISION, STRATA_ENGINE_SHA256, STRATA_SOURCE_FILES } from "../src/core/catalog/dependencies/strata.js";
+import { STRATA_REVISION, STRATA_ENGINE_SHA256, STRATA_SOURCE_FILES, STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationProfiles } from "../src/core/strata-preparation.js";
 import { scanStrataPreparation } from "../electron/services/strata-preparation.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime, validatePreparedStrataRuntime } from "../electron/services/strata-model-preparation.js";
@@ -46,7 +46,7 @@ async function fixture() {
     Object.assign(entry.definition.scan!.components[index].installGuide!, { bytes: asset.bytes, sha256: asset.sha256 });
     await fs.writeFile(path.join(modelRoot, asset.filename), body);
   }
-  for (const relative of [...STRATA_SOURCE_FILES, ".venv/Scripts/python.exe", "engine-dsv41/strata-dsv41.exe", "serve/server.py", "data/dsv41/profile-2.00.bin"]) {
+  for (const relative of [...STRATA_SOURCE_FILES, ".venv/Scripts/python.exe", "engine-dsv41/strata-dsv41.exe", "serve/server.py", "serve/ds_pictures.py", "serve/frontend.py", "tools/dsv41/pack_gguf.py", "data/dsv41/profile-2.00.bin"]) {
     const filename = path.join(install, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
   }
   await fs.writeFile(path.join(install, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: "fixture" }));
@@ -65,6 +65,18 @@ const GiB = 1024 ** 3;
 const resources = { memoryAvailableBytes: 40 * GiB, commitAvailableBytes: 90 * GiB, vramAvailableBytes: 22 * GiB, vramTotalBytes: 24 * GiB };
 
 describe("DeepSeek via the managed Strata path", () => {
+  it("prepares and reuses an audited older installation without treating the recommendation as a minimum", async () => {
+    const f = await fixture(), old = STRATA_RELEASES.find(release => release.version === "0.2.12")!;
+    await fs.writeFile(path.join(f.install, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
+    const result = await prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime);
+    expect(JSON.parse(await fs.readFile(result.receiptPath, "utf8")).sourceRevision).toBe(old.revision);
+    expect(await validatePreparedStrataRuntime(result.configPath, f.install)).toBe(modelId);
+    expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBe(result.configPath);
+    await fs.unlink(path.join(f.install, "tools/dsv41/pack_gguf.py"));
+    f.run.mockClear();
+    await expect(prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime)).rejects.toThrow(/pack_gguf\.py/);
+    expect(f.run).not.toHaveBeenCalled();
+  });
   it("pins all assets and keeps the Qwen default and control-vector compatibility", () => {
     expect(strataPreparationProfiles()[0].id).toBe("strata/qwen3.8-flash-next-iq3_xxs");
     expect(STRATA_DEEPSEEK_ASSETS).toHaveLength(8);
@@ -103,14 +115,32 @@ describe("DeepSeek via the managed Strata path", () => {
     expect(f.run.mock.calls.flat(2).join(" ")).not.toMatch(/iq_pack|--compat-bf16|--skip-tensors|--dense-override/);
     expect(await validatePreparedStrataRuntime(result.configPath, f.install)).toBe(modelId);
     expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBe(result.configPath);
+    // 0.2.12 uses the same upstream packer: upgrading software must not rehash
+    // hundreds of GB or rebuild an intact pack.
+    const oldReceipt = JSON.parse(await fs.readFile(result.receiptPath, "utf8"));
+    oldReceipt.sourceRevision = "146df3c468739147f520ac3816de806f71232571";
+    await fs.writeFile(result.receiptPath, JSON.stringify(oldReceipt));
+    expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBe(result.configPath);
+    const preparedConfig = await fs.readFile(result.configPath, "utf8");
+    const preparedReceipt = await fs.readFile(result.receiptPath, "utf8");
+    const preparationCalls = f.run.mock.calls.length;
     const launch = await prepareStrataLaunch(f.settings, result.configPath, { adaptive: true, readResources: async () => resources });
     const config = JSON.parse(await fs.readFile(launch.temporaryConfig!, "utf8"));
     expect(config).toMatchObject({ arch: "deepseek41", model_name: modelId });
     expect(config.exe).toContain("strata-dsv41.exe");
+    expect(config.engine_silence_s).toBe(0);
+    expect(launch.env?.STRATA_ENGINE_STALL_S).toBe("0");
     expect(config.args).toEqual(expect.arrayContaining(["--reserve-mib", "--ssd-cache", "--profile-readonly"]));
+    expect(config.args[config.args.indexOf("--dspark") + 1]).toBe("auto");
+    expect(config.args[config.args.indexOf("--reserve-mib") + 1]).toBe(String(900 + (process.platform === "win32" ? 2048 : 0)));
     expect(config.args).not.toEqual(expect.arrayContaining(["--resident-experts", "--mtp"]));
     expect(launch.controlVector).toBeUndefined();
     expect(launch.args).toContain("--api-key");
+    expect(launch.args).toContain("-c");
+    expect(launch.args.some(argument => argument.includes("DsPictures.__init__ = _init_pictures"))).toBe(true);
+    expect(await fs.readFile(result.configPath, "utf8")).toBe(preparedConfig);
+    expect(await fs.readFile(result.receiptPath, "utf8")).toBe(preparedReceipt);
+    expect(f.run).toHaveBeenCalledTimes(preparationCalls);
     const agent = await agentLaunchPlan({ preferences: { ...agentDefaults(), modelId, contextTokens: 32768 }, install: f.install, packConfig: result.configPath,
       token: "fixture-token", directory: path.join(f.data, "agent"), guardScript: "guard.py", resources });
     expect(agent.residentEngineLog).toBeUndefined();
@@ -121,13 +151,42 @@ describe("DeepSeek via the managed Strata path", () => {
     await fs.appendFile(path.join(f.modelRoot, STRATA_DEEPSEEK_ASSETS[0].filename), "changed");
     expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBeNull();
   });
+  it("runs without the optional DSpark file and discovers it when added later", async () => {
+    const f = await fixture();
+    const filename = path.join(f.modelRoot, STRATA_DEEPSEEK_ASSETS[7].filename);
+    const body = await fs.readFile(filename); await fs.unlink(filename);
+    const scan = await scanStrataPreparation(f.settings);
+    const profile = scan.profiles.find(item => item.id === modelId)!;
+    expect(profile.available).toBe(true);
+    expect(profile.components[7]).toMatchObject({ optional: true, found: false });
+    const result = await prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime);
+    expect(f.run.mock.calls[0][1]).not.toContain("--dspark-gguf");
+    const config = JSON.parse(await fs.readFile(result.configPath, "utf8"));
+    expect(config.args[config.args.indexOf("--dspark") + 1]).toBe("off");
+    const launch = await prepareStrataLaunch(f.settings, result.configPath, { adaptive: true, readResources: async () => resources });
+    const session = JSON.parse(await fs.readFile(launch.temporaryConfig!, "utf8"));
+    expect(session.args[session.args.indexOf("--dspark") + 1]).toBe("off");
+    expect(await validatePreparedStrataRuntime(result.configPath, f.install)).toBe(modelId);
+    expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBe(result.configPath);
+    await fs.writeFile(filename, body);
+    expect(await findPreparedStrataRuntime(f.settings, modelId, policy, { dataDirectory: f.data })).toBeNull();
+    const withDraft = await prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime);
+    expect(await validatePreparedStrataRuntime(withDraft.configPath, f.install)).toBe(modelId);
+    expect(f.run.mock.calls.at(-2)![1]).toContain("--dspark-gguf");
+  });
   it("bounds DeepSeek host cache by fresh commit as well as RAM and never applies Qwen flags", () => {
     const plan = planStrataResources(resources, 5120, { modelId, contextTokens: 32768 });
     expect(plan.residentBudgetGiB).toBe(32);
+    const occupied = planStrataResources({ ...resources, vramAvailableBytes: 17 * GiB }, 5120, { modelId, accountForOccupiedVram: true });
+    expect(occupied.vramReserveMiB).toBe(12 * 1024);
+    expect(occupied.minimumFreeVramBytes).toBe(0);
+    expect(occupied.residentBudgetGiB).toBe(plan.residentBudgetGiB);
     const lessCommit = planStrataResources({ ...resources, commitAvailableBytes: 44 * GiB }, 5120, { modelId });
     expect(lessCommit.residentBudgetGiB).toBe(12);
     expect(applyStrataResourcePlan(["--pack", "fixture"], lessCommit, modelId)).toEqual(["--pack", "fixture", "--ssd-cache", "12"]);
-    expect(() => planStrataResources({ ...resources, commitAvailableBytes: 30 * GiB }, 5120, { modelId })).toThrow();
+    expect(planStrataResources({ ...resources, memoryAvailableBytes: 6 * GiB, commitAvailableBytes: 5 * GiB, vramAvailableBytes: GiB }, 2048, { modelId })).toMatchObject({
+      residentBudgetGiB: 0, requiredMemoryBytes: 0, requiredCommitBytes: 0, minimumFreeVramBytes: 0, vramReserveMiB: 2048
+    });
     expect(() => planStrataResources(resources, 5120, { modelId, contextTokens: 262144 })).toThrow();
   });
 });

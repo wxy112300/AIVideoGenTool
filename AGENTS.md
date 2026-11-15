@@ -24,6 +24,7 @@ Local Video Studio is a Windows Electron image/video studio backed by ComfyUI. T
 - Draft edits never mutate queued execution snapshots; preserve focus, typing, selection, drag/drop and playback across unrelated refreshes.
 - Task/output/history identity stays consistent through restart, cancel, delete, migration and path changes. Keep persisted IDs and IPC compatible unless an explicit migration is authorized.
 - Settings inspects files offline. Files, node schema, graph construction and real generation are distinct readiness levels.
+- Recommended versions, hardware and cache budgets are advisory, not minimum requirements. Block only on demonstrated incompatibility or a concrete missing requirement; do not invent stricter admission gates. Long loading, prefill, thinking or brief pauses alone do not prove a crash. Preserve cancellation and report actual process/backend failures.
 - Only one heavy GPU stage runs at a time. Precision, sampler/scheduler, VAE, attention, cache/offload and launch policy stay scoped to the workflow family.
 - The app manages a single configured local ComfyUI runtime: startup takes over its local listener and exit stops it. Remote endpoints remain connection-only.
 - Preserve explicitly requested fallback paths. “Default” is preselected, not exclusive; “replace” requires old queue/history compatibility.

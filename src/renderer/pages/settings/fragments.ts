@@ -24,7 +24,7 @@ import {
 } from "../../shared/status";
 import type { SettingsEnvironmentItemState } from "./selectors";
 import { settingsComponentPath } from "./model-presentation";
-import { installGuideDirectories, modelComponentDisplayPath, type ModelLocationRoots } from "./model-location";
+import { installGuideDirectories, modelComponentDisplayPath, modelShardDirectory, type ModelLocationRoots } from "./model-location";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -81,6 +81,7 @@ export interface SettingsInstallGuideSelection {
   component: ModelComponentStatus;
   /** Explicit independent root. Empty means unconfigured, not the ComfyUI root. */
   targetRoot?: string;
+  lockedDirectory?: string;
 }
 
 export interface SettingsInstallGuideDialogViewModel {
@@ -317,7 +318,7 @@ export function renderSettingsModelScanCard(
     const state = component.found ? "found" : satisfied || component.optional ? "warning" : "missing";
     const tag = component.found ? "" : alternativeAvailable ? settingsText(options.locale, "model.component.alternativeAvailable") : component.optional ? settingsText(options.locale, "model.component.optional") : options.t(uiKeys.settings.system.scanCardMissing);
     const path = options.modelRoots
-      ? modelComponentDisplayPath(component, options.modelRoots, profile.id, profile.managedBy === "strata") || settingsText(options.locale, "strata.chooseRoot")
+      ? modelComponentDisplayPath(component, options.modelRoots, profile.id, profile.managedBy === "strata", modelShardDirectory(component, profile.components, options.modelRoots)) || settingsText(options.locale, "strata.chooseRoot")
       : component.locations?.[0] || component.matches[0] || component.expected;
     const shared = component.found && component.matches.some(path => options.sharedComponentPaths?.has(settingsComponentPath(path)));
     return `<div class="component-row ${state}"><span class="component-state">${icon(component.found ? "circle-check" : satisfied || component.optional ? "circle-help" : "circle-dashed")}</span>
@@ -369,7 +370,9 @@ export function renderSettingsInstallGuideDialog(
   const libraryLabel = (index: number) => index === 0 ? t(uiKeys.settings.modelLibraries.defaultLibrary) : t(uiKeys.settings.modelLibraries.numberedLibrary, { index });
   const directoryAction = component.found
     ? `<button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" title="${escape(actualLocation)}" ${actualLocation || targetDirectory ? "" : "disabled"}>${icon("folder-open")}${t(uiKeys.settings.modelLibraries.containingDirectory)}</button>`
-    : `<details class="model-directory-menu"><summary class="ui-button secondary button-with-icon" title="${escape(targetDirectory || t(uiKeys.settings.modelLibraries.empty))}">${icon("folder-open")}${openLabel}（${escape(libraryLabel(0))}）${icon("chevron-down")}</summary><div class="node-action-menu-popover">${directories.map((directory, index) => `<button type="button" ${index === 0 ? 'id="open-install-directory"' : ""} data-install-directory="${escape(directory)}" ${directory ? "" : "disabled"} title="${escape(directory || t(uiKeys.settings.modelLibraries.empty))}">${openLabel}（${escape(libraryLabel(index))}）</button>`).join("")}</div></details>`;
+    : viewModel.selectedInstallGuide.lockedDirectory
+      ? `<button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}" title="${escape(targetDirectory)}">${icon("folder-open")}${openLabel}</button>`
+      : `<details class="model-directory-menu"><summary class="ui-button secondary button-with-icon" title="${escape(targetDirectory || t(uiKeys.settings.modelLibraries.empty))}">${icon("folder-open")}${openLabel}（${escape(libraryLabel(0))}）${icon("chevron-down")}</summary><div class="node-action-menu-popover">${directories.map((directory, index) => `<button type="button" ${index === 0 ? 'id="open-install-directory"' : ""} data-install-directory="${escape(directory)}" ${directory ? "" : "disabled"} title="${escape(directory || t(uiKeys.settings.modelLibraries.empty))}">${openLabel}（${escape(libraryLabel(index))}）</button>`).join("")}</div></details>`;
   const sourceRevision = guide.version
     ? `v${guide.version}`
     : guide.revision || "—";

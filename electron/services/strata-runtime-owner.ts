@@ -182,14 +182,25 @@ export class StrataRuntimeOwner {
     return this.run(change);
   }
 
+  /** Wait on the owned backend operation, never the outer Prompt worker that awaits this acknowledgement. */
+  async cancelRequest(): Promise<StrataServiceSnapshot> {
+    this.abort(new Error(this.t(uiKeys.promptService.cancelledReason)));
+    await this.worker?.catch(() => undefined);
+    return this.snapshot();
+  }
+
   stop(): Promise<StrataServiceSnapshot> {
     if (this.stopping) return this.stopping;
     this.abort(new Error(this.t(uiKeys.strataPreparation.cancelled)));
     const worker = this.worker;
+    // Signal an explicit shutdown before waiting: a cancelled generation can still
+    // be draining upstream and must not prevent a user's unload/exit request.
+    const serviceStopped = this.service.stop();
+    void serviceStopped.catch(() => undefined);
     const stopped = Promise.resolve().then(async () => {
       // The operation includes owned subprocess termination and installer recovery.
       await worker?.catch(() => undefined);
-      const state = await this.service.stop();
+      const state = await serviceStopped;
       this.modelId = null;
       this.selectionKey = null;
       return state;

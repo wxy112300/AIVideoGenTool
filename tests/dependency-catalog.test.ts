@@ -176,8 +176,14 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("plaguekind-h3-sla")).toMatchObject({
       nodeTypes: ["H3SLAAttention"],
       minimumVersion: "1.3.8",
-      recommendedVersion: "1.5.6",
+      recommendedVersion: "1.6.4",
+      installRevision: "cc944b5064d1b15fc77664c7138d9752bba66302",
       required: false
+    });
+    expect(customNodeDefinition("kjnodes")).toMatchObject({
+      recommendedVersion: "1.5.4",
+      latestVersion: "1.5.4",
+      nodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"]
     });
     expect(customNodeDefinition("inpaint-cropandstitch")).toMatchObject({
       directoryName: "ComfyUI-Inpaint-CropAndStitch",
@@ -192,7 +198,7 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.29"
+      recommendedVersion: "0.2.30"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence).toEqual(expect.arrayContaining([expect.objectContaining({
       comfyUi: "0.35.0",

@@ -19,6 +19,7 @@ import {
 } from "../../../core/image-project";
 import {
   firstSupportedImageModelId,
+  retiredImageModelReplacement,
   imageModelCapabilityFor
 } from "../../../core/image-workflow";
 import { normalizeH3Steps, isMiniMaxH3Model, isMiniMaxH3R2vModel, isRetiredVideoModel } from "../../../core/workflow";
@@ -276,7 +277,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const state = context.getState();
     if (!state) return;
     const editCandidates = [
-      modelCatalog.get(version.modelId)?.definition.retired ? "qwen-image-2-1" : version.kind === "source" ? undefined : version.modelId,
+      modelCatalog.get(version.modelId)?.definition.retired ? retiredImageModelReplacement(version.modelId).modelId : version.kind === "source" ? undefined : version.modelId,
       state.imageDraft.modelId,
       state.settings.defaultImageModel
     ].filter((id) => id && imageModelCapabilityFor(id).maxPictures > 0);

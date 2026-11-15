@@ -106,6 +106,8 @@ export function mountSettingsServiceController(
       options.setComfyUpdateLog(result.log || result.message);
       if (!result.ok) {
         context.notify(result.message, { kind: "error" });
+      } else if (updateMode === "desktop") {
+        context.notify(result.message);
       } else if (await options.refreshEnvironment(settings, "dependency-change")) {
         context.notify(result.message);
       }

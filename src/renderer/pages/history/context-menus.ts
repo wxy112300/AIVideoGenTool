@@ -62,7 +62,13 @@ export function createHistoryContextMenus(
     menuEvents = null;
     menuElement?.remove();
     menuElement = null;
-    if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
+    if (restoreFocus && returnFocus?.isConnected) {
+      // The shared isolation observer releases the background after removal.
+      if (returnFocus.closest("[inert]")) queueMicrotask(() => {
+        if (!menuElement && returnFocus.isConnected) returnFocus.focus();
+      });
+      else returnFocus.focus();
+    }
   };
 
   const showMenu = (

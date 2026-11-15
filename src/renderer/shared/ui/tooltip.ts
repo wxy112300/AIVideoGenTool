@@ -34,15 +34,27 @@ export function mountTooltip(root: HTMLElement): () => void {
   let owner: HTMLElement | null = null;
   let previousDescription: string | null = null;
   let timer: number | undefined;
+  let leaveTimer: number | undefined;
   let lastClosed = 0;
   let contentSignature = "";
   const hide = () => {
     window.clearTimeout(timer);
+    window.clearTimeout(leaveTimer);
     if (owner) {
       if (previousDescription === null) owner.removeAttribute("aria-describedby");
       else owner.setAttribute("aria-describedby", previousDescription);
     }
     previousDescription = null; owner = null; tip.remove(); lastClosed = Date.now();
+  };
+  const cancelLeave = () => window.clearTimeout(leaveTimer);
+  const leave = (related: EventTarget | null) => {
+    if (!owner) return;
+    if (related instanceof Node && (owner.contains(related) || tip.contains(related))) return;
+    // Allow crossing the small positioning gap without dismissing the content.
+    cancelLeave();
+    leaveTimer = window.setTimeout(() => {
+      if (!owner?.contains(document.activeElement)) hide();
+    }, 160);
   };
   const content = (element: HTMLElement) => element.dataset.uiTooltipContent ? document.getElementById(element.dataset.uiTooltipContent) : null;
   const text = (element: HTMLElement) => content(element)?.textContent || element.getAttribute("title") || element.dataset.uiTooltip || "";
@@ -70,6 +82,7 @@ export function mountTooltip(root: HTMLElement): () => void {
     }
   };
   const schedule = (element: HTMLElement) => {
+    cancelLeave();
     if (element === owner) return;
     const quick = Date.now() - lastClosed < 300;
     hide();
@@ -91,8 +104,10 @@ export function mountTooltip(root: HTMLElement): () => void {
   const target = (event: Event) => event.target instanceof Element ? event.target.closest<HTMLElement>("[title], [data-ui-tooltip], [data-ui-tooltip-content]") : null;
   root.addEventListener("pointerover", (event) => { const element = target(event); if (element) schedule(element); }, { signal });
   root.addEventListener("pointerout", (event) => {
-    if (owner && !(event.relatedTarget instanceof Node && owner.contains(event.relatedTarget))) hide();
+    if (owner?.contains(event.target as Node)) leave(event.relatedTarget);
   }, { signal });
+  tip.addEventListener("pointerenter", cancelLeave, { signal });
+  tip.addEventListener("pointerleave", (event) => leave(event.relatedTarget), { signal });
   root.addEventListener("focusin", (event) => { const element = target(event); if (element) schedule(element); }, { signal });
   root.addEventListener("focusout", hide, { signal });
   root.addEventListener("click", (event) => { const element = target(event); if (element?.matches("[data-tooltip-toggle]")) schedule(element); }, { signal });

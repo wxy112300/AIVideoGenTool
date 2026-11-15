@@ -206,8 +206,9 @@ export class QueueTaskStateService {
   private async flushProgressPersistence(): Promise<void> {
     if (this.progressPersistTimer) clearTimeout(this.progressPersistTimer);
     this.progressPersistTimer = undefined;
-    if (!this.progressPersistDirty || !this.deps.store.flush) {
-      if (!this.deps.store.flush) this.progressPersistDirty = false;
+    const persist = this.deps.store.flushWorkspace?.bind(this.deps.store) ?? this.deps.store.flush?.bind(this.deps.store);
+    if (!this.progressPersistDirty || !persist) {
+      if (!persist) this.progressPersistDirty = false;
       return;
     }
     if (this.progressPersistInFlight) {
@@ -215,7 +216,7 @@ export class QueueTaskStateService {
       if (!this.progressPersistDirty) return;
     }
     this.progressPersistDirty = false;
-    const operation = this.deps.store.flush().catch((error) => {
+    const operation = persist().catch((error) => {
       this.progressPersistDirty = true;
       this.deps.logger.error("queue", "progress-persist-failed", "Failed to persist queue progress checkpoint", {
         error: error instanceof Error ? error.message : String(error)

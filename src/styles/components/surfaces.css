@@ -2,7 +2,7 @@
   position: fixed; z-index: var(--z-tooltip); width: max-content; max-width: min(360px, calc(100vw - 16px));
   padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-md);
   background: var(--surface-3); color: var(--text-1); box-shadow: var(--shadow-float);
-  font: var(--fs-12)/var(--lh-body) var(--font-sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: none;
+  font: var(--fs-12)/var(--lh-body) var(--font-sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: auto;
 }
 [data-ui-tooltip-source][hidden] { display: none !important; }
 .ui-tooltip > span, .ui-tooltip > strong, .ui-tooltip > small { display: block; }
@@ -11,6 +11,9 @@
   position: fixed; z-index: var(--z-notice); top: var(--sp-3); left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: var(--sp-2); width: max-content;
   max-width: min(560px, calc(100vw - 32px)); pointer-events: none;
+}
+@media (max-width: 1120px) {
+  .ui-notifications { top: calc(var(--topbar-h, 72px) + var(--page-heading-h, 0px) + var(--sp-2)); }
 }
 .ui-notice {
   display: flex; align-items: center; gap: var(--sp-2); min-height: var(--control-lg);

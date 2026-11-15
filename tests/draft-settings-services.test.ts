@@ -156,6 +156,23 @@ function createMigrationPort(plan: VideoHistoryMigrationPlan): {
 }
 
 describe("DraftService", () => {
+  it("routes both draft kinds through a workspace-only save when available", async () => {
+    const repository = createRepository(createDefaultState());
+    repository.updateWorkspaceWithoutSnapshot = vi.fn(async mutator => {
+      const { history, imageHistory, ...workspace } = repository.snapshot();
+      const next = structuredClone(workspace); mutator(next);
+      Object.assign(repository.snapshot(), next);
+    });
+    const service = new DraftService({ store: repository });
+    await service.saveDraft({ ...repository.snapshot().draft, seed: 456 });
+    await service.saveImageDraft({ ...repository.snapshot().imageDraft, seed: 789 });
+    expect(repository.updateWorkspaceWithoutSnapshot).toHaveBeenCalledTimes(2);
+    expect(repository.updateWithoutSnapshot).not.toHaveBeenCalled();
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(repository.snapshot().draft.seed).toBe(456);
+    expect(repository.snapshot().imageDraft.seed).toBe(789);
+  });
+
   it("saves a draft without producing a full snapshot for a 920-record history", async () => {
     const initial = createDefaultState();
     const fixture = createHistoryPerformanceFixture(460);
@@ -248,6 +265,23 @@ describe("DraftService", () => {
 });
 
 describe("SettingsService", () => {
+  it("uses workspace saves for appearance and ordinary settings while keeping draft policy separate", async () => {
+    const repository = createRepository(createDefaultState());
+    repository.updateWorkspace = vi.fn(async mutator => {
+      const { history, imageHistory, ...workspace } = repository.snapshot();
+      const next = structuredClone(workspace); mutator(next);
+      Object.assign(repository.snapshot(), next);
+      return repository.snapshot();
+    });
+    const service = createSettingsService(repository), draft = structuredClone(repository.snapshot().draft);
+    await service.save({ ...repository.snapshot().settings, appearance: { ...repository.snapshot().settings.appearance, historyMasonryColumns: 6 } }, "appearance");
+    await service.save({ ...repository.snapshot().settings, modelDownloadSource: "huggingface" });
+    expect(repository.updateWorkspace).toHaveBeenCalledTimes(2);
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(repository.snapshot().draft).toEqual(draft);
+    expect(repository.snapshot().settings.appearance.historyMasonryColumns).toBe(6);
+  });
+
   it("migrates legacy model download preferences and persists explicit sources without changing drafts", async () => {
     const initial = createDefaultState();
     const repository = createRepository(initial), service = createSettingsService(repository);

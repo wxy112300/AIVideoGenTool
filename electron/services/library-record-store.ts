@@ -141,7 +141,7 @@ export class LibraryRecordStore {
     return result;
   }
 
-  async prepare(collections: LibraryCollections, parent: string | null, onProgress?: (value: LibraryRecordProgress) => void): Promise<LibraryPointer> {
+  async prepare(collections: LibraryCollections, parent: string | null, onProgress?: (value: LibraryRecordProgress) => void, changedHistoryIds?: ReadonlySet<string>): Promise<LibraryPointer> {
     const previous = parent ? await this.manifest(parent) : undefined;
     const changed: Array<{ key: "history" | "imageHistory"; ref: RecordRef; source: string }> = [];
     const commit: LibraryCommit = { format: 1, libraryId: this.libraryId, parent, history: [], imageHistory: [], deleted: [] };
@@ -149,13 +149,19 @@ export class LibraryRecordStore {
     let completed = 0;
     progress(onProgress, { phase: "write", completed, total });
     for (const key of ["history", "imageHistory"] as const) {
+      const previousRefs = new Map(previous?.[key].map(ref => [ref.id, ref]));
       const ids = new Set<string>();
       for (const record of collections[key]) {
         const id = (record as { id?: unknown })?.id;
         if (typeof id !== "string" || !id || ids.has(id)) throw new StateRecoveryError(this.t(uiKeys.storageSafety.recordDuplicate));
         ids.add(id);
-        const source = canonical(record), cached = this.verified.get(`${key}:${id}`);
-        const ref = cached?.source === source ? cached.ref : { id, hash: await this.put("records", JSON.stringify(await this.encode(record))) };
+        const cached = this.verified.get(`${key}:${id}`);
+        // Only reuse a verified object from the actual parent generation.
+        // A failed prior prepare may have left a newer entry in the cache.
+        const unchanged = changedHistoryIds && !changedHistoryIds.has(id) && cached && previousRefs.get(id)?.hash === cached.ref.hash;
+        const normalized = changedHistoryIds && !unchanged ? JSON.parse(JSON.stringify(record)) : record;
+        const source = unchanged ? cached.source : canonical(normalized);
+        const ref = cached?.source === source ? cached.ref : { id, hash: await this.put("records", JSON.stringify(await this.encode(normalized))) };
         commit[key].push(ref);
         if (cached?.source !== source) changed.push({ key, ref, source });
         progress(onProgress, { phase: "write", completed: ++completed, total });

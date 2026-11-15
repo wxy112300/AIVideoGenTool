@@ -1,3 +1,4 @@
+import { isH3ImageModel } from "../../src/core/minimax-h3-image-spec.js";
 import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
@@ -5,6 +6,7 @@ import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { modelCoreVersionBlockReason } from "../../src/core/model-core-requirements.js";
+import { H3_IMAGE_VAE, H3_IMAGE_ENCODERS, H3_IMAGE_W4A8_ID } from "../../src/core/minimax-h3-image-spec.js";
 import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
 import { h3PromptOutputLanguageInstruction } from "../../src/core/prompt-language.js";
 import type {
@@ -1342,9 +1344,33 @@ export async function submitImageTask(
     `${baseUrl}/object_info`,
     { signal }, t
   );
+  if (isH3ImageModel(task.modelId)) {
+    const stats = await jsonRequest<{ system?: { comfyui_version?: string } }>(`${baseUrl}/system_stats`, { signal }, t);
+    const reason = modelCoreVersionBlockReason(task.modelId, stats.system?.comfyui_version, settings.uiLocale);
+    if (reason) throw new Error(reason);
+  }
   const compiled = adapter.compilePrompt(task.prompt, task.pictures, t);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const workflow = adapter.buildWorkflow(task, run, t);
+  if (isH3ImageModel(task.modelId)) {
+    // Resolve registered filenames from this running installation, including
+    // subdirectories and the encoder already shared with H3 video workflows.
+    const choices = [
+      ["model", "unet_name", [String(workflow.model!.inputs.unet_name)]],
+      ["clip", "clip_name", task.modelId === H3_IMAGE_W4A8_ID ? [H3_IMAGE_ENCODERS[0]] : H3_IMAGE_ENCODERS],
+      ["vae", "vae_name", [H3_IMAGE_VAE]]
+    ] as const;
+    for (const [id, input, filenames] of choices) {
+      const node = workflow[id]!;
+      const schema = objectInfo[node.class_type] as { input?: { required?: Record<string, unknown> } } | undefined;
+      const spec = schema?.input?.required?.[input];
+      const options = Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] as unknown[] : [];
+      const found = filenames.flatMap(filename => options.filter((value): value is string => typeof value === "string" &&
+        (value === filename || value.replaceAll("\\", "/").endsWith(`/${filename}`))))[0];
+      if (!found) throw new Error(`MiniMax H3 Image: ${input} missing in ComfyUI. Refresh models and restart ComfyUI 0.45.0+.`);
+      node.inputs[input] = found;
+    }
+  }
   const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true, task.h3ImageRecipe, t);
   if (workflowErrors.length) {
     throw new Error(t(uiKeys.taskSubmission.imageValidationFailed, { detail: workflowErrors.join(" ") }));

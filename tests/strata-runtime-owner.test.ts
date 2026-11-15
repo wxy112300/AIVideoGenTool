@@ -26,6 +26,23 @@ function fixture(getUiLocale?: () => "zh-CN" | "en-US" | "zh-TW") {
 }
 
 describe("application Strata ownership", () => {
+  it("waits for only the backend request on cancellation and keeps its model identity for reuse", async () => {
+    const f = fixture(); await f.owner.startPrepared(settings, "unused-fixture.json");
+    const original = f.service.snapshot.bind(f.service);
+    vi.spyOn(f.service, "snapshot").mockImplementation(() => ({ ...original(), modelLoaded: true }));
+    let began!: () => void; const started = new Promise<void>(resolve => { began = resolve; });
+    vi.spyOn(f.service, "chat").mockImplementationOnce(async (_request, signal) => {
+      began(); await new Promise<void>(resolve => signal!.addEventListener("abort", () => resolve(), { once: true }));
+      signal!.throwIfAborted(); return "unreachable";
+    }).mockResolvedValue("next prompt");
+    const request = { modelId: "fixture-model", messages: [{ role: "user" as const, content: "enhance" }], maxTokens: 4, temperature: 0 };
+    const pending = f.owner.chat(request), rejected = expect(pending).rejects.toThrow("取消");
+    await started;
+    expect(await f.owner.cancelRequest()).toMatchObject({ pid: 1234, modelLoaded: true }); await rejected;
+    expect(f.owner.isBusy()).toBe(false); expect(f.child.stop).not.toHaveBeenCalled();
+    expect(await f.owner.chat(request)).toBe("next prompt");
+    await f.owner.shutdown(); expect(f.child.stop).toHaveBeenCalledOnce();
+  });
   it.each(["en-US", "zh-TW"] as const)("localizes owner guards dynamically without changing recovery or process ownership (%s)", async uiLocale => {
     let language: "zh-CN" | "en-US" | "zh-TW" = "zh-CN"; const f = fixture(() => language); language = uiLocale;
     f.busy();

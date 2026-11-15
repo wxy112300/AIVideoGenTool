@@ -7,8 +7,33 @@ import { imageTaskFromDraft } from "../src/core/queue-task-factory";
 import { imageEditEnqueueBlockReason } from "../src/renderer/pages/create/view-model";
 import { submitImageTask } from "../electron/services/comfy-ui";
 import type { ImageGenerationQueueTask } from "../src/types";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { JsonStore } from "../electron/store";
 
 describe("H3 image retirement", () => {
+  it("moves editable INT8 defaults/drafts to W4A8 across restart while preserving queued INT8 execution", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-h3-int8-retirement-"));
+    try {
+      const state = createDefaultState();
+      state.imageDraft = { ...createDefaultImageEditDraft(), modelId: "minimax-h3-image", qualityProfile: "native-6", targetResolution: 4096, seed: 42 };
+      state.settings.defaultImageModel = "minimax-h3-image";
+      state.settings.defaultImageQualityProfile = "native-6";
+      const task = imageTaskFromDraft(state.imageDraft, undefined, { root: "", directory: "", subfolder: "" });
+      state.queue = [task];
+      const filename = path.join(directory, "studio-state.json");
+      await fs.writeFile(filename, JSON.stringify(state));
+      for (let restart = 0; restart < 2; restart++) {
+        const loaded = await new JsonStore(filename).load();
+        expect(loaded.settings).toMatchObject({ defaultImageModel: "minimax-h3-image-w4a8", defaultImageQualityProfile: "native-6" });
+        expect(loaded.imageDraft).toMatchObject({ modelId: "minimax-h3-image-w4a8", qualityProfile: "native-6", targetResolution: 4096, seed: 42 });
+        expect(loaded.queue[0]).toMatchObject({ id: task.id, modelId: "minimax-h3-image", qualityProfile: "native-6", outputWidth: task.outputWidth, outputHeight: task.outputHeight });
+      }
+      expect(imageModelAdapterFor("minimax-h3-image")).toBeDefined();
+      expect(modelCatalog.list("image").some(e => e.definition.id === "minimax-h3-image")).toBe(false);
+    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+  });
   it.each(["minimax-h3-image-i2i", "minimax-h3-reference-edit"])("keeps %s readable and rejects all new execution", async (modelId) => {
     expect(modelCatalog.get(modelId)?.definition.retired).toBe(true);
     expect(modelCatalog.localized(modelId)?.name).toContain("H3");

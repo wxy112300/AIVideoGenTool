@@ -1,6 +1,11 @@
 import { createTranslator } from "./i18n.js";
 import type { Translate } from "./i18n.js";
 import { uiKeys } from "./i18n-keys.js";
+
+/** Carry backend diagnostics to the service boundary without exposing them as prompt text. */
+export class StrataInferenceError extends Error {
+  constructor(readonly upstream: unknown, t: Translate) { super(t(uiKeys.strataCore.inferenceError)); }
+}
 /** OpenAI SSE text only. Streamed deltas are provisional until a stop + DONE envelope. */
 export class StrataChatStream {
   constructor(private readonly t: Translate = createTranslator().t) {}
@@ -31,7 +36,8 @@ export class StrataChatStream {
       }
       let payload;
       try { payload = JSON.parse(data); } catch { throw new Error(this.t(uiKeys.strataCore.invalidJson)); }
-      if (!payload || payload.error) throw new Error(this.t(uiKeys.strataCore.inferenceError));
+      if (!payload) throw new Error(this.t(uiKeys.strataCore.inferenceError));
+      if (payload.error) throw new StrataInferenceError(payload.error, this.t);
       if (Number.isSafeInteger(payload.usage?.completion_tokens) && payload.usage.completion_tokens >= 0)
         this.completionTokens = payload.usage.completion_tokens;
       if (!Array.isArray(payload.choices) || payload.choices.length !== 1) throw new Error(this.t(uiKeys.strataCore.streamProtocol));

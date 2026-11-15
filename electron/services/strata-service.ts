@@ -9,10 +9,12 @@ import { promisify } from "node:util";
 import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
+import { strataReasoningEffortForModel } from "../../src/core/strata-reasoning.js";
 import { resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
-import { StrataChatStream } from "../../src/core/strata-chat-stream.js";
+import { StrataChatStream, StrataInferenceError } from "../../src/core/strata-chat-stream.js";
+import { deepSeekServerBootstrap } from "./strata-deepseek-server.js";
 import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
 import { applyStrataResourcePlan, knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
 import { readReliableStrataResources, readStrataResources, watchStrataResources, type StrataResourceRetryPolicy } from "./strata-resources.js";
@@ -57,6 +59,22 @@ export interface StrataChatRequest {
   uncensoredMode?: StrataUncensoredMode;
   /** Per-request thinking; budget 0 delegates to upstream answer_room, not a persisted setting. */
   reasoning?: { effort: "low" | "medium" | "high"; budgetTokens: number };
+}
+
+function inferenceFailureDetail(upstream: unknown, request: StrataChatRequest, apiKey: string): string {
+  const value = upstream && typeof upstream === "object" ? upstream as Record<string, unknown> : {};
+  const kind = [value.type, value.code].filter((value): value is string => typeof value === "string" && /^[a-zA-Z0-9_.-]{1,80}$/u.test(value)).join("/");
+  let reason = typeof value.message === "string" ? value.message.slice(0, 8192) : "";
+  for (const message of request.messages) {
+    const parts = typeof message.content === "string" ? [message.content] : message.content.map(part => part.type === "text" ? part.text : part.image_url.url);
+    for (const part of parts) if (part) reason = reason.replaceAll(part, "[redacted input]");
+  }
+  if (apiKey) reason = reason.replaceAll(apiKey, "[redacted]");
+  reason = reason.replace(/data:image\/[^\s"']+/giu, "[redacted image]")
+    .replace(/Bearer\s+[^\s"']+/giu, "Bearer [redacted]")
+    .replace(/[A-Za-z0-9+/_=-]{256,}/gu, "[redacted data]")
+    .replace(/[\u0000-\u001f\u007f]+/gu, " ").trim().slice(0, 2000);
+  return [kind ? `[${kind}]` : "", reason].filter(Boolean).join(" ");
 }
 
 function validateChatRequest(request: StrataChatRequest, t: Translate = createNativeTranslator(undefined).t): void {
@@ -118,6 +136,10 @@ export async function prepareStrataLaunch(
   }
   const modelId = await validatePreparedStrataRuntime(config, cwd, undefined, t);
   const runtimeConfig = JSON.parse(await fs.readFile(config, "utf8"));
+  if (isStrataDeepSeek(modelId)) {
+    // Match upstream's vision reserve; keep launch tuning out of verified packs.
+    runtimeConfig.args[runtimeConfig.args.indexOf("--reserve-mib") + 1] = "900";
+  }
   const monitorAvailable = (await fs.readFile(path.join(cwd, "serve", "server.py"), "utf8")).includes('"--api-monitor"') &&
     (await Promise.all(["monitor.html", "monitor.js", "tokens.css"].map((name) =>
       fs.stat(path.join(cwd, "serve", "web", name)).then((stat) => stat.isFile() && stat.size > 0).catch(() => false)
@@ -136,12 +158,16 @@ export async function prepareStrataLaunch(
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf(isStrataDeepSeek(modelId) ? "--reserve-mib" : "--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
-    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, undefined, t), Number(runtimeConfig.args[reserveIndex + 1]), {
-      allowFileReadFallback: true, modelId, contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
+    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, isStrataDeepSeek(modelId) ? { knownPressure: () => null } : undefined, t), Number(runtimeConfig.args[reserveIndex + 1]), {
+      allowFileReadFallback: true, modelId, accountForOccupiedVram: process.platform === "win32",
+      contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
     runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
     runtimeConfig.args = applyStrataResourcePlan(runtimeConfig.args, resourcePlan, modelId);
   }
-  if (options.adaptive || controlVector) {
+  // A long silent DeepSeek prefill while streaming experts is not a crash.
+  // Use a session overlay; preserve the verified base pack and cancellation.
+  if (isStrataDeepSeek(modelId)) runtimeConfig.engine_silence_s = 0;
+  if (options.adaptive || controlVector || isStrataDeepSeek(modelId)) {
     launchConfig = path.join(path.dirname(config), `runtime-session-${randomUUID()}.json`);
     await fs.writeFile(launchConfig, JSON.stringify(runtimeConfig, null, 2), { flag: "wx" });
   }
@@ -156,8 +182,9 @@ export async function prepareStrataLaunch(
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
+    ...(isStrataDeepSeek(modelId) ? { env: { STRATA_ENGINE_STALL_S: "0" } } : {}),
     ...(runtimeConfig.args.includes("--resident-experts") || runtimeConfig.args.includes("--resident-budget-gib") ? { residentEngineLog: runtimeConfig.log } : {}),
-    args: ["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", launchConfig,
+    args: ["-B", "-u", ...(isStrataDeepSeek(modelId) ? ["-c", deepSeekServerBootstrap] : ["-m", "serve.server"]), "--engine", "strata", "--config", launchConfig,
       "--host", "127.0.0.1", "--port", String(settings.strataPort), "--lazy", ...(monitorAvailable ? ["--api-monitor"] : []), "--api-key", apiKey]
   };
 }
@@ -245,6 +272,10 @@ interface StrataServiceDependencies {
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
 export class StrataService {
+  private requestDeadline(modelId?: string): AbortSignal[] {
+    const milliseconds = this.deps.requestTimeoutMs ?? (isStrataDeepSeek(modelId ?? "") ? undefined : 600_000);
+    return milliseconds === undefined ? [] : [AbortSignal.timeout(milliseconds)];
+  }
   private readonly t: Translate = (key, params, fallback) => createNativeTranslator(this.deps.getUiLocale?.()).t(key, params, fallback);
   private readonly residencyPressure = new FileReadResourcePressure(Date.now, event => {
     const message = this.t(uiKeys.strataService.pressure, { state: event.event === "recovered" ? this.t(uiKeys.strataService.recovered) : event.event === "critical" ? this.t(uiKeys.strataService.critical) : this.t(uiKeys.strataService.warning), ram: (event.memoryAvailableBytes / 1024 ** 3).toFixed(2), commit: ((event.commitAvailableBytes ?? 0) / 1024 ** 3).toFixed(2), vram: ((event.vramAvailableBytes ?? 0) / 1024 ** 3).toFixed(2), loading: String(event.loading), fileRead: String(event.fileRead), duration: event.elapsedMs });
@@ -255,11 +286,11 @@ export class StrataService {
     } catch { /* Observability cannot cancel generation. */ }
   }, this.t);
   private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
-  private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) =>
-    (this.deps.resourcePressure ?? this.residencyPressure.check.bind(this.residencyPressure))(sample);
+  private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.resourcePressure
+    ? this.deps.resourcePressure(sample) : this.residencyPressure.check(sample, { enforceGpuFloor: !isStrataDeepSeek(this.plan?.modelId ?? "") });
   private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.knownResourcePressure
     ? this.deps.knownResourcePressure(sample) : this.deps.resourcePressure
-      ? knownStrataResourcePressure(sample, this.t) : this.residencyPressure.knownPressure(sample);
+      ? knownStrataResourcePressure(sample, this.t) : this.residencyPressure.knownPressure(sample, { enforceGpuFloor: !isStrataDeepSeek(this.plan?.modelId ?? "") });
   private vectorLoaded = false;
   private modeRequested = false;
   private selectedMode: StrataUncensoredMode = "off";
@@ -267,6 +298,7 @@ export class StrataService {
   private child: StrataOwnedProcess | null = null;
   private plan: StrataLaunchPlan | null = null;
   private serial: Promise<unknown> = Promise.resolve();
+  private stopRequested = false;
   private state: StrataServiceSnapshot = {
     phase: "stopped", port: null, pid: null, modelLoaded: null, message: "", log: ""
   };
@@ -310,6 +342,7 @@ export class StrataService {
       }
       signal?.throwIfAborted();
       this.plan = { ...plan, args: [...plan.args] };
+      this.stopRequested = false;
       this.residencyPressure.setLoading(false); this.residencyPressure.setFileRead(false); this.hostMemoryMode = null;
       this.vectorLoaded = false; this.modeApplied = null;
       this.selectedMode = normalizeStrataUncensoredMode(plan.uncensoredMode, plan.uncensoredRequested);
@@ -384,7 +417,7 @@ export class StrataService {
         const vectorLogStart = plan.controlVector && plan.engineLog ? (await fs.stat(plan.engineLog).catch(() => null))?.size ?? 0 : 0;
         const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/load`, {
           method: "POST", redirect: "error",
-          signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)]),
+          signal: AbortSignal.any([...(signal ? [signal] : []), ...this.requestDeadline(plan.modelId)]),
           headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json", Origin: `http://127.0.0.1:${plan.port}` },
           body: JSON.stringify({ model: plan.modelId })
         });
@@ -443,7 +476,7 @@ export class StrataService {
       headers: { Authorization: `Bearer ${plan.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: request.modelId,
         thinking: request.reasoning ? { type: "enabled" } : { type: "disabled" },
-        ...(request.reasoning ? { output_config: { effort: request.reasoning.effort } } : {}),
+        ...(request.reasoning ? { output_config: { effort: strataReasoningEffortForModel(request.modelId, request.reasoning.effort) } } : {}),
         system: request.messages.filter((message) => message.role === "system").map(textOf).join("\n"),
         messages: request.messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: textOf(message) })) })
     });
@@ -456,7 +489,7 @@ export class StrataService {
       contextSize: request.contextSize, requestedMaxTokens: request.maxTokens, automatic: request.automaticOutputBudget }, this.t);
   }
 
-  /** Caller owns GPU arbitration. A failed/aborted stream stops the owned process, not just HTTP. */
+  /** Caller owns GPU arbitration. User cancellation drains this request and preserves a healthy model. */
   chat(request: StrataChatRequest, signal?: AbortSignal, onText?: (delta: string) => void, onBudget?: (tokens: number) => void,
     onReasoning?: (characters: number) => void): Promise<string> {
     return this.exclusive(async () => {
@@ -464,10 +497,11 @@ export class StrataService {
       signal?.throwIfAborted();
       if (!this.plan || !this.child?.running() || this.snapshot().phase !== "ready") throw new Error(this.t(uiKeys.strataService.notReady));
       const plan = this.plan;
+      const loadedAtRequest = this.state.modelLoaded === true;
       const mode = normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored);
       const safety = new AbortController();
       const requestSignal = AbortSignal.any([
-        ...(signal ? [signal] : []), safety.signal, AbortSignal.timeout(this.deps.requestTimeoutMs ?? 600_000)
+        ...(signal ? [signal] : []), safety.signal, ...this.requestDeadline(request.modelId)
       ]);
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       let disposeWatch = async () => {};
@@ -494,7 +528,7 @@ export class StrataService {
           // Upstream monitor captures only the first 256K characters. Keep diagnostics before image base64.
           body: JSON.stringify({ model: request.modelId, max_tokens: budget.maxTokens,
             ...(isStrataDeepSeek(request.modelId) ? { temperature: 1, top_p: 1,
-              reasoning_effort: request.reasoning?.effort ?? "none" } : {
+              reasoning_effort: request.reasoning ? strataReasoningEffortForModel(request.modelId, request.reasoning.effort) : "none" } : {
               experimental_speed_projection: mode !== "off",
               ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
               ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}) }),
@@ -531,6 +565,16 @@ export class StrataService {
         this.state.message = this.modeApplied ? this.t(uiKeys.strataService.vectorOn) : this.t(uiKeys.strataService.vectorOff);
         return result;
       } catch (error) {
+        if (signal?.aborted && !safety.signal.aborted && loadedAtRequest && !this.stopRequested) {
+          // Closing the stream triggers upstream's per-client cancel event. Keep the
+          // operation busy until the server confirms it is no longer computing.
+          await reader?.cancel().catch(() => undefined);
+          this.state.message = this.t(uiKeys.promptService.cancelling);
+          if (await this.waitForCancelledRequest(plan, safety.signal)) {
+            this.state = { ...this.state, phase: "ready", modelLoaded: true, message: this.t(uiKeys.promptService.cancelledResident) };
+            throw signal.reason;
+          }
+        }
         try {
           await this.stopChild();
           this.state = { ...this.state, phase: "stopped", port: null, modelLoaded: null, message: this.t(uiKeys.strataService.requestAborted) };
@@ -540,8 +584,11 @@ export class StrataService {
         }
         if (signal?.aborted) throw signal.reason;
         if (safety.signal.aborted) throw safety.signal.reason;
-        // Do not expose server bodies, model text or per-launch credentials in errors.
-        throw new Error((error instanceof Error ? error.message : this.t(uiKeys.strataService.requestFailed)).replaceAll(plan.apiKey, "[redacted]"));
+        // Only bounded error fields cross this boundary; never the response body or provisional text.
+        const detail = error instanceof StrataInferenceError ? inferenceFailureDetail(error.upstream, request, plan.apiKey) : "";
+        const message = error instanceof Error ? error.message : this.t(uiKeys.strataService.requestFailed);
+        throw new Error([message, detail, error instanceof StrataInferenceError && plan.engineLog ? `engine.log: ${plan.engineLog}` : ""]
+          .filter(Boolean).join("\n").replaceAll(plan.apiKey, "[redacted]"));
       } finally {
         await disposeWatch();
         await reader?.cancel().catch(() => undefined);
@@ -560,6 +607,8 @@ export class StrataService {
   }
 
   stop(): Promise<StrataServiceSnapshot> {
+    // Also wake a cancellation drain before entering the serialized stop operation.
+    this.stopRequested = true;
     return this.exclusive(async () => {
       this.state = { ...this.state, phase: "stopping", modelLoaded: null };
       try {
@@ -571,6 +620,40 @@ export class StrataService {
       }
       return this.snapshot();
     });
+  }
+
+  private async waitForCancelledRequest(plan: StrataLaunchPlan, safety: AbortSignal): Promise<boolean> {
+    const checkSafety = () => {
+      if (safety.aborted) {
+        this.state = { ...this.state, phase: "error", modelLoaded: null, message: String(safety.reason?.message ?? safety.reason) };
+        throw safety.reason;
+      }
+    };
+    while (!this.stopRequested) {
+      checkSafety();
+      if (!this.child?.running()) throw new Error(this.t(uiKeys.strataService.requestExited));
+      let modelLost = false;
+      try {
+        const response = await (this.deps.fetch ?? fetch)(`http://127.0.0.1:${plan.port}/v1/status`, {
+          redirect: "error", headers: { Authorization: `Bearer ${plan.apiKey}` }, signal: AbortSignal.any([safety, AbortSignal.timeout(3000)])
+        });
+        if (response.ok) {
+          const status = await response.json() as { service?: string; loaded?: boolean; activity?: { in_flight?: number } };
+          if (status.service === "strata" && status.loaded === false) modelLost = true;
+          if (status.service === "strata" && status.loaded === true && status.activity?.in_flight === 0) {
+            if (await this.probe()) { checkSafety(); return true; }
+            modelLost = true;
+          }
+        } else await response.body?.cancel().catch(() => undefined);
+      } catch { /* A missing status sample is not proof of a crashed or cancelled engine. */ }
+      checkSafety();
+      if (modelLost) {
+        this.state = { ...this.state, phase: "error", modelLoaded: false, message: this.t(uiKeys.strataService.modelLost) };
+        throw new Error(this.state.message);
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, this.deps.pollMs ?? 250));
+    }
+    return false;
   }
 
   private async probe(): Promise<boolean> {

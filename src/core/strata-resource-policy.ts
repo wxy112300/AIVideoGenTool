@@ -30,23 +30,27 @@ export interface StrataResourcePlan {
  * Reserve additionally covers the GPU image encoder, WDDM reporting error and workspace.
  */
 export function planStrataResources(resources: StrataResources, requestedReserveMiB: number,
-  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number } = {}, t: Translate = createTranslator().t): StrataResourcePlan {
+  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number; accountForOccupiedVram?: boolean } = {}, t: Translate = createTranslator().t): StrataResourcePlan {
   const { memoryAvailableBytes: ram, commitAvailableBytes: commit, vramAvailableBytes: free, vramTotalBytes: total } = resources;
   if (![ram, commit, free, total, requestedReserveMiB].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
     || !total || free! > total) throw new Error(t(uiKeys.strataCore.metricsUnknown));
   const available = ram;
-  const reserve = Math.max(5120, Math.ceil(requestedReserveMiB));
+  const reserve = isStrataDeepSeek(options.modelId ?? "") ? Math.ceil(requestedReserveMiB) : Math.max(5120, Math.ceil(requestedReserveMiB));
   if (isStrataDeepSeek(options.modelId ?? "")) {
     const context = options.contextTokens ?? 32768;
     if (!Number.isSafeInteger(context) || context < 8192 || context > 32768) throw new Error(t(uiKeys.strataService.invalidContext));
     // Separate from Qwen's 42.9GB arena: bound DeepSeek's host expert store
     // against BOTH fresh RAM and Windows commit, reserving WDDM + host headroom.
-    const headroomGiB = 8, minimumFreeVramBytes = (reserve / 1024 + 10) * GiB;
-    if (free! < minimumFreeVramBytes) throw new Error(t(uiKeys.strataCore.vram, { required: (minimumFreeVramBytes / GiB).toFixed(1), available: (free! / GiB).toFixed(1) }));
-    const budget = Math.floor(Math.min(138.24e9, ram - headroomGiB * GiB, commit! - total - headroomGiB * GiB) / GiB);
-    if (budget < 8) throw new Error(t(uiKeys.strataCore.fileReadMemory, { required: 16, available: (Math.min(ram, commit! - total) / GiB).toFixed(1) }));
-    return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: reserve,
-      requiredMemoryBytes: (budget + headroomGiB) * GiB, requiredCommitBytes: (budget + headroomGiB) * GiB + total,
+    const headroomGiB = 8, minimumFreeVramBytes = 0;
+    // Cache capacity and headroom are performance choices, not minimum hardware
+    // requirements. With no cache budget, let the native mapped-file lane try.
+    const budget = Math.max(0, Math.floor(Math.min(138.24e9, ram - headroomGiB * GiB, commit! - total - headroomGiB * GiB) / GiB));
+    // WDDM's CUDA free-memory view can omit other processes' residency. Keep
+    // the desired adapter headroom using the freshly measured global occupancy.
+    // This reduces the expert cache, not the admission floor or other programs.
+    const occupiedMiB = options.accountForOccupiedVram ? Math.ceil((total - free!) / 1024 ** 2) : 0;
+    return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: reserve + occupiedMiB,
+      requiredMemoryBytes: 0, requiredCommitBytes: 0,
       availableMemoryBytes: ram, minimumFreeVramBytes, headroomGiB };
   }
   // Dense/native weights, MTP, KV and prefill staging are budgeted separately from reserve.

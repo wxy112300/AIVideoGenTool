@@ -20,6 +20,7 @@ import {
   evaluatePromptCoreSupport,
   h3TorchRuntimeReady,
   h3ComfyKitchenCudaBackendReady,
+  h3ComfyKitchenInstallRequirement,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
   parseComfyProcessInfo,
@@ -268,7 +269,7 @@ describe("SageAttention environment selection", () => {
     expect(comfyKitchenConvRotCudaOptimized("13.1")).toBe(true);
   });
 
-  it("requires the pinned comfy-kitchen CUDA backend for the official H3 ConvRot path", () => {
+  it("accepts compatible newer comfy-kitchen releases while requiring the CUDA backend", () => {
     const probe = {
       cudaVersion: "13.0",
       comfyKitchenVersion: "0.2.39",
@@ -279,10 +280,20 @@ describe("SageAttention environment selection", () => {
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.38" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.37" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.40" })).toBe(true);
-    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.41" })).toBe(false);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.41", comfyKitchenBackends: ["ascend", "hip", "eager", "triton", "cuda"] })).toBe(true);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.42" })).toBe(true);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.41", comfyKitchenBackends: ["eager", "triton"] })).toBe(false);
+    expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, cudaVersion: "12.9" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenVersion: "0.2.33" })).toBe(false);
     expect(h3ComfyKitchenCudaBackendReady({ ...probe, comfyKitchenBackends: ["cpu"] })).toBe(false);
+  });
+
+  it("targets the recommended kitchen release for old installs and preserves newer versions on repair", () => {
+    expect(h3ComfyKitchenInstallRequirement("0.2.39")).toBe("comfy-kitchen==0.2.41");
+    expect(h3ComfyKitchenInstallRequirement()).toBe("comfy-kitchen==0.2.41");
+    expect(h3ComfyKitchenInstallRequirement("0.2.41")).toBe("comfy-kitchen==0.2.41");
+    expect(h3ComfyKitchenInstallRequirement("0.2.42")).toBe("comfy-kitchen==0.2.42");
   });
 
   it("rejects runtime combinations not published in the official wheel matrix", () => {

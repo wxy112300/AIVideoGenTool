@@ -94,6 +94,7 @@ async function main() {
   if (!resume) {
     const state = createDefaultState();
     state.settings = { ...state.settings, ...source.settings,
+      libraryDirectory: path.join(directory, "library"), lanBrowserEnabled: false,
       outputDirectory: path.join(directory, "video"), imageOutputDirectory: path.join(directory, "image"),
       imageInputLibraryDirectory: path.join(directory, "inputs"), autoRetryFailedTasks: false };
     state.draft.duration = 1;

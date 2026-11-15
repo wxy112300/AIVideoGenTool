@@ -311,10 +311,10 @@ export class QueueMutationService {
 
   async move(taskId: string, direction: -1 | 1): Promise<AppState> {
     const { store, sendState, resumeQueue } = this.deps;
-    const current = store.get();
-    const wasDeferred = !current.queueRunning &&
-      queueTaskIsDeferred(current.queue, current.queuePauseBoundary, taskId);
-    const next = await store.update((state) => {
+    let wasDeferred = false;
+    const update = store.updateWorkspace?.bind(store) ?? store.update.bind(store);
+    const next = await update((state) => {
+      wasDeferred = !state.queueRunning && queueTaskIsDeferred(state.queue, state.queuePauseBoundary, taskId);
       const result = moveWaitingTaskWithPauseBoundary(
         state.queue,
         state.queuePauseBoundary,
@@ -348,10 +348,10 @@ export class QueueMutationService {
       throw new Error(this.t(uiKeys.serviceChecks.pausePosition));
     }
     const { store, sendState, resumeQueue } = this.deps;
-    const current = store.get();
-    const wasDeferred = !current.queueRunning &&
-      queueTaskIsDeferred(current.queue, current.queuePauseBoundary, taskId);
-    const next = await store.update((state) => {
+    let wasDeferred = false;
+    const update = store.updateWorkspace?.bind(store) ?? store.update.bind(store);
+    const next = await update((state) => {
+      wasDeferred = !state.queueRunning && queueTaskIsDeferred(state.queue, state.queuePauseBoundary, taskId);
       const result = reorderWaitingTaskWithPauseBoundary(
         state.queue,
         state.queuePauseBoundary,

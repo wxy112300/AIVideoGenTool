@@ -55,6 +55,12 @@ describe("Strata available-resource admission", () => {
     expect(p.check(sample(2, 5, 1.9))).toContain("2GiB");
     expect(p.check({ ...sample(2, 10, 4), commitAvailableBytes: null })).toContain("监测不可用");
   });
+  it("allows the native DeepSeek lane to run below the Qwen GPU warning floor", () => {
+    const pressure = new FileReadResourcePressure();
+    expect(pressure.check(sample(10, 10, .5), { enforceGpuFloor: false })).toBeNull();
+    expect(pressure.knownPressure(sample(10, 10, .5), { enforceGpuFloor: false })).toBeNull();
+    expect(pressure.check(sample(10, 10, .5))).toContain("2GiB");
+  });
   it("requires fresh sustained severe commit shortage, never RAM alone, and resets on recovery or missing samples", () => {
     let now = 0; const events: { event: string }[] = [], p = new FileReadResourcePressure(() => now, e => events.push(e));
     const critical = sample(.1, .4, 4);

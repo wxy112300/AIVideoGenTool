@@ -27,6 +27,7 @@ export function tagInput(root: HTMLElement, initial: string[], suggestions: stri
   };
   input.addEventListener("input", renderChoices);
   input.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Enter") { event.preventDefault(); if (input.value.trim()) add(input.value); }
     if (event.key === "Backspace" && !input.value && tags.length) { tags.pop(); render(); }
   });

@@ -3,6 +3,7 @@ import { mountTooltip, prepareTooltipSources } from "./tooltip";
 import { createStableLabels, mountPointerLight, paintProgressButton } from "./feedback";
 import { mountSegmented, type SegmentPosition } from "./segmented";
 import { renderIcons } from "../icons";
+import { mountModalIsolation } from "./modal-isolation";
 
 let refreshActive: ((root: ParentNode) => void) | undefined;
 
@@ -51,6 +52,7 @@ export function mountSharedUi(root: HTMLElement): () => void {
   const { signal } = events;
   let disposed = false;
   const disposeTooltip = mountTooltip(root);
+  const disposeModalIsolation = mountModalIsolation(root);
   const disposePointerLight = mountPointerLight(root);
   const stableLabel = createStableLabels();
   const refresh = (scope: ParentNode) => {
@@ -112,7 +114,7 @@ export function mountSharedUi(root: HTMLElement): () => void {
   refresh(root);
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-busy"] });
   return () => {
-    disposed = true; observer.disconnect(); events.abort(); disposeTooltip(); disposePointerLight();
+    disposed = true; observer.disconnect(); events.abort(); disposeTooltip(); disposeModalIsolation(); disposePointerLight();
     if (refreshActive === refresh) refreshActive = undefined;
     controls.forEach((control) => control.dispose()); controls.clear();
     segments.forEach(dispose => dispose()); segments.clear(); positions.clear();

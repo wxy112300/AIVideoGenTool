@@ -6,7 +6,6 @@ import { h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAu
 import { buildQwenImage21AnchorWorkflow } from "./image-workflow/qwen-image-2-1.js";
 
 export const TESSERA_ID = "minimax_h3_tessera";
-export const TESSERA_REVISION = "930c882a17fb9a494308ac0f19ed3a73fa9a4ce0";
 export const TESSERA_RECIPE = "tessera-ref2va-taomate-lms-v1";
 export const TESSERA_TAO = "minimax_h3_taomate_fl2va_3step_avg_rank_19_bf16.safetensors";
 export const TESSERA_LMS = "minimax_h3_lms_v1.0_r64.safetensors";

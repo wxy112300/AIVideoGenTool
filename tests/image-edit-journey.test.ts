@@ -9,6 +9,21 @@ afterEach(async () => { journey?.dispose(); journey = undefined; await new Promi
 const settle = () => new Promise(r => setTimeout(r, 0));
 
 describe("image editor actual controls (synthetic external ports)", () => {
+  it.each(["minimax-h3-image-w4a8"])("prepares %s 4K through missing prompt recovery and a real enqueue button", async modelId => {
+    const h = journey = await createJourney();
+    h.coordinator.patchImageDraft({ modelId, qualityProfile: "native-6", pictures: [], aspectRatio: "1:1" });
+    h.setMode("image-edit");
+    expect(document.querySelector('#image-edit-model option[value="minimax-h3-image"]')).toBeNull();
+    expect(h.element<HTMLButtonElement>("#enqueue-image-edit").disabled).toBe(true);
+    h.input("#image-edit-prompt-input", "A garden in sunlight");
+    h.element('[data-image-resolution="4096"]').click();
+    expect(h.state().imageDraft.targetResolution).toBe(4096);
+    expect(h.element("[data-image-output-dimensions]").textContent).toBe("4096 × 4096");
+    expect(h.element("#image-edit-quality").parentElement?.hidden).toBe(true);
+    expect(h.element<HTMLButtonElement>("#enqueue-image-edit").disabled).toBe(false);
+    h.element("#enqueue-image-edit").click(); await settle(); await settle();
+    expect(h.state().queue.at(-1)).toMatchObject({ taskType: "image-generation", modelId, outputWidth: 4096, outputHeight: 4096, qualityProfile: "native-6" });
+  });
   it("deletes Slot 1, promotes the remaining reference, and allows deleting the last slot", async () => {
     const h = journey = await createJourney();
     h.coordinator.patchImageDraft({ modelId: "qwen-image-2-1", pictures: [
