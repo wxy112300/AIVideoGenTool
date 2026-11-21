@@ -1,5 +1,7 @@
 import { assertLongVideoLayout, type LongVideoLayout } from "./layout.js";
-import { editLongVideoScript, scriptPageText, type LongVideoScript, type ScriptIdFactory } from "./script.js";
+import { editLongVideoScript, isScriptAllocation, scriptPageText, type LongVideoScript, type ScriptIdFactory } from "./script.js";
+
+export type LongVideoWritingOperation = "allocate" | "expand";
 
 export interface LongVideoPromptRequest {
   schemaVersion: 1;
@@ -10,6 +12,7 @@ export interface LongVideoPromptRequest {
   brief: { pageId: string; text: string; locked: boolean };
   segments: Array<{ pageId: string; text: string; outline: string; locked: boolean }>;
   targetPageId?: string;
+  operation?: LongVideoWritingOperation;
 }
 export interface LongVideoPromptResult {
   schemaVersion: 1;
@@ -27,16 +30,20 @@ export function assertLongVideoPromptRequest(request: LongVideoPromptRequest): v
       typeof request.sharedPreamble !== "boolean" || !Array.isArray(request.segments) || request.segments.length !== request.layout.chunks ||
       new Set([request.scriptId, ...request.segments.map(p => p.pageId)]).size !== request.segments.length + 1 ||
       request.segments.some(p => !safeId(p.pageId) || !text(p.text) || !text(p.outline, 4000) || typeof p.locked !== "boolean") ||
-      (request.targetPageId !== undefined && !request.segments.some(p => p.pageId === request.targetPageId && !p.locked)) ||
+      (request.operation !== undefined && request.operation !== "allocate" && request.operation !== "expand") ||
+      (request.targetPageId !== undefined && (request.operation === "allocate" || !request.segments.some(p => p.pageId === request.targetPageId && !p.locked))) ||
+      (request.operation === "allocate" && !request.brief.text.trim() && !request.segments.some(p => p.text.trim())) ||
+      (request.operation === "expand" && longVideoPromptTargets(request).some(p => !p.text.trim())) ||
       JSON.stringify(request).length > 100000) throw new Error("Invalid or oversized long-video prompt pages");
 }
-export function longVideoPromptRequest(script: LongVideoScript, targetPageId?: string): LongVideoPromptRequest {
+export function longVideoPromptRequest(script: LongVideoScript, targetPageId?: string, operation?: LongVideoWritingOperation): LongVideoPromptRequest {
   if (script.wholeBuffer || Object.keys(script.pageBuffers ?? {}).length) throw new Error("Commit script edits first");
   const request: LongVideoPromptRequest = { schemaVersion: 1, scriptId: script.brief.id, revision: script.revision,
     layout: structuredClone(script.layout), sharedPreamble: Boolean(script.sharedPreamble),
     brief: { pageId: script.brief.id, text: scriptPageText(script.brief), locked: script.brief.locked },
-    segments: script.segments.map(p => ({ pageId: p.id, text: scriptPageText(p), outline: p.outline, locked: p.locked })),
-    ...(targetPageId ? { targetPageId } : {}) };
+    segments: script.segments.map(p => ({ pageId: p.id, text: scriptPageText(p),
+      outline: isScriptAllocation(p) ? scriptPageText(p).slice(0, 4000) : p.outline, locked: p.locked })),
+    ...(targetPageId ? { targetPageId } : {}), ...(operation ? { operation } : {}) };
   assertLongVideoPromptRequest(request); return request;
 }
 export function longVideoPromptTargets(request: LongVideoPromptRequest) {
@@ -46,15 +53,16 @@ export function parseLongVideoPromptResult(raw: string, request: LongVideoPrompt
   const result = JSON.parse(raw) as LongVideoPromptResult;
   const targets = longVideoPromptTargets(request);
   if (!result || result.schemaVersion !== 1 || result.scriptId !== request.scriptId || result.revision !== request.revision ||
-      (result.brief !== undefined && (request.targetPageId || request.brief.locked || !text(result.brief) || !result.brief.trim())) ||
+      (result.brief !== undefined && (request.operation || request.targetPageId || request.brief.locked || !text(result.brief) || !result.brief.trim())) ||
       !Array.isArray(result.segments) || result.segments.length !== targets.length || result.segments.some((p, i) =>
         p.pageId !== targets[i]!.pageId || !text(p.text) || !p.text.trim() || !text(p.outline, 4000) || !p.outline.trim())) throw new Error("Incomplete or mismatched long-video prompt result; original script preserved");
   return structuredClone(result);
 }
 export function applyLongVideoPromptResult(script: LongVideoScript, request: LongVideoPromptRequest, raw: string, id: ScriptIdFactory): LongVideoScript {
-  if (JSON.stringify(longVideoPromptRequest(script, request.targetPageId)) !== JSON.stringify(request)) throw new Error("Script changed while enhancement was running; original script preserved");
+  if (JSON.stringify(longVideoPromptRequest(script, request.targetPageId, request.operation)) !== JSON.stringify(request)) throw new Error("Script changed while enhancement was running; original script preserved");
   const output = parseLongVideoPromptResult(raw, request);
-  const edits = output.segments.map(p => ({ pageId: p.pageId, text: p.text }));
+  const stage = request.operation === "allocate" ? "allocation" : "prompt";
+  const edits: Parameters<typeof editLongVideoScript>[1] = output.segments.map(p => ({ pageId: p.pageId, text: p.text, stage }));
   if (output.brief !== undefined) edits.unshift({ pageId: script.brief.id, text: output.brief });
   const next = editLongVideoScript(script, edits, script.revision, "model", id);
   let adopted = false;

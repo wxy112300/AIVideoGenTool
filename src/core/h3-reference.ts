@@ -3,6 +3,12 @@ import type {
   H3ReferenceRole,
   H3ReferenceSlot
 } from "../types.js";
+import { modelCatalog } from "./catalog/index.js";
+
+export function isMiniMaxH3R2vModel(modelId: string): boolean {
+  return modelCatalog.get(modelId)?.definition.variant === "r2v" ||
+    modelId === "minimax_h3_ref2va_turbo";
+}
 
 const referenceRoles = new Set<H3ReferenceRole>([
   "subject",
@@ -47,6 +53,8 @@ export function normalizeH3ReferenceSlots(value: unknown): H3ReferenceSlot[] {
       mediaType,
       mediaPath,
       role,
+      ...(mediaType === "image" && typeof entry.guideSeconds === "number" && Number.isFinite(entry.guideSeconds)
+        ? { guideSeconds: entry.guideSeconds } : {}),
       note: typeof entry.note === "string" ? entry.note : "",
       ...(width && height ? { width, height } : {})
     }];

@@ -127,6 +127,7 @@
 .create-whole-block { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .create-whole-block:first-child { border-top: 0; }
 .create-whole-block code { color: var(--accent-text); font-size: var(--fs-12); line-height: 1.75; }
+.create-whole-block .create-whole-divider { grid-column: 1 / -1; }
 .create-whole-block p { min-height: 1.75em; margin: 0; padding: 0; color: var(--text-1); font-size: var(--fs-13); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
 .create-whole-block p:focus-visible { box-shadow: 0 0 0 2px var(--focus-ring); border-radius: var(--r-sm); }
 .create-whole-block[data-locked] { opacity: .65; }

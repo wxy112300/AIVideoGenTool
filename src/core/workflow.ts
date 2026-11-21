@@ -48,6 +48,9 @@ import { normalizeMiniMaxH3ModelPatchChain as normalizeLegacyMiniMaxH3ModelPatch
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
 import { h3MotionContextSavePrefixForTask } from "./h3-motion-context.js";
+import { attachH3TimedGuides, h3GuideSamplingPrompt, resolveH3TimedGuides } from "./h3-timed-guides.js";
+import { isMiniMaxH3R2vModel } from "./h3-reference.js";
+export { isMiniMaxH3R2vModel } from "./h3-reference.js";
 import {
   h3LatentSaveModeFor,
   h3LatentSaveModeSavesJointAv,
@@ -60,6 +63,7 @@ export interface WorkflowContext {
   sourceVideo: string;
   h3ReferenceImages: string[];
   h3ReferenceVideos: string[];
+  h3TimedGuideFiles: Record<number, string>;
   width: number;
   height: number;
   frames: number;
@@ -176,11 +180,6 @@ export function isRetiredVideoModel(modelId: string): boolean {
 
 export function isMiniMaxH3TurboModel(modelId: string): boolean {
   return modelCatalog.get(modelId)?.definition.variant === "turbo";
-}
-
-export function isMiniMaxH3R2vModel(modelId: string): boolean {
-  return modelCatalog.get(modelId)?.definition.variant === "r2v" ||
-    modelId === "minimax_h3_ref2va_turbo";
 }
 
 export function isMiniMaxH3Model(modelId: string): boolean {
@@ -2131,7 +2130,9 @@ export function renderWorkflow(
             task.h3ContinuumSequence?.chunkSeconds ?? task.duration,
             context.locale
           )
-        : task.prompt,
+        : task.taskType === "generation" && task.h3TimedGuides?.length && !isMiniMaxH3R2vModel(task.modelId)
+          ? h3GuideSamplingPrompt(task.prompt, task.h3TimedGuides)
+          : task.prompt,
       task.videoLoras
     ),
     NEGATIVE_PROMPT: "",
@@ -2532,6 +2533,16 @@ export function renderWorkflow(
       }
     };
     node.inputs.images = [trimId, 0];
+  }
+  if (task.taskType === "generation" && task.h3TimedGuides?.length) {
+    const guides = resolveH3TimedGuides(task.h3TimedGuides, task.duration, context.frames);
+    if (isMiniMaxH3R2vModel(task.modelId)) {
+      attachH3TimedGuides(workflow, guides, true);
+    } else if (context.h3TimedGuideFiles) attachH3TimedGuides(workflow, guides.map(guide => {
+      const filename = context.h3TimedGuideFiles?.[guide.picture];
+      if (!filename) throw new Error(`Missing upload for Picture ${guide.picture}.`);
+      return { filename, frame: guide.frame };
+    }));
   }
   return workflow;
 }

@@ -138,7 +138,7 @@ export function parseComfyProcessInfo(output: string): ComfyProcessInfo[] {
   }
 }
 
-export async function allComfyProcessInfo(settings: Settings, dependencies: ComfyShutdownDependencies): Promise<ComfyProcessInfo[]> {
+async function inspectComfyProcesses(settings: Settings, dependencies: ComfyShutdownDependencies): Promise<{ processes: ComfyProcessInfo[]; complete: boolean }> {
   const python = await dependencies.findComfyPython(settings).catch(() => "");
   const script = [
     "$python = $env:AIVIDEO_COMFY_PYTHON.ToLower();",
@@ -162,13 +162,17 @@ export async function allComfyProcessInfo(settings: Settings, dependencies: Comf
         env: { ...process.env, AIVIDEO_COMFY_PYTHON: python }
       }
     );
-    return parseComfyProcessInfo(stdout);
+    return { processes: parseComfyProcessInfo(stdout), complete: true };
   } catch (error) {
     appLogger.warn("comfy", "process-inventory-failed", "Unable to inspect the ComfyUI process tree", {
       error: safeLogErrorMessage(error)
     });
-    return [];
+    return { processes: [], complete: false };
   }
+}
+
+export async function allComfyProcessInfo(settings: Settings, dependencies: ComfyShutdownDependencies): Promise<ComfyProcessInfo[]> {
+  return (await inspectComfyProcesses(settings, dependencies)).processes;
 }
 
 export async function forceStopComfyProcesses(
@@ -178,15 +182,17 @@ export async function forceStopComfyProcesses(
   if (process.platform !== "win32") {
     return { ok: false, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.stopWindowsOnly) };
   }
-  const processes = await allComfyProcessInfo(settings, dependencies);
+  const inventory = await inspectComfyProcesses(settings, dependencies);
+  const processes = inventory.processes;
   let listenerProcessId: number | null = null;
+  let listenerChecked = true;
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (endpoint) {
     const netstat = await execFileAsync(
       "netstat.exe",
       ["-ano", "-p", "tcp"],
       { encoding: "utf8", timeout: 5000, windowsHide: true }
-    ).catch(() => ({ stdout: "" }));
+    ).catch(() => { listenerChecked = false; return { stdout: "" }; });
     listenerProcessId = listeningPid(netstat.stdout, endpoint.port);
   }
   const ownedProcessIds = dependencies.ownedProcessIds?.() ?? [];
@@ -200,6 +206,9 @@ export async function forceStopComfyProcesses(
     processNames: processes.map((item) => item.name),
     commandLines: processes.map((item) => item.commandLine)
   });
+  if (!processIds.size && inventory.complete && listenerChecked) {
+    return { ok: true, message: createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.noProcess) };
+  }
   for (const processId of processIds) {
     try {
       const result = await execFileAsync(

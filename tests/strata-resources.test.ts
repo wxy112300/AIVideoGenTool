@@ -102,6 +102,17 @@ describe("Strata operation-local resource watcher", () => {
     expect(abort.mock.calls[0][0].message).toContain("持续不可用");
     await vi.advanceTimersByTimeAsync(1000); expect(read).toHaveBeenCalledTimes(3); await dispose();
   });
+  it("keeps a native inference alive through unavailable probes and observes recovery", async () => {
+    const read = vi.fn().mockResolvedValue(missing), abort = vi.fn(), events = vi.fn();
+    const dispose = watchStrataResources(abort, read, 10, { onDiagnostic: events, retryProbeFailure: true });
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(abort).not.toHaveBeenCalled();
+    expect(events.mock.calls.some(([e]) => e.event === "unavailable")).toBe(true);
+    read.mockResolvedValue(safe);
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(read.mock.calls.length).toBeGreaterThan(3); expect(abort).not.toHaveBeenCalled();
+    await dispose(); expect(vi.getTimerCount()).toBe(0);
+  });
   it("does not carry a preceding operation's retry into a later enhancement", async () => {
     const previousAbort = vi.fn(), nextAbort = vi.fn(), oldEvents = vi.fn();
     const oldRead = vi.fn().mockResolvedValue(missing);

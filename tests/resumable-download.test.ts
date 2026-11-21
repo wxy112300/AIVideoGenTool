@@ -36,12 +36,53 @@ describe("resumable software download", () => {
     expect(logged).not.toContain("secret");
     expect(await fs.readFile(destination, "utf8")).toBe("keep");
   });
-  it("shares one ten-minute deadline across all three attempts", async () => {
+  it("shares one ten-minute deadline across all three attempts when no bytes are received", async () => {
     const { destination } = await fixture(); let now = 1000; vi.spyOn(Date, "now").mockImplementation(() => now);
     const budgets: number[] = [];
     const run = vi.fn(async (_args: string[], timeout: number) => { budgets.push(timeout); now += 200_000; throw fail(56); });
     await expect(downloadWithResume({ url: "https://example.invalid/file", destination, totalBytes: 9, run, wait })).rejects.toThrow("curl 56");
     expect(budgets).toEqual([600_000, 400_000, 200_000]);
+  });
+  it("resets the ten-minute inactivity budget when download progress is made across >10 minutes", async () => {
+    const { destination } = await fixture(); let now = 1000; vi.spyOn(Date, "now").mockImplementation(() => now);
+    const budgets: number[] = [];
+    const resets: number[] = [];
+    const run = vi.fn(async (_args: string[], timeout: number, onActivity?: (reset: (ms: number) => void) => void) => {
+      budgets.push(timeout);
+      onActivity?.((ms) => resets.push(ms));
+      if (budgets.length === 1) {
+        await fs.writeFile(destination, "123");
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        now += 700_000;
+        await fs.appendFile(destination, "456");
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        throw fail(56);
+      }
+      if (budgets.length === 2) {
+        now += 500_000;
+        throw fail(56);
+      }
+      await fs.appendFile(destination, "789");
+    });
+    await downloadWithResume({ url: "https://example.invalid/file", destination, totalBytes: 9, run, wait });
+    expect(budgets).toEqual([600_000, 600_000, 100_000]);
+    expect(resets).toContain(600_000);
+    expect(await fs.readFile(destination, "utf8")).toBe("123456789");
+  });
+  it("reports a no-response timeout when a download stalls with no new bytes, but extends while active", async () => {
+    let resetTimeout: ((ms?: number) => void) | undefined;
+    const active = runLoggedProcess(process.execPath, ["-e", "setTimeout(() => process.exit(0), 450)"], {
+      timeoutMs: 250,
+      onResetTimeout: (reset) => { resetTimeout = reset; }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    resetTimeout?.(1000);
+    await expect(active).resolves.toBe("");
+
+    await expect(runLoggedProcess(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], {
+      timeoutMs: 80,
+      onResetTimeout: () => {}
+    })).rejects.toThrow("无响应");
   });
   it("resumes real bytes after curl56, then reuses the partial across a separate user retry without resetting progress", async () => {
     const { destination } = await fixture(), onProgress = vi.fn();

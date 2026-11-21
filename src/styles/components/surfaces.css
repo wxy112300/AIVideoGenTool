@@ -4,6 +4,13 @@
   background: var(--surface-3); color: var(--text-1); box-shadow: var(--shadow-float);
   font: var(--fs-12)/var(--lh-body) var(--font-sans); white-space: pre-line; overflow-wrap: anywhere; pointer-events: auto;
 }
+
+.confirm-dialog.window-shutdown-dialog {
+  border-color: var(--line-strong); color: var(--text-1); background: var(--surface-2); box-shadow: var(--shadow-float);
+}
+.window-shutdown-dialog .confirm-icon { border: 0; color: var(--text-2); background: none; }
+.window-shutdown-dialog .confirm-copy p { color: var(--text-2); }
+.window-shutdown-backdrop, .window-shutdown-dialog { animation: none; }
 [data-ui-tooltip-source][hidden] { display: none !important; }
 .ui-tooltip > span, .ui-tooltip > strong, .ui-tooltip > small { display: block; }
 .ui-tooltip b { margin-right: var(--sp-2); }

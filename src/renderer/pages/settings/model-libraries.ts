@@ -31,5 +31,8 @@ export function modelLibrariesFromForm(base: Settings): Pick<Settings, "modelDir
   if (inputs.length === 1 && inputs[0]?.dataset.autoDirectory !== undefined && inputs[0]?.dataset.autoDirectory === inputs[0]?.value.trim() && !base.modelDirectories?.length && !base.modelDirectory.trim())
     return { modelDirectory: "", modelDirectories: base.modelDirectories, modelDownloadDirectory: base.modelDownloadDirectory };
   const rows = inputs.map(input => input.value.trim());
+  const configuredRows = modelLibraryEntries(base);
+  if (rows.length === configuredRows.length && rows.every((directory, index) => directory === configuredRows[index]))
+    return { modelDirectory: base.modelDirectory, modelDirectories: base.modelDirectories, modelDownloadDirectory: base.modelDownloadDirectory };
   return { modelDirectories: rows.length ? rows : [""], modelDirectory: rows[0] ?? "", modelDownloadDirectory: base.modelDownloadDirectory };
 }

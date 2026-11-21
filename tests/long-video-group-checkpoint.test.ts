@@ -26,6 +26,14 @@ function fixture(before = 0, accepted = 1, planned = 3, full = false): Continuum
 const request = (r: ContinuumGroupReceipt): ContinuumGroupRequest => ({ ...r, expected_prefix_chunks: r.reused_count });
 
 describe("Continuum physical group checkpoints", () => {
+  it("accepts a complete fresh Full Run without inventing reuse eligibility", () => {
+    const full = { ...fixture(0, 6, 6, true), execution_mode: "full_run" as const, resume_safe: false };
+    expect(acceptContinuumGroupCheckpoint(request(full), full).resume_safe).toBe(false);
+    expect(() => acceptContinuumGroupCheckpoint({ ...request(full), execution_mode: undefined }, full)).toThrow(/frozen/);
+    expect(() => parseContinuumGroupReceipt({ ...full, accepted_chunks: 5, sequence_complete: false })).toThrow();
+    expect(() => parseContinuumGroupReceipt({ ...full, reused_count: 1, generated_count: 5 })).toThrow();
+    expect(() => parseContinuumGroupReceipt({ ...full, execution_mode: undefined })).toThrow(/reusable/);
+  });
   it("publishes an immutable restart-readable checkpoint and refuses a conflicting duplicate callback", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "continuum-group-checkpoint-"));
     try {

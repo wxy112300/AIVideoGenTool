@@ -4,6 +4,8 @@ import { compileContinuumGroupWorkflow, type ContinuumGroupProfile } from "../sr
 import type { ContinuumGroupRequest } from "../src/core/long-video/group-checkpoint";
 import { submitContinuumGroup } from "../electron/services/long-video-continuum";
 import { createDefaultSettings } from "../src/core/defaults";
+import { createLongVideoLayout } from "../src/core/long-video/layout";
+import { longVideoGuideCues, longVideoGuideSamplingPrompt } from "../src/core/long-video/timed-guides";
 
 const templatePath = new URL("../workflows/minimax_h3_continuum_v38_managed_extend_api.json", import.meta.url);
 const template = () => JSON.parse(readFileSync(templatePath, "utf8"));
@@ -12,6 +14,65 @@ const profile: ContinuumGroupProfile = { diffusionModel: "model.safetensors", te
 afterEach(() => vi.restoreAllMocks());
 
 describe("internal Continuum group adapter", () => {
+  it("connects a native tail independently from the opening frame", () => {
+    const graph = compileContinuumGroupWorkflow(template(), { ...request, execution_mode: "full_run" },
+      { ...profile, executionMode: "full_run", lastImage: "native-tail.png" });
+    const link = graph["12"].inputs.last_frame as [string, number];
+    expect(graph[link[0]].inputs.image).toBe("native-tail.png");
+    expect(graph["12"].inputs.first_frame).toEqual(["8", 0]);
+  });
+
+  it("feeds up to nine R2V images through native reference sockets and reuses the timed image", () => {
+    const refImages = Array.from({ length: 9 }, (_, index) => `picture-${index + 1}.png`);
+    const graph = compileContinuumGroupWorkflow(template(), { ...request, execution_mode: "full_run" }, {
+      ...profile, firstImage: undefined, lora: undefined, attention: "sdpa", executionMode: "full_run",
+      referenceImages: refImages, timedGuides: [{ picture: 4, filename: refImages[3]!, absoluteFrame: 124 }],
+      prompts: ["<Picture 1> enters.", "<Picture 4> turns."],
+      h3: { modelId: "minimax_h3_ref2va", videoLoras: [], sparseAttentionMode: "off",
+        runtimeMode: "compatibility", comfyCompilerMode: "disabled", spectrumModelAwareMode: "off" }
+    });
+    const sampler = graph["12"].inputs;
+    expect(sampler.first_frame).toBeUndefined();
+    expect(sampler.sequence_prompt).toContain("<Picture 4>");
+    const imageFor = (link: unknown) => graph[(link as [string, number])[0]].inputs.image;
+    expect([1, 2, 3].map(n => imageFor(sampler[`reference_image_${n}`]))).toEqual(refImages.slice(0, 3));
+    const bundle = graph[(sampler.image_references as [string, number])[0]];
+    expect(bundle.class_type).toBe("H3ContinuumReferenceImages");
+    expect(Object.values(bundle.inputs).map(imageFor)).toEqual(refImages.slice(3));
+    const guide = graph[(sampler.guide as [string, number])[0]];
+    expect(guide.inputs).toMatchObject({ image: bundle.inputs.reference_image_4, absolute_frame: 124 });
+    expect(Object.values(graph).filter(node => node.class_type === "LoadImage")).toHaveLength(9);
+  });
+
+  it("passes assembled frame numbers across the snapped seam and leaves the official sampler in place", () => {
+    const cues = longVideoGuideCues([
+      { picture: 1, mediaPath: "before.png", seconds: 123 / 24 },
+      { picture: 2, mediaPath: "after.png", seconds: 124 / 24 },
+      { picture: 3, mediaPath: "tail.png", seconds: 10 }
+    ], createLongVideoLayout(10, 2));
+    expect(cues.map(cue => [cue.picture, cue.frame, cue.segment, cue.localSeconds])).toEqual([
+      [1, 123, 1, 123 / 24], [2, 124, 2, 0], [3, 239, 2, 115 / 24]
+    ]);
+    expect(longVideoGuideSamplingPrompt("A turn at <Picture 2>.", cues, 2)).toContain("keyframe at 0s");
+    const graph = compileContinuumGroupWorkflow(template(), { ...request, execution_mode: "full_run" }, {
+      ...profile, executionMode: "full_run", firstImage: undefined,
+      timedGuides: cues.map(cue => ({ picture: cue.picture, filename: cue.mediaPath, absoluteFrame: cue.frame }))
+    });
+    const nodes = Object.entries(graph).filter(([, node]) => node.class_type === "LocalVideoStudioH3ContinuumTimedGuide");
+    expect(nodes.map(([, node]) => node.inputs.absolute_frame)).toEqual([123, 124, 239]);
+    expect(nodes[1]![1].inputs.previous).toEqual([nodes[0]![0], 0]);
+    expect(graph["12"]).toMatchObject({ class_type: "H3ContinuumSamplerV38", inputs: { guide: [nodes[2]![0], 0] } });
+    expect(graph["12"].inputs.first_frame).toBeUndefined();
+  });
+  it("uses official Full Run for a frozen fresh sequence and keeps legacy Review unchanged", () => {
+    const graph = compileContinuumGroupWorkflow(template(), { ...request, execution_mode: "full_run" }, { ...profile, executionMode: "full_run", spectrumMode: "balanced" });
+    expect(graph["12"].inputs.generation_mode).toBe("Full Run");
+    expect(graph["12"].inputs.show_preview).toBe(template()["12"].inputs.show_preview);
+    expect(graph["24"].inputs.execution_mode).toBe("full_run");
+    expect(Object.values(graph).some(n => n.class_type === "SpectrumApplyMiniMaxH3")).toBe(true);
+    expect(compileContinuumGroupWorkflow(template(), request, profile)["12"].inputs.generation_mode).toBe("Review Each Chunk");
+    expect(() => compileContinuumGroupWorkflow(template(), request, { ...profile, executionMode: "full_run" })).toThrow(/Full Run/);
+  });
   it.each(["rife2x", "rife4x"] as const)("supports high-resolution delivery with %s without changing sampling or audio", interpolation => {
     const raw = compileContinuumGroupWorkflow(template(), request, { ...profile, width: 3840, height: 2160 });
     const delivered = compileContinuumGroupWorkflow(template(), request, { ...profile, width: 3840, height: 2160, delivery: { frameInterpolation: interpolation } });

@@ -4,9 +4,15 @@ import { normalizeMiniMaxH3ModelPatchChain } from "../h3-model-patch-workflow.js
 import { appendContinuumDelivery, type ContinuumDelivery } from "./delivery.js";
 import type { H3SpectrumMode, H3AttentionMode, H3SparseAttentionMode, H3RuntimeMode, H3ComfyCompilerMode, VideoLoraSelection, H3SpectrumModelAwareMode } from "../../types.js";
 
+type ContinuumReferenceModel = "minimax_h3_ref2va" | "minimax_h3_ref2va_int4";
+
+export function isContinuumReferenceModel(modelId: string): modelId is ContinuumReferenceModel {
+  return modelId === "minimax_h3_ref2va" || modelId === "minimax_h3_ref2va_int4";
+}
+
 /** Optional for old Runs: absent retains the original adapter graph exactly. */
 export interface ContinuumH3Options {
-  modelId: "minimax_h3_fl2va";
+  modelId: "minimax_h3_fl2va" | ContinuumReferenceModel;
   videoLoras: VideoLoraSelection[];
   sparseAttentionMode: H3SparseAttentionMode;
   runtimeMode: H3RuntimeMode;
@@ -15,6 +21,8 @@ export interface ContinuumH3Options {
 }
 
 export interface ContinuumGroupProfile {
+  /** Absent on saved executions retains the original per-group Review route. */
+  executionMode?: "full_run";
   diffusionModel: string;
   textEncoder: string;
   videoVae: string;
@@ -28,6 +36,10 @@ export interface ContinuumGroupProfile {
   prompts: string[];
   /** Stable uploaded input retained for every group of the Run. */
   firstImage?: string;
+  lastImage?: string;
+  referenceImages?: string[];
+  /** Uploaded images anchored to the final assembled 24fps timeline. */
+  timedGuides?: { picture: number; filename: string; absoluteFrame: number }[];
   attention: "sage" | "sage-triton" | "comfy-kitchen" | "sdpa";
   h3?: ContinuumH3Options;
   /** Output-only processing, excluded from the sampling Run identity. */
@@ -47,17 +59,35 @@ export function assertContinuumGroupProfile(profile: ContinuumGroupProfile, plan
       ![profile.diffusionModel, profile.textEncoder, profile.videoVae, profile.sampler, profile.scheduler].every(v => v.trim()) ||
       !["sage", "sage-triton", "comfy-kitchen", "sdpa"].includes(profile.attention) ||
       (profile.spectrumMode !== undefined && !["off", "balanced"].includes(profile.spectrumMode)) ||
+      (profile.executionMode !== undefined && profile.executionMode !== "full_run") ||
       (profile.delivery !== undefined && !["off", "rife2x", "rife4x"].includes(profile.delivery.frameInterpolation)) ||
       (profile.lora && (!profile.lora.filename.trim() || !Number.isFinite(profile.lora.strength) || profile.lora.strength < 0 || profile.lora.strength > 2))) {
     throw new Error("Continuum group frozen execution profile invalid");
   }
   if (profile.h3) {
     const h = profile.h3;
-    if (h.modelId !== "minimax_h3_fl2va" || !Array.isArray(h.videoLoras) ||
+    if ((h.modelId !== "minimax_h3_fl2va" && !isContinuumReferenceModel(h.modelId)) || !Array.isArray(h.videoLoras) ||
         h.videoLoras.some(l => !l || !l.id?.trim() || !l.filename?.trim() || !Number.isFinite(l.strength) || l.strength < 0 || l.strength > 2) ||
         !["off", "auto", "sol-attn", "native-sla", "vsa"].includes(h.sparseAttentionMode) ||
         !["compatibility", "native"].includes(h.runtimeMode) || !["auto", "disabled"].includes(h.comfyCompilerMode) ||
         !["off", "schedule", "schedule_confidence", "full"].includes(h.spectrumModelAwareMode) || profile.lora) throw new Error("Invalid frozen H3 options");
+  }
+  const referenceModel = Boolean(profile.h3 && isContinuumReferenceModel(profile.h3.modelId));
+  if ((referenceModel && (!profile.referenceImages?.length || profile.firstImage || profile.lastImage)) ||
+      (profile.referenceImages !== undefined && (!referenceModel || !Array.isArray(profile.referenceImages) ||
+        profile.referenceImages.length > 9 || profile.referenceImages.some(filename => !filename?.trim()))) ||
+      (profile.lastImage !== undefined && (!profile.firstImage || !profile.lastImage.trim() || profile.timedGuides))) {
+    throw new Error("Invalid frozen Continuum reference images or tail frame");
+  }
+  const lastFrame = Math.round(plannedChunks * profile.chunkSeconds * 24) - 1;
+  if (profile.timedGuides !== undefined && (!Array.isArray(profile.timedGuides) || !profile.timedGuides.length ||
+      profile.timedGuides.some((guide, index, guides) => !guide?.filename?.trim() ||
+        !Number.isSafeInteger(guide.picture) || guide.picture < 1 ||
+        (referenceModel && profile.referenceImages?.[guide.picture - 1] !== guide.filename) ||
+        !Number.isInteger(guide.absoluteFrame) || guide.absoluteFrame < 0 || guide.absoluteFrame > lastFrame ||
+        (index > 0 && guide.absoluteFrame <= guides[index - 1]!.absoluteFrame)) ||
+      new Set(profile.timedGuides.map(guide => guide.picture)).size !== profile.timedGuides.length)) {
+    throw new Error("Invalid Continuum output-timeline keyframes");
   }
 }
 
@@ -88,6 +118,8 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     throw new Error("Continuum group request has invalid Run/prefix identity");
   }
   assertContinuumGroupProfile(profile, request.planned_chunks);
+  if ((request.execution_mode === "full_run") !== (profile.executionMode === "full_run") ||
+      (request.execution_mode === "full_run" && request.expected_prefix_chunks !== 0)) throw new Error("Full Run requires a new complete sequence request");
   const tokens: Record<string, unknown> = {
     H3_DIFFUSION_MODEL: profile.diffusionModel, H3_TEXT_ENCODER: profile.textEncoder, H3_VIDEO_VAE: profile.videoVae,
     H3_BOUNDARY_FRAME: profile.firstImage || "", WIDTH: profile.width, HEIGHT: profile.height, SEED: profile.seed,
@@ -118,7 +150,9 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
   graph["12"].inputs.prompt_mode = "List";
   // Frontend seed widget metadata is not a Python/API input in current V38.
   delete graph["12"].inputs.control_after_generate;
-  graph["12"].inputs.show_preview = false;
+  // Official preview callbacks also publish step progress. Retain the template
+  // choice for Full Run; only old Review snapshots keep the original override.
+  if (profile.executionMode !== "full_run") graph["12"].inputs.show_preview = false;
   sampler.inputs.sampler_name = profile.sampler;
   scheduler.inputs.scheduler = profile.scheduler;
   scheduler.inputs.steps = profile.steps;
@@ -127,9 +161,49 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     delete graph["12"].inputs.first_frame;
     graph["12"].inputs.aspect = "16:9";
   }
+  let nextMediaId = Math.max(100, ...Object.keys(graph).map(id => Number(id) || 0)) + 1;
+  const loadImage = (filename: string): [string, number] => {
+    const id = String(nextMediaId++);
+    graph[id] = { class_type: "LoadImage", inputs: { image: filename } };
+    return [id, 0];
+  };
+  if (profile.lastImage) graph["12"].inputs.last_frame = loadImage(profile.lastImage);
+  const referenceLinks = profile.referenceImages?.map(loadImage) ?? [];
+  for (const [index, link] of referenceLinks.slice(0, 3).entries()) graph["12"].inputs[`reference_image_${index + 1}`] = link;
+  if (referenceLinks.length > 3) {
+    const id = String(nextMediaId++);
+    graph[id] = { class_type: "H3ContinuumReferenceImages", inputs:
+      Object.fromEntries(referenceLinks.slice(3).map((link, index) => [`reference_image_${index + 4}`, link])) };
+    graph["12"].inputs.image_references = [id, 0];
+  }
+  if (profile.timedGuides?.length) {
+    let previous: [string, number] | undefined;
+    for (const guide of profile.timedGuides.filter(guide => guide.absoluteFrame !== 0 || !profile.firstImage)) {
+      const image = profile.referenceImages?.[guide.picture - 1] === guide.filename
+        ? referenceLinks[guide.picture - 1]! : loadImage(guide.filename);
+      const guideId = String(nextMediaId++);
+      graph[guideId] = { class_type: "LocalVideoStudioH3ContinuumTimedGuide", inputs: {
+        image, absolute_frame: guide.absoluteFrame, ...(previous ? { previous } : {})
+      } };
+      previous = [guideId, 0];
+    }
+    if (previous) graph["12"].inputs.guide = previous;
+  }
   graph["24"] = { class_type: "LocalVideoStudioH3ContinuumGroupReceipt", inputs: {
     status: ["12", 3], assembly_plan: ["12", 2], ...structuredClone(request), sampling_evidence_version: 2
   } };
+  if (profile.executionMode === "full_run" && Array.isArray(graph["12"].inputs.guide)) {
+    const checkId = String(Math.max(...Object.keys(graph).map(id => Number(id) || 0)) + 1);
+    for (const node of Object.values(graph)) {
+      for (const [name, link] of Object.entries(node.inputs)) {
+        if (Array.isArray(link) && link[0] === "12" && link[1] === 2) node.inputs[name] = [checkId, 0];
+      }
+    }
+    graph[checkId] = { class_type: "LocalVideoStudioH3ContinuumGuidePlanCheck", inputs: {
+      plan: ["12", 2], guide: graph["12"].inputs.guide
+    } };
+  }
+  if (profile.executionMode === "full_run") graph["12"].inputs.generation_mode = "Full Run";
   if (profile.h3) {
     const task = { taskType: "generation" as const, modelId: profile.h3.modelId, videoLoras: profile.h3.videoLoras,
       attentionMode: continuumAttentionMode(profile), spectrumMode: profile.spectrumMode ?? "off", h3ReferenceSlots: [] };

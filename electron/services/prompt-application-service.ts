@@ -78,6 +78,7 @@ import type { StrataChatRequest } from "./strata-service.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { enhanceLongVideoWithStrata } from "./long-video-prompt.js";
 import { assertLongVideoPromptRequest } from "../../src/core/long-video/enhancement.js";
+import { isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
 
 type PromptBackend = Exclude<ReturnType<typeof promptModelBackend>, null>;
 type PromptWorker = Promise<unknown>;
@@ -294,8 +295,13 @@ export class PromptApplicationService {
     validateH3ReferenceAutoPrompt(request, settings.uiLocale);
     if (request.longVideo) {
       assertLongVideoPromptRequest(request.longVideo);
-      if (promptBackend !== "strata" || request.mode !== "h3-vision" || request.modelId !== "minimax_h3_fl2va" ||
-          request.h3PromptMode !== "I2VA" || !request.imagePath || request.extensionSource || (request.imagePaths?.length ?? 1) !== 1) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
+      const referenceModel = isContinuumReferenceModel(request.modelId);
+      const hasLongVideoImages = referenceModel || request.h3TimedGuideContext || request.imagePaths?.length === 2
+        ? Boolean(request.referenceContext?.trim() && request.imagePaths?.length && request.imagePaths.every(image => image.trim()))
+        : Boolean(request.imagePath && (request.imagePaths?.length ?? 1) === 1);
+      if (promptBackend !== "strata" || request.mode !== "h3-vision" || (!referenceModel && request.modelId !== "minimax_h3_fl2va") ||
+          request.h3PromptMode !== (referenceModel ? "R2V" : "I2VA") ||
+          !hasLongVideoImages || request.extensionSource) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
     }
     if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request) && !request.longVideo) {
       throw new Error(this.message(settings, uiKeys.promptService.promptRequired));

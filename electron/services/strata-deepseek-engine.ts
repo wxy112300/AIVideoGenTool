@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Settings } from "../../src/types.js";
 import { STRATA_DSV41_BYTES, STRATA_DSV41_FILES, STRATA_DSV41_MANIFEST_SHA256, STRATA_DSV41_PREVIOUS_MANIFEST_SHA256, STRATA_DSV41_SHA256, STRATA_DSV41_URL, STRATA_DSV41_VERSION } from "../../src/core/catalog/dependencies/strata-deepseek.js";
 import { checkInstallationCancelled } from "./installation-cancellation.js";
+import { deepSeekSourceDirectory } from "./strata-deepseek-source.js";
 
 export const deepSeekEngineDirectory = (install: string) => path.join(install, "engine-dsv41");
 export async function deepSeekEngineIssue(install: string, includePrevious = true): Promise<string | null> {
@@ -43,8 +44,8 @@ export async function installDeepSeekEngine(install: string, settings: Settings,
   await runtime.run("tar.exe", ["-xzf", archive, "-C", root], { cwd: install, onLog: log });
   if (!await hasDeepSeekEngine(install, false)) throw new Error("DeepSeek engine: incomplete package / manifest mismatch");
   await runtime.run(path.join(install, ".venv", "Scripts", "python.exe"), ["-B", "-c",
-    `from pathlib import Path; from strata_control import signing,engine_component as ec; signing.install_component_verifier(signing.load_trusted_keys()); c=ec.read_manifest(Path('engine-dsv41')); assert c.entrypoint=='strata-dsv41.exe' and c.version=='${STRATA_DSV41_VERSION}' and c.platform=='windows-x86_64' and c.backend=='cuda'; ec.verify_signature(c,{ec.ENV_REQUIRE_SIGNED:'1'}); ec.verify(c,full=True)`],
-  { cwd: install, timeoutMs: 120_000, onLog: log });
+    `import sys; from pathlib import Path; from strata_control import signing,engine_component as ec; signing.install_component_verifier(signing.load_trusted_keys()); c=ec.read_manifest(Path(sys.argv[1])); assert c.entrypoint=='strata-dsv41.exe' and c.version=='${STRATA_DSV41_VERSION}' and c.platform=='windows-x86_64' and c.backend=='cuda'; ec.verify_signature(c,{ec.ENV_REQUIRE_SIGNED:'1'}); ec.verify(c,full=True)`, root],
+  { cwd: deepSeekSourceDirectory(install), timeoutMs: 120_000, onLog: log });
   checkInstallationCancelled();
   await fs.unlink(archive);
 }

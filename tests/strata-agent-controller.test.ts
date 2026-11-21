@@ -45,6 +45,10 @@ describe("one-click transaction using process mocks only", () => {
       const plan = await controller.dispatch({ action: "installationPlan", mode: "update", preferences }) as any;
       expect(plan.items).toEqual([expect.objectContaining({ name: "Strata", target: managedStrataDirectory() })]);
       expect(plan.repair).toBe(true); expect(engine).not.toHaveBeenCalled();
+      fake.doctor.mockResolvedValue({ ...base, strata: { managedInstalled: true, installedVersion: "0.2.13", installDirectory: managedStrataDirectory() } });
+      const upgrade = await controller.dispatch({ action: "installationPlan", mode: "update", preferences }) as any;
+      expect(upgrade.items).toEqual([expect.objectContaining({ name: "Strata", version: "0.2.17", target: managedStrataDirectory() })]);
+      expect(upgrade.repair).toBe(true); expect(engine).not.toHaveBeenCalled();
       fake.doctor.mockResolvedValue({ ...base, strata: { managedInstalled: true, installedVersion: STRATA_VERSION, installDirectory: managedStrataDirectory() } });
       expect((await controller.dispatch({ action: "installationPlan", mode: "update", preferences }) as any).items).toEqual([]);
     } finally { vi.unstubAllEnvs(); }

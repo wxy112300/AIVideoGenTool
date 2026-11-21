@@ -19,13 +19,15 @@ export function downloadFailure(error: unknown, t: Translate = createNativeTrans
 /** Bounded GET retries. Each fresh curl reads the actual local offset; no nested --retry. */
 export async function downloadWithResume(input: {
   url: string; destination: string; totalBytes: number; extraArgs?: string[]; signal?: AbortSignal;
-  run(args: string[], timeoutMs: number): Promise<unknown>;
+  run(args: string[], timeoutMs: number, onActivity?: (reset: (timeoutMs: number) => void) => void): Promise<unknown>;
   onProgress?: (bytes: number) => void; onLog?: (message: string) => void;
   /** Isolated tests only; production uses a cancellable 1s/2s backoff. */
   wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   if (!Number.isSafeInteger(input.totalBytes) || input.totalBytes <= 0) throw new Error(t(uiKeys.softwareDownload.invalidSize));
-  const deadline = Date.now() + 600_000;
+  const idleTimeoutMs = 600_000;
+  let deadline = Date.now() + idleTimeoutMs;
+  let progressedBytes = -1;
   for (let attempt = 1; attempt <= 3; attempt++) {
     input.signal?.throwIfAborted();
     const stat = await fs.lstat(input.destination).catch((error) => {
@@ -33,6 +35,8 @@ export async function downloadWithResume(input: {
     });
     if (stat && (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > input.totalBytes)) throw new Error(t(uiKeys.softwareDownload.unsafeCache));
     const offset = stat?.size ?? 0;
+    if (progressedBytes < 0) progressedBytes = offset;
+    else if (offset > progressedBytes) { progressedBytes = offset; deadline = Date.now() + idleTimeoutMs; }
     input.onProgress?.(offset);
     if (offset === input.totalBytes) { input.onLog?.(t(uiKeys.softwareDownload.cacheComplete)); return; }
     const timeout = deadline - Date.now();
@@ -42,9 +46,17 @@ export async function downloadWithResume(input: {
       "--speed-limit", "1024", "--speed-time", "30", ...(input.extraArgs ?? []),
       "--continue-at", String(offset), "--output", input.destination, input.url];
     try {
-      const transfer = () => input.run(args, timeout);
-      if (input.onProgress) await withDownloadFileProgress(input.destination, input.totalBytes, input.onProgress, transfer, offset);
-      else await transfer();
+      let resetRunTimeout: ((timeoutMs: number) => void) | undefined;
+      const reportProgress = (bytes: number) => {
+        if (bytes > progressedBytes) {
+          progressedBytes = bytes;
+          deadline = Date.now() + idleTimeoutMs;
+          resetRunTimeout?.(idleTimeoutMs);
+        }
+        input.onProgress?.(bytes);
+      };
+      const transfer = () => input.run(args, timeout, (reset) => { resetRunTimeout = reset; });
+      await withDownloadFileProgress(input.destination, input.totalBytes, reportProgress, transfer, offset);
       input.signal?.throwIfAborted();
       const complete = await fs.lstat(input.destination);
       if (!complete.isFile() || complete.isSymbolicLink() || complete.nlink !== 1) throw new Error(t(uiKeys.softwareDownload.ownershipChanged));
@@ -52,6 +64,11 @@ export async function downloadWithResume(input: {
       return;
     } catch (error) {
       input.signal?.throwIfAborted();
+      const latest = await fs.lstat(input.destination).catch(() => null);
+      if (latest?.isFile() && !latest.isSymbolicLink() && latest.nlink === 1 && latest.size > progressedBytes && latest.size <= input.totalBytes) {
+        progressedBytes = latest.size;
+        deadline = Date.now() + idleTimeoutMs;
+      }
       const failure = downloadFailure(error, t);
       input.onLog?.(failure.detail);
       if (!failure.retryable || attempt === 3 || Date.now() >= deadline) {

@@ -103,6 +103,7 @@ interface Backup { format: 1; savedAt: string; sha256: string; raw: string }
 /** Only this directory's verified snapshots are managed; legacy .corrupt/.bak files are never removed. */
 export class StateFileSafety {
   readonly directory: string;
+  private readonly retentionCache = new Map<string, { signature: string; value: Omit<Backup, "raw"> & { filename: string } }>();
   constructor(private filename: string, private t: Translate = createNativeTranslator(undefined).t) { this.directory = `${filename}.backups`; }
 
   get translate(): Translate { return this.t; }
@@ -190,9 +191,43 @@ export class StateFileSafety {
     return source.raw;
   }
 
+  private async retentionBackups(): Promise<Array<Omit<Backup, "raw"> & { filename: string }>> {
+    let names: string[];
+    try { names = await fs.readdir(this.directory); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+    const backups: Array<Omit<Backup, "raw"> & { filename: string }> = [];
+    const present = new Set<string>();
+    for (const name of names.filter(name => /^[a-f0-9]{64}\.json$/.test(name))) {
+      const filename = path.join(this.directory, name);
+      present.add(filename);
+      try {
+        const stat = await fs.stat(filename);
+        const signature = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+        const cached = this.retentionCache.get(filename);
+        if (cached?.signature === signature) { backups.push(cached.value); continue; }
+        const backup = this.parse(await fs.readFile(filename, "utf8"));
+        if (name !== `${backup.sha256}.json`) continue;
+        const after = await fs.stat(filename);
+        if (`${after.dev}:${after.ino}:${after.size}:${after.mtimeMs}:${after.ctimeMs}` !== signature) continue;
+        const value = { format: backup.format, savedAt: backup.savedAt, sha256: backup.sha256, filename };
+        this.retentionCache.set(filename, { signature, value });
+        backups.push(value);
+      } catch (error) {
+        this.retentionCache.delete(filename);
+        if ((error as NodeJS.ErrnoException).code && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        /* Invalid/changed files remain evidence; recovery always revalidates bytes. */
+      }
+    }
+    for (const filename of this.retentionCache.keys()) if (!present.has(filename)) this.retentionCache.delete(filename);
+    backups.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+    return backups;
+  }
+
+  async warmRetentionCache(): Promise<void> { await this.retentionBackups(); }
+
   /** Keep eight recent unique snapshots plus one per day for fourteen days, only after a successful commit. */
   async prune(activeHash?: string): Promise<void> {
-    const backups = await this.backups();
+    const backups = await this.retentionBackups();
     const active = backups.find(item => item.sha256 === activeHash);
     const keep = new Set(backups.filter(item => item !== active).slice(0, active ? 7 : 8).map(item => item.filename));
     if (active) keep.add(active.filename);
@@ -201,6 +236,9 @@ export class StateFileSafety {
       const day = item.savedAt.slice(0, 10);
       if (!days.has(day) && days.size < 14) { days.add(day); keep.add(item.filename); }
     }
-    for (const item of backups) if (!keep.has(item.filename)) await fs.unlink(item.filename);
+    for (const item of backups) if (!keep.has(item.filename)) {
+      await fs.unlink(item.filename);
+      this.retentionCache.delete(item.filename);
+    }
   }
 }

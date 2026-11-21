@@ -468,6 +468,37 @@ describe("History accessibility markup", () => {
       preferredVersion: () => artifactVersion,
       currentHistoryVersion: () => artifactVersion
     });
+    const runVersion = {
+      ...artifactVersion,
+      longVideoReceipt: {} as AssetVersion["longVideoReceipt"],
+      h3ContinuationData: { status: "invalid", reason: "wrong native AV status" } as const
+    };
+    const runPage = renderHistoryDetailPage({
+      ...artifactViewModel,
+      historyArtifactInspection: { status: "available", continuumRun: {
+        resumeSafe: false, manifestPath: "E:/run/manifest.json", chunks: [{ path: "E:/run/chunk-0001.safetensors", bytes: 1024 }]
+      } }
+    }, { ...detailOptions, currentHistoryVersion: () => runVersion });
+    expect(runPage).toContain('data-show-file="E:/run/chunk-0001.safetensors"');
+    expect(runPage).toContain('data-show-file="E:/run/manifest.json"');
+    expect(runPage).not.toContain("wrong native AV status");
+    expect(runPage).not.toContain("data-delete-joint-av");
+    const savedPromptRun = {
+      ...runVersion,
+      longVideoExecution: {
+        profile: { prompts: ["First executed segment", "Second executed segment"] },
+        script: { layout: { prefixChunks: 0 }, pages: [{}, {
+          versionId: "used", versions: [
+            { id: "outline", stage: "allocation", text: "The original bike rolls." },
+            { id: "used", text: "First executed segment" }
+          ]
+        }] }
+      } as AssetVersion["longVideoExecution"]
+    };
+    const scriptPage = renderHistoryDetailPage(artifactViewModel, { ...detailOptions, currentHistoryVersion: () => savedPromptRun });
+    expect(scriptPage).toContain("First executed segment\n\n---\n\nSecond executed segment");
+    expect(scriptPage).toContain("The original bike rolls.");
+    expect(scriptPage).toContain("[Chunk 1]");
     const managedVersion = {
       ...artifactVersion,
       h3AvAsset: {

@@ -147,8 +147,9 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
       repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF-H3",
-      recommendedVersion: "26.10.30",
-      installRevision: "da5f435cd9a9e54ad27eed417ed72b1f2543ef41",
+      recommendedVersion: "26.11.16",
+      latestVersion: "26.11.16",
+      installRevision: "3ae2b682c5fdb77609171ceb66cc93f18b976ba1",
       installRevisionPolicy: "recommended",
       nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
       required: false
@@ -181,8 +182,8 @@ describe("dependency catalog", () => {
       required: false
     });
     expect(customNodeDefinition("kjnodes")).toMatchObject({
-      recommendedVersion: "1.5.4",
-      latestVersion: "1.5.4",
+      recommendedVersion: "1.5.5",
+      latestVersion: "1.5.5",
       nodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"]
     });
     expect(customNodeDefinition("inpaint-cropandstitch")).toMatchObject({
@@ -223,7 +224,7 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("h3-continuum")).toMatchObject({
       repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
       directoryName: "ComfyUI-H3-Continuum",
-      installRevision: H3_CONTINUUM_REVISION,
+      installRevision: "12bf61efe8e30a7a021d31689e741c9a3bad9337",
       license: "MIT",
       nodeTypes: [
         "H3ContinuumSamplerV38",
@@ -231,8 +232,8 @@ describe("dependency catalog", () => {
         "H3ContinuumAssembleSeamV35"
       ],
       minimumVersion: "3.8.0",
-      recommendedVersion: "3.10.2",
-      latestVersion: "3.10.2",
+      recommendedVersion: "3.10.3",
+      latestVersion: "3.10.3",
       bulkInstall: false,
       appInstallable: true,
       compatibilityEvidence: [{

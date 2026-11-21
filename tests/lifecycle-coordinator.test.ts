@@ -56,7 +56,7 @@ interface LifecycleFixture {
   coordinator: LifecycleCoordinator;
 }
 
-function fixture(settingsPatch: Partial<Settings> = {}): LifecycleFixture {
+function fixture(settingsPatch: Partial<Settings> = {}, isLocalComfyUrl = (value: string) => value.startsWith("http://127.0.0.1")): LifecycleFixture {
   const state = createDefaultState();
   state.settings = { ...state.settings, ...settingsPatch };
   const settings = structuredClone(state.settings);
@@ -95,7 +95,7 @@ function fixture(settingsPatch: Partial<Settings> = {}): LifecycleFixture {
     freeMemory,
     forceStopComfyProcesses,
     alignRuntimeProfile,
-    isLocalComfyUrl: (value) => value.startsWith("http://127.0.0.1")
+    isLocalComfyUrl
   };
   return {
     state,
@@ -188,6 +188,20 @@ describe("LifecycleCoordinator", () => {
     expect(current.freeMemory).toHaveBeenCalledWith(current.settings);
   });
 
+  it("bounds an unresponsive interrupt and both workers within one normal-exit wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const current = fixture();
+      current.interruptComfy.mockReturnValue(new Promise(() => {}));
+      current.queue.runningWorker = new Promise(() => {});
+      current.prompt.runningWorker = new Promise(() => {});
+      const stopped = current.coordinator.interruptForExit(true);
+      await vi.advanceTimersByTimeAsync(15000);
+      await expect(stopped).resolves.toEqual({ interrupted: false, workerSettled: false });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("does not wait for unsettled workers during a forced exit", async () => {
     const current = fixture();
     current.queue.runningWorker = new Promise(() => undefined);
@@ -254,6 +268,34 @@ describe("LifecycleCoordinator", () => {
     expect(order).toEqual(["prompt", "comfy"]);
     expect(current.prompt.releaseRuntime).toHaveBeenCalledOnce();
     expect(current.forceStopComfyProcesses).toHaveBeenCalledOnce();
+  });
+
+  it("stops ComfyUI even when prompt release never responds", async () => {
+    vi.useFakeTimers();
+    try {
+      const current = fixture();
+      current.prompt.releaseRuntime.mockReturnValue(new Promise(() => {}));
+      const stopped = current.coordinator.stopOwnedRuntime(current.settings);
+      expect(current.forceStopComfyProcesses).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(2500);
+      await expect(stopped).resolves.toMatchObject({ ok: true });
+      expect(current.logger.warn).toHaveBeenCalledWith("prompt", "runtime-release-timeout", expect.any(String));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("normal shutdown treats a remote connection as a successful skip", async () => {
+    const current = fixture({ comfyUrl: "http://192.168.1.20:8188" });
+    await expect(current.coordinator.stopOwnedRuntime(current.settings)).resolves.toMatchObject({ ok: true });
+    expect(current.forceStopComfyProcesses).not.toHaveBeenCalled();
+  });
+
+  it("does not treat an unsupported local HTTPS endpoint as a failed process stop", async () => {
+    const current = fixture({ comfyUrl: "https://127.0.0.1:8188" }, () => true);
+    await expect(current.coordinator.stopOwnedRuntime(current.settings)).resolves.toMatchObject({ ok: true });
+    expect(current.forceStopComfyProcesses).not.toHaveBeenCalled();
+    await expect(current.coordinator.interruptForExit(false, true)).resolves.toMatchObject({ interrupted: false });
+    expect(current.forceStopComfyProcesses).not.toHaveBeenCalled();
   });
 
   it("treats an expected restart exit differently from an unexpected process exit", () => {

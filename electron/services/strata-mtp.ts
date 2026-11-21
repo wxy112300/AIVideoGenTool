@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { STRATA_MTP_ASSET } from "../../src/core/catalog/models/strata.js";
-import { containsPath, physicalPath } from "./strata-installation.js";
+import { containsPath, physicalPath, strataSourceDirectory } from "./strata-installation.js";
 import type { StrataVerifiedAsset, verifyStrataAsset } from "./strata-model-preparation.js";
 
 const files = ["experts.bin", "dense.bin", "dense.txt", "draft_vocab.bin"] as const;
@@ -51,9 +51,10 @@ export async function prepareStrataMtp(input: {
   check();
   input.onLog?.(t(uiKeys.strataPreparation.mtpVerify));
   const source = await input.verifyAsset(input.filename, STRATA_MTP_ASSET, input.signal);
-  const tool = path.join(input.installDirectory, "tools", "mtp_rt.py");
+  const sourceDirectory = strataSourceDirectory(input.installDirectory);
+  const tool = path.join(sourceDirectory, "tools", "mtp_rt.py");
   if (!(await fs.stat(tool).catch(() => null))?.isFile()) throw new Error(t(uiKeys.strataPreparation.mtpToolMissing));
-  const vocab = await fs.readFile(path.join(input.installDirectory, "data", "draft_vocab.bin"));
+  const vocab = await fs.readFile(path.join(sourceDirectory, "data", "draft_vocab.bin"));
   if (vocab.length !== STRATA_MTP_CJK_VOCAB.tokens * 4 || createHash("sha256").update(vocab).digest("hex") !== STRATA_MTP_CJK_VOCAB.sha256)
     throw new Error(t(uiKeys.strataPreparation.mtpVocab));
   check();

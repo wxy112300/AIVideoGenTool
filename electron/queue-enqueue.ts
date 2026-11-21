@@ -1,4 +1,5 @@
 import type { Translate } from "../src/core/i18n.js";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, h3TimedGuideSource, missingH3GuideReference, resolveH3TimedGuides } from "../src/core/h3-timed-guides.js";
 import type { IpcMain } from "electron";
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
@@ -64,7 +65,7 @@ import {
 import { adaptH3AvAsset } from "../src/core/h3-av-adapters.js";
 import { validateContinuumSequence } from "../src/core/h3-av-asset.js";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
-import { isLongVideoDraftActive, longVideoBlockReason, longVideoDependencyBlockReason } from "../src/core/long-video/capability.js";
+import { isLongVideoDraftActive, longVideoBlockReason, longVideoDependencyBlockReason, longVideoUsesTimedGuides } from "../src/core/long-video/capability.js";
 import { enqueueLongVideoExtension } from "./services/long-video-enqueue.js";
 import {
   isH3TurboEnabled,
@@ -664,6 +665,18 @@ export class QueueEnqueueService {
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeVideoDraft(draft));
     const longVideo = isLongVideoDraftActive(draft);
+    const guideEditor = activeH3TimedGuides(draft);
+    const referenceGuides = h3ReferenceTimedGuides(draft);
+    if (referenceGuides.length && !longVideo) {
+      const issue = h3TimedGuideIssue(referenceGuides, draft.duration);
+      if (issue) throw new Error(this.t(uiKeys.create.guides[issue]));
+    }
+    if (guideEditor && !longVideo) {
+      const issue = h3TimedGuideIssue(guideEditor.slots, draft.duration);
+      if (issue) throw new Error(this.t(uiKeys.create.guides[issue]));
+      const missingPicture = missingH3GuideReference(promptOf(draft), guideEditor.slots);
+      if (missingPicture) throw new Error(this.t(uiKeys.create.guides.reference, { picture: missingPicture }));
+    }
     if (longVideo) {
       const reason = longVideoBlockReason(draft, enqueueSettings);
       if (reason) throw new Error(reason);
@@ -675,9 +688,9 @@ export class QueueEnqueueService {
     this.rejectUnavailableH3NativeResolution(draft);
     await this.validateH3Create1080(draft, enqueueSettings);
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
-    const hasReference = Boolean(draft.startImagePath || draft.endImagePath);
+    const hasReference = Boolean(guideEditor || draft.startImagePath || draft.endImagePath);
     const isH3TextToVideo = isMiniMaxH3Model(draft.modelId) && !isR2V && !hasReference;
-    if (!isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error(this.t(uiKeys.serviceChecks.firstImage));
+    if (!guideEditor && !isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error(this.t(uiKeys.serviceChecks.firstImage));
     if (isR2V && (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))) {
       throw new Error(this.t(uiKeys.serviceChecks.r2vSlots));
     }
@@ -723,6 +736,9 @@ export class QueueEnqueueService {
         : this.t(uiKeys.serviceChecks.spectrumUnsupported));
     }
     const workflow = await readWorkflow(resolvedWorkflowPath, this.t(uiKeys.serviceChecks.workflowLabel), this.t);
+    if (!longVideo && (guideEditor || referenceGuides.length) && !h3TimedGuideSource(workflow, isR2V)) {
+      throw new Error(this.t(uiKeys.create.guides.unavailable));
+    }
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(this.t(uiKeys.serviceChecks.workflowInvalid, { errors: validation.errors.join("；") }));
     if ((draft.modelId === FASTH3_OMNI_MODEL_ID || draft.videoLoras.some((lora) =>
@@ -738,7 +754,7 @@ export class QueueEnqueueService {
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
     if (longVideo) {
-      const reason = longVideoDependencyBlockReason(dependencyScan, enqueueSettings);
+      const reason = longVideoDependencyBlockReason(dependencyScan, enqueueSettings, draft.modelId, longVideoUsesTimedGuides(draft));
       if (reason) throw new Error(reason);
     }
     if (dependencyScan) {
@@ -822,12 +838,12 @@ export class QueueEnqueueService {
     })) {
       throw new Error(this.t(uiKeys.serviceChecks.turboWorkflow));
     }
-    if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
+    if (!longVideo && !guideEditor && draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error(this.t(uiKeys.serviceChecks.endImage));
     }
     const sourcePaths = (isR2V
       ? draft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").map((slot) => slot.mediaPath)
-      : [draft.startImagePath, draft.endImagePath]
+      : guideEditor ? guideEditor.slots.map(slot => slot.mediaPath) : [draft.startImagePath, draft.endImagePath]
     ).filter((candidate): candidate is string => Boolean(candidate.trim()));
     const preparedDraft = structuredClone(draft);
     if (sourcePaths.length) {
@@ -839,6 +855,10 @@ export class QueueEnqueueService {
         const replacements = new Map(sourcePaths.map((source, index) => [source, archived[index]!]));
         preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
         preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
+        if (guideEditor) preparedDraft.h3GuideEditor = {
+          ...guideEditor,
+          slots: guideEditor.slots.map(slot => ({ ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath }))
+        };
         preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) => slot.mediaType === "image"
           ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath } : slot);
         logger.info("assets", "video-input-image-archive-completed", "视频任务输入图片已归档并校验", {
@@ -856,6 +876,14 @@ export class QueueEnqueueService {
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
+      if (guideEditor) {
+        const guideLayout = longVideo ? taskDraft.longVideoScript?.layout : undefined;
+        const firstGuide = resolveH3TimedGuides(taskDraft.h3GuideEditor!.slots,
+          guideLayout?.requestedSeconds ?? taskDraft.duration, guideLayout?.targetFrames)[0]!;
+        taskDraft.startImagePath = firstGuide.mediaPath;
+        taskDraft.endImagePath = "";
+        hydrateVideoInputImageDimensions(taskDraft, deps.imageInspection);
+      }
       const task = queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode }, this.t);
       if (longVideoRoot) task.longVideoRoot = longVideoRoot;
       if (state.settings.modelDirectories?.length) task.modelDirectories = [...state.settings.modelDirectories];

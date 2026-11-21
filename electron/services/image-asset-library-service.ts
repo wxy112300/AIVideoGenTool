@@ -211,6 +211,7 @@ export class ImageAssetLibraryService {
     state.draft.startImagePath = prepared.draft.startImagePath;
     state.draft.endImagePath = prepared.draft.endImagePath;
     state.draft.h3ReferenceSlots = prepared.draft.h3ReferenceSlots.map((slot) => ({ ...slot }));
+    state.draft.h3GuideEditor = prepared.draft.h3GuideEditor;
     for (const key of ["imageToVideoDraft", "videoExtensionDraft"] as const) {
       const target = state[key];
       const source = prepared[key];
@@ -218,6 +219,7 @@ export class ImageAssetLibraryService {
       target.startImagePath = source.startImagePath;
       target.endImagePath = source.endImagePath;
       target.h3ReferenceSlots = source.h3ReferenceSlots.map((slot) => ({ ...slot }));
+      target.h3GuideEditor = source.h3GuideEditor;
     }
     const preparedTasks = new Map(prepared.queue.map((task) => [task.id, task]));
     for (const task of state.queue) {
@@ -227,6 +229,7 @@ export class ImageAssetLibraryService {
       } else if (task.taskType === "generation" && preparedTask?.taskType === "generation") {
         task.startImagePath = preparedTask.startImagePath;
         task.endImagePath = preparedTask.endImagePath;
+        task.h3TimedGuides = preparedTask.h3TimedGuides;
         task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
       } else if (task.taskType === "extension" && preparedTask?.taskType === "extension") {
         task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
@@ -238,6 +241,7 @@ export class ImageAssetLibraryService {
       if (!preparedAsset) continue;
       asset.startImagePath = preparedAsset.startImagePath;
       asset.endImagePath = preparedAsset.endImagePath;
+      asset.h3TimedGuides = preparedAsset.h3TimedGuides;
       asset.h3ReferenceSlots = preparedAsset.h3ReferenceSlots?.map((slot) => ({ ...slot }));
     }
   }

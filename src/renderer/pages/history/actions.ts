@@ -9,6 +9,7 @@ import type {
   NativeAvContinuationArtifact,
   UpscaleQueueTask
 } from "../../../types";
+import { restoreH3GuideEditor, restoreH3ReferenceGuideDraft } from "../../../core/h3-timed-guides";
 import type { RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { longVideoDraftFields } from "../../../core/long-video/draft";
@@ -190,6 +191,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       createdAt: new Date().toISOString()
     };
     const videoLoras = videoLorasForCreation(asset.videoLoras);
+    const referenceGuides = !isExtension && isMiniMaxH3R2vModel(asset.modelId)
+      ? restoreH3ReferenceGuideDraft(asset.h3ReferenceSlots ?? [], asset.h3TimedGuides)
+      : undefined;
     const draft: Draft = {
       ...state.draft,
       ...longVideoDraftFields(version.longVideoExecution?.script, asset.modelId),
@@ -200,6 +204,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       sourceWidth: asset.sourceWidth ?? (isExtension ? version.width : 0),
       sourceHeight: asset.sourceHeight ?? (isExtension ? version.height : 0),
       endImagePath: isExtension ? "" : asset.endImagePath ?? "",
+      h3GuideEditor: !isExtension && !referenceGuides && asset.h3TimedGuides?.length
+        ? restoreH3GuideEditor(asset.h3TimedGuides) : undefined,
+      h3ReferenceGuidesEnabled: referenceGuides?.h3ReferenceGuidesEnabled,
       endImageWidth: isExtension ? 0 : asset.endImageWidth ?? 0,
       endImageHeight: isExtension ? 0 : asset.endImageHeight ?? 0,
       sourceVideoPath: isExtension ? asset.sourceVideoPath ?? "" : "",
@@ -240,7 +247,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
           )
         : isExtension
           ? []
-          : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+          : referenceGuides?.h3ReferenceSlots ?? (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
       videoLoras,
       ratio: asset.ratio ?? state.draft.ratio,
       resolution: nearestSupportedVideoResolution(
@@ -402,6 +409,10 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     try {
       if (version.longVideoExecution) {
         if (action !== "Continue / Next") throw new Error("Group Run take branching is not connected");
+        if (version.longVideoReceipt?.resume_safe === false) {
+          context.notify(t(uiKeys.history.page.continuumRunAvCannotResume), { renderPage: false });
+          return;
+        }
         await options.selectDraftVideo(filename, { assetId: asset.id, versionId: version.id, duration: version.duration,
           width: version.width, height: version.height, modelId: "minimax_h3_continuum", resetSeed: false, resetPrompt: true }, false);
         const currentDraft = context.getState()?.draft;

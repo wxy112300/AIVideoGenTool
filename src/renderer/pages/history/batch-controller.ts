@@ -11,6 +11,7 @@ import {
   historyTagNames,
   type HistoryFilterState
 } from "../../../core/history-filter";
+import { updateHistoryMetadata, HistoryMetadataSaveError } from "./metadata-update";
 import type {
   AppState,
   HistoryItem,
@@ -42,6 +43,7 @@ export interface HistoryBatchControllerOptions {
   setState(nextState: AppState): void;
   clearSelection(): void;
   requestDelete(kind: HistoryKind, assetIds: string[]): void;
+  openHistoryItem?(id: string, kind: HistoryKind): void;
 }
 
 function stop(event: Event): void {
@@ -355,14 +357,16 @@ export function mountHistoryBatchController(
     const items = selectedItems(context, options);
     const updates: HistoryMetadataBatchUpdate[] = items.map(item => ({ assetId: item.id, patch: { tags: applyHistoryBatchTagOperation(item.tags, operation) } }))
       .filter((update, index) => JSON.stringify(items[index]?.tags ?? []) !== JSON.stringify(update.patch.tags));
-    if (updates.length) options.setState(await context.application.updateHistoryMetadataBatch(updates));
+    if (updates.length) options.setState(await updateHistoryMetadata(context, updates, options.openHistoryItem));
   };
   tagsRoot?.addEventListener("click", (event) => {
     const button = (event.target as Element)?.closest<HTMLElement>("[data-history-partial-add]");
     const tag = button?.dataset.historyPartialAdd;
     if (!tag) return;
     stop(event);
-    void applyOperation({ kind: "add", tag }).then(() => syncSelectionDom(context, options)).catch(error => context.notify(String(error), { renderPage: false, kind: "error" }));
+    void applyOperation({ kind: "add", tag }).then(() => { if (!signal.aborted) syncSelectionDom(context, options); }).catch(error => {
+      if (!(error instanceof HistoryMetadataSaveError)) context.notify(String(error), { renderPage: false, kind: "error" });
+    });
   }, { signal });
   tagsRoot?.querySelectorAll<HTMLElement>("[data-history-batch-tags-close]").forEach(button => button.addEventListener("click", (event) => {
     stop(event);

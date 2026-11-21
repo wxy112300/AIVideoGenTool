@@ -24,7 +24,7 @@ import {
 } from "./fragments";
 import { fieldLabelWithTip, promptButtonWithTip } from "../../shared/markup";
 import { renderCreateHeading } from "./heading";
-import { renderVideoFrames } from "./media-frames";
+import { renderH3GuideToggle, renderVideoFrames } from "./media-frames";
 import { renderImageOutput } from "./image-output";
 
 interface InstallReadyLoraDefinition {
@@ -371,6 +371,7 @@ export function renderCreatePage(
       <div class="create-media-heading">
         <h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2>${viewModel.isR2V ? `<span title="${escapeHtml(t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }))}">${t(uiKeys.create.mediaReferenceCounts, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span>` : ""}
         ${viewModel.extending && viewModel.draft.sourceVideoPath ? `<button class="ghost button-with-icon" id="remove-video">${icon("x")}${t(uiKeys.create.removeVideo)}</button>` : ""}
+        ${renderH3GuideToggle(viewModel, options)}
       </div>
       ${viewModel.extending
         ? viewModel.draft.sourceVideoPath
@@ -418,6 +419,7 @@ export function renderCreatePage(
           ? renderH3ReferenceSlotsMarkup(viewModel.draft.h3ReferenceSlots, {
               icon,
               escapeHtml,
+              showGuideTimes: viewModel.draft.h3ReferenceGuidesEnabled,
               h3ReferenceRoleLabels: options.h3ReferenceRoleLabels,
               t
             })

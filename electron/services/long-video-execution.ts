@@ -71,6 +71,7 @@ function nextRequest(state: Projection): ContinuumGroupRequest {
   const last = state.accepted.at(-1)?.receipt ?? state.snapshot.parent?.receipt;
   const prefix = last?.accepted_chunks ?? 0;
   return { execution_id: state.snapshot.executionId, project_id: state.snapshot.projectId, run_name: state.snapshot.runName,
+    ...(state.snapshot.profile.executionMode === "full_run" ? { execution_mode: "full_run" as const } : {}),
     step_id: `group-${prefix + 1}`, attempt_id: "attempt-1", planned_chunks: state.snapshot.script.layout.totalChunks,
     expected_prefix_chunks: prefix, expected_parent_revision_id: last?.revision_id ?? "" };
 }

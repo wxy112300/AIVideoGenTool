@@ -13,6 +13,8 @@ import { h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3R2vMode
 import { safeH3OutputRelativePath, validateContinuumSequence } from "../../src/core/h3-av-asset.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import { NativeAvArtifactService } from "./native-av-artifact.js";
+import { longVideoRunReceiptForVersion } from "../../src/core/long-video/run-source.js";
+import { verifyLongVideoRunStorage } from "./long-video-run-source.js";
 
 export interface HistoryArtifactServiceDependencies {
   store: StateRepository;
@@ -288,6 +290,28 @@ export class HistoryArtifactService {
     const version = asset?.versions.find((item) => item.id === versionId);
     if (!asset || !version) {
       return { status: "missing", reason: t(uiKeys.extensionInspection.historyMissing) };
+    }
+    if (version.longVideoExecution || version.longVideoReceipt) {
+      try {
+        const receipt = longVideoRunReceiptForVersion(version);
+        const outputDirectory = await this.deps.resolveVideoOutputDirectory();
+        if (!outputDirectory.trim()) {
+          return { status: "missing", reason: t(uiKeys.extensionInspection.historyOutputMissing) };
+        }
+        const storage = await verifyLongVideoRunStorage(outputDirectory, receipt, new AbortController().signal);
+        return {
+          status: "available",
+          continuumRun: {
+            resumeSafe: receipt.resume_safe,
+            manifestPath: storage.manifestPath,
+            chunks: receipt.chunk_records.map(record => ({ path: record.payload_path, bytes: record.payload_bytes }))
+          }
+        };
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? { status: "missing", reason: t(uiKeys.extensionInspection.prefixFilesMissing) }
+          : { status: "invalid", reason: t(uiKeys.history.page.continuumRunAvInvalid) };
+      }
     }
     const continuation = version.h3ContinuationData;
     if (!continuation?.artifact) {

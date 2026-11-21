@@ -193,6 +193,17 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
 export function renderWindowCloseDialog(options: WindowCloseDialogOptions): string {
   const request = options.request;
   if (!request) return "";
+  if (request.kind === "closing") {
+    const t = options.t, failed = Boolean(request.shutdownError);
+    const error = (request.shutdownError ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    return `<div class="dialog-backdrop confirm-backdrop close-dialog-backdrop window-shutdown-backdrop" id="window-close-backdrop">
+      <section class="confirm-dialog close-dialog window-shutdown-dialog" role="alertdialog" aria-modal="true" aria-busy="${!failed}" aria-labelledby="window-close-title" aria-describedby="window-close-description" tabindex="-1">
+        <div class="confirm-icon" aria-hidden="true">${failed ? options.icon("alert-triangle") : '<span class="scan-spinner"></span>'}</div>
+        <div class="confirm-copy"><h2 id="window-close-title">${t(failed ? uiKeys.dialog.exitFailed : uiKeys.dialog.exiting)}</h2>
+        <p id="window-close-description" role="status">${failed ? error : t(request.shutdownStage === "storage" ? uiKeys.dialog.savingBeforeExit : uiKeys.dialog.stoppingServices)}</p></div>
+        ${failed ? `<div class="dialog-actions"><button class="primary" id="retry-window-close" ${options.responseBusy ? "disabled" : ""}>${t(uiKeys.dialog.retryExit)}</button></div>` : ''}
+      </section></div>`;
+  }
   const runningWork = request.kind === "running-work";
   const queueCleanupOnly = runningWork && request.queueCleanupOnly === true;
   const hasUnsavedSettings = request.hasUnsavedSettings === true;

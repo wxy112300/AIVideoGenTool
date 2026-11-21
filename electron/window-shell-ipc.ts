@@ -28,12 +28,17 @@ export function registerWindowShellIpc(deps: WindowShellIpcDependencies): void {
     async (event, response: WindowCloseResponse) => {
       const request = deps.getPendingWindowCloseRequest();
       if (event.sender !== deps.getWindowWebContents() || !request) return;
+      if (request.kind === "closing" && (!request.shutdownError || response !== "retry-exit")) return;
       deps.clearPendingWindowCloseRequest();
       if (response === "cancel") {
         deps.setCloseFlowRunning(false);
         return;
       }
       if (request.kind === "unsaved-settings" && response === "discard-settings") {
+        await deps.finishWindowClose();
+        return;
+      }
+      if (request.kind === "closing" && response === "retry-exit") {
         await deps.finishWindowClose();
         return;
       }

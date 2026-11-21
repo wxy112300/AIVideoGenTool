@@ -72,7 +72,7 @@ it.each(["en-US", "zh-TW"] as const)("redacts raw load failures and stops only t
 
 it.each(["zh-CN", "en-US", "zh-TW"] as const)("keeps control-vector hashes, layer evidence and file bytes intact (%s)", async uiLocale => {
   const root = await temporary(), t = createNativeTranslator(uiLocale).t, vector = strataVectorForMode("builtin");
-  const file = path.join(root, vector.relativePath); await fs.mkdir(path.dirname(file), { recursive: true });
+  const file = path.join(root, "terminal", vector.relativePath); await fs.mkdir(path.dirname(file), { recursive: true });
   await expect(verifyStrataControlVector(root, "builtin", t)).rejects.toThrow(uiLocale === "en-US" ? "wrong size" : uiLocale === "zh-TW" ? "大小不符" : "大小不符");
   const corrupt = Buffer.alloc(vector.bytes); corrupt.write("GGUF"); await fs.writeFile(file, corrupt);
   await expect(verifyStrataControlVector(root, "builtin", t)).rejects.toThrow("SHA-256");

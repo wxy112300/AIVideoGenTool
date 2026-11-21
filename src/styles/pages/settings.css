@@ -162,11 +162,11 @@
 .settings-sulphur-card .settings-sulphur-grid > label { grid-template-columns: minmax(0,1fr); align-content: start; gap: 6px; min-height: 0; padding: 0; border: 0; font-size: var(--fs-12); }
 .settings-sulphur-card.settings-form-card .settings-sulphur-grid > label > .ui-select { width: 100%; }
 @media (max-width:640px) { .settings-sulphur-card .settings-sulphur-grid { grid-template-columns: minmax(0,1fr); } }
-.settings-form-card .ios-switch { width: 36px; height: 20px; border: 0; background: var(--n6); box-shadow: none; }
-.settings-form-card .ios-switch::after { top: 2px; left: 2px; width: 16px; height: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / .4); transition: transform var(--dur-3) var(--ease-spring); }
-.settings-form-card .ios-switch-field input:checked + .ios-switch { background: var(--accent); }
-.settings-form-card .ios-switch-field input:checked + .ios-switch::after { transform: translateX(16px); }
-.settings-form-card .ios-switch-field input:focus-visible + .ios-switch { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+:is(.settings-form-card,.create-media-heading) .ios-switch { width: 36px; height: 20px; border: 0; background: var(--n6); box-shadow: none; }
+:is(.settings-form-card,.create-media-heading) .ios-switch::after { top: 2px; left: 2px; width: 16px; height: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / .4); transition: transform var(--dur-3) var(--ease-spring); }
+:is(.settings-form-card,.create-media-heading) .ios-switch-field input:checked + .ios-switch { background: var(--accent); }
+:is(.settings-form-card,.create-media-heading) .ios-switch-field input:checked + .ios-switch::after { transform: translateX(16px); }
+:is(.settings-form-card,.create-media-heading) .ios-switch-field input:focus-visible + .ios-switch { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .settings-row-control { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .settings-row-control > input { width: 260px; min-width: 0; }
 .settings-form-card .danger-zone { border-radius: 0; background: transparent; }

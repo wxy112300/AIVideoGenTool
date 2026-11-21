@@ -26,7 +26,7 @@ export interface StrataResourcePlan {
 }
 
 /** IQ3_XXS arena size and low-RAM split follow pinned Strata setup.py (0.1.44.1).
- * These are admission estimates, NOT a hard CUDA allocation cap. Keep cache=auto.
+ * Cache estimates guide the session configuration, not a minimum GPU requirement. Keep cache=auto.
  * Reserve additionally covers the GPU image encoder, WDDM reporting error and workspace.
  */
 export function planStrataResources(resources: StrataResources, requestedReserveMiB: number,
@@ -53,9 +53,13 @@ export function planStrataResources(resources: StrataResources, requestedReserve
       requiredMemoryBytes: 0, requiredCommitBytes: 0,
       availableMemoryBytes: ram, minimumFreeVramBytes, headroomGiB };
   }
-  // Dense/native weights, MTP, KV and prefill staging are budgeted separately from reserve.
-  const minimumFreeVramBytes = (reserve / 1024 + 15) * GiB;
-  if (free! < minimumFreeVramBytes) throw new Error(t(uiKeys.strataCore.vram, { required: (minimumFreeVramBytes / GiB).toFixed(1), available: (free! / GiB).toFixed(1) }));
+  // The engine sizes its automatic cache from actual CUDA availability. A fixed
+  // dense+workspace estimate is not proof that a smaller cache cannot run.
+  // Preserve the reserve, real allocation errors and cancellation instead.
+  const minimumFreeVramBytes = 0;
+  // WDDM's CUDA view can omit other applications' residency. Reduce our own
+  // automatic cache through a session reserve; do not terminate those programs.
+  const sessionReserve = reserve + (options.accountForOccupiedVram ? Math.ceil((total - free!) / 1024 ** 2) : 0);
   if (options.modelId === STRATA_Q4_MODEL_ID) {
     const context = options.contextTokens ?? 32768;
     if (!Number.isSafeInteger(context) || context < 1024 || context > 262144) throw new Error(t(uiKeys.strataCore.q4Context));
@@ -64,7 +68,7 @@ export function planStrataResources(resources: StrataResources, requestedReserve
     const kvBytes = context >= 65536 ? context * 13.7 * 1024 : 0;
     const headroomGiB = 10;
     const full = STRATA_Q4_MODEL.expertBytes + headroomGiB * GiB + kvBytes;
-    if (ram >= full && commit! >= full + total) return { hostMode: "arena", vramReserveMiB: reserve,
+    if (ram >= full && commit! >= full + total) return { hostMode: "arena", vramReserveMiB: sessionReserve,
       requiredMemoryBytes: full, requiredCommitBytes: full + total, availableMemoryBytes: ram,
       minimumFreeVramBytes, headroomGiB };
     // Unlike native IQ packs, Q4 uses the official bounded mapped-expert tier.
@@ -73,7 +77,7 @@ export function planStrataResources(resources: StrataResources, requestedReserve
       ram - 16 * GiB - kvBytes, commit! - total - 16 * GiB - kvBytes) / GiB);
     if (!options.allowFileReadFallback || budget < 16) throw new Error(t(uiKeys.strataCore.q4Memory));
     const requiredMemoryBytes = (budget + 12) * GiB + kvBytes;
-    return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: reserve,
+    return { hostMode: "resident", residentBudgetGiB: budget, vramReserveMiB: sessionReserve,
       requiredMemoryBytes, requiredCommitBytes: requiredMemoryBytes + total,
       availableMemoryBytes: ram, minimumFreeVramBytes, headroomGiB };
   }
@@ -105,7 +109,7 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   const requiredCommitBytes = options.commitTrial ? requiredMemoryBytes
     : fileReadAllowed ? headroomGiB * GiB : estimatedCommitBytes;
   if (commit! < requiredCommitBytes) throw new Error(t(uiKeys.strataCore.commit, { ram: (requiredMemoryBytes / GiB).toFixed(1), commit: (requiredCommitBytes / GiB).toFixed(1), available: (commit! / GiB).toFixed(1) }));
-  return { hostMode, vramReserveMiB: reserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB,
+  return { hostMode, vramReserveMiB: sessionReserve, requiredMemoryBytes, requiredCommitBytes, availableMemoryBytes: available, minimumFreeVramBytes, headroomGiB,
     estimatedResidentMemoryBytes, estimatedCommitBytes,
     ...(options.commitTrial ? { commitTrial: true } : {}) };
 }

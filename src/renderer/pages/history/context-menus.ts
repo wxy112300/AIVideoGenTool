@@ -16,7 +16,7 @@ import {
 } from "./helpers";
 import { isRetiredVideoModel } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
-import { videoPromptForLoras } from "../../../core/video-loras";
+import { historyVideoPrompt } from "../../../core/history-video";
 import { formatFullHistoryTime, formatVideoDuration } from "../../shared/formatters";
 import { modelName } from "../../shared/labels";
 
@@ -256,7 +256,7 @@ export function createHistoryContextMenus(
         if (!shown) context.notify(t(uiKeys.history.menu.videoMissing), { renderPage: false });
       } else if (action === "copy-prompt") {
         await options.copyHistoryText(
-          videoPromptForLoras(asset.prompt, version.videoLoras ?? asset.videoLoras),
+          historyVideoPrompt(asset, version),
           t(uiKeys.history.menu.promptCopied)
         );
       } else if (action === "delete") {

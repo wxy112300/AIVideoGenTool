@@ -19,6 +19,7 @@ export const H3_CONTINUATION_ARTIFACT_PAYLOAD_PREFIX = "h3av_";
 
 const continuationStatuses = new Set<H3ContinuationDataStatus>([
   "available",
+  "disabled",
   "not-supported",
   "save-failed",
   "missing",

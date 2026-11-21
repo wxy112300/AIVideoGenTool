@@ -1,4 +1,5 @@
 import { isH3ImageModel } from "../../../core/minimax-h3-image-spec";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, missingH3GuideReference } from "../../../core/h3-timed-guides";
 import { H3_BASE_RESOLUTIONS, isCustomVideoResolution } from "../../../core/video-resolution";
 import { videoDurationLimitsForDraft } from "./helpers";
 import { imageModelOptionNote, localizeImageOptionLabel } from "../../shared/image-option-label";
@@ -817,6 +818,7 @@ export function buildVideoCreatePageViewModel(
     enqueueBusy
   } = options;
   const draft = state.draft;
+  const guideEditor = activeH3TimedGuides(draft);
   const h3PromptPack = h3PromptPackFor(state.settings.uiLocale);
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
@@ -864,7 +866,7 @@ export function buildVideoCreatePageViewModel(
   const referenceAutoPromptAvailable = isMiniMaxH3 && (
     extensionBoundaryAvailable || (isR2V
       ? referenceSlots.some((slot) => Boolean(slot.mediaPath))
-      : Boolean(draft.startImagePath || draft.endImagePath)
+      : guideEditor ? guideEditor.slots.some(slot => slot.mediaPath) : Boolean(draft.startImagePath || draft.endImagePath)
     )
   );
   const activeH3PromptPreset = h3Mode
@@ -1062,7 +1064,13 @@ export function buildVideoCreatePageViewModel(
       ? t(uiKeys.create.validation.selectedLoraMissing, { name: missingSelectedLora.name })
       : slaNodeBlockReason);
   const enqueuePending = Boolean(options.environmentScanning && !environmentScan);
-  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : videoEnqueueBlockReason({
+  const referenceGuides = h3ReferenceTimedGuides(draft);
+  const guideIssue = guideEditor ? h3TimedGuideIssue(guideEditor.slots, draft.duration)
+    : referenceGuides.length ? h3TimedGuideIssue(referenceGuides, draft.duration) : undefined;
+  const missingGuide = guideEditor && missingH3GuideReference(prompt.text, guideEditor.slots);
+  const guideBlock = guideIssue ? t(uiKeys.create.guides[guideIssue]) :
+    missingGuide ? t(uiKeys.create.guides.reference, { picture: missingGuide }) : "";
+  const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : guideBlock || videoEnqueueBlockReason({
     t,
     promptText: prompt.text,
     extending,
@@ -1084,7 +1092,7 @@ export function buildVideoCreatePageViewModel(
     spectrumReady,
     r2vSlotsReady,
     startImagePath: draft.startImagePath,
-    allowTextOnly: h3Mode === "T2VA",
+    allowTextOnly: Boolean(guideEditor) || h3Mode === "T2VA",
     turboCoreBlockReason,
     modelCoreBlockReason: modelCoreVersionBlockReason(draft.modelId, environmentScan?.comfyCompatibility.version, state.settings.uiLocale),
     turboLoraBlockReason,

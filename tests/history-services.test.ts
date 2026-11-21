@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults.js";
 import { historyDeleteImpactFromError, type HistoryDeleteApproval } from "../src/core/history-delete-confirmation.js";
@@ -23,6 +24,9 @@ import {
 import { nativeHistoryFileSystem } from "../electron/services/native-history-file-system.js";
 import { HistoryArtifactService } from "../electron/services/history-artifact-service.js";
 import type { NativeAvArtifactService } from "../electron/services/native-av-artifact.js";
+import { completedGroupVersion } from "./harness/long-video-source";
+import { longVideoRunSourceForVersion } from "../src/core/long-video/run-source.js";
+import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
 
 const temporaryRoots: string[] = [];
 
@@ -218,6 +222,61 @@ function destructiveFor(
 }
 
 describe("History application services", () => {
+  it("checks an existing Full Run's AV files independently of a legacy invalid badge or reusable prefix", async () => {
+    const root = await temporaryRoot();
+    const version = completedGroupVersion();
+    version.h3ContinuationData = { status: "invalid", reason: "artifact 状态记录格式无效" };
+    const receipt = version.longVideoReceipt!;
+    Object.assign(receipt, {
+      execution_mode: "full_run", resume_safe: false, step_id: "group-1", expected_parent_revision_id: "",
+      reused_count: 0, generated_count: 2, physical_group: { index: 1, start: 1, end: 2 },
+      run_storage_path: path.join(root, "h3_continuum", "runs", receipt.run_name, "revisions", receipt.revision_id)
+    });
+    const payload = motionContextPayload();
+    for (const record of receipt.chunk_records) {
+      record.storage_revision_id = receipt.revision_id;
+      record.reused = false;
+      record.generated = true;
+      record.payload_path = path.join(receipt.run_storage_path, "chunks", record.record_filename);
+      record.payload_bytes = payload.length;
+      record.payload_sha256 = createHash("sha256").update(payload).digest("hex");
+      await fs.mkdir(path.dirname(record.payload_path), { recursive: true });
+      await fs.writeFile(record.payload_path, payload);
+    }
+    const manifestPath = path.join(receipt.run_storage_path, "manifest.json");
+    await fs.writeFile(manifestPath, JSON.stringify({
+      run_storage_schema_version: 3, sampling_contract_version: 6, resume_safe: false, revision_id: receipt.revision_id,
+      run_name: receipt.run_name, contract_sha256: receipt.contract_sha256, status: "complete",
+      contract: { chunk_count: receipt.accepted_chunks },
+      chunks: receipt.chunk_records.map((r, index) => ({
+        sequence_index: index, storage_revision_id: r.storage_revision_id, filename: r.record_filename,
+        file_size: r.payload_bytes, file_sha256: r.payload_sha256
+      }))
+    }));
+    const state = createDefaultState();
+    state.history = [{ id: "source-asset", versions: [version] } as HistoryAsset];
+    const store = repository(state);
+    const inspect = vi.fn();
+    const service = new HistoryArtifactService({ store, artifactService: { inspect } as unknown as NativeAvArtifactService,
+      resolveVideoOutputDirectory: async () => root });
+    const check = () => service.inspect("source-asset", version.id);
+    expect(await check()).toEqual({
+      status: "available",
+      continuumRun: { resumeSafe: false, manifestPath: await fs.realpath(manifestPath),
+        chunks: receipt.chunk_records.map(record => ({ path: record.payload_path, bytes: record.payload_bytes })) }
+    });
+    expect(() => longVideoRunSourceForVersion("source-asset", version)).toThrow(/remaining capacity/);
+    const chunk = receipt.chunk_records[0]!;
+    const corrupt = Buffer.from(payload);
+    corrupt[corrupt.length - 1] = 1;
+    await fs.writeFile(chunk.payload_path, corrupt);
+    expect(await check()).toMatchObject({ status: "invalid" });
+    await fs.unlink(chunk.payload_path);
+    expect(await check()).toMatchObject({ status: "missing" });
+    expect(inspect).not.toHaveBeenCalled();
+    expect(store.get()).toEqual(state);
+    expect(normalizeNativeAvContinuationData({ status: "disabled" })).toEqual({ status: "disabled" });
+  });
   it("localizes nested Motion Context header failures without changing source history", async () => {
     const root = await temporaryRoot();
     const source = path.join(root,"source.mp4"), latent = path.join(root,"bad.safetensors");

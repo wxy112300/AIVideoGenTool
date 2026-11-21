@@ -44,6 +44,7 @@ describe("video LoRA catalog", () => {
       H3_BETTER_HUMAN_MOTION_LORA.id,
       H3_CAMERA_MOTION_LORA.id,
       H3_EQUI360_LORA.id,
+      "minimax-h3-hmnsfw-extreme-realism-v3",
       H3_VR180_SBS_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
       H3_FACIAL_REALISM_CLOSEUP_LORA.id,

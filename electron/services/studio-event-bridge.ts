@@ -9,6 +9,7 @@ export interface StudioEventTarget {
 }
 
 const bridgedEventNames = [
+  "history:metadata-changed",
   "state:changed",
   "comfy-runtime:changed",
   "prompt-runtime:changed",

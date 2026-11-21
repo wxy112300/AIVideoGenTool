@@ -39,6 +39,7 @@ import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
 import { icon } from "../../shared/icons";
 import { createTranslator, type Translate } from "../../../core/i18n";
+import { activeH3TimedGuides } from "../../../core/h3-timed-guides";
 import { uiKeys } from "../../../core/i18n-keys";
 import { h3FrameCountForSeconds, h3MaxDurationForFrameBudget } from "../../../core/h3-temporal";
 import { generationSafetyForTask } from "../../../core/workflow";
@@ -117,6 +118,7 @@ export function activeImagePrompt(draft: ImageEditDraft, locale: UiLocale = "zh-
 }
 
 export function h3PromptModeForDraft(draft: Draft): H3PromptMode {
+  if (activeH3TimedGuides(draft)) return "I2VA";
   if (draft.inputMode === "video" && isMiniMaxH3ContinuumModel(draft.modelId)) return "T2VA";
   if (
     draft.inputMode === "video" &&

@@ -4,6 +4,7 @@ import { assertLongVideoLayout } from "./layout.js";
 import { assertLongVideoRunSource, longVideoProfileIdentity, type LongVideoRunSource } from "./run-source.js";
 import { videoPromptForLoras } from "../video-loras.js";
 import { longVideoDeliveryMultiplier, type ContinuumDelivery } from "./delivery.js";
+import { longVideoGuideCues, longVideoGuideSamplingPrompt } from "./timed-guides.js";
 
 export interface LongVideoExecutionSnapshot {
   schemaVersion: 1;
@@ -34,9 +35,10 @@ export function freezeLongVideoExtensionPlan(taskId: string, executionId: string
   const parent = structuredClone(input);
   assertLongVideoRunSource(parent);
   const frozen = structuredClone(plan);
+  const { executionMode: _executionMode, ...parentProfile } = parent.profile;
   const snapshot: LongVideoExecutionSnapshot = { schemaVersion: 1, taskId, executionId, parent,
     projectId: parent.receipt.project_id, runName: parent.receipt.run_name, script: frozen,
-    profile: { ...parent.profile, ...(delivery ? { delivery: structuredClone(delivery) } : {}), prompts: [...parent.profile.prompts, ...compileLongVideoPrompts(frozen).map(p => videoPromptForLoras(p, parent.profile.h3?.videoLoras))] } };
+    profile: { ...parentProfile, ...(delivery ? { delivery: structuredClone(delivery) } : {}), prompts: [...parent.profile.prompts, ...compileLongVideoPrompts(frozen).map(p => videoPromptForLoras(p, parent.profile.h3?.videoLoras))] } };
   assertLongVideoExecutionSnapshot(snapshot);
   return structuredClone(snapshot);
 }
@@ -57,9 +59,17 @@ export function assertLongVideoExecutionSnapshot(snapshot: LongVideoExecutionSna
   }
   const pages = snapshot.script.pages;
   const adopted = compileLongVideoPrompts(snapshot.script);
-  const samplingPrompts = snapshot.profile.h3 ? adopted.map(p => videoPromptForLoras(p, snapshot.profile.h3!.videoLoras)) : adopted;
+  const cues = !parent && !snapshot.profile.referenceImages?.length && snapshot.profile.timedGuides?.length ? longVideoGuideCues(
+    snapshot.profile.timedGuides.map(guide => ({ picture: guide.picture, mediaPath: guide.filename, seconds: guide.absoluteFrame / 24 })),
+    snapshot.script.layout
+  ) : [];
+  const samplingPrompts = adopted.map((p, index) => {
+    const prompt = cues.length ? longVideoGuideSamplingPrompt(p, cues, index + 1) : p;
+    return snapshot.profile.h3 ? videoPromptForLoras(prompt, snapshot.profile.h3.videoLoras) : prompt;
+  });
   if (pages.length !== snapshot.script.layout.chunks + 1 || new Set(pages.map(p => p.pageId)).size !== pages.length ||
-      pages.some(page => !page.pageId || !page.versionId) || !snapshot.profile.firstImage?.trim() || snapshot.profile.chunkSeconds !== snapshot.script.layout.chunkSeconds ||
+      pages.some(page => !page.pageId || !page.versionId) || (!snapshot.profile.firstImage?.trim() &&
+        !snapshot.profile.timedGuides?.length && !snapshot.profile.referenceImages?.length) || snapshot.profile.chunkSeconds !== snapshot.script.layout.chunkSeconds ||
       snapshot.profile.prompts.slice(snapshot.script.layout.prefixChunks).some((prompt, index) => prompt !== samplingPrompts[index])) throw new Error("Incomplete or mismatched adopted new-Run profile/image");
   assertContinuumGroupProfile(snapshot.profile, snapshot.script.layout.totalChunks);
 }

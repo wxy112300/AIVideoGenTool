@@ -1,4 +1,5 @@
 import { createTranslator, type Translate } from "./i18n.js";
+import { activeH3TimedGuides, h3ReferenceTimedGuides } from "./h3-timed-guides.js";
 import { uiKeys } from "./i18n-keys.js";
 import type {
   AppState,
@@ -179,7 +180,10 @@ export function queueTaskFromDraft(
     ),
     prompt: longVideoPlan ? longVideoPlan.pages.map(page => page.text).join("\n\n") : promptOf(draft),
     promptVersion: activePromptIndexForDraft(draft) + 1,
-    h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
+    h3ReferenceSlots: longVideo && !isMiniMaxH3R2vModel(draft.modelId)
+      ? [] : draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
+    h3TimedGuides: activeH3TimedGuides(draft)?.slots.filter(slot => slot.mediaPath).map(slot => ({ ...slot })) ??
+      (draft.h3ReferenceGuidesEnabled && isMiniMaxH3R2vModel(draft.modelId) ? h3ReferenceTimedGuides(draft) : undefined),
     startImagePath: draft.startImagePath,
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,

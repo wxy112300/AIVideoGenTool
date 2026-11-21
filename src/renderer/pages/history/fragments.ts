@@ -209,13 +209,18 @@ export function renderVideoInputSnapshotMarkup(
     });
   } else {
     items.push(`<dt>${options.t(uiKeys.history.detail.inputMode)}</dt><dd>${asset.h3ReferenceSlots?.length ? options.t(uiKeys.history.detail.r2v) : options.t(uiKeys.history.detail.imageToVideo)}</dd>`);
-    if (asset.startImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.firstFrame)}</dt><dd><code>${options.escapeHtml(asset.startImagePath)}</code><br><span>${resolutionLabel(asset.sourceWidth, asset.sourceHeight)}</span></dd>`);
+    if (asset.startImagePath && !asset.h3TimedGuides?.length) items.push(`<dt>${options.t(uiKeys.history.detail.firstFrame)}</dt><dd><code>${options.escapeHtml(asset.startImagePath)}</code><br><span>${resolutionLabel(asset.sourceWidth, asset.sourceHeight)}</span></dd>`);
     if (asset.endImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.lastFrame)}</dt><dd><code>${options.escapeHtml(asset.endImagePath)}</code><br><span>${resolutionLabel(asset.endImageWidth, asset.endImageHeight)}</span></dd>`);
     (asset.h3ReferenceSlots ?? []).forEach((slot, index) => items.push(renderReferenceSlot(slot, index)));
   }
   const previews: string[] = [];
   if (asset.sourceVideoPath) previews.push(referenceThumbnail(asset.sourceVideoPath, options.t(uiKeys.history.detail.sourceVideo), asset.sourceWidth, asset.sourceHeight, options, true));
-  if (asset.startImagePath) previews.push(referenceThumbnail(asset.startImagePath, options.t(uiKeys.history.detail.firstFrame), asset.sourceWidth, asset.sourceHeight, options));
+  if (asset.h3TimedGuides?.length) {
+    for (const guide of asset.h3TimedGuides) {
+      const time = guide.seconds === "end" ? options.t(uiKeys.create.guides.end) : `${guide.seconds}s`;
+      previews.push(referenceThumbnail(guide.mediaPath, `Picture ${guide.picture} · ${time}`, undefined, undefined, options));
+    }
+  } else if (asset.startImagePath) previews.push(referenceThumbnail(asset.startImagePath, options.t(uiKeys.history.detail.firstFrame), asset.sourceWidth, asset.sourceHeight, options));
   if (asset.endImagePath) previews.push(referenceThumbnail(asset.endImagePath, options.t(uiKeys.history.detail.lastFrame), asset.endImageWidth, asset.endImageHeight, options));
   (asset.h3ReferenceSlots ?? []).forEach((slot, index) => {
     if (!slot.mediaPath || slot.mediaPath === asset.sourceVideoPath) return;

@@ -23,6 +23,7 @@ import { findComfyRoot } from "./comfy-discovery.js";
 import { managedStrataDirectory, physicalPath, containsPath, resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
 import { removeSoftwareArtifact } from "./software-update-cleanup.js";
 import { gitSoftwareFiles } from "./software-git-files.js";
+import { deepSeekSourceSoftwareFiles } from "./strata-deepseek-source.js";
 import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
 import { GpuResourceLease } from "./gpu-resource-lease.js";
 import { withSoftwareMaintenance } from "./installation-cancellation.js";
@@ -59,6 +60,7 @@ async function sourceMatches(directory: string, url: string, t: Translate = crea
 async function assertDisposable(candidate: Candidate, t: Translate = createNativeTranslator(undefined).t) {
   const tracked = candidate.git ? await gitSoftwareFiles(candidate.path) : new Set<string>();
   const strataSource = candidate.vectors && await sourceMatches(candidate.path, "https://github.com/Niko1221/Strata", t);
+  if (strataSource) for (const name of await deepSeekSourceSoftwareFiles(candidate.path)) tracked.add(name);
   const visit = async (directory: string, relative = "") => {
     if (candidate.vectors && relative === "third_party/llama.cpp" && await sourceMatches(directory, "https://github.com/ggml-org/llama.cpp", t)
       && (await smallText(path.join(directory, ".git/HEAD"), t).catch(() => "")).trim() === STRATA_LLAMA_REVISION) {
@@ -137,7 +139,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       try {
         const proof = await smallText(path.join(filename, "download.json"), t), receipt = JSON.parse(proof);
         if (receipt.owner === "local-video-studio" && entry.name === `engine-${receipt.revision}-${receipt.sha256}`) {
-          const owned = new Set(["download.json", "engine.zip", ...(await entries(filename)).filter(file => /^engine\.zip\.invalid-\d+$/u.test(file.name)).map(file => file.name)]);
+          const owned = new Set(["download.json", "engine.zip", "engine.tar.gz", ...(await entries(filename)).filter(file => /^engine\.(?:zip|tar\.gz)\.invalid-\d+$/u.test(file.name)).map(file => file.name)]);
           await add(strataRoot, filename, proof, { owned });
         }
       } catch { /* Not our cache. */ }

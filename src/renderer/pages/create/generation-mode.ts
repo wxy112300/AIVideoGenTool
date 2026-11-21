@@ -10,10 +10,13 @@ import { estimatePromptTextTokens } from "../../../core/prompt-token-estimate";
 import { paintRangeFill } from "../../shared/ui/runtime";
 import type { Draft, H3PromptPreset } from "../../../types";
 import { createLongVideoLayout, proposeLongVideoExtension, suggestLongVideoChunks } from "../../../core/long-video/layout";
-import { createLongVideoScript, relayoutLongVideoScript, reviewScriptPage, updateScriptPage, type LongVideoScript } from "../../../core/long-video/script";
+import { createLongVideoScript, isScriptAllocation, relayoutLongVideoScript, reviewScriptPage, updateScriptPage, type LongVideoScript } from "../../../core/long-video/script";
 import { commitScriptText, scriptEditingText, stageScriptText } from "../../../core/long-video/script-buffers";
-import { applyLongVideoPromptResult, longVideoPromptRequest } from "../../../core/long-video/enhancement";
+import { applyLongVideoPromptResult, longVideoPromptRequest, type LongVideoWritingOperation } from "../../../core/long-video/enhancement";
 import { promptModelBackend } from "../../../core/prompt-models";
+import { activeH3TimedGuides, h3ReferenceTimedGuides } from "../../../core/h3-timed-guides";
+import { longVideoGuideCues, longVideoGuideIssue } from "../../../core/long-video/timed-guides";
+import { isContinuumReferenceModel } from "../../../core/long-video/group-workflow";
 
 interface PreviewState { key: string; active: boolean; seconds: number; count: number; confirmed: boolean; page: number; whole: boolean; texts: string[]; locks: boolean[]; writing?: string; preset?: string; nativeMode?: string; script?: LongVideoScript; seeded?: boolean; }
 let clearSequence = 0;
@@ -23,7 +26,8 @@ export const isLongVideoPreview = (root: HTMLElement): boolean => root.querySele
 export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () => void, notify: RendererContext["notify"], persistence: {
   getDraft(): Draft | undefined;
   patchDraft(patch: Partial<Draft>): void;
-  context?: Pick<RendererContext, "enhancePrompt" | "getState" | "reportUserAction">;
+  setEnhancing?(value: boolean): void;
+  context?: Pick<RendererContext, "enhancePrompt" | "getState" | "reportUserAction" | "application" | "requestRender" | "getRoute">;
 }): () => void {
   const select = root.querySelector<HTMLSelectElement>("#generation-mode");
   const card = select?.closest<HTMLElement>(".composer-motion-group");
@@ -181,10 +185,21 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   const runtimeHome = document.createComment("prompt-runtime-home"); runtime?.before(runtimeHome);
   const enhance = document.createElement("button"); enhance.type = "button"; enhance.className = "secondary button-with-icon";
   enhance.dataset.enhanceLongVideo = "";
+  const allocate = document.createElement("button"); allocate.type = "button"; allocate.className = "secondary button-with-icon";
+  allocate.dataset.allocateLongVideo = "";
+  allocate.innerHTML = `${icon("list-ordered")}<span>${t(uiKeys.create.editor.allocateStory)}</span>`;
+  const nativeEnhance = root.querySelector<HTMLButtonElement>("#enhance-prompt");
+  const enhancementBusy = () => enhancing || nativeEnhance?.getAttribute("aria-busy") === "true";
   let enhancing = false;
   const wholeEnhancement = () => state.page === 0 || state.whole || state.writing === "automatic";
-  const referenceIdentity = (draft: Draft) => JSON.stringify([draft.modelId, draft.inputMode, draft.startImagePath, draft.endImagePath]);
-  previewActions.append(preset, enhance); root.querySelector(".create-prompt-toolbar")!.append(previewActions);
+  const enhancementTargets = () => wholeEnhancement()
+    ? pages().slice(1).filter(p => !p.locked)
+    : pages().slice(state.page, state.page + 1).filter(p => !p.locked);
+  const preparedTargets = () => enhancementTargets().every(page => scriptEditingText(state.script!, page).trim());
+  const referenceIdentity = (draft: Draft) => JSON.stringify([draft.modelId, draft.inputMode, draft.startImagePath,
+    draft.endImagePath, activeH3TimedGuides(draft)?.slots, ...(isContinuumReferenceModel(draft.modelId)
+      ? [draft.h3ReferenceSlots, h3ReferenceTimedGuides(draft)] : [])]);
+  previewActions.append(allocate, preset, enhance); root.querySelector(".create-prompt-toolbar")!.append(previewActions);
   const version = root.querySelector<HTMLElement>(".composer-heading-main > .muted"); const originalVersion = version?.textContent;
   const versionButtons = [...root.querySelectorAll<HTMLButtonElement>("#prompt-prev, #prompt-next, #clear-prompt")].map(button => ({ button, disabled: button.disabled }));
   const countText = () => {
@@ -247,8 +262,14 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       for (let index = 0; index <= state.count; index++) {
         const block = document.createElement("div"), label = document.createElement("code"), field = document.createElement("p");
         block.className = "create-whole-block"; label.textContent = index === 0 ? t(uiKeys.create.editor.global) : `[Chunk ${index}]`;
+        if (index > 1) {
+          const separator = document.createElement("code");
+          separator.className = "create-whole-divider";
+          separator.textContent = "---";
+          block.append(separator);
+        }
         field.dataset.previewWholePage = String(index); field.setAttribute("role", "textbox"); field.setAttribute("aria-multiline", "true"); field.setAttribute("aria-label", label.textContent);
-        field.addEventListener("input", () => { editText(index, richPromptText(field)); if (state.page === index) text.value = state.texts[index]!; countText(); }, { signal });
+        field.addEventListener("input", () => { editText(index, richPromptText(field)); if (state.page === index) text.value = state.texts[index]!; countText(); paintWritingActions(); }, { signal });
         block.append(label, field); whole.append(block);
       }
     }
@@ -260,20 +281,38 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       block.toggleAttribute("data-locked", Boolean(state.locks[index]));
     }
     insert.disabled = !state.confirmed || state.whole || Boolean(state.locks[state.page]);
-    const appState = persistence.context?.getState();
-    const draft = persistence.getDraft();
-    const supported = draft?.modelId === "minimax_h3_fl2va" && draft.inputMode === "image" && Boolean(draft.startImagePath) && !draft.endImagePath &&
-      appState && promptModelBackend(appState.settings.promptModelId) === "strata";
-    enhance.disabled = enhancing || !supported || !state.confirmed || !state.script || (!wholeEnhancement() && Boolean(state.locks[state.page])) || Boolean(appState?.queueRunning);
-    enhance.title = supported ? "" : t(uiKeys.create.editor.longEnhanceRequirement);
-    enhance.setAttribute("aria-busy", String(enhancing));
-    enhance.innerHTML = `${icon(enhancing ? "refresh-cw" : "sparkles")}<span>${t(wholeEnhancement() ? uiKeys.create.editor.enhanceGlobal : uiKeys.create.editor.enhancePage)}</span>`;
+    paintWritingActions();
     paintVersions();
     countText();
     renderIcons(editor);
-    renderIcons(previewActions);
     revealPage();
   };
+  function paintWritingActions() {
+    const appState = persistence.context?.getState();
+    const draft = persistence.getDraft();
+    const guideEditor = draft && activeH3TimedGuides(draft);
+    const supported = draft?.inputMode === "image" &&
+      (isContinuumReferenceModel(draft.modelId)
+        ? draft.h3ReferenceSlots.length > 0 && draft.h3ReferenceSlots.every(slot => slot.mediaType === "image" && slot.mediaPath)
+        : draft.modelId === "minimax_h3_fl2va" &&
+          (guideEditor ? guideEditor.slots.some(guide => guide.mediaPath) : Boolean(draft.startImagePath))) &&
+      appState && promptModelBackend(appState.settings.promptModelId) === "strata";
+    const busy = enhancementBusy();
+    const ready = Boolean(supported && state.confirmed && state.script && !appState?.queueRunning);
+    const canAllocate = pages().slice(1).some(page => !page.locked) && state.texts.some(value => value.trim());
+    const awaitingAllocation = enhancementTargets().some(isScriptAllocation) && !preparedTargets();
+    allocate.disabled = busy || !ready || !canAllocate;
+    allocate.title = ready ? canAllocate ? "" : t(uiKeys.create.editor.allocateStoryInput) : t(uiKeys.create.editor.longEnhanceRequirement);
+    enhance.disabled = !busy && (!ready || enhancementTargets().length === 0 || awaitingAllocation);
+    enhance.title = busy ? t(uiKeys.create.promptProgress.cancel) : !supported ? t(uiKeys.create.editor.longEnhanceRequirement)
+      : awaitingAllocation ? t(uiKeys.create.editor.allocateStoryInput) : "";
+    enhance.setAttribute("aria-busy", String(busy));
+    const progressLabel = nativeEnhance?.getAttribute("aria-busy") === "true" ? nativeEnhance.querySelector("[data-prompt-progress-label]")?.textContent : undefined;
+    enhance.innerHTML = `${icon(busy ? "x" : "sparkles")}<span>${busy ? progressLabel || t(uiKeys.create.promptProgress.cancel) : t(wholeEnhancement()
+      ? preparedTargets() || awaitingAllocation ? uiKeys.create.editor.expandWhole : uiKeys.create.editor.allocateAndExpand
+      : uiKeys.create.editor.enhancePage)}</span>`;
+    renderIcons(previewActions);
+  }
   const hiddenSources = [prompt.closest<HTMLElement>(".prompt-editor-shell")!, root.querySelector<HTMLElement>(".create-prompt-toolbar .prompt-action-controls"), root.querySelector<HTMLElement>(".create-prompt-card > .create-prompt-footer"), root.querySelector<HTMLElement>(".settings-latent-save")].filter((element): element is HTMLElement => Boolean(element));
   const show = (active: boolean) => {
     state.active = active; layout.hidden = !active; editor.hidden = !active;
@@ -285,30 +324,57 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     hiddenSources.forEach(element => { element.hidden = active; });
     paint(); sync();
   };
-  enhance.addEventListener("click", async () => {
-    if (enhancing || enhance.disabled || !persistence.context) return;
+  const writeScript = async (operation?: LongVideoWritingOperation) => {
+    if (enhancementBusy()) { await persistence.context?.application.cancelPrompt(); persistence.setEnhancing?.(false); persistence.context?.requestRender(); return; }
+    if ((operation === "allocate" ? allocate.disabled : enhance.disabled) || !persistence.context) return;
     try {
       commit();
       const draft = persistence.getDraft(); if (!draft || !state.script) return;
-      const request = longVideoPromptRequest(state.script, wholeEnhancement() ? undefined : pages()[state.page]?.id);
+      const target = operation === "allocate" || wholeEnhancement() ? undefined : pages()[state.page]?.id;
+      const request = longVideoPromptRequest(state.script, target, operation ?? (preparedTargets() ? "expand" : undefined));
+      const guideEditor = activeH3TimedGuides(draft);
+      const referenceModel = isContinuumReferenceModel(draft.modelId);
+      const slots = guideEditor?.slots ?? h3ReferenceTimedGuides(draft);
+      const guideIssue = (guideEditor || slots.length) && longVideoGuideIssue(slots, request.layout);
+      if (guideIssue) throw new Error(t(uiKeys.create.guides[guideIssue]));
+      const cues = slots.length ? longVideoGuideCues(slots, request.layout) : undefined;
+      const imagePaths = referenceModel ? [...new Set(draft.h3ReferenceSlots.map(slot => slot.mediaPath))]
+        : cues ? [...new Set(cues.map(guide => guide.mediaPath))] : [draft.startImagePath, draft.endImagePath].filter(Boolean);
+      const referenceContext = referenceModel ? [
+        "Each attached Picture is a persistent appearance or identity reference. Keep its Picture number across all segments. A timed reference also guides composition at its designated point.",
+        ...draft.h3ReferenceSlots.map((slot, index) => `Attachment ${imagePaths.indexOf(slot.mediaPath) + 1} = <Picture ${index + 1}> (${slot.role})${slot.note ? `: ${slot.note}` : ""}.`),
+        ...(cues ?? []).map(guide => `<Picture ${guide.picture}> anchors film ${(guide.frame / 24).toFixed(3)}s${guide.segment ? `, segment ${guide.segment} around ${guide.localSeconds!.toFixed(3)}s` : ""}.`)
+      ].join("\n") : cues ? [
+        "Read the attached keyframes as existing visual beats. Match each Picture to its attachment below and preserve the visible composition, poses, subjects and props when planning transitions. Plan on the assembled 24 fps timeline; in detailed prompts, use only segment-local time and describe the images in plain language without numbered Picture tags.",
+        ...cues.map(guide => `Attachment ${imagePaths.indexOf(guide.mediaPath) + 1} = Picture ${guide.picture}: film ${(guide.frame / 24).toFixed(3)}s${guide.segment ? `, segment ${guide.segment} around ${guide.localSeconds!.toFixed(3)}s` : ""}.`)
+      ].join("\n") : draft.endImagePath ? "Attachment 1 is the opening image. Attachment 2 is the final image. Plan the last segment to reach the final image." : undefined;
       const reference = referenceIdentity(draft);
-      enhancing = true; paint();
-      persistence.context.reportUserAction("long-video-enhance", { chunks: request.layout.chunks, target: request.targetPageId ?? "whole" });
+      enhancing = true; persistence.setEnhancing?.(true); paint();
+      persistence.context.reportUserAction("long-video-enhance", { chunks: request.layout.chunks, target: request.targetPageId ?? "whole", operation: request.operation ?? "automatic" });
       const raw = await persistence.context.enhancePrompt({ prompt: request.brief.text, modelId: draft.modelId,
-        mode: "h3-vision", origin: "image-to-video", h3PromptMode: "I2VA", h3DurationSeconds: request.layout.chunkSeconds,
-        h3PromptPreset: (preset.value || "detailed-cinematic") as H3PromptPreset, imagePath: draft.startImagePath,
-        imagePaths: [draft.startImagePath], longVideo: request });
-      if (signal.aborted) return;
+        mode: "h3-vision", origin: "image-to-video", h3PromptMode: referenceModel ? "R2V" : "I2VA", h3DurationSeconds: request.layout.chunkSeconds,
+        h3PromptPreset: (preset.value || "detailed-cinematic") as H3PromptPreset, imagePath: imagePaths[0],
+        imagePaths, longVideo: request, referenceContext, ...(cues ? { h3TimedGuideContext: true } : {}) });
       const current = persistence.getDraft();
       if (!state.active || !current || referenceIdentity(current) !== reference || !current.longVideoScript) throw new Error(t(uiKeys.create.editor.enhanceStale));
       // The live draft may change during inference; adoption checks its actual IDs/text/locks.
       state.script = applyLongVideoPromptResult(current.longVideoScript, request, raw, id);
+      // Runtime/route refresh may dispose this DOM while the owned request
+      // continues. Adopt only into the still-matching live script, without
+      // touching detached controls or discarding a complete model package.
+      if (signal.aborted) { persistence.patchDraft({ longVideoScript: state.script }); return; }
       readScript(); save(); paint();
       text.dispatchEvent(new Event("rich-reset-history"));
     } catch (error) {
       if (!signal.aborted) notify(error instanceof Error ? error.message : String(error), { kind: "error" });
-    } finally { enhancing = false; if (!signal.aborted) paint(); }
-  }, { signal });
+    } finally {
+      enhancing = false; persistence.setEnhancing?.(false);
+      if (!signal.aborted) paint();
+      else if (persistence.context?.getRoute().page === "create") persistence.context.requestRender();
+    }
+  };
+  enhance.addEventListener("click", () => { void writeScript(); }, { signal });
+  allocate.addEventListener("click", () => { void writeScript("allocate"); }, { signal });
   for (const selector of ["[data-preview-duration]", "[data-preview-duration-number]", "[data-preview-count]", "[data-preview-count-number]"]) {
     const field = selector.includes("duration") ? previewDuration.querySelector<HTMLInputElement>(selector)! : layout.querySelector<HTMLInputElement>(selector)!;
     field.addEventListener("input", () => {
@@ -332,7 +398,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       state.confirmed = true; readScript(); save(); paint();
     } catch { notify(t(uiKeys.create.editor.invalidLayout), { kind: "error" }); }
   }, { signal });
-  text.addEventListener("input", () => { editText(state.page, text.value); countText(); }, { signal });
+  text.addEventListener("input", () => { editText(state.page, text.value); countText(); paintWritingActions(); }, { signal });
   editor.addEventListener("focusout", event => {
     if (!(event.target instanceof Element) || !event.target.matches("textarea, .create-rich-prompt, [data-preview-whole-page]")) return;
     commit(); paintVersions();
@@ -421,5 +487,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
         editText(index, before); commit(); paint();
       } }] });
   }, { signal, capture: true });
-  return () => { events.abort(); tabResize?.disconnect(); disposeInsert(); if (runtime) runtimeHome.replaceWith(runtime); layout.remove(); previewDuration.remove(); editor.remove(); previewActions.remove(); hiddenSources.forEach(element => { element.hidden = false; }); };
+  const progressObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(() => paint());
+  if (nativeEnhance) progressObserver?.observe(nativeEnhance, { attributes: true, childList: true, characterData: true, subtree: true });
+  return () => { events.abort(); progressObserver?.disconnect(); tabResize?.disconnect(); disposeInsert(); if (runtime) runtimeHome.replaceWith(runtime); layout.remove(); previewDuration.remove(); editor.remove(); previewActions.remove(); hiddenSources.forEach(element => { element.hidden = false; }); };
 }

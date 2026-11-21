@@ -197,6 +197,7 @@ function imagePathsForRequest(request: EnhanceRequest, mode: H3PromptMode): stri
   const images = candidates.filter((value) =>
     /\.(?:png|jpe?g|webp|bmp|gif)$/iu.test(value)
   );
+  if (request.h3TimedGuideContext) return images;
   return mode === "FL2VA" ? images.slice(0, 2) : images.slice(0, 1);
 }
 

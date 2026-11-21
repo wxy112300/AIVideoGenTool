@@ -18,7 +18,8 @@ export async function withStrataReferenceMedia<T>(
   const images = [...new Set(request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))].filter(Boolean);
   const boundary = request.extensionSource ? images.shift() : undefined;
   const inspectionOnly = isH3NativeStateContinuationRequest(request);
-  const labels = images.map((_filename, index) => inspectionOnly ? "visual inspection aid" : `<Picture ${index + 1}>`);
+  const labels = images.map((_filename, index) => request.h3TimedGuideContext ? "timed keyframe image" :
+    inspectionOnly ? "visual inspection aid" : `<Picture ${index + 1}>`);
   if (boundary) {
     images.push(boundary);
     labels.push(request.h3PromptMode === "R2V" || inspectionOnly

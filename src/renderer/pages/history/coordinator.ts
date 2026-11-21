@@ -1,3 +1,4 @@
+import { updateHistoryMetadata } from "./metadata-update";
 import type {
   AppState,
   HistoryMetadataPatch,
@@ -253,8 +254,13 @@ export function createHistoryWorkspaceCoordinator(
     nextRoot.innerHTML = historyAssembly.renderDetail(deps.context, "video");
     const nextSummary = nextRoot.querySelector<HTMLElement>("[data-history-av-summary]");
     if (!nextSummary) return false;
+    const currentDetails = currentSummary.querySelector("details");
+    const nextDetails = nextSummary.querySelector("details");
+    if (currentDetails && nextDetails) nextDetails.open = currentDetails.open;
+    const restoreSummaryFocus = currentDetails?.querySelector("summary") === document.activeElement;
     currentSummary.replaceWith(nextSummary);
     renderIcons(nextSummary);
+    if (restoreSummaryFocus) nextDetails?.querySelector("summary")?.focus({ preventScroll: true });
     return true;
   }
 
@@ -319,9 +325,10 @@ export function createHistoryWorkspaceCoordinator(
         const currentVersion = deps.getState().history
           .find((item) => item.id === assetId)
           ?.versions.find((item) => item.id === versionId);
-        if (!currentVersion?.h3ContinuationData ||
-            (currentVersion.h3ContinuationData.status === "missing" &&
-              !currentVersion.h3ContinuationData.artifact)) return;
+        if (!currentVersion) return;
+        const nativeAv = currentVersion.h3ContinuationData;
+        const hasRun = currentVersion.longVideoExecution || currentVersion.longVideoReceipt;
+        if (!hasRun && (!nativeAv || (nativeAv.status === "missing" && !nativeAv.artifact))) return;
         deps.ui.historyArtifactInspection = { key, value };
         updateHistoryArtifactSummaryInPlace();
       })
@@ -406,7 +413,7 @@ export function createHistoryWorkspaceCoordinator(
           if (project && version) await historyActions.continueImageToVideo(project, version);
         },
         updateHistoryMetadata: (assetId, patch: HistoryMetadataPatch) =>
-          deps.context.application.updateHistoryMetadata(assetId, patch)
+          updateHistoryMetadata(deps.context, [{ assetId, patch }], (id, kind) => kind === "image" ? openImageHistoryDetail(id) : openHistoryDetail(id))
       },
       filter: {
         getFilter: () => deps.ui.historyFilter,
@@ -428,7 +435,7 @@ export function createHistoryWorkspaceCoordinator(
         escapeHtml,
         icon,
         updateHistoryMetadata: (assetId, patch: HistoryMetadataPatch) =>
-          deps.context.application.updateHistoryMetadata(assetId, patch)
+          updateHistoryMetadata(deps.context, [{ assetId, patch }], (id, kind) => kind === "image" ? openImageHistoryDetail(id) : openHistoryDetail(id))
       },
       batch: {
         getKind: deps.getHistoryKind,
@@ -453,7 +460,8 @@ export function createHistoryWorkspaceCoordinator(
         isBusy: () => deps.ui.historyBatchBusy,
         setState: deps.setState,
         clearSelection: clearBatchSelection,
-        requestDelete: requestHistoryBatchDeletion
+        requestDelete: requestHistoryBatchDeletion,
+        openHistoryItem: (id, kind) => kind === "image" ? openImageHistoryDetail(id) : openHistoryDetail(id)
       },
       historyLayout: historyLayoutController.getLayout(),
       isImageHistoryDetail: deps.getPage() === "image-history-detail",

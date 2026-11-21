@@ -2,6 +2,7 @@ import type { RendererContext } from "../../contracts";
 import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
 import { uiKeys } from "../../../core/i18n-keys";
+import { activeH3TimedGuides, h3GuideBoundarySlots, supportsH3TimedGuides } from "../../../core/h3-timed-guides";
 import { mountPromptHeight } from "./prompt-height";
 
 interface Edit { text: string; start: number; end: number; }
@@ -61,6 +62,12 @@ function reference(context: RendererContext, token: string, sourceId: string): s
   const index = Number(match[2]) - 1;
   if (sourceId === "image-edit-prompt-input") return match[1] === "Picture" ? state.imageDraft.pictures.find(picture => picture.pictureNumber === index + 1)?.absolutePath ?? "" : "";
   const draft = state.draft;
+  const guideEditor = activeH3TimedGuides(draft);
+  if (guideEditor && match[1] === "Picture") return guideEditor.slots.find(slot => slot.picture === index + 1)?.mediaPath ?? "";
+  if (draft.h3GuideEditor && supportsH3TimedGuides(draft) && match[1] === "Picture") {
+    const { start, end } = h3GuideBoundarySlots(draft.h3GuideEditor.slots);
+    return [start, end].find(slot => slot?.picture === index + 1)?.mediaPath ?? "";
+  }
   if (draft.h3ReferenceSlots.length) return draft.h3ReferenceSlots.filter(slot => slot.mediaType === (match[1] === "Video" ? "video" : "image"))[index]?.mediaPath ?? "";
   return match[1] === "Video" ? index === 0 ? draft.sourceVideoPath : "" : [draft.startImagePath, draft.endImagePath][index] ?? "";
 }

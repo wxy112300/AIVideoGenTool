@@ -5,7 +5,7 @@ import { hasDeepSeekEngine } from "./strata-deepseek-engine.js";
 import { canUninstallStrata, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
 import type { Settings, StrataPreparationStatus } from "../../src/types.js";
 import { strataModelRoot, strataModelScanRoots, strataPreparationProfiles } from "../../src/core/strata-preparation.js";
-import { STRATA_ENGINE_FILES, STRATA_LEGACY_ENGINE_FILES, STRATA_SOURCE_FILES } from "../../src/core/catalog/dependencies/strata.js";
+import { strataEngineFilesForRevision, strataSourceFilesForRevision } from "../../src/core/catalog/dependencies/strata.js";
 
 export interface StrataFileEvidence { size: number; header: string }
 export type StrataFileInspector = (filename: string) => Promise<StrataFileEvidence | null>;
@@ -32,8 +32,9 @@ export async function scanStrataPreparation(
   const installDirectory = resolvedStrataDirectory(settings);
   const modelDirectory = strataModelRoot(settings, resolvedModelDirectory);
   const release = strataInstalledRelease(installDirectory);
-  const engineFiles = release?.bundledLibraries === false ? STRATA_LEGACY_ENGINE_FILES : STRATA_ENGINE_FILES;
-  const files = await Promise.all([...STRATA_SOURCE_FILES, ...engineFiles].map(async (relativePath) => ({
+  const engineFiles = strataEngineFilesForRevision(release?.revision);
+  const sourceFiles = strataSourceFilesForRevision(release?.revision);
+  const files = await Promise.all([...sourceFiles, ...engineFiles].map(async (relativePath) => ({
     relativePath,
     present: Boolean(installDirectory && (await inspect(path.join(installDirectory, relativePath)))?.size)
   })));
@@ -87,8 +88,8 @@ export async function scanStrataPreparation(
     configuredModelDirectory: settings.modelDirectory.trim(), configuredComfyInstallDirectory: settings.comfyInstallDirectory.trim(),
     managedUninstallable: await canUninstallStrata(settings, { protectedDirectories: [resolvedModelDirectory] }),
     managedInstalled: await strataManagedReceipt(installDirectory) && Boolean((await inspect(path.join(installDirectory, ".venv/Scripts/python.exe")))?.size),
-    sourcePresent: files.slice(0, STRATA_SOURCE_FILES.length).every((file) => file.present),
-    enginePresent: files.slice(STRATA_SOURCE_FILES.length).every((file) => file.present),
+    sourcePresent: files.slice(0, sourceFiles.length).every((file) => file.present),
+    enginePresent: files.slice(sourceFiles.length).every((file) => file.present),
     deepSeekEnginePresent: await hasDeepSeekEngine(installDirectory),
     scannedAt: new Date().toISOString()
   };

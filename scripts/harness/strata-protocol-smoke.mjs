@@ -6,17 +6,23 @@ import { createServer } from "node:net";
 import { randomBytes } from "node:crypto";
 import { StrataService } from "../../dist/electron/electron/services/strata-service.js";
 import { buildStrataPromptRequest } from "../../dist/electron/electron/services/strata-prompt.js";
-import { managedStrataDirectory, strataInstalledRelease } from "../../dist/electron/electron/services/strata-installation.js";
+import { managedStrataDirectory, strataInstalledRelease, strataSourceDirectory } from "../../dist/electron/electron/services/strata-installation.js";
 import { strataDerivedDataDirectory, validatePreparedStrataRuntime } from "../../dist/electron/electron/services/strata-model-preparation.js";
 import { createDefaultSettings } from "../../dist/electron/src/core/defaults.js";
 import { isLocalPortInUse } from "../../dist/electron/electron/services/local-service-process.js";
 
 if (process.argv.includes("--help")) {
-  console.log("node scripts/harness/strata-protocol-smoke.mjs [--tokenizer-only]\nRequires installed managed Strata and a completed Qwen pack. --tokenizer-only permits its tokenizer from an older source revision without validating or rebuilding weights. Tests auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor, cancellation retention and explicit stop/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
+  console.log("node scripts/harness/strata-protocol-smoke.mjs [--tokenizer-only] [--source-directory <checkout>]\nRequires installed managed Strata and a completed Qwen pack. --tokenizer-only permits its tokenizer from an older source revision without validating or rebuilding weights. --source-directory tests a separate official checkout using the installed Python, without upgrading the installed runtime. Tests auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor, cancellation retention and explicit stop/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
   process.exit(0);
 }
 
 const install = managedStrataDirectory(), data = strataDerivedDataDirectory();
+const sourceIndex = process.argv.indexOf("--source-directory");
+assert.ok(sourceIndex < 0 || (process.argv[sourceIndex + 1] && !process.argv[sourceIndex + 1].startsWith("--")), "--source-directory requires a checkout path");
+const checkout = sourceIndex < 0 ? install : path.resolve(process.argv[sourceIndex + 1]);
+const source = sourceIndex < 0 ? strataSourceDirectory(install)
+  : await fs.stat(path.join(checkout, "terminal/serve/server.py")).then(() => path.join(checkout, "terminal")).catch(() => checkout);
+assert.ok((await fs.stat(path.join(source, "serve/server.py"))).isFile());
 const tokenizerOnly = process.argv.includes("--tokenizer-only");
 let prepared;
 for (const entry of (await fs.readdir(data, { withFileTypes: true })).filter(e => e.isDirectory() && !e.isSymbolicLink()).slice(-1000).reverse()) {
@@ -51,7 +57,7 @@ const service = new StrataService({ startupTimeoutMs: 15000, requestTimeoutMs: 1
     }
     return fetch(url, options);
   } });
-const launch = () => ({ executable: path.join(install, ".venv", "Scripts", "python.exe"), cwd: install, port, apiKey,
+const launch = () => ({ executable: path.join(install, ".venv", "Scripts", "python.exe"), cwd: source, port, apiKey,
   args: ["-B", "-u", "-m", "serve.server", "--engine", "mock", "--config", config, "--host", "127.0.0.1",
     "--port", String(port), "--api-key", apiKey, "--api-monitor", "--script-delay", "0.005",
     "--script", "A scripted fixture thought.</think>\n\n" + "Fixture detail. ".repeat(30) + "Official fixture final." ] });
@@ -118,7 +124,8 @@ try {
   restartedPid = (await service.start(launch())).pid;
   assert.ok((await service.chat(request)).endsWith("Official fixture final."));
   const report = { ok: true, layer: "installed official HTTP/template/model tokenizer + scripted mock engine; no neural/vision/performance claim",
-    version: strataInstalledRelease(install)?.version, tokenizerOnly, pid, restartedPid, port, repeatedCalls: calls,
+    installedVersion: strataInstalledRelease(install)?.version, sourceDirectory: source,
+    sourceHead: (await fs.readFile(path.join(checkout, ".git/HEAD"), "utf8").catch(() => "unknown")).trim(), tokenizerOnly, pid, restartedPid, port, repeatedCalls: calls,
     monitor: true, auth: true, contextOverflowRecovery: true, controlFieldsVisible: true, cancellationRetainedModel: true, explicitStopAndRestart: true };
   await fs.writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ ...report, directory }));

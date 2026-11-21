@@ -17,6 +17,24 @@ async function fixture() {
 const errno = (code: string) => Object.assign(new Error(code), { code });
 
 describe("historical state protection", () => {
+  it("reuses unchanged retention summaries but always revalidates recovery bytes", async () => {
+    const { filename, safety } = await fixture();
+    const raw = JSON.stringify({ ...createDefaultState(), largeLegacyText: "legacy".repeat(10000) });
+    await safety.backup(raw);
+    await safety.prune();
+    const read = vi.spyOn(fs, "readFile");
+    try {
+      await safety.prune();
+      expect(read).not.toHaveBeenCalled();
+      const backup = path.join(safety.directory, `${stateDigest(raw)}.json`);
+      await fs.writeFile(backup, "tampered backup");
+      await safety.prune();
+      expect(read).toHaveBeenCalled();
+      expect(await fs.readFile(backup, "utf8")).toBe("tampered backup");
+      await fs.writeFile(filename, "broken primary");
+      await expect(safety.read()).rejects.toThrow();
+    } finally { read.mockRestore(); }
+  });
   it("initializes only a genuinely new profile and backs it up", async () => {
     const { filename } = await fixture();
     const loaded = await new JsonStore(filename).load();

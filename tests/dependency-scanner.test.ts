@@ -91,8 +91,8 @@ describe("dependency scanner", () => {
     await fs.writeFile(path.join(directory, "pyproject.toml"), '[project]\nversion = "3.9.1"\n');
     const statuses = await scanCustomNodes(root, { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" });
     const continuum = statuses.find(node => node.id === "h3-continuum")!;
-    expect(continuum).toMatchObject({ version: "3.9.1", recommendedVersion: "3.10.2", updateAvailable: true, compatibilityState: "warning", loadError: "" });
-    expect(continuum.updateNotice).toContain("当前 v3.9.1，推荐 v3.10.2");
+    expect(continuum).toMatchObject({ version: "3.9.1", recommendedVersion: "3.10.3", updateAvailable: true, compatibilityState: "warning", loadError: "" });
+    expect(continuum.updateNotice).toContain("当前 v3.9.1，推荐 v3.10.3");
     expect(continuum.updateNotice).not.toContain("revision");
   });
   it("offers offline Writer repair for the old shared-runtime upper bound and clears it after adaptation", async () => {

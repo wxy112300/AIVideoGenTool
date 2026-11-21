@@ -1,6 +1,6 @@
 import { assertLongVideoLayout, type LongVideoLayout } from "./layout.js";
 
-export interface ScriptVersion { id: string; text: string; source: "user" | "model"; }
+export interface ScriptVersion { id: string; text: string; source: "user" | "model"; stage?: "allocation"; }
 export interface ScriptPage {
   id: string;
   versions: ScriptVersion[];
@@ -49,6 +49,13 @@ export function scriptPageText(page: ScriptPage): string {
   if (!version) throw new Error("Missing selected script version");
   return version.text;
 }
+export function isScriptAllocation(page: ScriptPage): boolean {
+  return page.versions.find(version => version.id === page.activeVersionId)?.stage === "allocation";
+}
+
+export function joinContinuumPromptBlocks(blocks: readonly string[]): string {
+  return blocks.join("\n\n---\n\n");
+}
 export function createLongVideoScript(layout: LongVideoLayout, nextId: ScriptIdFactory, briefText = ""): LongVideoScript {
   assertLongVideoLayout(layout);
   const used = new Set<string>();
@@ -81,7 +88,7 @@ export function relayoutLongVideoScript(script: LongVideoScript, layout: LongVid
   return result;
 }
 
-export interface ScriptEdit { pageId: string; text: string; }
+export interface ScriptEdit { pageId: string; text: string; stage?: "allocation" | "prompt"; }
 /** Explicit user acknowledgement after layout/brief changes, including unchanged locked text. */
 export function reviewScriptPage(script: LongVideoScript, pageId: string, expectedRevision: number): LongVideoScript {
   if (script.revision !== expectedRevision) throw new Error("Stale script revision");
@@ -127,9 +134,10 @@ export function editLongVideoScript(script: LongVideoScript, edits: ScriptEdit[]
   for (const edit of edits) {
     const page = pages.find(p => p.id === edit.pageId);
     if (!page) throw new Error("Unknown script page");
-    if (scriptPageText(page) === edit.text) continue;
+    const stage = edit.stage === "allocation" || (edit.stage === undefined && isScriptAllocation(page)) ? "allocation" : undefined;
+    if (scriptPageText(page) === edit.text && Boolean(stage) === isScriptAllocation(page)) continue;
     if (source === "model" && page.locked) throw new Error("Cannot overwrite locked page");
-    const version = { id: freshId(nextId, used), text: edit.text, source };
+    const version: ScriptVersion = { id: freshId(nextId, used), text: edit.text, source, ...(stage ? { stage } : {}) };
     page.versions.push(version);
     page.activeVersionId = version.id;
     page.stale = false;
@@ -181,9 +189,10 @@ export function freezeLongVideoScript(script: LongVideoScript) {
   assertLongVideoLayout(script.layout);
   if (script.pageBuffers && Object.keys(script.pageBuffers).length) throw new Error("Commit script edits first");
   if (script.wholeBuffer) throw new Error("Resolve whole-script edits first");
-  if (script.segments.length !== script.layout.chunks || script.segments.some(p => p.stale || !scriptPageText(p).trim())) throw new Error("Incomplete or stale script");
+  if (script.segments.length !== script.layout.chunks || script.segments.some(p => p.stale || isScriptAllocation(p) || !scriptPageText(p).trim())) throw new Error("Incomplete or stale script");
   return clone({ revision: script.revision, layout: script.layout, sharedPreamble: script.sharedPreamble === true,
-    pages: [script.brief, ...script.segments].map(p => ({ pageId: p.id, versionId: p.activeVersionId, text: scriptPageText(p) })) });
+    pages: [script.brief, ...script.segments].map(p => ({ pageId: p.id, versionId: p.activeVersionId, text: scriptPageText(p),
+      ...(p.versions.some(v => v.id !== p.activeVersionId && v.text.trim()) ? { versions: p.versions } : {}) })) });
 }
 
 /** Match official timeline preamble semantics, while keeping story notes out of sampling. */

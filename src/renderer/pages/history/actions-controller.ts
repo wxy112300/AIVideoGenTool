@@ -1,6 +1,7 @@
 import type { AppState, HistoryMetadataPatch, HistoryRating } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
-import { videoPromptForLoras } from "../../../core/video-loras";
+import { HistoryMetadataSaveError } from "./metadata-update";
+import { historyVideoPrompt } from "../../../core/history-video";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 
 type HistoryContinuumAction =
@@ -138,11 +139,14 @@ export function mountHistoryActionsController(
       setFavoriteBusy(assetId, true);
       try {
         const favorite = !current.favorite;
+        patchFavoriteButtons(assetId, favorite);
         options.setState(await options.updateHistoryMetadata(assetId, { favorite }));
         // Curation is a local metadata mutation. Patch its controls in place
         // so a playing detail video keeps its media element and audio state.
         patchFavoriteButtons(assetId, favorite);
       } catch (error) {
+        patchFavoriteButtons(assetId, current.favorite);
+        if (error instanceof HistoryMetadataSaveError) return;
         context.notify(error instanceof Error ? error.message : t(uiKeys.uiError.favoriteUpdate), { renderPage: false, kind: "error" });
       } finally {
         favoriteUpdates.delete(assetId);
@@ -161,6 +165,7 @@ export function mountHistoryActionsController(
         updateRatingVisual(control, rating, unsetLabel);
       });
     } catch (error) {
+      if (error instanceof HistoryMetadataSaveError) return;
       context.notify(error instanceof Error ? error.message : t(uiKeys.uiError.ratingUpdate), { renderPage: false, kind: "error" });
     }
   };
@@ -223,7 +228,7 @@ export function mountHistoryActionsController(
     if (asset) {
       const version = asset.versions.find((item) => item.id === options.getSelectedHistoryVersionId());
       await options.copyHistoryText(
-        videoPromptForLoras(asset.prompt, version?.videoLoras ?? asset.videoLoras),
+        historyVideoPrompt(asset, version),
         t(uiKeys.history.menu.promptCopied)
       );
     }
@@ -298,16 +303,16 @@ export function mountHistoryActionsController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      stopAction(event);
-      const filename = button.dataset.showFile;
-      if (!filename) return;
-      context.reportUserAction("history-show-file");
-      const shown = await context.hostCapabilities.showItemInFolder(filename);
-      if (!shown) context.notify(t(uiKeys.history.actions.fileMissing), { renderPage: false });
-    }, { signal });
-  });
+  root.addEventListener("click", async (event) => {
+    const button = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-show-file]") : null;
+    if (!button) return;
+    stopAction(event);
+    const filename = button.dataset.showFile;
+    if (!filename) return;
+    context.reportUserAction("history-show-file");
+    const shown = await context.hostCapabilities.showItemInFolder(filename);
+    if (!shown) context.notify(t(uiKeys.history.actions.fileMissing), { renderPage: false });
+  }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-copy-file]").forEach((button) => {
     button.addEventListener("click", async (event) => {

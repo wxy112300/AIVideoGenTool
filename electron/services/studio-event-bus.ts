@@ -10,6 +10,7 @@ import type {
 import type { PromptRuntimeState } from "../../src/core/prompt-runtime-state.js";
 
 export interface StudioEventMap {
+  "history:metadata-changed": import("../../src/types.js").HistoryMetadataChange[];
   "state:changed": AppState;
   "comfy-runtime:changed": ComfyRuntimeState;
   "prompt-runtime:changed": PromptRuntimeState;

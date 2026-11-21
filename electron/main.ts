@@ -14,6 +14,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WindowCloseRequest } from "../src/types.js";
+import { WindowShutdown } from "./services/window-shutdown.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
@@ -326,17 +327,53 @@ function interruptForExit(
   return activeApplicationRuntime().interruptForExit(waitForWorker, queueCleanupOnly);
 }
 
+const windowShutdown = new WindowShutdown({
+  stopServices: async () => {
+    appLogger.info("app", "shutdown", "Application shutdown started");
+    const stopped = await Promise.allSettled([
+      lanBrowserHost?.dispose(),
+      activeApplicationRuntime().stop().then(result => {
+        if (!result.ok) throw new Error(result.message);
+      })
+    ]);
+    for (const result of stopped) if (result.status === "rejected") throw result.reason;
+  },
+  saveStorage: async () => {
+    await nasPublisher?.close();
+    await store.close?.();
+  },
+  onStage: stage => {
+    closeFlowRunning = true;
+    pendingWindowCloseRequest = { kind: "closing", shutdownStage: stage };
+    const t = createNativeTranslator(store.getSettings().uiLocale).t;
+    appLogger.info("app", "shutdown-stage", stage);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(`${t(uiKeys.dialog.exiting)} · ${studioWindowTitle()}`);
+      mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
+    }
+  },
+  onComplete: () => {
+    rendererHasUnsavedSettings = false;
+    pendingWindowCloseRequest = null;
+    allowWindowClose = true;
+    mainWindow?.destroy();
+    if (process.platform !== "darwin") app.quit();
+  },
+  onError: error => {
+    appLogger.error("app", "shutdown-failed", safeLogErrorMessage(error));
+    closeFlowRunning = false;
+    const t = createNativeTranslator(store.getSettings().uiLocale).t;
+    pendingWindowCloseRequest = { kind: "closing", shutdownError: (error instanceof Error ? error.message : String(error)) || t(uiKeys.runtime.exitRequestFailed) };
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(studioWindowTitle());
+      mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
+    }
+  }
+});
+
 async function finishWindowClose(): Promise<void> {
-  appLogger.info("app", "shutdown", "Application shutdown started");
-  await lanBrowserHost?.dispose();
-  await activeApplicationRuntime().stop();
-  await nasPublisher?.close();
-  await store.close?.();
-  rendererHasUnsavedSettings = false;
-  pendingWindowCloseRequest = null;
-  allowWindowClose = true;
-  mainWindow?.destroy();
-  if (process.platform !== "darwin") app.quit();
+  closeFlowRunning = true;
+  await windowShutdown.finish();
 }
 
 async function handleWindowClose(): Promise<void> {
@@ -701,6 +738,7 @@ app.whenReady().then(async () => {
     onMoveProgress: progress => studioEventBus.publish("history-migration:progress", progress),
     onProgress: onStorageProgress,
     onCommitted: (state) => nasPublisher?.schedule(state),
+    onMetadataCommitted: (changes, pointer, parent) => nasPublisher?.scheduleMetadata(changes, pointer, parent) ?? false,
     onCommittedNeeded: (state) => nasPublisher?.needsSnapshot(state) ?? false,
     onWarning: (error) => appLogger.warn("storage", "backup-maintenance-failed", error instanceof Error ? error.message : String(error))
   }), storage.migrate ? new UserDataMigration(legacyUserData, storage.data, onStorageProgress) : undefined);

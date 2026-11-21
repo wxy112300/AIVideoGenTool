@@ -771,7 +771,7 @@ export function createRendererShellCoordinator(
   function bindWindowCloseDialog(): void {
     if (!deps.ui.pendingWindowCloseRequest) return;
     const respond = async (
-      response: "cancel" | "discard-settings" | "finish-tasks" | "force-exit"
+      response: "cancel" | "discard-settings" | "finish-tasks" | "force-exit" | "retry-exit"
     ) => {
       if (deps.ui.windowCloseResponseBusy) return;
       if (document.activeElement instanceof HTMLElement) {
@@ -793,7 +793,10 @@ export function createRendererShellCoordinator(
         renderOverlay();
       }
     };
-    const cancel = () => void respond("cancel");
+    const cancel = () => {
+      if (deps.ui.pendingWindowCloseRequest?.kind === "closing") return;
+      void respond("cancel");
+    };
     deps.modalRoot.querySelector("#cancel-window-close")?.addEventListener("click", cancel);
     deps.modalRoot.querySelector("#window-close-backdrop")?.addEventListener("click", (event) => {
       if (event.target === event.currentTarget) cancel();
@@ -806,6 +809,9 @@ export function createRendererShellCoordinator(
     });
     deps.modalRoot.querySelector("#force-window-close")?.addEventListener("click", () => {
       void respond("force-exit");
+    });
+    deps.modalRoot.querySelector("#retry-window-close")?.addEventListener("click", () => {
+      void respond("retry-exit");
     });
     const dialog = deps.modalRoot.querySelector<HTMLElement>(".close-dialog");
     if (dialog) bindModalFocus(dialog, cancel, "#cancel-window-close");

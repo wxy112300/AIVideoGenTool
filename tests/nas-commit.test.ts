@@ -35,7 +35,7 @@ async function fixture(delayMs = 60000) {
   await fs.writeFile(stateFile, JSON.stringify(state));
   const errors: unknown[] = [];
   const publisher = new NasPublisher({ stateFile, coversDirectory: path.join(root, "covers"), resolveOutputRoot: async () => output, onError: error => errors.push(error), delayMs }); publishers.push(publisher);
-  const store = new JsonStore(stateFile, { libraryDirectory: archive, beforeLibraryMove: () => publisher.prepareLibraryMove(), onCommitted: state => publisher.schedule(state), onCommittedNeeded: state => publisher.needsSnapshot(state) });
+  const store = new JsonStore(stateFile, { libraryDirectory: archive, beforeLibraryMove: () => publisher.prepareLibraryMove(), onCommitted: state => publisher.schedule(state), onMetadataCommitted: (changes, pointer, parent) => publisher.scheduleMetadata(changes, pointer, parent), onCommittedNeeded: state => publisher.needsSnapshot(state) });
   const loaded = await store.load(); await publisher.flush();
   const relative = `StudioLibrary/${loaded.libraryStorage!.libraryId}`, source = path.join(archive, relative), destination = path.join(nasArchive, relative);
   const sync = async () => { await fs.cp(path.join(store.get().libraryStorage!.directory, relative), destination, { recursive: true, force: true }); await fs.cp(output, nas, { recursive: true, force: true }); };
@@ -44,6 +44,25 @@ async function fixture(delayMs = 60000) {
 }
 
 describe("committed automatic NAS projection", () => {
+  it("publishes compact metadata commits without cloning full history and rejects a mismatched parent", async () => {
+    const f = await fixture();
+    const before = f.store.get();
+    const clone = structuredClone;
+    const spy = vi.spyOn(globalThis, "structuredClone").mockImplementation((value: unknown) => {
+      if (value && typeof value === "object" && "history" in value && (value as { history: unknown[] }).history.length) throw Error("Full snapshot forbidden");
+      return clone(value);
+    });
+    try {
+      await f.store.updateHistoryMetadata([before.history[0]!.id], items => { items[0]!.favorite = true; items[0]!.rating = 4.5; items[0]!.tags = ["incremental"]; });
+    } finally { spy.mockRestore(); }
+    await f.publisher.flush();
+    expect(f.errors).toEqual([]);
+    await f.sync();
+    const library = f.open(); await library.reload();
+    expect(library.detail(before.history[0]!.id)).toMatchObject({ favorite: true, rating: 4.5, tags: ["incremental"] });
+    const current = f.store.get();
+    expect(f.publisher.scheduleMetadata([], current.libraryStorage, before.libraryStorage)).toBe(false);
+  });
   it("does not clone unchanged publication input, and retains a revert over a different pending snapshot", async () => {
     const f = await fixture(), state = f.store.get();
     expect(f.publisher.needsSnapshot(state)).toBe(false);

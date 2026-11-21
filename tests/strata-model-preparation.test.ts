@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults.js";
-import { STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_REVISION, STRATA_SOURCE_FILES, STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_REVISION, STRATA_SOURCE_FILES, STRATA_RELEASES, strataSourceFilesForRevision } from "../src/core/catalog/dependencies/strata.js";
 import { strataModelEntries, STRATA_Q4_MODEL, STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
 import { STRATA_MTP_ASSET } from "../src/core/catalog/models/strata.js";
 import { STRATA_MTP_CJK_VOCAB, prepareStrataMtp, validateStrataMtp, type StrataMtpRecord } from "../electron/services/strata-mtp.js";
@@ -13,7 +13,7 @@ import { buildStrataRuntimeConfig, findPreparedStrataRuntime, prepareStrataModel
 import { createNativeTranslator } from "../electron/ui-translator.js";
 import { prepareStrataLaunch } from "../electron/services/strata-service.js";
 import { strataFixturePolicy as policy, writeStrataPackFixture, writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
-import { managedStrataDirectory } from "../electron/services/strata-installation.js";
+import { managedStrataDirectory, strataSourceDirectory } from "../electron/services/strata-installation.js";
 
 const roots: string[] = [];
 const originalMtp = { ...STRATA_MTP_ASSET };
@@ -38,7 +38,7 @@ async function fixture(index = 0) {
     await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "GGUF synthetic source");
     assets.push(filename);
   }
-  for (const relative of [...STRATA_SOURCE_FILES, ...STRATA_ENGINE_FILES, ".venv/Scripts/python.exe", "tools/iq_pack.py", "tools/strata_tokenizer.py", "tools/gguf_reader.py",
+  for (const relative of [...STRATA_SOURCE_FILES, ...strataSourceFilesForRevision(STRATA_RELEASES.find(item => item.version === "0.2.13")!.revision), ...STRATA_ENGINE_FILES, "engine/strata_kq.dll", ".venv/Scripts/python.exe", "tools/iq_pack.py", "tools/strata_tokenizer.py", "tools/gguf_reader.py", "terminal/tools/iq_pack.py", "terminal/tools/strata_tokenizer.py", "terminal/tools/gguf_reader.py",
     ".venv/Lib/site-packages/nvidia/cu13/bin/x86_64/cublas64_13.dll", ".venv/Lib/site-packages/nvidia/cu13/bin/x86_64/cudart64_13.dll"]) {
     const filename = path.join(install, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "software fixture");
   }
@@ -69,6 +69,20 @@ async function fixture(index = 0) {
 }
 
 describe("Strata CPU preparation and config", () => {
+  it.each([0, 1, 2])("prepares Qwen profile %i on the current file layout without strata_kq.dll", async index => {
+    const f = await fixture(index);
+    await fs.unlink(path.join(f.install, "engine/strata_kq.dll"));
+    for (const name of ["iq_pack.py", "strata_tokenizer.py", "gguf_reader.py"]) await fs.unlink(path.join(f.install, "tools", name));
+    const result = await f.prepare();
+    expect(await validatePreparedStrataRuntime(result.configPath, f.install)).toBe(f.entry.id);
+  });
+  it("still rejects an older engine missing its quant DLL before hashing model weights", async () => {
+    const f = await fixture(), old = STRATA_RELEASES.find(item => item.version === "0.2.13")!;
+    await fs.writeFile(path.join(f.install, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
+    await fs.unlink(path.join(f.install, "engine/strata_kq.dll"));
+    await expect(f.prepare()).rejects.toThrow("Strata 管理安装未完成");
+    expect(f.verifyAsset).not.toHaveBeenCalled();
+  });
   it.each(["en-US", "zh-TW"] as const)("localizes real file integrity and MTP tool guards without modifying sources (%s)", async uiLocale => {
     const root = await rootFixture(), filename = path.join(root, "使用者模型.gguf"), bytes = Buffer.from("GGUF small localized fixture");
     const t = createNativeTranslator(uiLocale).t; await fs.writeFile(filename, bytes);
@@ -118,7 +132,7 @@ describe("Strata CPU preparation and config", () => {
     }
     expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
   });
-  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1", "0.2.9", "0.2.10", "0.2.11"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
+  it.each([0, 1, 2].flatMap(index => ["0.1.45", "0.2.7.1", "0.2.9", "0.2.10", "0.2.11", "0.2.12", "0.2.13", "0.2.15"].map(version => [index, version] as const)))("migrates the audited pack for Qwen profile %i from %s without hashing or packing again", async (index, version) => {
     const f = await fixture(index), old = STRATA_RELEASES.find(release => release.version === version)!;
     const installationReceipt = path.join(f.install, "lvs-strata-install.json");
     await fs.writeFile(installationReceipt, JSON.stringify({ owner: "local-video-studio", ...old, installedAt: "fixture" }));
@@ -234,7 +248,7 @@ describe("Strata CPU preparation and config", () => {
     const config = JSON.parse(await fs.readFile(prepared.configPath, "utf8"));
     expect(config.args[config.args.indexOf("--spec") + 1]).toBe("2");
     expect(config.args).toContain("--resident-experts");
-    expect(config.args[config.args.indexOf("--expert-profile") + 1]).toBe(path.join(f.install,"data/expert-profile.bin"));
+    expect(config.args[config.args.indexOf("--expert-profile") + 1]).toBe(path.join(strataSourceDirectory(f.install), "data/expert-profile.bin"));
     expect(config.args).not.toContain("--resident-budget-gib");
     expect(config.args).not.toContain("--mtp");
     expect(config.log).toBe(path.join(prepared.packDirectory, "engine.log"));
@@ -300,7 +314,7 @@ describe("Strata CPU preparation and config", () => {
     expect(f.verifyAsset).toHaveBeenCalledTimes(3);
     expect(f.run.mock.calls).toHaveLength(2);
     expect(f.run.mock.calls[0][1]).toContain("-c");
-    expect(f.run.mock.calls[1][1]).toEqual(["-B", path.join(f.install, "tools/iq_pack.py"), "--gguf", f.assets[0], "--out", result.packDirectory]);
+    expect(f.run.mock.calls[1][1]).toEqual(["-B", path.join(strataSourceDirectory(f.install), "tools/iq_pack.py"), "--gguf", f.assets[0], "--out", result.packDirectory]);
     expect(result.packDirectory.startsWith(`${f.data}${path.sep}`)).toBe(true);
     expect(await Promise.all(f.assets.map((filename) => fs.readFile(filename, "utf8")))).toEqual(original);
     const config = JSON.parse(await fs.readFile(result.configPath, "utf8"));
@@ -429,9 +443,10 @@ async function addMtp(f: Awaited<ReturnType<typeof fixture>>) {
     { bytes: STRATA_MTP_ASSET.bytes, sha256: STRATA_MTP_ASSET.sha256 });
   const vocab = Buffer.alloc(STRATA_MTP_CJK_VOCAB.tokens * 4);
   STRATA_MTP_CJK_VOCAB.sha256 = createHash("sha256").update(vocab).digest("hex");
-  await fs.mkdir(path.join(f.install, "tools"), { recursive: true });
-  await fs.writeFile(path.join(f.install, "tools/mtp_rt.py"), "official tool fixture");
-  await fs.writeFile(path.join(f.install, "data/draft_vocab.bin"), vocab);
+  const source = strataSourceDirectory(f.install);
+  await fs.mkdir(path.join(source, "tools"), { recursive: true });
+  await fs.writeFile(path.join(source, "tools/mtp_rt.py"), "official tool fixture");
+  await fs.writeFile(path.join(source, "data/draft_vocab.bin"), vocab);
   return filename;
 }
 
@@ -480,7 +495,7 @@ describe("manually downloaded Strata MTP", () => {
   });
   it("does not publish MTP on bad CJK vocab, and never silently downloads a replacement", async () => {
     const f = await fixture(); await addMtp(f);
-    await fs.writeFile(path.join(f.install, "data/draft_vocab.bin"), "wrong vocab");
+    await fs.writeFile(path.join(strataSourceDirectory(f.install), "data/draft_vocab.bin"), "wrong vocab");
     await expect(f.prepare()).rejects.toThrow("词表");
     expect(f.run.mock.calls.some(([, args]) => args.some((arg) => arg.endsWith("mtp_rt.py")))).toBe(false);
     const output = path.join(f.data, (await fs.readdir(f.data))[0]);

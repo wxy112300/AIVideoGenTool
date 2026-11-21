@@ -74,6 +74,10 @@ flowchart TD
 
 - `h3PromptModeForDraft` 决定提示词模式；`h3WorkflowPathForInput` 决定执行工作流。两个都要核对。FL2VA 清空所有图可退到 T2VA；**R2V 空槽仍是 R2V 缺输入**，不能借此绕开校验。
 - R2V 使用 Slots，而非首尾帧面板；图/视频、role、note、标签必须进入 prompt 请求及任务副本。增删/替换参考图也要测，不只测选模型。
+- H3 FL2VA 首尾帧与关键帧使用同一组素材槽。普通视图显示首尾，关键帧视图显示全部素材。改时间或删槽后，Picture 随显示顺序连续编号，提示词引用跟随原图片。入队检查缺图、时间越界、同一输出帧冲突和失效的 Picture 引用。增强请求沿用相同图片与时间，采样图使用 H3 原生 Add Guide。队列和历史保留关键帧快照。
+- H3 R2V 使用同位置的关键帧开关。开启后，图片卡片的标题行可以填写秒数，留空时保留普通参考用途。入队和增强沿用原 Picture 编号，图中同一个图片节点同时用于 R2V 参考和对应的 Add Guide。
+- 新建 Continuum 长视频沿用关键帧卡片，秒数从合并后的成片起点计。入队冻结总时长及素材。应用 H3 节点把绝对帧交给官方 Guide 路由，首组、接缝两侧、尾裁剪与再次打开草稿分别验收。
+- FL2VA 普通首尾图分别进入 Continuum 的首尾节点，隐藏的 R2V 槽保持在草稿。R2V INT8／INT4 使用 Continuum 的九个图片参考位，定时图复用对应图片节点，保留 Picture 编号和成片时间。R2V 视频参考使用原生单段入口。
 - R2V“跟随输入比例”读取 Picture 1；用竖图/方图核对预览、任务和最终图尺寸，显式比例及 Motion Context 源视频不被参考脸覆盖。FastH3 Omni 对照官方 VSA10/Kitchen 工作流，并以运行日志的 sparse producer 或 dense 回退原因确认实际路径，不能只看八步或节点存在。
 - H3 FaceSwap：设置页手动补齐 UntMods 专用权重 → 普通 INT8 Ref2VA → 添加 FaceSwap 1.0 → Picture 1 参考脸 / Video 1 原片 → 缺脸/缺视频/多原视频可见阻塞 → 补齐后实际按钮入队 → 有序参考及 LoRA 冻结 → 原生 R2V 执行/History。触发词自动去重，提示词增强保留身份与表演来源分工；不自动选八步加速，不以旧续写入口代替原片编辑。权重/真实生成证据见 [FaceSwap TASK](../tasks/2026-10-20-face-swap-lora/TASK.md)。
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
@@ -121,6 +125,8 @@ flowchart TD
 - Strata首次增强：离线检查 → CPU校验/pack（现有提示与日志显示步骤/百分比，Strata PID可为空，不等同GPU加载）→ 健康的自有listener → 官方API Monitor只读窗口 → GPU加载/请求状态/详情/速度；临时密钥不进入renderer。网页首开失败按当前服务密钥最多3次、至少2秒间隔重试；关闭窗口不卸载且同一会话不反复弹出，停止模型/后端后关闭、下一次启动可重开。验证正常只读GET、错误/断线、取消/停止，以及恶意POST/配置/外连均被拒绝；监视流量不得创建新的推理或绕过队列互斥。
 - Qwen MTMD 精简 logits 的修复不改变图片/输入/输出预算；用同权重同图对照原文、首token与decode，并确认旧视觉handler不受影响。共享 llama-cpp-python 升级须验证 Prompt Writer 的架构/诊断版本检查、Gemma实际增强与释放；不能只以导入成功代替两条真实按钮路径，不启用尚未验证的MTP。
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
+- 长视频 Create：填故事并确认布局 → 分配情节 → 逐段改大纲 → 选择预设并整片扩写 → 实际入队。大纲版本可回看，采用大纲时生成按钮提示先扩写。History 以 `---` 显示和复制实际采样段落；已保存逐段版本随冻结快照回看。
+- 关键帧模式的长视频规划和扩写由本机 Strata 接收有效图片与成片时间、段内时间。验收空槽忽略、时间排序后 Picture 编号绑定、多图内容抵达模型请求及错误的后端选择被拦截。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。
 - Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
 - Strata UD-Q4_K_XL：模型卡四分片→共享模型命名目录→原版projector/MTP原地复用→固定hash与`--compat-bf16`离线pack/独立receipt→按Q4专家体量选择完整或显式预算驻留→原提示词按钮/独立Agent启动。缺片阻塞、补齐恢复、切换模型重新发现pack；H3仍32K，Agent长context计host KV。关闭/自带ESP/社区sergqwer三模式均可选，仍验证当次引擎作用层与逐请求应用，不把控制向量加载当去拒答效果。无权重阶段只验卡片/配置/合成按钮链，真实图文、Agent、性能与峰值留待实测。
@@ -184,7 +190,7 @@ flowchart TD
 
 旧AV/Sequence模式由 `h3ContinuumModeForSource` 判定：已有accepted chunks优先managed；显式bootstrap或配对artifact走bootstrap。新group Run通过独立`LongVideoRunSource`及选中History版本资格进入，不解释成旧AV/Sequence。不是单凭“选了Continuum”就能知道路线。
 
-H3原生/解锁保留15.1/30秒采样窗口及各路线的前缀扣除/网格对齐，不能靠数字输入自动解锁，Motion Context隐藏Continuum多段。group Run保留原段长和完整source区间；Draft/Queue时长是新增秒数，最终媒体必须覆盖完整Run。全局创作意图/每段共享约束显式区分，分页不是切镜；分组模式隐藏独立AV导出开关，必需Run Storage仍保存。Create已实际通过三组15秒/组后恢复/单History播放。已有group Run的Continue→Extend、详稿恢复、旧head拒收恢复和真实按钮通过；Queue单卡可浏览冻结的整片/全局/未来段并复制当前页，实际段号继承Run偏移。GPU额外组、双进度、Strata与完整P2仍待完成。`probe-long-video-queue.mjs <fixture> prepare|pause|resume --port <port>`验证Create；`probe-long-video-extend.mjs <fixture> prepare|finish --port <port>`复用已完成的物理隔离Run验证新增段；`probe-long-video-queue-pages.mjs <fixture> --port <port>`只读验证现有Queue分页。prepare不采样，执行步骤仅在归属明确和GPU空闲时运行，不自动重提不明任务。测试入口见`harness:app -- guide extend`。
+H3原生/解锁保留15.1/30秒采样窗口及各路线的前缀扣除/网格对齐，不能靠数字输入自动解锁，Motion Context隐藏Continuum多段。group Run保留原段长和完整source区间；Draft/Queue时长是新增秒数，最终媒体必须覆盖完整Run。全局创作意图/每段共享约束显式区分，分页不是切镜；分组模式隐藏独立AV导出开关，必需Run Storage仍保存。Create已实际通过三组15秒/组后恢复/单History播放。已有group Run的Continue→Extend、详稿恢复、旧head拒收恢复和真实按钮通过；Queue单卡可浏览冻结的整片/全局/未来段并复制当前页，实际段号继承Run偏移。Strata单图多段写作已接独立导演提示词库，整片因果规划→分批详稿→跨刷新原子采用；保留自动/半自动、锁定与取消，推荐资源不作最低准入。完整60秒以上的实际故事/媒体质量由当前长视频TASK单独验收；旧Extend额外组及完整P2未完成边界仍保留。`probe-long-video-queue.mjs <fixture> prepare|pause|resume --port <port>`验证Create；`probe-long-video-extend.mjs <fixture> prepare|finish --port <port>`复用已完成的物理隔离Run验证新增段；`probe-long-video-queue-pages.mjs <fixture> --port <port>`只读验证现有Queue分页。prepare不采样，执行步骤仅在归属明确和GPU空闲时运行，不自动重提不明任务。测试入口见`harness:app -- guide extend`。
 
 **路由不等于入队资格**。旧managed的`history-artifact-service.ts`检查仍拒绝无sequence/acceptedChunks=0，bootstrap AV不自动变成managed prefix；不能构造空sequence或模式开关绕过。新group Create是独立new-run入口；已有group Run必须通过其独立完整receipt/profile/head/文件检查，不能把旧AV或不完整前缀当作它。合成端口/单测不代替真实生成。
 

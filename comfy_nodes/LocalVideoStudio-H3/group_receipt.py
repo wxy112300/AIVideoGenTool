@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+from types import SimpleNamespace
 
 
 def _integer(value, name, minimum=0, maximum=16):
@@ -24,10 +25,15 @@ def _identifier(value, name):
 
 def read_group_receipt(*, status, assembly_plan, run_name, project_id,
                        planned_chunks, expected_prefix_chunks, expected_parent_revision_id,
-                       execution_id, step_id, attempt_id, output_root, upstream):
+                       execution_id, step_id, attempt_id, output_root, upstream, execution_mode=None):
     """Read one sealed official revision, verifying every registered payload."""
     planned = _integer(planned_chunks, "planned_chunks", 1)
     before = _integer(expected_prefix_chunks, "expected_prefix_chunks")
+    if execution_mode not in (None, "full_run"):
+        raise ValueError("unknown Continuum execution mode")
+    full_run = execution_mode == "full_run"
+    if full_run and before:
+        raise ValueError("Full Run requires a new sequence")
     if before >= planned:
         raise ValueError("group receipt expected prefix already complete")
     for value, name in ((run_name, "run_name"), (project_id, "project_id"),
@@ -59,7 +65,7 @@ def read_group_receipt(*, status, assembly_plan, run_name, project_id,
         raise ValueError("group receipt canonical head changed after sampling")
     from .managed_prefix_guard import read_sampling_evidence
     evidence = read_sampling_evidence(root, revision)
-    if evidence["sampling_contract_version"] != 6 or not evidence["resume_safe"]:
+    if evidence["sampling_contract_version"] != 6 or (not full_run and not evidence["resume_safe"]):
         raise ValueError("group receipt requires reusable v6 sampling evidence")
     if manifest.get("run_storage_schema_version") != 3 or manifest.get("revision_id") != revision:
         raise ValueError("group receipt manifest schema/revision mismatch")
@@ -72,6 +78,8 @@ def read_group_receipt(*, status, assembly_plan, run_name, project_id,
     if not isinstance(records, list) or not before < len(records) <= planned:
         raise ValueError("group receipt accepted prefix invalid")
     accepted = len(records)
+    if full_run and (accepted != planned or manifest.get("status") != "complete"):
+        raise ValueError("Full Run requires every planned chunk to be complete")
     if int(generated) != accepted - before:
         raise ValueError("group receipt generated count differs from manifest")
     expected_status = "complete" if accepted == planned else "review_ready"
@@ -84,11 +92,11 @@ def read_group_receipt(*, status, assembly_plan, run_name, project_id,
         terminal_merge_enabled=semantics.get("flf_execution") == "terminal_merged_10s_seed_v2",
     )
     active = [group for group in groups if group.start == before + 1 and group.end == accepted]
-    if len(active) != 1:
+    if not full_run and len(active) != 1:
         raise ValueError("group receipt must commit exactly one complete physical group")
     unit = manifest.get("review_unit") or {}
-    group = active[0]
-    if (unit.get("start"), unit.get("end"), unit.get("physical_group")) != (group.start, group.end, group.physical_group):
+    group = SimpleNamespace(start=1, end=planned, physical_group=1) if full_run else active[0]
+    if not full_run and (unit.get("start"), unit.get("end"), unit.get("physical_group")) != (group.start, group.end, group.physical_group):
         raise ValueError("group receipt Review unit disagrees with physical group")
 
     chunk_records = []
@@ -128,6 +136,8 @@ def read_group_receipt(*, status, assembly_plan, run_name, project_id,
         scope = "current_physical_group"
     else:
         raise ValueError("group receipt projection is neither current group nor full prefix")
+    if full_run and scope != "full_accepted_prefix":
+        raise ValueError("Full Run requires a full sequence projection")
     output_groups = []
     for decoded in assembly_plan.get("decode_groups") or assembly_plan["chunks"]:
         logical = decoded.get("logical_chunk_indices") or [decoded["chunk_index"]]
@@ -141,6 +151,7 @@ def read_group_receipt(*, status, assembly_plan, run_name, project_id,
     if manifest_path.read_bytes() != original or project_path.read_bytes() != project_original:
         raise ValueError("group receipt manifest changed while reading")
     return {"schema_version": 1, "kind": "continuum_group", "execution_id": execution_id,
+            **({"execution_mode": "full_run"} if full_run else {}),
             "step_id": step_id, "attempt_id": attempt_id, "project_id": project_id,
             "run_name": run_name, "revision_id": revision, "run_storage_path": str(root),
             "package_version": upstream("version").PACKAGE_VERSION,
@@ -162,7 +173,10 @@ class LocalVideoStudioH3ContinuumGroupReceipt:
         required = {key: schema["required"][key] for key in ("status", "assembly_plan", "run_name", "project_id")}
         required.update({"planned_chunks": ("INT", {"default": 2, "min": 1, "max": 16}),
                          **{key: ("STRING", {"default": ""}) for key in ("execution_id", "step_id", "attempt_id")}})
-        return {"required": required, "optional": schema["optional"]}
+        optional = dict(schema["optional"])
+        if optional:
+            optional["execution_mode"] = (["full_run"],)
+        return {"required": required, "optional": optional}
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("group_receipt",)

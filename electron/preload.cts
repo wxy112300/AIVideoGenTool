@@ -185,6 +185,12 @@ const api: AppApi = {
     ipcRenderer.invoke("history:delete-motion-context", assetId, versionId, approval),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
+  patchHistoryMetadata: (updates: HistoryMetadataBatchUpdate[]) => ipcRenderer.invoke("history:patch-metadata", updates),
+  onHistoryMetadataChanged: callback => {
+    const listener = (_event: Electron.IpcRendererEvent, changes: Parameters<typeof callback>[0]) => callback(changes);
+    ipcRenderer.on("history:metadata-changed", listener);
+    return () => ipcRenderer.removeListener("history:metadata-changed", listener);
+  },
   updateHistoryMetadataBatch: (updates: HistoryMetadataBatchUpdate[]) =>
     ipcRenderer.invoke("history:update-metadata-batch", updates),
   copyHistoryFiles: (kind: "video" | "image", assetIds: string[]) =>

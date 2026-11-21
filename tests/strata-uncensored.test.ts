@@ -8,6 +8,7 @@ import { prepareStrataLaunch, StrataService } from "../electron/services/strata-
 import { STRATA_ENGINE_SHA256, STRATA_REVISION } from "../src/core/catalog/dependencies/strata.js";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
 import { STRATA_Q4_MODEL_ID } from "../src/core/catalog/models/strata.js";
+import { strataSourceDirectory } from "../electron/services/strata-installation.js";
 
 const modelId = "strata/qwen3.8-flash-next-iq3_xxs";
 const roots: string[] = [];
@@ -32,7 +33,7 @@ describe("Strata uncensored integrity and compatibility", () => {
   });
   it.each(["builtin", "community"] as const)("refuses a missing, truncated or same-size corrupted %s vector with a repair action", async mode => {
     const descriptor = strataVectorForMode(mode);
-    const dir = await root(), file = path.join(dir, descriptor.relativePath);
+    const dir = await root(), file = path.join(mode === "builtin" ? strataSourceDirectory(dir) : dir, descriptor.relativePath);
     await expect(vectorTools.verifyStrataControlVector(dir, mode)).rejects.toThrow("重新安装");
     await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, "GGUF");
     await expect(vectorTools.verifyStrataControlVector(dir, mode)).rejects.toThrow("大小");
@@ -53,7 +54,7 @@ describe("Strata uncensored integrity and compatibility", () => {
   });
   it.each([modelId,STRATA_Q4_MODEL_ID])("uses a disposable %s launch overlay, preserving verified config and receipt", async activeModelId => {
     const dir = await root(), config = path.join(dir, "pack", "runtime.json");
-    for (const name of [".venv/Scripts/python.exe", "serve/server.py"]) {
+    for (const name of [".venv/Scripts/python.exe", "terminal/serve/server.py"]) {
       const filename = path.join(dir, name); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
     }
     await fs.writeFile(path.join(dir, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: "fixture" }));

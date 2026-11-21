@@ -227,6 +227,7 @@ function h3ContinuationDataFor(
   value: NativeAvContinuationData | undefined
 ): NativeAvContinuationData | undefined {
   if (!isMiniMaxH3Model(task.modelId)) return undefined;
+  if ("longVideoPlan" in task && task.longVideoPlan) return undefined;
   if (task.taskType === "extension" && task.h3ContinuumMode === "managed") return undefined;
   if (!h3LatentSaveModeSavesJointAv(
     h3LatentSaveModeFor(task, task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId))
@@ -328,6 +329,7 @@ export function persistVideoHistoryResult(
       h3ReferenceSlots: task.h3ReferenceSlots?.map((slot) => ({ ...slot })),
       sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight,
       startImagePath: task.startImagePath, endImagePath: task.endImagePath,
+      h3TimedGuides: task.h3TimedGuides?.map(slot => ({ ...slot })),
       endImageWidth: task.endImageWidth, endImageHeight: task.endImageHeight,
       workflowPath: task.workflowPath, startedAt: task.startedAt,
       comfyPromptId: result.promptId, comfyOutputs: result.comfyOutputs,

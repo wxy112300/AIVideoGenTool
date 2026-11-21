@@ -77,6 +77,20 @@ def install_managed_prefix_guard(module):
             planned = inputs.get("planned_chunks")
             if type(planned) is not int or not 1 <= planned <= 16 or planned != contract.get("chunk_count"):
                 raise ValueError("Continuum group guard: frozen planned layout changed")
+            full_run = inputs.get("execution_mode") == "full_run"
+            if full_run and (expected[0] != 0 or controller.prompt_graph[controller.sampler_node_id].get("inputs", {}).get("generation_mode") != "Full Run"):
+                raise ValueError("Continuum Full Run guard: expected one new Full Run sequence")
+            if not resume_safe and not full_run:
+                # Group execution must hand the committed prefix to a separate
+                # Queue. Reject the actual unsupported contract before sampling,
+                # rather than computing a chunk that its receipt cannot accept.
+                model = (contract.get("global") or {}).get("model") or {}
+                runtime = model.get("runtime") or {}
+                options = runtime.get("model_options") or {}
+                spectrum = options.get("spectrum_h3_binding") or {}
+                detail = spectrum.get("unsupported") or "; ".join(controller.notes)
+                raise ValueError("Continuum group continuation is unavailable for the loaded sampling contract: "
+                                 + (detail or "upstream marked the contract non-reusable"))
             if expected[0] == 0 and (controller.run_root / "project.json").exists():
                 raise ValueError("Continuum group guard: new Run identity already exists")
         if expected:

@@ -13,6 +13,26 @@ function ipcFixture() {
 }
 
 describe("window shell IPC adapter", () => {
+  it("ignores responses during shutdown but allows retry after a reported failure", async () => {
+    const { ipc, handlers } = ipcFixture(), target = {};
+    let request: WindowCloseRequest | null = { kind: "closing", shutdownStage: "services" };
+    const finishWindowClose = vi.fn(async () => {}), clear = vi.fn(() => { request = null; });
+    registerWindowShellIpc({ ipc: ipc as never, getWindowWebContents: () => target as never,
+      setRendererSettingsDirty: vi.fn(), getPendingWindowCloseRequest: () => request,
+      clearPendingWindowCloseRequest: clear, setCloseFlowRunning: vi.fn(), finishWindowClose,
+      finishRunningWorkClose: vi.fn(async () => {}) });
+    const respond = handlers.get("window:close-response")!;
+    await respond({ sender: target }, "cancel");
+    expect(clear).not.toHaveBeenCalled();
+    await respond({ sender: target }, "retry-exit");
+    expect(finishWindowClose).not.toHaveBeenCalled();
+    request = { kind: "closing", shutdownError: "write failed" };
+    await respond({ sender: target }, "cancel");
+    expect(clear).not.toHaveBeenCalled();
+    await respond({ sender: target }, "retry-exit");
+    expect(finishWindowClose).toHaveBeenCalledOnce();
+    expect(clear).toHaveBeenCalledOnce();
+  });
   it("owns dirty state and validates the requesting window before consuming close requests", async () => {
     const { ipc, handlers } = ipcFixture();
     const webContents = {};

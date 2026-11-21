@@ -12,11 +12,14 @@ import { historyMetadataRevision, HistoryMetadataConflict } from "./history-meta
 import { createNativeTranslator } from "../ui-translator.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import type { Translate } from "../../src/core/i18n.js";
+import type { HistoryMetadataChange } from "../../src/types.js";
+import { historyMetadataRecord } from "../../src/core/history-metadata.js";
 
 export interface HistoryMetadataServiceDependencies {
   store: StateRepository;
   logger: AppLogger;
   sendState(state: AppState): void;
+  sendMetadataChanges?(changes: HistoryMetadataChange[]): void;
 }
 
 function validateMetadataPatch(patch: HistoryMetadataPatch, t: Translate): HistoryMetadataPatch {
@@ -42,6 +45,29 @@ function validateMetadataPatch(patch: HistoryMetadataPatch, t: Translate): Histo
 
 export class HistoryMetadataService {
   constructor(private readonly deps: HistoryMetadataServiceDependencies) {}
+
+  async patchMetadata(updates: HistoryMetadataBatchUpdate[]): Promise<HistoryMetadataChange[]> {
+    const t = createNativeTranslator(this.deps.store.getSettings().uiLocale).t;
+    if (!Array.isArray(updates) || !updates.length) throw new Error(t(uiKeys.serviceError.historyBatchInvalid));
+    const validated = updates.map(update => {
+      if (!update || typeof update.assetId !== "string" || !update.assetId.trim()) throw new Error(t(uiKeys.serviceError.historyInvalid));
+      return { assetId: update.assetId, patch: validateMetadataPatch(update.patch, t) };
+    });
+    if (new Set(validated.map(update => update.assetId)).size !== validated.length) throw new Error(t(uiKeys.serviceError.historyBatchDuplicate));
+    let changes: HistoryMetadataChange[] = [];
+    const mutate = (items: import("../../src/types.js").HistoryMetadataRecord[]) => {
+      changes = items.map((item, i) => {
+        const previous = historyMetadataRecord(item);
+        Object.assign(item, validated[i].patch);
+        return { ...historyMetadataRecord(item), previous: { favorite: previous.favorite, rating: previous.rating, tags: previous.tags } };
+      });
+    };
+    if (this.deps.store.updateHistoryMetadata) changes = await this.deps.store.updateHistoryMetadata(validated.map(update => update.assetId), mutate);
+    else await this.updateItems(validated.map(update => update.assetId), mutate);
+    this.deps.logger.info("history", "metadata-patched", "History metadata patched", { count: changes.length });
+    this.deps.sendMetadataChanges?.(changes);
+    return changes;
+  }
 
   private updateItems(ids: readonly string[], mutator: (items: Array<HistoryAsset | ImageHistoryProject>) => void): Promise<AppState> {
     if (this.deps.store.updateHistoryItems) return this.deps.store.updateHistoryItems(ids, mutator);

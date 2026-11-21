@@ -8,6 +8,7 @@ import type { AppState, HistoryMetadataPatch } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { renderIcons } from "../../shared/icons";
 import { mountInlineTagSuggestions } from "./tag-suggestions";
+import { HistoryMetadataSaveError } from "./metadata-update";
 
 export type HistoryTagEditorOperation =
   | { kind: "add"; tag: string }
@@ -121,22 +122,26 @@ export function mountHistoryTagEditor(
   const commitOperation = (
     operation: HistoryTagEditorOperation,
     closeAfter = false
-  ): Promise<void> => {
+  ): Promise<boolean> => {
+    let committed = false;
     updateChain = updateChain.then(async () => {
       try {
         await options.applyOperation(operation);
+        committed = true;
+        if (signal.aborted) return;
         options.onCommitted?.();
         renderList();
         renderSuggestions(input()?.value ?? "");
         if (closeAfter) closeEditor();
       } catch (error) {
+        if (error instanceof HistoryMetadataSaveError) return;
         context.notify(error instanceof Error ? error.message : options.updateFailedText, {
           renderPage: false,
           kind: "error"
         });
       }
     });
-    return updateChain;
+    return updateChain.then(() => committed);
   };
   const commitInput = async (): Promise<void> => {
     const field = input();
@@ -151,13 +156,13 @@ export function mountHistoryTagEditor(
       return;
     }
     const wasEditing = editTarget !== null;
-    await commitOperation(
+    const saved = await commitOperation(
       editTarget
         ? { kind: "rename", from: editTarget, to: normalizedValue }
         : { kind: "add", tag: normalizedValue },
       wasEditing
     );
-    if (!wasEditing && field && normalizeHistoryTags([field.value])[0] === normalizedValue) {
+    if (saved && !signal.aborted && !wasEditing && field?.isConnected && normalizeHistoryTags([field.value])[0] === normalizedValue) {
       field.value = "";
       renderSuggestions("");
       field.focus();

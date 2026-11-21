@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { EnhanceRequest } from "../src/types.js";
 import { promptEnhanceLogContext } from "../src/core/prompt-enhance-log.js";
+import { createLongVideoScript } from "../src/core/long-video/script.js";
+import { createLongVideoLayout } from "../src/core/long-video/layout.js";
+import { longVideoPromptRequest } from "../src/core/long-video/enhancement.js";
 
 describe("prompt enhancement log context", () => {
+  it("distinguishes long-video planning from a native single prompt without logging story content", () => {
+    let id = 0;
+    const script = createLongVideoScript(createLongVideoLayout(60,6),()=>`page-${++id}`,"private story direction");
+    const metadata = promptEnhanceLogContext({prompt:"private story direction",modelId:"minimax_h3_fl2va",mode:"h3-vision",longVideo:longVideoPromptRequest(script)});
+    expect(metadata).toMatchObject({longVideoChunks:6,longVideoSeconds:60});
+    expect(JSON.stringify(metadata)).not.toContain("private story direction");
+  });
   it("records the selected H3 preset for a user-written prompt", () => {
     const context = promptEnhanceLogContext({
       prompt: "A woman opens the door.",

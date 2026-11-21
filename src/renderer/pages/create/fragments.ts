@@ -5,6 +5,7 @@ import type {
 } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { renderH3GuideTime } from "./media-frames";
 
 type EscapeHtml = (value: unknown) => string;
 type IconRenderer = (name: string, className?: string) => string;
@@ -29,6 +30,7 @@ interface CreateFragmentRenderOptions {
 interface H3ReferenceSlotsRenderOptions extends CreateFragmentRenderOptions {
   h3ReferenceRoleLabels: Record<H3ReferenceRole, string>;
   lockedFirstVideo?: boolean;
+  showGuideTimes?: boolean;
 }
 
 const imageEditPromptInstructions: Array<[string, string]> = [
@@ -81,8 +83,11 @@ export function renderH3ReferenceSlotsMarkup(
   return `
     <div class="create-reference-list">${slots.map((slot, index) => `
       <article class="create-reference-card ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}">
-        <div class="create-slot-heading">
+        <div class="create-slot-heading ${options.showGuideTimes && slot.mediaType === "image" ? "has-guide-time" : ""}">
           <span class="create-slot-number">${index + 1}</span><strong>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt;</strong><span class="create-slot-dimensions">${imageDimensionsSuffix(slot).replace(/^ · /u, "")}</span>
+          ${options.showGuideTimes && slot.mediaType === "image"
+            ? renderH3GuideTime(options, `Picture ${referenceOrdinals.get(slot.id)}`, slot.guideSeconds,
+                `id="h3-reference-guide-time-${escapeHtml(slot.id)}" data-h3-slot-guide-time="${escapeHtml(slot.id)}"`) : ""}
           <div class="create-slot-actions">${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<select class="h3-slot-type" data-h3-slot-type="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.referenceSlot, { index: index + 1 })} ${t(uiKeys.create.fragments.mediaType)}"><option value="image" ${slot.mediaType === "image" ? "selected" : ""}>${t(uiKeys.create.fragments.image)}</option><option value="video" ${slot.mediaType === "video" ? "selected" : ""}>${t(uiKeys.create.fragments.video)}</option></select>`}<button class="ghost icon-button" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button" aria-label="${t(uiKeys.create.fragments.insertTag)}" title="${t(uiKeys.create.fragments.insertTag)}">${icon("text-cursor-input")}</button>${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "" : `<button class="ghost icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="${t(uiKeys.create.fragments.removeSlot)} ${index + 1}" title="${t(uiKeys.create.fragments.removeSlot)}">${icon("trash-2")}</button>`}</div>
         </div>
         ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video"

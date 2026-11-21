@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults.js";
 import { STRATA_DEEPSEEK_ASSETS, STRATA_DEEPSEEK_MODEL_ID as modelId, STRATA_DEEPSEEK_DIRECTORY } from "../src/core/catalog/models/strata-deepseek.js";
 import { strataModelEntries } from "../src/core/catalog/models/strata.js";
-import { STRATA_REVISION, STRATA_ENGINE_SHA256, STRATA_SOURCE_FILES, STRATA_RELEASES } from "../src/core/catalog/dependencies/strata.js";
+import { STRATA_REVISION, STRATA_ENGINE_SHA256, STRATA_SOURCE_FILES, STRATA_RELEASES, strataSourceFilesForRevision } from "../src/core/catalog/dependencies/strata.js";
+import { STRATA_DSV41_SOURCE_DIRECTORY, STRATA_DSV41_SOURCE_REVISION } from "../src/core/catalog/dependencies/strata-deepseek.js";
 import { strataModelRoot, strataProfileModelRoot, strataPreparationProfiles } from "../src/core/strata-preparation.js";
 import { scanStrataPreparation } from "../electron/services/strata-preparation.js";
 import { findPreparedStrataRuntime, prepareStrataModelRuntime, validatePreparedStrataRuntime } from "../electron/services/strata-model-preparation.js";
@@ -46,8 +47,12 @@ async function fixture() {
     Object.assign(entry.definition.scan!.components[index].installGuide!, { bytes: asset.bytes, sha256: asset.sha256 });
     await fs.writeFile(path.join(modelRoot, asset.filename), body);
   }
-  for (const relative of [...STRATA_SOURCE_FILES, ".venv/Scripts/python.exe", "engine-dsv41/strata-dsv41.exe", "serve/server.py", "serve/ds_pictures.py", "serve/frontend.py", "tools/dsv41/pack_gguf.py", "data/dsv41/profile-2.00.bin"]) {
+  for (const relative of [...STRATA_SOURCE_FILES, ...strataSourceFilesForRevision(STRATA_RELEASES.find(item => item.version === "0.2.13")!.revision), ".venv/Scripts/python.exe", "engine-dsv41/strata-dsv41.exe", "serve/server.py", "serve/ds_pictures.py", "serve/frontend.py", "tools/dsv41/pack_gguf.py", "data/dsv41/profile-2.00.bin"]) {
     const filename = path.join(install, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
+    if (relative.startsWith("serve/") || relative.startsWith("tools/") || relative.startsWith("data/dsv41/")) {
+      const compat = path.join(install, STRATA_DSV41_SOURCE_DIRECTORY, relative);
+      await fs.mkdir(path.dirname(compat), { recursive: true }); await fs.writeFile(compat, "fixture");
+    }
   }
   await fs.writeFile(path.join(install, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: "fixture" }));
   const run = vi.fn(async (_exe: string, args: string[]) => {
@@ -111,6 +116,8 @@ describe("DeepSeek via the managed Strata path", () => {
   it("prepares the DeepSeek recipe, reuses intact cache, rejects modified assets/config and routes authenticated launch", async () => {
     const f = await fixture();
     const result = await prepareStrataModelRuntime(f.settings, modelId, policy, f.runtime);
+    expect(JSON.parse(await fs.readFile(result.receiptPath, "utf8")).sourceRevision).toBe(STRATA_DSV41_SOURCE_REVISION);
+    expect(f.run.mock.calls[0][1]).toContain(path.join(f.install, STRATA_DSV41_SOURCE_DIRECTORY, "tools/dsv41/pack_gguf.py"));
     expect(f.run.mock.calls[0][1]).toEqual(expect.arrayContaining(["--engram", "--engram-meta", "--mmproj", "--dspark-gguf", "--shards"]));
     expect(f.run.mock.calls.flat(2).join(" ")).not.toMatch(/iq_pack|--compat-bf16|--skip-tensors|--dense-override/);
     expect(await validatePreparedStrataRuntime(result.configPath, f.install)).toBe(modelId);
@@ -125,6 +132,8 @@ describe("DeepSeek via the managed Strata path", () => {
     const preparedReceipt = await fs.readFile(result.receiptPath, "utf8");
     const preparationCalls = f.run.mock.calls.length;
     const launch = await prepareStrataLaunch(f.settings, result.configPath, { adaptive: true, readResources: async () => resources });
+    expect(launch.cwd).toBe(path.join(f.install, STRATA_DSV41_SOURCE_DIRECTORY));
+    expect(launch.executable).toBe(path.join(f.install, ".venv/Scripts/python.exe"));
     const config = JSON.parse(await fs.readFile(launch.temporaryConfig!, "utf8"));
     expect(config).toMatchObject({ arch: "deepseek41", model_name: modelId });
     expect(config.exe).toContain("strata-dsv41.exe");
@@ -143,6 +152,8 @@ describe("DeepSeek via the managed Strata path", () => {
     expect(f.run).toHaveBeenCalledTimes(preparationCalls);
     const agent = await agentLaunchPlan({ preferences: { ...agentDefaults(), modelId, contextTokens: 32768 }, install: f.install, packConfig: result.configPath,
       token: "fixture-token", directory: path.join(f.data, "agent"), guardScript: "guard.py", resources });
+    expect(agent.cwd).toBe(path.join(f.install, STRATA_DSV41_SOURCE_DIRECTORY));
+    expect(agent.args[agent.args.indexOf("--serve") + 1]).toBe(agent.cwd);
     expect(agent.residentEngineLog).toBeUndefined();
     expect(JSON.parse(await fs.readFile(agent.args[agent.args.indexOf("--config") + 1], "utf8")).sampling).toEqual({ temperature: 1, top_p: 1 });
     const saved = JSON.parse(await fs.readFile(result.configPath, "utf8")); saved.args.push("--native");

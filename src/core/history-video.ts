@@ -1,4 +1,6 @@
 import type { AssetVersion, HistoryAsset } from "../types.js";
+import { joinContinuumPromptBlocks } from "./long-video/script.js";
+import { videoPromptForLoras } from "./video-loras.js";
 
 /** Shared by desktop History and the LAN library. Auxiliary files are never video sources. */
 export function versionVideoIndex(version: AssetVersion): number {
@@ -18,4 +20,11 @@ export function preferredVersion<T extends Pick<AssetVersion, "id" | "width" | "
 
 export function currentHistoryVersion(asset: HistoryAsset, selectedVersionId?: string): AssetVersion {
   return asset.versions.find((version) => version.id === selectedVersionId) ?? preferredVersion(asset);
+}
+
+/** The text sent to the sampler, in the matching History version. */
+export function historyVideoPrompt(asset: HistoryAsset, version?: AssetVersion): string {
+  return version?.longVideoExecution
+    ? joinContinuumPromptBlocks(version.longVideoExecution.profile.prompts)
+    : videoPromptForLoras(asset.prompt, version?.videoLoras ?? asset.videoLoras);
 }

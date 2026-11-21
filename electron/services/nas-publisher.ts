@@ -2,6 +2,8 @@ import path from "node:path";
 import type { AppState, Settings } from "../../src/types.js";
 import { exportLibrary } from "../../src/infrastructure/nas-exporter.js";
 import { publishNasCommit } from "../../src/infrastructure/nas-commit.js";
+import { applyHistoryMetadataChanges, historyMetadataRecord } from "../../src/core/history-metadata.js";
+import type { HistoryMetadataChange } from "../../src/types.js";
 
 /** Coalesces only committed snapshots. Failure keeps the published pointer and retries later. */
 export class NasPublisher {
@@ -32,6 +34,21 @@ export class NasPublisher {
     if (!this.needsSnapshot(state)) return;
     this.pending = this.latest = structuredClone(state);
     this.armTimer();
+  }
+
+  scheduleMetadata(changes: HistoryMetadataChange[], pointer: AppState["libraryStorage"], parent: AppState["libraryStorage"]): boolean {
+    if (this.stopped) return true;
+    if (!pointer) { this.pending = this.latest = undefined; this.lastKey = ""; return true; }
+    if (!this.latest || this.latest.libraryStorage?.libraryId !== pointer.libraryId || this.latest.libraryStorage.commit !== parent?.commit) return false;
+    for (const change of changes) {
+      const item = this.latest.history.find(item => item.id === change.id) ?? this.latest.imageHistory.find(item => item.id === change.id);
+      if (!item) return false;
+      const { id: _id, ...metadata } = historyMetadataRecord(item);
+      if (JSON.stringify(metadata) !== JSON.stringify(change.previous)) return false;
+    }
+    this.pending = this.latest = { ...applyHistoryMetadataChanges(this.latest, changes), libraryStorage: { ...pointer } };
+    this.armTimer();
+    return true;
   }
 
   needsSnapshot(state: Pick<AppState, "libraryStorage" | "settings">): boolean {

@@ -1,4 +1,5 @@
 import { isH3ImageModel } from "../../src/core/minimax-h3-image-spec.js";
+import type { H3TimedGuide } from "../../src/types.js";
 import { modelLibraryRoots } from "../../src/core/model-libraries.js";
 import { createNativeTranslator } from "../ui-translator.js";
 import type { Translate } from "../../src/core/i18n.js";
@@ -587,6 +588,7 @@ function h3NativeUpscaleWorkflowTask(task: UpscaleQueueTask, t: Translate = crea
     promptVersion: 1,
     startImagePath: input.startImagePath,
     endImagePath: input.endImagePath,
+    h3TimedGuides: input.h3TimedGuides,
     sourceWidth: input.artifact.width,
     sourceHeight: input.artifact.height,
     ratio: "source",
@@ -911,6 +913,12 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
   return context;
 }
 
+async function uploadH3TimedGuides(baseUrl: string, guides: H3TimedGuide[], t: Translate, signal: AbortSignal) {
+  return Object.fromEntries(await Promise.all(guides.map(async guide =>
+    [guide.picture, await uploadInput(baseUrl, guide.mediaPath, signal, `Picture ${guide.picture}`, t)] as const
+  )));
+}
+
 export async function submitTask(
   task: QueueTask,
   settings: Settings,
@@ -1135,6 +1143,11 @@ export async function submitTask(
         vramAvailableBytes,
         h3PreviewTinyVae
       });
+    } else if (task.h3TimedGuides?.length) {
+      const h3TimedGuideFiles = await uploadH3TimedGuides(baseUrl, task.h3TimedGuides, t, signal);
+      prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+        h3TimedGuideFiles, vramTotalBytes, locale: settings.uiLocale, vramAvailableBytes, h3PreviewTinyVae
+      });
     } else {
       const supportsEndImage = workflowSupportsEndImage(source);
       const [inputImage, endImage] = await Promise.all([
@@ -1165,10 +1178,10 @@ export async function submitTask(
         throw new Error(t(uiKeys.taskSubmission.secondPassStaticFailed, { detail: validation.errors.join("; ") }));
       }
       const [inputImage, endImage] = await Promise.all([
-        input.startImagePath
+        !input.h3TimedGuides?.length && input.startImagePath
           ? uploadInput(baseUrl, input.startImagePath, signal, t(uiKeys.taskSubmission.secondPassStart), t)
           : Promise.resolve(""),
-        input.endImagePath
+        !input.h3TimedGuides?.length && input.endImagePath
           ? uploadInput(baseUrl, input.endImagePath, signal, t(uiKeys.taskSubmission.secondPassEnd), t)
           : Promise.resolve("")
       ]);
@@ -1179,6 +1192,8 @@ export async function submitTask(
       prompt = renderWorkflow(source, workflowTask, {
         inputImage,
         endImage,
+        h3TimedGuideFiles: input.h3TimedGuides?.length
+          ? await uploadH3TimedGuides(baseUrl, input.h3TimedGuides, t, signal) : undefined,
         width: task.targetWidth,
         height: task.targetOutputHeight ?? task.targetHeight,
         frames: input.artifact.frameCount,

@@ -99,6 +99,33 @@ class ManagedPrefixGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "layout changed"):
             self.c._load_validated_review_prefix({"chunk_count": 5}, resume_safe=True)
 
+    def test_unsupported_group_contract_fails_before_sampling_or_revision_writes(self):
+        self.c.prompt_graph["24"]["class_type"] = "LocalVideoStudioH3ContinuumGroupReceipt"
+        self.c.prompt_graph["24"]["inputs"].update(planned_chunks=6, expected_prefix_chunks=0, expected_parent_revision_id="")
+        self.project.unlink()
+        contract = {"chunk_count": 6, "global": {"model": {"runtime": {"model_options": {
+            "spectrum_h3_binding": {"unsupported": "unsupported provider source change"}
+        }}}}}
+        with self.assertRaisesRegex(ValueError, "unsupported provider source change"):
+            self.c._load_validated_review_prefix(contract, resume_safe=False)
+        self.assertEqual(self.c.calls, 0)
+        self.assertFalse(self.project.exists())
+        # An ordinary upstream graph has no app group handoff requirement.
+        self.c.prompt_graph = {}
+        self.assertIs(self.c._load_validated_review_prefix(contract, resume_safe=False), self.c.prefix)
+
+    def test_fresh_full_run_does_not_require_cross_queue_reuse(self):
+        self.project.unlink()
+        self.c.prefix = SimpleNamespace(records=())
+        self.c.prompt_graph["24"]["class_type"] = "LocalVideoStudioH3ContinuumGroupReceipt"
+        self.c.prompt_graph["24"]["inputs"].update(planned_chunks=6, expected_prefix_chunks=0,
+            expected_parent_revision_id="", execution_mode="full_run")
+        self.c.prompt_graph["12"] = {"inputs": {"generation_mode": "Full Run"}}
+        self.assertIs(self.c._load_validated_review_prefix({"chunk_count": 6}, resume_safe=False), self.c.prefix)
+        self.c.prompt_graph["12"]["inputs"]["generation_mode"] = "Review Each Chunk"
+        with self.assertRaisesRegex(ValueError, "one new Full Run"):
+            self.c._load_validated_review_prefix({"chunk_count": 6}, resume_safe=False)
+
     def test_new_group_run_refuses_an_existing_identity_and_any_reused_prefix(self):
         self.c.prompt_graph["24"]["class_type"] = "LocalVideoStudioH3ContinuumGroupReceipt"
         self.c.prompt_graph["24"]["inputs"].update(planned_chunks=3, expected_prefix_chunks=0, expected_parent_revision_id="")

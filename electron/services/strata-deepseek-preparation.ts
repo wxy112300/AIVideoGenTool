@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { STRATA_COMPATIBLE_PACK_REVISIONS } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_DSV41_SOURCE_REVISION } from "../../src/core/catalog/dependencies/strata-deepseek.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { STRATA_DEEPSEEK_ASSETS, STRATA_DEEPSEEK_MODEL_ID, STRATA_DEEPSEEK_REVISION } from "../../src/core/catalog/models/strata-deepseek.js";
 import type { Settings } from "../../src/types.js";
@@ -12,6 +13,7 @@ import type { Translate } from "../../src/core/i18n.js";
 import { containsPath, physicalPath, resolvedStrataDirectory, strataInstalledRelease } from "./strata-installation.js";
 import { scanStrataPreparation } from "./strata-preparation.js";
 import { deepSeekEngineDirectory, deepSeekEngineIssue, hasDeepSeekEngine } from "./strata-deepseek-engine.js";
+import { deepSeekSourceDirectory } from "./strata-deepseek-source.js";
 import { strataDerivedDataDirectory, verifyStrataAsset, validateStrataRuntimePolicy, type StrataModelPreparationRuntime, type StrataRuntimePolicy, type StrataVerifiedAsset } from "./strata-model-preparation.js";
 
 const files = ["ds4.txt", "tensors.txt", "engram.bin", "expert-profile.bin", "tokenizer/vocab.json", "tokenizer/merges.txt", "tokenizer/token_type.json", "tokenizer/tokenizer.json", "tokenizer/chat_template.jinja"];
@@ -97,11 +99,12 @@ export async function prepareDeepSeekRuntime(settings: Settings, policy: StrataR
     signal?.throwIfAborted();
     const scan = await scanStrataPreparation(settings, runtime.inspect, options.resolvedModelDirectory);
     const release = strataInstalledRelease(install);
+    const source = deepSeekSourceDirectory(install);
     if (!scan.status.managedInstalled || !scan.status.sourcePresent || !release)
       throw new Error(t(uiKeys.strataPreparation.installIncomplete));
     for (const relative of ["tools/dsv41/pack_gguf.py", "data/dsv41/profile-2.00.bin", "serve/ds_pictures.py", "serve/frontend.py"]) {
-      if (!(await fs.stat(path.join(install, relative)).catch(() => null))?.isFile())
-        throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: path.join(install, relative) }));
+      if (!(await fs.stat(path.join(source, relative)).catch(() => null))?.isFile())
+        throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: path.join(source, relative) }));
     }
     if (!scan.status.deepSeekEnginePresent) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: await deepSeekEngineIssue(install) ?? deepSeekEngineDirectory(install) }));
     const profile = scan.profiles.find(item => item.id === STRATA_DEEPSEEK_MODEL_ID)!;
@@ -129,10 +132,10 @@ export async function prepareDeepSeekRuntime(settings: Settings, policy: StrataR
     const pack = await fs.mkdtemp(path.join(data, "deepseek41-iq2_xxs-"));
     const python = path.join(install, ".venv", "Scripts", "python.exe");
     // Explicit shards exclude the metadata-only Unsloth GGUF from backbone discovery.
-    await runtime.run(python, ["-B", path.join(install, "tools/dsv41/pack_gguf.py"), "--model", path.dirname(assets[0].filename), "--out", pack,
+    await runtime.run(python, ["-B", path.join(source, "tools/dsv41/pack_gguf.py"), "--model", path.dirname(assets[0].filename), "--out", pack,
       "--shards", ...assets.slice(0, 4).map(asset => asset.filename), "--engram", assets[4].filename, "--engram-meta", assets[5].filename,
-      "--mmproj", assets[6].filename, ...(assets[7] ? ["--dspark-gguf", assets[7].filename] : [])], { cwd: install, timeoutMs: 600_000, signal, onLog, uiLocale: settings.uiLocale });
-    await fs.copyFile(path.join(install, "data/dsv41/profile-2.00.bin"), path.join(pack, "expert-profile.bin"));
+      "--mmproj", assets[6].filename, ...(assets[7] ? ["--dspark-gguf", assets[7].filename] : [])], { cwd: source, timeoutMs: 600_000, signal, onLog, uiLocale: settings.uiLocale });
+    await fs.copyFile(path.join(source, "data/dsv41/profile-2.00.bin"), path.join(pack, "expert-profile.bin"));
     const engine = deepSeekEngineDirectory(install);
     await runtime.run(path.join(engine, "strata-dsv41.exe"), ["--pack", pack, "--pack-info"],
       { cwd: engine, timeoutMs: 120_000, signal, onLog, uiLocale: settings.uiLocale });
@@ -145,7 +148,7 @@ export async function prepareDeepSeekRuntime(settings: Settings, policy: StrataR
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), { flag: "wx" });
     signal?.throwIfAborted();
     await fs.writeFile(receiptPath, JSON.stringify({ owner: "local-video-studio", schema: 2, modelId: STRATA_DEEPSEEK_MODEL_ID,
-      sourceRevision: release.revision, modelRevision: STRATA_DEEPSEEK_REVISION, policy, assets, artifacts: await artifacts(pack), preparedAt: new Date().toISOString() }, null, 2), { flag: "wx" });
+      sourceRevision: source === install ? release.revision : STRATA_DSV41_SOURCE_REVISION, modelRevision: STRATA_DEEPSEEK_REVISION, policy, assets, artifacts: await artifacts(pack), preparedAt: new Date().toISOString() }, null, 2), { flag: "wx" });
     return { configPath, receiptPath, packDirectory: pack, modelId: STRATA_DEEPSEEK_MODEL_ID };
   } finally { preparing.delete(key); }
 }

@@ -66,6 +66,8 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
     startImagePath?: string;
     endImagePath?: string;
     h3ReferenceSlots?: Array<{ mediaType: "image" | "video"; mediaPath: string }>;
+    h3TimedGuides?: Array<{ mediaPath: string }>;
+    h3GuideEditor?: { slots: Array<{ mediaPath: string }> };
   }) => {
     addPathReference(target.startImagePath, (nextPath) => {
       target.startImagePath = nextPath;
@@ -79,6 +81,9 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
         slot.mediaPath = nextPath;
       });
     });
+    for (const slot of target.h3TimedGuides ?? target.h3GuideEditor?.slots ?? []) {
+      addPathReference(slot.mediaPath, nextPath => { slot.mediaPath = nextPath; });
+    }
   };
   const addReference = (reference: ImageReference) => {
     if (!reference.absolutePath?.trim()) return;

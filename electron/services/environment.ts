@@ -1984,7 +1984,7 @@ export function installStrata(settings: Settings, onProgress?: (message: string,
       if (!curl) throw new Error(t(uiKeys.strataRuntime.curlMissing));
       await downloadWithResume({ url, destination, totalBytes: totalBytes ?? STRATA_ENGINE_BYTES, signal: installationSignal(),
         extraArgs: requested.proxyEnabled ? ["--proxy", normalizeProxyUrl(requested.proxyUrl, requested.uiLocale)] : [],
-        run: (args, timeoutMs) => runLoggedProcess(curl, args, { timeoutMs, env: downloadEnvironment(requested), uiLocale: requested.uiLocale }),
+        run: (args, timeoutMs, onActivity) => runLoggedProcess(curl, args, { timeoutMs, onResetTimeout: onActivity, env: downloadEnvironment(requested), uiLocale: requested.uiLocale }),
         onProgress: report, onLog }, t);
     },
     findPython: async (requested) => {
@@ -2016,13 +2016,23 @@ export async function downloadFileWithCurl(
   if (settings.proxyEnabled) {
     args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl, settings.uiLocale));
   }
+  let resetTimeout: ((timeoutMs?: number) => void) | undefined;
+  let progressedBytes = 0;
   const download = () => runLoggedProcess(curl, args, {
     timeoutMs: 600_000,
+    onResetTimeout: progress ? (reset) => { resetTimeout = reset; } : undefined,
     env: downloadEnvironment(settings),
     uiLocale: settings.uiLocale
   });
-  if (progress) await withDownloadFileProgress(destination, progress.totalBytes, progress.onProgress, download);
-  else await download();
+  if (progress) {
+    await withDownloadFileProgress(destination, progress.totalBytes, (receivedBytes) => {
+      if (receivedBytes > progressedBytes) {
+        progressedBytes = receivedBytes;
+        resetTimeout?.(600_000);
+      }
+      progress.onProgress(receivedBytes);
+    }, download);
+  } else await download();
 }
 
 async function expandZipArchive(archive: string, destination: string, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
@@ -4640,6 +4650,7 @@ export async function runLoggedProcess(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
+    onResetTimeout?: (reset: (timeoutMs?: number) => void) => void;
     signal?: AbortSignal;
     onLog?: (message: string) => void;
   }
@@ -4711,10 +4722,21 @@ export async function runLoggedProcess(
       options.onLog?.(t(uiKeys.attentionInstaller.commandCancelling));
       terminateChild(new Error(t(uiKeys.attentionInstaller.commandCancelled)));
     };
-    timeout = setTimeout(() => {
-      options.onLog?.(t(uiKeys.attentionInstaller.commandTimingOut));
-      terminateChild(new Error(t(uiKeys.attentionInstaller.commandTimedOut, { minutes: Math.round((options.timeoutMs ?? 900_000) / 60_000) })));
-    }, options.timeoutMs ?? 900_000);
+    const defaultTimeoutMs = options.timeoutMs ?? 900_000;
+    const scheduleTimeout = (nextTimeoutMs = defaultTimeoutMs) => {
+      if (settled) return;
+      if (timeout) clearTimeout(timeout);
+      const effectiveTimeoutMs = Math.max(1, nextTimeoutMs);
+      timeout = setTimeout(() => {
+        options.onLog?.(t(uiKeys.attentionInstaller.commandTimingOut));
+        terminateChild(new Error(t(
+          options.onResetTimeout ? uiKeys.softwareDownload.noResponseTimedOut : uiKeys.attentionInstaller.commandTimedOut,
+          { minutes: Math.max(1, Math.round(effectiveTimeoutMs / 60_000)) }
+        )));
+      }, effectiveTimeoutMs);
+    };
+    scheduleTimeout(defaultTimeoutMs);
+    options.onResetTimeout?.(scheduleTimeout);
     if (signal) {
       if (signal.aborted) abortListener();
       else signal.addEventListener("abort", abortListener, { once: true });

@@ -96,6 +96,8 @@ export const H3_PDD_LORA_IDS = [
 export const H3_AFTER_MIDNIGHT_LORA_ID = "minimax-h3-after-midnight-ref2va-nsfw";
 export const H3_AFTER_MIDNIGHT_LORA_FILENAME =
   "AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors";
+const H3_HMNSFW_V3_FILENAME = "HMNSFW-Extreme-Realism.safetensors";
+const H3_HMNSFW_V3_REVISION = "9c8390e0b65a07c115c6744739821d7cbd1763a8";
 export const H3_TURBO_LORA_IDS = [
   H3_TURBO_V4_LORA_ID,
   H3_SLA_TURBO_LORA_ID,
@@ -732,6 +734,43 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         targetSubdirectory: "loras",
         recommendedFilename: H3_AFTER_MIDNIGHT_LORA_FILENAME,
         notes: "当前确认的 Ref2VA NSFW v1.2 权重；建议强度 1.0，并使用 Euler + Beta。仅适用于 R2V，多参考图工作流不能直接移植到 FL2VA。"
+      }
+    }]
+  }
+}, {
+  id: "minimax-h3-hmnsfw-extreme-realism-v3",
+  name: "HMNSFW Extreme Realism · FL2VA v3",
+  filename: H3_HMNSFW_V3_FILENAME,
+  strength: 0.8,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "content",
+  promptPrefixes: [],
+  catalogOrder: 98,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 50,
+    settingConflicts: [],
+    combinations: []
+  },
+  scan: {
+    vram: "FL2VA NSFW · v3 · strength 0.8",
+    integrated: true,
+    runtimeNodeTypes: ["LoraLoaderModelOnly"],
+    components: [{
+      label: "HMNSFW Extreme Realism v3",
+      expected: `loras/${H3_HMNSFW_V3_FILENAME}`,
+      patterns: [/loras\/HMNSFW-Extreme-Realism\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "Sentinel7 / h3 · 2834417/3446189",
+        downloadUrl: `https://huggingface.co/Sentinel7/h3/resolve/${H3_HMNSFW_V3_REVISION}/2834417/3446189/${H3_HMNSFW_V3_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_HMNSFW_V3_FILENAME,
+        revision: H3_HMNSFW_V3_REVISION,
+        bytes: 620977128,
+        sha256: "55aa39239ea4b408dee601cb0fa49157ec13fe2a54eccbb2fb725b124e43c1b5",
+        notes: "默认强度 0.8，无触发词。上游建议先用标准采样：Euler、18 步、视频 shift 12，scheduler 可用 Simple、Beta 或 Normal。"
       }
     }]
   }

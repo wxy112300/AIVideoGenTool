@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { createDefaultSettings } from "../src/core/defaults";
+import { settingsChangedKeys } from "../src/core/settings-changes";
+import { readSettingsFromForm } from "../src/renderer/pages/settings/form";
 import { createTranslator, loadUiLocale } from "../src/core/i18n";
 import { renderModelLibraries, modelLibrariesFromForm } from "../src/renderer/pages/settings/model-libraries";
 import { mountSettingsPageController, type SettingsPageControllerOptions } from "../src/renderer/pages/settings/page-controller";
@@ -8,6 +10,28 @@ import { modelComponentWithLocations, openModelComponentLocation } from "../src/
 import type { ModelComponentStatus } from "../src/types";
 
 afterEach(() => { document.body.innerHTML = ""; });
+it.each([
+  { modelDirectory: "D:/models" },
+  { modelDirectory: " D:/models " },
+  { modelDirectory: "D:/old", modelDirectories: ["E:/models", "F:/models"] },
+  { modelDirectory: "", modelDirectories: ["E:/models", ""] },
+  { modelDirectory: "", modelDirectories: [] }
+])("keeps untouched model libraries clean across form reads and remounts: %j", configured => {
+  const saved = { ...createDefaultSettings(), ...configured };
+  let draft = saved;
+  for (let pass = 0; pass < 3; pass++) {
+    document.body.innerHTML = renderModelLibraries(draft, "D:/detected/models", createTranslator("zh-CN").t, value => value);
+    draft = readSettingsFromForm(draft, "official-storyboard", "faithful");
+    expect(settingsChangedKeys(saved, draft)).toEqual([]);
+    expect(draft).toEqual(saved);
+  }
+  document.querySelector<HTMLInputElement>("[data-model-library-path]")!.value = "G:/changed";
+  const edited = readSettingsFromForm(draft, "official-storyboard", "faithful");
+  expect(settingsChangedKeys(saved, edited)).toContain("modelDirectory");
+  expect(edited.modelDirectories?.[0]).toBe("G:/changed");
+  document.body.innerHTML = renderModelLibraries(saved, "D:/detected/models", createTranslator("zh-CN").t, value => value);
+  expect(settingsChangedKeys(saved, readSettingsFromForm(saved, "official-storyboard", "faithful"))).toEqual([]);
+});
 it("adds empty rows without a picker, protects the first row and uses drag order as the default", async () => {
   let settings = { ...createDefaultSettings(), modelDirectory: "D:/models", modelDirectories: ["D:/models", "E:/models"] };
   const root = document.createElement("div"); document.body.append(root);

@@ -4,6 +4,8 @@ This is the acceptance contract for product UI work. It turns subjective request
 
 ## Product Character
 
+Desktop history favorite/rating/tag edits use durable, compact metadata acknowledgements and incremental events. They must preserve media objects, playback, scroll and editor focus rather than broadcasting or comparing the full library. Accepted saves continue after navigation; acknowledgements merge into current state without replacing newer drafts or rendering a departed editor. Duplicate/stale acknowledgements must not overwrite newer metadata. A persistence failure uses the persistent top notification with the original work/operation and a detail navigation action; it must not navigate automatically, clear a failed tag input, or leave a false success state. Existing full-state IPC stays compatible for older consumers.
+
 The application is a focused local creative workstation: calm, dense enough for expert controls, and understandable without knowledge of ComfyUI graphs. The visual hierarchy should prioritize media, the current creative decision, and task state. Decoration must not compete with content.
 
 The optional external LAN browser follows the approved [mobile-first design](archive/2026-10-18-lan-history-browser/DESIGN.md), primarily informed by Grok Imagine: one media-led experience adapts to phone, tablet and desktop. Cards have no separate title rows. Phone portrait masonry uses two columns and preserves original aspect ratios without clamping/cropping; album uses four columns (three on narrow phones) with uniformly sized, cropped-to-fill thumbnails and no letterboxing. Wider screens add columns at each mode's density. The visible layout toggle and both modes retain the same result order. It does not inherit the workstation's minimum width or creation controls.
@@ -73,6 +75,8 @@ The LAN viewer uses an icon-only sound control and a visible loading ring during
 - The detail page remains within its parent navigation context. For example, History stays selected while viewing video or image details.
 
 ## Async and Media States
+
+- Window close coalesces repeated native close requests. After required confirmations, keep a compact indeterminate state for stopping local services and saving storage. Once cleanup begins, do not return to partially disposed services; failures retain the window with retry recovery. Never destroy the window before storage closes successfully. Pre-shutdown confirmations remain cancellable and preserve return focus. Remote ComfyUI remains connection-only.
 
 History thumbnail jobs belong to an application-lifetime background queue. Scrolling, leaving the page and hover cleanup release UI consumers and lower pending priority; they do not cancel accepted cache lookup, decoding/refinement or persistence. Visible/interactive requests reorder waiting jobs without preempting running thumbnail work. Returning reuses the in-flight task. Source invalidation/deletion and application disposal may cancel temporary work; exit never deletes completed thumbnail images or metadata.
 

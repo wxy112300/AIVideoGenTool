@@ -63,7 +63,7 @@ class GroupReceiptTests(unittest.TestCase):
     def read(self, *, generated=1, root=None):
         filename = self.root / "manifest.json"
         filename.write_text(json.dumps(self.manifest), encoding="utf-8")
-        status = f"Run Storage: run / revision current; 1 reused, {generated} generated, {self.arguments['planned_chunks']} total;\nRun Storage path: {root or self.root}"
+        status = f"Run Storage: run / revision current; {self.arguments['expected_prefix_chunks']} reused, {generated} generated, {self.arguments['planned_chunks']} total;\nRun Storage path: {root or self.root}"
         before = filename.read_bytes()
         result = read_receipt(status=status, assembly_plan=self.plan, **self.arguments)
         self.assertEqual(filename.read_bytes(), before)
@@ -77,6 +77,27 @@ class GroupReceiptTests(unittest.TestCase):
         self.assertEqual(receipt["chunk_records"][0]["storage_revision_id"], "old")
         self.assertEqual(receipt["output_groups"][0]["logical_chunks"], [2])
         self.assertFalse(torch.cuda.is_initialized())
+
+    def test_full_run_preserves_nonreusable_identity_but_requires_complete_output(self):
+        self.arguments.update(execution_mode="full_run", expected_prefix_chunks=0,
+                              expected_parent_revision_id="", planned_chunks=2)
+        self.manifest.update(status="complete", resume_safe=False)
+        self.manifest["contract"]["chunk_count"] = 2
+        record = self.manifest["chunks"][0]
+        (self.root / "chunks" / record["filename"]).write_bytes(
+            (self.root.parent / "old/chunks" / record["filename"]).read_bytes())
+        record["storage_revision_id"] = "current"
+        self.plan = upstream("v3.plan").make_assembly_plan(self.entries, chunk_seconds=5, preserve_final_frame=False)
+        result = self.read(generated=2)
+        self.assertFalse(result["resume_safe"])
+        self.assertTrue(result["final_output"])
+        self.assertEqual(result["execution_mode"], "full_run")
+        self.plan = upstream("v3.plan").make_assembly_plan(self.entries[-1:], chunk_seconds=5, preserve_final_frame=False)
+        with self.assertRaisesRegex(ValueError, "projection"):
+            self.read(generated=2)
+        self.manifest["status"] = "review_ready"
+        with self.assertRaisesRegex(ValueError, "every planned chunk"):
+            self.read(generated=2)
 
     def test_full_prefix_projection_is_still_partial_until_planned_sequence_finishes(self):
         self.plan = upstream("v3.plan").make_assembly_plan(self.entries, chunk_seconds=5, preserve_final_frame=False)

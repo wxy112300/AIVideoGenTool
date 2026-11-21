@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { strataVectorForMode, type StrataUncensoredMode } from "../../src/core/strata-uncensored.js";
+import { strataSourceDirectory } from "./strata-installation.js";
 
 export interface StrataControlVector {
   id: string; filename: string; sha256: string; firstLayer: number; lastLayer: number;
@@ -13,7 +14,7 @@ export interface StrataControlVector {
 /** Always recheck this tiny asset; never rehash the main weights to toggle a runtime mode. */
 export async function verifyStrataControlVector(installDirectory: string, mode: Exclude<StrataUncensoredMode, "off"> = "builtin", t: Translate = createNativeTranslator(undefined).t): Promise<StrataControlVector> {
   const vector = strataVectorForMode(mode);
-  const filename = path.join(installDirectory, vector.relativePath);
+  const filename = path.join(mode === "builtin" ? strataSourceDirectory(installDirectory) : installDirectory, vector.relativePath);
   const stat = await fs.stat(filename).catch(() => null);
   if (!stat?.isFile() || stat.size !== vector.bytes)
     throw new Error(t(uiKeys.strataService.vectorMissing));

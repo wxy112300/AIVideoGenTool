@@ -185,6 +185,7 @@ function h3CreateSecondPassTask(
       prompt: task.prompt,
       startImagePath: task.startImagePath,
       endImagePath: task.endImagePath,
+      h3TimedGuides: task.h3TimedGuides?.map(slot => ({ ...slot })),
       scaleBy: 1080 / Math.min(checkpoint.artifact.width, checkpoint.artifact.height),
       h3VideoVaeMode: task.h3VideoVaeMode!,
       attentionMode: task.attentionMode!,

@@ -2,6 +2,7 @@ import type { AppState, Settings } from "../../src/types.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
+import { localEndpoint } from "./local-service-process.js";
 import type { ComfyRuntimeStateController } from "../../src/infrastructure/comfy-runtime-state.js";
 
 export interface LifecycleQueuePort {
@@ -59,12 +60,11 @@ function waitWithTimeout(
   timeoutMs: number
 ): Promise<boolean> {
   if (!promise) return Promise.resolve(true);
-  return Promise.race([
-    promise.then(() => true, () => true),
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => resolve(false), timeoutMs);
-    })
-  ]);
+  return new Promise<boolean>(resolve => {
+    const finish = (settled: boolean) => { clearTimeout(timer); resolve(settled); };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    void promise.then(() => finish(true), () => finish(true));
+  });
 }
 
 /**
@@ -106,13 +106,13 @@ export class LifecycleCoordinator {
         );
         return { interrupted: forced.ok, workerSettled: false };
       }
-      const cleanupSettled = await waitWithTimeout(cleanupWorker, workerShutdownTimeoutMs);
+      const [cleanupSettled, workerSettled] = await Promise.all([
+        waitWithTimeout(cleanupWorker, workerShutdownTimeoutMs),
+        waitWithTimeout(this.deps.getQueue().runningWorker, workerShutdownTimeoutMs)
+      ]);
       return {
         interrupted: true,
-        workerSettled: cleanupSettled && await waitWithTimeout(
-          this.deps.getQueue().runningWorker,
-          workerShutdownTimeoutMs
-        )
+        workerSettled: cleanupSettled && workerSettled
       };
     }
 
@@ -124,6 +124,11 @@ export class LifecycleCoordinator {
     this.deps.getQueue().abort(new Error("应用退出，任务已中止"));
     this.deps.prompt.abort(new Error("应用退出，提示词扩写已中止"));
     this.deps.strata?.abort(new Error("应用退出，Strata 操作已中止"));
+
+    const workers = waitForWorker ? Promise.all([
+      waitWithTimeout(this.deps.getQueue().runningWorker, workerShutdownTimeoutMs),
+      waitWithTimeout(this.deps.prompt.runningWorker, workerShutdownTimeoutMs)
+    ]) : Promise.resolve([false, false]);
 
     const interruptPromise = this.deps.interruptComfy(settings).then(
       async () => {
@@ -145,20 +150,10 @@ export class LifecycleCoordinator {
         return false;
       }
     );
-    const interrupted = waitForWorker
-      ? await interruptPromise
-      : await Promise.race([
-          interruptPromise,
-          new Promise<boolean>((resolve) => {
-            setTimeout(() => resolve(false), forcedInterruptTimeoutMs);
-          })
-        ]);
-    const workerSettled = waitForWorker
-      ? await waitWithTimeout(this.deps.getQueue().runningWorker, workerShutdownTimeoutMs)
-      : false;
-    const promptSettled = waitForWorker
-      ? await waitWithTimeout(this.deps.prompt.runningWorker, workerShutdownTimeoutMs)
-      : false;
+    const interruptSettled = await waitWithTimeout(interruptPromise,
+      waitForWorker ? workerShutdownTimeoutMs : forcedInterruptTimeoutMs);
+    const interrupted = interruptSettled ? await interruptPromise : false;
+    const [workerSettled, promptSettled] = await workers;
     return {
       interrupted: interrupted || (hadNativePrompt && promptSettled),
       workerSettled: workerSettled && promptSettled
@@ -230,16 +225,15 @@ export class LifecycleCoordinator {
       () => ({ ok: true, message: "Strata 自有服务已停止。" }),
       () => ({ ok: false, message: "Strata 清理未完成，请重试停止；自有进程仍可能占用资源。" })
     );
-    try {
-      await this.deps.prompt.releaseRuntime(settings);
-    } catch (error) {
-      this.deps.logger.warn(
-        "prompt",
-        "runtime-release-failed",
-        "提示词模型 lease 释放失败，继续执行 ComfyUI owned-process 清理",
-        { error: safeLogErrorMessage(error) }
-      );
-    }
+    const promptReleased = (async () => {
+      try {
+        await this.deps.prompt.releaseRuntime(settings);
+      } catch (error) {
+        this.deps.logger.warn("prompt", "runtime-release-failed",
+          "提示词模型 lease 释放失败，继续执行 ComfyUI owned-process 清理",
+          { error: safeLogErrorMessage(error) });
+      }
+    })();
     const stopped = await this.stopOwnedComfyProcesses(settings).catch((error) => ({
       ok: false,
       message: error instanceof Error ? error.message : String(error)
@@ -250,14 +244,22 @@ export class LifecycleCoordinator {
       stopped.message
     );
     const strata = await strataStopped;
+    if (!await waitWithTimeout(promptReleased, forcedInterruptTimeoutMs)) {
+      this.deps.logger.warn("prompt", "runtime-release-timeout", "提示词释放未完成；自有服务停止检查已结束。");
+    }
     if (strata) this.deps.logger.info("app", strata.ok ? "owned-strata-stopped" : "owned-strata-stop-failed", strata.message);
-    return strata && !strata.ok ? { ok: false, message: `${stopped.message} ${strata.message}` } : stopped;
+    return strata && !strata.ok ? { ok: false, message: `${stopped.message} ${strata.message}` }
+      : !this.isManagedLocalEndpoint(settings) ? { ...stopped, ok: true } : stopped;
+  }
+
+  private isManagedLocalEndpoint(settings: Settings): boolean {
+    return this.deps.isLocalComfyUrl(settings.comfyUrl) && localEndpoint(settings.comfyUrl, 8188) !== null;
   }
 
   private async stopOwnedComfyProcesses(
     settings: Settings
   ): Promise<{ ok: boolean; message: string }> {
-    if (!this.deps.isLocalComfyUrl(settings.comfyUrl)) {
+    if (!this.isManagedLocalEndpoint(settings)) {
       return {
         ok: false,
         message: "远程 ComfyUI 仅支持连接，应用不会终止远程或本机进程。"

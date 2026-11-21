@@ -23,6 +23,7 @@ import { h3PromptPackFor } from "../../prompt-packs";
 export interface H3ReferencesControllerOptions {
   getDraft(): Draft | undefined;
   patchDraft(patch: Partial<Draft>): void;
+  syncEnqueueUi(): void;
   requestRender(): void;
   notify(message: string): void;
   /** In Motion Context, slot 1 is the source video and cannot be edited here. */
@@ -181,6 +182,18 @@ export function mountH3ReferencesController(
     select.addEventListener("change", () => {
       const slotId = select.dataset.h3SlotRole;
       if (slotId) updateSlot(slotId, { role: select.value as H3ReferenceRole });
+    }, { signal });
+  });
+  root.querySelectorAll<HTMLInputElement>("[data-h3-slot-guide-time]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const slotId = input.dataset.h3SlotGuideTime;
+      if (!slotId) return;
+      const guideSeconds = Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : undefined;
+      updateSlot(slotId, { guideSeconds });
+      options.syncEnqueueUi();
+    }, { signal });
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") input.blur();
     }, { signal });
   });
   root.querySelectorAll<HTMLInputElement>("[data-h3-slot-note]").forEach((input) => {

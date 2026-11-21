@@ -11,6 +11,10 @@ import { fetchStrataSource } from "./strata-source-fetch.js";
 export async function installStrataGgufPython(root: string,
   run: (executable: string, args: string[], cwd: string, timeoutMs?: number) => Promise<string>,
   log: (message: string) => void, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
+  // Recent upstream checkouts carry this exact parser; do not fetch a redundant copy.
+  for (const vendor of ["third_party/strata-gguf-py", "engine/third_party/strata-gguf-py"]) {
+    if ((await fs.stat(path.join(root, vendor, "gguf/__init__.py")).catch(() => null))?.isFile()) return;
+  }
   const directory = path.join(root, "third_party", "llama.cpp");
   if (await fs.lstat(directory).catch(() => null)) throw new Error(t(uiKeys.strataRuntime.parserTargetExists));
   await fs.mkdir(directory, { recursive: true });

@@ -15,6 +15,7 @@ export interface HistoryIpcDependencies {
 }
 
 export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
+  deps.ipc.handle("history:patch-metadata", async (_event, updates: HistoryMetadataBatchUpdate[]) => deps.metadata.patchMetadata(updates));
   deps.ipc.handle("history:inspect-extension-source", async (_event, draft: Draft) =>
     deps.artifacts.inspectExtensionSource(draft)
   );

@@ -6,11 +6,14 @@ import net from 'node:net';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { resolvedStrataDirectory } from './.runtime/electron/services/strata-installation.js';
+import { resolvedStrataDirectory, strataSourceDirectory } from './.runtime/electron/services/strata-installation.js';
 import { StrataService } from './.runtime/electron/services/strata-service.js';
 import { AgentRuntimeMonitor } from './.runtime/electron/services/strata-agent-monitor.js';
 const tool = path.dirname(fileURLToPath(import.meta.url));
 const install = resolvedStrataDirectory({ strataInstallDirectory: '' });
+const sourceIndex = process.argv.indexOf('--source-directory');
+assert(sourceIndex < 0 || (process.argv[sourceIndex + 1] && !process.argv[sourceIndex + 1].startsWith('--')), '--source-directory requires a source directory');
+const source = sourceIndex < 0 ? strataSourceDirectory(install) : path.resolve(process.argv[sourceIndex + 1]);
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'strata-monitor-cpu-'));
 const reservation = net.createServer();
 await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
@@ -19,7 +22,7 @@ await new Promise(resolve => reservation.close(resolve));
 const secret = randomBytes(32).toString('hex'), delayed = process.argv.includes('--long'), crash = process.argv.includes('--crash');
 const config = path.join(directory, 'runtime.json'), wrapper = path.join(directory, 'fixture.py');
 await fs.writeFile(config, JSON.stringify({ model_name: 'cpu-monitor-only', host: '127.0.0.1', port }));
-await fs.writeFile(wrapper, `import sys, time\nsys.path.insert(0, ${JSON.stringify(install)})\nfrom serve import server\nsys.path.insert(0, ${JSON.stringify(tool)})\nimport guard\noriginal = server.MockEngine.generate\ndef generate(self, *args, **kwargs):\n    time.sleep(${delayed ? 125 : 0.1})\n    yield from original(self, *args, **kwargs)\nserver.MockEngine.generate = generate\nraise SystemExit(guard.serve(${JSON.stringify(install)}, sys.argv[1:]))\n`);
+await fs.writeFile(wrapper, `import sys, time\nsys.path.insert(0, ${JSON.stringify(source)})\nfrom serve import server\nsys.path.insert(0, ${JSON.stringify(tool)})\nimport guard\noriginal = server.MockEngine.generate\ndef generate(self, *args, **kwargs):\n    time.sleep(${delayed ? 125 : 0.1})\n    yield from original(self, *args, **kwargs)\nserver.MockEngine.generate = generate\nraise SystemExit(guard.serve(${JSON.stringify(source)}, sys.argv[1:]))\n`);
 if (crash) {
   const source = await fs.readFile(wrapper, 'utf8');
   await fs.writeFile(wrapper, source.replace('import guard\n', 'import guard, os, threading\nthreading.Timer(2.0, lambda: os._exit(17)).start()\n'));
@@ -29,7 +32,7 @@ const service = new StrataService({ onOutput: chunk => { output += chunk; } });
 const monitor = new AgentRuntimeMonitor();
 const started = Date.now();
 try {
-  await service.start({ executable: path.join(install, '.venv/Scripts/python.exe'), cwd: install, port, apiKey: secret,
+  await service.start({ executable: path.join(install, '.venv/Scripts/python.exe'), cwd: source, port, apiKey: secret,
     args: ['-B', '-u', wrapper, '--engine', 'mock', '--config', config, '--host', '127.0.0.1', '--port', String(port), '--script', 'CPU transport complete'],
     env: { STRATA_API_KEY: secret } });
   if (crash) {

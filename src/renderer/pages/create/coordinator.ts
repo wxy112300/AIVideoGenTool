@@ -37,7 +37,8 @@ import {
 } from "../../../core/image-workflow";
 import { nextImagePictureNumber, normalizeImageEditDraft } from "../../../core/image-project";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
-import { longVideoBlockReason, longVideoDependencyBlockReason } from "../../../core/long-video/capability";
+import { applyH3GuideFramePatch } from "../../../core/h3-timed-guides";
+import { longVideoBlockReason, longVideoDependencyBlockReason, longVideoUsesTimedGuides } from "../../../core/long-video/capability";
 import { PromptEditHistory, type PromptHistoryScope, type PromptHistorySnapshot } from "../../../core/prompt-edit-history";
 import {
   isMiniMaxH3ContinuumModel,
@@ -483,7 +484,10 @@ export function createCreateWorkspaceCoordinator(
       extensionInspectionKey = "";
       extensionSourceInspection = undefined;
     }
-    activateCreationDraft(state, normalizeVideoDraft({ ...state.draft, ...patch }));
+    const sharedPatch = applyH3GuideFramePatch(state.draft, patch);
+    const previousGuideSlots = ("h3GuideEditor" in sharedPatch || "modelId" in sharedPatch)
+      ? state.draft.h3GuideEditor?.slots : undefined;
+    activateCreationDraft(state, normalizeVideoDraft({ ...state.draft, ...sharedPatch }, previousGuideSlots));
     draftRevision += 1;
     draftDirty = true;
     scheduleDraftSave();
@@ -752,6 +756,7 @@ export function createCreateWorkspaceCoordinator(
     deps.addPageCleanup(mountH3ReferencesController(deps.context, {
       getDraft: () => deps.context.getState()?.draft,
       patchDraft,
+      syncEnqueueUi: syncVideoEnqueueUi,
       requestRender: deps.render,
       notify: (message) => deps.context.notify(message),
       lockedFirstVideo: Boolean(getState().draft.inputMode === "video" && isMiniMaxH3R2vModel(getState().draft.modelId))
@@ -1025,7 +1030,10 @@ export function createCreateWorkspaceCoordinator(
       if (detail) detail.textContent = viewModel.motionContextStatusDetail;
     }
     const preview = document.querySelector<HTMLSelectElement>("#generation-mode")?.value === "preview";
-    const reason = preview ? longVideoBlockReason(getState().draft, getState().settings) ?? longVideoDependencyBlockReason(deps.getEnvironmentScan(), getState().settings) ?? "" : viewModel.enqueueBlockReason;
+    const { draft, settings } = getState();
+    const longVideoModel = draft.inputMode === "image" ? draft.modelId : draft.longVideoRunSource?.profile.h3?.modelId;
+    const reason = preview ? longVideoBlockReason(draft, settings) ??
+      longVideoDependencyBlockReason(deps.getEnvironmentScan(), settings, longVideoModel, longVideoUsesTimedGuides(draft)) ?? "" : viewModel.enqueueBlockReason;
     const summary = document.querySelector<HTMLElement>("[data-submit-summary]");
     if (summary) {
       summary.hidden = Boolean(reason);

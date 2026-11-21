@@ -10,6 +10,8 @@ import type { AgentPreferences } from "./strata-agent-settings.js";
 import type { StrataLaunchPlan } from "./strata-service.js";
 import { STRATA_Q4_MODEL_ID } from "../../src/core/catalog/models/strata.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
+import { deepSeekSourceDirectory } from "./strata-deepseek-source.js";
+import { strataSourceDirectory } from "./strata-installation.js";
 
 /** Context validation changes only the private Agent overlay, never the shared H3 pack/receipt. */
 export async function agentLaunchPlan(input: {
@@ -48,13 +50,14 @@ export async function agentLaunchPlan(input: {
   config.aliases = ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"];
   config.mcp_servers = {}; config.mcp_config = undefined;
   const executable = path.join(install, ".venv", "Scripts", "python.exe");
+  const source = isStrataDeepSeek(p.modelId) ? deepSeekSourceDirectory(install) : strataSourceDirectory(install);
   config.before_load = [executable, "-B", input.guardScript, "--check", path.join(input.directory, "admission.json")];
   config.before_load_strict = true;
   config.min_free_vram_mib = Math.ceil(resourcePlan.minimumFreeVramBytes / 1024 ** 2);
   const filename = path.join(directory, "runtime.json");
   await writePrivateJson(filename, config);
-  return { executable, cwd: install, port: p.strataPort, modelId: p.modelId, apiKey: input.token,
-    args: ["-B", "-u", input.guardScript, "--serve", install, "--engine", "strata", "--config", filename,
+  return { executable, cwd: source, port: p.strataPort, modelId: p.modelId, apiKey: input.token,
+    args: ["-B", "-u", input.guardScript, "--serve", source, "--engine", "strata", "--config", filename,
       "--host", "127.0.0.1", "--port", String(p.strataPort), "--lazy", "--api-monitor"],
     env: { STRATA_API_KEY: input.token, ...(!isStrataDeepSeek(p.modelId) ? { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
       // Same Windows safety rollback as H3; never inherit a working-set opt-in from the shell.

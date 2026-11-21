@@ -6,7 +6,7 @@ import { createLongVideoLayout, proposeLongVideoExtension } from "../src/core/lo
 import { createLongVideoScript, editLongVideoScript } from "../src/core/long-video/script";
 import { assertLongVideoExecutionSnapshot, freezeLongVideoExecution, freezeLongVideoExtension, type LongVideoMediaEvidence } from "../src/core/long-video/execution";
 import type { LongVideoRunSource } from "../src/core/long-video/run-source";
-import { verifyLongVideoRunSource } from "../electron/services/long-video-run-source";
+import { verifyLongVideoRunSource, verifyLongVideoRunStorage } from "../electron/services/long-video-run-source";
 import { createHash } from "node:crypto";
 import type { ContinuumGroupReceipt, ContinuumGroupRequest } from "../src/core/long-video/group-checkpoint";
 import { runLongVideoExecution, type LongVideoExecutionPorts } from "../electron/services/long-video-execution";
@@ -56,6 +56,18 @@ async function fixture() {
 }
 
 describe("internal long-video parent execution", () => {
+  it("submits Full Run once, publishes the complete nonreusable movie and replays without resampling", async () => {
+    const f = await fixture();
+    f.frozen.profile.executionMode = "full_run";
+    f.ports.wait = vi.fn(async submission => ({ receipt: { ...receipt(submission.request, true, 2), resume_safe: false }, outputs: {} }));
+    expect((await runLongVideoExecution(f.root, f.frozen, f.ports, f.signal)).phase).toBe("published");
+    expect(f.ports.submit).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(f.ports.submit).mock.calls[0][0]).toMatchObject({ execution_mode: "full_run", expected_prefix_chunks: 0 });
+    expect(f.ports.publish).toHaveBeenCalledTimes(1);
+    expect((await runLongVideoExecution(f.root, f.frozen, f.ports, f.signal)).phase).toBe("published");
+    expect(f.ports.submit).toHaveBeenCalledTimes(1);
+    expect(f.ports.publish).toHaveBeenCalledTimes(1);
+  });
   function extension() {
     const original = snapshot();
     const source: LongVideoRunSource = { schemaVersion: 1, sourceAssetId: "asset", sourceVersionId: "version", profile: original.profile,
@@ -126,6 +138,7 @@ describe("internal long-video parent execution", () => {
     expect(await fs.readFile(manifestPath)).toEqual(original);
     await fs.writeFile(projectPath, JSON.stringify({ canonical_storage_revision_id: "new-head" }));
     await expect(verifyLongVideoRunSource(f.root, source, f.signal)).rejects.toThrow(/stale/);
+    expect((await verifyLongVideoRunStorage(f.root, source.receipt, f.signal)).manifestPath).toBe(await fs.realpath(manifestPath));
     await fs.writeFile(projectPath, JSON.stringify({ canonical_storage_revision_id: source.receipt.revision_id }));
     await fs.writeFile(source.receipt.chunk_records[0]!.payload_path, "replaced payload");
     await expect(verifyLongVideoRunSource(f.root, source, f.signal)).rejects.toThrow(/bytes\/hash/);

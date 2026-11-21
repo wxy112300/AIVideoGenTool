@@ -107,14 +107,14 @@ function fixture() {
 }
 
 describe("Strata lifecycle foundation (not prompt inference)", () => {
-  it.each(["loading", "generating"])("keeps a silent DeepSeek %s alive past ten minutes, then accepts completion", async stage => {
+  it.each(["strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs", "strata/qwen3.8-flash-next-iq3_xxs"].flatMap(modelId => ["loading", "generating"].map(stage => ({modelId, stage}))))("keeps native $modelId $stage alive past ten minutes, then accepts completion", async ({modelId, stage}) => {
     vi.useFakeTimers();
     const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(milliseconds => {
       const controller = new AbortController();
       setTimeout(() => controller.abort(new DOMException("deadline", "TimeoutError")), milliseconds);
       return controller.signal;
     });
-    const f = fixture(), modelId = "strata/deepseek-v4.1-flash-1017-uncensored-iq2_xxs";
+    const f = fixture();
     let finish!: () => void, wire: AbortSignal | undefined;
     try {
       await f.service.start({ ...plan(), modelId });
@@ -279,14 +279,14 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     const legacy = fixture(); await legacy.service.start({ ...plan(), args: ["--lazy"] });
     expect(legacy.service.monitorConnection()).toBeNull(); await legacy.service.stop();
   });
-  it("rejects changed resources after GPU handoff without sending /v1/load and stops only its child", async () => {
+  it("attempts native loading below the former GPU estimate and preserves an actual unconfirmed-load failure", async () => {
     const f = fixture();
     const safe = {memoryAvailableBytes:100*1024**3,commitAvailableBytes:100*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3};
     const service = new StrataService({launch:f.launch,portInUse:f.portInUse,fetch:f.fetchMock as typeof fetch,
       readResources:async()=>({...safe,vramAvailableBytes:18*1024**3})});
     await service.start({...plan(),resourcePlan:planStrataResources(safe,2048)});
-    await expect(service.load()).rejects.toThrow("资源已变化");
-    expect(f.fetchMock.mock.calls.some(([url])=>String(url).endsWith("/v1/load"))).toBe(false);
+    await expect(service.load()).rejects.toThrow("模型加载未确认");
+    expect(f.fetchMock.mock.calls.some(([url])=>String(url).endsWith("/v1/load"))).toBe(true);
     expect(f.child.stop).toHaveBeenCalledOnce(); expect(service.snapshot().pid).toBeNull();
   });
   it("ignores old warnings but refuses a fresh partial-residency fallback before chat", async () => {
@@ -540,7 +540,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
 
   it("builds a lazy loopback launch using only the completed runtime's independent Python", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-service-")); roots.push(root);
-    for (const relative of [".venv/Scripts/python.exe", "serve/server.py", "prepared config.json"]) {
+    for (const relative of [".venv/Scripts/python.exe", "terminal/serve/server.py", "prepared config.json"]) {
       const filename = path.join(root, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
     }
     const settings = { strataInstallDirectory: root, strataPort: 43127 };
@@ -551,9 +551,9 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     await writeStrataPreparedFixture(root, config);
     const legacy = await prepareStrataLaunch(settings, config);
     expect(legacy.args).not.toContain("--api-monitor");
-    await fs.writeFile(path.join(root, "serve", "server.py"), 'ap.add_argument("--api-monitor")');
-    await fs.mkdir(path.join(root, "serve", "web"), { recursive: true });
-    for (const name of ["monitor.html", "monitor.js", "tokens.css"]) await fs.writeFile(path.join(root, "serve", "web", name), "fixture");
+    await fs.writeFile(path.join(root, "terminal", "serve", "server.py"), 'ap.add_argument("--api-monitor")');
+    await fs.mkdir(path.join(root, "terminal", "serve", "web"), { recursive: true });
+    for (const name of ["monitor.html", "monitor.js", "tokens.css"]) await fs.writeFile(path.join(root, "terminal", "serve", "web", name), "fixture");
     const result = await prepareStrataLaunch(settings, config);
     expect(result.executable).toBe(path.join(root, ".venv", "Scripts", "python.exe"));
     expect(result.args).toEqual(["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", config, "--host", "127.0.0.1", "--port", "43127", "--lazy", "--api-monitor", "--api-key", result.apiKey]);
@@ -565,7 +565,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
         commitAvailableBytes:100*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3})});
       const derived=JSON.parse(await fs.readFile(session.temporaryConfig!,"utf8"));
       expect(derived.args.includes("--resident-experts")).toBe(mode==="resident");
-      expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe("5120");
+      expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe(process.platform === "win32" ? "7680" : "5120");
       expect(derived.args[derived.args.indexOf("--expert-cache")+1]).toBe("auto");
       expect(session.env).toMatchObject({STRATA_RESIDENT_HEADROOM_GIB:"6"});
       expect(session.allowResidentFallback).toBe(mode==="resident");

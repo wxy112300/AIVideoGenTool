@@ -7,12 +7,12 @@ import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Settings } from "../../src/types.js";
-import { STRATA_REVISION, STRATA_RELEASES, STRATA_COMPATIBLE_PACK_REVISIONS, STRATA_BUNDLED_LIBRARIES, STRATA_EXPERT_PROFILE } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_REVISION, STRATA_RELEASES, STRATA_COMPATIBLE_PACK_REVISIONS, strataBundledLibrariesForRevision, STRATA_EXPERT_PROFILE } from "../../src/core/catalog/dependencies/strata.js";
 import { strataModelGeometry } from "../../src/core/catalog/models/strata.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { findPreparedDeepSeekRuntime, prepareDeepSeekRuntime, validatePreparedDeepSeekRuntime } from "./strata-deepseek-preparation.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
-import { containsPath, isManagedStrataPath, managedStrataDirectory, physicalPath, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease } from "./strata-installation.js";
+import { containsPath, isManagedStrataPath, managedStrataDirectory, physicalPath, resolvedStrataDirectory, strataManagedReceipt, strataInstalledRelease, strataSourceDirectory } from "./strata-installation.js";
 import { scanStrataPreparation, type StrataFileInspector } from "./strata-preparation.js";
 import { renameWithRetry } from "./filesystem-retry.js";
 import { prepareStrataMtp, validateStrataMtp, type StrataMtpRecord } from "./strata-mtp.js";
@@ -84,7 +84,7 @@ export function buildStrataRuntimeConfig(input: {
       "--expert-cache", "auto", "--prefill", "auto", "--spec", input.mtpDirectory ? "4" : "2",
       ...(input.mtpDirectory ? ["--spec-min-p", "0.5", "--mtp", input.mtpDirectory] : []), "--max-context", String(policy.maxContext),
       ...(policy.maxContext > 8192 ? ["--kv", policy.kv] : []), "--vision", "--vram-reserve-mib", String(policy.vramReserveMiB),
-      geometry.compatBf16 ? "--mmap-experts" : "--resident-experts", "--expert-profile", path.join(input.installDirectory, STRATA_EXPERT_PROFILE)],
+      geometry.compatBf16 ? "--mmap-experts" : "--resident-experts", "--expert-profile", path.join(strataSourceDirectory(input.installDirectory, input.sourceRevision), STRATA_EXPERT_PROFILE)],
     log: path.join(input.packDirectory, "engine.log"),
     tokenizer: path.join(input.packDirectory, "tokenizer"), model_name: input.modelId,
     lib_dirs: [strataRuntimeLibraries(input.installDirectory, input.sourceRevision).directory],
@@ -98,7 +98,7 @@ function strataRuntimeLibraries(installDirectory: string, revision: string = str
   const bundled = STRATA_RELEASES.find(release => release.revision === revision)?.bundledLibraries !== false;
   return { directory: bundled ? path.join(installDirectory, "engine")
     : path.join(installDirectory, ".venv", "Lib", "site-packages", "nvidia", "cu13", "bin", "x86_64"),
-    files: bundled ? STRATA_BUNDLED_LIBRARIES : ["cublas64_13.dll", "cudart64_13.dll"] };
+    files: bundled ? strataBundledLibrariesForRevision(revision) : ["cublas64_13.dll", "cudart64_13.dll"] };
 }
 
 export interface StrataModelPreparationRuntime {
@@ -318,8 +318,9 @@ export async function prepareStrataModelRuntime(
     const shardDirectories = new Set(profile.components.slice(0, geometry.shardCount).map(component => path.resolve(path.dirname(component.matches[0]))));
     if (shardDirectories.size !== 1) throw new Error(t(uiKeys.strataPreparation.shardDirectories));
     const python = path.join(install, ".venv", "Scripts", "python.exe");
+    const source = strataSourceDirectory(install);
     const libs = strataRuntimeLibraries(install);
-    for (const filename of [python, ...["iq_pack.py", "strata_tokenizer.py", "gguf_reader.py"].map((name) => path.join(install, "tools", name)),
+    for (const filename of [python, ...["iq_pack.py", "strata_tokenizer.py", "gguf_reader.py"].map((name) => path.join(source, "tools", name)),
       ...libs.files.map((name) => path.join(libs.directory, name))]) {
       if (!(await fs.stat(filename).catch(() => null))?.isFile()) throw new Error(t(uiKeys.strataPreparation.dependencyMissing, { file: filename }));
     }
@@ -334,7 +335,7 @@ export async function prepareStrataModelRuntime(
     if (geometry.compatBf16 || profile.components.some((component) => component.optional && component.found)) {
       onLog?.(t(uiKeys.strataPreparation.checkingParser));
       try {
-        await runPreparationParserCheck(python, install, runtime, signal, settings.uiLocale);
+        await runPreparationParserCheck(python, source, runtime, signal, settings.uiLocale);
       } catch {
         check();
         throw new Error(t(uiKeys.strataPreparation.parserMissing));
@@ -353,7 +354,7 @@ export async function prepareStrataModelRuntime(
     const shards = assets.slice(0, geometry.shardCount).map((asset) => asset.filename);
     const run = (args: string[], timeoutMs: number) => runtime.run(python, ["-B", ...args], { cwd: install, timeoutMs, signal, onLog, uiLocale: settings.uiLocale });
     check();
-    const header = JSON.parse(await run(["-c", pleInspection, install, ...shards], 120_000));
+    const header = JSON.parse(await run(["-c", pleInspection, source, ...shards], 120_000));
     if (!Number.isInteger(header.pleShard) || header.pleShard < 0 || header.pleShard >= geometry.shardCount) throw new Error(t(uiKeys.strataPreparation.pleFailed));
     check();
     if (await physicalPath(data) !== actualData) throw new Error(t(uiKeys.strataPreparation.directoryChanged));
@@ -361,7 +362,7 @@ export async function prepareStrataModelRuntime(
     output = await fs.mkdtemp(path.join(data, `qwen-flash-next-${modelId.split("-").at(-1)}-`));
     onLog?.(t(uiKeys.strataPreparation.preparingPack, { path: output }));
     onLog?.(t(uiKeys.strataPreparation.modelPreparing, { model: modelId, count: geometry.shardCount, compat: String(geometry.compatBf16) }));
-    await run([path.join(install, "tools", "iq_pack.py"), "--gguf", shards[0], "--out", output,
+    await run([path.join(source, "tools", "iq_pack.py"), "--gguf", shards[0], "--out", output,
       ...(geometry.compatBf16 ? ["--compat-bf16"] : [])], 600_000);
     check();
     await validatePackFiles(output, modelId, t);

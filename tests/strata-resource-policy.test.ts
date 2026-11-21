@@ -7,6 +7,15 @@ const GiB = 1024 ** 3;
 const sample = (ram: number, commit = ram, free = 21.5) => ({ memoryAvailableBytes: ram * GiB,
   commitAvailableBytes: commit * GiB, vramAvailableBytes: free * GiB, vramTotalBytes: 24 * GiB });
 describe("Strata available-resource admission", () => {
+  it("accounts for WDDM occupancy by shrinking only the native session cache", () => {
+    const resources = sample(40, 60, 16);
+    const plan = planStrataResources(resources, 2048, { allowFileReadFallback: true, accountForOccupiedVram: true });
+    expect(plan.vramReserveMiB).toBe(5120 + 8192); expect(plan.minimumFreeVramBytes).toBe(0);
+    const events: { event: string }[] = [];
+    const pressure = new FileReadResourcePressure(Date.now, e => events.push(e));
+    expect(pressure.check(sample(40,60,1.5), { enforceGpuFloor: false })).toBeNull();
+    expect(events).toEqual([expect.objectContaining({event:"warning"})]);
+  });
   it.each([33.7, 27.5])("allows %sGiB RAM below full native residency when official file readback is authorized", ram => {
     const resources = sample(ram, 60, 21.7);
     const plan = planStrataResources(resources, 5120, { allowFileReadFallback: true });
@@ -21,7 +30,7 @@ describe("Strata available-resource admission", () => {
     expect(() => planStrataResources(sample(5.9, 60), 5120, options)).toThrow("文件回读启动预留");
     expect(() => planStrataResources(sample(33.7, 5.9), 5120, options)).toThrow("提交余量");
     expect(planStrataResources(sample(40, 23), 5120, options).requiredCommitBytes).toBe(6 * GiB);
-    expect(() => planStrataResources(sample(33.7, 60, 19), 5120, options)).toThrow("空闲显存");
+    expect(planStrataResources(sample(33.7, 60, 19), 5120, options).minimumFreeVramBytes).toBe(0);
     expect(() => planStrataResources({ ...sample(33.7, 60), commitAvailableBytes: null }, 5120, options)).toThrow("无法确认");
     expect(() => planStrataResources(sample(33.7, 60), 5120, { ...options, commitTrial: true })).toThrow("完整专家驻留");
   });
@@ -41,7 +50,7 @@ describe("Strata available-resource admission", () => {
     expect(long.residentBudgetGiB).toBeLessThan(bounded.residentBudgetGiB!);
     expect(()=>planStrataResources(sample(48,30),5120,{...options,commitTrial:true})).toThrow("提交余量");
     expect(()=>planStrataResources(sample(20,130),5120,options)).toThrow("内存");
-    expect(()=>planStrataResources(sample(100,130,19),5120,options)).toThrow("空闲显存");
+    expect(planStrataResources(sample(100,130,19),5120,options).minimumFreeVramBytes).toBe(0);
     expect(()=>planStrataResources({...sample(100,130),commitAvailableBytes:null},5120,options)).toThrow("无法确认");
   });
   it.each([FileReadResourcePressure, AgentResourcePressure])("warns without stopping on host pressure in every phase (%s)", Policy => {
@@ -60,6 +69,16 @@ describe("Strata available-resource admission", () => {
     expect(pressure.check(sample(10, 10, .5), { enforceGpuFloor: false })).toBeNull();
     expect(pressure.knownPressure(sample(10, 10, .5), { enforceGpuFloor: false })).toBeNull();
     expect(pressure.check(sample(10, 10, .5))).toContain("2GiB");
+  });
+  it.each([0.5, 0.75, 1])("warns below the configured %s GiB without aborting native inference", reserve => {
+    const events: string[] = [];
+    const pressure = new FileReadResourcePressure(Date.now, sample => events.push(sample.event));
+    const options = { enforceGpuFloor: false, vramWarningBytes: reserve * GiB };
+    expect(pressure.check(sample(10, 10, reserve), options)).toBeNull();
+    expect(events).toEqual([]);
+    expect(pressure.check(sample(10, 10, reserve - 0.01), options)).toBeNull();
+    expect(pressure.check(sample(10, 10, reserve), options)).toBeNull();
+    expect(events).toEqual(["warning", "recovered"]);
   });
   it("requires fresh sustained severe commit shortage, never RAM alone, and resets on recovery or missing samples", () => {
     let now = 0; const events: { event: string }[] = [], p = new FileReadResourcePressure(() => now, e => events.push(e));
@@ -82,7 +101,7 @@ describe("Strata available-resource admission", () => {
     expect(trial.requiredCommitBytes).toBe(trial.requiredMemoryBytes);
     expect(() => planStrataResources(sample(31,100),5120,{commitTrial:true})).toThrow("完整专家驻留");
     expect(() => planStrataResources(sample(40,2),5120,{commitTrial:true})).toThrow("提交余量");
-    expect(() => planStrataResources(sample(40,45,19),5120,{commitTrial:true})).toThrow("空闲显存");
+    expect(planStrataResources(sample(40,45,19),5120,{commitTrial:true}).minimumFreeVramBytes).toBe(0);
     expect(strataResourcePressure(sample(40,2))).toBeNull();
   });
   it("uses the whole arena on a sufficiently free 128GB PC, not a fixed 16GB cap", () => {
@@ -99,8 +118,8 @@ describe("Strata available-resource admission", () => {
     expect(()=>planStrataResources(sample(100,31),2048)).toThrow("提交余量");
     expect(()=>planStrataResources(sample(40,40),2048)).toThrow("CUDA 加载预留");
   });
-  it("refuses occupied VRAM and unknown memory instead of optimistic auto-loading", () => {
-    expect(()=>planStrataResources(sample(100,100,19),2048)).toThrow("空闲显存");
+  it("lets the native automatic cache try occupied VRAM while rejecting invalid measurements", () => {
+    expect(planStrataResources(sample(100,100,16.3),2048)).toMatchObject({minimumFreeVramBytes:0,vramReserveMiB:5120});
     expect(()=>planStrataResources({...sample(100),commitAvailableBytes:null},2048)).toThrow("无法确认");
     expect(()=>planStrataResources({...sample(100),memoryAvailableBytes:NaN},2048)).toThrow("无法确认");
   });

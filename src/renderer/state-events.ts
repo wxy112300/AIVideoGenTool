@@ -33,6 +33,7 @@ import {
 } from "../core/prompt-runtime-state";
 import { preserveLocalCreationDrafts } from "../core/creation-drafts";
 import { structurallyEqual } from "../core/structural-equal";
+import { applyHistoryMetadataChanges } from "../core/history-metadata";
 import { updateStrataInstallProgress } from "./pages/settings/strata-preparation";
 import { updateDependencyGitProgress } from "./pages/settings/dependency-presentation";
 import type {
@@ -293,8 +294,12 @@ export function registerRendererEvents(
     }, 1000);
   };
   const unsubscribers = [
+    options.events.onHistoryMetadataChanged?.(changes => {
+      const state = options.getState();
+      if (state) options.setState(applyHistoryMetadataChanges(state, changes));
+    }) ?? (() => {}),
     options.events.onWindowCloseRequest((request) => {
-      options.rememberModalFocus();
+      if (!document.activeElement?.closest(".close-dialog")) options.rememberModalFocus();
       options.setPendingWindowCloseRequest(request);
       options.setWindowCloseResponseBusy(false);
       (options.requestOverlayRender ?? options.requestRender)();

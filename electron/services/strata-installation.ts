@@ -17,9 +17,10 @@ import { removeSoftwareArtifact, preserveSoftwareUserData } from "./software-upd
 import { gitSoftwareFiles } from "./software-git-files.js";
 import { fetchStrataSource } from "./strata-source-fetch.js";
 import { hasDeepSeekEngine, installDeepSeekEngine } from "./strata-deepseek-engine.js";
-import { STRATA_DSV41_BYTES } from "../../src/core/catalog/dependencies/strata-deepseek.js";
+import { deepSeekSourceSoftwareFiles, installDeepSeekSource } from "./strata-deepseek-source.js";
+import { STRATA_DSV41_BYTES, STRATA_DSV41_SOURCE_DIRECTORY } from "../../src/core/catalog/dependencies/strata-deepseek.js";
 import type { ConnectionResult, Settings, StrataInstallProgress } from "../../src/types.js";
-import { STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_ENGINE_VERSION, STRATA_ENGINE_MANIFEST_SHA256, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES } from "../../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_BYTES, STRATA_ENGINE_FILES, STRATA_ENGINE_SHA256, STRATA_ENGINE_URL, STRATA_ENGINE_VERSION, STRATA_ENGINE_MANIFEST_SHA256, STRATA_REVISION, STRATA_VERSION, STRATA_RELEASES, strataSourceSubdirectory } from "../../src/core/catalog/dependencies/strata.js";
 
 const receiptName = "lvs-strata-install.json";
 const vectorDirectories = ["data/lvs-control-vectors", "data/experimental-speed-projection"];
@@ -27,7 +28,8 @@ async function preserveStrataUserData(source: string, destination: string, t: Tr
   const head = (await fs.readFile(path.join(source, ".git", "HEAD"), "utf8").catch(() => "")).trim();
   const release = strataInstalledRelease(source, false) ?? STRATA_RELEASES.find(release => release.revision === head);
   const downloadable = release ? await gitSoftwareFiles(source, { repository: "https://github.com/Niko1221/Strata", revision: release.revision }) : new Set<string>();
-  await preserveSoftwareUserData(source, destination, [...vectorDirectories, ...(await hasDeepSeekEngine(source, true) ? ["engine-dsv41"] : [])], undefined, [...downloadable], t);
+  await preserveSoftwareUserData(source, destination, [...vectorDirectories, ...(await hasDeepSeekEngine(source, true) ? ["engine-dsv41"] : [])], undefined,
+    [...downloadable, ...await deepSeekSourceSoftwareFiles(source)], t);
 }
 export function managedStrataDirectory(release?: { version: string; revision: string }): string {
   return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Local Video Studio", "strata", release ? `v${release.version}-${release.revision.slice(0, 8)}` : "runtime");
@@ -44,6 +46,10 @@ export function strataInstalledRelease(root: string, complete = true): typeof ST
     return STRATA_RELEASES.find((release) => value.revision === release.revision && value.engineSha256 === release.engineSha256
       && (!value.version || value.version === release.version));
   } catch { return undefined; }
+}
+/** Source moved in 0.2.16; keep venv, engines and the managed install pointer stable. */
+export function strataSourceDirectory(root: string, revision: string = strataInstalledRelease(root)?.revision ?? STRATA_REVISION): string {
+  return path.join(root, strataSourceSubdirectory(revision));
 }
 export function resolvedStrataDirectory(settings: Pick<Settings, "strataInstallDirectory">): string {
   const selected = settings.strataInstallDirectory?.trim();
@@ -189,6 +195,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run("git.exe", ["checkout", "--detach", "FETCH_HEAD"], staging);
     const revision = (await run("git.exe", ["rev-parse", "HEAD"], staging)).trim();
     if (revision !== STRATA_REVISION) throw new Error(t(uiKeys.strataRuntime.revisionMismatch));
+    await installDeepSeekSource(staging, run, log, t);
     await installStrataGgufPython(staging, run, log, t);
     log(t(uiKeys.strataRuntime.downloadEngine));
     stage("download", 0);
@@ -206,7 +213,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await fs.mkdir(path.join(staging, "engine"), { recursive: true });
     await run("tar.exe", ["-xzf", archive, "-C", path.join(staging, "engine")], staging);
     for (const name of STRATA_ENGINE_FILES) {
-      if (!(await fs.stat(path.join(staging, name))).size) throw new Error(t(uiKeys.strataRuntime.engineFileMissing, { name: name }));
+      if (!(await fs.stat(path.join(staging, name)).catch(() => null))?.size) throw new Error(t(uiKeys.strataRuntime.engineFileMissing, { name: name }));
     }
     // The archive hash pins the package; also check its independently published component identity.
     const manifestBytes = await fs.readFile(path.join(staging, "engine", "engine-component.json"));
@@ -243,10 +250,12 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run(python, ["-m", "venv", "--copies", path.join(root, ".venv")], root);
     const isolatedPython = path.join(root, ".venv", "Scripts", "python.exe");
     stage("packages");
-    await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(root, "requirements.txt")], root, 1_800_000);
+    const source = strataSourceDirectory(root);
+    await run(isolatedPython, ["-m", "pip", "install", "--no-cache-dir", "--only-binary=:all:", "-r", path.join(source, "requirements.txt")], source, 1_800_000);
     log(t(uiKeys.strataRuntime.checking));
     stage("check");
-    await run(isolatedPython, ["-c", "import numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path('engine')),full=True)"], root);
+    await run(isolatedPython, ["-c", "import sys,numpy,jinja2,regex,yaml,tqdm,requests,PIL,psutil,truststore; from pathlib import Path; from strata_control.engine_component import read_manifest,verify; verify(read_manifest(Path(sys.argv[1])),full=True)", path.join(root, "engine")], source);
+    await run(isolatedPython, ["-B", "-c", "from serve.ds_pictures import DsPictures; from serve.frontend import ChatTemplate"], path.join(root, STRATA_DSV41_SOURCE_DIRECTORY));
     stage("download", 0, STRATA_DSV41_BYTES);
     await installDeepSeekEngine(root, settings, { ...runtime, run: (executable, args, options) => run(executable, args, options.cwd ?? root, options.timeoutMs) }, log,
       received => stage("download", received, STRATA_DSV41_BYTES));

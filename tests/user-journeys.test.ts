@@ -18,6 +18,107 @@ afterEach(async () => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic ports)", () => {
+  it("recovers an empty timed keyframe, keeps Picture IDs after sorting, and freezes guides on enqueue", async () => {
+    const h = journey = await createJourney({ duration: 5 }, "en-US");
+    const toggle = h.element<HTMLInputElement>("#toggle-h3-guides");
+    expect(toggle.closest(".ios-switch-field")).toBeTruthy();
+    expect(toggle.getAttribute("role")).toBe("switch");
+    const help = h.element("#h3-guide-help");
+    expect(help.parentElement?.querySelector("label")?.control).toBe(toggle);
+    expect(help.closest("label")).toBeNull();
+    expect(help.dataset.uiTooltip).toContain("times are measured on the assembled video");
+    help.click();
+    expect(toggle.checked).toBe(false);
+    toggle.click();
+    await settle();
+    h.input("#prompt-input", "Start in the plaza and approach <Picture 2>.");
+    expect(h.element("#enqueue").disabled).toBe(true);
+    expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("keyframe");
+    h.element('[data-guide-slot="1"] [data-guide-pick]').click();
+    await settle();
+    h.element("#add-h3-guide").click();
+    await settle();
+    h.hostCapabilities.pickImage.mockResolvedValueOnce("different.png");
+    h.element('[data-guide-slot="2"] [data-guide-pick]').click();
+    await settle();
+    expect(h.element("#enqueue").disabled).toBe(true);
+    expect(h.element('[data-guide-slot="1"] [data-guide-pick]').classList.contains("create-frame-surface")).toBe(true);
+    h.input('[data-guide-slot="2"] [data-guide-time]', "1", "change");
+    await settle();
+    h.input('[data-guide-slot="1"] [data-guide-time]', "2");
+    h.render();
+    expect(h.element<HTMLInputElement>("#h3-guide-time-1").value).toBe("2");
+    expect(h.state().draft.h3GuideEditor?.slots[0]?.seconds).toBe(0);
+    h.input('[data-guide-slot="1"] [data-guide-time]', "2", "change");
+    await settle();
+    expect([...h.root.querySelectorAll<HTMLElement>("[data-guide-slot]")].map(card => card.dataset.guideSlot)).toEqual(["1", "2"]);
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toContain("<Picture 1>");
+    h.element("#enhance-prompt").click();
+    await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({
+      h3TimedGuideContext: true, imagePaths: ["different.png", "fixture.png"],
+      referenceContext: expect.stringContaining("Attachment 1 is Studio <Picture 1> at 1.000s.")
+    })));
+    h.input("#prompt-input", "Start in the plaza and approach <Picture 1>.");
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.element("#enqueue").click();
+    await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+      id: expect.any(String),
+      h3TimedGuides: [{ picture: 1, mediaPath: "different.png", seconds: 1 }, { picture: 2, mediaPath: "fixture.png", seconds: 2 }]
+    }));
+    h.element("#h3-guide-time-1").focus();
+    h.input("#h3-guide-time-1", "1.25");
+    const clear = h.element('[data-guide-slot="1"] .create-media-actions [data-guide-clear]');
+    expect(clear.dispatchEvent(new MouseEvent("pointerdown", { cancelable: true }))).toBe(false);
+    clear.click();
+    await settle();
+    expect(h.state().draft.h3GuideEditor?.slots[0]).toMatchObject({ picture: 1, mediaPath: "", seconds: 1.25 });
+    expect(h.element("#enqueue").disabled).toBe(true);
+    h.element('[data-guide-slot="1"] [data-guide-pick]').click();
+    await settle();
+    h.hostCapabilities.pickImage.mockResolvedValueOnce("replacement.png");
+    h.element('[data-guide-slot="1"] .create-media-actions [data-guide-replace]').click();
+    await settle();
+    expect(h.state().draft.h3GuideEditor?.slots[0]).toMatchObject({ picture: 1, mediaPath: "replacement.png", seconds: 1.25 });
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.input("#prompt-input", "Keep <Picture 2> beside <Picture 1>.");
+    h.element('[data-guide-slot="1"] [data-guide-remove]').click();
+    await settle();
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toBe("Keep <Picture 1> beside the removed image reference.");
+    expect(h.state().draft.h3GuideEditor?.slots).toEqual([{ picture: 1, mediaPath: "fixture.png", seconds: 2 }]);
+    expect(h.state().queue[0]).toMatchObject({ h3TimedGuides: expect.arrayContaining([{ picture: 1, mediaPath: "different.png", seconds: 1 }]) });
+  });
+
+  it("shares FL2VA boundary slots through both modes and keeps additional keyframes", async () => {
+    const h = journey = await createJourney({ startImagePath: "start.png", endImagePath: "end.png", duration: 5 }, "en-US");
+    h.element("#toggle-h3-guides").click();
+    await settle();
+    h.element("#add-h3-guide").click();
+    await settle();
+    h.hostCapabilities.pickImage.mockResolvedValueOnce("middle.png");
+    h.element('[data-guide-slot="2"] [data-guide-pick]').click();
+    await settle();
+    h.input("#h3-guide-time-2", "2", "change");
+    await settle();
+    h.hostCapabilities.pickImage.mockResolvedValueOnce("keyframe-start.png");
+    h.element('[data-guide-slot="1"] [data-guide-replace]').click();
+    await settle();
+    h.element("#toggle-h3-guides").click();
+    await settle();
+    expect(h.state().draft).toMatchObject({ startImagePath: "keyframe-start.png", endImagePath: "end.png" });
+    h.element('[data-clear-frame="end"]').click();
+    await settle();
+    h.hostCapabilities.pickImage.mockResolvedValueOnce("normal-end.png");
+    h.element("#toggle-end").click();
+    await settle();
+    h.element("#toggle-h3-guides").click();
+    await settle();
+    expect(h.state().draft.h3GuideEditor?.slots).toEqual([
+      { picture: 1, mediaPath: "keyframe-start.png", seconds: 0 },
+      { picture: 2, mediaPath: "middle.png", seconds: 2 },
+      { picture: 3, mediaPath: "normal-end.png", seconds: "end" }
+    ]);
+  });
+
   it("keeps duration fill aligned after number edits and native/unlocked/Continuum switches", async () => {
     const h = journey = await createJourney({ startImagePath: "fixture.png" });
     const slider = h.element("#duration") as HTMLInputElement;
@@ -155,6 +256,8 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     } else {
       if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
       await settle(); h.element("[data-pick-h3-slot]").click(); await settle();
+      h.element("#toggle-h3-guides").click(); await settle();
+      h.input("[data-h3-slot-guide-time]", "1.5", "change");
     }
     const promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
     h.state().settings.promptModelId = promptModelId;
@@ -184,7 +287,10 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     expect(compiled).toMatchObject({ reasoning: { effort: "medium", budgetTokens: 0 }, temperature: 1,
       messages: [{ role: "system" }, { role: "user" }] });
     expect(h.enhancePrompt.mock.calls[0][0]).toMatchObject({ h3PromptMode: "R2V", h3PromptPreset: "detailed-cinematic",
-      ...(inputMode === "video" ? { extensionSource: { filePath: "fixture.mp4", trimEndSeconds: 8 } } : {}) });
+      ...(inputMode === "video" ? { extensionSource: { filePath: "fixture.mp4", trimEndSeconds: 8 } } : {
+        imagePaths: ["fixture.png"],
+        referenceContext: expect.stringContaining("<Picture 1> also guides the visible composition at 1.5s")
+      }) });
     expect(promptVersionsForDraft(h.state().draft).at(-1)?.id).toBeTruthy();
     expect(h.state().queue).toHaveLength(0);
   });
@@ -368,6 +474,10 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     const h = journey = await createJourney();
     h.input("#model", "minimax_h3_ref2va", "change"); await settle();
     expect(h.root.querySelector("#pick-start")).toBeNull();
+    expect(h.root.querySelector("[data-h3-slot-guide-time]")).toBeNull();
+    expect(h.element("#h3-guide-help").dataset.uiTooltip).toContain("留空的图片照常作为参考");
+    h.element("#toggle-h3-guides").click();
+    await settle();
     expect(h.element("#enqueue").disabled).toBe(true);
     // The selected model may create its initial empty slot; otherwise add it via UI.
     if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
@@ -377,9 +487,25 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     h.input("[data-h3-slot-role]", "style", "change");
     h.input("[data-h3-slot-note]", "Keep the light direction");
     const slotId = h.state().draft.h3ReferenceSlots[0]!.id;
+    expect(h.element("[data-h3-slot-guide-time]").closest(".create-slot-heading")).toBeTruthy();
+    h.input("[data-h3-slot-guide-time]", "99", "change");
+    await settle();
+    expect(h.element("#enqueue").disabled).toBe(true);
+    h.input("[data-h3-slot-guide-time]", "1.5", "change");
+    await settle();
+    h.element("#toggle-h3-guides").click();
+    await settle();
+    expect(h.root.querySelector("[data-h3-slot-guide-time]")).toBeNull();
+    h.element("#toggle-h3-guides").click();
+    await settle();
+    expect(h.element<HTMLInputElement>("[data-h3-slot-guide-time]").value).toBe("1.5");
     expect(h.element("#enqueue").disabled).toBe(false);
     h.element("#enqueue").click();
     await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
+    expect(h.state().queue[0]).toMatchObject({
+      id: expect.any(String),
+      h3TimedGuides: [{ picture: 1, mediaPath: "fixture.png", seconds: 1.5 }]
+    });
     h.element("[data-clear-h3-slot]").click(); await settle();
     expect(h.state().draft.h3ReferenceSlots[0]).toMatchObject({ id: slotId, role: "style", note: "Keep the light direction", mediaPath: "" });
     expect(h.element("#enqueue").disabled).toBe(true);

@@ -10,7 +10,7 @@ import * as vectorTools from "../electron/services/strata-uncensored";
 import { STRATA_COMMUNITY_VECTOR, strataVectorForMode } from "../src/core/strata-uncensored";
 import { strataEngineManifestFixture } from "./helpers/strata-engine-fixture";
 import { STRATA_DEEPSEEK_MODEL_ID } from "../src/core/catalog/models/strata-deepseek";
-import { STRATA_DSV41_URL, STRATA_DSV41_BYTES } from "../src/core/catalog/dependencies/strata-deepseek";
+import { STRATA_DSV41_URL, STRATA_DSV41_BYTES, STRATA_DSV41_SOURCE_DIRECTORY, STRATA_DSV41_SOURCE_REVISION } from "../src/core/catalog/dependencies/strata-deepseek";
 import { hasDeepSeekEngine, deepSeekEngineIssue } from "../electron/services/strata-deepseek-engine";
 import * as deepSeekEngineTools from "../electron/services/strata-deepseek-engine";
 
@@ -42,7 +42,15 @@ async function fixture() {
     download: vi.fn(async (_url: string, destination: string) => { await fs.writeFile(destination, "fixture"); }),
     verifyArchive: vi.fn(async () => undefined),
     run: vi.fn(async (_exe: string, args: string[], options: { cwd?: string }) => {
-      if (args.includes("rev-parse")) return options.cwd?.endsWith("llama.cpp") ? STRATA_LLAMA_REVISION : STRATA_REVISION;
+      if (args.includes("rev-parse")) return options.cwd?.endsWith("llama.cpp") ? STRATA_LLAMA_REVISION
+        : options.cwd?.endsWith(STRATA_DSV41_SOURCE_DIRECTORY) ? STRATA_DSV41_SOURCE_REVISION : STRATA_REVISION;
+      if (args.includes("checkout") && options.cwd?.endsWith(STRATA_DSV41_SOURCE_DIRECTORY)) {
+        for (const name of ["serve/server.py", "serve/ds_pictures.py", "serve/frontend.py", "tools/dsv41/pack_gguf.py", "data/dsv41/profile-2.00.bin"]) {
+          const file = path.join(options.cwd, name);
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          await fs.writeFile(file, "compatibility source fixture");
+        }
+      }
       if (args.includes("checkout") && options.cwd?.endsWith("llama.cpp")) {
         await fs.mkdir(path.join(options.cwd,"gguf-py/gguf"),{recursive:true});
         await fs.writeFile(path.join(options.cwd,"gguf-py/gguf/__init__.py"),"fixture");
@@ -163,12 +171,13 @@ describe("Strata software installer", () => {
     expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("old runtime");
     expect(await strataManagedReceipt(root)).toBe(true);
   });
-  it.each([false, true])("recovers from a truncated source fetch before publishing (parser: %s)", async parser => {
+  it.each(["source", "parser", "deepseek"])("recovers from a truncated source fetch before publishing (%s)", async component => {
     const { root, runtime } = await fixture();
     const original = runtime.run.getMockImplementation()!;
     let attempts = 0;
     runtime.run.mockImplementation(async (exe, args, options) => {
-      if (args.includes("fetch") && Boolean(options.cwd?.endsWith("llama.cpp")) === parser) {
+      const target = options.cwd?.endsWith("llama.cpp") ? "parser" : options.cwd?.endsWith(STRATA_DSV41_SOURCE_DIRECTORY) ? "deepseek" : "source";
+      if (args.includes("fetch") && target === component) {
         attempts++;
         expect(args.slice(0, 3)).toEqual(["-c", "http.version=HTTP/1.1", "fetch"]);
         if (attempts === 1) throw Object.assign(new Error("命令退出，代码 128"), { stdout: "error: RPC failed; curl 92 HTTP/2 stream 5 CANCEL\nfatal: early EOF", code: 128 });
@@ -180,6 +189,41 @@ describe("Strata software installer", () => {
     expect(attempts).toBe(2);
     expect(result.log).toContain("2/3，HTTP/1.1");
     expect(await strataManagedReceipt(root)).toBe(true);
+  });
+  it.each(["0.2.13", "0.2.15"])("upgrades a %s runtime through the same transaction and removes its old software", async previousVersion => {
+    const { folder, root, runtime } = await fixture();
+    expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
+    const previous = STRATA_RELEASES.find(item => item.version === previousVersion)!;
+    await fs.writeFile(path.join(root, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...previous, installedAt: "fixture" }));
+    await fs.writeFile(path.join(root, "settings.json"), '{"keep":"user settings"}');
+    runtime.download.mockClear();
+    const result = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(result.ok, result.log).toBe(true);
+    expect(strataInstalledRelease(root)?.version).toBe("0.2.17");
+    expect(await fs.readFile(path.join(root, "settings.json"), "utf8")).toContain("user settings");
+    expect(runtime.download.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining([
+      expect.stringContaining("/v0.2.17/strata-engine-0.1.63-"),
+      expect.stringContaining("/v0.2.13/strata-dsv41-0.1.59-")
+    ]));
+    expect((await fs.readdir(folder)).some(name => /backup-|failed-|^\.install-/u.test(name))).toBe(false);
+  });
+  it.each(["revision", "missing-file"])("retains the installed runtime when DeepSeek compatibility source is invalid (%s)", async failure => {
+    const { root, runtime } = await fixture();
+    expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
+    const receipt = await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8");
+    const original = runtime.run.getMockImplementation()!;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      const result = await original(exe, args, options);
+      if (options.cwd?.endsWith(STRATA_DSV41_SOURCE_DIRECTORY)) {
+        if (failure === "revision" && args.includes("rev-parse")) return "0".repeat(40);
+        if (failure === "missing-file" && args.includes("checkout")) await fs.unlink(path.join(options.cwd, "serve/ds_pictures.py"));
+      }
+      return result;
+    });
+    const result = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("DeepSeek compatibility source");
+    expect(await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8")).toBe(receipt);
   });
   it.each(["en-US", "zh-TW"] as const)("rejects a corrupt archive with a localized error before extraction (%s)", async uiLocale => {
     const { root, runtime } = await fixture();
@@ -376,10 +420,12 @@ describe("Strata software installer", () => {
     expect(await fs.readFile(path.join(root, "data/lvs-control-vectors/NOTICE.txt"), "utf8")).toContain(STRATA_COMMUNITY_VECTOR.revision);
     const commands = runtime.run.mock.calls.map(([exe, args]) => `${exe} ${args.join(" ")}`).join("\n");
     expect(commands).toContain(`fetch --depth=1 origin ${STRATA_REVISION}`);
+    expect(commands).toContain(`fetch --depth=1 --filter=blob:none origin ${STRATA_DSV41_SOURCE_REVISION}`);
+    expect(await fs.readFile(path.join(root, STRATA_DSV41_SOURCE_DIRECTORY, "serve/ds_pictures.py"), "utf8")).toContain("compatibility source fixture");
     expect(commands).toContain(".venv");
     expect(commands).not.toContain("nvidia-cublas");
     expect(commands).not.toContain("nvidia-cuda-runtime");
-    expect(commands).toContain("verify(read_manifest(Path('engine')),full=True)");
+    expect(commands).toContain("verify(read_manifest(Path(sys.argv[1])),full=True)");
     expect(runtime.download.mock.calls[0][1]).toMatch(/engine\.tar\.gz$/u);
     expect(commands).toContain(`fetch --depth=1 --filter=blob:none origin ${STRATA_LLAMA_REVISION}`);
     expect(commands).toContain("sparse-checkout set gguf-py");
@@ -387,6 +433,21 @@ describe("Strata software installer", () => {
     const second = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(second.ok, second.log).toBe(true);
     expect(second.log).toContain("已清理旧软件");
+  });
+  it("uses the new source's vendored GGUF parser without fetching another llama.cpp checkout", async () => {
+    const { runtime } = await fixture();
+    const original = runtime.run.getMockImplementation()!;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      const result = await original(exe, args, options);
+      if (args.includes("checkout") && path.basename(options.cwd!).startsWith(".install-")) {
+        const parser = path.join(options.cwd!, "engine/third_party/strata-gguf-py/gguf/__init__.py");
+        await fs.mkdir(path.dirname(parser), { recursive: true }); await fs.writeFile(parser, "vendored parser");
+      }
+      return result;
+    });
+    const result = await installStrataRuntime(createDefaultSettings(), runtime);
+    expect(result.ok, result.log).toBe(true);
+    expect(runtime.run.mock.calls.some(([, args]) => args.includes(STRATA_LLAMA_REVISION))).toBe(false);
   });
   it("reports ordered installation stages and real download counters separately from logs", async () => {
     const { runtime } = await fixture();

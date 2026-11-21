@@ -653,6 +653,7 @@ export function mountCreatePageController(
   childCleanups.push(mountGenerationMode(root, t, options.syncEnqueueUi, options.context.notify, {
     getDraft: () => getState()?.draft,
     patchDraft: options.patchDraft,
+    setEnhancing: options.createPrompt.setPromptEnhancing,
     context: options.context
   }));
   const updateDuration = (source: HTMLInputElement, commit = false) => {

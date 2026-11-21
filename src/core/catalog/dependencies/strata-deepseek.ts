@@ -1,7 +1,10 @@
-import { STRATA_VERSION } from "./strata.js";
-/** Independent DeepSeek engine in the same fixed Strata release feed. */
+/** 0.2.13 is the last upstream source supporting DeepSeek; keep it isolated from Qwen. */
+export const STRATA_DSV41_SOURCE_VERSION = "0.2.13";
+export const STRATA_DSV41_SOURCE_REVISION = "d2f096475817d4666c364c820b0ca830f751cfc5";
+export const STRATA_DSV41_SOURCE_DIRECTORY = "deepseek-compat";
+/** The unchanged component is still published under 0.2.13, independently of the app. */
 export const STRATA_DSV41_VERSION = "0.1.59";
-export const STRATA_DSV41_URL = `https://github.com/Niko1221/Strata/releases/download/v${STRATA_VERSION}/strata-dsv41-${STRATA_DSV41_VERSION}-windows-x86_64-cuda-cuda13.tar.gz`;
+export const STRATA_DSV41_URL = `https://github.com/Niko1221/Strata/releases/download/v${STRATA_DSV41_SOURCE_VERSION}/strata-dsv41-${STRATA_DSV41_VERSION}-windows-x86_64-cuda-cuda13.tar.gz`;
 export const STRATA_DSV41_BYTES = 422621585;
 export const STRATA_DSV41_SHA256 = "1ae0f2d7c820e5b5b3c02cdafc86dbdddb6d7a66aa4bde70309a3e78aa714d2c";
 export const STRATA_DSV41_MANIFEST_SHA256 = "5a54612300e57eea89cdac94be3102d936beb943cb6916d220ff351a23e801d1";

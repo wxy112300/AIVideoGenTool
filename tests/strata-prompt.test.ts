@@ -6,6 +6,9 @@ import { createDefaultState } from "../src/core/defaults.js";
 import { promptModelBackend, promptRuntimeForSettings, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
 import { promptModelStatus } from "../src/renderer/shared/status.js";
 import { strataPreparationProfiles } from "../src/core/strata-preparation.js";
+import { createLongVideoLayout } from "../src/core/long-video/layout.js";
+import { createLongVideoScript } from "../src/core/long-video/script.js";
+import { longVideoPromptRequest } from "../src/core/long-video/enhancement.js";
 import { buildStrataPromptRequest, enhancePromptWithStrata, strataImageContent, strataPromptPolicy } from "../electron/services/strata-prompt.js";
 import { withPromptExtensionMedia } from "../electron/services/prompt-extension-media.js";
 import { PromptApplicationService } from "../electron/services/prompt-application-service.js";
@@ -53,10 +56,10 @@ describe("Strata uncensored request snapshot", () => {
     expect((await buildStrataPromptRequest(request, { ...settings, promptModelId: "strata/future", strataUncensored: true }, new AbortController().signal)).uncensored).toBe(false);
   });
 });
-async function imageFixture() {
+async function imageFixture(marker = 0) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-image-")); roots.push(root);
   const filename = path.join(root, "reference.png");
-  await fs.writeFile(filename, Buffer.from([137,80,78,71,13,10,26,10,0,0]));
+  await fs.writeFile(filename, Buffer.from([137,80,78,71,13,10,26,10,0,marker]));
   return filename;
 }
 function fixture() {
@@ -90,6 +93,33 @@ function fixture() {
 }
 
 describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
+  it("sends every timed Continuum image and its visual cue through the local Strata operation", async () => {
+    const f = fixture();
+    let id = 0;
+    const script = createLongVideoScript(createLongVideoLayout(10, 2), () => `guide-page-${++id}`, "A car arrives and stops.");
+    const longVideo = longVideoPromptRequest(script, undefined, "allocate");
+    const imagePaths = await Promise.all([1, 2, 3].map(imageFixture));
+    const referenceContext = "Attachment 2 = Picture 8: film 5.167s, segment 2 around 0.000s.";
+    const input: EnhanceRequest = {
+      prompt: longVideo.brief.text, modelId: "minimax_h3_fl2va", origin: "image-to-video",
+      mode: "h3-vision", h3PromptMode: "I2VA", longVideo, imagePaths,
+      h3TimedGuideContext: true, referenceContext
+    };
+    f.owner.chat.mockResolvedValueOnce(JSON.stringify({
+      segments: longVideo.segments.map((page, index) => ({ pageId: page.pageId, text: `Guide beat ${index + 1}` }))
+    }));
+    await expect(f.service.enhance(input)).resolves.toContain("Guide beat 2");
+    const sent = f.owner.chat.mock.calls[0]![0];
+    const parts = sent.messages.at(-1)!.content;
+    expect(parts.filter(part => part.type === "image_url")).toEqual(await Promise.all(imagePaths.map(file =>
+      strataImageContent(file, new AbortController().signal))));
+    expect(parts.at(-1)?.text).toContain(referenceContext);
+
+    const remote = fixture();
+    remote.state.settings.promptModelId = "google/gemma-4-12b-q5";
+    await expect(remote.service.enhance(input)).rejects.toThrow(/Strata/u);
+    expect(remote.owner.chat).not.toHaveBeenCalled();
+  });
   it("rejects a 30-second Gemma request before starting runtime preparation", async () => {
     const scenario = fixture();
     scenario.state.settings.promptModelId = "google/gemma-4-12b-q5";

@@ -41,6 +41,29 @@ async function fixture() {
   const deps = { store, sendState: vi.fn(), updateTask: vi.fn(), updateTaskProgress: vi.fn(), requireExistingVideoOutput: vi.fn(async () => [file]) };
   return { directory, filename, task, media, deps, signal: new AbortController().signal };
 }
+it("freezes R2V picture uploads and an output-timeline guide without rewriting Picture tags", async () => {
+  const f = await fixture();
+  f.task.longVideoExecution = undefined;
+  f.task.longVideoPlan!.pages[2]!.text = "<Picture 1> turns to camera.";
+  Object.assign(f.task, {
+    modelId: "minimax_h3_ref2va", startImagePath: "", endImagePath: "", videoLoras: [],
+    attentionMode: "pytorch", spectrumMode: "off",
+    h3ReferenceSlots: [{ id: "reference", mediaType: "image", mediaPath: "picture.png", role: "subject", note: "" }],
+    h3TimedGuides: [{ picture: 1, mediaPath: "picture.png", seconds: 5.2 }]
+  });
+  execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
+    expect(snapshot.profile.firstImage).toBeUndefined();
+    expect(snapshot.profile).toMatchObject({
+      h3: { modelId: "minimax_h3_ref2va" },
+      referenceImages: ["uploaded-first.png"],
+      timedGuides: [{ picture: 1, filename: "uploaded-first.png", absoluteFrame: 125 }],
+      prompts: ["Action 0", "<Picture 1> turns to camera."]
+    });
+    return { phase: "published" };
+  });
+  await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);
+  expect(execution.run).toHaveBeenCalledOnce();
+});
 it.each(["off", "rife2x", "rife4x"] as const)("claims 1080p with %s, Sage Triton and Spectrum before executing groups", async frameInterpolation => {
   const f = await fixture();
   f.task.longVideoExecution = undefined;
@@ -95,6 +118,7 @@ it.each([1, 2, 4] as const)("publishes %sx delivery with stable duration and IDs
   expect(asset.versions).toHaveLength(1); expect(asset.versions[0]!.id).toBe(f.task.id); expect(asset.versions[0]!.duration).toBe(10);
   expect(asset.versions[0]!.longVideoExecution).toEqual(f.task.longVideoExecution);
   expect(asset.versions[0]!.longVideoReceipt?.final_output).toBe(true);
+  expect(asset.versions[0]!.h3ContinuationData).toBeUndefined();
   expect(asset.fps).toBe(24 * multiplier); expect(asset.versions[0]!.fps).toBe(24 * multiplier);
 });
 it("refuses publication if a validated movie was replaced, leaving the task recoverable", async () => {

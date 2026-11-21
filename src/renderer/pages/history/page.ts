@@ -26,7 +26,7 @@ import {
 import {
   historyBatchCommonTags
 } from "../../../core/history-batch";
-import { videoPromptForLoras } from "../../../core/video-loras";
+import { historyVideoPrompt } from "../../../core/history-video";
 import {
   h3MotionContextHistoryFileForPath,
   isH3MotionContextHistoryFile
@@ -606,15 +606,17 @@ export function renderHistoryDetailPage(
   const videoIndex = options.versionVideoIndex(version);
   const mediaUrl = options.historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
+  const hasContinuumRun = Boolean(version.longVideoExecution || version.longVideoReceipt);
+  const inspectedRun = viewModel.historyArtifactInspection?.continuumRun;
   // A missing record without an artifact is the deletion boundary. Inspection
   // results from before that deletion must not bring its file badge back.
-  const hasNativeAvDetails = Boolean(version.h3AvAsset || (version.h3ContinuationData &&
+  const hasNativeAvDetails = !hasContinuumRun && Boolean(version.h3AvAsset || (version.h3ContinuationData &&
     (version.h3ContinuationData.status !== "missing" || version.h3ContinuationData.artifact)));
   const jointAvArtifact = hasNativeAvDetails
     ? viewModel.historyArtifactInspection?.artifact ?? version.h3ContinuationData?.artifact
     : undefined;
   const artifactInspectionStatus = viewModel.historyArtifactInspection?.status ??
-    version.h3ContinuationData?.status ?? "not-supported";
+    (hasContinuumRun ? undefined : version.h3ContinuationData?.status) ?? "not-supported";
   const nativeAvStatusLabel = artifactInspectionStatus === "available"
     ? options.t(uiKeys.history.page.nativeAvStatusAvailable)
     : artifactInspectionStatus === "save-failed"
@@ -630,6 +632,22 @@ export function renderHistoryDetailPage(
   const nativeAvScope = version.h3AvAsset?.sampleScope ??
     (nativeAvRole === "extend-segment-clean-av" ? "extension-segment" : undefined);
   const nativeAvContextFrames = version.h3AvAsset?.contextFrames ?? jointAvArtifact?.contextFrames;
+  const runAvReason = inspectedRun?.resumeSafe === false
+    ? options.t(uiKeys.history.page.continuumRunAvCannotResume)
+    : viewModel.historyArtifactInspection?.reason;
+  const runAvFile = (label: string, filename: string, bytes?: number): string =>
+    `<div><dt>${options.escapeHtml(label)}</dt><dd><code title="${options.escapeHtml(filename)}">${options.escapeHtml(filename.split(/[\\/]/u).pop() ?? filename)}</code>
+      ${bytes === undefined ? "" : options.escapeHtml(options.formatBytes(bytes))}
+      <button class="ghost icon-button" data-show-file="${options.escapeHtml(filename)}" aria-label="${options.escapeHtml(options.t(uiKeys.history.page.showInExplorer))}">${options.icon("folder-open")}</button></dd></div>`;
+  const continuumRunAvMarkup = hasContinuumRun
+    ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
+        <details class="history-av-details"><summary><span>${options.icon("database")}${options.t(uiKeys.history.page.continuumRunAv)}</span><span class="history-file-badge ${!viewModel.historyArtifactInspection || artifactInspectionStatus === "available" ? "" : "warning"}" data-history-av-visible-status>${viewModel.historyArtifactInspection ? nativeAvStatusLabel : options.t(uiKeys.history.page.continuumRunAvChecking)}</span>${options.icon("chevron-down")}</summary>
+          ${inspectedRun ? `<dl class="history-native-av-facts">${runAvFile(options.t(uiKeys.history.page.continuumRunStorageManifest), inspectedRun.manifestPath)}
+            ${inspectedRun.chunks.map((chunk, index) => runAvFile(options.t(uiKeys.history.page.continuumChunkPayload, { index: index + 1 }), chunk.path, chunk.bytes)).join("")}</dl>` : ""}
+        </details>
+        ${runAvReason ? `<p class="history-native-av-reason" data-history-av-visible-reason>${options.escapeHtml(runAvReason)}</p>` : ""}
+      </section>`
+    : "";
   const nativeAvSummaryMarkup = hasNativeAvDetails
     ? `<section class="history-native-av-summary" data-history-av-summary aria-live="polite">
         <details class="history-av-details"><summary><span>${options.icon("database")}${options.t(uiKeys.history.page.avFile)}</span><span class="history-file-badge ${artifactInspectionStatus === "available" ? "" : "warning"}" data-history-av-visible-status>${options.escapeHtml(nativeAvStatusLabel)}</span>${options.icon("chevron-down")}</summary>
@@ -710,10 +728,22 @@ export function renderHistoryDetailPage(
   const completedAt = options.formatFullHistoryTime(version.createdAt);
   const fps = version.fps;
   const performanceStats = version.performanceStats;
-  const executionPrompt = videoPromptForLoras(
-    asset.prompt,
-    version.videoLoras ?? asset.videoLoras
-  );
+  const run = version.longVideoExecution;
+  const executionPrompt = historyVideoPrompt(asset, version);
+  const promptHistory = run?.script.pages.map((page, index) => {
+    const revisions = page.versions;
+    if (!revisions?.some(revision => revision.text.trim())) return "";
+    const title = index === 0 ? options.t(uiKeys.create.editor.global) : `[Chunk ${run.script.layout.prefixChunks + index}]`;
+    return `<details class="history-record-disclosure"><summary>${options.escapeHtml(title)}</summary>${
+      revisions.map((revision, index) => {
+        if (!revision.text.trim()) return "";
+        const label = [options.t(uiKeys.history.version, { version: index + 1 }),
+          revision.stage === "allocation" ? options.t(uiKeys.create.editor.allocateStory) : "",
+          revision.id === page.versionId ? options.t(uiKeys.history.page.selectedPromptVersion) : ""].filter(Boolean).join(" · ");
+        return `<details class="history-record-disclosure"><summary>${options.escapeHtml(label)}</summary><p class="history-prompt">${options.escapeHtml(revision.text)}</p></details>`;
+      }).join("")
+    }</details>`;
+  }).join("");
   const elapsedSeconds = version.startedAt
     ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
@@ -793,6 +823,7 @@ export function renderHistoryDetailPage(
       <article class="panel history-record history-detail-prompt">
         <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.promptHeading)}</h2><span class="history-prompt-meta">${version.promptVersion == null && asset.promptVersion == null ? "" : options.t(uiKeys.history.version, { version: version.promptVersion ?? asset.promptVersion ?? 0 })}${performanceStats?.h3TokenCount == null ? "" : ` · ${performanceStats.h3TokenCount} tokens`}</span><button class="ghost button-with-icon" data-copy-prompt>${options.icon("copy")}${options.t(uiKeys.history.page.copyPrompt)}</button></div>
         <div class="history-prompt-scroll" tabindex="0" aria-label="${options.t(uiKeys.history.page.fullPrompt)}"><p class="history-prompt">${options.escapeHtml(executionPrompt)}</p></div>
+        ${promptHistory ? `<details class="history-record-disclosure"><summary>${options.t(uiKeys.history.page.promptHistory)}</summary>${promptHistory}</details>` : ""}
       </article>
     <section class="history-record-section" aria-labelledby="history-generation-record-title">
       <div class="history-record-section-heading"><h2 id="history-generation-record-title">${options.t(uiKeys.history.page.generationRecord)}</h2><span class="history-record-section-meta">${options.t(version.kind === "original" ? uiKeys.history.page.originalGeneration : uiKeys.history.page.upscaleVersion)} · ${options.escapeHtml(options.modelName(version.modelId))}</span></div>
@@ -829,7 +860,7 @@ export function renderHistoryDetailPage(
       </section>
       <article class="panel history-record history-output-files">
         ${videoRecordHeading(options.t(uiKeys.history.page.outputFiles), "folder-open", options, options.t(uiKeys.history.card.count, { count: outputFiles.length }))}
-      ${nativeAvSummaryMarkup}
+      ${continuumRunAvMarkup || nativeAvSummaryMarkup}
       <div class="output-files">
         ${outputFiles.length === 0
           ? `<p class="muted">${options.t(uiKeys.history.page.noRecognizedFiles)}</p>`

@@ -8,6 +8,66 @@ import { longVideoBlockReason } from "../src/core/long-video/capability";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
+it.each(["fl2va", "ref2va"] as const)("queues the %s multi-segment input through the create button", async mode => {
+  const r2v = mode === "ref2va";
+  const slot = { id: "slot-1", mediaType: "image", mediaPath: "picture.png", role: "subject", note: "" } as const;
+  const h = journey = await createJourney({
+    modelId: r2v ? "minimax_h3_ref2va" : "minimax_h3_fl2va", duration: 2,
+    startImagePath: r2v ? "" : "head.png", endImagePath: r2v ? "" : "tail.png",
+    h3ReferenceSlots: [r2v ? { ...slot, guideSeconds: 5.2 } : { ...slot, mediaType: "video", mediaPath: "remembered.mp4" }],
+    h3ReferenceGuidesEnabled: r2v
+  });
+  h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.input("#generation-mode", "preview", "change");
+  h.input("[data-preview-duration-number]", "10"); h.input("[data-preview-count-number]", "2");
+  h.element("[data-confirm-layout]").click();
+  for (const [index, text] of ["An actor walks.", "The actor comes to a stop."].entries()) {
+    h.element(`.create-long-tabs [role="tab"]:nth-child(${index + 2})`).click();
+    h.input(".create-long-editor textarea", text);
+  }
+  if (r2v) {
+    const adapter = h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!;
+    adapter.version = "0.4.0";
+    h.render();
+    expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("0.4.4");
+    adapter.version = "0.4.4";
+    h.render();
+  }
+  await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(false));
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+    modelId: `minimax_h3_${mode}`,
+    longVideoPlan: { layout: { targetFrames: 240 } },
+    ...(r2v ? { h3TimedGuides: [{ picture: 1, mediaPath: "picture.png", seconds: 5.2 }] }
+      : { startImagePath: "head.png", endImagePath: "tail.png" })
+  }));
+});
+
+it("uses the assembled duration for a keyframe after the native clip and freezes it from the real enqueue button", async () => {
+  const h = journey = await createJourney({ duration: 2, h3GuideEditor: {
+    active: true, nextPicture: 3, slots: [
+      { picture: 1, mediaPath: "opening.png", seconds: 0 }, { picture: 2, mediaPath: "after-seam.png", seconds: null }
+    ]
+  } });
+  h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.input("#generation-mode", "preview", "change");
+  h.input("[data-preview-duration-number]", "10"); h.input("[data-preview-count-number]", "2"); h.element("[data-confirm-layout]").click();
+  for (const [index, text] of ["A red ball rolls.", "It stops at <Picture 2>."].entries()) {
+    h.element(`.create-long-tabs [role="tab"]:nth-child(${index + 2})`).click();
+    h.input(".create-long-editor textarea", text);
+  }
+  expect(h.element("#enqueue").disabled).toBe(true);
+  h.input("#h3-guide-time-2", "5.2", "change");
+  await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(false));
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+    id: expect.any(String),
+    h3TimedGuides: [{ picture: 1, mediaPath: "opening.png", seconds: 0 }, { picture: 2, mediaPath: "after-seam.png", seconds: 5.2 }],
+    longVideoPlan: { layout: { targetFrames: 240, chunks: 2 } }
+  }));
+});
 it.each(["rife2x", "rife4x"] as const)("retains saved 1080p and %s through enqueue without exposing an H3 interpolation control", async interpolation => {
   const h = journey = await createJourney();
   h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";

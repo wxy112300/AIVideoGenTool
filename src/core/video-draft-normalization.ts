@@ -1,4 +1,4 @@
-import type { Draft } from "../types.js";
+import type { Draft, H3TimedGuide } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
 import { h3ReferenceImageDimensions } from "./h3-reference.js";
 import { normalizeH3MemoryOptions } from "./h3-memory-policy.js";
@@ -15,6 +15,7 @@ import {
 import { h3LatentSaveModeFor, h3SaveJointAvForLatentSaveMode } from "./h3-latent-save.js";
 import { h3ContinuumModeForSource, isMiniMaxH3ContinuumModel, isMiniMaxH3R2vModel } from "./workflow.js";
 import { isLongVideoDraftActive } from "./long-video/capability.js";
+import { normalizeH3GuideDraft } from "./h3-timed-guides.js";
 
 export function normalizeH3FrameSettings(
   draft: Pick<Draft, "modelId" | "fps" | "frameInterpolation"> & Partial<Pick<Draft, "longVideoEditor" | "inputMode">>
@@ -32,7 +33,7 @@ export function videoModelSupportsDraftInput(
   return !declaredInputModes || declaredInputModes.includes(inputMode);
 }
 
-export function normalizeVideoDraft(draft: Draft): Draft {
+export function normalizeVideoDraft(draft: Draft, previousGuideSlots?: readonly H3TimedGuide[]): Draft {
   const legacyModelId = draft.modelId;
   const modelId = baseVideoModelId(legacyModelId);
   const ratio = !modelCatalog.isFamily(modelId, "minimax-h3") && draft.ratio === "21:9"
@@ -63,6 +64,7 @@ export function normalizeVideoDraft(draft: Draft): Draft {
 
   return {
     ...draft,
+    ...normalizeH3GuideDraft({ ...draft, modelId }, previousGuideSlots),
     modelId,
     ...(referenceDimensions ? { sourceWidth: referenceDimensions.width, sourceHeight: referenceDimensions.height } : {}),
     duration: draft.inputMode === "video" && isMiniMaxH3ContinuumModel(modelId) &&

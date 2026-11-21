@@ -1,5 +1,6 @@
 /** Internal P0 protocol. Never reinterpret a partial group as a legacy receipt. */
 export interface ContinuumGroupRequest {
+  execution_mode?: "full_run";
   execution_id: string;
   step_id: string;
   attempt_id: string;
@@ -28,7 +29,7 @@ export interface ContinuumGroupReceipt extends Omit<ContinuumGroupRequest, "expe
   run_storage_schema_version: 3;
   sampling_contract_version: 6;
   contract_sha256: string;
-  resume_safe: true;
+  resume_safe: boolean;
   accepted_chunks: number;
   reused_count: number;
   generated_count: number;
@@ -65,15 +66,18 @@ export function parseContinuumGroupReceipt(value: unknown): ContinuumGroupReceip
   requireFact(record(value) && value.schema_version === 1 && value.kind === "continuum_group", "unknown receipt kind/schema");
   for (const key of ["execution_id", "step_id", "attempt_id", "project_id", "run_name", "revision_id"]) requireFact(identifier(value[key]), `invalid ${key}`);
   requireFact(text(value.run_storage_path) && text(value.package_version), "missing writer identity");
-  requireFact(value.run_storage_schema_version === 3 && value.sampling_contract_version === 6 && hash(value.contract_sha256) && value.resume_safe === true, "unproven reusable sampling contract");
+  const fullRun = value.execution_mode === "full_run";
+  requireFact(value.execution_mode === undefined || fullRun, "unknown execution mode");
+  requireFact(value.run_storage_schema_version === 3 && value.sampling_contract_version === 6 && hash(value.contract_sha256) && typeof value.resume_safe === "boolean" && (fullRun || value.resume_safe), "unproven reusable sampling contract");
   requireFact(integer(value.planned_chunks, 1, 16) && integer(value.accepted_chunks, 1, value.planned_chunks), "invalid planned/accepted counts");
-  requireFact(integer(value.reused_count, 0, value.accepted_chunks - 1) && integer(value.generated_count, 1, 2) && value.reused_count + value.generated_count === value.accepted_chunks, "invalid reused/generated counts");
+  requireFact(integer(value.reused_count, 0, value.accepted_chunks - 1) && integer(value.generated_count, 1, fullRun ? 16 : 2) && value.reused_count + value.generated_count === value.accepted_chunks, "invalid reused/generated counts");
+  if (fullRun) requireFact(value.reused_count === 0 && value.accepted_chunks === value.planned_chunks && value.output_scope === "full_accepted_prefix" && value.final_output === true, "Full Run requires a complete fresh output");
   requireFact(value.reused_count ? identifier(value.expected_parent_revision_id) : value.expected_parent_revision_id === "", "invalid parent revision");
   const group = value.physical_group;
   requireFact(record(group) && group.index === value.reused_count + 1 && group.start === group.index && group.end === value.accepted_chunks, "physical group does not extend the accepted prefix");
   // The official engine only merges the final pair; a logical page is not
   // necessarily one physical group or independently retryable.
-  requireFact(value.generated_count === 1 || value.accepted_chunks === value.planned_chunks, "merged physical group is not terminal");
+  requireFact(fullRun || value.generated_count === 1 || value.accepted_chunks === value.planned_chunks, "merged physical group is not terminal");
   requireFact(Array.isArray(value.chunk_records) && value.chunk_records.length === value.accepted_chunks, "incomplete accepted records");
   for (const [index, chunk] of value.chunk_records.entries()) {
     requireFact(record(chunk) && chunk.logical_chunk_index === index + 1 && identifier(chunk.storage_revision_id) && identifier(chunk.record_filename) && chunk.record_filename.endsWith(".safetensors"), "invalid chunk identity");
@@ -93,7 +97,7 @@ export function parseContinuumGroupReceipt(value: unknown): ContinuumGroupReceip
   }
   const start = value.output_scope === "full_accepted_prefix" ? 1 : group.start as number;
   requireFact(indices.length === value.accepted_chunks - start + 1 && indices.every((item, index) => item === start + index), "output does not cover declared scope");
-  if (value.generated_count === 2) requireFact(value.output_groups.some(decoded => record(decoded) && Array.isArray(decoded.logical_chunks) && decoded.logical_chunks.length === 2), "merged group split across decode outputs");
+  if (!fullRun && value.generated_count === 2) requireFact(value.output_groups.some(decoded => record(decoded) && Array.isArray(decoded.logical_chunks) && decoded.logical_chunks.length === 2), "merged group split across decode outputs");
   const complete = value.accepted_chunks === value.planned_chunks;
   requireFact(value.sequence_complete === complete && value.final_output === (complete && value.output_scope === "full_accepted_prefix"), "partial output mislabeled as final");
   return structuredClone(value) as unknown as ContinuumGroupReceipt;
@@ -102,7 +106,7 @@ export function parseContinuumGroupReceipt(value: unknown): ContinuumGroupReceip
 /** Bind a receipt to frozen request facts before any persistent checkpoint write. */
 export function acceptContinuumGroupCheckpoint(request: ContinuumGroupRequest, value: unknown): ContinuumGroupReceipt {
   const receipt = parseContinuumGroupReceipt(value);
-  for (const key of ["execution_id", "step_id", "attempt_id", "project_id", "run_name", "planned_chunks", "expected_parent_revision_id"] as const) {
+  for (const key of ["execution_mode", "execution_id", "step_id", "attempt_id", "project_id", "run_name", "planned_chunks", "expected_parent_revision_id"] as const) {
     requireFact(receipt[key] === request[key], `receipt differs from frozen ${key}`);
   }
   requireFact(receipt.reused_count === request.expected_prefix_chunks, "accepted prefix changed since request binding");

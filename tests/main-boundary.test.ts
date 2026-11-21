@@ -108,7 +108,7 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(98);
+    expect(invokeChannels.size).toBe(99);
     expect(registrations.get("lan-browser:status")).toEqual(["lan-browser-host"]);
     expect(registrations.get("lan-browser:retry")).toEqual(["lan-browser-host"]);
     expect(registrations.get("lan-browser:open")).toEqual(["lan-browser-host"]);
@@ -152,6 +152,7 @@ describe("main/preload boundary characterization", () => {
         "queue:cancel"
       ],
       "history-ipc": [
+        "history:patch-metadata",
         "history-cover:read",
         "history-cover:lookup",
         "history-cover:save",
@@ -328,6 +329,7 @@ describe("main/preload boundary characterization", () => {
 
   it("keeps all event sender/listener channels and directional install logs", () => {
     const expectedEvents = new Set([
+      "history:metadata-changed",
       "state:changed",
       "comfy-runtime:changed",
       "prompt-runtime:changed",
@@ -382,6 +384,7 @@ describe("main/preload boundary characterization", () => {
       "cache:progress"
     ]));
     expect(bridgeChannels).toEqual(new Set([
+      "history:metadata-changed",
       "state:changed",
       "comfy-runtime:changed",
       "prompt-runtime:changed",
@@ -541,13 +544,13 @@ describe("main/preload boundary characterization", () => {
     expect(createWindow).toContain('once("dom-ready"');
     expect(createWindow).toContain('once("did-finish-load"');
 
-    const finishStart = mainSource.indexOf("async function finishWindowClose()");
+    const finishStart = mainSource.indexOf("const windowShutdown = new WindowShutdown(");
     const closeHandlerStart = mainSource.indexOf("async function handleWindowClose()");
     expect(finishStart).toBeGreaterThanOrEqual(0);
     expect(closeHandlerStart).toBeGreaterThan(finishStart);
     const finish = mainSource.slice(finishStart, closeHandlerStart);
     const shutdownSteps = [
-      "await activeApplicationRuntime().stop()",
+      "activeApplicationRuntime().stop()",
       "allowWindowClose = true",
       "mainWindow?.destroy()",
       "app.quit()"

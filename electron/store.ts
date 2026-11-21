@@ -49,6 +49,8 @@ import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filte
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
 import type { StateRepository } from "./ports/state-repository.js";
+import { historyMetadataRecord } from "../src/core/history-metadata.js";
+import type { HistoryMetadataRecord, HistoryMetadataChange } from "../src/types.js";
 import {
   normalizeH3VideoVaeBackend,
   normalizeH3VideoVaeMode
@@ -649,7 +651,7 @@ export class JsonStore implements StateRepository {
   private get t(): Translate { return this.loadFailed ? this.safety.translate : createNativeTranslator(this.state.settings.uiLocale).t; }
   private library?: LibraryStateStorage;
 
-  constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onCommittedNeeded?(state: Pick<AppState, "libraryStorage" | "settings">): boolean; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
+  constructor(private readonly filename: string, private readonly options: { libraryDirectory?: string; beforeLibraryMove?(): Promise<void | (() => void)>; onCommitted?(state: AppState): void; onMetadataCommitted?(changes: HistoryMetadataChange[], pointer: AppState["libraryStorage"], parent: AppState["libraryStorage"]): boolean; onCommittedNeeded?(state: Pick<AppState, "libraryStorage" | "settings">): boolean; onWarning?(error: unknown): void; onProgress?(value: LibraryStorageProgress): void; onMoveProgress?: RelocationProgress } = {}) {
     this.safety = new StateFileSafety(filename);
     if (options.libraryDirectory) this.library = new LibraryStateStorage(filename, options.libraryDirectory, options.onProgress, options.onMoveProgress, options.onWarning);
   }
@@ -1108,6 +1110,7 @@ export class JsonStore implements StateRepository {
       await this.library?.close();
       throw new StateRecoveryError(this.safety.translate(uiKeys.storageSafety.openFailed, { path: this.filename, detail: error instanceof Error ? error.message : String(error) }), { cause: error });
     }
+    await this.safety.warmRetentionCache().catch(error => this.warn(error));
     this.notifyCommitted();
     this.library?.finishStartup();
     return this.snapshot();
@@ -1128,6 +1131,28 @@ export class JsonStore implements StateRepository {
   getHistoryAsset(id: string): HistoryAsset | undefined {
     const asset = this.state.history.find((item) => item.id === id);
     return asset ? structuredClone(asset) : undefined;
+  }
+
+  async updateHistoryMetadata(ids: readonly string[], mutator: (items: HistoryMetadataRecord[]) => void): Promise<HistoryMetadataChange[]> {
+    const update = this.updateChain.catch(() => undefined).then(async () => {
+      this.assertWritable();
+      const originals = ids.map(id => this.state.history.find(item => item.id === id) ?? this.state.imageHistory.find(item => item.id === id));
+      if (new Set(ids).size !== ids.length || originals.some(item => !item)) throw new Error(this.t(uiKeys.serviceError.historyMissing));
+      const items = originals.map(item => historyMetadataRecord(item!));
+      const previous = structuredClone(items);
+      mutator(items);
+      if (items.length !== ids.length || items.some((item, i) => item.id !== ids[i])) throw new Error(this.t(uiKeys.serviceError.historyInvalid));
+      const changes = items.map((item, i) => ({ ...historyMetadataRecord(item), previous: { favorite: previous[i].favorite, rating: previous[i].rating, tags: previous[i].tags } }));
+      const replacements = new Map(items.map((item, i) => [originals[i]!, { ...originals[i]!, ...historyMetadataRecord(item) }]));
+      const history = this.state.history, imageHistory = this.state.imageHistory;
+      this.state.history = history.map(item => (replacements.get(item) as HistoryAsset | undefined) ?? item);
+      this.state.imageHistory = imageHistory.map(item => (replacements.get(item) as ImageHistoryProject | undefined) ?? item);
+      try { await this.persist(new Set(ids), changes); }
+      catch (error) { this.state.history = history; this.state.imageHistory = imageHistory; throw error; }
+      return changes;
+    });
+    this.updateChain = update.then(() => undefined, () => undefined);
+    return update;
   }
 
   async updateHistoryItems(ids: readonly string[], mutator: (items: Array<HistoryAsset | ImageHistoryProject>) => void): Promise<AppState> {
@@ -1206,7 +1231,7 @@ export class JsonStore implements StateRepository {
     return structuredClone(this.state);
   }
 
-  private async persist(changedHistoryIds?: ReadonlySet<string>): Promise<void> {
+  private async persist(changedHistoryIds?: ReadonlySet<string>, metadataChanges?: HistoryMetadataChange[]): Promise<void> {
     this.assertWritable();
     // Scoped edits replace selected records and are serialized by updateChain.
     // Clone mutable non-history state, retaining untouched library records.
@@ -1240,7 +1265,7 @@ export class JsonStore implements StateRepository {
       // Retention is maintenance after a successful commit. A cleanup failure
       // cannot turn a committed write into a reported save failure.
       await this.safety.prune(stateDigest(raw)).catch(error => this.warn(error));
-      this.notifyCommitted();
+      this.notifyCommitted(metadataChanges, snapshot.libraryStorage);
     })).catch(async error => {
       try { await this.library?.abortPrepare(); }
       catch (recoveryError) { resumePublication = undefined; throw recoveryError; }
@@ -1254,9 +1279,10 @@ export class JsonStore implements StateRepository {
     if (this.loadFailed) throw new StateRecoveryError(this.t(uiKeys.storageSafety.saveRecovery));
   }
 
-  private notifyCommitted(): void {
+  private notifyCommitted(metadataChanges?: HistoryMetadataChange[], parent?: AppState["libraryStorage"]): void {
     // Background projection must never reject or roll back a durable user edit.
     try {
+      if (metadataChanges && this.options.onMetadataCommitted?.(metadataChanges, this.state.libraryStorage && { ...this.state.libraryStorage }, parent && { ...parent })) return;
       if (this.options.onCommitted && (this.options.onCommittedNeeded?.({ settings: this.state.settings, libraryStorage: this.state.libraryStorage }) ?? true)) {
         this.options.onCommitted(this.snapshot());
       }

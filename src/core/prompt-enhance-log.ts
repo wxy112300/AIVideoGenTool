@@ -19,6 +19,8 @@ export interface PromptEnhanceLogContext {
   presetSource: PromptPresetSource;
   autoSeedId: string | null;
   autoVariationId: string | null;
+  longVideoChunks?: number;
+  longVideoSeconds?: number;
 }
 
 export function promptEnhanceLogContext(request: EnhanceRequest): PromptEnhanceLogContext {
@@ -66,6 +68,7 @@ export function promptEnhanceLogContext(request: EnhanceRequest): PromptEnhanceL
   const selectedPreset = request.h3PromptPreset ?? "official-storyboard";
   const effectivePreset = h3PromptPresetForMode(mode, selectedPreset);
   return {
+    ...(request.longVideo ? { longVideoChunks: request.longVideo.layout.chunks, longVideoSeconds: request.longVideo.layout.requestedSeconds } : {}),
     inputKind,
     presetFamily: "h3",
     selectedPreset,

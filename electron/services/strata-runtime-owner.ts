@@ -8,6 +8,7 @@ import { supportsStrataUncensored, strataUncensoredMode } from "../../src/core/s
 
 interface StrataRuntimeOwnerDependencies {
   getUiLocale?(): Settings["uiLocale"] | undefined;
+  getVramReserveGb?(): Settings["vramReserveGb"];
   resourceGate?: { acquire(): Promise<void>; track(pid: number): Promise<void> };
   run: StrataModelPreparationRuntime["run"];
   isResourcesBusy(signal?: AbortSignal): boolean;
@@ -31,7 +32,12 @@ export class StrataRuntimeOwner {
   private selectionKey: string | null = null;
 
   constructor(private readonly deps: StrataRuntimeOwnerDependencies) {
-    this.service = deps.service ?? new StrataService({ getUiLocale: deps.getUiLocale, onDiagnostics: deps.onDiagnostics, onSpawn: (pid) => deps.resourceGate?.track(pid) });
+    this.service = deps.service ?? new StrataService({
+      getUiLocale: deps.getUiLocale,
+      getVramReserveGb: deps.getVramReserveGb,
+      onDiagnostics: deps.onDiagnostics,
+      onSpawn: (pid) => deps.resourceGate?.track(pid)
+    });
   }
 
   isBusy(): boolean { return Boolean(this.worker || this.stopping); }

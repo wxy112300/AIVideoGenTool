@@ -3,20 +3,34 @@ import { createTranslator } from "../i18n.js";
 import { uiKeys } from "../i18n-keys.js";
 import { releaseVersionAtLeast } from "../release-version.js";
 import { commitScriptText } from "./script-buffers.js";
-import { freezeLongVideoScript } from "./script.js";
+import { freezeLongVideoScript, isScriptAllocation } from "./script.js";
 import { assertLongVideoRunSource } from "./run-source.js";
-import { continuumProfileLoras } from "./group-workflow.js";
+import { continuumProfileLoras, isContinuumReferenceModel } from "./group-workflow.js";
 import { videoLoraConfigurationIssues } from "../video-loras.js";
 import { resolveH3ExecutionPolicy } from "../h3-execution-policy.js";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, missingH3GuideReference } from "../h3-timed-guides.js";
+import { longVideoGuideIssue } from "./timed-guides.js";
 
 /** A remembered editor for another model must not hijack the selected native route. */
 export function isLongVideoDraftActive(draft: Pick<Draft, "modelId" | "longVideoEditor"> & Partial<Pick<Draft, "inputMode">>): boolean {
   return draft.longVideoEditor?.active === true && [ `${draft.modelId}:${draft.inputMode}`, `${draft.modelId}:undefined` ].includes(draft.longVideoEditor.key);
 }
 
+export function longVideoUsesTimedGuides(draft: Draft): boolean {
+  if (draft.inputMode === "video") {
+    const profile = draft.longVideoRunSource?.profile;
+    return Boolean(profile?.timedGuides?.some(guide => guide.absoluteFrame !== 0 || !profile.firstImage));
+  }
+  return Boolean(activeH3TimedGuides(draft)?.slots.some(slot => slot.mediaPath &&
+    (slot.seconds === "end" || (typeof slot.seconds === "number" && Math.round(slot.seconds * 24) !== 0))) ||
+    h3ReferenceTimedGuides(draft).length);
+}
+
 /** Narrow first executable route; unsupported choices remain available natively. */
 export function longVideoBlockReason(draft: Draft, settings: Settings): string | null {
   const t = createTranslator(settings.uiLocale).t, k = uiKeys.create.editor;
+  const guides = activeH3TimedGuides(draft);
+  const referenceModel = isContinuumReferenceModel(draft.modelId);
   const source = draft.inputMode === "video" ? draft.longVideoRunSource : undefined;
   if (source) {
     try { assertLongVideoRunSource(source); } catch { return t(k.blockRunSource); }
@@ -28,10 +42,13 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
         JSON.stringify(draft.videoLoras.map(l => [l.filename, l.strength])) !== JSON.stringify(continuumProfileLoras(profile).map(l => [l.filename, l.strength])) ||
         draft.spectrumMode !== (profile.spectrumMode ?? "off")) return t(k.blockRunProfile);
   } else {
-    if (draft.inputMode !== "image" || draft.modelId !== "minimax_h3_fl2va") return t(k.blockRoute);
-    if (!draft.startImagePath) return t(k.blockFirstImage);
+    if (draft.inputMode !== "image" || (!referenceModel && draft.modelId !== "minimax_h3_fl2va")) return t(k.blockRoute);
+    if (referenceModel) {
+      if (draft.h3ReferenceSlots.some(slot => slot.mediaType === "video")) return t(k.blockReferences);
+      if (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some(slot => !slot.mediaPath)) return t(uiKeys.serviceChecks.r2vSlots);
+      if (draft.h3ReferenceSlots.length > 9) return t(uiKeys.taskSubmission.r2vLimit);
+    } else if (!guides && !draft.startImagePath) return t(k.blockFirstImage);
   }
-  if (draft.endImagePath || draft.h3ReferenceSlots.length) return t(k.blockReferences);
   if (!source) {
     const issue = videoLoraConfigurationIssues({ modelId: draft.modelId, inputMode: "image", videoLoras: draft.videoLoras,
       spectrumMode: draft.spectrumMode, attentionMode: settings.h3AttentionMode, locale: settings.uiLocale }).find(i => i.severity === "error");
@@ -42,8 +59,22 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
     if (!policy.allowed) return t(k.blockSparseWeights);
   }
   if (!draft.longVideoEditor?.confirmed || !draft.longVideoScript) return t(k.blockLayout);
+  if (draft.longVideoScript.segments.some(isScriptAllocation)) return t(k.blockAllocation);
   try {
     const frozen = freezeLongVideoScript(commitScriptText(draft.longVideoScript, () => crypto.randomUUID()));
+    const referenceGuides = referenceModel ? h3ReferenceTimedGuides(draft) : [];
+    const timed = guides?.slots ?? referenceGuides;
+    if (guides || timed.length) {
+      const issue = longVideoGuideIssue(timed, frozen.layout);
+      if (issue) return t(uiKeys.create.guides[issue]);
+    }
+    const pictures = referenceModel ? draft.h3ReferenceSlots.map((slot, index) => ({ picture: index + 1, mediaPath: slot.mediaPath, seconds: null })) : guides?.slots;
+    if (pictures) {
+      for (const page of frozen.pages) {
+        const picture = missingH3GuideReference(page.text, pictures);
+        if (picture) return t(uiKeys.create.guides.reference, { picture });
+      }
+    }
     if (source && (frozen.layout.origin !== "extend" || frozen.layout.prefixChunks !== source.receipt.accepted_chunks || frozen.layout.chunkSeconds !== source.profile.chunkSeconds)) return t(k.blockLayout);
   }
   catch { return t(k.blockScript); }
@@ -51,11 +82,16 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
 }
 
 /** Offline files/version readiness only. Actual node schema is checked before POST. */
-export function longVideoDependencyBlockReason(scan: EnvironmentScanResult | null | undefined, settings: Settings): string | null {
+export function longVideoDependencyBlockReason(
+  scan: EnvironmentScanResult | null | undefined, settings: Settings, modelId = "minimax_h3_fl2va", timedGuides = false
+): string | null {
   if (!scan) return null; // Existing Queue policy defers absent scans to preparation.
   const node = (id: string, version: string) => scan.customNodes.some(n => n.id === id && n.installed && n.compatibilityState !== "error" && releaseVersionAtLeast(n.version, version));
-  if (!scan.modelProfiles.some(p => p.id === "minimax_h3_fl2va" && p.available) || !node("h3-continuum", "3.10.2") || !node("local-video-studio-h3-av", "0.4.0")) {
+  if (!scan.modelProfiles.some(p => p.id === modelId && p.available) || !node("h3-continuum", "3.10.2") || !node("local-video-studio-h3-av", "0.4.0")) {
     return createTranslator(settings.uiLocale).t(uiKeys.create.editor.blockDependencies);
+  }
+  if (timedGuides && !node("local-video-studio-h3-av", "0.4.4")) {
+    return createTranslator(settings.uiLocale).t(uiKeys.create.editor.blockTimedDependencies);
   }
   return null;
 }

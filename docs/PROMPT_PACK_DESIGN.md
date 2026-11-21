@@ -1,5 +1,7 @@
 # Prompt Pack Design
 
+Continuum List-mode long-video writing supports story allocation and script expansion through `long-video-prompt.ts`. Allocation does one short writing call for the selected layout and asks the model to label invented events. It preserves the original story and saves editable allocation versions in each segment. Expansion uses those selected edits as the approved event order and writes one sampling prompt per segment, carrying the preceding segment text for continuity. Detailed cinematic expansion uses the shared H3 duration and source-length guidance as a writing target. Missing audio fields or clearly out-of-range local timecodes in explicit expansion get one formatting correction for the affected page before atomic adoption. Locked pages and atomic revision checks still apply. The existing one-click plan-and-expand shortcut remains available before segments are prepared, with batches of up to three. A chunk uses a local clock and carries prior state through its opening. A changed page does not prescribe a cut. The sampler still receives a JSON List, and History copies the adopted segments in the official text List form with `---`. See [research and actual run evidence](tasks/2026-10-18-long-video-director/evidence/story-prompt-research.md).
+
 Prompt Packs own model-facing prompt content and the localized indexes that expose it in the UI.
 
 ## Boundary

@@ -6,6 +6,7 @@ import type {
   PromptEnhanceMode,
   VideoLoraSelection
 } from "../../../types";
+import { activeH3TimedGuides, h3GuideBoundarySlots, h3ReferenceTimedGuides, h3TimedGuideIssue, missingH3GuideReference, resolveH3TimedGuides, supportsH3TimedGuides } from "../../../core/h3-timed-guides";
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
 import { buildPromptRevisionPlan } from "../../../core/prompt-annotations";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
@@ -230,7 +231,21 @@ export function mountCreatePromptController(
       : undefined;
     const targetedRevision = selectedH3Preset === "annotation-revision";
     const currentPrompt = activePrompt(draft, options.context.getState()?.settings.uiLocale).text;
-    const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
+    const guideEditor = activeH3TimedGuides(draft);
+    const guides = guideEditor && resolveH3TimedGuides(guideEditor.slots, draft.duration);
+    const referenceGuides = h3ReferenceTimedGuides(draft);
+    const guideIssue = guideEditor ? h3TimedGuideIssue(guideEditor.slots, draft.duration)
+      : referenceGuides.length ? h3TimedGuideIssue(referenceGuides, draft.duration) : undefined;
+    const missingGuide = guideEditor && missingH3GuideReference(currentPrompt, guideEditor.slots);
+    if (guideIssue || missingGuide) {
+      const t = options.context.t;
+      options.context.notify(guideIssue ? t(uiKeys.create.guides[guideIssue]) :
+        t(uiKeys.create.guides.reference, { picture: missingGuide ?? "" }), { kind: "error" });
+      return;
+    }
+    const referenceMediaPaths = guides
+      ? [...new Set(guides.map(guide => guide.mediaPath))]
+      : isMiniMaxH3R2vModel(draft.modelId)
       ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
       : [draft.startImagePath, draft.endImagePath].filter(Boolean);
     const isExtension = draft.inputMode === "video";
@@ -284,18 +299,31 @@ export function mountCreatePromptController(
         ? "h3-vision"
         : selectedEnhanceMode === "h3-vision" ? "sulphur-native" : selectedEnhanceMode;
       const isH3Vision = requestMode === "h3-vision";
-      const h3ImagePaths = isMiniMaxH3R2vModel(draft.modelId)
+      const h3ImagePaths = guides ? referenceMediaPaths : isMiniMaxH3R2vModel(draft.modelId)
         ? draft.h3ReferenceSlots
             .filter((slot) => slot.mediaType === "image" && slot.mediaPath)
             .map((slot) => slot.mediaPath)
         : [draft.startImagePath, draft.endImagePath].filter(Boolean);
       const nativeStateContinuation = isExtension && isMiniMaxH3ContinuumModel(draft.modelId);
-      const referenceContext = nativeStateContinuation
+      const boundary = draft.h3GuideEditor && supportsH3TimedGuides(draft) ? h3GuideBoundarySlots(draft.h3GuideEditor.slots) : undefined;
+      const referenceContext = guides ? [
+        "The attached images are visual keyframes anchored by the workflow. Use the specified timing and describe visible compositions and transitions in the final video prompt. Do not emit numbered Picture tags in the result.",
+        ...guides.map(guide => `Attachment ${h3ImagePaths.indexOf(guide.mediaPath) + 1} is Studio <Picture ${guide.picture}> at ${(guide.frame / 24).toFixed(3)}s.`)
+      ].join("\n") : nativeStateContinuation
         ? ""
         : isMiniMaxH3R2vModel(draft.modelId)
-        ? draft.h3ReferenceSlots.map((slot) =>
-            `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
-          ).join("\n")
+        ? [
+            ...draft.h3ReferenceSlots.map((slot) =>
+              `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
+            ),
+            ...resolveH3TimedGuides(referenceGuides, draft.duration).map(guide =>
+              `<Picture ${guide.picture}> also guides the visible composition at ${guide.frame / 24}s on the output timeline.`
+            )
+          ].join("\n")
+        : boundary ? [
+            ...(boundary.start?.mediaPath ? [`<Picture ${boundary.start.picture}> = first frame`] : []),
+            ...(boundary.end?.mediaPath ? [`<Picture ${boundary.end.picture}> = last frame`] : [])
+          ].join("; ")
         : h3Mode === "FL2VA"
           ? "<Picture 1> = first frame; <Picture 2> = last frame"
           : h3Mode === "I2VA"
@@ -316,7 +344,7 @@ export function mountCreatePromptController(
           ? promptSettings?.h3AutoPromptSeedInstructions?.[autoPromptSeed.id]
           : undefined,
         autoPromptVariationId: autoPromptSeed ? crypto.randomUUID() : undefined,
-        imagePath: draft.startImagePath || undefined,
+        imagePath: (guides ? h3ImagePaths[0] : draft.startImagePath) || undefined,
         imagePaths: isH3Vision ? h3ImagePaths : undefined,
         h3PromptMode: h3Mode,
         h3PromptPreset: selectedH3Preset,
@@ -332,6 +360,7 @@ export function mountCreatePromptController(
           : draft.ratio,
         referenceMediaPaths,
         referenceContext: isH3Vision ? referenceContext : undefined,
+        ...(guides ? { h3TimedGuideContext: true as const } : {}),
         continuumPreviousChunk: draft.h3ContinuumSequence?.acceptedChunks
           ? draft.h3ContinuumSequence.acceptedChunks - (draft.h3ContinuumReviewAction === "Regenerate Current" ? 1 : 0)
           : undefined,
@@ -346,6 +375,15 @@ export function mountCreatePromptController(
       const warnings = isCurrentH3 && selectedH3Preset === "detailed-cinematic"
         ? assertDetailedCinematicExpansion(text, h3Mode, draft.duration, currentPrompt, promptSettings?.uiLocale)
         : [];
+      const liveGuideDraft = getDraft();
+      if (guides && (!liveGuideDraft || liveGuideDraft.duration !== draft.duration ||
+        JSON.stringify(activeH3TimedGuides(liveGuideDraft)) !== JSON.stringify(guideEditor))) {
+        throw new Error(options.context.t(uiKeys.create.editor.enhanceStale));
+      }
+      if (referenceGuides.length && (!liveGuideDraft || liveGuideDraft.duration !== draft.duration ||
+        JSON.stringify(h3ReferenceTimedGuides(liveGuideDraft)) !== JSON.stringify(referenceGuides))) {
+        throw new Error(options.context.t(uiKeys.create.editor.enhanceStale));
+      }
       options.setPromptRuntimeLoaded(true);
       options.invalidatePromptEditHistory();
       options.patchDraftForMode(requestOrigin, (nextDraft) => {

@@ -191,6 +191,7 @@ export interface H3ReferenceSlot {
   id: string;
   mediaType: H3ReferenceMediaType;
   mediaPath: string;
+  guideSeconds?: number;
   /** Decoded image dimensions; absent for video references and legacy records. */
   width?: number;
   height?: number;
@@ -375,6 +376,12 @@ export interface ImageGenerationRun {
   performanceStats?: TaskPerformanceStats;
 }
 
+export interface H3TimedGuide {
+  picture: number;
+  mediaPath: string;
+  seconds: number | "end" | null;
+}
+
 export interface Draft {
   /** Optional structured editing state; old drafts retain native behavior when absent. */
   longVideoScript?: import("./core/long-video/script.js").LongVideoScript;
@@ -391,6 +398,8 @@ export interface Draft {
     preset?: string;
   };
   inputMode: "image" | "video";
+  h3GuideEditor?: { active: boolean; nextPicture: number; slots: H3TimedGuide[]; sharedFrames?: true };
+  h3ReferenceGuidesEnabled?: boolean;
   startImagePath: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -684,6 +693,7 @@ export interface GenerationQueueTask extends VideoQueueTaskBase {
   prompt: string;
   promptVersion: number;
   h3ReferenceSlots?: H3ReferenceSlot[];
+  h3TimedGuides?: H3TimedGuide[];
   startImagePath: string;
   sourceWidth: number;
   sourceHeight: number;
@@ -905,6 +915,7 @@ export interface H3NativeUpscaleInputSnapshot {
   prompt: string;
   startImagePath: string;
   endImagePath: string;
+  h3TimedGuides?: H3TimedGuide[];
   scaleBy: number;
   h3VideoVaeMode: H3VideoVaeBackend;
   attentionMode: Settings["h3AttentionMode"];
@@ -1375,6 +1386,12 @@ export interface NativeAvArtifactInspection {
   payloadPath?: string;
   manifestPath?: string;
   payloadBytes?: number;
+  /** Published Continuum storage inspection. Its chunks are not standalone JointAV exports. */
+  continuumRun?: {
+    resumeSafe: boolean;
+    manifestPath: string;
+    chunks: Array<{ path: string; bytes: number }>;
+  };
 }
 
 export interface MotionContextLatentInspection {
@@ -1569,6 +1586,7 @@ export interface HistoryAsset {
   sourceHeight?: number;
   startImagePath?: string;
   endImagePath?: string;
+  h3TimedGuides?: H3TimedGuide[];
   endImageWidth?: number;
   endImageHeight?: number;
   sourceAssetId?: string;
@@ -1595,6 +1613,17 @@ export interface HistoryMetadataPatch {
   favorite?: boolean;
   rating?: HistoryRating | null;
   tags?: string[];
+}
+
+export interface HistoryMetadataRecord {
+  id: string;
+  favorite: boolean;
+  rating: HistoryRating | null;
+  tags: string[];
+}
+
+export interface HistoryMetadataChange extends HistoryMetadataRecord {
+  previous: Omit<HistoryMetadataRecord, "id">;
 }
 
 export interface HistoryMetadataBatchUpdate {
@@ -2220,6 +2249,7 @@ export interface EnhanceRequest {
   h3AspectRatio?: string;
   referenceMediaPaths?: string[];
   referenceContext?: string;
+  h3TimedGuideContext?: true;
   extensionSource?: PromptExtensionSource;
   continuumPreviousChunk?: number;
   /** One-shot user consent for CPU inference after a visible VRAM warning. */
@@ -2400,7 +2430,9 @@ export interface TaskPreview {
 }
 
 export interface WindowCloseRequest {
-  kind: "unsaved-settings" | "running-work";
+  kind: "unsaved-settings" | "running-work" | "closing";
+  shutdownStage?: "services" | "storage";
+  shutdownError?: string;
   hasUnsavedSettings?: boolean;
   queueCleanupOnly?: boolean;
   queueCleanupTimedOut?: boolean;
@@ -2409,6 +2441,7 @@ export interface WindowCloseRequest {
 }
 
 export type WindowCloseResponse =
+  | "retry-exit"
   | "cancel"
   | "discard-settings"
   | "finish-tasks"
@@ -2625,6 +2658,8 @@ export interface AppApi {
   deleteHistoryJointAv(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
   deleteHistoryMotionContext(assetId: string, versionId: string, approval?: HistoryDeleteApproval): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
+  patchHistoryMetadata?(updates: HistoryMetadataBatchUpdate[]): Promise<HistoryMetadataChange[]>;
+  onHistoryMetadataChanged?(callback: (changes: HistoryMetadataChange[]) => void): () => void;
   updateHistoryMetadataBatch(updates: HistoryMetadataBatchUpdate[]): Promise<AppState>;
   copyHistoryFiles(kind: HistoryBatchCopyKind, assetIds: string[]): Promise<HistoryBatchCopyResult>;
   deleteHistoryAssets(kind: HistoryBatchCopyKind, assetIds: string[], approval?: HistoryDeleteApproval): Promise<AppState>;

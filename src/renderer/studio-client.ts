@@ -72,6 +72,7 @@ const applicationMethodNames = [
   "inspectH3NativeAvArtifact",
   "inspectVideoExtensionSource",
   "updateHistoryMetadata",
+  "patchHistoryMetadata",
   "updateHistoryMetadataBatch",
   "copyHistoryFiles",
   "deleteHistoryAssets",
@@ -80,6 +81,7 @@ const applicationMethodNames = [
 ] as const satisfies ReadonlyArray<keyof AppApi>;
 
 const eventMethodNames = [
+  "onHistoryMetadataChanged",
   "onStateChanged",
   "onComfyRuntimeStateChanged",
   "onPromptRuntimeStateChanged",
@@ -192,6 +194,7 @@ export function createElectronRendererClient(preloadApi: AppApi): RendererClient
   const client = {} as Record<RendererApiMethodName, RendererFunction>;
   for (const methodName of rendererApiMethodNames) {
     const method = preloadApi[methodName] as unknown as RendererFunction;
+    if ((methodName === "patchHistoryMetadata" || methodName === "onHistoryMetadataChanged") && typeof method !== "function") continue;
     client[methodName] = (...args) => Reflect.apply(method, preloadApi, args);
   }
   return client as RendererClient;

@@ -6,11 +6,74 @@ import { submitTask, assertImageWorkflowRuntimeCompatible } from "../electron/se
 import { createNativeTranslator } from "../electron/ui-translator.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory.js";
+import { restoreH3ReferenceGuideDraft } from "../src/core/h3-timed-guides.js";
 
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
+});
+
+it("submits R2V timed Pictures as Add Guides with the original reference image links", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "submission-r2v-guide-")); roots.push(root);
+  const workflowPath = path.join(root, "workflow.json");
+  const source = {
+    "1": { class_type: "LoadImage", inputs: { image: "{{H3_REF_IMAGE_0}}" } },
+    "2": { class_type: "LoadImage", inputs: { image: "{{H3_REF_IMAGE_1}}" } },
+    "3": { class_type: "MiniMaxH3ReferenceToVideo", inputs: {
+      vae: ["5", 0], prompt: "{{PROMPT}}", "ref_images.ref_image_0": ["1", 0], "ref_images.ref_image_1": ["2", 0]
+    } },
+    "4": { class_type: "BasicGuider", inputs: { model: ["6", 0], conditioning: ["3", 0] } },
+    "5": { class_type: "VAELoader", inputs: {} },
+    "6": { class_type: "UNETLoader", inputs: {} },
+    "7": { class_type: "BasicScheduler", inputs: { model: ["6", 0] } }
+  };
+  await fs.writeFile(workflowPath, JSON.stringify(source));
+  const paths = [path.join(root, "reference.png"), path.join(root, "guide.png")];
+  await Promise.all(paths.map(filename => fs.writeFile(filename, "fixture-image")));
+  const state = createDefaultState();
+  const inputs = restoreH3ReferenceGuideDraft(paths.map((mediaPath, index) => ({
+    id: String(index), mediaType: "image", mediaPath, role: "subject", note: ""
+  })), [{ picture: 2, mediaPath: paths[1]!, seconds: 0.5 }]);
+  expect(inputs.h3ReferenceGuidesEnabled).toBe(true);
+  expect(inputs.h3ReferenceSlots.map(slot => slot.guideSeconds)).toEqual([undefined, 0.5]);
+  expect(restoreH3ReferenceGuideDraft(inputs.h3ReferenceSlots).h3ReferenceGuidesEnabled).toBe(false);
+  expect(restoreH3ReferenceGuideDraft(inputs.h3ReferenceSlots, [])).toMatchObject({
+    h3ReferenceGuidesEnabled: true,
+    h3ReferenceSlots: [{ guideSeconds: undefined }, { guideSeconds: undefined }]
+  });
+  const task = { ...queueTaskFromDraft({
+    ...state.draft, ...inputs, modelId: "minimax_h3_ref2va", workflowPath, attentionMode: "pytorch", spectrumMode: "off"
+  }, state), prompt: "The camera follows <Picture 1> toward <Picture 2>." };
+  const submitted: Array<Record<string, { class_type: string; inputs: Record<string, unknown> }>> = [];
+  const uploads: string[] = [];
+  const request = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/object_info")) {
+      return Response.json(Object.fromEntries([...Object.values(source).map(node => node.class_type), "MiniMaxH3AddGuide", "PathchSageAttentionKJ"]
+        .map(classType => [classType, {}])));
+    }
+    if (url.endsWith("/system_stats")) return Response.json({ devices: [] });
+    if (url.endsWith("/upload/image")) {
+      const file = (init!.body as FormData).get("image") as File;
+      uploads.push(file.name);
+      return Response.json({ name: file.name });
+    }
+    expect(url.endsWith("/prompt")).toBe(true);
+    submitted.push(JSON.parse(init!.body as string).prompt);
+    return Response.json({ prompt_id: "r2v-guide" });
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(submitTask(task, state.settings, new AbortController().signal))
+    .resolves.toMatchObject({ promptId: "r2v-guide" });
+  expect(uploads).toHaveLength(2);
+  const graph = submitted[0]!;
+  const guides = Object.entries(graph).filter(([, node]) => node.class_type === "MiniMaxH3AddGuide");
+  expect(guides).toHaveLength(1);
+  const [guideId, guide] = guides[0]!;
+  expect(guide.inputs).toMatchObject({ positive: ["3", 0], latent: ["3", 1], image: ["2", 0], frame_idx: 12 });
+  expect(graph["3"]!.inputs.prompt).toBe(task.prompt);
+  expect(graph["4"]!.inputs.conditioning).toEqual([guideId, 0]);
 });
 
 it("keeps the submitted graph, user text and input bytes identical in all three languages", async () => {

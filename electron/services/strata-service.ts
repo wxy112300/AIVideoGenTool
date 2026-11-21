@@ -10,14 +10,15 @@ import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { strataReasoningEffortForModel } from "../../src/core/strata-reasoning.js";
-import { resolvedStrataDirectory, strataManagedReceipt } from "./strata-installation.js";
+import { resolvedStrataDirectory, strataManagedReceipt, strataSourceDirectory } from "./strata-installation.js";
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream, StrataInferenceError } from "../../src/core/strata-chat-stream.js";
 import { deepSeekServerBootstrap } from "./strata-deepseek-server.js";
+import { deepSeekSourceDirectory } from "./strata-deepseek-source.js";
 import { strataTokenBudget } from "../../src/core/strata-token-budget.js";
 import { applyStrataResourcePlan, knownStrataResourcePressure, planStrataResources, strataResourcePressure, type StrataResourcePlan } from "../../src/core/strata-resource-policy.js";
-import { readReliableStrataResources, readStrataResources, watchStrataResources, type StrataResourceRetryPolicy } from "./strata-resources.js";
+import { readReliableStrataResources, readStrataResources, watchStrataResources, StrataProbeUnavailableError, type StrataResourceRetryPolicy } from "./strata-resources.js";
 import { FileReadResourcePressure } from "../../src/core/strata-residency-pressure.js";
 import { getApplicationLogger } from "../../src/infrastructure/app-logger.js";
 import { supportsStrataUncensored, strataUncensoredMode, normalizeStrataUncensoredMode, isStrataUncensoredMode, strataVectorForMode, type StrataUncensoredMode, type StrataUncensoredFacts } from "../../src/core/strata-uncensored.js";
@@ -131,18 +132,23 @@ export async function prepareStrataLaunch(
   if (!await strataManagedReceipt(cwd)) throw new Error(t(uiKeys.strataService.installIncomplete));
   const executable = path.join(cwd, ".venv", "Scripts", "python.exe");
   const config = path.resolve(configPath);
-  for (const filename of [executable, path.join(cwd, "serve", "server.py"), config]) {
+  for (const filename of [executable, config]) {
     if (!(await fs.stat(filename).catch(() => null))?.isFile()) throw new Error(t(uiKeys.strataService.launchFileMissing, { file: filename }));
   }
   const modelId = await validatePreparedStrataRuntime(config, cwd, undefined, t);
+  const serverDirectory = isStrataDeepSeek(modelId) ? deepSeekSourceDirectory(cwd) : strataSourceDirectory(cwd);
+  for (const relative of isStrataDeepSeek(modelId) ? ["serve/server.py", "serve/ds_pictures.py"] : ["serve/server.py"]) {
+    if (!(await fs.stat(path.join(serverDirectory, relative)).catch(() => null))?.isFile())
+      throw new Error(t(uiKeys.strataService.launchFileMissing, { file: path.join(serverDirectory, relative) }));
+  }
   const runtimeConfig = JSON.parse(await fs.readFile(config, "utf8"));
   if (isStrataDeepSeek(modelId)) {
     // Match upstream's vision reserve; keep launch tuning out of verified packs.
     runtimeConfig.args[runtimeConfig.args.indexOf("--reserve-mib") + 1] = "900";
   }
-  const monitorAvailable = (await fs.readFile(path.join(cwd, "serve", "server.py"), "utf8")).includes('"--api-monitor"') &&
+  const monitorAvailable = (await fs.readFile(path.join(serverDirectory, "serve", "server.py"), "utf8")).includes('"--api-monitor"') &&
     (await Promise.all(["monitor.html", "monitor.js", "tokens.css"].map((name) =>
-      fs.stat(path.join(cwd, "serve", "web", name)).then((stat) => stat.isFile() && stat.size > 0).catch(() => false)
+      fs.stat(path.join(serverDirectory, "serve", "web", name)).then((stat) => stat.isFile() && stat.size > 0).catch(() => false)
     ))).every(Boolean);
   let launchConfig = config;
   let resourcePlan: StrataResourcePlan | undefined;
@@ -158,7 +164,7 @@ export async function prepareStrataLaunch(
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf(isStrataDeepSeek(modelId) ? "--reserve-mib" : "--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
-    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, isStrataDeepSeek(modelId) ? { knownPressure: () => null } : undefined, t), Number(runtimeConfig.args[reserveIndex + 1]), {
+    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, { knownPressure: () => null }, t), Number(runtimeConfig.args[reserveIndex + 1]), {
       allowFileReadFallback: true, modelId, accountForOccupiedVram: process.platform === "win32",
       contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
     runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
@@ -173,7 +179,7 @@ export async function prepareStrataLaunch(
   }
   const apiKey = randomBytes(32).toString("hex");
   return {
-    executable, cwd, port: settings.strataPort, apiKey, modelId,
+    executable, cwd: serverDirectory, port: settings.strataPort, apiKey, modelId,
     engineLog: runtimeConfig.log, uncensoredRequested: mode !== "off", uncensoredMode: mode,
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
@@ -254,6 +260,7 @@ export interface StrataMonitorConnection {
 
 interface StrataServiceDependencies {
   getUiLocale?(): Settings["uiLocale"] | undefined;
+  getVramReserveGb?(): Settings["vramReserveGb"];
   onSpawn?(pid: number): Promise<void> | undefined;
   launch?: typeof launchStrataProcess;
   portInUse?: typeof isLocalPortInUse;
@@ -272,8 +279,10 @@ interface StrataServiceDependencies {
 
 /** App-owned lifecycle. HTTP readiness, confirmed vector load and completed requests are distinct facts. */
 export class StrataService {
-  private requestDeadline(modelId?: string): AbortSignal[] {
-    const milliseconds = this.deps.requestTimeoutMs ?? (isStrataDeepSeek(modelId ?? "") ? undefined : 600_000);
+  private requestDeadline(_modelId?: string): AbortSignal[] {
+    // Native prefill/thinking can legitimately exceed ten minutes. Explicit
+    // callers may set a deadline; normal requests retain cancellation/failures.
+    const milliseconds = this.deps.requestTimeoutMs;
     return milliseconds === undefined ? [] : [AbortSignal.timeout(milliseconds)];
   }
   private readonly t: Translate = (key, params, fallback) => createNativeTranslator(this.deps.getUiLocale?.()).t(key, params, fallback);
@@ -287,13 +296,21 @@ export class StrataService {
   }, this.t);
   private hostMemoryMode: StrataServiceSnapshot["hostMemoryMode"] = null;
   private pressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.resourcePressure
-    ? this.deps.resourcePressure(sample) : this.residencyPressure.check(sample, { enforceGpuFloor: !isStrataDeepSeek(this.plan?.modelId ?? "") });
+    ? this.deps.resourcePressure(sample) : this.residencyPressure.check(sample, {
+      enforceGpuFloor: false,
+      vramWarningBytes: (this.deps.getVramReserveGb?.() ?? 1) * 1024 ** 3
+    });
   private knownPressure = (sample: Parameters<typeof strataResourcePressure>[0]) => this.deps.knownResourcePressure
     ? this.deps.knownResourcePressure(sample) : this.deps.resourcePressure
-      ? knownStrataResourcePressure(sample, this.t) : this.residencyPressure.knownPressure(sample, { enforceGpuFloor: !isStrataDeepSeek(this.plan?.modelId ?? "") });
+      ? knownStrataResourcePressure(sample, this.t) : this.residencyPressure.knownPressure(sample, { enforceGpuFloor: false });
   private vectorLoaded = false;
   private modeRequested = false;
   private selectedMode: StrataUncensoredMode = "off";
+  private advisoryProbes = () => Boolean(this.plan?.modelId?.startsWith("strata/")) && !this.deps.resourcePressure;
+  private async observedResources(signal?: AbortSignal) {
+    try { return await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal, knownPressure: this.knownPressure }, this.t); }
+    catch (error) { signal?.throwIfAborted(); if (this.advisoryProbes() && error instanceof StrataProbeUnavailableError) return null; throw error; }
+  }
   private modeApplied: boolean | null = null;
   private child: StrataOwnedProcess | null = null;
   private plan: StrataLaunchPlan | null = null;
@@ -404,14 +421,14 @@ export class StrataService {
       try {
         this.residencyPressure.setLoading(plan.allowResidentFallback === true);
         if (plan.resourcePlan) {
-          const resources = await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal, knownPressure: this.knownPressure }, this.t);
-          const pressure = this.pressure(resources);
+          const resources = await this.observedResources(signal);
+          const pressure = resources ? this.pressure(resources) : null;
           if (pressure) throw new Error(pressure);
-          if (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
+          if (resources && (resources.memoryAvailableBytes < plan.resourcePlan.requiredMemoryBytes
             || resources.commitAvailableBytes! < plan.resourcePlan.requiredCommitBytes
-            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes) throw new Error(this.t(uiKeys.strataService.resourcesChanged, { ram: (resources.memoryAvailableBytes / 1024 ** 3).toFixed(1), requiredRam: (plan.resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1), commit: (resources.commitAvailableBytes! / 1024 ** 3).toFixed(1), requiredCommit: (plan.resourcePlan.requiredCommitBytes / 1024 ** 3).toFixed(1), vram: (resources.vramAvailableBytes! / 1024 ** 3).toFixed(1), requiredVram: (plan.resourcePlan.minimumFreeVramBytes / 1024 ** 3).toFixed(1) }));
+            || resources.vramAvailableBytes! < plan.resourcePlan.minimumFreeVramBytes)) throw new Error(this.t(uiKeys.strataService.resourcesChanged, { ram: (resources.memoryAvailableBytes / 1024 ** 3).toFixed(1), requiredRam: (plan.resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1), commit: (resources.commitAvailableBytes! / 1024 ** 3).toFixed(1), requiredCommit: (plan.resourcePlan.requiredCommitBytes / 1024 ** 3).toFixed(1), vram: (resources.vramAvailableBytes! / 1024 ** 3).toFixed(1), requiredVram: (plan.resourcePlan.minimumFreeVramBytes / 1024 ** 3).toFixed(1) }));
           signal.throwIfAborted();
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
+            disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, retryProbeFailure: this.advisoryProbes(), pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
         }
         const logStart = plan.residentEngineLog ? (await fs.stat(plan.residentEngineLog).catch(() => null))?.size ?? 0 : 0;
         const vectorLogStart = plan.controlVector && plan.engineLog ? (await fs.stat(plan.engineLog).catch(() => null))?.size ?? 0 : 0;
@@ -515,9 +532,10 @@ export class StrataService {
         if (mode !== "off" && (!this.vectorLoaded || plan.controlVector?.id !== strataVectorForMode(mode).id))
           throw new Error(this.t(uiKeys.strataService.vectorUnconfirmed));
         if (plan.resourcePlan) {
-          const pressure = this.pressure(await readReliableStrataResources(this.deps.readResources, { ...this.deps.resourceRetry, signal: requestSignal, knownPressure: this.knownPressure }, this.t));
+          const resources = await this.observedResources(requestSignal);
+          const pressure = resources ? this.pressure(resources) : null;
           if (pressure) throw new Error(pressure);
-          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
+          disposeWatch = watchStrataResources((reason) => safety.abort(reason), this.deps.readResources, 1000, { ...this.deps.resourceRetry, retryProbeFailure: this.advisoryProbes(), pressure: this.pressure, knownPressure: this.knownPressure }, this.t);
         }
         budget = await this.checkContext(request, requestSignal);
         requestSignal.throwIfAborted();

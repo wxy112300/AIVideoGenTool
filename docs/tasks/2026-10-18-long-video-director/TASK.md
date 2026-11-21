@@ -1,7 +1,56 @@
 # 长视频模式：Strata 编排与 Continuum 自动续接
 
-- 类型：Task；Status: in_progress（P0/P1及P2 Create/Queue分页通过；已有Run Extend采样后因官方导入副本语义被拒收，待补证明恢复；P3/P6单图120秒真实增强受资源门槛阻塞）。
-- Updated / Owner: 2026-11-04 / 当前 agent；Execution: direct，新增子 agent 0。
+## 新对话接手摘要（2026-11-18）
+
+用户为切换对话要求记录进度；本节为当前接手入口，下方阶段记录保留历史。当前目标是「真实历史单图＋一句故事方向→Strata/QwenFlash整片规划与分段详稿→Continuum完整短剧」，最新验收范围为至少60秒。技术闭环已通过，画面叙事质量仍需改善；不把早期120秒及已有Run Extend标为完成。
+
+- **Continuum 3.10.3（2026-11-21）**：设置和一键安装推荐固定到官方 stable `12bf61efe8e30a7a021d31689e741c9a3bad9337`。自研 JointAV schema 1、官方尾状态、V38 接口和 Run 守卫通过 14 项 CPU 兼容检查。上游 Spectrum 签名源码相同，仍按清单的实际复用资格检查。正式 ComfyUI 保持 3.10.2，本次无正式数据重导、入队或 GPU 采样。[官方发布说明](https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.10.3)
+
+- **两步长视频写作**：按用户要求增加「分配情节」，Strata 一次返回各段简纲并被要求注明新增情节。保留故事原文及分段大纲的编辑版本。再用「整片扩写」采用用户修改后的分配，按所选 H3 预设逐段调用；影视细节使用共享的时长/稿长指导。大纲不会作为采样稿入队。没有分段稿时保留原「自动规划并扩写」入口。整片编辑与 History 采用 `---` 分隔，History 显示/复制实际采样文本，新快照保存入队时已有的版本。旧记录直接展示已保存的各段，缺失的历史版本不可回填。本轮全量 verify 退出 0，343 文件 3330 单元、7 文件 132 集成、双端构建和 440 对比度检查通过。
+- **两步真实出稿验收**：新隔离 10 秒/2×5 秒不同故事，真实拖首帧、键盘输入、鼠标「分配情节」后大纲入队被拦，手改第 1 段左手提包，鼠标「整片扩写」后生成 1051／1732 字符，两段保留同一纸袋及交接，最后按钮入队 `fb964170-98cb-4d4e-a907-bdc52883839e`，状态 waiting 且快照含分配、手改和扩写稿。实际出稿暴露第 1 段缺音频字段、第 2 段延用整片时间，之后去除详情请求的绝对段坐标，补上字段/本地计时检查与单次定向修正。新纠正以复现两类失配的单元测试覆盖；以上实稿来自纠正启用前。隔离 Strata 与 Electron 已回收，正式库未写入，未运行视频采样。
+- **两步写作最终验收**：最新完整 verify 通过（343 文件 3331 单元、7 文件 132 集成、双端构建和 440 对比度）。隔离 History 用真实鼠标打开原 60 秒作品，页面文本精确等于冻结的六段，中间五个 `---`，1280/480 宽度的提示词面板均无横向溢出。新快照版本回看有定向 DOM 回归。相关两个 Electron、Strata、CDP 与 Comfy 端口确认无残留。
+
+- **60 秒作品的 AV 误报**：真实 AppApi 回读复现「artifact 状态记录格式无效」。正式 Run 的 `ec25eed2666d97e1` 为 complete，六份 safetensors 均有 audio/video 张量，文件大小和 SHA-256 全匹配。Continuum 3.10.2 按段写 Run Storage，Finalize 从解码结果组装媒体。应用过去将分组历史送入独立 JointAV 状态，归一化又漏收 `disabled`，于是报无效。现按官方收据校验清单/文件并在 History 展示，旧记录直接生效。该 Run 的 `resume_safe=false` 是真实 Spectrum 源码签名限制，继续按钮告知原因且不写入续写草稿；独立 JointAV 导出另有格式，已完成采样与历史文件无需重导。
+- **AV 修复验收**：`npm.cmd run verify` 退出 0，343 文件 3328 单元、7 文件 132 集成、双端 typechecked build、440 对比度通过。新服务只读验证正式 History 原收据及六段，通过实际隔离 Electron 鼠标打开同一测试素材的 History 面板，显示已验证可用、七个文件定位入口、续接限制。点击继续保留原草稿及队列。隔离 Electron 664664/CDP13631 已回收，Comfy18329 未启动；原正式 Electron 661100/CDP9675 保持运行旧构建。本轮无重导、入队、GPU 采样或正式库写入。
+
+- **接手后进展**：复用正式 History 播放报告、原六段模型读回及 18 张成片抽帧。模型把原车溜向车道改为第二辆车逼近，第 5 段并行处理扶车和捞包；在写作库补首帧动作过渡、同一车辆/道具身份、可见救险因果和交接。正式草稿、成片和旧模型稿均沿用原结果，新提示词的实际输出质量待单独验证。Strata 提示词会话现从 Settings 读取 0.5／0.75／1 GiB 作为低显存告警阈值，告警不终止会话，应用不据此调整缓存或无进度计时。7 文件 121 项定向回归及双端 typecheck 通过。真实 Electron 661100/9675 仍在，138 条视频、6 个 waiting、Queue 停止、Prompt idle/model unloaded、Comfy 离线；本轮无重导、重采样或窗口重启。
+- **已交付并写进真实库**：作品「桥下误会与和解｜60秒短剧测试」，task/asset/version同ID `ef292588-fcfe-4b6b-b6f6-68aac2a41a38`；真实历史137→138条。真实草稿已替换同图同六段模型稿、60秒6×10秒、全自动，UI逐页读回精确一致。原137条历史、6个waiting任务、设置、图片草稿、续写草稿均保留；替换前配置及完整状态已备份。
+- **官方路径与根因**：新生成采用Full Run，一次提交六段；Continuum3.10.2＋Spectrum0.2.30 balanced＋Sage Triton，保持Spectrum。此前失败是应用固定Review Each Chunk并要求每组resume_safe=true，把官方“不可跨Queue复用”扩大成新生成发布门槛。新完整成片允许真实resume_safe=false，绝不改写官方合同；旧冻结Review执行、已有Run续接仍守真实复用资格。
+- **真实成片**：单次prompt `7ad9cedd-6c31-4ea7-ab6c-10c14ae1d7fb`，Run `lvs_ef292588-fcfe-4b6b-b6f6-68aac2a41a38`，revision `ec25eed2666d97e1`；6/6新采样、0复用，20分33秒，864×480/24fps/1440帧，60秒完整音轨/全解码/SHA校验通过。媒体、完整Run和原journal证据已复制到正式目录，历史不再引用临时媒体。正式History实播及返回通过，未再采样。
+- **质量边界**：18张抽帧看得到冲突、摩托介入、黄色包及和解，有事件推进；出现额外女性、人物身份漂移、摩托动作跳变、狗末尾外观漂移，救险因果不够清楚。音轨非静音不等于对白/口型通过，尚未做听觉验收。模型稿未人工改写；第一批声音字段仅从同一已完成模型响应由编译器恢复。
+- **已完成验证**：最后生产代码完整verify退出0：343文件3324单元＋7文件132集成、干净双端typechecked build、440对比度；Python9收据＋15守卫通过。随后只有正式数据导入与文档更新，无生产代码变化。Full Run最后的逐段进度回调/汇总与静默计算超时修复只做定向及全量回归，未重跑第二次GPU验证；本次真实图在最后进度修复前冻结。
+- **当前窗口/资源**：真实默认profile Electron PID661100、CDP9675留在Create整片视图供用户观察；本次交接时进程仍存在，重接必须重新探测PID/端口、Queue/Prompt/runtime状态。6个waiting不是本次新任务，禁止startQueue一次跑全部。隔离Electron44708/CDP4327、Comfy18329、Strata43137此前已回收；没有获准关闭用户其他应用。当前无本任务继续运行的GPU工作。
+- **工作区**：大量未提交改动混合长视频、本轮Strata升级、History/NAS等独立任务；先git status及目标diff，不reset/stash/覆盖。当前包0.69.0，未提交/推送/打包/发Release，新增子agent为0。导入已完成，**不要重跑**`temp/import-real-story.mjs`或重放任何旧入队脚本来“恢复进度”。
+
+建议接下来的顺序（先与用户当前反馈衔接，不自动开始新采样）：
+
+1. 下一次独立质量试验先审新模型稿，核对骑手落轮过渡、同一辆车、活跃角色数、救险前后状态及黄色包交接，再决定是否采样。听觉及口型尚待验收。
+2. Settings → Strata 提示词会话已完成显存告警接线与定向验证。下一次正常运行可从告警/恢复日志核对实际余量；ComfyUI Queue 看门狗和独立 Agent 属于各自的监测路线。
+3. 需要验证新进度时先复用静态/现有日志；确需GPU时单独说明新测试输入，不能为补证据重放已成功成片。未知提交先查原prompt/journal，不盲目重算。
+4. 后续旧已有Run Extend仍有一次真实采样后因应用跨计划owner/file-SHA保护过严而拒收的问题，见`evidence/p2-existing-run.md`及阶段记录；官方跨计划导入会重封装前缀，需来源/逐tensor证据，不能直接放开同计划保护、伪造resume_safe或重采已完成组。原120秒案例亦未完成。
+
+接手定位：
+
+- 研究、官方/社区链接、模型过程及成片质量：[story-prompt-research](evidence/story-prompt-research.md)。官方新生成/复用范围和Full Run依据已列，不要再次推断“Continuum不支持Spectrum0.2.30”。
+- 主要实现：`src/core/prompts/h3/continuum.ts`、`electron/services/long-video-prompt.ts`、`src/renderer/pages/create/generation-mode.ts`；Full Run在`src/core/long-video/{group-workflow,group-checkpoint,execution,run-source}.ts`、`electron/services/long-video-{queue,execution,continuum}.ts`及`comfy_nodes/LocalVideoStudio-H3/{group_receipt,managed_prefix_guard}.py`。资源修复位于Strata service/resources与core resource-policy，勿覆盖并行升级改动。
+- 忽略的本机证据：`temp/real-history-story-import.json`（正式路径/备份/commit/逐文件hash）、`temp/real-story-history-playback.json`、`temp/real-story-draft-ui.json`及PNG、`temp/real-story-ui-launch.json`；最后全量`temp/full-run-final-verify.log`。正式备份在Data的`manual-backups/20261118-full-run-ef292588-fcfe-4b6b-b6f6-68aac2a41a38`，原执行证据在Data的`import-evidence/<taskId>`。
+- 原始隔离fixture `temp/create-smoke-pm9q1h`保留：模型响应、`story-model-readback.json`、`story-audio-compiler-replay.json`、18帧/接触表及音轨指标在`story-full-run-review`。旧失败task `628e985a-a771-4427-b305-65d183623b44`保留，不改成成功；Spectrum0.2.29仅有调查源码副本，正式节点未降级。
+
+## 阶段记录
+
+- 类型：Task；Status: in_progress（P0/P1及P2 Create/Queue分页通过；Strata/QwenFlash单图一句方向→60秒Full Run→History播放已走通，短剧画面质量部分达标；旧120秒及已有Run Extend失败证据保留，不冒充完成）。
+- Updated / Owner: 2026-11-18 / 当前 agent；Execution: direct，新增子 agent 0。
+- 用户追加授权将本次结果写入真实历史并替换草稿，已完成：正式库137→138条，新增「桥下误会与和解｜60秒短剧测试」，仍用原task/version ID。媒体及完整Run复制到正式输出目录并逐文件SHA校验，manifest/latent原bytes及resume_safe=false保留；原journal另存导入证据，不伪造新执行。正式Data下保留原配置与完整hydrated-state备份；通过JsonStore/不可变库事务提交，新commit为f5b593b12c884f6a2d8006d5fcc99cc9e3cc0ea0f26f85bcd097c809f962e221。原137条历史、6个waiting任务、设置、图片及续写草稿均逐项核对不变。
+- 真实默认profile已启动并留在Create整片视图供用户观察：全自动、60秒6×10秒、实际原图；全局与六段共7页逐页UI读回原模型文本精确一致。真实History卡片播放60秒/864×480/24fps，9帧解码推进及返回通过。最新真实Electron661100/CDP9675保持打开，未启动Queue/未新增GPU采样。忽略目录证据为real-history-story-import.json、real-story-history-playback.json、real-story-draft-ui.json；这是用户授权后的正式库写入，后文早期“正式库只读”仅描述当时测试边界。
+- Full Run实测完成：真实鼠标入队任务 `ef292588-fcfe-4b6b-b6f6-68aac2a41a38`、官方prompt `7ad9cedd-6c31-4ea7-ab6c-10c14ae1d7fb`，同图同六段Qwen模型稿、60秒/20步/Sage Triton/Spectrum0.2.30 balanced。单次提交、6/6新采样、0复用，耗时20分33秒；manifest `ec25eed2666d97e1` complete、resume_safe=false照实保留。发布同ID单History/单版本；864×480/24fps/1440帧、32kHz音频1920000内容样本、完整解码/文件SHA校验通过，实际History播放12帧推进/返回通过。18帧抽查有事件发展及和解结局，但角色增加、摩托动作跳变、黑狗结尾外观漂移，不能宣称稳定短剧质量或台词清晰度通过。证据见[资料与实跑](evidence/story-prompt-research.md)。测试窗口和资源已回收，最终全量检查通过，未关闭用户应用、未改正式节点。
+- 最终检查与清理：最新代码完整verify退出0，343文件3324单元+7文件132集成、干净双端typechecked build、440对比度通过；Python9收据+15守卫先前通过，之后Python未改。隔离Electron44708与CDP4327、Comfy18329、Strata43137均无进程/监听残留，视频及证据保留；正式Data/Library和节点未写入。没有重采样、没有打包发布或版本号变更。
+- Full Run最后接线：保留官方show_preview回调，按重复采样步循环汇总整片进度；不把单段20/20当整片完成。静默但响应正常的Full Run不套20分钟活动时限，独立连接/后端错误和取消保留。此项不热改已运行图；本次真实视频来自原一次提交。新增进度2项及双端typecheck、最终全量通过；最后的进度修复未做第二次GPU采样验证。
+- 以下为按时间倒序保留的阶段记录；其中“尚未完成/下一步”由上方最新结果取代，旧失败任务及不可复用身份不改写。
+- 用户已明确授权“按官方的来”：新生成的冻结profile.executionMode=full_run，单次官方Full Run；旧snapshot无该字段仍Review，已有Run Extend保持可复用合同。整片收据允许真实resume_safe=false，但仅限匹配Full Run请求、0复用、所有计划段完成且完整音画投影；旧Review收据继续要求true，不改写manifest。6文件59项定向、双端typecheck、Python收据9项/前置守卫14项通过，新增Full Run守卫回归待执行；完整verify运行中。隔离3630/18329已通过AppApi停止并关闭；隔离数据目录已换回0.2.30物理副本及3个必需节点物理副本，0.2.29源码移到夹具外部子目录保留、正式节点未改。尚未新采样。
+- 2026-11-18用户质疑后的复核：不能将当前故障概括为“Continuum不支持Spectrum0.2.30”。真实0.2.30采样已成功；官方README明确新生成可用，但跨Queue复用仅接受可观测匹配合同，审计范围含upstream0.2.29。逐文件复现：本机55源文件仅minimax_h3.py与PUBLIC_SOURCE_029不符（预期02e97ab…，实际8452e31…），干净HEAD7df883b与官方0.2.30发布一致。应用group编译器沿用managed模板，固定Review Each Chunk；自定义收据要求resume_safe=true，将官方的“不可复用”变成首组拒收。官方V3.9示例默认Full Run，官方review_control.py的Full Run分支不施加Review执行上限。因此执行策略接线也属于问题，不能归咎用户设置或把降级当默认修复。下一步应优先评估接入当前0.2.30的官方Full Run路径，保留Review/旧快照合同和真实恢复语义；尚未实现或实跑该路径，不声称60秒已完成。此前0.2.29隔离尝试保留证据、不推进正式降级。本轮只读诊断通道已恢复，未新增GPU采样。
+- 最新阻塞与用户纠正：用户明确指出 GPU 告警阈值应复用 Settings，允许约0.5GiB才告警，且不得因此强制结束。此前2GiB强制中止是应用新增错误策略，已取消原生会话GPU余量强制中止；仍须核对现有Settings阈值到告警逻辑的接线，不能声称已验。隔离Spectrum0.2.29的55源文件已逐一匹配官方审计哈希，正式0.2.30未改；隔离Electron最新PID646024/CDP3630，Comfy18329最后核验ready/app、队列停止。新兼容Run尚未成功入队：节点目录junction未被扫描识别，实际按钮仍正常阻止缺依赖提交。拟停止隔离runtime后改为三个必需节点的物理副本，但该停止命令未执行：自动审批额度在07:15恢复前耗尽，工具明确要求不绕过审批；后续复制脚本亦未创建。最后一次核验无新采样，Strata已释放；隔离runtime尚未清理，不得声称退出。生产build已通过，Python前置失败诊断14项通过并同步bundle；首段latent及原失败Run保持。
+- 最新实跑：第七次 Strata/QwenFlash（off 思考，仅隔离设置）已真实按钮完成规划及六段模型稿，整包采用并经六页鼠标读回。模型返回的前三段音景字段经生产编译器从同一已完成响应无损回放恢复，未重写故事、未声称新的模型调用。真实鼠标入队任务 `628e985a-a771-4427-b305-65d183623b44`，60秒/6×10秒/864×480/20步/Sage Triton/Spectrum balanced。首组20步实际完成，Spectrum 11次实际/9次预测、无fallback，661.477秒；但独立收据拒收，accepted仍0。官方manifest为v6、resume_safe=false，具体原因是Spectrum绑定 `unsupported provider source change`：本机干净Spectrum v0.2.30，Continuum 3.10.2仅审计旧provider集合。已保存首段latent及不可复用manifest，不修改旧Run身份、不盲重算；正在调查兼容方案。最终全量342文件3319单元+7文件132集成通过；完整构建收敛及60秒成片/质量验收仍未完成。后续下条早期运行进度以本条为准。
+- 2026-11-18进行中：已查Continuum解析器、MiniMax/Comfy官方指南和社区Story writer，新增导演/规划/详稿库、跨批边界状态及跨renderer重挂载写回/取消恢复。真实历史137条/首帧36张，选桥下街区与一句误会→救险→和解方向，60秒6×10、480p/Spectrum开。自有fixture `temp/create-smoke-pm9q1h`，最新端口/PID以launch.json为准，Strata43137/Comfy18329；正式Data/Library只读。四次真实失败分别为应用固定20GiB预估门槛、2GiB GPU监测中止、600秒总时限、WMI/nvidia-smi短暂采样丢失；均没有后端OOM，已分别改为原生自适应缓存/会话WDDM预留、告警、可取消无固定总时限、监测恢复。第五次low思考实际存活超过10分钟，主动取消以改做直接写作，未保存半稿/重载模型。第六次off思考operation `b0d7317d-4fcf-40c2-b60d-f011c37f342a` 已由真实按钮触发，整片规划正常stop/1923输出tokens/思考0，当前写第1–3段；同一驻留Strata parent486260/native625320。尚未完整稿采用、入队或H3采样。完整3314单元+132集成及生产build/440对比度通过；其后监测恢复77项及UI读回4项/自动预算5项、双typecheck复核通过，最终全量待收敛。见[资料与实跑](evidence/story-prompt-research.md)。不关闭其他用户应用、不下载权重。
 - 本轮交付（minor）：解除多段720p及禁止插帧的应用额外门槛；接入整片完成后的RIFE 2×/4×、实际FPS/帧数/音频时长校验和History发布，保留采样Run身份与旧profile。完整3167单元+127集成、双typecheck、独立干净生产构建/440对比度通过；末次摘要修正后36项旅程及双typecheck/前端构建再次通过。真实隔离Electron缺图恢复→鼠标入队得到1080p/RIFE任务，已安装节点四帧GPU 2×/4×通过，24节点整图在线schema通过。没有新H3采样，120秒仍0/12；不下载权重、不升版本、不打包。详见[分辨率及交付](evidence/delivery-options.md)。
 - 2026-10-27完整 H3 配置接线（minor）：已复用共享LoRA栈/模型补丁/Turbo与PDD采样函数，新增可选profile.h3冻结LoRA及SOL/SLA、运行时、Compiler、Spectrum model-aware配置；四种attention均可构图，Compiler auto不再误禁managed Sage原始函数观测。修复History继续创作清空LoRA/覆盖运行时、普通草稿归一化丢失继承LoRA/步数，以及LoRA触发词与严格快照校验不一致。Queue逐页显示真实采样文本，已接受prefix不改；旧profile不写h3、保持旧图/身份。真实隔离120秒草稿采用已安装Realism People LoRA+Kitchen+SOL+Spectrum+native+Compiler auto，经缺图恢复/真实鼠标入队得到98e15ade-7345-406f-9f81-65a2d1733a47；未启动队列或采样。对现有8188只读GET object_info，18节点新图通过实际接口检查。正式state字节未变，29820/13955/18319隔离资源已清理；用户运行实例与8188未重启。最终验证与交付见[加速边界复核](evidence/acceleration-boundaries.md#完整接线完成记录)。
 - 2026-10-27加速边界复核：用户指出入队过严，保存配置实际只因Sage Triton被白名单漏掉。已补UI/task/claim/graph/profile/恢复身份，保留Spectrum；定向23项、完整2696单元+91集成、双typecheck/独立生产构建/440对比度通过。新版完整隔离Electron经缺图→真实拖入→鼠标入队得到120秒Triton+Spectrum任务，未启动队列/GPU，正式state字节未变。官方指南/开放集成契约/Issue31及Core文档确认LoRA、稀疏和其他后端并非Continuum通用禁令；仍未接入的部分不能仅删除校验就假装应用设置已生效。见[加速边界复核](evidence/acceleration-boundaries.md)。后续优先复用H3共享LoRA/模型补丁/采样配方，取消一概限制；保留训练权重与真实复用契约。正式非CDP用户窗口未动，新执行代码需正常重启生效；隔离47100/1172/18319已清理。

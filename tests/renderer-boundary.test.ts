@@ -61,6 +61,7 @@ function eventStudio(listeners: Map<string, EventListener>): AppApi {
   };
   return createFakeStudio({
     onStateChanged: register("state:changed"),
+    onHistoryMetadataChanged: register("history:metadata-changed"),
     onComfyRuntimeStateChanged: register("comfy-runtime:changed"),
     onPromptRuntimeStateChanged: register("prompt-runtime:changed"),
     onQueueTaskProgress: register("queue-task:progress"),
@@ -355,7 +356,7 @@ describe("renderer boundary characterization", () => {
   it("registers every renderer event through the events dependency and cleans them up", () => {
     const harness = createEventHarness();
 
-    expect(harness.listeners.size).toBe(11);
+    expect(harness.listeners.size).toBe(12);
 
     harness.cleanup();
 

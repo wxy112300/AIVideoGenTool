@@ -284,6 +284,7 @@ export class ApplicationRuntime {
     });
     const strataRuntime: StrataRuntimeOwner = this.deps.strataRuntime ?? new StrataRuntimeOwner({
       getUiLocale: () => this.deps.store.get().settings.uiLocale,
+      getVramReserveGb: () => this.deps.store.get().settings.vramReserveGb,
       resourceGate: gpuGuard,
       run: runLoggedProcess,
       onDiagnostics: (diagnostics) => this.deps.logger.info("prompt", "strata-inference-metrics", "Strata inference metrics", {
@@ -464,7 +465,8 @@ export class ApplicationRuntime {
     const historyMetadataService = new HistoryMetadataService({
       store: this.deps.store,
       logger: this.deps.logger,
-      sendState: this.deps.sendState
+      sendState: this.deps.sendState,
+      sendMetadataChanges: changes => this.deps.events.publish("history:metadata-changed", changes)
     });
     const historyDestructiveService = new HistoryDestructiveService({
       store: this.deps.store,

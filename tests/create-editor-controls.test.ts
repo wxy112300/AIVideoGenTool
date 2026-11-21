@@ -239,7 +239,9 @@ describe("Create editor controls", () => {
 
   it("keeps the searchable LoRA menu open after insertion and keyboard sorting persists the exact order", async () => {
     const h = journey = await createJourney();
-    const choices = BUILTIN_VIDEO_LORAS.filter(lora => lora.purpose !== "performance" && lora.compatibleModelIds.includes("minimax_h3_fl2va")).slice(0, 2);
+    const choices = BUILTIN_VIDEO_LORAS.filter(lora =>
+      ["minimax-h3-360-orbit", "minimax-h3-hmnsfw-extreme-realism-v3"].includes(lora.id)
+    );
     expect(choices).toHaveLength(2);
     for (const lora of choices) h.scan.modelProfiles.push({ id: lora.id, name: lora.name, category: "lora", available: true, integrated: true, components: [{ matches: [`C:/fixture/models/loras/${lora.filename}`] }] } as typeof h.scan.modelProfiles[number]);
     h.render(); h.element("#add-video-lora").click();
@@ -263,8 +265,15 @@ describe("Create editor controls", () => {
     grip.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
     await vi.waitFor(() => expect(h.state().draft.videoLoras.map(lora => lora.id)).toEqual([choices[1]!.id, choices[0]!.id]));
     h.input("#prompt-input", "A person walks slowly. Fixed camera, daylight.");
+    await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(false));
     h.element("#enqueue").click(); await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
-    expect(h.state().queue[0]?.videoLoras?.map(lora => lora.id)).toEqual([choices[1]!.id, choices[0]!.id]);
+    expect(h.state().queue[0]).toMatchObject({
+      id: expect.any(String),
+      videoLoras: [
+        { id: "minimax-h3-hmnsfw-extreme-realism-v3", filename: "HMNSFW-Extreme-Realism.safetensors", strength: 0.8, promptPrefixes: [] },
+        { id: choices[0]!.id }
+      ]
+    });
   });
 
   it("isolates multi-segment layout and prompt edits from the real draft and blocks submission after unrelated edits and redraws", async () => {

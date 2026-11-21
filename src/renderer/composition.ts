@@ -2,6 +2,7 @@ import {
   imageEditDraftFromQueueTask
 } from "../core/image-project";
 import { ensureMotionContextSourceSlot } from "../core/h3-reference";
+import { restoreH3GuideEditor, restoreH3ReferenceGuideDraft } from "../core/h3-timed-guides";
 import { uiKeys } from "../core/i18n-keys";
 import { longVideoDraftFields } from "../core/long-video/draft";
 import { normalizeVideoDraft } from "../core/video-draft-normalization";
@@ -111,11 +112,17 @@ function draftFromQueueTask(
     ? task.resolution as Draft["resolution"]
     : 480;
   const extension = task.taskType === "extension";
+  const referenceGuides = !extension && isMiniMaxH3R2vModel(task.modelId)
+    ? restoreH3ReferenceGuideDraft(task.h3ReferenceSlots ?? [], task.h3TimedGuides)
+    : undefined;
   const videoLoras = videoLorasForCreation(task.videoLoras);
   return normalizeVideoDraft({
     ...currentDraft,
     ...longVideoDraftFields(task.longVideoPlan, task.modelId, task.longVideoRunSource),
     inputMode: extension ? "video" : "image",
+    h3GuideEditor: task.taskType === "generation" && !referenceGuides && task.h3TimedGuides?.length
+      ? restoreH3GuideEditor(task.h3TimedGuides) : undefined,
+    h3ReferenceGuidesEnabled: referenceGuides?.h3ReferenceGuidesEnabled,
     startImagePath: extension ? "" : task.startImagePath,
     sourceWidth: task.sourceWidth,
     sourceHeight: task.sourceHeight,
@@ -167,7 +174,7 @@ function draftFromQueueTask(
       ? task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
         ? ensureMotionContextSourceSlot(task.h3ReferenceSlots ?? [], task.sourceVideoPath)
         : []
-      : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+      : referenceGuides?.h3ReferenceSlots ?? (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     modelId: task.modelId,
     videoLoras,
     workflowPath: task.workflowPath,

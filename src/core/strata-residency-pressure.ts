@@ -12,8 +12,8 @@ export interface StrataHostPressureDiagnostic {
 
 /** Windows mapped source pages can make Available RAM briefly approach zero (#1571).
  * 3GiB RAM / 6GiB commit are observations, NOT kill thresholds. Let the engine and
- * OS manage the file tier; retain the GPU guard by default (DeepSeek delegates
- * GPU allocation to its native lane) and a debounced last-resort commit
+ * OS manage the file tier. Native engine sessions disable the optional GPU floor
+ * and report it as a warning; retain a debounced last-resort commit
  * guard (512MiB for 10s). The latter is an app emergency policy, not an upstream
  * minimum or a guarantee against allocation failures. Missing telemetry still retries.
  */
@@ -33,7 +33,7 @@ export class FileReadResourcePressure {
       && resources.vramAvailableBytes >= 0 && resources.vramAvailableBytes < 2 * GiB) return knownStrataResourcePressure(resources, this.t);
     return null;
   }
-  check(resources: StrataResources, options: { enforceGpuFloor?: boolean } = {}): string | null {
+  check(resources: StrataResources, options: { enforceGpuFloor?: boolean; vramWarningBytes?: number } = {}): string | null {
     const gpu = this.knownPressure(resources, options);
     if (gpu) return gpu;
     if (missingStrataResourceMetrics(resources).length) {
@@ -41,7 +41,9 @@ export class FileReadResourcePressure {
       this.sampledAt = null;
       return this.t(uiKeys.strataCore.probeUnavailable);
     }
-    const now = this.now(), warning = resources.memoryAvailableBytes < 3 * GiB || resources.commitAvailableBytes! < 6 * GiB;
+    const now = this.now();
+    const warning = resources.memoryAvailableBytes < 3 * GiB || resources.commitAvailableBytes! < 6 * GiB
+      || resources.vramAvailableBytes! < (options.vramWarningBytes ?? 2 * GiB);
     if (this.sampledAt !== null && now - this.sampledAt > 5000) this.lowSince = null;
     this.sampledAt = now;
     const emit = (event: StrataHostPressureDiagnostic["event"], elapsedMs = 0) => {

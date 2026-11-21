@@ -6,10 +6,13 @@ import net from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { resolvedStrataDirectory } from './.runtime/electron/services/strata-installation.js';
+import { resolvedStrataDirectory, strataSourceDirectory } from './.runtime/electron/services/strata-installation.js';
 import { launchStrataProcess } from './.runtime/electron/services/strata-service.js';
 const tool = path.dirname(fileURLToPath(import.meta.url));
 const install = resolvedStrataDirectory({ strataInstallDirectory: '' });
+const sourceIndex = process.argv.indexOf('--source-directory');
+assert(sourceIndex < 0 || (process.argv[sourceIndex + 1] && !process.argv[sourceIndex + 1].startsWith('--')), '--source-directory requires a source directory');
+const source = sourceIndex < 0 ? strataSourceDirectory(install) : path.resolve(process.argv[sourceIndex + 1]);
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'strata-agent-http-mock-'));
 const reservation = net.createServer();
 await new Promise((resolve, reject) => { reservation.once('error', reject); reservation.listen(0, '127.0.0.1', resolve); });
@@ -21,8 +24,8 @@ const config = path.join(directory, 'runtime.json');
 await fs.writeFile(config, JSON.stringify({ model_name: model, host: '127.0.0.1', port, lazy_load: true }));
 let child;
 try {
-  child = await launchStrataProcess({ executable: path.join(install, '.venv/Scripts/python.exe'), cwd: install,
-    args: ['-B', '-u', path.join(tool, 'guard.py'), '--serve', install, '--engine', 'mock', '--config', config,
+  child = await launchStrataProcess({ executable: path.join(install, '.venv/Scripts/python.exe'), cwd: source,
+    args: ['-B', '-u', path.join(tool, 'guard.py'), '--serve', source, '--engine', 'mock', '--config', config,
       '--host', '127.0.0.1', '--port', String(port), '--lazy'],
     port, apiKey: token, env: { STRATA_API_KEY: token } }, () => {});
   const origin = `http://127.0.0.1:${port}`;

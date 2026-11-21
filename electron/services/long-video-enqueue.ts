@@ -5,7 +5,7 @@ import type { Draft } from "../../src/types.js";
 import type { QueueEnqueueServiceDependencies } from "../queue-enqueue.js";
 import { extensionTaskFromDraft } from "../../src/core/queue-task-factory.js";
 import { activateCreationDraft } from "../../src/core/creation-drafts.js";
-import { longVideoBlockReason, longVideoDependencyBlockReason } from "../../src/core/long-video/capability.js";
+import { longVideoBlockReason, longVideoDependencyBlockReason, longVideoUsesTimedGuides } from "../../src/core/long-video/capability.js";
 import { longVideoProfileIdentity, longVideoRunSourceForVersion } from "../../src/core/long-video/run-source.js";
 import { verifyLongVideoRunSource } from "./long-video-run-source.js";
 import { getCachedEnvironmentScan } from "./environment.js";
@@ -27,7 +27,8 @@ export async function enqueueLongVideoExtension(deps: QueueEnqueueServiceDepende
   if (!filename || !(await fs.stat(filename).catch(() => null))?.isFile() || path.resolve(filename).toLowerCase() !== path.resolve(draft.sourceVideoPath).toLowerCase()) {
     throw new Error("Group Run source preview is missing or belongs to another version");
   }
-  const dependencies = longVideoDependencyBlockReason((deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings), current.settings);
+  const dependencies = longVideoDependencyBlockReason((deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings),
+    current.settings, draft.longVideoRunSource?.profile.h3?.modelId, longVideoUsesTimedGuides(draft));
   if (dependencies) throw new Error(dependencies);
   const outputRoot = await deps.resolveTaskOutputDirectory();
   await verifyLongVideoRunSource(outputRoot, source, new AbortController().signal);

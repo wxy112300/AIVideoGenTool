@@ -16,6 +16,7 @@ export interface StrataResourceDiagnostic {
   memoryAvailableBytes: number; commitAvailableBytes: number | null; vramAvailableBytes: number | null;
 }
 export interface StrataResourceRetryPolicy { maxWaitMs?: number; retryUntilDeadline?: boolean }
+export class StrataProbeUnavailableError extends Error {}
 interface RetryOptions extends StrataResourceRetryPolicy { signal?: AbortSignal; onDiagnostic?(event: StrataResourceDiagnostic): void; retryDelayMs?: number;
   knownPressure?: (sample: StrataResources) => string | null }
 const probeTimeoutMs = 5000;
@@ -127,7 +128,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
       }), signal); } catch { options.signal?.throwIfAborted(); break; }
     }
     report("unavailable");
-    throw new Error(t(uiKeys.strataCore.probeRetries, { missing: missingStrataResourceMetrics(last).join(", "), attempts: attempt, elapsed: Date.now() - started }));
+    throw new StrataProbeUnavailableError(t(uiKeys.strataCore.probeRetries, { missing: missingStrataResourceMetrics(last).join(", "), attempts: attempt, elapsed: Date.now() - started }));
   } finally {
     clearTimeout(timer); budget.abort();
     // Native child callbacks acknowledge cancellation before a later operation can sample.
@@ -138,7 +139,7 @@ export async function readReliableStrataResources(read = readStrataResources, op
 
 /** Poll non-overlapping probes; dispose waits for the in-flight probe, so none leak into a later run. */
 export function watchStrataResources(abort: (reason: Error) => void, read = readStrataResources, intervalMs = 1000,
-  options: Omit<RetryOptions, "signal"> & { pressure?: (sample: StrataResources) => string | null } = {}, t: Translate = createNativeTranslator(undefined).t): () => Promise<void> {
+  options: Omit<RetryOptions, "signal"> & { pressure?: (sample: StrataResources) => string | null; retryProbeFailure?: boolean } = {}, t: Translate = createNativeTranslator(undefined).t): () => Promise<void> {
   let closed = false, failed = false, pending: Promise<void> | undefined;
   const controller = new AbortController();
   const fail = (error: Error) => { if (!closed && !failed) { failed = true; clearInterval(timer); abort(error); } };
@@ -146,7 +147,7 @@ export function watchStrataResources(abort: (reason: Error) => void, read = read
     if (closed || failed || pending) return;
     pending = readReliableStrataResources(read, { ...options, signal: controller.signal }, t).then((sample) => {
       if (!closed) { const reason = (options.pressure ?? ((sample) => strataResourcePressure(sample, t)))(sample); if (reason) fail(new Error(reason)); }
-    }).catch((error) => { fail(error instanceof Error ? error : new Error(t(uiKeys.strataCore.probeFailed))); })
+    }).catch((error) => { if (!(options.retryProbeFailure && error instanceof StrataProbeUnavailableError)) fail(error instanceof Error ? error : new Error(t(uiKeys.strataCore.probeFailed))); })
       .finally(() => { pending = undefined; });
   }, intervalMs);
   return async () => { closed = true; clearInterval(timer); controller.abort(new Error("resource-watch-disposed")); await pending; };
