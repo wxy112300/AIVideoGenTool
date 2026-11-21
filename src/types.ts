@@ -1024,6 +1024,11 @@ export interface UpscaleRequest {
   h3NativeInput?: H3NativeUpscaleInputSnapshot;
 }
 
+export type UpscaleTaskEditRequest = Pick<UpscaleQueueTask,
+  "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "targetScale" |
+  "dlss5" | "aetherScale" | "konohamaru" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename"
+> & { tesseraAnchor?: UpscaleRequest["tesseraAnchor"] };
+
 export interface HistoryFile {
   filename: string;
   subfolder: string;
@@ -2288,12 +2293,18 @@ export interface PromptProgress {
   modelId: string;
   detail?: string;
   error?: string;
+  longVideoPage?: {
+    scriptId: string;
+    revision: number;
+    segment: import("./core/long-video/enhancement.js").LongVideoPromptResult["segments"][number];
+  };
 }
 
 export type PromptProgressReporter = (
   stage: PromptProgressStage,
   progress?: number | null,
-  detail?: string
+  detail?: string,
+  longVideoPage?: PromptProgress["longVideoPage"]
 ) => void;
 
 export interface BundledWorkflow {
@@ -2639,7 +2650,7 @@ export interface AppApi {
   enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueImageEdit(draft: ImageEditDraft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
-  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "targetScale" | "dlss5" | "aetherScale" | "konohamaru" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
+  updateUpscaleTask(taskId: string, patch: UpscaleTaskEditRequest): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
   continueQueue(): Promise<AppState>;

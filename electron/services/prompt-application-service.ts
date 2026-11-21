@@ -245,8 +245,10 @@ export class PromptApplicationService {
       this.retainedPromptRuntime = null;
       if (promptBackend === "strata") {
         const stopped = await this.deps.strata?.stop().then(() => true, () => false);
+        if (startup) this.deps.promptRuntimeManager.finishOperation(startup.operationId,
+          controller.signal.aborted && stopped ? "cancelled" : "failed",
+          stopped ? (error instanceof Error ? error.message : String(error)) : this.message(settings, uiKeys.promptService.cleanupIncomplete));
         this.publishStrataState(settings, Boolean(stopped), startup?.operationId);
-        if (startup && !stopped) this.deps.promptRuntimeManager.finishOperation(startup.operationId, "failed", "Strata cleanup unconfirmed");
         progress?.finish(controller.signal.aborted && stopped ? "cancelled" : "failed", "loading-model", error instanceof Error ? error.message : String(error));
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
       }
@@ -394,9 +396,11 @@ export class PromptApplicationService {
         } else {
           const stopped = await this.deps.strata?.stop().then(() => true, () => false);
           this.retainedPromptRuntime = null;
+          this.deps.promptRuntimeManager.finishOperation(operationId,
+            controller.signal.aborted && stopped ? "cancelled" : "failed",
+            stopped ? (error instanceof Error ? error.message : String(error)) : this.message(settings, uiKeys.promptService.cleanupIncomplete));
           this.publishStrataState(settings, Boolean(stopped), operationId);
           if (!stopped) {
-            this.deps.promptRuntimeManager.finishOperation(operationId, "failed", "Strata cleanup unconfirmed");
             promptProgress.finish("failed", "unloading", this.message(settings, uiKeys.promptService.cleanupIncomplete));
             throw new Error(this.message(settings, uiKeys.promptService.cleanupIncomplete));
           }
@@ -572,7 +576,8 @@ export class PromptApplicationService {
       stage: PromptProgressStage,
       progress: number | null,
       detail?: string,
-      error?: string
+      error?: string,
+      longVideoPage?: PromptProgress["longVideoPage"]
     ): void => {
       const elapsedMs = Date.now() - startedAt;
       const payload: PromptProgress = {
@@ -585,7 +590,8 @@ export class PromptApplicationService {
         elapsedMs,
         modelId,
         ...(detail ? { detail } : {}),
-        ...(error ? { error } : {})
+        ...(error ? { error } : {}),
+        ...(longVideoPage ? { longVideoPage } : {})
       };
       this.deps.sendProgress(payload);
       const strata = modelId.startsWith("strata/") ? this.deps.strata?.snapshot() : undefined;
@@ -602,10 +608,10 @@ export class PromptApplicationService {
           ? { detail: safeLogErrorMessage(detail) } : {})
       });
     };
-    const update: PromptProgressReporter = (stage, progress = null, detail) => {
+    const update: PromptProgressReporter = (stage, progress = null, detail, longVideoPage) => {
       const now = Date.now();
       const startupDetailChanged = modelId.startsWith("strata/") && ["checking", "preparing", "loading-model"].includes(stage) && detail !== lastDetail;
-      if (now - lastSentAt < 250 && stage === lastStage && !startupDetailChanged) return;
+      if (!longVideoPage && now - lastSentAt < 250 && stage === lastStage && !startupDetailChanged) return;
       lastSentAt = now;
       lastStage = stage;
       lastDetail = detail;
@@ -613,7 +619,7 @@ export class PromptApplicationService {
         ? null
         : Math.min(99, Math.max(lastProgress, Math.max(0, progress)));
       if (normalized != null) lastProgress = normalized;
-      send("running", stage, normalized, detail);
+      send("running", stage, normalized, detail, undefined, longVideoPage);
     };
     return {
       update,
@@ -1064,8 +1070,6 @@ export class PromptApplicationService {
   }
 
   private publishStrataState(settings: Settings, stopped: boolean, operationId?: string): void {
-    if (operationId && stopped) this.deps.promptRuntimeManager.finishOperation(operationId,
-      this.nativePromptController?.signal.aborted ? "cancelled" : "failed", "Strata request stopped");
     // degraded preserves unknown GPU occupancy; stopped is published only with confirmed cleanup.
     this.deps.promptRuntimeManager.strataService(stopped ? "stopped" : "degraded", settings.strataPort,
       stopped ? this.message(settings, uiKeys.promptService.strataStopped) : this.message(settings, uiKeys.promptService.strataCleanupIncomplete));

@@ -2532,7 +2532,6 @@ export const enUSCatalog: Record<string, string> = {
   [uiKeys.create.editor.allocateStoryInput]: "Enter a story or segment beats first",
   [uiKeys.create.editor.expandWhole]: "Expand full script",
   [uiKeys.create.editor.allocateAndExpand]: "Plan and expand",
-  [uiKeys.create.editor.blockAllocation]: "Expand the segment outlines before generating. Unlock any outlines that still need expansion.",
   [uiKeys.create.markup.title]: "Annotate Picture {picture}",
   [uiKeys.create.markup.maskTitle]: "Paint removal area",
   [uiKeys.create.markup.cancel]: "Cancel",

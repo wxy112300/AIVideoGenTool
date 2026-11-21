@@ -3,7 +3,7 @@ import { createTranslator } from "../i18n.js";
 import { uiKeys } from "../i18n-keys.js";
 import { releaseVersionAtLeast } from "../release-version.js";
 import { commitScriptText } from "./script-buffers.js";
-import { freezeLongVideoScript, isScriptAllocation } from "./script.js";
+import { freezeLongVideoScript } from "./script.js";
 import { assertLongVideoRunSource } from "./run-source.js";
 import { continuumProfileLoras, isContinuumReferenceModel } from "./group-workflow.js";
 import { videoLoraConfigurationIssues } from "../video-loras.js";
@@ -59,7 +59,6 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
     if (!policy.allowed) return t(k.blockSparseWeights);
   }
   if (!draft.longVideoEditor?.confirmed || !draft.longVideoScript) return t(k.blockLayout);
-  if (draft.longVideoScript.segments.some(isScriptAllocation)) return t(k.blockAllocation);
   try {
     const frozen = freezeLongVideoScript(commitScriptText(draft.longVideoScript, () => crypto.randomUUID()));
     const referenceGuides = referenceModel ? h3ReferenceTimedGuides(draft) : [];

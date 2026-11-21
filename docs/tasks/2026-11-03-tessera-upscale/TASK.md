@@ -26,7 +26,16 @@
 
 ## Acceptance still needed
 
-- Install Tessera + update bridge through the app, prepare user-managed Taomate/LMS weights, then with a free owned GPU start Comfy via AppApi and inspect actual schema. Complete real ready-state toggle/button/task ID → output/playback/History/restart, compare anchor off/on on the same 768p source to 4K, record identity/ghosting/seams, peak GPU/RAM/disk and duration. No quality/speed claim yet.
+- Prepare user-managed Taomate/LMS weights, then with a free owned GPU start Comfy via AppApi and inspect live schema. Complete real ready-state toggle/button/task ID → output/playback/History/restart, compare anchor off/on on the same 768p source to 4K, record identity/ghosting/seams, peak GPU/RAM/disk and duration. No quality/speed claim yet.
+
+## 2026-11-22 compatibility and failed-task recovery (patch)
+
+- Reproduced attention failure with the selected installed core on CPU: `ModelAttentionBackend` now reports `["COMBO", {options: [...]}]`. Both Tessera and Kijai Refiner only read legacy enum arrays. Reuse the existing schema parser for both shapes; reject genuinely unsupported choices as before.
+- Remove the provider-switch lock for waiting/failed/cancelled Tessera/Refiner tasks. Rebuild through the enqueue factory, clear previous execution/provider state, preserve ID/createdAt/source/seed, and recheck status in the state transaction. Qwen controls are editable with installed compatible components and revalidated when explicitly requested. Running tasks stay immutable; no migration or automatic retry of real user tasks.
+- Focused 7 files/100 tests passed; typecheck passed. Full verify unit phase had 338 files/3371 tests pass and 9 files/11 tests fail under concurrent process/time limits. Every failed file passed unchanged in bounded retries (9 files/241 tests including two affected files, then remaining 2 files/26 tests). Integration 7 files/132 tests, clean typechecked desktop/web build and 440 contrast checks passed. The original verify command did not exit zero.
+- CPU probe loaded 540 real installed core/custom-node schemas (Tessera 1.0.0, app bridge 0.4.4). Base/anchor graphs have 29/38 nodes: no missing nodes, unsupported input names, missing required inputs, broken output links or non-file enum failures. Both graphs still report the two absent user-managed Taomate/LMS files (three LoRA-loader references). This is CPU/schema evidence, not a live app-owned Comfy service or GPU output. No weights downloaded or installed node modified.
+- Real Electron recovery fixture H5UCHd uses a copied physical test video and an explicitly synthetic failed Tessera record. Tessera missing-components blocks submission; selecting installed Kijai Refiner and clicking the actual enabled “重新加入队列” button goes through preload/IPC, preserves the same task ID/source/seed, drops Tessera state/error and returns waiting without starting the queue. Production DOM tests separately cover editing Qwen off; service tests cover on/off, missing components rollback and running rejection.
+- Fixture startup initially failed on a copied library setting; the storage conflict guard rejected opening it. Corrected only the isolated fixture's library path and relaunched. Cleanup closed both owned Electron instances; CDP7749/8162 and Comfy8188 have no listener. No model or GPU stage started; the busy GPU was left untouched. Native window-close lifecycle is not certified. Ignored evidence is under `temp/tessera-fix-20261122/` (schema, graphs, tests, UI-save and cleanup reports).
 
 ## Sources
 

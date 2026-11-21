@@ -978,7 +978,6 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   const anchorModelId = dialog.tesseraAnchorModelId ?? anchorModels[0]?.modelId;
   const anchorUnavailable = !anchorModels.some(m => m.modelId === anchorModelId);
   const anchorError = tesseraSelected && dialog.tesseraAnchorEnabled && anchorUnavailable;
-  const anchorFrozen = Boolean(dialog.taskId || dialog.replaceTaskId);
   const enqueueDisabled = busy || !!anchorError || targetUnavailable || pixelModelUnavailable || Boolean(refinerError) ||
     (h3Selected && !h3Available) ||
     (isDlss5Selected && !dlss5Status.available) ||
@@ -1001,9 +1000,8 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
           <div class="upscale-form">
             ${row(t(uiKeys.history.page.model), `<select id="upscale-model" aria-label="${t(uiKeys.upscale.model)}" ${busy ? "disabled" : ""}>${profiles.map(profile => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select>`)}
             ${targetMarkup}${methodMarkup}
-            ${tesseraSelected ? row(t(uiKeys.upscale.tesseraAnchor), `<input type="checkbox" id="upscale-tessera-anchor" aria-label="${t(uiKeys.upscale.tesseraAnchor)}" ${dialog.tesseraAnchorEnabled ? "checked" : ""} ${busy || anchorFrozen || (!dialog.tesseraAnchorEnabled && anchorUnavailable) ? "disabled" : ""}>`)
-              + (dialog.tesseraAnchorEnabled && anchorModels.length ? row(t(uiKeys.upscale.tesseraAnchorModel), `<select id="upscale-tessera-anchor-model" aria-label="${t(uiKeys.upscale.tesseraAnchorModel)}" ${busy || anchorFrozen ? "disabled" : ""}>${anchorModels.map(m => `<option value="${m.modelId}" ${m.modelId === anchorModelId ? "selected" : ""}>${options.escapeHtml(modelCatalog.localized(m.modelId, options.uiLocale)?.name ?? options.environment!.modelProfiles.find(p => p.id === m.modelId)!.name)}</option>`).join("")}</select>`) : "") : ""}
-            ${tesseraSelected && anchorFrozen ? `<span class="upscale-policy-readonly">${t(uiKeys.upscale.tesseraAnchorFrozen)}</span>` : ""}
+            ${tesseraSelected ? row(t(uiKeys.upscale.tesseraAnchor), `<input type="checkbox" id="upscale-tessera-anchor" aria-label="${t(uiKeys.upscale.tesseraAnchor)}" ${dialog.tesseraAnchorEnabled ? "checked" : ""} ${busy || (!dialog.tesseraAnchorEnabled && anchorUnavailable) ? "disabled" : ""}>`)
+              + (dialog.tesseraAnchorEnabled && anchorModels.length ? row(t(uiKeys.upscale.tesseraAnchorModel), `<select id="upscale-tessera-anchor-model" aria-label="${t(uiKeys.upscale.tesseraAnchorModel)}" ${busy ? "disabled" : ""}>${anchorModels.map(m => `<option value="${m.modelId}" ${m.modelId === anchorModelId ? "selected" : ""}>${options.escapeHtml(modelCatalog.localized(m.modelId, options.uiLocale)?.name ?? options.environment!.modelProfiles.find(p => p.id === m.modelId)!.name)}</option>`).join("")}</select>`) : "") : ""}
           </div>
           ${tesseraSelected && (anchorUnavailable || (dialog.tesseraAnchorEnabled && !anchorScaleOk)) ? `<p class="upscale-warning" role="${anchorError ? "alert" : "status"}">${t(anchorUnavailable ? uiKeys.upscale.tesseraAnchorMissing : uiKeys.upscale.tesseraAnchorScale)}</p>` : ""}
           ${refinerError ? `<p class="upscale-warning" role="alert">${options.escapeHtml(refinerError)}</p>` : ""}${targetUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.targetUnavailable)}</p>` : ""}${pixelModelUnavailable ? `<p class="upscale-warning" role="alert">${t(uiKeys.upscale.modelUnavailable)}</p>` : ""}

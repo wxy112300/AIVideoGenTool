@@ -8,6 +8,11 @@
 
 ## Resume
 
+- 2026-11-22 后续修复：Windows 0.2.17 Qwen IQ 磁盘回读将物理 RAM 启动检查调为 4 GiB，提交量检查和引擎驻留预留各保持 6 GiB。真实 60 秒六段分配已完成，原生回读模式下输出 416 tokens，官方 Monitor 测得约 2.3 token/s。最终修复将安装根目录与 `terminal` 工作目录分别传入校验，在真实扩写中观察到第二次请求沿用第一段 PID 和控制向量。旧正文 JSON 在第二段出现引号语法错误，后续改为由应用绑定段落 ID，模型直接返回音画正文并逐段校验写回。
+
+- 2026-11-22 本机已装 0.2.17 / 引擎 0.1.63。真实 Electron 的 60 秒六段分配在加载时复现 HTTP 503。应用把整卡已有占用额外加到显存预留，现场传给引擎 27481 MiB，自动专家缓存为 0 槽。Windows 上此发行版改由官方 `STRATA_VRAM_FREE=device` 在分配时计入整卡占用。Qwen 显存紧张时启用引擎的小缓存自适应并让视觉编码走 CPU。准备缓存和原始模型文件保留。Prompt 终态保留加载失败原因。资源采样前回收分词预检进程，本机 ComfyUI 确认离线时跳过释放请求。
+- 修复后 226 项定向、3373 项全量单测、132 项集成、双端生产构建和 440 项对比度通过。实际安装的 0.2.17 参数解析器确认小缓存配置保留 32K 和 MTP，未重新插入显存预留。隔离 Electron 的实际六段扩写点击复用模型缓存，返回 4.8 GiB 可用 RAM 低于原有 6 GiB 启动预留，未进入 GPU 加载。未出现离线 ComfyUI 的虚假网络报错，隔离窗口和端口已回收。新版 GPU 缓存和六段出稿仍待资源充足的实机验收。
+
 最新稳定0.2.17/12d491da4a6904eb49aaa6f2f63ec4b1a17582e3，Control/引擎0.1.63，feed129。Windows CUDA13包487577860bytes，SHA-256 fc9864851a3f76855f25ba5f5ff1eb42d46c3c6ed45c22534dc9910f20d9dc0f；manifest 76ecfdaceeee1a7ce9d4d961f87f17da9c512107483e671fe987b39261a7cb61。归档URL固定v0.2.17，不拼接feed中的相对地址到错误目录。
 
 0.2.16起源码服务/准备工具/数据移到terminal/，原生源码和vendored解析器移到engine/。安装指针、根venv、engine二进制、共享模型和派生pack根保持；catalog按受信revision解析源码目录，主应用与独立Agent共用。覆盖requirements、安装验证、扫描、服务/监视页、IQ/Q4 pack/PLE/MTP工具、专家profile、自带向量、DeepSeek组件验证路径。社区向量仍在根data/lvs-control-vectors；DeepSeek固定0.2.13兼容源码/0.1.59引擎不变。

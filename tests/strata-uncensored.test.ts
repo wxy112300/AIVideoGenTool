@@ -101,7 +101,8 @@ describe("Strata mode requests and facts", () => {
       return new Response(JSON.stringify(String(url).endsWith("/health") ? { service: "strata", status: "ok", loaded, api_key: true } : { object: "list", data: [] }));
     });
     const service = new StrataService({ launch, portInUse: async () => false, fetch: fetchMock, onDiagnostics: diagnostics });
-    await service.start({ executable: "fixture", cwd: dir, args: [], modelId, apiKey: "private-key", port: 43127,
+    await service.start({ executable: "fixture", cwd: path.join(dir, "terminal"), installDirectory: dir,
+      args: [], modelId, apiKey: "private-key", port: 43127,
       engineLog: log, uncensoredRequested: true, uncensoredMode: mode, controlVector: { ...descriptor, filename: "fixture.gguf" } });
     try {
       expect(service.snapshot().uncensored).toMatchObject({ requested: true, vectorLoaded: false, applied: null });
@@ -109,6 +110,9 @@ describe("Strata mode requests and facts", () => {
         await expect(service.load()).rejects.toThrow("未确认"); expect(service.snapshot().pid).toBeNull(); return;
       }
       await service.load();
+      const verify = vi.spyOn(vectorTools, "verifyStrataControlVector").mockResolvedValueOnce({ ...descriptor, filename: "fixture.gguf" });
+      await expect(service.hasVerifiedControlVector(mode)).resolves.toBe(true);
+      expect(verify).toHaveBeenCalledWith(dir, mode, expect.any(Function));
       const base = { modelId, messages: [{ role: "user" as const, content: "ordinary scene" }], maxTokens: 100, temperature: .7 };
       for (const uncensored of [true, false, true]) {
         expect(await service.chat({ ...base, uncensored, uncensoredMode: uncensored ? mode : "off" })).toBe("final");

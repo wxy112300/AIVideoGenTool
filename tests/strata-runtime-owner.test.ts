@@ -71,7 +71,8 @@ describe("application Strata ownership", () => {
     const originalSnapshot = f.service.snapshot.bind(f.service);
     const snapshot = vi.spyOn(f.service, "snapshot");
     snapshot.mockImplementation(() => ({ ...originalSnapshot(), modelLoaded: f.service.monitorConnection() !== null }));
-    const launch = vi.fn(async (s) => { vector = s.strataUncensoredMode; return { executable: "fixture", args: ["--api-monitor"], cwd: root, apiKey: "secret", port: 43127, modelId }; });
+    const launch = vi.fn(async (s) => { vector = s.strataUncensoredMode; return { executable: "fixture", args: ["--api-monitor"],
+      cwd: path.join(root, "terminal"), installDirectory: root, apiKey: "secret", port: 43127, modelId }; });
     const prepare = vi.fn(), cache = vi.fn(async () => configPath);
     const owner = new StrataRuntimeOwner({ run: vi.fn(), service: f.service, prepare, findPrepared: cache,
       isResourcesBusy: () => false, prepareLaunch: launch });

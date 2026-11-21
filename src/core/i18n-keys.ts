@@ -4098,7 +4098,6 @@ export const uiKeys = {
       allocateStoryInput: "create.editor.allocateStoryInput",
       expandWhole: "create.editor.expandWhole",
       allocateAndExpand: "create.editor.allocateAndExpand",
-      blockAllocation: "create.editor.blockAllocation",
       custom: "create.editor.custom", shortEdge: "create.editor.shortEdge", customRestricted: "create.editor.customRestricted",
       cleared: "create.editor.cleared", undo: "create.editor.undo",
       loraEmpty: "create.editor.loraEmpty",

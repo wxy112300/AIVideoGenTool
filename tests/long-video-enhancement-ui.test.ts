@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
 import { freezeLongVideoScript, isScriptAllocation, scriptPageText } from "../src/core/long-video/script";
-import type { EnhanceRequest } from "../src/types";
+import type { EnhanceRequest, PromptProgress } from "../src/types";
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
 async function fixture() {
@@ -33,8 +33,12 @@ it("matches shuffled Picture IDs to the chronological images on the actual long-
     referenceContext: expect.stringContaining("Attachment 2 = Picture 2: film 10.125s, segment 2 around 0.000s.")
   })));
 });
-it("allocates editable beats, expands the edited story, and freezes its versions for History", async () => {
+it("queues edited and locked outlines directly and keeps optional expansion and History versions available", async () => {
   const h = await fixture();
+  h.scan.customNodes.find(node => node.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(node => node.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.render();
+  expect(h.element("#enqueue").disabled).toBe(true);
   h.enhancePrompt.mockImplementation(async r => {
     const request = r.longVideo!;
     return JSON.stringify({ schemaVersion: 1, scriptId: request.scriptId, revision: request.revision,
@@ -48,10 +52,20 @@ it("allocates editable beats, expands the edited story, and freezes its versions
   expect(allocate.querySelector("svg.lucide-list-ordered")).not.toBeNull();
   allocate.click();
   await vi.waitFor(() => expect(h.state().draft.longVideoScript!.segments.every(isScriptAllocation)).toBe(true));
-  expect(() => freezeLongVideoScript(h.state().draft.longVideoScript!)).toThrow(/Incomplete/);
-  expect(h.application.enqueue).not.toHaveBeenCalled();
   h.element('.create-long-tabs [role="tab"]:nth-child(2)').click();
-  h.input(".create-long-editor textarea", "The original bike rolls and the rider stops it.");
+  const edited = "The original bike rolls and the rider stops it.";
+  h.input(".create-long-editor textarea", edited);
+  h.element("[data-preview-lock]").click();
+  expect(h.state().draft.longVideoScript!.segments[0]!.locked).toBe(true);
+  await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(false));
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+    id: expect.any(String), status: "waiting",
+    longVideoPlan: { pages: expect.arrayContaining([{ ...freezeLongVideoScript(h.state().draft.longVideoScript!).pages[1]!, text: edited }]) }
+  }));
+  const queued = structuredClone(h.state().queue[0]);
+  expect(h.enhancePrompt.mock.calls.map(([request]) => request.longVideo?.operation)).toEqual(["allocate"]);
+  h.element("[data-preview-lock]").click();
   h.element("[data-preview-whole]").click();
   expect(h.root.querySelectorAll(".create-whole-divider")).toHaveLength(11);
   h.element("[data-enhance-long-video]").click();
@@ -61,6 +75,7 @@ it("allocates editable beats, expands the edited story, and freezes its versions
   expect(scriptPageText(script.brief)).toBe(brief);
   expect(scriptPageText(script.segments[0]!)).toBe("Detailed action from The original bike rolls and the rider stops it.");
   expect(freezeLongVideoScript(script).pages[1]!.versions?.filter(v => v.stage === "allocation").map(v => v.text)).toEqual(["Beat 0", "The original bike rolls and the rider stops it."]);
+  expect(h.state().queue[0]).toEqual(queued);
 });
 it("enhances through the real button and atomically adopts twelve model-authored pages", async () => {
   const h = await fixture();
@@ -76,6 +91,37 @@ it("enhances through the real button and atomically adopts twelve model-authored
   expect(scriptPageText(script.segments[11]!)).toBe("Continuous action 11");
   expect(h.state().draft.promptVersions).toEqual(nativeVersions);
   expect(script.layout.requestedSeconds).toBe(120);
+});
+it("shows each ready expanded segment before the operation ends and keeps it after a later failure", async () => {
+  const h = await fixture();
+  let receive: ((event: PromptProgress) => void) | undefined;
+  const unsubscribe = vi.fn();
+  h.context.events.onPromptProgress = callback => { receive = callback; return unsubscribe; };
+  h.enhancePrompt.mockImplementationOnce(async r => JSON.stringify({
+    schemaVersion: 1, scriptId: r.longVideo!.scriptId, revision: r.longVideo!.revision,
+    segments: r.longVideo!.segments.map(page => ({ pageId: page.pageId, text: "An editable beat.", outline: "An editable beat." }))
+  }));
+  h.element("[data-allocate-long-video]").click();
+  await vi.waitFor(() => expect(h.state().draft.longVideoScript!.segments.every(isScriptAllocation)).toBe(true));
+  let reject!: (error: Error) => void; let request!: EnhanceRequest;
+  h.enhancePrompt.mockImplementationOnce(r => {
+    request = r;
+    return new Promise((_resolve, fail) => { reject = fail; });
+  });
+  h.element("[data-enhance-long-video]").click();
+  await vi.waitFor(() => expect(request?.longVideo?.operation).toBe("expand"));
+  const { scriptId, revision, segments } = request.longVideo!;
+  receive!({ longVideoPage: { scriptId, revision, segment: { pageId: segments[0]!.pageId, text: "A finished first scene.", outline: "Beat one" } } } as PromptProgress);
+  h.element('.create-long-tabs [role="tab"]:nth-child(2)').click();
+  expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe("A finished first scene.");
+  expect(isScriptAllocation(h.state().draft.longVideoScript!.segments[1]!)).toBe(true);
+  receive!({ longVideoPage: { scriptId, revision, segment: { pageId: segments[1]!.pageId, text: "A finished second scene.", outline: "Beat two" } } } as PromptProgress);
+  expect(scriptPageText(h.state().draft.longVideoScript!.segments[1]!)).toBe("A finished second scene.");
+  reject(new Error("Later scene failed"));
+  await vi.waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce());
+  expect(scriptPageText(h.state().draft.longVideoScript!.segments[0]!)).toBe("A finished first scene.");
+  expect(scriptPageText(h.state().draft.longVideoScript!.segments[1]!)).toBe("A finished second scene.");
+  expect(isScriptAllocation(h.state().draft.longVideoScript!.segments[2]!)).toBe(true);
 });
 it("keeps typing done during enhancement instead of adopting the obsolete response", async () => {
   const h = await fixture(); let resolve!: (raw: string) => void; let request!: EnhanceRequest;

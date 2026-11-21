@@ -2532,7 +2532,6 @@ export const zhTWCatalog = {
   [uiKeys.create.editor.allocateStoryInput]: "先填寫故事或分段情節",
   [uiKeys.create.editor.expandWhole]: "整片擴寫",
   [uiKeys.create.editor.allocateAndExpand]: "自動規劃並擴寫",
-  [uiKeys.create.editor.blockAllocation]: "先擴寫分段大綱，再產生影片。已鎖定的大綱需要先解鎖。",
   [uiKeys.create.markup.title]: "標記 Picture {picture}",
   [uiKeys.create.markup.maskTitle]: "繪製移除區域",
   [uiKeys.create.markup.cancel]: "取消",

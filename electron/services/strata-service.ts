@@ -10,7 +10,7 @@ import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { strataReasoningEffortForModel } from "../../src/core/strata-reasoning.js";
-import { resolvedStrataDirectory, strataManagedReceipt, strataSourceDirectory } from "./strata-installation.js";
+import { resolvedStrataDirectory, strataInstalledRelease, strataManagedReceipt, strataSourceDirectory } from "./strata-installation.js";
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
 import { StrataChatStream, StrataInferenceError } from "../../src/core/strata-chat-stream.js";
@@ -106,12 +106,14 @@ export interface StrataLaunchPlan {
   executable: string;
   args: string[];
   cwd: string;
+  installDirectory?: string;
   port: number;
   apiKey: string;
   modelId?: string;
   residentEngineLog?: string;
   allowResidentFallback?: boolean;
   resourcePlan?: StrataResourcePlan;
+  nativeVramReserve?: boolean;
   temporaryConfig?: string;
   env?: Record<string, string>;
   controlVector?: StrataControlVector;
@@ -124,7 +126,7 @@ export interface StrataLaunchPlan {
 export async function prepareStrataLaunch(
   settings: Pick<Settings, "strataInstallDirectory" | "strataPort"> & Partial<Pick<Settings, "strataUncensored" | "strataUncensoredMode" | "uiLocale">>,
   configPath: string,
-  options: { adaptive?: boolean; readResources?: typeof readStrataResources } = {}
+  options: { adaptive?: boolean; readResources?: typeof readStrataResources; signal?: AbortSignal } = {}
 ): Promise<StrataLaunchPlan> {
   const t = createNativeTranslator(settings.uiLocale).t;
   if (!validStrataPort(settings.strataPort)) throw new Error(t(uiKeys.strataService.invalidPort));
@@ -152,6 +154,9 @@ export async function prepareStrataLaunch(
     ))).every(Boolean);
   let launchConfig = config;
   let resourcePlan: StrataResourcePlan | undefined;
+  const deviceVram = options.adaptive && process.platform === "win32" && !isStrataDeepSeek(modelId)
+    && strataInstalledRelease(cwd)?.version === "0.2.17";
+  let nativeVramReserve = false;
   const mode = strataUncensoredMode(settings);
   const controlVector = mode !== "off" && supportsStrataUncensored(modelId)
     ? await verifyStrataControlVector(cwd, mode, t) : undefined;
@@ -164,10 +169,18 @@ export async function prepareStrataLaunch(
   if (options.adaptive) {
     const reserveIndex = runtimeConfig.args.indexOf(isStrataDeepSeek(modelId) ? "--reserve-mib" : "--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
-    resourcePlan = planStrataResources(await readReliableStrataResources(options.readResources, { knownPressure: () => null }, t), Number(runtimeConfig.args[reserveIndex + 1]), {
-      allowFileReadFallback: true, modelId, accountForOccupiedVram: process.platform === "win32",
+    const resources = await readReliableStrataResources(options.readResources, { knownPressure: () => null, signal: options.signal }, t);
+    resourcePlan = planStrataResources(resources, Number(runtimeConfig.args[reserveIndex + 1]), {
+      allowFileReadFallback: true, modelId, accountForOccupiedVram: process.platform === "win32" && !deviceVram,
+      nativeFileReadAdmission: Boolean(deviceVram),
       contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
-    runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
+    // With tight VRAM, an explicit reserve disables the engine's small-cache
+    // path. CPU vision also prevents the HTTP wrapper from restoring that flag.
+    nativeVramReserve = Boolean(deviceVram && resources.vramAvailableBytes! < (resourcePlan.vramReserveMiB + 5120) * 1024 ** 2);
+    if (nativeVramReserve) {
+      runtimeConfig.args.splice(reserveIndex, 2);
+      runtimeConfig.vision.gpu = false;
+    } else runtimeConfig.args[reserveIndex + 1] = String(resourcePlan.vramReserveMiB);
     runtimeConfig.args = applyStrataResourcePlan(runtimeConfig.args, resourcePlan, modelId);
   }
   // A long silent DeepSeek prefill while streaming experts is not a crash.
@@ -179,12 +192,14 @@ export async function prepareStrataLaunch(
   }
   const apiKey = randomBytes(32).toString("hex");
   return {
-    executable, cwd: serverDirectory, port: settings.strataPort, apiKey, modelId,
+    executable, cwd: serverDirectory, installDirectory: cwd, port: settings.strataPort, apiKey, modelId,
     engineLog: runtimeConfig.log, uncensoredRequested: mode !== "off", uncensoredMode: mode,
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
+    ...(nativeVramReserve ? { nativeVramReserve } : {}),
     ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
       env: isStrataDeepSeek(modelId) ? {} : { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+        ...(deviceVram ? { STRATA_VRAM_FREE: "device" } : {}),
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
@@ -337,7 +352,7 @@ export class StrataService {
   async hasVerifiedControlVector(mode: Exclude<StrataUncensoredMode, "off"> = "builtin"): Promise<boolean> {
     if (!this.plan?.controlVector || !this.vectorLoaded) return false;
     try {
-      const current = await verifyStrataControlVector(this.plan.cwd, mode, this.t);
+      const current = await verifyStrataControlVector(this.plan.installDirectory ?? this.plan.cwd, mode, this.t);
       return current.sha256 === this.plan.controlVector.sha256 && current.id === this.plan.controlVector.id;
     } catch { return false; }
   }

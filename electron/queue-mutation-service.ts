@@ -1,9 +1,11 @@
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
 import type { Translate } from "../src/core/i18n.js";
-import type { AppState, UpscaleQueueTask } from "../src/types.js";
-import { H3_REFINER_ID, h3RefinerGeometry } from "../src/core/h3-refiner.js";
-import { TESSERA_ID, tesseraGeometry } from "../src/core/tessera.js";
+import type { AppState, UpscaleTaskEditRequest } from "../src/types.js";
+import { H3_REFINER_ID } from "../src/core/h3-refiner.js";
+import { TESSERA_ID, tesseraAnchorModels } from "../src/core/tessera.js";
+import { upscaleTaskFromRequest } from "../src/core/queue-task-factory.js";
+import { getCachedEnvironmentScan } from "./services/environment.js";
 import { applyH3AccelerationSettingsToWaitingTask } from "../src/core/h3-execution-policy.js";
 import {
   activeQueueTaskIds,
@@ -38,6 +40,7 @@ import {
 import { fileURLToPath } from "node:url";
 
 export interface QueueMutationServiceDependencies {
+  getCachedEnvironmentScanForQueue?: typeof getCachedEnvironmentScan;
   store: StateRepository;
   logger: AppLogger;
   sendState(state: AppState): void;
@@ -65,12 +68,7 @@ export class QueueMutationService {
 
   async updateUpscale(
     taskId: string,
-    patch: Pick<
-      UpscaleQueueTask,
-      "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
-      "targetScale" | "dlss5" | "aetherScale" | "konohamaru" | "modelId" | "workflowPath" |
-      "tileMode" | "faceRestore" | "outputFilename"
-    >
+    patch: UpscaleTaskEditRequest
   ): Promise<AppState> {
     const { store, sendState } = this.deps;
     const current = store.get().queue.find((task) => task.id === taskId);
@@ -78,29 +76,39 @@ export class QueueMutationService {
       throw new Error(this.t(uiKeys.serviceChecks.editMissing));
     }
     const currentMode = current.upscaleMode ?? "pixel";
-    if (current.modelId === TESSERA_ID || patch.modelId === TESSERA_ID) {
-      if (current.modelId !== TESSERA_ID || patch.modelId !== TESSERA_ID || !current.tessera) throw new Error(this.t(uiKeys.serviceChecks.editTessera));
-      const g = tesseraGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!, this.t);
+    if ([current.modelId, patch.modelId].some(id => id === TESSERA_ID || id === H3_REFINER_ID)) {
+      if (!["waiting", "failed", "cancelled"].includes(current.status)) throw new Error(this.t(uiKeys.runtime.cannotEditQueue));
       const next = await store.update(state => {
-        state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch, upscaleMode: "pixel", modelId: TESSERA_ID,
-          workflowPath: `builtin:upscale/${TESSERA_ID}`, targetWidth: g.outputWidth, targetOutputHeight: g.outputHeight,
-          tileMode: "safe", faceRestore: false, targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined });
+        const task = state.queue.find(item => item.id === taskId);
+        if (!task || task.taskType !== "upscale" || !["waiting", "failed", "cancelled"].includes(task.status)) throw new Error(this.t(uiKeys.runtime.cannotEditQueue));
+        const asset = state.history.find(item => item.id === task.sourceAssetId);
+        const version = asset?.versions.find(item => item.id === task.sourceVersionId);
+        const sourceFps = task.tessera?.sourceFps ?? task.h3Refiner?.sourceFps ?? version?.fps ?? task.fps;
+        let anchor = patch.modelId === TESSERA_ID && task.modelId === TESSERA_ID ? task.tessera?.anchor : undefined;
+        if (patch.modelId === TESSERA_ID && patch.tesseraAnchor !== undefined) {
+          anchor = undefined;
+          if (patch.tesseraAnchor.enabled) {
+            const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(state.settings);
+            anchor = tesseraAnchorModels(environment).find(model => model.modelId === patch.tesseraAnchor?.modelId);
+            if (!anchor) throw new Error(this.t(uiKeys.upscale.tesseraAnchorMissing));
+          }
+        }
+        const rebuilt = upscaleTaskFromRequest({ ...patch, tesseraAnchor: undefined,
+          sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,
+          sourceFilePath: task.sourceFilePath, sourceFilename: task.sourceFilename,
+          sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight, duration: task.duration, fps: sourceFps,
+          h3NativeInput: patch.upscaleMode === "h3-native" ? task.h3NativeInput : undefined
+        }, { ...state, queue: state.queue.filter(item => item.id !== taskId) }, undefined, this.t);
+        if (rebuilt.tessera && anchor) rebuilt.tessera.anchor = structuredClone(anchor);
+        const safePatch = { ...rebuilt, id: task.id, createdAt: task.createdAt, seed: task.seed, keepSeedOnCopy: task.keepSeedOnCopy,
+          tessera: rebuilt.tessera, h3Refiner: rebuilt.h3Refiner, h3NativeInput: rebuilt.h3NativeInput,
+          dlss5: rebuilt.dlss5, aetherScale: rebuilt.aetherScale, konohamaru: rebuilt.konohamaru,
+          performanceStats: undefined, workProgress: undefined, stageStartedAt: undefined };
+        const previous = state.queue;
+        state.queue = updateQueuedUpscaleTask(state.queue, taskId, safePatch);
+        state.queuePauseBoundary = adjustQueuePauseBoundary(previous, state.queuePauseBoundary, state.queue);
       });
       sendState(next); return next;
-    }
-    if (current.modelId === H3_REFINER_ID || patch.modelId === H3_REFINER_ID) {
-      if (current.modelId !== H3_REFINER_ID || patch.modelId !== H3_REFINER_ID || !current.h3Refiner) {
-        throw new Error(this.t(uiKeys.serviceChecks.editRefiner));
-      }
-      const g = h3RefinerGeometry(current.sourceWidth, current.sourceHeight, patch.targetHeight!, this.t);
-      const next = await store.update(state => {
-        state.queue = updateQueuedUpscaleTask(state.queue, taskId, { ...patch,
-          upscaleMode: "pixel", modelId: H3_REFINER_ID, workflowPath: `builtin:upscale/${H3_REFINER_ID}`,
-          targetWidth: g.outputWidth, targetOutputHeight: g.outputHeight,
-          tileMode: "safe", faceRestore: false, targetScale: undefined, dlss5: undefined, aetherScale: undefined, konohamaru: undefined });
-      });
-      sendState(next);
-      return next;
     }
     const currentIsKonohamaru = current.modelId === KONOHAMARU_MODEL_ID ||
       current.konohamaru !== undefined;

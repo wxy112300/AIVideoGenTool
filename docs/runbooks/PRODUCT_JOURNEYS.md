@@ -125,7 +125,7 @@ flowchart TD
 - Strata首次增强：离线检查 → CPU校验/pack（现有提示与日志显示步骤/百分比，Strata PID可为空，不等同GPU加载）→ 健康的自有listener → 官方API Monitor只读窗口 → GPU加载/请求状态/详情/速度；临时密钥不进入renderer。网页首开失败按当前服务密钥最多3次、至少2秒间隔重试；关闭窗口不卸载且同一会话不反复弹出，停止模型/后端后关闭、下一次启动可重开。验证正常只读GET、错误/断线、取消/停止，以及恶意POST/配置/外连均被拒绝；监视流量不得创建新的推理或绕过队列互斥。
 - Qwen MTMD 精简 logits 的修复不改变图片/输入/输出预算；用同权重同图对照原文、首token与decode，并确认旧视觉handler不受影响。共享 llama-cpp-python 升级须验证 Prompt Writer 的架构/诊断版本检查、Gemma实际增强与释放；不能只以导入成功代替两条真实按钮路径，不启用尚未验证的MTP。
 - H3 模式按实际输入求得；普通 FL2VA/boundary/Continuum Extend 均是 I2VA 边界条件，不能因 UI 没首帧槽当作 T2VA；Motion Context 是 R2V。
-- 长视频 Create：填故事并确认布局 → 分配情节 → 逐段改大纲 → 选择预设并整片扩写 → 实际入队。大纲版本可回看，采用大纲时生成按钮提示先扩写。History 以 `---` 显示和复制实际采样段落；已保存逐段版本随冻结快照回看。
+- 长视频 Create：确认布局后可手写分段，或使用「分配情节」并逐段编辑。各段有内容后可直接入队，也可选择预设做整片扩写。有分段稿时，整片扩写串行生成并逐段校验、写回，取消或后续失败时保留已完成版本，可切换到分段模式重写单段。锁定会保护段落免受编辑和扩写，锁定段也能入队。History 以 `---` 显示实际采样段落和已保存的版本。
 - 关键帧模式的长视频规划和扩写由本机 Strata 接收有效图片与成片时间、段内时间。验收空槽忽略、时间排序后 Picture 编号绑定、多图内容抵达模型请求及错误的后端选择被拦截。
 - Extend 的 `extensionSource` 含视频与裁剪边界，服务负责提取视觉上下文。Continuum 不伪造 R2V reference 标签，还带 previous chunk 信息。
 - Prompt 模型选择与生成模型选择独立。`promptModelId` 选择本地后端：现有模型路由 ComfyUI，Strata catalog ID 路由应用管理的独立服务；旧 LM Studio/runtime 字段不参与路由。27B 的显存确认/CPU 单次回退按原契约，Strata 不自动回退 CPU。首次 Strata 准备/加载也复用原方形停止按钮；扫描文件完整只开放选择，不写成运行验证通过。
@@ -272,6 +272,8 @@ flowchart TD
 当前 provider 的可选性以 catalog、环境扫描和对话框为准；旧 DLSS5/AetherScale 持久化兼容代码存在不表示重新启用旧实验。不要从源文件数量推断产品入口。
 
 H3 native 需要对应 AV/模型/尺寸资格；SeedVR2 的原生 INT8 分段路线先依据主机 RAM、目标像素和策略规划外层切段，再由 native 节点处理显存内部 chunks。恢复时复用已持久化计划和有效片段，不因空闲内存变化重切。对话框切换 provider 后检查 stale 字段、提交按钮与具体 `UpscaleRequest`。
+
+失败、取消或等待的 Tessera／H3 Refiner 任务可从 Queue 编辑并切换方案，Tessera 的 Qwen 首帧增强也可修改。保存重建配方、清除旧执行错误并恢复等待；原任务ID、源视频与种子保留，运行中的任务不可改动。验收包含缺组件阻塞 → 选择已就绪方案 → 实际点击重新加入队列 → 同ID恢复等待；该恢复操作不等于 GPU 出片成功。
 
 入口：History `openUpscaleDialog` → `shell/secondary-dialogs.ts` / `upscale-controller.ts` → `src/core/upscale.ts` / `seedvr2-native.ts` → `queue-enqueue.ts` / executor / side-effects。
 

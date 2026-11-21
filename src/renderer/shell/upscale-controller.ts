@@ -491,7 +491,10 @@ export function mountUpscaleController(
       if (dialog.taskId || dialog.replaceTaskId) {
         const nextState = await context.application.updateUpscaleTask(
           dialog.taskId ?? dialog.replaceTaskId!,
-          upscalePatch
+          { ...upscalePatch, ...(dialog.modelId === TESSERA_ID ? { tesseraAnchor: {
+            enabled: !!dialog.tesseraAnchorEnabled,
+            modelId: dialog.tesseraAnchorModelId ?? root.querySelector<HTMLSelectElement>("#upscale-tessera-anchor-model")?.value
+          } } : {}) }
         );
         options.setRendererState(nextState);
         context.notify(dialog.taskId ? t(uiKeys.runtime.upscaleUpdated) : t(uiKeys.runtime.upscaleRecovered), { renderPage: false });

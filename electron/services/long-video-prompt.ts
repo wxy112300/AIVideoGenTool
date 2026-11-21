@@ -9,7 +9,7 @@ import { h3PromptPresetTextForRequest } from "../../src/core/prompts/h3/index.js
 import { h3DetailedExpansionGateInstruction } from "../../src/core/h3-prompt.js";
 import { compileContinuumDetailText, continuumAllocationInstruction, continuumApprovedBeatsInstruction, continuumDirectorContract, continuumPlannerInstruction, continuumDetailInstruction, continuumDetailFormatIssues } from "../../src/core/prompts/h3/continuum.js";
 
-const parse = (raw: string): unknown => JSON.parse(raw.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/u, "$1"));
+const unwrap = (raw: string): string => raw.trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/u, "$1").trim();
 const validText = (value: unknown, maximum = 4000): value is string => typeof value === "string" && Boolean(value.trim()) && value.length <= maximum;
 /** Canonicalize by stable IDs; exact repeated rows are idempotent, conflicting ones are ambiguous. */
 function detailBatch(value: unknown, batch: Array<{ pageId: string }>): Array<{ pageId: string; text: string }> | null {
@@ -26,6 +26,16 @@ function detailBatch(value: unknown, batch: Array<{ pageId: string }>): Array<{ 
   }
   return pages.size === batch.length ? batch.map(p => pages.get(p.pageId)!) : null;
 }
+
+function singleDetailText(raw: string, page: { pageId: string }): string | null {
+  const text = unwrap(raw);
+  if (!text.startsWith("{")) return validText(text, 24000) ? text : null;
+  try { return detailBatch(JSON.parse(text), [page])?.[0]?.text ?? null; }
+  catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return null;
+  }
+}
 /** Planner and bounded detail batches share the existing single prompt operation/owner. */
 export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settings: Settings, owner: Pick<StrataRuntimeOwner, "chat">,
   signal: AbortSignal, progress: PromptProgressReporter, beforeChat: (chat: StrataChatRequest) => Promise<void>): Promise<string> {
@@ -36,7 +46,7 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
   const preset = request.h3PromptPreset ?? "detailed-cinematic";
   const contract = [
     continuumDirectorContract,
-    planRequest.operation === "allocate" ? "" : `Low-priority prose style (${preset}); apply its creative preferences within this multi-page JSON contract, never change the requested schema or repeat the complete film timeline in each page:\n${h3PromptPresetTextForRequest(preset, settings.h3PromptPresets[preset])}`
+    planRequest.operation === "allocate" ? "" : `Low-priority prose style (${preset}); apply its creative preferences within the requested output format and avoid repeating the complete film timeline in each page:\n${h3PromptPresetTextForRequest(preset, settings.h3PromptPresets[preset])}`
   ].filter(Boolean).join("\n");
   const chat = async (instruction: string, label: string) => {
     signal.throwIfAborted();
@@ -48,14 +58,15 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
     const raw = await owner.chat(current, signal, delta => { characters += delta.length; progress("generating", null, `${label} · ${characters}`); },
       tokens => { outputBudget = tokens; },
       count => progress("generating", null, `${label} · ${t(uiKeys.strataPrompt.reasoning, { count, tokens: outputBudget })}`));
-    signal.throwIfAborted(); return parse(raw);
+    signal.throwIfAborted(); return raw;
   };
+  const chatJson = async (instruction: string, label: string): Promise<unknown> => JSON.parse(unwrap(await chat(instruction, label)));
   const source = JSON.stringify(planRequest);
   const slots = planRequest.segments.map((page, index) => ({ pageId: page.pageId,
     startSeconds: index * planRequest.layout.chunkSeconds, endSeconds: (index + 1) * planRequest.layout.chunkSeconds }));
   const targets = longVideoPromptTargets(planRequest);
   if (planRequest.operation === "allocate") {
-    const raw = await chat(`${continuumAllocationInstruction}\nSOURCE:\n${source}\nTIME WINDOWS:\n${JSON.stringify(slots)}\nREQUESTED PAGE IDS:\n${JSON.stringify(targets.map(p => p.pageId))}`, t(uiKeys.strataPrompt.moviePlanning));
+    const raw = await chatJson(`${continuumAllocationInstruction}\nSOURCE:\n${source}\nTIME WINDOWS:\n${JSON.stringify(slots)}\nREQUESTED PAGE IDS:\n${JSON.stringify(targets.map(p => p.pageId))}`, t(uiKeys.strataPrompt.moviePlanning));
     const segments = detailBatch(raw, targets);
     if (!segments) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.planIncomplete));
     const encoded = JSON.stringify({ schemaVersion: 1, scriptId: planRequest.scriptId, revision: planRequest.revision,
@@ -74,7 +85,7 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
       const duration = planRequest.layout.chunkSeconds;
       const density = preset === "detailed-cinematic" ? h3DetailedExpansionGateInstruction(request.h3PromptMode ?? "I2VA", duration, page.text) : "";
       const instruction = [
-        continuumDetailInstruction(duration), density,
+        continuumDetailInstruction(duration, true), density,
         continuumApprovedBeatsInstruction,
         `ORIGINAL STORY:\n${planRequest.brief.text}`,
         `APPROVED SEGMENT ORDER:\n${JSON.stringify(plan)}`,
@@ -82,24 +93,27 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
         `REQUESTED PAGE:\n${JSON.stringify(page)}`
       ].filter(Boolean).join("\n\n");
       const label = t(uiKeys.strataPrompt.batchProgress, { first: index + 1, last: index + 1, total: slots.length });
-      let detail = detailBatch(await chat(instruction, label), [page])?.[0];
-      if (!detail) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.detailsIncomplete));
-      const issues = continuumDetailFormatIssues(detail.text, duration);
+      const raw = await chat(instruction, label);
+      let detail = singleDetailText(raw, page);
+      const issues = detail ? continuumDetailFormatIssues(detail, duration) : ["Return the single prompt in plain text using the three requested headings."];
       if (issues.length) {
-        const correction = `Correct the following formatting issues without shortening the cinematic detail or changing actions and timing within the shot.\n${issues.join("\n")}\nDRAFT:\n${JSON.stringify(detail)}`;
-        detail = detailBatch(await chat(`${instruction}\n\n${correction}`, label), [page])?.[0];
-        if (!detail || continuumDetailFormatIssues(detail.text, duration).length) {
+        const correction = `Correct the following formatting issues without shortening the cinematic detail or changing actions and timing within the shot.\n${issues.join("\n")}\nDRAFT:\n${detail ?? raw.slice(0, 24000)}`;
+        detail = singleDetailText(await chat(`${instruction}\n\n${correction}`, label), page);
+        if (!detail || continuumDetailFormatIssues(detail, duration).length) {
           throw new StrataPromptValidationError(t(uiKeys.strataPrompt.continuumDetailFormat));
         }
       }
-      result.segments.push({ ...detail, outline: outlineFor(page) });
+      if (!detail) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.detailsIncomplete));
+      const segment = { pageId: page.pageId, text: detail, outline: outlineFor(page) };
+      result.segments.push(segment);
+      progress("generating", null, label, { scriptId: planRequest.scriptId, revision: planRequest.revision, segment });
     }
     progress("validating", null, t(uiKeys.strataPrompt.movieValidating));
     const encoded = JSON.stringify(result);
     parseLongVideoPromptResult(encoded, planRequest);
     return encoded;
   }
-  const planned = await chat(`${continuumPlannerInstruction}\nSOURCE:\n${source}\nTIME WINDOWS (relative to requested new movie portion):\n${JSON.stringify(slots)}`, t(uiKeys.strataPrompt.moviePlanning));
+  const planned = await chatJson(`${continuumPlannerInstruction}\nSOURCE:\n${source}\nTIME WINDOWS (relative to requested new movie portion):\n${JSON.stringify(slots)}`, t(uiKeys.strataPrompt.moviePlanning));
   const plannedValue = planned as { summary: string; segments: Array<{ pageId: string; outline: string }> };
   if (!plannedValue || !validText(plannedValue.summary, 16000) || !Array.isArray(plannedValue.segments) || plannedValue.segments.length !== slots.length ||
       plannedValue.segments.some((p, index) => p?.pageId !== slots[index]!.pageId || !validText(p.outline))) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.planIncomplete));
@@ -107,7 +121,7 @@ export async function enhanceLongVideoWithStrata(request: EnhanceRequest, settin
     ...(!planRequest.targetPageId && !planRequest.brief.locked ? { brief: plannedValue.summary } : {}), segments: [] };
   for (let offset = 0; offset < targets.length; offset += 3) {
     const batch = targets.slice(offset, offset + 3);
-    const raw = await chat(`${continuumDetailInstruction(planRequest.layout.chunkSeconds)}\nSOURCE:\n${source}\nCOMPLETE PLAN:\n${JSON.stringify(plannedValue)}\nMOST RECENT ADOPTED DETAIL:\n${JSON.stringify(result.segments.at(-1) ?? null)}\nREQUESTED PAGES:\n${JSON.stringify(batch.map(p => ({ ...p, slot: slots.find(s => s.pageId === p.pageId) })))}`, t(uiKeys.strataPrompt.batchProgress, { first: offset + 1, last: Math.min(offset + 3, targets.length), total: targets.length })) as { segments: Array<{ pageId: string; text: string }> };
+    const raw = await chatJson(`${continuumDetailInstruction(planRequest.layout.chunkSeconds)}\nSOURCE:\n${source}\nCOMPLETE PLAN:\n${JSON.stringify(plannedValue)}\nMOST RECENT ADOPTED DETAIL:\n${JSON.stringify(result.segments.at(-1) ?? null)}\nREQUESTED PAGES:\n${JSON.stringify(batch.map(p => ({ ...p, slot: slots.find(s => s.pageId === p.pageId) })))}`, t(uiKeys.strataPrompt.batchProgress, { first: offset + 1, last: Math.min(offset + 3, targets.length), total: targets.length })) as { segments: Array<{ pageId: string; text: string }> };
     const details = detailBatch(raw, batch);
     if (!details) throw new StrataPromptValidationError(t(uiKeys.strataPrompt.detailsIncomplete));
     result.segments.push(...details.map(p => ({ ...p, outline: plannedValue.segments.find(s => s.pageId === p.pageId)!.outline })));

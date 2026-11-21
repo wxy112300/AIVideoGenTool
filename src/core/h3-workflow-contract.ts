@@ -1000,6 +1000,9 @@ function comboOptions(spec: unknown): string[] {
   return [];
 }
 
+/** Core V1/V3 schema access shared by application workflow builders. */
+export { inputSpecFor as comfyNodeInputSpec, comboOptions as comfyComboOptions };
+
 function isStringComboSpec(spec: unknown): boolean {
   return Array.isArray(spec) &&
     Array.isArray(spec[0]) &&

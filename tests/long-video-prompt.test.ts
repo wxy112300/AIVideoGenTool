@@ -60,14 +60,33 @@ it("uses one allocation call and then one detailed call per edited segment witho
   let calls = 0;
   const writer = { chat: vi.fn(async (_body) => JSON.stringify({ segments: [{ pageId: expand.segments[calls]!.pageId,
     text: `Detailed shot ${++calls}`, overall_soundscape: "Street traffic.", non_diegetic_music: "N/A" }] })) };
-  const finished = applyLongVideoPromptResult(edited, expand, await send(expand, writer), id);
+  const progress = vi.fn();
+  const finished = applyLongVideoPromptResult(edited, expand, await enhanceLongVideoWithStrata({
+    ...fixture().request, h3PromptPreset: "detailed-cinematic", longVideo: expand
+  }, settings, writer, new AbortController().signal, progress, async () => {}), id);
   expect(writer.chat).toHaveBeenCalledTimes(2);
   expect(JSON.stringify(writer.chat.mock.calls[0])).toContain("Her own motorbike rolls forward.");
   expect(JSON.stringify(writer.chat.mock.calls[0])).toContain("approximately 700 grounded words");
   expect(JSON.stringify(writer.chat.mock.calls[1])).toContain("Detailed shot 1");
+  expect(progress.mock.calls.flatMap(call => call[3] ? [call[3].segment.pageId] : [])).toEqual(expand.segments.map(page => page.pageId));
   expect(compileLongVideoPrompts(freezeLongVideoScript(finished))).toEqual([1, 2].map(i =>
     `integrated_multimodal_description: Detailed shot ${i}\n\noverall_soundscape: Street traffic.\n\nnon_diegetic_music: N/A`));
   expect(JSON.stringify(writer.chat.mock.calls)).not.toContain("startSeconds");
+});
+it("rewrites malformed JSON as one plain-text scene while preserving quotation marks", async () => {
+  const { plan, request } = fixture();
+  const pageId = plan.segments[0]!.pageId;
+  const targeted = { ...plan, operation: "expand" as const, targetPageId: pageId,
+    segments: plan.segments.map(page => ({ ...page, text: "The rider says to wait." })) };
+  const text = 'integrated_multimodal_description: [Shot 1] The rider says "Wait."\noverall_soundscape: Wind.\nnon_diegetic_music: N/A';
+  const progress = vi.fn();
+  const owner = { chat: vi.fn(async (_body) => text).mockResolvedValueOnce('{"segments":[{"text":"The rider says "Wait.""') };
+  const raw = await enhanceLongVideoWithStrata({ ...request, longVideo: targeted }, createDefaultState().settings, owner,
+    new AbortController().signal, progress, async () => {});
+  expect(owner.chat).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(owner.chat.mock.calls[0])).toContain("Return this single page as plain text");
+  expect(parseLongVideoPromptResult(raw, targeted).segments[0]).toMatchObject({ pageId, text });
+  expect(progress.mock.calls.filter(call => call[3])).toHaveLength(1);
 });
 it("corrects an absolute time cue and missing audio fields before adopting a segment", async () => {
   let n = 0;

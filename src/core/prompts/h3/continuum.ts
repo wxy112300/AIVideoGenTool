@@ -14,7 +14,7 @@ export function compileContinuumDetailText(page: { text: string; overall_soundsc
 }
 
 export const continuumDirectorContract = [
-  "You are a visual storyteller writing a complete short drama for MiniMax H3 Continuum. Return only the requested JSON, never Markdown or private reasoning.",
+  "You are a visual storyteller writing a complete short drama for MiniMax H3 Continuum. Return only the requested format, without Markdown or private reasoning.",
   "A sentence plus the first image is enough creative direction: develop a specific protagonist, an observable objective, an obstacle, an escalating attempt, a consequential reversal and a resolved ending. Infer a coherent story when details are absent; explicit user events, tone, dialogue and outcomes take priority. A minute of runtime is narrative development, not a longer establishing shot.",
   "The image supplies the actual opening frame, appearance, geography and screen directions. Distinguish observed anchors from invented story developments. Reuse visible people and objects as cast and plot affordances. Introduce necessary new props through an observable arrival or reveal; keep a small legible active cast rather than making every background figure a protagonist.",
   "One Run carries preceding audiovisual latent state. Chunk/page boundaries are execution windows, not automatic cuts or a return to the reference image. Continue the pose, momentum, camera position, object ownership and emotional state actually reached. An authored cut is allowed when required by the user/story, not merely because another chunk starts; preserve screen direction and geography through any cut.",
@@ -41,7 +41,7 @@ export const continuumAllocationInstruction = [
 ].join("\n");
 
 export const continuumApprovedBeatsInstruction =
-  "The selected page text is the author's approved action allocation or existing prompt. Preserve its actors, objects, order and outcome. Take the previous prompt as boundary context only, and reset the clock to zero. Use natural timing unless explicit cues help; never carry the previous clock into the new page. Return text plus the sibling fields overall_soundscape and non_diegetic_music. Use N/A for any intentionally absent score. Develop useful execution detail in the requested page.";
+  "The selected page text is the author's approved action allocation or existing prompt. Preserve its actors, objects, order and outcome. Take the previous prompt as boundary context only, and reset the clock to zero. Use natural timing unless explicit cues help; never carry the previous clock into the new page. Develop useful execution detail in the requested page.";
 
 export function continuumDetailFormatIssues(text: string, duration: number): string[] {
   const headings = [...text.matchAll(/^[ \t]*(integrated_multimodal_description|overall_soundscape|non_diegetic_music)[ \t]*:/gimu)];
@@ -59,7 +59,7 @@ export function continuumDetailFormatIssues(text: string, duration: number): str
   return issues;
 }
 
-export function continuumDetailInstruction(chunkSeconds: number): string {
+export function continuumDetailInstruction(chunkSeconds: number, singlePageText = false): string {
   return [
     `Write directly usable English H3 sampling prompts ONLY for the requested page IDs. Each page covers ${chunkSeconds} seconds using LOCAL times 0–${chunkSeconds}s; supplied absolute windows are planning coordinates. Continuum List mode receives one string per chunk, so never paste absolute whole-film Timeline headers or the entire film into each page.`,
     "The complete plan, locked neighbours and original constraints remain binding. Use the previous adopted detail as the actual boundary, not merely the first-frame image. Within a batch, the next prompt starts at the state reached by the preceding prompt. A continuing page should spend its words on the next event, not recap completed events.",
@@ -67,6 +67,8 @@ export function continuumDetailInstruction(chunkSeconds: number): string {
     "Use H3 body fields in this order: integrated_multimodal_description: [Shot 1] ...; overall_soundscape: ...; non_diegetic_music: N/A (unless requested). Describe observable action, reaction, camera and any dialogue together in the main field. Derive style from the image. First-page composition anchors the image once; later pages anchor the carried state. Do not issue a fresh Picture 1/first-frame alignment command on every page or invent unsupplied reference tags.",
     "A continuous take remains [Shot 1] even when actions change. Use local time anchors naturally within it when useful. Only a genuine authored cut starts [Shot 2] At 00:SS.mmm, the camera cuts to ...; cut times increase inside this page. A page boundary alone is never a cut. Audio fields describe ambience/SFX and score separately; spoken words remain in the main field with their speaker.",
     "Include the meaningful beginning, event and exit state of this window, with enough concrete action detail for its duration. Do not add reference inventory or extra incidents just to fill words. End the last page in the planned payoff/aftermath, not a promise of another scene.",
-    'Return exactly {"segments":[{"pageId":"exact requested ID","text":"complete sampling prompt"}]} in requested order, with no extra pages.'
+    singlePageText
+      ? "Return this single page as plain text. Start with integrated_multimodal_description:, then put overall_soundscape: and non_diegetic_music: on separate lines. Use regular paragraphs, dialogue and quotes as needed. Do not wrap the answer in JSON, quotes or a code block."
+      : 'Return exactly {"segments":[{"pageId":"exact requested ID","text":"complete sampling prompt"}]} in requested order, with no extra pages.'
   ].join("\n");
 }

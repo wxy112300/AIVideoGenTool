@@ -4,6 +4,7 @@ import { createTranslator, type Translate } from "./i18n.js";
 import { h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } from "./h3-refiner.js";
 import { h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae } from "./catalog/models/minimax_h3_shared.js";
 import { buildQwenImage21AnchorWorkflow } from "./image-workflow/qwen-image-2-1.js";
+import { comfyComboOptions, comfyNodeInputSpec } from "./h3-workflow-contract.js";
 
 export const TESSERA_ID = "minimax_h3_tessera";
 export const TESSERA_RECIPE = "tessera-ref2va-taomate-lms-v1";
@@ -75,8 +76,7 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
   const info = objectInfo as Record<string, { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } }>;
   const missing = TESSERA_NODES.filter(id => !info?.[id]);
   if (missing.length) throw new Error(t(uiKeys.serviceChecks.tesseraNodes, { nodes: missing.join("、") }));
-  const spec = info.ModelAttentionBackend?.input?.required?.attention;
-  const choices = Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : [];
+  const choices = comfyComboOptions(comfyNodeInputSpec(info.ModelAttentionBackend, "attention"));
   const attention = choices.includes("comfy kitchen attention") ? "comfy kitchen attention" : "pytorch attention";
   if (!choices.includes(attention)) throw new Error(t(uiKeys.serviceChecks.tesseraAttention));
   const graph: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {};

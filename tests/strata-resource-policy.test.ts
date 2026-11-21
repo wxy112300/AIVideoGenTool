@@ -34,6 +34,14 @@ describe("Strata available-resource admission", () => {
     expect(() => planStrataResources({ ...sample(33.7, 60), commitAvailableBytes: null }, 5120, options)).toThrow("无法确认");
     expect(() => planStrataResources(sample(33.7, 60), 5120, { ...options, commitTrial: true })).toThrow("完整专家驻留");
   });
+  it("separates the native file-read RAM allowance from engine residency and Windows commit reserves", () => {
+    const options = { allowFileReadFallback: true, nativeFileReadAdmission: true };
+    expect(planStrataResources(sample(5.6, 21, 7.5), 5120, options)).toMatchObject({
+      hostMode: "resident", requiredMemoryBytes: 4 * GiB, requiredCommitBytes: 6 * GiB, headroomGiB: 6
+    });
+    expect(() => planStrataResources(sample(3.9, 21), 5120, options)).toThrow("文件回读启动预留");
+    expect(() => planStrataResources(sample(5.6, 5.9), 5120, options)).toThrow("提交余量");
+  });
   it("budgets Q4 independently while retaining physical/commit/VRAM protections", () => {
     const options = { modelId: STRATA_Q4_MODEL_ID, allowFileReadFallback: true };
     const full = planStrataResources(sample(100,130),5120,options);

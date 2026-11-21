@@ -227,6 +227,15 @@ describe("Strata product prompt integration (synthetic ports, no GPU)", () => {
     expect(f.progress.at(-1)?.status).toBe("completed");
     await f.service.releaseForUser();
   });
+  it.each(["start", "enhance"] as const)("keeps the backend load failure after cleanup during %s", async action => {
+    const f = fixture();
+    const reason = "Strata load failed (503): no VRAM for the expert cache";
+    f.owner.ensurePromptReady.mockRejectedValueOnce(new Error(reason));
+    if (action === "start") expect(await f.service.start()).toMatchObject({ ok: false, message: reason });
+    else await expect(f.service.enhance(request)).rejects.toThrow(reason);
+    expect(f.manager.snapshot()).toMatchObject({ model: { phase: "unloaded" },
+      operation: { terminalStatus: "failed", terminalReason: reason } });
+  });
   it("can cancel first-use preparation through the existing cancel API", async () => {
     const f = fixture();
     f.owner.ensurePromptReady.mockImplementationOnce(async (_settings, _policy, options) => {

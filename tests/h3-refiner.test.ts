@@ -24,6 +24,11 @@ function fixture(targetHeight: 1080 | 1440 | 2160 = 2160) {
 }
 
 describe("Kijai H3 Refiner Upscale", () => {
+  it("uses the installed V3 COMBO options for dense attention", () => {
+    const { task, info } = fixture();
+    info.ModelAttentionBackend = { input: { required: { attention: ["COMBO", { options: ["pytorch attention", "comfy kitchen attention"] }] } } };
+    expect(buildH3RefinerWorkflow(task, "source.mp4", info).attention!.inputs.attention).toBe("comfy kitchen attention");
+  });
   it("publishes a derived version with its source and an independent recipe snapshot", () => {
     const { state, task } = fixture();
     persistVideoHistoryResult(state, { task, completedAt: "2026-10-29T12:00:00Z", promptId: "p-refiner",

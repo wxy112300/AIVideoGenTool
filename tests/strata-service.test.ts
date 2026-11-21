@@ -556,6 +556,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     for (const name of ["monitor.html", "monitor.js", "tokens.css"]) await fs.writeFile(path.join(root, "terminal", "serve", "web", name), "fixture");
     const result = await prepareStrataLaunch(settings, config);
     expect(result.executable).toBe(path.join(root, ".venv", "Scripts", "python.exe"));
+    expect(result).toMatchObject({ installDirectory: root, cwd: path.join(root, "terminal") });
     expect(result.args).toEqual(["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", config, "--host", "127.0.0.1", "--port", "43127", "--lazy", "--api-monitor", "--api-key", result.apiKey]);
     expect(result.apiKey).toHaveLength(64);
     expect((await prepareStrataLaunch(settings, config)).apiKey).not.toBe(result.apiKey);
@@ -565,7 +566,8 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
         commitAvailableBytes:100*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3})});
       const derived=JSON.parse(await fs.readFile(session.temporaryConfig!,"utf8"));
       expect(derived.args.includes("--resident-experts")).toBe(mode==="resident");
-      expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe(process.platform === "win32" ? "7680" : "5120");
+      expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe("5120");
+      expect(session.env?.STRATA_VRAM_FREE).toBe(process.platform === "win32" ? "device" : undefined);
       expect(derived.args[derived.args.indexOf("--expert-cache")+1]).toBe("auto");
       expect(session.env).toMatchObject({STRATA_RESIDENT_HEADROOM_GIB:"6"});
       expect(session.allowResidentFallback).toBe(mode==="resident");
@@ -578,6 +580,20 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       commitAvailableBytes:45*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3})});
     expect(fallback.allowResidentFallback).toBe(true);expect(fallback.resourcePlan!.requiredCommitBytes).toBe(6*1024**3);
     await fs.unlink(fallback.temporaryConfig!);
+    const tight = await prepareStrataLaunch(settings, config, { adaptive: true, readResources: async () => ({
+      memoryAvailableBytes: (process.platform === "win32" ? 5.6 : 10) * 1024**3, commitAvailableBytes: 26 * 1024**3,
+      vramAvailableBytes: 7.5 * 1024**3, vramTotalBytes: 24 * 1024**3
+    }) });
+    const tightConfig = JSON.parse(await fs.readFile(tight.temporaryConfig!, "utf8"));
+    if (process.platform === "win32") {
+      expect(tight).toMatchObject({ nativeVramReserve: true, env: { STRATA_VRAM_FREE: "device" } });
+      expect(tight.resourcePlan).toMatchObject({ requiredMemoryBytes: 4 * 1024**3, requiredCommitBytes: 6 * 1024**3 });
+      expect(tightConfig.args).not.toContain("--vram-reserve-mib");
+      expect(tightConfig.vision.gpu).toBe(false);
+      expect(tightConfig.args[tightConfig.args.indexOf("--max-context") + 1]).toBe("32768");
+    }
+    expect(await fs.readFile(config, "utf8")).toBe(before);
+    await fs.unlink(tight.temporaryConfig!);
     await fs.rm(config);
     await expect(prepareStrataLaunch(settings, config)).rejects.toThrow("启动文件缺失");
   });

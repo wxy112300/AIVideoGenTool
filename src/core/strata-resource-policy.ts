@@ -30,7 +30,7 @@ export interface StrataResourcePlan {
  * Reserve additionally covers the GPU image encoder, WDDM reporting error and workspace.
  */
 export function planStrataResources(resources: StrataResources, requestedReserveMiB: number,
-  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number; accountForOccupiedVram?: boolean } = {}, t: Translate = createTranslator().t): StrataResourcePlan {
+  options: { commitTrial?: boolean; allowFileReadFallback?: boolean; modelId?: string; contextTokens?: number; accountForOccupiedVram?: boolean; nativeFileReadAdmission?: boolean } = {}, t: Translate = createTranslator().t): StrataResourcePlan {
   const { memoryAvailableBytes: ram, commitAvailableBytes: commit, vramAvailableBytes: free, vramTotalBytes: total } = resources;
   if (![ram, commit, free, total, requestedReserveMiB].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
     || !total || free! > total) throw new Error(t(uiKeys.strataCore.metricsUnknown));
@@ -93,10 +93,11 @@ export function planStrataResources(resources: StrataResources, requestedReserve
   const fileReadAllowed = options.allowFileReadFallback === true && !options.commitTrial && hostMode === "resident";
   // --resident-experts is upstream's soft mode: it checks the whole complement before
   // allocating, then keeps only what fits after its headroom and reads misses from disk.
-  // Use the configured engine headroom, not a full-complement or adapter-sized
-  // hard gate. Upstream #403/#467 clamps residency and falls back to mapped files.
-  // The larger estimates below are diagnostics, not an allocation/peak guarantee.
-  const requiredMemoryBytes = fileReadAllowed ? headroomGiB * GiB : estimatedResidentMemoryBytes;
+  // The resident target controls how much the engine keeps in RAM. Native
+  // file readback can start with the upstream 4 GiB host allowance and read
+  // misses from disk even when the separate resident target is 6 GiB.
+  const fileReadMemoryGiB = options.nativeFileReadAdmission ? 4 : headroomGiB;
+  const requiredMemoryBytes = fileReadAllowed ? fileReadMemoryGiB * GiB : estimatedResidentMemoryBytes;
   if (available < requiredMemoryBytes) throw new Error(fileReadAllowed
     ? t(uiKeys.strataCore.fileReadMemory, { required: (requiredMemoryBytes / GiB).toFixed(1), available: (available / GiB).toFixed(1) })
     : t(uiKeys.strataCore.fullMemory, { required: (requiredMemoryBytes / GiB).toFixed(1), available: (available / GiB).toFixed(1) }));

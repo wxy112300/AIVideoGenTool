@@ -293,15 +293,18 @@ export class ApplicationRuntime {
       beforeInference: async () => {
         const settings = this.deps.store.get().settings;
         await promptService.releaseComfyRuntime(settings);
+        const isLocal = this.deps.lifecycle.isLocalComfyUrl(settings.comfyUrl);
+        const endpoint = new URL(settings.comfyUrl);
+        const port = Number(endpoint.port || (endpoint.protocol === "https:" ? 443 : 80));
+        const offline = async () => isLocal && this.deps.runtimeState.snapshot().ownership !== "app"
+          && !await isLocalPortInUse(port);
+        if (await offline()) return;
         // An HTTP failure is not proof that a retained ComfyUI model released its GPU resources.
         try { await this.deps.lifecycle.freeMemory(settings); }
         catch (error) {
-          const facts = this.deps.runtimeState.snapshot();
-          const endpoint = new URL(settings.comfyUrl);
           // A genuinely absent local listener with no app-owned process is safe offline.
           // A failed request to a running/owned/remote service is not proof of GPU release.
-          if (!this.deps.lifecycle.isLocalComfyUrl(settings.comfyUrl) || facts.ownership === "app"
-            || await isLocalPortInUse(Number(endpoint.port || (endpoint.protocol === "https:" ? 443 : 80)))) throw error;
+          if (!await offline()) throw error;
         }
       },
       isResourcesBusy: (signal) => Boolean(

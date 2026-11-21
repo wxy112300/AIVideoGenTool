@@ -29,6 +29,14 @@ function setup() {
 }
 
 describe("Tessera with optional Qwen anchor", () => {
+  it.each([
+    ["COMBO", { options: ["pytorch attention", "comfy kitchen attention"], default: "pytorch attention" }],
+    { type: "COMBO", options: ["pytorch attention"] }
+  ].map(spec => ({ spec })))("accepts real V3 attention schema rather than rejecting a valid backend", ({ spec }) => {
+    const f = setup();
+    f.info.ModelAttentionBackend = { input: { required: { model: ["MODEL"], attention: spec } } };
+    expect(buildTesseraWorkflow(f.task, "source.mp4", f.info).attention!.inputs.attention).toMatch(/attention/);
+  });
   it("requires complete compatible components, while offline files still enable the option", () => {
     const f = setup();
     expect(tesseraAnchorModels(f.environment)).toMatchObject([{ modelId: f.qwen.id, model: "qwen_image_2.1_turbo_int8_convrot.safetensors" }]);
@@ -93,7 +101,8 @@ describe("Tessera with optional Qwen anchor", () => {
     let dialog: UpscaleDialogState | null = { assetId: "a", versionId: "v", modelId: TESSERA_ID, targetHeight: 2160, tileMode: "safe" };
     const root = document.createElement("div"); document.body.append(root);
     const enqueueUpscale = vi.fn(async () => f.state);
-    const context = { application: { enqueueUpscale }, getState: () => f.state, t: translator.t, notify: vi.fn(), requestRender: vi.fn() } as unknown as RendererContext;
+    const updateUpscaleTask = vi.fn(async () => f.state);
+    const context = { application: { enqueueUpscale, updateUpscaleTask }, getState: () => f.state, t: translator.t, notify: vi.fn(), requestRender: vi.fn() } as unknown as RendererContext;
     let cleanup = () => {};
     const render = () => {
       cleanup();
@@ -114,6 +123,13 @@ describe("Tessera with optional Qwen anchor", () => {
       root.querySelector<HTMLButtonElement>("#enqueue-upscale")!.click();
       await vi.waitFor(() => expect(enqueueUpscale).toHaveBeenCalledOnce());
       expect(enqueueUpscale.mock.calls[0]![0]).toMatchObject({ modelId: TESSERA_ID, targetHeight: 2160, tesseraAnchor: { enabled: true, modelId: f.qwen.id } });
+      dialog = { assetId: "a", versionId: "v", modelId: TESSERA_ID, targetHeight: 2160, tileMode: "safe", replaceTaskId: "failed-task", tesseraAnchorEnabled: true, tesseraAnchorModelId: f.qwen.id };
+      render();
+      expect(root.querySelector<HTMLInputElement>("#upscale-tessera-anchor")!.disabled).toBe(false);
+      root.querySelector<HTMLInputElement>("#upscale-tessera-anchor")!.click();
+      root.querySelector<HTMLButtonElement>("#enqueue-upscale")!.click();
+      await vi.waitFor(() => expect(updateUpscaleTask).toHaveBeenCalledOnce());
+      expect(updateUpscaleTask.mock.calls[0]).toMatchObject(["failed-task", { modelId: TESSERA_ID, tesseraAnchor: { enabled: false } }]);
     } finally { cleanup(); root.remove(); }
   });
 });

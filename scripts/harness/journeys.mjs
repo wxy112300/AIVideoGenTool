@@ -25,7 +25,7 @@ export const journeys = [
     id: "create-video", title: "选模型 → 首尾帧 / 关键帧 / R2V → 提示词 → 入队",
     section: "create-video",
     paths: ["src/renderer/pages/create/coordinator.ts", "src/renderer/pages/create/view-model.ts", "src/renderer/pages/create/page-controller.ts", "src/core/video-draft-normalization.ts", "electron/queue-enqueue.ts"],
-    tests: ["tests/user-journeys.test.ts", "tests/h3-timed-guides.test.ts", "tests/h3-faceswap.test.ts", "tests/video-draft-normalization.test.ts", "tests/video-policy.test.ts", "tests/queue-services.test.ts", "tests/fasth3-omni.test.ts", "tests/fasth3-omni-journey.test.ts", "tests/input-dimensions.test.ts", "tests/long-video-editor.test.ts", "tests/long-video-enqueue.test.ts", "tests/long-video-queue.test.ts", "tests/long-video-media.test.ts"],
+    tests: ["tests/user-journeys.test.ts", "tests/h3-timed-guides.test.ts", "tests/h3-faceswap.test.ts", "tests/video-draft-normalization.test.ts", "tests/video-policy.test.ts", "tests/queue-services.test.ts", "tests/fasth3-omni.test.ts", "tests/fasth3-omni-journey.test.ts", "tests/input-dimensions.test.ts", "tests/long-video-editor.test.ts", "tests/long-video-enhancement-ui.test.ts", "tests/long-video-enqueue.test.ts", "tests/long-video-queue.test.ts", "tests/long-video-media.test.ts"],
     checks: ["FL2VA: T2VA/I2VA/L2VA/FL2VA 输入转换；R2V 空槽阻塞与补齐恢复", "FL2VA 关键帧预览尺寸一致；R2V 开关、卡片秒数、越界恢复与 Add Guide 图", "真实 DOM 按钮启用并点击；新增 task ID，修改 draft 不改变 task", "H3请求时长15.1无警告、严格>15.1显示；三语言hover/键盘与增量显隐保留焦点，警告不阻塞真实按钮", "AV 保存、Spectrum/LoRA、尺寸/FPS/时长分别检查 UI 与快照", "R2V跟随Picture 1的竖图/方图比例；显式比例及Motion Context保留源视频；Omni官方VSA10/Kitchen图与实际sparse producer日志"]
   },
   {
@@ -53,7 +53,7 @@ export const journeys = [
     id: "upscale", title: "成功视频版本 → 放大对话框 → 独立队列 → 新版本",
     section: "upscale",
     paths: ["src/renderer/shell/upscale-controller.ts", "src/renderer/shell/secondary-dialogs.ts", "src/core/upscale.ts", "src/core/tessera.ts", "src/core/h3-refiner.ts", "comfy_nodes/LocalVideoStudio-H3/refiner.py", "electron/queue-enqueue.ts", "electron/queue-executor.ts"],
-    tests: ["tests/upscale-controller.test.ts", "tests/upscale.test.ts", "tests/tessera.test.ts", "tests/h3-refiner.test.ts", "tests/secondary-dialogs.test.ts", "tests/queue-services.test.ts", "tests/queue-executor.test.ts", "tests/queue-history.test.ts"],
+    tests: ["tests/upscale-controller.test.ts", "tests/upscale.test.ts", "tests/tessera.test.ts", "tests/tessera-recovery.test.ts", "tests/h3-refiner.test.ts", "tests/secondary-dialogs.test.ts", "tests/queue-services.test.ts", "tests/queue-executor.test.ts", "tests/queue-history.test.ts"],
     checks: ["源 asset/version 固定；换 provider 同步选项和资格；不能把 Create 1080p 当此流程", "H3 原生 AV 路径与 SeedVR2 像素路径分别验证；当前可选 provider 以 catalog/对话框为准", "分段进度、重启 checkpoint、合并/清理与输出可播放性需运行证据", "最小真实路线：隔离 --asset-source-state → upscale-smoke.mjs → 应用启动 ComfyUI/队列 → verify-video-smoke → --audit/重启；具体命令见 runbook"]
   },
   {

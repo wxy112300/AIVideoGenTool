@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import type { UpscaleQueueTask } from "../src/types.js";
+import type { UpscaleTaskEditRequest } from "../src/types.js";
 import {
   QueueMutationService,
   type QueueMutationServiceDependencies
@@ -23,12 +23,7 @@ export function registerQueueMutationIpc(deps: QueueMutationIpcDependencies): vo
     async (
       _event,
       taskId: string,
-      patch: Pick<
-        UpscaleQueueTask,
-        "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
-        "targetScale" | "dlss5" | "aetherScale" | "modelId" | "workflowPath" |
-        "tileMode" | "faceRestore" | "outputFilename"
-      >
+      patch: UpscaleTaskEditRequest
     ) => service.updateUpscale(taskId, patch)
   );
   ipc.handle("queue:remove", async (_event, taskId: string) => service.remove(taskId));

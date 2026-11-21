@@ -100,30 +100,29 @@ export class StrataRuntimeOwner {
         options.onLog?.(this.t(uiKeys.strataPreparation.gpuRelease));
         await this.deps.beforeInference?.();
         signal.throwIfAborted();
-        // Count the unchanged full request before releasing ComfyUI. Only then measure the
-        // resources we actually own; restart the CPU-only lazy server with a session overlay.
+        // Release the tokenizer-only process before measuring the budget for the model.
+        await this.service.stop();
         options.onLog?.(this.t(uiKeys.strataPreparation.resourcesCheck));
-        const adaptivePlan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true });
-        if (adaptivePlan.resourcePlan) {
-          const resourcePlan = adaptivePlan.resourcePlan;
-          await this.service.stop();
-          plan = adaptivePlan;
-          if (plan.modelId !== settings.promptModelId) throw new Error(this.t(uiKeys.strataPreparation.adaptiveMismatch));
-          options.onLog?.(this.t(uiKeys.strataPreparation.adaptive, { mode: plan.resourcePlan!.hostMode === "arena" ? this.t(uiKeys.strataPreparation.arena) : plan.resourcePlan!.residentBudgetGiB !== undefined ? this.t(uiKeys.strataPreparation.budgetResident) : this.t(uiKeys.strataPreparation.outsideGpu), model: settings.promptModelId, budget: plan.resourcePlan!.residentBudgetGiB ?? "none", available: (plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1), reserve: plan.resourcePlan!.vramReserveMiB }));
+        plan = await (this.deps.prepareLaunch ?? prepareStrataLaunch)(settings, configPath, { adaptive: true, signal });
+        if (plan.modelId !== settings.promptModelId) throw new Error(this.t(uiKeys.strataPreparation.adaptiveMismatch));
+        if (plan.resourcePlan) {
+          const resourcePlan = plan.resourcePlan;
+          options.onLog?.(this.t(uiKeys.strataPreparation.adaptive, { mode: plan.resourcePlan!.hostMode === "arena" ? this.t(uiKeys.strataPreparation.arena) : plan.resourcePlan!.residentBudgetGiB !== undefined ? this.t(uiKeys.strataPreparation.budgetResident) : this.t(uiKeys.strataPreparation.outsideGpu), model: settings.promptModelId, budget: plan.resourcePlan!.residentBudgetGiB ?? "none", available: (plan.resourcePlan!.availableMemoryBytes / 1024 ** 3).toFixed(1), reserve: plan.nativeVramReserve ? "auto" : resourcePlan.vramReserveMiB }));
           options.onLog?.(this.t(uiKeys.strataPreparation.admission, { commit: (plan.resourcePlan!.requiredCommitBytes / 1024 ** 3).toFixed(1), fallback: String(plan.allowResidentFallback === true) }));
           if (resourcePlan.estimatedCommitBytes !== undefined && plan.allowResidentFallback) options.onLog?.(this.t(uiKeys.strataPreparation.commitEstimate, { size: (resourcePlan.estimatedCommitBytes / 1024 ** 3).toFixed(1) }));
           if (resourcePlan.estimatedResidentMemoryBytes !== undefined) {
             options.onLog?.(this.t(uiKeys.strataPreparation.residentTarget, { target: (resourcePlan.estimatedResidentMemoryBytes / 1024 ** 3).toFixed(1), reserve: (resourcePlan.requiredMemoryBytes / 1024 ** 3).toFixed(1), policy: plan.allowResidentFallback ? this.t(uiKeys.strataPreparation.fallbackPolicy) : this.t(uiKeys.strataPreparation.fullPolicy) }));
           }
           options.onLog?.(this.t(uiKeys.strataPreparation.fileRelease, { value: plan.env?.STRATA_FILE_RELEASE ?? "unset" }));
-          await this.service.start(plan, signal);
         }
+        await this.service.start(plan, signal);
         options.onStage?.("loading-model");
         options.onLog?.(this.t(uiKeys.strataPreparation.loading));
         const state = await this.service.load(signal);
         options.onLog?.(this.t(uiKeys.strataPreparation.loaded, { mode: state.hostMemoryMode ?? "unknown", context: policy.maxContext }));
         options.onLog?.(`uncensored: engineConfirmed=${state.uncensored?.vectorLoaded === true} vector=${state.uncensored?.vectorId ?? "none"}; nextRequest=${wantsUncensored}`);
-        this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath; this.installDirectory = plan.cwd;
+        this.modelId = settings.promptModelId; this.selectionKey = key; this.configPath = configPath;
+        this.installDirectory = plan.installDirectory ?? plan.cwd;
         return state;
       } catch (error) { await this.service.stop(); throw error; }
     }, options.signal);

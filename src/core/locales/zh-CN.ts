@@ -2532,7 +2532,6 @@ export const zhCNCatalog = {
   [uiKeys.create.editor.allocateStoryInput]: "先填写故事或分段情节",
   [uiKeys.create.editor.expandWhole]: "整片扩写",
   [uiKeys.create.editor.allocateAndExpand]: "自动规划并扩写",
-  [uiKeys.create.editor.blockAllocation]: "先扩写分段大纲，再生成视频。已锁定的大纲需要先解锁。",
   [uiKeys.create.markup.title]: "标记 Picture {picture}",
   [uiKeys.create.markup.maskTitle]: "绘制移除区域",
   [uiKeys.create.markup.cancel]: "取消",

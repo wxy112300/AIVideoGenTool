@@ -1,6 +1,7 @@
 import { createTranslator, type Translate } from "./i18n.js";
 import { uiKeys } from "./i18n-keys.js";
 import type { UpscaleQueueTask } from "../types.js";
+import { comfyComboOptions, comfyNodeInputSpec } from "./h3-workflow-contract.js";
 import { h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LearnedLatentUpscaler } from "./catalog/models/minimax_h3_shared.js";
 
 /** A ComfyUI adaptation, not the NV SoL engine or its complete LMS recipe. */
@@ -100,8 +101,7 @@ export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, o
   if (task.targetWidth !== geometry.outputWidth || task.targetOutputHeight !== geometry.outputHeight) {
     throw new Error(t(uiKeys.serviceChecks.refinerSnapshot));
   }
-  const attentionSpec = info?.ModelAttentionBackend?.input?.required?.attention;
-  const choices = Array.isArray(attentionSpec) && Array.isArray(attentionSpec[0]) ? attentionSpec[0] : [];
+  const choices = comfyComboOptions(comfyNodeInputSpec(info?.ModelAttentionBackend, "attention"));
   const attention = choices.includes("comfy kitchen attention") ? "comfy kitchen attention" : "pytorch attention";
   if (!choices.includes(attention)) throw new Error(t(uiKeys.serviceChecks.refinerAttention));
   type Node = { class_type: string; inputs: Record<string, unknown> };
