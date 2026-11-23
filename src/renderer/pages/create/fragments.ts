@@ -31,6 +31,7 @@ interface H3ReferenceSlotsRenderOptions extends CreateFragmentRenderOptions {
   h3ReferenceRoleLabels: Record<H3ReferenceRole, string>;
   lockedFirstVideo?: boolean;
   showGuideTimes?: boolean;
+  allowEmptySlots?: boolean;
 }
 
 const imageEditPromptInstructions: Array<[string, string]> = [
@@ -85,6 +86,7 @@ export function renderH3ReferenceSlotsMarkup(
       <article class="create-reference-card ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}">
         <div class="create-slot-heading ${options.showGuideTimes && slot.mediaType === "image" ? "has-guide-time" : ""}">
           <span class="create-slot-number">${index + 1}</span><strong>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt;</strong><span class="create-slot-dimensions">${imageDimensionsSuffix(slot).replace(/^ · /u, "")}</span>
+          ${options.allowEmptySlots && !slot.mediaPath.trim() ? `<span class="create-caption" data-reference-incomplete>${t(uiKeys.create.guides.ignoredReference)}</span>` : ""}
           ${options.showGuideTimes && slot.mediaType === "image"
             ? renderH3GuideTime(options, `Picture ${referenceOrdinals.get(slot.id)}`, slot.guideSeconds,
                 `id="h3-reference-guide-time-${escapeHtml(slot.id)}" data-h3-slot-guide-time="${escapeHtml(slot.id)}"`) : ""}

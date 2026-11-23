@@ -6,6 +6,7 @@ import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { compactH3ReferenceOrdinal, compactH3ReferencePrompt, missingH3VideoReference } from "../../src/core/h3-reference.js";
 import { modelCoreVersionBlockReason } from "../../src/core/model-core-requirements.js";
 import { H3_IMAGE_VAE, H3_IMAGE_ENCODERS, H3_IMAGE_W4A8_ID } from "../../src/core/minimax-h3-image-spec.js";
 import { h3VisualQualityKnowledge } from "../../src/core/prompts/h3/visual-quality.js";
@@ -39,6 +40,7 @@ import {
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { h3TokenCountForTask } from "../../src/core/h3-token-count.js";
+import { h3UpscaleHardwareFromStats, h3UpscalePerformanceProfile, isH3PixelRefiner } from "../../src/core/h3-upscale-performance.js";
 import { h3MotionContextSavePrefixForTask } from "../../src/core/h3-motion-context.js";
 import {
   h3LatentSaveModeFor,
@@ -1115,27 +1117,30 @@ export async function submitTask(
       }
     } else if (isMiniMaxH3R2vModel(task.modelId)) {
       const referenceSlots = task.h3ReferenceSlots ?? [];
-      if (!referenceSlots.length || referenceSlots.some((slot) => !slot.mediaPath)) {
-        throw new Error(t(uiKeys.taskSubmission.r2vEmpty));
-      }
-      const imageSlots = referenceSlots.filter((slot) => slot.mediaType === "image");
-      const videoSlots = referenceSlots.filter((slot) => slot.mediaType === "video");
-      if (imageSlots.length > 9 || videoSlots.length > 3 || referenceSlots.length > 12) {
+      const invalidReference = missingH3VideoReference(task.prompt, referenceSlots);
+      if (invalidReference) throw new Error(t(uiKeys.create.guides.invalidReference, { reference: invalidReference }));
+      const imagePaths = referenceSlots.filter(slot => slot.mediaType === "image").map(slot => slot.mediaPath.trim());
+      const videoPaths = referenceSlots.filter(slot => slot.mediaType === "video").map(slot => slot.mediaPath.trim());
+      const images = imagePaths.filter(Boolean);
+      const videos = videoPaths.filter(Boolean);
+      if (images.length > 9 || videos.length > 3 || images.length + videos.length > 12) {
         throw new Error(t(uiKeys.taskSubmission.r2vLimit));
       }
       const [h3ReferenceImages, h3ReferenceVideos] = await Promise.all([
         Promise.all(
-          imageSlots.map((slot, index) =>
-            uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.r2vImage, { number: index + 1 }), t)
+          images.map((mediaPath, index) =>
+            uploadInput(baseUrl, mediaPath, signal, t(uiKeys.taskSubmission.r2vImage, { number: index + 1 }), t)
           )
         ),
         Promise.all(
-          videoSlots.map((slot, index) =>
-            uploadInput(baseUrl, slot.mediaPath, signal, t(uiKeys.taskSubmission.r2vVideo, { number: index + 1 }), t)
+          videos.map((mediaPath, index) =>
+            uploadInput(baseUrl, mediaPath, signal, t(uiKeys.taskSubmission.r2vVideo, { number: index + 1 }), t)
           )
         )
       ]);
-      prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
+      const samplingTask = { ...task, prompt: compactH3ReferencePrompt(task.prompt, imagePaths, videoPaths),
+        h3TimedGuides: task.h3TimedGuides?.map(guide => ({ ...guide, picture: compactH3ReferenceOrdinal(imagePaths, guide.picture) })) };
+      prompt = renderWorkflow(source, workflowTaskForComfyOutput(samplingTask, settings), {
         h3ReferenceImages,
         h3ReferenceVideos,
         vramTotalBytes,
@@ -1225,7 +1230,17 @@ export async function submitTask(
       prompt = renderUpscaleWorkflow(workflowTaskForComfyOutput(task, settings), sourceVideo, {
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
-      }, objectInfo, options.nativeSeedVr2Segment, t);
+      }, objectInfo, options.nativeSeedVr2Segment, t, h3UpscaleHardwareFromStats(systemStats));
+      if (isH3PixelRefiner(task.modelId)) {
+        const hardware = h3UpscaleHardwareFromStats(systemStats);
+        const profile = h3UpscalePerformanceProfile(hardware);
+        getApplicationLogger().info("comfy", "h3-upscale-performance-profile", "Selected H3 Upscale hardware profile", {
+          taskId: task.id, modelId: task.modelId, ...hardware,
+          profileTier: profile.tier,
+          ...(task.modelId === "minimax_h3_tessera" ? profile.tessera : profile.refiner),
+          attention: (prompt as Record<string, { inputs?: Record<string, unknown> }>).attention?.inputs?.attention
+        });
+      }
   } else {
     throw new Error(t(uiKeys.taskSubmission.imageSubmitOnly));
   }

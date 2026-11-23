@@ -4,15 +4,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { StrataService } from "../../dist/electron/electron/services/strata-service.js";
 import { buildStrataPromptRequest } from "../../dist/electron/electron/services/strata-prompt.js";
 import { managedStrataDirectory, strataInstalledRelease, strataSourceDirectory } from "../../dist/electron/electron/services/strata-installation.js";
-import { strataDerivedDataDirectory, validatePreparedStrataRuntime } from "../../dist/electron/electron/services/strata-model-preparation.js";
+import { strataDerivedDataDirectory, validatePreparedStrataRuntime, buildStrataRuntimeConfig } from "../../dist/electron/electron/services/strata-model-preparation.js";
+import { strataModelGeometry } from "../../dist/electron/src/core/catalog/models/strata.js";
 import { createDefaultSettings } from "../../dist/electron/src/core/defaults.js";
 import { isLocalPortInUse } from "../../dist/electron/electron/services/local-service-process.js";
+import { verifyStrataControlVector } from "../../dist/electron/electron/services/strata-uncensored.js";
+import { strataCompatibilityEnvironment } from "../../dist/electron/src/core/catalog/dependencies/strata.js";
 
 if (process.argv.includes("--help")) {
-  console.log("node scripts/harness/strata-protocol-smoke.mjs [--tokenizer-only] [--source-directory <checkout>]\nRequires installed managed Strata and a completed Qwen pack. --tokenizer-only permits its tokenizer from an older source revision without validating or rebuilding weights. --source-directory tests a separate official checkout using the installed Python, without upgrading the installed runtime. Tests auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor, cancellation retention and explicit stop/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
+  console.log("node scripts/harness/strata-protocol-smoke.mjs [--tokenizer-only] [--source-directory <checkout>] [--native-engine-directory <component>]\nRequires installed managed Strata and a completed Qwen pack. --tokenizer-only permits its tokenizer from an older source revision without validating or rebuilding weights. --source-directory tests a separate official checkout using the installed Python, without upgrading the installed runtime. --native-engine-directory additionally checks real native arguments via trailing --help and an unloaded lazy HTTP backend. Tests auth, HTTP/SSE, thinking, automatic output budget, repeated calls, monitor, cancellation retention and explicit stop/restart with upstream --engine mock. Never loads weights, starts a queue or changes user settings. Reports under ignored temp/. This is not neural/vision/performance validation.");
   process.exit(0);
 }
 
@@ -72,8 +77,45 @@ async function assertPortClosed() {
   }
 }
 const api = async (route, options = {}) => fetch(`http://127.0.0.1:${port}${route}`, { ...options, headers: { ...headers, ...options.headers } });
-let pid, restartedPid;
+let pid, restartedPid, nativePreflight;
 try {
+  const nativeIndex = process.argv.indexOf("--native-engine-directory");
+  if (nativeIndex >= 0) {
+    assert.ok(process.argv[nativeIndex + 1] && !process.argv[nativeIndex + 1].startsWith("--"), "--native-engine-directory requires a component directory");
+    const engine = path.resolve(process.argv[nativeIndex + 1]);
+    const receipt = JSON.parse(await fs.readFile(path.join(path.dirname(prepared.tokenizer), "lvs-strata-model.json"), "utf8"));
+    const geometry = strataModelGeometry(prepared.model_name);
+    const nativeConfig = buildStrataRuntimeConfig({ installDirectory: checkout, packDirectory: path.dirname(prepared.tokenizer),
+      shards: receipt.assets.slice(0, geometry.shardCount).map(asset => asset.filename), pleShard: receipt.assets[receipt.pleShard].filename,
+      projector: receipt.assets[geometry.shardCount].filename, modelId: prepared.model_name, port, policy: receipt.policy,
+      mtpDirectory: receipt.mtp && receipt.mtp.directory });
+    nativeConfig.exe = path.join(engine, "strata.exe"); nativeConfig.lib_dirs = [engine];
+    nativeConfig.log = path.join(directory, "native-preflight.log");
+    nativeConfig.args[nativeConfig.args.indexOf("--expert-profile") + 1] = path.join(source, "data/expert-profile.bin");
+    nativeConfig.vision = { ...nativeConfig.vision, exe: path.join(engine, "strata-vision.exe"), gpu: false };
+    nativeConfig.lazy_load = true;
+    nativeConfig.env = strataCompatibilityEnvironment();
+    const builtin = await verifyStrataControlVector(checkout, "builtin");
+    const community = await verifyStrataControlVector(install, "community");
+    // Audited native main parses these arguments before --help and before device/weight initialization.
+    for (const vector of [null, builtin, community]) {
+      const args = [...nativeConfig.args, ...(vector ? ["--control-vector-scaled", `${vector.filename}:1.0`,
+        "--control-vector-layer-range", String(vector.firstLayer), String(vector.lastLayer), "--cvec-mode", "project", "--cvec-dir", "per-layer"] : []), "--help"];
+      await promisify(execFile)(nativeConfig.exe, args, { cwd: source, env: { ...process.env, ...nativeConfig.env, CUDA_VISIBLE_DEVICES: "" },
+        windowsHide: true, timeout: 15000, maxBuffer: 1024 ** 2 });
+    }
+    await promisify(execFile)(nativeConfig.vision.exe, ["--version"], { cwd: source, env: { ...process.env, CUDA_VISIBLE_DEVICES: "" },
+      windowsHide: true, timeout: 15000, maxBuffer: 1024 ** 2 });
+    const nativeFile = path.join(directory, "native-preflight.json");
+    await fs.writeFile(nativeFile, JSON.stringify(nativeConfig));
+    await service.start({ ...launch(), installDirectory: checkout, env: { ...nativeConfig.env, CUDA_VISIBLE_DEVICES: "" }, args: ["-B", "-u", "-m", "serve.server", "--engine", "strata",
+      "--config", nativeFile, "--host", "127.0.0.1", "--port", String(port), "--api-key", apiKey, "--api-monitor", "--lazy"] });
+    assert.equal(service.snapshot().modelLoaded, false);
+    if (nativeConfig.env.STRATA_HC_Q8_TC === "0") assert.ok(service.snapshot().log.includes("HC Q8 Tensor Core paths disabled"));
+    assert.equal((await api("/v1/status")).status, 200);
+    await service.stop(); await assertPortClosed();
+    nativePreflight = { argumentModes: 3, currentRecipe: true, compatibilityEnv: nativeConfig.env, visionExecutable: true, lazyBackendStarted: true, weightsLoaded: false };
+  }
   pid = (await service.start(launch())).pid;
   const unauthorized = await fetch(`http://127.0.0.1:${port}/v1/models`);
   assert.equal(unauthorized.status, 401);
@@ -124,7 +166,7 @@ try {
   restartedPid = (await service.start(launch())).pid;
   assert.ok((await service.chat(request)).endsWith("Official fixture final."));
   const report = { ok: true, layer: "installed official HTTP/template/model tokenizer + scripted mock engine; no neural/vision/performance claim",
-    installedVersion: strataInstalledRelease(install)?.version, sourceDirectory: source,
+    installedVersion: strataInstalledRelease(install)?.version, sourceDirectory: source, nativePreflight,
     sourceHead: (await fs.readFile(path.join(checkout, ".git/HEAD"), "utf8").catch(() => "unknown")).trim(), tokenizerOnly, pid, restartedPid, port, repeatedCalls: calls,
     monitor: true, auth: true, contextOverflowRecovery: true, controlFieldsVisible: true, cancellationRetainedModel: true, explicitStopAndRestart: true };
   await fs.writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));

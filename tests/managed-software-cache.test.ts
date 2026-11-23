@@ -85,6 +85,81 @@ describe("managed software cleanup through cache management", () => {
       if (state === "weights") expect(await fs.readFile(path.join(directory, "model.safetensors"), "utf8")).toBe("user model");
     }
   });
+  it.each(["unchanged", "modified", "untracked"])("distinguishes a bundled node tensor from user weights (%s)", async state => {
+    const f = await fixture();
+    const backup = path.join(f.comfy, "node-backups", "ComfyUI-SeedVR2_VideoUpscaler-123");
+    const tensor = path.join(backup, "neg_emb.pt");
+    await write(path.join(backup, "__init__.py"));
+    if (state !== "untracked") await write(tensor, "bundled negative embedding");
+    commitSoftware(backup, "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git");
+    if (state !== "unchanged") await write(tensor, "user tensor");
+    const result = await f.cache.clear();
+    if (state === "unchanged") {
+      expect(result.errors).toEqual([]);
+      await expect(fs.stat(backup)).rejects.toMatchObject({ code: "ENOENT" });
+    } else {
+      expect(result.errors.join(" ")).toContain("模型／媒体／数据库");
+      expect(await fs.readFile(tensor, "utf8")).toBe("user tensor");
+    }
+  });
+  it.each(["runtime", "user-section", "misplaced"])("cleans generated ReShade parameters but keeps additional user config (%s)", async state => {
+    const f = await fixture();
+    const backup = path.join(f.comfy, "node-backups", "ComfyUI-DLSS-Frame-Interpolation-123");
+    const relative = state === "misplaced" ? "user/ReShade.ini" : "bin/runtime/host/ReShade.ini";
+    const config = path.join(backup, relative);
+    await write(path.join(backup, "__init__.py")); await write(config, "upstream defaults");
+    commitSoftware(backup, "https://github.com/Konohamaru04/ComfyUI-NVIDIA-DLSS-Frame-Interpolation.git");
+    await write(config, "[RenoDX.DLSS5]\nEnableHooks=1\nNRIntensity=0.5\n" + (state === "user-section" ? "[User]\nSecret=keep\n" : ""));
+    await write(path.join(backup, "bin/runtime/host/ReShade.log"), "runtime log");
+    const result = await f.cache.clear();
+    if (state === "runtime") {
+      expect(result.errors).toEqual([]);
+      await expect(fs.stat(backup)).rejects.toMatchObject({ code: "ENOENT" });
+    } else {
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(await fs.readFile(config, "utf8")).toContain("NRIntensity");
+    }
+  });
+  it.each(["runtime", "user-key", "misplaced", "incomplete"])("cleans DLSS runtime installation config without accepting arbitrary JSON (%s)", async state => {
+    const f = await fixture();
+    const backup = path.join(f.comfy, "node-backups", "ComfyUI-DLSS5-123");
+    await write(path.join(backup, "__init__.py"));
+    commitSoftware(backup, "https://github.com/HECer/ComfyUI-DLSS5.git");
+    const config = path.join(backup, state === "misplaced" ? "user/config.json" : "runtime/config.json");
+    await write(config, JSON.stringify({ python: "C:/old/python.exe", nr_plugin: "plugins/nr.dll", nr_runtime: "plugins/nv.dll", temp_dir: "temp",
+      timeout_seconds: 0, vapourkit_release: "old-release", vapourkit_archive_sha256: state === "incomplete" ? "" : "a".repeat(64),
+      ...(state === "user-key" ? { customPreset: "keep" } : {}) }));
+    const result = await f.cache.clear();
+    if (state === "runtime") {
+      expect(result.errors).toEqual([]);
+      await expect(fs.stat(backup)).rejects.toMatchObject({ code: "ENOENT" });
+    } else {
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(await fs.stat(config)).toBeTruthy();
+    }
+  });
+  it.each(["owned", "wrong-bundle", "traversal", "user-model", "user-config", "linked"])("uses an old node's nested runtime receipt without treating the whole directory as software (%s)", async state => {
+    const f = await fixture(), backup = path.join(f.comfy, "node-backups", "ComfyUI-DLSS5-123");
+    await write(path.join(backup, "__init__.py"));
+    commitSoftware(backup, "https://github.com/HECer/ComfyUI-DLSS5.git");
+    const runtime = path.join(backup, "runtime");
+    const files = ["config.json", "downloads/numpy.whl", "python/python313._pth", "python/Lib/site-packages/numpy.dist-info/INSTALLER"];
+    for (const name of files) await write(path.join(runtime, name));
+    await write(path.join(runtime, "config.json"), JSON.stringify({ python: "python/python.exe", nr_plugin: "plugins/nr.dll", nr_runtime: "plugins/nv.dll", temp_dir: "temp", timeout_seconds: 0, vapourkit_release: "old", vapourkit_archive_sha256: "a".repeat(64), ...(state === "user-config" ? { customPreset: "keep" } : {}) }));
+    await write(path.join(runtime, "install-manifest.json"), JSON.stringify({ schemaVersion: 1, bundleId: state === "wrong-bundle" ? "unknown" : DLSS5_RUNTIME_BUNDLE_ID, ownedFiles: [...files, ...(state === "traversal" ? ["../outside"] : []), ...(state === "linked" ? ["linked-package/external.whl"] : [])] }));
+    if (state === "user-model") await write(path.join(runtime, "models/private.safetensors"), "user weights");
+    const external = path.join(f.root, "external-package", "external.whl");
+    if (state === "linked") { await write(external, "external"); await fs.symlink(path.dirname(external), path.join(runtime, "linked-package"), "junction"); }
+    const result = await f.cache.clear();
+    if (state === "owned") {
+      expect(result.errors).toEqual([]);
+      await expect(fs.stat(backup)).rejects.toMatchObject({ code: "ENOENT" });
+    } else {
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(await fs.stat(backup)).toBeTruthy();
+      if (state === "linked") expect(await fs.readFile(external, "utf8")).toBe("external");
+    }
+  });
   it("keeps modified tracked configuration even when the distributed demo media is disposable", async () => {
     const f = await fixture();
     const backup = path.join(f.comfy, "node-backups", "ComfyUI-DLSS-Frame-Interpolation-123");
@@ -95,8 +170,8 @@ describe("managed software cleanup through cache management", () => {
     await write(config, "user settings");
     const errors = (await f.cache.clear()).errors.join(" ");
     expect(errors).toContain("ReShade.ini");
-    expect(errors).toContain("配置已修改或来源未确认");
-    expect(errors).toContain("未清理整个备份");
+    expect(errors).toContain("未识别的额外配置");
+    expect(errors).toContain("暂未清理");
     expect(await fs.readFile(config, "utf8")).toBe("user settings");
     expect(await fs.stat(demo)).toBeTruthy();
   });
@@ -213,7 +288,7 @@ describe("managed software cleanup through cache management", () => {
     const f = await fixture(); await write(path.join(f.old, "user-settings.json"), '{"user":true}');
     const unknown = path.join(path.dirname(f.old), "v0.0.1-12345678"); await write(path.join(unknown, "user.gguf"));
     const linked = path.join(path.dirname(f.old), "v0.1.1-12345678"); await fs.symlink(f.current, linked, "junction");
-    const result = await f.cache.clear(); expect(result.errors.join(" ")).toContain("本地文件");
+    const result = await f.cache.clear(); expect(result.errors.join(" ")).toContain("未识别的额外配置");
     expect(await fs.readFile(path.join(f.old, "user-settings.json"), "utf8")).toContain("user");
     expect(await fs.stat(unknown)).toBeTruthy(); expect(await fs.lstat(linked)).toBeTruthy();
     await fs.rm(path.join(f.old, "user-settings.json")); await write(path.join(f.old, "local-model.gguf"));

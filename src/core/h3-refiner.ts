@@ -2,6 +2,7 @@ import { createTranslator, type Translate } from "./i18n.js";
 import { uiKeys } from "./i18n-keys.js";
 import type { UpscaleQueueTask } from "../types.js";
 import { comfyComboOptions, comfyNodeInputSpec } from "./h3-workflow-contract.js";
+import { h3UpscalePerformanceProfile, type H3UpscaleHardware } from "./h3-upscale-performance.js";
 import { h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LearnedLatentUpscaler } from "./catalog/models/minimax_h3_shared.js";
 
 /** A ComfyUI adaptation, not the NV SoL engine or its complete LMS recipe. */
@@ -74,7 +75,8 @@ export function validateH3RefinerSource(duration: number, fps: number, t: Transl
   }
 }
 
-export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t) {
+export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t, hardware?: H3UpscaleHardware) {
+  const performance = h3UpscalePerformanceProfile(hardware).refiner;
   const snapshot = task.h3Refiner;
   if (!snapshot || snapshot.recipe !== H3_REFINER_RECIPE ||
       snapshot.refiner !== H3_REFINER_FILENAME || snapshot.turbo !== H3_REFINER_TURBO_FILENAME) {
@@ -146,9 +148,9 @@ export function buildH3RefinerWorkflow(task: UpscaleQueueTask, source: string, o
   add("noise", "RandomNoise", { noise_seed: task.seed });
   add("sampler", "KSamplerSelect", { sampler_name: "euler" });
   add("upscale", "MMH3LatentUpscaleWithModelParams", { model_name: snapshot.upscaler, width: w, height: h, device: "cuda", precision: "bf16" });
-  add("temporal", "MMH3TemporalSplitParams", { chunk_length: 136, temporal_overlap: 17, anchor_strength: 0.999 });
+  add("temporal", "MMH3TemporalSplitParams", { chunk_length: performance.temporalFrames, temporal_overlap: 17, anchor_strength: 0.999 });
   add("spatial", "MMH3SpatialSplitParams", {
-    upscale_width: w, upscale_height: h, tile_size_mode: "specific_size", tile_width: 768, tile_height: 576,
+    upscale_width: w, upscale_height: h, tile_size_mode: "specific_size", tile_width: performance.tileWidth, tile_height: performance.tileHeight,
     grid_rows: 2, grid_cols: 3, spatial_w_overlap: 128, spatial_h_overlap: 128,
     fade_width: 32, fade_height: 32, min_tile_size: 256, overlap_mode: "earlier",
     overlap_blend: "smoothstep", masked_area_noise: 0, brightness_match: false,

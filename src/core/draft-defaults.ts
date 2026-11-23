@@ -87,6 +87,8 @@ export function createClearedDraft(current: Draft): Draft {
       }
     ],
     extensionActivePromptVersion: 0,
+    h3GuideEditor: undefined,
+    h3ReferenceGuidesEnabled: false,
     h3ReferenceSlots: [],
     seed: null
   };

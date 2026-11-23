@@ -27,6 +27,9 @@ import { modelCatalog } from "./catalog/index.js";
 import { h3ReferenceImageDimensions } from "./h3-reference.js";
 import { isCustomVideoResolution } from "./video-resolution.js";
 import { FASTH3_OMNI_MODEL_ID, FASTH3_OMNI_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_omni/definition.js";
+import { TEN_EROS_MAX_CHECKPOINT, TEN_EROS_MAX_MODEL_ID } from "./catalog/models/ten_eros_max/definition.js";
+import { PI_H3_ADAPTERS, PI_H3_MODEL_ID, PI_H3_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_pi/definition.js";
+import { isH3VsaCheckpoint } from "./h3-vsa-checkpoint.js";
 import {
   H3_MAX_DURATION_SECONDS,
   H3_MAX_GENERATED_FRAMES,
@@ -162,7 +165,7 @@ export function isMiniMaxH3ContinuumModel(modelId: string): boolean {
 
 export function isMiniMaxH3BoundaryExtensionModel(modelId: string): boolean {
   const variant = modelCatalog.get(modelId)?.definition.variant;
-  return variant === "fl2va" || variant === "turbo";
+  return modelId !== PI_H3_MODEL_ID && (variant === "fl2va" || variant === "turbo");
 }
 
 export const retiredVideoModelIds = [
@@ -198,6 +201,7 @@ function workflowBasename(workflowPath: string): string {
 
 const knownBundledH3WorkflowFilenames = new Set([
   FASTH3_OMNI_WORKFLOW_FILENAME,
+  PI_H3_WORKFLOW_FILENAME,
   "minimax_h3_t2va_api.json",
   "minimax_h3_t2va_gguf_q3_api.json",
   "minimax_h3_t2va_turbo_api.json",
@@ -742,18 +746,19 @@ function upsertMiniMaxH3SamplingShift(
 
 /**
  * PDD Acc is a native ComfyUI 0.35 output-head-bank LoRA path. It deliberately
- * uses the stock loader and only changes the sampler contract around the
- * loaded model: Euler + Simple, eight steps, and the native H3 sigma shift.
+ * uses the stock loader and changes the sampler contract around the loaded
+ * model. Native turbo checkpoints share the shift but choose their own sampler.
  */
 export function applyMiniMaxH3PddSampling(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  task: Pick<GenerationQueueTask | ExtensionQueueTask, "taskType" | "modelId" | "videoLoras">
+  task: Pick<GenerationQueueTask | ExtensionQueueTask, "taskType" | "modelId" | "videoLoras"> & { steps?: number }
 ): void {
   if (task.taskType !== "generation") return;
   const pdd = task.videoLoras?.find((lora) =>
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   );
-  if (!pdd && task.modelId !== FASTH3_OMNI_MODEL_ID) return;
+  if (!pdd && !isH3VsaCheckpoint(task.modelId)) return;
+  const eros = task.modelId === TEN_EROS_MAX_MODEL_ID;
 
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
@@ -763,10 +768,10 @@ export function applyMiniMaxH3PddSampling(
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
 
-  sampler.inputs.sampler_name = "euler";
+  sampler.inputs.sampler_name = eros ? "lcm" : "euler";
   for (const scheduler of schedulers) {
     scheduler.inputs!.scheduler = "simple";
-    scheduler.inputs!.steps = 8;
+    scheduler.inputs!.steps = eros ? normalizeH3Steps(task.steps, task.modelId) : 8;
   }
   upsertMiniMaxH3SamplingShift(workflow, consumers, {
     shiftVideo: 12,
@@ -1892,6 +1897,10 @@ const wan14ModelAssets: Record<
 };
 
 const miniMaxH3ModelAssets: Record<string, { diffusionModel: string; textEncoder: string }> = {
+  [TEN_EROS_MAX_MODEL_ID]: {
+    diffusionModel: TEN_EROS_MAX_CHECKPOINT,
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  },
   [FASTH3_OMNI_MODEL_ID]: {
     diffusionModel: "fasth3_omniref_8step_pruned_int8_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
@@ -1929,7 +1938,7 @@ const miniMaxH3ModelAssets: Record<string, { diffusionModel: string; textEncoder
 export function miniMaxH3ModelAssetNames(
   modelId: string
 ): { diffusionModel: string; textEncoder: string } | undefined {
-  return miniMaxH3ModelAssets[modelId];
+  return miniMaxH3ModelAssets[modelId === PI_H3_MODEL_ID ? "minimax_h3_fl2va" : modelId];
 }
 
 const sulphurModelAssets = {
@@ -2091,6 +2100,8 @@ export function renderWorkflow(
   task: GenerationQueueTask | ExtensionQueueTask,
   context: Partial<WorkflowContext> = {}
 ): unknown {
+  const piH3 = task.modelId === PI_H3_MODEL_ID;
+  const piH3Steps = task.steps === 2 ? 2 : 4;
   const h3LatentSaveMode = h3LatentSaveModeFor(
     task,
     task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
@@ -2115,7 +2126,7 @@ export function renderWorkflow(
   const outputHeight = context.height ?? height;
   const fps = context.fps ?? task.fps ?? 8;
   const modelAssets = wan14ModelAssets[task.modelId];
-  const h3Assets = miniMaxH3ModelAssets[task.modelId];
+  const h3Assets = miniMaxH3ModelAssetNames(task.modelId);
   const sulphurAssets = sulphurModelAssets[
     task.modelProfile ?? "q3_k_m"
   ];
@@ -2226,6 +2237,9 @@ export function renderWorkflow(
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
+    PI_H3_STEPS: piH3Steps,
+    PI_H3_ADAPTER: PI_H3_ADAPTERS[piH3Steps],
+    PI_H3_MAX_RAW_T: piH3Steps === 2 ? 0.93 : 0.96,
     H3_VIDEO_VAE: isMiniMaxH3Model(task.modelId)
       ? h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16")
       : "",
@@ -2280,7 +2294,7 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
-  if (isMiniMaxH3Model(task.modelId)) {
+  if (!piH3 && isMiniMaxH3Model(task.modelId)) {
     const outputNodeTypes = new Set<string>();
     if (!h3LatentSaveModeSavesJointAv(h3LatentSaveMode)) {
       outputNodeTypes.add("LocalVideoStudioH3SaveJointAV");
@@ -2335,17 +2349,17 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
-  const usesUpgradedH3ExecutionPolicy = task.modelId === FASTH3_OMNI_MODEL_ID || task.h3ExecutionPolicy !== undefined ||
+  const usesUpgradedH3ExecutionPolicy = isH3VsaCheckpoint(task.modelId) || task.h3ExecutionPolicy !== undefined ||
     task.h3SparseAttentionMode !== undefined ||
     task.h3RuntimeMode !== undefined ||
     task.h3ComfyCompilerMode !== undefined;
-  if (!usesUpgradedH3ExecutionPolicy) {
+  if (!piH3 && !usesUpgradedH3ExecutionPolicy) {
     // Persisted pre-upgrade tasks remain renderable through the withdrawn
     // compatibility reader. Newly created tasks always carry the explicit
     // execution-policy snapshot and use native ComfyUI 0.35 nodes below.
     applyMiniMaxH3SlaAttention(workflow, task, context.locale);
   }
-  if (isMiniMaxH3Model(task.modelId)) {
+  if (!piH3 && isMiniMaxH3Model(task.modelId)) {
     const inputMode = task.taskType === "extension" ? "video" : "image";
     const spectrumEnabled = shouldApplySpectrum({
       modelId: task.modelId,
@@ -2385,7 +2399,7 @@ export function renderWorkflow(
       });
     }
   }
-  if (task.modelId === FASTH3_OMNI_MODEL_ID || (isMiniMaxH3Model(task.modelId) && task.videoLoras?.some((lora) =>
+  if (isH3VsaCheckpoint(task.modelId) || (isMiniMaxH3Model(task.modelId) && task.videoLoras?.some((lora) =>
     isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
   ))) {
     if (!workflowSupportsH3PddSampling(workflow, { modelId: task.modelId })) {
@@ -2419,6 +2433,7 @@ export function renderWorkflow(
       }
     }
   }
+  if (piH3) return workflow;
   const h3HeavyDecode =
     isMiniMaxH3Model(task.modelId) &&
     (

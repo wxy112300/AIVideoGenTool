@@ -1,4 +1,5 @@
 import type { H3LatentSaveMode } from "../types.js";
+import { PI_H3_MODEL_ID } from "./catalog/models/minimax_h3_pi/definition.js";
 
 export const H3_LATENT_SAVE_MODES = [
   "all",
@@ -46,10 +47,11 @@ export function h3LatentSaveModeFor(
 
 /** Collapse a newly enqueued task to the Phase 1 binary save contract. */
 export function h3SharedLatentSaveModeFor(
-  value: { h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
+  value: { modelId?: string; h3LatentSaveMode?: unknown; h3SaveJointAv?: boolean },
   legacyMotionContextSaved = false,
   forceSave = false
 ): Extract<H3LatentSaveMode, "all" | "none"> {
+  if (value.modelId === PI_H3_MODEL_ID) return "none";
   if (forceSave) return "all";
   return h3LatentSaveModeFor(value, legacyMotionContextSaved) === "none"
     ? "none"

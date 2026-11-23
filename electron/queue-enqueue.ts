@@ -1,5 +1,5 @@
 import type { Translate } from "../src/core/i18n.js";
-import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, h3TimedGuideSource, missingH3GuideReference, resolveH3TimedGuides } from "../src/core/h3-timed-guides.js";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, h3TimedGuideSource, isH3TimedGuideConfigured, missingH3GuideReference, resolveH3TimedGuides } from "../src/core/h3-timed-guides.js";
 import type { IpcMain } from "electron";
 import { createNativeTranslator } from "./ui-translator.js";
 import { uiKeys } from "../src/core/i18n-keys.js";
@@ -8,7 +8,9 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { H3_REFINER_ID, validateH3RefinerSource } from "../src/core/h3-refiner.js";
 import { modelCoreVersionBlockReason } from "../src/core/model-core-requirements.js";
-import { FASTH3_OMNI_MODEL_ID } from "../src/core/catalog/models/minimax_h3_omni/definition.js";
+import { PI_H3_MODEL_ID } from "../src/core/catalog/models/minimax_h3_pi/definition.js";
+import { piH3DependencyBlockReason } from "../src/core/pi-h3.js";
+import { isH3VsaCheckpoint } from "../src/core/h3-vsa-checkpoint.js";
 import { fileURLToPath } from "node:url";
 import { TESSERA_ID, tesseraAnchorModels, type TesseraAnchorSnapshot } from "../src/core/tessera.js";
 import type {
@@ -100,7 +102,8 @@ import {
 } from "../src/core/dlss5.js";
 import {
   ensureMotionContextSourceSlot,
-  h3ReferenceSlotCounts
+  h3ReferenceSlotCounts,
+  missingH3VideoReference
 } from "../src/core/h3-reference.js";
 import {
   H3_MOTION_CONTEXT_FILENAME,
@@ -666,6 +669,7 @@ export class QueueEnqueueService {
     Object.assign(draft, normalizeVideoDraft(draft));
     const longVideo = isLongVideoDraftActive(draft);
     const guideEditor = activeH3TimedGuides(draft);
+    const guideSlots = guideEditor?.slots.filter(isH3TimedGuideConfigured) ?? [];
     const referenceGuides = h3ReferenceTimedGuides(draft);
     if (referenceGuides.length && !longVideo) {
       const issue = h3TimedGuideIssue(referenceGuides, draft.duration);
@@ -674,7 +678,7 @@ export class QueueEnqueueService {
     if (guideEditor && !longVideo) {
       const issue = h3TimedGuideIssue(guideEditor.slots, draft.duration);
       if (issue) throw new Error(this.t(uiKeys.create.guides[issue]));
-      const missingPicture = missingH3GuideReference(promptOf(draft), guideEditor.slots);
+      const missingPicture = missingH3GuideReference(promptOf(draft), guideSlots);
       if (missingPicture) throw new Error(this.t(uiKeys.create.guides.reference, { picture: missingPicture }));
     }
     if (longVideo) {
@@ -688,12 +692,9 @@ export class QueueEnqueueService {
     this.rejectUnavailableH3NativeResolution(draft);
     await this.validateH3Create1080(draft, enqueueSettings);
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
-    const hasReference = Boolean(guideEditor || draft.startImagePath || draft.endImagePath);
-    const isH3TextToVideo = isMiniMaxH3Model(draft.modelId) && !isR2V && !hasReference;
-    if (!guideEditor && !isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error(this.t(uiKeys.serviceChecks.firstImage));
-    if (isR2V && (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))) {
-      throw new Error(this.t(uiKeys.serviceChecks.r2vSlots));
-    }
+    const hasReference = guideEditor ? guideSlots.length > 0 : Boolean(draft.startImagePath || draft.endImagePath);
+    const missingReference = !longVideo && isR2V && missingH3VideoReference(promptOf(draft), draft.h3ReferenceSlots);
+    if (missingReference) throw new Error(this.t(uiKeys.create.guides.invalidReference, { reference: missingReference }));
     if (!longVideo && !promptOf(draft)) throw new Error(this.t(uiKeys.serviceChecks.promptEmpty));
     if (!draft.workflowPath) throw new Error(this.t(uiKeys.serviceChecks.workflowSelect));
     const resolvedWorkflowPath = h3WorkflowPathForInput(
@@ -736,17 +737,17 @@ export class QueueEnqueueService {
         : this.t(uiKeys.serviceChecks.spectrumUnsupported));
     }
     const workflow = await readWorkflow(resolvedWorkflowPath, this.t(uiKeys.serviceChecks.workflowLabel), this.t);
-    if (!longVideo && (guideEditor || referenceGuides.length) && !h3TimedGuideSource(workflow, isR2V)) {
+    if (!longVideo && (guideSlots.length || referenceGuides.length) && !h3TimedGuideSource(workflow, isR2V)) {
       throw new Error(this.t(uiKeys.create.guides.unavailable));
     }
     const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(this.t(uiKeys.serviceChecks.workflowInvalid, { errors: validation.errors.join("；") }));
-    if ((draft.modelId === FASTH3_OMNI_MODEL_ID || draft.videoLoras.some((lora) =>
+    if ((isH3VsaCheckpoint(draft.modelId) || draft.videoLoras.some((lora) =>
       isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
     )) && !workflowSupportsH3PddSampling(workflow, { modelId: draft.modelId })) {
       throw new Error(this.t(uiKeys.serviceChecks.pddWorkflow));
     }
-    const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
+    const h3UsesSageAttention = draft.modelId !== PI_H3_MODEL_ID && isMiniMaxH3Model(draft.modelId) &&
       (enqueueSettings.h3AttentionMode === "sage" || enqueueSettings.h3AttentionMode === "sage-triton");
     const dependencyScanRequired = isMiniMaxH3Model(draft.modelId) || draft.videoLoras.length > 0 || draft.spectrumMode === "balanced" ||
       h3UsesSageAttention;
@@ -760,6 +761,10 @@ export class QueueEnqueueService {
     if (dependencyScan) {
       const coreBlockReason = modelCoreVersionBlockReason(draft.modelId, dependencyScan.comfyCompatibility.version, enqueueSettings.uiLocale);
       if (coreBlockReason) throw new Error(coreBlockReason);
+      if (draft.modelId === PI_H3_MODEL_ID) {
+        const reason = piH3DependencyBlockReason(dependencyScan, draft.steps, enqueueSettings.uiLocale);
+        if (reason) throw new Error(reason);
+      }
     }
     if (dependencyScanRequired && !dependencyScan) {
       logger.info("queue", "enqueue-environment-preflight-deferred", "未阻塞入队：环境依赖检查将在任务准备阶段执行", {
@@ -843,7 +848,7 @@ export class QueueEnqueueService {
     }
     const sourcePaths = (isR2V
       ? draft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").map((slot) => slot.mediaPath)
-      : guideEditor ? guideEditor.slots.map(slot => slot.mediaPath) : [draft.startImagePath, draft.endImagePath]
+      : guideEditor ? guideSlots.map(slot => slot.mediaPath) : [draft.startImagePath, draft.endImagePath]
     ).filter((candidate): candidate is string => Boolean(candidate.trim()));
     const preparedDraft = structuredClone(draft);
     if (sourcePaths.length) {
@@ -879,8 +884,8 @@ export class QueueEnqueueService {
       if (guideEditor) {
         const guideLayout = longVideo ? taskDraft.longVideoScript?.layout : undefined;
         const firstGuide = resolveH3TimedGuides(taskDraft.h3GuideEditor!.slots,
-          guideLayout?.requestedSeconds ?? taskDraft.duration, guideLayout?.targetFrames)[0]!;
-        taskDraft.startImagePath = firstGuide.mediaPath;
+          guideLayout?.requestedSeconds ?? taskDraft.duration, guideLayout?.targetFrames)[0];
+        taskDraft.startImagePath = firstGuide?.mediaPath ?? "";
         taskDraft.endImagePath = "";
         hydrateVideoInputImageDimensions(taskDraft, deps.imageInspection);
       }

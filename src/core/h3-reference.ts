@@ -71,6 +71,30 @@ export function h3ReferenceSlotCounts(slots: H3ReferenceSlot[]): {
   return { imageCount, videoCount, total: imageCount + videoCount };
 }
 
+export function missingH3VideoReference(prompt: string, slots: readonly H3ReferenceSlot[]): string | undefined {
+  const available = {
+    Picture: slots.filter(slot => slot.mediaType === "image"),
+    Video: slots.filter(slot => slot.mediaType === "video")
+  };
+  for (const match of prompt.matchAll(/<(Picture|Video) (\d+)>/gu)) {
+    const kind = match[1] as keyof typeof available;
+    if (!available[kind][Number(match[2]) - 1]?.mediaPath.trim()) return `${kind} ${match[2]}`;
+  }
+}
+
+export function compactH3ReferenceOrdinal(presence: readonly unknown[], ordinal: number): number {
+  return presence[ordinal - 1] ? presence.slice(0, ordinal).filter(Boolean).length : ordinal;
+}
+
+export function compactH3ReferencePrompt(prompt: string, images: readonly unknown[], videos: readonly unknown[] = []): string {
+  return prompt.replace(/<(Picture|Video) (\d+)>/gu, (tag, kind: string, ordinal: string) => {
+    const presence = kind === "Picture" ? images : videos;
+    const index = Number(ordinal);
+    const compact = compactH3ReferenceOrdinal(presence, index);
+    return compact === index ? tag : `<${kind} ${compact}>`;
+  });
+}
+
 /** Picture 1 supplies the source aspect ratio for reference-image generation. */
 export function h3ReferenceImageDimensions(slots: readonly H3ReferenceSlot[]): { width: number; height: number } | undefined {
   const picture = slots.find(slot => slot.mediaType === "image" && slot.mediaPath.trim());

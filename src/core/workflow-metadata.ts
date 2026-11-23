@@ -13,6 +13,7 @@ import {
 } from "./catalog/dependencies/nodes.js";
 import { COMFYUI_RECOMMENDED_VERSION } from "./catalog/dependencies/comfy-core.js";
 import { FASTH3_OMNI_MINIMUM_COMFY_VERSION } from "./catalog/models/minimax_h3_omni/definition.js";
+import { PI_H3_MINIMUM_COMFY_VERSION, PI_H3_NODE_ID, PI_H3_NODE_REVISION, PI_H3_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_pi/definition.js";
 
 export interface WorkflowSourceMetadata {
   schema: {
@@ -82,6 +83,11 @@ function metadata(
 }
 
 export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMetadata>> = {
+  minimax_h3_pi_dwd_api: metadata(PI_H3_WORKFLOW_FILENAME, [PI_H3_NODE_ID], {
+    comfyUi: { minimumVersion: PI_H3_MINIMUM_COMFY_VERSION, recommendedVersion: recommendedCore },
+    upstreamUrl: `https://github.com/Lakonik/ComfyUI-piFlow/blob/${PI_H3_NODE_REVISION}/workflows/pi-H3-DWD-Spark-SM89.json`,
+    verifiedAt: "2026-11-23"
+  }),
   minimax_h3_omni_r2v_api: metadata("minimax_h3_omni_r2v_api.json", ["video-helper-suite", "kjnodes"], {
     comfyUi: { minimumVersion: FASTH3_OMNI_MINIMUM_COMFY_VERSION, recommendedVersion: recommendedCore },
     upstreamUrl: "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/tree/82eff2a6eee6c962846879f4bab52610a4df24d3",

@@ -16,6 +16,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { promptVersionDisplayLabel } from "../../shared/prompt-version-label";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import { imageOutputCountMax } from "../../../core/image-workflow";
+import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
 import {
   renderCreateModelOptions,
   renderH3ReferenceSlotsMarkup,
@@ -420,6 +421,7 @@ export function renderCreatePage(
               icon,
               escapeHtml,
               showGuideTimes: viewModel.draft.h3ReferenceGuidesEnabled,
+              allowEmptySlots: true,
               h3ReferenceRoleLabels: options.h3ReferenceRoleLabels,
               t
             })
@@ -513,7 +515,7 @@ export function renderCreatePage(
             ${viewModel.stepsOptionsMarkup}
           </select>
         </label>
-        <label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
+        ${viewModel.draft.modelId === PI_H3_MODEL_ID ? "" : `<label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
           <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""}>
             ${viewModel.spectrumOptionsMarkup}
           </select>
@@ -522,7 +524,7 @@ export function renderCreatePage(
           <select id="h3-latent-save-mode" ${viewModel.latentSaveDisabled ? "disabled" : ""} aria-label="${escapeHtml(t(uiKeys.create.videoSettings.saveLatentData))}">
             ${viewModel.latentSaveModeOptionsMarkup}
           </select>
-        </label>` : ""}
+        </label>`}` : ""}
           </div>
         </section>
         <section class="composer-control-group composer-motion-group">

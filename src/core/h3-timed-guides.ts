@@ -96,10 +96,14 @@ export function activeH3TimedGuides(draft: Pick<Draft, "modelId" | "inputMode" |
 }
 
 export function resolveH3TimedGuides(slots: readonly H3TimedGuide[], duration: number, frameCount = h3FrameCountForSeconds(duration)) {
-  return slots.filter(slot => slot.mediaPath).map(slot => ({
+  return slots.filter(isH3TimedGuideConfigured).map(slot => ({
     ...slot,
     frame: slot.seconds === "end" ? frameCount - 1 : slot.seconds === null ? -1 : Math.round(slot.seconds * 24)
   })).sort((left, right) => left.frame - right.frame);
+}
+
+export function isH3TimedGuideConfigured(slot: H3TimedGuide): boolean {
+  return Boolean(slot.mediaPath.trim()) && slot.seconds !== null;
 }
 
 export function restoreH3GuideEditor(slots: H3TimedGuide[]): NonNullable<Draft["h3GuideEditor"]> {
@@ -204,7 +208,6 @@ export function normalizeH3GuideDraft(draft: Draft, previousSlots?: readonly H3T
 
 export function h3TimedGuideIssue(slots: readonly H3TimedGuide[], duration: number, frameCount = h3FrameCountForSeconds(duration)) {
   const guides = resolveH3TimedGuides(slots, duration, frameCount);
-  if (!guides.length) return "missing";
   if (guides.some(guide => !Number.isFinite(guide.frame) || guide.frame < 0 || guide.frame >= frameCount ||
     (typeof guide.seconds === "number" && guide.seconds < 0))) return "time";
   if (guides.some((guide, index) => index > 0 && guide.frame === guides[index - 1]?.frame)) return "duplicate";

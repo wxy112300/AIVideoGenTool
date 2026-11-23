@@ -73,10 +73,11 @@ export function assertContinuumGroupProfile(profile: ContinuumGroupProfile, plan
         !["off", "schedule", "schedule_confidence", "full"].includes(h.spectrumModelAwareMode) || profile.lora) throw new Error("Invalid frozen H3 options");
   }
   const referenceModel = Boolean(profile.h3 && isContinuumReferenceModel(profile.h3.modelId));
-  if ((referenceModel && (!profile.referenceImages?.length || profile.firstImage || profile.lastImage)) ||
+  if ((referenceModel && (profile.firstImage || profile.lastImage)) ||
       (profile.referenceImages !== undefined && (!referenceModel || !Array.isArray(profile.referenceImages) ||
-        profile.referenceImages.length > 9 || profile.referenceImages.some(filename => !filename?.trim()))) ||
-      (profile.lastImage !== undefined && (!profile.firstImage || !profile.lastImage.trim() || profile.timedGuides))) {
+        profile.referenceImages.length > 12 || profile.referenceImages.filter(Boolean).length > 9 ||
+        profile.referenceImages.some(filename => typeof filename !== "string" || filename && !filename.trim()))) ||
+      (profile.lastImage !== undefined && (!profile.lastImage.trim() || profile.timedGuides))) {
     throw new Error("Invalid frozen Continuum reference images or tail frame");
   }
   const lastFrame = Math.round(plannedChunks * profile.chunkSeconds * 24) - 1;
@@ -168,12 +169,13 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     return [id, 0];
   };
   if (profile.lastImage) graph["12"].inputs.last_frame = loadImage(profile.lastImage);
-  const referenceLinks = profile.referenceImages?.map(loadImage) ?? [];
-  for (const [index, link] of referenceLinks.slice(0, 3).entries()) graph["12"].inputs[`reference_image_${index + 1}`] = link;
-  if (referenceLinks.length > 3) {
+  const referenceLinks = profile.referenceImages?.map(filename => filename ? loadImage(filename) : undefined) ?? [];
+  const filledReferenceLinks = referenceLinks.filter(link => link !== undefined);
+  for (const [index, link] of filledReferenceLinks.slice(0, 3).entries()) graph["12"].inputs[`reference_image_${index + 1}`] = link;
+  if (filledReferenceLinks.length > 3) {
     const id = String(nextMediaId++);
     graph[id] = { class_type: "H3ContinuumReferenceImages", inputs:
-      Object.fromEntries(referenceLinks.slice(3).map((link, index) => [`reference_image_${index + 4}`, link])) };
+      Object.fromEntries(filledReferenceLinks.slice(3).map((link, index) => [`reference_image_${index + 4}`, link])) };
     graph["12"].inputs.image_references = [id, 0];
   }
   if (profile.timedGuides?.length) {

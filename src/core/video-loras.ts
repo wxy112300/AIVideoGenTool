@@ -1,5 +1,6 @@
 import type { Draft, ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
-import { FASTH3_OMNI_MODEL_ID } from "./catalog/models/minimax_h3_omni/definition.js";
+import { isH3VsaCheckpoint } from "./h3-vsa-checkpoint.js";
+import { PI_H3_MODEL_ID } from "./catalog/models/minimax_h3_pi/definition.js";
 import {
   H3_FL2VA_MODEL_ID,
   H3_SLA_TURBO_LORA_FILENAME,
@@ -582,7 +583,7 @@ export function videoLoraCompatibleWithModel(
   lora: VideoLoraSelection,
   modelId: string
 ): boolean {
-  if (modelId === FASTH3_OMNI_MODEL_ID) return false;
+  if (isH3VsaCheckpoint(modelId) || modelId === PI_H3_MODEL_ID) return false;
   return lora.compatibleModelIds.length === 0 ||
     lora.compatibleModelIds.includes(baseVideoModelId(modelId));
 }

@@ -21,22 +21,22 @@ function repository(state: AppState) {
 }
 const logger = () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() });
 const languages = [
-  ["zh-CN", "源作品或版本已不存在", "待编辑", "请先选择首帧", "请先添加", "队列运行期间", "整理完成", "处理中"],
-  ["en-US", "source project or version", "task to edit", "first-frame image", "base image", "queue is running", "organization complete", "busy"],
-  ["zh-TW", "源作品或版本已不存在", "要編輯", "請先選擇首影格", "請先新增", "佇列執行期間", "整理完成", "處理中"]
+  ["zh-CN", "源作品或版本已不存在", "待编辑", "ComfyUI API 工作流", "请先添加", "队列运行期间", "整理完成", "处理中"],
+  ["en-US", "source project or version", "task to edit", "ComfyUI API workflow", "base image", "queue is running", "organization complete", "busy"],
+  ["zh-TW", "源作品或版本已不存在", "要編輯", "ComfyUI API 工作流程", "請先新增", "佇列執行期間", "整理完成", "處理中"]
 ] as const;
 
 it("reads the saved locale on existing queue services and rejects invalid input without writes", async () => {
   const state = createDefaultState(), store = repository(state), sendState = vi.fn();
   const service = new QueueEnqueueService({ store, logger: logger(), sendState } as QueueEnqueueServiceDependencies);
   const mutation = new QueueMutationService({ store, logger: logger(), sendState });
-  for (const [locale, version, edit, first, base] of languages) {
+  for (const [locale, version, edit, workflow, base] of languages) {
     state.settings.uiLocale = locale;
     const before = structuredClone(state);
     await expect(service.enqueueUpscale({ sourceAssetId: "missing", sourceVersionId: "missing" } as UpscaleRequest)).rejects.toThrow(version);
     await expect(mutation.updateUpscale("missing", {})).rejects.toThrow(edit);
     const draft = { ...state.draft, modelId: "custom-model", startImagePath: "", endImagePath: "" };
-    await expect(service.enqueue(draft)).rejects.toThrow(first);
+    await expect(service.enqueue(draft)).rejects.toThrow(workflow);
     await expect(service.enqueueImage({ ...state.imageDraft, modelId: "qwen-image-edit-2511", pictures: [] })).rejects.toThrow(base);
     expect(store.update).not.toHaveBeenCalled(); expect(sendState).not.toHaveBeenCalled();
     expect(state).toEqual(before);

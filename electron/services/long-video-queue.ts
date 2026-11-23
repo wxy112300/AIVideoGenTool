@@ -3,11 +3,10 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionQueueTask, GenerationQueueTask, HistoryFile, Settings } from "../../src/types.js";
 import type { QueueExecutorDependencies } from "../queue-executor.js";
 import { outputDimensions, miniMaxH3ModelAssetNames, normalizeH3Steps } from "../../src/core/workflow.js";
-import { videoPromptForLoras, videoLoraConfigurationIssues } from "../../src/core/video-loras.js";
+import { videoLoraConfigurationIssues } from "../../src/core/video-loras.js";
 import { h3VideoVaeFilename } from "../../src/core/h3-video-vae.js";
-import { assertLongVideoExecutionSnapshot, freezeLongVideoExtensionPlan, type LongVideoExecutionSnapshot } from "../../src/core/long-video/execution.js";
+import { assertLongVideoExecutionSnapshot, compileLongVideoSamplingPrompts, freezeLongVideoExtensionPlan, type LongVideoExecutionSnapshot } from "../../src/core/long-video/execution.js";
 import { compileContinuumGroupWorkflow, isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
-import { compileLongVideoPrompts } from "../../src/core/long-video/script.js";
 import { promises as fs } from "node:fs";
 import { uploadInput } from "./comfy-ui.js";
 import { continuumParentTransport, runLongVideoExecution } from "./long-video-execution.js";
@@ -16,7 +15,7 @@ import { persistVideoHistoryResult } from "../queue-history.js";
 import { queuePauseBoundaryAfterTaskCompletion } from "../../src/core/queue.js";
 import { verifyLongVideoRunSource } from "./long-video-run-source.js";
 import { longVideoOutputFps } from "../../src/core/long-video/delivery.js";
-import { longVideoGuideCues, longVideoGuideIssue, longVideoGuideSamplingPrompt } from "../../src/core/long-video/timed-guides.js";
+import { longVideoGuideCues, longVideoGuideIssue } from "../../src/core/long-video/timed-guides.js";
 
 export class LongVideoPausedError extends Error {}
 type Dependencies = Pick<QueueExecutorDependencies, "store" | "sendState" | "updateTask" | "updateTaskProgress" | "requireExistingVideoOutput" | "getComfyRuntimeState">;
@@ -43,10 +42,11 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
     } else {
     const modelId = task.modelId;
     const references = task.h3ReferenceSlots ?? [];
+    const imageSlots = references.filter(slot => slot.mediaType === "image");
+    const filled = references.filter(slot => slot.mediaPath.trim());
     const referenceModel = isContinuumReferenceModel(modelId);
     if (task.taskType !== "generation" || (!referenceModel && modelId !== "minimax_h3_fl2va") ||
-        (referenceModel ? !references.length || references.length > 9 ||
-          references.some(slot => slot.mediaType !== "image" || !slot.mediaPath) : !task.startImagePath) ||
+        (referenceModel && (filled.length > 9 || filled.some(slot => slot.mediaType !== "image"))) ||
         !["off", "balanced"].includes(task.spectrumMode ?? "off") || !["sage", "sage-triton", "comfy-kitchen", "pytorch"].includes(task.attentionMode ?? "")) {
       throw new Error("Long-video claimed configuration is unsupported; the saved choices have not been replaced");
     }
@@ -68,8 +68,8 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
     const firstImage = opening ? await uploadInput(base, opening, signal, "首帧") : undefined;
     const lastImage = !referenceModel && !guideCues.length && task.endImagePath
       ? await uploadInput(base, task.endImagePath, signal, "尾帧") : undefined;
-    const referenceImages = referenceModel ? await Promise.all(references.map((slot, index) =>
-      uploadInput(base, slot.mediaPath, signal, `Picture ${index + 1}`))) : undefined;
+    const referenceImages = referenceModel ? await Promise.all(imageSlots.map((slot, index) =>
+      slot.mediaPath.trim() ? uploadInput(base, slot.mediaPath, signal, `Picture ${index + 1}`) : "")) : undefined;
     const timedGuides = await Promise.all(guideCues.map(async guide => ({
       picture: guide.picture,
       filename: referenceImages?.[guide.picture - 1] ?? ((guide.frame === 0 && firstImage) ||
@@ -79,14 +79,14 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
     snapshot = { schemaVersion: 1, taskId: task.id, executionId: task.id, projectId: `lvs_${task.id}`, runName: `lvs_${task.id}`,
       script: structuredClone(task.longVideoPlan), profile: { ...assets, executionMode: "full_run", videoVae: h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16"), width, height,
         seed: task.seed, steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras), sampler: template["6"].inputs.sampler_name, scheduler: template["7"].inputs.scheduler,
-        chunkSeconds: layout.chunkSeconds, prompts: compileLongVideoPrompts(task.longVideoPlan).map((p, index) =>
-          videoPromptForLoras(!referenceModel && guideCues.length ? longVideoGuideSamplingPrompt(p, guideCues, index + 1) : p, task.videoLoras)), firstImage,
+        chunkSeconds: layout.chunkSeconds, prompts: [], firstImage,
         ...(lastImage ? { lastImage } : {}),
         ...(referenceImages ? { referenceImages } : {}),
         ...(timedGuides.length ? { timedGuides } : {}),
         attention: task.attentionMode === "pytorch" ? "sdpa" : task.attentionMode ?? "sage", spectrumMode: task.spectrumMode, delivery: { frameInterpolation: task.frameInterpolation },
         h3: { modelId, videoLoras: structuredClone(task.videoLoras ?? []), sparseAttentionMode: task.h3SparseAttentionMode ?? "off",
           runtimeMode: task.h3RuntimeMode ?? "compatibility", comfyCompilerMode: task.h3ComfyCompilerMode ?? "disabled", spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off" } } };
+    snapshot.profile.prompts = compileLongVideoSamplingPrompts(snapshot.script, snapshot.profile);
     }
     assertLongVideoExecutionSnapshot(snapshot);
     const compiled = compileContinuumGroupWorkflow(template, { execution_id: task.id, step_id: "group-1", attempt_id: "attempt-1", project_id: snapshot.projectId,

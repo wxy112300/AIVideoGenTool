@@ -149,14 +149,10 @@ export function normalizeVideoSteps(
   value: unknown,
   policy: VideoGenerationPolicy
 ): H3StepCount {
-  const normalized = (value === 4 || value === 6 || value === 8 || value === 10 ||
-    value === 12 || value === 16 || value === 20) &&
-    policy.steps.options.includes(value as H3StepCount)
-    ? value
-    : policy.steps.defaultValue;
+  const normalized = policy.steps.options.find((step) => step === value) ?? policy.steps.defaultValue;
   return normalized > policy.steps.maxValue
     ? policy.steps.maxValue
-    : normalized as H3StepCount;
+    : normalized;
 }
 
 export function shouldApplySpectrum(input: VideoGenerationPolicyInput): boolean {

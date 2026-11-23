@@ -8,6 +8,30 @@ import { longVideoBlockReason } from "../src/core/long-video/capability";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
+it("recovers empty Continuum pages and queues a text-only Full Run without media", async () => {
+  const h = journey = await createJourney({ modelId: "minimax_h3_fl2va", startImagePath: "", endImagePath: "" });
+  h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.input("#generation-mode", "preview", "change");
+  h.input("[data-preview-duration-number]", "8"); h.input("[data-preview-count-number]", "2");
+  h.element("[data-confirm-layout]").click();
+  expect(h.element("#enqueue").disabled).toBe(true);
+  expect(h.element("#enqueue").dataset.enqueueBlockReason).not.toContain("首帧");
+  for (const [index, text] of ["一朵云徐徐变形。", "云慢慢移出画面。"].entries()) {
+    h.element(`.create-long-tabs [role="tab"]:nth-child(${index + 2})`).click();
+    h.input(".create-long-editor textarea", text);
+  }
+  h.element('.create-long-tabs [role="tab"]:first-child').click();
+  h.input(".create-long-editor textarea", "同一片天空。");
+  h.element('.create-long-tabs [role="tab"]:nth-child(2)').click();
+  expect(h.state().draft.longVideoScript!.segments.every(page=>page.stale)).toBe(true);
+  expect(h.element("#enqueue").disabled).toBe(false);
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+    startImagePath: "", endImagePath: "", longVideoPlan: { layout: { chunks: 2 } }, status: "waiting"
+  }));
+});
+
 it.each(["fl2va", "ref2va"] as const)("queues the %s multi-segment input through the create button", async mode => {
   const r2v = mode === "ref2va";
   const slot = { id: "slot-1", mediaType: "image", mediaPath: "picture.png", role: "subject", note: "" } as const;
@@ -82,7 +106,7 @@ it.each(["rife2x", "rife4x"] as const)("retains saved 1080p and %s through enque
   for (const [index, text] of ["The car turns left.", "The car stops."].entries()) {
     h.element(`.create-long-tabs [role="tab"]:nth-child(${index + 2})`).click(); h.input(".create-long-editor textarea", text);
   }
-  expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(true);
+  expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(false);
   h.element("#pick-start").click();
   await vi.waitFor(() => expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(false));
   h.element("#enqueue").click();
@@ -101,7 +125,7 @@ it.each((["off", "balanced"] as const).flatMap(spectrumMode => (["sage", "sage-t
   expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(true);
   h.element('.create-long-tabs [role="tab"]:nth-child(2)').click(); h.input(".create-long-editor textarea", "A red ball rolls slowly to the left. Static camera.");
   h.element('.create-long-tabs [role="tab"]:nth-child(3)').click(); h.input(".create-long-editor textarea", "The same red ball comes to rest. Static camera.");
-  expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(true);
+  expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(false);
   h.element("#pick-start").click();
   await vi.waitFor(() => expect(h.state().draft.startImagePath).toBe("fixture.png"));
   await vi.waitFor(() => expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(false));

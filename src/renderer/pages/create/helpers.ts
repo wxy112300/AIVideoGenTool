@@ -14,6 +14,7 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import { inferH3PromptMode } from "../../../core/h3-prompt";
+import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
 import { isLongVideoDraftActive } from "../../../core/long-video/capability";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
@@ -39,7 +40,7 @@ import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
 import { icon } from "../../shared/icons";
 import { createTranslator, type Translate } from "../../../core/i18n";
-import { activeH3TimedGuides } from "../../../core/h3-timed-guides";
+import { activeH3TimedGuides, isH3TimedGuideConfigured } from "../../../core/h3-timed-guides";
 import { uiKeys } from "../../../core/i18n-keys";
 import { h3FrameCountForSeconds, h3MaxDurationForFrameBudget } from "../../../core/h3-temporal";
 import { generationSafetyForTask } from "../../../core/workflow";
@@ -118,7 +119,8 @@ export function activeImagePrompt(draft: ImageEditDraft, locale: UiLocale = "zh-
 }
 
 export function h3PromptModeForDraft(draft: Draft): H3PromptMode {
-  if (activeH3TimedGuides(draft)) return "I2VA";
+  const editor = activeH3TimedGuides(draft);
+  if (editor) return editor.slots.some(isH3TimedGuideConfigured) ? "I2VA" : "T2VA";
   if (draft.inputMode === "video" && isMiniMaxH3ContinuumModel(draft.modelId)) return "T2VA";
   if (
     draft.inputMode === "video" &&
@@ -286,6 +288,7 @@ export function createModelOptionViewModels(
             ? t(uiKeys.create.modelStatus.extensionCheckFailed)
             : "";
       const catalogCapabilities = modelCatalog.get(profile.id)?.definition.capabilities;
+      const copy = modelCatalog.localized(profile.id, locale);
       const modeLabel = draft.inputMode === "video"
         ? isMiniMaxH3ContinuumModel(profile.id)
           ? t(uiKeys.create.modelStatus.continuumRecommended)
@@ -297,14 +300,14 @@ export function createModelOptionViewModels(
         : "";
       return {
         id: profile.id,
-        name: modelCatalog.localized(profile.id, locale)?.name ?? profile.name,
+        name: copy?.name ?? profile.name,
         selected,
         unavailable,
         modeLabel,
         suffix,
         group: t(catalogCapabilities?.supportsReferenceSlots ? uiKeys.create.r2vReferencesTitle :
           catalogCapabilities?.supportsEndFrame ? uiKeys.create.editor.frameModels : uiKeys.create.editor.otherModels),
-        description: modelCatalog.localized(profile.id, locale)?.badge ?? modelCatalog.localized(profile.id, locale)?.description ?? ""
+        description: (profile.id === PI_H3_MODEL_ID ? copy?.description : copy?.badge ?? copy?.description) ?? ""
       };
     });
 }

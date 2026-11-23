@@ -20,6 +20,11 @@ describe("internal Continuum group adapter", () => {
     const link = graph["12"].inputs.last_frame as [string, number];
     expect(graph[link[0]].inputs.image).toBe("native-tail.png");
     expect(graph["12"].inputs.first_frame).toEqual(["8", 0]);
+    const tailOnly = compileContinuumGroupWorkflow(template(), { ...request, execution_mode: "full_run" },
+      { ...profile, executionMode: "full_run", firstImage: undefined, lastImage: "native-tail.png" });
+    expect(tailOnly["12"].inputs.first_frame).toBeUndefined();
+    const tailOnlyLink = tailOnly["12"].inputs.last_frame as [string, number];
+    expect(tailOnly[tailOnlyLink[0]].inputs.image).toBe("native-tail.png");
   });
 
   it("feeds up to nine R2V images through native reference sockets and reuses the timed image", () => {

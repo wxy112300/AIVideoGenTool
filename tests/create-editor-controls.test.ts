@@ -276,7 +276,7 @@ describe("Create editor controls", () => {
     });
   });
 
-  it("isolates multi-segment layout and prompt edits from the real draft and blocks submission after unrelated edits and redraws", async () => {
+  it("isolates multi-segment timing and segment edits, and clears the shared prompt when clearing the script", async () => {
     const h = journey = await createJourney();
     h.input("#prompt-input", "A quiet garden, gentle wind, static camera.");
     const original = structuredClone(h.state().draft);
@@ -305,10 +305,10 @@ describe("Create editor controls", () => {
     expect(h.state().draft.duration).toBe(original.duration);
     expect(h.state().draft.promptVersions).toEqual(original.promptVersions);
     h.element("#clear-draft").click();
-    expect(h.state().draft.promptVersions).toEqual(original.promptVersions);
-    expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe("");
+    expect(h.state().draft.promptVersions[h.state().draft.activePromptVersion]?.text).toBe("");
+    await vi.waitFor(() => expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe(""));
     h.input("#generation-mode", "native", "change");
-    expect(h.element("#enqueue").disabled).toBe(false);
+    expect(h.element("#enqueue").disabled).toBe(true);
     expect(h.element("#prompt-input").closest<HTMLElement>(".prompt-editor-shell")!.hidden).toBe(false);
   });
 });

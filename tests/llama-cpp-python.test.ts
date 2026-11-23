@@ -202,15 +202,15 @@ describe("llama-cpp-python runtime", () => {
 
   it("builds a pinned JamePeng dynamic-backend repair wheel for Python 3.12 / CUDA 12.9", () => {
     expect(llamaCppJamePengRepairWheel("12.9", "3.12.11", "win32"))
-      .toContain("v0.4.7-cu128-win-20261113/llama_cpp_python-0.4.7%2Bcu128-cp312-cp312-win_amd64.whl");
+      .toContain("v0.4.8-cu128-win-20261122/llama_cpp_python-0.4.8%2Bcu128-cp312-cp312-win_amd64.whl");
   });
 
-  it.each(["12.4", "12.6", "12.8", "13.0", "13.1", "13.2"])("selects the published 0.4.7 Windows wheels for CUDA %s", cuda => {
+  it.each(["12.4", "12.6", "12.8", "13.0", "13.1", "13.2"])("selects the published 0.4.8 Windows wheels for CUDA %s", cuda => {
     const cudaKey = `cu${cuda.replace(".", "")}`;
     for (const minor of [10, 11, 12, 13, 14]) {
       const abi = `cp3${minor}`;
       expect(llamaCppJamePengRepairWheel(cuda, `3.${minor}.0`, "win32"))
-        .toBe(`https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.7-${cudaKey}-win-20261113/llama_cpp_python-0.4.7%2B${cudaKey}-${abi}-${abi}-win_amd64.whl`);
+        .toBe(`https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.8-${cudaKey}-win-20261122/llama_cpp_python-0.4.8%2B${cudaKey}-${abi}-${abi}-win_amd64.whl`);
     }
   });
 
@@ -359,7 +359,7 @@ describe("llama-cpp-python runtime", () => {
       "--no-cache-dir",
       "--no-deps",
       "--progress-bar=raw",
-      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.7-cu130-win-20261113/llama_cpp_python-0.4.7%2Bcu130-cp312-cp312-win_amd64.whl"
+      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.8-cu130-win-20261122/llama_cpp_python-0.4.8%2Bcu130-cp312-cp312-win_amd64.whl"
     ]));
     expect(result.log).toContain("自检通过");
   });
@@ -410,7 +410,7 @@ describe("llama-cpp-python runtime", () => {
       "--no-cache-dir",
       "--no-deps",
       "--progress-bar=raw",
-      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.7-cu128-win-20261113/llama_cpp_python-0.4.7%2Bcu128-cp312-cp312-win_amd64.whl"
+      "https://github.com/JamePeng/llama-cpp-python/releases/download/v0.4.8-cu128-win-20261122/llama_cpp_python-0.4.8%2Bcu128-cp312-cp312-win_amd64.whl"
     ]));
     expect(result.log).toContain("动态 CUDA/CPU 后端");
   });

@@ -21,7 +21,8 @@ import {
 } from "../../src/core/catalog/index.js";
 import { isLocalComfyUrl } from "./comfy-endpoint.js";
 
-export const DLSS5_RUNTIME_CONFIG_FILENAME = "config.json";
+import { DLSS5_RUNTIME_CONFIG_FILENAME, type Dlss5RuntimeConfig } from "../../src/core/software-runtime-files.js";
+export { DLSS5_RUNTIME_CONFIG_FILENAME } from "../../src/core/software-runtime-files.js";
 export const DLSS5_RUNTIME_MANIFEST_FILENAME = "install-manifest.json";
 export const DLSS5_RUNTIME_DOWNLOAD_DIRECTORY = "downloads";
 export const DLSS5_RUNTIME_BACKUP_DIRECTORY = "dlss5-runtime-backups";
@@ -29,18 +30,6 @@ const DLSS5_RUNTIME_STAGING_PREFIX = ".dlss5-runtime-staging-";
 
 const SHARED_CONFIG_KEYS = ["python", "temp_dir"] as const;
 const REQUIRED_RUNTIME_FILES = ["python.exe", "vsdlsssr.dll", "nvngx_dlss.dll"] as const;
-
-interface Dlss5RuntimeConfig {
-  python?: unknown;
-  sr_plugin?: unknown;
-  sr_runtime?: unknown;
-  temp_dir?: unknown;
-  nr_plugin?: unknown;
-  nr_runtime?: unknown;
-  timeout_seconds?: unknown;
-  vapourkit_release?: unknown;
-  vapourkit_archive_sha256?: unknown;
-}
 
 interface Dlss5RuntimeInstallManifest {
   schemaVersion: 1;

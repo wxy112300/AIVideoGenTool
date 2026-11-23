@@ -1873,6 +1873,11 @@ const nodePurposeCopy: Record<string, readonly [string, string, string]> = {
     "H3 高解析度分塊放大",
     "Tiled high-resolution H3 upscaling"
   ],
+  "comfyui-piflow": [
+    "运行 MiniMax H3 · Pi-H3",
+    "執行 MiniMax H3 · Pi-H3",
+    "Runs MiniMax H3 · Pi-H3"
+  ],
   "spectrum-minimax-h3": [
     "H3 采样加速",
     "H3 採樣加速",

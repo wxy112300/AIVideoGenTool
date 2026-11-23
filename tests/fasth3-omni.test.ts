@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { modelCatalog } from "../src/core/catalog";
 import { FASTH3_OMNI_MODEL_ID as modelId, FASTH3_OMNI_WORKFLOW_FILENAME as filename } from "../src/core/catalog/models/minimax_h3_omni/definition";
+import { TEN_EROS_MAX_CHECKPOINT, TEN_EROS_MAX_MODEL_ID } from "../src/core/catalog/models/ten_eros_max/definition";
 import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { H3_PDD_REF2VA_LORA } from "../src/core/video-loras";
@@ -108,6 +109,28 @@ describe("FastH3 Omni independent H3 integration", () => {
     const graph = renderWorkflow(template(), { ...task, h3ExecutionPolicy: undefined, h3SparseAttentionMode: undefined,
       h3RuntimeMode: undefined, h3ComfyCompilerMode: undefined }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
     expect(Object.values(graph).find(n => n.class_type === "BlockSparseAttention")?.inputs.selection).toBe("vsa");
+  });
+
+  it("detects the Eros v1.0 HQ file independently and renders its own 12-step LCM recipe", () => {
+    const { state } = fixture();
+    const components = modelCatalog.get(TEN_EROS_MAX_MODEL_ID)!.definition.scan!.components;
+    const files = components.map(component => component.expected);
+    const erosAvailable = (paths: string[]) => evaluateModelProfiles(paths).find(p => p.id === TEN_EROS_MAX_MODEL_ID)?.available;
+    expect(erosAvailable(files)).toBe(true);
+    expect(erosAvailable(files.map(file => file.replace("v1.0_hybrid-int8_HQ", "beta7_int8HQ")))).toBe(false);
+    const draft = normalizeVideoDraft({ ...state.draft, modelId: TEN_EROS_MAX_MODEL_ID, steps: 12, videoLoras: [H3_PDD_REF2VA_LORA] });
+    const task = queueTaskFromDraft(draft, state);
+    expect(task).toMatchObject({ modelId: TEN_EROS_MAX_MODEL_ID, steps: 12, videoLoras: [], spectrumMode: "off",
+      h3ExecutionPolicy: { turboProfile: "h3-10eros-max-v1", attentionMode: "comfy-kitchen", sparseAttentionMode: "vsa" } });
+    const graph = renderWorkflow(template(), task, { h3ReferenceImages: ["face.png", "scene.png"] }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(graph["1"]?.inputs.unet_name).toBe(TEN_EROS_MAX_CHECKPOINT);
+    expect(graph["14"]?.inputs).toMatchObject({ "ref_images.ref_image_0": ["5", 0], "ref_images.ref_image_1": ["6", 0] });
+    const inputs = (type: string) => Object.values(graph).find(node => node.class_type === type)?.inputs;
+    expect(inputs("KSamplerSelect")).toMatchObject({ sampler_name: "lcm" });
+    expect(inputs("BasicScheduler")).toMatchObject({ scheduler: "simple", steps: 12 });
+    expect(inputs("MiniMaxH3SigmaShift")).toMatchObject({ shift_video: 12, shift_audio: 3 });
+    expect(inputs("BlockSparseAttention")).toMatchObject({ selection: "vsa", "selection.keep_percent": 10, dense_blocks: "0,1" });
+    expect(inputs("SaveVideo")).toBeDefined();
   });
 
   it("serves a dedicated versioned bundled workflow and refuses to offer it for Extend", async () => {

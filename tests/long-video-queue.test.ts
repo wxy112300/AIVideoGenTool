@@ -41,22 +41,38 @@ async function fixture() {
   const deps = { store, sendState: vi.fn(), updateTask: vi.fn(), updateTaskProgress: vi.fn(), requireExistingVideoOutput: vi.fn(async () => [file]) };
   return { directory, filename, task, media, deps, signal: new AbortController().signal };
 }
+it("claims a text-only Full Run without uploading a first frame", async () => {
+  const f = await fixture();
+  Object.assign(f.task, { longVideoExecution: undefined, modelId: "minimax_h3_fl2va", startImagePath: "", endImagePath: "",
+    h3ReferenceSlots: [], videoLoras: [], attentionMode: "pytorch", spectrumMode: "off" });
+  execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
+    expect(snapshot.profile.firstImage).toBeUndefined();
+    expect(snapshot.profile).toMatchObject({ executionMode: "full_run", prompts: ["Action 0", "Action 1"] });
+    return { phase: "published" };
+  });
+  await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);
+  expect(execution.run).toHaveBeenCalledOnce();
+});
+
 it("freezes R2V picture uploads and an output-timeline guide without rewriting Picture tags", async () => {
   const f = await fixture();
   f.task.longVideoExecution = undefined;
-  f.task.longVideoPlan!.pages[2]!.text = "<Picture 1> turns to camera.";
   Object.assign(f.task, {
     modelId: "minimax_h3_ref2va", startImagePath: "", endImagePath: "", videoLoras: [],
     attentionMode: "pytorch", spectrumMode: "off",
-    h3ReferenceSlots: [{ id: "reference", mediaType: "image", mediaPath: "picture.png", role: "subject", note: "" }],
-    h3TimedGuides: [{ picture: 1, mediaPath: "picture.png", seconds: 5.2 }]
+    h3ReferenceSlots: [
+      { id: "empty", mediaType: "image", mediaPath: "", role: "subject", note: "" },
+      { id: "reference", mediaType: "image", mediaPath: "picture.png", role: "subject", note: "" }
+    ],
+    h3TimedGuides: [{ picture: 2, mediaPath: "picture.png", seconds: 5.2 }]
   });
+  f.task.longVideoPlan!.pages[2]!.text = "<Picture 2> turns to camera.";
   execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
     expect(snapshot.profile.firstImage).toBeUndefined();
     expect(snapshot.profile).toMatchObject({
       h3: { modelId: "minimax_h3_ref2va" },
-      referenceImages: ["uploaded-first.png"],
-      timedGuides: [{ picture: 1, filename: "uploaded-first.png", absoluteFrame: 125 }],
+      referenceImages: ["", "uploaded-first.png"],
+      timedGuides: [{ picture: 2, filename: "uploaded-first.png", absoluteFrame: 125 }],
       prompts: ["Action 0", "<Picture 1> turns to camera."]
     });
     return { phase: "published" };

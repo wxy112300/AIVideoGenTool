@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { STRATA_ENGINE_SHA256, STRATA_REVISION } from "../src/core/catalog/dependencies/strata.js";
+import { STRATA_ENGINE_SHA256, STRATA_REVISION, STRATA_RELEASES, STRATA_VERSION } from "../src/core/catalog/dependencies/strata.js";
 import { assertStrataResidentLog, prepareStrataLaunch, StrataService, type StrataLaunchPlan } from "../electron/services/strata-service.js";
 import { isLocalPortInUse } from "../electron/services/local-service-process.js";
 import { writeStrataPreparedFixture } from "./helpers/strata-pack-fixture.js";
@@ -538,7 +538,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     expect(f.child.stop).toHaveBeenCalledOnce(); expect(f.service.snapshot().pid).toBeNull();
   });
 
-  it("builds a lazy loopback launch using only the completed runtime's independent Python", async () => {
+  it.each(["0.2.17", STRATA_VERSION])("builds a lazy %s loopback launch preserving the device-VRAM and small-cache fixes", async version => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-service-")); roots.push(root);
     for (const relative of [".venv/Scripts/python.exe", "terminal/serve/server.py", "prepared config.json"]) {
       const filename = path.join(root, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
@@ -546,15 +546,21 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     const settings = { strataInstallDirectory: root, strataPort: 43127 };
     const config = path.join(root, "prepared config.json");
     await expect(prepareStrataLaunch(settings, config)).rejects.toThrow("管理安装未完成");
-    await fs.writeFile(path.join(root, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: "fixture" }));
+    const release = STRATA_RELEASES.find(item => item.version === version)!;
+    await fs.writeFile(path.join(root, "lvs-strata-install.json"), JSON.stringify({ owner: "local-video-studio", ...release, installedAt: "fixture" }));
     await expect(prepareStrataLaunch(settings, config)).rejects.toThrow();
     await writeStrataPreparedFixture(root, config);
+    const receiptFile = path.join(root, "lvs-strata-model.json");
+    const receipt = JSON.parse(await fs.readFile(receiptFile, "utf8"));
+    await fs.writeFile(receiptFile, JSON.stringify({ ...receipt, sourceRevision: release.revision }));
     const legacy = await prepareStrataLaunch(settings, config);
     expect(legacy.args).not.toContain("--api-monitor");
     await fs.writeFile(path.join(root, "terminal", "serve", "server.py"), 'ap.add_argument("--api-monitor")');
     await fs.mkdir(path.join(root, "terminal", "serve", "web"), { recursive: true });
     for (const name of ["monitor.html", "monitor.js", "tokens.css"]) await fs.writeFile(path.join(root, "terminal", "serve", "web", name), "fixture");
     const result = await prepareStrataLaunch(settings, config);
+    expect(result.env?.STRATA_HC_Q8_TC).toBe(version === STRATA_VERSION ? "0" : undefined);
+    expect(result.env?.STRATA_HC_Q8_BF16TC).toBe(version === STRATA_VERSION ? "0" : undefined);
     expect(result.executable).toBe(path.join(root, ".venv", "Scripts", "python.exe"));
     expect(result).toMatchObject({ installDirectory: root, cwd: path.join(root, "terminal") });
     expect(result.args).toEqual(["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", config, "--host", "127.0.0.1", "--port", "43127", "--lazy", "--api-monitor", "--api-key", result.apiKey]);
@@ -568,6 +574,8 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       expect(derived.args.includes("--resident-experts")).toBe(mode==="resident");
       expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe("5120");
       expect(session.env?.STRATA_VRAM_FREE).toBe(process.platform === "win32" ? "device" : undefined);
+      expect(session.env?.STRATA_HC_Q8_TC).toBe(version === STRATA_VERSION ? "0" : undefined);
+      expect(session.env?.STRATA_HC_Q8_BF16TC).toBe(version === STRATA_VERSION ? "0" : undefined);
       expect(derived.args[derived.args.indexOf("--expert-cache")+1]).toBe("auto");
       expect(session.env).toMatchObject({STRATA_RESIDENT_HEADROOM_GIB:"6"});
       expect(session.allowResidentFallback).toBe(mode==="resident");

@@ -8,12 +8,14 @@ import { createJourney } from "./harness/create-journey";
 import { registerWorkflowIpc } from "../electron/workflow-ipc";
 import { evaluateModelProfiles } from "../electron/services/environment";
 import { minimaxH3Omni, FASTH3_OMNI_MODEL_ID as modelId } from "../src/core/catalog/models/minimax_h3_omni/definition";
+import { tenErosMax, TEN_EROS_MAX_MODEL_ID } from "../src/core/catalog/models/ten_eros_max/definition";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => { journey?.dispose(); journey = undefined; await new Promise(resolve => setTimeout(resolve, 370)); });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
-it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enqueue buttons → frozen task → return to Base", async () => {
+it.each([minimaxH3Omni, tenErosMax])("$definition.id: core repair → missing reference → picker/Enhance/enqueue buttons → frozen task → return to Base", async ({ definition }) => {
+  const modelId = definition.id;
   const h = journey = await createJourney();
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   registerWorkflowIpc({ ipc: { handle: (name, handler) => handlers.set(name, handler) } as unknown as IpcMain,
@@ -25,7 +27,7 @@ it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enq
   });
   // Production bootstrap remembers the current bundled graph before model changes.
   h.dependencies.bundledWorkflows["minimax_h3_fl2va:image"] = await handlers.get("workflow:get-bundled")!(undefined, "minimax_h3_fl2va", "image") as BundledWorkflow;
-  h.scan.modelProfiles.push(evaluateModelProfiles(minimaxH3Omni.definition.scan!.components.map(c => c.expected)).find(p => p.id === modelId)!);
+  h.scan.modelProfiles.push(evaluateModelProfiles(definition.scan!.components.map(c => c.expected)).find(p => p.id === modelId)!);
   h.scan.comfyCompatibility.version = "0.39.0";
   h.render();
   h.input("#model", modelId, "change"); await settle();
@@ -35,6 +37,7 @@ it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enq
   expect(h.element("#enqueue").disabled).toBe(true);
   expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("0.42.0+");
   h.scan.comfyCompatibility.version = "0.42.0"; h.render();
+  h.input("#prompt-input", "Follow <Picture 1> through the scene.");
   expect(h.element("#enqueue").disabled).toBe(true);
   if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
   await settle(); h.element("[data-pick-h3-slot]").click(); await settle();
@@ -48,6 +51,7 @@ it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enq
   const task = h.state().queue[0]!;
   expect(task).toMatchObject({ id: expect.any(String), modelId, steps: 8, fps: 24, spectrumMode: "off", workflowPath: path.resolve("workflows/minimax_h3_omni_r2v_api.json"), h3ReferenceSlots: [{ mediaPath: "fixture.png" }] });
   h.element("[data-clear-h3-slot]").click(); await settle();
+  h.input("#prompt-input", "Follow <Picture 1> through the scene.");
   expect(h.element("#enqueue").disabled).toBe(true);
   expect(task).toMatchObject({ h3ReferenceSlots: [{ mediaPath: "fixture.png" }] });
   h.input("#model", "minimax_h3_fl2va", "change"); await settle();
@@ -55,7 +59,7 @@ it("FastH3 Omni: core repair → missing reference → actual picker/Enhance/enq
   expect(h.state().queue[0]?.modelId).toBe(modelId);
 });
 
-it("continues an Omni source through the supported ordinary R2V model while retaining source identity", async () => {
+it.each([modelId, TEN_EROS_MAX_MODEL_ID])("continues a %s source through ordinary R2V while retaining source identity", async modelId => {
   const h = journey = await createJourney({ modelId });
   await h.coordinator.selectDraftVideo("omni-source.mp4", { modelId, assetId: "omni-asset", versionId: "omni-version", duration: 5, width: 864, height: 480, resetPrompt: true });
   expect(h.state().draft).toMatchObject({ modelId: "minimax_h3_ref2va", sourceAssetId: "omni-asset", sourceVersionId: "omni-version", sourceVideoPath: "omni-source.mp4",

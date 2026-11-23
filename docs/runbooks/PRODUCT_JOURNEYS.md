@@ -79,10 +79,12 @@ flowchart TD
 - 新建 Continuum 长视频沿用关键帧卡片，秒数从合并后的成片起点计。入队冻结总时长及素材。应用 H3 节点把绝对帧交给官方 Guide 路由，首组、接缝两侧、尾裁剪与再次打开草稿分别验收。
 - FL2VA 普通首尾图分别进入 Continuum 的首尾节点，隐藏的 R2V 槽保持在草稿。R2V INT8／INT4 使用 Continuum 的九个图片参考位，定时图复用对应图片节点，保留 Picture 编号和成片时间。R2V 视频参考使用原生单段入口。
 - R2V“跟随输入比例”读取 Picture 1；用竖图/方图核对预览、任务和最终图尺寸，显式比例及 Motion Context 源视频不被参考脸覆盖。FastH3 Omni 对照官方 VSA10/Kitchen 工作流，并以运行日志的 sparse producer 或 dense 回退原因确认实际路径，不能只看八步或节点存在。
+- 10Eros-Max v1.0 沿用 R2V 卡片和队列；检查空槽到按钮入队、8／10／12 步快照、LCM / Simple 与独立权重身份。History 续写沿用普通 H3 R2V。
 - H3 FaceSwap：设置页手动补齐 UntMods 专用权重 → 普通 INT8 Ref2VA → 添加 FaceSwap 1.0 → Picture 1 参考脸 / Video 1 原片 → 缺脸/缺视频/多原视频可见阻塞 → 补齐后实际按钮入队 → 有序参考及 LoRA 冻结 → 原生 R2V 执行/History。触发词自动去重，提示词增强保留身份与表演来源分工；不自动选八步加速，不以旧续写入口代替原片编辑。权重/真实生成证据见 [FaceSwap TASK](../tasks/2026-10-20-face-swap-lora/TASK.md)。
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
 - H3原生模式将时长锁在15.1秒；必须显式选择原生解锁后才能输入更长时长。解锁后严格>15.1时显示三语言警告tooltip，15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
 - 模型切换是异步的（获取 bundled workflow）；要测快速切换和返回另一 Create 模式，避免旧返回值覆盖新草稿。
+- Pi-H3 在 FL2VA 组显示一个条目。只装 2 步 adapter 时，4 步不可选，选择 2 步可点击入队。补齐 4 步 adapter 并重新扫描后可选 4 步。核对快照对应的调度参数、直接像素输出和音轨节点。
 
 | 用户选项 | 影响链 | 最小反例 |
 | --- | --- | --- |
@@ -274,6 +276,8 @@ flowchart TD
 H3 native 需要对应 AV/模型/尺寸资格；SeedVR2 的原生 INT8 分段路线先依据主机 RAM、目标像素和策略规划外层切段，再由 native 节点处理显存内部 chunks。恢复时复用已持久化计划和有效片段，不因空闲内存变化重切。对话框切换 provider 后检查 stale 字段、提交按钮与具体 `UpscaleRequest`。
 
 失败、取消或等待的 Tessera／H3 Refiner 任务可从 Queue 编辑并切换方案，Tessera 的 Qwen 首帧增强也可修改。保存重建配方、清除旧执行错误并恢复等待；原任务ID、源视频与种子保留，运行中的任务不可改动。验收包含缺组件阻塞 → 选择已就绪方案 → 实际点击重新加入队列 → 同ID恢复等待；该恢复操作不等于 GPU 出片成功。
+
+Tessera／Refiner 在提交时读取执行 GPU 的 VRAM 和后端可用 RAM，选择空间块／时间窗；本地启动另按可用 RAM 选择双流锁页或单流不锁页。遥测未知沿用原尺寸，压力只调整执行预算、不拦截入队或裁短视频。验收覆盖 24GB 余量充足、显存／内存占用、未知遥测及切回其他方案；完整出片和速度仍需独立实跑。
 
 入口：History `openUpscaleDialog` → `shell/secondary-dialogs.ts` / `upscale-controller.ts` → `src/core/upscale.ts` / `seedvr2-native.ts` → `queue-enqueue.ts` / executor / side-effects。
 

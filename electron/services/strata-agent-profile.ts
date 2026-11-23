@@ -11,7 +11,8 @@ import type { StrataLaunchPlan } from "./strata-service.js";
 import { STRATA_Q4_MODEL_ID } from "../../src/core/catalog/models/strata.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { deepSeekSourceDirectory } from "./strata-deepseek-source.js";
-import { strataSourceDirectory } from "./strata-installation.js";
+import { strataSourceDirectory, strataInstalledRelease } from "./strata-installation.js";
+import { strataCompatibilityEnvironment } from "../../src/core/catalog/dependencies/strata.js";
 
 /** Context validation changes only the private Agent overlay, never the shared H3 pack/receipt. */
 export async function agentLaunchPlan(input: {
@@ -59,7 +60,7 @@ export async function agentLaunchPlan(input: {
   return { executable, cwd: source, port: p.strataPort, modelId: p.modelId, apiKey: input.token,
     args: ["-B", "-u", input.guardScript, "--serve", source, "--engine", "strata", "--config", filename,
       "--host", "127.0.0.1", "--port", String(p.strataPort), "--lazy", "--api-monitor"],
-    env: { STRATA_API_KEY: input.token, ...(!isStrataDeepSeek(p.modelId) ? { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
+    env: { STRATA_API_KEY: input.token, ...(!isStrataDeepSeek(p.modelId) ? { ...strataCompatibilityEnvironment(strataInstalledRelease(install)?.revision), STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
       // Same Windows safety rollback as H3; never inherit a working-set opt-in from the shell.
       STRATA_FILE_RELEASE: "0" } : {}),
       STRATA_AGENT_ADMISSION: path.join(input.directory, "admission.json") },

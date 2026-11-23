@@ -29,7 +29,6 @@ function videoCheck(overrides: Partial<Parameters<typeof videoEnqueueBlockReason
     motionContextLatentTrimValid: true,
     spectrumReady: true,
     r2vSlotsReady: true,
-    startImagePath: "start.png",
     turboCoreBlockReason: "",
     turboLoraBlockReason: "",
     selectedLoraBlockReason: "",
@@ -179,14 +178,13 @@ describe("create enqueue preflight checks", () => {
     expect(imageEditEnqueueBlockReason(draft, profile)).toContain("缺少必需节点：ComfyUI Inpaint Nodes");
   });
 
-  it("checks the image-to-video prompt after its required start image", () => {
-    expect(videoCheck({ promptText: "", startImagePath: "start.png" })).toBe("请先填写提示词");
+  it("checks the video prompt, including pure text", () => {
+    expect(videoCheck({ promptText: "" })).toBe("请先填写提示词");
     expect(videoCheck({ promptText: "camera pushes in" })).toBe("");
   });
 
-  it("allows an H3 T2VA task without a start image", () => {
-    expect(videoCheck({ startImagePath: "", allowTextOnly: true })).toBe("");
-    expect(videoCheck({ startImagePath: "", allowTextOnly: false })).toBe("请先选择首帧图片");
+  it("keeps empty reference slots non-blocking for generation", () => {
+    expect(videoCheck({ isR2V: true, r2vSlotsReady: false })).toBe("");
   });
 
   it("offers Create 1080 only for base FL2VA with JointAV and no LoRA", () => {

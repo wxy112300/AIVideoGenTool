@@ -1,4 +1,5 @@
 import type { CatalogCustomNodeDefinition } from "./types.js";
+import { PI_H3_NODE_ID, PI_H3_NODE_REVISION, PI_H3_NODE_TYPES } from "../models/minimax_h3_pi/definition.js";
 import { COMFYUI_RECOMMENDED_VERSION } from "./comfy-core.js";
 import {
   DLSS5_NODE_DIRECTORY,
@@ -92,6 +93,7 @@ const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
   "minimax-h3-learned-upscaler": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
   "local-video-studio-h3-av": { versionMode: "release", recommendedVersion: H3_AV_SERIALIZER_REVISION, latestVersion: H3_AV_SERIALIZER_REVISION },
   "mmh3-ultimate-upscale": { versionMode: "pinned", recommendedVersion: "", latestVersion: "" },
+  [PI_H3_NODE_ID]: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.4.2", latestVersion: "1.4.2" },
   "spectrum-minimax-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: SPECTRUM_RECOMMENDED_VERSION, latestVersion: SPECTRUM_RECOMMENDED_VERSION },
   "plaguekind-h3-sla": { versionMode: "release", releaseSource: "github-release", recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION, latestVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION },
   "comfyui-gguf-h3": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "26.11.16", latestVersion: "26.11.16" },
@@ -697,6 +699,19 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     description: "Refiner 的24 FPS重采样、H3时间网格补齐与交付帧数/尺寸恢复；需要应用H3节点0.4.2+，移除旧15秒拦截。"
   }],
   runtimeRequirement: `应用原创节点；安装或更新后必须重启 ComfyUI，并通过 /object_info 确认 serializer、legacy diagnostics 与 managed Run Storage receipt 均已加载。Continuum bridge/facade/receipt 委托已加载的 ComfyUI-H3-Continuum；推荐 ${H3_CONTINUUM_RECOMMENDED_VERSION}，新 managed receipt 记录实际 manifest 的 v6 sampling contract/hash/resume_safe，旧 AV 保持兼容读取。委托其 state、sampler 与 Run Storage contract，不复制采样逻辑。`,
+  required: false
+}, {
+  id: PI_H3_NODE_ID,
+  priority: 149,
+  name: "ComfyUI-piFlow",
+  purpose: "运行 MiniMax H3 · Pi-H3",
+  repositoryUrl: "https://github.com/Lakonik/ComfyUI-piFlow.git",
+  directoryName: "ComfyUI-piFlow",
+  aliases: ["comfyui-piflow"],
+  installRevision: PI_H3_NODE_REVISION,
+  installRevisionPolicy: "recommended",
+  nodeTypes: PI_H3_NODE_TYPES,
+  license: "Apache-2.0",
   required: false
 }, {
   id: "spectrum-minimax-h3",

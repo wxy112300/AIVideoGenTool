@@ -190,7 +190,7 @@ describe("Strata software installer", () => {
     expect(result.log).toContain("2/3，HTTP/1.1");
     expect(await strataManagedReceipt(root)).toBe(true);
   });
-  it.each(["0.2.13", "0.2.15"])("upgrades a %s runtime through the same transaction and removes its old software", async previousVersion => {
+  it.each(["0.2.13", "0.2.15", "0.2.17"])("upgrades a %s runtime through the same transaction and removes its old software", async previousVersion => {
     const { folder, root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
     const previous = STRATA_RELEASES.find(item => item.version === previousVersion)!;
@@ -199,10 +199,10 @@ describe("Strata software installer", () => {
     runtime.download.mockClear();
     const result = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(result.ok, result.log).toBe(true);
-    expect(strataInstalledRelease(root)?.version).toBe("0.2.17");
+    expect(strataInstalledRelease(root)?.version).toBe("0.2.20");
     expect(await fs.readFile(path.join(root, "settings.json"), "utf8")).toContain("user settings");
     expect(runtime.download.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining([
-      expect.stringContaining("/v0.2.17/strata-engine-0.1.63-"),
+      expect.stringContaining("/v0.2.20/strata-engine-0.1.66-"),
       expect.stringContaining("/v0.2.13/strata-dsv41-0.1.59-")
     ]));
     expect((await fs.readdir(folder)).some(name => /backup-|failed-|^\.install-/u.test(name))).toBe(false);

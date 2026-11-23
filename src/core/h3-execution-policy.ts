@@ -12,6 +12,9 @@ import type {
 } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
 import { FASTH3_OMNI_MODEL_ID } from "./catalog/models/minimax_h3_omni/definition.js";
+import { TEN_EROS_MAX_MODEL_ID } from "./catalog/models/ten_eros_max/definition.js";
+import { PI_H3_MODEL_ID } from "./catalog/models/minimax_h3_pi/definition.js";
+import { isH3VsaCheckpoint } from "./h3-vsa-checkpoint.js";
 import {
   isH3Ref2vTurboEnabled,
   isH3PddLoraId,
@@ -215,6 +218,7 @@ export function h3AttentionOwnerFor(
 export function h3TurboProfileFor(input: Pick<H3ExecutionPolicyInput, "modelId" | "videoLoras">): string | undefined {
   const model = input.modelId;
   if (model === FASTH3_OMNI_MODEL_ID) return "h3-fasth3-omni";
+  if (model === TEN_EROS_MAX_MODEL_ID) return "h3-10eros-max-v1";
   const loras = input.videoLoras ?? [];
   if (loras.some((lora) => isH3PddLoraId(lora.id) && videoLoraCompatibleWithModel(lora, model))) {
     return "h3-pdd";
@@ -254,18 +258,18 @@ export function resolveH3ExecutionPolicy(
   const isH3 = definition?.family === "minimax-h3";
   const isR2v = definition?.variant === "r2v";
   const motionContext = input.inputMode === "video" && isR2v;
-  const omni = input.modelId === FASTH3_OMNI_MODEL_ID;
+  const vsaCheckpoint = isH3VsaCheckpoint(input.modelId);
+  const piH3 = input.modelId === PI_H3_MODEL_ID;
   const normalizedFrom: string[] = [];
-  // The official OmniRef graph pairs VSA10 with Kitchen's dense fallback.
-  // Global H3 choices must not turn this trained VSA model into dense/SLA/Sol.
-  const attentionMode = omni ? "comfy-kitchen" : normalizeH3AttentionMode(input.attentionMode);
+  // The pinned VSA workflows pair VSA10 with Kitchen's dense fallback.
+  const attentionMode = piH3 ? "pytorch" : vsaCheckpoint ? "comfy-kitchen" : normalizeH3AttentionMode(input.attentionMode);
   const attentionOwner = h3AttentionOwnerFor(attentionMode, normalizedFrom);
   const sparseRequested = normalizeH3SparseAttentionMode(input.sparseAttentionMode);
-  if (omni && sparseRequested !== "vsa") normalizedFrom.push(`sparse:${sparseRequested}->vsa`);
+  if (vsaCheckpoint && sparseRequested !== "vsa") normalizedFrom.push(`sparse:${sparseRequested}->vsa`);
   const turboProfile = h3TurboProfileFor(input);
   const motionContextSparseNormalized = motionContext && sparseRequested === "sol-attn";
   if (motionContextSparseNormalized) normalizedFrom.push("sparse:sol-attn->off");
-  const sparseAttentionMode = omni ? "vsa" : motionContextSparseNormalized
+  const sparseAttentionMode = vsaCheckpoint ? "vsa" : (piH3 || motionContextSparseNormalized)
     ? "off" : effectiveSparseMode(sparseRequested, turboProfile, isR2v);
   const runtimeMode = normalizeH3RuntimeMode(input.runtimeMode);
   const comfyCompilerMode = normalizeH3ComfyCompilerMode(input.comfyCompilerMode);
@@ -290,8 +294,7 @@ export function resolveH3ExecutionPolicy(
     if (sparseAttentionMode === "native-sla" && turboProfile !== "h3-turbo-sla") {
       reasons.push("native-sla-requires-turbo-sla");
     }
-    if (sparseAttentionMode === "vsa" && !omni) {
-      // Only the pinned Omni checkpoint has an authoritative VSA recipe.
+    if (sparseAttentionMode === "vsa" && !vsaCheckpoint) {
       reasons.push("vsa-requires-validated-fast-h3");
     }
   }

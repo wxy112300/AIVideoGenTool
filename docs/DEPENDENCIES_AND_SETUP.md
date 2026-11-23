@@ -32,7 +32,9 @@ Strata资源遥测的暂时缺失与确认低资源分开处理：H3加载／增
 
 正常完整推理后的格式、长度或时间点校验失败，不保存结果，但保留已确认ready/loaded的自有Strata模型供下一次增强；记录`StrataValidationRetained`。用户取消已加载模型的请求时，关闭该HTTP流触发官方按客户端取消，等待受认证`/v1/status`确认in_flight为0并复查健康/模型状态后保留同一进程，不保存部分输出；状态暂缺或计算仍在结束中只保持取消等待，不因等待本身结束模型。记录`strata-cancel-retained`及PID。首次准备/加载取消、真实流式/资源/服务失败及明确丢失模型仍清理；手动释放、队列交接和退出停止自有服务，显式停止可中断取消等待。保留模型不等于放宽文本质量门禁。
 
-运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐来自catalog，最新版本由官方release查询；网络失败不把推荐当最新。当前推荐Strata 0.2.17（固定12d491d），Windows Qwen引擎0.1.63固定从0.2.17发布目录下载，DeepSeek引擎0.1.59仍从0.2.13下载。0.2.16起源码移到terminal/，应用按受信版本解析服务、数据与准备工具，根venv、engine与单一runtime指针不变；旧0.2.15及此前目录继续识别。自带向量随源码目录，社区向量保持根data/lvs-control-vectors。上游已移除DeepSeek，更新在runtime/deepseek-compat准备固定0.2.13源码，共用venv和原引擎，主应用/独立Agent分别路由。更新验证固定归档、清单及组件后才完成，DeepSeek另校验签名；失败恢复，成功清理可再下载软件，用户资料保持保护。不将推荐当最低运行线；完整0.2.15/0.2.13/0.2.12及既有审核版本native v3/v4 pack按源模型/MTP/派生文件事实及精确配置迁移，只更新派生配置/receipt，不重复哈希大权重或pack；其他来源或修改仍重新准备。现有MTP继续使用，不自动下载DFlash2；源码已自带GGUF解析器时不再额外获取。沿用当前资源策略，不把上游setup RAM预留转成新准入门槛。本机由用户手动更新，新版真实推理与质量另验，详见[本次升级](tasks/2026-11-21-strata-0217-upgrade/TASK.md)。
+运行组件与节点使用同一版本栏：本机从受信安装记录识别，推荐来自catalog，最新版本由官方release查询；网络失败不把推荐当最新。当前推荐Strata 0.2.20（固定a34979f），Windows Qwen引擎0.1.66固定从0.2.20发布目录下载，DeepSeek仍用0.2.13源码/0.1.59引擎。按受信版本解析terminal/源码、服务及数据；根venv、engine、单一runtime指针和共享模型目录不变，0.2.17及旧版仍识别。自带向量随源码，社区向量仍在根data/lvs-control-vectors；DeepSeek隔离在runtime/deepseek-compat，共用venv。更新验证固定归档、清单及组件，DeepSeek另验签名；失败恢复，成功清理可再下载软件，用户资料受保护。完整0.2.17及既有审核native v3/v4 pack按实际源模型/MTP/派生文件及精确配置迁移，只改派生配置/receipt，不重哈希大权重或pack；其他来源/修改仍重新准备。保留现有MTP，不自动下载DFlash2或新增模型；自带GGUF解析器直接复用。Windows显存/小缓存及回读兼容按已审核release能力选择，避免版本号特判在升级后失效，不新增内存准入门槛。本机手动更新，GPU首token、图文质量和速度另验，详见[本次升级](tasks/2026-11-23-strata-0220-upgrade/TASK.md)。
+
+官方0.1.66有Q8 HC Tensor Core共享内存读取回归（[#6713](https://github.com/Niko1221/Strata/issues/6713)、[修复PR #6714](https://github.com/Niko1221/Strata/pull/6714)，审计时未合并）。仅对此受影响版本，H3及独立Agent设置`STRATA_HC_Q8_TC=0`、`STRATA_HC_Q8_BF16TC=0`，回到旧HC路径；保留HC Q8与其他优化。兼容只在启动环境应用，日志明确显示，不改用户保存设置。将来采用已修复版本前需重新审核此标记，不把文件/参数/lazy服务通过当成真实内核或质量验收。
 
 模型共用所选 ComfyUI 的模型根下 `LLM/Qwen3.8-Flash-Next-GSQ-RCO-GGUF`，同一根下旧 `LLM/strata` 只读兼容扫描。派生 pack/tokenizer 位于软件版本目录的同级 `data`，完成记录按源文件/模型/策略复检后复用；未完成资料不当缓存，软件卸载保留模型和数据。默认端口 43127，用户可手动选择 1024–65535 内的整数端口，包括 8080；冲突不接管、不自动修改设置。没有第二个模型根设置，不替换旧模型默认值。文件齐全不代表 GPU、视觉和输出质量已验；当前接入代码完成，完整模型验收由用户下载后另做。版本/来源见 catalog；操作见 [Strata 下载指南](tasks/2026-10-10-strata-prompt-integration/DOWNLOADS.md)。
 
@@ -54,7 +56,7 @@ Agent在64GB/4090上已逐档验证32K基础工具、64K GUI、128K/262144原生
 
 FastH3 Omni 的 ComfyUI 原生工作流包含 `ModelAttentionBackend` 和 `BlockSparseAttention`：固定 VSA10 与 Comfy Kitchen dense fallback。无需为这条路径另装 FastVideo 服务；必须继续区分核心 schema、所选 Python 的 GPU 内核可用性和日志中实际 sparse producer。模型被扫描到或八步任务成功入队不代表加速已经生效。
 
-设置 → 路径 → 缓存管理的原有“清理缓存”也处理历史软件残留，不要求重新下载安装。统计覆盖已确认归属的 Strata 非当前版本／备份／失败暂存／软件引擎缓存、所选 ComfyUI 的节点和 runtime 备份，以及独立 Agent 的旧 npm 包／下载／私有构建缓存；不扫描其他磁盘或修改当前软件。仍在安装时不进入软件清理；跨进程租约采用禁止交接模式，Strata／Agent 正在运行则跳过并说明，不为清理而卸载模型。不停止外部进程；清理前复检当前路径、来源记录、真实包含关系及本地数据。模型、配置、数据库、会话、有效pack与未知文件不能作为普通缓存删除，含此类数据的旧副本保留并显示原因；缓存清理不把旧副本的数据写入当前节点。目录／字节统计、进度与部分失败继续显示在原缓存面板及日志。软件清理前后不修改草稿、queue、History 或偏好设置。
+设置 → 路径 → 缓存管理的原有“清理缓存”也处理历史软件残留，不要求重新下载安装。统计覆盖已确认归属的 Strata 非当前版本／备份／失败暂存／软件引擎缓存、所选 ComfyUI 的节点和 runtime 备份，以及独立 Agent 的旧 npm 包／下载／私有构建缓存；不扫描其他磁盘或修改当前软件。仍在安装时不进入软件清理；跨进程租约采用禁止交接模式，Strata／Agent 正在运行则跳过并说明，不为清理而卸载模型。不停止外部进程；清理前复检当前路径、来源记录、真实包含关系及本地数据。节点备份按文件归属判断，而非仅按后缀或“配置被改过”拦截：来源确认且未修改的 Git 原包资源（含内置张量）、结构匹配的 ReShade/DLSS5 生成配置与有效 runtime 安装清单内的软件可以清理。额外或修改后的用户模型、媒体、数据库、会话、有效pack及未识别配置仍保留整份副本并说明原因；清单不能覆盖目录链接或越界文件。缓存清理不把旧副本的数据写入当前节点。目录／字节统计、进度与部分失败继续显示在原缓存面板及日志。软件清理前后不修改草稿、queue、History 或偏好设置。
 
 Strata 的应用管理安装可在安装按钮右侧三角菜单选择“卸载”，确认后永久删除当前软件目录（含独立 `.venv`）；共享模型、独立用户数据与目标以外的未知目录不删除。未安装、手动目录或未知归属不提供卸载；安装中与生成/提示词忙碌时禁止操作，后台在删除前复检归属、真实路径及模型根重叠。软件目录中的本地修改不保留，卸载后可一键重装；只离线复扫，不修改 ComfyUI Python、不重启 ComfyUI。更新产生的旧软件由成功更新事务清理，不以卸载代替更新收尾。
 
@@ -189,7 +191,7 @@ H3 Continuum 当前推荐为 GitHub stable `3.10.3`，应用按 catalog 固定 G
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 
-共享运行库推荐固定为 JamePeng `0.4.7` / `20261113` Windows wheel；依赖兼容范围为 `>=0.3.34,<0.5`，已有旧版 CUDA 自检通过的安装不会被静默升级。Qwen MultiModal 的受管理补丁仅对 Qwen35 家族的 MTMD handler 关闭全量 logits，保留旧视觉 handler 的原行为，避免按完整上下文分配巨大的 Python scores 数组；不减少图片、上下文或输出预算，不启用 MTP。Prompt Writer 一键修复同时适配架构检查与诊断文件的 0.4.x 上限，保留最低版本/架构检查。两项旧适配均在离线扫描中提示一键修复，完成后须重启 ComfyUI。0.4.7 的30个Windows发行资产、实际节点调用与源码兼容核对见[升级记录](tasks/2026-11-14-llama-runtime-047/TASK.md)，新增CUDA 13.2原生wheel选择；本次未安装或实测新版。此前 0.4.2/cu130/cp312 隔离实测覆盖 Qwen3.6 27B，不能代称本机没有权重的 Qwen3.8 27B 已验；性能与长稿失败边界见[评估证据](tasks/2026-10-10-strata-prompt-integration/evidence/qwen27b-speed-assessment.md#升级与真实测试2026-10-16)。
+共享运行库推荐固定为 JamePeng `0.4.8` / `20261122` Windows wheel；依赖兼容范围为 `>=0.3.34,<0.5`，已有旧版 CUDA 自检通过的安装不会被静默升级。Qwen MultiModal 的受管理补丁仅对 Qwen35 家族的 MTMD handler 关闭全量 logits，保留旧视觉 handler 的原行为，避免按完整上下文分配巨大的 Python scores 数组；不减少图片、上下文或输出预算，不启用 MTP。Prompt Writer 一键修复同时适配架构检查与诊断文件的 0.4.x 上限，保留最低版本/架构检查。两项旧适配均在离线扫描中提示一键修复，完成后须重启 ComfyUI。0.4.8 的30个Windows发行资产、实际节点调用与源码兼容核对见[升级记录](tasks/2026-11-24-llama-runtime-048/TASK.md)。新版采样参数修复可能改变同seed输出，Python绑定和原生DLL必须整套升级；本次未安装或实测新版。此前 0.4.2/cu130/cp312 隔离实测覆盖 Qwen3.6 27B，不能代称本机没有权重的 Qwen3.8 27B 已验；性能与长稿失败边界见[评估证据](tasks/2026-10-10-strata-prompt-integration/evidence/qwen27b-speed-assessment.md#升级与真实测试2026-10-16)。
 
 Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前推荐节点上游 0.4.8，保留应用依赖的 `/h3studio/*` 提示词接口；可选 `requirements-gguf.txt` 由共享运行时安装器接管。Windows 使用上述固定 JamePeng 动态后端，运行时选择兼容 CPU 实现并加载 `ggml-cuda.dll`；探针先注册后端再判断 GPU offload，安装器只替换此包，不重装 NumPy/Pillow。wheel 大小随 CUDA/Python 资产变化，日志显示下载百分比，等待上限45分钟。节点兼容层保留 `GGMLType` KV 常量、Gemma 4 原生 chat handler、非 Thinking 输出和幂等清理；Direct Gemma 默认16K Standard，不因普通输入自动扩展24K。UNSEEN NSFW 4090 档位仍用Q4_K_M与匹配q4_0 projector及低批处理。更新本地已修改节点时，先按固定推荐提交核对完整适配器指纹；确需替换则先校验新副本、事务内暂存旧目录并迁移本地模型/配置，依赖安装成功后删除旧软件，不保留永久源码备份。批次重启后检查 status、models、GGUF diagnostics和应用侧共享运行库CUDA自检；轻量节点探针的 gpu_offload:false只作提示，自检失败保留pip日志/原生退出码，未知或CPU包不标为GPU就绪。
 
@@ -249,6 +251,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 
 ### MiniMax H3 FL2VA / R2V
 
+- MiniMax H3 · Pi-H3 使用 ComfyUI 0.45.0+、ComfyUI-piFlow 和所选步数的 INT8 DWD adapter。装好一个档位的 adapter 即可使用该档位。模型页列出文件和下载位置，复用 FL2VA INT8 基模、编码器和音视频 VAE。
+
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
 - 当前 H3 推荐使用 ComfyUI `0.46.0`；官方 `comfy-kitchen` 安装目标对齐核心依赖为 `0.2.41`，已安装的 `0.2.39+` 按版本下限与 CUDA backend 检查兼容。推荐更新不证明本机已升级或真实生成已验；核心要求的 Aimdo 为 `0.6.0`，由核心环境依赖管理。
@@ -271,6 +275,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 「Qwen 首帧增强」默认关闭；从已扫描且完整的Qwen Image 2.1、官方Turbo、GGUF Q8/Q6变体中选择，复用对应图片编辑配方及实际模型/文本编码器/VAE路径。官方Turbo使用完整模型和八步sigmas，不套用示例旧Turbo LoRA。一个队列任务内首帧增强完成并显式卸载后，才允许H3模型加载；队列保存开关/模型，重开与History保留。等待、失败、取消的任务可显式编辑方案及首帧增强；保存后重建配方并恢复等待，保留任务ID、源视频与种子，运行中不可改动。作者约2×的建议不构成禁用条件，H3 768p→4K仍可开启。
 
 内部补到17k+5再精修，输出去掉补帧并裁到目标尺寸，复用源音频。上游返回的16×16失败占位不能进入成功History；救援latent不是成功视频或逐块断点恢复。大视频仍需要系统内存和磁盘映射缓冲，不能将“流式”解释为无限长度固定资源。高倍率质量、显存和耗时均待实测，详见[任务记录](tasks/2026-11-03-tessera-upscale/TASK.md)。
+
+Tessera／Kijai Refiner 执行时联合 ComfyUI 实际 GPU 的显存与可用 RAM 选择分块。4090／24GB 显存且 RAM 余量足够时才使用较大空间块；显存或 RAM 紧张时缩短时间窗，检测不到遥测沿用原尺寸，不增加准入限制。本地运行策略按主机当前可用 RAM 选择：余量足够时允许双流及 pinned memory，紧张时单流异步 offload 并关闭 pinned memory，保持动态显存；不修改 Create 设置。参数选择会记入应用日志，完整出片的提速幅度仍待实测。
 
 ### H3 Refiner 视频 Upscale（Kijai）
 

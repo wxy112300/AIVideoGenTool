@@ -447,11 +447,11 @@ export function h3DetailedExpansionTargetWords(
 export function h3DetailedExpansionGateInstruction(
   mode: H3PromptMode,
   durationSeconds = 5,
-  sourcePrompt = ""
+  sourcePrompt = "",
+  field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description"
 ): string {
   const minimumWords = h3DetailedExpansionMinimumWords(mode, durationSeconds, sourcePrompt);
   const targetWords = h3DetailedExpansionTargetWords(mode, durationSeconds, sourcePrompt);
-  const field = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   return [
     "DETAILED CINEMATIC EXPANSION GATE (high priority): this is the most detailed expansion preset, never a rewrite, summary, caption, or compression.",
     `Develop the ${field} timeline toward approximately ${targetWords} grounded words—about twice the standard coverage for this mode and duration—while keeping every sentence useful. Use ${minimumWords} grounded words as an advisory coverage reference, not a mandatory length. Preserve the source's executable information.`,

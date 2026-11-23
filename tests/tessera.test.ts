@@ -29,6 +29,15 @@ function setup() {
 }
 
 describe("Tessera with optional Qwen anchor", () => {
+  it("uses the selected Comfy GPU budget in the rendered 4K graph", () => {
+    const f = setup();
+    const graph = buildTesseraWorkflow(f.task, "source.mp4", f.info, undefined, { vramTotalBytes: 24 * 1024 ** 3, vramAvailableBytes: 23 * 1024 ** 3, ramAvailableBytes: 40 * 1024 ** 3 });
+    expect(graph.refine!.inputs.spatial_tile).toBe("high_vram");
+    expect(graph.encode!.inputs.segment_frames).toBe(56);
+    expect(graph.refine!.inputs.temporal_tile).toBe("high_vram");
+    expect(graph.restore!.inputs).toMatchObject({ width: 3780, height: 2160 });
+    expect(f.task).not.toHaveProperty("performanceProfile");
+  });
   it.each([
     ["COMBO", { options: ["pytorch attention", "comfy kitchen attention"], default: "pytorch attention" }],
     { type: "COMBO", options: ["pytorch attention"] }

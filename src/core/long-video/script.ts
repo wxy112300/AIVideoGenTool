@@ -189,7 +189,7 @@ export function freezeLongVideoScript(script: LongVideoScript) {
   assertLongVideoLayout(script.layout);
   if (script.pageBuffers && Object.keys(script.pageBuffers).length) throw new Error("Commit script edits first");
   if (script.wholeBuffer) throw new Error("Resolve whole-script edits first");
-  if (script.segments.length !== script.layout.chunks || script.segments.some(p => p.stale || !scriptPageText(p).trim())) throw new Error("Incomplete or stale script");
+  if (script.segments.length !== script.layout.chunks || script.segments.some(p => !scriptPageText(p).trim())) throw new Error("Incomplete script");
   return clone({ revision: script.revision, layout: script.layout, sharedPreamble: script.sharedPreamble === true,
     pages: [script.brief, ...script.segments].map(p => ({ pageId: p.id, versionId: p.activeVersionId, text: scriptPageText(p),
       ...(p.versions.some(v => v.id !== p.activeVersionId && v.text.trim()) ? { versions: p.versions } : {}) })) });

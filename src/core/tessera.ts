@@ -5,6 +5,7 @@ import { h3RefinerGeometry, h3RefinerSourceFilename, validateH3RefinerSource } f
 import { h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae } from "./catalog/models/minimax_h3_shared.js";
 import { buildQwenImage21AnchorWorkflow } from "./image-workflow/qwen-image-2-1.js";
 import { comfyComboOptions, comfyNodeInputSpec } from "./h3-workflow-contract.js";
+import { h3UpscalePerformanceProfile, type H3UpscaleHardware } from "./h3-upscale-performance.js";
 
 export const TESSERA_ID = "minimax_h3_tessera";
 export const TESSERA_RECIPE = "tessera-ref2va-taomate-lms-v1";
@@ -67,7 +68,8 @@ export function createTesseraSnapshot(prompt: string, fps: number, anchor?: Tess
     tao: TESSERA_TAO, lms: TESSERA_LMS, ...(anchor ? { anchor: structuredClone(anchor) } : {}) };
 }
 
-export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t) {
+export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, objectInfo: unknown, t: Translate = createTranslator().t, hardware?: H3UpscaleHardware) {
+  const performance = h3UpscalePerformanceProfile(hardware).tessera;
   const s = task.tessera;
   if (!s || s.recipe !== TESSERA_RECIPE || s.tao !== TESSERA_TAO || s.lms !== TESSERA_LMS) throw new Error(t(uiKeys.serviceChecks.tesseraRecipe));
   validateH3RefinerSource(task.duration, s.sourceFps, t);
@@ -91,7 +93,7 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
   add("conditioning", "MiniMaxH3ReferenceToVideo", { clip: ["clip", 0], vae: ["vae", 0], audio_vae: ["avae", 0], prompt: s.prompt,
     width: g.baseWidth, height: g.baseHeight, length: ["prepare", 3], ref_image_size: "max", "ref_videos.ref_video_0": ["prepare", 0] });
   add("encode", "TesseraEncode", { images: ["prepare", 0], vae: ["vae", 0], positive: ["conditioning", 0], upscale_by: g.scale,
-    upscale_method: "lanczos", segment_frames: 39, anchor_strength: 1, anchor_spread: 4 });
+    upscale_method: "lanczos", segment_frames: performance.encodeFrames, anchor_strength: 1, anchor_spread: 4 });
   if (s.anchor) {
     const qwen = buildQwenImage21AnchorWorkflow(s.anchor, g.canvasWidth, g.canvasHeight, task.seed, t);
     for (const [id, node] of Object.entries(qwen)) {
@@ -130,7 +132,7 @@ export function buildTesseraWorkflow(task: UpscaleQueueTask, source: string, obj
     fine_below_sigma: 0.75, tile_select: "", tile_limit: 0, flat_skip: 4 });
   add("refine", "TesseraRefine", { model: ["attention", 0], model_fine: ["fine-attention", 0], clip: ["clip", 0],
     positive: ["encode", 0], negative: ["negative", 0], latent: ["av", 0], vae: ["vae", 0], sampler: ["sampler", 0], sampler_fine: ["sampler", 0], sigmas: ["sigmas", 0],
-    args: ["args", 0], spatial_tile: "low_vram", tile_width: 768, tile_height: 768, temporal_tile: "high_vram", temporal_size: 124, temporal_overlap: 4,
+    args: ["args", 0], spatial_tile: performance.spatialTile, tile_width: 768, tile_height: 768, temporal_tile: performance.temporalTile, temporal_size: 124, temporal_overlap: 4,
     context_border: 64, seam_overlap: 32, hero_min: 896, hero_fit: "median", cfg: 1, seed: task.seed, seed_mode: "global", pixel_out: true, console_progress: "overall", prompt: s.prompt });
   add("restore", "LocalVideoStudioH3RefinerOutput", { images: ["refine", 2], frame_count: ["prepare", 1], width: g.outputWidth, height: g.outputHeight });
   add("video", "CreateVideo", { images: ["restore", 0], audio: ["source", 2], fps: 24 });

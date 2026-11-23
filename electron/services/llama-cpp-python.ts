@@ -18,7 +18,7 @@ const LLAMA_CPP_PYTHON_JAMEPENG_CUDA_VARIANTS = new Set([
   "cu132"
 ]);
 
-// Verified against the published v0.4.7 Windows release assets. Reject an
+// Verified against the published v0.4.8 Windows release assets. Reject an
 // unknown ABI before pip starts so another computer gets an actionable error
 // instead of a long download followed by a GitHub 404.
 export const LLAMA_CPP_PYTHON_JAMEPENG_PYTHON_ABIS = [

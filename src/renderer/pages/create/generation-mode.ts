@@ -19,7 +19,7 @@ import { activeH3TimedGuides, h3ReferenceTimedGuides } from "../../../core/h3-ti
 import { longVideoGuideCues, longVideoGuideIssue } from "../../../core/long-video/timed-guides";
 import { isContinuumReferenceModel } from "../../../core/long-video/group-workflow";
 
-interface PreviewState { key: string; active: boolean; seconds: number; count: number; confirmed: boolean; page: number; whole: boolean; texts: string[]; locks: boolean[]; writing?: string; preset?: string; nativeMode?: string; script?: LongVideoScript; seeded?: boolean; }
+interface PreviewState { key: string; active: boolean; seconds: number; count: number; confirmed: boolean; page: number; whole: boolean; texts: string[]; locks: boolean[]; writing?: string; preset?: string; nativeMode?: string; script?: LongVideoScript; }
 let clearSequence = 0;
 export const isLongVideoPreview = (root: HTMLElement): boolean => root.querySelector<HTMLSelectElement>("#generation-mode")?.value === "preview";
 
@@ -43,7 +43,6 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   if (saved?.longVideoEditor?.key === key || saved?.longVideoEditor?.key === `${saved?.modelId}:undefined`) {
     Object.assign(state, saved.longVideoEditor);
     state.script = structuredClone(saved.longVideoScript);
-    if (state.seeded && !state.script) state.texts = [""];
   }
   const id = () => crypto.randomUUID();
   const pages = () => state.script ? [state.script.brief, ...state.script.segments] : [];
@@ -56,12 +55,19 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     state.page = Math.max(0, pages().findIndex(page => page.id === state.script!.activePageId));
   };
   readScript();
+  let legacyBrief = saved?.longVideoEditor?.seeded && !state.active && !prompt.value && state.script ? state.texts[0] : undefined;
   if (frozenRun && !state.script) {
     state.count = Math.max(1, Math.min(16 - frozenRun.acceptedChunks, Math.ceil(state.seconds / frozenRun.chunkSeconds)));
     state.seconds = state.count * frozenRun.chunkSeconds;
   }
   let persistedPageId = saved?.longVideoScript?.brief.id;
   let persistedRevision = saved?.longVideoScript?.revision;
+  const writeNativeBrief = () => {
+    if (prompt.value === state.texts[0]) return;
+    prompt.value = state.texts[0] ?? "";
+    prompt.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  };
+  let lastBrief = state.texts[0];
   const save = () => {
     const current = persistence.getDraft();
     if (current?.modelId !== saved?.modelId || current?.inputMode !== saved?.inputMode) return;
@@ -72,11 +78,13 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       state.script.activePageId = pages()[state.page]?.id ?? state.script.brief.id;
     }
     persistence.patchDraft({ longVideoScript: structuredClone(state.script), longVideoEditor: {
-      key, active: state.active, seconds: state.seconds, count: state.count, confirmed: state.confirmed, seeded: state.seeded,
+      key, active: state.active, seconds: state.seconds, count: state.count, confirmed: state.confirmed,
       nativeMode: state.nativeMode, preset: state.preset
     } });
     persistedPageId = state.script?.brief.id;
     persistedRevision = state.script?.revision;
+    if (state.active && lastBrief !== state.texts[0]) writeNativeBrief();
+    lastBrief = state.texts[0];
     sync();
   };
   const commit = () => { if (state.script) state.script = commitScriptText(state.script, id); save(); };
@@ -107,9 +115,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     }
   };
   const layout = document.createElement("div"); layout.className = "create-long-layout"; layout.hidden = true;
-  layout.innerHTML = `<p class="create-caption" role="status"></p><div class="create-long-numbers"><label><span></span><input data-preview-duration type="range" min="4" max="120" step="0.1"><input data-preview-duration-number type="number" min="4" max="120" step="0.1"></label><label><span></span><input data-preview-count type="range" min="1" max="16" step="1"><input data-preview-count-number type="number" min="1" max="16" step="1"></label></div><div class="create-long-ruler"></div><div class="create-long-summary"><span class="create-caption"></span><button class="secondary button-with-icon" type="button" data-confirm-layout>${icon("check")}<span></span></button></div>`;
-  layout.querySelector("p")!.textContent = t(uiKeys.create.editor.preview);
-  layout.querySelector<HTMLElement>("p")!.hidden = true;
+  layout.innerHTML = `<div class="create-long-numbers"><label><span></span><input data-preview-duration type="range" min="4" max="120" step="0.1"><input data-preview-duration-number type="number" min="4" max="120" step="0.1"></label><label><span></span><input data-preview-count type="range" min="1" max="16" step="1"><input data-preview-count-number type="number" min="1" max="16" step="1"></label></div><div class="create-long-ruler"></div><div class="create-long-summary"><span class="create-caption"></span><button class="secondary button-with-icon" type="button" data-confirm-layout>${icon("check")}<span></span></button></div>`;
   layout.querySelectorAll("label > span")[0]!.textContent = t(uiKeys.create.videoSettings.duration)+" (s)";
   layout.querySelectorAll("label > span")[1]!.textContent = t(uiKeys.create.editor.segments);
   const previewDuration = layout.querySelector<HTMLElement>("[data-preview-duration]")!.closest("label")!;
@@ -293,12 +299,11 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   function paintWritingActions() {
     const appState = persistence.context?.getState();
     const draft = persistence.getDraft();
-    const guideEditor = draft && activeH3TimedGuides(draft);
     const supported = draft?.inputMode === "image" &&
       (isContinuumReferenceModel(draft.modelId)
-        ? draft.h3ReferenceSlots.length > 0 && draft.h3ReferenceSlots.every(slot => slot.mediaType === "image" && slot.mediaPath)
-        : draft.modelId === "minimax_h3_fl2va" &&
-          (guideEditor ? guideEditor.slots.some(guide => guide.mediaPath) : Boolean(draft.startImagePath))) &&
+        ? draft.h3ReferenceSlots.some(slot => slot.mediaType === "image" && slot.mediaPath.trim()) &&
+          !draft.h3ReferenceSlots.some(slot => slot.mediaType === "video" && slot.mediaPath.trim())
+        : draft.modelId === "minimax_h3_fl2va") &&
       appState && promptModelBackend(appState.settings.promptModelId) === "strata";
     const busy = enhancementBusy();
     const ready = Boolean(supported && state.confirmed && state.script && !appState?.queueRunning);
@@ -342,16 +347,21 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       const guideIssue = (guideEditor || slots.length) && longVideoGuideIssue(slots, request.layout);
       if (guideIssue) throw new Error(t(uiKeys.create.guides[guideIssue]));
       const cues = slots.length ? longVideoGuideCues(slots, request.layout) : undefined;
-      const imagePaths = referenceModel ? [...new Set(draft.h3ReferenceSlots.map(slot => slot.mediaPath))]
-        : cues ? [...new Set(cues.map(guide => guide.mediaPath))] : [draft.startImagePath, draft.endImagePath].filter(Boolean);
+      const referenceImages = draft.h3ReferenceSlots.filter(slot => slot.mediaType === "image");
+      const imagePaths = referenceModel ? [...new Set(referenceImages.map(slot => slot.mediaPath).filter(path => path.trim()))]
+        : guideEditor ? [...new Set((cues ?? []).map(guide => guide.mediaPath))] : [draft.startImagePath, draft.endImagePath].filter(Boolean);
       const referenceContext = referenceModel ? [
         "Each attached Picture is a persistent appearance or identity reference. Keep its Picture number across all segments. A timed reference also guides composition at its designated point.",
-        ...draft.h3ReferenceSlots.map((slot, index) => `Attachment ${imagePaths.indexOf(slot.mediaPath) + 1} = <Picture ${index + 1}> (${slot.role})${slot.note ? `: ${slot.note}` : ""}.`),
+        ...referenceImages.flatMap((slot, index) => slot.mediaPath.trim()
+          ? [`Attachment ${imagePaths.indexOf(slot.mediaPath) + 1} = <Picture ${index + 1}> (${slot.role})${slot.note ? `: ${slot.note}` : ""}.`] : []),
         ...(cues ?? []).map(guide => `<Picture ${guide.picture}> anchors film ${(guide.frame / 24).toFixed(3)}s${guide.segment ? `, segment ${guide.segment} around ${guide.localSeconds!.toFixed(3)}s` : ""}.`)
-      ].join("\n") : cues ? [
+      ].join("\n") : cues?.length ? [
         "Read the attached keyframes as existing visual beats. Match each Picture to its attachment below and preserve the visible composition, poses, subjects and props when planning transitions. Plan on the assembled 24 fps timeline; in detailed prompts, use only segment-local time and describe the images in plain language without numbered Picture tags.",
         ...cues.map(guide => `Attachment ${imagePaths.indexOf(guide.mediaPath) + 1} = Picture ${guide.picture}: film ${(guide.frame / 24).toFixed(3)}s${guide.segment ? `, segment ${guide.segment} around ${guide.localSeconds!.toFixed(3)}s` : ""}.`)
-      ].join("\n") : draft.endImagePath ? "Attachment 1 is the opening image. Attachment 2 is the final image. Plan the last segment to reach the final image." : undefined;
+      ].join("\n") : !guideEditor && draft.endImagePath ? draft.startImagePath
+        ? "Attachment 1 is the opening image. Attachment 2 is the final image. Plan the last segment to reach the final image."
+        : "Attachment 1 is the final image. Establish the opening from the brief and plan the last segment to reach this image."
+        : undefined;
       const reference = referenceIdentity(draft);
       const liveScript = () => {
         const current = persistence.getDraft();
@@ -404,9 +414,10 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       enhancing = true; persistence.setEnhancing?.(true); paint();
       persistence.context.reportUserAction("long-video-enhance", { chunks: request.layout.chunks, target: request.targetPageId ?? "whole", operation: request.operation ?? "automatic" });
       const raw = await persistence.context.enhancePrompt({ prompt: request.brief.text, modelId: draft.modelId,
-        mode: "h3-vision", origin: "image-to-video", h3PromptMode: referenceModel ? "R2V" : "I2VA", h3DurationSeconds: request.layout.chunkSeconds,
+        mode: "h3-vision", origin: "image-to-video", h3PromptMode: referenceModel ? "R2V" : imagePaths.length ? "I2VA" : "T2VA",
+        h3DurationSeconds: request.layout.chunkSeconds,
         h3PromptPreset: (preset.value || "detailed-cinematic") as H3PromptPreset, imagePath: imagePaths[0],
-        imagePaths, longVideo: request, referenceContext, ...(cues ? { h3TimedGuideContext: true } : {}) });
+        imagePaths, longVideo: request, referenceContext, ...(cues?.length ? { h3TimedGuideContext: true } : {}) });
       if (adoptionError) throw adoptionError;
       if (request.operation === "expand") {
         for (const segment of parseLongVideoPromptResult(raw, request).segments) adoptSegment(segment);
@@ -473,28 +484,19 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       (state.page + (keyboard.key === "ArrowRight" ? 1 : -1) + state.count + 1) % (state.count + 1);
     save(); paint(); editor.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
   }, { signal });
-  select.addEventListener("clear-preview", () => {
-    if (!state.texts.some(Boolean) && !state.locks.some(Boolean) && !state.confirmed) return;
-    const before = structuredClone(state);
-    state.texts = [""]; state.locks = []; state.page = 0; state.confirmed = false;
-    state.script = undefined; save();
-    paint(); text.dispatchEvent(new Event("rich-reset-history"));
-    notify(t(uiKeys.create.editor.cleared), {
-      key: `clear-preview:${++clearSequence}`, kind: "info", durationMs: 6000, renderPage: false,
-      actions: [{ id: "undo-clear-preview", label: t(uiKeys.create.editor.undo), run: () => {
-        if (!select.isConnected || state.script) return;
-        Object.assign(state, before);
-        save();
-        if (select.isConnected) { paint(); sync(); }
-      } }]
-    });
-  }, { signal });
+  prompt.addEventListener("input", () => { legacyBrief = undefined; }, { signal });
   select.addEventListener("change", () => {
     commit();
-    if (select.value === "preview" && !state.seeded && !state.script) {
-      state.texts[0] = prompt.value;
-      state.seeded = true;
+    if (select.value === "preview" && !state.active) {
+      if (legacyBrief) writeNativeBrief();
+      if (state.script && !state.script.brief.locked && !state.script.wholeBuffer) {
+        state.script = commitScriptText(stageScriptText(state.script, state.script.brief.id, prompt.value), id);
+        readScript();
+      } else if (!state.script) {
+        state.texts[0] = prompt.value;
+      }
     }
+    if (select.value !== "preview" && state.active) writeNativeBrief();
     if (select.value !== "preview") state.nativeMode = select.value;
     show(select.value === "preview");
     save();

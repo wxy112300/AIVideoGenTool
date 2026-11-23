@@ -9,7 +9,7 @@ export function renderQueuePrompt(text: string, t: Translate, escape: (value: un
   const prompts = plan ? samplingPrompts ?? compileLongVideoPrompts(plan) : [];
   const pages = plan ? [
     { label: t(uiKeys.create.editor.whole), text: prompts.join("\n\n") },
-    { label: t(plan.sharedPreamble ? uiKeys.create.editor.globalShared : uiKeys.create.editor.globalNotes), text: plan.pages[0]?.text ?? "" },
+    { label: t(plan.sharedPreamble ? uiKeys.queue.prompt.sharedConstraints : uiKeys.queue.prompt.storyNotes), text: plan.pages[0]?.text ?? "" },
     ...prompts.map((prompt, index) => ({ label: String(plan.layout.prefixChunks + index + 1), text: prompt }))
   ] : [{ label: "", text }];
   return `<div class="queue-prompt" data-queue-prompt>${plan ? `<div class="queue-prompt-pages" role="group" aria-label="${t(uiKeys.create.editor.segments)}">${pages.map((page, index) => `<button type="button" class="ghost" data-queue-prompt-page="${index}" aria-pressed="${index === 0}">${escape(page.label)}</button>`).join("")}</div>` : ""}${pages.map((page, index) => `<p class="task-description" data-queue-prompt-text="${index}"${index ? " hidden" : ""}>${escape(page.text)}</p>`).join("")}

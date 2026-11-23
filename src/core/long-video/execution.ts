@@ -5,6 +5,7 @@ import { assertLongVideoRunSource, longVideoProfileIdentity, type LongVideoRunSo
 import { videoPromptForLoras } from "../video-loras.js";
 import { longVideoDeliveryMultiplier, type ContinuumDelivery } from "./delivery.js";
 import { longVideoGuideCues, longVideoGuideSamplingPrompt } from "./timed-guides.js";
+import { compactH3ReferencePrompt } from "../h3-reference.js";
 
 export interface LongVideoExecutionSnapshot {
   schemaVersion: 1;
@@ -38,9 +39,23 @@ export function freezeLongVideoExtensionPlan(taskId: string, executionId: string
   const { executionMode: _executionMode, ...parentProfile } = parent.profile;
   const snapshot: LongVideoExecutionSnapshot = { schemaVersion: 1, taskId, executionId, parent,
     projectId: parent.receipt.project_id, runName: parent.receipt.run_name, script: frozen,
-    profile: { ...parentProfile, ...(delivery ? { delivery: structuredClone(delivery) } : {}), prompts: [...parent.profile.prompts, ...compileLongVideoPrompts(frozen).map(p => videoPromptForLoras(p, parent.profile.h3?.videoLoras))] } };
+    profile: { ...parentProfile, ...(delivery ? { delivery: structuredClone(delivery) } : {}), prompts: [...parent.profile.prompts, ...compileLongVideoSamplingPrompts(frozen, parentProfile)] } };
   assertLongVideoExecutionSnapshot(snapshot);
   return structuredClone(snapshot);
+}
+
+export function compileLongVideoSamplingPrompts(
+  script: LongVideoExecutionSnapshot["script"],
+  profile: Pick<ContinuumGroupProfile, "referenceImages" | "timedGuides" | "h3">
+): string[] {
+  const cues = script.layout.origin === "create" && !profile.referenceImages?.length && profile.timedGuides?.length
+    ? longVideoGuideCues(profile.timedGuides.map(guide => ({ picture: guide.picture, mediaPath: guide.filename, seconds: guide.absoluteFrame / 24 })), script.layout)
+    : [];
+  return compileLongVideoPrompts(script).map((text, index) => {
+    const prompt = profile.referenceImages ? compactH3ReferencePrompt(text, profile.referenceImages)
+      : cues.length ? longVideoGuideSamplingPrompt(text, cues, index + 1) : text;
+    return profile.h3 ? videoPromptForLoras(prompt, profile.h3.videoLoras) : prompt;
+  });
 }
 
 export function assertLongVideoExecutionSnapshot(snapshot: LongVideoExecutionSnapshot): void {
@@ -58,19 +73,10 @@ export function assertLongVideoExecutionSnapshot(snapshot: LongVideoExecutionSna
         parent.profile.prompts.some((prompt, index) => snapshot.profile.prompts[index] !== prompt)) throw new Error("Existing-Run frozen source/profile changed");
   }
   const pages = snapshot.script.pages;
-  const adopted = compileLongVideoPrompts(snapshot.script);
-  const cues = !parent && !snapshot.profile.referenceImages?.length && snapshot.profile.timedGuides?.length ? longVideoGuideCues(
-    snapshot.profile.timedGuides.map(guide => ({ picture: guide.picture, mediaPath: guide.filename, seconds: guide.absoluteFrame / 24 })),
-    snapshot.script.layout
-  ) : [];
-  const samplingPrompts = adopted.map((p, index) => {
-    const prompt = cues.length ? longVideoGuideSamplingPrompt(p, cues, index + 1) : p;
-    return snapshot.profile.h3 ? videoPromptForLoras(prompt, snapshot.profile.h3.videoLoras) : prompt;
-  });
+  const samplingPrompts = compileLongVideoSamplingPrompts(snapshot.script, snapshot.profile);
   if (pages.length !== snapshot.script.layout.chunks + 1 || new Set(pages.map(p => p.pageId)).size !== pages.length ||
-      pages.some(page => !page.pageId || !page.versionId) || (!snapshot.profile.firstImage?.trim() &&
-        !snapshot.profile.timedGuides?.length && !snapshot.profile.referenceImages?.length) || snapshot.profile.chunkSeconds !== snapshot.script.layout.chunkSeconds ||
-      snapshot.profile.prompts.slice(snapshot.script.layout.prefixChunks).some((prompt, index) => prompt !== samplingPrompts[index])) throw new Error("Incomplete or mismatched adopted new-Run profile/image");
+      pages.some(page => !page.pageId || !page.versionId) || snapshot.profile.chunkSeconds !== snapshot.script.layout.chunkSeconds ||
+      snapshot.profile.prompts.slice(snapshot.script.layout.prefixChunks).some((prompt, index) => prompt !== samplingPrompts[index])) throw new Error("Incomplete or mismatched adopted new-Run profile");
   assertContinuumGroupProfile(snapshot.profile, snapshot.script.layout.totalChunks);
 }
 

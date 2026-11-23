@@ -236,7 +236,7 @@ export function mountCreatePromptController(
     const referenceGuides = h3ReferenceTimedGuides(draft);
     const guideIssue = guideEditor ? h3TimedGuideIssue(guideEditor.slots, draft.duration)
       : referenceGuides.length ? h3TimedGuideIssue(referenceGuides, draft.duration) : undefined;
-    const missingGuide = guideEditor && missingH3GuideReference(currentPrompt, guideEditor.slots);
+    const missingGuide = guides && missingH3GuideReference(currentPrompt, guides);
     if (guideIssue || missingGuide) {
       const t = options.context.t;
       options.context.notify(guideIssue ? t(uiKeys.create.guides[guideIssue]) :
@@ -305,15 +305,16 @@ export function mountCreatePromptController(
             .map((slot) => slot.mediaPath)
         : [draft.startImagePath, draft.endImagePath].filter(Boolean);
       const nativeStateContinuation = isExtension && isMiniMaxH3ContinuumModel(draft.modelId);
-      const boundary = draft.h3GuideEditor && supportsH3TimedGuides(draft) ? h3GuideBoundarySlots(draft.h3GuideEditor.slots) : undefined;
-      const referenceContext = guides ? [
+      const boundary = !guideEditor && draft.h3GuideEditor && supportsH3TimedGuides(draft)
+        ? h3GuideBoundarySlots(draft.h3GuideEditor.slots) : undefined;
+      const referenceContext = guides && guides.length ? [
         "The attached images are visual keyframes anchored by the workflow. Use the specified timing and describe visible compositions and transitions in the final video prompt. Do not emit numbered Picture tags in the result.",
         ...guides.map(guide => `Attachment ${h3ImagePaths.indexOf(guide.mediaPath) + 1} is Studio <Picture ${guide.picture}> at ${(guide.frame / 24).toFixed(3)}s.`)
       ].join("\n") : nativeStateContinuation
         ? ""
         : isMiniMaxH3R2vModel(draft.modelId)
         ? [
-            ...draft.h3ReferenceSlots.map((slot) =>
+            ...draft.h3ReferenceSlots.filter(slot => slot.mediaPath.trim()).map((slot) =>
               `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
             ),
             ...resolveH3TimedGuides(referenceGuides, draft.duration).map(guide =>
@@ -360,7 +361,7 @@ export function mountCreatePromptController(
           : draft.ratio,
         referenceMediaPaths,
         referenceContext: isH3Vision ? referenceContext : undefined,
-        ...(guides ? { h3TimedGuideContext: true as const } : {}),
+        ...(guides && guides.length ? { h3TimedGuideContext: true as const } : {}),
         continuumPreviousChunk: draft.h3ContinuumSequence?.acceptedChunks
           ? draft.h3ContinuumSequence.acceptedChunks - (draft.h3ContinuumReviewAction === "Regenerate Current" ? 1 : 0)
           : undefined,

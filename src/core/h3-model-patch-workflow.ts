@@ -1,4 +1,5 @@
 import type { Draft, H3ExecutionPolicySnapshot, H3SpectrumModelAwareMode, UiLocale } from "../types.js";
+import { TEN_EROS_MAX_MODEL_ID } from "./catalog/models/ten_eros_max/definition.js";
 import {
   h3AttentionOwnerFor,
   resolveH3ExecutionPolicy
@@ -211,7 +212,7 @@ function sageInputs(model: ModelLink, attentionMode: string, allowCompile: boole
   };
 }
 
-function sparseInputs(model: ModelLink, mode: "sol-attn" | "native-sla" | "vsa"): Record<string, unknown> {
+function sparseInputs(model: ModelLink, mode: "sol-attn" | "native-sla" | "vsa", modelId: string): Record<string, unknown> {
   const selection = mode === "native-sla" ? "sla" : mode;
   return {
     model,
@@ -224,7 +225,7 @@ function sparseInputs(model: ModelLink, mode: "sol-attn" | "native-sla" | "vsa")
       : { "selection.keep_percent": 10 }),
     start_percent: mode === "vsa" ? 0 : 0.2,
     end_percent: 1.0,
-    dense_blocks: "",
+    dense_blocks: modelId === TEN_EROS_MAX_MODEL_ID ? "0,1" : "",
     min_tokens: 12288,
     extra_tokens: 256,
     sink_conditioning: "exact_kv_and_rows",
@@ -317,7 +318,7 @@ export function normalizeMiniMaxH3ModelPatchChain(
   }
   if (policy.sparseAttentionMode !== "off") {
     const nodeId = sparseIds[0] ?? allocate();
-    workflow[nodeId] = { class_type: "BlockSparseAttention", inputs: sparseInputs(output, policy.sparseAttentionMode) };
+    workflow[nodeId] = { class_type: "BlockSparseAttention", inputs: sparseInputs(output, policy.sparseAttentionMode, options.modelId) };
     output = [nodeId, 0];
   }
   if (spectrumEnabled) {

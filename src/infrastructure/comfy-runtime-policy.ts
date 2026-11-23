@@ -1,5 +1,7 @@
 import path from "node:path";
+import { freemem } from "node:os";
 import { H3_IMAGE_W4A8_ID } from "../core/minimax-h3-image-spec.js";
+import { isH3PixelRefiner } from "../core/h3-upscale-performance.js";
 import type {
   QueueTask,
   Settings
@@ -11,6 +13,7 @@ export type ComfyUiRuntimeProfile =
   | "qwen-image"
   | "h3-image-w4a8"
   | "h3-native"
+  | "h3-upscale-streaming"
   | "h3-q3-3080";
 
 type RuntimeProfileSettings = Partial<
@@ -35,15 +38,19 @@ export function comfyUiSettingsForQueueTask(
     upscaleMode?: "pixel" | "h3-native";
     modelDirectories?: string[];
   }) | undefined,
-  settings: Settings
+  settings: Settings,
+  resources: { ramAvailableBytes?: number } = { ramAvailableBytes: freemem() }
 ): Settings {
   const isImageTask = task?.taskType === "image-generation";
+  const isPixelRefiner = task?.taskType === "upscale" && isH3PixelRefiner(task.modelId);
+  const hostRoom = typeof resources.ramAvailableBytes === "number" && Number.isFinite(resources.ramAvailableBytes) && resources.ramAvailableBytes >= 32 * 1024 ** 3;
+  const { comfyRuntimeProfileOverride: _previousOverride, ...baseSettings } = settings as Settings & RuntimeProfileSettings;
   const isVideoTask = task?.taskType === "generation" ||
     task?.taskType === "extension" ||
-    (task?.taskType === "upscale" && task.upscaleMode === "h3-native");
+    (task?.taskType === "upscale" && task.upscaleMode === "h3-native") || isPixelRefiner;
   const isH3VideoTask = isVideoTask && task?.modelId.startsWith("minimax_h3_");
   return {
-    ...settings,
+    ...baseSettings,
     ...(task?.modelDirectories?.length ? { modelDirectories: [...task.modelDirectories], modelDirectory: task.modelDirectories[0] } : {}),
     defaultImageModel: isImageTask ? task.modelId : "",
     defaultVideoModel: isVideoTask
@@ -51,7 +58,14 @@ export function comfyUiSettingsForQueueTask(
       : task
         ? ""
         : settings.defaultVideoModel,
-    ...(isH3VideoTask
+    ...(isPixelRefiner ? {
+      // Dense INT8 tiled refiners use native transfers, independently of the
+      // Create policy. Compiler caching is inappropriate for changing tile
+      // shapes and Tessera's head/tail LoRA model switches.
+      h3RuntimeMode: "native" as const,
+      h3ComfyCompilerMode: "disabled" as const,
+      comfyRuntimeProfileOverride: hostRoom ? "h3-native" as const : "h3-upscale-streaming" as const
+    } : isH3VideoTask
       ? {
           // Legacy queue records predate the execution-policy snapshot. A
           // waiting legacy task follows the current saved settings when it is
@@ -102,6 +116,10 @@ export function comfyUiMemoryArgs(
     args.push("--disable-pinned-memory", "--disable-async-offload");
   } else if (runtimeProfile === "h3-native") {
     args.push("--enable-dynamic-vram", "--async-offload", "2");
+  } else if (runtimeProfile === "h3-upscale-streaming") {
+    // Avoid pinning up to 40% of total host RAM when other work already owns
+    // that memory. Keep native offload, with one in-flight transfer stream.
+    args.push("--enable-dynamic-vram", "--async-offload", "1", "--disable-pinned-memory");
   }
   if (
     settings.h3ComfyCompilerMode === "disabled" &&
@@ -131,6 +149,8 @@ export function comfyUiRuntimeProfileFromCommandLine(
   commandLine: string
 ): ComfyUiRuntimeProfile | "unknown" {
   const normalized = commandLine.toLowerCase();
+  if (normalized.includes("--enable-dynamic-vram") && normalized.includes("--async-offload") &&
+      normalized.includes("--disable-pinned-memory") && !normalized.includes("--disable-async-offload")) return "h3-upscale-streaming";
   if (normalized.includes("--cache-lru")) return "prompt-resident";
   if (normalized.includes("--disable-dynamic-vram") &&
       normalized.includes("--disable-smart-memory") &&

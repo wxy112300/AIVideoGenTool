@@ -1,5 +1,7 @@
 import { isH3ImageModel } from "../../../core/minimax-h3-image-spec";
-import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, missingH3GuideReference } from "../../../core/h3-timed-guides";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, isH3TimedGuideConfigured, missingH3GuideReference } from "../../../core/h3-timed-guides";
+import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
+import { piH3AdapterInstalled, piH3DependencyBlockReason } from "../../../core/pi-h3";
 import { H3_BASE_RESOLUTIONS, isCustomVideoResolution } from "../../../core/video-resolution";
 import { videoDurationLimitsForDraft } from "./helpers";
 import { imageModelOptionNote, localizeImageOptionLabel } from "../../shared/image-option-label";
@@ -56,6 +58,7 @@ import { promptModelSupportsImageEdit, isGemmaPromptModel, isStrataPromptModel }
 import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts,
+  missingH3VideoReference,
   motionContextReferenceSlotsReady
 } from "../../../core/h3-reference";
 import { h3TokenCountForDraft } from "../../../core/h3-token-count";
@@ -255,8 +258,6 @@ export interface VideoEnqueueBlockReasonInput {
   motionContextPreflightBlockReason?: string;
   spectrumReady: boolean;
   r2vSlotsReady: boolean;
-  startImagePath: string;
-  allowTextOnly?: boolean;
   turboCoreBlockReason: string;
   modelCoreBlockReason?: string;
   turboLoraBlockReason: string;
@@ -296,21 +297,12 @@ export function videoEnqueueBlockReason(
                     ? t(uiKeys.create.validation.spectrumMissing)
                     : "";
   }
-  return !input.isR2V && !input.allowTextOnly && !input.startImagePath
-    ? t(uiKeys.create.validation.startFrameMissing)
-    : !input.promptText.trim()
-      ? t(uiKeys.create.validation.promptMissing)
-      : input.modelCoreBlockReason || input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
-        ? input.modelCoreBlockReason || input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
-        : !input.workflowPath
-          ? t(uiKeys.create.validation.modelWorkflowMissing)
-          : !input.r2vSlotsReady
-            ? t(uiKeys.create.validation.r2vSlotMissing)
-            : !input.safetySafe
-              ? input.safetyMessage
-              : !input.spectrumReady
-                ? t(uiKeys.create.validation.spectrumMissing)
-                : "";
+  if (!input.promptText.trim()) return t(uiKeys.create.validation.promptMissing);
+  const configuration = input.modelCoreBlockReason || input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason;
+  if (configuration) return configuration;
+  if (!input.workflowPath) return t(uiKeys.create.validation.modelWorkflowMissing);
+  if (!input.safetySafe) return input.safetyMessage;
+  return input.spectrumReady ? "" : t(uiKeys.create.validation.spectrumMissing);
 }
 
 export function buildImageEditPageViewModel(
@@ -833,6 +825,7 @@ export function buildVideoCreatePageViewModel(
     motionContextLatentReady && draft.sourceAssetId && draft.sourceVersionId
   );
   const extending = draft.inputMode === "video";
+  const piH3 = draft.modelId === PI_H3_MODEL_ID;
   const h3LatentSaveMode = h3SharedLatentSaveModeFor(
     draft,
     extending && isR2V,
@@ -1019,6 +1012,8 @@ export function buildVideoCreatePageViewModel(
   const selectedModelProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
+  const piH3StepsMissing = (steps: number) =>
+    piH3 && Boolean(environmentScan) && !piH3AdapterInstalled(selectedModelProfile, steps);
   const continuumDependencyBlockReason = continuumDependencyBlockReasonFor(
     environmentScan,
     draft.modelId,
@@ -1067,9 +1062,11 @@ export function buildVideoCreatePageViewModel(
   const referenceGuides = h3ReferenceTimedGuides(draft);
   const guideIssue = guideEditor ? h3TimedGuideIssue(guideEditor.slots, draft.duration)
     : referenceGuides.length ? h3TimedGuideIssue(referenceGuides, draft.duration) : undefined;
-  const missingGuide = guideEditor && missingH3GuideReference(prompt.text, guideEditor.slots);
+  const missingGuide = guideEditor && missingH3GuideReference(prompt.text, guideEditor.slots.filter(isH3TimedGuideConfigured));
+  const missingReference = !extending && isR2V && missingH3VideoReference(prompt.text, referenceSlots);
   const guideBlock = guideIssue ? t(uiKeys.create.guides[guideIssue]) :
-    missingGuide ? t(uiKeys.create.guides.reference, { picture: missingGuide }) : "";
+    missingGuide ? t(uiKeys.create.guides.reference, { picture: missingGuide }) :
+    missingReference ? t(uiKeys.create.guides.invalidReference, { reference: missingReference }) : "";
   const enqueueBlockReason = enqueuePending ? t(uiKeys.create.finish.scanning) : guideBlock || videoEnqueueBlockReason({
     t,
     promptText: prompt.text,
@@ -1091,10 +1088,9 @@ export function buildVideoCreatePageViewModel(
     motionContextPreflightBlockReason,
     spectrumReady,
     r2vSlotsReady,
-    startImagePath: draft.startImagePath,
-    allowTextOnly: Boolean(guideEditor) || h3Mode === "T2VA",
     turboCoreBlockReason,
-    modelCoreBlockReason: modelCoreVersionBlockReason(draft.modelId, environmentScan?.comfyCompatibility.version, state.settings.uiLocale),
+    modelCoreBlockReason: modelCoreVersionBlockReason(draft.modelId, environmentScan?.comfyCompatibility.version, state.settings.uiLocale) ||
+      (piH3 ? piH3DependencyBlockReason(environmentScan, h3Steps, state.settings.uiLocale) : ""),
     turboLoraBlockReason,
     selectedLoraBlockReason
   });
@@ -1220,8 +1216,13 @@ export function buildVideoCreatePageViewModel(
     customResolution,
     outputWidth: outputDimensions(draft)[0],
     outputHeight: outputDimensions(draft)[1],
-    stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
-      const label = turboEnabled
+    stepsOptionsMarkup: (piH3StepsMissing(h3Steps)
+      ? `<option value="" selected disabled hidden>${escapeHtml(t(uiKeys.create.options.piH3ChooseSteps))}</option>`
+      : "") + videoPolicy.steps.options.map((value) => {
+      const missing = piH3StepsMissing(value);
+      const label = missing ? t(uiKeys.create.options.piH3AdapterMissing)
+        : piH3 ? t(value === 2 ? uiKeys.create.options.fastStepsPreview : uiKeys.create.options.piH3QualitySteps)
+        : turboEnabled
         ? value === 4
           ? t(uiKeys.create.options.turboStepsExperimental)
           : value === 6
@@ -1232,9 +1233,9 @@ export function buildVideoCreatePageViewModel(
           : value === Math.max(...videoPolicy.steps.options)
             ? t(uiKeys.create.options.balancedStepsPreview)
             : t(uiKeys.create.options.fastStepsPreview);
-      return `<option value="${value}" ${h3Steps === value ? "selected" : ""} data-note="${escapeHtml(label)}">${value} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`;
+      return `<option value="${value}" ${missing ? "disabled" : h3Steps === value ? "selected" : ""} data-note="${escapeHtml(label)}">${value} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`;
     }).join(""),
-    stepsTitle: turboEnabled
+    stepsTitle: piH3 ? t(uiKeys.create.options.piH3StepsTitle) : turboEnabled
       ? t(uiKeys.create.options.turboStepsTitle)
       : t(uiKeys.create.options.h3StepsTitle),
     spectrumLabelMarkup: fieldLabelWithTip(

@@ -8,6 +8,8 @@ export const FASTH3_OMNI_MINIMUM_COMFY_VERSION = "0.42.0";
 export const FASTH3_OMNI_WORKFLOW_FILENAME = "minimax_h3_omni_r2v_api.json";
 const revision = "82eff2a6eee6c962846879f4bab52610a4df24d3";
 const filename = "fasth3_omniref_8step_pruned_int8_convrot.safetensors";
+export const h3NativeVsaR2vNodes = ["UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3ReferenceToVideo", "MiniMaxH3SigmaShift", "ModelAttentionBackend", "BlockSparseAttention", "KSamplerSelect", "BasicScheduler", "BasicGuider", "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo", "SaveVideo"] as const;
+export const h3NativeVsaR2vSharedComponents = [h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae] as const;
 
 export const minimaxH3Omni: CatalogModelEntry = {
   definition: {
@@ -36,7 +38,7 @@ export const minimaxH3Omni: CatalogModelEntry = {
       vram: "INT8 ConvRot · 22.2 GB 权重 · DynamicVRAM / RAM offload",
       integrated: true,
       minimumComfyVersion: FASTH3_OMNI_MINIMUM_COMFY_VERSION,
-      runtimeNodeTypes: ["UNETLoader", "CLIPLoader", "VAELoader", "MiniMaxH3ReferenceToVideo", "MiniMaxH3SigmaShift", "ModelAttentionBackend", "BlockSparseAttention", "KSamplerSelect", "BasicScheduler", "BasicGuider", "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo", "SaveVideo"],
+      runtimeNodeTypes: h3NativeVsaR2vNodes,
       components: [
         {
           label: "FastH3 Omni INT8 模型",
@@ -54,7 +56,7 @@ export const minimaxH3Omni: CatalogModelEntry = {
             notes: `需要 ComfyUI ${FASTH3_OMNI_MINIMUM_COMFY_VERSION}+ 的完整 PDD checkpoint 支持。8 步 Euler / Simple，video/audio shift 12/3；复用 H3 编码器及音视频 VAE。权重大小不等于显存需求。`
           }
         },
-        h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae
+        ...h3NativeVsaR2vSharedComponents
       ]
     }
   },

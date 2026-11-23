@@ -1,4 +1,5 @@
 import { modelLibraryRoots } from "../../src/core/model-libraries.js";
+import { generatedNodeRuntimeFile } from "../../src/core/software-runtime-files.js";
 import type { Translate } from "../../src/core/i18n.js";
 import { uiKeys } from "../../src/core/i18n-keys.js";
 import { createReadStream, promises as fs } from "node:fs";
@@ -24,7 +25,7 @@ import { managedStrataDirectory, physicalPath, containsPath, resolvedStrataDirec
 import { removeSoftwareArtifact } from "./software-update-cleanup.js";
 import { gitSoftwareFiles } from "./software-git-files.js";
 import { deepSeekSourceSoftwareFiles } from "./strata-deepseek-source.js";
-import { removeDirectoryTreeWithoutAsar } from "./dlss5-runtime.js";
+import { removeDirectoryTreeWithoutAsar, DLSS5_RUNTIME_MANIFEST_FILENAME, DLSS5_RUNTIME_CONFIG_FILENAME } from "./dlss5-runtime.js";
 import { GpuResourceLease } from "./gpu-resource-lease.js";
 import { withSoftwareMaintenance } from "./installation-cancellation.js";
 import type { AppSoftwareCache, SoftwareCacheTarget } from "./cache-service.js";
@@ -34,7 +35,7 @@ const nativeFs: Pick<typeof import("node:fs"), "promises" | "createReadStream"> 
   ? createRequire(import.meta.url)("original-fs") : { promises: fs, createReadStream };
 const identity = (name: string) => path.resolve(name).toLowerCase();
 const repository = (value: string) => value.trim().replace(/\.git\/?$/iu, "").replace(/\/$/u, "").toLowerCase();
-interface Candidate extends SoftwareCacheTarget { parent: string; owned?: Set<string>; git?: boolean; vectors?: boolean; package?: boolean; dlss5?: boolean }
+interface Candidate extends SoftwareCacheTarget { parent: string; owned?: Set<string>; git?: boolean; vectors?: boolean; package?: boolean; dlss5?: boolean; nodeId?: string }
 interface Options {
   getSettings(): Settings;
   comfyRoot?(settings: Settings): Promise<string>;
@@ -56,8 +57,27 @@ async function sourceMatches(directory: string, url: string, t: Translate = crea
   try { return repository(/\[remote "origin"\][^[]*?url\s*=\s*([^\r\n]+)/u.exec(await smallText(path.join(directory, ".git/config"), t))?.[1] ?? "") === repository(url); }
   catch { return false; }
 }
+async function nodeRuntimeSoftwareFiles(candidate: Candidate, t: Translate): Promise<Set<string>> {
+  const owned = new Set(candidate.owned);
+  if (candidate.nodeId !== DLSS5_NODE_ID) return owned;
+  const runtime = path.join(candidate.path, "runtime");
+  const stat = await fs.lstat(runtime).catch(() => null);
+  if (!stat?.isDirectory() || stat.isSymbolicLink()) return owned;
+  try {
+    const manifest = JSON.parse(await smallText(path.join(runtime, DLSS5_RUNTIME_MANIFEST_FILENAME), t));
+    if (manifest.schemaVersion !== 1 || manifest.bundleId !== DLSS5_RUNTIME_BUNDLE_ID || !Array.isArray(manifest.ownedFiles)
+      || !manifest.ownedFiles.every((name: unknown) => typeof name === "string" && name && !name.includes("..") && !path.isAbsolute(name))) return owned;
+    for (const name of manifest.ownedFiles) {
+      // The installation owns the runtime files; the generated config still gets its content check.
+      if (name !== DLSS5_RUNTIME_CONFIG_FILENAME) owned.add(path.posix.join("runtime", name));
+    }
+    owned.add(path.posix.join("runtime", DLSS5_RUNTIME_MANIFEST_FILENAME));
+  } catch { /* A legacy directory without a valid installation receipt is not an owned runtime. */ }
+  return owned;
+}
 /** Unknown local data blocks deletion of that copy; cache cleanup never imports old data into live software. */
-async function assertDisposable(candidate: Candidate, t: Translate = createNativeTranslator(undefined).t) {
+export async function assertDisposableSoftwareCopy(candidate: Candidate, t: Translate = createNativeTranslator(undefined).t) {
+  const owned = await nodeRuntimeSoftwareFiles(candidate, t);
   const tracked = candidate.git ? await gitSoftwareFiles(candidate.path) : new Set<string>();
   const strataSource = candidate.vectors && await sourceMatches(candidate.path, "https://github.com/Niko1221/Strata", t);
   if (strataSource) for (const name of await deepSeekSourceSoftwareFiles(candidate.path)) tracked.add(name);
@@ -71,7 +91,9 @@ async function assertDisposable(candidate: Candidate, t: Translate = createNativ
       if (entry.isSymbolicLink()) throw new Error(t(uiKeys.softwareCache.linkedDirectory, { path: filename }));
       if ([".git", ".venv", "node_modules", "__pycache__"].includes(entry.name)) continue;
       if (entry.isDirectory()) { await visit(filename, name); continue; }
-      if (candidate.owned?.has(name)) continue;
+      if (owned.has(name)) continue;
+      if (candidate.nodeId && tracked.has(name)) continue;
+      if (candidate.nodeId && await generatedNodeRuntimeFile(candidate.nodeId, name, () => smallText(filename, t))) continue;
       if (candidate.dlss5 && relative === DEPTH_ANYTHING_V2_SMALL_METADATA_RELATIVE_DIRECTORY
         && ["config.json", "preprocessor_config.json"].includes(entry.name)
         && await smallText(filename, t) === depthAnythingBuiltinMetadataFile(entry.name)) continue;
@@ -151,7 +173,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
         const definition = definitions.find(node => entry.name.startsWith(`${node.directoryName}-`) && /^\d+$/u.test(entry.name.slice(node.directoryName.length + 1)));
         if (!definition || !entry.isDirectory()) continue;
         const filename = path.join(comfy, "node-backups", entry.name);
-        if (await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
+        if (await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID, nodeId: definition.id });
         else if (definition.source === "bundled") {
           const version = await smallText(path.join(filename, "VERSION"), t).catch(() => "");
           if (version.trim() && (await fs.lstat(path.join(filename, "__init__.py")).catch(() => null))?.isFile()) await add(comfy, filename, version);
@@ -160,7 +182,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       for (const entry of await entries(path.join(comfy, "custom_nodes"))) {
         const definition = definitions.find(node => entry.name.startsWith(`${node.directoryName}.update-`) && /^[a-f0-9-]{36}$/iu.test(entry.name.slice(node.directoryName.length + 8)));
         const filename = path.join(comfy, "custom_nodes", entry.name);
-        if (definition && entry.isDirectory() && await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID });
+        if (definition && entry.isDirectory() && await sourceMatches(filename, definition.repositoryUrl, t)) await add(comfy, filename, await smallText(path.join(filename, ".git/config"), t), { git: true, dlss5: definition.id === DLSS5_NODE_ID, nodeId: definition.id });
       }
       const konohamaru = definitions.find(node => node.id === KONOHAMARU_NODE_ID);
       if (konohamaru) {
@@ -217,7 +239,7 @@ export function createManagedSoftwareCache(options: Options): AppSoftwareCache {
       try {
       const fresh = (await discover()).find(candidate => identity(candidate.path) === identity(target.path) && candidate.identity === target.identity);
       if (!fresh) throw new Error(t(uiKeys.softwareCache.ownershipChanged, { path: target.path }));
-      await assertDisposable(fresh, t);
+      await assertDisposableSoftwareCopy(fresh, t);
       const messages: string[] = [];
       const removed = await removeSoftwareArtifact(fresh.parent, fresh.path, message => { messages.push(message); options.log?.(message); }, removeDirectoryTreeWithoutAsar, createNativeTranslator(options.getSettings().uiLocale).t);
       if (!removed) throw new Error(messages.at(-1) ?? t(uiKeys.softwareCache.failed));

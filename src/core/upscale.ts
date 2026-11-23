@@ -30,6 +30,7 @@ import {
 } from "./seedvr2-native.js";
 import { H3_REFINER_ID, buildH3RefinerWorkflow } from "./h3-refiner.js";
 import { TESSERA_ID, buildTesseraWorkflow } from "./tessera.js";
+import type { H3UpscaleHardware } from "./h3-upscale-performance.js";
 
 type ApiNode = {
   class_type: string;
@@ -818,10 +819,11 @@ export function renderUpscaleWorkflow(
   models: { seedVr2: string; realEsrgan: string },
   objectInfo?: unknown,
   nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment,
-  t: Translate = createTranslator().t
+  t: Translate = createTranslator().t,
+  hardware?: H3UpscaleHardware
 ): Record<string, ApiNode> {
-  if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo, t);
-  if (task.modelId === TESSERA_ID) return buildTesseraWorkflow(task, sourceVideo, objectInfo, t);
+  if (task.modelId === H3_REFINER_ID) return buildH3RefinerWorkflow(task, sourceVideo, objectInfo, t, hardware);
+  if (task.modelId === TESSERA_ID) return buildTesseraWorkflow(task, sourceVideo, objectInfo, t, hardware);
   if (task.modelId === KONOHAMARU_MODEL_ID) {
     return buildKonohamaruUpscaleWorkflow(task, sourceVideo, objectInfo, t);
   }

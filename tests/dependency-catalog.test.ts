@@ -82,6 +82,7 @@ describe("dependency catalog", () => {
       "minimax-h3-learned-upscaler",
       "local-video-studio-h3-av",
       "mmh3-ultimate-upscale",
+      "comfyui-piflow",
       "spectrum-minimax-h3",
       "plaguekind-h3-sla",
       "comfyui-gguf-h3"

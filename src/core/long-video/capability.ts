@@ -8,7 +8,8 @@ import { assertLongVideoRunSource } from "./run-source.js";
 import { continuumProfileLoras, isContinuumReferenceModel } from "./group-workflow.js";
 import { videoLoraConfigurationIssues } from "../video-loras.js";
 import { resolveH3ExecutionPolicy } from "../h3-execution-policy.js";
-import { activeH3TimedGuides, h3ReferenceTimedGuides, missingH3GuideReference } from "../h3-timed-guides.js";
+import { activeH3TimedGuides, h3ReferenceTimedGuides, isH3TimedGuideConfigured, missingH3GuideReference } from "../h3-timed-guides.js";
+import { missingH3VideoReference } from "../h3-reference.js";
 import { longVideoGuideIssue } from "./timed-guides.js";
 
 /** A remembered editor for another model must not hijack the selected native route. */
@@ -44,10 +45,10 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
   } else {
     if (draft.inputMode !== "image" || (!referenceModel && draft.modelId !== "minimax_h3_fl2va")) return t(k.blockRoute);
     if (referenceModel) {
-      if (draft.h3ReferenceSlots.some(slot => slot.mediaType === "video")) return t(k.blockReferences);
-      if (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some(slot => !slot.mediaPath)) return t(uiKeys.serviceChecks.r2vSlots);
-      if (draft.h3ReferenceSlots.length > 9) return t(uiKeys.taskSubmission.r2vLimit);
-    } else if (!guides && !draft.startImagePath) return t(k.blockFirstImage);
+      const filled = draft.h3ReferenceSlots.filter(slot => slot.mediaPath.trim());
+      if (filled.some(slot => slot.mediaType === "video")) return t(k.blockReferences);
+      if (filled.length > 9) return t(uiKeys.taskSubmission.r2vLimit);
+    }
   }
   if (!source) {
     const issue = videoLoraConfigurationIssues({ modelId: draft.modelId, inputMode: "image", videoLoras: draft.videoLoras,
@@ -67,12 +68,12 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
       const issue = longVideoGuideIssue(timed, frozen.layout);
       if (issue) return t(uiKeys.create.guides[issue]);
     }
-    const pictures = referenceModel ? draft.h3ReferenceSlots.map((slot, index) => ({ picture: index + 1, mediaPath: slot.mediaPath, seconds: null })) : guides?.slots;
-    if (pictures) {
-      for (const page of frozen.pages) {
-        const picture = missingH3GuideReference(page.text, pictures);
-        if (picture) return t(uiKeys.create.guides.reference, { picture });
-      }
+    const pictures = guides?.slots.filter(isH3TimedGuideConfigured);
+    for (const page of frozen.pages) {
+      const reference = referenceModel ? missingH3VideoReference(page.text, draft.h3ReferenceSlots) : undefined;
+      if (reference) return t(uiKeys.create.guides.invalidReference, { reference });
+      const picture = pictures && missingH3GuideReference(page.text, pictures);
+      if (picture) return t(uiKeys.create.guides.reference, { picture });
     }
     if (source && (frozen.layout.origin !== "extend" || frozen.layout.prefixChunks !== source.receipt.accepted_chunks || frozen.layout.chunkSeconds !== source.profile.chunkSeconds)) return t(k.blockLayout);
   }

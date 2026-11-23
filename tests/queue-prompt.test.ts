@@ -31,6 +31,7 @@ describe("queue prompt reading", () => {
     const selected = () => document.querySelector<HTMLElement>(".task-description:not([hidden])")!;
     expect(selected().textContent).toBe("Original action 0\n\nOriginal action 1");
     const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-queue-prompt-page]")];
+    expect(buttons[1]!.textContent).toBe("Story notes");
     expect(buttons.slice(2).map(button => button.textContent)).toEqual(["4", "5"]);
     buttons[3]!.focus(); buttons[3]!.click();
     expect(selected().textContent).toBe("Original action 1");
@@ -55,6 +56,7 @@ describe("queue prompt reading", () => {
     const plan = completedGroupVersion().longVideoExecution!.script;
     plan.sharedPreamble = true; plan.pages[0]!.text = "Keep the same character";
     document.body.innerHTML = renderQueuePrompt("unused", createTranslator("en-US").t, escapeHtml, () => "", plan);
+    expect(document.querySelector('[data-queue-prompt-page="1"]')!.textContent).toBe("Shared constraints");
     expect(document.querySelector('[data-queue-prompt-text="2"]')!.textContent).toBe("Keep the same character\n\nOriginal action 0");
     expect(document.querySelector('[data-queue-prompt-text="3"]')!.textContent).toBe("Keep the same character\n\nOriginal action 1");
   });

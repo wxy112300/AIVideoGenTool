@@ -1,4 +1,5 @@
 import { createTranslator, type Translate } from "./i18n.js";
+import { PI_H3_MODEL_ID } from "./catalog/models/minimax_h3_pi/definition.js";
 import { activeH3TimedGuides, h3ReferenceTimedGuides } from "./h3-timed-guides.js";
 import { uiKeys } from "./i18n-keys.js";
 import type {
@@ -151,6 +152,7 @@ export function queueTaskFromDraft(
         h3LivePreview: state.settings.h3LivePreview
       })
     : undefined;
+  const piH3Policy = draft.modelId === PI_H3_MODEL_ID ? h3ExecutionPolicy : undefined;
   // Preserve the legacy generation naming contract: HistoryAsset.outputFilename
   // is the stable compatibility name even when the asset contains versions.
   const names = [
@@ -182,7 +184,7 @@ export function queueTaskFromDraft(
     promptVersion: activePromptIndexForDraft(draft) + 1,
     h3ReferenceSlots: longVideo && !isMiniMaxH3R2vModel(draft.modelId)
       ? [] : draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
-    h3TimedGuides: activeH3TimedGuides(draft)?.slots.filter(slot => slot.mediaPath).map(slot => ({ ...slot })) ??
+    h3TimedGuides: activeH3TimedGuides(draft)?.slots.filter(slot => slot.mediaPath.trim() && slot.seconds !== null).map(slot => ({ ...slot })) ??
       (draft.h3ReferenceGuidesEnabled && isMiniMaxH3R2vModel(draft.modelId) ? h3ReferenceTimedGuides(draft) : undefined),
     startImagePath: draft.startImagePath,
     sourceWidth: draft.sourceWidth,
@@ -210,11 +212,11 @@ export function queueTaskFromDraft(
       : {}),
     seed: draft.seed ?? Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
-    attentionMode: state.settings.h3AttentionMode,
+    attentionMode: piH3Policy?.attentionMode ?? state.settings.h3AttentionMode,
     h3VideoVaeMode,
-    h3LivePreview: state.settings.h3LivePreview,
+    h3LivePreview: piH3Policy?.previewEnabled ?? state.settings.h3LivePreview,
     h3SparseAttentionMode: isMiniMaxH3Model(draft.modelId)
-      ? state.settings.h3SparseAttentionMode
+      ? piH3Policy?.sparseAttentionMode ?? state.settings.h3SparseAttentionMode
       : undefined,
     h3RuntimeMode: isMiniMaxH3Model(draft.modelId)
       ? state.settings.h3RuntimeMode

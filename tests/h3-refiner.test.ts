@@ -24,6 +24,16 @@ function fixture(targetHeight: 1080 | 1440 | 2160 = 2160) {
 }
 
 describe("Kijai H3 Refiner Upscale", () => {
+  it("renders larger tiles for a free 4090 and falls back under external pressure", () => {
+    const { task, info } = fixture();
+    const before = structuredClone(task);
+    const graph = buildH3RefinerWorkflow(task, "source.mp4", info, undefined, { vramTotalBytes: 24 * 1024 ** 3, vramAvailableBytes: 23 * 1024 ** 3, ramAvailableBytes: 40 * 1024 ** 3 });
+    expect(graph.spatial!.inputs).toMatchObject({ tile_width: 1024, tile_height: 768 });
+    expect(graph.temporal!.inputs.chunk_length).toBe(136);
+    const low = buildH3RefinerWorkflow(task, "source.mp4", info, undefined, { vramTotalBytes: 24 * 1024 ** 3, vramAvailableBytes: 8 * 1024 ** 3 });
+    expect(low.spatial!.inputs).toMatchObject({ tile_width: 640, tile_height: 512 });
+    expect(task).toEqual(before);
+  });
   it("uses the installed V3 COMBO options for dense attention", () => {
     const { task, info } = fixture();
     info.ModelAttentionBackend = { input: { required: { attention: ["COMBO", { options: ["pytorch attention", "comfy kitchen attention"] }] } } };

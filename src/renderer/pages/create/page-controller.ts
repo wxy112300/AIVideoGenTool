@@ -692,10 +692,6 @@ export function mountCreatePageController(
   }, { signal });
 
   root.querySelector("#clear-draft")?.addEventListener("click", () => {
-    if (isLongVideoPreview(root)) {
-      root.querySelector("#generation-mode")?.dispatchEvent(new Event("clear-preview"));
-      return;
-    }
     options.requestClearDraftConfirmation();
   }, { signal });
   root.querySelector("#enqueue")?.addEventListener("click", async () => {

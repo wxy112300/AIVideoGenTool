@@ -24,7 +24,7 @@ import type {
   RendererCleanup,
   RendererContext
 } from "../../contracts";
-import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode } from "../../../core/creation-drafts";
+import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode, snapshotCreationDraft } from "../../../core/creation-drafts";
 import { clearPromptVersion, activePromptIndexForDraft, promptPatchForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { createClearedDraft, createClearedImageDraft } from "../../../core/draft-defaults";
 import { estimatePromptTextTokens } from "../../../core/prompt-token-estimate";
@@ -1230,8 +1230,13 @@ summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · 
       creationDraftForMode(state, mode === "video-extension" ? "video" : "image") ?? state.draft);
     const signature = (value: Draft | ImageEditDraft) => JSON.stringify({ ...value, promptVersions: value.promptVersions.map(version => version.text), ...("extensionPromptVersions" in value ? { extensionPromptVersions: value.extensionPromptVersions?.map(version => version.text) } : {}) });
     const cleared = mode === "image-edit" ? createClearedImageDraft(before as ImageEditDraft) : createClearedDraft(before as Draft);
+    if (mode !== "image-edit" && (before as Draft).longVideoEditor?.active) {
+      const editor = (before as Draft).longVideoEditor!;
+      (cleared as Draft).longVideoEditor = { ...editor, confirmed: false };
+    }
     if (signature(before) === signature(cleared)) return;
-    clearDraft(mode);
+    if (mode === "image-edit") patchImageDraft(cleared as ImageEditDraft);
+    else patchDraftForMode(mode, () => cleared as Draft);
     const after = mode === "image-edit" ? state.imageDraft : creationDraftForMode(state, mode === "video-extension" ? "video" : "image") ?? state.draft;
     deps.context.requestRender();
     if (JSON.stringify(before) === JSON.stringify(after)) return;
@@ -1239,7 +1244,14 @@ summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · 
       key: `clear-draft:${mode}:${++clearUndoSequence}`, kind: "info", durationMs: 6000, renderPage: false,
       actions: [{ id: "undo-clear-draft", label: uiText("create.editor.undo"), run: () => {
         if (mode === "image-edit") patchImageDraft(structuredClone(before) as ImageEditDraft);
-        else patchDraftForMode(mode, () => structuredClone(before) as Draft);
+        else {
+          const current = getState();
+          if (deps.getCreationMode() === mode) activateCreationDraft(current, before as Draft);
+          else snapshotCreationDraft(current, before as Draft);
+          draftRevision += 1;
+          draftDirty = true;
+          scheduleDraftSave();
+        }
         deps.context.requestRender();
       } }]
     });

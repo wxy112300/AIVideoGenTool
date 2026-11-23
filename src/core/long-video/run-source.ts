@@ -18,9 +18,6 @@ export function assertLongVideoRunSource(source: LongVideoRunSource): void {
     throw new Error("Group Run source must be complete with remaining capacity");
   }
   assertContinuumGroupProfile(source.profile, receipt.accepted_chunks);
-  if (!source.profile.firstImage?.trim() && !source.profile.timedGuides?.length && !source.profile.referenceImages?.length) {
-    throw new Error("Group Run source lost its original visual inputs");
-  }
 }
 
 /** Every sampling input except future prompts stays fixed when adding chunks. */

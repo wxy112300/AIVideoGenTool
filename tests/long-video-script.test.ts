@@ -15,7 +15,7 @@ describe("structured long-video script", () => {
     const detailed = editLongVideoScript(script, script.segments.map((p, i) => ({ pageId: p.id, text: `Action ${i + 1}` })), 0, "user", id);
     expect(compileLongVideoPrompts(freezeLongVideoScript(detailed))).toEqual(["Action 1", "Action 2"]);
     const shared = setScriptSharedPreamble(detailed, true);
-    expect(() => freezeLongVideoScript(shared)).toThrow(/stale/);
+    expect(freezeLongVideoScript(shared).pages[1].text).toBe("Action 1");
     const reviewed = shared.segments.reduce((s, p) => reviewScriptPage(s, p.id, s.revision), shared);
     expect(compileLongVideoPrompts(freezeLongVideoScript(reviewed))).toEqual([1, 2].map(i => `${scriptPageText(script.brief)}\n\nAction ${i}`));
     expect(detailed.sharedPreamble).toBeUndefined();
@@ -74,7 +74,7 @@ describe("structured long-video script", () => {
     const detailed = editLongVideoScript(script, script.segments.map(p => ({ pageId: p.id, text: "详稿" })), 0, "user", id);
     const changed = editLongVideoScript(detailed, [{ pageId: script.brief.id, text: "新全局" }], 1, "user", id);
     expect(changed.segments.every(p => p.stale)).toBe(true);
-    expect(() => freezeLongVideoScript(changed)).toThrow(/stale/);
+    expect(freezeLongVideoScript(changed).pages[1].text).toBe("详稿");
     const reviewed = changed.segments.reduce((state, page) => reviewScriptPage(state, page.id, state.revision), changed);
     expect(freezeLongVideoScript(reviewed).pages[1].text).toBe("详稿");
     expect(updateScriptPage(detailed, detailed.segments[0].id, { outline: "提纲" }).segments[0].stale).toBe(true);

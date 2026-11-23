@@ -301,9 +301,11 @@ export class PromptApplicationService {
       const hasLongVideoImages = referenceModel || request.h3TimedGuideContext || request.imagePaths?.length === 2
         ? Boolean(request.referenceContext?.trim() && request.imagePaths?.length && request.imagePaths.every(image => image.trim()))
         : Boolean(request.imagePath && (request.imagePaths?.length ?? 1) === 1);
+      const textOnly = !referenceModel && request.h3PromptMode === "T2VA" && !request.h3TimedGuideContext &&
+        !request.imagePath && !request.imagePaths?.length;
       if (promptBackend !== "strata" || request.mode !== "h3-vision" || (!referenceModel && request.modelId !== "minimax_h3_fl2va") ||
-          request.h3PromptMode !== (referenceModel ? "R2V" : "I2VA") ||
-          !hasLongVideoImages || request.extensionSource) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
+          (!textOnly && (request.h3PromptMode !== (referenceModel ? "R2V" : "I2VA") || !hasLongVideoImages)) ||
+          request.extensionSource) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
     }
     if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request) && !request.longVideo) {
       throw new Error(this.message(settings, uiKeys.promptService.promptRequired));

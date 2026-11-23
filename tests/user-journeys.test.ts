@@ -33,7 +33,7 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     await settle();
     h.input("#prompt-input", "Start in the plaza and approach <Picture 2>.");
     expect(h.element("#enqueue").disabled).toBe(true);
-    expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("keyframe");
+    expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("Picture 2");
     h.element('[data-guide-slot="1"] [data-guide-pick]').click();
     await settle();
     h.element("#add-h3-guide").click();
@@ -470,7 +470,7 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     expect(h.state().queue[0]?.workflowPath).toContain("t2va");
   });
 
-  it("switching to R2V replaces frame controls; an empty Slot blocks and picking media restores enqueue", async () => {
+  it("allows unreferenced R2V slots and recovers a referenced empty slot through the picker", async () => {
     const h = journey = await createJourney();
     h.input("#model", "minimax_h3_ref2va", "change"); await settle();
     expect(h.root.querySelector("#pick-start")).toBeNull();
@@ -478,10 +478,15 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     expect(h.element("#h3-guide-help").dataset.uiTooltip).toContain("留空的图片照常作为参考");
     h.element("#toggle-h3-guides").click();
     await settle();
-    expect(h.element("#enqueue").disabled).toBe(true);
     // The selected model may create its initial empty slot; otherwise add it via UI.
     if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
     await settle();
+    h.input("#prompt-input", "A quiet street.");
+    expect(h.element("[data-reference-incomplete]").textContent).toContain("空槽");
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.input("#prompt-input", "Move toward <Picture 1>.");
+    expect(h.element("#enqueue").disabled).toBe(true);
+    expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain("Picture 1");
     h.element("[data-pick-h3-slot]").click(); await settle();
     expect(h.state().draft.h3ReferenceSlots[0]?.mediaPath).toBe("fixture.png");
     h.input("[data-h3-slot-role]", "style", "change");
@@ -508,6 +513,7 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     });
     h.element("[data-clear-h3-slot]").click(); await settle();
     expect(h.state().draft.h3ReferenceSlots[0]).toMatchObject({ id: slotId, role: "style", note: "Keep the light direction", mediaPath: "" });
+    h.input("#prompt-input", "Move toward <Picture 1>.");
     expect(h.element("#enqueue").disabled).toBe(true);
     expect(h.state().queue[0]?.h3ReferenceSlots[0]?.mediaPath).toBe("fixture.png");
     h.element("[data-remove-h3-slot]").click(); await settle();

@@ -11,6 +11,64 @@ let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
 
 describe("persistent long video editor", () => {
+  it("clears the Continuum draft and Add Guide images and restores both through the toast", async () => {
+    const h = journey = await createJourney({
+      h3GuideEditor: { active:true, sharedFrames:true, nextPicture:3, slots:[
+        { picture:1, mediaPath:"guide.png", seconds:0 },
+        { picture:2, mediaPath:"", seconds:null }
+      ] }
+    });
+    h.input("#prompt-input", "同一条小路");
+    h.input("#generation-mode", "preview", "change");
+    h.element("[data-confirm-layout]").click();
+    const scriptId = h.state().draft.longVideoScript!.brief.id;
+    expect(h.root.querySelector("[data-guide-incomplete]:not([hidden])")).not.toBeNull();
+    h.element("#clear-draft").click();
+    expect(h.state().draft.h3GuideEditor).toBeUndefined();
+    expect(h.state().draft.longVideoScript).toBeUndefined();
+    expect(h.element<HTMLSelectElement>("#generation-mode").value).toBe("preview");
+    const [, notice] = vi.mocked(h.context.notify).mock.calls.at(-1)!;
+    expect(notice?.durationMs).toBe(6000);
+    await notice?.actions?.[0]?.run();
+    expect(h.state().draft.h3GuideEditor?.slots[0]?.mediaPath).toBe("guide.png");
+    expect(h.state().draft.longVideoScript?.brief.id).toBe(scriptId);
+  });
+
+  it("shares the native and global prompt across mode switches without replacing segments", async () => {
+    const h = journey = await createJourney();
+    h.input("#prompt-input", "原生原稿");
+    h.input("#generation-mode", "preview", "change");
+    h.element("[data-confirm-layout]").click();
+    expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe("原生原稿");
+    h.input(".create-long-editor textarea", "全局修订");
+    h.element('.create-long-tabs [role="tab"]:nth-child(2)').click();
+    h.input(".create-long-editor textarea", "第 1 段独立内容");
+    h.input("#generation-mode", "native", "change");
+    expect(h.element<HTMLTextAreaElement>("#prompt-input").value).toBe("全局修订");
+    h.input("#prompt-input", "再从原生修改");
+    h.render();
+    h.input("#generation-mode", "preview", "change");
+    expect(scriptPageText(h.state().draft.longVideoScript!.brief)).toBe("再从原生修改");
+    expect(scriptPageText(h.state().draft.longVideoScript!.segments[0]!)).toBe("第 1 段独立内容");
+  });
+
+  it("recovers a legacy global prompt when the previously separate native prompt was empty", async () => {
+    const h = journey = await createJourney();
+    h.input("#prompt-input", "旧版只保存在全局中的原文");
+    h.input("#generation-mode", "preview", "change");
+    h.element("[data-confirm-layout]").click();
+    const draft = structuredClone(h.state().draft);
+    draft.longVideoEditor!.active = false;
+    draft.longVideoEditor!.seeded = true;
+    draft.promptVersions[draft.activePromptVersion]!.text = "";
+    h.dispose();
+    const restored = journey = await createJourney(draft);
+    restored.input("#generation-mode", "preview", "change");
+    expect(restored.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe("旧版只保存在全局中的原文");
+    restored.input("#generation-mode", "native", "change");
+    expect(restored.element<HTMLTextAreaElement>("#prompt-input").value).toBe("旧版只保存在全局中的原文");
+  });
+
   it("defaults to automatic, removes the extra role control and restores an explicit assisted choice", async () => {
     const h = journey = await createJourney();
     h.input("#generation-mode", "preview", "change");

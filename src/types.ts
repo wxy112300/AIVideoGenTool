@@ -125,7 +125,7 @@ export interface H3HighResolutionEnvironment {
   providerInstallNote?: string;
 }
 
-export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
+export type H3StepCount = 2 | 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch" | "comfy-kitchen";
 export type H3SparseAttentionMode = "auto" | "off" | "sol-attn" | "native-sla" | "vsa";
 /** Sparse choices exposed globally; recipe-specific and unavailable modes stay internal. */

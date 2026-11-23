@@ -1,6 +1,7 @@
 import { isH3ImageModel } from "./minimax-h3-image-spec.js";
 import type { UiLocale } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
+import { FASTH3_OMNI_MODEL_ID } from "./catalog/models/minimax_h3_omni/definition.js";
 import { releaseVersionAtLeast } from "./release-version.js";
 
 /** Node registration alone cannot prove support for a checkpoint's architecture. */
@@ -13,7 +14,8 @@ export function modelCoreVersionBlockReason(modelId: string, version: string | u
     if (locale === "zh-TW") return `MiniMax H3 Image 需要 ComfyUI ${minimum}+。請更新核心後在設定重新掃描。`;
     return `MiniMax H3 Image 需要 ComfyUI ${minimum}+。请更新核心后在设置重新扫描。`;
   }
-  if (locale === "en-US") return `${name} requires ComfyUI ${minimum}+ with full PDD checkpoint support (current: ${version || "unknown"}). Update the selected core and rescan in Settings.`;
-  if (locale === "zh-TW") return `${name} 需要 ComfyUI ${minimum}+ 的完整 PDD checkpoint 支援（目前：${version || "未知"}）。請更新所選核心後在設定重新掃描。`;
-  return `${name} 需要 ComfyUI ${minimum}+ 的完整 PDD checkpoint 支持（当前：${version || "未知"}）。请更新所选核心后在设置重新扫描。`;
+  const pdd = modelId === FASTH3_OMNI_MODEL_ID;
+  if (locale === "en-US") return `${name} requires ComfyUI ${minimum}+${pdd ? " with full PDD checkpoint support" : ""} (current: ${version || "unknown"}). Update the selected core and rescan in Settings.`;
+  if (locale === "zh-TW") return `${name} 需要 ComfyUI ${minimum}+${pdd ? " 的完整 PDD checkpoint 支援" : ""}（目前：${version || "未知"}）。請更新所選核心後在設定重新掃描。`;
+  return `${name} 需要 ComfyUI ${minimum}+${pdd ? " 的完整 PDD checkpoint 支持" : ""}（当前：${version || "未知"}）。请更新所选核心后在设置重新扫描。`;
 }

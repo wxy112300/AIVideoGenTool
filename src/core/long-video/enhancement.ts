@@ -10,7 +10,7 @@ export interface LongVideoPromptRequest {
   layout: LongVideoLayout;
   sharedPreamble: boolean;
   brief: { pageId: string; text: string; locked: boolean };
-  segments: Array<{ pageId: string; text: string; outline: string; locked: boolean }>;
+  segments: Array<{ pageId: string; text: string; outline: string; locked: boolean; userEditedDirection?: true }>;
   targetPageId?: string;
   operation?: LongVideoWritingOperation;
 }
@@ -29,7 +29,8 @@ export function assertLongVideoPromptRequest(request: LongVideoPromptRequest): v
   if (!request.brief || request.brief.pageId !== request.scriptId || !text(request.brief.text) || typeof request.brief.locked !== "boolean" ||
       typeof request.sharedPreamble !== "boolean" || !Array.isArray(request.segments) || request.segments.length !== request.layout.chunks ||
       new Set([request.scriptId, ...request.segments.map(p => p.pageId)]).size !== request.segments.length + 1 ||
-      request.segments.some(p => !safeId(p.pageId) || !text(p.text) || !text(p.outline, 4000) || typeof p.locked !== "boolean") ||
+      request.segments.some(p => !safeId(p.pageId) || !text(p.text) || !text(p.outline, 4000) || typeof p.locked !== "boolean" ||
+        (p.userEditedDirection !== undefined && p.userEditedDirection !== true)) ||
       (request.operation !== undefined && request.operation !== "allocate" && request.operation !== "expand") ||
       (request.targetPageId !== undefined && (request.operation === "allocate" || !request.segments.some(p => p.pageId === request.targetPageId && !p.locked))) ||
       (request.operation === "allocate" && !request.brief.text.trim() && !request.segments.some(p => p.text.trim())) ||
@@ -42,7 +43,9 @@ export function longVideoPromptRequest(script: LongVideoScript, targetPageId?: s
     layout: structuredClone(script.layout), sharedPreamble: Boolean(script.sharedPreamble),
     brief: { pageId: script.brief.id, text: scriptPageText(script.brief), locked: script.brief.locked },
     segments: script.segments.map(p => ({ pageId: p.id, text: scriptPageText(p),
-      outline: isScriptAllocation(p) ? scriptPageText(p).slice(0, 4000) : p.outline, locked: p.locked })),
+      outline: isScriptAllocation(p) ? scriptPageText(p).slice(0, 4000) : p.outline, locked: p.locked,
+      ...(operation === "expand" && p.versions.some(v => v.id === p.activeVersionId && v.source === "user" && v.text.trim())
+        ? { userEditedDirection: true as const } : {}) })),
     ...(targetPageId ? { targetPageId } : {}), ...(operation ? { operation } : {}) };
   assertLongVideoPromptRequest(request); return request;
 }

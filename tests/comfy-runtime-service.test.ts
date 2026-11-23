@@ -13,6 +13,30 @@ import { comfyUiSettingsForQueueTask, comfyUiMemoryArgs, comfyUiRuntimeProfileFo
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it.each(["minimax_h3_kijai_refiner", "minimax_h3_tessera"])("uses native async transfers for %s without changing Create policy", modelId => {
+    const saved = { ...createDefaultState().settings, h3RuntimeMode: "compatibility" as const, h3ComfyCompilerMode: "auto" as const };
+    const settings = comfyUiSettingsForQueueTask({ taskType: "upscale", modelId }, saved, { ramAvailableBytes: 40 * 1024 ** 3 });
+    const args = comfyUiMemoryArgs(settings);
+    expect(comfyUiRuntimeProfileForSettings(settings)).toBe("h3-native");
+    expect(args).toEqual(expect.arrayContaining(["--enable-dynamic-vram", "--async-offload", "2", "--disable-comfy-compiler"]));
+    expect(args).not.toContain("--disable-pinned-memory");
+    expect(args).not.toContain("--disable-async-offload");
+    expect(saved.h3RuntimeMode).toBe("compatibility");
+    const other = comfyUiSettingsForQueueTask({ taskType: "upscale", modelId: "seedvr2" }, saved);
+    expect(comfyUiRuntimeProfileForSettings(other)).toBe("standard");
+  });
+  it("streams without pinning host pages when RAM is busy, then clears that workflow override", () => {
+    const saved = createDefaultState().settings;
+    const settings = comfyUiSettingsForQueueTask({ taskType: "upscale", modelId: "minimax_h3_tessera" }, saved, { ramAvailableBytes: 10 * 1024 ** 3 });
+    const args = comfyUiMemoryArgs(settings);
+    expect(comfyUiRuntimeProfileForSettings(settings)).toBe("h3-upscale-streaming");
+    expect(args).toEqual(expect.arrayContaining(["--enable-dynamic-vram", "--async-offload", "1", "--disable-pinned-memory", "--disable-comfy-compiler"]));
+    expect(args).not.toContain("--disable-async-offload");
+    expect(comfyUiRuntimeProfileFromCommandLine(`python main.py ${args.join(" ")}`)).toBe("h3-upscale-streaming");
+    const next = comfyUiSettingsForQueueTask({ taskType: "upscale", modelId: "seedvr2" }, settings);
+    expect(comfyUiRuntimeProfileForSettings(next)).toBe("standard");
+    expect(saved).not.toHaveProperty("comfyRuntimeProfileOverride");
+  });
   it("isolates the W4A8 image transfer workaround from H3 video and INT8 images", () => {
     const saved = createDefaultState().settings;
     const image = comfyUiSettingsForQueueTask({ taskType: "image-generation", modelId: "minimax-h3-image-w4a8" }, saved);

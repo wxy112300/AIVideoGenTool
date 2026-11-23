@@ -10,6 +10,7 @@ import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { strataReasoningEffortForModel } from "../../src/core/strata-reasoning.js";
+import { strataCompatibilityEnvironment } from "../../src/core/catalog/dependencies/strata.js";
 import { resolvedStrataDirectory, strataInstalledRelease, strataManagedReceipt, strataSourceDirectory } from "./strata-installation.js";
 import { isLocalPortInUse } from "./local-service-process.js";
 import { validatePreparedStrataRuntime } from "./strata-model-preparation.js";
@@ -154,8 +155,10 @@ export async function prepareStrataLaunch(
     ))).every(Boolean);
   let launchConfig = config;
   let resourcePlan: StrataResourcePlan | undefined;
+  const release = strataInstalledRelease(cwd);
+  const compatibilityEnv = isStrataDeepSeek(modelId) ? {} : strataCompatibilityEnvironment(release?.revision);
   const deviceVram = options.adaptive && process.platform === "win32" && !isStrataDeepSeek(modelId)
-    && strataInstalledRelease(cwd)?.version === "0.2.17";
+    && release && "deviceVram" in release && release.deviceVram === true;
   let nativeVramReserve = false;
   const mode = strataUncensoredMode(settings);
   const controlVector = mode !== "off" && supportsStrataUncensored(modelId)
@@ -197,9 +200,10 @@ export async function prepareStrataLaunch(
     ...(controlVector ? { controlVector } : {}),
     ...(launchConfig !== config ? { temporaryConfig: launchConfig } : {}),
     ...(nativeVramReserve ? { nativeVramReserve } : {}),
+    ...(!resourcePlan && Object.keys(compatibilityEnv).length ? { env: compatibilityEnv } : {}),
     ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
       env: isStrataDeepSeek(modelId) ? {} : { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
-        ...(deviceVram ? { STRATA_VRAM_FREE: "device" } : {}),
+        ...(deviceVram ? { STRATA_VRAM_FREE: "device" } : {}), ...compatibilityEnv,
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),
@@ -218,6 +222,8 @@ export interface StrataOwnedProcess {
 
 /** No detached server or adopted PID: retain the child until its tree has exited. */
 export async function launchStrataProcess(plan: StrataLaunchPlan, output: (chunk: string) => void, t: Translate = createNativeTranslator(undefined).t): Promise<StrataOwnedProcess> {
+  if (plan.env?.STRATA_HC_Q8_TC === "0" && plan.env?.STRATA_HC_Q8_BF16TC === "0")
+    output("[Strata compatibility] HC Q8 Tensor Core paths disabled (STRATA_HC_Q8_TC=0, STRATA_HC_Q8_BF16TC=0; upstream #6713/#6714).\n");
   const child = spawn(plan.executable, plan.args, {
     cwd: plan.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...plan.env }
   });

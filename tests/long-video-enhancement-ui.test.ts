@@ -16,6 +16,17 @@ async function fixture() {
 }
 const response = (r: EnhanceRequest) => JSON.stringify({ schemaVersion: 1, scriptId: r.longVideo!.scriptId, revision: r.longVideo!.revision,
   brief: "A complete twelve-part story", segments: r.longVideo!.segments.map((p, i) => ({ pageId: p.pageId, text: `Continuous action ${i}`, outline: `Boundary ${i}` })) });
+it("routes the text-only long-video editor to T2VA enhancement", async () => {
+  const h = await fixture();
+  h.state().draft.startImagePath = "";
+  h.enhancePrompt.mockImplementation(async request => response(request));
+  h.render();
+  h.element("[data-enhance-long-video]").click();
+  await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({
+    h3PromptMode: "T2VA", imagePath: undefined, imagePaths: []
+  })));
+});
+
 it("matches shuffled Picture IDs to the chronological images on the actual long-video enhance button", async () => {
   const h = await fixture();
   h.state().draft.startImagePath = "";
