@@ -589,10 +589,21 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     const macroSkills = selectH3PromptSkills(macroCtx);
     expect(macroSkills.map((s) => s.id)).toContain("visual-realism");
     const macroRendered = formatH3PromptSkills(macroSkills, macroCtx);
+    expect(macroRendered).toContain("Camera-distance & focal-plane gating");
     expect(macroRendered).toContain("Unretouched skin micro-topography & subsurface scattering");
-    expect(macroRendered).toContain("Macro lips, moisture & eye realism");
+    expect(macroRendered).toContain("Close-up lips, moisture & eye realism");
     expect(macroRendered).toContain("Tactile fabric weave & physical materiality");
     expect(macroRendered).toContain("Optical lens discipline");
+
+    // Sole/foot macro with distant background face MUST NOT trigger lip/eye macro sub-rule
+    const soleMacroCtx = {
+      ...base,
+      sourcePrompt: "Extreme macro surface realism on the giant woman's bare sole where the tiny woman walks, while the giant's face looms far in the background."
+    };
+    const soleRendered = formatH3PromptSkills(selectH3PromptSkills(soleMacroCtx), soleMacroCtx);
+    expect(soleRendered).toContain("Camera-distance & focal-plane gating");
+    expect(soleRendered).toContain("Unretouched skin micro-topography & subsurface scattering");
+    expect(soleRendered).not.toContain("Close-up lips, moisture & eye realism");
   });
 
   it("passes the Two-Layer H3 Harness Audit (Layer 1 Qwen teacher hygiene + Layer 2 MiniMax H3 output contract)", async () => {
@@ -610,7 +621,7 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     const badOutput = [
       "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
       "integrated_multimodal_description:",
-      "At 0.00 seconds, <Picture 1> (from [Shot 1]) is fully referenced. The camera Push In steadily on a giant 18-year-old woman and a tiny figure who squeezes through closed fabric. [Push in] named speaker (S1) says: <d>[English] Hello</d>. NOT a toy, no jitter.",
+      "At 0.00 seconds, <Picture 1> (from [Shot 1]) is fully referenced. The camera Push In steadily on a giant 18-year-old woman and a tiny figure who squeezes through closed fabric as they enlarge together at the identical rate. The giant face with fine vertical lip lines looms in the deep upper background and pores remain temporally locked. [Push in] named speaker (S1) says: <d>[English] Hello</d>. NOT a toy, no jitter.",
       "overall_soundscape:",
       "Rain taps on glass. Her spoken line carries clear voice intimacy. No music.",
       "non_diegetic_music:",
@@ -623,12 +634,14 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     expect(badReport.passed).toBe(false);
     const codes = badReport.issues.map((i) => i.code);
     expect(codes).toEqual(expect.arrayContaining([
+      "l2-leak-meta-boilerplate",
       "l2-literal-named-speaker",
       "l2-ungrammatical-camera-token",
       "l2-legacy-hailuo-bracket-tag",
       "l2-negative-channel-leak",
       "l2-toy-prior-leak",
       "l2-impossible-shortcut-clipping",
+      "l2-distant-face-macro-hallucination",
       "l2-main-missing-shot1-start",
       "l2-soundscape-format-leak",
       "l2-soundscape-speech-leak",

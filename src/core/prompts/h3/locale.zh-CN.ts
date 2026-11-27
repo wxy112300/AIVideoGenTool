@@ -57,7 +57,7 @@ export const referenceRoleLocale: Record<H3ReferenceRole, string> = {
 
 export const snippetLocale: Record<string, PromptSnippetLocale> = {
   "visual-photorealistic-quality": { group: "画质与实拍光学", label: "真实皮肤与织物质感（去塑料感）" },
-  "visual-macro-closeup": { group: "画质与实拍光学", label: "人物极近微距（100mm · 毛孔/唇纹/眼眸）" },
+  "visual-macro-closeup": { group: "画质与实拍光学", label: "极近微距材质细节（按焦点适配）" },
   "capture-35mm-natural": { group: "画质与实拍光学", label: "35mm 电影自然光" },
   "capture-85mm-portrait": { group: "画质与实拍光学", label: "85mm 人像质感与柔和散景" },
   "capture-smartphone-1x": { group: "画质与实拍光学", label: "手机 1x 纪实抓拍" },

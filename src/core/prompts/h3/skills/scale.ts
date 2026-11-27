@@ -95,7 +95,7 @@ export const scaleWorldCraftSkill: H3PromptSkill = {
     }
     if (ctx.inspectAll || giantFaceBreathPattern.test(text) || oralHazardPattern.test(text)) {
       lines.push(
-        "- Local-horizon macro framing on giant face/body (anti-face-deformation): at millimeter/centimeter close-up on a giant's face or torso, frame ONLY the local anatomical horizon (one colossal blinking eye filling half the upper frame, curved nose bridge, lip ridge, skin pores, fine peach fuzz)—NEVER try to squeeze the giant's entire laughing face into a close macro shot alongside a 5mm person (which warps facial geometry). Show the full giant face only in wider establishing beats or deep distant background looking up from far landmarks like toes; warm exhaled breath visibly ripples the tiny subject's hair and sleeves with a soft low rushing breeze."
+        "- Local-horizon macro framing on giant face/body (anti-face-deformation): at close macro on a giant's face/torso, frame ONLY the local horizon (one colossal blinking eye, curved nose bridge, lip ridge, skin pores)—NEVER squeeze the full face into a macro shot beside a 5mm person. When the full giant face sits in the distant background above far landmarks like toes or soles, keep it high-level (expression and gaze only—zero macro lip lines or nostril pores). Mention warm exhaled breath ruffling hair/sleeves ONLY when the giant leans close or exhales near the tiny subject."
       );
     }
     if (ctx.inspectAll || oralHazardPattern.test(text)) {
@@ -121,7 +121,7 @@ export const scaleWorldCraftSkill: H3PromptSkill = {
     if (giantHandPattern.test(text)) {
       return "Example (giant palm scoop + shadow): Low macro shot at tabletop level as a broad moving shadow dims sunlit oak grain over a tiny fully proportioned adult man. A giant woman's open hand glides flat beside him, oversized palm lifelines and warm skin pores looming like terrain; he steps onto her palm with crisp contact shadows under his sneakers. As her massive fingers curl loosely and her wrist lifts smoothly, he bends his knees and braces one palm against the ridged skin to keep balance while a slow warm exhale gently ruffles his hair.";
     }
-    return "Example (scale anchor + co-scaling camera): In one continuous unbroken low macro shot, positioned in the lower-left foreground on sunlit oak floorboards beside a towering sneaker's rubber sole, a fully proportioned adult woman in a dark sweater and jeans—natural adult head-to-body ratio, room-matched bounce light—stands barely as tall as the white rubber rim. Her sneakers plant firmly with dark contact shadows directly beneath each sole as she takes three alternating steps; as the camera glides smoothly closer, both her body and the towering rubber sole edge and wood grain enlarge together at the exact same rate, keeping her exact height pinned below the rim.";
+    return "Example (scale anchor + co-scaling camera): In one continuous unbroken low macro shot, positioned in the lower-left foreground on sunlit oak floorboards beside a towering sneaker's rubber sole, a tiny adult woman in a dark sweater and jeans—natural adult head-to-body ratio, room-matched bounce light—stands barely as tall as the white rubber rim. Her sneakers plant firmly with dark contact shadows directly beneath each sole as she takes three alternating steps; as the camera glides smoothly closer, both her small body and the towering rubber sole edge remain framed together in natural shared depth, keeping her full height pinned below the rim.";
   }
 };
 

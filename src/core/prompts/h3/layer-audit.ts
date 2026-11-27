@@ -132,6 +132,14 @@ export function auditH3Layer1Instructions(settings: Settings): H3Layer1AuditResu
         message: "Quick-insert snippet contains empty buzzwords, negative bans, or LLM meta-directives."
       });
     }
+    if (snippet.id === "visual-macro-closeup" && /\b(?:lip lines|iris fibers|waterline|100mm)\b/iu.test(snippet.text)) {
+      issues.push({
+        layer: "layer1-qwen",
+        code: "l1-macro-snippet-overreach",
+        scope: `snippet:${snippet.id}`,
+        message: "General macro surface snippet must stay focal-plane adaptive and not hardcode lips, iris, or 100mm shallow blur into non-face shots."
+      });
+    }
     for (const check of layer1LiteralPlaceholderPatterns) {
       if (check.pattern.test(snippet.text)) {
         issues.push({
@@ -429,7 +437,7 @@ export function auditH3Layer2Output(
     { code: "l2-leak-worksheet", pattern: /\b(?:PRIVATE THINKING WORKSHEET|IMAGE GROUND TRUTH|SELF-CHECK before outputting|ROLE \(TWO LAYERS\)|H3 PITFALLS)\b/iu, label: "Layer-1 worksheet or compiler heading" },
     { code: "l2-leak-skill-heading", pattern: /(?:^|\n)\s*###\s*Skill:|^\s*LOAD_SKILLS\s*:/imu, label: "Layer-1 skill header or LOAD_SKILLS directive" },
     { code: "l2-leak-wrong-right", pattern: /\bWRONG:\s+[\s\S]{0,80}\|\s*RIGHT:/u, label: "Layer-1 WRONG/RIGHT teaching syntax" },
-    { code: "l2-leak-meta-boilerplate", pattern: /\b(?:Preserve the requested action, camera, lighting|enlarging or shrinking at identical rate)\b/iu, label: "pasted draft/compiler meta-instruction" }
+    { code: "l2-leak-meta-boilerplate", pattern: /\b(?:Preserve the requested action, camera, lighting|enlarging or shrinking at identical rate|enlarge together at (?:the )?(?:identical|exact same) rate|temporally locked)\b/iu, label: "pasted draft/compiler meta-instruction or technical leakage" }
   ];
   for (const check of layer1LeakChecks) {
     if (check.pattern.test(trimmed)) {
@@ -494,6 +502,15 @@ export function auditH3Layer2Output(
       code: "l2-impossible-shortcut-clipping",
       scope: mainField,
       message: `Physically impossible barrier-clipping or teleport phrase '${clipMatch[0]}' found in MiniMax H3 prompt.`
+    });
+  }
+  const distantFaceMacroMatch = /(?:(?:deep\s+(?:upper\s+)?background|distant\s+(?:smiling\s+)?(?:giant\s+)?face|far\s+background)[^.!?\n]{0,160}\b(?:vertical\s+lip\s+lines|iris\s+fibers|wet\s+waterline|nostril\s+and\s+lip|vellus\s+hairs?)\b|\b(?:vertical\s+lip\s+lines|iris\s+fibers|wet\s+waterline|nostril\s+and\s+lip|vellus\s+hairs?)\b[^.!?\n]{0,160}(?:deep\s+(?:upper\s+)?background|distant\s+(?:smiling\s+)?(?:giant\s+)?face|far\s+background))/iu.exec(mainText);
+  if (distantFaceMacroMatch) {
+    issues.push({
+      layer: "layer2-h3",
+      code: "l2-distant-face-macro-hallucination",
+      scope: mainField,
+      message: "Micro facial detail (lip lines / iris / nostril / vellus hair) was applied to a distant background face outside the lens focal plane."
     });
   }
 
