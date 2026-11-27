@@ -1,5 +1,5 @@
 /** Direct H3-executable visual realism snippet (pure optical/material prose, zero LLM meta-directives). */
-export const h3PhotorealisticQualitySeed = "Live-action photographic texture with natural skin pores, subtle subsurface scattering, fine fabric weave, grounded contact shadows, and soft directional light with gradual highlight roll-off.";
+export const h3PhotorealisticQualitySeed = "Live-action photographic texture with unretouched natural skin pores, delicate peach fuzz, subtle subsurface scattering, visible interlocking fabric weave with fine stray fibers, grounded contact shadows, and soft directional light with gradual highlight roll-off.";
 
 /**
  * Model-facing knowledge shared by full H3 rewrites, not a suffix appended to video prompts.

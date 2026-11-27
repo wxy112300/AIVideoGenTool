@@ -6,14 +6,24 @@ describe("prompt packs", () => {
     const snippets = (["zh-CN", "zh-TW", "en-US"] as const).map(locale =>
       h3PromptPackFor(locale).snippets.find(snippet => snippet.id === "visual-photorealistic-quality")!);
     expect(snippets.map(snippet => snippet.label)).toEqual([
-      "自然实拍质感（去塑料感）", "自然實拍質感（去塑膠感）", "Natural live-action texture (anti-plastic)"
+      "真实皮肤与织物质感（去塑料感）", "真實皮膚與織物質感（去塑膠感）", "Natural skin & fabric realism (anti-plastic)"
     ]);
     expect(snippets[0].text).toBe(snippets[1].text);
     expect(snippets[0].text).toBe(snippets[2].text);
     expect(snippets[0].text).toContain("Live-action photographic texture");
     expect(snippets[0].text).toContain("natural skin pores");
+    expect(snippets[0].text).toContain("interlocking fabric weave");
     expect(snippets[0].text).not.toMatch(/Preserve the requested action|choose only details|negative_prompt|8K|masterpiece|oil painting|CGI/iu);
-    expect(h3PromptPackFor("zh-CN").snippets).toHaveLength(18);
+    expect(h3PromptPackFor("zh-CN").snippets).toHaveLength(20);
+    for (const id of ["visual-macro-closeup", "capture-85mm-portrait"]) {
+      const zh = h3PromptPackFor("zh-CN").snippets.find(snippet => snippet.id === id);
+      const en = h3PromptPackFor("en-US").snippets.find(snippet => snippet.id === id);
+      const tw = h3PromptPackFor("zh-TW").snippets.find(snippet => snippet.id === id);
+      expect(zh?.text).toBeTruthy();
+      expect(zh?.text).toBe(en?.text);
+      expect(zh?.text).toBe(tw?.text);
+      expect(zh?.label).not.toBe(en?.label);
+    }
   });
 
   it("localizes snippet indexes without translating inserted prompt text", () => {

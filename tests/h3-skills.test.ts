@@ -29,10 +29,11 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     expect(ids).not.toContain("camera-threshold-entry");
 
     const rendered = formatH3PromptSkills(skills, ctx);
-    expect(rendered).toContain("adult head-to-body ratio");
-    expect(rendered).toContain("Reference localization & seamless light integration");
+    expect(rendered).toContain("Two-person identity isolation & locked handles");
+    expect(rendered).toContain("natural adult proportions");
+    expect(rendered).toContain("Reference localization & seam-healing");
     expect(rendered).toContain("Centimeter-scale world");
-    expect(rendered).toContain("Strict gravity, solid-body contact & co-scaling camera lock");
+    expect(rendered).toContain("Gravity, solid contact & co-scaling camera lock");
     expect(rendered).toContain("Psychoacoustic scale sound");
     expect(rendered).toContain("tilt-shift");
     // Only ONE example from scale-world-craft
@@ -113,7 +114,7 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     const mmText = formatH3PromptSkills(mmSkills, mmCtx);
     expect(mmText).toContain("Millimeter-scale world");
     expect(mmText).toContain("Translate micro-view shorthand");
-    expect(mmText).toContain("True surface-eye-level low angle & tiny third-person follow");
+    expect(mmText).toContain("True surface-eye-level low angle & smooth push-in");
     expect(mmText).toContain("Continuous unbroken perspective transitions");
 
     const literalAnt = selectH3PromptSkills({
@@ -157,7 +158,7 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     expect(blockText).toContain("Spatial blocking, identity binding & 180° axis lock");
     expect(blockText).toContain("Eye-line coupling & turn-taking");
     expect(blockText).toContain("Single-object prop handoff");
-    expect(blockText).toContain("Observable physiological beats over abstract emotion labels");
+    expect(blockText).toContain("Observable physiological beats");
     expect(blockText).toContain("Natural reaction latency & gradual arc");
 
     // Solo emotional scene triggers acting-micro-expressions without multi-subject-blocking
@@ -210,7 +211,7 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
   });
 
   it("orders all matched orthogonal skills by priority, caps examples at 2, and supports optional maxSkills for small models", () => {
-    expect(h3PromptSkills).toHaveLength(11);
+    expect(h3PromptSkills).toHaveLength(12);
     const overloadedCtx = {
       sourcePrompt: "2D anime style: Ant view third-person low-angle 180 degree orbit as a tiny 3mm man climbs a giantess's hand in pouring rain with mirror reflections, then camera flies into an open doorway while two shocked characters speak dialogue.",
       supplementalContext: "",
@@ -278,15 +279,21 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
       "scale-world-craft",
       "camera-threshold-entry",
       "micro-camera-transitions",
+      "multi-subject-blocking",
       "dialogue-audio"
     ]));
     expect(parts.contract).toContain("Inside-looking-out 180° reverse orbit");
-    expect(parts.contract).toContain("scaled-down young adult woman/man");
+    expect(parts.contract).toContain("the tiny adult woman");
     expect(parts.contract).toContain("moving tongue");
-    expect(parts.contract).toContain("Brief synthesis:");
+    expect(parts.contract).toContain("ROLE (TWO LAYERS):");
+    expect(parts.contract).toContain("H3 PITFALLS — WRONG vs RIGHT");
+    expect(parts.contract).toContain("Duration contract:");
+    expect(parts.contract).toContain("actor → action → patient/object → contact surface");
+    expect(parts.task).toContain("PRIVATE THINKING WORKSHEET");
     // Already-loaded skills are excluded from unloadedSkillIds so they can never be injected twice.
     expect(parts.unloadedSkillIds).not.toContain("scale-world-craft");
     expect(parts.unloadedSkillIds).not.toContain("camera-threshold-entry");
+    expect(parts.unloadedSkillIds).not.toContain("multi-subject-blocking");
   });
 
   it("parses LOAD_SKILLS requests strictly against the unloaded whitelist and falls back cleanly on direct H3 output", () => {
@@ -345,12 +352,60 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     }).map((s) => s.id);
     expect(shared).toEqual([
       "scale-world-craft",
+      "continuum-continuity",
       "camera-threshold-entry",
       "micro-camera-transitions",
       "camera-precision"
     ]);
     expect(shared).not.toContain("physical-action-continuity");
     expect(shared).not.toContain("dialogue-audio");
+  });
+
+  it("activates continuum-continuity strictly in Long Video, multi-chunk Continuum, and Extend modes—never on ordinary single-clip prompts", () => {
+    const settings = createDefaultState().settings;
+    // Ordinary single-clip T2VA / I2VA / FL2VA / R2V must NOT load continuum-continuity (nor list it in lazy-load catalog)
+    for (const mode of ["T2VA", "I2VA", "FL2VA", "R2V"] as const) {
+      const normalParts = strataH3InstructionParts({
+        prompt: "A woman walks across a quiet room.",
+        modelId: mode === "R2V" ? "minimax_h3_ref2va" : "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: mode,
+        h3PromptPreset: "detailed-cinematic",
+        h3DurationSeconds: 10,
+        imagePaths: mode === "T2VA" ? undefined : ["frame.png"]
+      }, settings, "", "en");
+      expect(normalParts.activeSkillIds).not.toContain("continuum-continuity");
+      expect(normalParts.unloadedSkillIds).not.toContain("continuum-continuity");
+    }
+
+    // Native Continuum Extend triggers continuum-continuity with exact Chunk opener
+    const nativeExtend = strataH3InstructionParts({
+      prompt: "She finishes opening the drawer and lifts out the key.",
+      modelId: "minimax_h3_continuum",
+      mode: "h3-vision",
+      h3PromptMode: "T2VA",
+      h3PromptPreset: "detailed-cinematic",
+      h3DurationSeconds: 10,
+      extensionSource: "source-task-1",
+      continuumPreviousChunk: 2
+    }, settings, "", "en");
+    expect(nativeExtend.activeSkillIds).toContain("continuum-continuity");
+    expect(nativeExtend.contract).toContain("Continuum 22-frame latent tail & boundary physics");
+    expect(nativeExtend.contract).toContain("Continuation of Chunk 2.");
+
+    // Non-native FL2VA/I2VA Extend triggers continuum-continuity with boundary routing guidance
+    const boundaryExtend = strataH3InstructionParts({
+      prompt: "She turns toward the doorway and steps out.",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      h3PromptMode: "I2VA",
+      h3PromptPreset: "detailed-cinematic",
+      h3DurationSeconds: 10,
+      extensionSource: "source-task-1",
+      imagePaths: ["boundary.png"]
+    }, settings, "", "en");
+    expect(boundaryExtend.activeSkillIds).toContain("continuum-continuity");
+    expect(boundaryExtend.contract).toContain("Extend boundary routing:");
   });
 
   it("keeps Strata single-clip system prompt lean and honors custom presets without legacy 26B bloat", () => {
@@ -365,11 +420,38 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
       imagePaths: ["first.png"]
     };
     const defaultParts = strataH3InstructionParts(req, settings, "", "en");
-    expect(defaultParts.contract.length + defaultParts.sourceData.length).toBeLessThan(6500);
-    expect(defaultParts.contract).toContain("strict single-take lock");
-    expect(defaultParts.contract).toContain("Prevent H3 from inventing spontaneous cuts");
+    expect(defaultParts.contract.length + defaultParts.sourceData.length).toBeLessThan(10500);
+    expect(defaultParts.contract).toContain("ROLE (TWO LAYERS):");
+    expect(defaultParts.contract).toContain("H3 PITFALLS — WRONG vs RIGHT");
+    expect(defaultParts.contract).toContain("Blocked A→B shortcuts & casual brief wording");
+    expect(defaultParts.contract).toContain("Passable A→B route, obstacle clearing & speed allocation");
+    expect(defaultParts.contract).toContain("omit unknown age/details");
+    expect(defaultParts.contract).toContain("Duration contract:");
+    expect(defaultParts.contract).toContain("Strict single-take lock:");
+    expect(defaultParts.contract).toContain("I2VA first-frame motion:");
+    expect(defaultParts.contract).toContain("Audio section mixing");
+    expect(defaultParts.task).toContain("PRIVATE THINKING WORKSHEET");
+    expect(defaultParts.task).toContain("IMAGE GROUND TRUTH");
+    expect(defaultParts.task).toContain("A→B ROUTE, OBSTACLES & TIME BUDGET");
     expect(defaultParts.contract).not.toContain("DETAILED CINEMATIC EXPANSION GATE");
-    expect(strataH3WordGuidance("I2VA", 5, "detailed-cinematic").max).toBeLessThanOrEqual(240);
+    expect(strataH3WordGuidance("I2VA", 5, "detailed-cinematic")).toEqual({ min: 320, max: 480 });
+    expect(strataH3WordGuidance("I2VA", 10, "detailed-cinematic")).toEqual({ min: 450, max: 680 });
+    expect(strataH3WordGuidance("I2VA", 15, "detailed-cinematic")).toEqual({ min: 580, max: 850 });
+
+    const fl2vaParts = strataH3InstructionParts({
+      ...req,
+      h3PromptMode: "FL2VA",
+      imagePaths: ["first.png", "last.png"]
+    }, settings, "", "en");
+    expect(fl2vaParts.contract).toContain("Pair each person across Picture 1 and Picture 2 by stable visual traits");
+    expect(fl2vaParts.contract).toContain("NEVER by screen side or pixel size");
+
+    const r2vParts = strataH3InstructionParts({
+      ...req,
+      h3PromptMode: "R2V",
+      imagePaths: ["ref1.png", "ref2.png"]
+    }, settings, "", "en");
+    expect(r2vParts.contract).toContain("Give every supplied asset ONE clear, stable job");
 
     const customSettings = {
       ...settings,
@@ -396,15 +478,16 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
     ]);
 
     const inspected = describeH3PromptSkillsForInspection();
-    expect(inspected).toHaveLength(11);
+    expect(inspected).toHaveLength(12);
     for (const skill of inspected) {
       expect(skill.triggerSummary.trim().length).toBeGreaterThan(10);
       expect(skill.rulesText.trim().length).toBeGreaterThan(40);
     }
     const scaleInspected = inspected.find((s) => s.id === "scale-world-craft")!;
+    expect(scaleInspected.rulesText).toContain("Two-person identity isolation & locked handles");
     expect(scaleInspected.rulesText).toContain("Giant hand pickup");
     expect(scaleInspected.rulesText).toContain("moving tongue");
-    expect(scaleInspected.rulesText).toContain("Anatomical-ratio ruler & scale-true verbs");
+    expect(scaleInspected.rulesText).toContain("Exact tight ratio & scale-true verbs");
     expect(scaleInspected.rulesText).toContain("Bilateral opposing-plane press");
     expect(scaleInspected.rulesText).toContain("Tight clothing, waistband & pocket entry");
     expect(scaleInspected.rulesText).toContain("Oral interior teeth & chewing spatial layering");
@@ -434,28 +517,140 @@ describe("Consolidated H3 Craft Skills registry & priority cap", () => {
       "Camera fly close to the tiny girl climbing on giant girl's toes with an extremely low angle. Then the giant girl get sandwiched by the giant soles and toes (sole to sole, two foot sandwiched the tiny girl)."
     );
     expect(soles.contract).toContain("Bilateral opposing-plane press / sole-to-sole");
-    expect(soles.contract).toContain("silently fix obvious draft typos or role slips");
+    expect(soles.contract).toContain("Silently fix draft typos/slips");
 
-    // Case 4: Near eyebrow low-angle (anti-overhead bird's-eye + anti-face-deformation local horizon)
+    // Case 4: Near eyebrow low-angle (anti-overhead, Frame-0 smooth push-in, anti-face-deformation & character isolation)
     const eyebrow = makeParts(
-      "Camera fly close to the tiny girl near giant girl's eyebrow with an extremely low angle close to tiny girl's perspective. The tiny girl climbs on giant girl's nose and hugs her tongue."
+      "Camera fly close to the tiny girl(note: a real life scaled down human adult girl, age 18, NOT a figure, keep her size unchanged) near giant girl's eyebrow with an extremely low angle close to tiny girl's perspective. The tiny girl climbs on giant girl's nose and hugs her tongue."
     );
-    expect(eyebrow.contract).toContain("True surface-eye-level low angle & tiny third-person follow (anti-overhead");
-    expect(eyebrow.contract).toContain("NEVER write 'camera flies close' for an eye-level tiny shot");
+    expect(eyebrow.contract).toContain("True surface-eye-level low angle & smooth push-in");
+    expect(eyebrow.contract).toContain("open at `<Picture 1>`'s real framing");
+    expect(eyebrow.contract).toContain("NEVER the word 'figure'");
     expect(eyebrow.contract).toContain("Local-horizon macro framing on giant face/body (anti-face-deformation)");
-    expect(eyebrow.contract).toContain("Anatomical-ratio ruler & scale-true verbs");
+    expect(eyebrow.contract).toContain("Exact tight ratio & scale-true verbs");
 
-    // Case 6: 5 mm ice cream + mouth entry + teeth chewing + reverse orbit retention
+    // Case 6: 5 mm ice cream + mouth entry + teeth chewing + reverse orbit retention + action semantics
     const oralChew = makeParts(
-      "The tiny girl (only 5 mm tall) climbs on chocolate ice cream, dogging the giant girl's tongue; camera flies into giant girl's mouth and arcs around so we can see outside while giant teeth chew the food."
+      "The tiny girl (only 5 mm tall) climbs on chocolate ice cream, dogging the giant girl's tongue; camera flies into giant girl's mouth and arcs 180 degrees around so we can see outside while giant teeth chew the food."
     );
     expect(oralChew.activeSkillIds).toEqual(expect.arrayContaining([
       "scale-world-craft",
-      "camera-threshold-entry"
+      "camera-threshold-entry",
+      "camera-precision",
+      "multi-subject-blocking",
+      "physical-action-continuity"
     ]));
     expect(oralChew.contract).toContain("Oral interior teeth & chewing spatial layering");
     expect(oralChew.contract).toContain("Inside-looking-out 180° reverse orbit");
-    expect(oralChew.contract).toContain("preserving explicit late camera trajectories");
+    expect(oralChew.contract).toContain("late camera trajectory");
+    expect(oralChew.contract).toContain("Exact arc shot / orbit");
+    expect(oralChew.contract).toContain("Preserve exact actor, target, verb meaning, direction, and repetition");
+  });
+
+  it("injects community-proven camera sub-rules selectively (dolly vs zoom, static, tracking, crane, handheld, rack focus, whip pan, POV)", () => {
+    const base = {
+      supplementalContext: "",
+      mode: "I2VA" as const,
+      preset: "detailed-cinematic" as const,
+      durationSeconds: 10,
+      hasReferenceMedia: true
+    };
+    const cases: Array<[string, string]> = [
+      ["Slow dolly-in toward the doorway with noticeable background parallax.", "Physical dolly (push-in / pull-out) vs optical zoom"],
+      ["Static tripod shot of the cyclist crossing the bridge.", "Locked-off static camera (beats I2VA/T2VA floating drift)"],
+      ["Tracking shot moving laterally alongside the runner along the pier.", "Tracking / follow / truck shot"],
+      ["Crane up from the alley to reveal the sunlit rooftops.", "Bounded crane / jib / pedestal elevation"],
+      ["Subtle documentary handheld camera following the chef.", "Restrained handheld / documentary feel"],
+      ["Rack focus from the foreground coffee cup to her eyes.", "Rack focus / depth-of-field handoff"],
+      ["Fast whip pan from the ringing phone to the open door.", "Anchored whip pan (beats ghosting and face morphing)"],
+      ["First-person POV hands opening the wooden toolbox on a bench.", "True first-person POV (beats accidental third-person)"]
+    ];
+    for (const [prompt, expectedPhrase] of cases) {
+      const ctx = { ...base, sourcePrompt: prompt };
+      const skills = selectH3PromptSkills(ctx);
+      expect(skills.map((s) => s.id)).toContain("camera-precision");
+      const rendered = formatH3PromptSkills(skills, ctx);
+      expect(rendered).toContain("Single-trajectory discipline & anti-treadmill rule");
+      expect(rendered).toContain(expectedPhrase);
+    }
+
+    // Ordinary action brief with no camera terms must NOT trigger camera-precision
+    const plainSkills = selectH3PromptSkills({
+      ...base,
+      sourcePrompt: "A woman walks across a quiet wooden room and opens the window."
+    }).map((s) => s.id);
+    expect(plainSkills).not.toContain("camera-precision");
+
+    // Macro visual realism triggers subtype-selective skin, lips/eyes, fabric & lens craft (skipped for anime)
+    const macroCtx = {
+      ...base,
+      sourcePrompt: "100mm macro close-up of her lips and eyes with visible skin pores, peach fuzz, and woven denim jacket collar."
+    };
+    const macroSkills = selectH3PromptSkills(macroCtx);
+    expect(macroSkills.map((s) => s.id)).toContain("visual-realism");
+    const macroRendered = formatH3PromptSkills(macroSkills, macroCtx);
+    expect(macroRendered).toContain("Unretouched skin micro-topography & subsurface scattering");
+    expect(macroRendered).toContain("Macro lips, moisture & eye realism");
+    expect(macroRendered).toContain("Tactile fabric weave & physical materiality");
+    expect(macroRendered).toContain("Optical lens discipline");
+  });
+
+  it("passes the Two-Layer H3 Harness Audit (Layer 1 Qwen teacher hygiene + Layer 2 MiniMax H3 output contract)", async () => {
+    const { auditH3Layer1Instructions, auditH3Layer2Output } = await import("../src/core/prompts/h3/layer-audit.js");
+    const settings = createDefaultState().settings;
+
+    // Layer 1: every built-in preset, every skill, and every compiled mode passes cleanly
+    const layer1 = auditH3Layer1Instructions(settings);
+    expect(layer1.issues).toEqual([]);
+    expect(layer1.passed).toBe(true);
+    expect(layer1.stats.skillCount).toBe(12);
+    expect(layer1.stats.corePresetCount).toBe(6);
+
+    // Layer 2: catches all real Qwen→H3 boundary failures
+    const badOutput = [
+      "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+      "integrated_multimodal_description:",
+      "At 0.00 seconds, <Picture 1> (from [Shot 1]) is fully referenced. The camera Push In steadily on a giant 18-year-old woman and a tiny figure who squeezes through closed fabric. [Push in] named speaker (S1) says: <d>[English] Hello</d>. NOT a toy, no jitter.",
+      "overall_soundscape:",
+      "Rain taps on glass. Her spoken line carries clear voice intimacy. No music.",
+      "non_diegetic_music:",
+      "N/A"
+    ].join("\n");
+    const badReport = auditH3Layer2Output(badOutput, {
+      mode: "I2VA",
+      sourcePrompt: "tiny girl(note: age 18, NOT a figure) walking on giant girl's thigh"
+    });
+    expect(badReport.passed).toBe(false);
+    const codes = badReport.issues.map((i) => i.code);
+    expect(codes).toEqual(expect.arrayContaining([
+      "l2-literal-named-speaker",
+      "l2-ungrammatical-camera-token",
+      "l2-legacy-hailuo-bracket-tag",
+      "l2-negative-channel-leak",
+      "l2-toy-prior-leak",
+      "l2-impossible-shortcut-clipping",
+      "l2-main-missing-shot1-start",
+      "l2-soundscape-format-leak",
+      "l2-soundscape-speech-leak",
+      "l2-cross-character-age-bleed"
+    ]));
+
+    // Layer 2: clean MiniMax H3 prompt passes with zero issues
+    const goodOutput = [
+      "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+      "integrated_multimodal_description:",
+      "[Shot 1] In one continuous unbroken shot, the lens opens at <Picture 1>'s framing and glides smoothly forward and downward to the tiny adult woman's eye level on the giant woman's bare thigh as she steps forward with crisp contact shadows.",
+      "overall_soundscape:",
+      "Delicate dry footsteps tapping against smooth skin beneath slow warm breathing.",
+      "non_diegetic_music:",
+      "N/A"
+    ].join("\n");
+    const goodReport = auditH3Layer2Output(goodOutput, {
+      mode: "I2VA",
+      sourcePrompt: "tiny girl(note: age 18, NOT a figure) walking on giant girl's thigh"
+    });
+    expect(goodReport.issues).toEqual([]);
+    expect(goodReport.passed).toBe(true);
   });
 
   it("does not let an opening output-language directive override Chinese dialogue language lock", async () => {

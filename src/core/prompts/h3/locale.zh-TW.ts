@@ -56,8 +56,10 @@ export const referenceRoleLocale: Record<H3ReferenceRole, string> = {
 };
 
 export const snippetLocale: Record<string, PromptSnippetLocale> = {
-  "visual-photorealistic-quality": { group: "畫質與實拍光學", label: "自然實拍質感（去塑膠感）" },
+  "visual-photorealistic-quality": { group: "畫質與實拍光學", label: "真實皮膚與織物質感（去塑膠感）" },
+  "visual-macro-closeup": { group: "畫質與實拍光學", label: "人物極近微距（100mm · 毛孔/唇紋/眼眸）" },
   "capture-35mm-natural": { group: "畫質與實拍光學", label: "35mm 電影自然光" },
+  "capture-85mm-portrait": { group: "畫質與實拍光學", label: "85mm 人像質感與柔和散景" },
   "capture-smartphone-1x": { group: "畫質與實拍光學", label: "手機 1x 紀實抓拍" },
   "capture-documentary-handheld": { group: "畫質與實拍光學", label: "紀錄片手持自然光" },
   "camera-continuous-take": { group: "鏡頭與運鏡", label: "一鏡到底 · 禁止切鏡頭" },

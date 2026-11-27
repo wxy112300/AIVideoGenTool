@@ -18,38 +18,41 @@ export const h3CorePromptPresetOrder: readonly H3PromptPreset[] = [
 /**
  * Single source of truth for H3 style presets (shown verbatim in Settings and sent verbatim to
  * Strata, Continuum, and legacy prompt backends—zero hidden overrides).
+ * Written as Layer-1 teacher guidance for local reasoning VLMs (e.g. Qwen3.8-Flash-Next)
+ * targeting Layer-2 MiniMax H3 audiovisual prose (positive-only, no bracket camera tags).
  */
 export const defaultH3PromptPresets: Record<H3PromptPreset, string> = {
   "detailed-cinematic": [
-    "Expand every user-specified subject, action, order, camera path, timing, and sound into rich, grounded physical execution: preparation, weight transfer, gaze and micro-expression cues, solid surface contact, affected reactions, motivated camera response, and causally synced audio.",
-    "Use attached references as identity and staging anchors, spending prose on observable change rather than static inventory or filler."
+    "Expand every user-specified subject, action, order, camera path, timing, and sound into rich, full-bodied cinematic execution.",
+    "Devote roughly 70% of the timeline to concrete body mechanics and reactions (anticipation, weight transfer, footwork, grip, gaze, micro-expressions, skin/cloth/surface response) and 30% to smooth motivated camera travel and causally synced sound.",
+    "Treat attached reference images as Frame-0 identity and staging anchors: identify each distinct subject briefly, then put >=80% of the prose into active motion and observable change rather than recapping static outfits or room decor."
   ].join("\n"),
   "official-storyboard": [
-    "Write a crisp, faithful H3 production timeline with clear framing, concrete observable action, motivated camera motion, and causally synchronized sound.",
-    "Stay close to the author's brief without unnecessary embellishment; let the video model render naturally from clean staging."
+    "Write a crisp, faithful H3 production timeline with a clear opening shot size, chronological beat progression, concrete physical action (not stiff summaries like 'turns and smiles'), ONE clean motivated camera trajectory, and causally synchronized diegetic sound.",
+    "Stay close to the author's brief without extra subplot or empty quality buzzwords; keep ambient/foley cleanly in overall_soundscape and audience score (or N/A) in non_diegetic_music."
   ].join("\n"),
   "continuous-motion": [
-    "Stage the entire clip as ONE continuous unbroken take with no cuts or scene resets.",
-    "Connect preparation, primary action, physical reaction, and settled ending through smooth continuous camera momentum and grounded body mechanics."
+    "Stage the entire clip as ONE continuous unbroken take inside [Shot 1] from start to finish with zero cuts or scene resets.",
+    "Connect preparation, primary action, physical reaction, and settled ending through continuous physical camera momentum and persistent spatial landmarks so lighting, identity, and geometry stay locked across the full duration."
   ].join("\n"),
   "beat-storyboard": [
-    "Structure the clip as crisp chronological beats with clear visual ownership, purposeful pacing, and clean sound landings.",
-    "Use a timed `[Shot 2]` cut only when a new framing delivers essential story or spatial information; preserve identity, lighting, and screen direction across cuts."
+    "Structure the clip as 2–3 crisp chronological story beats with clear visual ownership, purposeful pacing, and clean sound landings.",
+    "Use a timed [Shot 2] cut only when a new framing or perspective delivers essential story information; preserve character identity, eye-lines, screen direction, lighting, and continuous audio across every cut."
   ].join("\n"),
   "annotation-revision": [
-    "Treat the current prompt as an approved draft and apply every labeled editorial annotation to its immediately preceding passage only.",
-    "Keep all unmarked passages unchanged and return no annotation markers or note text."
+    "Treat the current prompt as an approved draft and apply every labeled editorial annotation strictly to its immediately preceding passage.",
+    "Keep all unmarked passages unchanged, absorb each note into natural positive H3 prose, and leave zero annotation markers or commentary behind."
   ].join("\n"),
   "multi-reference": [
-    "Assign every supplied reference one explicit, stable role across subject_definitions, summary, retention_analysis, and detailed_description using only the supplied labels.",
-    "State clearly what identity, framing, motion, or audio attribute each reference contributes and keep those bindings consistent throughout the timeline."
+    "Assign every supplied asset ONE explicit, stable job across subject_definitions, summary, retention_analysis, and detailed_description using only the supplied labels (<Subject N> for reusable identity/objects/styles, <Picture N> for frame anchors, <Video N> for source video structure, <Audio N> for referenced sound).",
+    "State clearly what each reference contributes and keep separate people, objects, and audio roles strictly isolated throughout the timeline."
   ].join("\n"),
   // Legacy presets kept for backwards compatibility with older saved drafts/settings
-  "reference-faithful": "Prioritize recognizable subject identity, wardrobe, spatial layout, and visual anchors from the attached reference(s), focusing prose conservatively on what changes over time.",
-  "dialogue-sound": "Treat spoken lines, lip and jaw articulation, breaths, and causally synchronized diegetic sound as first-class timeline beats while keeping quoted dialogue verbatim.",
-  "product-brand": "Keep product silhouette, finish, colors, controls, and verified in-frame text exact; stage concrete physical handling or mechanism instead of generic marketing adjectives.",
-  "music-video": "Align visible performance, movement, and camera rhythm to the musical phrasing and beats while keeping lyrics verbatim.",
-  "narrative-animation": "Build a readable causal mini-story with clear silhouettes, anticipation, follow-through, and consistent stylized art direction across every beat."
+  "reference-faithful": "Prioritize recognizable subject identity, wardrobe, spatial layout, and visual anchors from the attached reference(s), focusing prose conservatively on grounded movement and observable change.",
+  "dialogue-sound": "Treat spoken lines, lip and jaw articulation, natural breaths, and causally synchronized diegetic sound as first-class timeline beats while keeping quoted dialogue verbatim in the main timeline.",
+  "product-brand": "Keep product silhouette, finish, colors, controls, and verified in-frame text exact; stage concrete physical handling or mechanism in natural lighting instead of generic marketing adjectives.",
+  "music-video": "Align visible performance, body rhythm, and smooth camera tempo to the musical phrasing and beats while keeping lyrics verbatim in the main timeline.",
+  "narrative-animation": "Build a readable causal mini-story with clear silhouettes, anticipation, follow-through, and consistent stylized medium grammar across every beat."
 };
 
 const legacyDefaultOpenings: Partial<Record<H3PromptPreset, string>> = {

@@ -56,8 +56,10 @@ export const referenceRoleLocale: Record<H3ReferenceRole, string> = {
 };
 
 export const snippetLocale: Record<string, PromptSnippetLocale> = {
-  "visual-photorealistic-quality": { group: "Visual craft & optics", label: "Natural live-action texture (anti-plastic)" },
+  "visual-photorealistic-quality": { group: "Visual craft & optics", label: "Natural skin & fabric realism (anti-plastic)" },
+  "visual-macro-closeup": { group: "Visual craft & optics", label: "Human extreme macro (100mm · pores/lips/eyes)" },
   "capture-35mm-natural": { group: "Visual craft & optics", label: "35mm natural practical light" },
+  "capture-85mm-portrait": { group: "Visual craft & optics", label: "85mm cinematic portrait optics" },
   "capture-smartphone-1x": { group: "Visual craft & optics", label: "Smartphone 1x candid realism" },
   "capture-documentary-handheld": { group: "Visual craft & optics", label: "Handheld documentary light" },
   "camera-continuous-take": { group: "Camera motion", label: "One continuous take · no cuts" },

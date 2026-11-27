@@ -1,4 +1,5 @@
 import { cameraCraftSkills } from "./camera.js";
+import { continuumCraftSkills } from "./continuum.js";
 import { performanceCraftSkills } from "./performance.js";
 import { physicsCraftSkills } from "./physics.js";
 import { scaleCraftSkills } from "./scale.js";
@@ -12,6 +13,7 @@ export const MAX_H3_SKILL_EXAMPLES = 2;
 
 export const h3PromptSkills: readonly H3PromptSkill[] = [
   ...scaleCraftSkills,
+  ...continuumCraftSkills,
   ...cameraCraftSkills,
   ...performanceCraftSkills,
   ...physicsCraftSkills,
@@ -125,9 +127,10 @@ export interface H3PromptSkillInspection {
 }
 
 const deterministicSkillTriggerSummary: Record<string, string> = {
+  "continuum-continuity": "active automatically in Long Video decomposition, multi-chunk Continuum, and Extend modes (never loaded on normal single-clip prompts)",
   "dialogue-audio": "dialogue, quotes, visible on-screen text, or explicit audio/sound cues in the brief",
   "physical-action-continuity": "always active on single-clip H3 enhancements",
-  "visual-realism": "live-action / natural-skin realism cue, or detailed-cinematic with reference image (skipped for stylized art)"
+  "visual-realism": "live-action / natural-skin / macro realism cue, or detailed-cinematic with reference image (skipped for stylized art)"
 };
 
 /** Inspectable read-only snapshot of every built-in H3 Craft Skill for Settings transparency. */

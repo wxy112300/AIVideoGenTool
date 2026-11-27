@@ -8,7 +8,11 @@ describe("prompt snippets", () => {
     );
     expect(promptSnippetFor("camera-push-in")).toContain("pushes in");
     expect(promptSnippetFor("visual-photorealistic-quality")).toContain("Live-action photographic texture");
+    expect(promptSnippetFor("visual-photorealistic-quality")).toContain("interlocking fabric weave");
     expect(promptSnippetFor("visual-photorealistic-quality")).not.toMatch(/Preserve the requested|CGI|toy|doll|wax|plastic/iu);
+    expect(promptSnippetFor("visual-macro-closeup")).toContain("100mm macro lens");
+    expect(promptSnippetFor("visual-macro-closeup")).toContain("vertical lip lines");
+    expect(promptSnippetFor("capture-85mm-portrait")).toContain("85mm prime lens");
     expect(promptSnippetFor("capture-35mm-natural")).toContain("35mm lens");
     expect(promptSnippetFor("capture-smartphone-1x")).toContain("1x");
     expect(promptSnippetFor("camera-orbit")).toContain("180-degree");

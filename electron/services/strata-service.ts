@@ -164,6 +164,7 @@ export async function prepareStrataLaunch(
   const deviceVram = options.adaptive && process.platform === "win32" && !isStrataDeepSeek(modelId)
     && release && "deviceVram" in release && release.deviceVram === true;
   let nativeVramReserve = false;
+  let disablePrefillLend = false;
   const mode = strataUncensoredMode(settings);
   const controlVector = mode !== "off" && supportsStrataUncensored(modelId)
     ? await verifyStrataControlVector(cwd, mode, t) : undefined;
@@ -187,26 +188,29 @@ export async function prepareStrataLaunch(
     nativeVramReserve = Boolean(deviceVram && resources.vramAvailableBytes! < (resourcePlan.vramReserveMiB + 5120) * 1024 ** 2);
     // When STRATA_VRAM_FREE=device already measures true whole-card free VRAM via NVML,
     // a 5120 MiB double-reserve can shrink the GPU expert cache enough to leave Strata's
-    // ~3.5 GiB prompt lendable slots uncovered in RAM (causing 0.1.66 prefill exits).
-    // Rebalance to the 2048 MiB GPU floor + upstream 4 GiB native RAM headroom so lendable slots stay resident.
+    // ~3.5 GiB prompt lendable slots uncovered in RAM (causing 0.1.66/0.1.69 prefill exits).
+    // Rebalance to the 2048 MiB GPU floor + upstream 4 GiB native RAM headroom and disable
+    // prompt-path VRAM lending (STRATA_PREFILL_LEND_PCT=0) so no uncovered lendable slots exist.
     const lendableMarginBytes = 4 * 1024 ** 3;
     if (deviceVram && !nativeVramReserve && !isStrataDeepSeek(modelId) && modelId !== STRATA_Q4_MODEL_ID
       && resourcePlan.hostMode === "resident" && resourcePlan.estimatedResidentMemoryBytes
-      && resources.memoryAvailableBytes < resourcePlan.estimatedResidentMemoryBytes + lendableMarginBytes
-      && resourcePlan.vramReserveMiB > 2048) {
-      const balancedReserveMiB = Math.max(2048, Math.ceil(requestedReserveMiB));
-      const balancedHeadroomGiB = Math.min(resourcePlan.headroomGiB, 4);
-      const freedCacheBytes = Math.max(0, (resourcePlan.vramReserveMiB - balancedReserveMiB) * 1024 ** 2);
-      const freedHeadroomBytes = Math.max(0, (resourcePlan.headroomGiB - balancedHeadroomGiB) * 1024 ** 3);
-      resourcePlan = {
-        ...resourcePlan,
-        vramReserveMiB: balancedReserveMiB,
-        headroomGiB: balancedHeadroomGiB,
-        estimatedResidentMemoryBytes: Math.max(
-          balancedHeadroomGiB * 1024 ** 3,
-          resourcePlan.estimatedResidentMemoryBytes - freedCacheBytes - freedHeadroomBytes
-        )
-      };
+      && resources.memoryAvailableBytes < resourcePlan.estimatedResidentMemoryBytes + lendableMarginBytes) {
+      disablePrefillLend = true;
+      if (resourcePlan.vramReserveMiB > 2048) {
+        const balancedReserveMiB = Math.max(2048, Math.ceil(requestedReserveMiB));
+        const balancedHeadroomGiB = Math.min(resourcePlan.headroomGiB, 4);
+        const freedCacheBytes = Math.max(0, (resourcePlan.vramReserveMiB - balancedReserveMiB) * 1024 ** 2);
+        const freedHeadroomBytes = Math.max(0, (resourcePlan.headroomGiB - balancedHeadroomGiB) * 1024 ** 3);
+        resourcePlan = {
+          ...resourcePlan,
+          vramReserveMiB: balancedReserveMiB,
+          headroomGiB: balancedHeadroomGiB,
+          estimatedResidentMemoryBytes: Math.max(
+            balancedHeadroomGiB * 1024 ** 3,
+            resourcePlan.estimatedResidentMemoryBytes - freedCacheBytes - freedHeadroomBytes
+          )
+        };
+      }
     }
     if (nativeVramReserve) {
       runtimeConfig.args.splice(reserveIndex, 2);
@@ -231,7 +235,8 @@ export async function prepareStrataLaunch(
     ...(!resourcePlan && Object.keys(compatibilityEnv).length ? { env: compatibilityEnv } : {}),
     ...(resourcePlan ? { resourcePlan, allowResidentFallback: resourcePlan.hostMode === "resident",
       env: isStrataDeepSeek(modelId) ? {} : { STRATA_RESIDENT_HEADROOM_GIB: String(resourcePlan.headroomGiB),
-        ...(deviceVram ? { STRATA_VRAM_FREE: "device" } : {}), ...compatibilityEnv,
+        ...(deviceVram ? { STRATA_VRAM_FREE: "device" } : {}),
+        ...(disablePrefillLend ? { STRATA_PREFILL_LEND_PCT: "0" } : {}), ...compatibilityEnv,
         // Keep this working-set opt-in OFF pending the interrupted long-input
         // trial's kernel-dump investigation. Short trials are not full validation.
         ...(process.platform === "win32" && resourcePlan.hostMode === "resident" ? { STRATA_FILE_RELEASE: "0" } : {}) } } : {}),

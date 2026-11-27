@@ -598,7 +598,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       const rebalancedConfig = JSON.parse(await fs.readFile(rebalanced.temporaryConfig!, "utf8"));
       expect(rebalanced.nativeVramReserve).toBeUndefined();
       expect(rebalancedConfig.args[rebalancedConfig.args.indexOf("--vram-reserve-mib") + 1]).toBe("2048");
-      expect(rebalanced.env).toMatchObject({ STRATA_VRAM_FREE: "device", STRATA_RESIDENT_HEADROOM_GIB: "4" });
+      expect(rebalanced.env).toMatchObject({ STRATA_VRAM_FREE: "device", STRATA_RESIDENT_HEADROOM_GIB: "4", STRATA_PREFILL_LEND_PCT: "0" });
       expect(rebalanced.resourcePlan).toMatchObject({ vramReserveMiB: 2048, headroomGiB: 4 });
       await fs.unlink(rebalanced.temporaryConfig!);
     }

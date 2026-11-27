@@ -8,6 +8,12 @@ export interface H3PromptSkillContext {
   durationSeconds: number;
   hasReferenceMedia: boolean;
   isLongVideo?: boolean;
+  /** True when extending an existing clip (boundary I2VA/FL2VA, Motion Context R2V, or native Continuum). */
+  isExtension?: boolean;
+  /** True when using native-state Continuum latent tail continuation (`minimax_h3_continuum`). */
+  isNativeContinuum?: boolean;
+  /** 1-based preceding chunk index when extending a numbered Continuum chunk. */
+  previousChunk?: number;
   /** When true, conditional sub-rules are all rendered so Settings can display the complete skill text. */
   inspectAll?: boolean;
 }

@@ -45,9 +45,8 @@ export const physicalActionContinuitySkill: H3PromptSkill = {
   guidance: (ctx) => {
     const beats = ctx.durationSeconds <= 6.5 ? "1–2" : ctx.durationSeconds <= 11 ? "2–3" : "3–4";
     return [
-      `- Grounded physics & anatomy: every movement follows real weight transfer, reachable limb joints, and solid surface contact (feet plant before pushing off; hands reach, contact, grip, then lift; objects deform or move only when touched by a real force). Never clip through solid geometry or teleport a subject between positions.`,
-      `- Performable pacing for ${ctx.durationSeconds.toFixed(1)}s: stage ${beats} clear causal beats (preparation → action & contact → reaction → natural settle) so motion finishes smoothly without rushed speed or jitter.`,
-      `- Positive-only visual prose: describe what IS visible, how light hits surfaces, and how motion unfolds—never pad with negative checklists ('no extra limbs, no distortion, no glitches, no artifacts').`
+      `- Grounded physics, human-motion integrity & action semantics: follow real weight transfer, reachable joints, continuous limb ownership across close passes/occlusion, and solid contact (feet plant before pushing off; hands reach, grip, lift; surfaces deform only under force). Preserve exact actor, target, verb meaning, direction, and repetition—never weaken repeated motion into one hold or replace subject A→B travel with camera-only motion.`,
+      `- Passable A→B route, obstacle clearing & speed allocation (${ctx.durationSeconds.toFixed(1)}s, WRONG → RIGHT): when moving from A to B is blocked by a closed barrier, rim, fabric seam, door, furniture, or height gap, NEVER teleport, clip through solid geometry, or cover an impossible distance at fast-forward speed. Stage the real physical sequence across ${beats} causal beats with believable speed and time budget: approach barrier → perform concrete clearing/bridging action (pull back elastic/pocket into a visible open gap, turn handle and open door, climb over rim/step, duck/sidestep around obstacle) → cross steadily through connected landmarks → settle naturally.`
     ].join("\n");
   }
 };

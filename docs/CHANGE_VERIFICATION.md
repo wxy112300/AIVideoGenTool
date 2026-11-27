@@ -22,6 +22,7 @@ Use the smallest tier that gives credible evidence; increase it when risk crosse
 - Documentation/harness instructions only: inspect the diff, local links, command names and internal consistency; no application build or GPU run is required.
 - Prototype-only: rebuild and inspect generated pages only when prototype maintenance is in scope.
 - Focused logic change: relevant Vitest file(s), then `npm.cmd run typecheck`.
+- H3 prompt presets, Craft Skills, or Strata compiler changes: `tests/h3-skills.test.ts` + `tests/strata-prompt.test.ts` + `npm.cmd run build` + `npm.cmd run harness:h3-layers` (distinguishes Layer-1 instructions consumed by Strata/Qwen3.8-Flash-Next from Layer-2 positive-only audiovisual prompts consumed by MiniMax H3; pass `--eval-json <path>` or `--output-file <path>` after live Strata runs to audit Layer-2 outputs).
 - Shared state, IPC, queue, history, or workflow construction: focused tests plus `npm.cmd run verify`.
 - Shared renderer/CSS or substantial UX change: `npm.cmd run verify` plus manual UI checks defined in [UX_CONTRACT.md](UX_CONTRACT.md).
 - Model/node/runtime strategy: `npm.cmd run verify`, static workflow validation, then a real minimal ComfyUI run when the environment is available. GPU testing is not required for unrelated UI/docs changes.
