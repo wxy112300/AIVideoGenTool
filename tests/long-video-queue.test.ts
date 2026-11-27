@@ -11,6 +11,8 @@ import { createLongVideoScript, editLongVideoScript, freezeLongVideoScript } fro
 import type { LongVideoExecutionSnapshot, LongVideoMediaEvidence } from "../src/core/long-video/execution";
 import type { LongVideoExecutionPorts } from "../electron/services/long-video-execution";
 import { executeQueuedLongVideo, LongVideoPausedError } from "../electron/services/long-video-queue";
+import { compileContinuumGroupWorkflow } from "../src/core/long-video/group-workflow";
+import { PI_H3_CONTINUUM_ADAPTERS, PI_H3_MODEL_ID } from "../src/core/catalog/models/minimax_h3_pi/definition";
 
 const execution = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../electron/services/long-video-execution.js", () => ({ runLongVideoExecution: execution.run, continuumParentTransport: () => ({}) }));
@@ -48,6 +50,63 @@ it("claims a text-only Full Run without uploading a first frame", async () => {
   execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
     expect(snapshot.profile.firstImage).toBeUndefined();
     expect(snapshot.profile).toMatchObject({ executionMode: "full_run", prompts: ["Action 0", "Action 1"] });
+    return { phase: "published" };
+  });
+  await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);
+  expect(execution.run).toHaveBeenCalledOnce();
+});
+
+it.each([2, 4] as const)("freezes and compiles a Pi-H3 %i-step Full Run with latent continuation", async (steps) => {
+  const f = await fixture();
+  Object.assign(f.task, { longVideoExecution: undefined, modelId: PI_H3_MODEL_ID, steps, startImagePath: "", endImagePath: "tail.png",
+    h3ReferenceSlots: [], videoLoras: [], attentionMode: "pytorch", h3SparseAttentionMode: "off", spectrumMode: "off" });
+  execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
+    expect(snapshot.profile).toMatchObject({ executionMode: "full_run", sampler: "euler", scheduler: "pi-Flow Scheduler",
+      steps, attention: "sdpa", h3: { modelId: PI_H3_MODEL_ID }, lastImage: "uploaded-first.png" });
+    const template = JSON.parse(await fs.readFile(new URL("../workflows/minimax_h3_continuum_v38_managed_extend_api.json", import.meta.url), "utf8"));
+    const graph = compileContinuumGroupWorkflow(template, {
+      execution_id: snapshot.executionId, step_id: "group-1", attempt_id: "attempt-1", project_id: snapshot.projectId,
+      run_name: snapshot.runName, execution_mode: "full_run", expected_prefix_chunks: 0, expected_parent_revision_id: "", planned_chunks: 2
+    }, snapshot.profile);
+    const model = graph["12"].inputs.model as [string, number];
+    const shift = graph[model[0]];
+    const adapter = graph[(shift.inputs.model as [string, number])[0]];
+    expect(adapter).toEqual({ class_type: "Load LakonLab Adapter", inputs: { model: ["1", 0], adapter_name: PI_H3_CONTINUUM_ADAPTERS[steps], adapter_strength: 1 } });
+    expect(shift).toMatchObject({ class_type: "MiniMaxH3SigmaShift", inputs: { shift_video: 12, shift_audio: 3 } });
+    expect(graph["7"]).toEqual({ class_type: "pi-Flow Scheduler", inputs: {
+      model, steps, min_raw_t: 0, max_raw_t: steps === 2 ? 0.93 : 0.96, final_step_size_scale: 0.6
+    } });
+    expect(graph["12"].inputs).toMatchObject({ generation_mode: "Full Run", sigmas: ["7", 0], audio_continuity: true });
+    expect(graph["13"].class_type).toBe("VAEDecode");
+    expect(graph["14"].class_type).toBe("VAEDecodeAudio");
+    expect(Object.values(graph).some(node => node.class_type === "DWD Decode")).toBe(false);
+    return { phase: "published" };
+  });
+  await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);
+  expect(execution.run).toHaveBeenCalledOnce();
+});
+
+it("freezes V3.9 per-chunk reference routing and rewrites Picture tags to @RN when multi-ref slots target different chunks", async () => {
+  const f = await fixture();
+  f.task.longVideoExecution = undefined;
+  Object.assign(f.task, {
+    modelId: "minimax_h3_ref2va", startImagePath: "", endImagePath: "", videoLoras: [],
+    attentionMode: "pytorch", spectrumMode: "off",
+    h3ReferenceSlots: [
+      { id: "r1", mediaType: "image", mediaPath: "hero.png", role: "subject", note: "" },
+      { id: "r2", mediaType: "image", mediaPath: "villain.png", role: "subject", note: "" },
+      { id: "r3", mediaType: "image", mediaPath: "alley.png", role: "scene", note: "" }
+    ]
+  });
+  f.task.longVideoPlan!.pages[1]!.text = "<Picture 1> enters alone.";
+  f.task.longVideoPlan!.pages[2]!.text = "<Picture 1> confronts <Picture 2>.";
+  execution.run.mockImplementation(async (_root: string, snapshot: LongVideoExecutionSnapshot) => {
+    expect(snapshot.profile.executionMode).toBe("full_run");
+    expect(snapshot.profile.referenceRouting).toEqual({
+      mode: "per_chunk",
+      selectors: { R1: "all", R2: "2", R3: "all", R4: "off", R5: "off", R6: "off", R7: "off", R8: "off", R9: "off" }
+    });
+    expect(snapshot.profile.prompts).toEqual(["@R1 enters alone.", "@R1 confronts @R2."]);
     return { phase: "published" };
   });
   await executeQueuedLongVideo(f.task, f.deps.store.get().settings, f.deps, f.signal);

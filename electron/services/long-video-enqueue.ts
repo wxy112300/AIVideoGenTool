@@ -28,7 +28,7 @@ export async function enqueueLongVideoExtension(deps: QueueEnqueueServiceDepende
     throw new Error("Group Run source preview is missing or belongs to another version");
   }
   const dependencies = longVideoDependencyBlockReason((deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(current.settings),
-    current.settings, draft.longVideoRunSource?.profile.h3?.modelId, longVideoUsesTimedGuides(draft));
+    current.settings, source.profile.h3?.modelId, longVideoUsesTimedGuides(draft), source.profile.steps);
   if (dependencies) throw new Error(dependencies);
   const outputRoot = await deps.resolveTaskOutputDirectory();
   await verifyLongVideoRunSource(outputRoot, source, new AbortController().signal);

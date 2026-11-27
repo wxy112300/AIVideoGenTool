@@ -20,6 +20,14 @@
 .ui-sort-dragging { position: relative; z-index: var(--z-card-open); box-shadow: var(--shadow-lift); }
 [data-sortable-handle] { cursor: grab; touch-action: none; }
 .ui-sort-dragging [data-sortable-handle] { cursor: grabbing; }
+[data-sortable-item][data-sort-drop] { position: relative; }
+[data-sortable-item][data-sort-drop="before"]::before,
+[data-sortable-item][data-sort-drop="after"]::after {
+  content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 999px;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); pointer-events: none; z-index: calc(var(--z-card-open) + 1);
+}
+[data-sortable-item][data-sort-drop="before"]::before { top: -7px; }
+[data-sortable-item][data-sort-drop="after"]::after { bottom: -7px; }
 .ui-masonry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); align-items: start; }
 .ui-masonry-column { display: grid; min-width: 0; gap: var(--sp-3); }
 .ui-skeleton { background: linear-gradient(100deg, var(--surface-2) 25%, var(--surface-3) 45%, var(--surface-2) 65%); background-size: 200% 100%; animation: ui-skeleton-sweep 1.6s ease-in-out infinite; border-radius: var(--r-sm); }

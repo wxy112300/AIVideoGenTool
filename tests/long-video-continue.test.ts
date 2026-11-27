@@ -79,3 +79,36 @@ it("confirms the inherited chunk size, recovers missing future text and creates 
   expect(randomizeQueuedTaskSeed([task], task.id)[0]!.seed).toBe(42);
   expect(applyH3AccelerationSettingsToWaitingTask(task, { ...h.state().settings, h3AttentionMode: "sage" })).toBe(false);
 });
+
+it("enables Strata allocation and expansion on Long-Video Run Extend with real tail-frame extensionSource and frozen prefix prompts", async () => {
+  const version = completedGroupVersion();
+  let i = 0;
+  const draft = longVideoContinuationDraft(createDefaultDraft(), "asset", version, version.files[0]!.absolutePath!, () => `ext-${++i}`);
+  const h = journey = await createJourney(draft);
+  h.state().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+  h.render();
+  h.element("[data-confirm-layout]").click();
+  h.input(".create-long-editor textarea", "The actor turns toward the doorway and steps out.");
+  const allocate = h.element<HTMLButtonElement>("[data-allocate-long-video]");
+  const enhance = h.element<HTMLButtonElement>("[data-enhance-long-video]");
+  expect(allocate.disabled).toBe(false);
+  expect(enhance.disabled).toBe(false);
+  h.enhancePrompt.mockImplementation(async req => JSON.stringify({
+    schemaVersion: 1,
+    scriptId: req.longVideo!.scriptId,
+    revision: req.longVideo!.revision,
+    segments: req.longVideo!.segments.map(page => ({
+      pageId: page.pageId,
+      text: "integrated_multimodal_description: [Shot 1] Continuation of Chunk 2. The actor turns and exits.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A",
+      outline: "Turns and exits"
+    }))
+  }));
+  enhance.click();
+  await vi.waitFor(() => expect(h.enhancePrompt).toHaveBeenCalledOnce());
+  expect(h.enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({
+    origin: "video-extension",
+    h3PromptMode: "T2VA",
+    extensionSource: expect.objectContaining({ filePath: version.files[0]!.absolutePath }),
+    referenceContext: expect.stringContaining("[Accepted Chunk 2]")
+  }));
+});

@@ -14,6 +14,8 @@ export interface LongVideoScript {
   revision: number;
   /** Explicit opt-in: Continuum prepends the global text to every chunk. */
   sharedPreamble?: boolean;
+  /** Compact cast/setting/sound continuity bible generated during allocation. */
+  storyBible?: string;
   layout: LongVideoLayout;
   brief: ScriptPage;
   segments: ScriptPage[];
@@ -22,6 +24,8 @@ export interface LongVideoScript {
   workingMode: "automatic" | "assisted";
   view: "whole" | "segment";
   activePageId: string;
+  /** Pages awaiting an adopted result from a previous expansion. */
+  pendingExpansion?: string[];
   /** Durable in-progress typing; committed together on blur/navigation. */
   pageBuffers?: Record<string, string>;
   wholeBuffer?: { raw: string; error: { line: number; message: string } };
@@ -118,6 +122,27 @@ export function updateScriptPage(script: LongVideoScript, pageId: string, update
   Object.assign(page, update);
   if (update.outline !== undefined) page.stale = true;
   if (pageId === result.brief.id && update.activeVersionId) for (const segment of result.segments) segment.stale = true;
+  result.revision++;
+  return result;
+}
+
+export function deleteScriptPageVersion(script: LongVideoScript, pageId: string): LongVideoScript {
+  const result = clone(script);
+  const page = [result.brief, ...result.segments].find(p => p.id === pageId);
+  if (!page || page.locked || result.pageBuffers?.[pageId]) return script;
+  const index = page.versions.findIndex(v => v.id === page.activeVersionId);
+  const active = page.versions[index];
+  if (!active || (page.versions.length === 1 && !active.text)) return script;
+  if (page.versions.length > 1) {
+    page.versions.splice(index, 1);
+    page.activeVersionId = page.versions[Math.min(index, page.versions.length - 1)]!.id;
+  } else {
+    page.versions[0] = { id: active.id, text: "", source: "user" };
+  }
+  if (!scriptPageText(page).trim()) page.outline = "";
+  if (page === result.brief && active.text !== scriptPageText(page)) {
+    for (const segment of result.segments) segment.stale = true;
+  }
   result.revision++;
   return result;
 }

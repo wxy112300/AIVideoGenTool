@@ -2,9 +2,17 @@ import { isContinuumIdentity, type ContinuumGroupRequest } from "./group-checkpo
 import { applyMiniMaxH3Spectrum, applyVideoLoraStack, applyMiniMaxH3PddSampling, applyMiniMaxH3Ref2vTurboSampling, validateApiWorkflow } from "../workflow.js";
 import { normalizeMiniMaxH3ModelPatchChain } from "../h3-model-patch-workflow.js";
 import { appendContinuumDelivery, type ContinuumDelivery } from "./delivery.js";
+import { assertContinuumReferenceRouting, type ContinuumReferenceRouting } from "./reference-routing.js";
+import { PI_H3_CONTINUUM_ADAPTERS, PI_H3_MODEL_ID } from "../catalog/models/minimax_h3_pi/definition.js";
+import { PI_H3_SAMPLER, PI_H3_SCHEDULER, piH3MaxRawTime } from "../pi-h3.js";
 import type { H3SpectrumMode, H3AttentionMode, H3SparseAttentionMode, H3RuntimeMode, H3ComfyCompilerMode, VideoLoraSelection, H3SpectrumModelAwareMode } from "../../types.js";
 
 type ContinuumReferenceModel = "minimax_h3_ref2va" | "minimax_h3_ref2va_int4";
+type ContinuumFl2vaModel = "minimax_h3_fl2va" | typeof PI_H3_MODEL_ID;
+
+export function isContinuumFl2vaModel(modelId: string): modelId is ContinuumFl2vaModel {
+  return modelId === "minimax_h3_fl2va" || modelId === PI_H3_MODEL_ID;
+}
 
 export function isContinuumReferenceModel(modelId: string): modelId is ContinuumReferenceModel {
   return modelId === "minimax_h3_ref2va" || modelId === "minimax_h3_ref2va_int4";
@@ -12,7 +20,7 @@ export function isContinuumReferenceModel(modelId: string): modelId is Continuum
 
 /** Optional for old Runs: absent retains the original adapter graph exactly. */
 export interface ContinuumH3Options {
-  modelId: "minimax_h3_fl2va" | ContinuumReferenceModel;
+  modelId: ContinuumFl2vaModel | ContinuumReferenceModel;
   videoLoras: VideoLoraSelection[];
   sparseAttentionMode: H3SparseAttentionMode;
   runtimeMode: H3RuntimeMode;
@@ -38,6 +46,8 @@ export interface ContinuumGroupProfile {
   firstImage?: string;
   lastImage?: string;
   referenceImages?: string[];
+  /** Optional V3.9 per-chunk routing; absent keeps V3.8 all-chunks reference wiring. */
+  referenceRouting?: ContinuumReferenceRouting;
   /** Uploaded images anchored to the final assembled 24fps timeline. */
   timedGuides?: { picture: number; filename: string; absoluteFrame: number }[];
   attention: "sage" | "sage-triton" | "comfy-kitchen" | "sdpa";
@@ -66,11 +76,16 @@ export function assertContinuumGroupProfile(profile: ContinuumGroupProfile, plan
   }
   if (profile.h3) {
     const h = profile.h3;
-    if ((h.modelId !== "minimax_h3_fl2va" && !isContinuumReferenceModel(h.modelId)) || !Array.isArray(h.videoLoras) ||
+    if ((!isContinuumFl2vaModel(h.modelId) && !isContinuumReferenceModel(h.modelId)) || !Array.isArray(h.videoLoras) ||
         h.videoLoras.some(l => !l || !l.id?.trim() || !l.filename?.trim() || !Number.isFinite(l.strength) || l.strength < 0 || l.strength > 2) ||
         !["off", "auto", "sol-attn", "native-sla", "vsa"].includes(h.sparseAttentionMode) ||
         !["compatibility", "native"].includes(h.runtimeMode) || !["auto", "disabled"].includes(h.comfyCompilerMode) ||
         !["off", "schedule", "schedule_confidence", "full"].includes(h.spectrumModelAwareMode) || profile.lora) throw new Error("Invalid frozen H3 options");
+    if (h.modelId === PI_H3_MODEL_ID && ((profile.steps !== 2 && profile.steps !== 4) ||
+        profile.sampler !== PI_H3_SAMPLER || profile.scheduler !== PI_H3_SCHEDULER || profile.attention !== "sdpa" ||
+        (profile.spectrumMode ?? "off") !== "off" || h.sparseAttentionMode !== "off" || h.videoLoras.length)) {
+      throw new Error("Invalid frozen Pi-H3 Continuum sampling profile");
+    }
   }
   const referenceModel = Boolean(profile.h3 && isContinuumReferenceModel(profile.h3.modelId));
   if ((referenceModel && (profile.firstImage || profile.lastImage)) ||
@@ -79,6 +94,12 @@ export function assertContinuumGroupProfile(profile: ContinuumGroupProfile, plan
         profile.referenceImages.some(filename => typeof filename !== "string" || filename && !filename.trim()))) ||
       (profile.lastImage !== undefined && (!profile.lastImage.trim() || profile.timedGuides))) {
     throw new Error("Invalid frozen Continuum reference images or tail frame");
+  }
+  if (profile.referenceRouting !== undefined) {
+    if (!referenceModel || !profile.referenceImages?.length) {
+      throw new Error("Continuum V3.9 reference routing requires a reference model with reference images");
+    }
+    assertContinuumReferenceRouting(profile.referenceRouting, profile.referenceImages, plannedChunks);
   }
   const lastFrame = Math.round(plannedChunks * profile.chunkSeconds * 24) - 1;
   if (profile.timedGuides !== undefined && (!Array.isArray(profile.timedGuides) || !profile.timedGuides.length ||
@@ -170,13 +191,28 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
   };
   if (profile.lastImage) graph["12"].inputs.last_frame = loadImage(profile.lastImage);
   const referenceLinks = profile.referenceImages?.map(filename => filename ? loadImage(filename) : undefined) ?? [];
-  const filledReferenceLinks = referenceLinks.filter(link => link !== undefined);
-  for (const [index, link] of filledReferenceLinks.slice(0, 3).entries()) graph["12"].inputs[`reference_image_${index + 1}`] = link;
-  if (filledReferenceLinks.length > 3) {
-    const id = String(nextMediaId++);
-    graph[id] = { class_type: "H3ContinuumReferenceImages", inputs:
-      Object.fromEntries(filledReferenceLinks.slice(3).map((link, index) => [`reference_image_${index + 4}`, link])) };
-    graph["12"].inputs.image_references = [id, 0];
+  if (profile.referenceRouting?.mode === "per_chunk" && profile.referenceImages?.length) {
+    graph["12"].class_type = "H3ContinuumSamplerV39";
+    for (let index = 1; index <= 5; index++) delete graph["12"].inputs[`reference_image_${index}`];
+    delete graph["12"].inputs.image_references;
+    const refId = String(nextMediaId++);
+    const refInputs: Record<string, unknown> = { reference_use: "Per chunk" };
+    for (let index = 1; index <= 9; index++) {
+      refInputs[`reference_r${index}_chunks`] = profile.referenceRouting.selectors[`R${index}`] ?? "off";
+      const link = referenceLinks[index - 1];
+      if (link) refInputs[`reference_image_${index}`] = link;
+    }
+    graph[refId] = { class_type: "H3ContinuumReferenceImagesV39", inputs: refInputs };
+    graph["12"].inputs.reference_images = [refId, 0];
+  } else {
+    const filledReferenceLinks = referenceLinks.filter(link => link !== undefined);
+    for (const [index, link] of filledReferenceLinks.slice(0, 3).entries()) graph["12"].inputs[`reference_image_${index + 1}`] = link;
+    if (filledReferenceLinks.length > 3) {
+      const id = String(nextMediaId++);
+      graph[id] = { class_type: "H3ContinuumReferenceImages", inputs:
+        Object.fromEntries(filledReferenceLinks.slice(3).map((link, index) => [`reference_image_${index + 4}`, link])) };
+      graph["12"].inputs.image_references = [id, 0];
+    }
   }
   if (profile.timedGuides?.length) {
     let previous: [string, number] | undefined;
@@ -195,7 +231,7 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     status: ["12", 3], assembly_plan: ["12", 2], ...structuredClone(request), sampling_evidence_version: 2
   } };
   if (profile.executionMode === "full_run" && Array.isArray(graph["12"].inputs.guide)) {
-    const checkId = String(Math.max(...Object.keys(graph).map(id => Number(id) || 0)) + 1);
+    const checkId = String(nextMediaId++);
     for (const node of Object.values(graph)) {
       for (const [name, link] of Object.entries(node.inputs)) {
         if (Array.isArray(link) && link[0] === "12" && link[1] === 2) node.inputs[name] = [checkId, 0];
@@ -213,8 +249,24 @@ export function compileContinuumGroupWorkflow(template: unknown, request: Contin
     normalizeMiniMaxH3ModelPatchChain(graph, { modelId: task.modelId, inputMode: "image", attentionMode: task.attentionMode,
       sparseAttentionMode: profile.h3.sparseAttentionMode, runtimeMode: profile.h3.runtimeMode, comfyCompilerMode: profile.h3.comfyCompilerMode,
       videoLoras: task.videoLoras, spectrumEnabled: task.spectrumMode === "balanced", spectrumModelAwareMode: profile.h3.spectrumModelAwareMode });
-    applyMiniMaxH3PddSampling(graph, task);
-    applyMiniMaxH3Ref2vTurboSampling(graph, task);
+    if (task.modelId === PI_H3_MODEL_ID) {
+      // Continuum stores AV latents for each group, so use the upstream VAE variant.
+      const adapter = String(nextMediaId++);
+      const shift = String(nextMediaId++);
+      const steps = profile.steps === 2 ? 2 : 4;
+      const model = [shift, 0];
+      graph[adapter] = { class_type: "Load LakonLab Adapter", inputs: {
+        model: graph["12"].inputs.model, adapter_name: PI_H3_CONTINUUM_ADAPTERS[steps], adapter_strength: 1
+      } };
+      graph[shift] = { class_type: "MiniMaxH3SigmaShift", inputs: { model: [adapter, 0], shift_video: 12, shift_audio: 3 } };
+      graph["7"] = { class_type: PI_H3_SCHEDULER, inputs: {
+        model, steps, min_raw_t: 0, max_raw_t: piH3MaxRawTime(steps), final_step_size_scale: 0.6
+      } };
+      graph["12"].inputs.model = model;
+    } else {
+      applyMiniMaxH3PddSampling(graph, task);
+      applyMiniMaxH3Ref2vTurboSampling(graph, task);
+    }
     appendContinuumDelivery(graph, profile, request.planned_chunks);
     return graph;
   }

@@ -395,7 +395,9 @@ export function registerRendererEvents(
       const meaningfulTransition = previous.phase !== runtime.phase && (
         previous.phase !== "unknown" || ["starting", "restarting", "degraded", "error"].includes(runtime.phase)
       );
-      if (meaningfulTransition && ["starting", "restarting", "ready", "degraded", "stopped", "error"].includes(runtime.phase)) {
+      const stoppedAsRequested = previous.phase === "stopping" && runtime.phase === "stopped" &&
+        previous.operationId === runtime.operationId;
+      if (meaningfulTransition && !stoppedAsRequested && ["starting", "restarting", "ready", "degraded", "stopped", "error"].includes(runtime.phase)) {
         options.notify(runtime.message, {
           kind: runtime.phase === "error" ? "error" : ["degraded", "stopped"].includes(runtime.phase) ? "warning" : "info"
         });

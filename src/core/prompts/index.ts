@@ -8,6 +8,8 @@ export {
   h3LoraPromptInstruction,
   h3LoraPromptLibrary,
   h3LoraPromptProfileFor,
+  h3CorePromptPresetOrder,
+  isLegacyDefaultH3PromptPreset,
   promptSnippetFor
 } from "./h3/index.js";
 export {

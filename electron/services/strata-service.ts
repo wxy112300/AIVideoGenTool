@@ -8,6 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { Settings } from "../../src/types.js";
 import { validStrataPort } from "../../src/core/strata-preparation.js";
+import { STRATA_Q4_MODEL_ID } from "../../src/core/catalog/models/strata.js";
 import { isStrataDeepSeek } from "../../src/core/catalog/models/strata-deepseek.js";
 import { strataReasoningEffortForModel } from "../../src/core/strata-reasoning.js";
 import { strataCompatibilityEnvironment } from "../../src/core/catalog/dependencies/strata.js";
@@ -53,6 +54,8 @@ export interface StrataChatRequest {
   messages: Array<{ role: "system" | "user" | "assistant"; content: string | StrataContentPart[] }>;
   maxTokens: number;
   temperature: number;
+  /** Optional non-thinking presence_penalty override for structured prompt authoring. */
+  presencePenalty?: number;
   contextSize?: number;
   visionTokensPerImage?: number;
   /** Expand only this request's output allowance inside its already-loaded context. */
@@ -85,6 +88,7 @@ function validateChatRequest(request: StrataChatRequest, t: Translate = createNa
   if (normalizeStrataUncensoredMode(request.uncensoredMode, request.uncensored) !== "off" && !supportsStrataUncensored(request.modelId)) throw new Error(t(uiKeys.strataService.unsupportedVector));
   if (!request.modelId.trim() || !Number.isSafeInteger(request.maxTokens) || request.maxTokens < 1
     || request.maxTokens > 32768 || !Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2
+    || (request.presencePenalty !== undefined && (!Number.isFinite(request.presencePenalty) || request.presencePenalty < 0 || request.presencePenalty > 2))
     || !request.messages.length || request.messages.some((message) =>
       !["system", "user", "assistant"].includes(message.role) || !validContent(message.content))
     || (request.reasoning && (!["low", "medium", "high"].includes(request.reasoning.effort)
@@ -173,13 +177,37 @@ export async function prepareStrataLaunch(
     const reserveIndex = runtimeConfig.args.indexOf(isStrataDeepSeek(modelId) ? "--reserve-mib" : "--vram-reserve-mib");
     if (reserveIndex < 0) throw new Error(t(uiKeys.strataService.vramPolicyMissing));
     const resources = await readReliableStrataResources(options.readResources, { knownPressure: () => null, signal: options.signal }, t);
-    resourcePlan = planStrataResources(resources, Number(runtimeConfig.args[reserveIndex + 1]), {
+    const requestedReserveMiB = Number(runtimeConfig.args[reserveIndex + 1]);
+    resourcePlan = planStrataResources(resources, requestedReserveMiB, {
       allowFileReadFallback: true, modelId, accountForOccupiedVram: process.platform === "win32" && !deviceVram,
       nativeFileReadAdmission: Boolean(deviceVram),
       contextTokens: Number(runtimeConfig.args[runtimeConfig.args.indexOf("--max-context") + 1]) }, t);
     // With tight VRAM, an explicit reserve disables the engine's small-cache
     // path. CPU vision also prevents the HTTP wrapper from restoring that flag.
     nativeVramReserve = Boolean(deviceVram && resources.vramAvailableBytes! < (resourcePlan.vramReserveMiB + 5120) * 1024 ** 2);
+    // When STRATA_VRAM_FREE=device already measures true whole-card free VRAM via NVML,
+    // a 5120 MiB double-reserve can shrink the GPU expert cache enough to leave Strata's
+    // ~3.5 GiB prompt lendable slots uncovered in RAM (causing 0.1.66 prefill exits).
+    // Rebalance to the 2048 MiB GPU floor + upstream 4 GiB native RAM headroom so lendable slots stay resident.
+    const lendableMarginBytes = 4 * 1024 ** 3;
+    if (deviceVram && !nativeVramReserve && !isStrataDeepSeek(modelId) && modelId !== STRATA_Q4_MODEL_ID
+      && resourcePlan.hostMode === "resident" && resourcePlan.estimatedResidentMemoryBytes
+      && resources.memoryAvailableBytes < resourcePlan.estimatedResidentMemoryBytes + lendableMarginBytes
+      && resourcePlan.vramReserveMiB > 2048) {
+      const balancedReserveMiB = Math.max(2048, Math.ceil(requestedReserveMiB));
+      const balancedHeadroomGiB = Math.min(resourcePlan.headroomGiB, 4);
+      const freedCacheBytes = Math.max(0, (resourcePlan.vramReserveMiB - balancedReserveMiB) * 1024 ** 2);
+      const freedHeadroomBytes = Math.max(0, (resourcePlan.headroomGiB - balancedHeadroomGiB) * 1024 ** 3);
+      resourcePlan = {
+        ...resourcePlan,
+        vramReserveMiB: balancedReserveMiB,
+        headroomGiB: balancedHeadroomGiB,
+        estimatedResidentMemoryBytes: Math.max(
+          balancedHeadroomGiB * 1024 ** 3,
+          resourcePlan.estimatedResidentMemoryBytes - freedCacheBytes - freedHeadroomBytes
+        )
+      };
+    }
     if (nativeVramReserve) {
       runtimeConfig.args.splice(reserveIndex, 2);
       runtimeConfig.vision.gpu = false;
@@ -569,7 +597,10 @@ export class StrataService {
             ...(isStrataDeepSeek(request.modelId) ? { temperature: 1, top_p: 1,
               reasoning_effort: request.reasoning ? strataReasoningEffortForModel(request.modelId, request.reasoning.effort) : "none" } : {
               experimental_speed_projection: mode !== "off",
-              ...(request.reasoning ? STRATA_THINKING_SAMPLING : STRATA_NON_THINKING_SAMPLING), temperature: request.temperature,
+              ...(request.reasoning ? STRATA_THINKING_SAMPLING : {
+                ...STRATA_NON_THINKING_SAMPLING,
+                ...(request.presencePenalty !== undefined ? { presence_penalty: request.presencePenalty } : {})
+              }), temperature: request.temperature,
               ...(request.reasoning ? { reasoning_effort: request.reasoning.effort, reasoning_budget_tokens: request.reasoning.budgetTokens } : {}) }),
             stream: true, chat_template_kwargs: { enable_thinking: Boolean(request.reasoning) }, messages: request.messages })
         });

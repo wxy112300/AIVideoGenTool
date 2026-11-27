@@ -35,6 +35,21 @@ it("counts repeated step cycles across Full Run without treating the first chunk
   ]);
 });
 
+it("counts repeated step cycles across Full Run on V3.9 sampler too", async () => {
+  const progress = vi.fn();
+  const v39Submission = { ...submission(), nodeTypes: { "12": "H3ContinuumSamplerV39", "16": "VideoCombine" } };
+  vi.mocked(waitForTask).mockImplementation(async (...args) => {
+    args[12]?.({ type: "progress", atMs: 1, nodeId: "12", value: 10, max: 20, unit: "step" });
+    args[12]?.({ type: "progress", atMs: 2, nodeId: "12", value: 20, max: 20, unit: "step" });
+    return history;
+  });
+  await waitForContinuumGroup(v39Submission, createDefaultSettings(), new AbortController().signal, progress);
+  expect(progress.mock.calls).toEqual([
+    [30.5, "Continuum 0/2 · 10/20"],
+    [47, "Continuum 1/2 · 20/20"]
+  ]);
+});
+
 it("keeps legacy Review timeout and forwards its existing progress", async () => {
   const progress = vi.fn();
   vi.mocked(waitForTask).mockImplementation(async (...args) => {

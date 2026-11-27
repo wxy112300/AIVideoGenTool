@@ -16,41 +16,39 @@ describe("H3 visual-quality knowledge reaches actual enhancer requests", () => {
     expect(h3PromptInstruction(request)).toContain(h3VisualQualityKnowledge);
     const chat = await buildStrataPromptRequest(request, createDefaultState().settings, new AbortController().signal);
     const body = JSON.stringify(chat.messages);
-    expect(body).toContain("H3 visual-quality knowledge");
+    expect(body).toContain("Live-Action Visual Craft");
     expect(body).toContain(seed);
-    expect(body).toContain("no separate negative-prompt channel");
-    expect(body).toContain("integrated_multimodal_description");
+    expect(body).toContain("no negative-prompt channel");
     if (mode === "R2V") expect(body).toContain("detailed_description");
+    else expect(body).toContain("integrated_multimodal_description");
   });
 
   it.each([
     { modelId: "minimax_h3_fl2va", h3PromptMode: "I2VA" as const },
     { modelId: "minimax_h3_ref2va", h3PromptMode: "R2V" as const },
     { modelId: "minimax_h3_continuum", h3PromptMode: "I2VA" as const }
-  ])("retains quality guidance and inherited look in $modelId Extend", async route => {
+  ])("retains quality guidance and continuity contract in $modelId Extend", async route => {
     const request: EnhanceRequest = { ...base, ...route, origin: "video-extension",
       extensionSource: { filePath: "source.mp4", trimStartSeconds: 0, trimEndSeconds: 5 } };
     const chat = await buildStrataPromptRequest(request, createDefaultState().settings, new AbortController().signal);
     const body = JSON.stringify(chat.messages);
-    expect(body).toContain("H3 visual-quality knowledge");
-    expect(body).toContain("inherited Extend look");
+    expect(body).toContain("Live-Action Visual Craft");
     expect(body).toContain("CONTINU");
     expect(body).toContain(seed);
   });
 
   it.each([
-    "Not photorealistic: an oil painting of a woman under hard light.",
-    "Live-action room containing an oil painting; keep the painting's brush strokes.",
-    "3D PBR animation with glossy wet skin and saturated neon lighting."
-  ])("preserves scoped and conflicting style intent without a hard-coded realism rewrite: %s", async prompt => {
+    { prompt: "Not photorealistic: an oil painting of a woman under hard light.", activatesRealism: false },
+    { prompt: "Live-action room containing an oil painting; keep the painting's brush strokes.", activatesRealism: false },
+    { prompt: "3D PBR animation with glossy wet skin and saturated neon lighting.", activatesRealism: false },
+    { prompt: "Live-action documentary shot of a woman by a rainy window.", activatesRealism: true }
+  ])("selectively activates Live-Action Visual Craft without imposing realism on stylized briefs: $prompt", async ({ prompt, activatesRealism }) => {
     const request = { ...base, prompt };
     const chat = await buildStrataPromptRequest(request, createDefaultState().settings, new AbortController().signal);
     const body = JSON.stringify(chat.messages);
     expect(body).toContain(prompt);
-    expect(body).toContain("Interpret negation and scope");
-    expect(body).toContain("Explicit animation, illustration, oil-painting and CG/PBR requests retain their own medium");
-    expect(body).toContain("Preserve intentional sweat, wet skin, makeup and glossy materials");
-    expect(body).toContain("Shallow depth of field and fine film grain are optional");
+    if (activatesRealism) expect(body).toContain("Live-Action Visual Craft");
+    else expect(body).not.toContain("Live-Action Visual Craft");
     expect(request.prompt).toBe(prompt);
   });
 
@@ -61,7 +59,7 @@ describe("H3 visual-quality knowledge reaches actual enhancer requests", () => {
       { ...base, mode: "image-edit" as const, modelId: "qwen-image-edit" }
     ]) {
       const chat = await buildStrataPromptRequest(request, settings, new AbortController().signal);
-      expect(JSON.stringify(chat.messages)).not.toContain("H3 visual-quality knowledge");
+      expect(JSON.stringify(chat.messages)).not.toContain("Live-Action Visual Craft");
     }
   });
 });

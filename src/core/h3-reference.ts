@@ -80,6 +80,9 @@ export function missingH3VideoReference(prompt: string, slots: readonly H3Refere
     const kind = match[1] as keyof typeof available;
     if (!available[kind][Number(match[2]) - 1]?.mediaPath.trim()) return `${kind} ${match[2]}`;
   }
+  for (const match of prompt.matchAll(/(?<![A-Za-z0-9_])@R([1-9])(?![A-Za-z0-9_])/gu)) {
+    if (!available.Picture[Number(match[1]) - 1]?.mediaPath.trim()) return `@R${match[1]}`;
+  }
 }
 
 export function compactH3ReferenceOrdinal(presence: readonly unknown[], ordinal: number): number {

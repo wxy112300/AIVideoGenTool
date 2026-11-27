@@ -2,17 +2,18 @@ import { describe, expect, it } from "vitest";
 import { h3PromptPackFor, qwenImagePromptPackFor } from "../src/core/prompts";
 
 describe("prompt packs", () => {
-  it("exposes the editable photorealistic quality seed with localized indexes in every H3 mode", () => {
+  it("exposes the purified H3-executable visual craft snippet with localized indexes in every H3 mode", () => {
     const snippets = (["zh-CN", "zh-TW", "en-US"] as const).map(locale =>
       h3PromptPackFor(locale).snippets.find(snippet => snippet.id === "visual-photorealistic-quality")!);
     expect(snippets.map(snippet => snippet.label)).toEqual([
-      "写实画质 · 真实渲染", "寫實畫質 · 真實渲染", "Photorealistic image quality"
+      "自然实拍质感（去塑料感）", "自然實拍質感（去塑膠感）", "Natural live-action texture (anti-plastic)"
     ]);
     expect(snippets[0].text).toBe(snippets[1].text);
     expect(snippets[0].text).toBe(snippets[2].text);
-    expect(snippets[0].text).toContain("photorealistic live-action");
-    expect(snippets[0].text).toContain("Preserve the requested action, camera, lighting, and reference anchors");
-    expect(snippets[0].text).not.toMatch(/negative_prompt|8K|masterpiece|oil painting|CGI/iu);
+    expect(snippets[0].text).toContain("Live-action photographic texture");
+    expect(snippets[0].text).toContain("natural skin pores");
+    expect(snippets[0].text).not.toMatch(/Preserve the requested action|choose only details|negative_prompt|8K|masterpiece|oil painting|CGI/iu);
+    expect(h3PromptPackFor("zh-CN").snippets).toHaveLength(18);
   });
 
   it("localizes snippet indexes without translating inserted prompt text", () => {
@@ -22,7 +23,7 @@ describe("prompt packs", () => {
 
     expect(zhSnippet?.label).toBe("慢速推近");
     expect(twSnippet?.label).toBe("慢速推近");
-    expect(enSnippet?.label).toBe("Slow push-in");
+    expect(enSnippet?.label).toBe("Slow dolly push-in");
     expect(zhSnippet?.text).toBe(enSnippet?.text);
     expect(zhSnippet?.text).toContain("The camera pushes in");
   });

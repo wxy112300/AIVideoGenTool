@@ -538,7 +538,7 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     expect(f.child.stop).toHaveBeenCalledOnce(); expect(f.service.snapshot().pid).toBeNull();
   });
 
-  it.each(["0.2.17", STRATA_VERSION])("builds a lazy %s loopback launch preserving the device-VRAM and small-cache fixes", async version => {
+  it.each(["0.2.17", "0.2.20", STRATA_VERSION])("builds a lazy %s loopback launch preserving the device-VRAM and small-cache fixes", async version => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-strata-service-")); roots.push(root);
     for (const relative of [".venv/Scripts/python.exe", "terminal/serve/server.py", "prepared config.json"]) {
       const filename = path.join(root, relative); await fs.mkdir(path.dirname(filename), { recursive: true }); await fs.writeFile(filename, "fixture");
@@ -559,8 +559,8 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
     await fs.mkdir(path.join(root, "terminal", "serve", "web"), { recursive: true });
     for (const name of ["monitor.html", "monitor.js", "tokens.css"]) await fs.writeFile(path.join(root, "terminal", "serve", "web", name), "fixture");
     const result = await prepareStrataLaunch(settings, config);
-    expect(result.env?.STRATA_HC_Q8_TC).toBe(version === STRATA_VERSION ? "0" : undefined);
-    expect(result.env?.STRATA_HC_Q8_BF16TC).toBe(version === STRATA_VERSION ? "0" : undefined);
+    expect(result.env?.STRATA_HC_Q8_TC).toBe(version === "0.2.20" ? "0" : undefined);
+    expect(result.env?.STRATA_HC_Q8_BF16TC).toBe(version === "0.2.20" ? "0" : undefined);
     expect(result.executable).toBe(path.join(root, ".venv", "Scripts", "python.exe"));
     expect(result).toMatchObject({ installDirectory: root, cwd: path.join(root, "terminal") });
     expect(result.args).toEqual(["-B", "-u", "-m", "serve.server", "--engine", "strata", "--config", config, "--host", "127.0.0.1", "--port", "43127", "--lazy", "--api-monitor", "--api-key", result.apiKey]);
@@ -574,8 +574,8 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       expect(derived.args.includes("--resident-experts")).toBe(mode==="resident");
       expect(derived.args[derived.args.indexOf("--vram-reserve-mib")+1]).toBe("5120");
       expect(session.env?.STRATA_VRAM_FREE).toBe(process.platform === "win32" ? "device" : undefined);
-      expect(session.env?.STRATA_HC_Q8_TC).toBe(version === STRATA_VERSION ? "0" : undefined);
-      expect(session.env?.STRATA_HC_Q8_BF16TC).toBe(version === STRATA_VERSION ? "0" : undefined);
+      expect(session.env?.STRATA_HC_Q8_TC).toBe(version === "0.2.20" ? "0" : undefined);
+      expect(session.env?.STRATA_HC_Q8_BF16TC).toBe(version === "0.2.20" ? "0" : undefined);
       expect(derived.args[derived.args.indexOf("--expert-cache")+1]).toBe("auto");
       expect(session.env).toMatchObject({STRATA_RESIDENT_HEADROOM_GIB:"6"});
       expect(session.allowResidentFallback).toBe(mode==="resident");
@@ -588,6 +588,20 @@ describe("Strata lifecycle foundation (not prompt inference)", () => {
       commitAvailableBytes:45*1024**3,vramAvailableBytes:21.5*1024**3,vramTotalBytes:24*1024**3})});
     expect(fallback.allowResidentFallback).toBe(true);expect(fallback.resourcePlan!.requiredCommitBytes).toBe(6*1024**3);
     await fs.unlink(fallback.temporaryConfig!);
+    if (process.platform === "win32") {
+      // Mid-band occupied VRAM (e.g. 6 GiB desktop use on 24 GiB GPU) where 5120 MiB double-reserve
+      // would starve Strata's ~3.5 GiB lendable prompt slots in RAM: rebalance to 2048 MiB + 4 GiB headroom.
+      const rebalanced = await prepareStrataLaunch(settings, config, { adaptive: true, readResources: async () => ({
+        memoryAvailableBytes: 42.5 * 1024**3, commitAvailableBytes: 88 * 1024**3,
+        vramAvailableBytes: 18 * 1024**3, vramTotalBytes: 24 * 1024**3
+      }) });
+      const rebalancedConfig = JSON.parse(await fs.readFile(rebalanced.temporaryConfig!, "utf8"));
+      expect(rebalanced.nativeVramReserve).toBeUndefined();
+      expect(rebalancedConfig.args[rebalancedConfig.args.indexOf("--vram-reserve-mib") + 1]).toBe("2048");
+      expect(rebalanced.env).toMatchObject({ STRATA_VRAM_FREE: "device", STRATA_RESIDENT_HEADROOM_GIB: "4" });
+      expect(rebalanced.resourcePlan).toMatchObject({ vramReserveMiB: 2048, headroomGiB: 4 });
+      await fs.unlink(rebalanced.temporaryConfig!);
+    }
     const tight = await prepareStrataLaunch(settings, config, { adaptive: true, readResources: async () => ({
       memoryAvailableBytes: (process.platform === "win32" ? 5.6 : 10) * 1024**3, commitAvailableBytes: 26 * 1024**3,
       vramAvailableBytes: 7.5 * 1024**3, vramTotalBytes: 24 * 1024**3

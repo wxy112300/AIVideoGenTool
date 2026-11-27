@@ -2,6 +2,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
 import { freezeLongVideoScript, isScriptAllocation, scriptPageText } from "../src/core/long-video/script";
+import { longVideoPromptTargets } from "../src/core/long-video/enhancement";
+import { createNotification } from "../src/renderer/notifications";
+import { createNotificationStack } from "../src/renderer/shared/ui/notify";
 import type { EnhanceRequest, PromptProgress } from "../src/types";
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
@@ -63,7 +66,12 @@ it("queues edited and locked outlines directly and keeps optional expansion and 
   expect(allocate.querySelector("svg.lucide-list-ordered")).not.toBeNull();
   allocate.click();
   await vi.waitFor(() => expect(h.state().draft.longVideoScript!.segments.every(isScriptAllocation)).toBe(true));
+  // Completing allocation from Global automatically switches to Whole view so all beats are immediately visible,
+  // while keeping every tab clickable and showing amber 'outline' dots.
+  expect(h.state().draft.longVideoScript!.view).toBe("whole");
+  expect(h.root.querySelectorAll('[role="tablist"] .create-page-dot[data-state="outline"]')).toHaveLength(12);
   h.element('.create-long-tabs [role="tab"]:nth-child(2)').click();
+  expect(h.state().draft.longVideoScript!.view).toBe("segment");
   const edited = "The original bike rolls and the rider stops it.";
   h.input(".create-long-editor textarea", edited);
   h.element("[data-preview-lock]").click();
@@ -86,6 +94,25 @@ it("queues edited and locked outlines directly and keeps optional expansion and 
   expect(scriptPageText(script.brief)).toBe(brief);
   expect(scriptPageText(script.segments[0]!)).toBe("Detailed action from The original bike rolls and the rider stops it.");
   expect(freezeLongVideoScript(script).pages[1]!.versions?.filter(v => v.stage === "allocation").map(v => v.text)).toEqual(["Beat 0", "The original bike rolls and the rider stops it."]);
+  expect(h.state().queue[0]).toEqual(queued);
+
+  h.element("[data-preview-pages]").click();
+  expect(h.element("[data-preview-outline-ref]").hidden).toBe(false);
+  expect(h.element("[data-preview-outline-ref]").textContent).toContain(edited);
+  const firstPage = structuredClone(script.segments[0]!);
+  const otherPages = structuredClone(script.segments.slice(1));
+  h.element("#clear-prompt").click();
+  expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe(edited);
+  expect(h.state().draft.longVideoScript!.segments[0]!.versions).toEqual(firstPage.versions.slice(0, -1));
+  h.element("#prompt-prev").click();
+  expect(h.element<HTMLTextAreaElement>(".create-long-editor textarea").value).toBe("Beat 0");
+  h.element("#prompt-next").click();
+  expect(h.element("#prompt-next").disabled).toBe(true);
+  const undo = vi.mocked(h.context.notify).mock.calls.at(-1)?.[1]?.actions?.[0];
+  h.render();
+  await undo!.run();
+  expect(h.state().draft.longVideoScript!.segments[0]).toEqual(firstPage);
+  expect(h.state().draft.longVideoScript!.segments.slice(1)).toEqual(otherPages);
   expect(h.state().queue[0]).toEqual(queued);
 });
 it("enhances through the real button and atomically adopts twelve model-authored pages", async () => {
@@ -128,11 +155,53 @@ it("shows each ready expanded segment before the operation ends and keeps it aft
   expect(isScriptAllocation(h.state().draft.longVideoScript!.segments[1]!)).toBe(true);
   receive!({ longVideoPage: { scriptId, revision, segment: { pageId: segments[1]!.pageId, text: "A finished second scene.", outline: "Beat two" } } } as PromptProgress);
   expect(scriptPageText(h.state().draft.longVideoScript!.segments[1]!)).toBe("A finished second scene.");
-  reject(new Error("Later scene failed"));
+  reject(new Error("Error invoking remote method 'prompt:enhance': StrataPromptValidationError: 时间格式无效。"));
   await vi.waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce());
   expect(scriptPageText(h.state().draft.longVideoScript!.segments[0]!)).toBe("A finished first scene.");
   expect(scriptPageText(h.state().draft.longVideoScript!.segments[1]!)).toBe("A finished second scene.");
   expect(isScriptAllocation(h.state().draft.longVideoScript!.segments[2]!)).toBe(true);
+  expect(h.context.notify).toHaveBeenCalledWith(expect.stringContaining("第 3 段"), expect.objectContaining({
+    kind: "error", actions: [expect.objectContaining({ label: "继续扩写 · 第 3 段" })]
+  }));
+  const [message, options] = vi.mocked(h.context.notify).mock.calls.at(-1)!;
+  expect(h.context.notify).not.toHaveBeenCalledWith(expect.stringContaining("StrataPromptValidationError"), expect.anything());
+  const firstTwo = structuredClone(h.state().draft.longVideoScript!.segments.slice(0, 2));
+  h.render();
+  expect(h.element("[data-enhance-long-video]").textContent).toContain("继续扩写 · 第 3 段");
+  h.enhancePrompt.mockImplementationOnce(async r => JSON.stringify({
+    schemaVersion: 1, scriptId: r.longVideo!.scriptId, revision: r.longVideo!.revision,
+    segments: longVideoPromptTargets(r.longVideo!).map(page => ({ pageId: page.pageId, text: "Resumed scene.", outline: page.outline }))
+  }));
+  const notices = createNotificationStack({ dismissLabel: () => "关闭", changed: vi.fn(), action: (_notice, action) => { void action.run(); } });
+  try {
+    notices.push(createNotification(1, message, "error", undefined, options?.actions));
+    document.querySelector<HTMLButtonElement>('[role="alert"] [data-notification-action="retry-long-video-writing"]')!.click();
+  } finally { notices.dispose(); }
+  await vi.waitFor(() => expect(h.state().draft.longVideoScript?.pendingExpansion).toBeUndefined());
+  expect(h.enhancePrompt.mock.calls.at(-1)![0].longVideo!.targetPageIds).toEqual(segments.slice(2).map(page => page.pageId));
+  expect(h.state().draft.longVideoScript!.segments.slice(0, 2)).toEqual(firstTwo);
+  expect(scriptPageText(h.state().draft.longVideoScript!.segments[2]!)).toBe("Resumed scene.");
+});
+it("resumes the first unfinished automatic segment from the saved plan after a model error", async () => {
+  const h = await fixture();
+  let receive: ((event: PromptProgress) => void) | undefined;
+  h.context.events.onPromptProgress = callback => { receive = callback; return vi.fn(); };
+  h.enhancePrompt.mockImplementationOnce(async r => {
+    const { scriptId, revision, segments } = r.longVideo!;
+    for (const page of segments) {
+      receive!({ longVideoPage: { scriptId, revision, stage: "allocation",
+        segment: { pageId: page.pageId, text: "Planned beat.", outline: "Planned beat." } } } as PromptProgress);
+    }
+    receive!({ longVideoPage: { scriptId, revision,
+      segment: { pageId: segments[0]!.pageId, text: "Finished automatically.", outline: "Planned beat." } } } as PromptProgress);
+    throw new Error("Connection interrupted");
+  });
+  h.element("[data-enhance-long-video]").click();
+  await vi.waitFor(() => expect(h.element("[data-enhance-long-video]").textContent).toContain("继续扩写 · 第 2 段"));
+  const script = h.state().draft.longVideoScript!;
+  expect(scriptPageText(script.segments[0]!)).toBe("Finished automatically.");
+  expect(isScriptAllocation(script.segments[1]!)).toBe(true);
+  expect(script.pendingExpansion).toEqual(script.segments.slice(1).map(page => page.id));
 });
 it("keeps typing done during enhancement instead of adopting the obsolete response", async () => {
   const h = await fixture(); let resolve!: (raw: string) => void; let request!: EnhanceRequest;
@@ -169,4 +238,26 @@ it("keeps the existing cancel action reachable from the multi-segment button", a
   await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
   await vi.waitFor(() => expect(h.element("[data-enhance-long-video]").getAttribute("aria-busy")).toBe("false"));
   expect(h.state().draft.longVideoScript!.segments.every(p => p.versions.length === 1)).toBe(true);
+});
+
+it("renders shared rich syntax highlighting inside Whole View editable blocks", async () => {
+  const h = await fixture();
+  h.enhancePrompt.mockImplementationOnce(async r => JSON.stringify({
+    schemaVersion: 1, scriptId: r.longVideo!.scriptId, revision: r.longVideo!.revision,
+    segments: longVideoPromptTargets(r.longVideo!).map((page, index) => ({
+      pageId: page.pageId,
+      text: `integrated_multimodal_description: [Shot 1] ${index === 0 ? "At 0.00s" : `Continuation of Chunk ${index}.`} <Subject 1> says (S1) <d>[Chinese] 你好</d>.\noverall_soundscape: Wind.\nnon_diegetic_music: N/A`,
+      outline: "[连续]\n画面：继续前进。"
+    }))
+  }));
+  h.element("[data-enhance-long-video]").click();
+  await vi.waitFor(() => expect(h.state().draft.longVideoScript!.segments[0]!.versions.length).toBe(2));
+  h.element("[data-preview-whole]").click();
+  const whole = h.element(".create-long-whole");
+  expect(whole.hidden).toBe(false);
+  expect(whole.querySelectorAll(".create-rich-section").length).toBeGreaterThanOrEqual(6);
+  expect(whole.querySelectorAll(".create-rich-continuity").length).toBeGreaterThanOrEqual(1);
+  expect(whole.querySelectorAll(".create-rich-ref").length).toBeGreaterThanOrEqual(2);
+  expect(whole.querySelectorAll(".create-rich-time").length).toBeGreaterThanOrEqual(2);
+  expect(whole.querySelectorAll(".create-rich-say").length).toBeGreaterThanOrEqual(4);
 });

@@ -481,6 +481,26 @@ describe("queue executor runtime gate", () => {
     )).toBe(true);
   });
 
+  it("keeps ComfyUI running after the queue completes when keepComfyUiRunningAfterQueue is enabled", async () => {
+    const state = createDefaultState();
+    state.settings.keepComfyUiRunningAfterQueue = true;
+    const task = fixtureTask(state);
+    state.queue = [task];
+    state.queueRunning = true;
+    state.queueLifecycle = "starting";
+    const stopQueueRuntime = vi.fn(async () => true);
+    const harness = createHarness(state, { stopQueueRuntime });
+
+    await createQueueExecutor(harness.deps)();
+
+    const final = harness.store.get();
+    expect(final.queue).toHaveLength(0);
+    expect(final.history).toHaveLength(1);
+    expect(final.queueRunning).toBe(false);
+    expect(final.queueLifecycle).toBe("idle");
+    expect(stopQueueRuntime).not.toHaveBeenCalled();
+  });
+
   it("forwards progress context and clears stale work progress", async () => {
     const state = createDefaultState();
     const task = fixtureTask(state);

@@ -12,6 +12,7 @@ import type {
   Settings
 } from "../../../types";
 import type { H3AutoPromptSeed } from "../../../core/prompts/h3/auto-seeds";
+import { describeH3PromptSkillsForInspection } from "../../../core/prompts/h3/skills";
 import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -603,6 +604,7 @@ export function renderSettingsPage(
           <label class="policy-select-field"><span>${t(uiKeys.settings.system.retryCount)}</span><select id="auto-retry-count" ${settings.autoRetryFailedTasks || settings.vramStallWatchdogMinutes !== 0 ? "" : "disabled"}>${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${settings.autoRetryCount === count ? "selected" : ""}>${t(uiKeys.settings.system.retryCountValue, { count, suffix: count === 2 ? ` · ${t(uiKeys.settings.system.recommended)}` : "" })}</option>`).join("")}</select></label>
           <label class="policy-select-field">${fieldLabelWithTip(t(uiKeys.settings.system.vramStallWatchdog), t(uiKeys.settings.system.vramStallWatchdogDescription))}<select id="vram-stall-watchdog-minutes"><option value="0" ${settings.vramStallWatchdogMinutes === 0 ? "selected" : ""}>${t(uiKeys.settings.system.vramStallWatchdogOff)}</option><option value="1" ${settings.vramStallWatchdogMinutes === 1 ? "selected" : ""}>${t(uiKeys.settings.system.vramStallWatchdogMinutes, { minutes: 1 })}</option><option value="5" ${settings.vramStallWatchdogMinutes === 5 ? "selected" : ""}>${t(uiKeys.settings.system.vramStallWatchdogMinutes, { minutes: 5 })}</option><option value="10" ${settings.vramStallWatchdogMinutes === 10 ? "selected" : ""}>${t(uiKeys.settings.system.vramStallWatchdogMinutes, { minutes: 10 })}</option><option value="15" ${settings.vramStallWatchdogMinutes === 15 ? "selected" : ""}>${t(uiKeys.settings.system.vramStallWatchdogMinutes, { minutes: 15 })}</option></select></label>
           <label class="policy-select-field">${fieldLabelWithTip(t(uiKeys.settings.system.queueIsolationMode), t(uiKeys.settings.system.queueIsolationDescription))}<select id="queue-isolation-mode"><option value="never" ${settings.queueIsolationMode === "never" ? "selected" : ""}>${t(uiKeys.settings.system.queueIsolationNever)}</option><option value="lora" ${settings.queueIsolationMode === "lora" ? "selected" : ""}>${t(uiKeys.settings.system.queueIsolationLora)}</option><option value="model-change" ${settings.queueIsolationMode === "model-change" ? "selected" : ""}>${t(uiKeys.settings.system.queueIsolationModelChange)}</option><option value="always" ${settings.queueIsolationMode === "always" ? "selected" : ""}>${t(uiKeys.settings.system.queueIsolationAlways)}</option></select></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.keepComfyUiRunningAfterQueue)}</strong><small>${t(uiKeys.settings.system.keepComfyUiRunningAfterQueueDescription)}</small></span><input id="keep-comfyui-running-after-queue" type="checkbox" ${settings.keepComfyUiRunningAfterQueue ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
         </div>
       </section>
     </section>`;
@@ -684,6 +686,10 @@ export function renderSettingsPage(
         <div class="section-heading"><div><h2>${s("prompt.videoPresetTitle")}</h2></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
         <label class="settings-row"><span class="settings-row-copy"><span>${s("prompt.currentPreset")}</span></span><select id="h3-prompt-preset-setting">${options.h3PromptPresetOptions(viewModel.settingsH3PromptPreset, true)}</select></label>
         <label class="settings-row settings-preset-rule"><span class="settings-row-copy"><span>${s("prompt.ruleHeader")}</span><span class="muted">${s("prompt.h3Note")}</span></span><textarea id="h3-prompt-preset-text" rows="7">${escape(selectedH3PresetText)}</textarea></label>
+        ${(() => {
+          const craftSkills = describeH3PromptSkillsForInspection();
+          return `<details class="settings-skills-inspector" id="h3-craft-skills-inspector"><summary>${s("prompt.skillsSummary")} (${craftSkills.length})</summary><div class="settings-skills-list">${craftSkills.map((skill) => `<details class="settings-skill-item"><summary><strong>${escape(skill.title)}</strong><code>${escape(skill.id)}</code>${skill.sharedWithLongVideo ? `<span class="settings-skill-badge">${s("prompt.skillsSharedLongVideo")}</span>` : ""}</summary><p class="settings-skill-trigger">${s("prompt.skillsTriggerLabel")}${escape(skill.triggerSummary)}</p><pre class="settings-skill-rules">${escape(skill.rulesText)}</pre></details>`).join("")}</div></details>`;
+        })()}
       </section>
       <section class="panel settings-section settings-form-card settings-preset-card">
         <div class="section-heading"><div><h2>${s("prompt.autoVideoPresetTitle")}</h2></div><button class="secondary button-with-icon" id="restore-h3-auto-prompt-seeds">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>

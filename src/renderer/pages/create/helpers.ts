@@ -36,6 +36,7 @@ import {
   outputFrameCountForTask
 } from "../../../core/workflow";
 import { h3PromptPackFor, imagePromptPackForTarget } from "../../prompt-packs";
+import { h3CorePromptPresetOrder } from "../../../core/prompts/h3/index";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { escapeHtml } from "../../shared/dom";
 import { icon } from "../../shared/icons";
@@ -448,8 +449,9 @@ export function h3PromptPresetOptions(
   locale: UiLocale = "zh-CN"
 ): string {
   const pack = h3PromptPackFor(locale);
-  return pack.presetOrder
-    .filter((preset) => includeMultiReference || preset !== "multi-reference")
+  const visible = h3CorePromptPresetOrder.filter((preset) => includeMultiReference || preset !== "multi-reference");
+  const ordered = visible.includes(selected) ? visible : [...visible, selected];
+  return ordered
     .map((preset) => `<option value="${preset}" data-description="${escapeHtml(pack.presetDescriptions[preset])}" title="${escapeHtml(pack.presetDescriptions[preset])}" ${selected === preset ? "selected" : ""}>${escapeHtml(pack.presetLabels[preset])}</option>`)
     .join("");
 }

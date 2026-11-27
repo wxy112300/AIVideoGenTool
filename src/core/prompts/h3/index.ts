@@ -95,7 +95,14 @@ export {
   h3AutoPromptSeedFor,
   h3AutoPromptSeeds
 } from "./auto-seeds.js";
-export { createDefaultH3PromptPresets, defaultH3PromptPresets } from "./content.js";
+export {
+  createDefaultH3PromptPresets,
+  defaultH3PromptPresets,
+  h3CorePromptPresetOrder,
+  isLegacyDefaultH3PromptPreset
+} from "./content.js";
 export { h3LoraPromptInstruction, h3LoraPromptLibrary, h3LoraPromptProfileFor } from "./loras.js";
 export type { H3LoraPromptProfile } from "./loras.js";
+export { describeH3PromptSkillsForInspection, formatH3PromptSkills, h3PromptSkills, selectH3PromptSkills } from "./skills.js";
+export type { H3PromptSkill, H3PromptSkillContext, H3PromptSkillInspection } from "./skills.js";
 export type { H3PromptPack } from "../types.js";

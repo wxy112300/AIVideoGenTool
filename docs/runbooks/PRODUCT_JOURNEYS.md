@@ -84,7 +84,7 @@ flowchart TD
 - UI 阻塞由 `buildVideoCreatePageViewModel` / `videoEnqueueBlockReason` 投影到 `#enqueue.disabled`、`data-enqueue-block-reason` 和反馈文字；输入时 coordinator 的 `syncVideoEnqueueUi` 也要更新。单测某个 validator 不证明按钮会恢复。
 - H3原生模式将时长锁在15.1秒；必须显式选择原生解锁后才能输入更长时长。解锁后严格>15.1时显示三语言警告tooltip，15.1不显示。悬停/键盘展开和增量显隐保持输入焦点，警告本身不阻塞入队；缺输入、依赖与资源条件仍独立检查。
 - 模型切换是异步的（获取 bundled workflow）；要测快速切换和返回另一 Create 模式，避免旧返回值覆盖新草稿。
-- Pi-H3 在 FL2VA 组显示一个条目。只装 2 步 adapter 时，4 步不可选，选择 2 步可点击入队。补齐 4 步 adapter 并重新扫描后可选 4 步。核对快照对应的调度参数、直接像素输出和音轨节点。
+- Pi-H3 在 FL2VA 组显示一个条目。原生模式检测 DWD adapter，多段模式检测官方 VAE 版 adapter。当前模式只装一档时选中该档，缺档不可选。补齐并重新扫描后可选择两档。多段任务经 Full Run 传递音画 latent，由 Continuum 拼接，快照保留 Pi-H3 档位、Euler 和 pi-Flow 调度。
 
 | 用户选项 | 影响链 | 最小反例 |
 | --- | --- | --- |

@@ -84,16 +84,24 @@ describe("resumable software download", () => {
       onResetTimeout: () => {}
     })).rejects.toThrow("无响应");
   });
-  it("resumes real bytes after curl56, then reuses the partial across a separate user retry without resetting progress", async () => {
+  it("resumes across repeated disconnects while making progress, then preserves the partial after stagnant failures", async () => {
     const { destination } = await fixture(), onProgress = vi.fn();
     await fs.writeFile(destination, "1234");
-    const run = vi.fn(async (args: string[]) => { expect(args[args.indexOf("--continue-at") + 1]).toBe(String((await fs.stat(destination)).size)); await fs.appendFile(destination, "5"); throw fail(56); });
+    let chunks = 0;
+    const run = vi.fn(async (args: string[]) => {
+      expect(args).toContain("--http1.1");
+      expect(args).toContain("--keepalive-time");
+      expect(args[args.indexOf("--continue-at") + 1]).toBe(String((await fs.stat(destination)).size));
+      if (chunks < 4) { chunks++; await fs.appendFile(destination, "5"); }
+      throw fail(56);
+    });
+    // 4 progressing disconnects (resetting stagnant retries) + 3 stagnant failures = 7 calls, stopping at 8 bytes.
     await expect(downloadWithResume({ url: "https://example.invalid/fixed.zip", destination, totalBytes: 10, run, wait, onProgress })).rejects.toThrow("Recv failure");
-    expect(run).toHaveBeenCalledTimes(3); expect((await fs.stat(destination)).size).toBe(7);
+    expect(run).toHaveBeenCalledTimes(7); expect((await fs.stat(destination)).size).toBe(8);
     expect(onProgress.mock.calls.flat()).not.toContain(0);
-    const finish = vi.fn(async (args: string[]) => { expect(args[args.indexOf("--continue-at") + 1]).toBe("7"); await fs.appendFile(destination, "890"); });
+    const finish = vi.fn(async (args: string[]) => { expect(args[args.indexOf("--continue-at") + 1]).toBe("8"); await fs.appendFile(destination, "90"); });
     await downloadWithResume({ url: "https://example.invalid/fixed.zip", destination, totalBytes: 10, run: finish, wait });
-    expect(await fs.readFile(destination, "utf8")).toBe("1234555890");
+    expect(await fs.readFile(destination, "utf8")).toBe("1234555590");
     const noNetwork = vi.fn(); await downloadWithResume({ url: "https://example.invalid/fixed.zip", destination, totalBytes: 10, run: noNetwork, wait }); expect(noNetwork).not.toHaveBeenCalled();
   });
   it.each([33, 60, 22])("does not retry range/certificate/404 failures or throw away the partial (%s)", async code => {

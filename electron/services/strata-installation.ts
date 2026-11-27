@@ -258,7 +258,7 @@ export async function installStrataRuntime(settings: Settings, runtime: Installa
     await run(isolatedPython, ["-B", "-c", "from serve.ds_pictures import DsPictures; from serve.frontend import ChatTemplate"], path.join(root, STRATA_DSV41_SOURCE_DIRECTORY));
     stage("download", 0, STRATA_DSV41_BYTES);
     await installDeepSeekEngine(root, settings, { ...runtime, run: (executable, args, options) => run(executable, args, options.cwd ?? root, options.timeoutMs) }, log,
-      received => stage("download", received, STRATA_DSV41_BYTES));
+      received => stage("download", received, STRATA_DSV41_BYTES), { reuseFrom: backup || undefined, t });
     checkInstallationCancelled();
     await fs.writeFile(path.join(root, receiptName), JSON.stringify({ owner: "local-video-studio", version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, installedAt: new Date().toISOString() }), "utf8");
     log(t(uiKeys.strataRuntime.installedLog, { path: root }));

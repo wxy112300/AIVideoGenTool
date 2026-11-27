@@ -110,6 +110,7 @@ export function readSettingsFromForm(
     autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
     vramStallWatchdogMinutes: Number(value("vram-stall-watchdog-minutes", String(base.vramStallWatchdogMinutes))) as Settings["vramStallWatchdogMinutes"],
     queueIsolationMode: value("queue-isolation-mode", base.queueIsolationMode) as Settings["queueIsolationMode"],
+    keepComfyUiRunningAfterQueue: checked("keep-comfyui-running-after-queue", base.keepComfyUiRunningAfterQueue ?? false),
     uiLocale: value("ui-locale", base.uiLocale ?? "zh-CN") as Settings["uiLocale"],
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),

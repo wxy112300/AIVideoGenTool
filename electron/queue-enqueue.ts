@@ -755,13 +755,13 @@ export class QueueEnqueueService {
       ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
     if (longVideo) {
-      const reason = longVideoDependencyBlockReason(dependencyScan, enqueueSettings, draft.modelId, longVideoUsesTimedGuides(draft));
+      const reason = longVideoDependencyBlockReason(dependencyScan, enqueueSettings, draft.modelId, longVideoUsesTimedGuides(draft), draft.steps);
       if (reason) throw new Error(reason);
     }
     if (dependencyScan) {
       const coreBlockReason = modelCoreVersionBlockReason(draft.modelId, dependencyScan.comfyCompatibility.version, enqueueSettings.uiLocale);
       if (coreBlockReason) throw new Error(coreBlockReason);
-      if (draft.modelId === PI_H3_MODEL_ID) {
+      if (draft.modelId === PI_H3_MODEL_ID && !longVideo) {
         const reason = piH3DependencyBlockReason(dependencyScan, draft.steps, enqueueSettings.uiLocale);
         if (reason) throw new Error(reason);
       }

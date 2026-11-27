@@ -6,6 +6,7 @@ import { videoPromptForLoras } from "../video-loras.js";
 import { longVideoDeliveryMultiplier, type ContinuumDelivery } from "./delivery.js";
 import { longVideoGuideCues, longVideoGuideSamplingPrompt } from "./timed-guides.js";
 import { compactH3ReferencePrompt } from "../h3-reference.js";
+import { rewritePromptPicturesToV39Tags } from "./reference-routing.js";
 
 export interface LongVideoExecutionSnapshot {
   schemaVersion: 1;
@@ -46,13 +47,15 @@ export function freezeLongVideoExtensionPlan(taskId: string, executionId: string
 
 export function compileLongVideoSamplingPrompts(
   script: LongVideoExecutionSnapshot["script"],
-  profile: Pick<ContinuumGroupProfile, "referenceImages" | "timedGuides" | "h3">
+  profile: Pick<ContinuumGroupProfile, "referenceImages" | "referenceRouting" | "timedGuides" | "h3">
 ): string[] {
   const cues = script.layout.origin === "create" && !profile.referenceImages?.length && profile.timedGuides?.length
     ? longVideoGuideCues(profile.timedGuides.map(guide => ({ picture: guide.picture, mediaPath: guide.filename, seconds: guide.absoluteFrame / 24 })), script.layout)
     : [];
   return compileLongVideoPrompts(script).map((text, index) => {
-    const prompt = profile.referenceImages ? compactH3ReferencePrompt(text, profile.referenceImages)
+    const prompt = profile.referenceRouting?.mode === "per_chunk"
+      ? rewritePromptPicturesToV39Tags(text)
+      : profile.referenceImages ? compactH3ReferencePrompt(text, profile.referenceImages)
       : cues.length ? longVideoGuideSamplingPrompt(text, cues, index + 1) : text;
     return profile.h3 ? videoPromptForLoras(prompt, profile.h3.videoLoras) : prompt;
   });

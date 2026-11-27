@@ -8,7 +8,93 @@ import { mountPromptHeight } from "./prompt-height";
 interface Edit { text: string; start: number; end: number; }
 interface EditorState { current: Edit; undo: Edit[]; redo: Edit[]; scroll: number; }
 const memories = new WeakMap<HTMLElement, Map<string, EditorState>>();
-const tokens = /<(?:Picture|Video) \d+>|\[\d+(?:[.:]\d+)?\s*[–-]\s*\d+(?:[.:]\d+)?\s*s?\]|"[^"\n]+"|“[^”\n]+”|「[^」\n]+」|^(?:Ambient sound|Sound|Camera|Dialogue|Music|声音|鏡頭|镜头|对白|對白|音效|音乐|音樂)[:：]/gm;
+const tokens = /<(?:Picture|Video|Subject|Audio) \d+>|(?<![A-Za-z0-9_])@R[1-9](?![A-Za-z0-9_])|^[ \t]*(?:integrated_multimodal_description|overall_soundscape|non_diegetic_music|subject_definitions|summary|retention_analysis|detailed_description):|\[Shot\s+\d+\]|\bAt\s+(?:\d{1,2}:[0-5]\d(?:\.\d{1,3})?|\d+(?:\.\d{1,3})?\s*s)\b|\[(?:开场|開場|连续|連續|切镜|切鏡|Opening|Continue|Cut)\]|\[\d+(?:[.:]\d+)?\s*[–-]\s*\d+(?:[.:]\d+)?\s*s?\]|\b\d{1,2}:[0-5]\d(?:\.\d{1,3})?\s*[–-]\s*\d{1,2}:[0-5]\d(?:\.\d{1,3})?\.?|^[ \t]*\d+(?:\.\d{1,3})?\s*[–-]\s*\d+(?:\.\d{1,3})?\s*s:?|Continuation of (?:Chunk \d+|the preceding segment)\.|<d>[^<\n]*<\/d>|\(S\d+\)|"[^"\n]+"|“[^”\n]+”|「[^」\n]+」|^(?:画面|畫面|镜头|鏡頭|声音|聲音|段尾|开场|開場|推进|推進|交接|原文要求|AI 建议|AI 建議|Action|Camera|Audio|End|Opening|Development|Handoff|Ambient sound|Sound|Dialogue|Music|对白|對白|音效|音乐|音樂)[:：]/gm;
+
+/** Auto-detect dominant prompt language so English prose keeps en-US spellcheck even with short Chinese notes. */
+export function promptSpellcheckLanguage(text: string): "en-US" | "zh-CN" {
+  const latin = (text.match(/[A-Za-z]/gu) ?? []).length;
+  const cjk = (text.match(/[\u3400-\u9fff]/gu) ?? []).length;
+  if (latin === 0 && cjk > 0) return "zh-CN";
+  return cjk > latin * 2 ? "zh-CN" : "en-US";
+}
+
+function tokenKindFor(token: string): string {
+  if (/^<(?:Picture|Video) \d+>$/.test(token)) return "create-ref-chip";
+  if (/^<(?:Subject|Audio) \d+>$|^@R[1-9]$/.test(token)) return "create-rich-ref";
+  if (/^[ \t]*(?:integrated_multimodal_description|overall_soundscape|non_diegetic_music|subject_definitions|summary|retention_analysis|detailed_description):$/.test(token)) return "create-rich-section";
+  if (token.startsWith("Continuation of ")) return "create-rich-continuity";
+  if (token.startsWith("[") || token.startsWith("At ") || /^\s*\d/.test(token)) return "create-rich-time";
+  if (/[:：]$/.test(token)) return "create-rich-key";
+  return "create-rich-say";
+}
+
+const richTokenClasses = [
+  "create-ref-chip", "create-rich-ref", "create-rich-section",
+  "create-rich-continuity", "create-rich-time", "create-rich-key", "create-rich-say"
+] as const;
+
+/** Avoid tearing down live Text nodes on plain typing so Chromium preserves native spellcheck squiggles. */
+function needsRichRepaint(editor: HTMLElement, nextText: string): boolean {
+  const expected = [...nextText.matchAll(tokens)].map((match) => ({
+    text: match[0],
+    index: match.index!,
+    kind: tokenKindFor(match[0])
+  }));
+  const existing: Array<{ text: string; index: number; kind: string }> = [];
+  let offset = 0;
+  let hasTrailingEndBr = false;
+  for (let i = 0; i < editor.childNodes.length; i++) {
+    const child = editor.childNodes[i]!;
+    if (child.nodeType === Node.TEXT_NODE) {
+      offset += (child.textContent ?? "").length;
+      continue;
+    }
+    if (child instanceof HTMLBRElement && child.hasAttribute("data-rich-end") && i === editor.childNodes.length - 1) {
+      hasTrailingEndBr = true;
+      continue;
+    }
+    if (!(child instanceof HTMLSpanElement)) return true;
+    const kind = richTokenClasses.find((cls) => child.classList.contains(cls));
+    if (!kind) return true;
+    const plain = richPromptText(child);
+    existing.push({ text: plain, index: offset, kind });
+    offset += plain.length;
+  }
+  if (nextText.endsWith("\n") !== hasTrailingEndBr) return true;
+  if (existing.length !== expected.length) return true;
+  for (let i = 0; i < expected.length; i++) {
+    if (existing[i]!.index !== expected[i]!.index
+      || existing[i]!.text !== expected[i]!.text
+      || existing[i]!.kind !== expected[i]!.kind) return true;
+  }
+  return false;
+}
+
+/** Shared syntax-highlight HTML renderer for single-page and Whole View editors. */
+export function renderRichPromptHtml(value: string, renderMediaChip?: (token: string) => string): string {
+  let html = "", at = 0;
+  for (const match of value.matchAll(tokens)) {
+    html += escapeHtml(value.slice(at, match.index));
+    at = match.index! + match[0].length;
+    const token = match[0];
+    if (/^<(?:Picture|Video) \d+>$/.test(token)) {
+      html += renderMediaChip ? renderMediaChip(token) : `<span class="create-rich-ref">${escapeHtml(token)}</span>`;
+    } else if (/^<(?:Subject|Audio) \d+>$|^@R[1-9]$/.test(token)) {
+      html += `<span class="create-rich-ref">${escapeHtml(token)}</span>`;
+    } else if (/^[ \t]*(?:integrated_multimodal_description|overall_soundscape|non_diegetic_music|subject_definitions|summary|retention_analysis|detailed_description):$/.test(token)) {
+      html += `<span class="create-rich-section">${escapeHtml(token)}</span>`;
+    } else if (token.startsWith("Continuation of ")) {
+      html += `<span class="create-rich-continuity">${escapeHtml(token)}</span>`;
+    } else if (token.startsWith("[") || token.startsWith("At ") || /^\s*\d/.test(token)) {
+      html += `<span class="create-rich-time">${escapeHtml(token)}</span>`;
+    } else if (/[:：]$/.test(token)) {
+      html += `<span class="create-rich-key">${escapeHtml(token)}</span>`;
+    } else {
+      html += `<span class="create-rich-say">${escapeHtml(token)}</span>`;
+    }
+  }
+  return html + escapeHtml(value.slice(at)) + (value.endsWith("\n") ? "<br data-rich-end>" : "");
+}
 
 /** Pure text is the persisted contract; reference chips are atomic visual spans. */
 export function richPromptText(node: Node): string {
@@ -79,7 +165,15 @@ export function mountRichPrompt(source: HTMLTextAreaElement, context: RendererCo
   editor.id = `${source.id || key}-rich`; editor.dataset.richSource = source.id;
   editor.contentEditable = "true"; editor.setAttribute("role", "textbox"); editor.setAttribute("aria-multiline", "true"); editor.tabIndex = 0;
   editor.setAttribute("aria-label", source.getAttribute("aria-label") ?? context.t(uiKeys.create.promptTitle));
-  editor.spellcheck = source.spellcheck;
+  const syncLang = (text: string) => {
+    const lang = promptSpellcheckLanguage(text);
+    if (editor.lang !== lang) editor.lang = lang;
+    if (source.lang !== lang) source.lang = lang;
+  };
+  const spellcheckEnabled = source.getAttribute("spellcheck") !== "false";
+  editor.spellcheck = spellcheckEnabled;
+  editor.setAttribute("spellcheck", String(spellcheckEnabled));
+  syncLang(source.value);
   source.before(editor); source.classList.add("rich-prompt-source"); source.tabIndex = -1; source.setAttribute("aria-hidden", "true");
   const states = memories.get(root) ?? new Map<string, EditorState>(); memories.set(root, states);
   let scopeKey = `${key}:${source.dataset.richHistoryKey ?? "main"}`;
@@ -120,17 +214,16 @@ export function mountRichPrompt(source: HTMLTextAreaElement, context: RendererCo
     editor.hidden = source.hidden;
     const focused = document.activeElement === editor;
     const start = source.selectionStart, end = source.selectionEnd;
-    let html = "", at = 0;
-    for (const match of source.value.matchAll(tokens)) {
-      html += escapeHtml(source.value.slice(at, match.index)); at = match.index! + match[0].length;
-      const token = match[0];
-      if (token.startsWith("<")) {
-        const filename = reference(context, token, source.id);
-        html += `<span class="create-ref-chip${filename ? "" : " missing"}" contenteditable="false" data-plain="${escapeHtml(token)}" data-reference-path="${escapeHtml(filename)}" data-ui-tooltip="${escapeHtml(filename || token)}"><span class="create-ref-thumb">${icon(filename ? token.startsWith("<Video") ? "video" : "image" : "circle-alert")}</span>${escapeHtml(token.slice(1,-1))}</span>`;
-      } else html += `<span class="create-rich-${token.startsWith("[") ? "time" : /[:：]$/.test(token) ? "key" : "say"}">${escapeHtml(token)}</span>`;
-    }
-    editor.innerHTML = html + escapeHtml(source.value.slice(at)) + (source.value.endsWith("\n") ? '<br data-rich-end>' : "");
+    editor.innerHTML = renderRichPromptHtml(source.value, (token) => {
+      const filename = reference(context, token, source.id);
+      return `<span class="create-ref-chip${filename ? "" : " missing"}" contenteditable="false" data-plain="${escapeHtml(token)}" data-reference-path="${escapeHtml(filename)}" data-ui-tooltip="${escapeHtml(filename || token)}"><span class="create-ref-thumb">${icon(filename ? token.startsWith("<Video") ? "video" : "image" : "circle-alert")}</span>${escapeHtml(token.slice(1,-1))}</span>`;
+    });
     renderIcons(editor);
+    for (const tokenNode of editor.querySelectorAll<HTMLElement>(".create-ref-chip, .create-rich-ref, .create-rich-section, .create-rich-time")) {
+      tokenNode.spellcheck = false;
+      tokenNode.setAttribute("spellcheck", "false");
+    }
+    syncLang(source.value);
     for (const chip of editor.querySelectorAll<HTMLElement>(".create-ref-chip[data-reference-path]")) {
       const filename = chip.dataset.referencePath!;
       if (filename && chip.dataset.plain?.startsWith("<Video")) chip.dataset.uiTooltipVideo = `studio-media://draft/video?source=${encodeURIComponent(filename)}`;
@@ -152,10 +245,15 @@ export function mountRichPrompt(source: HTMLTextAreaElement, context: RendererCo
   const commit = () => {
     if (source.disabled || source.readOnly) return;
     const selection = richPromptSelection(editor);
-    value.set!.call(source, richPromptText(editor));
+    const nextText = richPromptText(editor);
+    value.set!.call(source, nextText);
     if (selection) original.setSelectionRange.call(source, ...selection);
     forwarding = true; source.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: composing })); forwarding = false;
-    if (!composing) { record(); paint(); }
+    if (!composing) {
+      record();
+      if (needsRichRepaint(editor, nextText)) paint();
+      else syncLang(nextText);
+    }
   };
   const insert = (text: string) => {
     if (source.disabled || source.readOnly) return;

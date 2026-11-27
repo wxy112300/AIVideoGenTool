@@ -1,19 +1,20 @@
 /** Fixed preparation baseline, not an executable ComfyUI node. */
 export const STRATA_REPOSITORY = "Niko1221/Strata";
-export const STRATA_VERSION = "0.2.20";
-export const STRATA_REVISION = "a34979fc94f3d126b9bb8210f4ad311345688b52";
+export const STRATA_VERSION = "0.2.22";
+export const STRATA_REVISION = "b28ca95e3e6847f2d5e317994f253b66716deeaa";
 export const STRATA_DEFAULT_PORT = 43127;
 export const STRATA_SOURCE_URL = `https://github.com/Niko1221/Strata/archive/${STRATA_REVISION}.zip`;
 /** App/source and native engine are independently versioned upstream. */
-export const STRATA_ENGINE_RELEASE = "0.2.20";
-export const STRATA_ENGINE_VERSION = "0.1.66";
+export const STRATA_ENGINE_RELEASE = "0.2.22";
+export const STRATA_ENGINE_VERSION = "0.1.69";
 export const STRATA_ENGINE_URL = `https://github.com/Niko1221/Strata/releases/download/v${STRATA_ENGINE_RELEASE}/strata-engine-${STRATA_ENGINE_VERSION}-windows-x86_64-cuda-cuda13.tar.gz`;
-export const STRATA_ENGINE_SHA256 = "d0fa583e60aaf1d256926b6ea9889ff3ce42a98dbf56f2b556703a76b65e0a64";
-export const STRATA_ENGINE_BYTES = 494695625;
-export const STRATA_ENGINE_MANIFEST_SHA256 = "606635d430cdd8e3590677e3620493dc4b45c2443ce001404270137640eabe7b";
+export const STRATA_ENGINE_SHA256 = "2da49e49c72fa845c33513ba674b5c6735c35a713b66d0305dd793011e0c59d3";
+export const STRATA_ENGINE_BYTES = 494711524;
+export const STRATA_ENGINE_MANIFEST_SHA256 = "7ac20626c8ac4f7e2300fb531632f9c1c57695182f51af508fa124bf46495834";
 /** Recognize older receipts until a verified update replaces and cleans their software. */
 export const STRATA_RELEASES = [
-  { version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, bundledLibraries: true, separateDeepSeekSource: true, standaloneQuantLibrary: false, sourceDirectory: "terminal", deviceVram: true, hcTensorCoreGuard: true },
+  { version: STRATA_VERSION, revision: STRATA_REVISION, engineSha256: STRATA_ENGINE_SHA256, bundledLibraries: true, separateDeepSeekSource: true, standaloneQuantLibrary: false, sourceDirectory: "terminal", deviceVram: true },
+  { version: "0.2.20", revision: "a34979fc94f3d126b9bb8210f4ad311345688b52", engineSha256: "d0fa583e60aaf1d256926b6ea9889ff3ce42a98dbf56f2b556703a76b65e0a64", bundledLibraries: true, separateDeepSeekSource: true, standaloneQuantLibrary: false, sourceDirectory: "terminal", deviceVram: true, hcTensorCoreGuard: true },
   { version: "0.2.17", revision: "12d491da4a6904eb49aaa6f2f63ec4b1a17582e3", engineSha256: "fc9864851a3f76855f25ba5f5ff1eb42d46c3c6ed45c22534dc9910f20d9dc0f", bundledLibraries: true, separateDeepSeekSource: true, standaloneQuantLibrary: false, sourceDirectory: "terminal", deviceVram: true },
   { version: "0.2.15", revision: "c77572806996349b49995e4f98d41b5294d36a21", engineSha256: "a54cc75a84aa7b93839c330197bdc35395f6fcc5ee31e25008f380558da5b18c", bundledLibraries: true, separateDeepSeekSource: true, standaloneQuantLibrary: false },
   { version: "0.2.13", revision: "d2f096475817d4666c364c820b0ca830f751cfc5", engineSha256: "3f071a7ccbbf3dcdefed8bff777896d8dd0b580417a078154a7d2c2402ec4158", bundledLibraries: true },
@@ -27,7 +28,7 @@ export const STRATA_RELEASES = [
   { version: "0.2.10", revision: "ffa80d73133ea5c548aefe57889a16e8085a938f", engineSha256: "5336671c55bc1b819d076104608522147227001d1711378f35ea5d524bc866ec", bundledLibraries: true }
 ] as const;
 /** Audited native v3/v4 pack layout; not a blanket acceptance of arbitrary source revisions. */
-export const STRATA_COMPATIBLE_PACK_REVISIONS = [STRATA_REVISION, "12d491da4a6904eb49aaa6f2f63ec4b1a17582e3", "c77572806996349b49995e4f98d41b5294d36a21", "d2f096475817d4666c364c820b0ca830f751cfc5", "146df3c468739147f520ac3816de806f71232571", "c3b3f5035506f3e966f1b4b7b188aeaabae92f1d", "ffa80d73133ea5c548aefe57889a16e8085a938f", "c62d5e3a15b40ea51c96aae9e8d36928965f53ab", "46c152a1310f77cd2f0ce2c7cd213962df14fe83", "477ac13cbe8e582c20484871ce459d20d82df09d"] as const;
+export const STRATA_COMPATIBLE_PACK_REVISIONS = [STRATA_REVISION, "a34979fc94f3d126b9bb8210f4ad311345688b52", "12d491da4a6904eb49aaa6f2f63ec4b1a17582e3", "c77572806996349b49995e4f98d41b5294d36a21", "d2f096475817d4666c364c820b0ca830f751cfc5", "146df3c468739147f520ac3816de806f71232571", "c3b3f5035506f3e966f1b4b7b188aeaabae92f1d", "ffa80d73133ea5c548aefe57889a16e8085a938f", "c62d5e3a15b40ea51c96aae9e8d36928965f53ab", "46c152a1310f77cd2f0ce2c7cd213962df14fe83", "477ac13cbe8e582c20484871ce459d20d82df09d"] as const;
 export const STRATA_EXPERT_PROFILE = "data/expert-profile.bin";
 /** setup.py's exact parser source; MTP tools require this checkout, not a random pip gguf. */
 export const STRATA_LLAMA_REVISION = "3cf03257f219afbe7334045ff7c6a06ac68c627d";
@@ -55,8 +56,8 @@ export function strataEngineFilesForRevision(revision: string = STRATA_REVISION)
   return release?.bundledLibraries === false ? STRATA_LEGACY_ENGINE_FILES
     : [...STRATA_LEGACY_ENGINE_FILES, "engine/engine-component.json", ...strataBundledLibrariesForRevision(revision).map(name => `engine/${name}`)];
 }
-/** Official 0.1.66 binaries contain the shared-memory HC load regression (#6713/#6714).
- * Keep the older HC kernels until a fixed release is explicitly audited. */
+/** Official 0.1.66 (0.2.20) binaries contain the shared-memory HC load regression (#6713/#6714),
+ * fixed upstream in 0.1.67+ (audited in 0.2.22 / 0.1.69). Keep the guard scoped to affected releases. */
 export function strataCompatibilityEnvironment(revision: string = STRATA_REVISION): Record<string, string> {
   const release = STRATA_RELEASES.find(item => item.revision === revision);
   return release && "hcTensorCoreGuard" in release && release.hcTensorCoreGuard

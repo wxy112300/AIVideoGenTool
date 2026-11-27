@@ -8,10 +8,13 @@ import type { EnhanceRequest, Settings, PromptProgressReporter } from "../../src
 import { multimodalPromptInstruction, multimodalPromptTargetLanguage, normalizeMultimodalPromptOutput } from "./multimodal-prompt.js";
 import type { StrataChatRequest, StrataContentPart } from "./strata-service.js";
 import { strataH3InstructionParts } from "../../src/core/prompts/h3/strata.js";
+import { formatH3PromptSkills, parseLazySkillLoadRequest, resolveH3SkillsByIds } from "../../src/core/prompts/h3/skills.js";
 import { missingH3SourceTimepoints } from "../../src/core/h3-timing.js";
 import { h3TimelineDurationForRequest } from "../../src/core/h3-auto-prompter.js";
-import { unwrapH3ModelOutput } from "../../src/core/h3-prompt.js";
-import { h3PromptModeForRequest } from "../../src/core/h3-auto-prompter.js";
+import { normalizeStrataH3PromptOutput, unwrapH3ModelOutput } from "../../src/core/h3-prompt.js";
+import { h3PromptModeForRequest, isH3NativeStateContinuationRequest } from "../../src/core/h3-auto-prompter.js";
+import { extractH3DialogueLocks, extractH3VisibleTextLocks } from "../../src/core/h3-dialogue.js";
+import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import type { StrataRuntimePolicy } from "./strata-model-preparation.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { withStrataReferenceMedia } from "./strata-reference-media.js";
@@ -27,8 +30,28 @@ function usesQwenImage21Profile(request: EnhanceRequest): boolean {
     && isQwenImage21TargetModel(request.imageTargetModelId);
 }
 function validatedOutput(output: string, request: EnhanceRequest, locale: Settings["uiLocale"] = "zh-CN"): string {
-  try { return normalizeMultimodalPromptOutput(output, request, locale); }
-  catch (error) { throw new StrataPromptValidationError(error instanceof Error ? error.message : String(error)); }
+  try {
+    if (request.mode === "h3-vision" && request.promptStrategy !== "targeted-revision") {
+      const source = stripPromptAnnotations(request.prompt);
+      const continuation = isH3NativeStateContinuationRequest(request);
+      return normalizeStrataH3PromptOutput(
+        output,
+        h3PromptModeForRequest(request),
+        request.h3DurationSeconds ?? 5,
+        extractH3DialogueLocks(source),
+        extractH3VisibleTextLocks(source),
+        source,
+        request.prompt,
+        continuation,
+        continuation,
+        request.continuumPreviousChunk,
+        locale
+      );
+    }
+    return normalizeMultimodalPromptOutput(output, request, locale);
+  } catch (error) {
+    throw new StrataPromptValidationError(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Stable preparation identity. Hardware admission/reserve is a transient launch overlay,
@@ -91,7 +114,9 @@ export async function buildStrataPromptRequest(
     uncensored: strataUncensoredMode(settings) !== "off" && supportsStrataUncensored(settings.promptModelId),
     uncensoredMode: supportsStrataUncensored(settings.promptModelId) ? strataUncensoredMode(settings) : "off",
     // Use the model's official profile without changing saved creativity for other backends.
-    temperature: reasoning ? 1 : 0.7, reasoning };
+    temperature: reasoning ? 1 : 0.7,
+    ...(reasoning ? {} : { presencePenalty: 0.2 }),
+    reasoning };
 }
 
 export async function enhancePromptWithStrata(
@@ -103,23 +128,55 @@ export async function enhancePromptWithStrata(
   onProgress("uploading", null, usesQwenImage21Profile(request)
     ? t(uiKeys.strataPrompt.preparingProfileImages, { profile: STRATA_QWEN_IMAGE21_PROFILE }) : t(uiKeys.strataPrompt.preparingImages));
   return withStrataReferenceMedia(request, signal, async (prepared) => {
-    const chat = await buildStrataPromptRequest(prepared, settings, signal);
+    let chat = await buildStrataPromptRequest(prepared, settings, signal);
     await beforeChat?.(chat);
     signal.throwIfAborted();
     let characters = 0;
     let outputBudget = chat.maxTokens;
-    onProgress("generating", null, chat.reasoning
-      ? t(uiKeys.strataPrompt.planning, { budget: chat.reasoning.budgetTokens ? t(uiKeys.strataPrompt.reasoningBudget, { tokens: chat.reasoning.budgetTokens }) : t(uiKeys.strataPrompt.automaticReasoning) })
-      : t(uiKeys.strataPrompt.generating));
-    let output = await owner.chat(chat, signal, (delta) => {
-      characters += delta.length;
-      onProgress("generating", null, t(uiKeys.strataPrompt.generated, { count: characters, tokens: outputBudget }));
-    }, (tokens) => {
-      outputBudget = tokens;
-      onProgress("generating", null, t(uiKeys.strataPrompt.budgetAdjusted, { tokens: tokens, reasoning: chat.reasoning ? t(uiKeys.strataPrompt.includingReasoning) : "", context: String(chat.contextSize) }));
-    }, (count) => onProgress("generating", null,
-      t(uiKeys.strataPrompt.reasoning, { count: count, tokens: outputBudget })));
-    signal.throwIfAborted();
+    const runChatTurn = async (activeChat: StrataChatRequest, initialLabel: string): Promise<string> => {
+      characters = 0;
+      outputBudget = activeChat.maxTokens;
+      onProgress("generating", null, initialLabel);
+      const reply = await owner.chat(activeChat, signal, (delta) => {
+        characters += delta.length;
+        onProgress("generating", null, t(uiKeys.strataPrompt.generated, { count: characters, tokens: outputBudget }));
+      }, (tokens) => {
+        outputBudget = tokens;
+        onProgress("generating", null, t(uiKeys.strataPrompt.budgetAdjusted, { tokens: tokens, reasoning: activeChat.reasoning ? t(uiKeys.strataPrompt.includingReasoning) : "", context: String(activeChat.contextSize) }));
+      }, (count) => onProgress("generating", null,
+        t(uiKeys.strataPrompt.reasoning, { count: count, tokens: outputBudget })));
+      signal.throwIfAborted();
+      return reply;
+    };
+    let output = await runChatTurn(
+      chat,
+      chat.reasoning
+        ? t(uiKeys.strataPrompt.planning, { budget: chat.reasoning.budgetTokens ? t(uiKeys.strataPrompt.reasoningBudget, { tokens: chat.reasoning.budgetTokens }) : t(uiKeys.strataPrompt.automaticReasoning) })
+        : t(uiKeys.strataPrompt.generating)
+    );
+    // Optional progressive-disclosure lazy skill load (max 1 append-only follow-up; preserves prefix KV cache).
+    if (prepared.mode === "h3-vision" && prepared.promptStrategy !== "targeted-revision" && chat.messages[0]?.role === "system") {
+      const h3Parts = strataH3InstructionParts(prepared, settings, undefined, multimodalPromptTargetLanguage(prepared, settings));
+      const requestedSkillIds = parseLazySkillLoadRequest(output, h3Parts.unloadedSkillIds);
+      if (requestedSkillIds?.length) {
+        const extraSkills = resolveH3SkillsByIds(requestedSkillIds, false);
+        if (extraSkills.length) {
+          const loadedBlock = formatH3PromptSkills(extraSkills, h3Parts.skillContext, { maxExamples: 1 });
+          chat = {
+            ...chat,
+            messages: [
+              ...chat.messages,
+              { role: "assistant", content: output },
+              {
+                role: "user",
+                content: `${loadedBlock}\n\nNow write the complete final H3 prompt directly following the contract, references, and loaded skills. Do not emit LOAD_SKILLS again.`
+              }
+            ]
+          };
+          output = await runChatTurn(chat, t(uiKeys.strataPrompt.generating));
+        }
+      }
+    }
     onProgress("validating", null, t(uiKeys.strataPrompt.validating));
     let result = validatedOutput(output, request, settings.uiLocale);
     if (chat.messages[0]?.role === "system" && request.mode === "h3-vision"

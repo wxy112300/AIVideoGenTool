@@ -5,14 +5,19 @@ import type { Settings } from "../../src/types.js";
 import { compileContinuumGroupWorkflow, type ContinuumGroupProfile } from "../../src/core/long-video/group-workflow.js";
 import { acceptContinuumGroupCheckpoint, type ContinuumGroupRequest } from "../../src/core/long-video/group-checkpoint.js";
 import { assertImageWorkflowRuntimeCompatible, jsonRequest, waitForTask } from "./comfy-ui.js";
+import { PI_H3_CONTINUUM_ADAPTERS, PI_H3_MODEL_ID } from "../../src/core/catalog/models/minimax_h3_pi/definition.js";
 
 export async function submitContinuumGroup(settings: Settings, templatePath: string, request: ContinuumGroupRequest, profile: ContinuumGroupProfile, signal: AbortSignal, beforePost: () => Promise<void> = async () => {}) {
   const frozenRequest = structuredClone(request);
   const graph = compileContinuumGroupWorkflow(JSON.parse(await fs.readFile(templatePath, "utf8")), frozenRequest, structuredClone(profile));
   const base = settings.comfyUrl.replace(/\/+$/u, "");
   const objectInfo = await jsonRequest<Record<string, unknown>>(`${base}/object_info`, { signal });
+  const samplerType = graph["12"]?.class_type ?? "H3ContinuumSamplerV38";
+  if (samplerType === "H3ContinuumSamplerV39" && (!objectInfo.H3ContinuumSamplerV39 || !objectInfo.H3ContinuumReferenceImagesV39)) {
+    throw new Error("Continuum runtime lacks V3.9 per-chunk reference routing (H3ContinuumSamplerV39 / H3ContinuumReferenceImagesV39); update ComfyUI-H3-Continuum.");
+  }
   if (Array.isArray(graph["12"]?.inputs.guide)) {
-    const sampler = objectInfo.H3ContinuumSamplerV38 as { input?: { optional?: Record<string, unknown> } } | undefined;
+    const sampler = objectInfo[samplerType] as { input?: { optional?: Record<string, unknown> } } | undefined;
     const guideSchema = sampler?.input?.optional?.guide;
     if (!Array.isArray(guideSchema) || guideSchema[0] !== "H3_CONTINUUM_STILL_IMAGE_GUIDE" ||
         !objectInfo.LocalVideoStudioH3ContinuumTimedGuide) {
@@ -20,6 +25,14 @@ export async function submitContinuumGroup(settings: Settings, templatePath: str
     }
   }
   assertImageWorkflowRuntimeCompatible(profile.h3?.modelId ?? "minimax_h3_fl2va", graph, objectInfo);
+  if (profile.h3?.modelId === PI_H3_MODEL_ID) {
+    const loader = objectInfo["Load LakonLab Adapter"] as { input?: { required?: { adapter_name?: unknown[] } } } | undefined;
+    const choices = loader?.input?.required?.adapter_name?.[0];
+    const adapter = PI_H3_CONTINUUM_ADAPTERS[profile.steps === 2 ? 2 : 4];
+    if (Array.isArray(choices) && !choices.includes(adapter)) {
+      throw new Error(`Pi-H3 Continuum adapter missing from ComfyUI loras: ${adapter}`);
+    }
+  }
   const receiptSchema = objectInfo.LocalVideoStudioH3ContinuumGroupReceipt as { input?: { optional?: Record<string, unknown> } } | undefined;
   for (const input of ["expected_prefix_chunks", "expected_parent_revision_id", "sampling_evidence_version", ...(profile.executionMode === "full_run" ? ["execution_mode"] : [])]) {
     if (!receiptSchema?.input?.optional?.[input]) throw new Error("Continuum group runtime lacks the registered Run-lock guard; update app H3 nodes and restart");
@@ -57,7 +70,7 @@ export async function waitForContinuumGroup(submission: Awaited<ReturnType<typeo
     () => {}, undefined, undefined, undefined, undefined,
     event => {
       if (!fullRun || event.type !== "progress" || event.unit !== "step" ||
-          !event.nodeId || !["H3ContinuumSamplerV38", "LocalVideoStudioH3ContinuumSamplerV38"].includes(submission.nodeTypes[event.nodeId]) ||
+          !event.nodeId || !["H3ContinuumSamplerV38", "H3ContinuumSamplerV39", "LocalVideoStudioH3ContinuumSamplerV38"].includes(submission.nodeTypes[event.nodeId]) ||
           !Number.isFinite(event.value) || !Number.isFinite(event.max) || event.max! <= 0) return;
       samplingSeen = true;
       const value = Math.max(0, Math.min(event.max!, event.value!));

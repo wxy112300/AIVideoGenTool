@@ -5,9 +5,50 @@ import { duplicateQueueTask, randomizeQueuedTaskSeed } from "../src/core/queue";
 import { applyH3AccelerationSettingsToWaitingTask } from "../src/core/h3-execution-policy";
 import type { GenerationQueueTask } from "../src/types";
 import { longVideoBlockReason } from "../src/core/long-video/capability";
+import { evaluateModelProfiles } from "../electron/services/environment";
+import { minimaxH3Pi, PI_H3_CONTINUUM_ADAPTERS, PI_H3_MODEL_ID, PI_H3_NODE_ID } from "../src/core/catalog/models/minimax_h3_pi/definition";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(() => { journey?.dispose(); journey = undefined; });
+
+it("uses the Pi-H3 VAE step in Continuum and restores the DWD step when returning to native generation", async () => {
+  const h = journey = await createJourney({ modelId: PI_H3_MODEL_ID, steps: 2, spectrumMode: "off", startImagePath: "", endImagePath: "tail.png" });
+  h.scan.comfyCompatibility.version = "0.46.2";
+  h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.scan.customNodes.push({ ...h.scan.customNodes[0]!, id: PI_H3_NODE_ID });
+  const baseFiles = minimaxH3Pi.definition.scan!.components.map(component => component.expected)
+    .filter(filename => !Object.values(PI_H3_CONTINUUM_ADAPTERS).some(entry => filename.endsWith(entry)) && !filename.includes("4step_dwd"));
+  const profile = (files: string[]) => evaluateModelProfiles(files).find(entry => entry.id === PI_H3_MODEL_ID)!;
+  h.scan.modelProfiles.push(profile(baseFiles));
+  h.state().settings.promptModelId = "strata/qwen3.8-flash-next-iq3_xxs";
+  h.render();
+  expect(h.element<HTMLSelectElement>("#steps").value).toBe("2");
+  h.input("#generation-mode", "preview", "change");
+  h.input("[data-preview-duration-number]", "10");
+  h.input("[data-preview-count-number]", "2");
+  h.element("[data-confirm-layout]").click();
+  expect(h.element("#enqueue").disabled).toBe(true);
+  for (const [index, text] of ["A kite climbs.", "The same kite settles beside a tree."].entries()) {
+    h.element(`.create-long-tabs [role="tab"]:nth-child(${index + 2})`).click();
+    h.input(".create-long-editor textarea", text);
+  }
+  expect(h.element("#enqueue").dataset.enqueueBlockReason).toContain(PI_H3_CONTINUUM_ADAPTERS[2]);
+  expect(h.element("[data-enhance-long-video]").disabled).toBe(false);
+  h.scan.modelProfiles[h.scan.modelProfiles.length - 1] = profile([...baseFiles, `loras/${PI_H3_CONTINUUM_ADAPTERS[4]}`]);
+  h.render();
+  expect(h.element<HTMLSelectElement>("#steps").value).toBe("4");
+  expect(h.element<HTMLOptionElement>('#steps option[value="2"]').disabled).toBe(true);
+  expect(h.element("#enqueue").disabled).toBe(false);
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue[0]).toMatchObject({
+    id: expect.any(String), status: "waiting", modelId: PI_H3_MODEL_ID, steps: 4, attentionMode: "pytorch",
+    startImagePath: "", endImagePath: "tail.png", longVideoPlan: { layout: { targetFrames: 240 } }
+  }));
+  h.input("#generation-mode", "native", "change");
+  expect(h.element<HTMLSelectElement>("#steps").value).toBe("2");
+  expect(h.state().queue[0]!.steps).toBe(4);
+});
 it("recovers empty Continuum pages and queues a text-only Full Run without media", async () => {
   const h = journey = await createJourney({ modelId: "minimax_h3_fl2va", startImagePath: "", endImagePath: "" });
   h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
@@ -146,4 +187,22 @@ it.each((["off", "balanced"] as const).flatMap(spectrumMode => (["sage", "sage-t
   const copied = duplicateQueueTask({ ...h.state(), queue: [started] }, started.id).at(-1) as GenerationQueueTask;
   expect(copied.id).not.toBe(started.id); expect(copied.longVideoExecution).toBeUndefined();
   expect(copied.longVideoPlan).toEqual(started.longVideoPlan);
+});
+
+it("disables auto-enabled Spectrum on entering Long Video without exposing a low-level execution dropdown", async () => {
+  const h = journey = await createJourney({ spectrumMode: "balanced", spectrumModeUserSet: false });
+  h.scan.customNodes.find(n => n.id === "h3-continuum")!.version = "3.10.2";
+  h.scan.customNodes.find(n => n.id === "local-video-studio-h3-av")!.version = "0.4.4";
+  h.input("#generation-mode", "preview", "change");
+  expect(h.state().draft.spectrumMode).toBe("off");
+  expect(h.state().draft.spectrumModeUserSet).toBe(false);
+  expect(h.root.querySelector("[data-preview-execution]")).toBeNull();
+  h.input("[data-preview-duration-number]", "10"); h.input("[data-preview-count-number]", "2");
+  h.element("[data-confirm-layout]").click();
+  h.element('.create-long-tabs [role="tab"]:nth-child(2)').click(); h.input(".create-long-editor textarea", "Chunk one.");
+  h.element('.create-long-tabs [role="tab"]:nth-child(3)').click(); h.input(".create-long-editor textarea", "Chunk two.");
+  await vi.waitFor(() => expect(h.element<HTMLButtonElement>("#enqueue").disabled).toBe(false));
+  h.element("#enqueue").click();
+  await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
+  expect((h.state().queue[0] as GenerationQueueTask).spectrumMode).toBe("off");
 });

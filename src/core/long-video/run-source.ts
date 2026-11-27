@@ -29,7 +29,8 @@ export function longVideoProfileIdentity(profile: ContinuumGroupProfile): string
       h.videoLoras.map(l => [l.id, l.filename, l.strength, l.promptPrefixes ?? []]), h.sparseAttentionMode, h.runtimeMode,
       h.comfyCompilerMode, h.spectrumModelAwareMode]] : []), ...(profile.timedGuides ? [profile.timedGuides] : []),
     ...(profile.lastImage ? [{ lastImage: profile.lastImage }] : []),
-    ...(profile.referenceImages ? [{ referenceImages: profile.referenceImages }] : [])]);
+    ...(profile.referenceImages ? [{ referenceImages: profile.referenceImages }] : []),
+    ...(profile.referenceRouting ? [{ referenceRouting: profile.referenceRouting }] : [])]);
 }
 
 /** Resolve the published Run independently of its eligibility for another sampling job. */

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
-import { richPromptText, setRichPromptSelection } from "../src/renderer/pages/create/rich-prompt";
+import { promptSpellcheckLanguage, richPromptText, setRichPromptSelection } from "../src/renderer/pages/create/rich-prompt";
 import { generationSafetyForTask, outputDimensions, renderWorkflow } from "../src/core/workflow";
 import { readFileSync } from "node:fs";
 
@@ -116,5 +116,39 @@ describe("Create rich prompt and revised controls", () => {
     expect(notify[1]?.durationMs).toBe(6000);
     await notify[1]!.actions![0]!.run(); await settle();
     expect(h.state().draft).toEqual(before);
+  });
+
+  it("preserves live text nodes for native spellcheck squiggles, auto-detects lang, and excludes H3 syntax tags from spellcheck", async () => {
+    expect(promptSpellcheckLanguage("")).toBe("en-US");
+    expect(promptSpellcheckLanguage("Camera glides smoothly toward the camrea.")).toBe("en-US");
+    expect(promptSpellcheckLanguage("Camera glides smoothly toward the camrea.（批注：慢一点）")).toBe("en-US");
+    expect(promptSpellcheckLanguage("镜头缓慢推近，窗外阳光照在桌面上。")).toBe("zh-CN");
+
+    const h = journey = await createJourney({ startImagePath: "fixture.png" });
+    const editor = h.element<HTMLElement>("#prompt-input-rich");
+    const source = h.element<HTMLTextAreaElement>("#prompt-input");
+
+    // 1. Seed with syntax tokens + trailing plain text node
+    edit(editor, "integrated_multimodal_description: [Shot 1] Use <Picture 1>. The camrea moves");
+    expect(editor.getAttribute("spellcheck")).toBe("true");
+    expect(editor.lang).toBe("en-US");
+    expect(source.lang).toBe("en-US");
+    expect(editor.querySelector<HTMLElement>(".create-rich-section")?.getAttribute("spellcheck")).toBe("false");
+    expect(editor.querySelector<HTMLElement>(".create-rich-time")?.getAttribute("spellcheck")).toBe("false");
+    expect(editor.querySelector<HTMLElement>(".create-ref-chip")?.getAttribute("spellcheck")).toBe("false");
+
+    // 2. Typing ordinary characters into the live trailing Text node MUST NOT destroy the node (keeps Chromium spellcheck markers)
+    const trailingTextNode = editor.lastChild!;
+    expect(trailingTextNode.nodeType).toBe(Node.TEXT_NODE);
+    trailingTextNode.textContent = ". The camrea moves slowly";
+    setRichPromptSelection(editor, richPromptText(editor).length, richPromptText(editor).length);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(editor.lastChild).toBe(trailingTextNode);
+    expect(source.value).toBe("integrated_multimodal_description: [Shot 1] Use <Picture 1>. The camrea moves slowly");
+
+    // 3. Switching to Chinese prose automatically updates lang to zh-CN
+    edit(editor, "镜头从桌面缓慢推近，光线柔和自然。");
+    expect(editor.lang).toBe("zh-CN");
+    expect(source.lang).toBe("zh-CN");
   });
 });

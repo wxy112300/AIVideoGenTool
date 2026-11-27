@@ -163,6 +163,9 @@ type SettingsCopyKey =
   | "prompt.currentPreset"
   | "prompt.ruleHeader"
   | "prompt.h3Note"
+  | "prompt.skillsSummary"
+  | "prompt.skillsTriggerLabel"
+  | "prompt.skillsSharedLongVideo"
   | "prompt.autoVideoPresetTitle"
   | "prompt.autoVideoPresetDescription"
   | "prompt.autoVideoPresetSelection"
@@ -543,7 +546,10 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.restore": "恢复默认",
   "prompt.currentPreset": "当前编辑预设",
   "prompt.ruleHeader": "预设规则头",
-  "prompt.h3Note": "H3 参考标签、首尾帧关系、连续性及音视频格式始终保留。",
+  "prompt.h3Note": "此处内容即为实际发给扩写模型的风格指令；H3 官方格式、参考标签与下方按需触发的内置技能规则会自动配合生效。",
+  "prompt.skillsSummary": "内置自动技能规则",
+  "prompt.skillsTriggerLabel": "触发条件：",
+  "prompt.skillsSharedLongVideo": "长视频共享",
   "prompt.autoVideoPresetTitle": "无提示词视频预设",
   "prompt.autoVideoPresetDescription": "当 H3 Prompt 为空时，从参考画面设计动作、镜头和互动；与普通视频提示词预设分开。",
   "prompt.autoVideoPresetSelection": "默认起稿方向",
@@ -921,7 +927,10 @@ const zhTW: SettingsCopyCatalog = {
   "prompt.restore": "還原預設",
   "prompt.currentPreset": "目前編輯預設",
   "prompt.ruleHeader": "預設規則標頭",
-  "prompt.h3Note": "H3 參考標籤、首尾影格關係、連續性及音視訊格式始終保留。",
+  "prompt.h3Note": "此處內容即為實際傳給擴寫模型的風格指令；H3 官方格式、參考標籤與下方按需觸發的內建技能規則會自動配合生效。",
+  "prompt.skillsSummary": "內建自動技能規則",
+  "prompt.skillsTriggerLabel": "觸發條件：",
+  "prompt.skillsSharedLongVideo": "長影片共享",
   "prompt.autoVideoPresetTitle": "無提示詞影片預設",
   "prompt.autoVideoPresetDescription": "當 H3 Prompt 為空時，根據參考畫面設計動作、鏡頭和互動；與一般影片提示詞預設分開。",
   "prompt.autoVideoPresetSelection": "預設起稿方向",
@@ -1299,7 +1308,10 @@ const enUS: SettingsCopyCatalog = {
   "prompt.restore": "Restore defaults",
   "prompt.currentPreset": "Preset being edited",
   "prompt.ruleHeader": "Preset rule header",
-  "prompt.h3Note": "The H3 baseline preserves references, start/end frames, continuity and audiovisual format.",
+  "prompt.h3Note": "Sent verbatim as the style directive; H3 format, reference tags, and the on-demand built-in craft skills below apply alongside it.",
+  "prompt.skillsSummary": "Built-in Craft Skills",
+  "prompt.skillsTriggerLabel": "Triggers on: ",
+  "prompt.skillsSharedLongVideo": "Long Video",
   "prompt.autoVideoPresetTitle": "No-prompt video presets",
   "prompt.autoVideoPresetDescription": "When the H3 Prompt is blank, design motion, camera, and interaction from the reference media. This is separate from normal video prompt presets.",
   "prompt.autoVideoPresetSelection": "Default drafting direction",

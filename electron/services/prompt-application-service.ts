@@ -78,7 +78,7 @@ import type { StrataChatRequest } from "./strata-service.js";
 import type { StrataRuntimeOwner } from "./strata-runtime-owner.js";
 import { enhanceLongVideoWithStrata } from "./long-video-prompt.js";
 import { assertLongVideoPromptRequest } from "../../src/core/long-video/enhancement.js";
-import { isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
+import { isContinuumFl2vaModel, isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
 
 type PromptBackend = Exclude<ReturnType<typeof promptModelBackend>, null>;
 type PromptWorker = Promise<unknown>;
@@ -303,7 +303,7 @@ export class PromptApplicationService {
         : Boolean(request.imagePath && (request.imagePaths?.length ?? 1) === 1);
       const textOnly = !referenceModel && request.h3PromptMode === "T2VA" && !request.h3TimedGuideContext &&
         !request.imagePath && !request.imagePaths?.length;
-      if (promptBackend !== "strata" || request.mode !== "h3-vision" || (!referenceModel && request.modelId !== "minimax_h3_fl2va") ||
+      if (promptBackend !== "strata" || request.mode !== "h3-vision" || (!referenceModel && !isContinuumFl2vaModel(request.modelId)) ||
           (!textOnly && (request.h3PromptMode !== (referenceModel ? "R2V" : "I2VA") || !hasLongVideoImages)) ||
           request.extensionSource) throw new Error(this.message(settings, uiKeys.promptService.longVideoRoute));
     }

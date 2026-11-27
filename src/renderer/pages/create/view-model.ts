@@ -1,7 +1,7 @@
 import { isH3ImageModel } from "../../../core/minimax-h3-image-spec";
 import { activeH3TimedGuides, h3ReferenceTimedGuides, h3TimedGuideIssue, isH3TimedGuideConfigured, missingH3GuideReference } from "../../../core/h3-timed-guides";
 import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
-import { piH3AdapterInstalled, piH3DependencyBlockReason } from "../../../core/pi-h3";
+import { piH3AdapterInstalled, piH3DependencyBlockReason, piH3StepFallback } from "../../../core/pi-h3";
 import { H3_BASE_RESOLUTIONS, isCustomVideoResolution } from "../../../core/video-resolution";
 import { videoDurationLimitsForDraft } from "./helpers";
 import { imageModelOptionNote, localizeImageOptionLabel } from "../../shared/image-option-label";
@@ -884,7 +884,9 @@ export function buildVideoCreatePageViewModel(
     locale: state.settings.uiLocale
   });
   const turboEnabled = videoPolicy.turboEnabled;
-  const h3Steps = normalizeVideoSteps(draft.steps, videoPolicy);
+  const requestedSteps = normalizeVideoSteps(draft.steps, videoPolicy);
+  const piH3Continuum = piH3 && isLongVideoDraftActive(draft);
+  const h3Steps = (piH3 ? piH3StepFallback(environmentScan, requestedSteps, piH3Continuum) : undefined) ?? requestedSteps;
   const selectedTurboLora = draft.videoLoras.find((lora) =>
     (isH3TurboLoraId(lora.id) || isH3PddLoraId(lora.id)) &&
     videoLoraCompatibleWithModel(lora, draft.modelId)
@@ -1013,7 +1015,7 @@ export function buildVideoCreatePageViewModel(
     (profile) => profile.id === draft.modelId
   );
   const piH3StepsMissing = (steps: number) =>
-    piH3 && Boolean(environmentScan) && !piH3AdapterInstalled(selectedModelProfile, steps);
+    piH3 && Boolean(environmentScan) && !piH3AdapterInstalled(selectedModelProfile, steps, piH3Continuum);
   const continuumDependencyBlockReason = continuumDependencyBlockReasonFor(
     environmentScan,
     draft.modelId,
@@ -1090,7 +1092,7 @@ export function buildVideoCreatePageViewModel(
     r2vSlotsReady,
     turboCoreBlockReason,
     modelCoreBlockReason: modelCoreVersionBlockReason(draft.modelId, environmentScan?.comfyCompatibility.version, state.settings.uiLocale) ||
-      (piH3 ? piH3DependencyBlockReason(environmentScan, h3Steps, state.settings.uiLocale) : ""),
+      (piH3 ? piH3DependencyBlockReason(environmentScan, h3Steps, state.settings.uiLocale, piH3Continuum) : ""),
     turboLoraBlockReason,
     selectedLoraBlockReason
   });
@@ -1216,9 +1218,7 @@ export function buildVideoCreatePageViewModel(
     customResolution,
     outputWidth: outputDimensions(draft)[0],
     outputHeight: outputDimensions(draft)[1],
-    stepsOptionsMarkup: (piH3StepsMissing(h3Steps)
-      ? `<option value="" selected disabled hidden>${escapeHtml(t(uiKeys.create.options.piH3ChooseSteps))}</option>`
-      : "") + videoPolicy.steps.options.map((value) => {
+    stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
       const missing = piH3StepsMissing(value);
       const label = missing ? t(uiKeys.create.options.piH3AdapterMissing)
         : piH3 ? t(value === 2 ? uiKeys.create.options.fastStepsPreview : uiKeys.create.options.piH3QualitySteps)
@@ -1233,7 +1233,7 @@ export function buildVideoCreatePageViewModel(
           : value === Math.max(...videoPolicy.steps.options)
             ? t(uiKeys.create.options.balancedStepsPreview)
             : t(uiKeys.create.options.fastStepsPreview);
-      return `<option value="${value}" ${missing ? "disabled" : h3Steps === value ? "selected" : ""} data-note="${escapeHtml(label)}">${value} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`;
+      return `<option value="${value}" ${missing ? "disabled" : ""} ${h3Steps === value ? "selected" : ""} data-note="${escapeHtml(label)}">${value} ${t(uiKeys.create.videoSettings.stepsUnit)}</option>`;
     }).join(""),
     stepsTitle: piH3 ? t(uiKeys.create.options.piH3StepsTitle) : turboEnabled
       ? t(uiKeys.create.options.turboStepsTitle)

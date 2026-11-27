@@ -6,6 +6,7 @@ import type { Translate } from "../../../core/i18n";
 import type { CreatePageOptions, ImageEditPageViewModel } from "./page";
 import { paintRangeFill } from "../../shared/ui/runtime";
 import { icon, renderIcons } from "../../shared/icons";
+import { fieldLabelWithTip } from "../../shared/markup";
 
 const resolutionChoices = new WeakMap<HTMLElement, { modelId: string; custom: boolean }>();
 
@@ -27,7 +28,7 @@ export function renderImageOutput(vm: ImageEditPageViewModel, options: CreatePag
       <label class="settings-field create-span-2">${t(uiKeys.create.imageEdit.model)}<select id="image-edit-model">${vm.imageModelOptionsMarkup}</select></label>
       <label class="settings-field" ${capability.deterministic || isH3ImageModel(vm.draft.modelId) ? "hidden" : ""}>${t(uiKeys.create.imageEdit.quality)}<select id="image-edit-quality">${vm.imageQualityOptionsMarkup}</select></label>
       ${vm.imageAspectRatioVisible ? `<label class="settings-field">${t(uiKeys.create.imageEdit.outputAspectRatio)}<select id="image-edit-aspect-ratio">${vm.imageAspectRatioOptionsMarkup}</select></label>` : ""}
-      ${!vm.promptless && capability.supportsSeed !== false ? `<label class="settings-field create-span-2">${t(uiKeys.create.imageEdit.randomSeed)}<div class="seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${vm.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("dices")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>` : ""}
+      ${!vm.promptless && capability.supportsSeed !== false ? `<label class="settings-field create-span-2">${fieldLabelWithTip(t(uiKeys.create.imageEdit.randomSeed), t(uiKeys.create.imageEdit.randomPerImage))}<div class="seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${vm.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("dices")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>` : ""}
       ${vm.imageResolutionVisible ? `<div class="settings-field create-span-3 image-resolution-control"><div class="create-field-label"><span>${t(uiKeys.create.imageEdit.outputResolution)}</span><output data-image-output-dimensions></output></div>
         <select id="image-edit-resolution" hidden data-native-select>${vm.imageResolutionOptionsMarkup}</select>
         <div class="create-resolution-segment" data-ui-segmented="image-resolution" data-image-resolution-presets role="group" aria-label="${t(uiKeys.create.imageEdit.outputResolution)}"></div>

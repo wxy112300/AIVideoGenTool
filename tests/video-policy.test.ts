@@ -170,6 +170,27 @@ describe("video generation policy", () => {
     expect(generationPolicy.spectrum.allowed).toBe(true);
   });
 
+  it("keeps Spectrum off by default when Long Video (Continuum) mode is active", () => {
+    const installed = { installed: true, loaded: false, version: "0.2.16" };
+    const longVideoDraft = {
+      ...createDefaultDraft(),
+      spectrumMode: "off" as const,
+      spectrumModeUserSet: false,
+      longVideoEditor: {
+        key: "minimax_h3_fl2va:image",
+        active: true,
+        seconds: 30,
+        count: 3,
+        confirmed: true
+      }
+    };
+    expect(shouldEnableSpectrumByDefault(longVideoDraft, installed)).toBe(false);
+    expect(shouldEnableSpectrumByDefault({
+      ...longVideoDraft,
+      longVideoEditor: { ...longVideoDraft.longVideoEditor, active: false }
+    }, installed)).toBe(true);
+  });
+
   it("locks the Q3 GGUF profile to the 3080 starting steps and disables Spectrum", () => {
     const policy = resolveVideoGenerationPolicy({
       modelId: "minimax_h3_fl2va_q3_gguf",

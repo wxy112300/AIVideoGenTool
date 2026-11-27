@@ -78,7 +78,8 @@ describe("standalone Agent safety boundaries (no GPU inference)", () => {
     const plan = await agentLaunchPlan({ preferences,install:directory,packConfig:pack,token:"local-test",directory:path.join(directory,"agent"),
       guardScript:"guard.py",resources:{...resources,memoryAvailableBytes:48*GiB,commitAvailableBytes:80*GiB} });
     expect(plan.modelId).toBe(STRATA_Q4_MODEL_ID);
-    expect(plan.env).toMatchObject({ STRATA_HC_Q8_TC: "0", STRATA_HC_Q8_BF16TC: "0" });
+    expect(plan.env?.STRATA_HC_Q8_TC).toBeUndefined();
+    expect(plan.env?.STRATA_HC_Q8_BF16TC).toBeUndefined();
     expect(plan.resourcePlan?.residentBudgetGiB).toBeLessThan(32);
     expect(Boolean(plan.controlVector)).toBe(mode !== "off");
     expect(verify).toHaveBeenCalledTimes(mode === "off" ? 0 : 1);

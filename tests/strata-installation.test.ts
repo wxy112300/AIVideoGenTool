@@ -146,6 +146,8 @@ describe("Strata software installer", () => {
     expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
     const previous = await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8");
     await fs.writeFile(path.join(root, "keep.txt"), "user data");
+    // Simulate an installation missing the current DeepSeek component so the fresh download path runs.
+    await fs.rm(path.join(root, "engine-dsv41"), { recursive: true, force: true });
     runtime.download.mockImplementation(async (url, destination) => { await fs.writeFile(destination, url === STRATA_DSV41_URL ? "corrupt" : "fixture"); });
     const failed = await installStrataRuntime({ ...settings, promptModelId: STRATA_DEEPSEEK_MODEL_ID }, runtime);
     expect(failed.ok).toBe(false);
@@ -154,6 +156,34 @@ describe("Strata software installer", () => {
     expect(await fs.readFile(path.join(root, "lvs-strata-install.json"), "utf8")).toBe(previous);
     expect(await fs.readFile(path.join(root, "keep.txt"), "utf8")).toBe("user data");
     expect(await strataManagedReceipt(root)).toBe(true);
+  });
+  it("falls back to downloading DeepSeek into persistent cache when local verification fails, and preserves partial bytes on rollback", async () => {
+    const { folder, root, runtime } = await fixture(), settings = createDefaultSettings();
+    expect((await installStrataRuntime(settings, runtime)).ok).toBe(true);
+    const originalRun = runtime.run.getMockImplementation()!;
+    let firstVerify = true;
+    runtime.run.mockImplementation(async (exe, args, options) => {
+      if (firstVerify && args.some(arg => arg.includes("ec.verify_signature"))) {
+        firstVerify = false;
+        throw new Error("corrupt local engine-dsv41");
+      }
+      return originalRun(exe, args, options);
+    });
+    const originalDownload = runtime.download.getMockImplementation()!;
+    let cachedDeepSeekPath = "";
+    runtime.download.mockImplementation(async (url, destination, req, onProgress, onLog, totalBytes) => {
+      if (url === STRATA_DSV41_URL) {
+        cachedDeepSeekPath = destination;
+        await fs.writeFile(destination, "partial-dsv41");
+        throw new Error("network reset");
+      }
+      return originalDownload(url, destination, req, onProgress, onLog, totalBytes);
+    });
+    const failed = await installStrataRuntime(settings, runtime);
+    expect(failed.ok).toBe(false);
+    expect(failed.log).toContain("local copy verification failed");
+    expect(cachedDeepSeekPath).toContain(path.join(folder, "downloads"));
+    expect(await fs.readFile(cachedDeepSeekPath, "utf8")).toBe("partial-dsv41");
   });
   it("rejects a modified component manifest before replacing the current installation", async () => {
     const { root, runtime } = await fixture();
@@ -190,7 +220,7 @@ describe("Strata software installer", () => {
     expect(result.log).toContain("2/3，HTTP/1.1");
     expect(await strataManagedReceipt(root)).toBe(true);
   });
-  it.each(["0.2.13", "0.2.15", "0.2.17"])("upgrades a %s runtime through the same transaction and removes its old software", async previousVersion => {
+  it.each(["0.2.13", "0.2.15", "0.2.17", "0.2.20"])("upgrades a %s runtime through the same transaction and removes its old software", async previousVersion => {
     const { folder, root, runtime } = await fixture();
     expect((await installStrataRuntime(createDefaultSettings(), runtime)).ok).toBe(true);
     const previous = STRATA_RELEASES.find(item => item.version === previousVersion)!;
@@ -199,12 +229,14 @@ describe("Strata software installer", () => {
     runtime.download.mockClear();
     const result = await installStrataRuntime(createDefaultSettings(), runtime);
     expect(result.ok, result.log).toBe(true);
-    expect(strataInstalledRelease(root)?.version).toBe("0.2.20");
+    expect(strataInstalledRelease(root)?.version).toBe("0.2.22");
     expect(await fs.readFile(path.join(root, "settings.json"), "utf8")).toContain("user settings");
+    expect(await hasDeepSeekEngine(root, false)).toBe(true);
     expect(runtime.download.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining([
-      expect.stringContaining("/v0.2.20/strata-engine-0.1.66-"),
-      expect.stringContaining("/v0.2.13/strata-dsv41-0.1.59-")
+      expect.stringContaining("/v0.2.22/strata-engine-0.1.69-")
     ]));
+    expect(runtime.download.mock.calls.some(([url]) => url === STRATA_DSV41_URL)).toBe(false);
+    expect(result.log).toContain("reused verified local component");
     expect((await fs.readdir(folder)).some(name => /backup-|failed-|^\.install-/u.test(name))).toBe(false);
   });
   it.each(["revision", "missing-file"])("retains the installed runtime when DeepSeek compatibility source is invalid (%s)", async failure => {

@@ -1645,7 +1645,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const watchdogFailure = Boolean(vramStallWatchdogError) || error instanceof VramPressureStallError;
         const aborted = activeController.signal.aborted && !watchdogFailure;
         if ((task.taskType === "generation" || task.taskType === "extension") && task.longVideoPlan) {
-          logger.error("queue", "long-video-failed", safeLogErrorMessage(error), { taskId: task.id, aborted, ...errorLogMeta(error) });
+          const current = store.get().queue.find(item => item.id === task.id);
+          logger.error("queue", "long-video-failed", safeLogErrorMessage(error), {
+            taskId: task.id, promptId: current?.comfyPromptId, stage: current?.stage, aborted, ...errorLogMeta(error)
+          });
           await updateTask(task.id, { status: aborted ? "cancelled" : "failed", error: error instanceof Error ? error.message : String(error) });
           const stopped = await store.update(state => { state.queueRunning = false; });
           sendState(stopped);
@@ -1718,7 +1721,11 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     const cancellationOwnsRuntime = queueBeforeStop.queueLifecycle === "cancelling" ||
       queueBeforeStop.queueLifecycle === "cleaning";
     if (!cancellationOwnsRuntime) {
-      await sideEffects.stopRuntime(queueBeforeStop.settings);
+      if (queueBeforeStop.settings.keepComfyUiRunningAfterQueue) {
+        logger.info("queue", "queue-runtime-kept-running", "Keeping ComfyUI running after queue finished per user setting");
+      } else {
+        await sideEffects.stopRuntime(queueBeforeStop.settings);
+      }
     }
     const next = await store.update((state) => {
       // A continue action may arrive after the loop observes queueRunning=false

@@ -198,9 +198,10 @@ function rawCandidate(
 ): RawDialogueCandidate | null {
   const spokenText = text.trim();
   if (!spokenText) return null;
+  const clauseBefore = immediateDialogueClause(before, true);
   return {
     speakerHint: speakerHintFromContext(before),
-    language: dialogueLanguage(`${before}\n${text}`, spokenText, language),
+    language: dialogueLanguage(clauseBefore, spokenText, language),
     text: spokenText,
     vocalMode: vocalModeFromContext(`${before}\n${text}`),
     sourceKind,
@@ -280,7 +281,7 @@ export function extractH3DialogueLocks(sourcePrompt: string): H3DialogueLock[] {
     if (!isLikelyDialogue(before, after)) continue;
       const candidate = rawCandidate(
         match[2] ?? "",
-        languageFromContext(before) ?? languageFromContext(after) ?? "",
+        languageFromContext(directBefore) ?? languageFromContext(directAfter) ?? "",
         before,
       start,
       end,

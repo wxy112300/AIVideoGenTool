@@ -12,7 +12,7 @@ import {
 import { registerRendererEvents } from "../src/renderer/state-events";
 import { mountSettingsServiceController } from "../src/renderer/pages/settings/service-controller";
 import type { RendererContext } from "../src/renderer/contracts";
-import type { AppApi, AppState, ConnectionResult, EnvironmentScanResult } from "../src/types";
+import type { AppApi, AppState, ComfyRuntimeState, ConnectionResult, EnvironmentScanResult } from "../src/types";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -157,6 +157,11 @@ describe("renderer notifications", () => {
     let draftDirty = false;
     let imageDraftDirty = false;
     let onStateChanged: ((next: AppState) => void) | undefined;
+    let onRuntimeChanged: ((next: ComfyRuntimeState) => void) | undefined;
+    let runtime: ComfyRuntimeState = {
+      phase: "ready", ownership: "app", endpoint: "", message: "",
+      updatedAt: new Date(0).toISOString(), operationId: 1
+    };
     const subscribe = () => () => undefined;
     const studio = {
       onWindowCloseRequest: subscribe,
@@ -164,7 +169,10 @@ describe("renderer notifications", () => {
         onStateChanged = callback;
         return () => undefined;
       },
-      onComfyRuntimeStateChanged: subscribe,
+      onComfyRuntimeStateChanged: (callback: (next: ComfyRuntimeState) => void) => {
+        onRuntimeChanged = callback;
+        return subscribe();
+      },
       onPromptRuntimeStateChanged: subscribe,
       onQueueTaskProgress: subscribe,
       onHistoryMigrationProgress: subscribe,
@@ -183,11 +191,8 @@ describe("renderer notifications", () => {
       application: eventClient,
       t: (key, params) => params?.title ? `${key}:${params.title}` : key,
       getState: () => state,
-      getComfyRuntimeState: () => ({
-        phase: "unknown", ownership: "unknown", endpoint: "", message: "",
-        updatedAt: new Date(0).toISOString(), operationId: 0
-      }),
-      setComfyRuntimeState: vi.fn(),
+      getComfyRuntimeState: () => runtime,
+      setComfyRuntimeState: (next) => { runtime = next; },
       setPromptRuntimeState: vi.fn(),
       getPromptRuntimeState: () => createPromptRuntimeState(),
       getCreationMode: () => "video",
@@ -265,6 +270,12 @@ describe("renderer notifications", () => {
     expect(requestRender).not.toHaveBeenCalled();
     expect(state.imageDraft.promptVersions.map((version) => version.id)).toEqual(["local-prompt"]);
     expect(state.draft.promptVersions.map((version) => version.id)).toEqual(["local-video-prompt"]);
+    onRuntimeChanged?.({ ...runtime, phase: "stopping", operationId: 2 });
+    onRuntimeChanged?.({ ...runtime, phase: "stopped", ownership: "none", message: "Queue cleanup completed" });
+    expect(notify).toHaveBeenCalledTimes(2);
+    onRuntimeChanged?.({ ...runtime, phase: "ready", ownership: "app", operationId: 3 });
+    onRuntimeChanged?.({ ...runtime, phase: "stopped", ownership: "none", operationId: 4, message: "Process exited unexpectedly" });
+    expect(notify).toHaveBeenLastCalledWith("Process exited unexpectedly", { kind: "warning" });
     cleanup();
   });
 

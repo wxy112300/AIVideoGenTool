@@ -6,9 +6,9 @@ import {
 
 const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
   "minimax-h3-hmnsfw-extreme-realism-v3": {
-    "zh-CN": { name: "HMNSFW Extreme Realism · FL2VA v3", badge: "H3 FL2VA · NSFW", description: "用于 MiniMax H3 FL2VA INT8 的内容 LoRA，默认强度 0.8，无触发词。" },
-    "zh-TW": { name: "HMNSFW Extreme Realism · FL2VA v3", badge: "H3 FL2VA · NSFW", description: "適用於 MiniMax H3 FL2VA INT8 的內容 LoRA，預設強度 0.8，無觸發詞。" },
-    "en-US": { name: "HMNSFW Extreme Realism · FL2VA v3", badge: "H3 FL2VA · NSFW", description: "Content LoRA for MiniMax H3 FL2VA INT8 with strength 0.8 by default and no trigger word." }
+    "zh-CN": { name: "HMNSFW Extreme Realism v3", badge: "H3 FL2VA / R2V · NSFW", description: "用于 MiniMax H3 FL2VA 和 Ref2VA INT8 的内容 LoRA，默认强度 0.8，无触发词。" },
+    "zh-TW": { name: "HMNSFW Extreme Realism v3", badge: "H3 FL2VA / R2V · NSFW", description: "適用於 MiniMax H3 FL2VA 和 Ref2VA INT8 的內容 LoRA，預設強度 0.8，無觸發詞。" },
+    "en-US": { name: "HMNSFW Extreme Realism v3", badge: "H3 FL2VA / R2V · NSFW", description: "Content LoRA for MiniMax H3 FL2VA and Ref2VA INT8 with strength 0.8 by default and no trigger word." }
   },
   "minimax-h3-faceswap-ref2va-v1": {
     "zh-CN": { name: "MiniMax H3 FaceSwap · Ref2VA v1", badge: "H3 R2V · 视频换脸", description: "UntMods 的 H3 Ref2VA 换脸 LoRA。提供一段原视频和至少一张紧裁参考人脸，默认强度 1.0，执行时补齐 Faceswap；输出为重新生成的视频。" },

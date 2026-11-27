@@ -49,8 +49,8 @@ export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.7.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = COMFYUI_RECOMMENDED_VERSION;
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
-export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.6.4";
-export const H3_SLA_ATTENTION_REVISION = "cc944b5064d1b15fc77664c7138d9752bba66302";
+export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.6.5";
+export const H3_SLA_ATTENTION_REVISION = "0ad29e48adc45ca2d9d7cb2b6bdfa577130f6ee0";
 export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
 export const H3_MEMORY_RECOMMENDED_VERSION = "0.2.20";
 export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
@@ -75,7 +75,7 @@ type NodeVersionDefaults = Pick<
  * commit hash in Settings.
  */
 const nodeVersionDefaults: Readonly<Record<string, NodeVersionDefaults>> = {
-  "video-helper-suite": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.7.9", latestVersion: "1.7.9" },
+  "video-helper-suite": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.7.10", latestVersion: "1.7.10" },
   "comfyui-gguf": { versionMode: "release", releaseSource: "github-release", recommendedVersion: "2.0.0", latestVersion: "2.0.0" },
   kjnodes: { versionMode: "release", releaseSource: "github-release", recommendedVersion: "1.5.5", latestVersion: "1.5.5" },
   "ltx-video": { versionMode: "rolling", recommendedVersion: "", latestVersion: "" },
@@ -194,6 +194,13 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     "VHS_VideoInfoSource",
     "VHS_BatchManager"
   ],
+  compatibilityEvidence: [{
+    verifiedAt: "2026-11-27",
+    sourceUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/tree/775ae691ecbab6a6d09a2c186f95d130cf8a10d3",
+    commit: "775ae691ecbab6a6d09a2c186f95d130cf8a10d3",
+    note: "源码1.7.10（无GitHub Release），修复MP4 metadata双转义与播放兼容、新增H3输入格式、将VHS_Unbatch迁至comfy_api.v0_0_2.IO并补全step回退值；依赖声明不变。应用batch兼容补丁可干净作用于1.7.10源码（utils已原生兼容6元组），在ComfyUI 0.46.0隔离CPU进程注册40节点，五个现用VHS节点与VHS_Unbatch schema均通过；待本机手动更新后验证在线schema与实跑。",
+    checks: ["static"]
+  }],
   required: true
 }, {
   id: "ltx-video",
@@ -530,10 +537,16 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     description: "提供 H3SLAAttention 兼容 schema；现用 Turbo-SLA 的原生稀疏节点由应用自动配置。"
   }],
   compatibilityEvidence: [{
+    verifiedAt: "2026-11-27",
+    sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/0ad29e48adc45ca2d9d7cb2b6bdfa577130f6ee0",
+    commit: H3_SLA_ATTENTION_REVISION,
+    note: "固定源码1.6.5（无GitHub Release），修复根加载walker在未列包与同名模块上覆盖ComfyUI核心模块的问题，并修复Media Loader子目录查找与Vue/Nodes 2.0预览；SLA六个源文件与依赖声明未变。在ComfyUI 0.46.0隔离CPU进程导入注册18节点，H3SLAAttention及全部应用输入schema完整；应用仍用核心BlockSparseAttention与独立MMH3放大路径。待本机手动更新后验证在线schema与实跑。",
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-11-15",
     sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes/tree/cc944b5064d1b15fc77664c7138d9752bba66302",
     note: "固定源码1.6.4（无GitHub Release），相较1.6.2的变化集中于视频upsampler的IC重绘、放大及标志修复；SLA六个源文件与包加载入口未变，无新增声明依赖。选中核心c844cb6上隔离CPU导入注册18节点，H3SLAAttention存在；应用仍用核心BlockSparseAttention和独立MMH3放大路径，不自动接入新upsampler。未安装或GPU生成。",
-    commit: H3_SLA_ATTENTION_REVISION,
+    commit: "cc944b5064d1b15fc77664c7138d9752bba66302",
     checks: ["static"]
   }, {
     verifiedAt: "2026-11-13",

@@ -16,19 +16,24 @@ export function downloadFailure(error: unknown, t: Translate = createNativeTrans
       || (code === 22 && /(?:error:|HTTP\S*)\s*(?:408|429|500|502|503|504)\b/iu.test(raw)) };
 }
 
-/** Bounded GET retries. Each fresh curl reads the actual local offset; no nested --retry. */
+/** Bounded GET retries. Each fresh curl reads the actual local offset; no nested --retry.
+ * Progressing chunks reset the stagnant retry counter so large GitHub downloads survive
+ * transient CDN resets without forcing repeated manual restarts. */
 export async function downloadWithResume(input: {
   url: string; destination: string; totalBytes: number; extraArgs?: string[]; signal?: AbortSignal;
   run(args: string[], timeoutMs: number, onActivity?: (reset: (timeoutMs: number) => void) => void): Promise<unknown>;
   onProgress?: (bytes: number) => void; onLog?: (message: string) => void;
-  /** Isolated tests only; production uses a cancellable 1s/2s backoff. */
+  /** Isolated tests only; production uses a cancellable backoff. */
   wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }, t: Translate = createNativeTranslator(undefined).t): Promise<void> {
   if (!Number.isSafeInteger(input.totalBytes) || input.totalBytes <= 0) throw new Error(t(uiKeys.softwareDownload.invalidSize));
   const idleTimeoutMs = 600_000;
+  const maxStagnantAttempts = 3;
+  const maxTotalAttempts = 20;
   let deadline = Date.now() + idleTimeoutMs;
   let progressedBytes = -1;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  let stagnantAttempts = 0;
+  for (let attempt = 1; attempt <= maxTotalAttempts; attempt++) {
     input.signal?.throwIfAborted();
     const stat = await fs.lstat(input.destination).catch((error) => {
       if (error.code === "ENOENT") return null; throw error;
@@ -37,13 +42,14 @@ export async function downloadWithResume(input: {
     const offset = stat?.size ?? 0;
     if (progressedBytes < 0) progressedBytes = offset;
     else if (offset > progressedBytes) { progressedBytes = offset; deadline = Date.now() + idleTimeoutMs; }
+    const bytesBeforeAttempt = progressedBytes;
     input.onProgress?.(offset);
     if (offset === input.totalBytes) { input.onLog?.(t(uiKeys.softwareDownload.cacheComplete)); return; }
     const timeout = deadline - Date.now();
     if (timeout <= 0) throw new Error(t(uiKeys.softwareDownload.deadline));
     input.onLog?.(t(uiKeys.softwareDownload.attempt, { action: offset ? t(uiKeys.softwareDownload.resuming, { size: (offset / 1_000_000).toFixed(1) }) : t(uiKeys.softwareDownload.starting), attempt: attempt }));
-    const args = ["-q", "--fail", "--location", "--silent", "--show-error", "--connect-timeout", "20",
-      "--speed-limit", "1024", "--speed-time", "30", ...(input.extraArgs ?? []),
+    const args = ["-q", "--http1.1", "--fail", "--location", "--silent", "--show-error", "--connect-timeout", "20",
+      "--keepalive-time", "20", "--speed-limit", "1024", "--speed-time", "45", ...(input.extraArgs ?? []),
       "--continue-at", String(offset), "--output", input.destination, input.url];
     try {
       let resetRunTimeout: ((timeoutMs: number) => void) | undefined;
@@ -69,15 +75,18 @@ export async function downloadWithResume(input: {
         progressedBytes = latest.size;
         deadline = Date.now() + idleTimeoutMs;
       }
+      const madeProgress = progressedBytes > bytesBeforeAttempt;
+      stagnantAttempts = madeProgress ? 0 : stagnantAttempts + 1;
       const failure = downloadFailure(error, t);
       input.onLog?.(failure.detail);
-      if (!failure.retryable || attempt === 3 || Date.now() >= deadline) {
+      if (!failure.retryable || stagnantAttempts >= maxStagnantAttempts || attempt >= maxTotalAttempts || Date.now() >= deadline) {
         const rangeHint = failure.code === 33 ? t(uiKeys.softwareDownload.rangeRejected) : "";
         throw new Error(t(uiKeys.softwareDownload.transferFailed, { code: failure.code !== null ? t(uiKeys.softwareDownload.curlCode, { code: failure.code }) : "", detail: failure.detail, hint: rangeHint }));
       }
       input.onLog?.(t(uiKeys.softwareDownload.retrying));
-      if (input.wait) await input.wait(attempt * 1000, input.signal);
-      else await delay(attempt * 1000, undefined, { signal: input.signal });
+      const backoffMs = madeProgress ? 1500 : Math.min(8000, stagnantAttempts * 2000);
+      if (input.wait) await input.wait(backoffMs, input.signal);
+      else await delay(backoffMs, undefined, { signal: input.signal });
     }
   }
 }

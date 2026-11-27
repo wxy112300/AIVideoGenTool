@@ -31,7 +31,6 @@ interface H3ReferenceSlotsRenderOptions extends CreateFragmentRenderOptions {
   h3ReferenceRoleLabels: Record<H3ReferenceRole, string>;
   lockedFirstVideo?: boolean;
   showGuideTimes?: boolean;
-  allowEmptySlots?: boolean;
 }
 
 const imageEditPromptInstructions: Array<[string, string]> = [
@@ -81,12 +80,18 @@ export function renderH3ReferenceSlotsMarkup(
     typeCounts[slot.mediaType] += 1;
     referenceOrdinals.set(slot.id, typeCounts[slot.mediaType]);
   });
+  const hasLockedFirst = Boolean(
+    options.lockedFirstVideo && slots[0]?.mediaType === "video"
+  );
+  const movableCount = slots.length - (hasLockedFirst ? 1 : 0);
   return `
-    <div class="create-reference-list">${slots.map((slot, index) => `
-      <article class="create-reference-card ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}">
+    <div class="create-reference-list">${slots.map((slot, index) => {
+      const isLocked = Boolean(options.lockedFirstVideo && index === 0 && slot.mediaType === "video");
+      const tagLabel = `<${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}>`;
+      return `
+      <article class="create-reference-card ${isLocked ? "is-locked-source" : ""}" data-h3-slot="${escapeHtml(slot.id)}"${isLocked ? "" : " data-sortable-item"}>
         <div class="create-slot-heading ${options.showGuideTimes && slot.mediaType === "image" ? "has-guide-time" : ""}">
-          <span class="create-slot-number">${index + 1}</span><strong>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt;</strong><span class="create-slot-dimensions">${imageDimensionsSuffix(slot).replace(/^ · /u, "")}</span>
-          ${options.allowEmptySlots && !slot.mediaPath.trim() ? `<span class="create-caption" data-reference-incomplete>${t(uiKeys.create.guides.ignoredReference)}</span>` : ""}
+          ${!isLocked && movableCount > 1 ? `<button type="button" class="create-reference-grip" data-sortable-handle data-h3-slot-grip="${escapeHtml(slot.id)}" aria-keyshortcuts="ArrowUp ArrowDown" aria-label="${escapeHtml(tagLabel)} · ${t(uiKeys.create.editor.loraDrag)}" title="${t(uiKeys.create.editor.loraDrag)}">${icon("grip-vertical")}</button>` : ""}<span class="create-slot-number">${index + 1}</span><strong>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt;</strong><span class="create-slot-dimensions">${imageDimensionsSuffix(slot).replace(/^ · /u, "")}</span>
           ${options.showGuideTimes && slot.mediaType === "image"
             ? renderH3GuideTime(options, `Picture ${referenceOrdinals.get(slot.id)}`, slot.guideSeconds,
                 `id="h3-reference-guide-time-${escapeHtml(slot.id)}" data-h3-slot-guide-time="${escapeHtml(slot.id)}"`) : ""}
@@ -109,9 +114,10 @@ export function renderH3ReferenceSlotsMarkup(
             : `<button class="create-empty-slot" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}">
                 ${icon(slot.mediaType === "video" ? "video" : "image-plus")}<span>${t(slot.mediaType === "video" ? uiKeys.create.fragments.addReferenceVideo : uiKeys.create.fragments.addReferenceImage)}</span>
               </button>`}
-        <div class="create-slot-fields"><label><select aria-label="${t(uiKeys.create.fragments.referenceRole)}" data-h3-slot-role="${escapeHtml(slot.id)}" ${options.lockedFirstVideo && index === 0 && slot.mediaType === "video" ? "disabled" : ""}>${h3ReferenceSlotRoleOptions(slot.role, h3ReferenceRoleLabels)}</select></label>
+        <div class="create-slot-fields"><label><select aria-label="${t(uiKeys.create.fragments.referenceRole)}" data-h3-slot-role="${escapeHtml(slot.id)}" ${isLocked ? "disabled" : ""}>${h3ReferenceSlotRoleOptions(slot.role, h3ReferenceRoleLabels)}</select></label>
         <label><input aria-label="${t(uiKeys.create.fragments.note)}" data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="${t(uiKeys.create.fragments.notePlaceholder)}"></label></div>
-      </article>`).join("")}${slots.length < 12 ? `<button type="button" class="create-add-tile" id="${slots.length ? "add-h3-reference-slot" : "add-h3-reference-slot-empty"}" data-add-h3-slot>${icon("plus")}<span><strong>${t(slots.length ? uiKeys.create.addSlot : uiKeys.create.fragments.addFirstSlot)}</strong><small>${slots.length}/12 · ${t(uiKeys.create.mediaAddHint)}</small></span></button>` : ""}</div>`;
+      </article>`;
+    }).join("")}${slots.length < 12 ? `<button type="button" class="create-add-tile" id="${slots.length ? "add-h3-reference-slot" : "add-h3-reference-slot-empty"}" data-add-h3-slot>${icon("plus")}<span><strong>${t(slots.length ? uiKeys.create.addSlot : uiKeys.create.fragments.addFirstSlot)}</strong><small>${slots.length}/12 · ${t(uiKeys.create.mediaAddHint)}</small></span></button>` : ""}</div>`;
 }
 
 export function renderCreateModelOptions(

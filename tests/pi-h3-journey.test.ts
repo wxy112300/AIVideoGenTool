@@ -10,7 +10,7 @@ import { evaluateModelProfiles } from "../electron/services/environment";
 import { PI_H3_ADAPTERS, PI_H3_MODEL_ID, PI_H3_NODE_ID, PI_H3_WORKFLOW_FILENAME, minimaxH3Pi } from "../src/core/catalog/models/minimax_h3_pi/definition";
 import { renderWorkflow, validateApiWorkflow } from "../src/core/workflow";
 
-it("selects Pi-H3 in FL2VA and recovers the queue button when the selected adapter is installed", async () => {
+it("selects the installed Pi-H3 step in the draft and queues it without a manual step change", async () => {
   const journey = await createJourney();
   try {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -46,10 +46,10 @@ it("selects Pi-H3 in FL2VA and recovers the queue button when the selected adapt
     expect(option.parentElement).toBe(base.parentElement);
     journey.input("#model", PI_H3_MODEL_ID, "change");
     await vi.waitFor(() => expect(journey.state().draft.workflowPath).toBe(path.resolve("workflows", PI_H3_WORKFLOW_FILENAME)));
-    journey.input("#prompt-input", "A paper kite rises.");
     const stepsPicker = journey.element<HTMLSelectElement>("#steps");
-    expect(stepsPicker.value).toBe("");
-    expect(stepsPicker.selectedOptions[0]?.label).toBe("选择已安装的档位");
+    expect(Array.from(stepsPicker.options, option => option.value)).toEqual(["2", "4"]);
+    expect(stepsPicker.value).toBe("2");
+    expect(journey.state().draft.steps).toBe(2);
     expect(stepsPicker.querySelector<HTMLOptionElement>('option[value="4"]')).toMatchObject({
       disabled: true, dataset: { note: "缺少此档权重" }
     });
@@ -57,9 +57,9 @@ it("selects Pi-H3 in FL2VA and recovers the queue button when the selected adapt
       disabled: false, dataset: { note: "快速预览" }
     });
     expect(journey.element("[data-steps-help] .field-info-tip").textContent).toContain("4 步优先画质");
-    await vi.waitFor(() => expect(journey.element("#enqueue").dataset.enqueueBlockReason).toContain("4 步"));
+    journey.input("#prompt-input", "");
     expect(journey.element("#enqueue").disabled).toBe(true);
-    journey.input("#steps", "2", "change");
+    journey.input("#prompt-input", "A paper kite rises.");
     await vi.waitFor(() => expect(journey.element("#enqueue").disabled, journey.element("#enqueue").dataset.enqueueBlockReason).toBe(false));
     journey.element("#enqueue").click();
     await vi.waitFor(() => expect(journey.state().queue).toHaveLength(1));
@@ -70,10 +70,21 @@ it("selects Pi-H3 in FL2VA and recovers the queue button when the selected adapt
       .find(candidate => candidate.id === PI_H3_MODEL_ID)!;
     journey.scan.modelProfiles[journey.scan.modelProfiles.indexOf(profile)] = installed;
     journey.render();
+    expect(journey.element<HTMLSelectElement>("#steps").value).toBe("2");
     expect(journey.element<HTMLOptionElement>('#steps option[value="4"]')).toMatchObject({
       disabled: false, dataset: { note: "画质优先" }
     });
     journey.input("#steps", "4", "change");
+    expect(journey.state().draft.steps).toBe(4);
+    expect(journey.state().queue[0]?.steps).toBe(2);
+    journey.input("#steps", "2", "change");
+    const onlyFour = evaluateModelProfiles(components.map(component => component.expected)
+      .filter(filename => !filename.endsWith(PI_H3_ADAPTERS[2])))
+      .find(candidate => candidate.id === PI_H3_MODEL_ID)!;
+    journey.scan.modelProfiles[journey.scan.modelProfiles.indexOf(installed)] = onlyFour;
+    journey.render();
+    expect(journey.element<HTMLSelectElement>("#steps").value).toBe("4");
+    expect(journey.element<HTMLOptionElement>('#steps option[value="2"]').disabled).toBe(true);
     expect(journey.state().draft.steps).toBe(4);
     expect(journey.state().queue[0]?.steps).toBe(2);
 

@@ -482,7 +482,7 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     if (!h.root.querySelector("[data-pick-h3-slot]")) h.element("#add-h3-reference-slot-empty").click();
     await settle();
     h.input("#prompt-input", "A quiet street.");
-    expect(h.element("[data-reference-incomplete]").textContent).toContain("空槽");
+    expect(h.element(".create-slot-heading").textContent).not.toContain("空槽");
     expect(h.element("#enqueue").disabled).toBe(false);
     h.input("#prompt-input", "Move toward <Picture 1>.");
     expect(h.element("#enqueue").disabled).toBe(true);
@@ -519,6 +519,55 @@ describe("user journeys: actual Create DOM + coordinator + snapshot (synthetic p
     h.element("[data-remove-h3-slot]").click(); await settle();
     expect(h.state().draft.h3ReferenceSlots).toHaveLength(0);
     expect(h.state().queue[0]?.h3ReferenceSlots[0]?.id).toBe(slotId);
+  });
+
+  it("reorders R2V reference slots via sortable handle so Picture 2 becomes Picture 1", async () => {
+    const h = journey = await createJourney();
+    h.input("#model", "minimax_h3_ref2va", "change"); await settle();
+    if (!h.root.querySelector("[data-h3-slot]")) {
+      h.element("#add-h3-reference-slot-empty").click();
+      await settle();
+    }
+    expect(h.root.querySelectorAll("[data-h3-slot-grip]")).toHaveLength(0);
+    h.element("#add-h3-reference-slot").click();
+    await settle();
+    const initialSlots = h.state().draft.h3ReferenceSlots;
+    expect(initialSlots).toHaveLength(2);
+    const [firstId, secondId] = initialSlots.map((slot) => slot.id);
+    expect(h.root.querySelectorAll("[data-h3-slot-grip]")).toHaveLength(2);
+
+    const secondGrip = h.element<HTMLButtonElement>(`[data-h3-slot-grip="${secondId}"]`);
+    secondGrip.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
+    await settle();
+
+    expect(h.state().draft.h3ReferenceSlots.map((slot) => slot.id)).toEqual([secondId, firstId]);
+    const headings = Array.from(h.root.querySelectorAll<HTMLElement>(".create-reference-card")).map((card) => ({
+      id: card.dataset.h3Slot,
+      title: card.querySelector(".create-slot-heading > strong")?.textContent
+    }));
+    expect(headings).toEqual([
+      { id: secondId, title: "<Picture 1>" },
+      { id: firstId, title: "<Picture 2>" }
+    ]);
+
+    // Pointer drag shows the insertion indicator line on the target slot and clears it on drop.
+    const cards = Array.from(h.root.querySelectorAll<HTMLElement>(".create-reference-card"));
+    const list = h.element<HTMLElement>(".create-reference-list");
+    list.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 300, width: 300, height: 400, x: 0, y: 0, toJSON: () => ({}) });
+    cards[0]!.getBoundingClientRect = () => ({ top: 0, bottom: 180, left: 0, right: 300, width: 300, height: 180, x: 0, y: 0, toJSON: () => ({}) });
+    Object.defineProperty(cards[0]!, "offsetHeight", { value: 180, configurable: true });
+    cards[1]!.getBoundingClientRect = () => ({ top: 192, bottom: 372, left: 0, right: 300, width: 300, height: 180, x: 0, y: 192, toJSON: () => ({}) });
+    Object.defineProperty(cards[1]!, "offsetHeight", { value: 180, configurable: true });
+    const pointerEvent = (type: string, clientY: number) =>
+      Object.assign(new MouseEvent(type, { button: 0, clientY, bubbles: true, cancelable: true }), { pointerId: 1 });
+    const bottomGrip = h.element<HTMLButtonElement>(`[data-h3-slot-grip="${firstId}"]`);
+    bottomGrip.dispatchEvent(pointerEvent("pointerdown", 220));
+    list.dispatchEvent(pointerEvent("pointermove", 40));
+    expect(cards[0]!.dataset.sortDrop).toBe("before");
+    list.dispatchEvent(pointerEvent("pointerup", 40));
+    await settle();
+    expect(h.root.querySelector("[data-sort-drop]")).toBeNull();
+    expect(h.state().draft.h3ReferenceSlots.map((slot) => slot.id)).toEqual([firstId, secondId]);
   });
 
   it("appends dropped video and pasted image through the trailing R2V tile without replacing earlier Slots", async () => {

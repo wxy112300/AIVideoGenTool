@@ -6,6 +6,17 @@ import type { Translate } from "../../src/core/i18n.js";
 
 function extensionBoundaryContextFor(request: EnhanceRequest): string {
   const nativeStateContinuation = isH3NativeStateContinuationRequest(request);
+  const longVideoPrefix = request.longVideo?.layout.prefixChunks ?? 0;
+  if (nativeStateContinuation && longVideoPrefix > 0) {
+    return [
+      "Continuum Run extension — real tail-frame visual calibration:",
+      `Attachment 1 is the exact final rendered frame of accepted Chunk ${longVideoPrefix} from the existing Continuum Run.`,
+      "Inspect what H3 actually rendered in this frame (exact pose, screen position, proportions/scale, clothing, props, lighting, camera framing/height/angle, and background).",
+      "If any visual detail in the rendered frame differs slightly from the previous text prompt, trust the ACTUAL RENDERED FRAME as ground truth so the continuation stitches seamlessly without jumps or drift.",
+      `The sampler receives the preceding accepted Continuum latent state directly. Do NOT create <Picture N> or <Video N> labels for this boundary frame and do NOT add an image-alignment declaration.`,
+      `Begin the first new chunk (Chunk ${longVideoPrefix + 1}) with "Continuation of Chunk ${longVideoPrefix}." and immediately advance the next physical motion increment from this exact visual boundary rather than holding or replaying it.`
+    ].join(" ");
+  }
   const role = nativeStateContinuation
     ? "This image is a silent visual inspection aid for the native continuation boundary, not an H3 execution reference. The sampler receives the preceding JointAV latent state directly. The final prompt uses the T2VA field shape: do not create <Picture N> or <Video N> labels and do not add an image-alignment declaration."
     : request.h3PromptMode === "R2V"

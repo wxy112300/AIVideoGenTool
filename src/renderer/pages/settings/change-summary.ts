@@ -34,6 +34,7 @@ export function settingsChangeSummary(keys: readonly (keyof Settings)[], t: Tran
     ltxExtensionUnloadBetweenStages: s("sulphur.title"), ltxExtensionTimeoutMinutes: s("sulphur.timeout"),
     safeCancel: t(k.safeCancel), autoRetryFailedTasks: t(k.autoRetry), autoRetryCount: t(k.retryCount),
     vramStallWatchdogMinutes: t(k.vramStallWatchdog), queueIsolationMode: t(k.queueIsolationMode),
+    keepComfyUiRunningAfterQueue: t(k.keepComfyUiRunningAfterQueue),
     uiLocale: t(uiKeys.settings.localeTitle), promptLanguage: s("prompt.language"), promptCreativity: s("prompt.creativity"),
     defaultUpscaleModel: `${s("upscale.title")} · ${s("upscale.defaultModel")}`, upscaleTileMode: t(uiKeys.history.page.tileMode),
     upscaleFaceRestore: t(uiKeys.history.page.faceRestore), seedVr2Model: "SeedVR2", realEsrganModel: "Real-ESRGAN",

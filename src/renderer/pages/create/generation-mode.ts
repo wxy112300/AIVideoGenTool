@@ -5,19 +5,19 @@ import type { RendererContext } from "../../contracts";
 import { mountPromptInsertMenu } from "./insert-menu";
 import { insertPromptSnippet } from "./helpers";
 import { promptSnippetFor } from "../../prompt-packs";
-import { richPromptText } from "./rich-prompt";
+import { renderRichPromptHtml, richPromptSelection, richPromptText, setRichPromptSelection } from "./rich-prompt";
 import { estimatePromptTextTokens } from "../../../core/prompt-token-estimate";
 import { paintRangeFill } from "../../shared/ui/runtime";
 import type { Draft, H3PromptPreset } from "../../../types";
 import { createLongVideoLayout, proposeLongVideoExtension, suggestLongVideoChunks } from "../../../core/long-video/layout";
-import { createLongVideoScript, isScriptAllocation, relayoutLongVideoScript, reviewScriptPage, updateScriptPage, type LongVideoScript } from "../../../core/long-video/script";
+import { createLongVideoScript, deleteScriptPageVersion, editLongVideoScript, isScriptAllocation, relayoutLongVideoScript, reviewScriptPage, updateScriptPage, type LongVideoScript } from "../../../core/long-video/script";
 import { commitScriptText, scriptEditingText, stageScriptText } from "../../../core/long-video/script-buffers";
-import { applyLongVideoPromptResult, longVideoPromptRequest, parseLongVideoPromptResult, type LongVideoPromptResult, type LongVideoWritingOperation } from "../../../core/long-video/enhancement";
+import { applyLongVideoPromptResult, longVideoPromptRequest, longVideoPromptTargets, parseLongVideoPromptResult, type LongVideoPromptResult, type LongVideoWritingOperation } from "../../../core/long-video/enhancement";
 import { isLongVideoDraftActive } from "../../../core/long-video/capability";
 import { promptModelBackend } from "../../../core/prompt-models";
 import { activeH3TimedGuides, h3ReferenceTimedGuides } from "../../../core/h3-timed-guides";
 import { longVideoGuideCues, longVideoGuideIssue } from "../../../core/long-video/timed-guides";
-import { isContinuumReferenceModel } from "../../../core/long-video/group-workflow";
+import { isContinuumFl2vaModel, isContinuumReferenceModel } from "../../../core/long-video/group-workflow";
 
 interface PreviewState { key: string; active: boolean; seconds: number; count: number; confirmed: boolean; page: number; whole: boolean; texts: string[]; locks: boolean[]; writing?: string; preset?: string; nativeMode?: string; script?: LongVideoScript; }
 let clearSequence = 0;
@@ -28,7 +28,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   getDraft(): Draft | undefined;
   patchDraft(patch: Partial<Draft>): void;
   setEnhancing?(value: boolean): void;
-  context?: Pick<RendererContext, "enhancePrompt" | "getState" | "reportUserAction" | "application" | "requestRender" | "getRoute" | "events">;
+  context?: Pick<RendererContext, "root" | "enhancePrompt" | "getState" | "reportUserAction" | "application" | "requestRender" | "getRoute" | "events">;
 }): () => void {
   const select = root.querySelector<HTMLSelectElement>("#generation-mode");
   const card = select?.closest<HTMLElement>(".composer-motion-group");
@@ -135,7 +135,8 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   durationControls.append(durationTrack, durationNumber, seconds); previewDuration.append(durationControls);
   card.append(layout); renderIcons(layout);
   const editor = document.createElement("div"); editor.className = "create-long-editor"; editor.hidden = true;
-  editor.innerHTML = `<textarea rows="5" spellcheck="true"></textarea><div class="create-long-whole" hidden></div><div class="create-long-tabs"><select data-preview-writing></select><span class="create-tabs-separator"></span><button type="button" class="ghost icon-button create-page-arrow" data-preview-previous>${icon("chevron-left")}</button><div role="tablist"></div><button type="button" class="ghost icon-button create-page-arrow" data-preview-next>${icon("chevron-right")}</button><button type="button" class="ghost icon-button" data-preview-lock></button><span class="create-tabs-separator"></span><div class="create-script-view"><button type="button" class="ghost icon-button" data-preview-pages>${icon("panels-top-left")}</button><button type="button" class="ghost icon-button" data-preview-whole>${icon("scroll-text")}</button></div></div>`;
+  editor.innerHTML = `<div class="create-long-outline-ref" data-preview-outline-ref hidden></div><textarea rows="5" spellcheck="true"></textarea><div class="create-long-whole" hidden></div><div class="create-long-tabs"><select data-preview-writing></select><span class="create-tabs-separator"></span><button type="button" class="ghost icon-button create-page-arrow" data-preview-previous>${icon("chevron-left")}</button><div role="tablist"></div><button type="button" class="ghost icon-button create-page-arrow" data-preview-next>${icon("chevron-right")}</button><button type="button" class="ghost icon-button" data-preview-lock></button><span class="create-tabs-separator"></span><div class="create-script-view"><button type="button" class="ghost icon-button" data-preview-pages>${icon("panels-top-left")}</button><button type="button" class="ghost icon-button" data-preview-whole>${icon("scroll-text")}</button></div></div>`;
+  const outlineRef = editor.querySelector<HTMLElement>("[data-preview-outline-ref]")!;
   editor.querySelector<HTMLTextAreaElement>("textarea")!.setAttribute("aria-label", t(uiKeys.create.promptTitle));
   editor.querySelector("[data-preview-lock]")!.setAttribute("aria-label", t(uiKeys.create.editor.lock));
   editor.querySelector("[data-preview-whole]")!.textContent = t(uiKeys.create.editor.whole);
@@ -199,26 +200,45 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   const enhancementBusy = () => enhancing || nativeEnhance?.getAttribute("aria-busy") === "true";
   let enhancing = false;
   const wholeEnhancement = () => state.page === 0 || state.whole || state.writing === "automatic";
-  const enhancementTargets = () => wholeEnhancement()
-    ? pages().slice(1).filter(p => !p.locked)
-    : pages().slice(state.page, state.page + 1).filter(p => !p.locked);
+  const pendingExpansion = () => {
+    const segments = state.script?.segments ?? [];
+    if (state.script?.pendingExpansion) return segments.filter(p => state.script!.pendingExpansion!.includes(p.id)).map(p => p.id);
+    // Recognize drafts left by the older two-step writer before it tracked remaining pages.
+    return segments.some(p => !isScriptAllocation(p) && p.versions.some(v => v.id === p.activeVersionId && v.source === "model"))
+      ? segments.filter(p => !p.locked && isScriptAllocation(p)).map(p => p.id) : [];
+  };
+  const enhancementTargets = () => {
+    if (!wholeEnhancement()) return pages().slice(state.page, state.page + 1).filter(p => !p.locked);
+    const pending = pendingExpansion();
+    return pages().slice(1).filter(p => !p.locked && (!pending.length || pending.includes(p.id)));
+  };
   const preparedTargets = () => enhancementTargets().every(page => scriptEditingText(state.script!, page).trim());
   const referenceIdentity = (draft: Draft) => JSON.stringify([draft.modelId, draft.inputMode, draft.startImagePath,
-    draft.endImagePath, activeH3TimedGuides(draft)?.slots, ...(isContinuumReferenceModel(draft.modelId)
+    draft.endImagePath, activeH3TimedGuides(draft)?.slots,
+    ...(draft.inputMode === "video" ? [draft.sourceVideoPath, draft.longVideoRunSource?.receipt.revision_id] : []),
+    ...(isContinuumReferenceModel(draft.modelId)
       ? [draft.h3ReferenceSlots, h3ReferenceTimedGuides(draft)] : [])]);
   previewActions.append(allocate, preset, enhance); root.querySelector(".create-prompt-toolbar")!.append(previewActions);
   const version = root.querySelector<HTMLElement>(".composer-heading-main > .muted"); const originalVersion = version?.textContent;
   const versionButtons = [...root.querySelectorAll<HTMLButtonElement>("#prompt-prev, #prompt-next, #clear-prompt")].map(button => ({ button, disabled: button.disabled }));
+  const pageDotState = (index: number): "empty" | "outline" | "detail" => {
+    const content = state.texts[index]?.trim();
+    if (!content) return "empty";
+    const page = pages()[index];
+    return index > 0 && page && isScriptAllocation(page) ? "outline" : "detail";
+  };
   const countText = () => {
     counter.textContent = `${estimatePromptTextTokens(state.whole ? state.texts.slice(0, state.count + 1).join("\n") : state.texts[state.page] ?? "")} tokens`;
-    editor.querySelectorAll<HTMLElement>(".create-page-dot").forEach((dot, index) => { dot.dataset.state = state.texts[index]?.trim() ? "detail" : "empty"; });
+    editor.querySelectorAll<HTMLElement>('[role="tablist"] .create-page-dot').forEach((dot, index) => { dot.dataset.state = pageDotState(index); });
+    editor.querySelectorAll<HTMLElement>(".create-whole-block .create-page-dot").forEach((dot, index) => { dot.dataset.state = pageDotState(index); });
   };
   const paintVersions = () => {
     const page = pages()[state.page];
     const index = page?.versions.findIndex(v => v.id === page.activeVersionId) ?? 0;
     versionButtons.forEach(({ button, disabled }) => {
       button.disabled = !state.active ? disabled : !state.confirmed || state.whole || !page ||
-        (button.id === "prompt-prev" ? index <= 0 : button.id === "prompt-next" ? index >= page.versions.length - 1 : Boolean(state.locks[state.page]));
+        (button.id === "prompt-prev" ? index <= 0 : button.id === "prompt-next" ? index >= page.versions.length - 1 :
+          page.locked || (page.versions.length === 1 && !state.texts[state.page]));
     });
     if (state.active && version) version.textContent = page ? `${index + 1} / ${page.versions.length}` : "1 / 1";
   };
@@ -246,12 +266,17 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       button.innerHTML = `<span class="create-page-dot"></span><span></span>${state.locks[index] ? icon("lock") : ""}`;
       button.children[1]!.textContent = index === 0 ? t(uiKeys.create.editor.global) : String(index);
       button.title = index === 0 ? `${state.seconds}s · ${state.count}` : `${((index-1)*chunkSeconds).toFixed(1)}–${(index*chunkSeconds).toFixed(1)}s`;
-      button.disabled = !state.confirmed || state.whole; button.addEventListener("click", () => {
-        commit(); state.page = index; save(); paint();
+      button.disabled = !state.confirmed; button.addEventListener("click", () => {
+        commit(); state.whole = false; state.page = index; save(); paint();
         tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus({ preventScroll: true });
       }, { signal }); tabs.append(button);
     }
-    text.dataset.richHistoryKey = pages()[state.page]?.id ?? String(state.page);
+    const activePage = pages()[state.page];
+    const activeOutline = state.page > 0 && activePage && !isScriptAllocation(activePage) ? activePage.outline.trim() : "";
+    const showOutlineRef = Boolean(!state.whole && activeOutline && activeOutline !== (state.texts[state.page] ?? "").trim());
+    outlineRef.hidden = !showOutlineRef;
+    if (showOutlineRef && outlineRef.textContent !== activeOutline) outlineRef.textContent = activeOutline;
+    text.dataset.richHistoryKey = activePage?.id ?? String(state.page);
     text.hidden = state.whole;
     if (text.value !== (state.texts[state.page] ?? "")) text.value = state.texts[state.page] ?? "";
     text.disabled = !state.confirmed; text.readOnly = Boolean(state.locks[state.page]);
@@ -269,24 +294,71 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     if (whole.children.length !== state.count + 1) {
       whole.replaceChildren();
       for (let index = 0; index <= state.count; index++) {
-        const block = document.createElement("div"), label = document.createElement("code"), field = document.createElement("p");
-        block.className = "create-whole-block"; label.textContent = index === 0 ? t(uiKeys.create.editor.global) : `[Chunk ${index}]`;
+        const block = document.createElement("div"), head = document.createElement("div"), headRow = document.createElement("div");
+        const dot = document.createElement("span"), label = document.createElement("code"), time = document.createElement("span");
+        const outlineEl = document.createElement("div"), field = document.createElement("p");
+        block.className = "create-whole-block"; head.className = "create-whole-head"; headRow.className = "create-whole-head-row";
+        dot.className = "create-page-dot"; time.className = "create-whole-time"; outlineEl.className = "create-whole-outline"; outlineEl.hidden = true;
+        label.textContent = index === 0 ? t(uiKeys.create.editor.global) : `[Chunk ${index}]`;
         if (index > 1) {
           const separator = document.createElement("code");
           separator.className = "create-whole-divider";
           separator.textContent = "---";
           block.append(separator);
         }
+        headRow.append(dot, label);
+        head.append(headRow, time);
         field.dataset.previewWholePage = String(index); field.setAttribute("role", "textbox"); field.setAttribute("aria-multiline", "true"); field.setAttribute("aria-label", label.textContent);
-        field.addEventListener("input", () => { editText(index, richPromptText(field)); if (state.page === index) text.value = state.texts[index]!; countText(); paintWritingActions(); }, { signal });
-        block.append(label, field); whole.append(block);
+        let wholeComposing = false;
+        const paintWholeRich = (value: string) => {
+          if (wholeComposing) return;
+          const focused = document.activeElement === field;
+          const selection = focused ? richPromptSelection(field) : null;
+          field.innerHTML = renderRichPromptHtml(value);
+          field.dataset.richText = value;
+          if (focused && selection) setRichPromptSelection(field, selection[0], selection[1]);
+        };
+        field.addEventListener("compositionstart", () => { wholeComposing = true; }, { signal });
+        field.addEventListener("compositionend", () => {
+          wholeComposing = false;
+          const current = richPromptText(field);
+          editText(index, current);
+          if (state.page === index) text.value = state.texts[index]!;
+          paintWholeRich(current);
+          countText(); paintWritingActions();
+        }, { signal });
+        field.addEventListener("input", () => {
+          const current = richPromptText(field);
+          editText(index, current);
+          if (state.page === index) text.value = state.texts[index]!;
+          if (!wholeComposing) paintWholeRich(current);
+          countText(); paintWritingActions();
+        }, { signal });
+        block.append(head, outlineEl, field); whole.append(block);
       }
     }
     for (const [index, block] of [...whole.children].entries()) {
       const field = block.querySelector<HTMLElement>("p")!;
+      const time = block.querySelector<HTMLElement>(".create-whole-time");
+      if (time) time.textContent = index === 0 ? `${state.seconds}s` : `${((index - 1) * chunkSeconds).toFixed(0)}–${(index * chunkSeconds).toFixed(0)}s`;
+      const outlineEl = block.querySelector<HTMLElement>(".create-whole-outline");
+      const page = pages()[index];
+      const outline = index > 0 && page && !isScriptAllocation(page) ? page.outline.trim() : "";
+      const showWholeOutline = Boolean(outline && outline !== (state.texts[index] ?? "").trim());
+      if (outlineEl) {
+        outlineEl.hidden = !showWholeOutline;
+        if (showWholeOutline && outlineEl.textContent !== outline) outlineEl.textContent = outline;
+      }
       const editable = state.confirmed && !state.locks[index]; field.contentEditable = editable ? "plaintext-only" : "false";
       field.setAttribute("aria-readonly", String(!editable)); field.tabIndex = editable ? 0 : -1;
-      if (field.textContent !== (state.texts[index] ?? "")) field.textContent = state.texts[index] ?? "";
+      const expected = state.texts[index] ?? "";
+      if (field.dataset.richText !== expected || richPromptText(field) !== expected) {
+        const focused = document.activeElement === field;
+        const selection = focused ? richPromptSelection(field) : null;
+        field.innerHTML = renderRichPromptHtml(expected);
+        field.dataset.richText = expected;
+        if (focused && selection) setRichPromptSelection(field, selection[0], selection[1]);
+      }
       block.toggleAttribute("data-locked", Boolean(state.locks[index]));
     }
     insert.disabled = !state.confirmed || state.whole || Boolean(state.locks[state.page]);
@@ -299,24 +371,29 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   function paintWritingActions() {
     const appState = persistence.context?.getState();
     const draft = persistence.getDraft();
-    const supported = draft?.inputMode === "image" &&
+    const runExtend = draft?.inputMode === "video" && draft.modelId === "minimax_h3_continuum" &&
+      Boolean(draft.longVideoRunSource && draft.sourceVideoPath.trim());
+    const supported = (runExtend || (draft?.inputMode === "image" &&
       (isContinuumReferenceModel(draft.modelId)
         ? draft.h3ReferenceSlots.some(slot => slot.mediaType === "image" && slot.mediaPath.trim()) &&
           !draft.h3ReferenceSlots.some(slot => slot.mediaType === "video" && slot.mediaPath.trim())
-        : draft.modelId === "minimax_h3_fl2va") &&
+        : isContinuumFl2vaModel(draft.modelId)))) &&
       appState && promptModelBackend(appState.settings.promptModelId) === "strata";
     const busy = enhancementBusy();
     const ready = Boolean(supported && state.confirmed && state.script && !appState?.queueRunning);
     const canAllocate = pages().slice(1).some(page => !page.locked) && state.texts.some(value => value.trim());
-    const awaitingAllocation = enhancementTargets().some(isScriptAllocation) && !preparedTargets();
+    const targets = enhancementTargets();
+    const nextPending = targets.find(page => pendingExpansion().includes(page.id));
+    const awaitingAllocation = !nextPending && targets.some(isScriptAllocation) && !preparedTargets();
     allocate.disabled = busy || !ready || !canAllocate;
     allocate.title = ready ? canAllocate ? "" : t(uiKeys.create.editor.allocateStoryInput) : t(uiKeys.create.editor.longEnhanceRequirement);
-    enhance.disabled = !busy && (!ready || enhancementTargets().length === 0 || awaitingAllocation);
+    enhance.disabled = !busy && (!ready || targets.length === 0 || awaitingAllocation);
     enhance.title = busy ? t(uiKeys.create.promptProgress.cancel) : !supported ? t(uiKeys.create.editor.longEnhanceRequirement)
       : awaitingAllocation ? t(uiKeys.create.editor.allocateStoryInput) : "";
     enhance.setAttribute("aria-busy", String(busy));
     const progressLabel = nativeEnhance?.getAttribute("aria-busy") === "true" ? nativeEnhance.querySelector("[data-prompt-progress-label]")?.textContent : undefined;
-    enhance.innerHTML = `${icon(busy ? "x" : "sparkles")}<span>${busy ? progressLabel || t(uiKeys.create.promptProgress.cancel) : t(wholeEnhancement()
+    enhance.innerHTML = `${icon(busy ? "x" : "sparkles")}<span>${busy ? progressLabel || t(uiKeys.create.promptProgress.cancel) : nextPending
+      ? t(uiKeys.create.editor.resumeExpansion, { segment: pages().indexOf(nextPending) }) : t(wholeEnhancement()
       ? preparedTargets() || awaitingAllocation ? uiKeys.create.editor.expandWhole : uiKeys.create.editor.allocateAndExpand
       : uiKeys.create.editor.enhancePage)}</span>`;
     renderIcons(previewActions);
@@ -336,22 +413,44 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
     if (enhancementBusy()) { await persistence.context?.application.cancelPrompt(); persistence.setEnhancing?.(false); persistence.context?.requestRender(); return; }
     if ((operation === "allocate" ? allocate.disabled : enhance.disabled) || !persistence.context) return;
     let unsubscribe: (() => void) | undefined;
+    let requestedPageIds: string[] = [];
+    let writingScriptId: string | undefined;
+    let singlePageId: string | undefined;
+    const completed = new Set<string>();
     try {
       commit();
       const draft = persistence.getDraft(); if (!draft || !state.script) return;
       const target = operation === "allocate" || wholeEnhancement() ? undefined : pages()[state.page]?.id;
-      const request = longVideoPromptRequest(state.script, target, operation ?? (preparedTargets() ? "expand" : undefined));
+      const pending = pendingExpansion();
+      const subset = operation !== "allocate" && !target && pending.length ? enhancementTargets().map(p => p.id) : undefined;
+      const request = longVideoPromptRequest(state.script, target, operation ?? (preparedTargets() ? "expand" : undefined), subset);
       const guideEditor = activeH3TimedGuides(draft);
-      const referenceModel = isContinuumReferenceModel(draft.modelId);
-      const slots = guideEditor?.slots ?? h3ReferenceTimedGuides(draft);
-      const guideIssue = (guideEditor || slots.length) && longVideoGuideIssue(slots, request.layout);
+      const runExtend = draft.inputMode === "video" && draft.modelId === "minimax_h3_continuum" &&
+        Boolean(draft.longVideoRunSource && draft.sourceVideoPath.trim());
+      const referenceModel = !runExtend && isContinuumReferenceModel(draft.modelId);
+      const slots = runExtend ? [] : guideEditor?.slots ?? h3ReferenceTimedGuides(draft);
+      const guideIssue = !runExtend && (guideEditor || slots.length) && longVideoGuideIssue(slots, request.layout);
       if (guideIssue) throw new Error(t(uiKeys.create.guides[guideIssue]));
       const cues = slots.length ? longVideoGuideCues(slots, request.layout) : undefined;
       const referenceImages = draft.h3ReferenceSlots.filter(slot => slot.mediaType === "image");
-      const imagePaths = referenceModel ? [...new Set(referenceImages.map(slot => slot.mediaPath).filter(path => path.trim()))]
+      const filledReferenceCount = referenceImages.filter(slot => slot.mediaPath.trim()).length;
+      const imagePaths = runExtend ? []
+        : referenceModel ? [...new Set(referenceImages.map(slot => slot.mediaPath).filter(path => path.trim()))]
         : guideEditor ? [...new Set((cues ?? []).map(guide => guide.mediaPath))] : [draft.startImagePath, draft.endImagePath].filter(Boolean);
-      const referenceContext = referenceModel ? [
+      const acceptedPrompts = runExtend ? draft.longVideoRunSource!.profile.prompts : [];
+      const referenceContext = runExtend ? [
+        `Existing accepted Continuum Run (${acceptedPrompts.length} accepted chunks, ${draft.longVideoRunSource!.profile.chunkSeconds}s each).`,
+        "PREVIOUS ACCEPTED CHUNKS (frozen, already rendered):",
+        ...acceptedPrompts.map((item, idx) => {
+          const isFinal = idx === acceptedPrompts.length - 1;
+          const excerpt = isFinal ? item.slice(0, 1800) : item.slice(0, 500);
+          return `[Accepted Chunk ${idx + 1}] ${excerpt}`;
+        })
+      ].join("\n") : referenceModel ? [
         "Each attached Picture is a persistent appearance or identity reference. Keep its Picture number across all segments. A timed reference also guides composition at its designated point.",
+        ...(filledReferenceCount >= 2 ? [
+          "Only cite each <Picture N> (or @RN) in chunks where that reference actually appears; Continuum V3.9 routes references per chunk automatically so absent subjects do not crowd other chunks."
+        ] : []),
         ...referenceImages.flatMap((slot, index) => slot.mediaPath.trim()
           ? [`Attachment ${imagePaths.indexOf(slot.mediaPath) + 1} = <Picture ${index + 1}> (${slot.role})${slot.note ? `: ${slot.note}` : ""}.`] : []),
         ...(cues ?? []).map(guide => `<Picture ${guide.picture}> anchors film ${(guide.frame / 24).toFixed(3)}s${guide.segment ? `, segment ${guide.segment} around ${guide.localSeconds!.toFixed(3)}s` : ""}.`)
@@ -365,7 +464,8 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       const reference = referenceIdentity(draft);
       const liveScript = () => {
         const current = persistence.getDraft();
-        if (!current || !isLongVideoDraftActive(current) || referenceIdentity(current) !== reference || !current.longVideoScript) {
+        if (!current || !isLongVideoDraftActive(current) || !current.longVideoEditor?.confirmed ||
+            referenceIdentity(current) !== reference || current.longVideoScript?.brief.id !== request.scriptId) {
           throw new Error(t(uiKeys.create.editor.enhanceStale));
         }
         return current.longVideoScript;
@@ -385,46 +485,103 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
         if (focusedTab) editor.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
         sync();
       };
-      const completed = new Set<string>();
-      let expected = request;
+      requestedPageIds = longVideoPromptTargets(request).map(page => page.pageId);
+      writingScriptId = request.scriptId;
+      singlePageId = request.targetPageId;
+      let expectedRevision = request.revision;
       let adoptionError: unknown;
-      const adoptSegment = (segment: LongVideoPromptResult["segments"][number]) => {
+      let receivedPlan = false;
+      const adoptSegment = (segment: LongVideoPromptResult["segments"][number], stage?: "allocation") => {
         if (completed.has(segment.pageId)) return;
-        if (!request.segments.some(page => page.pageId === segment.pageId && !page.locked)
-          || (request.targetPageId && request.targetPageId !== segment.pageId)) throw new Error(t(uiKeys.create.editor.enhanceStale));
+        if (!requestedPageIds.includes(segment.pageId)) throw new Error(t(uiKeys.create.editor.enhanceStale));
         const script = liveScript();
-        if (JSON.stringify(longVideoPromptRequest(script, request.targetPageId, request.operation)) !== JSON.stringify(expected)) {
+        if (script.revision !== expectedRevision) {
           throw new Error(t(uiKeys.create.editor.enhanceStale));
         }
-        const targeted = longVideoPromptRequest(script, segment.pageId, "expand");
-        const next = applyLongVideoPromptResult(script, targeted, JSON.stringify({
+        const targeted = longVideoPromptRequest(script, segment.pageId, stage ? undefined : "expand");
+        const rawSegment = JSON.stringify({
           schemaVersion: 1, scriptId: targeted.scriptId, revision: targeted.revision, segments: [segment]
-        }), id);
-        expected = longVideoPromptRequest(next, request.targetPageId, request.operation);
-        completed.add(segment.pageId);
+        });
+        let next: LongVideoScript;
+        if (stage) {
+          const [drafted] = parseLongVideoPromptResult(rawSegment, targeted).segments;
+          next = editLongVideoScript(script, [{ pageId: drafted!.pageId, text: drafted!.text, stage }], script.revision, "model", id);
+          next.segments.find(page => page.id === drafted!.pageId)!.outline = drafted!.outline;
+          receivedPlan = true;
+        } else {
+          next = applyLongVideoPromptResult(script, targeted, rawSegment, id);
+          completed.add(segment.pageId);
+          next.pendingExpansion = script.pendingExpansion?.filter(pageId => pageId !== segment.pageId);
+          if (!next.pendingExpansion?.length) delete next.pendingExpansion;
+        }
+        expectedRevision = next.revision;
         presentResult(next);
       };
-      if (request.operation === "expand") {
+      if (request.operation !== "allocate") {
         unsubscribe = persistence.context.events?.onPromptProgress?.(({ longVideoPage }) => {
           if (adoptionError || !longVideoPage || longVideoPage.scriptId !== request.scriptId || longVideoPage.revision !== request.revision) return;
-          try { adoptSegment(longVideoPage.segment); }
+          try { adoptSegment(longVideoPage.segment, longVideoPage.stage); }
           catch (error) { adoptionError = error; }
         });
       }
       enhancing = true; persistence.setEnhancing?.(true); paint();
+      if (request.operation !== "allocate") {
+        presentResult({ ...liveScript(), pendingExpansion: [...new Set([...pending, ...requestedPageIds])] });
+      }
       persistence.context.reportUserAction("long-video-enhance", { chunks: request.layout.chunks, target: request.targetPageId ?? "whole", operation: request.operation ?? "automatic" });
       const raw = await persistence.context.enhancePrompt({ prompt: request.brief.text, modelId: draft.modelId,
-        mode: "h3-vision", origin: "image-to-video", h3PromptMode: referenceModel ? "R2V" : imagePaths.length ? "I2VA" : "T2VA",
+        mode: "h3-vision", origin: runExtend ? "video-extension" : "image-to-video",
+        h3PromptMode: runExtend ? "T2VA" : referenceModel ? "R2V" : imagePaths.length ? "I2VA" : "T2VA",
         h3DurationSeconds: request.layout.chunkSeconds,
         h3PromptPreset: (preset.value || "detailed-cinematic") as H3PromptPreset, imagePath: imagePaths[0],
-        imagePaths, longVideo: request, referenceContext, ...(cues?.length ? { h3TimedGuideContext: true } : {}) });
+        imagePaths, longVideo: request, referenceContext,
+        ...(runExtend ? { extensionSource: { filePath: draft.sourceVideoPath, trimStartSeconds: draft.trimStartSeconds, trimEndSeconds: draft.trimEndSeconds } } : {}),
+        ...(cues?.length ? { h3TimedGuideContext: true } : {}) });
       if (adoptionError) throw adoptionError;
-      if (request.operation === "expand") {
+      if (request.operation === "expand" || receivedPlan || completed.size) {
         for (const segment of parseLongVideoPromptResult(raw, request).segments) adoptSegment(segment);
-      } else presentResult(applyLongVideoPromptResult(liveScript(), request, raw, id));
+      } else {
+        const next = applyLongVideoPromptResult(liveScript(), request, raw, id);
+        if (request.operation === "allocate") {
+          delete next.pendingExpansion;
+          if (!signal.aborted && state.page === 0) next.view = "whole";
+        } else {
+          next.pendingExpansion = next.pendingExpansion?.filter(pageId => !requestedPageIds.includes(pageId));
+          if (!next.pendingExpansion?.length) delete next.pendingExpansion;
+        }
+        presentResult(next);
+      }
       if (!signal.aborted) text.dispatchEvent(new Event("rich-reset-history"));
     } catch (error) {
-      if (!signal.aborted || persistence.context?.getRoute().page === "create") notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      if (!signal.aborted || persistence.context?.getRoute().page === "create") {
+        const message = (error instanceof Error ? error.message : String(error))
+          .replace(/^Error invoking remote method ['"]prompt:enhance['"]: (?:\w*Error: )?/u, "");
+        const failed = operation === "allocate" ? undefined : requestedPageIds.find(pageId => !completed.has(pageId));
+        const index = pages().findIndex(page => page.id === failed);
+        if (error instanceof Error && error.name === "AbortError") return;
+        const context = persistence.context;
+        const actions = writingScriptId && (failed || operation === "allocate") ? [{
+          id: "retry-long-video-writing",
+          label: completed.size && index > 0 ? t(uiKeys.create.editor.resumeExpansion, { segment: index }) : t(uiKeys.create.editor.retry),
+          run: () => {
+            const draft = persistence.getDraft();
+            const script = draft?.longVideoScript;
+            if (context.getRoute().page !== "create" || !script || script.brief.id !== writingScriptId ||
+                (failed && !script.pendingExpansion?.includes(failed))) return;
+            const current = context.root;
+            const button = current.querySelector<HTMLButtonElement>(operation === "allocate" ? "[data-allocate-long-video]" : "[data-enhance-long-video]");
+            if (!button || button.closest("[hidden]") || button.getAttribute("aria-busy") === "true") return;
+            if (operation !== "allocate") {
+              const target = singlePageId ? script.segments.findIndex(page => page.id === singlePageId) + 1 : 0;
+              if (singlePageId) current.querySelector<HTMLButtonElement>('[data-preview-pages][aria-pressed="false"]')?.click();
+              current.querySelectorAll<HTMLButtonElement>('.create-long-tabs [role="tab"]')[target]?.click();
+            }
+            if (!button.disabled) button.click();
+          }
+        }] : undefined;
+        notify(index > 0 ? t(uiKeys.create.editor.expansionStopped, { segment: index, reason: message }) : message,
+          { kind: "error", actions, renderPage: false });
+      }
     } finally {
       unsubscribe?.();
       enhancing = false; persistence.setEnhancing?.(false);
@@ -457,7 +614,7 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       state.confirmed = true; readScript(); save(); paint();
     } catch { notify(t(uiKeys.create.editor.invalidLayout), { kind: "error" }); }
   }, { signal });
-  text.addEventListener("input", () => { editText(state.page, text.value); countText(); paintWritingActions(); }, { signal });
+  text.addEventListener("input", () => { editText(state.page, text.value); countText(); paintWritingActions(); paintVersions(); }, { signal });
   editor.addEventListener("focusout", event => {
     if (!(event.target instanceof Element) || !event.target.matches("textarea, .create-rich-prompt, [data-preview-whole-page]")) return;
     commit(); paintVersions();
@@ -488,6 +645,12 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
   select.addEventListener("change", () => {
     commit();
     if (select.value === "preview" && !state.active) {
+      const currentDraft = persistence.getDraft();
+      if (currentDraft && !currentDraft.spectrumModeUserSet && currentDraft.spectrumMode === "balanced") {
+        persistence.patchDraft({ spectrumMode: "off" });
+        const spectrumSelect = root.querySelector<HTMLSelectElement>("#spectrum-mode");
+        if (spectrumSelect) spectrumSelect.value = "off";
+      }
       if (legacyBrief) writeNativeBrief();
       if (state.script && !state.script.brief.locked && !state.script.wholeBuffer) {
         state.script = commitScriptText(stageScriptText(state.script, state.script.brief.id, prompt.value), id);
@@ -526,15 +689,33 @@ export function mountGenerationMode(root: HTMLElement, t: Translate, sync: () =>
       if (selected) state.script = updateScriptPage(state.script, page.id, { activeVersionId: selected.id });
       readScript(); save(); paint(); return;
     }
-    if (action.id !== "clear-prompt" || !state.confirmed || state.locks[state.page] || state.whole) return;
-    const page = state.page, pageId = pages()[page]?.id, before = state.texts[page] ?? ""; if (!before) return;
-    editText(page, ""); commit(); paint(); text.dispatchEvent(new Event("rich-reset-history"));
-    notify(t(uiKeys.create.editor.cleared), { key: `clear-preview-page:${++clearSequence}`, kind: "info", durationMs: 6000, renderPage: false,
+    if (action.id !== "clear-prompt" || !state.confirmed || state.whole) return;
+    commit();
+    const before = state.script;
+    const page = pages()[state.page];
+    if (!before || !page) return;
+    const after = deleteScriptPageVersion(before, page.id);
+    if (after === before) return;
+    const deleted = [after.brief, ...after.segments][state.page]!;
+    state.script = after; readScript(); save(); paint(); text.dispatchEvent(new Event("rich-reset-history"));
+    notify(t(uiKeys.create.editor.versionDeleted), { key: `clear-preview-page:${++clearSequence}`, kind: "info", durationMs: 6000, renderPage: false,
       actions: [{ id: "undo-clear-preview-page", label: t(uiKeys.create.editor.undo), run: () => {
-        if (!select.isConnected) return;
-        const index = pages().findIndex(p => p.id === pageId);
-        if (index < 0 || state.texts[index] || state.locks[index]) return;
-        editText(index, before); commit(); paint();
+        const current = persistence.getDraft()?.longVideoScript;
+        if (!current || current.brief.id !== before.brief.id || current.pageBuffers?.[page.id] !== undefined) return;
+        const restored = structuredClone(current);
+        const live = [restored.brief, ...restored.segments].find(p => p.id === page.id);
+        if (!live || JSON.stringify(live) !== JSON.stringify(deleted)) return;
+        Object.assign(live, page);
+        if (page.id === before.brief.id && current.revision === after.revision) {
+          restored.segments.forEach((segment, index) => { segment.stale = before.segments[index]!.stale; });
+        }
+        restored.revision++;
+        if (signal.aborted) {
+          persistence.patchDraft({ longVideoScript: restored });
+          if (persistence.context?.getRoute().page === "create") persistence.context.requestRender();
+        } else {
+          state.script = restored; readScript(); save(); paint();
+        }
       } }] });
   }, { signal, capture: true });
   const progressObserver = typeof MutationObserver === "undefined" ? undefined : new MutationObserver(() => paint());

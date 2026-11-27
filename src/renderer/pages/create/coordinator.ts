@@ -37,8 +37,10 @@ import {
 } from "../../../core/image-workflow";
 import { nextImagePictureNumber, normalizeImageEditDraft } from "../../../core/image-project";
 import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
+import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
+import { piH3StepFallback } from "../../../core/pi-h3";
 import { applyH3GuideFramePatch } from "../../../core/h3-timed-guides";
-import { longVideoBlockReason, longVideoDependencyBlockReason, longVideoUsesTimedGuides } from "../../../core/long-video/capability";
+import { isLongVideoDraftActive, longVideoBlockReason, longVideoDependencyBlockReason, longVideoUsesTimedGuides } from "../../../core/long-video/capability";
 import { PromptEditHistory, type PromptHistoryScope, type PromptHistorySnapshot } from "../../../core/prompt-edit-history";
 import {
   isMiniMaxH3ContinuumModel,
@@ -926,9 +928,17 @@ export function createCreateWorkspaceCoordinator(
     if (label) label.textContent = busy ? uiText("runtime.enqueueing") : uiText("runtime.enqueue");
   }
 
+  function applyPiH3StepFallback(): void {
+    const draft = getState().draft;
+    if (draft.modelId !== PI_H3_MODEL_ID) return;
+    const steps = piH3StepFallback(deps.getEnvironmentScan(), draft.steps, isLongVideoDraftActive(draft));
+    if (steps !== undefined) patchDraft({ steps });
+  }
+
   function refreshVideoControls(): void {
     const root = deps.context.root;
     if (deps.getPage() !== "create" || deps.getCreationMode() === "image-edit") return;
+    applyPiH3StepFallback();
     const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
     if (getState().draft.resolution !== viewModel.selectedResolution) patchDraft({ resolution: viewModel.selectedResolution });
     const template = document.createElement("template"); template.innerHTML = renderPage();
@@ -1032,8 +1042,9 @@ export function createCreateWorkspaceCoordinator(
     const preview = document.querySelector<HTMLSelectElement>("#generation-mode")?.value === "preview";
     const { draft, settings } = getState();
     const longVideoModel = draft.inputMode === "image" ? draft.modelId : draft.longVideoRunSource?.profile.h3?.modelId;
+    const longVideoSteps = draft.longVideoRunSource?.profile.steps ?? draft.steps;
     const reason = preview ? longVideoBlockReason(draft, settings) ??
-      longVideoDependencyBlockReason(deps.getEnvironmentScan(), settings, longVideoModel, longVideoUsesTimedGuides(draft)) ?? "" : viewModel.enqueueBlockReason;
+      longVideoDependencyBlockReason(deps.getEnvironmentScan(), settings, longVideoModel, longVideoUsesTimedGuides(draft), longVideoSteps) ?? "" : viewModel.enqueueBlockReason;
     const summary = document.querySelector<HTMLElement>("[data-submit-summary]");
     if (summary) {
       summary.hidden = Boolean(reason);
@@ -1084,6 +1095,7 @@ summary.textContent = `${viewModel.outputWidth} × ${viewModel.outputHeight} · 
   }
 
   function bind(): void {
+    if (deps.getCreationMode() === "image-to-video") applyPiH3StepFallback();
     syncDraftSaveStatus();
     const retry = deps.context.root.querySelector<HTMLButtonElement>("[data-retry-draft-save]");
     if (retry) retry.onclick = () => deps.getCreationMode() === "image-edit" ? scheduleImageDraftSave() : scheduleDraftSave();

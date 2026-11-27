@@ -11,7 +11,17 @@ export function mountSortable(container: HTMLElement, move: (from: number, to: n
   const { signal } = events;
   let drag: { handle: HTMLElement; item: HTMLElement; from: number; y: number; top: number; height: number; pointer: number; target: number; style: string | null } | null = null;
   const items = () => Array.from(container.querySelectorAll<HTMLElement>(":scope > [data-sortable-item]"));
+  const clearIndicator = () => {
+    container.querySelectorAll<HTMLElement>(":scope > [data-sort-drop]").forEach((el) => el.removeAttribute("data-sort-drop"));
+  };
+  const showIndicator = (others: HTMLElement[], from: number, target: number) => {
+    clearIndicator();
+    if (!others.length || target === from) return;
+    if (target < others.length) others[target]!.dataset.sortDrop = "before";
+    else others[others.length - 1]!.dataset.sortDrop = "after";
+  };
   const cancel = () => {
+    clearIndicator();
     if (!drag) return;
     const previous = drag; drag = null;
     if (previous.style === null) previous.item.removeAttribute("style"); else previous.item.setAttribute("style", previous.style);
@@ -45,6 +55,7 @@ export function mountSortable(container: HTMLElement, move: (from: number, to: n
     drag.item.style.transform = `translateY(${offset}px)`;
     const others = items().filter((item) => item !== drag!.item);
     drag.target = others.filter((item) => event.clientY > item.getBoundingClientRect().top + item.offsetHeight / 2).length;
+    showIndicator(others, drag.from, drag.target);
   }, { signal });
   container.addEventListener("pointerup", (event) => {
     if (!drag || event.pointerId !== drag.pointer) return;

@@ -739,23 +739,22 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   }
 }, {
   id: "minimax-h3-hmnsfw-extreme-realism-v3",
-  name: "HMNSFW Extreme Realism · FL2VA v3",
+  name: "HMNSFW Extreme Realism v3",
   filename: H3_HMNSFW_V3_FILENAME,
   strength: 0.8,
   modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleModelIds: [H3_FL2VA_MODEL_ID, "minimax_h3_ref2va"],
   compatibleInputModes: ["image"],
   purpose: "content",
   promptPrefixes: [],
   catalogOrder: 98,
-  variant: "fl2va",
   rules: {
     orderPriority: 50,
     settingConflicts: [],
     combinations: []
   },
   scan: {
-    vram: "FL2VA NSFW · v3 · strength 0.8",
+    vram: "FL2VA / Ref2VA · NSFW · v3 · strength 0.8",
     integrated: true,
     runtimeNodeTypes: ["LoraLoaderModelOnly"],
     components: [{

@@ -1,5 +1,5 @@
 import { uiKeys } from "../../../core/i18n-keys";
-import { activeH3TimedGuides, isH3TimedGuideConfigured, orderedH3GuideSlots, supportsH3ReferenceGuides, supportsH3TimedGuides } from "../../../core/h3-timed-guides";
+import { activeH3TimedGuides, orderedH3GuideSlots, supportsH3ReferenceGuides, supportsH3TimedGuides } from "../../../core/h3-timed-guides";
 import type { CreatePageOptions, VideoCreatePageViewModel } from "./page";
 
 export function renderH3GuideToggle(view: VideoCreatePageViewModel, options: CreatePageOptions): string {
@@ -57,7 +57,6 @@ export function renderVideoFrames(view: VideoCreatePageViewModel, options: Creat
           </div>
           <div class="h3-guide-metadata">
             ${renderH3GuideTime(options, picture, slot.seconds, `id="h3-guide-time-${slot.picture}" data-guide-time`)}
-            <span class="create-caption" data-guide-incomplete ${isH3TimedGuideConfigured(slot) ? "hidden" : ""}>${t(keys.ignoredGuide)}</span>
             ${slot.mediaPath ? `<span class="create-frame-resolution" data-guide-resolution ${width && height ? "" : "hidden"}>${width && height ? `${width} × ${height}` : ""}</span>` : ""}
           </div>
         </div>

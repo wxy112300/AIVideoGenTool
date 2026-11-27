@@ -30,6 +30,7 @@ import { resolutionAfterJointAvPreference } from "./view-model";
 import { mountLoraMenu } from "./lora-menu";
 import { mountSortable, moveListItem } from "../../shared/ui/sortable";
 import { isLongVideoPreview, mountGenerationMode } from "./generation-mode";
+import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
 import { longVideoBlockReason } from "../../../core/long-video/capability";
 import { mountResolutionControl } from "./resolution-control";
 
@@ -656,6 +657,9 @@ export function mountCreatePageController(
     setEnhancing: options.createPrompt.setPromptEnhancing,
     context: options.context
   }));
+  root.querySelector("#generation-mode")?.addEventListener("change", () => {
+    if (getState()?.draft.modelId === PI_H3_MODEL_ID) options.refreshVideoControls?.();
+  }, { signal });
   const updateDuration = (source: HTMLInputElement, commit = false) => {
     const state = getState();
     if (!state) return;

@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJourney } from "./harness/create-journey";
 import { BUILTIN_VIDEO_LORAS } from "../src/core/video-loras";
+import { renderWorkflow } from "../src/core/workflow";
 
 let journey: Awaited<ReturnType<typeof createJourney>> | undefined;
 afterEach(async () => { journey?.dispose(); journey = undefined; await new Promise(resolve => setTimeout(resolve, 370)); });
@@ -274,6 +276,42 @@ describe("Create editor controls", () => {
         { id: choices[0]!.id }
       ]
     });
+  });
+
+  it("queues HMNSFW v3 on Ref2VA and sends the same weight to the R2V loader", async () => {
+    const lora = BUILTIN_VIDEO_LORAS.find(item => item.id === "minimax-h3-hmnsfw-extreme-realism-v3")!;
+    const workflowPath = "workflows/minimax_h3_r2v_api.json";
+    const h = journey = await createJourney({
+      modelId: "minimax_h3_ref2va", workflowPath, h3ReferenceSlots: [], videoLoras: [], spectrumMode: "off"
+    });
+    h.scan.modelProfiles.push({
+      id: lora.id, name: lora.name, category: "lora", available: true, integrated: true,
+      components: [{ matches: [`C:/fixture/models/loras/${lora.filename}`] }]
+    } as typeof h.scan.modelProfiles[number]);
+    h.render();
+    h.element("#add-video-lora").click();
+    document.querySelector<HTMLButtonElement>(`[data-add-lora="${lora.id}"]`)!.click();
+    await vi.waitFor(() => expect(h.state().draft.videoLoras).toHaveLength(1));
+    const prompt = "Use <Picture 1> as the reference for a quiet garden in soft daylight.";
+    h.input("#prompt-input", prompt);
+    await vi.waitFor(() => expect(h.element("#enqueue").disabled).toBe(true));
+    h.state().draft.h3ReferenceSlots = [{ id: "garden", mediaType: "image", mediaPath: "garden.png", role: "subject", note: "" }];
+    h.render();
+    expect(h.element("#enqueue").disabled).toBe(false);
+    h.element("#enqueue").click();
+    await vi.waitFor(() => expect(h.state().queue).toHaveLength(1));
+    const task = h.state().queue[0]!;
+    expect(task).toMatchObject({
+      id: expect.any(String), modelId: "minimax_h3_ref2va", workflowPath, prompt,
+      videoLoras: [{ id: lora.id, filename: "HMNSFW-Extreme-Realism.safetensors", strength: 0.8, promptPrefixes: [] }]
+    });
+    if (task.taskType !== "generation") throw new Error("Expected a generation task");
+    const source: unknown = JSON.parse(readFileSync(workflowPath, "utf8"));
+    const graph = renderWorkflow(source, task, { h3ReferenceImages: ["garden.png"] }) as Record<string, unknown>;
+    expect(Object.values(graph)).toContainEqual(expect.objectContaining({
+      class_type: "LoraLoaderModelOnly",
+      inputs: expect.objectContaining({ lora_name: "HMNSFW-Extreme-Realism.safetensors", strength_model: 0.8 })
+    }));
   });
 
   it("isolates multi-segment timing and segment edits, and clears the shared prompt when clearing the script", async () => {

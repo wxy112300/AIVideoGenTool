@@ -218,6 +218,28 @@ describe("QueueRuntimeService", () => {
     expect(current.restartLocalService).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])("sets the expected shutdown phase before terminating ComfyUI (ok=%s)", async (ok) => {
+    const state = createDefaultState();
+    const runtimeState = new ComfyRuntimeStateController();
+    const started = runtimeState.begin("starting", state.settings.comfyUrl, "starting", "app");
+    runtimeState.finish(started, "ready", "ready");
+    let stopId: number | undefined;
+    const current = runtimeFixture(state, {
+      runtimeState,
+      forceStopComfyProcesses: async () => {
+        const stopping = runtimeState.snapshot();
+        expect(stopping.phase).toBe("stopping");
+        stopId = stopping.operationId;
+        return { ok, message: "process cleanup result" };
+      }
+    });
+    await expect(current.service.stopQueueRuntime(state.settings)).resolves.toBe(ok);
+    expect(runtimeState.snapshot()).toMatchObject({
+      phase: ok ? "stopped" : "error", ownership: ok ? "none" : "app",
+      operationId: stopId, message: "process cleanup result"
+    });
+  });
+
   it("verifies H3 memory release before continuing and performs both LoRA phases", async () => {
     const state = createDefaultState();
     state.settings = settings();
@@ -233,6 +255,23 @@ describe("QueueRuntimeService", () => {
 
     expect(current.freeMemory).toHaveBeenCalledTimes(2);
     expect(current.getPerformanceMetrics).toHaveBeenCalledTimes(6);
+    expect(current.restartLocalService).not.toHaveBeenCalled();
+  });
+
+  it("skips post-task H3 unload when the queue ends with keepComfyUiRunningAfterQueue enabled", async () => {
+    const state = createDefaultState();
+    state.settings = settings({ keepComfyUiRunningAfterQueue: true });
+    const current = runtimeFixture(state);
+
+    await expect(current.service.stabilizeH3RuntimeBetweenTasks(
+      "task",
+      "minimax_h3",
+      state.settings,
+      false,
+      false
+    )).resolves.toBe(true);
+
+    expect(current.freeMemory).not.toHaveBeenCalled();
     expect(current.restartLocalService).not.toHaveBeenCalled();
   });
 

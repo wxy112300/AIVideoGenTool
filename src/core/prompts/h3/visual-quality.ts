@@ -1,5 +1,5 @@
-/** Editable intent seed; the enhancer selects scene-compatible details from the knowledge below. */
-export const h3PhotorealisticQualitySeed = "Use photorealistic live-action image quality with natural skin and material texture, scene-consistent light and reflections, gradual highlight roll-off, natural color, and stable facial identity and surface detail across frames. Preserve the requested action, camera, lighting, and reference anchors; choose only details appropriate to the visible subject and shot scale.";
+/** Direct H3-executable visual realism snippet (pure optical/material prose, zero LLM meta-directives). */
+export const h3PhotorealisticQualitySeed = "Live-action photographic texture with natural skin pores, subtle subsurface scattering, fine fabric weave, grounded contact shadows, and soft directional light with gradual highlight roll-off.";
 
 /**
  * Model-facing knowledge shared by full H3 rewrites, not a suffix appended to video prompts.

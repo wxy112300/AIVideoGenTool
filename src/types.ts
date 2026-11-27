@@ -553,6 +553,8 @@ export interface Settings {
   /** 0 disables the pressure-stall detector; waiting tasks freeze this at claim time. */
   vramStallWatchdogMinutes: VramStallWatchdogMinutes;
   queueIsolationMode: "never" | "lora" | "model-change" | "always";
+  /** When true, local ComfyUI stays running after the queue ends; app exit still stops it. */
+  keepComfyUiRunningAfterQueue?: boolean;
   uiLocale?: UiLocale;
   /** Optional for settings written before the desktop appearance controls. */
   appearance?: import("./core/appearance.js").UiAppearance;
@@ -2296,6 +2298,7 @@ export interface PromptProgress {
   longVideoPage?: {
     scriptId: string;
     revision: number;
+    stage?: "allocation";
     segment: import("./core/long-video/enhancement.js").LongVideoPromptResult["segments"][number];
   };
 }

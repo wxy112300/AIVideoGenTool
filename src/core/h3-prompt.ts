@@ -831,6 +831,70 @@ export function normalizeH3PromptOutput(
   return `${alignment}\n\n${auditedBody}`.trim();
 }
 
+/**
+ * Clean H3 output normalizer for Strata (Qwen 3.8 Flash Next).
+ * Preserves structural/envelope safety, alignment lines, exact dialogue/text locks,
+ * and single-shot guard WITHOUT pasting legacy 26B meta-prose ("Scale relation: ...",
+ * "beginning inside the established space") into the generated video prompt.
+ */
+export function normalizeStrataH3PromptOutput(
+  promptText: string,
+  mode: H3PromptMode,
+  durationSeconds: number,
+  dialogueLocks: readonly H3DialogueLock[] = [],
+  visibleTextLocks: readonly H3VisibleTextLock[] = [],
+  sourcePrompt = "",
+  scaleContext = "",
+  omitAlignment = false,
+  nativeStateContinuation = false,
+  previousChunk?: number,
+  locale: UiLocale = "zh-CN"
+): string {
+  if (nativeStateContinuation && /^\s*\[(?:chunk|clip)\s+\d+\]|^\s*\[\d+(?:\.\d+)?\s*(?:s|sec|seconds)?\s*[-–—]/imu.test(promptText)) {
+    throw new Error(workflowMessage("h3ContinuationBodyOnly", {}, locale));
+  }
+  const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(
+    stripLeadingH3AlignmentInstructions(unwrapH3ModelOutput(promptText, mode)),
+    mode
+  ));
+  const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
+  const modelTimeline = h3ExpansionTimeline(cleanedBody, mode);
+  if (!modelTimeline?.trim()) {
+    throw new Error(workflowMessage("h3ExpansionTimelineMissing", { section }, locale));
+  }
+  const lockedBody = restoreH3VisibleTextLocks(
+    restoreH3DialogueLocks(cleanedBody, dialogueLocks),
+    visibleTextLocks
+  );
+  const shotSafeBody = collapseUnexpectedH3Shots(
+    lockedBody,
+    mode,
+    sourcePrompt,
+    scaleContext
+  );
+  const continuationSafeBody = nativeStateContinuation
+    ? ensureStrataNativeContinuationAnchor(shotSafeBody, previousChunk)
+    : shotSafeBody;
+  const alignment = omitAlignment ? "" : h3AlignmentInstruction(mode, durationSeconds);
+  if (!alignment) return continuationSafeBody;
+  return `${alignment}\n\n${continuationSafeBody}`.trim();
+}
+
+function ensureStrataNativeContinuationAnchor(promptText: string, previousChunk?: number): string {
+  const opener = previousChunk && previousChunk > 0
+    ? `Continuation of Chunk ${previousChunk}.`
+    : "Continuation of the preceding segment.";
+  // Remove any duplicated leading opener outside the main field.
+  const withoutOuter = promptText.replace(/^\s*Continuation of (?:Chunk \d+|the preceding segment)\.\s*/iu, "");
+  if (/\bContinuation of (?:Chunk \d+|the preceding segment)\./iu.test(withoutOuter)) {
+    return withoutOuter;
+  }
+  if (/^integrated_multimodal_description\s*:\s*\[Shot\s+1\]/imu.test(withoutOuter)) {
+    return withoutOuter.replace(/^(integrated_multimodal_description\s*:\s*\[Shot\s+1\])\s*/imu, `$1 ${opener} `);
+  }
+  return withoutOuter.replace(/^(integrated_multimodal_description\s*:)\s*/imu, `$1 [Shot 1] ${opener} `);
+}
+
 export function assertDetailedCinematicExpansion(
   promptText: string,
   mode: H3PromptMode,

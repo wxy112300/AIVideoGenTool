@@ -34,6 +34,7 @@ const consumerClasses = new Set([
   "BasicScheduler",
   "BasicGuider",
   "H3ContinuumSamplerV38",
+  "H3ContinuumSamplerV39",
   "LocalVideoStudioH3ContinuumSamplerV38"
 ]);
 const legacyAttentionClasses = new Set([
@@ -248,6 +249,7 @@ function assertConsumers(
     !consumers.some(([, node]) =>
       node.class_type === "BasicGuider" ||
       node.class_type === "H3ContinuumSamplerV38" ||
+      node.class_type === "H3ContinuumSamplerV39" ||
       node.class_type === "LocalVideoStudioH3ContinuumSamplerV38"
     )
   )) throw new Error(message("h3PatchConsumersMissing", {}, locale));
@@ -311,9 +313,9 @@ export function normalizeMiniMaxH3ModelPatchChain(
       : existingSageNodeId ?? allocate();
     workflow[nodeId] = policy.attentionMode === "comfy-kitchen"
       ? { class_type: "ModelAttentionBackend", inputs: { model: output, attention: "comfy kitchen attention" } }
-        : { class_type: consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")
+        : { class_type: consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39")
           ? "LocalVideoStudioH3ManagedSageAttention" : "PathchSageAttentionKJ", inputs: sageInputs(output, policy.attentionMode,
-          consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38")) };
+          consumers.some(([, node]) => node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39")) };
     output = [nodeId, 0];
   }
   if (policy.sparseAttentionMode !== "off") {

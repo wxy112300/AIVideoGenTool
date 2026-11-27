@@ -1,36 +1,36 @@
 import type { PromptSnippetDefinition } from "../types.js";
 import { h3PhotorealisticQualitySeed } from "./visual-quality.js";
 
+/**
+ * Curated, H3-executable Quick-Insert snippets (zero LLM meta-directives, zero buzzword bloat).
+ * Every snippet works directly when generating with MiniMax H3 AND acts as a clean intent anchor for Strata.
+ */
 export const h3SnippetDefinitions: readonly PromptSnippetDefinition[] = [
-  { id: "continuity-reference-lock", groupId: "continuity", text: "Use each supplied reference only for its assigned role. Preserve the identity, appearance, clothing ownership, spatial relationships, and composition anchors visibly established by the relevant reference while applying the requested changes." },
-  { id: "continuity-body-gaze-lock", groupId: "continuity", text: "Keep each identified subject's body and gaze orientation continuous, changing them only where the requested action does so." },
-  { id: "visual-live-action-human", groupId: "visual-realism", text: "Render the subject as a believable real person in live-action footage, with natural skin texture, subtle facial asymmetry, physically plausible anatomy, realistic hair and fabric response, and lighting consistent with the environment." },
-  { id: "visual-anti-cg-plastic", groupId: "visual-realism", text: "Use live-action photographic material behavior: natural skin reflectance, fine hair, responsive fabric, varied surface detail, contact shadows, and restrained specular highlights." },
-  { id: "visual-natural-materials", groupId: "visual-realism", text: "Preserve small real-world material variation through visible skin and fine hair, slight fabric irregularity, natural reflections, contact shadows, and uneven surface texture." },
-  { id: "visual-natural-light", groupId: "visual-realism", text: "Use naturalistic lighting and exposure with believable shadow direction, gradual highlight roll-off, ambient bounce, and scene-consistent color response." },
-  { id: "visual-photorealistic-quality", groupId: "visual-realism", text: h3PhotorealisticQualitySeed },
-  { id: "capture-smartphone-1x", groupId: "camera-capture", text: "Use an authentic older-smartphone 1x main-camera look with mild wide-angle perspective, ordinary exposure, subtle handheld drift, slight focus breathing, and restrained motion blur." },
-  { id: "capture-documentary-handheld", groupId: "camera-capture", text: "Use observational documentary capture with practical light, modest handheld movement, responsive focus, imperfect framing, and restrained color processing." },
-  { id: "motion-causal-onset", groupId: "motion-reaction", text: "Begin the main action with one visible preparation appropriate to that action, then carry its physical response forward continuously." },
-  { id: "motion-vocal-anatomy", groupId: "motion-reaction", text: "The visible speaker uses natural lip and jaw motion with subtle breathing, then lets the mouth settle after the line." },
-  { id: "camera-push-in", groupId: "camera-motion", text: "The camera pushes in with small amplitude at slow speed toward the subject." },
-  { id: "camera-pull-out-reveal", groupId: "camera-motion", text: "The camera pulls out directly backward along the same optical axis with large amplitude at slow speed, progressively revealing the environment through realistic parallax." },
-  { id: "camera-pedestal-up", groupId: "camera-motion", text: "The camera pedestals upward with small amplitude at slow speed and settles at the higher viewpoint." },
-  { id: "camera-restrictions", groupId: "camera-motion", text: "Keep the viewpoint on the selected physical camera path, direction, target, and endpoint throughout the movement." },
-  { id: "camera-continuous-take", groupId: "camera-motion", text: "One continuous unbroken take from the first frame to the last, with no editorial cut. Keep the scene, subjects, and spatial relationships continuous; express all reframing through smooth physical camera movement within [Shot 1]." },
-  { id: "camera-pan-right", groupId: "camera-motion", text: "The camera pans right with small amplitude at slow speed, revealing the existing scene space to the subject's right." },
-  { id: "camera-tracking", groupId: "camera-motion", text: "The camera uses a smooth tracking shot and follows the subject at a steady pace." },
-  { id: "camera-static", groupId: "camera-motion", text: "The camera holds a static shot while the subject performs the action." },
-  { id: "shot-close-up", groupId: "framing", text: "The shot cuts to a close-up that keeps the subject's face and key expression clearly visible." },
-  { id: "shot-wide", groupId: "framing", text: "The camera pulls back along a continuous physical path to a wide view of the existing environment and its spatial relationships." },
-  { id: "shot-framing-progression", groupId: "framing", text: "The camera moves continuously from a close view to a full-body environmental view along one readable physical path, preserving the subject's world scale." },
-  { id: "motion-turn", groupId: "subject-motion", text: "The subject turns slowly toward the camera, moves naturally, and holds the final pose." },
-  { id: "motion-breeze", groupId: "subject-motion", text: "A light breeze moves the subject's hair and clothing with subtle, physically consistent motion." },
-  { id: "sound-ambience", groupId: "sound", text: "overall_soundscape: Natural ambient sound, subtle movement sounds, and quiet room tone appropriate to the scene." },
-  { id: "sound-synchronized-action", groupId: "sound", text: "Synchronize each diegetic sound with the visible action and environmental response that produces it." },
-  { id: "sound-spatial-echo", groupId: "sound", text: "The direct sound becomes quieter as the camera moves away; delayed reflections arrive from the left and then the right, becoming progressively quieter, darker, and more diffuse." },
+  // Visual craft & camera capture (kills waxy/plastic AI commercial look via concrete optics)
+  { id: "visual-photorealistic-quality", groupId: "visual-craft", text: h3PhotorealisticQualitySeed },
+  { id: "capture-35mm-natural", groupId: "visual-craft", text: "Shot on a 35mm lens in natural practical light with authentic lens depth, subtle organic grain, and realistic motion blur." },
+  { id: "capture-smartphone-1x", groupId: "visual-craft", text: "Shot on a 1x smartphone main camera with mild wide-angle perspective, ordinary exposure, slight handheld drift, and candid unpolished framing." },
+  { id: "capture-documentary-handheld", groupId: "visual-craft", text: "Observational handheld documentary footage lit by existing practical light with responsive focus and natural ungraded color." },
+
+  // Camera movement (one clean physical path per clip, single-take safe)
+  { id: "camera-continuous-take", groupId: "camera-motion", text: "One continuous unbroken take from the first frame to the last, with no editorial cut; all reframing happens through smooth physical camera movement within [Shot 1]." },
+  { id: "camera-static", groupId: "camera-motion", text: "Locked-off static camera holding steady framing while the subject performs the action." },
+  { id: "camera-push-in", groupId: "camera-motion", text: "The camera pushes in slowly along a smooth physical dolly track toward the subject." },
+  { id: "camera-pull-out-reveal", groupId: "camera-motion", text: "The camera pulls out slowly directly backward along the optical axis, progressively revealing the surrounding environment with realistic parallax." },
+  { id: "camera-tracking", groupId: "camera-motion", text: "Smooth Steadicam tracking shot following the subject at a steady matching pace." },
+  { id: "camera-orbit", groupId: "camera-motion", text: "Smooth continuous 180-degree horizontal orbit around the subject, settling cleanly on the opposite angle." },
+  { id: "camera-low-angle-macro", groupId: "camera-motion", text: "Ultra-low-angle wide-macro probe lens skimming close to the surface, keeping the foreground subject sharp with deep readable environmental depth behind." },
+
+  // Explicit authored cut (clearly marked [Shot 2] so it never causes accidental cuts in single-take mode)
+  { id: "shot-close-up", groupId: "framing", text: "[Shot 2] At 00:02.500, the camera cuts to a close-up capturing the subject's face and subtle expression." },
+
+  // Native H3 audio & verbatim dialogue syntax
   { id: "sound-no-music", groupId: "sound", text: "non_diegetic_music: N/A" },
-  { id: "dialogue-mandarin", groupId: "dialogue", text: "The speaker (S1) speaks Mandarin Chinese with a clear, natural voice and says exactly: <d>[Chinese] Write the exact original dialogue here.</d>" },
-  { id: "dialogue-english", groupId: "dialogue", text: "The speaker (S1) uses a clear, natural English voice and says exactly: <d>[English] Write the exact spoken words here.</d>" },
-  { id: "screen-text", groupId: "screen-text", text: "Any visible sign, subtitle, label, or neon text reads exactly \"Write the original text here\"; preserve its original punctuation without translation." }
+  { id: "sound-ambience", groupId: "sound", text: "overall_soundscape: Natural room tone and quiet environmental ambience matched to the visible space." },
+  { id: "dialogue-mandarin", groupId: "sound", text: "The speaker (S1) says: <d>[Chinese] Write the exact original dialogue here.</d>" },
+  { id: "dialogue-english", groupId: "sound", text: "The speaker (S1) says: <d>[English] Write the exact spoken words here.</d>" },
+
+  // Environmental micro-detail & exact visible text
+  { id: "motion-breeze", groupId: "details", text: "A gentle breeze softly stirs loose hair strands and fabric folds in one consistent direction." },
+  { id: "screen-text", groupId: "details", text: "Visible on-screen text reads exactly \"Write the original text here\" with its original spelling and punctuation." }
 ];

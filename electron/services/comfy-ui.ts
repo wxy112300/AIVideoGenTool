@@ -795,6 +795,7 @@ export function progressContextForPrompt(prompt: unknown): ComfyProgressContext 
     const node = value as Record<string, unknown>;
     if (
       node.class_type === "H3ContinuumSamplerV38" ||
+      node.class_type === "H3ContinuumSamplerV39" ||
       node.class_type === "LocalVideoStudioH3ContinuumSamplerV38"
     ) {
       continuumSamplerIds.push(nodeId);
@@ -1790,6 +1791,7 @@ export function nodeStage(classType: string | undefined, t: Translate = createNa
     classType === "KSamplerAdvanced" ||
     classType === "SamplerCustomAdvanced" ||
     classType === "H3ContinuumSamplerV38" ||
+    classType === "H3ContinuumSamplerV39" ||
     classType === "LocalVideoStudioH3ContinuumSamplerV38" ||
     classType === "LTXVExtendSampler" ||
     classType === "LTXVLoopingSampler"
@@ -1797,7 +1799,7 @@ export function nodeStage(classType: string | undefined, t: Translate = createNa
     return {
       start: 14,
       end: 80,
-      label: classType === "H3ContinuumSamplerV38" || classType === "LocalVideoStudioH3ContinuumSamplerV38"
+      label: classType === "H3ContinuumSamplerV38" || classType === "H3ContinuumSamplerV39" || classType === "LocalVideoStudioH3ContinuumSamplerV38"
         ? t(uiKeys.executionProgress.continuumSampling)
         : t(uiKeys.executionProgress.sampling),
       tracksSteps: true

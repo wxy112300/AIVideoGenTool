@@ -22,7 +22,9 @@ describe("persistent long video editor", () => {
     h.input("#generation-mode", "preview", "change");
     h.element("[data-confirm-layout]").click();
     const scriptId = h.state().draft.longVideoScript!.brief.id;
-    expect(h.root.querySelector("[data-guide-incomplete]:not([hidden])")).not.toBeNull();
+    const emptyGuide = h.element('[data-guide-slot="2"]');
+    expect(emptyGuide.querySelector("[data-guide-pick]")).not.toBeNull();
+    expect(emptyGuide.querySelector(".h3-guide-metadata")?.children.length).toBe(1);
     h.element("#clear-draft").click();
     expect(h.state().draft.h3GuideEditor).toBeUndefined();
     expect(h.state().draft.longVideoScript).toBeUndefined();

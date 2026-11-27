@@ -5,7 +5,9 @@ import { releaseVersionAtLeast } from "../release-version.js";
 import { commitScriptText } from "./script-buffers.js";
 import { freezeLongVideoScript } from "./script.js";
 import { assertLongVideoRunSource } from "./run-source.js";
-import { continuumProfileLoras, isContinuumReferenceModel } from "./group-workflow.js";
+import { continuumProfileLoras, isContinuumFl2vaModel, isContinuumReferenceModel } from "./group-workflow.js";
+import { PI_H3_MODEL_ID } from "../catalog/models/minimax_h3_pi/definition.js";
+import { piH3DependencyBlockReason } from "../pi-h3.js";
 import { videoLoraConfigurationIssues } from "../video-loras.js";
 import { resolveH3ExecutionPolicy } from "../h3-execution-policy.js";
 import { activeH3TimedGuides, h3ReferenceTimedGuides, isH3TimedGuideConfigured, missingH3GuideReference } from "../h3-timed-guides.js";
@@ -43,7 +45,7 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
         JSON.stringify(draft.videoLoras.map(l => [l.filename, l.strength])) !== JSON.stringify(continuumProfileLoras(profile).map(l => [l.filename, l.strength])) ||
         draft.spectrumMode !== (profile.spectrumMode ?? "off")) return t(k.blockRunProfile);
   } else {
-    if (draft.inputMode !== "image" || (!referenceModel && draft.modelId !== "minimax_h3_fl2va")) return t(k.blockRoute);
+    if (draft.inputMode !== "image" || (!referenceModel && !isContinuumFl2vaModel(draft.modelId))) return t(k.blockRoute);
     if (referenceModel) {
       const filled = draft.h3ReferenceSlots.filter(slot => slot.mediaPath.trim());
       if (filled.some(slot => slot.mediaType === "video")) return t(k.blockReferences);
@@ -83,9 +85,13 @@ export function longVideoBlockReason(draft: Draft, settings: Settings): string |
 
 /** Offline files/version readiness only. Actual node schema is checked before POST. */
 export function longVideoDependencyBlockReason(
-  scan: EnvironmentScanResult | null | undefined, settings: Settings, modelId = "minimax_h3_fl2va", timedGuides = false
+  scan: EnvironmentScanResult | null | undefined, settings: Settings, modelId = "minimax_h3_fl2va", timedGuides = false, steps?: number
 ): string | null {
   if (!scan) return null; // Existing Queue policy defers absent scans to preparation.
+  if (modelId === PI_H3_MODEL_ID) {
+    const reason = piH3DependencyBlockReason(scan, steps, settings.uiLocale, true);
+    if (reason) return reason;
+  }
   const node = (id: string, version: string) => scan.customNodes.some(n => n.id === id && n.installed && n.compatibilityState !== "error" && releaseVersionAtLeast(n.version, version));
   if (!scan.modelProfiles.some(p => p.id === modelId && p.available) || !node("h3-continuum", "3.10.2") || !node("local-video-studio-h3-av", "0.4.0")) {
     return createTranslator(settings.uiLocale).t(uiKeys.create.editor.blockDependencies);

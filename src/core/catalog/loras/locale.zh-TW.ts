@@ -3,11 +3,11 @@ import type { CatalogLoraLocale } from "./locales.js";
 export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
   "minimax-h3-hmnsfw-extreme-realism-v3": {
     guide: {
-      summary: "MiniMax H3 FL2VA 的 HMNSFW v3 內容 LoRA。",
+      summary: "MiniMax H3 的 HMNSFW v3 內容 LoRA。",
       recommendedStrength: "預設強度 0.8。上游建議 Euler、18 步、影片 shift 12，scheduler 可選 Simple、Beta 或 Normal。",
       effects: "用於成人內容的寫實影音生成，無觸發詞。",
       stacking: "建議先用標準取樣單獨對照。上游回報可疊加 Turbo，本應用目前 Turbo 配方的組合效果待實測。",
-      compatibility: "適用於一般 H3 FL2VA INT8，使用既有 LoRA 載入器。",
+      compatibility: "適用於一般 H3 FL2VA INT8 和 Ref2VA INT8（R2V），共用同一份權重。",
       source: "Sentinel7 / h3 · 2834417/3446189"
     },
     rules: {}

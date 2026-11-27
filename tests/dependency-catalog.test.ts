@@ -178,8 +178,8 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("plaguekind-h3-sla")).toMatchObject({
       nodeTypes: ["H3SLAAttention"],
       minimumVersion: "1.3.8",
-      recommendedVersion: "1.6.4",
-      installRevision: "cc944b5064d1b15fc77664c7138d9752bba66302",
+      recommendedVersion: "1.6.5",
+      installRevision: "0ad29e48adc45ca2d9d7cb2b6bdfa577130f6ee0",
       required: false
     });
     expect(customNodeDefinition("kjnodes")).toMatchObject({
@@ -193,6 +193,10 @@ describe("dependency catalog", () => {
       nodeTypes: [],
       repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
       required: false
+    });
+    expect(customNodeDefinition("video-helper-suite")).toMatchObject({
+      recommendedVersion: "1.7.10",
+      latestVersion: "1.7.10"
     });
     expect(customNodeDefinition("video-helper-suite")?.nodeTypes).toEqual(expect.arrayContaining([
       "VHS_LoadVideoFFmpeg",

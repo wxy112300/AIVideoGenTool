@@ -21,21 +21,26 @@ export const PI_H3_ADAPTERS = {
   2: "pi_h3_2step_dwd_adapter_int8_convrot.safetensors",
   4: "pi_h3_4step_dwd_adapter_int8_convrot.safetensors"
 } as const;
+export const PI_H3_CONTINUUM_ADAPTERS = {
+  2: "pi_h3_2step_adapter.safetensors",
+  4: "pi_h3_4step_adapter.safetensors"
+} as const;
 
-function adapterComponent(steps: keyof typeof PI_H3_ADAPTERS, sha256: string): CatalogModelComponent {
-  const filename = PI_H3_ADAPTERS[steps];
+function adapterComponent(steps: keyof typeof PI_H3_ADAPTERS, sha256: string, continuum = false): CatalogModelComponent {
+  const filename = (continuum ? PI_H3_CONTINUUM_ADAPTERS : PI_H3_ADAPTERS)[steps];
+  const upstreamFile = continuum ? `pi_h3_${steps}step_adapter/diffusion_pytorch_model.safetensors` : filename;
   return {
-    label: `Pi-H3 DWD · ${steps} steps`,
+    label: `Pi-H3 ${continuum ? "Continuum (VAE)" : "DWD"} · ${steps} steps`,
     expected: `loras/${filename}`,
     patterns: [new RegExp(`(?:^|/)loras/${filename.replace(".", "\\.")}$`, "i")],
-    alternativeGroup: "pi-h3-dwd",
+    alternativeGroup: "pi-h3-adapter",
     installGuide: {
       sourceLabel: "Lakonik / pi-H3",
-      downloadUrl: `https://huggingface.co/Lakonik/pi-H3/resolve/${adapterRevision}/${filename}`,
+      downloadUrl: `https://huggingface.co/Lakonik/pi-H3/resolve/${adapterRevision}/${upstreamFile}`,
       targetSubdirectory: "loras",
       recommendedFilename: filename,
       revision: adapterRevision,
-      bytes: 2_192_176_240,
+      bytes: continuum ? 503_383_808 : 2_192_176_240,
       sha256,
       license: "minimax-h3-community-license-agreement"
     }
@@ -73,7 +78,9 @@ export const minimaxH3Pi: CatalogModelEntry = {
       components: [
         h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae,
         adapterComponent(2, "ef98527409eee4eaec8183265f4ee22d265680524237fae7149dbc203e11e739"),
-        adapterComponent(4, "a2fa1caae2cd4a12f85cc3eccd2a360fe9dabf430623d47deca619605e96ee6d")
+        adapterComponent(4, "a2fa1caae2cd4a12f85cc3eccd2a360fe9dabf430623d47deca619605e96ee6d"),
+        adapterComponent(2, "2602688b12e2763fdbc1ad7e0c626b83942fbda511050f266a49dbcdc1db5f02", true),
+        adapterComponent(4, "2dcdbb193f08755e0efb5f3b07585a988e30eb1c38c25283d30635ccf3d6e07f", true)
       ]
     }
   },

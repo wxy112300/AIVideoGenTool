@@ -6,7 +6,11 @@ import { outputDimensions, miniMaxH3ModelAssetNames, normalizeH3Steps } from "..
 import { videoLoraConfigurationIssues } from "../../src/core/video-loras.js";
 import { h3VideoVaeFilename } from "../../src/core/h3-video-vae.js";
 import { assertLongVideoExecutionSnapshot, compileLongVideoSamplingPrompts, freezeLongVideoExtensionPlan, type LongVideoExecutionSnapshot } from "../../src/core/long-video/execution.js";
-import { compileContinuumGroupWorkflow, isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
+import { compileLongVideoPrompts } from "../../src/core/long-video/script.js";
+import { deriveContinuumReferenceRouting } from "../../src/core/long-video/reference-routing.js";
+import { compileContinuumGroupWorkflow, isContinuumFl2vaModel, isContinuumReferenceModel } from "../../src/core/long-video/group-workflow.js";
+import { PI_H3_MODEL_ID } from "../../src/core/catalog/models/minimax_h3_pi/definition.js";
+import { PI_H3_SAMPLER, PI_H3_SCHEDULER } from "../../src/core/pi-h3.js";
 import { promises as fs } from "node:fs";
 import { uploadInput } from "./comfy-ui.js";
 import { continuumParentTransport, runLongVideoExecution } from "./long-video-execution.js";
@@ -41,11 +45,12 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
       snapshot = freezeLongVideoExtensionPlan(task.id, task.id, task.longVideoPlan, task.longVideoRunSource, { frameInterpolation: task.frameInterpolation });
     } else {
     const modelId = task.modelId;
+    const piH3 = modelId === PI_H3_MODEL_ID;
     const references = task.h3ReferenceSlots ?? [];
     const imageSlots = references.filter(slot => slot.mediaType === "image");
     const filled = references.filter(slot => slot.mediaPath.trim());
     const referenceModel = isContinuumReferenceModel(modelId);
-    if (task.taskType !== "generation" || (!referenceModel && modelId !== "minimax_h3_fl2va") ||
+    if (task.taskType !== "generation" || (!referenceModel && !isContinuumFl2vaModel(modelId)) ||
         (referenceModel && (filled.length > 9 || filled.some(slot => slot.mediaType !== "image"))) ||
         !["off", "balanced"].includes(task.spectrumMode ?? "off") || !["sage", "sage-triton", "comfy-kitchen", "pytorch"].includes(task.attentionMode ?? "")) {
       throw new Error("Long-video claimed configuration is unsupported; the saved choices have not been replaced");
@@ -76,12 +81,18 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
         await uploadInput(base, guide.mediaPath, signal, `Picture ${guide.picture}`)),
       absoluteFrame: guide.frame
     })));
+    const referenceRouting = referenceImages
+      ? deriveContinuumReferenceRouting(compileLongVideoPrompts(task.longVideoPlan), referenceImages, timedGuides, layout.chunkSeconds)
+      : undefined;
     snapshot = { schemaVersion: 1, taskId: task.id, executionId: task.id, projectId: `lvs_${task.id}`, runName: `lvs_${task.id}`,
       script: structuredClone(task.longVideoPlan), profile: { ...assets, executionMode: "full_run", videoVae: h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16"), width, height,
-        seed: task.seed, steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras), sampler: template["6"].inputs.sampler_name, scheduler: template["7"].inputs.scheduler,
+        seed: task.seed, steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
+        sampler: piH3 ? PI_H3_SAMPLER : template["6"].inputs.sampler_name,
+        scheduler: piH3 ? PI_H3_SCHEDULER : template["7"].inputs.scheduler,
         chunkSeconds: layout.chunkSeconds, prompts: [], firstImage,
         ...(lastImage ? { lastImage } : {}),
         ...(referenceImages ? { referenceImages } : {}),
+        ...(referenceRouting ? { referenceRouting } : {}),
         ...(timedGuides.length ? { timedGuides } : {}),
         attention: task.attentionMode === "pytorch" ? "sdpa" : task.attentionMode ?? "sage", spectrumMode: task.spectrumMode, delivery: { frameInterpolation: task.frameInterpolation },
         h3: { modelId, videoLoras: structuredClone(task.videoLoras ?? []), sparseAttentionMode: task.h3SparseAttentionMode ?? "off",
@@ -94,7 +105,8 @@ export async function executeQueuedLongVideo(task: GenerationQueueTask | Extensi
       run_name: snapshot.runName, planned_chunks: snapshot.script.layout.totalChunks, expected_prefix_chunks: snapshot.parent?.receipt.accepted_chunks ?? 0,
       expected_parent_revision_id: snapshot.parent?.receipt.revision_id ?? "" }, snapshot.profile);
     snapshot.profile.sampler = String(compiled["6"].inputs.sampler_name);
-    snapshot.profile.scheduler = String(compiled["7"].inputs.scheduler);
+    snapshot.profile.scheduler = snapshot.profile.h3?.modelId === PI_H3_MODEL_ID
+      ? compiled["7"].class_type : String(compiled["7"].inputs.scheduler);
     snapshot.profile.steps = Number(compiled["7"].inputs.steps);
     await deps.updateTask(task.id, { longVideoExecution: snapshot } as Partial<GenerationQueueTask>);
   }

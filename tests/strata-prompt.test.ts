@@ -361,7 +361,7 @@ describe("Strata Pack, image and output contracts", () => {
     expect(chat.messages[0].content).toContain("subject_definitions");
     expect(chat.messages[0].content).toContain("detailed_description");
     expect(chat.messages[0].content).toContain("attribute_transfer");
-    expect(JSON.stringify(chat.messages)).toContain("R2V entity-role module");
+    expect(chat.messages[0].content).toContain("R2V FULL-REFERENCE CONTRACT");
     expect(JSON.stringify(chat.messages)).toContain(req.referenceContext);
     const content = chat.messages[1].content as Array<{ type: string; image_url?: { url: string } }>;
     expect(content.filter(part => part.type === "image_url").map(part => part.image_url?.url)).toEqual(req.imagePaths);
@@ -417,7 +417,7 @@ describe("Strata Pack, image and output contracts", () => {
     const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal, encode);
     expect(encode.mock.calls.map(([filename]) => filename)).toEqual(["first.png", "last.png"]);
     expect(chat.messages[0].role).toBe("system");
-    expect(JSON.stringify(chat.messages)).toContain("FL2VA subject-correspondence module");
+    expect(chat.messages[0].content).toContain("FL2VA keyframe bridge");
     expect(JSON.stringify(chat.messages)).toContain("FINAL TASK");
     expect(chat.maxTokens).toBe(8192);
     expect(JSON.stringify(chat.messages)).toContain("大丈夫？");
@@ -475,11 +475,83 @@ describe("Strata Pack, image and output contracts", () => {
     const source = 'A tiny woman says in English: "Ready."';
     const body = `${source} ${Array.from({ length: 218 }, (_, index) => `detail${index}`).join(" ")}`;
     f.owner.chat.mockResolvedValueOnce(`integrated_multimodal_description: [Shot 1] ${body}\noverall_soundscape: N/A\nnon_diegetic_music: N/A`);
-    await expect(f.service.enhance({ prompt: source, modelId: "minimax_h3_fl2va", mode: "h3-vision",
-      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 })).resolves.toContain("<d>[English] Ready.</d>");
+    const out = await f.service.enhance({ prompt: source, modelId: "minimax_h3_fl2va", mode: "h3-vision",
+      h3PromptMode: "I2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 5 });
+    expect(out).toContain("<d>[English] Ready.</d>");
+    expect(out).not.toContain("Scale relation:");
     expect(f.state).toEqual(before);
     expect(f.progress.at(-1)?.status).toBe("completed");
     expect(f.manager.snapshot().model.phase).toBe("resident");
     expect(f.owner.stop).not.toHaveBeenCalled();
+  });
+  it("does not inject robotic scale or camera fallback boilerplate into clean Strata H3 output", async () => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataReasoningEffort: "off" as const };
+    const req: EnhanceRequest = {
+      prompt: "镜头从外部平滑飞进她张开的嘴里，进入幽暗内部通道。同时等比例缩小的成年女子站在桌沿。",
+      modelId: "minimax_h3_fl2va", mode: "h3-vision", h3PromptMode: "T2VA", h3PromptPreset: "detailed-cinematic", h3DurationSeconds: 8
+    };
+    const chat = await buildStrataPromptRequest(req, settings, new AbortController().signal);
+    expect(chat.presencePenalty).toBe(0.2);
+    expect(chat.messages[0].content).toContain("Scale Difference, World Physics & Giant Interaction");
+    expect(chat.messages[0].content).toContain("Camera Threshold Entry & Interior Transition");
+    const modelReply = "integrated_multimodal_description: [Shot 1] A fully proportioned adult woman stands beside a towering ceramic cup while the lens glides smoothly forward past the parted rim into a dimly lit curved passage.\noverall_soundscape: Soft room tone.\nnon_diegetic_music: N/A";
+    const result = await enhancePromptWithStrata(req, settings, { chat: vi.fn(async () => modelReply) }, new AbortController().signal, vi.fn());
+    expect(result).toContain("dimly lit curved passage");
+    expect(result).not.toContain("Scale relation:");
+    expect(result).not.toContain("beginning inside the established space");
+  });
+  it("keeps native Continuum single-chunk Continuation anchor inside the timeline without duplicating it", async () => {
+    const settings = { ...createDefaultState().settings, promptModelId: modelId };
+    const req: EnhanceRequest = {
+      prompt: "继续跟随她向前行走。", modelId: "minimax_h3_continuum", mode: "h3-vision", origin: "video-extension",
+      h3PromptMode: "I2VA", h3PromptPreset: "continuous-motion", h3DurationSeconds: 5, continuumPreviousChunk: 3,
+      extensionSource: { filePath: "source.mp4", trimStartSeconds: 0, trimEndSeconds: 5 }
+    };
+    const modelReply = "integrated_multimodal_description: [Shot 1] Continuation of Chunk 3. She steps smoothly across the sunlit floor as the camera tracks beside her.\noverall_soundscape: Soft footsteps.\nnon_diegetic_music: N/A";
+    const result = await enhancePromptWithStrata(req, settings, { chat: vi.fn(async () => modelReply) }, new AbortController().signal, vi.fn());
+    expect(result.match(/Continuation of Chunk 3\./g)?.length).toBe(1);
+    expect(result).toMatch(/^integrated_multimodal_description:/);
+  });
+
+  it("supports append-only LOAD_SKILLS lazy skill loading while preserving prefix KV cache, with zero overhead on direct replies", async () => {
+    const img = await imageFixture(7);
+    const settings = { ...createDefaultState().settings, promptModelId: modelId, strataReasoningEffort: "off" as const };
+    const req: EnhanceRequest = {
+      prompt: "She walks forward across the surface while the camera follows closely.",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      h3PromptMode: "I2VA",
+      h3PromptPreset: "official-storyboard",
+      h3DurationSeconds: 5,
+      imagePaths: [img]
+    };
+
+    // Case 1: Model sees scale difference + anime style in the image and requests lazy skills.
+    const seenMessages: unknown[][] = [];
+    const lazyChat = vi.fn(async (body) => {
+      seenMessages.push(structuredClone(body.messages));
+      if (seenMessages.length === 1) {
+        return "<think>Image shows a tiny adult woman in 2D anime style.</think>\nLOAD_SKILLS: scale-world-craft, stylized-animation-craft";
+      }
+      return "The image <Picture 1> appears at 0.00 seconds.\n\nintegrated_multimodal_description: [Shot 1] In one continuous unbroken shot in crisp 2D cel-shaded style, the scaled-down young adult woman steps forward.\noverall_soundscape: Soft crisp footsteps.\nnon_diegetic_music: N/A";
+    });
+    const lazyResult = await enhancePromptWithStrata(req, settings, { chat: lazyChat }, new AbortController().signal, vi.fn());
+    expect(lazyChat).toHaveBeenCalledTimes(2);
+    expect(seenMessages[0]).toHaveLength(2);
+    expect(seenMessages[1]).toHaveLength(4);
+    // Prefix [system, user+image] is byte-identical across Turn 1 and Turn 2 for KV cache reuse.
+    expect(seenMessages[1]![0]).toEqual(seenMessages[0]![0]);
+    expect(seenMessages[1]![1]).toEqual(seenMessages[0]![1]);
+    expect(String((seenMessages[1]![3] as { content: string }).content)).toContain("Scale Difference, World Physics & Giant Interaction");
+    expect(String((seenMessages[1]![3] as { content: string }).content)).toContain("Stylized Medium & Animation Consistency Lock");
+    expect(lazyResult).toContain("scaled-down young adult woman");
+
+    // Case 2: Direct Turn 1 H3 prompt incurs zero extra turns.
+    const directChat = vi.fn(async () =>
+      "The image <Picture 1> appears at 0.00 seconds.\n\nintegrated_multimodal_description: [Shot 1] In one continuous unbroken shot, she walks smoothly forward across the sunlit floor.\noverall_soundscape: Light footsteps.\nnon_diegetic_music: N/A"
+    );
+    const directResult = await enhancePromptWithStrata(req, settings, { chat: directChat }, new AbortController().signal, vi.fn());
+    expect(directChat).toHaveBeenCalledOnce();
+    expect(directResult).toContain("sunlit floor");
   });
 });

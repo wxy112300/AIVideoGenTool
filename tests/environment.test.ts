@@ -736,6 +736,29 @@ describe("ComfyUI environment candidates", () => {
     expect(patched.nodesSource).toContain(
       "previous = batch_manager_states.pop(unique_id, None)"
     );
+
+    const vhs1710Utils = [
+      "    value = next(iter(currently_running.values()))",
+      "    if len(value) == 6:",
+      "        (_, prompt_id, prompt, extra_data, outputs_to_execute, _) = value",
+      "    else:",
+      "        (_, prompt_id, prompt, extra_data, outputs_to_execute) = value",
+      "    sensitive = value[5] if len(value) > 5 else {}",
+      "    prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))"
+    ].join("\n");
+    const vhs1710Patched = patchVideoHelperBatchCompatibility(
+      vhs1710Utils,
+      oldNodes,
+      oldLoadVideo
+    );
+    expect(vhs1710Patched.utilsSource).toBe(vhs1710Utils);
+    expect(
+      videoHelperBatchCompatible(
+        vhs1710Patched.utilsSource,
+        vhs1710Patched.nodesSource,
+        vhs1710Patched.loadVideoSource
+      )
+    ).toBe(true);
   });
 
   it("patches the legacy LTX AudioVAE constructor for ComfyUI 0.22+", () => {

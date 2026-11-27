@@ -24,6 +24,7 @@ import {
   videoLoraConfigurationIssues
 } from "./video-loras.js";
 import type { VideoLoraConfigurationIssue } from "./video-loras.js";
+import { isLongVideoDraftActive } from "./long-video/capability.js";
 
 export type VideoPolicySpectrumReason = "unsupported-model" | "motion-context" | null;
 export type VideoPolicyStepMode = "standard" | "turbo";
@@ -161,10 +162,14 @@ export function shouldApplySpectrum(input: VideoGenerationPolicyInput): boolean 
 }
 
 export function shouldEnableSpectrumByDefault(
-  draft: Pick<Draft, "modelId" | "inputMode" | "spectrumMode" | "spectrumModeUserSet" | "videoLoras">,
+  draft: Pick<Draft, "modelId" | "inputMode" | "spectrumMode" | "spectrumModeUserSet" | "videoLoras"> & Partial<Pick<Draft, "longVideoEditor">>,
   spectrumNode: Pick<CustomNodeStatus, "installed" | "loaded" | "version"> | null | undefined
 ): boolean {
   if (draft.spectrumModeUserSet || draft.spectrumMode === "balanced") return false;
+  // Long-video Continuum uses Masked-AV chunk stitching where Spectrum's residual
+  // step-skipping compounds seam drift and marks contracts non-resume-safe; keep
+  // Spectrum off by default while still honoring explicit user opt-in.
+  if (isLongVideoDraftActive(draft)) return false;
   // Offline installation evidence is enough for the default. Runtime loaded
   // status remains a separate enqueue/readiness gate.
   if (!spectrumNode?.installed) return false;

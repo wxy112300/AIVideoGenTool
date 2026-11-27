@@ -40,6 +40,7 @@ const consumerClasses = new Set([
   "BasicScheduler",
   "BasicGuider",
   "H3ContinuumSamplerV38",
+  "H3ContinuumSamplerV39",
   "LocalVideoStudioH3ContinuumSamplerV38"
 ]);
 const withdrawnMemoryClasses = new Set(["H3MemoryOptimization", "H3AIMDOResidencyLimiter"]);
@@ -228,6 +229,7 @@ function appendPostSamplingWrappers(
     !consumers.some(([, node]) =>
       node.class_type === "BasicGuider" ||
       node.class_type === "H3ContinuumSamplerV38" ||
+      node.class_type === "H3ContinuumSamplerV39" ||
       node.class_type === "LocalVideoStudioH3ContinuumSamplerV38"
     )
   ) {

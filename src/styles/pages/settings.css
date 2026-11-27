@@ -2,6 +2,15 @@
 .settings-grid [data-model-download-custom][hidden] { display: none; }
 .settings-content .settings-form-card .settings-preset-rule { grid-template-columns: minmax(0,1fr); gap: 8px; }
 .settings-preset-rule > textarea { width: 100%; min-height: 132px; resize: vertical; background: var(--surface-2); color: var(--text-1); font: var(--fs-12)/1.7 var(--font-mono); }
+.settings-skills-inspector { margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
+.settings-skills-inspector > summary { cursor: pointer; font-size: var(--fs-12); font-weight: var(--fw-medium); color: var(--text-2); }
+.settings-skills-list { display: grid; gap: 8px; margin-top: 10px; }
+.settings-skill-item { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+.settings-skill-item > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; cursor: pointer; font-size: var(--fs-12); color: var(--text-1); }
+.settings-skill-item > summary > code { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-2); }
+.settings-skill-badge { margin-left: auto; font-size: var(--fs-11); color: var(--text-3); }
+.settings-skill-trigger { margin: 8px 0 6px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.5; }
+.settings-skill-rules { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--canvas); color: var(--text-1); font: var(--fs-11)/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-sulphur-details { margin: 0; padding: 10px 0 12px; border-top: 1px solid var(--line); }
 .settings-sulphur-details p { margin: 8px 0 0; font-size: var(--fs-12); line-height: 1.5; }
 .settings-content .app-logs-panel { display: grid; grid-template-rows: auto minmax(260px,1fr); min-height: 440px; height: calc(100dvh - 188px); gap: 12px; }

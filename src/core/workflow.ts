@@ -29,6 +29,7 @@ import { isCustomVideoResolution } from "./video-resolution.js";
 import { FASTH3_OMNI_MODEL_ID, FASTH3_OMNI_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_omni/definition.js";
 import { TEN_EROS_MAX_CHECKPOINT, TEN_EROS_MAX_MODEL_ID } from "./catalog/models/ten_eros_max/definition.js";
 import { PI_H3_ADAPTERS, PI_H3_MODEL_ID, PI_H3_WORKFLOW_FILENAME } from "./catalog/models/minimax_h3_pi/definition.js";
+import { piH3MaxRawTime } from "./pi-h3.js";
 import { isH3VsaCheckpoint } from "./h3-vsa-checkpoint.js";
 import {
   H3_MAX_DURATION_SECONDS,
@@ -303,7 +304,7 @@ export function applyMiniMaxH3Spectrum(
   modelAwareMode: GenerationQueueTask["spectrumModelAwareMode"] = "off"
 ): void {
   const consumers = Object.entries(workflow).filter(([, node]) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!consumers.length) {
@@ -366,7 +367,7 @@ function applyMiniMaxH3LivePreview(
 ): void {
   if (!tinyVae) return;
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   const modelInput = consumers[0]?.inputs?.model;
@@ -414,7 +415,7 @@ export function applyVideoLoraStack(
     Array.isArray(node.inputs?.model)
   );
   const directConsumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   const targets = attentionNodes.length ? attentionNodes : directConsumers;
@@ -500,7 +501,7 @@ function applyMiniMaxH3SlaAttention(
   if (!enabled) return;
 
   const consumers = Object.entries(workflow).filter(([, node]) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!consumers.length) {
@@ -621,7 +622,7 @@ export function applyMiniMaxH3Ref2vTurboSampling(
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
@@ -763,7 +764,7 @@ export function applyMiniMaxH3PddSampling(
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
-    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider" || node.class_type === "H3ContinuumSamplerV38" || node.class_type === "H3ContinuumSamplerV39" || node.class_type === "LocalVideoStudioH3ContinuumSamplerV38") &&
     Array.isArray(node.inputs?.model)
   );
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
@@ -2239,7 +2240,7 @@ export function renderWorkflow(
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
     PI_H3_STEPS: piH3Steps,
     PI_H3_ADAPTER: PI_H3_ADAPTERS[piH3Steps],
-    PI_H3_MAX_RAW_T: piH3Steps === 2 ? 0.93 : 0.96,
+    PI_H3_MAX_RAW_T: piH3MaxRawTime(piH3Steps),
     H3_VIDEO_VAE: isMiniMaxH3Model(task.modelId)
       ? h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16")
       : "",

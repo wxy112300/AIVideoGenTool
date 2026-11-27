@@ -38,7 +38,7 @@ export interface QueueRuntimeProfileAlignmentResult {
 export interface QueueRuntimeServiceDependencies {
   store: StateRepository;
   logger: AppLogger;
-  runtimeState: Pick<ComfyRuntimeStateController, "snapshot" | "waitForSettled">;
+  runtimeState: Pick<ComfyRuntimeStateController, "snapshot" | "waitForSettled" | "begin" | "finish">;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
   isLocalComfyUrl(value: string): boolean;
   alignRuntimeProfile(settings: Settings): Promise<QueueRuntimeProfileAlignmentResult>;
@@ -151,11 +151,18 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
     queueWillContinue: boolean
   ): Promise<boolean> {
     if (!queueWillContinue && this.deps.isLocalComfyUrl(settings.comfyUrl)) {
-      this.deps.logger.info("comfy", "h3-release-deferred-to-queue-stop", "The queue will not continue; runtime cleanup is deferred to queue shutdown", {
-        taskId,
-        modelId,
-        hasVideoLoras
-      });
+      this.deps.logger.info(
+        "comfy",
+        settings.keepComfyUiRunningAfterQueue ? "h3-release-skipped-keep-running" : "h3-release-deferred-to-queue-stop",
+        settings.keepComfyUiRunningAfterQueue
+          ? "The queue will not continue and ComfyUI is configured to stay running after the queue finishes"
+          : "The queue will not continue; runtime cleanup is deferred to queue shutdown",
+        {
+          taskId,
+          modelId,
+          hasVideoLoras
+        }
+      );
       return true;
     }
     if (hasVideoLoras) {
@@ -292,10 +299,20 @@ export class QueueRuntimeService implements QueueRuntimeCapability {
       this.deps.logger.info("comfy", "queue-runtime-stop-skipped", "Remote ComfyUI remains connection-only when the queue stops");
       return true;
     }
+    const runtime = this.deps.runtimeState;
+    const phase = runtime.snapshot().phase;
+    const operationId = phase === "stopping" || phase === "restarting" ? undefined : runtime.begin(
+      "stopping", settings.comfyUrl.replace(/\/+$/u, ""),
+      createNativeTranslator(settings.uiLocale).t(uiKeys.runtimeService.stopping)
+    );
     const stopped = await this.deps.forceStopComfyProcesses(settings).catch((error) => ({
       ok: false,
       message: safeLogErrorMessage(error)
     }));
+    if (operationId !== undefined) {
+      runtime.finish(operationId, stopped.ok ? "stopped" : "error", stopped.message,
+        stopped.ok ? "none" : runtime.snapshot().ownership);
+    }
     this.deps.logger.info(
       "comfy",
       stopped.ok ? "queue-runtime-stop-succeeded" : "queue-runtime-stop-failed",

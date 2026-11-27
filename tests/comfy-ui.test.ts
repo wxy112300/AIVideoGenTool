@@ -205,7 +205,7 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Targeted prompt revision");
     expect(instruction).toContain("<EDIT_TARGET_1>The tiny person lifts the giant.</EDIT_TARGET_1>");
     expect(instruction).toContain("动作主体写反");
-    expect(instruction).toContain("Keep all unmarked text unchanged");
+    expect(instruction).toContain("Keep all unmarked passages unchanged");
     expect(instruction).not.toContain("Official H3 output fields");
     expect(instruction).not.toContain("H3 execution control header");
   });
@@ -552,15 +552,15 @@ describe("native Qwen prompt workflow", () => {
       h3PromptPreset: "detailed-cinematic"
     });
 
-    expect(faithful).toContain("Prioritize the user's explicit content first");
-    expect(continuous).toContain("one continuous shot with no cuts");
+    expect(faithful).toContain("Prioritize recognizable subject identity");
+    expect(continuous).toContain("ONE continuous unbroken take");
     expect(detailed).toContain("Detailed cinematic expansion rule");
     expect(detailed).toContain("DETAILED CINEMATIC EXPANSION GATE");
     expect(detailed).toContain("approximately 500 grounded words");
     expect(detailed).toContain("250 grounded words as an advisory");
     expect(detailed).toContain("the most fully developed timeline, never a concise rewrite");
     expect(detailed).toContain("at least two applicable kinds of scene-grounded execution detail");
-    expect(detailed).toContain("about twice the standard timeline coverage");
+    expect(detailed).toContain("Expand every user-specified subject, action, order, camera path");
     expect(detailed).not.toContain("roughly 180-320 grounded English words");
     expect(faithful).not.toBe(continuous);
     expect(detailed).not.toBe(continuous);

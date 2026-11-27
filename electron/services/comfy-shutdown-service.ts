@@ -223,28 +223,17 @@ export async function forceStopComfyProcesses(
         stderr: result.stderr.trim()
       });
     } catch (error) {
-      appLogger.warn("comfy", "process-termination-error", "ComfyUI process tree termination command failed", {
-        processId,
-        error: safeLogErrorMessage(error),
-        exitCode: error && typeof error === "object" && "code" in error
-          ? String(error.code)
-          : "unknown",
-        stdout: error && typeof error === "object" && "stdout" in error
-          ? String(error.stdout ?? "").trim()
-          : "",
-        stderr: error && typeof error === "object" && "stderr" in error
-          ? String(error.stderr ?? "").trim()
-          : ""
-      });
       try {
         process.kill(processId, "SIGKILL");
         appLogger.info("comfy", "process-terminated-fallback", "ComfyUI process was terminated with the Node fallback", {
           processId
         });
       } catch (fallbackError) {
-        appLogger.warn("comfy", "process-termination-fallback-error", "Node fallback could not terminate the ComfyUI process", {
+        if ((fallbackError as NodeJS.ErrnoException).code === "ESRCH") continue;
+        appLogger.warn("comfy", "process-termination-error", "ComfyUI process could not be terminated by taskkill or the Node fallback", {
           processId,
-          error: safeLogErrorMessage(fallbackError)
+          error: safeLogErrorMessage(error),
+          fallbackError: safeLogErrorMessage(fallbackError)
         });
       }
     }

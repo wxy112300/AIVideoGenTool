@@ -18,11 +18,11 @@ export interface CatalogLoraLocale {
 const zhCN: Record<string, CatalogLoraLocale> = {
   "minimax-h3-hmnsfw-extreme-realism-v3": {
     guide: {
-      summary: "MiniMax H3 FL2VA 的 HMNSFW v3 内容 LoRA。",
+      summary: "MiniMax H3 的 HMNSFW v3 内容 LoRA。",
       recommendedStrength: "默认强度 0.8。上游建议 Euler、18 步、视频 shift 12，scheduler 可选 Simple、Beta 或 Normal。",
       effects: "用于成人内容的写实音视频生成，无触发词。",
       stacking: "建议先用标准采样单独对照。上游报告可叠加 Turbo，本应用当前 Turbo 配方的组合效果待实测。",
-      compatibility: "适用于普通 H3 FL2VA INT8，使用现有 LoRA 加载器。",
+      compatibility: "适用于普通 H3 FL2VA INT8 和 Ref2VA INT8（R2V），共用同一份权重。",
       source: "Sentinel7 / h3 · 2834417/3446189"
     },
     rules: {}
@@ -352,11 +352,11 @@ const zhCN: Record<string, CatalogLoraLocale> = {
 const enUS: Record<string, CatalogLoraLocale> = {
   "minimax-h3-hmnsfw-extreme-realism-v3": {
     guide: {
-      summary: "HMNSFW v3 content LoRA for MiniMax H3 FL2VA.",
+      summary: "HMNSFW v3 content LoRA for MiniMax H3.",
       recommendedStrength: "Defaults to 0.8. Upstream recommends Euler, 18 steps, video shift 12, and Simple, Beta, or Normal scheduling.",
       effects: "For realistic adult audiovisual generation. No trigger word is required.",
       stacking: "Start with a standard sampling baseline. Upstream reports Turbo stacking support; the app's current Turbo recipes still need testing with this weight.",
-      compatibility: "Uses the existing LoRA loader on standard H3 FL2VA INT8.",
+      compatibility: "Uses the same weight file on standard H3 FL2VA INT8 and Ref2VA INT8 (R2V).",
       source: "Sentinel7 / h3 · 2834417/3446189"
     },
     rules: {}

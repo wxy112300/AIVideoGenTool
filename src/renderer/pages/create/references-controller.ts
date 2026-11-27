@@ -19,6 +19,7 @@ import {
 import { isMiniMaxH3Model } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
 import { h3PromptPackFor } from "../../prompt-packs";
+import { mountSortable, moveListItem } from "../../shared/ui/sortable";
 
 export interface H3ReferencesControllerOptions {
   getDraft(): Draft | undefined;
@@ -245,5 +246,35 @@ export function mountH3ReferencesController(
     }, { signal });
   });
 
-  return () => events.abort();
+  const referenceList = root.querySelector<HTMLElement>(".create-reference-list");
+  const cleanupSort = referenceList
+    ? mountSortable(referenceList, (from, to) => {
+        const draft = options.getDraft();
+        if (!draft) return;
+        const hasLockedFirst = Boolean(
+          options.lockedFirstVideo && draft.h3ReferenceSlots[0]?.mediaType === "video"
+        );
+        const offset = hasLockedFirst ? 1 : 0;
+        const movable = draft.h3ReferenceSlots.slice(offset);
+        const movedId = movable[from]?.id;
+        const reordered = moveListItem(movable, from, to);
+        options.patchDraft({
+          h3ReferenceSlots: [...draft.h3ReferenceSlots.slice(0, offset), ...reordered]
+        });
+        options.requestRender();
+        if (movedId) {
+          queueMicrotask(() => {
+            const safeId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+              ? CSS.escape(movedId)
+              : movedId.replace(/["\\]/gu, "\\$&");
+            root.querySelector<HTMLButtonElement>(`[data-h3-slot-grip="${safeId}"]`)?.focus({ preventScroll: true });
+          });
+        }
+      })
+    : undefined;
+
+  return () => {
+    cleanupSort?.();
+    events.abort();
+  };
 }

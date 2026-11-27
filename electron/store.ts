@@ -33,6 +33,7 @@ import type {
 import { APP_SCHEMA_VERSION, createDefaultState } from "../src/core/defaults.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
 import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
+import { isLegacyDefaultH3PromptPreset } from "../src/core/prompts/h3/index.js";
 import { normalizeImageLoras } from "../src/core/image-loras.js";
 import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import {
@@ -694,8 +695,12 @@ export class JsonStore implements StateRepository {
       const savedPresetText = saved.settings?.h3PromptPresets;
       const h3PromptPresets = Object.fromEntries(
         Object.entries(defaultState.settings.h3PromptPresets).map(([id, fallback]) => {
-          const value = savedPresetText?.[id as keyof typeof savedPresetText];
-          return [id, typeof value === "string" && value.trim() ? value : fallback];
+          const presetId = id as keyof typeof defaultState.settings.h3PromptPresets;
+          const value = savedPresetText?.[presetId];
+          const keepSaved = typeof value === "string"
+            && Boolean(value.trim())
+            && !isLegacyDefaultH3PromptPreset(presetId, value);
+          return [id, keepSaved ? value : fallback];
         })
       ) as typeof defaultState.settings.h3PromptPresets;
       const imagePromptPresets = normalizeQwenImagePromptPresets(saved.settings?.imagePromptPresets);
@@ -1070,6 +1075,10 @@ export class JsonStore implements StateRepository {
         "always"
       ].includes(this.state.settings.queueIsolationMode)) {
         this.state.settings.queueIsolationMode = "lora";
+        needsPersist = true;
+      }
+      if (typeof this.state.settings.keepComfyUiRunningAfterQueue !== "boolean") {
+        this.state.settings.keepComfyUiRunningAfterQueue = false;
         needsPersist = true;
       }
       if (!this.state.settings.autoOffload) {

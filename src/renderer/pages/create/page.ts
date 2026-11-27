@@ -17,6 +17,7 @@ import { promptVersionDisplayLabel } from "../../shared/prompt-version-label";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import { imageOutputCountMax } from "../../../core/image-workflow";
 import { PI_H3_MODEL_ID } from "../../../core/catalog/models/minimax_h3_pi/definition";
+import { promptSpellcheckLanguage } from "./rich-prompt";
 import {
   renderCreateModelOptions,
   renderH3ReferenceSlotsMarkup,
@@ -294,7 +295,7 @@ export function renderImageEditPage(
         </div>`}
         ${!viewModel.promptless && viewModel.promptSetupReason ? `<div class="button-row" data-prompt-setup role="status"><span class="muted">${escapeHtml(viewModel.promptSetupReason)}</span><button class="ghost" type="button" data-page="settings">${t(uiKeys.nav.settings)}</button></div>` : ""}
         ${viewModel.promptless ? "" : `
-        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea></div>
+        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${promptSpellcheckLanguage(viewModel.prompt.text)}">${escapeHtml(viewModel.prompt.text)}</textarea></div>
         `}
         ${viewModel.promptless ? "" : `<div class="create-prompt-footer">${viewModel.imageCapabilityMaxPictures > 0 ? `<select id="image-edit-instruction" hidden data-native-select>${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select><button id="insert-image-edit-instruction" hidden disabled></button><button class="secondary button-with-icon" id="image-prompt-insert-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" data-search-label="${t(uiKeys.create.insertSearch)}" data-empty-label="${t(uiKeys.create.insertEmpty)}">${icon("text-cursor-input")}${t(uiKeys.create.imageEdit.quickInsert)}${icon("chevron-down")}</button>` : ""}<span class="create-prompt-spacer"></span><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>`}
         </section>
@@ -421,7 +422,6 @@ export function renderCreatePage(
               icon,
               escapeHtml,
               showGuideTimes: viewModel.draft.h3ReferenceGuidesEnabled,
-              allowEmptySlots: true,
               h3ReferenceRoleLabels: options.h3ReferenceRoleLabels,
               t
             })
@@ -479,7 +479,7 @@ export function renderCreatePage(
       </div>
       ${viewModel.promptSetupReason ? `<div class="button-row" data-prompt-setup role="status"><span class="muted">${escapeHtml(viewModel.promptSetupReason)}</span><button class="ghost" type="button" data-page="settings">${t(uiKeys.nav.settings)}</button></div>` : ""}
       <div class="prompt-editor-shell">
-        <textarea id="prompt-input" rows="4" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
+        <textarea id="prompt-input" rows="4" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${promptSpellcheckLanguage(viewModel.prompt.text)}">${escapeHtml(viewModel.prompt.text)}</textarea>
       </div>
       <div class="create-prompt-footer">
         <select id="prompt-snippet" hidden data-native-select aria-label="${promptUi.t("snippetPicker")}">${viewModel.promptSnippetOptionsMarkup}</select>
@@ -570,7 +570,7 @@ export function renderCreatePage(
         <section class="composer-control-group composer-seed-group">
 
           <div class="composer-control-grid composer-seed-grid">
-        <label class="settings-field settings-seed">${t(uiKeys.create.videoSettings.randomSeed)}
+        <label class="settings-field settings-seed">${fieldLabelWithTip(t(uiKeys.create.videoSettings.randomSeed), t(uiKeys.create.videoSettings.randomPlaceholder))}
           <div class="inline-field seed-control"><input id="seed" type="number" placeholder="${t(uiKeys.create.videoSettings.randomPlaceholder)}" value="${viewModel.draft.seed ?? ""}"><button class="ghost icon-button seed-random" id="random-seed" type="button" title="${t(uiKeys.create.videoSettings.newRandomSeed)}">${icon("dices")}</button><button class="icon-button" id="clear-seed" type="button" aria-label="${t(uiKeys.create.videoSettings.clearSeed)}" title="${t(uiKeys.create.videoSettings.clearSeed)}">${icon("x")}</button></div>
         </label>
         <div class="settings-field create-span-2"><span>${t(uiKeys.create.videoSettings.workflow)}</span><div class="create-workflow-row">${icon("workflow")}<code title="${escapeHtml(viewModel.draft.workflowPath)}">${viewModel.selectedWorkflowDescription}</code><button class="secondary button-with-icon" id="pick-workflow">${icon("folder-open")}${t(uiKeys.create.videoSettings.replaceJson)}</button></div></div>

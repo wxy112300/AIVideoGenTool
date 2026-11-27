@@ -6,6 +6,8 @@ import { submitContinuumGroup } from "../electron/services/long-video-continuum"
 import { createDefaultSettings } from "../src/core/defaults";
 import { createLongVideoLayout } from "../src/core/long-video/layout";
 import { longVideoGuideCues, longVideoGuideSamplingPrompt } from "../src/core/long-video/timed-guides";
+import { deriveContinuumReferenceRouting } from "../src/core/long-video/reference-routing";
+import { missingH3VideoReference } from "../src/core/h3-reference";
 
 const templatePath = new URL("../workflows/minimax_h3_continuum_v38_managed_extend_api.json", import.meta.url);
 const template = () => JSON.parse(readFileSync(templatePath, "utf8"));
@@ -47,6 +49,65 @@ describe("internal Continuum group adapter", () => {
     const guide = graph[(sampler.guide as [string, number])[0]];
     expect(guide.inputs).toMatchObject({ image: bundle.inputs.reference_image_4, absolute_frame: 124 });
     expect(Object.values(graph).filter(node => node.class_type === "LoadImage")).toHaveLength(9);
+  });
+
+  it("compiles H3ContinuumSamplerV39 + H3ContinuumReferenceImagesV39 for per-chunk routing with fixed slot indices", () => {
+    const routing = deriveContinuumReferenceRouting(
+      ["@R1 enters alone.", "<Picture 1> meets <Picture 3>."],
+      ["hero.png", "", "rival.png"]
+    );
+    expect(routing).toEqual({
+      mode: "per_chunk",
+      selectors: { R1: "all", R2: "off", R3: "2", R4: "off", R5: "off", R6: "off", R7: "off", R8: "off", R9: "off" }
+    });
+    const graph = compileContinuumGroupWorkflow(template(), request, {
+      ...profile, firstImage: undefined, lora: undefined, attention: "sdpa",
+      referenceImages: ["hero.png", "", "rival.png"],
+      referenceRouting: routing,
+      timedGuides: [{ picture: 3, filename: "rival.png", absoluteFrame: 124 }],
+      prompts: ["@R1 enters alone.", "@R1 meets @R3."],
+      h3: { modelId: "minimax_h3_ref2va", videoLoras: [], sparseAttentionMode: "off",
+        runtimeMode: "compatibility", comfyCompilerMode: "disabled", spectrumModelAwareMode: "off" }
+    });
+    expect(graph["12"].class_type).toBe("H3ContinuumSamplerV39");
+    expect(graph["12"].inputs.reference_image_1).toBeUndefined();
+    expect(graph["12"].inputs.image_references).toBeUndefined();
+    const refLink = graph["12"].inputs.reference_images as [string, number];
+    const refNode = graph[refLink[0]]!;
+    expect(refNode.class_type).toBe("H3ContinuumReferenceImagesV39");
+    expect(refNode.inputs).toMatchObject({
+      reference_use: "Per chunk",
+      reference_r1_chunks: "all",
+      reference_r2_chunks: "off",
+      reference_r3_chunks: "2"
+    });
+    expect(refNode.inputs.reference_image_2).toBeUndefined();
+    const img1 = graph[(refNode.inputs.reference_image_1 as [string, number])[0]]!;
+    const img3 = graph[(refNode.inputs.reference_image_3 as [string, number])[0]]!;
+    expect(img1.inputs.image).toBe("hero.png");
+    expect(img3.inputs.image).toBe("rival.png");
+    const guide = graph[(graph["12"].inputs.guide as [string, number])[0]]!;
+    expect(guide.inputs).toMatchObject({ image: refNode.inputs.reference_image_3, absolute_frame: 124 });
+    expect(Object.values(graph).filter(node => node.class_type === "LoadImage")).toHaveLength(2);
+    expect(missingH3VideoReference("@R1 meets @R2.", [
+      { id: "1", mediaType: "image", mediaPath: "hero.png", role: "subject", note: "" },
+      { id: "2", mediaType: "image", mediaPath: "", role: "subject", note: "" }
+    ])).toBe("@R2");
+  });
+
+  it("blocks V3.9 per-chunk submission before POST when /object_info lacks V3.9 nodes", async () => {
+    const v39Profile: ContinuumGroupProfile = {
+      ...profile, firstImage: undefined, lora: undefined, attention: "sdpa",
+      referenceImages: ["hero.png", "rival.png"],
+      referenceRouting: { mode: "per_chunk", selectors: { R1: "1", R2: "2", R3: "off", R4: "off", R5: "off", R6: "off", R7: "off", R8: "off", R9: "off" } },
+      prompts: ["@R1 alone.", "@R2 arrives."],
+      h3: { modelId: "minimax_h3_ref2va", videoLoras: [], sparseAttentionMode: "off",
+        runtimeMode: "compatibility", comfyCompilerMode: "disabled", spectrumModelAwareMode: "off" }
+    };
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ H3ContinuumSamplerV38: {} })));
+    await expect(submitContinuumGroup(createDefaultSettings(), templatePath.pathname.replace(/^\/(\w:)/, "$1"), request, v39Profile, new AbortController().signal))
+      .rejects.toThrow(/H3ContinuumSamplerV39/);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("passes assembled frame numbers across the snapped seam and leaves the official sampler in place", () => {
